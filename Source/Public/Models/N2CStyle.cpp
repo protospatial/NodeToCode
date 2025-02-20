@@ -39,7 +39,7 @@ FString N2CStyle::InContent(const FString& RelativePath, const ANSICHAR* Extensi
     return (Content / RelativePath) + Extension;
 }
 
-const FName& N2CStyle::GetStyleSetName()
+const FName& N2CStyle::GetStyleSetName() const
 {
     static FName StyleName(TEXT("NodeToCodeStyle"));
     return StyleName;
