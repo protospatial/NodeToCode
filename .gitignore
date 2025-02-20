@@ -41,6 +41,9 @@
 *.VC.db
 *.VC.opendb
 
+# Finder folder appearance metadata generated on Mac
+*.DS_Store
+
 # Precompiled Assets
 SourceArt/**/*.png
 SourceArt/**/*.tga
