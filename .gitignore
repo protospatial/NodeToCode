@@ -77,8 +77,10 @@ Plugins/**/Intermediate/*
 DerivedDataCache/*
 
 # Folders and files used for local plugin development workflows/pipelines
-/Development
 .env
 /.aider.tags.cache.v3
 .aider.chat.history.md
 .aider.input.history
+/Config
+/Development/Aider
+/Development/Reference

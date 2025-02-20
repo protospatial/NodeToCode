@@ -1,28 +1,28 @@
-﻿{
-  "FileVersion": 3,
-  "Version": 1,
-  "VersionName": "1.0",
-  "FriendlyName": "Node to Code",
-  "Description": "Quickly translate any Unreal Engine Blueprint to C++",
-  "Category": "Code Plugins",
-  "CreatedBy": "protospatial",
-  "CreatedByURL": "https://www.fab.com/sellers/protospatial",
-  "DocsURL": "https://github.com/protospatial/NodeToCode/wiki",
-  "MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/865c44cc-4ff6-4fc1-9c19-6fbc6ac430eb",
-  "SupportURL": "https://www.protospatial.com/support",
-  "CanContainContent": true,
-  "IsBetaVersion": false,
-  "IsExperimentalVersion": false,
-  "Installed": true,
-  "Modules": [
-    {
-      "Name": "NodeToCode",
-      "Type": "Editor",
-      "LoadingPhase": "PostEngineInit",
-	  "PlatformAllowList": [
-				"Win64",
-				"Mac"
-			]
-    }
-  ]
+{
+    "FileVersion":  3,
+    "Version":  2,
+    "VersionName":  "1.0.2",
+    "FriendlyName":  "Node to Code",
+    "Description":  "Quickly translate any Unreal Engine Blueprint to C++",
+    "Category":  "Code Plugins",
+    "CreatedBy":  "protospatial",
+    "CreatedByURL":  "https://www.fab.com/sellers/protospatial",
+    "DocsURL":  "https://github.com/protospatial/NodeToCode/wiki",
+    "MarketplaceURL":  "com.epicgames.launcher://ue/marketplace/product/865c44cc-4ff6-4fc1-9c19-6fbc6ac430eb",
+    "SupportURL":  "https://www.protospatial.com/support",
+    "CanContainContent":  true,
+    "IsBetaVersion":  false,
+    "IsExperimentalVersion":  false,
+    "Installed":  true,
+    "Modules":  [
+                    {
+                        "Name":  "NodeToCode",
+                        "Type":  "Editor",
+                        "LoadingPhase":  "PostEngineInit",
+                        "PlatformAllowList":  [
+                                                  "Win64",
+                                                  "Mac"
+                                              ]
+                    }
+                ]
 }
