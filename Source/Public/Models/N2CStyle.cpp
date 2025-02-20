@@ -47,7 +47,8 @@ const FName& N2CStyle::GetStyleSetName() const
 
 TSharedRef<FSlateStyleSet> N2CStyle::Create()
 {
-    TSharedRef<FSlateStyleSet> Style = MakeShareable(new FSlateStyleSet(GetStyleSetName()));
+    static FName StyleSetName(TEXT("NodeToCodeStyle"));
+    TSharedRef<FSlateStyleSet> Style = MakeShareable(new FSlateStyleSet(StyleSetName));
     
     // Set content root using plugin manager
     Style->SetContentRoot(IPluginManager::Get().FindPlugin(TEXT("NodeToCode"))->GetBaseDir() / TEXT("Resources"));
