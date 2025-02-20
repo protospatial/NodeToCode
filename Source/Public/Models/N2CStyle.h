@@ -10,7 +10,7 @@ public:
     static void Initialize();
     static void Shutdown();
     static const ISlateStyle& Get();
-    static FName GetStyleSetName();
+    static const FName& GetStyleSetName();
     
     // Add helper method for content paths
     static FString InContent(const FString& RelativePath, const ANSICHAR* Extension);
