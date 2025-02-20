@@ -27,7 +27,7 @@ void UN2CWidgetContainer::Reset()
 {
     if (Instance)
     {
-        if (!Instance->IsPendingKill())
+        if (!Instance->IsValidLowLevel())
         {
             Instance->RemoveFromRoot();
             FN2CLogger::Get().Log(TEXT("Reset NodeToCode widget container"), EN2CLogSeverity::Debug);

@@ -120,7 +120,7 @@ void UN2CSystemPromptManager::LoadPrompts()
     }
 
     // Set prompts directory relative to plugin base
-    PromptsDirectory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Docs"), TEXT("Prompting"));
+    PromptsDirectory = FPaths::Combine(Plugin->GetContentDir(), TEXT("Prompting"));
     
     if (!FPaths::DirectoryExists(PromptsDirectory))
     {
