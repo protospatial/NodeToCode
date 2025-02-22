@@ -1,4 +1,4 @@
-// Copyright ProtoSpatial. All Rights Reserved.
+// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CStyle.h"
 #include "Styling/SlateStyleRegistry.h"

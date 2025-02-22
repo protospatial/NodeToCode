@@ -1,4 +1,4 @@
-// Copyright ProtoSpatial. All Rights Reserved.
+// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Code Editor/Widgets/N2CCodeEditorWidget.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"

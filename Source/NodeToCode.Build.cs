@@ -1,4 +1,6 @@
-﻿using UnrealBuildTool;
+﻿// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
+
+using UnrealBuildTool;
 
 public class NodeToCode : ModuleRules
 {

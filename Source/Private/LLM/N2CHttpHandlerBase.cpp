@@ -1,4 +1,4 @@
-// Copyright ProtoSpatial. All Rights Reserved.
+// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "LLM/N2CHttpHandlerBase.h"
 #include "Utils/N2CLogger.h"

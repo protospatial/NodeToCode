@@ -1,4 +1,4 @@
-// Copyright ProtoSpatial. All Rights Reserved.
+// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #pragma once
 
@@ -363,8 +363,8 @@ struct FN2CCodeEditorThemes
 };
 
 
-// Welcome to Node to Code! This is where you can configure a variety of different important settings.
-UCLASS(Config = NodeToCode, defaultconfig = NodeToCode, meta = (Category = "Node to Code", DisplayName = "Node to Code"))
+// Questions? Check out the Docs: github.com/protospatial/NodeToCode/wiki
+UCLASS(Config = NodeToCode, DefaultConfig, meta = (Category = "Node to Code", DisplayName = "Node to Code"))
 class NODETOCODE_API UN2CSettings : public UDeveloperSettings
 {
     GENERATED_BODY()

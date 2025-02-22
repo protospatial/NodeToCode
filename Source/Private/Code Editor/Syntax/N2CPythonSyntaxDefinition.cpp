@@ -1,4 +1,4 @@
-// Copyright ProtoSpatial. All Rights Reserved.
+// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Code Editor/Syntax/N2CPythonSyntaxDefinition.h"
 

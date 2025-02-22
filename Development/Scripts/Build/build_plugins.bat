@@ -82,12 +82,16 @@ if "!INPUT_MINOR!"=="" (
 :: Read build number from version file or initialize it
 if exist "%VERSION_FILE%" (
     set /p BUILD_NUMBER=<"%VERSION_FILE%"
+    :: Increment build number
+    set /a BUILD_NUMBER+=1
 ) else (
-    set "BUILD_NUMBER=0"
+    :: If no version file exists and using default versions, start at 0
+    if !MAJOR!==1 if !MINOR!==0 (
+        set "BUILD_NUMBER=0"
+    ) else (
+        set "BUILD_NUMBER=1"
+    )
 )
-
-:: Increment build number
-set /a BUILD_NUMBER+=1
 
 :: Save new build number
 (echo !BUILD_NUMBER!)> "%VERSION_FILE%"
@@ -168,9 +172,13 @@ for %%v in (%versions%) do (
         :: Use robocopy to copy files, excluding Binaries and Intermediate
         robocopy "!VERSION_OUTPUT_DIR!" "!TEMP_DIR!" /E /XD "Binaries" "Intermediate" /NFL /NDL /NJH /NJS /nc /ns /np
         
+        :: Create version and engine specific directory structure
+        set "ENGINE_VERSION_DIR=!VERSION_BUILDS_DIR!\%%v"
+        if not exist "!ENGINE_VERSION_DIR!" mkdir "!ENGINE_VERSION_DIR!"
+        
         :: Create the zip file from the clean copy
-        echo Creating zip archive for UE %%v...
-        powershell Compress-Archive -Path "!TEMP_DIR!\*" -DestinationPath "!VERSION_BUILDS_DIR!\NodeToCode_%%v.zip" -Force
+        echo Creating zip archive for UE%%v...
+        powershell Compress-Archive -Path "!TEMP_DIR!\*" -DestinationPath "!ENGINE_VERSION_DIR!\NodeToCode.zip" -Force
         
         :: Clean up
         echo Cleaning up temporary files...

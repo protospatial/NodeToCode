@@ -84,3 +84,4 @@ DerivedDataCache/*
 /Config
 /Development/Aider
 /Development/Reference
+.aider*
