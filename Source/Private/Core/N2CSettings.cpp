@@ -8,7 +8,10 @@
 #include "IDetailsView.h"
 #include "LLM/N2CLLMModels.h"
 #include "Utils/N2CLogger.h"
+
+#if PLATFORM_WINDOWS
 #include "Windows/WindowsPlatformApplicationMisc.h"
+#endif
 
 #if PLATFORM_MAC
 #include "Mac/MacPlatformApplicationMisc.h"
