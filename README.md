@@ -6,6 +6,9 @@
 
 ---
 
+### :arrow_down: [Intall the Plugin](https://github.com/protospatial/NodeToCode/releases)
+Check out the Releases page for the latest stable builds of Node to Code - ready to install in your engine or project
+
 ### :books: [Visit the Wiki](https://github.com/protospatial/NodeToCode/wiki)
 Explore the documentation, including setup guides, best practices, and troubleshooting steps.
 
