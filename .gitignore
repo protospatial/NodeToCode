@@ -82,6 +82,5 @@ DerivedDataCache/*
 .aider.chat.history.md
 .aider.input.history
 /Config
-/Development/Aider
-/Development/Reference
+/Development
 .aider*
