@@ -58,8 +58,26 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     EN2CSystemStatus GetSystemStatus() const { return CurrentStatus; }
 
+    /** Get the path to the latest translation */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
+    FString GetLatestTranslationPath() const { return LatestTranslationPath; }
+
+    /** Open the latest translation folder in file explorer */
+    UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
+    bool OpenTranslationFolder() const;
+
+    /** Save translation files to disk */
+    bool SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint);
 
 private:
+    /** Generate file paths for translation */
+    FString GenerateTranslationRootPath(const FString& BlueprintName) const;
+    
+    /** Get the appropriate file extension for the target language */
+    FString GetFileExtensionForLanguage(EN2CCodeLanguage Language) const;
+    
+    /** Create directory if it doesn't exist */
+    bool EnsureDirectoryExists(const FString& DirectoryPath) const;
     /** Initialize components */
     bool InitializeComponents();
 
@@ -88,6 +106,10 @@ private:
     /** Current system status */
     UPROPERTY()
     EN2CSystemStatus CurrentStatus;
+    
+    /** Path to the latest translation */
+    UPROPERTY()
+    FString LatestTranslationPath;
     
     /** Initialization state */
     bool bIsInitialized;
