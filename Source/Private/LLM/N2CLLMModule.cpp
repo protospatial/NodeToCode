@@ -96,7 +96,7 @@ void UN2CLLMModule::ProcessN2CJson(
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     FString SystemPrompt = PromptManager->GetLanguageSpecificPrompt(
         TEXT("CodeGen"),
-        Settings ? Settings->TargetLanguage : EN2CTargetLanguage::Cpp
+        Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp
     );
 
     // Connect the HTTP handler's translation response delegate to our module's delegate

@@ -26,7 +26,7 @@ public:
 
     /** Get system prompt for specific language */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Prompting")
-    FString GetLanguageSpecificPrompt(const FString& BasePromptKey, EN2CTargetLanguage Language) const;
+    FString GetLanguageSpecificPrompt(const FString& BasePromptKey, EN2CCodeLanguage Language) const;
 
     /** Merge system and user prompts if needed */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Prompting")
@@ -55,7 +55,7 @@ private:
     FString FormatSourceFileContent(const FString& FilePath, const FString& Content) const;
 
     /** Get language-specific prompt key */
-    FString GetLanguagePromptKey(const FString& BasePromptKey, EN2CTargetLanguage Language) const;
+    FString GetLanguagePromptKey(const FString& BasePromptKey, EN2CCodeLanguage Language) const;
 
     /** Map of loaded prompts */
     TMap<FString, FString> LoadedPrompts;

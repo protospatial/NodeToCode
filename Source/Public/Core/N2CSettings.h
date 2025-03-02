@@ -449,7 +449,7 @@ public:
     /** Target programming language for translation */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation", 
         meta=(DisplayName="Target Language"))
-    EN2CTargetLanguage TargetLanguage = EN2CTargetLanguage::Cpp;
+    EN2CCodeLanguage TargetLanguage = EN2CCodeLanguage::Cpp;
 
     /** Maximum depth for nested graph translation (0 = No nested translation). This setting can greatly impact costs and context window utilization, so be mindful! */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
