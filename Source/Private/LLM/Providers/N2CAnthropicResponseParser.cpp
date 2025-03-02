@@ -84,8 +84,30 @@ bool UN2CAnthropicResponseParser::ExtractMessageContent(
             continue;
         }
 
-        // Get the text content
-        return ContentObject->TryGetStringField(TEXT("text"), OutContent);
+        // Get content string
+        FString RawContent;
+
+        if (!ContentObject->TryGetStringField(TEXT("text"), RawContent))
+        {
+            return false;
+        }
+
+        // Check if content is wrapped in ```json markers and remove them
+        if (RawContent.StartsWith(TEXT("```json")) && RawContent.EndsWith(TEXT("```")))
+        {
+            // Remove the ```json prefix and ``` suffix
+            OutContent = RawContent.RightChop(7); // Skip past "```json"
+            OutContent = OutContent.LeftChop(3);  // Remove trailing "```"
+            OutContent = OutContent.TrimStartAndEnd(); // Remove any extra whitespace
+        
+            FN2CLogger::Get().Log(TEXT("Stripped JSON markers from Anthropic response"), EN2CLogSeverity::Debug);
+        }
+        else
+        {
+            OutContent = RawContent;
+        }
+        
+        return true;
     }
 
     return false;

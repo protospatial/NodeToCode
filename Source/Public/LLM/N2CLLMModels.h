@@ -24,6 +24,7 @@ enum class EN2COpenAIModel : uint8
 UENUM(BlueprintType)
 enum class EN2CAnthropicModel : uint8
 {
+    Claude3_7_Sonnet     UMETA(DisplayName = "Claude 3.7 Sonnet", Value = "claude-3-7-sonnet-20250219"),
     Claude3_5_Sonnet        UMETA(DisplayName = "Claude 3.5 Sonnet", Value = "claude-3-5-sonnet-20241022"),
     Claude3_5_Haiku      UMETA(DisplayName = "Claude 3.5 Haiku", Value = "claude-3-5-haiku-20241022"),
 };

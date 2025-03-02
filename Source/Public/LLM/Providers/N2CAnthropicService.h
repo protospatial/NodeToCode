@@ -53,7 +53,7 @@ private:
     FString DefaultEndpoint = TEXT("https://api.anthropic.com/v1/messages");
 
     /** Default model to use */
-    FString DefaultModel = TEXT("claude-3-5-sonnet-20241022");
+    FString DefaultModel = TEXT("claude-3-7-sonnet-20250219");
 
     /** API version header value */
     FString ApiVersion = TEXT("2023-06-01");

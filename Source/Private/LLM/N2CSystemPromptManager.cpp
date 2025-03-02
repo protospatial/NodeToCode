@@ -104,6 +104,8 @@ FString UN2CSystemPromptManager::GetLanguagePromptKey(const FString& BasePromptK
             return FString::Printf(TEXT("%s_CSharp"), *BasePromptKey);
         case EN2CTargetLanguage::Swift:
             return FString::Printf(TEXT("%s_Swift"), *BasePromptKey);
+    case EN2CTargetLanguage::Pseudocode:
+        return FString::Printf(TEXT("%s_Pseudocode"), *BasePromptKey);
         default:
             return BasePromptKey;
     }
@@ -138,6 +140,7 @@ void UN2CSystemPromptManager::LoadPrompts()
     Languages.Add(EN2CTargetLanguage::JavaScript);
     Languages.Add(EN2CTargetLanguage::CSharp);
     Languages.Add(EN2CTargetLanguage::Swift);
+    Languages.Add(EN2CTargetLanguage::Pseudocode);
 
     // Load base and language-specific prompts
     for (const FString& PromptKey : BasePromptFiles)
