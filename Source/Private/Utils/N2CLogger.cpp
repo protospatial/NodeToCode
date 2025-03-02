@@ -46,12 +46,12 @@ void FN2CLogger::Log(const FString& Message, EN2CLogSeverity Severity, const FSt
     }
 
     // Force output to console window for debugging
-    #if WITH_EDITOR
+    /*#if WITH_EDITOR
     if (GLogConsole)
     {
         GLogConsole->Show(true);
     }
-    #endif
+    #endif*/
 
     // Output to console window
     const TCHAR* SeverityColor = TEXT("");
