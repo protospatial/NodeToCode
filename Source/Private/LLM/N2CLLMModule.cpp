@@ -2,6 +2,8 @@
 
 #include "LLM/N2CLLMModule.h"
 
+#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/IN2CLLMService.h"
@@ -172,22 +174,25 @@ bool UN2CLLMModule::InitializeComponents()
     return true;
 }
 
-bool UN2CLLMModule::OpenTranslationFolder() const
+void UN2CLLMModule::OpenTranslationFolder(bool& Success)
 {
     if (LatestTranslationPath.IsEmpty())
     {
         FN2CLogger::Get().LogWarning(TEXT("No translation path available"));
-        return false;
+        Success = false;
     }
 
     if (!FPaths::DirectoryExists(LatestTranslationPath))
     {
         FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation directory does not exist: %s"), *LatestTranslationPath));
-        return false;
+        Success = false;
     }
 
+#if PLATFORM_WINDOWS
     FPlatformProcess::ExploreFolder(*LatestTranslationPath);
-    return true;
+    Success = false;
+#endif
+    
 }
 
 bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint)
@@ -213,7 +218,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     LatestTranslationPath = RootPath;
     
     // Save the Blueprint JSON
-    FString JsonFileName = FString::Printf(TEXT("n2c_%s.json"), *FPaths::GetBaseFilename(RootPath));
+    FString JsonFileName = FString::Printf(TEXT("N2C_JSON_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString JsonFilePath = FPaths::Combine(RootPath, JsonFileName);
     
     // Serialize the Blueprint to JSON
@@ -271,7 +276,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         // Save implementation notes
         if (!Graph.Code.ImplementationNotes.IsEmpty())
         {
-            FString NotesPath = FPaths::Combine(GraphDir, Graph.GraphName + TEXT("_notes.txt"));
+            FString NotesPath = FPaths::Combine(GraphDir, Graph.GraphName + TEXT("_Notes.txt"));
             if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
             {
                 FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save notes file: %s"), *NotesPath));
