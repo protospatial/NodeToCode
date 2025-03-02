@@ -218,7 +218,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     LatestTranslationPath = RootPath;
     
     // Save the Blueprint JSON (pretty-printed)
-    FString JsonFileName = FString::Printf(TEXT("N2C_JSON_%s.json"), *FPaths::GetBaseFilename(RootPath));
+    FString JsonFileName = FString::Printf(TEXT("N2C_BP_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString JsonFilePath = FPaths::Combine(RootPath, JsonFileName);
     
     // Serialize the Blueprint to JSON with pretty printing
@@ -232,7 +232,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     }
     
     // Save minified version of the Blueprint JSON
-    FString MinifiedJsonFileName = FString::Printf(TEXT("N2C_JSON_%s_minified.json"), *FPaths::GetBaseFilename(RootPath));
+    FString MinifiedJsonFileName = FString::Printf(TEXT("N2C_BP_Minified_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString MinifiedJsonFilePath = FPaths::Combine(RootPath, MinifiedJsonFileName);
     
     // Serialize the Blueprint to JSON without pretty printing

@@ -3,9 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Code Editor/Models/N2CCodeLanguage.h"
 #include "LLM/N2CLLMTypes.h"
 #include "LLM/N2CHttpHandlerBase.h"
 #include "LLM/N2CResponseParserBase.h"
+#include "Models/N2CBlueprint.h"
 #include "N2CLLMModule.generated.h"
 
 /**
@@ -64,7 +66,7 @@ public:
 
     /** Open the latest translation folder in file explorer */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
-    bool OpenTranslationFolder() const;
+    void OpenTranslationFolder(bool& Success);
 
     /** Save translation files to disk */
     bool SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint);
