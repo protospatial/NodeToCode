@@ -12,6 +12,10 @@ Check out the Releases page for the latest stable builds of Node to Code - ready
 ### :books: [Visit the Wiki](https://github.com/protospatial/NodeToCode/wiki)
 Explore the documentation, including setup guides, best practices, and troubleshooting steps.
 
+### 🆕 [See What's New](https://github.com/protospatial/NodeToCode/wiki/Latest-Updates)
+
+---
+
 ### :speech_balloon: [Discord Community](https://discord.gg/4t3Syvk4AG)
 Have questions or need help? Join the Discord for support and discussion.
 
