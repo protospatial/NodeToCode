@@ -14,22 +14,23 @@ const TMap<EN2COpenAIModel, FN2COpenAIPricing> FN2CLLMModelUtils::OpenAIPricing 
 };
 
 const TMap<EN2CGeminiModel, FN2CGeminiPricing> FN2CLLMModelUtils::GeminiPricing = {
-    {EN2CGeminiModel::Gemini_Flash_2_0, FN2CGeminiPricing(1.0f, 0.4f)},
-    {EN2CGeminiModel::Gemini_Flash_Lite_2_0, FN2CGeminiPricing(0.075f, 0.3f)},
-    {EN2CGeminiModel::Gemini_1_5_Flash, FN2CGeminiPricing(0.075f, 0.3f)},
-    {EN2CGeminiModel::Gemini_1_5_Pro, FN2CGeminiPricing(1.25f, 5.0f)},
+    {EN2CGeminiModel::Gemini_Flash_2_0, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_Flash_Lite_2_0, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_1_5_Flash, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_1_5_Pro, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_2_0_ProExp_02_05, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_2_0_FlashThinkingExp, FN2CGeminiPricing(0.0f, 0.0f)},
 };
 
 const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> FN2CLLMModelUtils::AnthropicPricing = {
-    {EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(0.015f, 0.075f)},
-    {EN2CAnthropicModel::Claude3_5_Haiku, FN2CAnthropicPricing(0.0025f, 0.0125f)}
+    {EN2CAnthropicModel::Claude3_7_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
+    {EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
+    {EN2CAnthropicModel::Claude3_5_Haiku, FN2CAnthropicPricing(0.8f, 4.0f)}
 };
 
 const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> FN2CLLMModelUtils::DeepSeekPricing = {
-    {EN2CDeepSeekModel::DeepSeek_R1, FN2CDeepSeekPricing(0.0002f, 0.0002f)},
-    {EN2CDeepSeekModel::DeepSeek_V3, FN2CDeepSeekPricing(0.0004f, 0.0004f)}
+    {EN2CDeepSeekModel::DeepSeek_R1, FN2CDeepSeekPricing(0.14f, 0.55f)},
+    {EN2CDeepSeekModel::DeepSeek_V3, FN2CDeepSeekPricing(0.07f, 0.27f)}
 };
 
 FString FN2CLLMModelUtils::GetOpenAIModelValue(EN2COpenAIModel Model)
@@ -57,6 +58,8 @@ FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
 {
     switch (Model)
     {
+        case EN2CAnthropicModel::Claude3_7_Sonnet:
+            return TEXT("claude-3-7-sonnet-20250219");
         case EN2CAnthropicModel::Claude3_5_Sonnet:
             return TEXT("claude-3-5-sonnet-20241022");
         case EN2CAnthropicModel::Claude3_5_Haiku:

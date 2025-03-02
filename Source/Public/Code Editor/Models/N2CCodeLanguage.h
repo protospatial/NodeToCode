@@ -12,5 +12,6 @@ enum class EN2CCodeLanguage : uint8
     Python      UMETA(DisplayName = "Python"),
     JavaScript  UMETA(DisplayName = "JavaScript"),
     CSharp      UMETA(DisplayName = "C#"),
-    Swift       UMETA(DisplayName = "Swift")
+    Swift       UMETA(DisplayName = "Swift"),
+    Pseudocode  UMETA(DisplayName = "Pseudocode")
 };

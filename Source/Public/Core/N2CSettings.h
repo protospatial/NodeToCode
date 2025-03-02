@@ -385,9 +385,9 @@ public:
     UPROPERTY(Transient)
     mutable UN2CUserSecrets* UserSecrets;
 
-    /** Anthropic Model Selection - Sonnet 3.5 recommended*/
+    /** Anthropic Model Selection - Sonnet 3.5 or 3.7 recommended*/
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")
-    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude3_5_Sonnet;
+    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude3_7_Sonnet;
     
     /** Anthropic API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Anthropic",
@@ -449,7 +449,7 @@ public:
     /** Target programming language for translation */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation", 
         meta=(DisplayName="Target Language"))
-    EN2CTargetLanguage TargetLanguage = EN2CTargetLanguage::Cpp;
+    EN2CCodeLanguage TargetLanguage = EN2CCodeLanguage::Cpp;
 
     /** Maximum depth for nested graph translation (0 = No nested translation). This setting can greatly impact costs and context window utilization, so be mindful! */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
@@ -493,6 +493,11 @@ public:
     UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming | Language Specific Themes",
         meta=(DisplayName="Swift Themes"))
     FN2CCodeEditorThemes SwiftThemes;
+
+    /** Style themes for Pseudocode */
+    UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming | Language Specific Themes",
+        meta=(DisplayName="Pseudocode Themes"))
+    FN2CCodeEditorThemes PseudocodeThemes;
     
     /** Get theme colors for a specific language and theme name */
     const FN2CCodeEditorColors* GetThemeColors(EN2CCodeLanguage Language, const FName& ThemeName) const;

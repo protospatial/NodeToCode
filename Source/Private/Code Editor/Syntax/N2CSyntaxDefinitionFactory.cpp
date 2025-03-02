@@ -6,6 +6,7 @@
 #include "Code Editor/Syntax/N2CJavaScriptSyntaxDefinition.h"
 #include "Code Editor/Syntax/N2CCSharpSyntaxDefinition.h"
 #include "Code Editor/Syntax/N2CSwiftSyntaxDefinition.h"
+#include "Code Editor/Syntax/N2CPseudocodeSyntaxDefinition.h"
 
 FN2CSyntaxDefinitionFactory& FN2CSyntaxDefinitionFactory::Get()
 {
@@ -27,6 +28,8 @@ TSharedPtr<FN2CSyntaxDefinition> FN2CSyntaxDefinitionFactory::CreateDefinition(E
             return MakeShared<FN2CCSharpSyntaxDefinition>();
         case EN2CCodeLanguage::Swift:
             return MakeShared<FN2CSwiftSyntaxDefinition>();
+        case EN2CCodeLanguage::Pseudocode:
+            return MakeShared<FN2CPseudocodeSyntaxDefinition>();
         default:
             return nullptr;
     }

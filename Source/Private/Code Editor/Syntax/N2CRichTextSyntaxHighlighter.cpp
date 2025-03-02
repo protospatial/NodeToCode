@@ -29,6 +29,9 @@ TSharedRef<FN2CRichTextSyntaxHighlighter> FN2CRichTextSyntaxHighlighter::Create(
         case EN2CCodeLanguage::Swift:
             LanguageId = TEXT("Swift");
             break;
+        case EN2CCodeLanguage::Pseudocode:
+            LanguageId = TEXT("Pseudocode");
+            break;
         default:
             checkf(false, TEXT("Unsupported language type"));
             break;

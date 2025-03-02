@@ -73,7 +73,7 @@ bool UN2CSystemPromptManager::PrependSourceFilesToUserMessage(FString& UserMessa
      return bSuccess;
 }
 
-FString UN2CSystemPromptManager::GetLanguageSpecificPrompt(const FString& BasePromptKey, EN2CTargetLanguage Language) const
+FString UN2CSystemPromptManager::GetLanguageSpecificPrompt(const FString& BasePromptKey, EN2CCodeLanguage Language) const
 {
     const FString LanguageKey = GetLanguagePromptKey(BasePromptKey, Language);
     if (const FString* Prompt = LoadedPrompts.Find(LanguageKey))
@@ -90,20 +90,22 @@ FString UN2CSystemPromptManager::GetLanguageSpecificPrompt(const FString& BasePr
     return GetSystemPrompt(BasePromptKey);
 }
 
-FString UN2CSystemPromptManager::GetLanguagePromptKey(const FString& BasePromptKey, EN2CTargetLanguage Language) const
+FString UN2CSystemPromptManager::GetLanguagePromptKey(const FString& BasePromptKey, EN2CCodeLanguage Language) const
 {
     switch (Language)
     {
-        case EN2CTargetLanguage::Cpp:
+        case EN2CCodeLanguage::Cpp:
             return FString::Printf(TEXT("%s_CPP"), *BasePromptKey);
-        case EN2CTargetLanguage::Python:
+        case EN2CCodeLanguage::Python:
             return FString::Printf(TEXT("%s_Python"), *BasePromptKey);
-        case EN2CTargetLanguage::JavaScript:
+        case EN2CCodeLanguage::JavaScript:
             return FString::Printf(TEXT("%s_JavaScript"), *BasePromptKey);
-        case EN2CTargetLanguage::CSharp:
+        case EN2CCodeLanguage::CSharp:
             return FString::Printf(TEXT("%s_CSharp"), *BasePromptKey);
-        case EN2CTargetLanguage::Swift:
+        case EN2CCodeLanguage::Swift:
             return FString::Printf(TEXT("%s_Swift"), *BasePromptKey);
+    case EN2CCodeLanguage::Pseudocode:
+        return FString::Printf(TEXT("%s_Pseudocode"), *BasePromptKey);
         default:
             return BasePromptKey;
     }
@@ -132,12 +134,13 @@ void UN2CSystemPromptManager::LoadPrompts()
     BasePromptFiles.Add(TEXT("CodeGen"));
 
     // Languages to load prompts for
-    TArray<EN2CTargetLanguage> Languages;
-    Languages.Add(EN2CTargetLanguage::Cpp);
-    Languages.Add(EN2CTargetLanguage::Python);
-    Languages.Add(EN2CTargetLanguage::JavaScript);
-    Languages.Add(EN2CTargetLanguage::CSharp);
-    Languages.Add(EN2CTargetLanguage::Swift);
+    TArray<EN2CCodeLanguage> Languages;
+    Languages.Add(EN2CCodeLanguage::Cpp);
+    Languages.Add(EN2CCodeLanguage::Python);
+    Languages.Add(EN2CCodeLanguage::JavaScript);
+    Languages.Add(EN2CCodeLanguage::CSharp);
+    Languages.Add(EN2CCodeLanguage::Swift);
+    Languages.Add(EN2CCodeLanguage::Pseudocode);
 
     // Load base and language-specific prompts
     for (const FString& PromptKey : BasePromptFiles)
@@ -150,7 +153,7 @@ void UN2CSystemPromptManager::LoadPrompts()
         }
 
         // Load language-specific prompts
-        for (EN2CTargetLanguage Language : Languages)
+        for (EN2CCodeLanguage Language : Languages)
         {
             const FString LanguageKey = GetLanguagePromptKey(PromptKey, Language);
             if (LoadPromptFromFile(GetPromptFilePath(LanguageKey), PromptContent))

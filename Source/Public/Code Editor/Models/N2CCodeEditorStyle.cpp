@@ -57,6 +57,7 @@ void FN2CCodeEditorStyle::InitializeLanguageStyles()
     InitializeJavaScriptStyles();
     InitializeCSharpStyles();
     InitializeSwiftStyles();
+    InitializePseudocodeStyles();
 }
 
 void FN2CCodeEditorStyle::InitializeCPPStyles()
@@ -254,6 +255,47 @@ void FN2CCodeEditorStyle::InitializeSwiftStyles()
     }
 }
 
+void FN2CCodeEditorStyle::InitializePseudocodeStyles()
+{
+    const FTextBlockStyle BaseStyle = CreateDefaultTextStyle(TEXT("Pseudocode"));
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    
+    // Initialize styles for each theme
+    for (const auto& ThemePair : Settings->PseudocodeThemes.Themes)
+    {
+        const FName& ThemeName = ThemePair.Key;
+        const FN2CCodeEditorColors& Colors = ThemePair.Value;
+        
+        // Set background color for this theme
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Background"), *ThemeName.ToString()), 
+            new FSlateColorBrush(FLinearColor(Colors.Background)));
+
+        // For Pseudocode, we only need the Normal style since we want all text to be the same color
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Normal"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+            
+        // Set all other styles to match Normal for consistency
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Operator"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Keyword"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.String"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Number"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Comment"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Preprocessor"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.Parentheses"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.CurlyBraces"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+        StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.Pseudocode.%s.SquareBrackets"), *ThemeName.ToString()), 
+            FTextBlockStyle(BaseStyle).SetColorAndOpacity(FLinearColor(Colors.NormalText)));
+    }
+}
+
 FTextBlockStyle FN2CCodeEditorStyle::CreateDefaultTextStyle(const FName& TypeName)
 {
     // Get current font size from settings if available, otherwise use default
@@ -326,6 +368,8 @@ FString FN2CCodeEditorStyle::GetLanguageString(EN2CCodeLanguage Language)
             return TEXT("CSharp");
         case EN2CCodeLanguage::Swift:
             return TEXT("Swift");
+        case EN2CCodeLanguage::Pseudocode:
+            return TEXT("Pseudocode");
         default:
             return TEXT("CPP");
     }

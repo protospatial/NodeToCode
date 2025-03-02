@@ -26,6 +26,7 @@ private:
     static void InitializeJavaScriptStyles();
     static void InitializeCSharpStyles();
     static void InitializeSwiftStyles();
+    static void InitializePseudocodeStyles();
 
     static TSharedPtr<FSlateStyleSet> StyleSet;
     static FTextBlockStyle CreateDefaultTextStyle(const FName& TypeName);

@@ -137,6 +137,8 @@ public:
                 return TEXT("CSharp");
             case EN2CCodeLanguage::Swift:
                 return TEXT("Swift");
+            case EN2CCodeLanguage::Pseudocode:
+                return TEXT("Pseudocode");
             default:
                 return TEXT("CPP");
         }

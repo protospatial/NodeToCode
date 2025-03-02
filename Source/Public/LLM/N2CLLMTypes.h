@@ -14,17 +14,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTranslationResponseReceived, con
 /** Delegate for when a translation request is sent */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTranslationRequestSent);
 
-/** Available programming languages for translation */
-UENUM(BlueprintType)
-enum class EN2CTargetLanguage : uint8
-{
-    Cpp         UMETA(DisplayName = "C++"),
-    Python      UMETA(DisplayName = "Python"),
-    JavaScript  UMETA(DisplayName = "JavaScript"),
-    CSharp      UMETA(DisplayName = "C#"),
-    Swift       UMETA(DisplayName = "Swift")
-};
-
 /** Available LLM providers */
 UENUM(BlueprintType)
 enum class EN2CLLMProvider : uint8

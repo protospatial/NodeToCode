@@ -2,6 +2,8 @@
 
 #include "LLM/N2CLLMModule.h"
 
+#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/IN2CLLMService.h"
@@ -20,6 +22,7 @@ UN2CLLMModule* UN2CLLMModule::Get()
         Instance = NewObject<UN2CLLMModule>();
         Instance->AddToRoot(); // Prevent garbage collection
         Instance->CurrentStatus = EN2CSystemStatus::Idle;
+        Instance->LatestTranslationPath = TEXT("");
     }
     return Instance;
 }
@@ -96,7 +99,7 @@ void UN2CLLMModule::ProcessN2CJson(
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     FString SystemPrompt = PromptManager->GetLanguageSpecificPrompt(
         TEXT("CodeGen"),
-        Settings ? Settings->TargetLanguage : EN2CTargetLanguage::Cpp
+        Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp
     );
 
     // Connect the HTTP handler's translation response delegate to our module's delegate
@@ -122,6 +125,14 @@ void UN2CLLMModule::ProcessN2CJson(
                     if (Parser->ParseLLMResponse(Response, TranslationResponse))
                     {
                         CurrentStatus = EN2CSystemStatus::Idle;
+                            
+                        // Save translation to disk
+                        const FN2CBlueprint& Blueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
+                        if (SaveTranslationToDisk(TranslationResponse, Blueprint))
+                        {
+                            FN2CLogger::Get().Log(TEXT("Successfully saved translation to disk"), EN2CLogSeverity::Info);
+                        }
+                            
                         OnTranslationResponseReceived.Broadcast(TranslationResponse, true);
                         FN2CLogger::Get().Log(TEXT("Successfully parsed LLM response"), EN2CLogSeverity::Info);
                     }
@@ -160,6 +171,226 @@ bool UN2CLLMModule::InitializeComponents()
     PromptManager->Initialize(Config);
 
     // Note: HTTP Handler and Response Parser will be created by the specific service
+    return true;
+}
+
+void UN2CLLMModule::OpenTranslationFolder(bool& Success)
+{
+    if (LatestTranslationPath.IsEmpty())
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No translation path available"));
+        Success = false;
+    }
+
+    if (!FPaths::DirectoryExists(LatestTranslationPath))
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation directory does not exist: %s"), *LatestTranslationPath));
+        Success = false;
+    }
+
+#if PLATFORM_WINDOWS
+    FPlatformProcess::ExploreFolder(*LatestTranslationPath);
+    Success = false;
+#endif
+    
+}
+
+bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint)
+{
+    // Get blueprint name from metadata
+    FString BlueprintName = Blueprint.Metadata.Name;
+    if (BlueprintName.IsEmpty())
+    {
+        BlueprintName = TEXT("UnknownBlueprint");
+    }
+    
+    // Generate root path for this translation
+    FString RootPath = GenerateTranslationRootPath(BlueprintName);
+    
+    // Ensure the directory exists
+    if (!EnsureDirectoryExists(RootPath))
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to create translation directory: %s"), *RootPath));
+        return false;
+    }
+    
+    // Store the path for later reference
+    LatestTranslationPath = RootPath;
+    
+    // Save the Blueprint JSON (pretty-printed)
+    FString JsonFileName = FString::Printf(TEXT("N2C_BP_%s.json"), *FPaths::GetBaseFilename(RootPath));
+    FString JsonFilePath = FPaths::Combine(RootPath, JsonFileName);
+    
+    // Serialize the Blueprint to JSON with pretty printing
+    FN2CSerializer::SetPrettyPrint(true);
+    FString JsonContent = FN2CSerializer::ToJson(Blueprint);
+    
+    if (!FFileHelper::SaveStringToFile(JsonContent, *JsonFilePath))
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to save JSON file: %s"), *JsonFilePath));
+        return false;
+    }
+    
+    // Save minified version of the Blueprint JSON
+    FString MinifiedJsonFileName = FString::Printf(TEXT("N2C_BP_Minified_%s.json"), *FPaths::GetBaseFilename(RootPath));
+    FString MinifiedJsonFilePath = FPaths::Combine(RootPath, MinifiedJsonFileName);
+    
+    // Serialize the Blueprint to JSON without pretty printing
+    FN2CSerializer::SetPrettyPrint(false);
+    FString MinifiedJsonContent = FN2CSerializer::ToJson(Blueprint);
+    
+    if (!FFileHelper::SaveStringToFile(MinifiedJsonContent, *MinifiedJsonFilePath))
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save minified JSON file: %s"), *MinifiedJsonFilePath));
+        // Continue even if minified version fails
+    }
+    
+    // Save the raw LLM translation response JSON
+    FString TranslationJsonFileName = FString::Printf(TEXT("N2C_Translation_%s.json"), *FPaths::GetBaseFilename(RootPath));
+    FString TranslationJsonFilePath = FPaths::Combine(RootPath, TranslationJsonFileName);
+    
+    // Serialize the Translation response to JSON
+    TSharedPtr<FJsonObject> TranslationJsonObject = MakeShared<FJsonObject>();
+    
+    // Create graphs array
+    TArray<TSharedPtr<FJsonValue>> GraphsArray;
+    for (const FN2CGraphTranslation& Graph : Response.Graphs)
+    {
+        TSharedPtr<FJsonObject> GraphObject = MakeShared<FJsonObject>();
+        GraphObject->SetStringField(TEXT("graph_name"), Graph.GraphName);
+        GraphObject->SetStringField(TEXT("graph_type"), Graph.GraphType);
+        GraphObject->SetStringField(TEXT("graph_class"), Graph.GraphClass);
+        
+        // Create code object
+        TSharedPtr<FJsonObject> CodeObject = MakeShared<FJsonObject>();
+        CodeObject->SetStringField(TEXT("graphDeclaration"), Graph.Code.GraphDeclaration);
+        CodeObject->SetStringField(TEXT("graphImplementation"), Graph.Code.GraphImplementation);
+        CodeObject->SetStringField(TEXT("implementationNotes"), Graph.Code.ImplementationNotes);
+        
+        GraphObject->SetObjectField(TEXT("code"), CodeObject);
+        GraphsArray.Add(MakeShared<FJsonValueObject>(GraphObject));
+    }
+    
+    TranslationJsonObject->SetArrayField(TEXT("graphs"), GraphsArray);
+    
+    // Add usage information if available
+    if (Response.Usage.InputTokens > 0 || Response.Usage.OutputTokens > 0)
+    {
+        TSharedPtr<FJsonObject> UsageObject = MakeShared<FJsonObject>();
+        UsageObject->SetNumberField(TEXT("input_tokens"), Response.Usage.InputTokens);
+        UsageObject->SetNumberField(TEXT("output_tokens"), Response.Usage.OutputTokens);
+        TranslationJsonObject->SetObjectField(TEXT("usage"), UsageObject);
+    }
+    
+    // Serialize to string with pretty printing
+    FString TranslationJsonContent;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&TranslationJsonContent);
+    FJsonSerializer::Serialize(TranslationJsonObject.ToSharedRef(), Writer);
+    
+    if (!FFileHelper::SaveStringToFile(TranslationJsonContent, *TranslationJsonFilePath))
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save translation JSON file: %s"), *TranslationJsonFilePath));
+        // Continue even if translation JSON fails
+    }
+    
+    // Get the target language from settings
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+    
+    // Save each graph's files
+    for (const FN2CGraphTranslation& Graph : Response.Graphs)
+    {
+        // Skip graphs with empty names
+        if (Graph.GraphName.IsEmpty())
+        {
+            continue;
+        }
+        
+        // Create directory for this graph
+        FString GraphDir = FPaths::Combine(RootPath, Graph.GraphName);
+        if (!EnsureDirectoryExists(GraphDir))
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to create graph directory: %s"), *GraphDir));
+            continue;
+        }
+        
+        // Save declaration file (C++ only)
+        if (TargetLanguage == EN2CCodeLanguage::Cpp && !Graph.Code.GraphDeclaration.IsEmpty())
+        {
+            FString HeaderPath = FPaths::Combine(GraphDir, Graph.GraphName + TEXT(".h"));
+            if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
+            {
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save header file: %s"), *HeaderPath));
+            }
+        }
+        
+        // Save implementation file with appropriate extension
+        if (!Graph.Code.GraphImplementation.IsEmpty())
+        {
+            FString Extension = GetFileExtensionForLanguage(TargetLanguage);
+            FString ImplPath = FPaths::Combine(GraphDir, Graph.GraphName + Extension);
+            if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
+            {
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save implementation file: %s"), *ImplPath));
+            }
+        }
+        
+        // Save implementation notes
+        if (!Graph.Code.ImplementationNotes.IsEmpty())
+        {
+            FString NotesPath = FPaths::Combine(GraphDir, Graph.GraphName + TEXT("_Notes.txt"));
+            if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
+            {
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save notes file: %s"), *NotesPath));
+            }
+        }
+    }
+    
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Translation saved to: %s"), *RootPath), EN2CLogSeverity::Info);
+    return true;
+}
+
+FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName) const
+{
+    // Get current date/time
+    FDateTime Now = FDateTime::Now();
+    FString Timestamp = Now.ToString(TEXT("%Y-%m-%d-%H.%M.%S"));
+    
+    // Create folder name
+    FString FolderName = FString::Printf(TEXT("%s_%s"), *BlueprintName, *Timestamp);
+    
+    // Build full path
+    FString BasePath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
+    return FPaths::Combine(BasePath, FolderName);
+}
+
+FString UN2CLLMModule::GetFileExtensionForLanguage(EN2CCodeLanguage Language) const
+{
+    switch (Language)
+    {
+        case EN2CCodeLanguage::Cpp:
+            return TEXT(".cpp");
+        case EN2CCodeLanguage::Python:
+            return TEXT(".py");
+        case EN2CCodeLanguage::JavaScript:
+            return TEXT(".js");
+        case EN2CCodeLanguage::CSharp:
+            return TEXT(".cs");
+        case EN2CCodeLanguage::Swift:
+            return TEXT(".swift");
+        case EN2CCodeLanguage::Pseudocode:
+            return TEXT(".md");
+        default:
+            return TEXT(".txt");
+    }
+}
+
+bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const
+{
+    if (!FPaths::DirectoryExists(DirectoryPath))
+    {
+        return FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*DirectoryPath);
+    }
     return true;
 }
 
