@@ -291,6 +291,9 @@ const FN2CCodeEditorColors* UN2CSettings::GetThemeColors(EN2CCodeLanguage Langua
         case EN2CCodeLanguage::Swift:
             Themes = &SwiftThemes;
             break;
+        case EN2CCodeLanguage::Pseudocode:
+            Themes = &PseudocodeThemes;
+            break;
     }
 
     if (Themes)

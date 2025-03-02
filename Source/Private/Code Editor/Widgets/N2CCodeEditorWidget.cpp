@@ -220,6 +220,9 @@ TArray<FName> UN2CCodeEditorWidget::GetAvailableThemes() const
         case EN2CCodeLanguage::Swift:
             Settings->SwiftThemes.Themes.GetKeys(ThemeNames);
             break;
+        case EN2CCodeLanguage::Pseudocode:
+            Settings->PseudocodeThemes.Themes.GetKeys(ThemeNames);
+            break;
     }
     
     return ThemeNames;
@@ -241,6 +244,8 @@ FN2CCodeEditorColors UN2CCodeEditorWidget::GetThemeFromName(const FName Name) co
         return *Settings->CSharpThemes.Themes.Find(Name);
     case EN2CCodeLanguage::Swift:
         return *Settings->SwiftThemes.Themes.Find(Name);
+    case EN2CCodeLanguage::Pseudocode:
+        return *Settings->PseudocodeThemes.Themes.Find(Name);
     }
 
     const FName DefaultThemeName = "Unreal Engine";

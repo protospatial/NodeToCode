@@ -493,6 +493,11 @@ public:
     UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming | Language Specific Themes",
         meta=(DisplayName="Swift Themes"))
     FN2CCodeEditorThemes SwiftThemes;
+
+    /** Style themes for Pseudocode */
+    UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming | Language Specific Themes",
+        meta=(DisplayName="Pseudocode Themes"))
+    FN2CCodeEditorThemes PseudocodeThemes;
     
     /** Get theme colors for a specific language and theme name */
     const FN2CCodeEditorColors* GetThemeColors(EN2CCodeLanguage Language, const FName& ThemeName) const;
