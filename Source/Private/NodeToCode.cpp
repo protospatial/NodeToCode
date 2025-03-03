@@ -21,6 +21,15 @@ void FNodeToCodeModule::StartupModule()
 {
     // Initialize logging
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
+
+    // Apply configured log severity from settings
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    if (Settings)
+    {
+        FN2CLogger::Get().SetMinSeverity(Settings->MinSeverity);
+        FN2CLogger::Get().Log(TEXT("Applied log severity from settings"), EN2CLogSeverity::Debug);
+    }
+
     
     // Initialize style system
     N2CStyle::Initialize();
@@ -46,7 +55,7 @@ void FNodeToCodeModule::StartupModule()
     auto SwiftSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::Swift);
     auto PseudocodeSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::Pseudocode);
 
-    if (!CPPSyntax || !PythonSyntax || !JSSyntax || !CSharpSyntax || !SwiftSyntax)
+    if (!CPPSyntax || !PythonSyntax || !JSSyntax || !CSharpSyntax || !SwiftSyntax || !PseudocodeSyntax)
     {
         FN2CLogger::Get().LogError(TEXT("Failed to initialize syntax definitions"), TEXT("NodeToCode"));
     }
