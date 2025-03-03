@@ -40,20 +40,6 @@
 - Preserve design decisions in formats accessible to everyone on your team
 - Generate code snippets for technical documentation or requirements
 
----
-
-### :arrow_down: [Install the Plugin](https://github.com/protospatial/NodeToCode/releases)
-Check out the Releases page for the latest stable builds of Node to Code - ready to install in your engine or project
-
-### :books: [Visit the Wiki](https://github.com/protospatial/NodeToCode/wiki)
-Explore the documentation, including setup guides, best practices, and troubleshooting steps
-
-### 🆕 [See What's New](https://github.com/protospatial/NodeToCode/wiki/Latest-Updates)
-
-### 🛣️ [See What's Ahead](https://trello.com/b/iPOyaSvb)
-
----
-
 ## 🔧 Under the Hood
 
 - **Blueprint Analysis:** Captures your entire Blueprint graph structure, including execution flows, data connections, variable references, and comments
@@ -62,14 +48,26 @@ Explore the documentation, including setup guides, best practices, and troublesh
 - **Style Guidance:** Supply your own C++ files as reference to maintain your project's coding standards and patterns
 - **Integrated Editor Experience:** Review translations in a dockable Unreal editor window with syntax highlighting, implementation notes, & theming
 
----
-
 ## 👥 Value for Your Entire Team
 
 - **Blueprint Creators:** Communicate systems clearly and gradually learn C++ through your own work
 - **C++ Programmers:** Understand designer intent without deciphering complex visual graphs
 - **Project Leads:** Improve team communication and maintain better system documentation
 - **Educators & Students:** Bridge the visual-to-code learning gap with real examples
+
+## 🏃Get Started
+
+### :arrow_down: [Install the Plugin](https://github.com/protospatial/NodeToCode/releases)
+Check out the Releases page for the latest stable builds of Node to Code - ready to install in your engine or project
+
+### :books: [Visit the Wiki](https://github.com/protospatial/NodeToCode/wiki)
+Explore the documentation, including setup guides, best practices, and troubleshooting steps
+
+### 🆕 [See What's New](https://github.com/protospatial/NodeToCode/wiki/Latest-Updates)
+Read the latest release notes
+
+### 🛣️ [See What's Ahead](https://trello.com/b/iPOyaSvb)
+Get excited about what's on the roadmap!
 
 ---
 
@@ -80,5 +78,3 @@ Have questions or need help? Join the Discord for support and discussion.
 - ☕ [Buy me a coffee](https://buymeacoffee.com/protospatial)
 - 🧡 [Sponsor me on GitHub](https://github.com/sponsors/NCMcClure)
 - 🏪 [Get the plugin on Fab](https://www.fab.com/listings/29955a71-cd04-4111-ac43-6a0264429ce6)
-
----
