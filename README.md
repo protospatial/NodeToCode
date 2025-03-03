@@ -14,7 +14,7 @@
 
 ### 💬 **Blueprint Communication Solved**
 - **🆕 Pseudocode Translation:** Convert Blueprints into universally understandable pseudocode
-- **🆕 Automatic Translation Saving:** Each translation is saved locally for easy archiving & sharing via chat, email, or documentation
+- **🆕 Automatic Translation Saving:** Each translation is saved locally for easy archiving & sharing via chat or docs
 - Share complete Blueprint logic as text in forums, chat, emails, or documentation
 - No more endless screenshot chains or lengthy meetings to explain systems
 - Perfect for remote teams, forum help requests, and collaborating with AI assistants
