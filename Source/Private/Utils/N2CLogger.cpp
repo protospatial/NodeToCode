@@ -45,14 +45,6 @@ void FN2CLogger::Log(const FString& Message, EN2CLogSeverity Severity, const FSt
         WriteToFile(FormattedMessage);
     }
 
-    // Force output to console window for debugging
-    /*#if WITH_EDITOR
-    if (GLogConsole)
-    {
-        GLogConsole->Show(true);
-    }
-    #endif*/
-
     // Output to console window
     const TCHAR* SeverityColor = TEXT("");
     switch (Severity)
@@ -72,11 +64,6 @@ void FN2CLogger::Log(const FString& Message, EN2CLogSeverity Severity, const FSt
         case EN2CLogSeverity::Fatal:
             SeverityColor = TEXT("red");
             break;
-    }
-
-    if (Severity >= EN2CLogSeverity::Warning)
-    {
-        FPlatformMisc::LowLevelOutputDebugStringf(TEXT("%s\n"), *FormattedMessage);
     }
 
     // Output to NodeToCode log
