@@ -13,13 +13,57 @@ bool UN2CResponseParserBase::ParseLLMResponse(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
-    // Parse JSON string
+    // Check for empty or obviously invalid responses
+    if (InJson.IsEmpty() || InJson.Len() < 10)
+    {
+        FN2CLogger::Get().LogError(TEXT("Empty or too short LLM response"), TEXT("ResponseParser"));
+        return false;
+    }
+
+    // Check for truncated JSON by looking for unbalanced braces
+    int32 OpenBraces = 0;
+    int32 CloseBraces = 0;
+    for (const TCHAR& Char : InJson)
+    {
+        if (Char == '{') OpenBraces++;
+        else if (Char == '}') CloseBraces++;
+    }
+    
+    if (OpenBraces != CloseBraces)
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Potentially truncated or malformed JSON response. Open braces: %d, Close braces: %d"), 
+                OpenBraces, CloseBraces),
+            TEXT("ResponseParser")
+        );
+        return false;
+    }
+
+    // Parse JSON string with additional safety
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InJson);
 
-    if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
+    bool bParseSuccess = false;
+    
+    // Use a try-catch to handle potential crashes in the JSON parser
+    try
     {
-        FN2CLogger::Get().LogError(TEXT("Failed to parse JSON response"), TEXT("ResponseParser"));
+        bParseSuccess = FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid();
+    }
+    catch (...)
+    {
+        FN2CLogger::Get().LogError(TEXT("Exception while parsing LLM JSON response"), 
+            TEXT("ResponseParser"));
+        return false;
+    }
+
+    if (!bParseSuccess)
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Failed to parse JSON response: %s"), 
+                *Reader->GetErrorMessage()),
+            TEXT("ResponseParser")
+        );
         return false;
     }
 
