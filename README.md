@@ -2,7 +2,7 @@
     <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_Header_Docs.png" alt="Node to Code header" width="800">
 </p>
 
-# Transform Blueprints to Code in Seconds Instead of Hours
+# Transform Blueprints to Code in Seconds. Not Hours.
 
 **Node to Code** transforms your Unreal Engine Blueprint graphs into clean, structured C++ with a single click. Stop spending hours on tedious manual conversions, struggling to explain complex visual logic, or navigating sprawling Blueprint systems. This LLM-powered plugin bridges the Blueprint-to-code gap, whether you're optimizing performance, improving collaboration, or learning/teaching the Unreal Engine C++ API.
 
