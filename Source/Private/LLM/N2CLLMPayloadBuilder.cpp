@@ -225,10 +225,30 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
     {
         case EN2CLLMProvider::OpenAI:
             {
-                // OpenAI uses response_format.json_schema
+                // OpenAI uses response_format.type = json_object for o1/o3 models
+                // and response_format.json_schema for other models
                 TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
-                ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_schema"));
-                ResponseFormatObject->SetObjectField(TEXT("json_schema"), Schema);
+                
+                if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+                {
+                    // o1/o3 models use json_object type without schema
+                    ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_object"));
+                }
+                else
+                {
+                    // Other models use json_schema with schema object
+                    ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_schema"));
+                    
+                    // Ensure schema has a name field as required by OpenAI
+                    TSharedPtr<FJsonObject> SchemaWithName = Schema;
+                    if (!SchemaWithName->HasField(TEXT("name")))
+                    {
+                        SchemaWithName->SetStringField(TEXT("name"), TEXT("n2c_translation_schema"));
+                    }
+                    
+                    ResponseFormatObject->SetObjectField(TEXT("json_schema"), SchemaWithName);
+                }
+                
                 RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
             }
             break;
@@ -378,6 +398,7 @@ TSharedPtr<FJsonObject> UN2CLLMPayloadBuilder::GetN2CResponseSchema()
     const FString JsonSchema = TEXT(R"(
       {
         "type": "object",
+        "name": "n2c_translation_schema",
         "properties": {
           "graphs": {
             "type": "array",
