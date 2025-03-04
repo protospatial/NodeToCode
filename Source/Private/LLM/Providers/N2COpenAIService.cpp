@@ -71,9 +71,12 @@ FString UN2COpenAIService::FormatRequestPayload(const FString& UserMessage, cons
     PayloadBuilder->SetTemperature(0.0f);
     PayloadBuilder->SetMaxTokens(8192);
     
-    // Add JSON response format for all models
+    // Add JSON response format for models that support it
     // The payload builder will handle the differences between model types
-    PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
+    if (Config.Model != TEXT("o1-preview-2024-09-12") && Config.Model != TEXT("o1-mini-2024-09-12"))
+    {
+        PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
+    }
     
     // Determine final content based on system prompt support
     FString FinalContent = UserMessage;

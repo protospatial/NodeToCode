@@ -225,18 +225,24 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
     {
         case EN2CLLMProvider::OpenAI:
             {
-                // OpenAI uses response_format.type = json_object for o1/o3 models
-                // and response_format.json_schema for other models
-                TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
-                
-                if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+                // Special handling for different OpenAI models
+                if (ModelName == TEXT("o1-preview-2024-09-12") || ModelName == TEXT("o1-mini-2024-09-12"))
                 {
-                    // o1/o3 models use json_object type without schema
+                    // o1-preview and o1-mini don't support response_format at all
+                    // Skip setting response_format for these models
+                    FN2CLogger::Get().Log(TEXT("Response format not supported for o1-preview/o1-mini, skipping"), EN2CLogSeverity::Debug);
+                }
+                else if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+                {
+                    // Other o1/o3 models use json_object type without schema
+                    TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
                     ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_object"));
+                    RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
                 }
                 else
                 {
                     // Other models use json_schema with schema object
+                    TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
                     ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_schema"));
                     
                     // Ensure schema has a name field as required by OpenAI
@@ -247,9 +253,8 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
                     }
                     
                     ResponseFormatObject->SetObjectField(TEXT("json_schema"), SchemaWithName);
+                    RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
                 }
-                
-                RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
             }
             break;
             
