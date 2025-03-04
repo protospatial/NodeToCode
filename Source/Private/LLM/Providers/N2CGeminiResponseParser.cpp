@@ -25,16 +25,17 @@ bool UN2CGeminiResponseParser::ParseLLMResponse(
     FString ErrorMessage;
     if (JsonObject->HasField(TEXT("error")))
     {
-        if (HandleGeminiError(JsonObject, ErrorMessage))
+        if (HandleCommonErrorResponse(JsonObject, TEXT("error"), ErrorMessage))
         {
             FN2CLogger::Get().LogError(ErrorMessage, TEXT("GeminiResponseParser"));
         }
         return false;
     }
 
-    // Extract message content from Gemini format
+    // Extract message content from Gemini format - this is a special case
+    // because Gemini's format is different from other providers
     FString MessageContent;
-    if (!ExtractMessageContent(JsonObject, MessageContent))
+    if (!ExtractGeminiMessageContent(JsonObject, MessageContent))
     {
         FN2CLogger::Get().LogError(TEXT("Failed to extract message content from Gemini response"), TEXT("GeminiResponseParser"));
         return false;
@@ -61,7 +62,7 @@ bool UN2CGeminiResponseParser::ParseLLMResponse(
     return Super::ParseLLMResponse(MessageContent, OutResponse);
 }
 
-bool UN2CGeminiResponseParser::ExtractMessageContent(
+bool UN2CGeminiResponseParser::ExtractGeminiMessageContent(
     const TSharedPtr<FJsonObject>& JsonObject,
     FString& OutContent)
 {
@@ -107,55 +108,8 @@ bool UN2CGeminiResponseParser::ExtractMessageContent(
         return false;
     }
 
-    // Check if content is wrapped in ```json markers and remove them
-    if (RawContent.StartsWith(TEXT("```json")) && RawContent.EndsWith(TEXT("```")))
-    {
-        // Remove the ```json prefix and ``` suffix
-        OutContent = RawContent.RightChop(7); // Skip past "```json"
-        OutContent = OutContent.LeftChop(3);  // Remove trailing "```"
-        OutContent = OutContent.TrimStartAndEnd(); // Remove any extra whitespace
-        
-        FN2CLogger::Get().Log(TEXT("Stripped JSON markers from Gemini response"), EN2CLogSeverity::Debug);
-    }
-    else
-    {
-        OutContent = RawContent;
-    }
-
-    return true;
-}
-
-bool UN2CGeminiResponseParser::HandleGeminiError(
-    const TSharedPtr<FJsonObject>& JsonObject,
-    FString& OutErrorMessage)
-{
-    const TSharedPtr<FJsonObject> ErrorObject = JsonObject->GetObjectField(TEXT("error"));
-    if (!ErrorObject.IsValid())
-    {
-        OutErrorMessage = TEXT("Unknown Gemini error");
-        return true;
-    }
-
-    FString ErrorType, ErrorMessage;
-    ErrorObject->TryGetStringField(TEXT("type"), ErrorType);
-    ErrorObject->TryGetStringField(TEXT("message"), ErrorMessage);
-
-    if (ErrorType.Contains(TEXT("rate_limit")))
-    {
-        OutErrorMessage = TEXT("Gemini API rate limit exceeded");
-    }
-    else if (ErrorType.Contains(TEXT("invalid_request_error")))
-    {
-        OutErrorMessage = FString::Printf(TEXT("Invalid request: %s"), *ErrorMessage);
-    }
-    else if (ErrorType.Contains(TEXT("authentication")))
-    {
-        OutErrorMessage = TEXT("Gemini API authentication failed");
-    }
-    else
-    {
-        OutErrorMessage = FString::Printf(TEXT("Gemini API error: %s - %s"), *ErrorType, *ErrorMessage);
-    }
-
+    // Process content for JSON markers
+    ProcessJsonContentWithMarkers(RawContent);
+    OutContent = RawContent;
     return true;
 }

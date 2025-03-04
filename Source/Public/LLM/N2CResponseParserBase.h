@@ -27,6 +27,21 @@ public:
         FN2CTranslationResponse& OutResponse
     );
 
+public:
+    /** Common error handling for provider responses */
+    bool HandleCommonErrorResponse(
+        const TSharedPtr<FJsonObject>& JsonObject,
+        const FString& ErrorFieldName,
+        FString& OutErrorMessage);
+        
+    /** Common content extraction from standard message formats */
+    bool ExtractStandardMessageContent(
+        const TSharedPtr<FJsonObject>& JsonObject,
+        const FString& ArrayFieldName,
+        const FString& MessageObjName,
+        const FString& ContentFieldName,
+        FString& OutContent);
+
 protected:
     /** Remove newlines from string */
     FString RemoveNewlines(const FString& Input) const;
@@ -45,4 +60,7 @@ protected:
         const TSharedPtr<FJsonObject>& CodeObject,
         FN2CGeneratedCode& OutCode
     );
+    
+    /** Process JSON content with code block markers */
+    bool ProcessJsonContentWithMarkers(FString& Content);
 };

@@ -22,13 +22,5 @@ public:
         FN2CTranslationResponse& OutResponse) override;
 
 protected:
-    /** Extract message content from DeepSeek response format */
-    bool ExtractMessageContent(
-        const TSharedPtr<FJsonObject>& JsonObject,
-        FString& OutContent);
-
-    /** Handle DeepSeek-specific error responses */
-    bool HandleDeepSeekError(
-        const TSharedPtr<FJsonObject>& JsonObject,
-        FString& OutErrorMessage);
+    // Using base class implementations for error handling and content extraction
 };

@@ -22,13 +22,5 @@ public:
         FN2CTranslationResponse& OutResponse) override;
 
 protected:
-    /** Extract message content from OpenAI response format */
-    bool ExtractMessageContent(
-        const TSharedPtr<FJsonObject>& JsonObject,
-        FString& OutContent);
-
-    /** Handle OpenAI-specific error responses */
-    bool HandleOpenAIError(
-        const TSharedPtr<FJsonObject>& JsonObject,
-        FString& OutErrorMessage);
+    // Using base class implementations for error handling and content extraction
 };

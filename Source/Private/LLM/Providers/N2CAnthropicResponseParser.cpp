@@ -22,16 +22,17 @@ bool UN2CAnthropicResponseParser::ParseLLMResponse(
     FString ErrorMessage;
     if (JsonObject->HasField(TEXT("error")))
     {
-        if (HandleAnthropicError(JsonObject, ErrorMessage))
+        if (HandleCommonErrorResponse(JsonObject, TEXT("error"), ErrorMessage))
         {
             FN2CLogger::Get().LogError(ErrorMessage, TEXT("AnthropicResponseParser"));
         }
         return false;
     }
 
-    // Extract message content from Anthropic format
+    // Extract message content from Anthropic format - this is a special case
+    // because Anthropic's format is different from other providers
     FString MessageContent;
-    if (!ExtractMessageContent(JsonObject, MessageContent))
+    if (!ExtractAnthropicMessageContent(JsonObject, MessageContent))
     {
         FN2CLogger::Get().LogError(TEXT("Failed to extract message content from Anthropic response"), TEXT("AnthropicResponseParser"));
         return false;
@@ -58,7 +59,7 @@ bool UN2CAnthropicResponseParser::ParseLLMResponse(
     return Super::ParseLLMResponse(MessageContent, OutResponse);
 }
 
-bool UN2CAnthropicResponseParser::ExtractMessageContent(
+bool UN2CAnthropicResponseParser::ExtractAnthropicMessageContent(
     const TSharedPtr<FJsonObject>& JsonObject,
     FString& OutContent)
 {
@@ -86,64 +87,16 @@ bool UN2CAnthropicResponseParser::ExtractMessageContent(
 
         // Get content string
         FString RawContent;
-
         if (!ContentObject->TryGetStringField(TEXT("text"), RawContent))
         {
             return false;
         }
 
-        // Check if content is wrapped in ```json markers and remove them
-        if (RawContent.StartsWith(TEXT("```json")) && RawContent.EndsWith(TEXT("```")))
-        {
-            // Remove the ```json prefix and ``` suffix
-            OutContent = RawContent.RightChop(7); // Skip past "```json"
-            OutContent = OutContent.LeftChop(3);  // Remove trailing "```"
-            OutContent = OutContent.TrimStartAndEnd(); // Remove any extra whitespace
-        
-            FN2CLogger::Get().Log(TEXT("Stripped JSON markers from Anthropic response"), EN2CLogSeverity::Debug);
-        }
-        else
-        {
-            OutContent = RawContent;
-        }
-        
+        // Process content for JSON markers
+        ProcessJsonContentWithMarkers(RawContent);
+        OutContent = RawContent;
         return true;
     }
 
     return false;
-}
-
-bool UN2CAnthropicResponseParser::HandleAnthropicError(
-    const TSharedPtr<FJsonObject>& JsonObject,
-    FString& OutErrorMessage)
-{
-    const TSharedPtr<FJsonObject> ErrorObject = JsonObject->GetObjectField(TEXT("error"));
-    if (!ErrorObject.IsValid())
-    {
-        OutErrorMessage = TEXT("Unknown Anthropic error");
-        return true;
-    }
-
-    FString ErrorType, ErrorMessage;
-    ErrorObject->TryGetStringField(TEXT("type"), ErrorType);
-    ErrorObject->TryGetStringField(TEXT("message"), ErrorMessage);
-
-    if (ErrorType.Contains(TEXT("rate_limit")))
-    {
-        OutErrorMessage = TEXT("Anthropic API rate limit exceeded");
-    }
-    else if (ErrorType.Contains(TEXT("invalid_request")))
-    {
-        OutErrorMessage = FString::Printf(TEXT("Invalid request: %s"), *ErrorMessage);
-    }
-    else if (ErrorType.Contains(TEXT("authentication")))
-    {
-        OutErrorMessage = TEXT("Anthropic API authentication failed");
-    }
-    else
-    {
-        OutErrorMessage = FString::Printf(TEXT("Anthropic API error: %s - %s"), *ErrorType, *ErrorMessage);
-    }
-
-    return true;
 }

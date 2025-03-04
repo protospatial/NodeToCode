@@ -24,16 +24,23 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
     FString ErrorMessage;
     if (JsonObject->HasField(TEXT("error")))
     {
-        if (HandleOllamaError(JsonObject, ErrorMessage))
+        // Ollama uses a string for error, not an object
+        if (!JsonObject->TryGetStringField(TEXT("error"), ErrorMessage))
         {
-            FN2CLogger::Get().LogError(ErrorMessage, TEXT("OllamaResponseParser"));
+            ErrorMessage = TEXT("Unknown Ollama error");
         }
+        else
+        {
+            ErrorMessage = FString::Printf(TEXT("Ollama API error: %s"), *ErrorMessage);
+        }
+        
+        FN2CLogger::Get().LogError(ErrorMessage, TEXT("OllamaResponseParser"));
         return false;
     }
 
     // Extract message content from Ollama format
     FString MessageContent;
-    if (!ExtractMessageContent(JsonObject, MessageContent))
+    if (!ExtractOllamaMessageContent(JsonObject, MessageContent))
     {
         FN2CLogger::Get().LogError(TEXT("Failed to extract message content from Ollama response"), TEXT("OllamaResponseParser"));
         return false;
@@ -52,25 +59,6 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
 
         FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
     }
-
-    if (MessageContent.StartsWith(TEXT("<think>")))
-    {
-        // Remove thinking tags and their content
-        while (true)
-        {
-            int32 ThinkStart = MessageContent.Find(TEXT("<think>"));
-            if (ThinkStart == INDEX_NONE) break;
-
-            int32 ThinkEnd = MessageContent.Find(TEXT("</think>"));
-            if (ThinkEnd == INDEX_NONE) break;
-
-            // Remove the thinking section including tags
-            MessageContent.RemoveAt(ThinkStart, (ThinkEnd + 8) - ThinkStart);
-        }
-    }
-    
-    // Trim any extra whitespace that might have been left
-    MessageContent = MessageContent.TrimStartAndEnd();
     
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response Message Content: %s"), *MessageContent), EN2CLogSeverity::Debug);
 
@@ -78,7 +66,7 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
     return Super::ParseLLMResponse(MessageContent, OutResponse);
 }
 
-bool UN2COllamaResponseParser::ExtractMessageContent(
+bool UN2COllamaResponseParser::ExtractOllamaMessageContent(
     const TSharedPtr<FJsonObject>& JsonObject,
     FString& OutContent)
 {
@@ -90,20 +78,33 @@ bool UN2COllamaResponseParser::ExtractMessageContent(
     }
 
     // Get content from message
-    return MessageObject->TryGetStringField(TEXT("content"), OutContent);
-}
-
-bool UN2COllamaResponseParser::HandleOllamaError(
-    const TSharedPtr<FJsonObject>& JsonObject,
-    FString& OutErrorMessage)
-{
-    FString ErrorMessage;
-    if (!JsonObject->TryGetStringField(TEXT("error"), ErrorMessage))
+    if (!MessageObject->TryGetStringField(TEXT("content"), OutContent))
     {
-        OutErrorMessage = TEXT("Unknown Ollama error");
-        return true;
+        return false;
     }
+    
+    // Process thinking tags if present
+    if (OutContent.StartsWith(TEXT("<think>")))
+    {
+        // Remove thinking tags and their content
+        while (true)
+        {
+            int32 ThinkStart = OutContent.Find(TEXT("<think>"));
+            if (ThinkStart == INDEX_NONE) break;
 
-    OutErrorMessage = FString::Printf(TEXT("Ollama API error: %s"), *ErrorMessage);
+            int32 ThinkEnd = OutContent.Find(TEXT("</think>"));
+            if (ThinkEnd == INDEX_NONE) break;
+
+            // Remove the thinking section including tags
+            OutContent.RemoveAt(ThinkStart, (ThinkEnd + 8) - ThinkStart);
+        }
+    }
+    
+    // Trim any extra whitespace that might have been left
+    OutContent = OutContent.TrimStartAndEnd();
+    
+    // Process JSON markers
+    ProcessJsonContentWithMarkers(OutContent);
+    
     return true;
 }

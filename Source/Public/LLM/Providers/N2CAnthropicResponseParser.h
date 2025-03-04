@@ -22,13 +22,8 @@ public:
         FN2CTranslationResponse& OutResponse) override;
 
 protected:
-    /** Extract message content from Anthropic response format */
-    bool ExtractMessageContent(
+    /** Extract message content from Anthropic's unique response format */
+    bool ExtractAnthropicMessageContent(
         const TSharedPtr<FJsonObject>& JsonObject,
         FString& OutContent);
-
-    /** Handle Anthropic-specific error responses */
-    bool HandleAnthropicError(
-        const TSharedPtr<FJsonObject>& JsonObject,
-        FString& OutErrorMessage);
 };
