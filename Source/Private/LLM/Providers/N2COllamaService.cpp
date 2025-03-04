@@ -11,29 +11,6 @@ UN2CResponseParserBase* UN2COllamaService::CreateResponseParser()
     return Parser;
 }
 
-// Override Initialize to set the Ollama-specific endpoint
-bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
-{
-    // Set the Ollama endpoint that the user provides
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (Settings)
-    {
-        if (Settings->OllamaConfig.OllamaEndpoint.IsEmpty())
-        {
-            FN2CLogger::Get().LogError(TEXT("User provided Ollama endpoint is empty. Defaulting to http://localhost:11434"), TEXT("OllamaService"));
-        }
-
-        const FString OllamaBaseEndpoint = Settings->OllamaConfig.OllamaEndpoint;
-        Config = InConfig;
-        Config.ApiEndpoint = FString::Printf(TEXT("%s/api/chat"), *OllamaBaseEndpoint);
-        
-        // Store Ollama config for later use
-        OllamaConfig = Settings->OllamaConfig;
-    }
-    
-    // Call the base class implementation with our modified config
-    return Super::Initialize(Config);
-}
 
 void UN2COllamaService::GetConfiguration(
     FString& OutEndpoint,
@@ -153,27 +130,4 @@ FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, cons
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Request Payload:\n\n%s"), *Payload), EN2CLogSeverity::Debug);
 
     return Payload;
-}
-// Override Initialize to set the Ollama-specific endpoint
-bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
-{
-    // Set the Ollama endpoint that the user provides
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (Settings)
-    {
-        if (Settings->OllamaConfig.OllamaEndpoint.IsEmpty())
-        {
-            FN2CLogger::Get().LogError(TEXT("User provided Ollama endpoint is empty. Defaulting to http://localhost:11434"), TEXT("OllamaService"));
-        }
-
-        const FString OllamaBaseEndpoint = Settings->OllamaConfig.OllamaEndpoint;
-        Config = InConfig;
-        Config.ApiEndpoint = FString::Printf(TEXT("%s/api/chat"), *OllamaBaseEndpoint);
-        
-        // Store Ollama config for later use
-        OllamaConfig = Settings->OllamaConfig;
-    }
-    
-    // Call the base class implementation with our modified config
-    return Super::Initialize(Config);
 }
