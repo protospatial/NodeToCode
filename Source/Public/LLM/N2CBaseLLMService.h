@@ -31,7 +31,7 @@ public:
     // Provider-specific methods (must be implemented by derived classes)
     virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken, 
                               bool& OutSupportsSystemPrompts) override { OutEndpoint = TEXT(""); OutAuthToken = TEXT(""); OutSupportsSystemPrompts = false; }
-    virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::OpenAI; }
+    virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Anthropic; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override { }
 
 protected:
