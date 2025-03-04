@@ -31,45 +31,25 @@ FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, c
 {
     // Log original content (no escaping needed for logging system)
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM System Message:\n\n%s"), *SystemMessage), EN2CLogSeverity::Debug);
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM User Message:\n\n%s"), *SystemMessage), EN2CLogSeverity::Debug);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM User Message:\n\n%s"), *UserMessage), EN2CLogSeverity::Debug);
 
-    // Build JSON payload structure using JSON API
-    TSharedPtr<FJsonObject> RootObject = MakeShared<FJsonObject>();
-    RootObject->SetStringField(TEXT("model"), Config.Model);
-    RootObject->SetNumberField(TEXT("temperature"), 0.0);
-    RootObject->SetNumberField(TEXT("max_tokens"), 8192);
+    // Create and configure payload builder
+    UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
+    PayloadBuilder->Initialize(Config.Model);
+    PayloadBuilder->ConfigureForAnthropic();
     
-    if (!SystemMessage.IsEmpty())
-    {
-        RootObject->SetStringField(TEXT("system"), SystemMessage);
-    }
-
+    // Set common parameters
+    PayloadBuilder->SetTemperature(0.0f);
+    PayloadBuilder->SetMaxTokens(8192);
+    
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);
-
-    // Build messages array
-    TArray<TSharedPtr<FJsonValue>> MessagesArray;
-    TSharedPtr<FJsonObject> UserContent = MakeShared<FJsonObject>();
-    UserContent->SetStringField(TEXT("role"), TEXT("user"));
     
-    // Build content array with text entry
-    TArray<TSharedPtr<FJsonValue>> ContentEntries;
-    TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
-    TextContent->SetStringField(TEXT("type"), TEXT("text"));
-    TextContent->SetStringField(TEXT("text"), FinalUserMessage);
-    ContentEntries.Add(MakeShared<FJsonValueObject>(TextContent));
+    // Add messages
+    PayloadBuilder->AddSystemMessage(SystemMessage);
+    PayloadBuilder->AddUserMessage(FinalUserMessage);
     
-    UserContent->SetArrayField(TEXT("content"), ContentEntries);
-    MessagesArray.Add(MakeShared<FJsonValueObject>(UserContent));
-    RootObject->SetArrayField(TEXT("messages"), MessagesArray);
-
-    // Serialize JSON to string
-    FString Payload;
-    const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Payload);
-    FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer);
-
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Request Payload:\n\n%s"), *Payload), EN2CLogSeverity::Debug);
-    
-    return Payload;
+    // Build and return the payload
+    return PayloadBuilder->Build();
 }

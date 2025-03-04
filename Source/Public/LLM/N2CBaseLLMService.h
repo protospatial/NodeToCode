@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "LLM/IN2CLLMService.h"
+#include "LLM/N2CLLMPayloadBuilder.h"
 #include "N2CBaseLLMService.generated.h"
 
 // Forward declarations

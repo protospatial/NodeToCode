@@ -37,47 +37,29 @@ FString UN2CDeepSeekService::FormatRequestPayload(const FString& UserMessage, co
         FN2CLogger::Get().LogError(TEXT("Failed to load plugin settings"), TEXT("LLMModule"));
     }
 
-    // Build JSON payload structure using JSON API
-    TSharedPtr<FJsonObject> RootObject = MakeShared<FJsonObject>();
-    RootObject->SetStringField(TEXT("model"), Config.Model);
-    RootObject->SetNumberField(TEXT("temperature"), 0.0);
-    RootObject->SetNumberField(TEXT("max_tokens"), 8000);
-
-    // Build messages array
-    TArray<TSharedPtr<FJsonValue>> MessagesArray;
-
-    // Add system message
-    TSharedPtr<FJsonObject> SystemMessageObject = MakeShared<FJsonObject>();
-    SystemMessageObject->SetStringField(TEXT("role"), TEXT("system"));
-    SystemMessageObject->SetStringField(TEXT("content"), SystemMessage);
-    MessagesArray.Add(MakeShared<FJsonValueObject>(SystemMessageObject));
-
+    // Create and configure payload builder
+    UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
+    PayloadBuilder->Initialize(Config.Model);
+    PayloadBuilder->ConfigureForDeepSeek();
+    
+    // Set common parameters
+    PayloadBuilder->SetTemperature(0.0f);
+    PayloadBuilder->SetMaxTokens(8000);
+    
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);
     
-    // Add user message
-    TSharedPtr<FJsonObject> UserMessageObject = MakeShared<FJsonObject>();
-    UserMessageObject->SetStringField(TEXT("role"), TEXT("user"));
-    UserMessageObject->SetStringField(TEXT("content"), FinalUserMessage);
-    MessagesArray.Add(MakeShared<FJsonValueObject>(UserMessageObject));
-
-    RootObject->SetArrayField(TEXT("messages"), MessagesArray);
-
-    // Define response format if we're using a DeepSeek model that supports it
-    if (FN2CLLMModelUtils::GetDeepSeekModelValue(Settings->DeepSeekModel) == TEXT("deepseek-chat"))
-    {
-        TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
-        ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_object"));
-        RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
-    }
-
-    // Serialize JSON to string
-    FString Payload;
-    const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Payload);
-    FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer);
-
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Request Payload:\n\n%s"), *Payload), EN2CLogSeverity::Debug);
+    // Add messages
+    PayloadBuilder->AddSystemMessage(SystemMessage);
+    PayloadBuilder->AddUserMessage(FinalUserMessage);
     
-    return Payload;
+    // Add JSON schema for response format if model supports it
+    if (Settings && FN2CLLMModelUtils::GetDeepSeekModelValue(Settings->DeepSeekModel) == TEXT("deepseek-chat"))
+    {
+        PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
+    }
+    
+    // Build and return the payload
+    return PayloadBuilder->Build();
 }
