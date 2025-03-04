@@ -41,6 +41,18 @@ void UN2CLLMPayloadBuilder::SetTemperature(float Value)
                 GenConfig->SetNumberField(TEXT("temperature"), Value);
             }
             break;
+        case EN2CLLMProvider::OpenAI:
+            // OpenAI o1 and o3 models don't support temperature
+            if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+            {
+                // Skip setting temperature for o1 and o3 models
+                FN2CLogger::Get().Log(TEXT("Temperature parameter not supported for o1/o3 models, skipping"), EN2CLogSeverity::Debug);
+            }
+            else
+            {
+                RootObject->SetNumberField(TEXT("temperature"), Value);
+            }
+            break;
         default:
             // All other providers use root-level temperature
             RootObject->SetNumberField(TEXT("temperature"), Value);
@@ -264,6 +276,15 @@ void UN2CLLMPayloadBuilder::ConfigureForOpenAI()
     
     // Clear messages array and recreate it
     MessagesArray.Empty();
+    
+    // Remove temperature for o1/o3 models as they don't support it
+    if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+    {
+        if (RootObject->HasField(TEXT("temperature")))
+        {
+            RootObject->RemoveField(TEXT("temperature"));
+        }
+    }
 }
 
 void UN2CLLMPayloadBuilder::ConfigureForAnthropic()

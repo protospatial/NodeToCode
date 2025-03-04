@@ -67,6 +67,7 @@ FString UN2COpenAIService::FormatRequestPayload(const FString& UserMessage, cons
     PayloadBuilder->ConfigureForOpenAI();
     
     // Set common parameters
+    // Note: Temperature is not supported for o1/o3 models, but the payload builder will handle this
     PayloadBuilder->SetTemperature(0.0f);
     PayloadBuilder->SetMaxTokens(8192);
     
