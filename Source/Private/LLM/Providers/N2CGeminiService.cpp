@@ -2,6 +2,7 @@
 
 #include "LLM/Providers/N2CGeminiService.h"
 
+#include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
 UN2CResponseParserBase* UN2CGeminiService::CreateResponseParser()

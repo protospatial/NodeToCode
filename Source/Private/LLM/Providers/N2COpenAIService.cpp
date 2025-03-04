@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2COpenAIService.h"
 
 #include "LLM/N2CLLMModels.h"
+#include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
 UN2CResponseParserBase* UN2COpenAIService::CreateResponseParser()

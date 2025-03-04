@@ -7,6 +7,9 @@
 #include "N2COpenAIResponseParser.h"
 #include "N2COpenAIService.generated.h"
 
+// Forward declarations
+class UN2CSystemPromptManager;
+
 /**
  * @class UN2COpenAIService
  * @brief Implementation of OpenAI's Chat Completion API integration

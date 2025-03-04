@@ -7,6 +7,9 @@
 #include "N2CGeminiResponseParser.h"
 #include "N2CGeminiService.generated.h"
 
+// Forward declarations
+class UN2CSystemPromptManager;
+
 /**
  * @class UN2CGeminiService
  * @brief Implementation of Gemini's API integration

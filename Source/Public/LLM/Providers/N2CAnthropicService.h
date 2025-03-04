@@ -7,6 +7,9 @@
 #include "LLM/Providers/N2CAnthropicResponseParser.h"
 #include "N2CAnthropicService.generated.h"
 
+// Forward declarations
+class UN2CSystemPromptManager;
+
 /**
  * @class UN2CAnthropicService
  * @brief Implementation of Anthropic's Claude API integration

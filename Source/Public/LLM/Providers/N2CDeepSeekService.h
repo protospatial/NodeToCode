@@ -7,6 +7,9 @@
 #include "N2CDeepSeekResponseParser.h"
 #include "N2CDeepSeekService.generated.h"
 
+// Forward declarations
+class UN2CSystemPromptManager;
+
 /**
  * @class UN2CDeepSeekService
  * @brief Implementation of DeepSeek's API integration

@@ -8,6 +8,9 @@
 #include "LLM/N2COllamaConfig.h"
 #include "N2COllamaService.generated.h"
 
+// Forward declarations
+class UN2CSystemPromptManager;
+
 /**
  * @class UN2COllamaService
  * @brief Implementation of Ollama's local LLM API integration

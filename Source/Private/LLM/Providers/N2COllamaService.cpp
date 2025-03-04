@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2COllamaService.h"
 
 #include "Core/N2CSettings.h"
+#include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
 bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
