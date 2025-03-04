@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 #include "N2CLLMTypes.h"
+#include "N2COllamaConfig.h"
 #include "N2CLLMPayloadBuilder.generated.h"
 
 /**
@@ -39,7 +40,7 @@ public:
     void ConfigureForAnthropic();
     void ConfigureForGemini();
     void ConfigureForDeepSeek();
-    void ConfigureForOllama(const FN2COllamaConfig& OllamaConfig);
+    void ConfigureForOllama(const struct FN2COllamaConfig& OllamaConfig);
     
     /** Generate final payload */
     FString Build();
