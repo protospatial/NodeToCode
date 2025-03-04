@@ -30,18 +30,18 @@ public:
     
     // Provider-specific methods (must be implemented by derived classes)
     virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken, 
-                              bool& OutSupportsSystemPrompts) override = 0;
-    virtual EN2CLLMProvider GetProviderType() const override = 0;
-    virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override = 0;
+                              bool& OutSupportsSystemPrompts) override { OutEndpoint = TEXT(""); OutAuthToken = TEXT(""); OutSupportsSystemPrompts = false; }
+    virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::OpenAI; }
+    virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override { }
 
 protected:
     // Common functionality for derived classes
     virtual void InitializeComponents();
     
-    // Abstract methods for provider-specific implementations
-    virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const = 0;
-    virtual UN2CResponseParserBase* CreateResponseParser() = 0;
-    virtual FString GetDefaultEndpoint() const = 0;
+    // Virtual methods for provider-specific implementations
+    virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const { return TEXT("{}"); }
+    virtual UN2CResponseParserBase* CreateResponseParser() { return nullptr; }
+    virtual FString GetDefaultEndpoint() const { return TEXT(""); }
 
     // Common protected members
     FN2CLLMConfig Config;
