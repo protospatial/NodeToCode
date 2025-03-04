@@ -6,7 +6,7 @@
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "LLM/N2CSystemPromptManager.h"
-#include "LLM/IN2CLLMService.h"
+#include "LLM/N2CBaseLLMService.h"
 #include "LLM/Providers/N2CAnthropicService.h"
 #include "LLM/Providers/N2CDeepSeekService.h"
 #include "LLM/Providers/N2CGeminiService.h"
@@ -416,7 +416,7 @@ bool UN2CLLMModule::CreateServiceForProvider(EN2CLLMProvider Provider)
             ServiceObject = NewObject<UN2CDeepSeekService>(this);
             break;
 
-    case EN2CLLMProvider::Gemini:
+        case EN2CLLMProvider::Gemini:
             ServiceObject = NewObject<UN2CGeminiService>(this);
             break;
 

@@ -2,87 +2,12 @@
 
 #include "LLM/Providers/N2CAnthropicService.h"
 
-#include "LLM/N2CHttpHandler.h"
-#include "LLM/N2CHttpHandlerBase.h"
-#include "LLM/N2CResponseParserBase.h"
-#include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
-bool UN2CAnthropicService::Initialize(const FN2CLLMConfig& InConfig)
+UN2CResponseParserBase* UN2CAnthropicService::CreateResponseParser()
 {
-    Config = InConfig;
-    
-    // Use default endpoint if none provided                                                                                                                                                              
-    if (Config.ApiEndpoint.IsEmpty())                                                                                                                                                                     
-    {                                                                                                                                                                                                     
-        Config.ApiEndpoint = DefaultEndpoint;                                                                                                                                                             
-    } 
-
-    // Create HTTP handler
-    HttpHandler = NewObject<UN2CHttpHandler>(this);
-    if (!HttpHandler)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create HTTP handler"), TEXT("AnthropicService"));
-        return false;
-    }
-    HttpHandler->Initialize(Config);
-
-    // Create Anthropic response parser
-    ResponseParser = NewObject<UN2CAnthropicResponseParser>(this);
-    if (!ResponseParser)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create response parser"), TEXT("AnthropicService"));
-        return false;
-    }
-    ResponseParser->Initialize();
-
-    // Create system prompt manager
-    PromptManager = NewObject<UN2CSystemPromptManager>(this);
-    if (!PromptManager)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create system prompt manager"), TEXT("DeepSeekService"));
-        return false;
-    }
-    PromptManager->Initialize(Config);
-
-    // Set required headers
-    TMap<FString, FString> Headers;
-    GetProviderHeaders(Headers);
-    HttpHandler->ExtraHeaders = Headers;
-
-    bIsInitialized = true;
-    return true;
-}
-
-void UN2CAnthropicService::SendRequest(
-    const FString& JsonPayload,
-    const FString& SystemMessage,
-    const FOnLLMResponseReceived& OnComplete)
-{
-    if (!bIsInitialized)
-    {
-        FN2CLogger::Get().LogError(TEXT("Service not initialized"), TEXT("AnthropicService"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Service not initialized\"}"));
-        return;
-    }
-    
-    // Log provider and model info
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Sending request to Anthropic using model: %s"), *Config.Model),
-        EN2CLogSeverity::Info,
-        TEXT("AnthropicService")
-    );
-
-    // Format request payload for Anthropic
-    FString FormattedPayload = FormatRequestPayload(JsonPayload, SystemMessage);
-
-    // Send request through HTTP handler
-    HttpHandler->PostLLMRequest(
-        Config.ApiEndpoint,
-        Config.ApiKey,
-        FormattedPayload,
-        OnComplete
-    );
+    UN2CAnthropicResponseParser* Parser = NewObject<UN2CAnthropicResponseParser>(this);
+    return Parser;
 }
 
 void UN2CAnthropicService::GetConfiguration(
@@ -104,7 +29,6 @@ void UN2CAnthropicService::GetProviderHeaders(TMap<FString, FString>& OutHeaders
 
 FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
-
     // Log original content (no escaping needed for logging system)
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM System Message:\n\n%s"), *SystemMessage), EN2CLogSeverity::Debug);
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM User Message:\n\n%s"), *SystemMessage), EN2CLogSeverity::Debug);

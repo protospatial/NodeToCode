@@ -3,16 +3,17 @@
 #include "LLM/Providers/N2COllamaService.h"
 
 #include "Core/N2CSettings.h"
-#include "LLM/N2CHttpHandler.h"
-#include "LLM/N2CHttpHandlerBase.h"
-#include "LLM/N2CResponseParserBase.h"
-#include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
+UN2CResponseParserBase* UN2COllamaService::CreateResponseParser()
+{
+    UN2COllamaResponseParser* Parser = NewObject<UN2COllamaResponseParser>(this);
+    return Parser;
+}
+
+// Override Initialize to set the Ollama-specific endpoint
 bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
 {
-    Config = InConfig;
-    
     // Set the Ollama endpoint that the user provides
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (Settings)
@@ -23,78 +24,15 @@ bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
         }
 
         const FString OllamaBaseEndpoint = Settings->OllamaConfig.OllamaEndpoint;
+        Config = InConfig;
         Config.ApiEndpoint = FString::Printf(TEXT("%s/api/chat"), *OllamaBaseEndpoint);
+        
+        // Store Ollama config for later use
+        OllamaConfig = Settings->OllamaConfig;
     }
-    else
-    {
-        Config.ApiEndpoint = DefaultEndpoint;
-    }
-
-    // Create HTTP handler
-    HttpHandler = NewObject<UN2CHttpHandler>(this);
-    if (!HttpHandler)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create HTTP handler"), TEXT("OllamaService"));
-        return false;
-    }
-    HttpHandler->Initialize(Config);
-
-    // Create Ollama response parser
-    ResponseParser = NewObject<UN2COllamaResponseParser>(this);
-    if (!ResponseParser)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create response parser"), TEXT("OllamaService"));
-        return false;
-    }
-    ResponseParser->Initialize();
-
-    // Create system prompt manager
-    PromptManager = NewObject<UN2CSystemPromptManager>(this);
-    if (!PromptManager)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create system prompt manager"), TEXT("OllamaService"));
-        return false;
-    }
-    PromptManager->Initialize(Config);
-
-    // Set required headers
-    TMap<FString, FString> Headers;
-    GetProviderHeaders(Headers);
-    HttpHandler->ExtraHeaders = Headers;
-
-    bIsInitialized = true;
-    return true;
-}
-
-void UN2COllamaService::SendRequest(
-    const FString& JsonPayload,
-    const FString& SystemMessage,
-    const FOnLLMResponseReceived& OnComplete)
-{
-    if (!bIsInitialized)
-    {
-        FN2CLogger::Get().LogError(TEXT("Service not initialized"), TEXT("OllamaService"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Service not initialized\"}"));
-        return;
-    }
-
-    // Log provider and model info
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Sending request to Ollama using model: %s"), *Config.Model),
-        EN2CLogSeverity::Info,
-        TEXT("OllamaService")
-    );
     
-    // Format request payload for Ollama
-    FString FormattedPayload = FormatRequestPayload(JsonPayload, SystemMessage);
-
-    // Send request through HTTP handler
-    HttpHandler->PostLLMRequest(
-        Config.ApiEndpoint,
-        Config.ApiKey,
-        FormattedPayload,
-        OnComplete
-    );
+    // Call the base class implementation with our modified config
+    return Super::Initialize(Config);
 }
 
 void UN2COllamaService::GetConfiguration(
@@ -106,15 +44,7 @@ void UN2COllamaService::GetConfiguration(
     OutAuthToken = Config.ApiKey;
     
     // Get system prompt support from settings
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (Settings)
-    {
-        OutSupportsSystemPrompts = Settings->OllamaConfig.bUseSystemPrompts;
-    }
-    else
-    {
-        OutSupportsSystemPrompts = false;
-    }
+    OutSupportsSystemPrompts = OllamaConfig.bUseSystemPrompts;
 }
 
 void UN2COllamaService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
@@ -124,7 +54,6 @@ void UN2COllamaService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) c
 
 FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
-
     // Build JSON payload structure using JSON API
     TSharedPtr<FJsonObject> RootObject = MakeShared<FJsonObject>();
     RootObject->SetStringField(TEXT("model"), Config.Model);
@@ -132,16 +61,7 @@ FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, cons
     // Build messages array
     TArray<TSharedPtr<FJsonValue>> MessagesArray;
 
-    // Check if we should use system prompts
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (!Settings)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to load settings"), TEXT("OllamaService"));
-        return FString();
-    }
-
-    const bool bSupportsSystemPrompts = Settings->OllamaConfig.bUseSystemPrompts;
-    const FN2COllamaConfig& OllamaConf = Settings->OllamaConfig;
+    const bool bSupportsSystemPrompts = OllamaConfig.bUseSystemPrompts;
 
     if (bSupportsSystemPrompts && !SystemMessage.IsEmpty())
     {
@@ -159,7 +79,7 @@ FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, cons
     // Add user message
     TSharedPtr<FJsonObject> UserMessageObject = MakeShared<FJsonObject>();
     UserMessageObject->SetStringField(TEXT("role"), TEXT("user"));
-    UserMessageObject->SetStringField(TEXT("content"), bSupportsSystemPrompts ? UserMessage : 
+    UserMessageObject->SetStringField(TEXT("content"), bSupportsSystemPrompts ? FinalUserMessage : 
         PromptManager->MergePrompts(SystemMessage, FinalUserMessage));
     MessagesArray.Add(MakeShared<FJsonValueObject>(UserMessageObject));
 
@@ -205,21 +125,21 @@ FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, cons
 
     // Add Ollama-specific options
     TSharedPtr<FJsonObject> OptionsObject = MakeShared<FJsonObject>();
-    OptionsObject->SetNumberField(TEXT("temperature"), OllamaConf.Temperature);
-    OptionsObject->SetNumberField(TEXT("num_predict"), OllamaConf.NumPredict);
-    OptionsObject->SetNumberField(TEXT("top_p"), OllamaConf.TopP);
-    OptionsObject->SetNumberField(TEXT("top_k"), OllamaConf.TopK);
-    OptionsObject->SetNumberField(TEXT("min_p"), OllamaConf.MinP);
-    OptionsObject->SetNumberField(TEXT("repeat_penalty"), OllamaConf.RepeatPenalty);
-    OptionsObject->SetNumberField(TEXT("mirostat"), OllamaConf.Mirostat);
-    OptionsObject->SetNumberField(TEXT("mirostat_eta"), OllamaConf.MirostatEta);
-    OptionsObject->SetNumberField(TEXT("mirostat_tau"), OllamaConf.MirostatTau);
-    OptionsObject->SetNumberField(TEXT("num_ctx"), OllamaConf.NumCtx);
-    OptionsObject->SetNumberField(TEXT("seed"), OllamaConf.Seed);
+    OptionsObject->SetNumberField(TEXT("temperature"), OllamaConfig.Temperature);
+    OptionsObject->SetNumberField(TEXT("num_predict"), OllamaConfig.NumPredict);
+    OptionsObject->SetNumberField(TEXT("top_p"), OllamaConfig.TopP);
+    OptionsObject->SetNumberField(TEXT("top_k"), OllamaConfig.TopK);
+    OptionsObject->SetNumberField(TEXT("min_p"), OllamaConfig.MinP);
+    OptionsObject->SetNumberField(TEXT("repeat_penalty"), OllamaConfig.RepeatPenalty);
+    OptionsObject->SetNumberField(TEXT("mirostat"), OllamaConfig.Mirostat);
+    OptionsObject->SetNumberField(TEXT("mirostat_eta"), OllamaConfig.MirostatEta);
+    OptionsObject->SetNumberField(TEXT("mirostat_tau"), OllamaConfig.MirostatTau);
+    OptionsObject->SetNumberField(TEXT("num_ctx"), OllamaConfig.NumCtx);
+    OptionsObject->SetNumberField(TEXT("seed"), OllamaConfig.Seed);
 
     RootObject->SetObjectField(TEXT("options"), OptionsObject);
     RootObject->SetBoolField(TEXT("stream"), false);
-    RootObject->SetNumberField(TEXT("keep_alive"), OllamaConf.KeepAlive);
+    RootObject->SetNumberField(TEXT("keep_alive"), OllamaConfig.KeepAlive);
 
     // Define response format for Structured Outputs (JSON)
     TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
@@ -233,4 +153,27 @@ FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, cons
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Request Payload:\n\n%s"), *Payload), EN2CLogSeverity::Debug);
 
     return Payload;
+}
+// Override Initialize to set the Ollama-specific endpoint
+bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
+{
+    // Set the Ollama endpoint that the user provides
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    if (Settings)
+    {
+        if (Settings->OllamaConfig.OllamaEndpoint.IsEmpty())
+        {
+            FN2CLogger::Get().LogError(TEXT("User provided Ollama endpoint is empty. Defaulting to http://localhost:11434"), TEXT("OllamaService"));
+        }
+
+        const FString OllamaBaseEndpoint = Settings->OllamaConfig.OllamaEndpoint;
+        Config = InConfig;
+        Config.ApiEndpoint = FString::Printf(TEXT("%s/api/chat"), *OllamaBaseEndpoint);
+        
+        // Store Ollama config for later use
+        OllamaConfig = Settings->OllamaConfig;
+    }
+    
+    // Call the base class implementation with our modified config
+    return Super::Initialize(Config);
 }

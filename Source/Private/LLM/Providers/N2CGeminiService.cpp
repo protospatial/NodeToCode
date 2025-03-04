@@ -2,92 +2,12 @@
 
 #include "LLM/Providers/N2CGeminiService.h"
 
-#include "LLM/N2CHttpHandler.h"
-#include "LLM/N2CHttpHandlerBase.h"
-#include "LLM/N2CResponseParserBase.h"
-#include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
-bool UN2CGeminiService::Initialize(const FN2CLLMConfig& InConfig)
+UN2CResponseParserBase* UN2CGeminiService::CreateResponseParser()
 {
-    Config = InConfig;
-
-    // Use default endpoint if none provided                                                                                                                                                              
-    if (Config.ApiEndpoint.IsEmpty())                                                                                                                                                                     
-    {                                                                                                                                                                                                     
-        Config.ApiEndpoint = DefaultEndpoint;                                                                                                                                                             
-    }
-
-    // Create HTTP handler
-    HttpHandler = NewObject<UN2CHttpHandler>(this);
-    if (!HttpHandler)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create HTTP handler"), TEXT("GeminiService"));
-        return false;
-    }
-    HttpHandler->Initialize(Config);
-
-    // Create Gemini response parser
-    ResponseParser = NewObject<UN2CGeminiResponseParser>(this);
-    if (!ResponseParser)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create Gemini response parser"), TEXT("GeminiService"));
-        return false;
-    }
-    ResponseParser->Initialize();
-
-    // Create system prompt manager
-    PromptManager = NewObject<UN2CSystemPromptManager>(this);
-    if (!PromptManager)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create system prompt manager"), TEXT("GeminiService"));
-        return false;
-    }
-    PromptManager->Initialize(Config);
-
-    // Set required headers
-    TMap<FString, FString> Headers;
-    GetProviderHeaders(Headers);
-    HttpHandler->ExtraHeaders = Headers;
-
-    bIsInitialized = true;
-    return true;
-}
-
-void UN2CGeminiService::SendRequest(
-    const FString& JsonPayload,
-    const FString& SystemMessage,
-    const FOnLLMResponseReceived& OnComplete)
-{
-    if (!bIsInitialized)
-    {
-        FN2CLogger::Get().LogError(TEXT("Service not initialized"), TEXT("GeminiService"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Service not initialized\"}"));
-        return;
-    }
-    
-    // Log provider and model info
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Sending request to Gemini using model: %s"), *Config.Model),
-        EN2CLogSeverity::Info,
-        TEXT("GeminiService")
-    );
-
-    // Format request payload for Gemini
-    FString FormattedPayload = FormatRequestPayload(JsonPayload, SystemMessage);
-
-    // Build full endpoint (Gemini typically uses "model_name:generateContent")
-    FString FullEndpoint = FString::Printf(TEXT("%s%s:generateContent?key=%s"),
-                                           *Config.ApiEndpoint, *Config.Model, *Config.ApiKey);
-
-    // Send request through HTTP handler
-	// Gemini REST API doesn't use an Authorization header but instead includes it as a "key" query parameter in the URL.
-    HttpHandler->PostLLMRequest(
-        FullEndpoint,
-        TEXT(""),
-        FormattedPayload,
-        OnComplete
-    );
+    UN2CGeminiResponseParser* Parser = NewObject<UN2CGeminiResponseParser>(this);
+    return Parser;
 }
 
 void UN2CGeminiService::GetConfiguration(
@@ -95,8 +15,10 @@ void UN2CGeminiService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
-    OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = Config.ApiKey;
+    // Build full endpoint (Gemini typically uses "model_name:generateContent")
+    OutEndpoint = FString::Printf(TEXT("%s%s:generateContent?key=%s"),
+                                  *Config.ApiEndpoint, *Config.Model, *Config.ApiKey);
+    OutAuthToken = TEXT("");  // Gemini uses key in URL, not in auth header
     
     // Default to supporting system prompts since all Gemini models currently support system prompts
     OutSupportsSystemPrompts = true;
@@ -109,7 +31,6 @@ void UN2CGeminiService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) c
 
 FString UN2CGeminiService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
-
     // STEP 1: Combine reference source files into user message if applicable.
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);
