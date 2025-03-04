@@ -27,7 +27,25 @@ void UN2CLLMPayloadBuilder::SetModel(const FString& InModelName)
 
 void UN2CLLMPayloadBuilder::SetTemperature(float Value)
 {
-    RootObject->SetNumberField(TEXT("temperature"), Value);
+    switch (ProviderType)
+    {
+        case EN2CLLMProvider::Gemini:
+            {
+                // Gemini only accepts temperature in generationConfig
+                TSharedPtr<FJsonObject> GenConfig = RootObject->GetObjectField(TEXT("generationConfig"));
+                if (!GenConfig.IsValid())
+                {
+                    GenConfig = MakeShared<FJsonObject>();
+                    RootObject->SetObjectField(TEXT("generationConfig"), GenConfig);
+                }
+                GenConfig->SetNumberField(TEXT("temperature"), Value);
+            }
+            break;
+        default:
+            // All other providers use root-level temperature
+            RootObject->SetNumberField(TEXT("temperature"), Value);
+            break;
+    }
 }
 
 void UN2CLLMPayloadBuilder::SetMaxTokens(int32 Value)
@@ -62,8 +80,19 @@ void UN2CLLMPayloadBuilder::SetMaxTokens(int32 Value)
                 Options->SetNumberField(TEXT("num_predict"), Value);
             }
             break;
+        case EN2CLLMProvider::OpenAI:
+            // OpenAI o1 models use max_completion_tokens instead of max_tokens
+            if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+            {
+                RootObject->SetNumberField(TEXT("max_completion_tokens"), Value);
+            }
+            else
+            {
+                RootObject->SetNumberField(TEXT("max_tokens"), Value);
+            }
+            break;
         default:
-            // OpenAI and DeepSeek use max_tokens
+            // DeepSeek uses max_tokens
             RootObject->SetNumberField(TEXT("max_tokens"), Value);
             break;
     }
@@ -253,12 +282,26 @@ void UN2CLLMPayloadBuilder::ConfigureForGemini()
     if (!RootObject->HasField(TEXT("generationConfig")))
     {
         TSharedPtr<FJsonObject> GenConfigObj = MakeShared<FJsonObject>();
-        GenConfigObj->SetNumberField(TEXT("temperature"), 0.0);
         GenConfigObj->SetNumberField(TEXT("topK"), 40.0);
         GenConfigObj->SetNumberField(TEXT("topP"), 0.95);
-        GenConfigObj->SetNumberField(TEXT("maxOutputTokens"), 8192);
         RootObject->SetObjectField(TEXT("generationConfig"), GenConfigObj);
     }
+    
+    // Remove any root-level temperature that might have been set
+    if (RootObject->HasField(TEXT("temperature")))
+    {
+        RootObject->RemoveField(TEXT("temperature"));
+    }
+    
+    // Remove any root-level max_tokens that might have been set
+    if (RootObject->HasField(TEXT("max_tokens")))
+    {
+        RootObject->RemoveField(TEXT("max_tokens"));
+    }
+    
+    // Set temperature and maxOutputTokens in generationConfig
+    SetTemperature(0.0f);
+    SetMaxTokens(8192);
 }
 
 void UN2CLLMPayloadBuilder::ConfigureForDeepSeek()
