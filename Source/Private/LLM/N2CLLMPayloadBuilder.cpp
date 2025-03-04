@@ -245,14 +245,12 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
                     TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
                     ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_schema"));
                     
-                    // Ensure schema has a name field as required by OpenAI
-                    TSharedPtr<FJsonObject> SchemaWithName = Schema;
-                    if (!SchemaWithName->HasField(TEXT("name")))
-                    {
-                        SchemaWithName->SetStringField(TEXT("name"), TEXT("n2c_translation_schema"));
-                    }
+                    // Create a wrapper object with name and schema fields
+                    TSharedPtr<FJsonObject> JsonSchemaWrapper = MakeShared<FJsonObject>();
+                    JsonSchemaWrapper->SetStringField(TEXT("name"), TEXT("n2c_translation_schema"));
+                    JsonSchemaWrapper->SetObjectField(TEXT("schema"), Schema);
                     
-                    ResponseFormatObject->SetObjectField(TEXT("json_schema"), SchemaWithName);
+                    ResponseFormatObject->SetObjectField(TEXT("json_schema"), JsonSchemaWrapper);
                     RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
                 }
             }
@@ -403,7 +401,6 @@ TSharedPtr<FJsonObject> UN2CLLMPayloadBuilder::GetN2CResponseSchema()
     const FString JsonSchema = TEXT(R"(
       {
         "type": "object",
-        "name": "n2c_translation_schema",
         "properties": {
           "graphs": {
             "type": "array",
