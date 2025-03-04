@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Models/N2CBlueprint.h"
 #include "EdGraph/EdGraphNode.h"
+#include "Utils/Validators/N2CBlueprintValidator.h"
 
 /**
  * @class FN2CNodeTranslator

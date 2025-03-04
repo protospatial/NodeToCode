@@ -5,6 +5,7 @@
 #include "Core/N2CSettings.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CNodeTypeHelper.h"
+#include "Utils/Validators/N2CBlueprintValidator.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectBase.h"
 #include "UObject/Class.h"
@@ -473,115 +474,10 @@ EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
 
 bool FN2CNodeTranslator::ValidateFlowReferences(FN2CGraph& Graph)
 {
-    bool bIsValid = true;
-    TSet<FString> NodeIds;
-    TMap<FString, TSet<FString>> NodePinIds;
-
-    // Build lookup maps for validation
-    for (const FN2CNodeDefinition& Node : Graph.Nodes)
-    {
-        NodeIds.Add(Node.ID);
-        
-        // Track all pin IDs for this node
-        TSet<FString>& PinIds = NodePinIds.Add(Node.ID);
-        for (const FN2CPinDefinition& Pin : Node.InputPins)
-        {
-            PinIds.Add(Pin.ID);
-        }
-        for (const FN2CPinDefinition& Pin : Node.OutputPins)
-        {
-            PinIds.Add(Pin.ID);
-        }
-    }
-
-    // Validate execution flows
-    TArray<FString> InvalidExecutionFlows;
-    for (const FString& ExecFlow : Graph.Flows.Execution)
-    {
-        TArray<FString> FlowNodes;
-        ExecFlow.ParseIntoArray(FlowNodes, TEXT("->"));
-        
-        bool bFlowValid = true;
-        for (const FString& NodeId : FlowNodes)
-        {
-            if (!NodeIds.Contains(NodeId))
-            {
-                FN2CLogger::Get().LogError(
-                    FString::Printf(TEXT("Invalid node ID '%s' in execution flow: %s"), 
-                    *NodeId, *ExecFlow));
-                bFlowValid = false;
-                bIsValid = false;
-                break;
-            }
-        }
-        
-        if (!bFlowValid)
-        {
-            InvalidExecutionFlows.Add(ExecFlow);
-        }
-    }
-
-    // Remove invalid execution flows
-    for (const FString& InvalidFlow : InvalidExecutionFlows)
-    {
-        Graph.Flows.Execution.Remove(InvalidFlow);
-        FN2CLogger::Get().LogWarning(
-            FString::Printf(TEXT("Removed invalid execution flow: %s"), *InvalidFlow));
-    }
-
-    // Validate data flows
-    TArray<FString> InvalidDataFlows;
-    for (const auto& DataFlow : Graph.Flows.Data)
-    {
-        // Parse source pin reference (NodeID.PinID)
-        TArray<FString> SourceParts;
-        DataFlow.Key.ParseIntoArray(SourceParts, TEXT("."));
-        
-        // Parse target pin reference (NodeID.PinID)
-        TArray<FString> TargetParts;
-        DataFlow.Value.ParseIntoArray(TargetParts, TEXT("."));
-        
-        bool bFlowValid = true;
-        
-        // Validate source node and pin
-        if (SourceParts.Num() != 2 || !NodeIds.Contains(SourceParts[0]) ||
-            !NodePinIds.Contains(SourceParts[0]) || 
-            !NodePinIds[SourceParts[0]].Contains(SourceParts[1]))
-        {
-            FN2CLogger::Get().LogError(
-                FString::Printf(TEXT("Invalid source pin reference '%s' in data flow"), 
-                *DataFlow.Key));
-            bFlowValid = false;
-            bIsValid = false;
-        }
-        
-        // Validate target node and pin
-        if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]) ||
-            !NodePinIds.Contains(TargetParts[0]) || 
-            !NodePinIds[TargetParts[0]].Contains(TargetParts[1]))
-        {
-            FN2CLogger::Get().LogError(
-                FString::Printf(TEXT("Invalid target pin reference '%s' in data flow"), 
-                *DataFlow.Value));
-            bFlowValid = false;
-            bIsValid = false;
-        }
-        
-        if (!bFlowValid)
-        {
-            InvalidDataFlows.Add(DataFlow.Key);
-        }
-    }
-
-    // Remove invalid data flows
-    for (const FString& InvalidFlow : InvalidDataFlows)
-    {
-        Graph.Flows.Data.Remove(InvalidFlow);
-        FN2CLogger::Get().LogWarning(
-            FString::Printf(TEXT("Removed invalid data flow from: %s"), *InvalidFlow));
-    }
-
-    return bIsValid;
+    // Use the blueprint validator to validate the graph
+    FN2CBlueprintValidator Validator;
+    FString ErrorMessage;
+    return Validator.ValidateFlowReferences(Graph, ErrorMessage);
 }
 
 void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
