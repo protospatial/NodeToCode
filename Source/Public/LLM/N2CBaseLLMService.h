@@ -6,6 +6,11 @@
 #include "LLM/IN2CLLMService.h"
 #include "N2CBaseLLMService.generated.h"
 
+// Forward declarations
+class UN2CHttpHandlerBase;
+class UN2CResponseParserBase;
+class UN2CSystemPromptManager;
+
 /**
  * @class UN2CBaseLLMService
  * @brief Abstract base class implementing common functionality for LLM services

@@ -5,6 +5,19 @@
 #include "Core/N2CSettings.h"
 #include "Utils/N2CLogger.h"
 
+bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
+{
+    // Load Ollama-specific settings
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    if (Settings)
+    {
+        OllamaConfig = Settings->OllamaConfig;
+    }
+    
+    // Call base class initialization
+    return Super::Initialize(InConfig);
+}
+
 UN2CResponseParserBase* UN2COllamaService::CreateResponseParser()
 {
     UN2COllamaResponseParser* Parser = NewObject<UN2COllamaResponseParser>(this);

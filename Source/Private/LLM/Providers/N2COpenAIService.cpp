@@ -133,7 +133,7 @@ FString UN2COpenAIService::FormatRequestPayload(const FString& UserMessage, cons
     TArray<TSharedPtr<FJsonValue>> MessagesArray;
 
     // Add json schema to response object if model supports structured outputs
-    if (Config.Model != "o1-preview-2024-09-12" || "o1-mini-2024-09-12")
+    if (Config.Model != TEXT("o1-preview-2024-09-12") && Config.Model != TEXT("o1-mini-2024-09-12"))
     {
         // Add response format with parsed schema
         TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();

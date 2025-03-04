@@ -3,6 +3,7 @@
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CHttpHandler.h"
 #include "LLM/N2CSystemPromptManager.h"
+#include "LLM/N2CResponseParserBase.h"
 #include "Utils/N2CLogger.h"
 
 bool UN2CBaseLLMService::Initialize(const FN2CLLMConfig& InConfig)
