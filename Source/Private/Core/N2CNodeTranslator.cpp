@@ -557,6 +557,48 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
             }
         }
     }
+    else if (UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
+    {
+        // Try to find and add the function graph
+        if (UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
+        {
+            if (UBlueprint* BP = Cast<UBlueprint>(ScopeClass->ClassGeneratedBy))
+            {
+                for (UEdGraph* FuncGraph : BP->FunctionGraphs)
+                {
+                    if (FuncGraph && FuncGraph->GetFName() == CreateDelegateNode->GetFunctionName())
+                    {
+                        AddGraphToProcess(FuncGraph);
+                        FN2CLogger::Get().Log(
+                            FString::Printf(TEXT("Added delegate function graph to process: %s"), *FuncGraph->GetName()),
+                            EN2CLogSeverity::Debug);
+                        break;
+                    }
+                }
+            }
+        }
+        else if (UFunction* DelegateSignature = CreateDelegateNode->GetDelegateSignature())
+        {
+            if (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(DelegateSignature->GetOwnerClass()))
+            {
+                if (UBlueprint* FunctionBlueprint = Cast<UBlueprint>(BlueprintClass->ClassGeneratedBy))
+                {
+                    // Find and add the function graph
+                    for (UEdGraph* FuncGraph : FunctionBlueprint->FunctionGraphs)
+                    {
+                        if (FuncGraph && FuncGraph->GetFName() == DelegateSignature->GetFName())
+                        {
+                            AddGraphToProcess(FuncGraph);
+                            FN2CLogger::Get().Log(
+                                FString::Printf(TEXT("Added delegate signature graph to process: %s"), *FuncGraph->GetName()),
+                                EN2CLogSeverity::Debug);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
@@ -991,43 +1033,5 @@ void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
         (Node->IsA<UK2Node_CallFunction>() && Cast<UK2Node_CallFunction>(Node)->IsLatentFunction()))
     {
         OutNodeDef.bLatent = true;
-    }
-    
-    // Process graph references for certain node types
-    if (UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
-    {
-        // Try to find and add the function graph
-        if (UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
-        {
-            if (UBlueprint* BP = Cast<UBlueprint>(ScopeClass->ClassGeneratedBy))
-            {
-                for (UEdGraph* FuncGraph : BP->FunctionGraphs)
-                {
-                    if (FuncGraph && FuncGraph->GetFName() == CreateDelegateNode->GetFunctionName())
-                    {
-                        AddGraphToProcess(FuncGraph);
-                        break;
-                    }
-                }
-            }
-        }
-        else if (UFunction* DelegateSignature = CreateDelegateNode->GetDelegateSignature())
-        {
-            if (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(DelegateSignature->GetOwnerClass()))
-            {
-                if (UBlueprint* FunctionBlueprint = Cast<UBlueprint>(BlueprintClass->ClassGeneratedBy))
-                {
-                    // Find and add the function graph
-                    for (UEdGraph* FuncGraph : FunctionBlueprint->FunctionGraphs)
-                    {
-                        if (FuncGraph && FuncGraph->GetFName() == DelegateSignature->GetFName())
-                        {
-                            AddGraphToProcess(FuncGraph);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
     }
 }
