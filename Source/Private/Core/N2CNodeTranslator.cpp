@@ -1023,23 +1023,24 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
         return EN2CStructMemberType::Int; // Default
     }
     
-    if (Cast<UBoolProperty>(Property))
+    if (Property->IsA<UBoolProperty>())
         return EN2CStructMemberType::Bool;
-    if (Cast<UByteProperty>(Property))
+    if (Property->IsA<UByteProperty>())
         return EN2CStructMemberType::Byte;
-    if (Cast<UIntProperty>(Property) || Cast<UInt64Property>(Property))
+    if (Property->IsA<UIntProperty>() || Property->IsA<UInt64Property>())
         return EN2CStructMemberType::Int;
-    if (Cast<UFloatProperty>(Property) || Cast<UDoubleProperty>(Property))
+    if (Property->IsA<UFloatProperty>() || Property->IsA<UDoubleProperty>())
         return EN2CStructMemberType::Float;
-    if (Cast<UStrProperty>(Property))
+    if (Property->IsA<UStrProperty>())
         return EN2CStructMemberType::String;
-    if (Cast<UNameProperty>(Property))
+    if (Property->IsA<UNameProperty>())
         return EN2CStructMemberType::Name;
-    if (Cast<UTextProperty>(Property))
+    if (Property->IsA<UTextProperty>())
         return EN2CStructMemberType::Text;
     
-    if (UStructProperty* StructProp = Cast<UStructProperty>(Property))
+    if (Property->IsA<UStructProperty>())
     {
+        UStructProperty* StructProp = static_cast<UStructProperty*>(Property);
         if (StructProp->Struct->GetFName() == NAME_Vector)
             return EN2CStructMemberType::Vector;
         if (StructProp->Struct->GetFName() == NAME_Vector2D)
@@ -1052,11 +1053,11 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
         return EN2CStructMemberType::Struct;
     }
 
-    if (Cast<UEnumProperty>(Property))
+    if (Property->IsA<UEnumProperty>())
         return EN2CStructMemberType::Enum;
-    if (Cast<UClassProperty>(Property))
+    if (Property->IsA<UClassProperty>())
         return EN2CStructMemberType::Class;
-    if (Cast<UObjectProperty>(Property))
+    if (Property->IsA<UObjectProperty>())
         return EN2CStructMemberType::Object;
 
     return EN2CStructMemberType::Custom; // For any other types
@@ -1284,19 +1285,19 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
      Member.Type = ConvertPropertyToStructMemberType(Property);
 
      // Handle container types
-     UArrayProperty* ArrayProp = Cast<UArrayProperty>(Property);
-     if (ArrayProp)
+     if (Property->IsA<UArrayProperty>())
      {
          Member.bIsArray = true;
+         UArrayProperty* ArrayProp = static_cast<UArrayProperty*>(Property);
          UProperty* InnerProp = ArrayProp->Inner;
          if (InnerProp)
          {
              Member.Type = ConvertPropertyToStructMemberType(InnerProp);
 
              // Handle inner struct or enum types
-             UStructProperty* InnerStructProp = Cast<UStructProperty>(InnerProp);
-             if (InnerStructProp)
+             if (InnerProp->IsA<UStructProperty>())
              {
+                 UStructProperty* InnerStructProp = static_cast<UStructProperty*>(InnerProp);
                  Member.TypeName = InnerStructProp->Struct->GetName();
 
                  // Process nested struct if it's Blueprint-defined
@@ -1309,32 +1310,29 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                      }
                  }
              }
-             else
+             else if (InnerProp->IsA<UEnumProperty>())
              {
-                 UEnumProperty* InnerEnumProp = Cast<UEnumProperty>(InnerProp);
-                 if (InnerEnumProp)
-                 {
-                     Member.TypeName = InnerEnumProp->Enum->GetName();
+                 UEnumProperty* InnerEnumProp = static_cast<UEnumProperty*>(InnerProp);
+                 Member.TypeName = InnerEnumProp->Enum->GetName();
 
-                     // Process enum if it's Blueprint-defined
-                     if (IsBlueprintEnum(InnerEnumProp->Enum))
+                 // Process enum if it's Blueprint-defined
+                 if (IsBlueprintEnum(InnerEnumProp->Enum))
+                 {
+                     FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->Enum);
+                     if (NestedEnum.IsValid())
                      {
-                         FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->Enum);
-                         if (NestedEnum.IsValid())
-                         {
-                             N2CBlueprint.Enums.Add(NestedEnum);
-                         }
+                         N2CBlueprint.Enums.Add(NestedEnum);
                      }
                  }
              }
          }
      }
-     else if (USetProperty* SetProp = Cast<USetProperty>(Property))
+     else if (Property->IsA<USetProperty>())
      {
          Member.bIsSet = true;
          // Similar logic for sets as for arrays
      }
-     else if (UMapProperty* MapProp = Cast<UMapProperty>(Property))
+     else if (Property->IsA<UMapProperty>())
      {
          Member.bIsMap = true;
          // Handle key and value types for maps
@@ -1342,9 +1340,9 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
      else
      {
          // Handle non-container types
-         UStructProperty* StructProp = Cast<UStructProperty>(Property);
-         if (StructProp)
+         if (Property->IsA<UStructProperty>())
          {
+             UStructProperty* StructProp = static_cast<UStructProperty*>(Property);
              Member.TypeName = StructProp->Struct->GetName();
 
              // Process nested struct if it's Blueprint-defined
@@ -1357,21 +1355,18 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                  }
              }
          }
-         else
+         else if (Property->IsA<UEnumProperty>())
          {
-             UEnumProperty* EnumProp = Cast<UEnumProperty>(Property);
-             if (EnumProp)
-             {
-                 Member.TypeName = EnumProp->Enum->GetName();
+             UEnumProperty* EnumProp = static_cast<UEnumProperty*>(Property);
+             Member.TypeName = EnumProp->Enum->GetName();
 
-                 // Process enum if it's Blueprint-defined
-                 if (IsBlueprintEnum(EnumProp->Enum))
+             // Process enum if it's Blueprint-defined
+             if (IsBlueprintEnum(EnumProp->Enum))
+             {
+                 FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->Enum);
+                 if (NestedEnum.IsValid())
                  {
-                     FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->Enum);
-                     if (NestedEnum.IsValid())
-                     {
-                         N2CBlueprint.Enums.Add(NestedEnum);
-                     }
+                     N2CBlueprint.Enums.Add(NestedEnum);
                  }
              }
          }
