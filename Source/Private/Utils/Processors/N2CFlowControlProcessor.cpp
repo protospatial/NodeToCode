@@ -34,7 +34,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         // Log select details
         FString SelectInfo = FString::Printf(TEXT("Select Node: %s, Options: %d"), 
             *OutNodeDef.ID,
-            SelectNode->PinNames.Num());
+            SelectNode->GetMaxInputPinsNum());
         FN2CLogger::Get().Log(SelectInfo, EN2CLogSeverity::Debug);
         return;
     }
@@ -58,7 +58,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         // Log multi-gate details
         FString GateInfo = FString::Printf(TEXT("Multi Gate Node: %s, Outputs: %d"), 
             *OutNodeDef.ID,
-            MultiGateNode->GetMaxOutputPins());
+            MultiGateNode->GetNumOutPins());
         FN2CLogger::Get().Log(GateInfo, EN2CLogSeverity::Debug);
         return;
     }
