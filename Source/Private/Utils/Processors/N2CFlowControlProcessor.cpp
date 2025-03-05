@@ -58,7 +58,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         // Log multi-gate details
         FString GateInfo = FString::Printf(TEXT("Multi Gate Node: %s, Outputs: %d"), 
             *OutNodeDef.ID,
-            MultiGateNode->GetNumOutPins());
+            MultiGateNode->GetOutputPins().Num());
         FN2CLogger::Get().Log(GateInfo, EN2CLogSeverity::Debug);
         return;
     }
