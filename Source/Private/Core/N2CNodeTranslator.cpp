@@ -475,6 +475,54 @@ EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
     return EN2CPinType::Wildcard;
 }
 
+UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
+{
+    if (!StartPin)
+    {
+        return nullptr;
+    }
+
+    UEdGraphPin* CurrentPin = StartPin;
+    TSet<UEdGraphNode*> VisitedNodes;  // Prevent infinite loops
+
+    while (CurrentPin)
+    {
+        UEdGraphNode* OwningNode = CurrentPin->GetOwningNode();
+        if (!OwningNode)
+        {
+            return nullptr;
+        }
+
+        // If we've hit this node before, we have a loop
+        if (VisitedNodes.Contains(OwningNode))
+        {
+            FN2CLogger::Get().LogWarning(TEXT("Detected loop in knot node chain"));
+            return nullptr;
+        }
+        VisitedNodes.Add(OwningNode);
+
+        // If this isn't a knot node, we've found our target
+        if (!OwningNode->IsA<UK2Node_Knot>())
+        {
+            return CurrentPin;
+        }
+
+        // For knot nodes, follow to the next connection
+        // Knots should only have one connection on the opposite side
+        TArray<UEdGraphPin*>& LinkedPins = (CurrentPin->Direction == EGPD_Input) ? 
+            OwningNode->Pins[1]->LinkedTo : OwningNode->Pins[0]->LinkedTo;
+
+        if (LinkedPins.Num() == 0)
+        {
+            return nullptr;  // Dead end
+        }
+
+        CurrentPin = LinkedPins[0];
+    }
+
+    return nullptr;
+}
+
 bool FN2CNodeTranslator::ValidateFlowReferences(FN2CGraph& Graph)
 {
     // Use the blueprint validator to validate the graph
@@ -975,23 +1023,23 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
         return EN2CStructMemberType::Int; // Default
     }
     
-    if (Property->IsA<UBoolProperty>())
+    if (Cast<UBoolProperty>(Property))
         return EN2CStructMemberType::Bool;
-    if (Property->IsA<UByteProperty>())
+    if (Cast<UByteProperty>(Property))
         return EN2CStructMemberType::Byte;
-    if (Property->IsA<UIntProperty>() || Property->IsA<UInt64Property>())
+    if (Cast<UIntProperty>(Property) || Cast<UInt64Property>(Property))
         return EN2CStructMemberType::Int;
-    if (Property->IsA<UFloatProperty>() || Property->IsA<UDoubleProperty>())
+    if (Cast<UFloatProperty>(Property) || Cast<UDoubleProperty>(Property))
         return EN2CStructMemberType::Float;
-    if (Property->IsA<UStrProperty>())
+    if (Cast<UStrProperty>(Property))
         return EN2CStructMemberType::String;
-    if (Property->IsA<UNameProperty>())
+    if (Cast<UNameProperty>(Property))
         return EN2CStructMemberType::Name;
-    if (Property->IsA<UTextProperty>())
+    if (Cast<UTextProperty>(Property))
         return EN2CStructMemberType::Text;
-    if (Property->IsA<UStructProperty>())
+    
+    if (UStructProperty* StructProp = Cast<UStructProperty>(Property))
     {
-        UStructProperty* StructProp = Cast<UStructProperty>(Property);
         if (StructProp->Struct->GetFName() == NAME_Vector)
             return EN2CStructMemberType::Vector;
         if (StructProp->Struct->GetFName() == NAME_Vector2D)
@@ -1000,16 +1048,17 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
             return EN2CStructMemberType::Rotator;
         if (StructProp->Struct->GetFName() == NAME_Transform)
             return EN2CStructMemberType::Transform;
-        
+
         return EN2CStructMemberType::Struct;
     }
-    if (Property->IsA<UEnumProperty>())
+
+    if (Cast<UEnumProperty>(Property))
         return EN2CStructMemberType::Enum;
-    if (Property->IsA<UClassProperty>())
+    if (Cast<UClassProperty>(Property))
         return EN2CStructMemberType::Class;
-    if (Property->IsA<UObjectProperty>())
+    if (Cast<UObjectProperty>(Property))
         return EN2CStructMemberType::Object;
-    
+
     return EN2CStructMemberType::Custom; // For any other types
 }
 
@@ -1213,160 +1262,123 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
 
 FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
 {
-    FN2CStructMember Member;
-    
-    if (!Property)
-    {
-        FN2CLogger::Get().LogWarning(TEXT("Null property provided to ProcessStructMember"));
-        return Member;
-    }
-    
-    // Set member name
-    Member.Name = Property->GetName();
-    
-    // Get member comment if available
-    FString MemberComment;
-    if (Property->HasMetaData(TEXT("ToolTip")))
-    {
-        Member.Comment = Property->GetMetaData(TEXT("ToolTip"));
-    }
-    
-    // Determine member type
-    Member.Type = ConvertPropertyToStructMemberType(Property);
-    
-    // Handle container types
-    if (UArrayProperty* ArrayProp = Cast<UArrayProperty>(Property))
-    {
-        Member.bIsArray = true;
-        UProperty* InnerProp = ArrayProp->Inner;
-        if (InnerProp)
-        {
-            Member.Type = ConvertPropertyToStructMemberType(InnerProp);
-            
-            // Handle inner struct or enum types
-            if (UStructProperty* InnerStructProp = Cast<UStructProperty>(InnerProp))
-            {
-                Member.TypeName = InnerStructProp->Struct->GetName();
-                
-                // Process nested struct if it's Blueprint-defined
-                if (IsBlueprintStruct(InnerStructProp->Struct))
-                {
-                    FN2CStruct NestedStruct = ProcessBlueprintStruct(InnerStructProp->Struct);
-                    if (NestedStruct.IsValid())
-                    {
-                        N2CBlueprint.Structs.Add(NestedStruct);
-                    }
-                }
-            }
-            else if (UEnumProperty* InnerEnumProp = Cast<UEnumProperty>(InnerProp))
-            {
-                Member.TypeName = InnerEnumProp->Enum.GetName();
-                
-                // Process enum if it's Blueprint-defined
-                if (IsBlueprintEnum(InnerEnumProp->Enum))
-                {
-                    FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->Enum);
-                    if (NestedEnum.IsValid())
-                    {
-                        N2CBlueprint.Enums.Add(NestedEnum);
-                    }
-                }
-            }
-        }
-    }
-    else if (USetProperty* SetProp = Cast<USetProperty>(Property))
-    {
-        Member.bIsSet = true;
-        // Similar logic for sets as for arrays
-    }
-    else if (UMapProperty* MapProp = Cast<UMapProperty>(Property))
-    {
-        Member.bIsMap = true;
-        // Handle key and value types for maps
-    }
-    else
-    {
-        // Handle non-container types
-        if (UStructProperty* StructProp = Cast<UStructProperty>(Property))
-        {
-            Member.TypeName = StructProp->Struct->GetName();
-            
-            // Process nested struct if it's Blueprint-defined
-            if (IsBlueprintStruct(StructProp->Struct))
-            {
-                FN2CStruct NestedStruct = ProcessBlueprintStruct(StructProp->Struct);
-                if (NestedStruct.IsValid())
-                {
-                    N2CBlueprint.Structs.Add(NestedStruct);
-                }
-            }
-        }
-        else if (UEnumProperty* EnumProp = Cast<UEnumProperty>(Property))
-        {
-            Member.TypeName = EnumProp->Enum->GetName();
-            
-            // Process enum if it's Blueprint-defined
-            if (IsBlueprintEnum(EnumProp->Enum))
-            {
-                FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->Enum);
-                if (NestedEnum.IsValid())
-                {
-                    N2CBlueprint.Enums.Add(NestedEnum);
-                }
-            }
-        }
-    }
-    
-    return Member;
-}
+     FN2CStructMember Member;
 
-UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
-{
-    if (!StartPin)
-    {
-        return nullptr;
-    }
+     if (!Property)
+     {
+         FN2CLogger::Get().LogWarning(TEXT("Null property provided to ProcessStructMember"));
+         return Member;
+     }
 
-    UEdGraphPin* CurrentPin = StartPin;
-    TSet<UEdGraphNode*> VisitedNodes;  // Prevent infinite loops
+     // Set member name
+     Member.Name = Property->GetName();
 
-    while (CurrentPin)
-    {
-        UEdGraphNode* OwningNode = CurrentPin->GetOwningNode();
-        if (!OwningNode)
-        {
-            return nullptr;
-        }
+     // Get member comment if available
+     FString MemberComment;
+     if (Property->HasMetaData(TEXT("ToolTip")))
+     {
+         Member.Comment = Property->GetMetaData(TEXT("ToolTip"));
+     }
 
-        // If we've hit this node before, we have a loop
-        if (VisitedNodes.Contains(OwningNode))
-        {
-            FN2CLogger::Get().LogWarning(TEXT("Detected loop in knot node chain"));
-            return nullptr;
-        }
-        VisitedNodes.Add(OwningNode);
+     // Determine member type
+     Member.Type = ConvertPropertyToStructMemberType(Property);
 
-        // If this isn't a knot node, we've found our target
-        if (!OwningNode->IsA<UK2Node_Knot>())
-        {
-            return CurrentPin;
-        }
+     // Handle container types
+     UArrayProperty* ArrayProp = Cast<UArrayProperty>(Property);
+     if (ArrayProp)
+     {
+         Member.bIsArray = true;
+         UProperty* InnerProp = ArrayProp->Inner;
+         if (InnerProp)
+         {
+             Member.Type = ConvertPropertyToStructMemberType(InnerProp);
 
-        // For knot nodes, follow to the next connection
-        // Knots should only have one connection on the opposite side
-        TArray<UEdGraphPin*>& LinkedPins = (CurrentPin->Direction == EGPD_Input) ? 
-            OwningNode->Pins[1]->LinkedTo : OwningNode->Pins[0]->LinkedTo;
+             // Handle inner struct or enum types
+             UStructProperty* InnerStructProp = Cast<UStructProperty>(InnerProp);
+             if (InnerStructProp)
+             {
+                 Member.TypeName = InnerStructProp->Struct->GetName();
 
-        if (LinkedPins.Num() == 0)
-        {
-            return nullptr;  // Dead end
-        }
+                 // Process nested struct if it's Blueprint-defined
+                 if (IsBlueprintStruct(InnerStructProp->Struct))
+                 {
+                     FN2CStruct NestedStruct = ProcessBlueprintStruct(InnerStructProp->Struct);
+                     if (NestedStruct.IsValid())
+                     {
+                         N2CBlueprint.Structs.Add(NestedStruct);
+                     }
+                 }
+             }
+             else
+             {
+                 UEnumProperty* InnerEnumProp = Cast<UEnumProperty>(InnerProp);
+                 if (InnerEnumProp)
+                 {
+                     Member.TypeName = InnerEnumProp->Enum->GetName();
 
-        CurrentPin = LinkedPins[0];
-    }
+                     // Process enum if it's Blueprint-defined
+                     if (IsBlueprintEnum(InnerEnumProp->Enum))
+                     {
+                         FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->Enum);
+                         if (NestedEnum.IsValid())
+                         {
+                             N2CBlueprint.Enums.Add(NestedEnum);
+                         }
+                     }
+                 }
+             }
+         }
+     }
+     else if (USetProperty* SetProp = Cast<USetProperty>(Property))
+     {
+         Member.bIsSet = true;
+         // Similar logic for sets as for arrays
+     }
+     else if (UMapProperty* MapProp = Cast<UMapProperty>(Property))
+     {
+         Member.bIsMap = true;
+         // Handle key and value types for maps
+     }
+     else
+     {
+         // Handle non-container types
+         UStructProperty* StructProp = Cast<UStructProperty>(Property);
+         if (StructProp)
+         {
+             Member.TypeName = StructProp->Struct->GetName();
 
-    return nullptr;
-}
+             // Process nested struct if it's Blueprint-defined
+             if (IsBlueprintStruct(StructProp->Struct))
+             {
+                 FN2CStruct NestedStruct = ProcessBlueprintStruct(StructProp->Struct);
+                 if (NestedStruct.IsValid())
+                 {
+                     N2CBlueprint.Structs.Add(NestedStruct);
+                 }
+             }
+         }
+         else
+         {
+             UEnumProperty* EnumProp = Cast<UEnumProperty>(Property);
+             if (EnumProp)
+             {
+                 Member.TypeName = EnumProp->Enum->GetName();
+
+                 // Process enum if it's Blueprint-defined
+                 if (IsBlueprintEnum(EnumProp->Enum))
+                 {
+                     FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->Enum);
+                     if (NestedEnum.IsValid())
+                     {
+                         N2CBlueprint.Enums.Add(NestedEnum);
+                     }
+                 }
+             }
+         }
+     }
+                                                                                                                                                                                                                                                                                                                      
+     return Member;
+ }
 
 FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
 {
