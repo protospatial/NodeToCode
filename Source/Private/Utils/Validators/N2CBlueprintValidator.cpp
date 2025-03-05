@@ -16,6 +16,18 @@ bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, FString& O
         return false;
     }
 
+    // Validate structs
+    if (!ValidateStructs(Blueprint, OutError))
+    {
+        return false;
+    }
+
+    // Validate enums
+    if (!ValidateEnums(Blueprint, OutError))
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -220,5 +232,97 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
         }
     }
 
+    return true;
+}
+
+bool FN2CBlueprintValidator::ValidateStructs(const FN2CBlueprint& Blueprint, FString& OutError)
+{
+    for (const FN2CStruct& Struct : Blueprint.Structs)
+    {
+        if (!ValidateStruct(Struct, OutError))
+        {
+            OutError = FString::Printf(TEXT("Invalid struct: %s - %s"), *Struct.Name, *OutError);
+            FN2CLogger::Get().LogError(OutError);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool FN2CBlueprintValidator::ValidateStruct(const FN2CStruct& Struct, FString& OutError)
+{
+    // A struct needs a name at minimum
+    if (Struct.Name.IsEmpty())
+    {
+        OutError = TEXT("Missing name");
+        FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+        return false;
+    }
+    
+    // Validate all members
+    for (int32 i = 0; i < Struct.Members.Num(); ++i)
+    {
+        const FN2CStructMember& Member = Struct.Members[i];
+        
+        if (Member.Name.IsEmpty())
+        {
+            OutError = FString::Printf(TEXT("Member at index %d has no name"), i);
+            FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+            return false;
+        }
+        
+        // For struct/enum/object/class types, verify we have a type name
+        if ((Member.Type == EN2CStructMemberType::Struct || 
+             Member.Type == EN2CStructMemberType::Enum ||
+             Member.Type == EN2CStructMemberType::Object ||
+             Member.Type == EN2CStructMemberType::Class) && 
+            Member.TypeName.IsEmpty())
+        {
+            OutError = FString::Printf(TEXT("Member %s requires a type name"), *Member.Name);
+            FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+bool FN2CBlueprintValidator::ValidateEnums(const FN2CBlueprint& Blueprint, FString& OutError)
+{
+    for (const FN2CEnum& Enum : Blueprint.Enums)
+    {
+        if (!ValidateEnum(Enum, OutError))
+        {
+            OutError = FString::Printf(TEXT("Invalid enum: %s - %s"), *Enum.Name, *OutError);
+            FN2CLogger::Get().LogError(OutError);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool FN2CBlueprintValidator::ValidateEnum(const FN2CEnum& Enum, FString& OutError)
+{
+    // An enum needs a name at minimum
+    if (Enum.Name.IsEmpty())
+    {
+        OutError = TEXT("Missing name");
+        FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+        return false;
+    }
+    
+    // Validate all values
+    for (int32 i = 0; i < Enum.Values.Num(); ++i)
+    {
+        const FN2CEnumValue& Value = Enum.Values[i];
+        
+        if (Value.Name.IsEmpty())
+        {
+            OutError = FString::Printf(TEXT("Value at index %d has no name"), i);
+            FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+            return false;
+        }
+    }
+    
     return true;
 }

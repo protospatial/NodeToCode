@@ -23,12 +23,24 @@ public:
     /** Validate flow references in a graph */
     bool ValidateFlowReferences(const FN2CGraph& Graph, FString& OutError);
     
+    /** Validate a struct definition */
+    bool ValidateStruct(const FN2CStruct& Struct, FString& OutError);
+    
+    /** Validate an enum definition */
+    bool ValidateEnum(const FN2CEnum& Enum, FString& OutError);
+    
 private:
     /** Validate required fields */
     bool ValidateRequired(const FN2CBlueprint& Blueprint, FString& OutError);
     
     /** Validate all graphs in the blueprint */
     bool ValidateGraphs(const FN2CBlueprint& Blueprint, FString& OutError);
+    
+    /** Validate all structs in the blueprint */
+    bool ValidateStructs(const FN2CBlueprint& Blueprint, FString& OutError);
+    
+    /** Validate all enums in the blueprint */
+    bool ValidateEnums(const FN2CBlueprint& Blueprint, FString& OutError);
     
     /** Node validator instance */
     FN2CNodeValidator NodeValidator;
