@@ -255,7 +255,7 @@ bool FN2CBlueprintValidator::ValidateStruct(const FN2CStruct& Struct, FString& O
     if (Struct.Name.IsEmpty())
     {
         OutError = TEXT("Missing name");
-        FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+        FN2CLogger::Get().LogError(OutError);
         return false;
     }
     
@@ -267,7 +267,7 @@ bool FN2CBlueprintValidator::ValidateStruct(const FN2CStruct& Struct, FString& O
         if (Member.Name.IsEmpty())
         {
             OutError = FString::Printf(TEXT("Member at index %d has no name"), i);
-            FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+            FN2CLogger::Get().LogError(OutError);
             return false;
         }
         
@@ -279,7 +279,7 @@ bool FN2CBlueprintValidator::ValidateStruct(const FN2CStruct& Struct, FString& O
             Member.TypeName.IsEmpty())
         {
             OutError = FString::Printf(TEXT("Member %s requires a type name"), *Member.Name);
-            FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+            FN2CLogger::Get().LogError(OutError);
             return false;
         }
     }
@@ -307,7 +307,7 @@ bool FN2CBlueprintValidator::ValidateEnum(const FN2CEnum& Enum, FString& OutErro
     if (Enum.Name.IsEmpty())
     {
         OutError = TEXT("Missing name");
-        FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+        FN2CLogger::Get().LogError(OutError);
         return false;
     }
     
@@ -319,7 +319,7 @@ bool FN2CBlueprintValidator::ValidateEnum(const FN2CEnum& Enum, FString& OutErro
         if (Value.Name.IsEmpty())
         {
             OutError = FString::Printf(TEXT("Value at index %d has no name"), i);
-            FN2CLogger::Get().LogError(OutError, EN2CLogSeverity::Error);
+            FN2CLogger::Get().LogError(OutError);
             return false;
         }
     }
