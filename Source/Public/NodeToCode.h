@@ -14,6 +14,8 @@
 #include "Utils/Processors/N2CFlowControlProcessor.h"
 #include "Utils/Processors/N2CDelegateProcessor.h"
 #include "Utils/Processors/N2CFunctionEntryProcessor.h"
+#include "Utils/Processors/N2CArrayProcessor.h"
+#include "Utils/Processors/N2CCastProcessor.h"
 
 /**
  * @class FNodeToCodeModule

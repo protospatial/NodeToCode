@@ -51,6 +51,8 @@ void FN2CNodeProcessorFactory::InitializeDefaultProcessors()
     TSharedPtr<FN2CFlowControlProcessor> FlowControlProcessor = MakeShared<FN2CFlowControlProcessor>();
     TSharedPtr<FN2CDelegateProcessor> DelegateProcessor = MakeShared<FN2CDelegateProcessor>();
     TSharedPtr<FN2CFunctionEntryProcessor> FunctionEntryProcessor = MakeShared<FN2CFunctionEntryProcessor>();
+    TSharedPtr<FN2CArrayProcessor> ArrayProcessor = MakeShared<FN2CArrayProcessor>();
+    TSharedPtr<FN2CCastProcessor> CastProcessor = MakeShared<FN2CCastProcessor>();
     
     // Register function call processors
     RegisterProcessor(EN2CNodeType::CallFunction, FunctionCallProcessor);
@@ -125,4 +127,16 @@ void FN2CNodeProcessorFactory::InitializeDefaultProcessors()
     RegisterProcessor(EN2CNodeType::FunctionResult, FunctionEntryProcessor);
     RegisterProcessor(EN2CNodeType::FunctionTerminator, FunctionEntryProcessor);
     RegisterProcessor(EN2CNodeType::MacroInstance, FunctionEntryProcessor);
+    
+    // Register array and container processors
+    RegisterProcessor(EN2CNodeType::MakeArray, ArrayProcessor);
+    RegisterProcessor(EN2CNodeType::MakeMap, ArrayProcessor);
+    RegisterProcessor(EN2CNodeType::MakeSet, ArrayProcessor);
+    RegisterProcessor(EN2CNodeType::MakeContainer, ArrayProcessor);
+    RegisterProcessor(EN2CNodeType::GetArrayItem, ArrayProcessor);
+    
+    // Register cast processors
+    RegisterProcessor(EN2CNodeType::DynamicCast, CastProcessor);
+    RegisterProcessor(EN2CNodeType::ClassDynamicCast, CastProcessor);
+    RegisterProcessor(EN2CNodeType::CastByteToEnum, CastProcessor);
 }

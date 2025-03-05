@@ -492,18 +492,31 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
         // Process the node using the processor
         if (!Processor->Process(Node, OutNodeDef))
         {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node processor failed for node type %s"),
-                *StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType))));
+            FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
+            FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+            
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node processor failed for node '%s' of type %s"),
+                *NodeTitle, *NodeTypeName));
             
             // Fall back to the old method if processor fails
             FallbackProcessNodeProperties(Node, OutNodeDef);
+        }
+        else
+        {
+            // Log successful processing
+            FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully processed node '%s' using %s processor"),
+                *OutNodeDef.Name, *NodeTypeName), EN2CLogSeverity::Debug);
         }
     }
     else
     {
         // Fall back to the old method if no processor is available
-        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("No processor available for node type %s"),
-            *StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType))));
+        FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
+        FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+        
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("No processor available for node '%s' of type %s"),
+            *NodeTitle, *NodeTypeName));
         
         FallbackProcessNodeProperties(Node, OutNodeDef);
     }
