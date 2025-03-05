@@ -1,8 +1,20 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/Processors/N2CNodeProcessorFactory.h"
+
+#include <Utils/Processors/N2CArrayProcessor.h>
+#include <Utils/Processors/N2CCastProcessor.h>
+
 #include "Utils/Processors/N2CFunctionCallProcessor.h"
 #include "Utils/N2CLogger.h"
+#include "Utils/Processors/N2CDelegateProcessor.h"
+#include "Utils/Processors/N2CEventProcessor.h"
+#include "Utils/Processors/N2CFlowControlProcessor.h"
+#include "Utils/Processors/N2CFunctionEntryProcessor.h"
+#include "Utils/Processors/N2CVariableProcessor.h"
+#include "Utils/Processors/N2CStructProcessor.h"
+
+class FN2CStructProcessor;
 
 FN2CNodeProcessorFactory& FN2CNodeProcessorFactory::Get()
 {

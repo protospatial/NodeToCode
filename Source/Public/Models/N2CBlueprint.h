@@ -95,6 +95,202 @@ struct FN2CFlows
 };
 
 /**
+ * @enum EN2CStructMemberType
+ * @brief Defines the type of a struct member
+ */
+UENUM(BlueprintType)
+enum class EN2CStructMemberType : uint8
+{
+    Bool        UMETA(DisplayName = "Boolean"),
+    Byte        UMETA(DisplayName = "Byte"),
+    Int         UMETA(DisplayName = "Integer"),
+    Float       UMETA(DisplayName = "Float"),
+    String      UMETA(DisplayName = "String"),
+    Name        UMETA(DisplayName = "Name"),
+    Text        UMETA(DisplayName = "Text"),
+    Vector      UMETA(DisplayName = "Vector"),
+    Vector2D    UMETA(DisplayName = "Vector2D"),
+    Rotator     UMETA(DisplayName = "Rotator"),
+    Transform   UMETA(DisplayName = "Transform"),
+    Class       UMETA(DisplayName = "Class"),
+    Object      UMETA(DisplayName = "Object"),
+    Struct      UMETA(DisplayName = "Struct"),
+    Enum        UMETA(DisplayName = "Enum"),
+    Array       UMETA(DisplayName = "Array"),
+    Set         UMETA(DisplayName = "Set"),
+    Map         UMETA(DisplayName = "Map"),
+    Custom      UMETA(DisplayName = "Custom")
+};
+
+/**
+ * @struct FN2CStructMember
+ * @brief Represents a single member of a struct
+ */
+USTRUCT(BlueprintType)
+struct FN2CStructMember
+{
+    GENERATED_BODY()
+
+    /** Member name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Member type */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CStructMemberType Type;
+
+    /** Type name - required for structs, enums, objects, classes, etc. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TypeName;
+
+    /** Container flags */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsArray = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsSet = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsMap = false;
+
+    /** Key type for maps */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CStructMemberType KeyType;
+
+    /** Key type name for maps (if needed) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString KeyTypeName;
+
+    /** Default value as string (if any) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString DefaultValue;
+
+    /** Member comment (if any) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    FN2CStructMember()
+        : Name(TEXT(""))
+        , Type(EN2CStructMemberType::Int)
+        , TypeName(TEXT(""))
+        , KeyType(EN2CStructMemberType::Int)
+        , KeyTypeName(TEXT(""))
+        , DefaultValue(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+};
+
+/**
+ * @struct FN2CStruct
+ * @brief Represents a blueprint-defined struct
+ */
+USTRUCT(BlueprintType)
+struct FN2CStruct
+{
+    GENERATED_BODY()
+
+    /** Struct name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Full struct path */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Path;
+
+    /** Struct comment */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    /** List of struct members */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CStructMember> Members;
+
+    /** Whether this struct is native or blueprint-defined */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsBlueprintStruct = true;
+
+    FN2CStruct()
+        : Name(TEXT(""))
+        , Path(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+
+    /** Validates the struct definition */
+    bool IsValid() const;
+};
+
+/**
+ * @struct FN2CEnumValue
+ * @brief Represents a single value in an enum
+ */
+USTRUCT(BlueprintType)
+struct FN2CEnumValue
+{
+    GENERATED_BODY()
+
+    /** Enum value name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Enum numeric value */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int64 Value;
+
+    /** Enum value comment (if any) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    FN2CEnumValue()
+        : Name(TEXT(""))
+        , Value(0)
+        , Comment(TEXT(""))
+    {
+    }
+};
+
+/**
+ * @struct FN2CEnum
+ * @brief Represents a blueprint-defined enum
+ */
+USTRUCT(BlueprintType)
+struct FN2CEnum
+{
+    GENERATED_BODY()
+
+    /** Enum name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Full enum path */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Path;
+
+    /** Enum comment */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    /** List of enum values */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CEnumValue> Values;
+
+    /** Whether this enum is native or blueprint-defined */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsBlueprintEnum = true;
+
+    FN2CEnum()
+        : Name(TEXT(""))
+        , Path(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+
+    /** Validates the enum definition */
+    bool IsValid() const;
+};
+
+/**
  * @enum EN2CGraphType
  * @brief Defines the type of Blueprint graph
  */
@@ -112,7 +308,11 @@ enum class EN2CGraphType : uint8
     /** A construction script */
     Construction    UMETA(DisplayName = "Construction Script"),
     /** An animation graph */
-    Animation      UMETA(DisplayName = "Animation")
+    Animation      UMETA(DisplayName = "Animation"),
+    /** A struct definition */
+    Struct         UMETA(DisplayName = "Struct"),
+    /** An enum definition */
+    Enum           UMETA(DisplayName = "Enum")
 };
 
 /**
@@ -169,6 +369,14 @@ struct FN2CBlueprint
     /** Array of all graphs in the Blueprint */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CGraph> Graphs;
+
+    /** Array of all structs used in the Blueprint */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CStruct> Structs;
+
+    /** Array of all enums used in the Blueprint */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CEnum> Enums;
 
     FN2CBlueprint()
     {

@@ -148,7 +148,6 @@ EN2CNodeType FN2CNodeTypeRegistry::GetNodeType(const UK2Node* Node)
     // before being considered MakeStruct
     if (const UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node))
     {
-        EN2CNodeType OutType;
         FName ClassName = FName(*GetBaseNodeType(Node->GetClass()->GetName()));
         if (ClassNameMappings.Contains(ClassName))
         {

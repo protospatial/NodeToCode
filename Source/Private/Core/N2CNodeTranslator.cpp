@@ -9,6 +9,7 @@
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectBase.h"
 #include "UObject/Class.h"
+#include "UObject/UnrealTypePrivate.h"
 
 FN2CNodeTranslator& FN2CNodeTranslator::Get()
 {
@@ -22,6 +23,8 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
     N2CBlueprint = FN2CBlueprint();
     NodeIDMap.Empty();
     PinIDMap.Empty();
+    ProcessedStructPaths.Empty();  // Clear processed structs set
+    ProcessedEnumPaths.Empty();    // Clear processed enums set
 
     if (CollectedNodes.Num() == 0)
     {
@@ -521,6 +524,9 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
         FallbackProcessNodeProperties(Node, OutNodeDef);
     }
 
+    // Process any struct or enum types used in this node
+    ProcessRelatedTypes(Node, OutNodeDef);
+
     // Check for nested graphs that might need processing
     if (UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(Node))
     {
@@ -852,6 +858,71 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
     }
 }
 
+FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
+{
+    FN2CEnum Result;
+    
+    if (!Enum)
+    {
+        FN2CLogger::Get().LogError(TEXT("Null enum provided to ProcessBlueprintEnum"));
+        return Result;
+    }
+    
+    // Get enum path
+    FString EnumPath = Enum->GetPathName();
+    
+    // Check if we've already processed this enum
+    if (ProcessedEnumPaths.Contains(EnumPath))
+    {
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Enum %s already processed - skipping"), *EnumPath),
+            EN2CLogSeverity::Debug);
+        return Result;
+    }
+    
+    // Mark as processed
+    ProcessedEnumPaths.Add(EnumPath);
+    
+    // Set basic enum info
+    Result.Name = Enum->GetName();
+    Result.Path = EnumPath;
+    Result.bIsBlueprintEnum = IsBlueprintEnum(Enum);
+    
+    // Get enum comment if available
+    FString EnumComment = Enum->GetMetaData(TEXT("ToolTip"));
+    if (!EnumComment.IsEmpty())
+    {
+        Result.Comment = EnumComment;
+    }
+    
+    // Process enum values
+    int32 NumEnums = Enum->NumEnums();
+    for (int32 i = 0; i < NumEnums; ++i)
+    {
+        FN2CEnumValue Value;
+        Value.Name = Enum->GetNameStringByIndex(i);
+        Value.Value = Enum->GetValueByIndex(i);
+        
+        // Get value comment if available
+        FString ValueComment = Enum->GetMetaData(TEXT("ToolTip"));
+        
+        if (!ValueComment.IsEmpty())
+        {
+            Value.Comment = ValueComment;
+        }
+        
+        Result.Values.Add(Value);
+    }
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Processed enum %s with %d values"), 
+            *Result.Name, 
+            Result.Values.Num()),
+        EN2CLogSeverity::Info);
+    
+    return Result;
+}
+
 FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
 {
     FString CleanName = InName;                                                                                                                                                                      
@@ -869,6 +940,194 @@ FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
      }                                                                                                                                                                                                     
                                                                                                                                                                                                            
      return CleanName;
+}
+
+bool FN2CNodeTranslator::IsBlueprintStruct(UScriptStruct* Struct) const
+{
+    if (!Struct)
+    {
+        return false;
+    }
+    
+    // Check if the struct is in a user content directory
+    FString StructPath = Struct->GetPathName();
+    return StructPath.Contains(TEXT("/Game/")) || 
+           StructPath.Contains(TEXT("/Content/"));
+}
+
+bool FN2CNodeTranslator::IsBlueprintEnum(UEnum* Enum) const
+{
+    if (!Enum)
+    {
+        return false;
+    }
+    
+    // Check if the enum is in a user content directory
+    FString EnumPath = Enum->GetPathName();
+    return EnumPath.Contains(TEXT("/Game/")) || 
+           EnumPath.Contains(TEXT("/Content/"));
+}
+
+EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProperty* Property) const
+{
+    if (!Property)
+    {
+        return EN2CStructMemberType::Int; // Default
+    }
+    
+    if (Property->IsA<UBoolProperty>())
+        return EN2CStructMemberType::Bool;
+    if (Property->IsA<UByteProperty>())
+        return EN2CStructMemberType::Byte;
+    if (Property->IsA<UIntProperty>() || Property->IsA<UInt64Property>())
+        return EN2CStructMemberType::Int;
+    if (Property->IsA<UFloatProperty>() || Property->IsA<UDoubleProperty>())
+        return EN2CStructMemberType::Float;
+    if (Property->IsA<UStrProperty>())
+        return EN2CStructMemberType::String;
+    if (Property->IsA<UNameProperty>())
+        return EN2CStructMemberType::Name;
+    if (Property->IsA<UTextProperty>())
+        return EN2CStructMemberType::Text;
+    if (Property->IsA<UStructProperty>())
+    {
+        UStructProperty* StructProp = Cast<UStructProperty>(Property);
+        if (StructProp->Struct->GetFName() == NAME_Vector)
+            return EN2CStructMemberType::Vector;
+        if (StructProp->Struct->GetFName() == NAME_Vector2D)
+            return EN2CStructMemberType::Vector2D;
+        if (StructProp->Struct->GetFName() == NAME_Rotator)
+            return EN2CStructMemberType::Rotator;
+        if (StructProp->Struct->GetFName() == NAME_Transform)
+            return EN2CStructMemberType::Transform;
+        
+        return EN2CStructMemberType::Struct;
+    }
+    if (Property->IsA<UEnumProperty>())
+        return EN2CStructMemberType::Enum;
+    if (Property->IsA<UClassProperty>())
+        return EN2CStructMemberType::Class;
+    if (Property->IsA<UObjectProperty>())
+        return EN2CStructMemberType::Object;
+    
+    return EN2CStructMemberType::Custom; // For any other types
+}
+
+void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+{
+    if (!Node)
+    {
+        return;
+    }
+    
+    // Check for struct nodes
+    if (UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node))
+    {
+        if (UScriptStruct* Struct = StructNode->StructType)
+        {
+            if (IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from struct operation node"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
+    
+    // Check make struct nodes
+    if (UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node))
+    {
+        if (UScriptStruct* Struct = MakeStructNode->StructType)
+        {
+            if (IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from make struct node"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
+    
+    // Check break struct nodes
+    if (UK2Node_BreakStruct* BreakStructNode = Cast<UK2Node_BreakStruct>(Node))
+    {
+        if (UScriptStruct* Struct = BreakStructNode->StructType)
+        {
+            if (IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from break struct node"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
+    
+    // Check struct references in pins
+    for (UEdGraphPin* Pin : Node->Pins)
+    {
+        if (!Pin)
+            continue;
+            
+        // Check for struct types
+        if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct)
+        {
+            UScriptStruct* Struct = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
+            if (Struct && IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from pin type"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+        
+        // Check for enum types
+        else if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte ||
+                 Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
+        {
+            UEnum* Enum = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
+            if (Enum && IsBlueprintEnum(Enum))
+            {
+                FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
+                if (EnumDef.IsValid())
+                {
+                    N2CBlueprint.Enums.Add(EnumDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint enum %s from pin type"), 
+                        *EnumDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
 }
 
 void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
@@ -952,6 +1211,115 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
     FN2CLogger::Get().Log(NodeInfo, EN2CLogSeverity::Debug);
 }
 
+FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
+{
+    FN2CStructMember Member;
+    
+    if (!Property)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("Null property provided to ProcessStructMember"));
+        return Member;
+    }
+    
+    // Set member name
+    Member.Name = Property->GetName();
+    
+    // Get member comment if available
+    FString MemberComment;
+    if (Property->HasMetaData(TEXT("ToolTip")))
+    {
+        Member.Comment = Property->GetMetaData(TEXT("ToolTip"));
+    }
+    
+    // Determine member type
+    Member.Type = ConvertPropertyToStructMemberType(Property);
+    
+    // Handle container types
+    if (UArrayProperty* ArrayProp = Cast<UArrayProperty>(Property))
+    {
+        Member.bIsArray = true;
+        UProperty* InnerProp = ArrayProp->Inner;
+        if (InnerProp)
+        {
+            Member.Type = ConvertPropertyToStructMemberType(InnerProp);
+            
+            // Handle inner struct or enum types
+            if (UStructProperty* InnerStructProp = Cast<UStructProperty>(InnerProp))
+            {
+                Member.TypeName = InnerStructProp->Struct->GetName();
+                
+                // Process nested struct if it's Blueprint-defined
+                if (IsBlueprintStruct(InnerStructProp->Struct))
+                {
+                    FN2CStruct NestedStruct = ProcessBlueprintStruct(InnerStructProp->Struct);
+                    if (NestedStruct.IsValid())
+                    {
+                        N2CBlueprint.Structs.Add(NestedStruct);
+                    }
+                }
+            }
+            else if (UEnumProperty* InnerEnumProp = Cast<UEnumProperty>(InnerProp))
+            {
+                Member.TypeName = InnerEnumProp->Enum.GetName();
+                
+                // Process enum if it's Blueprint-defined
+                if (IsBlueprintEnum(InnerEnumProp->Enum))
+                {
+                    FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->Enum);
+                    if (NestedEnum.IsValid())
+                    {
+                        N2CBlueprint.Enums.Add(NestedEnum);
+                    }
+                }
+            }
+        }
+    }
+    else if (USetProperty* SetProp = Cast<USetProperty>(Property))
+    {
+        Member.bIsSet = true;
+        // Similar logic for sets as for arrays
+    }
+    else if (UMapProperty* MapProp = Cast<UMapProperty>(Property))
+    {
+        Member.bIsMap = true;
+        // Handle key and value types for maps
+    }
+    else
+    {
+        // Handle non-container types
+        if (UStructProperty* StructProp = Cast<UStructProperty>(Property))
+        {
+            Member.TypeName = StructProp->Struct->GetName();
+            
+            // Process nested struct if it's Blueprint-defined
+            if (IsBlueprintStruct(StructProp->Struct))
+            {
+                FN2CStruct NestedStruct = ProcessBlueprintStruct(StructProp->Struct);
+                if (NestedStruct.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(NestedStruct);
+                }
+            }
+        }
+        else if (UEnumProperty* EnumProp = Cast<UEnumProperty>(Property))
+        {
+            Member.TypeName = EnumProp->Enum->GetName();
+            
+            // Process enum if it's Blueprint-defined
+            if (IsBlueprintEnum(EnumProp->Enum))
+            {
+                FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->Enum);
+                if (NestedEnum.IsValid())
+                {
+                    N2CBlueprint.Enums.Add(NestedEnum);
+                }
+            }
+        }
+    }
+    
+    return Member;
+}
+
 UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
 {
     if (!StartPin)
@@ -998,6 +1366,64 @@ UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartP
     }
 
     return nullptr;
+}
+
+FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
+{
+    FN2CStruct Result;
+    
+    if (!Struct)
+    {
+        FN2CLogger::Get().LogError(TEXT("Null struct provided to ProcessBlueprintStruct"));
+        return Result;
+    }
+    
+    // Get struct path
+    FString StructPath = Struct->GetPathName();
+    
+    // Check if we've already processed this struct
+    if (ProcessedStructPaths.Contains(StructPath))
+    {
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Struct %s already processed - skipping"), *StructPath),
+            EN2CLogSeverity::Debug);
+        return Result;
+    }
+    
+    // Mark as processed
+    ProcessedStructPaths.Add(StructPath);
+    
+    // Set basic struct info
+    Result.Name = Struct->GetName();
+    Result.Path = StructPath;
+    Result.bIsBlueprintStruct = IsBlueprintStruct(Struct);
+    
+    // Get struct comment if available
+    FString StructComment = Struct->GetMetaData(TEXT("ToolTip"));
+    
+    if (!StructComment.IsEmpty())
+    {
+        Result.Comment = StructComment;
+    }
+    
+    // Process struct members
+    for (TFieldIterator<UProperty> PropIt(Struct); PropIt; ++PropIt)
+    {
+        UProperty* Property = *PropIt;
+        if (Property)
+        {
+            FN2CStructMember Member = ProcessStructMember(Property);
+            Result.Members.Add(Member);
+        }
+    }
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Processed struct %s with %d members"), 
+            *Result.Name, 
+            Result.Members.Num()),
+        EN2CLogSeverity::Info);
+    
+    return Result;
 }
 
 void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)

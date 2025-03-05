@@ -2,7 +2,6 @@
 
 #include "LLM/Providers/N2COllamaResponseParser.h"
 
-#include "Core/N2CSettings.h"
 #include "Utils/N2CLogger.h"
 #include "Serialization/JsonSerializer.h"
 

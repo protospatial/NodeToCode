@@ -51,6 +51,10 @@ private:
     /** Maps pin GUIDs to simplified IDs */
     TMap<FGuid, FString> PinIDMap;
 
+    /** Tracking sets to prevent duplicate processing */
+    TSet<FString> ProcessedStructPaths;
+    TSet<FString> ProcessedEnumPaths;
+
     /** Struct to track graph processing information */
     struct FGraphProcessInfo
     {
@@ -116,6 +120,27 @@ private:
 
     /** Process execution and data flows for the node */
     void ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs);
+
+    /** Check if a struct is Blueprint-defined */
+    bool IsBlueprintStruct(UScriptStruct* Struct) const;
+
+    /** Check if an enum is Blueprint-defined */
+    bool IsBlueprintEnum(UEnum* Enum) const;
+
+    /** Process a Blueprint struct into FN2CStruct */
+    FN2CStruct ProcessBlueprintStruct(UScriptStruct* Struct);
+
+    /** Process a Blueprint enum into FN2CEnum */
+    FN2CEnum ProcessBlueprintEnum(UEnum* Enum);
+
+    /** Process a struct member */
+    FN2CStructMember ProcessStructMember(UProperty* Property);
+
+    /** Convert UProperty type to N2C struct member type */
+    EN2CStructMemberType ConvertPropertyToStructMemberType(UProperty* Property) const;
+
+    /** Process any struct or enum types used in a node */
+    void ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Remove SKEL_ prefix and _C suffix from class names */
     FString GetCleanClassName(const FString& InName);
