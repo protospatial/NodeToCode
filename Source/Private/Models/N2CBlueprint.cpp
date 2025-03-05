@@ -18,3 +18,17 @@ bool FN2CBlueprint::IsValid() const
     FString ErrorMessage;
     return Validator.Validate(*this, ErrorMessage);
 }
+
+bool FN2CStruct::IsValid() const
+{
+    FN2CBlueprintValidator Validator;
+    FString ErrorMessage;
+    return Validator.ValidateStruct(*this, ErrorMessage);
+}
+
+bool FN2CEnum::IsValid() const
+{
+    FN2CBlueprintValidator Validator;
+    FString ErrorMessage;
+    return Validator.ValidateEnum(*this, ErrorMessage);
+}
