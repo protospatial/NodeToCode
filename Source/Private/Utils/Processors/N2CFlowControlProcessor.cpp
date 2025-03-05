@@ -31,9 +31,18 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     {
         OutNodeDef.Name = TEXT("Select");
         
-        // Get option pins
+        // Get option pins manually since GetOptionPins might not be properly exported
         TArray<UEdGraphPin*> OptionPins;
-        SelectNode->GetOptionPins(OptionPins);
+        for (UEdGraphPin* Pin : SelectNode->Pins)
+        {
+            // Option pins are typically input pins that aren't the selector or exec pins
+            if (Pin && Pin->Direction == EGPD_Input && 
+                Pin->PinName != TEXT("Index") && 
+                Pin->PinType.PinCategory != TEXT("exec"))
+            {
+                OptionPins.Add(Pin);
+            }
+        }
         
         // Log select details
         FString SelectInfo = FString::Printf(TEXT("Select Node: %s, Options: %d"), 
@@ -59,9 +68,15 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     {
         OutNodeDef.Name = TEXT("Multi Gate");
         
-        // Get output pins
+        // Get output pins manually since GetOutPins might not be properly exported
         TArray<UEdGraphPin*> OutPins;
-        MultiGateNode->GetOutPins(OutPins);
+        for (UEdGraphPin* Pin : MultiGateNode->Pins)
+        {
+            if (Pin && Pin->Direction == EGPD_Output)
+            {
+                OutPins.Add(Pin);
+            }
+        }
         
         // Log multi-gate details
         FString GateInfo = FString::Printf(TEXT("Multi Gate Node: %s, Outputs: %d"), 
