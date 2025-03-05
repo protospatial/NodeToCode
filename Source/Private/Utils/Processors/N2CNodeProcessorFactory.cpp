@@ -43,16 +43,86 @@ TSharedPtr<IN2CNodeProcessor> FN2CNodeProcessorFactory::GetProcessor(EN2CNodeTyp
 
 void FN2CNodeProcessorFactory::InitializeDefaultProcessors()
 {
-    // Register the function call processor for CallFunction node type
-    RegisterProcessor(EN2CNodeType::CallFunction, MakeShared<FN2CFunctionCallProcessor>());
+    // Create shared instances of each processor type
+    TSharedPtr<FN2CFunctionCallProcessor> FunctionCallProcessor = MakeShared<FN2CFunctionCallProcessor>();
+    TSharedPtr<FN2CVariableProcessor> VariableProcessor = MakeShared<FN2CVariableProcessor>();
+    TSharedPtr<FN2CEventProcessor> EventProcessor = MakeShared<FN2CEventProcessor>();
+    TSharedPtr<FN2CStructProcessor> StructProcessor = MakeShared<FN2CStructProcessor>();
+    TSharedPtr<FN2CFlowControlProcessor> FlowControlProcessor = MakeShared<FN2CFlowControlProcessor>();
+    TSharedPtr<FN2CDelegateProcessor> DelegateProcessor = MakeShared<FN2CDelegateProcessor>();
+    TSharedPtr<FN2CFunctionEntryProcessor> FunctionEntryProcessor = MakeShared<FN2CFunctionEntryProcessor>();
     
-    // Use the same processor for similar function call types
-    RegisterProcessor(EN2CNodeType::CallArrayFunction, MakeShared<FN2CFunctionCallProcessor>());
-    RegisterProcessor(EN2CNodeType::CallDataTableFunction, MakeShared<FN2CFunctionCallProcessor>());
-    RegisterProcessor(EN2CNodeType::CallDelegate, MakeShared<FN2CFunctionCallProcessor>());
-    RegisterProcessor(EN2CNodeType::CallFunctionOnMember, MakeShared<FN2CFunctionCallProcessor>());
-    RegisterProcessor(EN2CNodeType::CallMaterialParameterCollection, MakeShared<FN2CFunctionCallProcessor>());
-    RegisterProcessor(EN2CNodeType::CallParentFunction, MakeShared<FN2CFunctionCallProcessor>());
+    // Register function call processors
+    RegisterProcessor(EN2CNodeType::CallFunction, FunctionCallProcessor);
+    RegisterProcessor(EN2CNodeType::CallArrayFunction, FunctionCallProcessor);
+    RegisterProcessor(EN2CNodeType::CallDataTableFunction, FunctionCallProcessor);
+    RegisterProcessor(EN2CNodeType::CallFunctionOnMember, FunctionCallProcessor);
+    RegisterProcessor(EN2CNodeType::CallMaterialParameterCollection, FunctionCallProcessor);
+    RegisterProcessor(EN2CNodeType::CallParentFunction, FunctionCallProcessor);
+    RegisterProcessor(EN2CNodeType::GetDataTableRow, FunctionCallProcessor);
     
-    // TODO: Add more specialized processors for other node types
+    // Register variable processors
+    RegisterProcessor(EN2CNodeType::Variable, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::VariableGet, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::VariableSet, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::VariableSetRef, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::LocalVariable, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::LocalVariableGet, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::LocalVariableSet, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::FunctionParameter, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::LocalFunctionVariable, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::MakeVariable, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::TemporaryVariable, VariableProcessor);
+    RegisterProcessor(EN2CNodeType::SetVariableOnPersistentFrame, VariableProcessor);
+    
+    // Register event processors
+    RegisterProcessor(EN2CNodeType::Event, EventProcessor);
+    RegisterProcessor(EN2CNodeType::CustomEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::ActorBoundEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::ComponentBoundEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputAction, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputActionEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputAxisEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputAxisKeyEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputKey, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputKeyEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputTouch, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputTouchEvent, EventProcessor);
+    RegisterProcessor(EN2CNodeType::InputVectorAxisEvent, EventProcessor);
+    
+    // Register struct processors
+    RegisterProcessor(EN2CNodeType::MakeStruct, StructProcessor);
+    RegisterProcessor(EN2CNodeType::BreakStruct, StructProcessor);
+    RegisterProcessor(EN2CNodeType::SetFieldsInStruct, StructProcessor);
+    RegisterProcessor(EN2CNodeType::StructMemberGet, StructProcessor);
+    RegisterProcessor(EN2CNodeType::StructMemberSet, StructProcessor);
+    RegisterProcessor(EN2CNodeType::StructOperation, StructProcessor);
+    
+    // Register flow control processors
+    RegisterProcessor(EN2CNodeType::Sequence, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::Branch, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::Select, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::Switch, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::SwitchInt, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::SwitchString, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::SwitchEnum, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::SwitchName, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::MultiGate, FlowControlProcessor);
+    RegisterProcessor(EN2CNodeType::DoOnceMultiInput, FlowControlProcessor);
+    
+    // Register delegate processors
+    RegisterProcessor(EN2CNodeType::CallDelegate, DelegateProcessor);
+    RegisterProcessor(EN2CNodeType::CreateDelegate, DelegateProcessor);
+    RegisterProcessor(EN2CNodeType::AddDelegate, DelegateProcessor);
+    RegisterProcessor(EN2CNodeType::ClearDelegate, DelegateProcessor);
+    RegisterProcessor(EN2CNodeType::RemoveDelegate, DelegateProcessor);
+    RegisterProcessor(EN2CNodeType::AssignDelegate, DelegateProcessor);
+    RegisterProcessor(EN2CNodeType::DelegateSet, DelegateProcessor);
+    RegisterProcessor(EN2CNodeType::BaseMCDelegate, DelegateProcessor);
+    
+    // Register function entry/result processors
+    RegisterProcessor(EN2CNodeType::FunctionEntry, FunctionEntryProcessor);
+    RegisterProcessor(EN2CNodeType::FunctionResult, FunctionEntryProcessor);
+    RegisterProcessor(EN2CNodeType::FunctionTerminator, FunctionEntryProcessor);
+    RegisterProcessor(EN2CNodeType::MacroInstance, FunctionEntryProcessor);
 }

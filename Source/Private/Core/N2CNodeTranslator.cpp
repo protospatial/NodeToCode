@@ -952,180 +952,8 @@ void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
         return;
     }
 
-    // Handle function-based nodes
-    if (UK2Node_CallFunction* FuncNode = Cast<UK2Node_CallFunction>(Node))
-    {
-        if (UFunction* Function = FuncNode->GetTargetFunction())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(Function->GetOwnerClass()->GetName());
-            OutNodeDef.MemberName = GetCleanClassName(Function->GetName());
-            OutNodeDef.bLatent = FuncNode->IsLatentFunction();
-        }
-    }
-
-    // Handle event nodes
-    else if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
-    {
-        OutNodeDef.MemberName = GetCleanClassName(EventNode->EventReference.GetMemberName().ToString());
-        if (UClass* EventClass = EventNode->EventReference.GetMemberParentClass())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(EventClass->GetPathName());
-        }
-    }
-
-    // Handle make struct nodes. Placing inside of variable check due to being a considered
-    // a variable before being considered a MakeStruct node.
-    else if (UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node))
-    {
-        if (UScriptStruct* Struct = MakeStructNode->StructType)
-        {
-            OutNodeDef.Name = FString::Printf(TEXT("Make %s"), *Struct->GetName());
-            OutNodeDef.MemberName = GetCleanClassName(Struct->GetName());
-
-            // Get the path name and extract just the base name before the period
-            const FString FullPath = Struct->GetStructPathName().ToString();
-            int32 DotIndex;                                                                                                                                                                                                                
-            if (FullPath.FindChar('.', DotIndex))                                                                                                                                                                                          
-            {                                                                                                                                                                                                                              
-                OutNodeDef.MemberParent = GetCleanClassName(FullPath.Left(DotIndex));                                                                                                                                                                         
-            }                                                                                                                                                                                                                              
-            else                                                                                                                                                                                                                           
-            {                                                                                                                                                                                                                              
-                OutNodeDef.MemberParent = FullPath;                                                                                                                                                                                        
-            }
-            
-         return;
-            
-        }
-    }
-    
-    // Handle variable nodes
-    else if (UK2Node_Variable* VarNode = Cast<UK2Node_Variable>(Node))
-    {
-        // Get variable reference info
-        const FMemberReference& VarRef = VarNode->VariableReference;
-
-        OutNodeDef.Name = VarNode->GetVarNameString();
-        
-        // Get member name safely
-        FName MemberName = VarRef.GetMemberName();
-        if (!MemberName.IsNone())
-        {
-            OutNodeDef.MemberName = GetCleanClassName(MemberName.ToString());
-        }
-        else if (UEdGraph* Graph = Node->GetGraph())
-        {
-            // Fallback to a generated name using the graph
-            OutNodeDef.MemberName = FString::Printf(TEXT("Var_%s_%d"), 
-                *Graph->GetName(),
-                Node->GetUniqueID());
-        }
-        else
-        {
-            OutNodeDef.MemberName = FString::Printf(TEXT("UnknownVariable"));
-        }
-        
-        // For variable nodes, we want the pin type info as the MemberParent
-        // since it represents the variable's type
-        for (UEdGraphPin* Pin : VarNode->Pins)
-        {
-            if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory != FName("exec"))
-            {
-                // Start with required PinCategory
-                TArray<FString> TypeParts;
-                TypeParts.Add(GetCleanClassName(Pin->PinType.PinCategory.ToString()));
-                
-                // Add optional parts if they exist and aren't "None"
-                if (!Pin->PinType.PinSubCategory.IsNone() && !Pin->PinType.PinSubCategory.ToString().IsEmpty())
-                {
-                    TypeParts.Add(GetCleanClassName(Pin->PinType.PinSubCategory.ToString()));
-                }
-                
-                if (Pin->PinType.PinSubCategoryObject.IsValid())
-                {
-                    TypeParts.Add(GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName()));
-                }
-                
-                if (!Pin->PinType.PinSubCategoryMemberReference.MemberName.IsNone())
-                {
-                    TypeParts.Add(GetCleanClassName(Pin->PinType.PinSubCategoryMemberReference.MemberName.ToString()));
-                }
-                
-                // Join with forward slashes
-                OutNodeDef.MemberParent = FString::Join(TypeParts, TEXT("/"));
-                break;
-            }
-        }
-    }
-
-    // Handle struct operation nodes
-    else if (UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node))
-    {
-        if (UScriptStruct* Struct = StructNode->StructType)
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(Struct->GetName());
-        }
-    }
-
-    // Handle actor bound events
-    else if (UK2Node_ActorBoundEvent* ActorEventNode = Cast<UK2Node_ActorBoundEvent>(Node))
-    {
-        OutNodeDef.MemberName = ActorEventNode->DelegatePropertyName.ToString();
-        if (UClass* DelegateClass = ActorEventNode->DelegateOwnerClass)
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
-        }
-    }
-
-    // Handle component bound events
-    else if (UK2Node_ComponentBoundEvent* CompEventNode = Cast<UK2Node_ComponentBoundEvent>(Node))
-    {
-        OutNodeDef.MemberName = CompEventNode->DelegatePropertyName.ToString();
-        if (UClass* DelegateClass = CompEventNode->DelegateOwnerClass)
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
-        }
-    }
-
-    // Handle custom events
-    else if (UK2Node_CustomEvent* CustomEventNode = Cast<UK2Node_CustomEvent>(Node))
-    {
-        OutNodeDef.MemberName = CustomEventNode->CustomFunctionName.ToString();
-        if (UBlueprint* BP = CustomEventNode->GetBlueprint())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-        }
-    }
-
-    // Handle function entry/result nodes
-    else if (UK2Node_FunctionEntry* FuncEntryNode = Cast<UK2Node_FunctionEntry>(Node))
-    {
-        OutNodeDef.MemberName = FuncEntryNode->CustomGeneratedFunctionName.ToString();
-        if (UBlueprint* BP = FuncEntryNode->GetBlueprint())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-        }
-    }
-    else if (UK2Node_FunctionResult* FuncResultNode = Cast<UK2Node_FunctionResult>(Node))
-    {
-        if (UBlueprint* BP = FuncResultNode->GetBlueprint())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-        }
-    }
-
-    // Handle delegate nodes
-    else if (UK2Node_BaseMCDelegate* DelegateNode = Cast<UK2Node_BaseMCDelegate>(Node))
-    {
-        OutNodeDef.MemberName = DelegateNode->DelegateReference.GetMemberName().ToString();
-        if (UClass* DelegateClass = DelegateNode->DelegateReference.GetMemberParentClass())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
-        }
-    }
-
     // Handle component add nodes
-    else if (UK2Node_AddComponent* AddCompNode = Cast<UK2Node_AddComponent>(Node))
+    if (UK2Node_AddComponent* AddCompNode = Cast<UK2Node_AddComponent>(Node))
     {
         if (UClass* ComponentClass = AddCompNode->TemplateType)
         {
@@ -1143,30 +971,21 @@ void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
         }
     }
 
-    // Handle macro instance nodes
-    else if (UK2Node_MacroInstance* MacroNode = Cast<UK2Node_MacroInstance>(Node))
+    // Mark latent/async nodes
+    if (Node->IsA<UK2Node_AsyncAction>() || 
+        Node->IsA<UK2Node_BaseAsyncTask>() ||
+        Node->IsA<UK2Node_Timeline>() ||
+        (Node->IsA<UK2Node_CallFunction>() && Cast<UK2Node_CallFunction>(Node)->IsLatentFunction()))
     {
-        if (UEdGraph* MacroGraph = MacroNode->GetMacroGraph())
-        {
-            OutNodeDef.MemberName = GetCleanClassName(MacroGraph->GetName());
-            if (UBlueprint* BP = Cast<UBlueprint>(MacroGraph->GetOuter()))
-            {
-                OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-            }
-        }
+        OutNodeDef.bLatent = true;
     }
     
-    // Handle create delegate nodes
-    else if (UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
+    // Process graph references for certain node types
+    if (UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
     {
-        OutNodeDef.MemberName = GetCleanClassName(CreateDelegateNode->GetFunctionName().ToString());
-        
-        // Try to get the scope class first since it's more reliable
+        // Try to find and add the function graph
         if (UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
         {
-            OutNodeDef.MemberParent = GetCleanClassName(ScopeClass->GetName());
-            
-            // Try to find and add the function graph
             if (UBlueprint* BP = Cast<UBlueprint>(ScopeClass->ClassGeneratedBy))
             {
                 for (UEdGraph* FuncGraph : BP->FunctionGraphs)
@@ -1179,43 +998,23 @@ void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
                 }
             }
         }
-        // Fallback to delegate signature if scope class isn't available
         else if (UFunction* DelegateSignature = CreateDelegateNode->GetDelegateSignature())
         {
-            if (UClass* OwnerClass = DelegateSignature->GetOwnerClass())
+            if (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(DelegateSignature->GetOwnerClass()))
             {
-                OutNodeDef.MemberParent = GetCleanClassName(OwnerClass->GetName());
-                
-                if (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(OwnerClass))
+                if (UBlueprint* FunctionBlueprint = Cast<UBlueprint>(BlueprintClass->ClassGeneratedBy))
                 {
-                    if (UBlueprint* FunctionBlueprint = Cast<UBlueprint>(BlueprintClass->ClassGeneratedBy))
+                    // Find and add the function graph
+                    for (UEdGraph* FuncGraph : FunctionBlueprint->FunctionGraphs)
                     {
-                        // Find and add the function graph
-                        for (UEdGraph* FuncGraph : FunctionBlueprint->FunctionGraphs)
+                        if (FuncGraph && FuncGraph->GetFName() == DelegateSignature->GetFName())
                         {
-                            if (FuncGraph && FuncGraph->GetFName() == DelegateSignature->GetFName())
-                            {
-                                AddGraphToProcess(FuncGraph);
-                                break;
-                            }
+                            AddGraphToProcess(FuncGraph);
+                            break;
                         }
                     }
                 }
             }
         }
-        
-        if (OutNodeDef.MemberParent.IsEmpty())
-        {
-            FN2CLogger::Get().LogWarning(TEXT("Could not determine owner class for CreateDelegate node"));
-        }
-    }
-
-    // Mark latent/async nodes
-    if (Node->IsA<UK2Node_AsyncAction>() || 
-        Node->IsA<UK2Node_BaseAsyncTask>() ||
-        Node->IsA<UK2Node_Timeline>() ||
-        (Node->IsA<UK2Node_CallFunction>() && Cast<UK2Node_CallFunction>(Node)->IsLatentFunction()))
-    {
-        OutNodeDef.bLatent = true;
     }
 }

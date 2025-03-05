@@ -5,6 +5,16 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
+// Include processor headers
+#include "Utils/Processors/N2CBaseNodeProcessor.h"
+#include "Utils/Processors/N2CFunctionCallProcessor.h"
+#include "Utils/Processors/N2CVariableProcessor.h"
+#include "Utils/Processors/N2CEventProcessor.h"
+#include "Utils/Processors/N2CStructProcessor.h"
+#include "Utils/Processors/N2CFlowControlProcessor.h"
+#include "Utils/Processors/N2CDelegateProcessor.h"
+#include "Utils/Processors/N2CFunctionEntryProcessor.h"
+
 /**
  * @class FNodeToCodeModule
  * @brief Main module implementation for the Node to Code plugin
