@@ -4,7 +4,7 @@
 
 #include "Core/N2CSettings.h"
 #include "Utils/N2CLogger.h"
-#include "Utils/N2CNodeTypeHelper.h"
+#include "Utils/N2CNodeTypeRegistry.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectBase.h"
@@ -395,7 +395,7 @@ EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
 
 void FN2CNodeTranslator::DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType)
 {
-    FN2CNodeTypeHelper::DetermineNodeType(Node, OutType);
+    OutType = FN2CNodeTypeRegistry::Get().GetNodeType(Node);
 }
 
 EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
@@ -485,18 +485,28 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
     // Determine node type
     DetermineNodeType(Node, OutNodeDef.NodeType);
 
-    // Set node name
-    OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
-
-    // Determine node specific data directly such as
-    // MemberParent, MemberName, bLatent, 
-    DetermineNodeSpecificProperties(Node, OutNodeDef);
-    
-    // Extract comments if present
-    if (Node->NodeComment.Len() > 0) { OutNodeDef.Comment = Node->NodeComment; }
-    
-    // Set purity from node
-    OutNodeDef.bPure = Node->IsNodePure();
+    // Get the appropriate processor for this node type
+    TSharedPtr<IN2CNodeProcessor> Processor = FN2CNodeProcessorFactory::Get().GetProcessor(OutNodeDef.NodeType);
+    if (Processor.IsValid())
+    {
+        // Process the node using the processor
+        if (!Processor->Process(Node, OutNodeDef))
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node processor failed for node type %s"),
+                *StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType))));
+            
+            // Fall back to the old method if processor fails
+            FallbackProcessNodeProperties(Node, OutNodeDef);
+        }
+    }
+    else
+    {
+        // Fall back to the old method if no processor is available
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("No processor available for node type %s"),
+            *StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType))));
+        
+        FallbackProcessNodeProperties(Node, OutNodeDef);
+    }
 
     // Check for nested graphs that might need processing
     if (UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(Node))
@@ -534,6 +544,22 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
             }
         }
     }
+}
+
+void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+{
+    // Set node name
+    OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
+
+    // Determine node specific data directly such as
+    // MemberParent, MemberName, bLatent, 
+    DetermineNodeSpecificProperties(Node, OutNodeDef);
+    
+    // Extract comments if present
+    if (Node->NodeComment.Len() > 0) { OutNodeDef.Comment = Node->NodeComment; }
+    
+    // Set purity from node
+    OutNodeDef.bPure = Node->IsNodePure();
 }
 
 void FN2CNodeTranslator::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)

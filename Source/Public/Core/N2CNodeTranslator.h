@@ -6,6 +6,8 @@
 #include "Models/N2CBlueprint.h"
 #include "EdGraph/EdGraphNode.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
+#include "Utils/Processors/N2CNodeProcessor.h"
+#include "Utils/Processors/N2CNodeProcessorFactory.h"
 
 /**
  * @class FN2CNodeTranslator
@@ -66,6 +68,9 @@ private:
 
     /** Current processing depth */
     int32 CurrentDepth = 0;
+    
+    /** Fallback method for processing node properties when no processor is available */
+    void FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Process a single graph */
     bool ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType);

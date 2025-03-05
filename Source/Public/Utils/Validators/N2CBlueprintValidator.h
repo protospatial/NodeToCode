@@ -17,18 +17,18 @@ public:
     /** Validate a blueprint definition */
     bool Validate(const FN2CBlueprint& Blueprint, FString& OutError);
     
+    /** Validate a single graph */
+    bool ValidateGraph(const FN2CGraph& Graph, FString& OutError);
+    
+    /** Validate flow references in a graph */
+    bool ValidateFlowReferences(const FN2CGraph& Graph, FString& OutError);
+    
 private:
     /** Validate required fields */
     bool ValidateRequired(const FN2CBlueprint& Blueprint, FString& OutError);
     
     /** Validate all graphs in the blueprint */
     bool ValidateGraphs(const FN2CBlueprint& Blueprint, FString& OutError);
-    
-    /** Validate a single graph */
-    bool ValidateGraph(const FN2CGraph& Graph, FString& OutError);
-    
-    /** Validate flow references in a graph */
-    bool ValidateFlowReferences(const FN2CGraph& Graph, FString& OutError);
     
     /** Node validator instance */
     FN2CNodeValidator NodeValidator;
