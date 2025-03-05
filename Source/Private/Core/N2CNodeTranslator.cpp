@@ -1023,24 +1023,27 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
         return EN2CStructMemberType::Int; // Default
     }
     
-    if (Property->IsA<UBoolProperty>())
+    // Use class name string comparison instead of IsA<>
+    const FString PropertyClassName = Property->GetClass()->GetName();
+    
+    if (PropertyClassName == TEXT("BoolProperty"))
         return EN2CStructMemberType::Bool;
-    if (Property->IsA<UByteProperty>())
+    if (PropertyClassName == TEXT("ByteProperty"))
         return EN2CStructMemberType::Byte;
-    if (Property->IsA<UIntProperty>() || Property->IsA<UInt64Property>())
+    if (PropertyClassName == TEXT("IntProperty") || PropertyClassName == TEXT("Int64Property"))
         return EN2CStructMemberType::Int;
-    if (Property->IsA<UFloatProperty>() || Property->IsA<UDoubleProperty>())
+    if (PropertyClassName == TEXT("FloatProperty") || PropertyClassName == TEXT("DoubleProperty"))
         return EN2CStructMemberType::Float;
-    if (Property->IsA<UStrProperty>())
+    if (PropertyClassName == TEXT("StrProperty"))
         return EN2CStructMemberType::String;
-    if (Property->IsA<UNameProperty>())
+    if (PropertyClassName == TEXT("NameProperty"))
         return EN2CStructMemberType::Name;
-    if (Property->IsA<UTextProperty>())
+    if (PropertyClassName == TEXT("TextProperty"))
         return EN2CStructMemberType::Text;
     
-    if (Property->IsA<UStructProperty>())
+    if (PropertyClassName == TEXT("StructProperty"))
     {
-        UStructProperty* StructProp = static_cast<UStructProperty*>(Property);
+        UStructProperty* StructProp = (UStructProperty*)Property;
         if (StructProp->Struct->GetFName() == NAME_Vector)
             return EN2CStructMemberType::Vector;
         if (StructProp->Struct->GetFName() == NAME_Vector2D)
@@ -1053,11 +1056,11 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
         return EN2CStructMemberType::Struct;
     }
 
-    if (Property->IsA<UEnumProperty>())
+    if (PropertyClassName == TEXT("EnumProperty"))
         return EN2CStructMemberType::Enum;
-    if (Property->IsA<UClassProperty>())
+    if (PropertyClassName == TEXT("ClassProperty"))
         return EN2CStructMemberType::Class;
-    if (Property->IsA<UObjectProperty>())
+    if (PropertyClassName == TEXT("ObjectProperty"))
         return EN2CStructMemberType::Object;
 
     return EN2CStructMemberType::Custom; // For any other types
@@ -1070,9 +1073,13 @@ void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
         return;
     }
     
-    // Check for struct nodes
-    if (UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node))
+    // Check for struct nodes - use string comparison for class names
+    const FString NodeClassName = Node->GetClass()->GetName();
+    
+    // Check for struct operation nodes
+    if (NodeClassName.Contains(TEXT("K2Node_StructOperation")))
     {
+        UK2Node_StructOperation* StructNode = (UK2Node_StructOperation*)Node;
         if (UScriptStruct* Struct = StructNode->StructType)
         {
             if (IsBlueprintStruct(Struct))
@@ -1092,8 +1099,9 @@ void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
     }
     
     // Check make struct nodes
-    if (UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node))
+    if (NodeClassName.Contains(TEXT("K2Node_MakeStruct")))
     {
+        UK2Node_MakeStruct* MakeStructNode = (UK2Node_MakeStruct*)Node;
         if (UScriptStruct* Struct = MakeStructNode->StructType)
         {
             if (IsBlueprintStruct(Struct))
@@ -1113,8 +1121,9 @@ void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
     }
     
     // Check break struct nodes
-    if (UK2Node_BreakStruct* BreakStructNode = Cast<UK2Node_BreakStruct>(Node))
+    if (NodeClassName.Contains(TEXT("K2Node_BreakStruct")))
     {
+        UK2Node_BreakStruct* BreakStructNode = (UK2Node_BreakStruct*)Node;
         if (UScriptStruct* Struct = BreakStructNode->StructType)
         {
             if (IsBlueprintStruct(Struct))
@@ -1142,7 +1151,7 @@ void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
         // Check for struct types
         if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct)
         {
-            UScriptStruct* Struct = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
+            UScriptStruct* Struct = (UScriptStruct*)Pin->PinType.PinSubCategoryObject.Get();
             if (Struct && IsBlueprintStruct(Struct))
             {
                 FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
@@ -1162,7 +1171,7 @@ void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
         else if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte ||
                  Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
         {
-            UEnum* Enum = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
+            UEnum* Enum = (UEnum*)Pin->PinType.PinSubCategoryObject.Get();
             if (Enum && IsBlueprintEnum(Enum))
             {
                 FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
@@ -1284,20 +1293,24 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
      // Determine member type
      Member.Type = ConvertPropertyToStructMemberType(Property);
 
+     // Use class name string comparison instead of IsA<>
+     const FString PropertyClassName = Property->GetClass()->GetName();
+
      // Handle container types
-     if (Property->IsA<UArrayProperty>())
+     if (PropertyClassName == TEXT("ArrayProperty"))
      {
          Member.bIsArray = true;
-         UArrayProperty* ArrayProp = static_cast<UArrayProperty*>(Property);
+         UArrayProperty* ArrayProp = (UArrayProperty*)Property;
          UProperty* InnerProp = ArrayProp->Inner;
          if (InnerProp)
          {
              Member.Type = ConvertPropertyToStructMemberType(InnerProp);
 
              // Handle inner struct or enum types
-             if (InnerProp->IsA<UStructProperty>())
+             const FString InnerPropClassName = InnerProp->GetClass()->GetName();
+             if (InnerPropClassName == TEXT("StructProperty"))
              {
-                 UStructProperty* InnerStructProp = static_cast<UStructProperty*>(InnerProp);
+                 UStructProperty* InnerStructProp = (UStructProperty*)InnerProp;
                  Member.TypeName = InnerStructProp->Struct->GetName();
 
                  // Process nested struct if it's Blueprint-defined
@@ -1310,9 +1323,9 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                      }
                  }
              }
-             else if (InnerProp->IsA<UEnumProperty>())
+             else if (InnerPropClassName == TEXT("EnumProperty"))
              {
-                 UEnumProperty* InnerEnumProp = static_cast<UEnumProperty*>(InnerProp);
+                 UEnumProperty* InnerEnumProp = (UEnumProperty*)InnerProp;
                  Member.TypeName = InnerEnumProp->Enum->GetName();
 
                  // Process enum if it's Blueprint-defined
@@ -1327,12 +1340,12 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
              }
          }
      }
-     else if (Property->IsA<USetProperty>())
+     else if (PropertyClassName == TEXT("SetProperty"))
      {
          Member.bIsSet = true;
          // Similar logic for sets as for arrays
      }
-     else if (Property->IsA<UMapProperty>())
+     else if (PropertyClassName == TEXT("MapProperty"))
      {
          Member.bIsMap = true;
          // Handle key and value types for maps
@@ -1340,9 +1353,9 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
      else
      {
          // Handle non-container types
-         if (Property->IsA<UStructProperty>())
+         if (PropertyClassName == TEXT("StructProperty"))
          {
-             UStructProperty* StructProp = static_cast<UStructProperty*>(Property);
+             UStructProperty* StructProp = (UStructProperty*)Property;
              Member.TypeName = StructProp->Struct->GetName();
 
              // Process nested struct if it's Blueprint-defined
@@ -1355,9 +1368,9 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                  }
              }
          }
-         else if (Property->IsA<UEnumProperty>())
+         else if (PropertyClassName == TEXT("EnumProperty"))
          {
-             UEnumProperty* EnumProp = static_cast<UEnumProperty*>(Property);
+             UEnumProperty* EnumProp = (UEnumProperty*)Property;
              Member.TypeName = EnumProp->Enum->GetName();
 
              // Process enum if it's Blueprint-defined
