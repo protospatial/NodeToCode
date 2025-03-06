@@ -1062,7 +1062,7 @@ bool FN2CNodeTranslator::IsBlueprintEnum(UEnum* Enum) const
            EnumPath.Contains(TEXT("/Content/"));
 }
 
-EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProperty* Property) const
+EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(FProperty* Property) const
 {
     if (!Property)
     {
@@ -1078,45 +1078,45 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
         *PropertyName, *PropertyClassName);
     FN2CLogger::Get().Log(DebugInfo, EN2CLogSeverity::Debug);
     
-    if (PropertyClassName == TEXT("BoolProperty"))
+    if (PropertyClassName == TEXT("FBoolProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Bool type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Bool;
     }
-    if (PropertyClassName == TEXT("ByteProperty"))
+    if (PropertyClassName == TEXT("FByteProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Byte type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Byte;
     }
-    if (PropertyClassName == TEXT("IntProperty") || PropertyClassName == TEXT("Int64Property"))
+    if (PropertyClassName == TEXT("FIntProperty") || PropertyClassName == TEXT("FInt64Property"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Int type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Int;
     }
-    if (PropertyClassName == TEXT("FloatProperty") || PropertyClassName == TEXT("DoubleProperty"))
+    if (PropertyClassName == TEXT("FFloatProperty") || PropertyClassName == TEXT("FDoubleProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Float type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Float;
     }
-    if (PropertyClassName == TEXT("StrProperty"))
+    if (PropertyClassName == TEXT("FStrProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as String type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::String;
     }
-    if (PropertyClassName == TEXT("NameProperty"))
+    if (PropertyClassName == TEXT("FNameProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Name type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Name;
     }
-    if (PropertyClassName == TEXT("TextProperty"))
+    if (PropertyClassName == TEXT("FTextProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Text type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Text;
     }
     
-    if (PropertyClassName == TEXT("StructProperty"))
+    if (PropertyClassName == TEXT("FStructProperty"))
     {
-        UStructProperty* StructProp = (UStructProperty*)Property;
+        FStructProperty* StructProp = CastField<FStructProperty>(Property);
         FString StructName = StructProp->Struct ? StructProp->Struct->GetName() : TEXT("Unknown");
         FString StructPath = StructProp->Struct ? StructProp->Struct->GetPathName() : TEXT("Unknown");
         
@@ -1147,28 +1147,28 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
         return EN2CStructMemberType::Struct;
     }
 
-    if (PropertyClassName == TEXT("EnumProperty"))
+    if (PropertyClassName == TEXT("FEnumProperty"))
     {
-        UEnumProperty* EnumProp = (UEnumProperty*)Property;
-        FString EnumName = EnumProp->Enum ? EnumProp->Enum->GetName() : TEXT("Unknown");
-        FString EnumPath = EnumProp->Enum ? EnumProp->Enum->GetPathName() : TEXT("Unknown");
+        FEnumProperty* EnumProp = CastField<FEnumProperty>(Property);
+        FString EnumName = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetName() : TEXT("Unknown");
+        FString EnumPath = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetPathName() : TEXT("Unknown");
         
         FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Enum type: %s (Path: %s)"), 
             *EnumName, *EnumPath), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Enum;
     }
-    if (PropertyClassName == TEXT("ClassProperty"))
+    if (PropertyClassName == TEXT("FClassProperty"))
     {
-        UClassProperty* ClassProp = (UClassProperty*)Property;
+        FClassProperty* ClassProp = CastField<FClassProperty>(Property);
         FString ClassName = ClassProp->MetaClass ? ClassProp->MetaClass->GetName() : TEXT("Unknown");
         
         FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Class type: %s"), *ClassName), 
             EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Class;
     }
-    if (PropertyClassName == TEXT("ObjectProperty"))
+    if (PropertyClassName == TEXT("FObjectProperty"))
     {
-        UObjectProperty* ObjProp = (UObjectProperty*)Property;
+        FObjectProperty* ObjProp = CastField<FObjectProperty>(Property);
         FString ObjClassName = ObjProp->PropertyClass ? ObjProp->PropertyClass->GetName() : TEXT("Unknown");
         
         FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Object type: %s"), *ObjClassName), 
@@ -1385,7 +1385,7 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
     FN2CLogger::Get().Log(NodeInfo, EN2CLogSeverity::Debug);
 }
 
-FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
+FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
 {
      FN2CStructMember Member;
 
@@ -1420,12 +1420,12 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
      const FString PropertyClassName = Property->GetClass()->GetName();
 
      // Handle container types
-     if (PropertyClassName == TEXT("ArrayProperty"))
+     if (PropertyClassName == TEXT("FArrayProperty"))
      {
          FN2CLogger::Get().Log(TEXT("  -> Processing as Array property"), EN2CLogSeverity::Debug);
          Member.bIsArray = true;
-         UArrayProperty* ArrayProp = (UArrayProperty*)Property;
-         UProperty* InnerProp = ArrayProp->Inner;
+         FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property);
+         FProperty* InnerProp = ArrayProp->Inner;
          if (InnerProp)
          {
              FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array inner type: %s"), 
@@ -1435,9 +1435,9 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
 
              // Handle inner struct or enum types
              const FString InnerPropClassName = InnerProp->GetClass()->GetName();
-             if (InnerPropClassName == TEXT("StructProperty"))
+             if (InnerPropClassName == TEXT("FStructProperty"))
              {
-                 UStructProperty* InnerStructProp = (UStructProperty*)InnerProp;
+                 FStructProperty* InnerStructProp = CastField<FStructProperty>(InnerProp);
                  Member.TypeName = InnerStructProp->Struct->GetName();
                  FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array of struct: %s"), 
                      *Member.TypeName), EN2CLogSeverity::Debug);
@@ -1458,18 +1458,18 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                      }
                  }
              }
-             else if (InnerPropClassName == TEXT("EnumProperty"))
+             else if (InnerPropClassName == TEXT("FEnumProperty"))
              {
-                 UEnumProperty* InnerEnumProp = (UEnumProperty*)InnerProp;
-                 Member.TypeName = InnerEnumProp->Enum->GetName();
+                 FEnumProperty* InnerEnumProp = CastField<FEnumProperty>(InnerProp);
+                 Member.TypeName = InnerEnumProp->GetEnum()->GetName();
                  FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array of enum: %s"), 
                      *Member.TypeName), EN2CLogSeverity::Debug);
 
                  // Process enum if it's Blueprint-defined
-                 if (IsBlueprintEnum(InnerEnumProp->Enum))
+                 if (IsBlueprintEnum(InnerEnumProp->GetEnum()))
                  {
                      FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined nested enum"), EN2CLogSeverity::Debug);
-                     FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->Enum);
+                     FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->GetEnum());
                      if (NestedEnum.IsValid())
                      {
                          N2CBlueprint.Enums.Add(NestedEnum);
@@ -1487,13 +1487,13 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
              FN2CLogger::Get().LogWarning(TEXT("  -> Array property has null inner property"));
          }
      }
-     else if (PropertyClassName == TEXT("SetProperty"))
+     else if (PropertyClassName == TEXT("FSetProperty"))
      {
          FN2CLogger::Get().Log(TEXT("  -> Processing as Set property"), EN2CLogSeverity::Debug);
          Member.bIsSet = true;
          // Similar logic for sets as for arrays
      }
-     else if (PropertyClassName == TEXT("MapProperty"))
+     else if (PropertyClassName == TEXT("FMapProperty"))
      {
          FN2CLogger::Get().Log(TEXT("  -> Processing as Map property"), EN2CLogSeverity::Debug);
          Member.bIsMap = true;
@@ -1502,9 +1502,9 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
      else
      {
          // Handle non-container types
-         if (PropertyClassName == TEXT("StructProperty"))
+         if (PropertyClassName == TEXT("FStructProperty"))
          {
-             UStructProperty* StructProp = (UStructProperty*)Property;
+             FStructProperty* StructProp = CastField<FStructProperty>(Property);
              Member.TypeName = StructProp->Struct->GetName();
              FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Struct type: %s (Path: %s)"), 
                  *Member.TypeName, *StructProp->Struct->GetPathName()), EN2CLogSeverity::Debug);
@@ -1525,18 +1525,18 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                  }
              }
          }
-         else if (PropertyClassName == TEXT("EnumProperty"))
+         else if (PropertyClassName == TEXT("FEnumProperty"))
          {
-             UEnumProperty* EnumProp = (UEnumProperty*)Property;
-             Member.TypeName = EnumProp->Enum->GetName();
+             FEnumProperty* EnumProp = CastField<FEnumProperty>(Property);
+             Member.TypeName = EnumProp->GetEnum()->GetName();
              FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Enum type: %s (Path: %s)"), 
-                 *Member.TypeName, *EnumProp->Enum->GetPathName()), EN2CLogSeverity::Debug);
+                 *Member.TypeName, *EnumProp->GetEnum()->GetPathName()), EN2CLogSeverity::Debug);
 
              // Process enum if it's Blueprint-defined
-             if (IsBlueprintEnum(EnumProp->Enum))
+             if (IsBlueprintEnum(EnumProp->GetEnum()))
              {
                  FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined enum"));
-                 FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->Enum);
+                 FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->GetEnum());
                  if (NestedEnum.IsValid())
                  {
                      N2CBlueprint.Enums.Add(NestedEnum);
@@ -1615,10 +1615,10 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
     
     // Process struct members
     int32 PropertyCount = 0;
-    for (TFieldIterator<UProperty> PropIt(Struct); PropIt; ++PropIt)
+    for (TFieldIterator<FProperty> PropIt(Struct); PropIt; ++PropIt)
     {
         PropertyCount++;
-        if (UProperty* Property = *PropIt)
+        if (FProperty* Property = *PropIt)
         {
             FN2CLogger::Get().Log(
                 FString::Printf(TEXT("Found property #%d: '%s' of class '%s'"), 
@@ -1654,10 +1654,9 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
         {
             FN2CLogger::Get().Log(TEXT("Attempting alternative property access via Children field..."), EN2CLogSeverity::Debug);
             
-            for (UField* Field = BaseStruct->Children; Field; Field = Field->Next)
+            for (FField* Field = BaseStruct->ChildProperties; Field; Field = Field->Next)
             {
-
-                if (UProperty* Property = Cast<UProperty>(Field))
+                if (FProperty* Property = CastField<FProperty>(Field))
                 {
                     FN2CLogger::Get().Log(
                         FString::Printf(TEXT("Found property via Children: '%s' of class '%s'"), 

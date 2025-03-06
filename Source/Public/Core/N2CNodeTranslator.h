@@ -134,10 +134,10 @@ private:
     FN2CEnum ProcessBlueprintEnum(UEnum* Enum);
 
     /** Process a struct member */
-    FN2CStructMember ProcessStructMember(UProperty* Property);
+    FN2CStructMember ProcessStructMember(FProperty* Property);
 
-    /** Convert UProperty type to N2C struct member type */
-    EN2CStructMemberType ConvertPropertyToStructMemberType(UProperty* Property) const;
+    /** Convert FProperty type to N2C struct member type */
+    EN2CStructMemberType ConvertPropertyToStructMemberType(FProperty* Property) const;
 
     /** Process any struct or enum types used in a node */
     void ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
