@@ -969,7 +969,7 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     // Log all enum names and values for debugging
     for (int32 i = 0; i < NumEnums; ++i)
     {
-        FString ValueName = Enum->GetNameStringByIndex(i);
+        FString ValueName = Enum->GetDisplayNameTextByIndex(i).ToString();
         int64 ValueInt = Enum->GetValueByIndex(i);
         
         FN2CLogger::Get().Log(
@@ -986,7 +986,7 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
         if (bIsHidden)
         {
             FN2CLogger::Get().Log(
-                FString::Printf(TEXT("  -> Value '%s' appears to be a hidden/generated value"), *ValueName),
+                FString::Printf(TEXT("  -> Value '%s' appears to be the Bitmask Flags field"), *ValueName),
                 EN2CLogSeverity::Debug);
         }
         
@@ -1078,43 +1078,43 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(FProp
         *PropertyName, *PropertyClassName);
     FN2CLogger::Get().Log(DebugInfo, EN2CLogSeverity::Debug);
     
-    if (PropertyClassName == TEXT("FBoolProperty"))
+    if (PropertyClassName == TEXT("BoolProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Bool type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Bool;
     }
-    if (PropertyClassName == TEXT("FByteProperty"))
+    if (PropertyClassName == TEXT("ByteProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Byte type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Byte;
     }
-    if (PropertyClassName == TEXT("FIntProperty") || PropertyClassName == TEXT("FInt64Property"))
+    if (PropertyClassName == TEXT("IntProperty") || PropertyClassName == TEXT("FInt64Property"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Int type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Int;
     }
-    if (PropertyClassName == TEXT("FFloatProperty") || PropertyClassName == TEXT("FDoubleProperty"))
+    if (PropertyClassName == TEXT("FloatProperty") || PropertyClassName == TEXT("FDoubleProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Float type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Float;
     }
-    if (PropertyClassName == TEXT("FStrProperty"))
+    if (PropertyClassName == TEXT("StrProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as String type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::String;
     }
-    if (PropertyClassName == TEXT("FNameProperty"))
+    if (PropertyClassName == TEXT("NameProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Name type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Name;
     }
-    if (PropertyClassName == TEXT("FTextProperty"))
+    if (PropertyClassName == TEXT("TextProperty"))
     {
         FN2CLogger::Get().Log(TEXT("  -> Identified as Text type"), EN2CLogSeverity::Debug);
         return EN2CStructMemberType::Text;
     }
     
-    if (PropertyClassName == TEXT("FStructProperty"))
+    if (PropertyClassName == TEXT("StructProperty"))
     {
         FStructProperty* StructProp = CastField<FStructProperty>(Property);
         FString StructName = StructProp->Struct ? StructProp->Struct->GetName() : TEXT("Unknown");
@@ -1396,7 +1396,7 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
      }
 
      // Set member name
-     Member.Name = Property->GetName();
+     Member.Name = Property->NamePrivate.ToString();
      
      FString DebugInfo = FString::Printf(TEXT("ProcessStructMember: Processing property '%s' of class '%s'"), 
          *Member.Name, *Property->GetClass()->GetName());
