@@ -978,7 +978,9 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
             
         // Check if this is a hidden enum value (like _MAX or similar)
         bool bIsHidden = ValueName.Contains(TEXT("_MAX")) || 
-                         ValueName.Contains(TEXT("MAX_")) || 
+                         ValueName.Contains(TEXT("MAX_")) ||
+                         ValueName.Contains(TEXT("E MAX")) ||
+                         ValueName.Contains(TEXT("MAX")) ||
                          ValueName.StartsWith(TEXT("_")) ||
                          ValueName.EndsWith(TEXT("_None"));
                          
@@ -1380,27 +1382,27 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
 FString FN2CNodeTranslator::CleanPropertyName(const FString& RawName) const
 {
     FString CleanName = RawName;
-    
-    // Find the first underscore followed by a number
-    int32 UnderscorePos = -1;
-    for (int32 i = 0; i < CleanName.Len(); ++i)
+
+    // Look for pattern: _##_GUID where ## is 1-3 digits
+    // This matches patterns like _8_FA2E526ECD4A7D7CEB62D89E0B51D8C8
+    static const FRegexPattern PropertySuffixPattern(TEXT("_\\d{1,3}_[0-9A-F]{32}$"));
+    FRegexMatcher Matcher(PropertySuffixPattern, CleanName);
+
+    if (Matcher.FindNext())
     {
-        if (CleanName[i] == '_' && i + 1 < CleanName.Len() && FChar::IsDigit(CleanName[i + 1]))
+     // Get the position where the pattern starts
+     int32 MatchStart = Matcher.GetMatchBeginning();
+
+        // Remove the pattern
+        if (MatchStart > 0)
         {
-            UnderscorePos = i;
-            break;
+         CleanName = CleanName.Left(MatchStart);
+         FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned property name from '%s' to '%s'"),
+             *RawName, *CleanName), EN2CLogSeverity::Debug);
         }
     }
-    
-    // If we found an underscore followed by a number, remove everything after it
-    if (UnderscorePos >= 0)
-    {
-        CleanName = CleanName.Left(UnderscorePos);
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned property name from '%s' to '%s'"), 
-            *RawName, *CleanName), EN2CLogSeverity::Debug);
-    }
-    
-    return CleanName;
+
+ return CleanName;
 }
 
 FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
