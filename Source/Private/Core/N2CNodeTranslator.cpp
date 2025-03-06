@@ -1066,7 +1066,7 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
 {
     if (!Property)
     {
-        FN2CLogger::Get().LogWarning(TEXT("ConvertPropertyToStructMemberType: Null property provided"), EN2CLogSeverity::Warning);
+        FN2CLogger::Get().LogWarning(TEXT("ConvertPropertyToStructMemberType: Null property provided"));
         return EN2CStructMemberType::Int; // Default
     }
     
@@ -1150,8 +1150,8 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(UProp
     if (PropertyClassName == TEXT("EnumProperty"))
     {
         UEnumProperty* EnumProp = (UEnumProperty*)Property;
-        FString EnumName = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetName() : TEXT("Unknown");
-        FString EnumPath = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetPathName() : TEXT("Unknown");
+        FString EnumName = EnumProp->Enum ? EnumProp->Enum->GetName() : TEXT("Unknown");
+        FString EnumPath = EnumProp->Enum ? EnumProp->Enum->GetPathName() : TEXT("Unknown");
         
         FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Enum type: %s (Path: %s)"), 
             *EnumName, *EnumPath), EN2CLogSeverity::Debug);
@@ -1454,7 +1454,7 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                      }
                      else
                      {
-                         FN2CLogger::Get().LogWarning(TEXT("  -> Nested struct validation failed"), EN2CLogSeverity::Warning);
+                         FN2CLogger::Get().LogWarning(TEXT("  -> Nested struct validation failed"));
                      }
                  }
              }
@@ -1477,14 +1477,14 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                      }
                      else
                      {
-                         FN2CLogger::Get().LogWarning(TEXT("  -> Nested enum validation failed"), EN2CLogSeverity::Warning);
+                         FN2CLogger::Get().LogWarning(TEXT("  -> Nested enum validation failed"));
                      }
                  }
              }
          }
          else
          {
-             FN2CLogger::Get().LogWarning(TEXT("  -> Array property has null inner property"), EN2CLogSeverity::Warning);
+             FN2CLogger::Get().LogWarning(TEXT("  -> Array property has null inner property"));
          }
      }
      else if (PropertyClassName == TEXT("SetProperty"))
@@ -1521,7 +1521,7 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                  }
                  else
                  {
-                     FN2CLogger::Get().LogWarning(TEXT("  -> Struct validation failed"), EN2CLogSeverity::Warning);
+                     FN2CLogger::Get().LogWarning(TEXT("  -> Struct validation failed"));
                  }
              }
          }
@@ -1535,7 +1535,7 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
              // Process enum if it's Blueprint-defined
              if (IsBlueprintEnum(EnumProp->Enum))
              {
-                 FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined enum"), EN2CLogSeverity::Debug);
+                 FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined enum"));
                  FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->Enum);
                  if (NestedEnum.IsValid())
                  {
@@ -1544,7 +1544,7 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(UProperty* Property)
                  }
                  else
                  {
-                     FN2CLogger::Get().LogWarning(TEXT("  -> Enum validation failed"), EN2CLogSeverity::Warning);
+                     FN2CLogger::Get().LogWarning(TEXT("  -> Enum validation failed"));
                  }
              }
          }
@@ -1618,8 +1618,7 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
     for (TFieldIterator<UProperty> PropIt(Struct); PropIt; ++PropIt)
     {
         PropertyCount++;
-        UProperty* Property = *PropIt;
-        if (Property)
+        if (UProperty* Property = *PropIt)
         {
             FN2CLogger::Get().Log(
                 FString::Printf(TEXT("Found property #%d: '%s' of class '%s'"), 
@@ -1640,16 +1639,14 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
         else
         {
             FN2CLogger::Get().LogWarning(
-                FString::Printf(TEXT("Null property found at index %d"), PropertyCount),
-                EN2CLogSeverity::Warning);
+                FString::Printf(TEXT("Null property found at index %d"), PropertyCount));
         }
     }
     
     if (PropertyCount == 0)
     {
         FN2CLogger::Get().LogWarning(
-            FString::Printf(TEXT("No properties found in struct '%s' - TFieldIterator returned no results"), *StructName),
-            EN2CLogSeverity::Warning);
+            FString::Printf(TEXT("No properties found in struct '%s' - TFieldIterator returned no results"), *StructName));
             
         // Try alternative property access if available
         UStruct* BaseStruct = Cast<UStruct>(Struct);
@@ -1659,8 +1656,8 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
             
             for (UField* Field = BaseStruct->Children; Field; Field = Field->Next)
             {
-                UProperty* Property = Cast<UProperty>(Field);
-                if (Property)
+
+                if (UProperty* Property = Cast<UProperty>(Field))
                 {
                     FN2CLogger::Get().Log(
                         FString::Printf(TEXT("Found property via Children: '%s' of class '%s'"), 
