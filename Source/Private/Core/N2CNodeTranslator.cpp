@@ -918,6 +918,12 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     
     // Get enum path
     FString EnumPath = Enum->GetPathName();
+    FString EnumName = Enum->GetName();
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("ProcessBlueprintEnum: Processing enum '%s' (Path: %s)"), 
+            *EnumName, *EnumPath),
+        EN2CLogSeverity::Info);
     
     // Check if we've already processed this enum
     if (ProcessedEnumPaths.Contains(EnumPath))
@@ -930,33 +936,73 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     
     // Mark as processed
     ProcessedEnumPaths.Add(EnumPath);
+    FN2CLogger::Get().Log(TEXT("Added enum to processed paths"), EN2CLogSeverity::Debug);
     
     // Set basic enum info
-    Result.Name = Enum->GetName();
+    Result.Name = EnumName;
     Result.Path = EnumPath;
     Result.bIsBlueprintEnum = IsBlueprintEnum(Enum);
     
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Enum details: Name=%s, IsBlueprintEnum=%s"), 
+            *Result.Name, 
+            Result.bIsBlueprintEnum ? TEXT("true") : TEXT("false")),
+        EN2CLogSeverity::Debug);
+    
     // Get enum comment if available
     FString EnumComment = Enum->GetMetaData(TEXT("ToolTip"));
+    
     if (!EnumComment.IsEmpty())
     {
         Result.Comment = EnumComment;
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Enum comment: %s"), *Result.Comment),
+            EN2CLogSeverity::Debug);
     }
     
     // Process enum values
     int32 NumEnums = Enum->NumEnums();
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Enum has %d values according to NumEnums()"), NumEnums),
+        EN2CLogSeverity::Debug);
+    
+    // Log all enum names and values for debugging
     for (int32 i = 0; i < NumEnums; ++i)
     {
+        FString ValueName = Enum->GetNameStringByIndex(i);
+        int64 ValueInt = Enum->GetValueByIndex(i);
+        
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Enum value #%d: Name='%s', Value=%lld"), 
+                i, *ValueName, ValueInt),
+            EN2CLogSeverity::Debug);
+            
+        // Check if this is a hidden enum value (like _MAX or similar)
+        bool bIsHidden = ValueName.Contains(TEXT("_MAX")) || 
+                         ValueName.Contains(TEXT("MAX_")) || 
+                         ValueName.StartsWith(TEXT("_")) ||
+                         ValueName.EndsWith(TEXT("_None"));
+                         
+        if (bIsHidden)
+        {
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("  -> Value '%s' appears to be a hidden/generated value"), *ValueName),
+                EN2CLogSeverity::Debug);
+        }
+        
         FN2CEnumValue Value;
-        Value.Name = Enum->GetNameStringByIndex(i);
-        Value.Value = Enum->GetValueByIndex(i);
+        Value.Name = ValueName;
+        Value.Value = ValueInt;
         
         // Get value comment if available
-        FString ValueComment = Enum->GetMetaData(TEXT("ToolTip"));
-        
-        if (!ValueComment.IsEmpty())
+        FString ValueComment;
+        if (Enum->HasMetaData(TEXT("ToolTip"), i))
         {
+            ValueComment = Enum->GetMetaData(TEXT("ToolTip"), i);
             Value.Comment = ValueComment;
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("  -> Comment: %s"), *ValueComment),
+                EN2CLogSeverity::Debug);
         }
         
         Result.Values.Add(Value);
