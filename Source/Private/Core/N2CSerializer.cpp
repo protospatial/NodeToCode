@@ -303,7 +303,6 @@ TSharedPtr<FJsonObject> FN2CSerializer::StructToJsonObject(const FN2CStruct& Str
     
     // Add basic struct info
     JsonObject->SetStringField(TEXT("name"), Struct.Name);
-    JsonObject->SetStringField(TEXT("path"), Struct.Path);
     JsonObject->SetBoolField(TEXT("is_blueprint_struct"), Struct.bIsBlueprintStruct);
     
     if (!Struct.Comment.IsEmpty())
@@ -373,7 +372,6 @@ TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
     
     // Add basic enum info
     JsonObject->SetStringField(TEXT("name"), Enum.Name);
-    JsonObject->SetStringField(TEXT("path"), Enum.Path);
     JsonObject->SetBoolField(TEXT("is_blueprint_enum"), Enum.bIsBlueprintEnum);
     
     if (!Enum.Comment.IsEmpty())
@@ -771,11 +769,10 @@ bool FN2CSerializer::ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObje
     }
     
     // Parse basic struct info
-    FString Name, Path;
+    FString Name;
     bool bIsBlueprintStruct;
     
     if (!JsonObject->TryGetStringField(TEXT("name"), Name) ||
-        !JsonObject->TryGetStringField(TEXT("path"), Path) ||
         !JsonObject->TryGetBoolField(TEXT("is_blueprint_struct"), bIsBlueprintStruct))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required struct fields in JSON"));
@@ -783,7 +780,6 @@ bool FN2CSerializer::ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObje
     }
     
     OutStruct.Name = Name;
-    OutStruct.Path = Path;
     OutStruct.bIsBlueprintStruct = bIsBlueprintStruct;
     
     // Parse optional comment
@@ -871,11 +867,10 @@ bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject
     }
     
     // Parse basic enum info
-    FString Name, Path;
+    FString Name;
     bool bIsBlueprintEnum;
     
     if (!JsonObject->TryGetStringField(TEXT("name"), Name) ||
-        !JsonObject->TryGetStringField(TEXT("path"), Path) ||
         !JsonObject->TryGetBoolField(TEXT("is_blueprint_enum"), bIsBlueprintEnum))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required enum fields in JSON"));
@@ -883,7 +878,6 @@ bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject
     }
     
     OutEnum.Name = Name;
-    OutEnum.Path = Path;
     OutEnum.bIsBlueprintEnum = bIsBlueprintEnum;
     
     // Parse optional comment

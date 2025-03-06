@@ -139,6 +139,9 @@ private:
     /** Convert FProperty type to N2C struct member type */
     EN2CStructMemberType ConvertPropertyToStructMemberType(FProperty* Property) const;
 
+    /** Clean up property names by removing numeric suffixes and GUIDs */
+    FString CleanPropertyName(const FString& RawName) const;
+
     /** Process any struct or enum types used in a node */
     void ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 

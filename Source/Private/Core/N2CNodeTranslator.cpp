@@ -940,7 +940,6 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     
     // Set basic enum info
     Result.Name = EnumName;
-    Result.Path = EnumPath;
     Result.bIsBlueprintEnum = IsBlueprintEnum(Enum);
     
     FN2CLogger::Get().Log(
@@ -1378,6 +1377,32 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
     FN2CLogger::Get().Log(NodeInfo, EN2CLogSeverity::Debug);
 }
 
+FString FN2CNodeTranslator::CleanPropertyName(const FString& RawName) const
+{
+    FString CleanName = RawName;
+    
+    // Find the first underscore followed by a number
+    int32 UnderscorePos = -1;
+    for (int32 i = 0; i < CleanName.Len(); ++i)
+    {
+        if (CleanName[i] == '_' && i + 1 < CleanName.Len() && FChar::IsDigit(CleanName[i + 1]))
+        {
+            UnderscorePos = i;
+            break;
+        }
+    }
+    
+    // If we found an underscore followed by a number, remove everything after it
+    if (UnderscorePos >= 0)
+    {
+        CleanName = CleanName.Left(UnderscorePos);
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned property name from '%s' to '%s'"), 
+            *RawName, *CleanName), EN2CLogSeverity::Debug);
+    }
+    
+    return CleanName;
+}
+
 FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
 {
     FN2CStructMember Member;
@@ -1388,8 +1413,8 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
         return Member;
     }
 
-    // Set member name
-    Member.Name = Property->GetName();
+    // Set member name with cleaned version
+    Member.Name = CleanPropertyName(Property->GetName());
     
     FString DebugInfo = FString::Printf(TEXT("ProcessStructMember: Processing property '%s'"), 
         *Member.Name);
@@ -1482,7 +1507,90 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
     {
         FN2CLogger::Get().Log(TEXT("  -> Processing as Map property"), EN2CLogSeverity::Debug);
         Member.bIsMap = true;
-        // Handle key and value types for maps
+        
+        // Process key type
+        FProperty* KeyProp = MapProp->KeyProp;
+        if (KeyProp)
+        {
+            Member.KeyType = ConvertPropertyToStructMemberType(KeyProp);
+            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Map key type: %s"), 
+                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.KeyType))), 
+                EN2CLogSeverity::Debug);
+                
+            // Handle key type name for complex types
+            if (FStructProperty* KeyStructProp = CastField<FStructProperty>(KeyProp))
+            {
+                Member.KeyTypeName = KeyStructProp->Struct->GetName();
+                
+                // Process nested struct if it's Blueprint-defined
+                if (IsBlueprintStruct(KeyStructProp->Struct))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined key struct"), EN2CLogSeverity::Debug);
+                    FN2CStruct NestedStruct = ProcessBlueprintStruct(KeyStructProp->Struct);
+                    if (NestedStruct.IsValid())
+                    {
+                        N2CBlueprint.Structs.Add(NestedStruct);
+                    }
+                }
+            }
+            else if (FEnumProperty* KeyEnumProp = CastField<FEnumProperty>(KeyProp))
+            {
+                Member.KeyTypeName = KeyEnumProp->GetEnum()->GetName();
+                
+                // Process enum if it's Blueprint-defined
+                if (IsBlueprintEnum(KeyEnumProp->GetEnum()))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined key enum"), EN2CLogSeverity::Debug);
+                    FN2CEnum NestedEnum = ProcessBlueprintEnum(KeyEnumProp->GetEnum());
+                    if (NestedEnum.IsValid())
+                    {
+                        N2CBlueprint.Enums.Add(NestedEnum);
+                    }
+                }
+            }
+        }
+        
+        // Process value type (similar to array inner type)
+        FProperty* ValueProp = MapProp->ValueProp;
+        if (ValueProp)
+        {
+            Member.Type = ConvertPropertyToStructMemberType(ValueProp);
+            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Map value type: %s"), 
+                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))), 
+                EN2CLogSeverity::Debug);
+                
+            // Handle value type name for complex types
+            if (FStructProperty* ValueStructProp = CastField<FStructProperty>(ValueProp))
+            {
+                Member.TypeName = ValueStructProp->Struct->GetName();
+                
+                // Process nested struct if it's Blueprint-defined
+                if (IsBlueprintStruct(ValueStructProp->Struct))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined value struct"), EN2CLogSeverity::Debug);
+                    FN2CStruct NestedStruct = ProcessBlueprintStruct(ValueStructProp->Struct);
+                    if (NestedStruct.IsValid())
+                    {
+                        N2CBlueprint.Structs.Add(NestedStruct);
+                    }
+                }
+            }
+            else if (FEnumProperty* ValueEnumProp = CastField<FEnumProperty>(ValueProp))
+            {
+                Member.TypeName = ValueEnumProp->GetEnum()->GetName();
+                
+                // Process enum if it's Blueprint-defined
+                if (IsBlueprintEnum(ValueEnumProp->GetEnum()))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined value enum"), EN2CLogSeverity::Debug);
+                    FN2CEnum NestedEnum = ProcessBlueprintEnum(ValueEnumProp->GetEnum());
+                    if (NestedEnum.IsValid())
+                    {
+                        N2CBlueprint.Enums.Add(NestedEnum);
+                    }
+                }
+            }
+        }
     }
     else
     {
@@ -1573,7 +1681,6 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
     
     // Set basic struct info
     Result.Name = StructName;
-    Result.Path = StructPath;
     Result.bIsBlueprintStruct = IsBlueprintStruct(Struct);
     
     FN2CLogger::Get().Log(

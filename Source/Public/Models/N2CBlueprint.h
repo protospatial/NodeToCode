@@ -194,10 +194,6 @@ struct FN2CStruct
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Name;
 
-    /** Full struct path */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    FString Path;
-
     /** Struct comment */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
@@ -212,7 +208,6 @@ struct FN2CStruct
 
     FN2CStruct()
         : Name(TEXT(""))
-        , Path(TEXT(""))
         , Comment(TEXT(""))
     {
     }
@@ -263,10 +258,6 @@ struct FN2CEnum
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Name;
 
-    /** Full enum path */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    FString Path;
-
     /** Enum comment */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
@@ -281,7 +272,6 @@ struct FN2CEnum
 
     FN2CEnum()
         : Name(TEXT(""))
-        , Path(TEXT(""))
         , Comment(TEXT(""))
     {
     }
