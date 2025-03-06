@@ -202,10 +202,6 @@ struct FN2CStruct
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CStructMember> Members;
 
-    /** Whether this struct is native or blueprint-defined */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    bool bIsBlueprintStruct = true;
-
     FN2CStruct()
         : Name(TEXT(""))
         , Comment(TEXT(""))
@@ -265,10 +261,6 @@ struct FN2CEnum
     /** List of enum values */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CEnumValue> Values;
-
-    /** Whether this enum is native or blueprint-defined */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    bool bIsBlueprintEnum = true;
 
     FN2CEnum()
         : Name(TEXT(""))

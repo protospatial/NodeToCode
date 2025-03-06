@@ -940,12 +940,10 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     
     // Set basic enum info
     Result.Name = EnumName;
-    Result.bIsBlueprintEnum = IsBlueprintEnum(Enum);
     
     FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Enum details: Name=%s, IsBlueprintEnum=%s"), 
-            *Result.Name, 
-            Result.bIsBlueprintEnum ? TEXT("true") : TEXT("false")),
+        FString::Printf(TEXT("Enum details: Name=%s"), 
+            *Result.Name),
         EN2CLogSeverity::Debug);
     
     // Get enum comment if available
@@ -1683,12 +1681,10 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
     
     // Set basic struct info
     Result.Name = StructName;
-    Result.bIsBlueprintStruct = IsBlueprintStruct(Struct);
     
     FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Struct details: Name=%s, IsBlueprintStruct=%s"), 
-            *Result.Name, 
-            Result.bIsBlueprintStruct ? TEXT("true") : TEXT("false")),
+        FString::Printf(TEXT("Struct details: Name=%s"), 
+            *Result.Name),
         EN2CLogSeverity::Debug);
     
     // Get struct comment if available

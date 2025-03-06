@@ -303,7 +303,6 @@ TSharedPtr<FJsonObject> FN2CSerializer::StructToJsonObject(const FN2CStruct& Str
     
     // Add basic struct info
     JsonObject->SetStringField(TEXT("name"), Struct.Name);
-    JsonObject->SetBoolField(TEXT("is_blueprint_struct"), Struct.bIsBlueprintStruct);
     
     if (!Struct.Comment.IsEmpty())
     {
@@ -372,7 +371,6 @@ TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
     
     // Add basic enum info
     JsonObject->SetStringField(TEXT("name"), Enum.Name);
-    JsonObject->SetBoolField(TEXT("is_blueprint_enum"), Enum.bIsBlueprintEnum);
     
     if (!Enum.Comment.IsEmpty())
     {
@@ -770,17 +768,14 @@ bool FN2CSerializer::ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObje
     
     // Parse basic struct info
     FString Name;
-    bool bIsBlueprintStruct;
     
-    if (!JsonObject->TryGetStringField(TEXT("name"), Name) ||
-        !JsonObject->TryGetBoolField(TEXT("is_blueprint_struct"), bIsBlueprintStruct))
+    if (!JsonObject->TryGetStringField(TEXT("name"), Name))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required struct fields in JSON"));
         return false;
     }
     
     OutStruct.Name = Name;
-    OutStruct.bIsBlueprintStruct = bIsBlueprintStruct;
     
     // Parse optional comment
     FString Comment;
@@ -868,17 +863,14 @@ bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject
     
     // Parse basic enum info
     FString Name;
-    bool bIsBlueprintEnum;
     
-    if (!JsonObject->TryGetStringField(TEXT("name"), Name) ||
-        !JsonObject->TryGetBoolField(TEXT("is_blueprint_enum"), bIsBlueprintEnum))
+    if (!JsonObject->TryGetStringField(TEXT("name"), Name))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required enum fields in JSON"));
         return false;
     }
     
     OutEnum.Name = Name;
-    OutEnum.bIsBlueprintEnum = bIsBlueprintEnum;
     
     // Parse optional comment
     FString Comment;
