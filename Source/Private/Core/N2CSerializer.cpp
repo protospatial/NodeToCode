@@ -385,7 +385,6 @@ TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
         
         // Add value properties
         ValueObject->SetStringField(TEXT("name"), Value.Name);
-        ValueObject->SetNumberField(TEXT("value"), Value.Value);
         
         if (!Value.Comment.IsEmpty())
         {
@@ -910,7 +909,6 @@ bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject
         }
         
         Value.Name = ValueName;
-        Value.Value = static_cast<int64>(ValueNumber);
         
         // Parse optional comment
         FString ValueComment;

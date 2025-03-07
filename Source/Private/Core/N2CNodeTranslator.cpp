@@ -967,11 +967,10 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     for (int32 i = 0; i < NumEnums; ++i)
     {
         FString ValueName = Enum->GetDisplayNameTextByIndex(i).ToString();
-        int64 ValueInt = Enum->GetValueByIndex(i);
         
         FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Enum value #%d: Name='%s', Value=%lld"), 
-                i, *ValueName, ValueInt),
+            FString::Printf(TEXT("Enum value #%d: Name='%s'"), 
+                i, *ValueName),
             EN2CLogSeverity::Debug);
             
         // Check if this is a hidden enum value (like _MAX or similar)
@@ -992,7 +991,6 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
         
         FN2CEnumValue Value;
         Value.Name = ValueName;
-        Value.Value = ValueInt;
         
         // Get value comment if available
         FString ValueComment;

@@ -224,18 +224,13 @@ struct FN2CEnumValue
     /** Enum value name */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Name;
-
-    /** Enum numeric value */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    int64 Value;
-
+	
     /** Enum value comment (if any) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
 
     FN2CEnumValue()
         : Name(TEXT(""))
-        , Value(0)
         , Comment(TEXT(""))
     {
     }
