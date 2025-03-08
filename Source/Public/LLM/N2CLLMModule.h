@@ -80,8 +80,12 @@ private:
     
     /** Create directory if it doesn't exist */
     bool EnsureDirectoryExists(const FString& DirectoryPath) const;
+    
     /** Initialize components */
     bool InitializeComponents();
+
+    /** Initialize the provider registry with all available providers */
+    void InitializeProviderRegistry();
 
     /** Create appropriate service for provider */
     bool CreateServiceForProvider(EN2CLLMProvider Provider);

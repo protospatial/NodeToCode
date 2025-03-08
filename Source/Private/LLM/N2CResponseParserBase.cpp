@@ -149,3 +149,124 @@ void UN2CResponseParserBase::ExtractCodeData(
     OutCode.GraphImplementation = CodeObject->GetStringField(TEXT("graphImplementation"));
     OutCode.ImplementationNotes = CodeObject->GetStringField(TEXT("implementationNotes"));
 }
+
+bool UN2CResponseParserBase::HandleCommonErrorResponse(
+    const TSharedPtr<FJsonObject>& JsonObject,
+    const FString& ErrorFieldName,
+    FString& OutErrorMessage)
+{
+    const TSharedPtr<FJsonObject> ErrorObject = JsonObject->GetObjectField(ErrorFieldName);
+    if (!ErrorObject.IsValid())
+    {
+        OutErrorMessage = FString::Printf(TEXT("Unknown error in %s field"), *ErrorFieldName);
+        return true;
+    }
+
+    FString ErrorType, ErrorMessage;
+    ErrorObject->TryGetStringField(TEXT("type"), ErrorType);
+    ErrorObject->TryGetStringField(TEXT("message"), ErrorMessage);
+
+    if (ErrorType.Contains(TEXT("rate_limit")))
+    {
+        OutErrorMessage = TEXT("API rate limit exceeded");
+    }
+    else if (ErrorType.Contains(TEXT("invalid_request")) || ErrorType.Contains(TEXT("invalid_request_error")))
+    {
+        OutErrorMessage = FString::Printf(TEXT("Invalid request: %s"), *ErrorMessage);
+    }
+    else if (ErrorType.Contains(TEXT("authentication")))
+    {
+        OutErrorMessage = TEXT("API authentication failed");
+    }
+    else
+    {
+        OutErrorMessage = FString::Printf(TEXT("API error: %s - %s"), *ErrorType, *ErrorMessage);
+    }
+
+    return true;
+}
+
+bool UN2CResponseParserBase::ExtractStandardMessageContent(
+    const TSharedPtr<FJsonObject>& JsonObject,
+    const FString& ArrayFieldName,
+    const FString& MessageObjName,
+    const FString& ContentFieldName,
+    FString& OutContent)
+{
+    // Get array field (choices, candidates, etc.)
+    const TArray<TSharedPtr<FJsonValue>>* ItemsArray;
+    if (!JsonObject->TryGetArrayField(ArrayFieldName, ItemsArray) || ItemsArray->Num() == 0)
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Missing or empty '%s' array in response"), *ArrayFieldName),
+            TEXT("ResponseParser")
+        );
+        return false;
+    }
+
+    // Get first item
+    const TSharedPtr<FJsonObject> ItemObject = (*ItemsArray)[0]->AsObject();
+    if (!ItemObject.IsValid())
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Invalid object in '%s' array"), *ArrayFieldName),
+            TEXT("ResponseParser")
+        );
+        return false;
+    }
+
+    // Get message object if needed
+    TSharedPtr<FJsonObject> MessageObject;
+    if (MessageObjName.IsEmpty())
+    {
+        // Use the item object directly
+        MessageObject = ItemObject;
+    }
+    else
+    {
+        // Get the message object from the item
+        MessageObject = ItemObject->GetObjectField(MessageObjName);
+        if (!MessageObject.IsValid())
+        {
+            FN2CLogger::Get().LogError(
+                FString::Printf(TEXT("Missing '%s' object in response"), *MessageObjName),
+                TEXT("ResponseParser")
+            );
+            return false;
+        }
+    }
+
+    // Get content string
+    FString RawContent;
+    if (!MessageObject->TryGetStringField(ContentFieldName, RawContent))
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Missing '%s' field in response"), *ContentFieldName),
+            TEXT("ResponseParser")
+        );
+        return false;
+    }
+
+    // Process content for JSON markers
+    if (ProcessJsonContentWithMarkers(RawContent))
+    {
+        FN2CLogger::Get().Log(TEXT("Stripped JSON markers from response"), EN2CLogSeverity::Debug);
+    }
+    
+    OutContent = RawContent;
+    return true;
+}
+
+bool UN2CResponseParserBase::ProcessJsonContentWithMarkers(FString& Content)
+{
+    // Check if content is wrapped in ```json markers and remove them
+    if (Content.StartsWith(TEXT("```json")) && Content.EndsWith(TEXT("```")))
+    {
+        // Remove the ```json prefix and ``` suffix
+        Content = Content.RightChop(7); // Skip past "```json"
+        Content = Content.LeftChop(3);  // Remove trailing "```"
+        Content = Content.TrimStartAndEnd(); // Remove any extra whitespace
+        return true;
+    }
+    return false;
+}

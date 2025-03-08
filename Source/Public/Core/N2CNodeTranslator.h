@@ -5,6 +5,9 @@
 #include "CoreMinimal.h"
 #include "Models/N2CBlueprint.h"
 #include "EdGraph/EdGraphNode.h"
+#include "Utils/Validators/N2CBlueprintValidator.h"
+#include "Utils/Processors/N2CNodeProcessor.h"
+#include "Utils/Processors/N2CNodeProcessorFactory.h"
 
 /**
  * @class FN2CNodeTranslator
@@ -48,6 +51,10 @@ private:
     /** Maps pin GUIDs to simplified IDs */
     TMap<FGuid, FString> PinIDMap;
 
+    /** Tracking sets to prevent duplicate processing */
+    TSet<FString> ProcessedStructPaths;
+    TSet<FString> ProcessedEnumPaths;
+
     /** Struct to track graph processing information */
     struct FGraphProcessInfo
     {
@@ -65,6 +72,9 @@ private:
 
     /** Current processing depth */
     int32 CurrentDepth = 0;
+    
+    /** Fallback method for processing node properties when no processor is available */
+    void FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Process a single graph */
     bool ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType);
@@ -110,6 +120,30 @@ private:
 
     /** Process execution and data flows for the node */
     void ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs);
+
+    /** Check if a struct is Blueprint-defined */
+    bool IsBlueprintStruct(UScriptStruct* Struct) const;
+
+    /** Check if an enum is Blueprint-defined */
+    bool IsBlueprintEnum(UEnum* Enum) const;
+
+    /** Process a Blueprint struct into FN2CStruct */
+    FN2CStruct ProcessBlueprintStruct(UScriptStruct* Struct);
+
+    /** Process a Blueprint enum into FN2CEnum */
+    FN2CEnum ProcessBlueprintEnum(UEnum* Enum);
+
+    /** Process a struct member */
+    FN2CStructMember ProcessStructMember(FProperty* Property);
+
+    /** Convert FProperty type to N2C struct member type */
+    EN2CStructMemberType ConvertPropertyToStructMemberType(FProperty* Property) const;
+
+    /** Clean up property names by removing numeric suffixes and GUIDs */
+    FString CleanPropertyName(const FString& RawName) const;
+
+    /** Process any struct or enum types used in a node */
+    void ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Remove SKEL_ prefix and _C suffix from class names */
     FString GetCleanClassName(const FString& InName);

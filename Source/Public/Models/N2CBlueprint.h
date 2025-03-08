@@ -95,6 +95,179 @@ struct FN2CFlows
 };
 
 /**
+ * @enum EN2CStructMemberType
+ * @brief Defines the type of a struct member
+ */
+UENUM(BlueprintType)
+enum class EN2CStructMemberType : uint8
+{
+    Bool        UMETA(DisplayName = "Boolean"),
+    Byte        UMETA(DisplayName = "Byte"),
+    Int         UMETA(DisplayName = "Integer"),
+    Float       UMETA(DisplayName = "Float"),
+    String      UMETA(DisplayName = "String"),
+    Name        UMETA(DisplayName = "Name"),
+    Text        UMETA(DisplayName = "Text"),
+    Vector      UMETA(DisplayName = "Vector"),
+    Vector2D    UMETA(DisplayName = "Vector2D"),
+    Rotator     UMETA(DisplayName = "Rotator"),
+    Transform   UMETA(DisplayName = "Transform"),
+    Class       UMETA(DisplayName = "Class"),
+    Object      UMETA(DisplayName = "Object"),
+    Struct      UMETA(DisplayName = "Struct"),
+    Enum        UMETA(DisplayName = "Enum"),
+    Array       UMETA(DisplayName = "Array"),
+    Set         UMETA(DisplayName = "Set"),
+    Map         UMETA(DisplayName = "Map"),
+    Custom      UMETA(DisplayName = "Custom")
+};
+
+/**
+ * @struct FN2CStructMember
+ * @brief Represents a single member of a struct
+ */
+USTRUCT(BlueprintType)
+struct FN2CStructMember
+{
+    GENERATED_BODY()
+
+    /** Member name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Member type */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CStructMemberType Type;
+
+    /** Type name - required for structs, enums, objects, classes, etc. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TypeName;
+
+    /** Container flags */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsArray = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsSet = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsMap = false;
+
+    /** Key type for maps */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CStructMemberType KeyType;
+
+    /** Key type name for maps (if needed) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString KeyTypeName;
+
+    /** Default value as string (if any) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString DefaultValue;
+
+    /** Member comment (if any) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    FN2CStructMember()
+        : Name(TEXT(""))
+        , Type(EN2CStructMemberType::Int)
+        , TypeName(TEXT(""))
+        , KeyType(EN2CStructMemberType::Int)
+        , KeyTypeName(TEXT(""))
+        , DefaultValue(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+};
+
+/**
+ * @struct FN2CStruct
+ * @brief Represents a blueprint-defined struct
+ */
+USTRUCT(BlueprintType)
+struct FN2CStruct
+{
+    GENERATED_BODY()
+
+    /** Struct name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Struct comment */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    /** List of struct members */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CStructMember> Members;
+
+    FN2CStruct()
+        : Name(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+
+    /** Validates the struct definition */
+    bool IsValid() const;
+};
+
+/**
+ * @struct FN2CEnumValue
+ * @brief Represents a single value in an enum
+ */
+USTRUCT(BlueprintType)
+struct FN2CEnumValue
+{
+    GENERATED_BODY()
+
+    /** Enum value name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+	
+    /** Enum value comment (if any) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    FN2CEnumValue()
+        : Name(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+};
+
+/**
+ * @struct FN2CEnum
+ * @brief Represents a blueprint-defined enum
+ */
+USTRUCT(BlueprintType)
+struct FN2CEnum
+{
+    GENERATED_BODY()
+
+    /** Enum name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Enum comment */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    /** List of enum values */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CEnumValue> Values;
+
+    FN2CEnum()
+        : Name(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+
+    /** Validates the enum definition */
+    bool IsValid() const;
+};
+
+/**
  * @enum EN2CGraphType
  * @brief Defines the type of Blueprint graph
  */
@@ -112,7 +285,11 @@ enum class EN2CGraphType : uint8
     /** A construction script */
     Construction    UMETA(DisplayName = "Construction Script"),
     /** An animation graph */
-    Animation      UMETA(DisplayName = "Animation")
+    Animation      UMETA(DisplayName = "Animation"),
+    /** A struct definition */
+    Struct         UMETA(DisplayName = "Struct"),
+    /** An enum definition */
+    Enum           UMETA(DisplayName = "Enum")
 };
 
 /**
@@ -146,101 +323,7 @@ struct FN2CGraph
     }
 
     /** Validates the graph structure */
-    bool IsValid() const
-    {
-        if (Name.IsEmpty())
-        {
-            FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: Empty graph name")));
-            return false;
-        }
-
-        // Check nodes array
-        if (Nodes.Num() == 0)
-        {
-            FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: No nodes in graph %s"), *Name));
-            return false;
-        }
-
-        // Build set of node IDs for validation
-        TSet<FString> NodeIds;
-        for (const FN2CNodeDefinition& Node : Nodes)
-        {
-            if (!Node.IsValid())
-            {
-                FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: Invalid node %s in graph %s"), *Node.ID, *Name));
-                return false;
-            }
-
-            // Check for duplicate node IDs
-            if (NodeIds.Contains(Node.ID))
-            {
-                FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: Duplicate node ID %s in graph %s"), *Node.ID, *Name));
-                return false;
-            }
-            NodeIds.Add(Node.ID);
-        }
-
-        // Log all node IDs for debugging
-        FString NodeIdList = TEXT("Valid Node IDs in graph ") + Name + TEXT(": ");
-        for (const FString& Id : NodeIds)
-        {
-            NodeIdList += Id + TEXT(", ");
-        }
-        FN2CLogger::Get().Log(NodeIdList, EN2CLogSeverity::Debug);
-
-        // Validate flows
-        // Check execution flows
-        for (const FString& ExecFlow : Flows.Execution)
-        {
-            TArray<FString> FlowNodes;
-            ExecFlow.ParseIntoArray(FlowNodes, TEXT("->"));
-            
-            // Each flow must have at least 2 nodes
-            if (FlowNodes.Num() < 2)
-            {
-                FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: Invalid execution flow %s (needs at least 2 nodes) in graph %s"), *ExecFlow, *Name));
-                return false;
-            }
-
-            // Verify all referenced nodes exist
-            for (const FString& NodeId : FlowNodes)
-            {
-                if (!NodeIds.Contains(NodeId))
-                {
-                    FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: Execution flow %s references non-existent node %s in graph %s"), *ExecFlow, *NodeId, *Name));
-                    return false;
-                }
-            }
-        }
-
-        // Check data flows
-        for (const auto& DataFlow : Flows.Data)
-        {
-            // Validate source pin format (N#.P#)
-            TArray<FString> SourceParts;
-            DataFlow.Key.ParseIntoArray(SourceParts, TEXT("."));
-            if (SourceParts.Num() != 2 || !NodeIds.Contains(SourceParts[0]))
-            {
-                FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: Invalid source pin format %s in graph %s"), *DataFlow.Key, *Name));
-                return false;
-            }
-
-            // Validate target pin format (N#.P#)
-            TArray<FString> TargetParts;
-            DataFlow.Value.ParseIntoArray(TargetParts, TEXT("."));
-            if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]))
-            {
-                FN2CLogger::Get().LogError(FString::Printf(TEXT("Graph validation failed: Invalid target pin format %s in graph %s"), *DataFlow.Value, *Name));
-                return false;
-            }
-        }
-
-        // Log successful validation
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Graph %s validation successful: %d nodes, %d execution flows, %d data flows"), 
-            *Name, Nodes.Num(), Flows.Execution.Num(), Flows.Data.Num()), EN2CLogSeverity::Debug);
-
-        return true;
-    }
+    bool IsValid() const;
 };
 
 /**
@@ -264,68 +347,19 @@ struct FN2CBlueprint
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CGraph> Graphs;
 
+    /** Array of all structs used in the Blueprint */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CStruct> Structs;
+
+    /** Array of all enums used in the Blueprint */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CEnum> Enums;
+
     FN2CBlueprint()
     {
         // Version is automatically initialized to "1.0.0" by FN2CVersion constructor
     }
 
     /** Validates the Blueprint structure and its enums */
-    bool IsValid() const
-    {
-        // Check version
-        if (Version.Value.IsEmpty() || Version.Value != TEXT("1.0.0"))
-        {
-            FN2CLogger::Get().LogError(TEXT("Invalid or missing version"));
-            return false;
-        }
-
-        // Check metadata
-        if (Metadata.Name.IsEmpty())
-        {
-            FN2CLogger::Get().LogError(TEXT("Missing Blueprint name"));
-            return false;
-        }
-
-        if (Metadata.BlueprintClass.IsEmpty())
-        {
-            FN2CLogger::Get().LogError(TEXT("Missing Blueprint class"));
-            return false;
-        }
-
-        // Check graphs array
-        if (Graphs.Num() == 0)
-        {
-            FN2CLogger::Get().LogError(TEXT("No graphs found"));
-            return false;
-        }
-
-        // Check that at least one graph has nodes
-        bool bHasNodes = false;
-        for (const FN2CGraph& Graph : Graphs)
-        {
-            if (Graph.Nodes.Num() > 0)
-            {
-                bHasNodes = true;
-                break;
-            }
-        }
-
-        if (!bHasNodes)
-        {
-            FN2CLogger::Get().LogError(TEXT("No nodes found in any graph"));
-            return false;
-        }
-
-        // Validate each graph
-        for (const FN2CGraph& Graph : Graphs)
-        {
-            if (!Graph.IsValid())
-            {
-                FN2CLogger::Get().LogError(FString::Printf(TEXT("Invalid graph: %s"), *Graph.Name));
-                return false;
-            }
-        }
-
-        return true;
-    }
+    bool IsValid() const;
 };

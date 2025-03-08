@@ -116,24 +116,46 @@
 #include "K2Node_VariableSetRef.h"
 
 /**
- * @class FN2CNodeTypeHelper
- * @brief Helper class for mapping K2Node types to N2CNodeType
+ * @class FN2CNodeTypeRegistry
+ * @brief Registry for mapping Blueprint node classes to N2CNodeType
+ * 
+ * Provides a centralized, data-driven approach to node type determination
+ * that replaces the large if-else chains and switch statements.
  */
-class FN2CNodeTypeHelper
+class NODETOCODE_API FN2CNodeTypeRegistry
 {
 public:
-    /** Maps a K2Node class to its corresponding N2CNodeType */
-    static void DetermineNodeType(const UK2Node* Node, EN2CNodeType& OutType);
-
+    /** Get the singleton instance */
+    static FN2CNodeTypeRegistry& Get();
+    
+    /** Register node type mapping by class name */
+    void RegisterNodeType(const FName& ClassName, EN2CNodeType NodeType);
+    
+    /** Register node type mapping by class pointer */
+    void RegisterNodeClass(const UClass* Class, EN2CNodeType NodeType);
+    
+    /** Get node type for a specific node */
+    EN2CNodeType GetNodeType(const UK2Node* Node);
+    
+    /** Determine variable node type */
+    EN2CNodeType DetermineVariableNodeType(const UK2Node_Variable* Node);
+    
 private:
-    /** Maps based on class name */
-    static bool MapFromClassName(const FString& ClassName, EN2CNodeType& OutType);
+    /** Constructor - initializes default mappings */
+    FN2CNodeTypeRegistry();
     
-    /** Maps based on inheritance */
-    static bool MapFromInheritance(const UK2Node* Node, EN2CNodeType& OutType);
+    /** Mappings from class names to node types */
+    TMap<FName, EN2CNodeType> ClassNameMappings;
     
-    /** Gets base type from class name */
-    static FString GetBaseNodeType(const FString& ClassName);
-
-    static EN2CNodeType DetermineVariableNodeType(const UK2Node_Variable* Node);
+    /** Mappings from class pointers to node types */
+    TMap<const UClass*, EN2CNodeType> ClassMappings;
+    
+    /** Initialize default mappings */
+    void InitializeDefaultMappings();
+    
+    /** Get base node type from class name (strips K2Node_ prefix) */
+    FString GetBaseNodeType(const FString& ClassName);
+    
+    /** Try to determine node type based on inheritance */
+    bool MapFromInheritance(const UK2Node* Node, EN2CNodeType& OutType);
 };

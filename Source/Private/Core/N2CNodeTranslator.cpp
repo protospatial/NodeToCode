@@ -4,10 +4,12 @@
 
 #include "Core/N2CSettings.h"
 #include "Utils/N2CLogger.h"
-#include "Utils/N2CNodeTypeHelper.h"
+#include "Utils/N2CNodeTypeRegistry.h"
+#include "Utils/Validators/N2CBlueprintValidator.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectBase.h"
 #include "UObject/Class.h"
+#include "UObject/UnrealTypePrivate.h"
 
 FN2CNodeTranslator& FN2CNodeTranslator::Get()
 {
@@ -21,6 +23,8 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
     N2CBlueprint = FN2CBlueprint();
     NodeIDMap.Empty();
     PinIDMap.Empty();
+    ProcessedStructPaths.Empty();  // Clear processed structs set
+    ProcessedEnumPaths.Empty();    // Clear processed enums set
 
     if (CollectedNodes.Num() == 0)
     {
@@ -394,7 +398,7 @@ EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
 
 void FN2CNodeTranslator::DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType)
 {
-    FN2CNodeTypeHelper::DetermineNodeType(Node, OutType);
+    OutType = FN2CNodeTypeRegistry::Get().GetNodeType(Node);
 }
 
 EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
@@ -471,117 +475,60 @@ EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
     return EN2CPinType::Wildcard;
 }
 
+UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
+{
+    if (!StartPin)
+    {
+        return nullptr;
+    }
+
+    UEdGraphPin* CurrentPin = StartPin;
+    TSet<UEdGraphNode*> VisitedNodes;  // Prevent infinite loops
+
+    while (CurrentPin)
+    {
+        UEdGraphNode* OwningNode = CurrentPin->GetOwningNode();
+        if (!OwningNode)
+        {
+            return nullptr;
+        }
+
+        // If we've hit this node before, we have a loop
+        if (VisitedNodes.Contains(OwningNode))
+        {
+            FN2CLogger::Get().LogWarning(TEXT("Detected loop in knot node chain"));
+            return nullptr;
+        }
+        VisitedNodes.Add(OwningNode);
+
+        // If this isn't a knot node, we've found our target
+        if (!OwningNode->IsA<UK2Node_Knot>())
+        {
+            return CurrentPin;
+        }
+
+        // For knot nodes, follow to the next connection
+        // Knots should only have one connection on the opposite side
+        TArray<UEdGraphPin*>& LinkedPins = (CurrentPin->Direction == EGPD_Input) ? 
+            OwningNode->Pins[1]->LinkedTo : OwningNode->Pins[0]->LinkedTo;
+
+        if (LinkedPins.Num() == 0)
+        {
+            return nullptr;  // Dead end
+        }
+
+        CurrentPin = LinkedPins[0];
+    }
+
+    return nullptr;
+}
+
 bool FN2CNodeTranslator::ValidateFlowReferences(FN2CGraph& Graph)
 {
-    bool bIsValid = true;
-    TSet<FString> NodeIds;
-    TMap<FString, TSet<FString>> NodePinIds;
-
-    // Build lookup maps for validation
-    for (const FN2CNodeDefinition& Node : Graph.Nodes)
-    {
-        NodeIds.Add(Node.ID);
-        
-        // Track all pin IDs for this node
-        TSet<FString>& PinIds = NodePinIds.Add(Node.ID);
-        for (const FN2CPinDefinition& Pin : Node.InputPins)
-        {
-            PinIds.Add(Pin.ID);
-        }
-        for (const FN2CPinDefinition& Pin : Node.OutputPins)
-        {
-            PinIds.Add(Pin.ID);
-        }
-    }
-
-    // Validate execution flows
-    TArray<FString> InvalidExecutionFlows;
-    for (const FString& ExecFlow : Graph.Flows.Execution)
-    {
-        TArray<FString> FlowNodes;
-        ExecFlow.ParseIntoArray(FlowNodes, TEXT("->"));
-        
-        bool bFlowValid = true;
-        for (const FString& NodeId : FlowNodes)
-        {
-            if (!NodeIds.Contains(NodeId))
-            {
-                FN2CLogger::Get().LogError(
-                    FString::Printf(TEXT("Invalid node ID '%s' in execution flow: %s"), 
-                    *NodeId, *ExecFlow));
-                bFlowValid = false;
-                bIsValid = false;
-                break;
-            }
-        }
-        
-        if (!bFlowValid)
-        {
-            InvalidExecutionFlows.Add(ExecFlow);
-        }
-    }
-
-    // Remove invalid execution flows
-    for (const FString& InvalidFlow : InvalidExecutionFlows)
-    {
-        Graph.Flows.Execution.Remove(InvalidFlow);
-        FN2CLogger::Get().LogWarning(
-            FString::Printf(TEXT("Removed invalid execution flow: %s"), *InvalidFlow));
-    }
-
-    // Validate data flows
-    TArray<FString> InvalidDataFlows;
-    for (const auto& DataFlow : Graph.Flows.Data)
-    {
-        // Parse source pin reference (NodeID.PinID)
-        TArray<FString> SourceParts;
-        DataFlow.Key.ParseIntoArray(SourceParts, TEXT("."));
-        
-        // Parse target pin reference (NodeID.PinID)
-        TArray<FString> TargetParts;
-        DataFlow.Value.ParseIntoArray(TargetParts, TEXT("."));
-        
-        bool bFlowValid = true;
-        
-        // Validate source node and pin
-        if (SourceParts.Num() != 2 || !NodeIds.Contains(SourceParts[0]) ||
-            !NodePinIds.Contains(SourceParts[0]) || 
-            !NodePinIds[SourceParts[0]].Contains(SourceParts[1]))
-        {
-            FN2CLogger::Get().LogError(
-                FString::Printf(TEXT("Invalid source pin reference '%s' in data flow"), 
-                *DataFlow.Key));
-            bFlowValid = false;
-            bIsValid = false;
-        }
-        
-        // Validate target node and pin
-        if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]) ||
-            !NodePinIds.Contains(TargetParts[0]) || 
-            !NodePinIds[TargetParts[0]].Contains(TargetParts[1]))
-        {
-            FN2CLogger::Get().LogError(
-                FString::Printf(TEXT("Invalid target pin reference '%s' in data flow"), 
-                *DataFlow.Value));
-            bFlowValid = false;
-            bIsValid = false;
-        }
-        
-        if (!bFlowValid)
-        {
-            InvalidDataFlows.Add(DataFlow.Key);
-        }
-    }
-
-    // Remove invalid data flows
-    for (const FString& InvalidFlow : InvalidDataFlows)
-    {
-        Graph.Flows.Data.Remove(InvalidFlow);
-        FN2CLogger::Get().LogWarning(
-            FString::Printf(TEXT("Removed invalid data flow from: %s"), *InvalidFlow));
-    }
-
-    return bIsValid;
+    // Use the blueprint validator to validate the graph
+    FN2CBlueprintValidator Validator;
+    FString ErrorMessage;
+    return Validator.ValidateFlowReferences(Graph, ErrorMessage);
 }
 
 void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
@@ -589,18 +536,44 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
     // Determine node type
     DetermineNodeType(Node, OutNodeDef.NodeType);
 
-    // Set node name
-    OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
+    // Get the appropriate processor for this node type
+    TSharedPtr<IN2CNodeProcessor> Processor = FN2CNodeProcessorFactory::Get().GetProcessor(OutNodeDef.NodeType);
+    if (Processor.IsValid())
+    {
+        // Process the node using the processor
+        if (!Processor->Process(Node, OutNodeDef))
+        {
+            FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
+            FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+            
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node processor failed for node '%s' of type %s"),
+                *NodeTitle, *NodeTypeName));
+            
+            // Fall back to the old method if processor fails
+            FallbackProcessNodeProperties(Node, OutNodeDef);
+        }
+        else
+        {
+            // Log successful processing
+            FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully processed node '%s' using %s processor"),
+                *OutNodeDef.Name, *NodeTypeName), EN2CLogSeverity::Debug);
+        }
+    }
+    else
+    {
+        // Fall back to the old method if no processor is available
+        FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
+        FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+        
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("No processor available for node '%s' of type %s"),
+            *NodeTitle, *NodeTypeName));
+        
+        FallbackProcessNodeProperties(Node, OutNodeDef);
+    }
 
-    // Determine node specific data directly such as
-    // MemberParent, MemberName, bLatent, 
-    DetermineNodeSpecificProperties(Node, OutNodeDef);
-    
-    // Extract comments if present
-    if (Node->NodeComment.Len() > 0) { OutNodeDef.Comment = Node->NodeComment; }
-    
-    // Set purity from node
-    OutNodeDef.bPure = Node->IsNodePure();
+    // Process any struct or enum types used in this node
+    ProcessRelatedTypes(Node, OutNodeDef);
 
     // Check for nested graphs that might need processing
     if (UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(Node))
@@ -638,6 +611,64 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
             }
         }
     }
+    else if (UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
+    {
+        // Try to find and add the function graph
+        if (UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
+        {
+            if (UBlueprint* BP = Cast<UBlueprint>(ScopeClass->ClassGeneratedBy))
+            {
+                for (UEdGraph* FuncGraph : BP->FunctionGraphs)
+                {
+                    if (FuncGraph && FuncGraph->GetFName() == CreateDelegateNode->GetFunctionName())
+                    {
+                        AddGraphToProcess(FuncGraph);
+                        FN2CLogger::Get().Log(
+                            FString::Printf(TEXT("Added delegate function graph to process: %s"), *FuncGraph->GetName()),
+                            EN2CLogSeverity::Debug);
+                        break;
+                    }
+                }
+            }
+        }
+        else if (UFunction* DelegateSignature = CreateDelegateNode->GetDelegateSignature())
+        {
+            if (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(DelegateSignature->GetOwnerClass()))
+            {
+                if (UBlueprint* FunctionBlueprint = Cast<UBlueprint>(BlueprintClass->ClassGeneratedBy))
+                {
+                    // Find and add the function graph
+                    for (UEdGraph* FuncGraph : FunctionBlueprint->FunctionGraphs)
+                    {
+                        if (FuncGraph && FuncGraph->GetFName() == DelegateSignature->GetFName())
+                        {
+                            AddGraphToProcess(FuncGraph);
+                            FN2CLogger::Get().Log(
+                                FString::Printf(TEXT("Added delegate signature graph to process: %s"), *FuncGraph->GetName()),
+                                EN2CLogSeverity::Debug);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+{
+    // Set node name
+    OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
+
+    // Determine node specific data directly such as
+    // MemberParent, MemberName, bLatent, 
+    DetermineNodeSpecificProperties(Node, OutNodeDef);
+    
+    // Extract comments if present
+    if (Node->NodeComment.Len() > 0) { OutNodeDef.Comment = Node->NodeComment; }
+    
+    // Set purity from node
+    OutNodeDef.bPure = Node->IsNodePure();
 }
 
 void FN2CNodeTranslator::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)
@@ -875,6 +906,115 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
     }
 }
 
+FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
+{
+    FN2CEnum Result;
+    
+    if (!Enum)
+    {
+        FN2CLogger::Get().LogError(TEXT("Null enum provided to ProcessBlueprintEnum"));
+        return Result;
+    }
+    
+    // Get enum path
+    FString EnumPath = Enum->GetPathName();
+    FString EnumName = Enum->GetName();
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("ProcessBlueprintEnum: Processing enum '%s' (Path: %s)"), 
+            *EnumName, *EnumPath),
+        EN2CLogSeverity::Info);
+    
+    // Check if we've already processed this enum
+    if (ProcessedEnumPaths.Contains(EnumPath))
+    {
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Enum %s already processed - skipping"), *EnumPath),
+            EN2CLogSeverity::Debug);
+        return Result;
+    }
+    
+    // Mark as processed
+    ProcessedEnumPaths.Add(EnumPath);
+    FN2CLogger::Get().Log(TEXT("Added enum to processed paths"), EN2CLogSeverity::Debug);
+    
+    // Set basic enum info
+    Result.Name = EnumName;
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Enum details: Name=%s"), 
+            *Result.Name),
+        EN2CLogSeverity::Debug);
+    
+    // Get enum comment if available
+    FString EnumComment = Enum->GetMetaData(TEXT("ToolTip"));
+    
+    if (!EnumComment.IsEmpty())
+    {
+        Result.Comment = EnumComment;
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Enum comment: %s"), *Result.Comment),
+            EN2CLogSeverity::Debug);
+    }
+    
+    // Process enum values
+    int32 NumEnums = Enum->NumEnums();
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Enum has %d values according to NumEnums()"), NumEnums),
+        EN2CLogSeverity::Debug);
+    
+    // Log all enum names and values for debugging
+    for (int32 i = 0; i < NumEnums; ++i)
+    {
+        FString ValueName = Enum->GetDisplayNameTextByIndex(i).ToString();
+        
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Enum value #%d: Name='%s'"), 
+                i, *ValueName),
+            EN2CLogSeverity::Debug);
+            
+        // Check if this is a hidden enum value (like _MAX or similar)
+        bool bIsHidden = ValueName.Contains(TEXT("_MAX")) || 
+                         ValueName.Contains(TEXT("MAX_")) ||
+                         ValueName.Contains(TEXT("E MAX")) ||
+                         ValueName.Contains(TEXT("MAX")) ||
+                         ValueName.StartsWith(TEXT("_")) ||
+                         ValueName.EndsWith(TEXT("_None"));
+                         
+        if (bIsHidden)
+        {
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("  -> Skipping hidden value '%s'"), *ValueName),
+                EN2CLogSeverity::Debug);
+            continue; // Skip adding this value
+        }
+        
+        FN2CEnumValue Value;
+        Value.Name = ValueName;
+        
+        // Get value comment if available
+        FString ValueComment;
+        if (Enum->HasMetaData(TEXT("ToolTip"), i))
+        {
+            ValueComment = Enum->GetMetaData(TEXT("ToolTip"), i);
+            Value.Comment = ValueComment;
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("  -> Comment: %s"), *ValueComment),
+                EN2CLogSeverity::Debug);
+        }
+        
+        Result.Values.Add(Value);
+    }
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Processed enum %s with %d values"), 
+            *Result.Name, 
+            Result.Values.Num()),
+        EN2CLogSeverity::Info);
+    
+    return Result;
+}
+
 FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
 {
     FString CleanName = InName;                                                                                                                                                                      
@@ -892,6 +1032,266 @@ FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
      }                                                                                                                                                                                                     
                                                                                                                                                                                                            
      return CleanName;
+}
+
+bool FN2CNodeTranslator::IsBlueprintStruct(UScriptStruct* Struct) const
+{
+    if (!Struct)
+    {
+        return false;
+    }
+    
+    // Check if the struct is in a user content directory
+    FString StructPath = Struct->GetPathName();
+    return StructPath.Contains(TEXT("/Game/")) || 
+           StructPath.Contains(TEXT("/Content/"));
+}
+
+bool FN2CNodeTranslator::IsBlueprintEnum(UEnum* Enum) const
+{
+    if (!Enum)
+    {
+        return false;
+    }
+    
+    // Check if the enum is in a user content directory
+    FString EnumPath = Enum->GetPathName();
+    return EnumPath.Contains(TEXT("/Game/")) || 
+           EnumPath.Contains(TEXT("/Content/"));
+}
+
+EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(FProperty* Property) const
+{
+    if (!Property)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("ConvertPropertyToStructMemberType: Null property provided"));
+        return EN2CStructMemberType::Int; // Default
+    }
+    
+    FString PropertyName = Property->GetName();
+    FN2CLogger::Get().Log(FString::Printf(TEXT("ConvertPropertyToStructMemberType: Property '%s'"), 
+        *PropertyName), EN2CLogSeverity::Debug);
+    
+    if (CastField<FBoolProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Identified as Bool type"), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Bool;
+    }
+    if (CastField<FByteProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Identified as Byte type"), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Byte;
+    }
+    if (CastField<FIntProperty>(Property) || CastField<FInt64Property>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Identified as Int type"), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Int;
+    }
+    if (CastField<FFloatProperty>(Property) || CastField<FDoubleProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Identified as Float type"), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Float;
+    }
+    if (CastField<FStrProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Identified as String type"), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::String;
+    }
+    if (CastField<FNameProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Identified as Name type"), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Name;
+    }
+    if (CastField<FTextProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Identified as Text type"), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Text;
+    }
+    
+    if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
+    {
+        FString StructName = StructProp->Struct ? StructProp->Struct->GetName() : TEXT("Unknown");
+        FString StructPath = StructProp->Struct ? StructProp->Struct->GetPathName() : TEXT("Unknown");
+        
+        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Struct type: %s (Path: %s)"), 
+            *StructName, *StructPath), EN2CLogSeverity::Debug);
+            
+        if (StructProp->Struct->GetFName() == NAME_Vector)
+        {
+            FN2CLogger::Get().Log(TEXT("  -> Specialized as Vector type"), EN2CLogSeverity::Debug);
+            return EN2CStructMemberType::Vector;
+        }
+        if (StructProp->Struct->GetFName() == NAME_Vector2D)
+        {
+            FN2CLogger::Get().Log(TEXT("  -> Specialized as Vector2D type"), EN2CLogSeverity::Debug);
+            return EN2CStructMemberType::Vector2D;
+        }
+        if (StructProp->Struct->GetFName() == NAME_Rotator)
+        {
+            FN2CLogger::Get().Log(TEXT("  -> Specialized as Rotator type"), EN2CLogSeverity::Debug);
+            return EN2CStructMemberType::Rotator;
+        }
+        if (StructProp->Struct->GetFName() == NAME_Transform)
+        {
+            FN2CLogger::Get().Log(TEXT("  -> Specialized as Transform type"), EN2CLogSeverity::Debug);
+            return EN2CStructMemberType::Transform;
+        }
+
+        return EN2CStructMemberType::Struct;
+    }
+
+    if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
+    {
+        FString EnumName = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetName() : TEXT("Unknown");
+        FString EnumPath = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetPathName() : TEXT("Unknown");
+        
+        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Enum type: %s (Path: %s)"), 
+            *EnumName, *EnumPath), EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Enum;
+    }
+    if (FClassProperty* ClassProp = CastField<FClassProperty>(Property))
+    {
+        FString ClassName = ClassProp->MetaClass ? ClassProp->MetaClass->GetName() : TEXT("Unknown");
+        
+        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Class type: %s"), *ClassName), 
+            EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Class;
+    }
+    if (FObjectProperty* ObjProp = CastField<FObjectProperty>(Property))
+    {
+        FString ObjClassName = ObjProp->PropertyClass ? ObjProp->PropertyClass->GetName() : TEXT("Unknown");
+        
+        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Object type: %s"), *ObjClassName), 
+            EN2CLogSeverity::Debug);
+        return EN2CStructMemberType::Object;
+    }
+
+    FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Unrecognized property type '%s', using Custom type"), 
+        *Property->GetClass()->GetName()), EN2CLogSeverity::Debug);
+    return EN2CStructMemberType::Custom; // For any other types
+}
+
+void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+{
+    if (!Node)
+    {
+        return;
+    }
+    
+    // Check for struct nodes - use string comparison for class names
+    const FString NodeClassName = Node->GetClass()->GetName();
+    
+    // Check for struct operation nodes
+    if (NodeClassName.Contains(TEXT("K2Node_StructOperation")))
+    {
+        UK2Node_StructOperation* StructNode = (UK2Node_StructOperation*)Node;
+        if (UScriptStruct* Struct = StructNode->StructType)
+        {
+            if (IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from struct operation node"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
+    
+    // Check make struct nodes
+    if (NodeClassName.Contains(TEXT("K2Node_MakeStruct")))
+    {
+        UK2Node_MakeStruct* MakeStructNode = (UK2Node_MakeStruct*)Node;
+        if (UScriptStruct* Struct = MakeStructNode->StructType)
+        {
+            if (IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from make struct node"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
+    
+    // Check break struct nodes
+    if (NodeClassName.Contains(TEXT("K2Node_BreakStruct")))
+    {
+        UK2Node_BreakStruct* BreakStructNode = (UK2Node_BreakStruct*)Node;
+        if (UScriptStruct* Struct = BreakStructNode->StructType)
+        {
+            if (IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from break struct node"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
+    
+    // Check struct references in pins
+    for (UEdGraphPin* Pin : Node->Pins)
+    {
+        if (!Pin)
+            continue;
+            
+        // Check for struct types
+        if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct)
+        {
+            UScriptStruct* Struct = (UScriptStruct*)Pin->PinType.PinSubCategoryObject.Get();
+            if (Struct && IsBlueprintStruct(Struct))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(StructDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint struct %s from pin type"), 
+                        *StructDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+        
+        // Check for enum types
+        else if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte ||
+                 Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
+        {
+            UEnum* Enum = (UEnum*)Pin->PinType.PinSubCategoryObject.Get();
+            if (Enum && IsBlueprintEnum(Enum))
+            {
+                FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
+                if (EnumDef.IsValid())
+                {
+                    N2CBlueprint.Enums.Add(EnumDef);
+                    
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Added Blueprint enum %s from pin type"), 
+                        *EnumDef.Name),
+                        EN2CLogSeverity::Info);
+                }
+            }
+        }
+    }
 }
 
 void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
@@ -975,52 +1375,396 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
     FN2CLogger::Get().Log(NodeInfo, EN2CLogSeverity::Debug);
 }
 
-UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
+FString FN2CNodeTranslator::CleanPropertyName(const FString& RawName) const
 {
-    if (!StartPin)
+    FString CleanName = RawName;
+
+    // Look for pattern: _##_GUID where ## is 1-3 digits
+    // This matches patterns like _8_FA2E526ECD4A7D7CEB62D89E0B51D8C8
+    static const FRegexPattern PropertySuffixPattern(TEXT("_\\d{1,3}_[0-9A-F]{32}$"));
+    FRegexMatcher Matcher(PropertySuffixPattern, CleanName);
+
+    if (Matcher.FindNext())
     {
-        return nullptr;
+     // Get the position where the pattern starts
+     int32 MatchStart = Matcher.GetMatchBeginning();
+
+        // Remove the pattern
+        if (MatchStart > 0)
+        {
+         CleanName = CleanName.Left(MatchStart);
+         FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned property name from '%s' to '%s'"),
+             *RawName, *CleanName), EN2CLogSeverity::Debug);
+        }
     }
 
-    UEdGraphPin* CurrentPin = StartPin;
-    TSet<UEdGraphNode*> VisitedNodes;  // Prevent infinite loops
+ return CleanName;
+}
 
-    while (CurrentPin)
+FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
+{
+    FN2CStructMember Member;
+
+    if (!Property)
     {
-        UEdGraphNode* OwningNode = CurrentPin->GetOwningNode();
-        if (!OwningNode)
-        {
-            return nullptr;
-        }
-
-        // If we've hit this node before, we have a loop
-        if (VisitedNodes.Contains(OwningNode))
-        {
-            FN2CLogger::Get().LogWarning(TEXT("Detected loop in knot node chain"));
-            return nullptr;
-        }
-        VisitedNodes.Add(OwningNode);
-
-        // If this isn't a knot node, we've found our target
-        if (!OwningNode->IsA<UK2Node_Knot>())
-        {
-            return CurrentPin;
-        }
-
-        // For knot nodes, follow to the next connection
-        // Knots should only have one connection on the opposite side
-        TArray<UEdGraphPin*>& LinkedPins = (CurrentPin->Direction == EGPD_Input) ? 
-            OwningNode->Pins[1]->LinkedTo : OwningNode->Pins[0]->LinkedTo;
-
-        if (LinkedPins.Num() == 0)
-        {
-            return nullptr;  // Dead end
-        }
-
-        CurrentPin = LinkedPins[0];
+        FN2CLogger::Get().LogWarning(TEXT("Null property provided to ProcessStructMember"));
+        return Member;
     }
 
-    return nullptr;
+    // Set member name with cleaned version
+    Member.Name = CleanPropertyName(Property->GetName());
+    
+    FString DebugInfo = FString::Printf(TEXT("ProcessStructMember: Processing property '%s'"), 
+        *Member.Name);
+    FN2CLogger::Get().Log(DebugInfo, EN2CLogSeverity::Debug);
+
+    // Get member comment if available
+    if (Property->HasMetaData(TEXT("ToolTip")))
+    {
+        Member.Comment = Property->GetMetaData(TEXT("ToolTip"));
+        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Found comment: %s"), *Member.Comment), EN2CLogSeverity::Debug);
+    }
+
+    // Determine member type
+    Member.Type = ConvertPropertyToStructMemberType(Property);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Determined type: %s"), 
+        *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))), 
+        EN2CLogSeverity::Debug);
+
+    // Handle container types
+    if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Processing as Array property"), EN2CLogSeverity::Debug);
+        Member.bIsArray = true;
+        FProperty* InnerProp = ArrayProp->Inner;
+        if (InnerProp)
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array inner type: %s"), 
+                *InnerProp->GetClass()->GetName()), EN2CLogSeverity::Debug);
+                
+            Member.Type = ConvertPropertyToStructMemberType(InnerProp);
+
+            // Handle inner struct or enum types
+            if (FStructProperty* InnerStructProp = CastField<FStructProperty>(InnerProp))
+            {
+                Member.TypeName = InnerStructProp->Struct->GetName();
+                FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array of struct: %s"), 
+                    *Member.TypeName), EN2CLogSeverity::Debug);
+
+                // Process nested struct if it's Blueprint-defined
+                if (IsBlueprintStruct(InnerStructProp->Struct))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined nested struct"), EN2CLogSeverity::Debug);
+                    FN2CStruct NestedStruct = ProcessBlueprintStruct(InnerStructProp->Struct);
+                    if (NestedStruct.IsValid())
+                    {
+                        N2CBlueprint.Structs.Add(NestedStruct);
+                        FN2CLogger::Get().Log(TEXT("  -> Added nested struct to blueprint"), EN2CLogSeverity::Debug);
+                    }
+                    else
+                    {
+                        FN2CLogger::Get().LogWarning(TEXT("  -> Nested struct validation failed"));
+                    }
+                }
+            }
+            else if (FEnumProperty* InnerEnumProp = CastField<FEnumProperty>(InnerProp))
+            {
+                Member.TypeName = InnerEnumProp->GetEnum()->GetName();
+                FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array of enum: %s"), 
+                    *Member.TypeName), EN2CLogSeverity::Debug);
+
+                // Process enum if it's Blueprint-defined
+                if (IsBlueprintEnum(InnerEnumProp->GetEnum()))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined nested enum"), EN2CLogSeverity::Debug);
+                    FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->GetEnum());
+                    if (NestedEnum.IsValid())
+                    {
+                        N2CBlueprint.Enums.Add(NestedEnum);
+                        FN2CLogger::Get().Log(TEXT("  -> Added nested enum to blueprint"), EN2CLogSeverity::Debug);
+                    }
+                    else
+                    {
+                        FN2CLogger::Get().LogWarning(TEXT("  -> Nested enum validation failed"));
+                    }
+                }
+            }
+        }
+        else
+        {
+            FN2CLogger::Get().LogWarning(TEXT("  -> Array property has null inner property"));
+        }
+    }
+    else if (FSetProperty* SetProp = CastField<FSetProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Processing as Set property"), EN2CLogSeverity::Debug);
+        Member.bIsSet = true;
+        // Similar logic for sets as for arrays
+    }
+    else if (FMapProperty* MapProp = CastField<FMapProperty>(Property))
+    {
+        FN2CLogger::Get().Log(TEXT("  -> Processing as Map property"), EN2CLogSeverity::Debug);
+        Member.bIsMap = true;
+        
+        // Process key type
+        FProperty* KeyProp = MapProp->KeyProp;
+        if (KeyProp)
+        {
+            Member.KeyType = ConvertPropertyToStructMemberType(KeyProp);
+            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Map key type: %s"), 
+                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.KeyType))), 
+                EN2CLogSeverity::Debug);
+                
+            // Handle key type name for complex types
+            if (FStructProperty* KeyStructProp = CastField<FStructProperty>(KeyProp))
+            {
+                Member.KeyTypeName = KeyStructProp->Struct->GetName();
+                
+                // Process nested struct if it's Blueprint-defined
+                if (IsBlueprintStruct(KeyStructProp->Struct))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined key struct"), EN2CLogSeverity::Debug);
+                    FN2CStruct NestedStruct = ProcessBlueprintStruct(KeyStructProp->Struct);
+                    if (NestedStruct.IsValid())
+                    {
+                        N2CBlueprint.Structs.Add(NestedStruct);
+                    }
+                }
+            }
+            else if (FEnumProperty* KeyEnumProp = CastField<FEnumProperty>(KeyProp))
+            {
+                Member.KeyTypeName = KeyEnumProp->GetEnum()->GetName();
+                
+                // Process enum if it's Blueprint-defined
+                if (IsBlueprintEnum(KeyEnumProp->GetEnum()))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined key enum"), EN2CLogSeverity::Debug);
+                    FN2CEnum NestedEnum = ProcessBlueprintEnum(KeyEnumProp->GetEnum());
+                    if (NestedEnum.IsValid())
+                    {
+                        N2CBlueprint.Enums.Add(NestedEnum);
+                    }
+                }
+            }
+        }
+        
+        // Process value type (similar to array inner type)
+        FProperty* ValueProp = MapProp->ValueProp;
+        if (ValueProp)
+        {
+            Member.Type = ConvertPropertyToStructMemberType(ValueProp);
+            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Map value type: %s"), 
+                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))), 
+                EN2CLogSeverity::Debug);
+                
+            // Handle value type name for complex types
+            if (FStructProperty* ValueStructProp = CastField<FStructProperty>(ValueProp))
+            {
+                Member.TypeName = ValueStructProp->Struct->GetName();
+                
+                // Process nested struct if it's Blueprint-defined
+                if (IsBlueprintStruct(ValueStructProp->Struct))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined value struct"), EN2CLogSeverity::Debug);
+                    FN2CStruct NestedStruct = ProcessBlueprintStruct(ValueStructProp->Struct);
+                    if (NestedStruct.IsValid())
+                    {
+                        N2CBlueprint.Structs.Add(NestedStruct);
+                    }
+                }
+            }
+            else if (FEnumProperty* ValueEnumProp = CastField<FEnumProperty>(ValueProp))
+            {
+                Member.TypeName = ValueEnumProp->GetEnum()->GetName();
+                
+                // Process enum if it's Blueprint-defined
+                if (IsBlueprintEnum(ValueEnumProp->GetEnum()))
+                {
+                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined value enum"), EN2CLogSeverity::Debug);
+                    FN2CEnum NestedEnum = ProcessBlueprintEnum(ValueEnumProp->GetEnum());
+                    if (NestedEnum.IsValid())
+                    {
+                        N2CBlueprint.Enums.Add(NestedEnum);
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        // Handle non-container types
+        if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
+        {
+            Member.TypeName = StructProp->Struct->GetName();
+            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Struct type: %s (Path: %s)"), 
+                *Member.TypeName, *StructProp->Struct->GetPathName()), EN2CLogSeverity::Debug);
+
+            // Process nested struct if it's Blueprint-defined
+            if (IsBlueprintStruct(StructProp->Struct))
+            {
+                FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined struct"), EN2CLogSeverity::Debug);
+                FN2CStruct NestedStruct = ProcessBlueprintStruct(StructProp->Struct);
+                if (NestedStruct.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(NestedStruct);
+                    FN2CLogger::Get().Log(TEXT("  -> Added struct to blueprint"), EN2CLogSeverity::Debug);
+                }
+                else
+                {
+                    FN2CLogger::Get().LogWarning(TEXT("  -> Struct validation failed"));
+                }
+            }
+        }
+        else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
+        {
+            Member.TypeName = EnumProp->GetEnum()->GetName();
+            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Enum type: %s (Path: %s)"), 
+                *Member.TypeName, *EnumProp->GetEnum()->GetPathName()), EN2CLogSeverity::Debug);
+
+            // Process enum if it's Blueprint-defined
+            if (IsBlueprintEnum(EnumProp->GetEnum()))
+            {
+                FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined enum"));
+                FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->GetEnum());
+                if (NestedEnum.IsValid())
+                {
+                    N2CBlueprint.Enums.Add(NestedEnum);
+                    FN2CLogger::Get().Log(TEXT("  -> Added enum to blueprint"), EN2CLogSeverity::Debug);
+                }
+                else
+                {
+                    FN2CLogger::Get().LogWarning(TEXT("  -> Enum validation failed"));
+                }
+            }
+        }
+    }
+    
+    FN2CLogger::Get().Log(FString::Printf(TEXT("ProcessStructMember: Completed processing of '%s'"), *Member.Name), 
+        EN2CLogSeverity::Debug);
+                                                                                                                                                                                                                                                                                                                      
+    return Member;
+}
+
+FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
+{
+    FN2CStruct Result;
+    
+    if (!Struct)
+    {
+        FN2CLogger::Get().LogError(TEXT("Null struct provided to ProcessBlueprintStruct"));
+        return Result;
+    }
+    
+    // Get struct path
+    FString StructPath = Struct->GetPathName();
+    FString StructName = Struct->GetName();
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("ProcessBlueprintStruct: Processing struct '%s' (Path: %s)"), 
+            *StructName, *StructPath),
+        EN2CLogSeverity::Info);
+    
+    // Check if we've already processed this struct
+    if (ProcessedStructPaths.Contains(StructPath))
+    {
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Struct %s already processed - skipping"), *StructPath),
+            EN2CLogSeverity::Debug);
+        return Result;
+    }
+    
+    // Mark as processed
+    ProcessedStructPaths.Add(StructPath);
+    FN2CLogger::Get().Log(TEXT("Added struct to processed paths"), EN2CLogSeverity::Debug);
+    
+    // Set basic struct info
+    Result.Name = StructName;
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Struct details: Name=%s"), 
+            *Result.Name),
+        EN2CLogSeverity::Debug);
+    
+    // Get struct comment if available
+    FString StructComment = Struct->GetMetaData(TEXT("ToolTip"));
+    
+    if (!StructComment.IsEmpty())
+    {
+        Result.Comment = StructComment;
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Struct comment: %s"), *Result.Comment),
+            EN2CLogSeverity::Debug);
+    }
+    
+    // Log property iteration start
+    FN2CLogger::Get().Log(TEXT("Beginning property iteration for struct members..."), EN2CLogSeverity::Debug);
+    
+    // Process struct members
+    int32 PropertyCount = 0;
+    for (TFieldIterator<FProperty> PropIt(Struct); PropIt; ++PropIt)
+    {
+        PropertyCount++;
+        if (FProperty* Property = *PropIt)
+        {
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Found property #%d: '%s' of class '%s'"), 
+                    PropertyCount,
+                    *Property->GetName(), 
+                    *Property->GetClass()->GetName()),
+                EN2CLogSeverity::Debug);
+                
+            FN2CStructMember Member = ProcessStructMember(Property);
+            Result.Members.Add(Member);
+            
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Added member '%s' of type '%s' to struct"), 
+                    *Member.Name,
+                    *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))),
+                EN2CLogSeverity::Debug);
+        }
+        else
+        {
+            FN2CLogger::Get().LogWarning(
+                FString::Printf(TEXT("Null property found at index %d"), PropertyCount));
+        }
+    }
+    
+    if (PropertyCount == 0)
+    {
+        FN2CLogger::Get().LogWarning(
+            FString::Printf(TEXT("No properties found in struct '%s' - TFieldIterator returned no results"), *StructName));
+            
+        // Try alternative property access if available
+        UStruct* BaseStruct = Cast<UStruct>(Struct);
+        if (BaseStruct && BaseStruct->Children)
+        {
+            FN2CLogger::Get().Log(TEXT("Attempting alternative property access via Children field..."), EN2CLogSeverity::Debug);
+            
+            for (FField* Field = BaseStruct->ChildProperties; Field; Field = Field->Next)
+            {
+                if (FProperty* Property = CastField<FProperty>(Field))
+                {
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Found property via Children: '%s' of class '%s'"), 
+                            *Property->GetName(), 
+                            *Property->GetClass()->GetName()),
+                        EN2CLogSeverity::Debug);
+                        
+                    FN2CStructMember Member = ProcessStructMember(Property);
+                    Result.Members.Add(Member);
+                }
+            }
+        }
+    }
+    
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Processed struct %s with %d members (found %d properties during iteration)"), 
+            *Result.Name, 
+            Result.Members.Num(),
+            PropertyCount),
+        EN2CLogSeverity::Info);
+    
+    return Result;
 }
 
 void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
@@ -1030,180 +1774,8 @@ void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
         return;
     }
 
-    // Handle function-based nodes
-    if (UK2Node_CallFunction* FuncNode = Cast<UK2Node_CallFunction>(Node))
-    {
-        if (UFunction* Function = FuncNode->GetTargetFunction())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(Function->GetOwnerClass()->GetName());
-            OutNodeDef.MemberName = GetCleanClassName(Function->GetName());
-            OutNodeDef.bLatent = FuncNode->IsLatentFunction();
-        }
-    }
-
-    // Handle event nodes
-    else if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
-    {
-        OutNodeDef.MemberName = GetCleanClassName(EventNode->EventReference.GetMemberName().ToString());
-        if (UClass* EventClass = EventNode->EventReference.GetMemberParentClass())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(EventClass->GetPathName());
-        }
-    }
-
-    // Handle make struct nodes. Placing inside of variable check due to being a considered
-    // a variable before being considered a MakeStruct node.
-    else if (UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node))
-    {
-        if (UScriptStruct* Struct = MakeStructNode->StructType)
-        {
-            OutNodeDef.Name = FString::Printf(TEXT("Make %s"), *Struct->GetName());
-            OutNodeDef.MemberName = GetCleanClassName(Struct->GetName());
-
-            // Get the path name and extract just the base name before the period
-            const FString FullPath = Struct->GetStructPathName().ToString();
-            int32 DotIndex;                                                                                                                                                                                                                
-            if (FullPath.FindChar('.', DotIndex))                                                                                                                                                                                          
-            {                                                                                                                                                                                                                              
-                OutNodeDef.MemberParent = GetCleanClassName(FullPath.Left(DotIndex));                                                                                                                                                                         
-            }                                                                                                                                                                                                                              
-            else                                                                                                                                                                                                                           
-            {                                                                                                                                                                                                                              
-                OutNodeDef.MemberParent = FullPath;                                                                                                                                                                                        
-            }
-            
-         return;
-            
-        }
-    }
-    
-    // Handle variable nodes
-    else if (UK2Node_Variable* VarNode = Cast<UK2Node_Variable>(Node))
-    {
-        // Get variable reference info
-        const FMemberReference& VarRef = VarNode->VariableReference;
-
-        OutNodeDef.Name = VarNode->GetVarNameString();
-        
-        // Get member name safely
-        FName MemberName = VarRef.GetMemberName();
-        if (!MemberName.IsNone())
-        {
-            OutNodeDef.MemberName = GetCleanClassName(MemberName.ToString());
-        }
-        else if (UEdGraph* Graph = Node->GetGraph())
-        {
-            // Fallback to a generated name using the graph
-            OutNodeDef.MemberName = FString::Printf(TEXT("Var_%s_%d"), 
-                *Graph->GetName(),
-                Node->GetUniqueID());
-        }
-        else
-        {
-            OutNodeDef.MemberName = FString::Printf(TEXT("UnknownVariable"));
-        }
-        
-        // For variable nodes, we want the pin type info as the MemberParent
-        // since it represents the variable's type
-        for (UEdGraphPin* Pin : VarNode->Pins)
-        {
-            if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory != FName("exec"))
-            {
-                // Start with required PinCategory
-                TArray<FString> TypeParts;
-                TypeParts.Add(GetCleanClassName(Pin->PinType.PinCategory.ToString()));
-                
-                // Add optional parts if they exist and aren't "None"
-                if (!Pin->PinType.PinSubCategory.IsNone() && !Pin->PinType.PinSubCategory.ToString().IsEmpty())
-                {
-                    TypeParts.Add(GetCleanClassName(Pin->PinType.PinSubCategory.ToString()));
-                }
-                
-                if (Pin->PinType.PinSubCategoryObject.IsValid())
-                {
-                    TypeParts.Add(GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName()));
-                }
-                
-                if (!Pin->PinType.PinSubCategoryMemberReference.MemberName.IsNone())
-                {
-                    TypeParts.Add(GetCleanClassName(Pin->PinType.PinSubCategoryMemberReference.MemberName.ToString()));
-                }
-                
-                // Join with forward slashes
-                OutNodeDef.MemberParent = FString::Join(TypeParts, TEXT("/"));
-                break;
-            }
-        }
-    }
-
-    // Handle struct operation nodes
-    else if (UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node))
-    {
-        if (UScriptStruct* Struct = StructNode->StructType)
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(Struct->GetName());
-        }
-    }
-
-    // Handle actor bound events
-    else if (UK2Node_ActorBoundEvent* ActorEventNode = Cast<UK2Node_ActorBoundEvent>(Node))
-    {
-        OutNodeDef.MemberName = ActorEventNode->DelegatePropertyName.ToString();
-        if (UClass* DelegateClass = ActorEventNode->DelegateOwnerClass)
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
-        }
-    }
-
-    // Handle component bound events
-    else if (UK2Node_ComponentBoundEvent* CompEventNode = Cast<UK2Node_ComponentBoundEvent>(Node))
-    {
-        OutNodeDef.MemberName = CompEventNode->DelegatePropertyName.ToString();
-        if (UClass* DelegateClass = CompEventNode->DelegateOwnerClass)
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
-        }
-    }
-
-    // Handle custom events
-    else if (UK2Node_CustomEvent* CustomEventNode = Cast<UK2Node_CustomEvent>(Node))
-    {
-        OutNodeDef.MemberName = CustomEventNode->CustomFunctionName.ToString();
-        if (UBlueprint* BP = CustomEventNode->GetBlueprint())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-        }
-    }
-
-    // Handle function entry/result nodes
-    else if (UK2Node_FunctionEntry* FuncEntryNode = Cast<UK2Node_FunctionEntry>(Node))
-    {
-        OutNodeDef.MemberName = FuncEntryNode->CustomGeneratedFunctionName.ToString();
-        if (UBlueprint* BP = FuncEntryNode->GetBlueprint())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-        }
-    }
-    else if (UK2Node_FunctionResult* FuncResultNode = Cast<UK2Node_FunctionResult>(Node))
-    {
-        if (UBlueprint* BP = FuncResultNode->GetBlueprint())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-        }
-    }
-
-    // Handle delegate nodes
-    else if (UK2Node_BaseMCDelegate* DelegateNode = Cast<UK2Node_BaseMCDelegate>(Node))
-    {
-        OutNodeDef.MemberName = DelegateNode->DelegateReference.GetMemberName().ToString();
-        if (UClass* DelegateClass = DelegateNode->DelegateReference.GetMemberParentClass())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
-        }
-    }
-
     // Handle component add nodes
-    else if (UK2Node_AddComponent* AddCompNode = Cast<UK2Node_AddComponent>(Node))
+    if (UK2Node_AddComponent* AddCompNode = Cast<UK2Node_AddComponent>(Node))
     {
         if (UClass* ComponentClass = AddCompNode->TemplateType)
         {
@@ -1218,73 +1790,6 @@ void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
         if (UBlueprint* BP = TimelineNode->GetBlueprint())
         {
             OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-        }
-    }
-
-    // Handle macro instance nodes
-    else if (UK2Node_MacroInstance* MacroNode = Cast<UK2Node_MacroInstance>(Node))
-    {
-        if (UEdGraph* MacroGraph = MacroNode->GetMacroGraph())
-        {
-            OutNodeDef.MemberName = GetCleanClassName(MacroGraph->GetName());
-            if (UBlueprint* BP = Cast<UBlueprint>(MacroGraph->GetOuter()))
-            {
-                OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
-            }
-        }
-    }
-    
-    // Handle create delegate nodes
-    else if (UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
-    {
-        OutNodeDef.MemberName = GetCleanClassName(CreateDelegateNode->GetFunctionName().ToString());
-        
-        // Try to get the scope class first since it's more reliable
-        if (UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
-        {
-            OutNodeDef.MemberParent = GetCleanClassName(ScopeClass->GetName());
-            
-            // Try to find and add the function graph
-            if (UBlueprint* BP = Cast<UBlueprint>(ScopeClass->ClassGeneratedBy))
-            {
-                for (UEdGraph* FuncGraph : BP->FunctionGraphs)
-                {
-                    if (FuncGraph && FuncGraph->GetFName() == CreateDelegateNode->GetFunctionName())
-                    {
-                        AddGraphToProcess(FuncGraph);
-                        break;
-                    }
-                }
-            }
-        }
-        // Fallback to delegate signature if scope class isn't available
-        else if (UFunction* DelegateSignature = CreateDelegateNode->GetDelegateSignature())
-        {
-            if (UClass* OwnerClass = DelegateSignature->GetOwnerClass())
-            {
-                OutNodeDef.MemberParent = GetCleanClassName(OwnerClass->GetName());
-                
-                if (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(OwnerClass))
-                {
-                    if (UBlueprint* FunctionBlueprint = Cast<UBlueprint>(BlueprintClass->ClassGeneratedBy))
-                    {
-                        // Find and add the function graph
-                        for (UEdGraph* FuncGraph : FunctionBlueprint->FunctionGraphs)
-                        {
-                            if (FuncGraph && FuncGraph->GetFName() == DelegateSignature->GetFName())
-                            {
-                                AddGraphToProcess(FuncGraph);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        if (OutNodeDef.MemberParent.IsEmpty())
-        {
-            FN2CLogger::Get().LogWarning(TEXT("Could not determine owner class for CreateDelegate node"));
         }
     }
 

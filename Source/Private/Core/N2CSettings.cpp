@@ -32,6 +32,23 @@ UN2CSettings::UN2CSettings()
     if (!UserSecrets)
     {
         UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+        
+        // For UE 5.5 compatibility, ensure the config is loaded
+        FString UserSecretsConfigPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(
+            FPaths::ProjectSavedDir(), TEXT("Config"), FPlatformProperties::PlatformName(), 
+            TEXT("EditorNodeToCodeSecrets.ini")));
+        
+        // Check if the file exists before attempting to load
+        if (FPaths::FileExists(UserSecretsConfigPath))
+        {
+            // Force reload config to ensure we have the latest values
+            GConfig->LoadFile(UserSecretsConfigPath);
+            UserSecrets->LoadConfig(nullptr, nullptr, UE::LCPF_PropagateToChildDefaultObjects);
+            
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Loaded user secrets from: %s"), *UserSecretsConfigPath),
+                EN2CLogSeverity::Info);
+        }
     }
 
     // Initialize API Keys
@@ -203,7 +220,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->OpenAI_API_Key = OpenAI_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI))
@@ -213,7 +230,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->Anthropic_API_Key = Anthropic_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))
@@ -223,7 +240,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->Gemini_API_Key = Gemini_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI))
@@ -233,7 +250,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config);
             return;
         }
 

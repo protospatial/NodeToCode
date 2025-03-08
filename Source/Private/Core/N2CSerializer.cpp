@@ -103,6 +103,30 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
     }
     JsonObject->SetArrayField(TEXT("graphs"), GraphsArray);
 
+    // Add structs array
+    TArray<TSharedPtr<FJsonValue>> StructsArray;
+    for (const FN2CStruct& Struct : Blueprint.Structs)
+    {
+        TSharedPtr<FJsonObject> StructObject = StructToJsonObject(Struct);
+        if (StructObject.IsValid())
+        {
+            StructsArray.Add(MakeShared<FJsonValueObject>(StructObject));
+        }
+    }
+    JsonObject->SetArrayField(TEXT("structs"), StructsArray);
+
+    // Add enums array
+    TArray<TSharedPtr<FJsonValue>> EnumsArray;
+    for (const FN2CEnum& Enum : Blueprint.Enums)
+    {
+        TSharedPtr<FJsonObject> EnumObject = EnumToJsonObject(Enum);
+        if (EnumObject.IsValid())
+        {
+            EnumsArray.Add(MakeShared<FJsonValueObject>(EnumObject));
+        }
+    }
+    JsonObject->SetArrayField(TEXT("enums"), EnumsArray);
+
     return JsonObject;
 }
 
@@ -270,6 +294,108 @@ TSharedPtr<FJsonObject> FN2CSerializer::FlowsToJsonObject(const FN2CFlows& Flows
     }
     JsonObject->SetObjectField(TEXT("data"), DataFlowsObject);
 
+    return JsonObject;
+}
+
+TSharedPtr<FJsonObject> FN2CSerializer::StructToJsonObject(const FN2CStruct& Struct)
+{
+    TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
+    
+    // Add basic struct info
+    JsonObject->SetStringField(TEXT("name"), Struct.Name);
+    
+    if (!Struct.Comment.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("comment"), Struct.Comment);
+    }
+    
+    // Add members array
+    TArray<TSharedPtr<FJsonValue>> MembersArray;
+    for (const FN2CStructMember& Member : Struct.Members)
+    {
+        TSharedPtr<FJsonObject> MemberObject = MakeShared<FJsonObject>();
+        
+        // Add member properties
+        MemberObject->SetStringField(TEXT("name"), Member.Name);
+        MemberObject->SetStringField(TEXT("type"), 
+            StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type)));
+        
+        if (!Member.TypeName.IsEmpty())
+        {
+            MemberObject->SetStringField(TEXT("type_name"), Member.TypeName);
+        }
+        
+        if (Member.bIsArray)
+        {
+            MemberObject->SetBoolField(TEXT("is_array"), true);
+        }
+        
+        if (Member.bIsSet)
+        {
+            MemberObject->SetBoolField(TEXT("is_set"), true);
+        }
+        
+        if (Member.bIsMap)
+        {
+            MemberObject->SetBoolField(TEXT("is_map"), true);
+            MemberObject->SetStringField(TEXT("key_type"), 
+                StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.KeyType)));
+                
+            if (!Member.KeyTypeName.IsEmpty())
+            {
+                MemberObject->SetStringField(TEXT("key_type_name"), Member.KeyTypeName);
+            }
+        }
+        
+        if (!Member.DefaultValue.IsEmpty())
+        {
+            MemberObject->SetStringField(TEXT("default_value"), Member.DefaultValue);
+        }
+        
+        if (!Member.Comment.IsEmpty())
+        {
+            MemberObject->SetStringField(TEXT("comment"), Member.Comment);
+        }
+        
+        MembersArray.Add(MakeShared<FJsonValueObject>(MemberObject));
+    }
+    
+    JsonObject->SetArrayField(TEXT("members"), MembersArray);
+    
+    return JsonObject;
+}
+
+TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
+{
+    TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
+    
+    // Add basic enum info
+    JsonObject->SetStringField(TEXT("name"), Enum.Name);
+    
+    if (!Enum.Comment.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("comment"), Enum.Comment);
+    }
+    
+    // Add values array
+    TArray<TSharedPtr<FJsonValue>> ValuesArray;
+    for (const FN2CEnumValue& Value : Enum.Values)
+    {
+        TSharedPtr<FJsonObject> ValueObject = MakeShared<FJsonObject>();
+        
+        // Add value properties
+        ValueObject->SetStringField(TEXT("name"), Value.Name);
+        
+        if (!Value.Comment.IsEmpty())
+        {
+            ValueObject->SetStringField(TEXT("comment"), Value.Comment);
+        }
+        
+        ValuesArray.Add(MakeShared<FJsonValueObject>(ValueObject));
+    }
+    
+    JsonObject->SetArrayField(TEXT("values"), ValuesArray);
+    
     return JsonObject;
 }
 
@@ -629,5 +755,170 @@ bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObjec
         }
     }
 
+    return true;
+}
+
+bool FN2CSerializer::ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CStruct& OutStruct)
+{
+    if (!JsonObject.IsValid())
+    {
+        return false;
+    }
+    
+    // Parse basic struct info
+    FString Name;
+    
+    if (!JsonObject->TryGetStringField(TEXT("name"), Name))
+    {
+        FN2CLogger::Get().LogError(TEXT("Missing required struct fields in JSON"));
+        return false;
+    }
+    
+    OutStruct.Name = Name;
+    
+    // Parse optional comment
+    FString Comment;
+    if (JsonObject->TryGetStringField(TEXT("comment"), Comment))
+    {
+        OutStruct.Comment = Comment;
+    }
+    
+    // Parse members array
+    const TArray<TSharedPtr<FJsonValue>>* MembersArray;
+    if (!JsonObject->TryGetArrayField(TEXT("members"), MembersArray))
+    {
+        FN2CLogger::Get().LogError(TEXT("Missing members array in JSON"));
+        return false;
+    }
+    
+    OutStruct.Members.Empty();
+    for (const TSharedPtr<FJsonValue>& MemberValue : *MembersArray)
+    {
+        const TSharedPtr<FJsonObject>& MemberObject = MemberValue->AsObject();
+        if (!MemberObject.IsValid())
+        {
+            continue;
+        }
+        
+        FN2CStructMember Member;
+        
+        // Parse member properties
+        FString MemberName, TypeString, TypeName;
+        
+        if (!MemberObject->TryGetStringField(TEXT("name"), MemberName) ||
+            !MemberObject->TryGetStringField(TEXT("type"), TypeString))
+        {
+            FN2CLogger::Get().LogError(TEXT("Missing required member fields in JSON"));
+            continue;
+        }
+        
+        Member.Name = MemberName;
+        
+        // Convert type string to enum
+        int64 TypeValue = StaticEnum<EN2CStructMemberType>()->GetValueByNameString(TypeString, EGetByNameFlags::None);
+        if (TypeValue == INDEX_NONE)
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("Invalid member type: %s"), *TypeString));
+            continue;
+        }
+        Member.Type = static_cast<EN2CStructMemberType>(TypeValue);
+        
+        // Parse optional fields
+        MemberObject->TryGetStringField(TEXT("type_name"), Member.TypeName);
+        MemberObject->TryGetBoolField(TEXT("is_array"), Member.bIsArray);
+        MemberObject->TryGetBoolField(TEXT("is_set"), Member.bIsSet);
+        MemberObject->TryGetBoolField(TEXT("is_map"), Member.bIsMap);
+        
+        if (Member.bIsMap)
+        {
+            FString KeyTypeString;
+            if (MemberObject->TryGetStringField(TEXT("key_type"), KeyTypeString))
+            {
+                int64 KeyTypeValue = StaticEnum<EN2CStructMemberType>()->GetValueByNameString(KeyTypeString, EGetByNameFlags::None);
+                if (KeyTypeValue != INDEX_NONE)
+                {
+                    Member.KeyType = static_cast<EN2CStructMemberType>(KeyTypeValue);
+                }
+            }
+            
+            MemberObject->TryGetStringField(TEXT("key_type_name"), Member.KeyTypeName);
+        }
+        
+        MemberObject->TryGetStringField(TEXT("default_value"), Member.DefaultValue);
+        MemberObject->TryGetStringField(TEXT("comment"), Member.Comment);
+        
+        OutStruct.Members.Add(Member);
+    }
+    
+    return true;
+}
+
+bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CEnum& OutEnum)
+{
+    if (!JsonObject.IsValid())
+    {
+        return false;
+    }
+    
+    // Parse basic enum info
+    FString Name;
+    
+    if (!JsonObject->TryGetStringField(TEXT("name"), Name))
+    {
+        FN2CLogger::Get().LogError(TEXT("Missing required enum fields in JSON"));
+        return false;
+    }
+    
+    OutEnum.Name = Name;
+    
+    // Parse optional comment
+    FString Comment;
+    if (JsonObject->TryGetStringField(TEXT("comment"), Comment))
+    {
+        OutEnum.Comment = Comment;
+    }
+    
+    // Parse values array
+    const TArray<TSharedPtr<FJsonValue>>* ValuesArray;
+    if (!JsonObject->TryGetArrayField(TEXT("values"), ValuesArray))
+    {
+        FN2CLogger::Get().LogError(TEXT("Missing values array in JSON"));
+        return false;
+    }
+    
+    OutEnum.Values.Empty();
+    for (const TSharedPtr<FJsonValue>& ValueValue : *ValuesArray)
+    {
+        const TSharedPtr<FJsonObject>& ValueObject = ValueValue->AsObject();
+        if (!ValueObject.IsValid())
+        {
+            continue;
+        }
+        
+        FN2CEnumValue Value;
+        
+        // Parse value properties
+        FString ValueName;
+        double ValueNumber;
+        
+        if (!ValueObject->TryGetStringField(TEXT("name"), ValueName) ||
+            !ValueObject->TryGetNumberField(TEXT("value"), ValueNumber))
+        {
+            FN2CLogger::Get().LogError(TEXT("Missing required enum value fields in JSON"));
+            continue;
+        }
+        
+        Value.Name = ValueName;
+        
+        // Parse optional comment
+        FString ValueComment;
+        if (ValueObject->TryGetStringField(TEXT("comment"), ValueComment))
+        {
+            Value.Comment = ValueComment;
+        }
+        
+        OutEnum.Values.Add(Value);
+    }
+    
     return true;
 }

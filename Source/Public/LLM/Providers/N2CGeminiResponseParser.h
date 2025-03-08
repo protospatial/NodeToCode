@@ -22,13 +22,8 @@ public:
         FN2CTranslationResponse& OutResponse) override;
 
 protected:
-    /** Extract message content from Gemini response format */
-    bool ExtractMessageContent(
+    /** Extract message content from Gemini's unique response format */
+    bool ExtractGeminiMessageContent(
         const TSharedPtr<FJsonObject>& JsonObject,
         FString& OutContent);
-
-    /** Handle Gemini-specific error responses */
-    bool HandleGeminiError(
-        const TSharedPtr<FJsonObject>& JsonObject,
-        FString& OutErrorMessage);
 };

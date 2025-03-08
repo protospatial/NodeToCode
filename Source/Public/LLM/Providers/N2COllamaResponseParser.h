@@ -22,13 +22,8 @@ public:
         FN2CTranslationResponse& OutResponse) override;
 
 protected:
-    /** Extract message content from Ollama response format */
-    bool ExtractMessageContent(
+    /** Extract message content from Ollama's unique response format */
+    bool ExtractOllamaMessageContent(
         const TSharedPtr<FJsonObject>& JsonObject,
         FString& OutContent);
-
-    /** Handle Ollama-specific error responses */
-    bool HandleOllamaError(
-        const TSharedPtr<FJsonObject>& JsonObject,
-        FString& OutErrorMessage);
 };

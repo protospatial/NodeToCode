@@ -1,194 +1,331 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Utils/N2CNodeTypeHelper.h"
-
+#include "Utils/N2CNodeTypeRegistry.h"
 #include "Utils/N2CLogger.h"
 
-void FN2CNodeTypeHelper::DetermineNodeType(const UK2Node* Node, EN2CNodeType& OutType)
-{
-    
-    
-    // Default to function call
-    OutType = EN2CNodeType::CallFunction;
+// Include all K2Node types
+#include "K2Node_ActorBoundEvent.h"
+#include "K2Node_AddComponent.h"
+#include "K2Node_AddComponentByClass.h"
+#include "K2Node_AddDelegate.h"
+#include "K2Node_AddPinInterface.h"
+#include "K2Node_AssignDelegate.h"
+#include "K2Node_AssignmentStatement.h"
+#include "K2Node_AsyncAction.h"
+#include "K2Node_BaseAsyncTask.h"
+#include "K2Node_BaseMCDelegate.h"
+#include "K2Node_BitmaskLiteral.h"
+#include "K2Node_BreakStruct.h"
+#include "K2Node_CallArrayFunction.h"
+#include "K2Node_CallDataTableFunction.h"
+#include "K2Node_CallDelegate.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_CallFunctionOnMember.h"
+#include "K2Node_CallMaterialParameterCollectionFunction.h"
+#include "K2Node_CallParentFunction.h"
+#include "K2Node_CastByteToEnum.h"
+#include "K2Node_ClassDynamicCast.h"
+#include "K2Node_ClearDelegate.h"
+#include "K2Node_CommutativeAssociativeBinaryOperator.h"
+#include "K2Node_ComponentBoundEvent.h"
+#include "K2Node_Composite.h"
+#include "K2Node_ConstructObjectFromClass.h"
+#include "K2Node_ConvertAsset.h"
+#include "K2Node_Copy.h"
+#include "K2Node_CreateDelegate.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_DeadClass.h"
+#include "K2Node_DelegateSet.h"
+#include "K2Node_DoOnceMultiInput.h"
+#include "K2Node_DynamicCast.h"
+#include "K2Node_EaseFunction.h"
+#include "K2Node_EditablePinBase.h"
+#include "K2Node_EnumEquality.h"
+#include "K2Node_EnumInequality.h"
+#include "K2Node_EnumLiteral.h"
+#include "K2Node_Event.h"
+#include "K2Node_EventNodeInterface.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_ExternalGraphInterface.h"
+#include "K2Node_ForEachElementInEnum.h"
+#include "K2Node_FormatText.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
+#include "K2Node_FunctionTerminator.h"
+#include "K2Node_GenericCreateObject.h"
+#include "K2Node_GetArrayItem.h"
+#include "K2Node_GetClassDefaults.h"
+#include "K2Node_GetDataTableRow.h"
+#include "K2Node_GetEnumeratorName.h"
+#include "K2Node_GetEnumeratorNameAsString.h"
+#include "K2Node_GetInputAxisKeyValue.h"
+#include "K2Node_GetInputAxisValue.h"
+#include "K2Node_GetInputVectorAxisValue.h"
+#include "K2Node_GetNumEnumEntries.h"
+#include "K2Node_GetSubsystem.h"
+#include "K2Node_IfThenElse.h"
+#include "K2Node_InputAction.h"
+#include "K2Node_InputActionEvent.h"
+#include "K2Node_InputAxisEvent.h"
+#include "K2Node_InputAxisKeyEvent.h"
+#include "K2Node_InputKey.h"
+#include "K2Node_InputKeyEvent.h"
+#include "K2Node_InputTouch.h"
+#include "K2Node_InputTouchEvent.h"
+#include "K2Node_InputVectorAxisEvent.h"
+#include "K2Node_Knot.h"
+#include "K2Node_Literal.h"
+#include "K2Node_LoadAsset.h"
+#include "K2Node_LocalVariable.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_MakeArray.h"
+#include "K2Node_MakeContainer.h"
+#include "K2Node_MakeMap.h"
+#include "K2Node_MakeSet.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_MakeVariable.h"
+#include "K2Node_MathExpression.h"
+#include "K2Node_Message.h"
+#include "K2Node_MultiGate.h"
+#include "K2Node_PromotableOperator.h"
+#include "K2Node_PureAssignmentStatement.h"
+#include "K2Node_RemoveDelegate.h"
+#include "K2Node_Select.h"
+#include "K2Node_Self.h"
+#include "K2Node_SetFieldsInStruct.h"
+#include "K2Node_SetVariableOnPersistentFrame.h"
+#include "K2Node_SpawnActor.h"
+#include "K2Node_SpawnActorFromClass.h"
+#include "K2Node_StructMemberGet.h"
+#include "K2Node_StructMemberSet.h"
+#include "K2Node_StructOperation.h"
+#include "K2Node_Switch.h"
+#include "K2Node_SwitchEnum.h"
+#include "K2Node_SwitchInteger.h"
+#include "K2Node_SwitchName.h"
+#include "K2Node_SwitchString.h"
+#include "K2Node_TemporaryVariable.h"
+#include "K2Node_Timeline.h"
+#include "K2Node_Tunnel.h"
+#include "K2Node_TunnelBoundary.h"
+#include "K2Node_Variable.h"
+#include "K2Node_VariableGet.h"
+#include "K2Node_VariableSet.h"
+#include "K2Node_VariableSetRef.h"
 
+FN2CNodeTypeRegistry& FN2CNodeTypeRegistry::Get()
+{
+    static FN2CNodeTypeRegistry Instance;
+    return Instance;
+}
+
+FN2CNodeTypeRegistry::FN2CNodeTypeRegistry()
+{
+    InitializeDefaultMappings();
+}
+
+void FN2CNodeTypeRegistry::RegisterNodeType(const FName& ClassName, EN2CNodeType NodeType)
+{
+    ClassNameMappings.Add(ClassName, NodeType);
+}
+
+void FN2CNodeTypeRegistry::RegisterNodeClass(const UClass* Class, EN2CNodeType NodeType)
+{
+    if (Class)
+    {
+        ClassMappings.Add(Class, NodeType);
+    }
+}
+
+EN2CNodeType FN2CNodeTypeRegistry::GetNodeType(const UK2Node* Node)
+{
     if (!Node)
     {
-        return;
+        return EN2CNodeType::CallFunction; // Default
     }
-
+    
     // Try setting make struct type first since MakeStruct is considered a variable
     // before being considered MakeStruct
     if (const UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node))
     {
-        if (MapFromClassName(Node->GetClass()->GetName(), OutType))
+        FName ClassName = FName(*GetBaseNodeType(Node->GetClass()->GetName()));
+        if (ClassNameMappings.Contains(ClassName))
         {
-            return;
+            return ClassNameMappings[ClassName];
         }
     }
 
     // Try setting variable type first
     if (const UK2Node_Variable* VarNode = Cast<UK2Node_Variable>(Node))
     {
-        OutType = DetermineVariableNodeType(VarNode);
-
-        return;
+        return DetermineVariableNodeType(VarNode);
     }
     
-    // Try mapping from class name second
-    if (MapFromClassName(Node->GetClass()->GetName(), OutType))
+    // Try direct class mapping
+    if (ClassMappings.Contains(Node->GetClass()))
     {
-        return;
+        return ClassMappings[Node->GetClass()];
     }
-
+    
+    // Try class name mapping
+    FName ClassName = FName(*GetBaseNodeType(Node->GetClass()->GetName()));
+    if (ClassNameMappings.Contains(ClassName))
+    {
+        return ClassNameMappings[ClassName];
+    }
+    
     // Fall back to inheritance-based mapping
+    EN2CNodeType OutType = EN2CNodeType::CallFunction;
     MapFromInheritance(Node, OutType);
+    return OutType;
 }
 
-bool FN2CNodeTypeHelper::MapFromClassName(const FString& ClassName, EN2CNodeType& OutType)
+FString FN2CNodeTypeRegistry::GetBaseNodeType(const FString& ClassName)
 {
-    // Strip K2Node_ prefix
-    FString BaseType = GetBaseNodeType(ClassName);
-    
-    // Direct mappings
-    static const TMap<FString, EN2CNodeType> DirectMappings = {
-        // Function Calls
-        { TEXT("CallFunction"), EN2CNodeType::CallFunction },
-        { TEXT("CallArrayFunction"), EN2CNodeType::CallArrayFunction },
-        { TEXT("CallDataTableFunction"), EN2CNodeType::CallDataTableFunction },
-        { TEXT("CallDelegate"), EN2CNodeType::CallDelegate },
-        { TEXT("CallFunctionOnMember"), EN2CNodeType::CallFunctionOnMember },
-        { TEXT("CallMaterialParameterCollectionFunction"), EN2CNodeType::CallMaterialParameterCollection },
-        { TEXT("CallParentFunction"), EN2CNodeType::CallParentFunction },
-        { TEXT("FunctionEntry"), EN2CNodeType::FunctionEntry },
-        { TEXT("FunctionResult"), EN2CNodeType::FunctionResult },
-        { TEXT("FunctionTerminator"), EN2CNodeType::FunctionTerminator },
-
-        // Variables
-        { TEXT("Variable"), EN2CNodeType::Variable },
-        { TEXT("VariableGet"), EN2CNodeType::VariableGet },
-        { TEXT("VariableSet"), EN2CNodeType::VariableSet },
-        { TEXT("VariableSetRef"), EN2CNodeType::VariableSetRef },
-        { TEXT("LocalVariable"), EN2CNodeType::LocalVariable },
-        { TEXT("MakeVariable"), EN2CNodeType::MakeVariable },
-        { TEXT("TemporaryVariable"), EN2CNodeType::TemporaryVariable },
-        { TEXT("SetVariableOnPersistentFrame"), EN2CNodeType::SetVariableOnPersistentFrame },
-
-        // Events
-        { TEXT("Event"), EN2CNodeType::Event },
-        { TEXT("CustomEvent"), EN2CNodeType::CustomEvent },
-        { TEXT("ActorBoundEvent"), EN2CNodeType::ActorBoundEvent },
-        { TEXT("ComponentBoundEvent"), EN2CNodeType::ComponentBoundEvent },
-        { TEXT("InputAction"), EN2CNodeType::InputAction },
-        { TEXT("InputActionEvent"), EN2CNodeType::InputActionEvent },
-        { TEXT("InputAxisEvent"), EN2CNodeType::InputAxisEvent },
-        { TEXT("InputAxisKeyEvent"), EN2CNodeType::InputAxisKeyEvent },
-        { TEXT("InputKey"), EN2CNodeType::InputKey },
-        { TEXT("InputKeyEvent"), EN2CNodeType::InputKeyEvent },
-        { TEXT("InputTouch"), EN2CNodeType::InputTouch },
-        { TEXT("InputTouchEvent"), EN2CNodeType::InputTouchEvent },
-        { TEXT("InputVectorAxisEvent"), EN2CNodeType::InputVectorAxisEvent },
-
-        // Flow Control
-        { TEXT("ExecutionSequence"), EN2CNodeType::Sequence },
-        { TEXT("IfThenElse"), EN2CNodeType::Branch },
-        { TEXT("DoOnceMultiInput"), EN2CNodeType::DoOnceMultiInput },
-        { TEXT("MultiGate"), EN2CNodeType::MultiGate },
-        { TEXT("Knot"), EN2CNodeType::Knot },
-        { TEXT("Tunnel"), EN2CNodeType::Tunnel },
-        { TEXT("TunnelBoundary"), EN2CNodeType::TunnelBoundary },
-
-        // Switches
-        { TEXT("Switch"), EN2CNodeType::Switch },
-        { TEXT("SwitchInteger"), EN2CNodeType::SwitchInt },
-        { TEXT("SwitchString"), EN2CNodeType::SwitchString },
-        { TEXT("SwitchEnum"), EN2CNodeType::SwitchEnum },
-        { TEXT("SwitchName"), EN2CNodeType::SwitchName },
-
-        // Structs and Objects
-        { TEXT("MakeStruct"), EN2CNodeType::MakeStruct },
-        { TEXT("BreakStruct"), EN2CNodeType::BreakStruct },
-        { TEXT("SetFieldsInStruct"), EN2CNodeType::SetFieldsInStruct },
-        { TEXT("StructMemberGet"), EN2CNodeType::StructMemberGet },
-        { TEXT("StructMemberSet"), EN2CNodeType::StructMemberSet },
-        { TEXT("StructOperation"), EN2CNodeType::StructOperation },
-
-        // Containers
-        { TEXT("MakeArray"), EN2CNodeType::MakeArray },
-        { TEXT("MakeMap"), EN2CNodeType::MakeMap },
-        { TEXT("MakeSet"), EN2CNodeType::MakeSet },
-        { TEXT("MakeContainer"), EN2CNodeType::MakeContainer },
-        { TEXT("GetArrayItem"), EN2CNodeType::GetArrayItem },
-
-        // Casting and Conversion
-        { TEXT("DynamicCast"), EN2CNodeType::DynamicCast },
-        { TEXT("ClassDynamicCast"), EN2CNodeType::ClassDynamicCast },
-        { TEXT("CastByteToEnum"), EN2CNodeType::CastByteToEnum },
-        { TEXT("ConvertAsset"), EN2CNodeType::ConvertAsset },
-
-        // Delegates
-        { TEXT("AddDelegate"), EN2CNodeType::AddDelegate },
-        { TEXT("CreateDelegate"), EN2CNodeType::CreateDelegate },
-        { TEXT("ClearDelegate"), EN2CNodeType::ClearDelegate },
-        { TEXT("RemoveDelegate"), EN2CNodeType::RemoveDelegate },
-        { TEXT("AssignDelegate"), EN2CNodeType::AssignDelegate },
-        { TEXT("DelegateSet"), EN2CNodeType::DelegateSet },
-
-        // Async/Latent
-        { TEXT("AsyncAction"), EN2CNodeType::AsyncAction },
-        { TEXT("BaseAsyncTask"), EN2CNodeType::BaseAsyncTask },
-
-        // Components
-        { TEXT("AddComponent"), EN2CNodeType::AddComponent },
-        { TEXT("AddComponentByClass"), EN2CNodeType::AddComponentByClass },
-        { TEXT("AddPinInterface"), EN2CNodeType::AddPinInterface },
-
-        // Misc Utility
-        { TEXT("ConstructObjectFromClass"), EN2CNodeType::ConstructObjectFromClass },
-        { TEXT("GenericCreateObject"), EN2CNodeType::GenericCreateObject },
-        { TEXT("Timeline"), EN2CNodeType::Timeline },
-        { TEXT("SpawnActor"), EN2CNodeType::SpawnActor },
-        { TEXT("SpawnActorFromClass"), EN2CNodeType::SpawnActorFromClass },
-        { TEXT("FormatText"), EN2CNodeType::FormatText },
-        { TEXT("GetClassDefaults"), EN2CNodeType::GetClassDefaults },
-        { TEXT("GetSubsystem"), EN2CNodeType::GetSubsystem },
-        { TEXT("LoadAsset"), EN2CNodeType::LoadAsset },
-        { TEXT("Copy"), EN2CNodeType::Copy },
-
-        // Math/Logic
-        { TEXT("BitmaskLiteral"), EN2CNodeType::BitmaskLiteral },
-        { TEXT("EnumEquality"), EN2CNodeType::EnumEquality },
-        { TEXT("EnumInequality"), EN2CNodeType::EnumInequality },
-        { TEXT("EnumLiteral"), EN2CNodeType::EnumLiteral },
-        { TEXT("GetEnumeratorName"), EN2CNodeType::GetEnumeratorName },
-        { TEXT("GetEnumeratorNameAsString"), EN2CNodeType::GetEnumeratorNameAsString },
-        { TEXT("GetNumEnumEntries"), EN2CNodeType::GetNumEnumEntries },
-        { TEXT("MathExpression"), EN2CNodeType::MathExpression },
-        { TEXT("EaseFunction"), EN2CNodeType::EaseFunction },
-        { TEXT("CommutativeAssociativeBinaryOperator"), EN2CNodeType::CommutativeAssociativeBinaryOperator },
-        { TEXT("PureAssignmentStatement"), EN2CNodeType::PureAssignmentStatement },
-        { TEXT("AssignmentStatement"), EN2CNodeType::AssignmentStatement },
-
-        // Special Types
-        { TEXT("Self"), EN2CNodeType::Self },
-        { TEXT("Composite"), EN2CNodeType::Composite },
-        { TEXT("DeadClass"), EN2CNodeType::DeadClass },
-        { TEXT("Literal"), EN2CNodeType::Literal },
-        { TEXT("Message"), EN2CNodeType::Message },
-        { TEXT("PromotableOperator"), EN2CNodeType::PromotableOperator },
-        { TEXT("MacroInstance"), EN2CNodeType::MacroInstance },
-        { TEXT("BaseMCDelegate"), EN2CNodeType::BaseMCDelegate }
-    };
-
-    if (const EN2CNodeType* Type = DirectMappings.Find(BaseType))
+    static const FString Prefix = TEXT("K2Node_");
+    if (ClassName.StartsWith(Prefix))
     {
-        OutType = *Type;
-        return true;
+        return ClassName.RightChop(Prefix.Len());
     }
-
-    return false;
+    return ClassName;
 }
 
-bool FN2CNodeTypeHelper::MapFromInheritance(const UK2Node* Node, EN2CNodeType& OutType)
+void FN2CNodeTypeRegistry::InitializeDefaultMappings()
+{
+    // Function Calls
+    RegisterNodeType(FName(TEXT("CallFunction")), EN2CNodeType::CallFunction);
+    RegisterNodeType(FName(TEXT("CallArrayFunction")), EN2CNodeType::CallArrayFunction);
+    RegisterNodeType(FName(TEXT("CallDataTableFunction")), EN2CNodeType::CallDataTableFunction);
+    RegisterNodeType(FName(TEXT("CallDelegate")), EN2CNodeType::CallDelegate);
+    RegisterNodeType(FName(TEXT("CallFunctionOnMember")), EN2CNodeType::CallFunctionOnMember);
+    RegisterNodeType(FName(TEXT("CallMaterialParameterCollectionFunction")), EN2CNodeType::CallMaterialParameterCollection);
+    RegisterNodeType(FName(TEXT("CallParentFunction")), EN2CNodeType::CallParentFunction);
+    RegisterNodeType(FName(TEXT("FunctionEntry")), EN2CNodeType::FunctionEntry);
+    RegisterNodeType(FName(TEXT("FunctionResult")), EN2CNodeType::FunctionResult);
+    RegisterNodeType(FName(TEXT("FunctionTerminator")), EN2CNodeType::FunctionTerminator);
+
+    // Variables
+    RegisterNodeType(FName(TEXT("Variable")), EN2CNodeType::Variable);
+    RegisterNodeType(FName(TEXT("VariableGet")), EN2CNodeType::VariableGet);
+    RegisterNodeType(FName(TEXT("VariableSet")), EN2CNodeType::VariableSet);
+    RegisterNodeType(FName(TEXT("VariableSetRef")), EN2CNodeType::VariableSetRef);
+    RegisterNodeType(FName(TEXT("LocalVariable")), EN2CNodeType::LocalVariable);
+    RegisterNodeType(FName(TEXT("MakeVariable")), EN2CNodeType::MakeVariable);
+    RegisterNodeType(FName(TEXT("TemporaryVariable")), EN2CNodeType::TemporaryVariable);
+    RegisterNodeType(FName(TEXT("SetVariableOnPersistentFrame")), EN2CNodeType::SetVariableOnPersistentFrame);
+
+    // Events
+    RegisterNodeType(FName(TEXT("Event")), EN2CNodeType::Event);
+    RegisterNodeType(FName(TEXT("CustomEvent")), EN2CNodeType::CustomEvent);
+    RegisterNodeType(FName(TEXT("ActorBoundEvent")), EN2CNodeType::ActorBoundEvent);
+    RegisterNodeType(FName(TEXT("ComponentBoundEvent")), EN2CNodeType::ComponentBoundEvent);
+    RegisterNodeType(FName(TEXT("InputAction")), EN2CNodeType::InputAction);
+    RegisterNodeType(FName(TEXT("InputActionEvent")), EN2CNodeType::InputActionEvent);
+    RegisterNodeType(FName(TEXT("InputAxisEvent")), EN2CNodeType::InputAxisEvent);
+    RegisterNodeType(FName(TEXT("InputAxisKeyEvent")), EN2CNodeType::InputAxisKeyEvent);
+    RegisterNodeType(FName(TEXT("InputKey")), EN2CNodeType::InputKey);
+    RegisterNodeType(FName(TEXT("InputKeyEvent")), EN2CNodeType::InputKeyEvent);
+    RegisterNodeType(FName(TEXT("InputTouch")), EN2CNodeType::InputTouch);
+    RegisterNodeType(FName(TEXT("InputTouchEvent")), EN2CNodeType::InputTouchEvent);
+    RegisterNodeType(FName(TEXT("InputVectorAxisEvent")), EN2CNodeType::InputVectorAxisEvent);
+
+    // Flow Control
+    RegisterNodeType(FName(TEXT("ExecutionSequence")), EN2CNodeType::Sequence);
+    RegisterNodeType(FName(TEXT("IfThenElse")), EN2CNodeType::Branch);
+    RegisterNodeType(FName(TEXT("DoOnceMultiInput")), EN2CNodeType::DoOnceMultiInput);
+    RegisterNodeType(FName(TEXT("MultiGate")), EN2CNodeType::MultiGate);
+    RegisterNodeType(FName(TEXT("Knot")), EN2CNodeType::Knot);
+    RegisterNodeType(FName(TEXT("Tunnel")), EN2CNodeType::Tunnel);
+    RegisterNodeType(FName(TEXT("TunnelBoundary")), EN2CNodeType::TunnelBoundary);
+
+    // Switches
+    RegisterNodeType(FName(TEXT("Switch")), EN2CNodeType::Switch);
+    RegisterNodeType(FName(TEXT("SwitchInteger")), EN2CNodeType::SwitchInt);
+    RegisterNodeType(FName(TEXT("SwitchString")), EN2CNodeType::SwitchString);
+    RegisterNodeType(FName(TEXT("SwitchEnum")), EN2CNodeType::SwitchEnum);
+    RegisterNodeType(FName(TEXT("SwitchName")), EN2CNodeType::SwitchName);
+
+    // Structs and Objects
+    RegisterNodeType(FName(TEXT("MakeStruct")), EN2CNodeType::MakeStruct);
+    RegisterNodeType(FName(TEXT("BreakStruct")), EN2CNodeType::BreakStruct);
+    RegisterNodeType(FName(TEXT("SetFieldsInStruct")), EN2CNodeType::SetFieldsInStruct);
+    RegisterNodeType(FName(TEXT("StructMemberGet")), EN2CNodeType::StructMemberGet);
+    RegisterNodeType(FName(TEXT("StructMemberSet")), EN2CNodeType::StructMemberSet);
+    RegisterNodeType(FName(TEXT("StructOperation")), EN2CNodeType::StructOperation);
+
+    // Containers
+    RegisterNodeType(FName(TEXT("MakeArray")), EN2CNodeType::MakeArray);
+    RegisterNodeType(FName(TEXT("MakeMap")), EN2CNodeType::MakeMap);
+    RegisterNodeType(FName(TEXT("MakeSet")), EN2CNodeType::MakeSet);
+    RegisterNodeType(FName(TEXT("MakeContainer")), EN2CNodeType::MakeContainer);
+    RegisterNodeType(FName(TEXT("GetArrayItem")), EN2CNodeType::GetArrayItem);
+
+    // Casting and Conversion
+    RegisterNodeType(FName(TEXT("DynamicCast")), EN2CNodeType::DynamicCast);
+    RegisterNodeType(FName(TEXT("ClassDynamicCast")), EN2CNodeType::ClassDynamicCast);
+    RegisterNodeType(FName(TEXT("CastByteToEnum")), EN2CNodeType::CastByteToEnum);
+    RegisterNodeType(FName(TEXT("ConvertAsset")), EN2CNodeType::ConvertAsset);
+
+    // Delegates
+    RegisterNodeType(FName(TEXT("AddDelegate")), EN2CNodeType::AddDelegate);
+    RegisterNodeType(FName(TEXT("CreateDelegate")), EN2CNodeType::CreateDelegate);
+    RegisterNodeType(FName(TEXT("ClearDelegate")), EN2CNodeType::ClearDelegate);
+    RegisterNodeType(FName(TEXT("RemoveDelegate")), EN2CNodeType::RemoveDelegate);
+    RegisterNodeType(FName(TEXT("AssignDelegate")), EN2CNodeType::AssignDelegate);
+    RegisterNodeType(FName(TEXT("DelegateSet")), EN2CNodeType::DelegateSet);
+
+    // Async/Latent
+    RegisterNodeType(FName(TEXT("AsyncAction")), EN2CNodeType::AsyncAction);
+    RegisterNodeType(FName(TEXT("BaseAsyncTask")), EN2CNodeType::BaseAsyncTask);
+
+    // Components
+    RegisterNodeType(FName(TEXT("AddComponent")), EN2CNodeType::AddComponent);
+    RegisterNodeType(FName(TEXT("AddComponentByClass")), EN2CNodeType::AddComponentByClass);
+    RegisterNodeType(FName(TEXT("AddPinInterface")), EN2CNodeType::AddPinInterface);
+
+    // Misc Utility
+    RegisterNodeType(FName(TEXT("ConstructObjectFromClass")), EN2CNodeType::ConstructObjectFromClass);
+    RegisterNodeType(FName(TEXT("GenericCreateObject")), EN2CNodeType::GenericCreateObject);
+    RegisterNodeType(FName(TEXT("Timeline")), EN2CNodeType::Timeline);
+    RegisterNodeType(FName(TEXT("SpawnActor")), EN2CNodeType::SpawnActor);
+    RegisterNodeType(FName(TEXT("SpawnActorFromClass")), EN2CNodeType::SpawnActorFromClass);
+    RegisterNodeType(FName(TEXT("FormatText")), EN2CNodeType::FormatText);
+    RegisterNodeType(FName(TEXT("GetClassDefaults")), EN2CNodeType::GetClassDefaults);
+    RegisterNodeType(FName(TEXT("GetSubsystem")), EN2CNodeType::GetSubsystem);
+    RegisterNodeType(FName(TEXT("LoadAsset")), EN2CNodeType::LoadAsset);
+    RegisterNodeType(FName(TEXT("Copy")), EN2CNodeType::Copy);
+
+    // Math/Logic
+    RegisterNodeType(FName(TEXT("BitmaskLiteral")), EN2CNodeType::BitmaskLiteral);
+    RegisterNodeType(FName(TEXT("EnumEquality")), EN2CNodeType::EnumEquality);
+    RegisterNodeType(FName(TEXT("EnumInequality")), EN2CNodeType::EnumInequality);
+    RegisterNodeType(FName(TEXT("EnumLiteral")), EN2CNodeType::EnumLiteral);
+    RegisterNodeType(FName(TEXT("GetEnumeratorName")), EN2CNodeType::GetEnumeratorName);
+    RegisterNodeType(FName(TEXT("GetEnumeratorNameAsString")), EN2CNodeType::GetEnumeratorNameAsString);
+    RegisterNodeType(FName(TEXT("GetNumEnumEntries")), EN2CNodeType::GetNumEnumEntries);
+    RegisterNodeType(FName(TEXT("MathExpression")), EN2CNodeType::MathExpression);
+    RegisterNodeType(FName(TEXT("EaseFunction")), EN2CNodeType::EaseFunction);
+    RegisterNodeType(FName(TEXT("CommutativeAssociativeBinaryOperator")), EN2CNodeType::CommutativeAssociativeBinaryOperator);
+    RegisterNodeType(FName(TEXT("PureAssignmentStatement")), EN2CNodeType::PureAssignmentStatement);
+    RegisterNodeType(FName(TEXT("AssignmentStatement")), EN2CNodeType::AssignmentStatement);
+
+    // Special Types
+    RegisterNodeType(FName(TEXT("Self")), EN2CNodeType::Self);
+    RegisterNodeType(FName(TEXT("Composite")), EN2CNodeType::Composite);
+    RegisterNodeType(FName(TEXT("DeadClass")), EN2CNodeType::DeadClass);
+    RegisterNodeType(FName(TEXT("Literal")), EN2CNodeType::Literal);
+    RegisterNodeType(FName(TEXT("Message")), EN2CNodeType::Message);
+    RegisterNodeType(FName(TEXT("PromotableOperator")), EN2CNodeType::PromotableOperator);
+    RegisterNodeType(FName(TEXT("MacroInstance")), EN2CNodeType::MacroInstance);
+    RegisterNodeType(FName(TEXT("BaseMCDelegate")), EN2CNodeType::BaseMCDelegate);
+    
+    // Register class mappings for common base classes
+    RegisterNodeClass(UK2Node_CallFunction::StaticClass(), EN2CNodeType::CallFunction);
+    RegisterNodeClass(UK2Node_Event::StaticClass(), EN2CNodeType::Event);
+    RegisterNodeClass(UK2Node_Variable::StaticClass(), EN2CNodeType::Variable);
+}
+
+bool FN2CNodeTypeRegistry::MapFromInheritance(const UK2Node* Node, EN2CNodeType& OutType)
 {
     // Handle common base classes
     if (Node->IsA<UK2Node_CallFunction>())
@@ -211,39 +348,7 @@ bool FN2CNodeTypeHelper::MapFromInheritance(const UK2Node* Node, EN2CNodeType& O
     
     if (Node->IsA<UK2Node_Variable>())
     {
-        const UK2Node_Variable* VarNode = Cast<UK2Node_Variable>(Node);
-        UClass* VarBP = Node->GetBlueprintClassFromNode();
-        UStruct const* VariableScope = VarNode->VariableReference.GetMemberScope(VarBP);
-        
-        if (Node->IsA<UK2Node_VariableGet>())
-        {
-            // Check if local variable get
-            if (VariableScope != nullptr)
-            {
-                OutType = EN2CNodeType::LocalVariableGet;
-                FString LogMessage = FString::Printf(TEXT("This is a local variable get"));
-                FN2CLogger::Get().Log(LogMessage, EN2CLogSeverity::Debug);
-            }
-            else
-            {
-                OutType = EN2CNodeType::VariableGet;
-            }
-        }
-        else if (Node->IsA<UK2Node_VariableSet>())
-        {
-            // Check if local variable set
-            if (VariableScope != nullptr)
-            {
-                OutType = EN2CNodeType::LocalVariableSet;
-                OutType = EN2CNodeType::LocalVariableGet;
-                FString LogMessage = FString::Printf(TEXT("This is a local variable set"));
-                FN2CLogger::Get().Log(LogMessage, EN2CLogSeverity::Debug);
-            }
-            else
-            {
-                OutType = EN2CNodeType::VariableSet;
-            }
-        }
+        OutType = DetermineVariableNodeType(Cast<UK2Node_Variable>(Node));
         return true;
     }
 
@@ -655,7 +760,6 @@ bool FN2CNodeTypeHelper::MapFromInheritance(const UK2Node* Node, EN2CNodeType& O
         return true;
     }
 
-
     if (Node->IsA<UK2Node_Knot>())
     {
         OutType = EN2CNodeType::Knot;
@@ -859,17 +963,7 @@ bool FN2CNodeTypeHelper::MapFromInheritance(const UK2Node* Node, EN2CNodeType& O
     return false;
 }
 
-FString FN2CNodeTypeHelper::GetBaseNodeType(const FString& ClassName)
-{
-    static const FString Prefix = TEXT("K2Node_");
-    if (ClassName.StartsWith(Prefix))
-    {
-        return ClassName.RightChop(Prefix.Len());
-    }
-    return ClassName;
-}
-
-EN2CNodeType FN2CNodeTypeHelper::DetermineVariableNodeType(const UK2Node_Variable* Node)
+EN2CNodeType FN2CNodeTypeRegistry::DetermineVariableNodeType(const UK2Node_Variable* Node)
 {
     if (!Node)
     {

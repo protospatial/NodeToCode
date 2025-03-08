@@ -6,7 +6,8 @@
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "LLM/N2CSystemPromptManager.h"
-#include "LLM/IN2CLLMService.h"
+#include "LLM/N2CBaseLLMService.h"
+#include "LLM/N2CLLMProviderRegistry.h"
 #include "LLM/Providers/N2CAnthropicService.h"
 #include "LLM/Providers/N2CDeepSeekService.h"
 #include "LLM/Providers/N2CGeminiService.h"
@@ -44,6 +45,9 @@ bool UN2CLLMModule::Initialize()
     Config.Provider = Settings->Provider;
     Config.ApiKey = Settings->GetActiveApiKey();
     Config.Model = Settings->GetActiveModel();
+
+    // Initialize provider registry
+    InitializeProviderRegistry();
 
     // Initialize components
     if (!InitializeComponents() || !CreateServiceForProvider(Config.Provider))
@@ -396,62 +400,55 @@ bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const
 
 bool UN2CLLMModule::CreateServiceForProvider(EN2CLLMProvider Provider)
 {
-    UObject* ServiceObject = nullptr;
-
-    switch (Provider)
+    // Get the provider registry
+    UN2CLLMProviderRegistry* Registry = UN2CLLMProviderRegistry::Get();
+    
+    // Check if the provider is registered
+    if (!Registry->IsProviderRegistered(Provider))
     {
-        case EN2CLLMProvider::Anthropic:
-            ServiceObject = NewObject<UN2CAnthropicService>(this);
-            break;
-
-        case EN2CLLMProvider::OpenAI:
-            ServiceObject = NewObject<UN2COpenAIService>(this);
-            break;
-
-        case EN2CLLMProvider::Ollama:
-            ServiceObject = NewObject<UN2COllamaService>(this);
-            break;
-        
-        case EN2CLLMProvider::DeepSeek:
-            ServiceObject = NewObject<UN2CDeepSeekService>(this);
-            break;
-
-    case EN2CLLMProvider::Gemini:
-            ServiceObject = NewObject<UN2CGeminiService>(this);
-            break;
-
-        // Other providers will be added here
-        default:
-            FN2CLogger::Get().LogError(
-                FString::Printf(TEXT("Unsupported provider type: %d"), static_cast<int32>(Provider)),
-                TEXT("LLMModule")
-            );
-            return false;
-    }
-
-    if (!ServiceObject)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to create service object"), TEXT("LLMModule"));
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Provider type not registered: %s"), 
+                *UEnum::GetValueAsString(Provider)),
+            TEXT("LLMModule")
+        );
         return false;
     }
-
-    // Get service interface
-    IN2CLLMService* Service = Cast<IN2CLLMService>(ServiceObject);
-    if (!Service)
+    
+    // Create the provider service
+    TScriptInterface<IN2CLLMService> ServiceInterface = Registry->CreateProvider(Provider, this);
+    
+    if (!ServiceInterface.GetInterface())
     {
-        FN2CLogger::Get().LogError(TEXT("Service does not implement IN2CLLMService"), TEXT("LLMModule"));
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Failed to create service for provider type: %s"), 
+                *UEnum::GetValueAsString(Provider)),
+            TEXT("LLMModule")
+        );
         return false;
     }
 
     // Initialize service
-    if (!Service->Initialize(Config))
+    if (!ServiceInterface.GetInterface()->Initialize(Config))
     {
         FN2CLogger::Get().LogError(TEXT("Failed to initialize service"), TEXT("LLMModule"));
         return false;
     }
 
     // Store active service
-    ActiveService.SetObject(ServiceObject);
-    ActiveService.SetInterface(Cast<IN2CLLMService>(ServiceObject));
+    ActiveService = ServiceInterface;
     return true;
+}
+void UN2CLLMModule::InitializeProviderRegistry()
+{
+    // Get the provider registry
+    UN2CLLMProviderRegistry* Registry = UN2CLLMProviderRegistry::Get();
+    
+    // Register all provider classes
+    Registry->RegisterProvider(EN2CLLMProvider::OpenAI, UN2COpenAIService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::Anthropic, UN2CAnthropicService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::Gemini, UN2CGeminiService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::DeepSeek, UN2CDeepSeekService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::Ollama, UN2COllamaService::StaticClass());
+    
+    FN2CLogger::Get().Log(TEXT("Provider registry initialized"), EN2CLogSeverity::Info, TEXT("LLMModule"));
 }
