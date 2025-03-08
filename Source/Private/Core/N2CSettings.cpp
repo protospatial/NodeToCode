@@ -32,6 +32,8 @@ UN2CSettings::UN2CSettings()
     if (!UserSecrets)
     {
         UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+        // Force reload config to ensure we have the latest values
+        UserSecrets->LoadConfig(nullptr, nullptr, UE::LCPF_PropagateToChildDefaultObjects);
     }
 
     // Initialize API Keys
@@ -203,7 +205,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->OpenAI_API_Key = OpenAI_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI))
@@ -213,7 +215,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->Anthropic_API_Key = Anthropic_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))
@@ -223,7 +225,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->Gemini_API_Key = Gemini_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI))
@@ -233,7 +235,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
-            UserSecrets->SaveConfig();
+            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
             return;
         }
 
