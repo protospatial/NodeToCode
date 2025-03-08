@@ -15,9 +15,6 @@ public class NodeToCode : ModuleRules
         
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				"NodeToCode/Private/Utils/Validators",
-				"NodeToCode/Private/Utils/Processors",
-				"NodeToCode/Public/Utils/Processors"
 			}
 		);
         

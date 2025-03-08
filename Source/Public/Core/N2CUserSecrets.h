@@ -9,7 +9,8 @@
  * @class UN2CUserSecrets
  * @brief Stores sensitive configuration data like API keys
  */
-UCLASS(config = NodeToCodeSecrets)
+
+UCLASS(config = EditorNodeToCodeSecrets)
 class NODETOCODE_API UN2CUserSecrets : public UObject
 {
     GENERATED_BODY()

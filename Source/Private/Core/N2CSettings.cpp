@@ -230,7 +230,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->Anthropic_API_Key = Anthropic_API_Key_UI;
-            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
+            UserSecrets->SaveConfig(CPF_Config);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))
@@ -240,7 +240,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->Gemini_API_Key = Gemini_API_Key_UI;
-            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
+            UserSecrets->SaveConfig(CPF_Config);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI))
@@ -250,7 +250,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets = GetMutableDefault<UN2CUserSecrets>();
             }
             UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
-            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
+            UserSecrets->SaveConfig(CPF_Config);
             return;
         }
 
