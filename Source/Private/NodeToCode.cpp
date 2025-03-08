@@ -22,6 +22,18 @@ void FNodeToCodeModule::StartupModule()
     // Initialize logging
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
 
+    // Manually load the config files for UE 5.5 compatibility
+    FString UserSecretsConfigPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(
+        FPaths::ProjectSavedDir(), TEXT("Config"), FPlatformProperties::PlatformName(), 
+        TEXT("EditorNodeToCodeSecrets.ini")));
+    
+    // Attempt to load the config file
+    GConfig->LoadFile(UserSecretsConfigPath);
+    
+    // Populate user secrets from loaded data
+    UN2CUserSecrets* UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+    UserSecrets->LoadConfig();
+    
     // Apply configured log severity from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (Settings)
