@@ -20,6 +20,101 @@ FN2CEditorIntegration& FN2CEditorIntegration::Get()
     return Instance;
 }
 
+void FN2CEditorIntegration::ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> InEditor)
+{
+    FN2CLogger::Get().Log(TEXT("ExecuteCopyJsonForEditor called"), EN2CLogSeverity::Debug);
+
+    // Get the editor pointer
+    TSharedPtr<FBlueprintEditor> Editor = InEditor.Pin();
+    if (!Editor.IsValid())
+    {
+        FN2CLogger::Get().LogError(TEXT("Invalid Blueprint Editor pointer"));
+        return;
+    }
+    FN2CLogger::Get().Log(TEXT("Successfully obtained Blueprint Editor pointer"), EN2CLogSeverity::Info);
+
+    // Get focused graph
+    UEdGraph* FocusedGraph = Editor->GetFocusedGraph();
+    if (!FocusedGraph)
+    {
+        FN2CLogger::Get().LogError(TEXT("No focused graph in Blueprint Editor"));
+        return;
+    }
+
+    FString GraphName = FocusedGraph->GetName();
+    FString BlueprintName = TEXT("Unknown");
+    if (UBlueprint* Blueprint = Cast<UBlueprint>(FocusedGraph->GetOuter()))
+    {
+        BlueprintName = Blueprint->GetName();
+    }
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Found focused graph: %s in Blueprint: %s"), 
+        *GraphName, *BlueprintName), 
+        EN2CLogSeverity::Info
+    );
+
+    // Get collector instance
+    FN2CNodeCollector& Collector = FN2CNodeCollector::Get();
+    
+    // Collect nodes using the specific editor
+    TArray<UK2Node*> CollectedNodes;
+    if (Collector.CollectNodesFromGraph(FocusedGraph, CollectedNodes))
+    {
+        FString Context = FString::Printf(TEXT("Collected %d nodes"), CollectedNodes.Num());
+        FN2CLogger::Get().Log(TEXT("Node collection successful"), EN2CLogSeverity::Info, Context);
+        
+        // Get translator instance                                                                                                                                                                        
+        FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
+
+        // Generate N2CStruct from collected nodes
+        if (Translator.GenerateN2CStruct(CollectedNodes))
+        {
+            FN2CLogger::Get().Log(TEXT("Node translation successful"), EN2CLogSeverity::Info);
+
+            // Get the Blueprint structure
+            const FN2CBlueprint& Blueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
+            
+            // Validate the generated Blueprint
+            if (Blueprint.IsValid())
+            {
+                FN2CLogger::Get().Log(TEXT("Node translation validation successful"), EN2CLogSeverity::Info);
+
+                // Serialize to JSON with pretty printing enabled for clipboard                                                                                                                                   
+                FN2CSerializer::SetPrettyPrint(true);
+                FString JsonOutput = FN2CSerializer::ToJson(Blueprint);                                                                                                                                       
+                                                                                                                                                                                                           
+                // Copy JSON to clipboard if not empty                                                                                                                                                         
+                if (!JsonOutput.IsEmpty())                                                                                                                                                                    
+                {                                                                                                                                                                                             
+                    FPlatformApplicationMisc::ClipboardCopy(*JsonOutput);
+                    
+                    // Show notification
+                    FNotificationInfo Info(NSLOCTEXT("NodeToCode", "BlueprintJsonCopied", "Blueprint JSON copied to clipboard"));
+                    Info.bFireAndForget = true;
+                    Info.FadeInDuration = 0.2f;
+                    Info.FadeOutDuration = 0.5f;
+                    Info.ExpireDuration = 2.0f;
+                    FSlateNotificationManager::Get().AddNotification(Info);
+                    
+                    FN2CLogger::Get().Log(TEXT("Blueprint JSON copied to clipboard successfully"), EN2CLogSeverity::Info);
+                }
+                else
+                {
+                    FN2CLogger::Get().LogError(TEXT("JSON serialization failed"));
+                }
+            }
+            else
+            {
+                FN2CLogger::Get().LogError(TEXT("Node translation validation failed"));
+            }
+        }
+        else
+        {
+            FN2CLogger::Get().LogError(TEXT("Failed to translate nodes"));
+        }
+    }
+}
+
 void FN2CEditorIntegration::Initialize()
 {
     // Register commands
@@ -195,6 +290,28 @@ void FN2CEditorIntegration::RegisterToolbarForEditor(TSharedPtr<FBlueprintEditor
             return Editor->GetCurrentMode() == FBlueprintEditorApplicationModes::StandardBlueprintEditorMode;
         })
     );
+    
+    // Map the Copy JSON command
+    CommandList->MapAction(
+        FN2CToolbarCommand::Get().CopyJsonCommand,
+        FExecuteAction::CreateLambda([this, WeakEditor, BlueprintName]()
+        {
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Copy Blueprint JSON triggered for Blueprint: %s"), *BlueprintName),
+                EN2CLogSeverity::Info
+            );
+            ExecuteCopyJsonForEditor(WeakEditor);
+        }),
+        FCanExecuteAction::CreateLambda([WeakEditor]()
+        {
+            TSharedPtr<FBlueprintEditor> Editor = WeakEditor.Pin();
+            if (!Editor.IsValid())
+            {
+                return false;
+            }
+            return Editor->GetCurrentMode() == FBlueprintEditorApplicationModes::StandardBlueprintEditorMode;
+        })
+    );
 
     // Store in our map
     EditorCommandLists.Add(WeakEditor, CommandList);
@@ -222,6 +339,7 @@ void FN2CEditorIntegration::RegisterToolbarForEditor(TSharedPtr<FBlueprintEditor
                     
                     MenuBuilder.AddMenuEntry(FN2CToolbarCommand::Get().OpenWindowCommand);
                     MenuBuilder.AddMenuEntry(FN2CToolbarCommand::Get().CollectNodesCommand);
+                    MenuBuilder.AddMenuEntry(FN2CToolbarCommand::Get().CopyJsonCommand);
                     
                     return MenuBuilder.MakeWidget();
                 }),

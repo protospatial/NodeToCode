@@ -54,6 +54,9 @@ private:
     /** Execute collect nodes for a specific editor */
     void ExecuteCollectNodesForEditor(TWeakPtr<FBlueprintEditor> InEditor);
 
+    /** Execute copy blueprint JSON to clipboard for a specific editor */
+    void ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> InEditor);
+
     /** Handle asset editor opened callback */
     void HandleAssetEditorOpened(UObject* Asset, IAssetEditorInstance* EditorInstance);
 
