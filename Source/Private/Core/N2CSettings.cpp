@@ -31,24 +31,12 @@ UN2CSettings::UN2CSettings()
     
     if (!UserSecrets)
     {
-        UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+        UserSecrets = NewObject<UN2CUserSecrets>();
+        UserSecrets->LoadSecrets();
         
-        // For UE 5.5 compatibility, ensure the config is loaded
-        FString UserSecretsConfigPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(
-            FPaths::ProjectSavedDir(), TEXT("Config"), FPlatformProperties::PlatformName(), 
-            TEXT("EditorNodeToCodeSecrets.ini")));
-        
-        // Check if the file exists before attempting to load
-        if (FPaths::FileExists(UserSecretsConfigPath))
-        {
-            // Force reload config to ensure we have the latest values
-            GConfig->LoadFile(UserSecretsConfigPath);
-            UserSecrets->LoadConfig(nullptr, nullptr, UE::LCPF_PropagateToChildDefaultObjects);
-            
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("Loaded user secrets from: %s"), *UserSecretsConfigPath),
-                EN2CLogSeverity::Info);
-        }
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Loaded user secrets from: %s"), *UN2CUserSecrets::GetSecretsFilePath()),
+            EN2CLogSeverity::Info);
     }
 
     // Initialize API Keys
@@ -77,7 +65,9 @@ FString UN2CSettings::GetActiveApiKey() const
 {
     if (!UserSecrets)
     {
-        UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+        // Create and load secrets if not already done
+        UserSecrets = NewObject<UN2CUserSecrets>();
+        UserSecrets->LoadSecrets();
     }
 
     switch (Provider)
@@ -217,40 +207,44 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
         {
             if (!UserSecrets)
             {
-                UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
             }
             UserSecrets->OpenAI_API_Key = OpenAI_API_Key_UI;
-            UserSecrets->SaveConfig(CPF_Config, *UserSecrets->GetDefaultConfigFilename());
+            UserSecrets->SaveSecrets();
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI))
         {
             if (!UserSecrets)
             {
-                UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
             }
             UserSecrets->Anthropic_API_Key = Anthropic_API_Key_UI;
-            UserSecrets->SaveConfig(CPF_Config);
+            UserSecrets->SaveSecrets();
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))
         {
             if (!UserSecrets)
             {
-                UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
             }
             UserSecrets->Gemini_API_Key = Gemini_API_Key_UI;
-            UserSecrets->SaveConfig(CPF_Config);
+            UserSecrets->SaveSecrets();
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI))
         {
             if (!UserSecrets)
             {
-                UserSecrets = GetMutableDefault<UN2CUserSecrets>();
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
             }
             UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
-            UserSecrets->SaveConfig(CPF_Config);
+            UserSecrets->SaveSecrets();
             return;
         }
 

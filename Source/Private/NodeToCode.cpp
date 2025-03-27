@@ -21,18 +21,22 @@ void FNodeToCodeModule::StartupModule()
 {
     // Initialize logging
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
+    
+    // Force disable "Use Less CPU when in Background" setting to prevent HTTP request issues when the editor is not focused
+    if (GEditor)
+    {
+        UEditorPerformanceSettings* PerfSettings = GetMutableDefault<UEditorPerformanceSettings>();
+        if (PerfSettings)
+        {
+            PerfSettings->bThrottleCPUWhenNotForeground = false;
+            PerfSettings->SaveConfig();
+            FN2CLogger::Get().Log(TEXT("Disabled 'Use Less CPU when in Background' setting"), EN2CLogSeverity::Info);
+        }
+    }
 
-    // Manually load the config files for UE 5.5 compatibility
-    FString UserSecretsConfigPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(
-        FPaths::ProjectSavedDir(), TEXT("Config"), FPlatformProperties::PlatformName(), 
-        TEXT("EditorNodeToCodeSecrets.ini")));
-    
-    // Attempt to load the config file
-    GConfig->LoadFile(UserSecretsConfigPath);
-    
-    // Populate user secrets from loaded data
-    UN2CUserSecrets* UserSecrets = GetMutableDefault<UN2CUserSecrets>();
-    UserSecrets->LoadConfig();
+    // Load user secrets
+    UN2CUserSecrets* UserSecrets = NewObject<UN2CUserSecrets>();
+    UserSecrets->LoadSecrets();
     
     // Apply configured log severity from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
