@@ -185,6 +185,17 @@ void UN2CSettings::ValidateReferenceSourcePaths()
         }
     }
     ReferenceSourceFilePaths = ValidPaths;
+    
+    // Validate custom translation output directory if set
+    if (!CustomTranslationOutputDirectory.Path.IsEmpty())
+    {
+        if (!FPaths::DirectoryExists(CustomTranslationOutputDirectory.Path))
+        {
+            FN2CLogger::Get().LogWarning(
+                FString::Printf(TEXT("Custom translation output directory does not exist: %s. Will attempt to create it when needed."), 
+                *CustomTranslationOutputDirectory.Path));
+        }
+    }
 }
 
 void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)

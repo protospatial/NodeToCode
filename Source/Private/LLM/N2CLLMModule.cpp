@@ -363,8 +363,24 @@ FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName)
     // Create folder name
     FString FolderName = FString::Printf(TEXT("%s_%s"), *BlueprintName, *Timestamp);
     
-    // Build full path
-    FString BasePath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
+    // Check if custom output directory is set in settings
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    FString BasePath;
+    
+    if (Settings && !Settings->CustomTranslationOutputDirectory.Path.IsEmpty())
+    {
+        // Use custom path if specified
+        BasePath = Settings->CustomTranslationOutputDirectory.Path;
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Using custom translation output directory: %s"), *BasePath),
+            EN2CLogSeverity::Info);
+    }
+    else
+    {
+        // Use default path
+        BasePath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
+    }
+    
     return FPaths::Combine(BasePath, FolderName);
 }
 
@@ -393,7 +409,17 @@ bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const
 {
     if (!FPaths::DirectoryExists(DirectoryPath))
     {
-        return FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*DirectoryPath);
+        bool bSuccess = FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*DirectoryPath);
+        if (!bSuccess)
+        {
+            FN2CLogger::Get().LogError(
+                FString::Printf(TEXT("Failed to create directory: %s"), *DirectoryPath));
+            return false;
+        }
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Created directory: %s"), *DirectoryPath),
+            EN2CLogSeverity::Info);
+        return true;
     }
     return true;
 }

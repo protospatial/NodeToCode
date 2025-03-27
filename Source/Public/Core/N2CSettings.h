@@ -600,6 +600,12 @@ public:
                ToolTip="Source files to include as context in LLM prompts"))
     TArray<FFilePath> ReferenceSourceFilePaths;
     
+    /** Custom output directory for translations */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
+        meta = (DisplayName = "Custom Translation Output Directory",
+               ToolTip="If set, translations will be saved to this directory instead of the default location in Saved/NodeToCode/Translations"))
+    FDirectoryPath CustomTranslationOutputDirectory;
+    
     /** Validate all reference source file paths */
     void ValidateReferenceSourcePaths();
 
