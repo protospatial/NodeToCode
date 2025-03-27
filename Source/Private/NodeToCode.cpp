@@ -10,6 +10,7 @@
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidgetFactory.h"
+#include "Editor/EditorPerformanceSettings.h"
 #include "Models/N2CStyle.h"
 
 
