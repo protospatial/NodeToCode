@@ -4,7 +4,6 @@
 
 #include <Core/N2CWidgetContainer.h>
 
-#include "HttpModule.h"
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
@@ -64,8 +63,6 @@ void FNodeToCodeModule::StartupModule()
     // Register widget factory
     FN2CCodeEditorWidgetFactory::Register();
     FN2CLogger::Get().Log(TEXT("Widget factory registered"), EN2CLogSeverity::Debug);
-                                                                                                                                                                                                                                                                                                                                                                                                                                 
-FN2CLogger::Get().Log(TEXT("HTTP timeouts configured for long-running LLM requests"), EN2CLogSeverity::Info); 
     
     // Verify syntax factory is working
     auto CPPSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::Cpp);
