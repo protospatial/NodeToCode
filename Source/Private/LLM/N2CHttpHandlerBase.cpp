@@ -45,6 +45,7 @@ void UN2CHttpHandlerBase::PostLLMRequest(
 
     Request->SetContentAsString(Payload);
     Request->SetTimeout(RequestTimeout);
+    Request->SetActivityTimeout(RequestTimeout);
 
     // Create a weak pointer to this for safety
     TWeakObjectPtr<UN2CHttpHandlerBase> WeakThis(this);

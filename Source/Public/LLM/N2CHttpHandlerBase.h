@@ -23,7 +23,7 @@ public:
 
     /** Configuration for request timeouts */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
-    float RequestTimeout = 30.0f;
+    float RequestTimeout = 3600.0f;
 
     /** Additional headers for requests */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
