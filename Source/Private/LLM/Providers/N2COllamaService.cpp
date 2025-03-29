@@ -4,18 +4,51 @@
 
 #include "Core/N2CSettings.h"
 #include "LLM/N2CSystemPromptManager.h"
+#include "Utils/N2CLogger.h"
 
 bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
 {
+
+    // Create a copy of the input config
+    FN2CLLMConfig UpdatedConfig = InConfig;
+    
     // Load Ollama-specific settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (Settings)
     {
         OllamaConfig = Settings->OllamaConfig;
+        
+        // Transfer the custom Ollama endpoint to the config
+        if (!OllamaConfig.OllamaEndpoint.IsEmpty())
+        {
+            // Normalize the base URL (remove trailing slash if present)
+            FString BaseUrl = OllamaConfig.OllamaEndpoint;
+            if (BaseUrl.EndsWith(TEXT("/")))
+            {
+                BaseUrl.RemoveAt(BaseUrl.Len() - 1);
+            }
+            
+            // Make sure we're not double-appending /api/chat
+            if (!BaseUrl.EndsWith(TEXT("/api/chat")))
+            {
+                UpdatedConfig.ApiEndpoint = BaseUrl + TEXT("/api/chat");
+            }
+            else
+            {
+                UpdatedConfig.ApiEndpoint = BaseUrl;
+            }
+            
+            // Log the actual endpoint being used for debugging
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Using Ollama endpoint: %s"), *UpdatedConfig.ApiEndpoint),
+                EN2CLogSeverity::Info,
+                TEXT("OllamaService")
+            );
+        }
     }
     
-    // Call base class initialization
-    return Super::Initialize(InConfig);
+    // Call base class initialization with the updated config
+    return Super::Initialize(UpdatedConfig);
 }
 
 UN2CResponseParserBase* UN2COllamaService::CreateResponseParser()
