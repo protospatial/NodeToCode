@@ -45,8 +45,12 @@ void UN2CHttpHandlerBase::PostLLMRequest(
 
     Request->SetContentAsString(Payload);
     Request->SetTimeout(RequestTimeout);
-    Request->SetActivityTimeout(RequestTimeout);
 
+    // SetActivityTimeout is only available in UE5.4 and later
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION >= 4
+    Request->SetActivityTimeout(RequestTimeout);
+#endif
+    
     // Create a weak pointer to this for safety
     TWeakObjectPtr<UN2CHttpHandlerBase> WeakThis(this);
 
