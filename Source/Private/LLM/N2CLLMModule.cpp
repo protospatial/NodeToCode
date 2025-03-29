@@ -180,21 +180,29 @@ bool UN2CLLMModule::InitializeComponents()
 
 void UN2CLLMModule::OpenTranslationFolder(bool& Success)
 {
-    if (LatestTranslationPath.IsEmpty())
+    FString PathToOpen = LatestTranslationPath;
+    
+    if (PathToOpen.IsEmpty())
     {
-        FN2CLogger::Get().LogWarning(TEXT("No translation path available"));
-        Success = false;
+        FN2CLogger::Get().LogWarning(TEXT("No translation path available, opening the base path"));
+        Success = true;
+        PathToOpen = GetTranslationBasePath();
     }
 
-    if (!FPaths::DirectoryExists(LatestTranslationPath))
+    if (!FPaths::DirectoryExists(PathToOpen))
     {
-        FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation directory does not exist: %s"), *LatestTranslationPath));
-        Success = false;
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation directory does not exist: %s \n\nOpening the base path"), *PathToOpen));
+        Success = true;
+        PathToOpen = GetTranslationBasePath();
     }
 
 #if PLATFORM_WINDOWS
-    FPlatformProcess::ExploreFolder(*LatestTranslationPath);
-    Success = false;
+    FPlatformProcess::ExploreFolder(*PathToOpen);
+    Success = true;
+#endif
+#if PLATFORM_MAC
+    FMacPlatformProcess::ExploreFolder(*PathToOpen);
+    Success = true;
 #endif
     
 }
@@ -362,7 +370,15 @@ FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName)
     
     // Create folder name
     FString FolderName = FString::Printf(TEXT("%s_%s"), *BlueprintName, *Timestamp);
+
+    // Get the saved translations base path
+    FString BasePath = GetTranslationBasePath();
     
+    return FPaths::Combine(BasePath, FolderName);
+}
+
+FString UN2CLLMModule::GetTranslationBasePath() const
+{
     // Check if custom output directory is set in settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     FString BasePath;
@@ -380,8 +396,8 @@ FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName)
         // Use default path
         BasePath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
     }
-    
-    return FPaths::Combine(BasePath, FolderName);
+
+    return BasePath;
 }
 
 FString UN2CLLMModule::GetFileExtensionForLanguage(EN2CCodeLanguage Language) const

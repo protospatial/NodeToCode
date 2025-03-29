@@ -158,6 +158,7 @@ void UN2CSettings::InitializePricing()
     AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f));
     AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_5_Haiku, FN2CAnthropicPricing(0.8f, 4.0f));
 
+    GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_ProExp, FN2CGeminiPricing(0.0f, 0.0f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_Flash_2_0, FN2CGeminiPricing(1.0f, 0.4f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_Flash_Lite_2_0, FN2CGeminiPricing(0.075f, 0.3f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_1_5_Flash, FN2CGeminiPricing(0.075f, 0.3f));

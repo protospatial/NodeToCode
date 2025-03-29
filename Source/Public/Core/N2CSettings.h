@@ -405,7 +405,7 @@ public:
 
     /** Gemini Model Selection - 2.0 Pro, 2.0 Flash Thinking, or 2.0 Flash recommended */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
-    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_0_FlashThinkingExp;
+    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_ProExp;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Gemini",

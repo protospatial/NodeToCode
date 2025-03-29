@@ -74,6 +74,9 @@ public:
 private:
     /** Generate file paths for translation */
     FString GenerateTranslationRootPath(const FString& BlueprintName) const;
+
+    /** Get the base path where translations are saved */
+    FString GetTranslationBasePath() const;
     
     /** Get the appropriate file extension for the target language */
     FString GetFileExtensionForLanguage(EN2CCodeLanguage Language) const;

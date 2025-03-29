@@ -10,10 +10,13 @@
 
 const FName FN2CToolbarCommand::CommandName_Open = TEXT("NodeToCode_OpenWindow");
 const FName FN2CToolbarCommand::CommandName_Collect = TEXT("NodeToCode_CollectNodes");
+const FName FN2CToolbarCommand::CommandName_CopyJson = TEXT("NodeToCode_CopyJson");
 const FText FN2CToolbarCommand::CommandLabel_Open = NSLOCTEXT("NodeToCode", "OpenWindow", "Open Node to Code");
 const FText FN2CToolbarCommand::CommandLabel_Collect = NSLOCTEXT("NodeToCode", "CollectNodes", "Collect and Translate Nodes");
+const FText FN2CToolbarCommand::CommandLabel_CopyJson = NSLOCTEXT("NodeToCode", "CopyJson", "Copy Blueprint JSON");
 const FText FN2CToolbarCommand::CommandTooltip_Open = NSLOCTEXT("NodeToCode", "OpenWindowTooltip", "Open the Node to Code window");
 const FText FN2CToolbarCommand::CommandTooltip_Collect = NSLOCTEXT("NodeToCode", "CollectNodesTooltip", "Collect nodes from current Blueprint graph and translate to code");
+const FText FN2CToolbarCommand::CommandTooltip_CopyJson = NSLOCTEXT("NodeToCode", "CopyJsonTooltip", "Copy the serialized Blueprint JSON to clipboard");
 
 FN2CToolbarCommand::FN2CToolbarCommand()
     : TCommands<FN2CToolbarCommand>(
@@ -44,6 +47,14 @@ void FN2CToolbarCommand::RegisterCommands()
         EUserInterfaceActionType::Button,
         FInputChord()
     );
+    
+    UI_COMMAND(
+    CopyJsonCommand,
+    "Copy Blueprint JSON",
+    "Copy the serialized Blueprint JSON to clipboard for external use",
+    EUserInterfaceActionType::Button,
+    FInputChord()
+);
     
     FN2CLogger::Get().Log(TEXT("N2C toolbar commands registered"), EN2CLogSeverity::Debug);
 }
