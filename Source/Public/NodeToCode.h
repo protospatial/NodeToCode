@@ -30,8 +30,6 @@ class UHttpTimeoutConfig : public UObject
     GENERATED_BODY()
 
 public:
-    UPROPERTY(Config)
-    float HttpTimeout = 3600.0f;
 
     UPROPERTY(Config)
     float HttpConnectionTimeout = 300.0f;

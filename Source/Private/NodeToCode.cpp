@@ -137,23 +137,19 @@ void FNodeToCodeModule::ConfigureHttpTimeouts()
     
     // Check current settings
     TimeoutConfig->LoadConfig();
-    
-    // If all settings are already sufficient, we're done
-    if (TimeoutConfig->HttpTimeout >= 3600.0f && 
-        TimeoutConfig->HttpConnectionTimeout >= 300.0f && 
-        TimeoutConfig->HttpActivityTimeout >= 3600.0f)
+    if (TimeoutConfig->HttpConnectionTimeout >= 300.0f && 
+    TimeoutConfig->HttpActivityTimeout >= 3600.0f)
     {
         FN2CLogger::Get().Log(TEXT("HTTP timeout settings already configured correctly"), EN2CLogSeverity::Info);
         return;
     }
-    
+
     // Apply our settings values
-    TimeoutConfig->HttpTimeout = 3600.0f;
     TimeoutConfig->HttpConnectionTimeout = 300.0f;
     TimeoutConfig->HttpActivityTimeout = 3600.0f;
     
     // Save the config, which writes to the specified ini file
-    TimeoutConfig->SaveConfig(CPF_Config, *DefaultEngineIniPath);
+    TimeoutConfig->TryUpdateDefaultConfigFile(*DefaultEngineIniPath);
     
     FN2CLogger::Get().Log(
         TEXT("Added HTTP timeout settings to DefaultEngine.ini to support long-running Ollama requests"), 
@@ -163,12 +159,6 @@ void FNodeToCodeModule::ConfigureHttpTimeouts()
     // Apply the changes immediately
     FConfigCacheIni::LoadGlobalIniFile(GEngineIni, TEXT("Engine"));
     FHttpModule::Get().UpdateConfigs();
-    
-    // Also apply for this session
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 4
-    // For UE 5.3, we can use the deprecated method
-    FHttpModule::Get().SetHttpTimeout(3600.0f);
-#endif
 
     // Show notification that restart is required for full effect
     ShowRestartRequiredNotification();
@@ -185,7 +175,7 @@ void FNodeToCodeModule::ShowRestartRequiredNotification()
     FNotificationInfo Info(LOCTEXT("HttpSettingsChangedTitle", "Node To Code Plugin"));
     Info.Text = LOCTEXT("HttpSettingsChangedMessage", 
                        "HTTP timeout settings have been updated for Node To Code. Please restart the editor for them to take effect.");
-    Info.bFireAndForget = false;
+    Info.bFireAndForget = true;
     Info.FadeOutDuration = 0.5f;
     Info.ExpireDuration = 10.0f;
     Info.bUseThrobber = false;
