@@ -385,9 +385,9 @@ public:
     UPROPERTY(Transient)
     mutable UN2CUserSecrets* UserSecrets;
 
-    /** Anthropic Model Selection - Sonnet 3.5 or 3.7 recommended*/
+    /** Anthropic Model Selection - Sonnet 4 recommended*/
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")
-    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude3_7_Sonnet;
+    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude4_Sonnet;
     
     /** Anthropic API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Anthropic",

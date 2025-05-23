@@ -24,6 +24,7 @@ const TMap<EN2CGeminiModel, FN2CGeminiPricing> FN2CLLMModelUtils::GeminiPricing 
 };
 
 const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> FN2CLLMModelUtils::AnthropicPricing = {
+    {EN2CAnthropicModel::Claude4_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
     {EN2CAnthropicModel::Claude3_7_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
     {EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
     {EN2CAnthropicModel::Claude3_5_Haiku, FN2CAnthropicPricing(0.8f, 4.0f)}
@@ -59,6 +60,8 @@ FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
 {
     switch (Model)
     {
+        case EN2CAnthropicModel::Claude4_Sonnet:
+            return TEXT("claude-4-sonnet-20250514");
         case EN2CAnthropicModel::Claude3_7_Sonnet:
             return TEXT("claude-3-7-sonnet-20250219");
         case EN2CAnthropicModel::Claude3_5_Sonnet:
@@ -66,7 +69,7 @@ FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
         case EN2CAnthropicModel::Claude3_5_Haiku:
             return TEXT("claude-3-5-haiku-20241022");
         default:
-            return TEXT("claude-3-5-sonnet-20241022");
+            return TEXT("claude-4-sonnet-20250514");
     }
 }
 
