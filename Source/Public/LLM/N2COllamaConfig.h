@@ -26,6 +26,12 @@ struct FN2COllamaConfig
               ToolTip="Enable if your Ollama model supports system prompts. Disable to merge system and user prompts."))
     bool bUseSystemPrompts = false;
 
+    /** Text to prepend to all user messages */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General",
+        meta=(DisplayName="Prepended Model Command", 
+              ToolTip="Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear at the start of each user message."))
+    FString PrependedModelCommand = "";
+
     /** Keep alive duration in seconds */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General",
         meta=(DisplayName="Keep Alive Duration", 

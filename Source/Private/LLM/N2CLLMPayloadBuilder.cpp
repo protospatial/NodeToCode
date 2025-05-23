@@ -53,6 +53,12 @@ void UN2CLLMPayloadBuilder::SetTemperature(float Value)
                 RootObject->SetNumberField(TEXT("temperature"), Value);
             }
             break;
+        case EN2CLLMProvider::LMStudio:
+            // Skip setting temperature for LM Studio - let the LM Studio UI handle this
+            // This allows users to configure temperature in LM Studio and prevents
+            // interference with reasoning models that may perform worse with low temperatures
+            FN2CLogger::Get().Log(TEXT("Temperature parameter skipped for LM Studio - use LM Studio UI to configure"), EN2CLogSeverity::Debug);
+            break;
         default:
             // All other providers use root-level temperature
             RootObject->SetNumberField(TEXT("temperature"), Value);
@@ -103,6 +109,10 @@ void UN2CLLMPayloadBuilder::SetMaxTokens(int32 Value)
                 RootObject->SetNumberField(TEXT("max_tokens"), Value);
             }
             break;
+        case EN2CLLMProvider::LMStudio:
+            // LM Studio uses OpenAI-compatible format with max_tokens
+            RootObject->SetNumberField(TEXT("max_tokens"), Value);
+            break;
         default:
             // DeepSeek uses max_tokens
             RootObject->SetNumberField(TEXT("max_tokens"), Value);
@@ -141,7 +151,7 @@ void UN2CLLMPayloadBuilder::AddSystemMessage(const FString& Content)
             break;
             
         default:
-            // OpenAI, DeepSeek, and Ollama use messages array with role=system
+            // OpenAI, DeepSeek, LMStudio, and Ollama use messages array with role=system
             TSharedPtr<FJsonObject> SystemMessageObject = MakeShared<FJsonObject>();
             SystemMessageObject->SetStringField(TEXT("role"), TEXT("system"));
             SystemMessageObject->SetStringField(TEXT("content"), Content);
@@ -202,7 +212,7 @@ void UN2CLLMPayloadBuilder::AddUserMessage(const FString& Content)
             break;
             
         default:
-            // OpenAI, DeepSeek, and Ollama use messages array with role=user
+            // OpenAI, DeepSeek, LMStudio, and Ollama use messages array with role=user
             TSharedPtr<FJsonObject> UserMessageObject = MakeShared<FJsonObject>();
             UserMessageObject->SetStringField(TEXT("role"), TEXT("user"));
             UserMessageObject->SetStringField(TEXT("content"), Content);
@@ -284,6 +294,23 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
         case EN2CLLMProvider::Ollama:
             // Ollama uses format field
             RootObject->SetObjectField(TEXT("format"), Schema);
+            break;
+            
+        case EN2CLLMProvider::LMStudio:
+            {
+                // LM Studio uses OpenAI-compatible structured output format
+                TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
+                ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_schema"));
+                
+                // Create a wrapper object with name and schema fields
+                TSharedPtr<FJsonObject> JsonSchemaWrapper = MakeShared<FJsonObject>();
+                JsonSchemaWrapper->SetStringField(TEXT("name"), TEXT("n2c_translation_schema"));
+                JsonSchemaWrapper->SetStringField(TEXT("strict"), TEXT("true"));
+                JsonSchemaWrapper->SetObjectField(TEXT("schema"), Schema);
+                
+                ResponseFormatObject->SetObjectField(TEXT("json_schema"), JsonSchemaWrapper);
+                RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
+            }
             break;
             
         case EN2CLLMProvider::Anthropic:
@@ -380,6 +407,24 @@ void UN2CLLMPayloadBuilder::ConfigureForOllama(const FN2COllamaConfig& OllamaCon
     RootObject->SetObjectField(TEXT("options"), OptionsObject);
     RootObject->SetBoolField(TEXT("stream"), false);
     RootObject->SetNumberField(TEXT("keep_alive"), OllamaConfig.KeepAlive);
+}
+
+void UN2CLLMPayloadBuilder::ConfigureForLMStudio()
+{
+    ProviderType = EN2CLLMProvider::LMStudio;
+    
+    // Clear messages array and recreate it
+    MessagesArray.Empty();
+    
+    // Remove temperature if it was set during Initialize() - let LM Studio UI handle this
+    if (RootObject->HasField(TEXT("temperature")))
+    {
+        RootObject->RemoveField(TEXT("temperature"));
+        FN2CLogger::Get().Log(TEXT("Removed temperature from LM Studio payload - use LM Studio UI to configure"), EN2CLogSeverity::Debug);
+    }
+    
+    // LM Studio uses OpenAI-compatible format with stream=false
+    RootObject->SetBoolField(TEXT("stream"), false);
 }
 
 FString UN2CLLMPayloadBuilder::Build()

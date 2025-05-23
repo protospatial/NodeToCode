@@ -430,6 +430,22 @@ public:
         meta=(DisplayName="Model Name"))
     FString OllamaModel = "qwen3:32b";
     
+    /** LM Studio Model Selection */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta=(DisplayName="Model Name"))
+    FString LMStudioModel = "";
+    
+    /** LM Studio Endpoint - Default is localhost:1234 */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta=(DisplayName="Server Endpoint"))
+    FString LMStudioEndpoint = "http://localhost:1234";
+    
+    /** LM Studio Prepended Model Command - Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear at the start of each user message. */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta=(DisplayName="Prepended Model Command", 
+              ToolTip="Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear on first line of each user message."))
+    FString LMStudioPrependedModelCommand = "";
+    
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
     TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIModelPricing;
@@ -534,6 +550,9 @@ public:
                     return Pricing->InputCost;
                 }
                 return FN2CLLMModelUtils::GetDeepSeekPricing(DeepSeekModel).InputCost;
+            case EN2CLLMProvider::Ollama:
+            case EN2CLLMProvider::LMStudio:
+                return 0.0f; // Local models are free
             default:
                 return 0.0f;
         }
@@ -563,6 +582,9 @@ public:
                     return Pricing->OutputCost;
                 }
                 return FN2CLLMModelUtils::GetDeepSeekPricing(DeepSeekModel).OutputCost;
+            case EN2CLLMProvider::Ollama:
+            case EN2CLLMProvider::LMStudio:
+                return 0.0f; // Local models are free
             default:
                 return 0.0f;
         }

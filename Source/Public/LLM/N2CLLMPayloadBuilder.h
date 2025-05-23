@@ -34,6 +34,7 @@ public:
     
     /** Response format */
     void SetJsonResponseFormat(const TSharedPtr<FJsonObject>& Schema);
+    void SetStructuredOutput(const TSharedPtr<FJsonObject>& Schema) { SetJsonResponseFormat(Schema); }
     
     /** Provider-specific extensions */
     void ConfigureForOpenAI();
@@ -41,6 +42,7 @@ public:
     void ConfigureForGemini();
     void ConfigureForDeepSeek();
     void ConfigureForOllama(const struct FN2COllamaConfig& OllamaConfig);
+    void ConfigureForLMStudio();
     
     /** Generate final payload */
     FString Build();

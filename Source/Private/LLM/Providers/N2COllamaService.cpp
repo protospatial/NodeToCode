@@ -86,6 +86,18 @@ FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, cons
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);
     
+    // Prepend user message text if configured
+    if (!OllamaConfig.PrependedModelCommand.IsEmpty())
+    {
+        FinalUserMessage = OllamaConfig.PrependedModelCommand + TEXT("\n\n") + FinalUserMessage;
+        
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Prepended model command text: %s"), *OllamaConfig.PrependedModelCommand),
+            EN2CLogSeverity::Debug,
+            TEXT("OllamaService")
+        );
+    }
+    
     const bool bSupportsSystemPrompts = OllamaConfig.bUseSystemPrompts;
     
     // Add messages
