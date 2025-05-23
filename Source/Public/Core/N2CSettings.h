@@ -433,7 +433,7 @@ public:
     /** LM Studio Model Selection */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
         meta=(DisplayName="Model Name"))
-    FString LMStudioModel = "";
+    FString LMStudioModel = "qwen3-32b";
     
     /** LM Studio Endpoint - Default is localhost:1234 */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",

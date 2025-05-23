@@ -79,7 +79,6 @@ struct FN2CLLMModelUtils
         {
             case EN2COpenAIModel::GPT_o1_Preview:
             case EN2COpenAIModel::GPT_o1_Mini:
-            case EN2COpenAIModel::GPT_o3_mini:
             case EN2COpenAIModel::GPT_o1:
                 return false; // o1 model does not support system prompts, but o3, o4, and later models support system (aka developer) prompts.
             default:
