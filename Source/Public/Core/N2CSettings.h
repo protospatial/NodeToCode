@@ -403,9 +403,9 @@ public:
         meta = (DisplayName = "API Key"))
     FString OpenAI_API_Key_UI;
 
-    /** Gemini Model Selection - 2.0 Pro, 2.0 Flash Thinking, or 2.0 Flash recommended */
+    /** Gemini Model Selection - 2.5 Flash recommended for best price-performance, 2.5 Pro for most capability */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
-    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_Pro;
+    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_Flash;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Gemini",
