@@ -42,8 +42,8 @@ void UN2CLLMPayloadBuilder::SetTemperature(float Value)
             }
             break;
         case EN2CLLMProvider::OpenAI:
-            // OpenAI o1 and o3 models don't support temperature
-            if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+            // OpenAI o1, o3, and o4 models don't support temperature
+            if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")) || ModelName.StartsWith(TEXT("o4")))
             {
                 // Skip setting temperature for o1 and o3 models
                 FN2CLogger::Get().Log(TEXT("Temperature parameter not supported for o1/o3 models, skipping"), EN2CLogSeverity::Debug);
@@ -93,8 +93,8 @@ void UN2CLLMPayloadBuilder::SetMaxTokens(int32 Value)
             }
             break;
         case EN2CLLMProvider::OpenAI:
-            // OpenAI o1 models use max_completion_tokens instead of max_tokens
-            if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+            // OpenAI o1, o3, and o4 models use max_completion_tokens instead of max_tokens
+            if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")) || ModelName.StartsWith(TEXT("o4")))
             {
                 RootObject->SetNumberField(TEXT("max_completion_tokens"), Value);
             }
@@ -300,8 +300,8 @@ void UN2CLLMPayloadBuilder::ConfigureForOpenAI()
     // Clear messages array and recreate it
     MessagesArray.Empty();
     
-    // Remove temperature for o1/o3 models as they don't support it
-    if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")))
+    // Remove temperature for o1, o3, o4 models as they don't support it
+    if (ModelName.StartsWith(TEXT("o1")) || ModelName.StartsWith(TEXT("o3")) || ModelName.StartsWith(TEXT("o4")))
     {
         if (RootObject->HasField(TEXT("temperature")))
         {

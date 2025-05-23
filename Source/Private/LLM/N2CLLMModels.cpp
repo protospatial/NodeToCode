@@ -7,14 +7,17 @@
 const TMap<EN2COpenAIModel, FN2COpenAIPricing> FN2CLLMModelUtils::OpenAIPricing = {
     {EN2COpenAIModel::GPT4o_2024_08_06, FN2COpenAIPricing(2.5f, 10.0f)},
     {EN2COpenAIModel::GPT4o_Mini_2024_07_18, FN2COpenAIPricing(0.15f, 0.6f)},
+    {EN2COpenAIModel::GPT_4_1, FN2COpenAIPricing(2.0f, 8.0f)},
     {EN2COpenAIModel::GPT_o1, FN2COpenAIPricing(15.0f, 60.0f)},
+    {EN2COpenAIModel::GPT_o1_Preview, FN2COpenAIPricing(15.0f, 60.0f)},
+    {EN2COpenAIModel::GPT_o1_Mini, FN2COpenAIPricing(1.1f, 4.4f)},
+    {EN2COpenAIModel::GPT_o3, FN2COpenAIPricing(10.0f, 40.0f)},
     {EN2COpenAIModel::GPT_o3_mini, FN2COpenAIPricing(1.1f, 4.4f)},
-    {EN2COpenAIModel::GPT_o1_Preview, FN2COpenAIPricing(15.0f, 60.f)},
-    {EN2COpenAIModel::GPT_o1_Mini, FN2COpenAIPricing(1.1f, 4.4f)}
+    {EN2COpenAIModel::GPT_o4_mini, FN2COpenAIPricing(1.0f, 4.0f)}
 };
 
 const TMap<EN2CGeminiModel, FN2CGeminiPricing> FN2CLLMModelUtils::GeminiPricing = {
-    {EN2CGeminiModel::Gemini_2_5_ProExp, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_2_5_Pro, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_Flash_2_0, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_Flash_Lite_2_0, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_1_5_Flash, FN2CGeminiPricing(0.0f, 0.0f)},
@@ -24,6 +27,7 @@ const TMap<EN2CGeminiModel, FN2CGeminiPricing> FN2CLLMModelUtils::GeminiPricing 
 };
 
 const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> FN2CLLMModelUtils::AnthropicPricing = {
+    {EN2CAnthropicModel::Claude4_Opus, FN2CAnthropicPricing(15.0f, 75.0f)},
     {EN2CAnthropicModel::Claude4_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
     {EN2CAnthropicModel::Claude3_7_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
     {EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
@@ -43,10 +47,16 @@ FString FN2CLLMModelUtils::GetOpenAIModelValue(EN2COpenAIModel Model)
             return TEXT("gpt-4o-2024-08-06");
         case EN2COpenAIModel::GPT4o_Mini_2024_07_18:
             return TEXT("gpt-4o-mini-2024-07-18");
+        case EN2COpenAIModel::GPT_4_1:
+            return TEXT("gpt-4.1");
         case EN2COpenAIModel::GPT_o1:
             return TEXT("o1");
+        case EN2COpenAIModel::GPT_o3:
+            return TEXT("o3");
         case EN2COpenAIModel::GPT_o3_mini:
             return TEXT("o3-mini");
+        case EN2COpenAIModel::GPT_o4_mini:
+            return TEXT("o4-mini");
         case EN2COpenAIModel::GPT_o1_Preview:
             return TEXT("o1-preview-2024-09-12");
         case EN2COpenAIModel::GPT_o1_Mini:
@@ -60,6 +70,8 @@ FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
 {
     switch (Model)
     {
+        case EN2CAnthropicModel::Claude4_Opus:
+            return TEXT("claude-4-opus-20250514");
         case EN2CAnthropicModel::Claude4_Sonnet:
             return TEXT("claude-4-sonnet-20250514");
         case EN2CAnthropicModel::Claude3_7_Sonnet:
@@ -77,8 +89,8 @@ FString FN2CLLMModelUtils::GetGeminiModelValue(EN2CGeminiModel Model)
 {
     switch (Model)
     {
-    case EN2CGeminiModel::Gemini_2_5_ProExp:
-        return TEXT("gemini-2.5-pro-exp-03-25");
+    case EN2CGeminiModel::Gemini_2_5_Pro:
+        return TEXT("gemini-2.5-pro-preview-05-06");
     case EN2CGeminiModel::Gemini_Flash_2_0:
         return TEXT("gemini-2.0-flash");
     case EN2CGeminiModel::Gemini_Flash_Lite_2_0:

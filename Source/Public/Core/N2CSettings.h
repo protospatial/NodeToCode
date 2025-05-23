@@ -396,7 +396,7 @@ public:
 
     /** OpenAI Model Selection - o3-mini recommended for impressive results for a great price, o1 recommended for most thorough results (but quite expensive) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI")
-    EN2COpenAIModel OpenAI_Model = EN2COpenAIModel::GPT_o3_mini;
+    EN2COpenAIModel OpenAI_Model = EN2COpenAIModel::GPT_o4_mini;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | OpenAI",
@@ -405,7 +405,7 @@ public:
 
     /** Gemini Model Selection - 2.0 Pro, 2.0 Flash Thinking, or 2.0 Flash recommended */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
-    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_ProExp;
+    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_Pro;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Gemini",
@@ -428,7 +428,7 @@ public:
     /** Ollama Model Selection */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama",
         meta=(DisplayName="Model Name"))
-    FString OllamaModel = "qwen2.5-coder:32b";
+    FString OllamaModel = "qwen3:32b";
     
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
