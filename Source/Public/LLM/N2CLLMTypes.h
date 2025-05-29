@@ -22,7 +22,8 @@ enum class EN2CLLMProvider : uint8
     Anthropic   UMETA(DisplayName = "Anthropic"),
     Gemini      UMETA(DisplayName = "Gemini"),
     Ollama      UMETA(DisplayName = "Ollama"),
-    DeepSeek    UMETA(DisplayName = "DeepSeek")
+    DeepSeek    UMETA(DisplayName = "DeepSeek"),
+    OpenAICompatible UMETA(DisplayName = "OpenAICompatible")
 };
 
 /** Status of the Node to Code system */

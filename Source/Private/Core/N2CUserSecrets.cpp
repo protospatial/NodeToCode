@@ -71,7 +71,8 @@ void UN2CUserSecrets::LoadSecrets()
     Anthropic_API_Key = JsonObject->GetStringField(TEXT("Anthropic_API_Key"));
     Gemini_API_Key = JsonObject->GetStringField(TEXT("Gemini_API_Key"));
     DeepSeek_API_Key = JsonObject->GetStringField(TEXT("DeepSeek_API_Key"));
-    
+    OpenAICompatible_API_Key = JsonObject->GetStringField(TEXT("OpenAICompatible_API_Key"));
+
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Successfully loaded secrets from: %s"), *SecretsFilePath),
         EN2CLogSeverity::Info);
@@ -88,7 +89,8 @@ void UN2CUserSecrets::SaveSecrets()
     JsonObject->SetStringField(TEXT("Anthropic_API_Key"), Anthropic_API_Key);
     JsonObject->SetStringField(TEXT("Gemini_API_Key"), Gemini_API_Key);
     JsonObject->SetStringField(TEXT("DeepSeek_API_Key"), DeepSeek_API_Key);
-    
+    JsonObject->SetStringField(TEXT("OpenAICompatible_API_Key"), OpenAICompatible_API_Key);
+
     // Serialize to string
     FString JsonString;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);

@@ -429,6 +429,18 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama",
         meta=(DisplayName="Model Name"))
     FString OllamaModel = "qwen2.5-coder:32b";
+
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI Compatible",
+        meta = (DisplayName = "API Key"))
+    FString OpenAICompatible_API_Key_UI;
+
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI Compatible",
+        meta = (DisplayName = "Model Name"))
+    FString OpenAICompatibleModel;
+
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI Compatible",
+        meta = (DisplayName = "Base Url"))
+    FString OpenAICompatibleBaseUrl;
     
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
