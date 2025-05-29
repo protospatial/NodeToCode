@@ -44,6 +44,7 @@ UN2CSettings::UN2CSettings()
     Anthropic_API_Key_UI = UserSecrets->Anthropic_API_Key;
     Gemini_API_Key_UI = UserSecrets->Gemini_API_Key;
     DeepSeek_API_Key_UI = UserSecrets->DeepSeek_API_Key;
+    OpenAICompatible_API_Key_UI = UserSecrets->OpenAICompatible_API_Key;
     
     // Initialize token estimate
     EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
@@ -80,6 +81,8 @@ FString UN2CSettings::GetActiveApiKey() const
             return UserSecrets->Gemini_API_Key;
         case EN2CLLMProvider::DeepSeek:
             return UserSecrets->DeepSeek_API_Key;
+        case EN2CLLMProvider::OpenAICompatible:
+            return UserSecrets->OpenAICompatible_API_Key;
         default:
             return FString();
     }
@@ -99,6 +102,8 @@ FString UN2CSettings::GetActiveModel() const
             return FN2CLLMModelUtils::GetDeepSeekModelValue(DeepSeekModel);
         case EN2CLLMProvider::Ollama:
             return OllamaModel;
+        case EN2CLLMProvider::OpenAICompatible:
+            return OpenAICompatibleModel;
         default:
             return FString();
     }
@@ -256,6 +261,17 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets->LoadSecrets();
             }
             UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
+            UserSecrets->SaveSecrets();
+            return;
+        }
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAICompatible_API_Key_UI))
+        {
+            if (!UserSecrets)
+            {
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
+            }
+            UserSecrets->OpenAICompatible_API_Key = OpenAICompatible_API_Key_UI;
             UserSecrets->SaveSecrets();
             return;
         }
