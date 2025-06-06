@@ -80,6 +80,8 @@ FString UN2CSettings::GetActiveApiKey() const
             return UserSecrets->Gemini_API_Key;
         case EN2CLLMProvider::DeepSeek:
             return UserSecrets->DeepSeek_API_Key;
+        case EN2CLLMProvider::LMStudio:
+            return "lm-studio"; // LM Studio just requires a dummy API key for its OpenAI endpoint
         default:
             return FString();
     }
@@ -99,6 +101,8 @@ FString UN2CSettings::GetActiveModel() const
             return FN2CLLMModelUtils::GetDeepSeekModelValue(DeepSeekModel);
         case EN2CLLMProvider::Ollama:
             return OllamaModel;
+        case EN2CLLMProvider::LMStudio:
+            return LMStudioModel;
         default:
             return FString();
     }
@@ -149,16 +153,22 @@ void UN2CSettings::InitializePricing()
     // Initialize default pricing
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT4o_2024_08_06, FN2COpenAIPricing(2.5f, 10.0f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT4o_Mini_2024_07_18, FN2COpenAIPricing(0.15f, 0.6f));
+    OpenAIModelPricing.Add(EN2COpenAIModel::GPT_4_1, FN2COpenAIPricing(2.0f, 8.0f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o1, FN2COpenAIPricing(15.0f, 60.0f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o3_mini, FN2COpenAIPricing(1.1f, 4.4f));
+    OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o3, FN2COpenAIPricing(15.0f, 60.0f));
+    OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o4_mini, FN2COpenAIPricing(1.1f, 4.4f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o1_Preview, FN2COpenAIPricing(15.0f, 60.0f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o1_Mini, FN2COpenAIPricing(1.1f, 4.4f));
 
+    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude4_Opus, FN2CAnthropicPricing(15.0f, 75.0f));
+    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude4_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f));
     AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_7_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f));
     AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f));
     AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_5_Haiku, FN2CAnthropicPricing(0.8f, 4.0f));
 
-    GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_ProExp, FN2CGeminiPricing(0.0f, 0.0f));
+    GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_Pro, FN2CGeminiPricing(1.25f, 10.0f));
+    GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_Flash, FN2CGeminiPricing(0.0f, 0.0f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_Flash_2_0, FN2CGeminiPricing(1.0f, 0.4f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_Flash_Lite_2_0, FN2CGeminiPricing(0.075f, 0.3f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_1_5_Flash, FN2CGeminiPricing(0.075f, 0.3f));

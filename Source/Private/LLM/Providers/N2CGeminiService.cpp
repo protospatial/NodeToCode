@@ -39,6 +39,12 @@ FString UN2CGeminiService::FormatRequestPayload(const FString& UserMessage, cons
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);
+
+    // Gemini 2.5 Pro seems to respond with more reliable structured outputs with a temp of 1.0
+    if (Config.Model.Contains("gemini-2.5-pro"))
+    {
+        PayloadBuilder->SetTemperature(1.0f); 
+    }
     
     // Add system message and user message
     PayloadBuilder->AddSystemMessage(SystemMessage);

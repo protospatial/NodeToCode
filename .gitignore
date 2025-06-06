@@ -84,3 +84,5 @@ DerivedDataCache/*
 /Config
 /Development
 .aider*
+CLAUDE.md
+/.claude

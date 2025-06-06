@@ -385,9 +385,9 @@ public:
     UPROPERTY(Transient)
     mutable UN2CUserSecrets* UserSecrets;
 
-    /** Anthropic Model Selection - Sonnet 3.5 or 3.7 recommended*/
+    /** Anthropic Model Selection - Sonnet 4 recommended*/
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")
-    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude3_7_Sonnet;
+    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude4_Sonnet;
     
     /** Anthropic API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Anthropic",
@@ -396,16 +396,16 @@ public:
 
     /** OpenAI Model Selection - o3-mini recommended for impressive results for a great price, o1 recommended for most thorough results (but quite expensive) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI")
-    EN2COpenAIModel OpenAI_Model = EN2COpenAIModel::GPT_o3_mini;
+    EN2COpenAIModel OpenAI_Model = EN2COpenAIModel::GPT_o4_mini;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | OpenAI",
         meta = (DisplayName = "API Key"))
     FString OpenAI_API_Key_UI;
 
-    /** Gemini Model Selection - 2.0 Pro, 2.0 Flash Thinking, or 2.0 Flash recommended */
+    /** Gemini Model Selection - 2.5 Flash recommended for best price-performance, 2.5 Pro for most capability */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
-    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_ProExp;
+    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_Flash;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Gemini",
@@ -428,7 +428,23 @@ public:
     /** Ollama Model Selection */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama",
         meta=(DisplayName="Model Name"))
-    FString OllamaModel = "qwen2.5-coder:32b";
+    FString OllamaModel = "qwen3:32b";
+    
+    /** LM Studio Model Selection */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta=(DisplayName="Model Name"))
+    FString LMStudioModel = "qwen3-32b";
+    
+    /** LM Studio Endpoint - Default is localhost:1234 */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta=(DisplayName="Server Endpoint"))
+    FString LMStudioEndpoint = "http://localhost:1234";
+    
+    /** LM Studio Prepended Model Command - Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear at the start of each user message. */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta=(DisplayName="Prepended Model Command", 
+              ToolTip="Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear on first line of each user message."))
+    FString LMStudioPrependedModelCommand = "";
     
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
@@ -534,6 +550,9 @@ public:
                     return Pricing->InputCost;
                 }
                 return FN2CLLMModelUtils::GetDeepSeekPricing(DeepSeekModel).InputCost;
+            case EN2CLLMProvider::Ollama:
+            case EN2CLLMProvider::LMStudio:
+                return 0.0f; // Local models are free
             default:
                 return 0.0f;
         }
@@ -563,6 +582,9 @@ public:
                     return Pricing->OutputCost;
                 }
                 return FN2CLLMModelUtils::GetDeepSeekPricing(DeepSeekModel).OutputCost;
+            case EN2CLLMProvider::Ollama:
+            case EN2CLLMProvider::LMStudio:
+                return 0.0f; // Local models are free
             default:
                 return 0.0f;
         }
