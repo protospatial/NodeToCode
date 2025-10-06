@@ -40,6 +40,13 @@ const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> FN2CLLMModelUtils::DeepSeekPr
     {EN2CDeepSeekModel::DeepSeek_V3, FN2CDeepSeekPricing(0.07f, 0.27f)}
 };
 
+const TMap<EN2CxAIModel, FN2CxAIPricing> FN2CLLMModelUtils::xAIPricing = {
+    {EN2CxAIModel::Grok_Code_Fast_1, FN2CxAIPricing(0.2f, 1.5f)},
+	{EN2CxAIModel::Grok_4_Fast_Reasoning, FN2CxAIPricing(0.4f, 1.0f)},
+	{EN2CxAIModel::Grok_4_Fast_NonReasoning, FN2CxAIPricing(0.4f, 1.0f)},
+	{EN2CxAIModel::Grok_4, FN2CxAIPricing(6.0f, 30.0f)}
+};
+
 FString FN2CLLMModelUtils::GetOpenAIModelValue(EN2COpenAIModel Model)
 {
     switch (Model)
@@ -159,4 +166,30 @@ FN2CGeminiPricing FN2CLLMModelUtils::GetGeminiPricing(EN2CGeminiModel Model)
         return *Found;
     }
     return FN2CGeminiPricing();
+}
+
+FString FN2CLLMModelUtils::GetxAIModelValue(EN2CxAIModel Model)
+{
+    switch (Model)
+    {
+        case EN2CxAIModel::Grok_Code_Fast_1:
+            return TEXT("grok-code-fast");
+    	case EN2CxAIModel::Grok_4_Fast_Reasoning:
+    		return TEXT("grok-4-fast-reasoning-latest");
+        case EN2CxAIModel::Grok_4_Fast_NonReasoning:
+            return TEXT("grok-4-fast-non-reasoning-latest");
+    	case EN2CxAIModel::Grok_4:
+    		return TEXT("grok-4-latest");
+        default:
+            return TEXT("grok-code-fast");
+    }
+}
+
+FN2CxAIPricing FN2CLLMModelUtils::GetxAIPricing(EN2CxAIModel Model)
+{
+    if (const FN2CxAIPricing* Found = xAIPricing.Find(Model))
+    {
+        return *Found;
+    }
+    return FN2CxAIPricing();
 }

@@ -56,6 +56,16 @@ enum class EN2CDeepSeekModel : uint8
     DeepSeek_V3      UMETA(DisplayName = "DeepSeek V3", Value = "deepseek-chat"),
 };
 
+/** Available xAI models */
+UENUM(BlueprintType)
+enum class EN2CxAIModel : uint8
+{
+    Grok_Code_Fast_1           UMETA(DisplayName = "Grok Code Fast 1", Value = "grok-code-fast"),
+	Grok_4_Fast_Reasoning      UMETA(DisplayName = "Grok 4 Fast Reasoning", Value = "grok-4-fast-reasoning-latest"),
+    Grok_4_Fast_NonReasoning   UMETA(DisplayName = "Grok 4 Fast NonReasoning", Value = "grok-4-fast-non-reasoning-latest"),
+	Grok_4                     UMETA(DisplayName = "Grok 4", Value = "grok-4-latest")
+};
+
 
 /** Helper functions for model enums */
 struct FN2CLLMModelUtils
@@ -65,12 +75,14 @@ struct FN2CLLMModelUtils
     static FString GetAnthropicModelValue(EN2CAnthropicModel Model);
     static FString GetGeminiModelValue(EN2CGeminiModel Model);
     static FString GetDeepSeekModelValue(EN2CDeepSeekModel Model);
+    static FString GetxAIModelValue(EN2CxAIModel Model);
 
     /** Pricing getters */
     static FN2COpenAIPricing GetOpenAIPricing(EN2COpenAIModel Model);
     static FN2CAnthropicPricing GetAnthropicPricing(EN2CAnthropicModel Model);
     static FN2CDeepSeekPricing GetDeepSeekPricing(EN2CDeepSeekModel Model);
     static FN2CGeminiPricing GetGeminiPricing(EN2CGeminiModel Model);
+    static FN2CxAIPricing GetxAIPricing(EN2CxAIModel Model);
 
     /** System prompt support checks */
     static bool SupportsSystemPrompts(EN2COpenAIModel Model)
@@ -94,4 +106,5 @@ private:
     static const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> AnthropicPricing;
     static const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> DeepSeekPricing;
     static const TMap<EN2CGeminiModel, FN2CGeminiPricing> GeminiPricing;
+    static const TMap<EN2CxAIModel, FN2CxAIPricing> xAIPricing;
 };

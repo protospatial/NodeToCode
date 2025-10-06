@@ -23,7 +23,8 @@ enum class EN2CLLMProvider : uint8
     Gemini      UMETA(DisplayName = "Gemini"),
     Ollama      UMETA(DisplayName = "Ollama"),
     DeepSeek    UMETA(DisplayName = "DeepSeek"),
-    LMStudio    UMETA(DisplayName = "LM Studio")
+    LMStudio    UMETA(DisplayName = "LM Studio"),
+	xAI         UMETA(DisplayName = "xAI"),
 };
 
 /** Status of the Node to Code system */

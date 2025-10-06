@@ -44,6 +44,10 @@ public:
     /** DeepSeek API Key */
     UPROPERTY(EditAnywhere, Category = "Node to Code | API Keys")
     FString DeepSeek_API_Key;
+
+	/** xAI API Key */
+	UPROPERTY(EditAnywhere, Category = "Node to Code | API Keys")
+	FString xAI_API_Key;
     
 private:
     /** Ensure the secrets directory exists */
