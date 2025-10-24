@@ -873,7 +873,7 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
                         // Always store flow from output pin to input pin
                         if (ActualSourcePin->Direction == EGPD_Output)
                         {
-                            CurrentGraph->Flows.Data.Add(SourceRef, TargetRef);
+                            CurrentGraph->Flows.Data.FindOrAdd(SourceRef).TargetPins.Add(TargetRef);
                     
                             // Log data flow
                             FString FlowContext = FString::Printf(TEXT("Added data flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),
@@ -887,7 +887,7 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
                         }
                         else
                         {
-                            CurrentGraph->Flows.Data.Add(TargetRef, SourceRef);
+                            CurrentGraph->Flows.Data.FindOrAdd(TargetRef).TargetPins.Add(SourceRef);
                     
                             // Log data flow
                             FString FlowContext = FString::Printf(TEXT("Added data flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),

@@ -287,12 +287,17 @@ TSharedPtr<FJsonObject> FN2CSerializer::FlowsToJsonObject(const FN2CFlows& Flows
     JsonObject->SetArrayField(TEXT("execution"), ExecutionArray);
 
     // Add data flows object
-    TSharedPtr<FJsonObject> DataFlowsObject = MakeShared<FJsonObject>();
+    TArray<TSharedPtr<FJsonValue>> DataFlowConnections;
     for (const auto& DataFlow : Flows.Data)
     {
-        DataFlowsObject->SetStringField(DataFlow.Key, DataFlow.Value);
+        for (const auto& InputConnector : DataFlow.Value.TargetPins)
+        {
+            TSharedPtr<FJsonValueString> DataFlowConnection= MakeShared<FJsonValueString>(FString::Printf(TEXT("%s -> %s"), *DataFlow.Key, *InputConnector));
+            DataFlowConnections.Add(DataFlowConnection);
+        }
     }
-    JsonObject->SetObjectField(TEXT("data"), DataFlowsObject);
+    TSharedPtr<FJsonValueArray> DataFlowsObject = MakeShared<FJsonValueArray>(DataFlowConnections);
+    JsonObject->SetField(TEXT("data"), DataFlowsObject);
 
     return JsonObject;
 }
@@ -751,7 +756,7 @@ bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObjec
     {
         if (DataFlow.Value->Type == EJson::String)
         {
-            OutFlows.Data.Add(DataFlow.Key, DataFlow.Value->AsString());
+            OutFlows.Data.FindOrAdd(DataFlow.Key).TargetPins.Add(DataFlow.Value->AsString());
         }
     }
 

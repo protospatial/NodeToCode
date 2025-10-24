@@ -72,6 +72,15 @@ struct FN2CMetadata
     FN2CMetadata() : Name(TEXT("")), BlueprintType(EN2CBlueprintType::Normal), BlueprintClass(TEXT("")) {}
 };
 
+USTRUCT(BlueprintType)
+struct FN2CInputConnectors
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TSet<FString> TargetPins;
+};
+
 /**
  * @struct FN2CFlows 
  * @brief Contains all execution and data flow connections between nodes
@@ -87,7 +96,7 @@ struct FN2CFlows
 
     /** Data connections: a mapping from "N1.P4" to "N2.P3" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    TMap<FString, FString> Data;
+    TMap<FString, FN2CInputConnectors> Data;
 
     FN2CFlows()
     {
