@@ -221,14 +221,17 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
             return false;
         }
 
-        // Validate target pin format (N#.P#)
-        TArray<FString> TargetParts;
-        DataFlow.Value.ParseIntoArray(TargetParts, TEXT("."));
-        if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]))
+        for (const auto& TargetPinName : DataFlow.Value.TargetPins)
         {
-            OutError = FString::Printf(TEXT("Invalid target pin format %s in graph %s"), *DataFlow.Value, *Graph.Name);
-            FN2CLogger::Get().LogError(OutError);
-            return false;
+            // Validate target pin format (N#.P#)
+            TArray<FString> TargetParts;
+            TargetPinName.ParseIntoArray(TargetParts, TEXT("."));
+            if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]))
+            {
+                OutError = FString::Printf(TEXT("Invalid target pin format %s in graph %s"), *TargetPinName, *Graph.Name);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
         }
     }
 
