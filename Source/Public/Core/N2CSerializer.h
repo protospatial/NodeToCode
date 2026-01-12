@@ -37,6 +37,7 @@ private:
     static TSharedPtr<FJsonObject> FlowsToJsonObject(const FN2CFlows& Flows);
     static TSharedPtr<FJsonObject> StructToJsonObject(const FN2CStruct& Struct);
     static TSharedPtr<FJsonObject> EnumToJsonObject(const FN2CEnum& Enum);
+    static TSharedPtr<FJsonObject> VariableToJsonObject(const FN2CVariable& Var);
 
     /** JSON parsing helpers */
     static bool ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CBlueprint& OutBlueprint);
@@ -46,6 +47,7 @@ private:
     static bool ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CFlows& OutFlows);
     static bool ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CStruct& OutStruct);
     static bool ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CEnum& OutEnum);
+    static bool ParseVariableFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CVariable& OutVar);
 
     /** Formatting configuration */
     static bool bPrettyPrint;

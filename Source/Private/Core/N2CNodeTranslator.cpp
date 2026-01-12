@@ -10,6 +10,12 @@
 #include "UObject/UObjectBase.h"
 #include "UObject/Class.h"
 #include "UObject/UnrealTypePrivate.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
+#include "K2Node_FunctionEntry.h"
+#include "UObject/UnrealType.h"
 
 FN2CNodeTranslator& FN2CNodeTranslator::Get()
 {
@@ -137,6 +143,448 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
     FN2CLogger::Get().Log(TEXT("Node translation complete"), EN2CLogSeverity::Info, Context);
 
     return N2CBlueprint.Graphs.Num() > 0;
+}
+
+bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIncludeVariables)
+{
+    N2CBlueprint = FN2CBlueprint();
+    NodeIDMap.Empty();
+    PinIDMap.Empty();
+    ProcessedStructPaths.Empty();
+    ProcessedEnumPaths.Empty();
+    AdditionalGraphsToProcess.Empty();
+
+    if (!InBlueprint)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No Blueprint provided to GenerateFromBlueprint"));
+        return false;
+    }
+
+    // Metadata
+    N2CBlueprint.Metadata.Name = InBlueprint->GetName();
+    if (InBlueprint->GeneratedClass)
+    {
+        N2CBlueprint.Metadata.BlueprintClass = GetCleanClassName(InBlueprint->GeneratedClass->GetName());
+    }
+    else if (InBlueprint->SkeletonGeneratedClass)
+    {
+        N2CBlueprint.Metadata.BlueprintClass = GetCleanClassName(InBlueprint->SkeletonGeneratedClass->GetName());
+    }
+    switch (InBlueprint->BlueprintType)
+    {
+        case BPTYPE_Const:            N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Const; break;
+        case BPTYPE_MacroLibrary:     N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::MacroLibrary; break;
+        case BPTYPE_Interface:        N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Interface; break;
+        case BPTYPE_LevelScript:      N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::LevelScript; break;
+        case BPTYPE_FunctionLibrary:  N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::FunctionLibrary; break;
+        default:                      N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal; break;
+    }
+
+    // Process graphs: event, functions, macros
+    TArray<UEdGraph*> Graphs;
+    if (InBlueprint->UbergraphPages.Num() > 0)
+    {
+        Graphs.Append(InBlueprint->UbergraphPages);
+    }
+    if (InBlueprint->FunctionGraphs.Num() > 0)
+    {
+        Graphs.Append(InBlueprint->FunctionGraphs);
+    }
+    if (InBlueprint->MacroGraphs.Num() > 0)
+    {
+        Graphs.Append(InBlueprint->MacroGraphs);
+    }
+
+    for (UEdGraph* Graph : Graphs)
+    {
+        if (!Graph)
+        {
+            continue;
+        }
+        CurrentDepth = 0;
+        ProcessGraph(Graph, DetermineGraphType(Graph));
+    }
+
+    // Collect component overrides defined on this Blueprint (SimpleConstructionScript)
+    CollectComponentOverrides(InBlueprint);
+
+    // Variables
+    if (bIncludeVariables)
+    {
+        for (const FBPVariableDescription& Desc : InBlueprint->NewVariables)
+        {
+            FN2CVariable Var;
+            ConvertVariableDescription(Desc, Var);
+            N2CBlueprint.Variables.Add(Var);
+        }
+    }
+
+    // Synthesize a dedicated ClassItSelf graph to carry only class-level structure
+    // (UCLASS, class declaration, UPROPERTY members, ctor/dtor) separate from EventGraph logic.
+    // 
+    // NOTE: ClassItSelf is a synthetic graph type that does not correspond to any actual Blueprint graph.
+    // It serves as a marker for the LLM to generate class-level C++ code (class declaration, constructor,
+    // destructor, member variables, and component declarations). The actual class-level data (variables
+    // and components) are stored at the Blueprint level (N2CBlueprint.Variables and N2CBlueprint.Components),
+    // not within this graph. The graph itself is intentionally empty (no nodes) because it represents
+    // class structure, not executable flow.
+    {
+        FN2CGraph ClassItSelfGraph;
+        ClassItSelfGraph.Name = TEXT("ClassItSelf");
+        ClassItSelfGraph.GraphType = EN2CGraphType::ClassItSelf;
+        // Intentionally leave this graph empty - it's a marker for class-level code generation
+        // The LLM will use this graph type along with Blueprint-level Variables[] and Components[]
+        // arrays to generate the class skeleton in C++
+        N2CBlueprint.Graphs.Add(ClassItSelfGraph);
+    }
+    FString Ctx = FString::Printf(
+        TEXT("Generated from Blueprint: %s (Graphs=%d, Vars=%d, Components=%d)"),
+        *N2CBlueprint.Metadata.Name,
+        N2CBlueprint.Graphs.Num(),
+        N2CBlueprint.Variables.Num(),
+        N2CBlueprint.Components.Num());
+    FN2CLogger::Get().Log(TEXT("Blueprint translation complete"), EN2CLogSeverity::Info, Ctx);
+    return N2CBlueprint.Graphs.Num() > 0;
+}
+
+void FN2CNodeTranslator::CollectComponentOverrides(UBlueprint* InBlueprint)
+{
+    if (!InBlueprint)
+    {
+        return;
+    }
+
+    USimpleConstructionScript* SCS = InBlueprint->SimpleConstructionScript;
+    if (!SCS)
+    {
+        return;
+    }
+
+    const TArray<USCS_Node*>& AllNodes = SCS->GetAllNodes();
+    if (AllNodes.Num() == 0)
+    {
+        return;
+    }
+
+    for (USCS_Node* Node : AllNodes)
+    {
+        if (!Node)
+        {
+            continue;
+        }
+
+        UActorComponent* Template = Node->ComponentTemplate;
+        if (!Template)
+        {
+            continue;
+        }
+
+        UClass* ComponentClass = Template->GetClass();
+        if (!ComponentClass)
+        {
+            continue;
+        }
+
+        UActorComponent* ClassDefaultObject = Cast<UActorComponent>(ComponentClass->GetDefaultObject());
+        if (!ClassDefaultObject)
+        {
+            continue;
+        }
+        FN2CComponentOverride ComponentOverride;
+        ComponentOverride.ComponentName = Node->GetVariableName().ToString();
+        ComponentOverride.ComponentClassName = GetCleanClassName(ComponentClass->GetName());
+
+        // Try to get parent component information
+        // Note: Different UE versions have different APIs for accessing SCS node hierarchy
+        ComponentOverride.AttachParentName = TEXT("");
+
+        // For SceneComponents, try to find parent through AttachParent property
+        if (USceneComponent* SceneComp = Cast<USceneComponent>(Template))
+        {
+            // Check AttachParent property (FObjectProperty pointing to the parent component)
+            // FindField is a template function, need to use the correct syntax
+            FObjectProperty* AttachParentProp = CastField<FObjectProperty>(
+                ComponentClass->FindPropertyByName(TEXT("AttachParent")));
+
+            if (AttachParentProp)
+            {
+                UObject* AttachParentObj = AttachParentProp->GetObjectPropertyValue(
+                    AttachParentProp->ContainerPtrToValuePtr<void>(Template));
+
+                if (USceneComponent* AttachParent = Cast<USceneComponent>(AttachParentObj))
+                {
+                    // Find the SCS node that corresponds to this parent component
+                    // by matching the component template
+                    for (USCS_Node* OtherNode : AllNodes)
+                    {
+                        if (OtherNode && OtherNode->ComponentTemplate == AttachParent)
+                        {
+                            ComponentOverride.AttachParentName = OtherNode->GetVariableName().ToString();
+                            FN2CLogger::Get().Log(FString::Printf(
+                                TEXT("Component '%s' has parent '%s' from AttachParent property"),
+                                *ComponentOverride.ComponentName,
+                                *ComponentOverride.AttachParentName),
+                                EN2CLogSeverity::Debug);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // If still empty, try to infer from SCS tree structure by checking if this is the root
+        // Root component is typically the first node or the one without AttachParent
+        if (ComponentOverride.AttachParentName.IsEmpty() && AllNodes.Num() > 0)
+        {
+            // The root component is usually the first node in the SCS tree
+            // or we can check if it's the default root component
+            if (AllNodes[0] == Node)
+            {
+                // Likely the root component, no parent
+                ComponentOverride.AttachParentName = TEXT("");
+                FN2CLogger::Get().Log(FString::Printf(
+                    TEXT("Component '%s' is likely the root component (no parent)"),
+                    *ComponentOverride.ComponentName),
+                    EN2CLogSeverity::Debug);
+            }
+        }
+        // Diff properties between the Blueprint component template and the class CDO
+        for (TFieldIterator<FProperty> PropIt(ComponentClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+        {
+            FProperty* Property = *PropIt;
+            if (!Property)
+            {
+                continue;
+            }
+
+            // Skip transient or non-config properties that are unlikely to be Blueprint-edited defaults
+            if (Property->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient | CPF_TextExportTransient))
+            {
+                continue;
+            }
+
+            // If values are identical, skip
+            if (Property->Identical_InContainer(Template, ClassDefaultObject))
+            {
+                continue;
+            }
+
+            FN2CVariable Var;
+            Var.Name = Property->GetName();
+
+            // Map property type to EN2CStructMemberType and TypeName when possible
+            Var.Type = ConvertPropertyToStructMemberType(Property);
+
+            if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
+            {
+                if (UScriptStruct* Struct = StructProp->Struct)
+                {
+                    Var.TypeName = Struct->GetName();
+                }
+            }
+            else if (FObjectProperty* ObjProp = CastField<FObjectProperty>(Property))
+            {
+                if (UClass* ObjClass = ObjProp->PropertyClass)
+                {
+                    Var.TypeName = ObjClass->GetName();
+                }
+            }
+            else if (FClassProperty* ClassProp = CastField<FClassProperty>(Property))
+            {
+                if (UClass* MetaClass = ClassProp->MetaClass)
+                {
+                    Var.TypeName = MetaClass->GetName();
+                }
+            }
+            else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
+            {
+                if (UEnum* Enum = EnumProp->GetEnum())
+                {
+                    Var.TypeName = Enum->GetName();
+                }
+            }
+
+            // Export the overridden value as text
+            FString ExportedValue;
+            void* TemplateValuePtr = Property->ContainerPtrToValuePtr<void>(Template);
+            void* DefaultValuePtr = Property->ContainerPtrToValuePtr<void>(ClassDefaultObject);
+            Property->ExportText_Direct(ExportedValue, TemplateValuePtr, DefaultValuePtr, nullptr, PPF_None);
+            Var.DefaultValue = ExportedValue;
+
+            ComponentOverride.OverriddenProperties.Add(Var);
+        }
+
+        const bool bHasOverrides = ComponentOverride.OverriddenProperties.Num() > 0;
+
+        // Treat components whose template was not created as Native as
+        // Blueprint-added (non-native) components. These should always be
+        // declared and constructed in the ClassItSelf graph, even if they
+        // have no property overrides. For native/inherited components we only
+        // include them when there are overridden properties to initialize.
+        const bool bIsBlueprintAddedComponent = (Template->CreationMethod != EComponentCreationMethod::Native);
+
+        if (bIsBlueprintAddedComponent || bHasOverrides)
+        {
+            N2CBlueprint.Components.Add(ComponentOverride);
+        }
+    }
+}
+
+void FN2CNodeTranslator::ConvertVariableDescription(const FBPVariableDescription& Desc, FN2CVariable& OutVar)
+{
+    OutVar = FN2CVariable();
+    OutVar.Name = Desc.VarName.ToString();
+    
+    // Map type from FEdGraphPinType
+    const FEdGraphPinType& T = Desc.VarType;
+    const FString& Cat = T.PinCategory.ToString();
+    
+    // Map basic types
+    if (Cat == TEXT("bool")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Bool;
+    }
+    else if (Cat == TEXT("byte")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Byte;
+    }
+    else if (Cat == TEXT("int")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Int;
+    }
+    else if (Cat == TEXT("float")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Float;
+    }
+    else if (Cat == TEXT("string")) 
+    {
+        OutVar.Type = EN2CStructMemberType::String;
+    }
+    else if (Cat == TEXT("name")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Name;
+    }
+    else if (Cat == TEXT("text")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Text;
+    }
+    else if (Cat == TEXT("struct")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Struct;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else if (Cat == TEXT("class")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Class;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else if (Cat == TEXT("object")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Object;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else if (Cat == TEXT("enum")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Enum;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else 
+    {
+        OutVar.Type = EN2CStructMemberType::Custom;
+    }
+
+    // Handle container types
+    OutVar.bIsArray = T.ContainerType == EPinContainerType::Array;
+    OutVar.bIsSet = T.ContainerType == EPinContainerType::Set;
+    OutVar.bIsMap = T.ContainerType == EPinContainerType::Map;
+
+    // Extract Map key type from PinValueType
+    if (OutVar.bIsMap)
+    {
+        // Try to extract key type from PinValueType (for Map containers)
+        if (T.PinValueType.TerminalCategory != NAME_None)
+        {
+            const FString KeyCategory = T.PinValueType.TerminalCategory.ToString();
+            
+            // Map key category to EN2CStructMemberType
+            if (KeyCategory == TEXT("bool"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Bool;
+            }
+            else if (KeyCategory == TEXT("byte"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Byte;
+            }
+            else if (KeyCategory == TEXT("int") || KeyCategory == TEXT("int64"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Int;
+            }
+            else if (KeyCategory == TEXT("float") || KeyCategory == TEXT("double"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Float;
+            }
+            else if (KeyCategory == TEXT("string"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::String;
+            }
+            else if (KeyCategory == TEXT("name"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Name;
+            }
+            else if (KeyCategory == TEXT("text"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Text;
+            }
+            else if (KeyCategory == TEXT("struct"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Struct;
+                if (T.PinValueType.TerminalSubCategoryObject.IsValid())
+                {
+                    OutVar.KeyTypeName = T.PinValueType.TerminalSubCategoryObject->GetName();
+                }
+            }
+            else if (KeyCategory == TEXT("enum"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Enum;
+                if (T.PinValueType.TerminalSubCategoryObject.IsValid())
+                {
+                    OutVar.KeyTypeName = T.PinValueType.TerminalSubCategoryObject->GetName();
+                }
+            }
+            else
+            {
+                OutVar.KeyType = EN2CStructMemberType::Custom;
+            }
+        }
+        else
+        {
+            // Fallback: if PinValueType is not available, use Custom
+            OutVar.KeyType = EN2CStructMemberType::Custom;
+            FN2CLogger::Get().LogWarning(FString::Printf(
+                TEXT("Map variable '%s' has no key type information in PinValueType, using Custom"), 
+                *OutVar.Name));
+        }
+    }
+
+    // Set default value if available
+    OutVar.DefaultValue = Desc.DefaultValue;
+}
+
+void FN2CNodeTranslator::CollectLocalVariables(UK2Node_FunctionEntry* EntryNode, TArray<FN2CVariable>& OutVariables)
+{
+    if (!EntryNode)
+    {
+        return;
+    }
+
+    OutVariables.Empty();
+    
+    for (const FBPVariableDescription& Desc : EntryNode->LocalVariables)
+    {
+        FN2CVariable Var;
+        ConvertVariableDescription(Desc, Var);
+        OutVariables.Add(Var);
+    }
 }
 
 FString FN2CNodeTranslator::GenerateNodeID()
@@ -314,6 +762,17 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     FN2CGraph NewGraph;
     NewGraph.Name = Graph->GetName();
     NewGraph.GraphType = GraphType;
+
+    // Collect function-local variables from the entry node (if any)
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node))
+        {
+            CollectLocalVariables(EntryNode, NewGraph.LocalVariables);
+            break;
+        }
+    }
+
     CurrentGraph = &NewGraph;
 
     // Collect and process nodes from this graph

@@ -30,6 +30,283 @@ FN2CEditorIntegration& FN2CEditorIntegration::Get()
     return Instance;
 }
 
+void FN2CEditorIntegration::ExecuteTranslateEntireBlueprintForEditor(TWeakPtr<FBlueprintEditor> InEditor)
+{
+    // Check if translation is already in progress
+    UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
+    if (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("Translation already in progress, please wait"));
+        return;
+    }
+
+    // Show the window as a tab
+    FGlobalTabmanager::Get()->TryInvokeTab(SN2CEditorWindow::TabId);
+
+    // Get the editor pointer
+    TSharedPtr<FBlueprintEditor> Editor = InEditor.Pin();
+    if (!Editor.IsValid())
+    {
+        FN2CLogger::Get().LogError(TEXT("Invalid Blueprint Editor pointer"));
+        return;
+    }
+
+    // Get focused graph to resolve owning blueprint
+    UEdGraph* FocusedGraph = Editor->GetFocusedGraph();
+    if (!FocusedGraph)
+    {
+        FN2CLogger::Get().LogError(TEXT("No focused graph in Blueprint Editor"));
+        return;
+    }
+
+    UBlueprint* OwnerBP = Cast<UBlueprint>(FocusedGraph->GetOuter());
+    if (!OwnerBP)
+    {
+        FN2CLogger::Get().LogError(TEXT("Focused graph has no owning Blueprint"));
+        return;
+    }
+
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    const bool bIncludeVariables = Settings ? Settings->bIncludeVariables : true;
+
+    const FString BlueprintName = OwnerBP->GetName();
+
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Starting full Blueprint translation for: %s"), *BlueprintName),
+        EN2CLogSeverity::Info
+    );
+
+    if (!LLMModule || !LLMModule->Initialize())
+    {
+        FN2CLogger::Get().LogError(TEXT("Failed to initialize LLM Module"));
+        return;
+    }
+
+    // Begin batch translation - all graphs in this Blueprint will share the same root directory
+    LLMModule->BeginBatchTranslation(BlueprintName);
+
+    // Use a single Blueprint-wide translation to build the full FN2CBlueprint,
+    // which already contains all graphs (including the synthetic ClassItSelf),
+    // then emit one JSON per graph by slicing the Graphs array.
+    FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
+
+    if (!Translator.GenerateFromBlueprint(OwnerBP, bIncludeVariables))
+    {
+        FN2CLogger::Get().LogError(TEXT("Failed to generate Blueprint-wide translation for Translate Entire Blueprint"));
+        // End batch translation on error
+        if (LLMModule)
+        {
+            LLMModule->EndBatchTranslation();
+        }
+        return;
+    }
+
+    const FN2CBlueprint& FullBlueprint = Translator.GetN2CBlueprint();
+    if (!FullBlueprint.IsValid())
+    {
+        FN2CLogger::Get().LogError(TEXT("Blueprint-wide node translation validation failed for Translate Entire Blueprint"));
+        // End batch translation on error
+        if (LLMModule)
+        {
+            LLMModule->EndBatchTranslation();
+        }
+        return;
+    }
+
+    FN2CLogger::Get().Log(TEXT("Blueprint-wide translation successful for Translate Entire Blueprint"), EN2CLogSeverity::Info);
+
+    // First pass: build per-graph JSON payloads so we know how many requests
+    // will be sent for this Blueprint (used for batch completion logging).
+    TArray<TPair<FString, FString>> PendingRequests; // Json, GraphName
+    TArray<FString> SerializationFailedGraphs; // Track graphs that failed JSON serialization
+
+    for (const FN2CGraph& Graph : FullBlueprint.Graphs)
+    {
+        const FString GraphName = Graph.Name;
+        if (GraphName.IsEmpty())
+        {
+            continue;
+        }
+
+        FN2CBlueprint PerGraphBlueprint;
+        PerGraphBlueprint.Version    = FullBlueprint.Version;
+        PerGraphBlueprint.Metadata   = FullBlueprint.Metadata;
+        PerGraphBlueprint.Variables  = FullBlueprint.Variables;
+        PerGraphBlueprint.Components = FullBlueprint.Components;
+        PerGraphBlueprint.Structs    = FullBlueprint.Structs;
+        PerGraphBlueprint.Enums      = FullBlueprint.Enums;
+        PerGraphBlueprint.Graphs.Reset(1);
+        PerGraphBlueprint.Graphs.Add(Graph);
+
+        FN2CSerializer::SetPrettyPrint(false);
+        FString JsonOutput = FN2CSerializer::ToJson(PerGraphBlueprint);
+        if (JsonOutput.IsEmpty())
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("JSON serialization failed for graph: %s"), *GraphName));
+            SerializationFailedGraphs.Add(GraphName);
+            continue;
+        }
+
+        PendingRequests.Emplace(JsonOutput, GraphName);
+    }
+
+    if (PendingRequests.Num() == 0)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No valid graphs to translate for this Blueprint"));
+        // End batch translation since there are no requests
+        if (LLMModule)
+        {
+            LLMModule->EndBatchTranslation();
+        }
+        return;
+    }
+
+    // Shared counter and result tracking for batch completion logging.
+    // We keep these local to the editor integration and update them from the per-request callback.
+    const int32 TotalRequests = PendingRequests.Num();
+    const int32 TotalGraphs = FullBlueprint.Graphs.Num(); // Total including serialization failures
+    TSharedRef<int32> RemainingResponses = MakeShared<int32>(TotalRequests);
+    TSharedRef<TArray<FString>> SuccessfulGraphs = MakeShared<TArray<FString>>();
+    TSharedRef<TArray<FString>> FailedGraphs = MakeShared<TArray<FString>>(SerializationFailedGraphs); // Include serialization failures
+
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Starting batch translation: %d graphs to translate for Blueprint: %s (%d requests queued, %d failed serialization)"),
+            TotalGraphs, *BlueprintName, TotalRequests, SerializationFailedGraphs.Num()),
+        EN2CLogSeverity::Info
+    );
+
+    // Second pass: actually send requests to the LLM
+    for (const TPair<FString, FString>& Request : PendingRequests)
+    {
+        const FString& JsonOutput = Request.Key;
+        const FString& GraphName  = Request.Value;
+
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Sending translation request for graph: %s"), *GraphName),
+            EN2CLogSeverity::Debug
+        );
+        FN2CLogger::Get().Log(TEXT("JSON Output:"), EN2CLogSeverity::Debug);
+        FN2CLogger::Get().Log(JsonOutput, EN2CLogSeverity::Debug);
+
+        LLMModule->ProcessN2CJson(JsonOutput, FOnLLMResponseReceived::CreateLambda(
+            [GraphName, RemainingResponses, BlueprintName, SuccessfulGraphs, FailedGraphs, TotalGraphs](const FString& Response)
+            {
+                bool bSuccess = false;
+                FString ErrorMessage;
+
+                FN2CLogger::Get().Log(
+                    FString::Printf(TEXT("Received LLM response for graph: %s"), *GraphName),
+                    EN2CLogSeverity::Debug
+                );
+                FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response for graph %s:\n\n%s"), *GraphName, *Response), EN2CLogSeverity::Debug);
+                
+                FN2CTranslationResponse TranslationResponse;
+                TScriptInterface<IN2CLLMService> ActiveService = UN2CLLMModule::Get()->GetActiveService();
+                if (ActiveService.GetInterface())
+                {
+                    UN2CResponseParserBase* Parser = ActiveService->GetResponseParser();
+                    if (Parser)
+                    {
+                        if (Parser->ParseLLMResponse(Response, TranslationResponse))
+                        {
+                            FN2CLogger::Get().Log(
+                                FString::Printf(TEXT("Successfully parsed LLM response for graph: %s"), *GraphName),
+                                EN2CLogSeverity::Info
+                            );
+                            bSuccess = true;
+                            SuccessfulGraphs->Add(GraphName);
+                        }
+                        else
+                        {
+                            ErrorMessage = TEXT("Failed to parse LLM response");
+                            FN2CLogger::Get().LogError(
+                                FString::Printf(TEXT("Failed to parse LLM response for graph: %s"), *GraphName)
+                            );
+                            FailedGraphs->Add(GraphName);
+                        }
+                    }
+                    else
+                    {
+                        ErrorMessage = TEXT("No response parser available");
+                        FN2CLogger::Get().LogError(
+                            FString::Printf(TEXT("No response parser available for graph: %s"), *GraphName)
+                        );
+                        FailedGraphs->Add(GraphName);
+                    }
+                }
+                else
+                {
+                    ErrorMessage = TEXT("No active LLM service");
+                    FN2CLogger::Get().LogError(
+                        FString::Printf(TEXT("No active LLM service for graph: %s"), *GraphName)
+                    );
+                    FailedGraphs->Add(GraphName);
+                }
+
+                // Decrement remaining counter and log summary when the batch completes.
+                const int32 NewRemaining = --(*RemainingResponses);
+                if (NewRemaining <= 0)
+                {
+                    // Build summary message
+                    FString Summary = FString::Printf(
+                        TEXT("Full Blueprint translation complete for: %s\n")
+                        TEXT("  Total graphs: %d\n")
+                        TEXT("  Successful: %d\n")
+                        TEXT("  Failed: %d"),
+                        *BlueprintName,
+                        TotalGraphs,
+                        SuccessfulGraphs->Num(),
+                        FailedGraphs->Num()
+                    );
+
+                    if (FailedGraphs->Num() > 0)
+                    {
+                        Summary += TEXT("\n  Failed graphs: ");
+                        for (int32 i = 0; i < FailedGraphs->Num(); ++i)
+                        {
+                            if (i > 0)
+                            {
+                                Summary += TEXT(", ");
+                            }
+                            Summary += (*FailedGraphs)[i];
+                        }
+                    }
+
+                    if (SuccessfulGraphs->Num() > 0)
+                    {
+                        Summary += TEXT("\n  Successful graphs: ");
+                        for (int32 i = 0; i < SuccessfulGraphs->Num(); ++i)
+                        {
+                            if (i > 0)
+                            {
+                                Summary += TEXT(", ");
+                            }
+                            Summary += (*SuccessfulGraphs)[i];
+                        }
+                    }
+
+                    // Log summary with appropriate severity
+                    if (FailedGraphs->Num() > 0)
+                    {
+                        FN2CLogger::Get().LogWarning(Summary);
+                    }
+                    else
+                    {
+                        FN2CLogger::Get().Log(Summary, EN2CLogSeverity::Info);
+                    }
+                    
+                    // End batch translation - clear the batch root path
+                    UN2CLLMModule* BatchLLMModule = UN2CLLMModule::Get();
+                    if (BatchLLMModule)
+                    {
+                        BatchLLMModule->EndBatchTranslation();
+                    }
+                }
+            }
+        ));
+    }
+}
+
 void FN2CEditorIntegration::ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> InEditor)
 {
     FN2CLogger::Get().Log(TEXT("ExecuteCopyJsonForEditor called"), EN2CLogSeverity::Debug);
@@ -300,6 +577,28 @@ void FN2CEditorIntegration::RegisterToolbarForEditor(TSharedPtr<FBlueprintEditor
             return Editor->GetCurrentMode() == FBlueprintEditorApplicationModes::StandardBlueprintEditorMode;
         })
     );
+
+    // Map the Translate Entire Blueprint command
+    CommandList->MapAction(
+        FN2CToolbarCommand::Get().TranslateEntireBlueprintCommand,
+        FExecuteAction::CreateLambda([this, WeakEditor, BlueprintName]()
+        {
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Translate Entire Blueprint triggered for Blueprint: %s"), *BlueprintName),
+                EN2CLogSeverity::Info
+            );
+            ExecuteTranslateEntireBlueprintForEditor(WeakEditor);
+        }),
+        FCanExecuteAction::CreateLambda([WeakEditor]()
+        {
+            TSharedPtr<FBlueprintEditor> Editor = WeakEditor.Pin();
+            if (!Editor.IsValid())
+            {
+                return false;
+            }
+            return Editor->GetCurrentMode() == FBlueprintEditorApplicationModes::StandardBlueprintEditorMode;
+        })
+    );
     
     // Map the Copy JSON command
     CommandList->MapAction(
@@ -350,6 +649,7 @@ void FN2CEditorIntegration::RegisterToolbarForEditor(TSharedPtr<FBlueprintEditor
                     MenuBuilder.AddMenuEntry(FN2CToolbarCommand::Get().OpenWindowCommand);
                     MenuBuilder.AddMenuEntry(FN2CToolbarCommand::Get().CollectNodesCommand);
                     MenuBuilder.AddMenuEntry(FN2CToolbarCommand::Get().CopyJsonCommand);
+                    MenuBuilder.AddMenuEntry(FN2CToolbarCommand::Get().TranslateEntireBlueprintCommand);
 
                     return MenuBuilder.MakeWidget();
                 }),

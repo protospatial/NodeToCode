@@ -471,6 +471,11 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
         meta=(DisplayName="Max Translation Depth", ClampMin="0", ClampMax="5", UIMin="0", UIMax="5"))
     int32 TranslationDepth = 0;
+
+    /** Include Blueprint variables in serialization output */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
+        meta=(DisplayName="Include Variables"))
+    bool bIncludeVariables = true;
     
     /** Minimum severity level for logging */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Logging")
