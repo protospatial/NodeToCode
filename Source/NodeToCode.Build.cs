@@ -23,7 +23,7 @@ public class NodeToCode : ModuleRules
 			{
 				"Core",
 				"CoreUObject",
-				"Engine", 
+				"Engine",
 				"InputCore",
 				"Json",
 				"UnrealEd",
@@ -36,7 +36,8 @@ public class NodeToCode : ModuleRules
 				"UMG",
 				"ToolMenus",
 				"ApplicationCore",
-				"Projects"
+				"Projects",
+				"AssetRegistry"
 			}
 		);
         

@@ -15,7 +15,7 @@
  * Provides functionality to convert FN2CBlueprint instances and their
  * contained structures into properly formatted JSON output.
  */
-class FN2CSerializer
+class NODETOCODE_API FN2CSerializer
 {
 public:
     /** Convert an FN2CBlueprint to JSON string */
