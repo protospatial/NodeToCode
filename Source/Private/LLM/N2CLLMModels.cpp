@@ -14,6 +14,12 @@ const TMap<EN2COpenAIModel, FN2COpenAIPricing> FN2CLLMModelUtils::OpenAIPricing 
 };
 
 const TMap<EN2CGeminiModel, FN2CGeminiPricing> FN2CLLMModelUtils::GeminiPricing = {
+    {EN2CGeminiModel::Gemini_3_1_Pro, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_3_Flash, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_3_1_FlashLite, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_2_5_Pro, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_2_5_Flash, FN2CGeminiPricing(0.0f, 0.0f)},
+    {EN2CGeminiModel::Gemini_2_5_FlashLite, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_2_5_ProExp, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_Flash_2_0, FN2CGeminiPricing(0.0f, 0.0f)},
     {EN2CGeminiModel::Gemini_Flash_Lite_2_0, FN2CGeminiPricing(0.0f, 0.0f)},
@@ -74,6 +80,18 @@ FString FN2CLLMModelUtils::GetGeminiModelValue(EN2CGeminiModel Model)
 {
     switch (Model)
     {
+    case EN2CGeminiModel::Gemini_3_1_Pro:
+        return TEXT("gemini-3.1-pro-preview");
+    case EN2CGeminiModel::Gemini_3_Flash:
+        return TEXT("gemini-3-flash-preview");
+    case EN2CGeminiModel::Gemini_3_1_FlashLite:
+        return TEXT("gemini-3.1-flash-lite-preview");
+    case EN2CGeminiModel::Gemini_2_5_Pro:
+        return TEXT("gemini-2.5-pro");
+    case EN2CGeminiModel::Gemini_2_5_Flash:
+        return TEXT("gemini-2.5-flash");
+    case EN2CGeminiModel::Gemini_2_5_FlashLite:
+        return TEXT("gemini-2.5-flash-lite");
     case EN2CGeminiModel::Gemini_2_5_ProExp:
         return TEXT("gemini-2.5-pro-exp-03-25");
     case EN2CGeminiModel::Gemini_Flash_2_0:
@@ -89,7 +107,7 @@ FString FN2CLLMModelUtils::GetGeminiModelValue(EN2CGeminiModel Model)
     case EN2CGeminiModel::Gemini_2_0_FlashThinkingExp:
         return TEXT("gemini-2.0-flash-thinking-exp-01-21");
     default:
-        return TEXT("gemini-2.0-flash");
+        return TEXT("gemini-2.5-flash");
     }
 }
 

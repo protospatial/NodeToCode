@@ -33,13 +33,19 @@ enum class EN2CAnthropicModel : uint8
 UENUM(BlueprintType)
 enum class EN2CGeminiModel : uint8
 {
-    Gemini_2_5_ProExp            UMETA(DisplayName = "Gemini 2.5 Pro Experimental", Value = "gemini-2.5-pro-exp-03-25"),
-    Gemini_Flash_2_0             UMETA(DisplayName = "Gemini 2.0 Flash", Value = "gemini-2.0-flash"),
-    Gemini_Flash_Lite_2_0        UMETA(DisplayName = "Gemini 2.0 Flash-Lite-Preview-02-05", Value = "gemini-2.0-flash-lite-preview-02-05"),
-    Gemini_1_5_Flash             UMETA(DisplayName = "Gemini 1.5 Flash", Value = "gemini-1.5-flash"),
-    Gemini_1_5_Pro               UMETA(DisplayName = "Gemini 1.5 Pro", Value = "gemini-1.5-pro"),
-    Gemini_2_0_ProExp_02_05      UMETA(DisplayName = "Gemini 2.0 Pro Exp 02-05", Value = "gemini-2.0-pro-exp-02-05"),
-    Gemini_2_0_FlashThinkingExp  UMETA(DisplayName = "Gemini 2.0 Flash Thinking Exp 01-21", Value = "gemini-2.0-flash-thinking-exp-01-21"),
+    Gemini_3_1_Pro               UMETA(DisplayName = "Gemini 3.1 Pro Preview"),
+    Gemini_3_Flash               UMETA(DisplayName = "Gemini 3 Flash Preview"),
+    Gemini_3_1_FlashLite         UMETA(DisplayName = "Gemini 3.1 Flash-Lite Preview"),
+    Gemini_2_5_Pro               UMETA(DisplayName = "Gemini 2.5 Pro"),
+    Gemini_2_5_Flash             UMETA(DisplayName = "Gemini 2.5 Flash"),
+    Gemini_2_5_FlashLite         UMETA(DisplayName = "Gemini 2.5 Flash-Lite"),
+    Gemini_2_5_ProExp            UMETA(DisplayName = "Gemini 2.5 Pro Experimental"),
+    Gemini_Flash_2_0             UMETA(DisplayName = "Gemini 2.0 Flash"),
+    Gemini_Flash_Lite_2_0        UMETA(DisplayName = "Gemini 2.0 Flash-Lite Preview"),
+    Gemini_1_5_Flash             UMETA(DisplayName = "Gemini 1.5 Flash"),
+    Gemini_1_5_Pro               UMETA(DisplayName = "Gemini 1.5 Pro"),
+    Gemini_2_0_ProExp_02_05      UMETA(DisplayName = "Gemini 2.0 Pro Exp 02-05"),
+    Gemini_2_0_FlashThinkingExp  UMETA(DisplayName = "Gemini 2.0 Flash Thinking Exp 01-21"),
 };
 
 /** Available DeepSeek models */
