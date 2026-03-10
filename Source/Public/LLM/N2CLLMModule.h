@@ -99,15 +99,15 @@ private:
 
     /** System prompt manager */
     UPROPERTY()
-    class UN2CSystemPromptManager* PromptManager;
+    TObjectPtr<class UN2CSystemPromptManager> PromptManager;
 
     /** HTTP handler */
     UPROPERTY()
-    class UN2CHttpHandlerBase* HttpHandler;
+    TObjectPtr<class UN2CHttpHandlerBase> HttpHandler;
 
     /** Response parser */
     UPROPERTY()
-    class UN2CResponseParserBase* ResponseParser;
+    TObjectPtr<class UN2CResponseParserBase> ResponseParser;
 
     /** Active LLM service */
     TScriptInterface<class IN2CLLMService> ActiveService;

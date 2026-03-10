@@ -48,13 +48,13 @@ protected:
     FN2CLLMConfig Config;
     
     UPROPERTY()
-    UN2CHttpHandlerBase* HttpHandler;
-    
+    TObjectPtr<UN2CHttpHandlerBase> HttpHandler;
+
     UPROPERTY()
-    UN2CResponseParserBase* ResponseParser;
-    
+    TObjectPtr<UN2CResponseParserBase> ResponseParser;
+
     UPROPERTY()
-    UN2CSystemPromptManager* PromptManager;
+    TObjectPtr<UN2CSystemPromptManager> PromptManager;
     
     bool bIsInitialized;
 };
