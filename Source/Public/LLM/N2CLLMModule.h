@@ -71,6 +71,12 @@ public:
     /** Save translation files to disk */
     bool SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint);
 
+    /** Begin a batch translation (e.g. Translate Entire Blueprint) - all translations in this batch will share the same root directory */
+    void BeginBatchTranslation(const FString& BlueprintName);
+
+    /** End a batch translation - clears the batch root path */
+    void EndBatchTranslation();
+
 private:
     /** Generate file paths for translation */
     FString GenerateTranslationRootPath(const FString& BlueprintName) const;
@@ -83,6 +89,18 @@ private:
     
     /** Create directory if it doesn't exist */
     bool EnsureDirectoryExists(const FString& DirectoryPath) const;
+
+    /** Save graph files with batch-specific features (sanitized names, ClassItSelf special handling) */
+    void SaveGraphFilesWithBatchFeatures(
+        const FN2CTranslationResponse& Response,
+        const FString& RootPath,
+        EN2CCodeLanguage TargetLanguage) const;
+
+    /** Save graph files using original simple logic (for single translations) */
+    void SaveGraphFilesOriginal(
+        const FN2CTranslationResponse& Response,
+        const FString& RootPath,
+        EN2CCodeLanguage TargetLanguage) const;
     
     /** Initialize components */
     bool InitializeComponents();
@@ -119,6 +137,9 @@ private:
     /** Path to the latest translation */
     UPROPERTY()
     FString LatestTranslationPath;
+    
+    /** Cached root path for the current translation batch (e.g. one Translate Entire Blueprint run) */
+    FString CurrentBatchRootPath;
     
     /** Initialization state */
     bool bIsInitialized;
