@@ -445,7 +445,22 @@ public:
         meta=(DisplayName="Prepended Model Command", 
               ToolTip="Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear on first line of each user message."))
     FString LMStudioPrependedModelCommand = "";
-    
+
+    /** MiniMax API Key */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | MiniMax",
+        meta = (DisplayName = "API Key"))
+    FString MiniMax_API_Key_UI;
+
+    /** MiniMax endpoint */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | MiniMax",
+        meta = (DisplayName = "Server Endpoint"))
+    FString MiniMaxEndpoint = "https://api.minimax.io";
+
+    /** MiniMax Model */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | MiniMax",
+        meta = (DisplayName = "Model Name"))
+    FString MiniMaxModel = "MiniMax-M2.7";
+
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
     TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIModelPricing;

@@ -14,6 +14,7 @@
 #include "LLM/Providers/N2CLMStudioService.h"
 #include "LLM/Providers/N2COpenAIService.h"
 #include "LLM/Providers/N2COllamaService.h"
+#include "LLM/Providers/N2CMiniMaxService.h"
 #include "Utils/N2CLogger.h"
 
 UN2CLLMModule* UN2CLLMModule::Get()
@@ -493,6 +494,7 @@ void UN2CLLMModule::InitializeProviderRegistry()
     Registry->RegisterProvider(EN2CLLMProvider::DeepSeek, UN2CDeepSeekService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::Ollama, UN2COllamaService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::LMStudio, UN2CLMStudioService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::MiniMax, UN2CMiniMaxService::StaticClass());
     
     FN2CLogger::Get().Log(TEXT("Provider registry initialized"), EN2CLogSeverity::Info, TEXT("LLMModule"));
 }
