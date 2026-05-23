@@ -53,6 +53,23 @@ void FN2CEditorIntegration::ExecuteTranslateEntireBlueprintForEditor(TWeakPtr<FB
 
     // Get focused graph to resolve owning blueprint
     UEdGraph* FocusedGraph = Editor->GetFocusedGraph();
+
+    // Fallback: if no graph is focused (e.g., My Blueprint tab selected), use the first available graph
+    if (!FocusedGraph)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No focused graph - using first available graph as fallback"));
+        // Try to get OwnerBP first since FocusedGraph isn't available yet
+        UBlueprint* BPFromEditor = Editor->GetBlueprintObj();
+        if (BPFromEditor && BPFromEditor->EventGraphs.Num() > 0)
+        {
+            FocusedGraph = BPFromEditor->EventGraphs[0];
+        }
+        else if (BPFromEditor && BPFromEditor->FunctionGraphs.Num() > 0)
+        {
+            FocusedGraph = BPFromEditor->FunctionGraphs[0];
+        }
+    }
+
     if (!FocusedGraph)
     {
         FN2CLogger::Get().LogError(TEXT("No focused graph in Blueprint Editor"));
@@ -322,6 +339,24 @@ void FN2CEditorIntegration::ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> 
 
     // Get focused graph
     UEdGraph* FocusedGraph = Editor->GetFocusedGraph();
+
+    // Fallback: if no graph is focused (e.g., My Blueprint tab selected), use EventGraph
+    if (!FocusedGraph)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No focused graph - using EventGraph as fallback"));
+        if (UBlueprint* BPFromEditor = Editor->GetBlueprintObj())
+        {
+            if (BPFromEditor->EventGraphs.Num() > 0)
+            {
+                FocusedGraph = BPFromEditor->EventGraphs[0];
+            }
+            else if (BPFromEditor->FunctionGraphs.Num() > 0)
+            {
+                FocusedGraph = BPFromEditor->FunctionGraphs[0];
+            }
+        }
+    }
+
     if (!FocusedGraph)
     {
         FN2CLogger::Get().LogError(TEXT("No focused graph in Blueprint Editor"));
@@ -732,6 +767,24 @@ void FN2CEditorIntegration::ExecuteCollectNodesForEditor(TWeakPtr<FBlueprintEdit
 
     // Get focused graph
     UEdGraph* FocusedGraph = Editor->GetFocusedGraph();
+
+    // Fallback: if no graph is focused (e.g., My Blueprint tab selected), use EventGraph
+    if (!FocusedGraph)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No focused graph - using EventGraph as fallback"));
+        if (UBlueprint* BPFromEditor = Editor->GetBlueprintObj())
+        {
+            if (BPFromEditor->EventGraphs.Num() > 0)
+            {
+                FocusedGraph = BPFromEditor->EventGraphs[0];
+            }
+            else if (BPFromEditor->FunctionGraphs.Num() > 0)
+            {
+                FocusedGraph = BPFromEditor->FunctionGraphs[0];
+            }
+        }
+    }
+
     if (!FocusedGraph)
     {
         FN2CLogger::Get().LogError(TEXT("No focused graph in Blueprint Editor"));

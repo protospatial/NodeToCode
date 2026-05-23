@@ -80,22 +80,38 @@ bool UN2CMiniMaxResponseParser::ParseLLMResponse(
         }
     }
 
-    // Remove markdown code block wrappers if present
-    if (ProcessedContent.StartsWith(TEXT("```json")))
+    // Remove markdown code block wrappers - loop to handle double-wrapping like ```json\n```...```
+    bool bRemovedWrapper = true;
+    while (bRemovedWrapper && ProcessedContent.Len() > 6)
     {
-        ProcessedContent = ProcessedContent.Mid(7);
-    }
-    else if (ProcessedContent.StartsWith(TEXT("```")))
-    {
-        ProcessedContent = ProcessedContent.Mid(3);
-    }
+        bRemovedWrapper = false;
+        FString Before = ProcessedContent;
 
-    if (ProcessedContent.EndsWith(TEXT("```")))
-    {
-        ProcessedContent = ProcessedContent.LeftChop(3);
-    }
+        ProcessedContent = ProcessedContent.TrimStartAndEnd();
 
-    ProcessedContent = ProcessedContent.TrimStartAndEnd();
+        if (ProcessedContent.StartsWith(TEXT("```json")))
+        {
+            ProcessedContent = ProcessedContent.Mid(7);
+            bRemovedWrapper = true;
+        }
+        else if (ProcessedContent.StartsWith(TEXT("```")))
+        {
+            ProcessedContent = ProcessedContent.Mid(3);
+            bRemovedWrapper = true;
+        }
+
+        if (ProcessedContent.EndsWith(TEXT("```")))
+        {
+            ProcessedContent = ProcessedContent.LeftChop(3);
+            bRemovedWrapper = true;
+        }
+
+        ProcessedContent = ProcessedContent.TrimStartAndEnd();
+
+        // If nothing changed this iteration, stop
+        if (ProcessedContent == Before)
+            break;
+    }
 
     // Log first 200 chars to see what we're getting
     FString First200 = ProcessedContent.Left(200);
@@ -118,5 +134,35 @@ bool UN2CMiniMaxResponseParser::ParseLLMResponse(
         TEXT("MiniMaxResponseParser")
     );
 
-    return Super::ParseLLMResponse(ProcessedContent, OutResponse);
+    // Use the same recovery flow as the base class — try parse first, then truncate recovery
+    FN2CTranslationResponse PrimaryResponse;
+    if (TryParseJson(ProcessedContent, PrimaryResponse))
+    {
+        OutResponse = PrimaryResponse;
+        return true;
+    }
+
+    // Recovery for truncated responses
+    FN2CLogger::Get().LogWarning(
+        TEXT("MiniMax response parse failed — attempting truncation recovery"),
+        TEXT("MiniMaxResponseParser")
+    );
+
+    FN2CTranslationResponse RecoveredResponse;
+    if (TryRecoverTruncatedJson(ProcessedContent, RecoveredResponse))
+    {
+        FN2CLogger::Get().LogWarning(
+            FString::Printf(TEXT("Truncation recovery succeeded: recovered %d graph(s)"),
+                RecoveredResponse.Graphs.Num()),
+            TEXT("MiniMaxResponseParser")
+        );
+        OutResponse = RecoveredResponse;
+        return true;
+    }
+
+    FN2CLogger::Get().LogError(
+        TEXT("Failed to parse MiniMax response: all recovery attempts failed"),
+        TEXT("MiniMaxResponseParser")
+    );
+    return false;
 }

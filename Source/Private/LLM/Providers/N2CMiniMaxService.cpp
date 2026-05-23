@@ -91,6 +91,9 @@ FString UN2CMiniMaxService::FormatRequestPayload(const FString& UserMessage, con
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForMiniMax();
 
+    // MiniMax models need higher token limits for large Blueprint graphs
+    PayloadBuilder->SetMaxTokens(16384);
+
     // Try prepending source files to user message
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);

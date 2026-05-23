@@ -101,6 +101,9 @@ private:
         const FN2CTranslationResponse& Response,
         const FString& RootPath,
         EN2CCodeLanguage TargetLanguage) const;
+
+    /** Save raw LLM response to disk when parsing fails for debugging */
+    void SaveRawResponseToDisk(const FString& RawResponse);
     
     /** Initialize components */
     bool InitializeComponents();

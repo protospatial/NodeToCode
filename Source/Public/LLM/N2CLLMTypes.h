@@ -56,7 +56,7 @@ struct FN2CLLMConfig
     FString ApiKey;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
-    float TimeoutSeconds = 3600.0f;
+    float TimeoutSeconds = 300.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     bool bUseSystemPrompts = true;

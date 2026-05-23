@@ -146,6 +146,8 @@ void UN2CLLMModule::ProcessN2CJson(
                     {
                         CurrentStatus = EN2CSystemStatus::Error;
                         FN2CLogger::Get().LogError(TEXT("Failed to parse LLM response"));
+                        // Save raw response for debugging when parsing fails
+                        SaveRawResponseToDisk(Response);
                         OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
                     }
                 }
@@ -235,7 +237,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     {
         BlueprintName = TEXT("UnknownBlueprint");
     }
-    
+
     // Use batch root path if in batch mode, otherwise generate a new timestamped path for each translation
     FString RootPath;
     if (!CurrentBatchRootPath.IsEmpty())
@@ -248,52 +250,52 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         // Single translation mode: generate a new timestamped directory for each translation
         RootPath = GenerateTranslationRootPath(BlueprintName);
     }
-    
+
     // Ensure the directory exists
     if (!EnsureDirectoryExists(RootPath))
     {
         FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to create translation directory: %s"), *RootPath));
         return false;
     }
-    
+
     // Store the path for later reference
     LatestTranslationPath = RootPath;
-    
+
     // Save the Blueprint JSON (pretty-printed)
     FString JsonFileName = FString::Printf(TEXT("N2C_BP_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString JsonFilePath = FPaths::Combine(RootPath, JsonFileName);
-    
+
     // Serialize the Blueprint to JSON with pretty printing
     FN2CSerializer::SetPrettyPrint(true);
     FString JsonContent = FN2CSerializer::ToJson(Blueprint);
-    
+
     if (!FFileHelper::SaveStringToFile(JsonContent, *JsonFilePath))
     {
         FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to save JSON file: %s"), *JsonFilePath));
         return false;
     }
-    
+
     // Save minified version of the Blueprint JSON
     FString MinifiedJsonFileName = FString::Printf(TEXT("N2C_BP_Minified_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString MinifiedJsonFilePath = FPaths::Combine(RootPath, MinifiedJsonFileName);
-    
+
     // Serialize the Blueprint to JSON without pretty printing
     FN2CSerializer::SetPrettyPrint(false);
     FString MinifiedJsonContent = FN2CSerializer::ToJson(Blueprint);
-    
+
     if (!FFileHelper::SaveStringToFile(MinifiedJsonContent, *MinifiedJsonFilePath))
     {
         FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save minified JSON file: %s"), *MinifiedJsonFilePath));
         // Continue even if minified version fails
     }
-    
+
     // Save the raw LLM translation response JSON
     FString TranslationJsonFileName = FString::Printf(TEXT("N2C_Translation_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString TranslationJsonFilePath = FPaths::Combine(RootPath, TranslationJsonFileName);
-    
+
     // Serialize the Translation response to JSON
     TSharedPtr<FJsonObject> TranslationJsonObject = MakeShared<FJsonObject>();
-    
+
     // Create graphs array
     TArray<TSharedPtr<FJsonValue>> GraphsArray;
     for (const FN2CGraphTranslation& Graph : Response.Graphs)
@@ -302,19 +304,19 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         GraphObject->SetStringField(TEXT("graph_name"), Graph.GraphName);
         GraphObject->SetStringField(TEXT("graph_type"), Graph.GraphType);
         GraphObject->SetStringField(TEXT("graph_class"), Graph.GraphClass);
-        
+
         // Create code object
         TSharedPtr<FJsonObject> CodeObject = MakeShared<FJsonObject>();
         CodeObject->SetStringField(TEXT("graphDeclaration"), Graph.Code.GraphDeclaration);
         CodeObject->SetStringField(TEXT("graphImplementation"), Graph.Code.GraphImplementation);
         CodeObject->SetStringField(TEXT("implementationNotes"), Graph.Code.ImplementationNotes);
-        
+
         GraphObject->SetObjectField(TEXT("code"), CodeObject);
         GraphsArray.Add(MakeShared<FJsonValueObject>(GraphObject));
     }
-    
+
     TranslationJsonObject->SetArrayField(TEXT("graphs"), GraphsArray);
-    
+
     // Add usage information if available
     if (Response.Usage.InputTokens > 0 || Response.Usage.OutputTokens > 0)
     {
@@ -323,27 +325,27 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         UsageObject->SetNumberField(TEXT("output_tokens"), Response.Usage.OutputTokens);
         TranslationJsonObject->SetObjectField(TEXT("usage"), UsageObject);
     }
-    
+
     // Serialize to string with pretty printing
     FString TranslationJsonContent;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&TranslationJsonContent);
     FJsonSerializer::Serialize(TranslationJsonObject.ToSharedRef(), Writer);
-    
+
     if (!FFileHelper::SaveStringToFile(TranslationJsonContent, *TranslationJsonFilePath))
     {
         FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save translation JSON file: %s"), *TranslationJsonFilePath));
         // Continue even if translation JSON fails
     }
-    
+
     // Get the target language from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
-    
-    
-    
+
+
+
     // Determine if we're in batch mode (when CurrentBatchRootPath is set)
     const bool bIsBatchMode = !CurrentBatchRootPath.IsEmpty();
-    
+
     // Use batch-specific features for batch translations, original logic for single translations
     if (bIsBatchMode)
     {
@@ -353,9 +355,53 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     {
         SaveGraphFilesOriginal(Response, RootPath, TargetLanguage);
     }
-    
+
     FN2CLogger::Get().Log(FString::Printf(TEXT("Translation saved to: %s"), *RootPath), EN2CLogSeverity::Info);
     return true;
+}
+
+void UN2CLLMModule::SaveRawResponseToDisk(const FString& RawResponse)
+{
+    if (RawResponse.IsEmpty())
+    {
+        return;
+    }
+
+    FString RootPath;
+    if (!CurrentBatchRootPath.IsEmpty())
+    {
+        RootPath = CurrentBatchRootPath;
+    }
+    else
+    {
+        RootPath = GenerateTranslationRootPath(TEXT("ParseFailure"));
+    }
+
+    if (!EnsureDirectoryExists(RootPath))
+    {
+        return;
+    }
+
+    // Save the raw response with a unique timestamp
+    FDateTime Now = FDateTime::Now();
+    FString Timestamp = Now.ToString(TEXT("%Y-%m-%d-%H.%M.%S.%f"));
+    FString RawFileName = FString::Printf(TEXT("RAW_RESPONSE_%s.txt"), *Timestamp);
+    FString RawFilePath = FPaths::Combine(RootPath, RawFileName);
+
+    if (FFileHelper::SaveStringToFile(RawResponse, *RawFilePath))
+    {
+        FN2CLogger::Get().LogWarning(
+            FString::Printf(TEXT("Raw LLM response saved for debugging: %s"), *RawFilePath),
+            TEXT("LLMModule")
+        );
+    }
+    else
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Failed to save raw response to: %s"), *RawFilePath),
+            TEXT("LLMModule")
+        );
+    }
 }
 
 void UN2CLLMModule::SaveGraphFilesWithBatchFeatures(

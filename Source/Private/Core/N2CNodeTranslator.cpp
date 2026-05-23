@@ -1378,25 +1378,38 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     // Get enum path
     FString EnumPath = Enum->GetPathName();
     FString EnumName = Enum->GetName();
-    
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("ProcessBlueprintEnum: Processing enum '%s' (Path: %s)"), 
-            *EnumName, *EnumPath),
-        EN2CLogSeverity::Info);
-    
-    // Check if we've already processed this enum
-    if (ProcessedEnumPaths.Contains(EnumPath))
+
+    // Fallback to FName if GetName returns something unexpected
+    if (EnumName.IsEmpty())
     {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Enum %s already processed - skipping"), *EnumPath),
-            EN2CLogSeverity::Debug);
+        EnumName = Enum->GetFName().ToString();
+    }
+
+    // Final fallback: use the path's last segment
+    if (EnumName.IsEmpty())
+    {
+        FString Isolated;
+        if (EnumPath.Split(TEXT("/"), nullptr, &Isolated, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+        {
+            EnumName = Isolated;
+        }
+    }
+
+    // If still empty, return invalid result early
+    if (EnumName.IsEmpty())
+    {
+        FN2CLogger::Get().LogError(TEXT("ProcessBlueprintEnum: Could not determine enum name (GetName, GetFName, and path fallback all failed)"));
         return Result;
     }
-    
-    // Mark as processed
-    ProcessedEnumPaths.Add(EnumPath);
-    FN2CLogger::Get().Log(TEXT("Added enum to processed paths"), EN2CLogSeverity::Debug);
-    
+
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("ProcessBlueprintEnum: Processing enum '%s' (Path: %s)"),
+            *EnumName, *EnumPath),
+        EN2CLogSeverity::Info);
+
+    // Process each enum fresh every time - don't skip duplicates
+    // (ProcessedEnumPaths only prevents duplicate side-effects like struct nesting)
+
     // Set basic enum info
     Result.Name = EnumName;
     
