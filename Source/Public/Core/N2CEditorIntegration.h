@@ -57,6 +57,9 @@ private:
     /** Execute copy blueprint JSON to clipboard for a specific editor */
     void ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> InEditor);
     
+    /** Execute translate entire blueprint (all graphs) for a specific editor */
+    void ExecuteTranslateEntireBlueprintForEditor(TWeakPtr<FBlueprintEditor> InEditor);
+    
     /** Handle asset editor opened callback */
     void HandleAssetEditorOpened(UObject* Asset, IAssetEditorInstance* EditorInstance);
 

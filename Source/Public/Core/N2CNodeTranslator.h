@@ -29,6 +29,9 @@ public:
      */
     bool GenerateN2CStruct(const TArray<UK2Node*>& CollectedNodes);
 
+    /** Generate N2CBlueprint from entire Blueprint (all graphs, optional variables) */
+    bool GenerateFromBlueprint(class UBlueprint* InBlueprint, bool bIncludeVariables = true);
+
     /**
      * @brief Get the generated Blueprint structure
      * @return The translated Blueprint structure
@@ -150,4 +153,13 @@ private:
 
     /** Log detailed debug information about the node */
     void LogNodeDetails(const FN2CNodeDefinition& NodeDef);
+
+    /** Collect Blueprint component instances and their overridden default properties */
+    void CollectComponentOverrides(class UBlueprint* InBlueprint);
+
+    /** Convert FBPVariableDescription to FN2CVariable */
+    void ConvertVariableDescription(const struct FBPVariableDescription& Desc, struct FN2CVariable& OutVar);
+
+    /** Collect local variables from a function entry node */
+    void CollectLocalVariables(class UK2Node_FunctionEntry* EntryNode, TArray<struct FN2CVariable>& OutVariables);
 };

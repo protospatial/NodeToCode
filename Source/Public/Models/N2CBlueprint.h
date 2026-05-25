@@ -213,6 +213,98 @@ struct FN2CStruct
 };
 
 /**
+ * @struct FN2CVariable
+ * @brief Represents a Blueprint variable declaration
+ */
+USTRUCT(BlueprintType)
+struct FN2CVariable
+{
+    GENERATED_BODY()
+
+    /** Variable name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** Variable type (basic category) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CStructMemberType Type;
+
+    /** Full type name for objects/structs/enums/classes */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TypeName;
+
+    /** Container flags */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsArray = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsSet = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsMap = false;
+
+    /** Map key type if this variable is a Map */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CStructMemberType KeyType;
+
+    /** Map key type name for complex keys */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString KeyTypeName;
+
+    /** Default value as string (best-effort) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString DefaultValue;
+
+    /** Optional comment/tooltip */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    FN2CVariable()
+        : Name(TEXT(""))
+        , Type(EN2CStructMemberType::Int)
+        , TypeName(TEXT(""))
+        , KeyType(EN2CStructMemberType::Int)
+        , KeyTypeName(TEXT(""))
+        , DefaultValue(TEXT(""))
+        , Comment(TEXT(""))
+    {
+    }
+};
+
+/**
+ * @struct FN2CComponentOverride
+ * @brief Represents a Blueprint component instance and its overridden default properties
+ */
+USTRUCT(BlueprintType)
+struct FN2CComponentOverride
+{
+    GENERATED_BODY()
+
+    /** Component instance name on the Blueprint (variable name on the actor) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ComponentName;
+
+    /** Component class name (e.g. StaticMeshComponent) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ComponentClassName;
+
+    /** Optional attach parent component/variable name */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString AttachParentName;
+
+    /** Properties on this component whose defaults were overridden in the Blueprint */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CVariable> OverriddenProperties;
+
+    FN2CComponentOverride()
+        : ComponentName(TEXT(""))
+        , ComponentClassName(TEXT(""))
+        , AttachParentName(TEXT(""))
+    {
+    }
+};
+
+/**
  * @struct FN2CEnumValue
  * @brief Represents a single value in an enum
  */
@@ -286,6 +378,8 @@ enum class EN2CGraphType : uint8
     Construction    UMETA(DisplayName = "Construction Script"),
     /** An animation graph */
     Animation      UMETA(DisplayName = "Animation"),
+    /** A synthetic class skeleton graph (no nodes, only class-level structure) */
+    ClassItSelf  UMETA(DisplayName = "Class Skeleton"),
     /** A struct definition */
     Struct         UMETA(DisplayName = "Struct"),
     /** An enum definition */
@@ -316,6 +410,10 @@ struct FN2CGraph
     /** Execution and data flow connections for this graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CFlows Flows;
+
+    /** Local variables declared for this graph (e.g. function-local variables) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CVariable> LocalVariables;
 
     FN2CGraph()
         : GraphType(EN2CGraphType::EventGraph)
@@ -354,6 +452,14 @@ struct FN2CBlueprint
     /** Array of all enums used in the Blueprint */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CEnum> Enums;
+
+    /** Array of declared Blueprint variables */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CVariable> Variables;
+
+    /** Array of Blueprint components and their overridden default properties */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CComponentOverride> Components;
 
     FN2CBlueprint()
     {
