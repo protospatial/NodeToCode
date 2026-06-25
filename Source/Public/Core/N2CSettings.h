@@ -439,6 +439,11 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
         meta=(DisplayName="Server Endpoint"))
     FString LMStudioEndpoint = "http://localhost:1234";
+
+    /** LM Studio maximum output tokens */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta=(DisplayName="Max Tokens", ClampMin="1", UIMin="1"))
+    int32 LMStudioMaxTokens = 32768;
     
     /** LM Studio Prepended Model Command - Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear at the start of each user message. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",

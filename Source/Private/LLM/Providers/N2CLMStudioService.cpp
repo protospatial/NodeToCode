@@ -97,15 +97,26 @@ FString UN2CLMStudioService::FormatRequestPayload(const FString& UserMessage, co
     
     // Prepend user message text if configured
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (Settings && !Settings->LMStudioPrependedModelCommand.IsEmpty())
+    if (Settings)
     {
-        FinalUserMessage = Settings->LMStudioPrependedModelCommand + TEXT("\n\n") + FinalUserMessage;
-        
+        PayloadBuilder->SetMaxTokens(Settings->LMStudioMaxTokens);
+
         FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Prepended model command text: %s"), *Settings->LMStudioPrependedModelCommand),
+            FString::Printf(TEXT("Using LM Studio max tokens: %d"), Settings->LMStudioMaxTokens),
             EN2CLogSeverity::Debug,
             TEXT("LMStudioService")
         );
+
+        if (!Settings->LMStudioPrependedModelCommand.IsEmpty())
+        {
+            FinalUserMessage = Settings->LMStudioPrependedModelCommand + TEXT("\n\n") + FinalUserMessage;
+            
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Prepended model command text: %s"), *Settings->LMStudioPrependedModelCommand),
+                EN2CLogSeverity::Debug,
+                TEXT("LMStudioService")
+            );
+        }
     }
     
     // Add messages - LM Studio supports system prompts
