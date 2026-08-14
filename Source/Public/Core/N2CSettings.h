@@ -447,7 +447,7 @@ public:
     FString LMStudioPrependedModelCommand = "";
 
     /** Native details-row anchor for dynamic custom provider UI. */
-    UPROPERTY(Transient, EditAnywhere, Category = "Node to Code | LLM Services",
+    UPROPERTY(Transient, EditAnywhere, Category = "Node to Code | Custom LLM Services",
         meta=(DisplayName="Custom Providers"))
     bool bCustomProvidersUIAnchor = false;
     
