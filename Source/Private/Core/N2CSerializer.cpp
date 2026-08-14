@@ -909,7 +909,7 @@ bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObjec
     {
         if (DataFlow.Value->Type == EJson::String)
         {
-            OutFlows.Data.Add(DataFlow.Key, DataFlow.Value->AsString());
+            OutFlows.Data.Add(FString(DataFlow.Key.ToView()), DataFlow.Value->AsString());
         }
     }
 
