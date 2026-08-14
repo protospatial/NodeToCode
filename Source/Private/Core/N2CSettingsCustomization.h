@@ -9,6 +9,7 @@
 class IDetailLayoutBuilder;
 class SEditableTextBox;
 class UN2CSettings;
+enum class EN2CLLMProvider : uint8;
 
 class FN2CSettingsCustomization : public IDetailCustomization
 {
@@ -20,6 +21,10 @@ private:
     void ForceRefresh();
     void RebuildActiveProviderOptions();
     void AddPendingProvider();
+    void AddConnectionCheckRow(
+        IDetailLayoutBuilder& DetailBuilder,
+        const FString& CategoryName,
+        EN2CLLMProvider Provider);
     void AddProviderCategory(IDetailLayoutBuilder& DetailBuilder, int32 ProviderIndex);
 
     IDetailLayoutBuilder* ActiveDetailBuilder = nullptr;

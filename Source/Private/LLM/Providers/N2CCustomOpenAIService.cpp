@@ -32,8 +32,16 @@ bool UN2CCustomOpenAIService::Initialize(const FN2CLLMConfig& InConfig)
         return false;
     }
 
+    FString BaseUrl = Provider->Endpoint.TrimStartAndEnd();
+    while (BaseUrl.EndsWith(TEXT("/")))
+    {
+        BaseUrl.LeftChopInline(1);
+    }
+
     FN2CLLMConfig UpdatedConfig = InConfig;
-    UpdatedConfig.ApiEndpoint = Provider->Endpoint.TrimStartAndEnd();
+    UpdatedConfig.ApiEndpoint = BaseUrl.EndsWith(TEXT("/chat/completions"), ESearchCase::IgnoreCase)
+        ? BaseUrl
+        : BaseUrl + TEXT("/chat/completions");
     UpdatedConfig.ApiKey = Settings->GetApiKey(Provider->Name);
     UpdatedConfig.Model = Provider->Model;
     UpdatedConfig.bUseSystemPrompts = Provider->bUseSystemPrompts;

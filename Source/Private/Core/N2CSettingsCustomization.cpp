@@ -2,6 +2,7 @@
 
 #include "Core/N2CSettingsCustomization.h"
 
+#include "Core/N2CConnectionTester.h"
 #include "Core/N2CSettings.h"
 #include "DetailCategoryBuilder.h"
 #include "DetailLayoutBuilder.h"
@@ -143,6 +144,31 @@ void FN2CSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBui
         ];
     }
 
+    AddConnectionCheckRow(
+        DetailBuilder,
+        TEXT("Node to Code | LLM Services | Anthropic"),
+        EN2CLLMProvider::Anthropic);
+    AddConnectionCheckRow(
+        DetailBuilder,
+        TEXT("Node to Code | LLM Services | OpenAI"),
+        EN2CLLMProvider::OpenAI);
+    AddConnectionCheckRow(
+        DetailBuilder,
+        TEXT("Node to Code | LLM Services | Gemini"),
+        EN2CLLMProvider::Gemini);
+    AddConnectionCheckRow(
+        DetailBuilder,
+        TEXT("Node to Code | LLM Services | DeepSeek"),
+        EN2CLLMProvider::DeepSeek);
+    AddConnectionCheckRow(
+        DetailBuilder,
+        TEXT("Node to Code | LLM Services | Ollama"),
+        EN2CLLMProvider::Ollama);
+    AddConnectionCheckRow(
+        DetailBuilder,
+        TEXT("Node to Code | LLM Services | LM Studio"),
+        EN2CLLMProvider::LMStudio);
+
     if (CustomProviderSettings.IsValid())
     {
         for (int32 ProviderIndex = 0;
@@ -191,6 +217,35 @@ void FN2CSettingsCustomization::AddPendingProvider()
     }
 }
 
+void FN2CSettingsCustomization::AddConnectionCheckRow(
+    IDetailLayoutBuilder& DetailBuilder,
+    const FString& CategoryName,
+    EN2CLLMProvider Provider)
+{
+    IDetailCategoryBuilder& Category = DetailBuilder.EditCategory(FName(*CategoryName));
+    Category.AddCustomRow(FText::FromString(TEXT("Connection")))
+    .NameContent()
+    [
+        SNew(STextBlock)
+        .Text(FText::FromString(TEXT("Connection")))
+        .Font(IDetailLayoutBuilder::GetDetailFont())
+    ]
+    .ValueContent()
+    [
+        SNew(SButton)
+        .Text(FText::FromString(TEXT("Check Connection")))
+        .ToolTipText(FText::FromString(TEXT("Send a lightweight request to verify provider reachability and authentication.")))
+        .OnClicked_Lambda([this, Provider]()
+        {
+            if (Settings.IsValid())
+            {
+                FN2CConnectionTester::TestProvider(Provider, *Settings.Get());
+            }
+            return FReply::Handled();
+        })
+    ];
+}
+
 void FN2CSettingsCustomization::AddProviderCategory(
     IDetailLayoutBuilder& DetailBuilder,
     int32 ProviderIndex)
@@ -234,14 +289,14 @@ void FN2CSettingsCustomization::AddProviderCategory(
     [
         SNew(STextBlock)
         .Text(FText::FromString(TEXT("Provider Endpoint *")))
-        .ToolTipText(FText::FromString(TEXT("Required OpenAI-compatible chat completions endpoint")))
+        .ToolTipText(FText::FromString(TEXT("Required OpenAI-compatible API base endpoint. NodeToCode appends /chat/completions internally.")))
         .Font(IDetailLayoutBuilder::GetDetailFont())
     ]
     .ValueContent()
     .MinDesiredWidth(420.0f)
     [
         SNew(SEditableTextBox)
-        .HintText(FText::FromString(TEXT("Required, e.g. https://host/v1/chat/completions")))
+        .HintText(FText::FromString(TEXT("Required, e.g. https://host/api/v1")))
         .Text_Lambda([this, ProviderIndex]()
         {
             return CustomProviderSettings.IsValid() &&
@@ -346,6 +401,28 @@ void FN2CSettingsCustomization::AddProviderCategory(
                     State == ECheckBoxState::Checked;
                 CustomProviderSettings->SaveDefinitions();
             }
+        })
+    ];
+
+    Category.AddCustomRow(FText::FromString(TEXT("Connection")))
+    .NameContent()
+    [
+        SNew(STextBlock)
+        .Text(FText::FromString(TEXT("Connection")))
+        .Font(IDetailLayoutBuilder::GetDetailFont())
+    ]
+    .ValueContent()
+    [
+        SNew(SButton)
+        .Text(FText::FromString(TEXT("Check Connection")))
+        .ToolTipText(FText::FromString(TEXT("Send a lightweight request to verify provider reachability and authentication.")))
+        .OnClicked_Lambda([this, ProviderName]()
+        {
+            if (CustomProviderSettings.IsValid())
+            {
+                FN2CConnectionTester::TestCustomProvider(ProviderName, *CustomProviderSettings.Get());
+            }
+            return FReply::Handled();
         })
     ];
 }
