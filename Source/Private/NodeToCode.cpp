@@ -8,11 +8,15 @@
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CSettingsCustomization.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidgetFactory.h"
 #include "Editor/EditorPerformanceSettings.h"
+#include "LLM/N2CLLMProviderRegistry.h"
+#include "LLM/Providers/N2CCustomOpenAIService.h"
 #include "Models/N2CStyle.h"
+#include "PropertyEditorModule.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #if WITH_EDITOR
@@ -55,6 +59,17 @@ void FNodeToCodeModule::StartupModule()
         FN2CLogger::Get().Log(TEXT("Applied log severity from settings"), EN2CLogSeverity::Debug);
     }
 
+    FPropertyEditorModule& PropertyEditorModule =
+        FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+    PropertyEditorModule.RegisterCustomClassLayout(
+        UN2CSettings::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FN2CSettingsCustomization::MakeInstance));
+    PropertyEditorModule.NotifyCustomizationModuleChanged();
+
+    UN2CLLMProviderRegistry::Get()->RegisterProvider(
+        EN2CLLMProvider::Custom,
+        UN2CCustomOpenAIService::StaticClass());
+
     
     // Initialize style system
     N2CStyle::Initialize();
@@ -92,6 +107,14 @@ void FNodeToCodeModule::StartupModule()
 
 void FNodeToCodeModule::ShutdownModule()
 {
+    if (FModuleManager::Get().IsModuleLoaded(TEXT("PropertyEditor")))
+    {
+        FPropertyEditorModule& PropertyEditorModule =
+            FModuleManager::GetModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+        PropertyEditorModule.UnregisterCustomClassLayout(UN2CSettings::StaticClass()->GetFName());
+        PropertyEditorModule.NotifyCustomizationModuleChanged();
+    }
+
     // Unregister menu extensions
     UToolMenus::UnRegisterStartupCallback(this);
     UToolMenus::UnregisterOwner(this);
