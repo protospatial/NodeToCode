@@ -100,6 +100,10 @@ void FN2CSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBui
         DetailBuilder,
         GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel),
         EN2CLLMProvider::LMStudio);
+    AddConnectionButtonToProperty(
+        DetailBuilder,
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, MiniMaxModel),
+        EN2CLLMProvider::MiniMax);
 
     CustomizeCustomProvidersProperty(DetailBuilder);
 }
