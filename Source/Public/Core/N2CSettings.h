@@ -461,6 +461,11 @@ public:
         meta = (DisplayName = "Model Name"))
     FString MiniMaxModel = "MiniMax-M2.7";
 
+    /** Native details-row anchor for dynamic custom provider UI. */
+    UPROPERTY(Transient, EditAnywhere, Category = "Node to Code | Custom LLM Services",
+        meta=(DisplayName="Custom Providers"))
+    bool bCustomProvidersUIAnchor = false;
+
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
     TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIModelPricing;
