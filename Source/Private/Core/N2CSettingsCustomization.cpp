@@ -7,6 +7,7 @@
 #include "DetailCategoryBuilder.h"
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
+#include "IDetailGroup.h"
 #include "PropertyHandle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -45,12 +46,14 @@ void FN2CSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBui
 
     if (Settings.IsValid() && Settings->Provider == EN2CLLMProvider::Custom)
     {
-        IDetailCategoryBuilder& ProviderCategory =
-            DetailBuilder.EditCategory(TEXT("Node to Code | LLM Provider"));
+        // Attach custom-provider creation controls to the existing LLM Provider category.
+        FDetailWidgetRow& ActiveProviderRow = DetailBuilder.AddCustomRowToCategory(
+            ProviderHandle,
+            FText::FromString(TEXT("Active Custom Provider")));
 
         if (!ActiveProviderOptions.IsEmpty())
         {
-            ProviderCategory.AddCustomRow(FText::FromString(TEXT("Active Custom Provider")))
+            ActiveProviderRow
             .NameContent()
             [
                 SNew(STextBlock)
@@ -86,8 +89,15 @@ void FN2CSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBui
                 ]
             ];
         }
+        else
+        {
+            ActiveProviderRow.Visibility(EVisibility::Collapsed);
+        }
 
-        ProviderCategory.AddCustomRow(FText::FromString(TEXT("Add Custom Provider")))
+        FDetailWidgetRow& AddProviderRow = DetailBuilder.AddCustomRowToCategory(
+            ProviderHandle,
+            FText::FromString(TEXT("Add Custom Provider")));
+        AddProviderRow
         .NameContent()
         [
             SNew(STextBlock)
@@ -144,38 +154,64 @@ void FN2CSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBui
         ];
     }
 
+    // Add connection checks to each provider's existing reflected category instead of
+    // creating new categories with literal pipe-delimited names.
     AddConnectionCheckRow(
         DetailBuilder,
-        TEXT("Node to Code | LLM Services | Anthropic"),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModel),
         EN2CLLMProvider::Anthropic);
     AddConnectionCheckRow(
         DetailBuilder,
-        TEXT("Node to Code | LLM Services | OpenAI"),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_Model),
         EN2CLLMProvider::OpenAI);
     AddConnectionCheckRow(
         DetailBuilder,
-        TEXT("Node to Code | LLM Services | Gemini"),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_Model),
         EN2CLLMProvider::Gemini);
     AddConnectionCheckRow(
         DetailBuilder,
-        TEXT("Node to Code | LLM Services | DeepSeek"),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModel),
         EN2CLLMProvider::DeepSeek);
     AddConnectionCheckRow(
         DetailBuilder,
-        TEXT("Node to Code | LLM Services | Ollama"),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaConfig),
         EN2CLLMProvider::Ollama);
     AddConnectionCheckRow(
         DetailBuilder,
-        TEXT("Node to Code | LLM Services | LM Studio"),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel),
         EN2CLLMProvider::LMStudio);
 
-    if (CustomProviderSettings.IsValid())
+    // Locate the generated parent LLM Services category and place dynamic custom
+    // providers inside it as category-style groups.
+    IDetailCategoryBuilder* LLMServicesCategory = nullptr;
+    TArray<FName> ExistingCategoryNames;
+    DetailBuilder.GetCategoryNames(ExistingCategoryNames);
+    for (const FName& CategoryName : ExistingCategoryNames)
     {
+        IDetailCategoryBuilder& CandidateCategory = DetailBuilder.EditCategory(CategoryName);
+        if (CandidateCategory.GetDisplayName().ToString().Equals(TEXT("LLM Services"), ESearchCase::CaseSensitive))
+        {
+            LLMServicesCategory = &CandidateCategory;
+            break;
+        }
+    }
+
+    if (CustomProviderSettings.IsValid() && !CustomProviderSettings->Providers.IsEmpty())
+    {
+        if (!LLMServicesCategory)
+        {
+            // This is only a fallback for engine/layout variants where the generated
+            // parent category is not exposed through GetCategoryNames().
+            LLMServicesCategory = &DetailBuilder.EditCategory(
+                TEXT("LLM Services"),
+                FText::FromString(TEXT("LLM Services")));
+        }
+
         for (int32 ProviderIndex = 0;
              ProviderIndex < CustomProviderSettings->Providers.Num();
              ++ProviderIndex)
         {
-            AddProviderCategory(DetailBuilder, ProviderIndex);
+            AddProviderGroup(*LLMServicesCategory, ProviderIndex);
         }
     }
 }
@@ -219,11 +255,19 @@ void FN2CSettingsCustomization::AddPendingProvider()
 
 void FN2CSettingsCustomization::AddConnectionCheckRow(
     IDetailLayoutBuilder& DetailBuilder,
-    const FString& CategoryName,
+    FName AnchorPropertyName,
     EN2CLLMProvider Provider)
 {
-    IDetailCategoryBuilder& Category = DetailBuilder.EditCategory(FName(*CategoryName));
-    Category.AddCustomRow(FText::FromString(TEXT("Connection")))
+    TSharedRef<IPropertyHandle> AnchorProperty = DetailBuilder.GetProperty(AnchorPropertyName);
+    if (!AnchorProperty->IsValidHandle())
+    {
+        return;
+    }
+
+    FDetailWidgetRow& ConnectionRow = DetailBuilder.AddCustomRowToCategory(
+        AnchorProperty,
+        FText::FromString(TEXT("Connection")));
+    ConnectionRow
     .NameContent()
     [
         SNew(STextBlock)
@@ -246,8 +290,8 @@ void FN2CSettingsCustomization::AddConnectionCheckRow(
     ];
 }
 
-void FN2CSettingsCustomization::AddProviderCategory(
-    IDetailLayoutBuilder& DetailBuilder,
+void FN2CSettingsCustomization::AddProviderGroup(
+    IDetailCategoryBuilder& LLMServicesCategory,
     int32 ProviderIndex)
 {
     if (!CustomProviderSettings.IsValid() ||
@@ -257,11 +301,15 @@ void FN2CSettingsCustomization::AddProviderCategory(
     }
 
     const FString ProviderName = CustomProviderSettings->Providers[ProviderIndex].Name;
-    const FString CategoryName = FString::Printf(
-        TEXT("Node to Code | LLM Services | %s"), *ProviderName);
-    IDetailCategoryBuilder& Category = DetailBuilder.EditCategory(FName(*CategoryName));
+    const FName GroupName(*FString::Printf(TEXT("N2CCustomProvider_%s"), *ProviderName));
+    IDetailGroup& ProviderGroup = LLMServicesCategory.AddGroup(
+        GroupName,
+        FText::FromString(ProviderName),
+        false,
+        false);
+    ProviderGroup.SetDisplayMode(EDetailGroupDisplayMode::Category);
 
-    Category.AddCustomRow(FText::FromString(TEXT("API Type")))
+    ProviderGroup.AddWidgetRow()
     .NameContent()
     [
         SNew(STextBlock)
@@ -284,7 +332,7 @@ void FN2CSettingsCustomization::AddProviderCategory(
         })
     ];
 
-    Category.AddCustomRow(FText::FromString(TEXT("Provider Endpoint")))
+    ProviderGroup.AddWidgetRow()
     .NameContent()
     [
         SNew(STextBlock)
@@ -316,7 +364,7 @@ void FN2CSettingsCustomization::AddProviderCategory(
         })
     ];
 
-    Category.AddCustomRow(FText::FromString(TEXT("API Key")))
+    ProviderGroup.AddWidgetRow()
     .NameContent()
     [
         SNew(STextBlock)
@@ -344,7 +392,7 @@ void FN2CSettingsCustomization::AddProviderCategory(
         })
     ];
 
-    Category.AddCustomRow(FText::FromString(TEXT("Model Name")))
+    ProviderGroup.AddWidgetRow()
     .NameContent()
     [
         SNew(STextBlock)
@@ -374,7 +422,7 @@ void FN2CSettingsCustomization::AddProviderCategory(
         })
     ];
 
-    Category.AddCustomRow(FText::FromString(TEXT("Use System Prompts")))
+    ProviderGroup.AddWidgetRow()
     .NameContent()
     [
         SNew(STextBlock)
@@ -404,7 +452,7 @@ void FN2CSettingsCustomization::AddProviderCategory(
         })
     ];
 
-    Category.AddCustomRow(FText::FromString(TEXT("Connection")))
+    ProviderGroup.AddWidgetRow()
     .NameContent()
     [
         SNew(STextBlock)

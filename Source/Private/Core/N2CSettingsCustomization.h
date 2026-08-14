@@ -6,6 +6,7 @@
 #include "Core/N2CCustomProviderSettings.h"
 #include "IDetailCustomization.h"
 
+class IDetailCategoryBuilder;
 class IDetailLayoutBuilder;
 class SEditableTextBox;
 class UN2CSettings;
@@ -23,9 +24,9 @@ private:
     void AddPendingProvider();
     void AddConnectionCheckRow(
         IDetailLayoutBuilder& DetailBuilder,
-        const FString& CategoryName,
+        FName AnchorPropertyName,
         EN2CLLMProvider Provider);
-    void AddProviderCategory(IDetailLayoutBuilder& DetailBuilder, int32 ProviderIndex);
+    void AddProviderGroup(IDetailCategoryBuilder& LLMServicesCategory, int32 ProviderIndex);
 
     IDetailLayoutBuilder* ActiveDetailBuilder = nullptr;
     TWeakObjectPtr<UN2CSettings> Settings;
