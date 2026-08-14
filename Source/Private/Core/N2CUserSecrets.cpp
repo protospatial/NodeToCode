@@ -71,7 +71,8 @@ void UN2CUserSecrets::LoadSecrets()
     Anthropic_API_Key = JsonObject->GetStringField(TEXT("Anthropic_API_Key"));
     Gemini_API_Key = JsonObject->GetStringField(TEXT("Gemini_API_Key"));
     DeepSeek_API_Key = JsonObject->GetStringField(TEXT("DeepSeek_API_Key"));
-    MiniMax_API_Key = JsonObject->GetStringField(TEXT("MiniMax_API_Key"));
+    JsonObject->TryGetStringField(TEXT("Ollama_API_Key"), Ollama_API_Key);
+    JsonObject->TryGetStringField(TEXT("MiniMax_API_Key"), MiniMax_API_Key);
     
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Successfully loaded secrets from: %s"), *SecretsFilePath),
@@ -89,6 +90,7 @@ void UN2CUserSecrets::SaveSecrets()
     JsonObject->SetStringField(TEXT("Anthropic_API_Key"), Anthropic_API_Key);
     JsonObject->SetStringField(TEXT("Gemini_API_Key"), Gemini_API_Key);
     JsonObject->SetStringField(TEXT("DeepSeek_API_Key"), DeepSeek_API_Key);
+    JsonObject->SetStringField(TEXT("Ollama_API_Key"), Ollama_API_Key);
     JsonObject->SetStringField(TEXT("MiniMax_API_Key"), MiniMax_API_Key);
     
     // Serialize to string
