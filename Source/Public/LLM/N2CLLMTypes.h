@@ -24,7 +24,8 @@ enum class EN2CLLMProvider : uint8
     Ollama      UMETA(DisplayName = "Ollama"),
     DeepSeek    UMETA(DisplayName = "DeepSeek"),
     LMStudio    UMETA(DisplayName = "LM Studio"),
-    MiniMax     UMETA(DisplayName = "MiniMax")
+    MiniMax     UMETA(DisplayName = "MiniMax"),
+    Custom      UMETA(DisplayName = "Custom")
 };
 
 /** Status of the Node to Code system */
@@ -56,7 +57,7 @@ struct FN2CLLMConfig
     FString ApiKey;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
-    float TimeoutSeconds = 300.0f;
+    float TimeoutSeconds = 3600.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     bool bUseSystemPrompts = true;
