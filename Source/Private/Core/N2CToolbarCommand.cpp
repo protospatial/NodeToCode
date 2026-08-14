@@ -11,12 +11,15 @@
 const FName FN2CToolbarCommand::CommandName_Open = TEXT("NodeToCode_OpenWindow");
 const FName FN2CToolbarCommand::CommandName_Collect = TEXT("NodeToCode_CollectNodes");
 const FName FN2CToolbarCommand::CommandName_CopyJson = TEXT("NodeToCode_CopyJson");
+const FName FN2CToolbarCommand::CommandName_TranslateEntire = TEXT("NodeToCode_TranslateEntireBlueprint");
 const FText FN2CToolbarCommand::CommandLabel_Open = NSLOCTEXT("NodeToCode", "OpenWindow", "Open Node to Code");
 const FText FN2CToolbarCommand::CommandLabel_Collect = NSLOCTEXT("NodeToCode", "CollectNodes", "Collect and Translate Nodes");
 const FText FN2CToolbarCommand::CommandLabel_CopyJson = NSLOCTEXT("NodeToCode", "CopyJson", "Copy Blueprint JSON");
+const FText FN2CToolbarCommand::CommandLabel_TranslateEntire = NSLOCTEXT("NodeToCode", "TranslateEntireBlueprint", "Translate Entire Blueprint");
 const FText FN2CToolbarCommand::CommandTooltip_Open = NSLOCTEXT("NodeToCode", "OpenWindowTooltip", "Open the Node to Code window");
 const FText FN2CToolbarCommand::CommandTooltip_Collect = NSLOCTEXT("NodeToCode", "CollectNodesTooltip", "Collect nodes from current Blueprint graph and translate to code");
 const FText FN2CToolbarCommand::CommandTooltip_CopyJson = NSLOCTEXT("NodeToCode", "CopyJsonTooltip", "Copy the serialized Blueprint JSON to clipboard");
+const FText FN2CToolbarCommand::CommandTooltip_TranslateEntire = NSLOCTEXT("NodeToCode", "TranslateEntireTooltip", "Translate all graphs in the owning Blueprint (functions, macros, event graphs).\nRespects 'Include Variables' setting.");
 
 FN2CToolbarCommand::FN2CToolbarCommand()
     : TCommands<FN2CToolbarCommand>(
@@ -55,6 +58,14 @@ void FN2CToolbarCommand::RegisterCommands()
     EUserInterfaceActionType::Button,
     FInputChord()
 );
+    
+    UI_COMMAND(
+        TranslateEntireBlueprintCommand,
+        "Translate Entire Blueprint",
+        "Translate all graphs in the owning Blueprint to code. Results will be shown in the Node to Code window.",
+        EUserInterfaceActionType::Button,
+        FInputChord()
+    );
     
     FN2CLogger::Get().Log(TEXT("N2C toolbar commands registered"), EN2CLogSeverity::Debug);
 }
