@@ -77,6 +77,17 @@ void FN2CConnectionTester::TestProvider(EN2CLLMProvider Provider, const UN2CSett
             break;
         }
 
+        case EN2CLLMProvider::MiniMax:
+        {
+            ProviderName = TEXT("MiniMax");
+            const FString BaseUrl = NormalizeBaseUrl(Settings.MiniMaxEndpoint, TEXT("/v1/chat/completions"));
+            Url = BaseUrl.EndsWith(TEXT("/v1"))
+                ? BaseUrl + TEXT("/models")
+                : BaseUrl + TEXT("/v1/models");
+            AddBearerHeaderIfPresent(Headers, Settings.MiniMax_API_Key_UI);
+            break;
+        }
+
         case EN2CLLMProvider::Custom:
             ShowResult(TEXT("Select a custom provider connection check from its custom provider section."), false);
             return;

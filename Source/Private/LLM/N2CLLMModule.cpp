@@ -14,6 +14,7 @@
 #include "LLM/Providers/N2CLMStudioService.h"
 #include "LLM/Providers/N2COpenAIService.h"
 #include "LLM/Providers/N2COllamaService.h"
+#include "LLM/Providers/N2CMiniMaxService.h"
 #include "Utils/N2CLogger.h"
 
 UN2CLLMModule* UN2CLLMModule::Get()
@@ -145,6 +146,8 @@ void UN2CLLMModule::ProcessN2CJson(
                     {
                         CurrentStatus = EN2CSystemStatus::Error;
                         FN2CLogger::Get().LogError(TEXT("Failed to parse LLM response"));
+                        // Save raw response for debugging when parsing fails
+                        SaveRawResponseToDisk(Response);
                         OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
                     }
                 }
@@ -208,6 +211,24 @@ void UN2CLLMModule::OpenTranslationFolder(bool& Success)
     
 }
 
+void UN2CLLMModule::BeginBatchTranslation(const FString& BlueprintName)
+{
+    // Generate a shared root path for this batch
+    FString BlueprintNameToUse = BlueprintName;
+    if (BlueprintNameToUse.IsEmpty())
+    {
+        BlueprintNameToUse = TEXT("UnknownBlueprint");
+    }
+    CurrentBatchRootPath = GenerateTranslationRootPath(BlueprintNameToUse);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Batch translation started, root path: %s"), *CurrentBatchRootPath), EN2CLogSeverity::Info);
+}
+
+void UN2CLLMModule::EndBatchTranslation()
+{
+    CurrentBatchRootPath.Empty();
+    FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
+}
+
 bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint)
 {
     // Get blueprint name from metadata
@@ -216,55 +237,65 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     {
         BlueprintName = TEXT("UnknownBlueprint");
     }
-    
-    // Generate root path for this translation
-    FString RootPath = GenerateTranslationRootPath(BlueprintName);
-    
+
+    // Use batch root path if in batch mode, otherwise generate a new timestamped path for each translation
+    FString RootPath;
+    if (!CurrentBatchRootPath.IsEmpty())
+    {
+        // Batch mode: reuse the shared root path
+        RootPath = CurrentBatchRootPath;
+    }
+    else
+    {
+        // Single translation mode: generate a new timestamped directory for each translation
+        RootPath = GenerateTranslationRootPath(BlueprintName);
+    }
+
     // Ensure the directory exists
     if (!EnsureDirectoryExists(RootPath))
     {
         FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to create translation directory: %s"), *RootPath));
         return false;
     }
-    
+
     // Store the path for later reference
     LatestTranslationPath = RootPath;
-    
+
     // Save the Blueprint JSON (pretty-printed)
     FString JsonFileName = FString::Printf(TEXT("N2C_BP_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString JsonFilePath = FPaths::Combine(RootPath, JsonFileName);
-    
+
     // Serialize the Blueprint to JSON with pretty printing
     FN2CSerializer::SetPrettyPrint(true);
     FString JsonContent = FN2CSerializer::ToJson(Blueprint);
-    
+
     if (!FFileHelper::SaveStringToFile(JsonContent, *JsonFilePath))
     {
         FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to save JSON file: %s"), *JsonFilePath));
         return false;
     }
-    
+
     // Save minified version of the Blueprint JSON
     FString MinifiedJsonFileName = FString::Printf(TEXT("N2C_BP_Minified_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString MinifiedJsonFilePath = FPaths::Combine(RootPath, MinifiedJsonFileName);
-    
+
     // Serialize the Blueprint to JSON without pretty printing
     FN2CSerializer::SetPrettyPrint(false);
     FString MinifiedJsonContent = FN2CSerializer::ToJson(Blueprint);
-    
+
     if (!FFileHelper::SaveStringToFile(MinifiedJsonContent, *MinifiedJsonFilePath))
     {
         FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save minified JSON file: %s"), *MinifiedJsonFilePath));
         // Continue even if minified version fails
     }
-    
+
     // Save the raw LLM translation response JSON
     FString TranslationJsonFileName = FString::Printf(TEXT("N2C_Translation_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString TranslationJsonFilePath = FPaths::Combine(RootPath, TranslationJsonFileName);
-    
+
     // Serialize the Translation response to JSON
     TSharedPtr<FJsonObject> TranslationJsonObject = MakeShared<FJsonObject>();
-    
+
     // Create graphs array
     TArray<TSharedPtr<FJsonValue>> GraphsArray;
     for (const FN2CGraphTranslation& Graph : Response.Graphs)
@@ -273,19 +304,19 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         GraphObject->SetStringField(TEXT("graph_name"), Graph.GraphName);
         GraphObject->SetStringField(TEXT("graph_type"), Graph.GraphType);
         GraphObject->SetStringField(TEXT("graph_class"), Graph.GraphClass);
-        
+
         // Create code object
         TSharedPtr<FJsonObject> CodeObject = MakeShared<FJsonObject>();
         CodeObject->SetStringField(TEXT("graphDeclaration"), Graph.Code.GraphDeclaration);
         CodeObject->SetStringField(TEXT("graphImplementation"), Graph.Code.GraphImplementation);
         CodeObject->SetStringField(TEXT("implementationNotes"), Graph.Code.ImplementationNotes);
-        
+
         GraphObject->SetObjectField(TEXT("code"), CodeObject);
         GraphsArray.Add(MakeShared<FJsonValueObject>(GraphObject));
     }
-    
+
     TranslationJsonObject->SetArrayField(TEXT("graphs"), GraphsArray);
-    
+
     // Add usage information if available
     if (Response.Usage.InputTokens > 0 || Response.Usage.OutputTokens > 0)
     {
@@ -294,23 +325,268 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         UsageObject->SetNumberField(TEXT("output_tokens"), Response.Usage.OutputTokens);
         TranslationJsonObject->SetObjectField(TEXT("usage"), UsageObject);
     }
-    
+
     // Serialize to string with pretty printing
     FString TranslationJsonContent;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&TranslationJsonContent);
     FJsonSerializer::Serialize(TranslationJsonObject.ToSharedRef(), Writer);
-    
+
     if (!FFileHelper::SaveStringToFile(TranslationJsonContent, *TranslationJsonFilePath))
     {
         FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save translation JSON file: %s"), *TranslationJsonFilePath));
         // Continue even if translation JSON fails
     }
-    
+
     // Get the target language from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+
+
+
+    // Determine if we're in batch mode (when CurrentBatchRootPath is set)
+    const bool bIsBatchMode = !CurrentBatchRootPath.IsEmpty();
+
+    // Use batch-specific features for batch translations, original logic for single translations
+    if (bIsBatchMode)
+    {
+        SaveGraphFilesWithBatchFeatures(Response, RootPath, TargetLanguage);
+    }
+    else
+    {
+        SaveGraphFilesOriginal(Response, RootPath, TargetLanguage);
+    }
+
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Translation saved to: %s"), *RootPath), EN2CLogSeverity::Info);
+    return true;
+}
+
+void UN2CLLMModule::SaveRawResponseToDisk(const FString& RawResponse)
+{
+    if (RawResponse.IsEmpty())
+    {
+        return;
+    }
+
+    FString RootPath;
+    if (!CurrentBatchRootPath.IsEmpty())
+    {
+        RootPath = CurrentBatchRootPath;
+    }
+    else
+    {
+        RootPath = GenerateTranslationRootPath(TEXT("ParseFailure"));
+    }
+
+    if (!EnsureDirectoryExists(RootPath))
+    {
+        return;
+    }
+
+    // Save the raw response with a unique timestamp
+    FDateTime Now = FDateTime::Now();
+    FString Timestamp = Now.ToString(TEXT("%Y-%m-%d-%H.%M.%S.%f"));
+    FString RawFileName = FString::Printf(TEXT("RAW_RESPONSE_%s.txt"), *Timestamp);
+    FString RawFilePath = FPaths::Combine(RootPath, RawFileName);
+
+    if (FFileHelper::SaveStringToFile(RawResponse, *RawFilePath))
+    {
+        FN2CLogger::Get().LogWarning(
+            FString::Printf(TEXT("Raw LLM response saved for debugging: %s"), *RawFilePath),
+            TEXT("LLMModule")
+        );
+    }
+    else
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Failed to save raw response to: %s"), *RawFilePath),
+            TEXT("LLMModule")
+        );
+    }
+}
+
+void UN2CLLMModule::SaveGraphFilesWithBatchFeatures(
+    const FN2CTranslationResponse& Response,
+    const FString& RootPath,
+    EN2CCodeLanguage TargetLanguage) const
+{
+    const bool bIsCpp = (TargetLanguage == EN2CCodeLanguage::Cpp);
     
+    // Helper to sanitize graph names for use as filesystem paths while keeping the
+    // original GraphName intact for logical/JSON purposes.
+    auto SanitizeNameForFilesystem = [](const FString& InName) -> FString
+    {
+        FString Result = InName;
+        Result = Result.TrimStartAndEnd();
+
+        // Replace Windows-invalid filename characters with underscores
+        const TCHAR InvalidChars[] =
+        {
+            TEXT('<'), TEXT('>'), TEXT(':'), TEXT('"'),
+            TEXT('/'), TEXT('\\'), TEXT('|'), TEXT('?'), TEXT('*')
+        };
+
+        for (TCHAR Ch : InvalidChars)
+        {
+            FString From;
+            From.AppendChar(Ch);
+            Result.ReplaceInline(*From, TEXT("_"), ESearchCase::CaseSensitive);
+        }
+
+        return Result;
+    };
+
     // Save each graph's files
+    for (const FN2CGraphTranslation& Graph : Response.Graphs)
+    {
+        // Skip graphs with empty names
+        if (Graph.GraphName.IsEmpty())
+        {
+            continue;
+        }
+
+        const FString SanitizedGraphName = SanitizeNameForFilesystem(Graph.GraphName);
+        const bool bIsClassItSelf = Graph.GraphType.Equals(TEXT("ClassItSelf"), ESearchCase::IgnoreCase);
+        const bool bHasGraphClass = !Graph.GraphClass.IsEmpty();
+
+        // Log graph information for debugging
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("[SaveGraphFiles] Processing graph: Name='%s', Type='%s', Class='%s', IsClassItSelf=%d, HasGraphClass=%d"),
+                *Graph.GraphName, *Graph.GraphType, *Graph.GraphClass, bIsClassItSelf ? 1 : 0, bHasGraphClass ? 1 : 0),
+            EN2CLogSeverity::Debug);
+
+        // For ClassItSelf graphs with a class name, save directly to class-centric directory
+        // Skip the graph-specific directory to avoid duplicate files
+        if (bIsClassItSelf && bHasGraphClass)
+        {
+            FString ClassDir = FPaths::Combine(RootPath, Graph.GraphClass);
+            if (!EnsureDirectoryExists(ClassDir))
+            {
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to create class directory: %s"), *ClassDir));
+                continue;
+            }
+
+            // Save declaration file (C++ only)
+            if (bIsCpp && !Graph.Code.GraphDeclaration.IsEmpty())
+            {
+                FString ClassHeaderPath = FPaths::Combine(ClassDir, Graph.GraphClass + TEXT(".h"));
+                FN2CLogger::Get().Log(
+                    FString::Printf(TEXT("[SaveGraphFiles] Saving ClassItSelf header to class-centric path: %s (Graph: %s)"),
+                        *ClassHeaderPath, *Graph.GraphName),
+                    EN2CLogSeverity::Debug);
+                if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *ClassHeaderPath))
+                {
+                    FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save class header file: %s"), *ClassHeaderPath));
+                }
+                else
+                {
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("[SaveGraphFiles] Successfully saved class header file: %s"), *ClassHeaderPath),
+                        EN2CLogSeverity::Debug);
+                }
+            }
+
+            // Save implementation file
+            if (!Graph.Code.GraphImplementation.IsEmpty())
+            {
+                FString Extension = GetFileExtensionForLanguage(TargetLanguage);
+                FString ClassImplPath = FPaths::Combine(ClassDir, Graph.GraphClass + Extension);
+                FN2CLogger::Get().Log(
+                    FString::Printf(TEXT("[SaveGraphFiles] Saving ClassItSelf implementation to class-centric path: %s (Graph: %s)"),
+                        *ClassImplPath, *Graph.GraphName),
+                    EN2CLogSeverity::Debug);
+                if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ClassImplPath))
+                {
+                    FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save class implementation file: %s"), *ClassImplPath));
+                }
+                else
+                {
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("[SaveGraphFiles] Successfully saved class implementation file: %s"), *ClassImplPath),
+                        EN2CLogSeverity::Debug);
+                }
+            }
+
+            // Save implementation notes to class directory
+            if (!Graph.Code.ImplementationNotes.IsEmpty())
+            {
+                FString NotesPath = FPaths::Combine(ClassDir, Graph.GraphClass + TEXT("_Notes.txt"));
+                if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
+                {
+                    FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save notes file: %s"), *NotesPath));
+                }
+            }
+
+            // Skip normal graph directory processing for ClassItSelf graphs
+            continue;
+        }
+
+        // For non-ClassItSelf graphs (or ClassItSelf without class name), use normal graph directory
+        FString GraphDir = FPaths::Combine(RootPath, SanitizedGraphName);
+        if (!EnsureDirectoryExists(GraphDir))
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to create graph directory: %s"), *GraphDir));
+            continue;
+        }
+
+        const FString FileBaseName = SanitizedGraphName;
+
+        // Save declaration file (C++ only)
+        if (bIsCpp && !Graph.Code.GraphDeclaration.IsEmpty())
+        {
+            FString HeaderPath = FPaths::Combine(GraphDir, FileBaseName + TEXT(".h"));
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("[SaveGraphFiles] Saving header file: %s (Graph: %s)"), *HeaderPath, *Graph.GraphName),
+                EN2CLogSeverity::Debug);
+            if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
+            {
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save header file: %s"), *HeaderPath));
+            }
+            else
+            {
+                FN2CLogger::Get().Log(
+                    FString::Printf(TEXT("[SaveGraphFiles] Successfully saved header file: %s"), *HeaderPath),
+                    EN2CLogSeverity::Debug);
+            }
+        }
+
+        // Save implementation file with appropriate extension
+        if (!Graph.Code.GraphImplementation.IsEmpty())
+        {
+            FString Extension = GetFileExtensionForLanguage(TargetLanguage);
+            FString ImplPath = FPaths::Combine(GraphDir, FileBaseName + Extension);
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("[SaveGraphFiles] Saving implementation file: %s (Graph: %s)"), *ImplPath, *Graph.GraphName),
+                EN2CLogSeverity::Debug);
+            if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
+            {
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save implementation file: %s"), *ImplPath));
+            }
+            else
+            {
+                FN2CLogger::Get().Log(
+                    FString::Printf(TEXT("[SaveGraphFiles] Successfully saved implementation file: %s"), *ImplPath),
+                    EN2CLogSeverity::Debug);
+            }
+        }
+        
+        // Save implementation notes
+        if (!Graph.Code.ImplementationNotes.IsEmpty())
+        {
+            FString NotesPath = FPaths::Combine(GraphDir, FileBaseName + TEXT("_Notes.txt"));
+            if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
+            {
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save notes file: %s"), *NotesPath));
+            }
+        }
+    }
+}
+
+void UN2CLLMModule::SaveGraphFilesOriginal(
+    const FN2CTranslationResponse& Response,
+    const FString& RootPath,
+    EN2CCodeLanguage TargetLanguage) const
+{
+    // Save each graph's files using original simple logic
     for (const FN2CGraphTranslation& Graph : Response.Graphs)
     {
         // Skip graphs with empty names
@@ -360,7 +636,6 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     }
     
     FN2CLogger::Get().Log(FString::Printf(TEXT("Translation saved to: %s"), *RootPath), EN2CLogSeverity::Info);
-    return true;
 }
 
 FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName) const
@@ -493,6 +768,7 @@ void UN2CLLMModule::InitializeProviderRegistry()
     Registry->RegisterProvider(EN2CLLMProvider::DeepSeek, UN2CDeepSeekService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::Ollama, UN2COllamaService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::LMStudio, UN2CLMStudioService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::MiniMax, UN2CMiniMaxService::StaticClass());
     
     FN2CLogger::Get().Log(TEXT("Provider registry initialized"), EN2CLogSeverity::Info, TEXT("LLMModule"));
 }

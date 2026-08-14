@@ -24,6 +24,7 @@ enum class EN2CLLMProvider : uint8
     Ollama      UMETA(DisplayName = "Ollama"),
     DeepSeek    UMETA(DisplayName = "DeepSeek"),
     LMStudio    UMETA(DisplayName = "LM Studio"),
+    MiniMax     UMETA(DisplayName = "MiniMax"),
     Custom      UMETA(DisplayName = "Custom")
 };
 

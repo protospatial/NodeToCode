@@ -43,6 +43,7 @@ public:
     void ConfigureForDeepSeek();
     void ConfigureForOllama(const struct FN2COllamaConfig& OllamaConfig);
     void ConfigureForLMStudio();
+    void ConfigureForMiniMax();
     
     /** Generate final payload */
     FString Build();
