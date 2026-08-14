@@ -6,9 +6,10 @@
 #include "Core/N2CCustomProviderSettings.h"
 #include "IDetailCustomization.h"
 
-class IDetailCategoryBuilder;
 class IDetailLayoutBuilder;
+class IPropertyHandle;
 class SEditableTextBox;
+class SWidget;
 class UN2CSettings;
 enum class EN2CLLMProvider : uint8;
 
@@ -22,11 +23,16 @@ private:
     void ForceRefresh();
     void RebuildActiveProviderOptions();
     void AddPendingProvider();
-    void AddConnectionCheckRow(
+
+    void CustomizeProviderProperty(
         IDetailLayoutBuilder& DetailBuilder,
-        FName AnchorPropertyName,
+        const TSharedRef<IPropertyHandle>& ProviderHandle);
+    void AddConnectionButtonToProperty(
+        IDetailLayoutBuilder& DetailBuilder,
+        FName PropertyName,
         EN2CLLMProvider Provider);
-    void AddProviderGroup(IDetailCategoryBuilder& LLMServicesCategory, int32 ProviderIndex);
+    void CustomizeCustomProvidersProperty(IDetailLayoutBuilder& DetailBuilder);
+    TSharedRef<SWidget> BuildCustomProviderArea(int32 ProviderIndex);
 
     IDetailLayoutBuilder* ActiveDetailBuilder = nullptr;
     TWeakObjectPtr<UN2CSettings> Settings;

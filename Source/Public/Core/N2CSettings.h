@@ -445,6 +445,11 @@ public:
         meta=(DisplayName="Prepended Model Command", 
               ToolTip="Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear on first line of each user message."))
     FString LMStudioPrependedModelCommand = "";
+
+    /** Native details-row anchor for dynamic custom provider UI. */
+    UPROPERTY(Transient, EditAnywhere, Category = "Node to Code | LLM Services",
+        meta=(DisplayName="Custom Providers"))
+    bool bCustomProvidersUIAnchor = false;
     
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
@@ -615,7 +620,7 @@ public:
         meta = (DisplayName = "Estimated Reference File Tokens"))
     int32 EstimatedReferenceTokens = 0;
 
-    /** Source files to provide as context to the LLM */
+    /** Source files to provide as context in LLM prompts */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation", 
         meta = (DisplayName = "Reference Source Files",
                FilePathFilter = "C++ Files (*.h;*.cpp)|*.h;*.cpp",
