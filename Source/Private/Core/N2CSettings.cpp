@@ -44,6 +44,7 @@ UN2CSettings::UN2CSettings()
     Anthropic_API_Key_UI = UserSecrets->Anthropic_API_Key;
     Gemini_API_Key_UI = UserSecrets->Gemini_API_Key;
     DeepSeek_API_Key_UI = UserSecrets->DeepSeek_API_Key;
+    OllamaConfig.ApiKey = UserSecrets->Ollama_API_Key;
     MiniMax_API_Key_UI = UserSecrets->MiniMax_API_Key;
     
     // Initialize token estimate
@@ -81,6 +82,8 @@ FString UN2CSettings::GetActiveApiKey() const
             return UserSecrets->Gemini_API_Key;
         case EN2CLLMProvider::DeepSeek:
             return UserSecrets->DeepSeek_API_Key;
+        case EN2CLLMProvider::Ollama:
+            return UserSecrets->Ollama_API_Key;
         case EN2CLLMProvider::LMStudio:
             return "lm-studio"; // LM Studio just requires a dummy API key for its OpenAI endpoint
         case EN2CLLMProvider::MiniMax:
@@ -271,6 +274,17 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets->LoadSecrets();
             }
             UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
+            UserSecrets->SaveSecrets();
+            return;
+        }
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, ApiKey))
+        {
+            if (!UserSecrets)
+            {
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
+            }
+            UserSecrets->Ollama_API_Key = OllamaConfig.ApiKey;
             UserSecrets->SaveSecrets();
             return;
         }
