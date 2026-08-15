@@ -40,6 +40,22 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
     const FN2CLLMConfig& GetConfig() const { return Config; }
 
+    /**
+     * Apply a transient provider/model choice for the current translation operation.
+     * This intentionally does not modify or save UN2CSettings::Provider.
+     */
+    void ApplyRequestProviderOverride(
+        EN2CLLMProvider Provider,
+        const FString& ApiKey,
+        const FString& Model)
+    {
+        Config.Provider = Provider;
+        Config.ApiEndpoint.Empty();
+        Config.ApiKey = ApiKey;
+        Config.Model = Model;
+        Config.bUseSystemPrompts = true;
+    }
+
     /** Check if module is initialized */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
     bool IsInitialized() const { return bIsInitialized; }
