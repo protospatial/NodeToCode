@@ -54,34 +54,28 @@ struct FN2CModelCustomInstructions
 };
 
 /**
- * Request-level Node to Code settings that apply uniformly to every LLM provider.
- * These live in the same NodeToCode config file while remaining independent of provider credentials.
+ * Shared request-level settings inherited by the main Node to Code developer settings object.
+ * Abstract prevents this base class from registering a second Project Settings page.
  */
-UCLASS(Config = NodeToCode, DefaultConfig, meta = (DisplayName = "Node to Code - Requests"))
+UCLASS(Abstract, Config = NodeToCode, DefaultConfig)
 class NODETOCODE_API UN2CRequestSettings : public UDeveloperSettings
 {
     GENERATED_BODY()
 
 public:
-    virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
-    virtual FText GetSectionText() const override
-    {
-        return NSLOCTEXT("NodeToCode", "RequestSettingsSection", "Node to Code - Requests");
-    }
-
     /** Behavior used by Translate Blueprint Graph to Code and Translate Entire Blueprint. */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Request Dispatch",
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Request Dispatch",
         meta = (DisplayName = "Translation Request Behavior"))
     EN2CRequestDispatchMode RequestDispatchMode =
         EN2CRequestDispatchMode::SendImmediatelyToDefaultProvider;
 
     /** Enable the global custom instructions for every LLM request. */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Custom Instructions",
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Custom Instructions",
         meta = (DisplayName = "Enable Global Custom Instructions"))
     bool bEnableGlobalCustomInstructions = false;
 
     /** Instructions appended to the built-in Node to Code system prompt for every provider. */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Custom Instructions",
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Custom Instructions",
         meta = (DisplayName = "Global Custom Instructions", MultiLine = true,
                 EditCondition = "bEnableGlobalCustomInstructions"))
     FString GlobalCustomInstructions;
@@ -90,7 +84,7 @@ public:
      * Optional per-model instruction overrides. Later matching entries take precedence if the same
      * provider/model pair appears more than once.
      */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Custom Instructions",
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Custom Instructions",
         meta = (DisplayName = "Model Specific Custom Instructions", TitleProperty = "Model"))
     TArray<FN2CModelCustomInstructions> ModelCustomInstructions;
 

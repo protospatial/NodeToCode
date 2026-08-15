@@ -2,7 +2,7 @@
 
 #include "LLM/N2CBaseLLMService.h"
 
-#include "Core/N2CRequestSettings.h"
+#include "Core/N2CSettings.h"
 #include "LLM/N2CHttpHandler.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CResponseParserBase.h"
@@ -87,7 +87,7 @@ void UN2CBaseLLMService::SendRequest(
     // initialized. This ensures model-specific matching uses the model that will actually receive
     // the request, including transient provider choices and named custom providers.
     FString EffectiveSystemMessage = SystemMessage;
-    if (const UN2CRequestSettings* RequestSettings = GetDefault<UN2CRequestSettings>())
+    if (const UN2CSettings* RequestSettings = GetDefault<UN2CSettings>())
     {
         const FString CustomInstructions = RequestSettings->GetEffectiveCustomInstructions(
             Config.Provider,

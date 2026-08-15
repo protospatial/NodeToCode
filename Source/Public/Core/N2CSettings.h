@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "N2CUserSecrets.h"
+#include "N2CRequestSettings.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Engine/DeveloperSettings.h"
 #include "LLM/N2CLLMModels.h"
@@ -365,7 +366,7 @@ struct FN2CCodeEditorThemes
 
 // Questions? Check out the Docs: github.com/protospatial/NodeToCode/wiki
 UCLASS(Config = NodeToCode, DefaultConfig, meta = (Category = "Node to Code", DisplayName = "Node to Code"))
-class NODETOCODE_API UN2CSettings : public UDeveloperSettings
+class NODETOCODE_API UN2CSettings : public UN2CRequestSettings
 {
     GENERATED_BODY()
 

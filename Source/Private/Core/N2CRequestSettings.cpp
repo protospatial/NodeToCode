@@ -179,7 +179,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
 {
     SelectedCustomProviderName.Empty();
 
-    const UN2CRequestSettings* RequestSettings = GetDefault<UN2CRequestSettings>();
+    const UN2CSettings* RequestSettings = GetDefault<UN2CSettings>();
     const bool bSelectProvider = RequestSettings &&
         RequestSettings->RequestDispatchMode == EN2CRequestDispatchMode::SelectProviderBeforeSending;
 
