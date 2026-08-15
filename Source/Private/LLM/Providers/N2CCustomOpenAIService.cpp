@@ -12,7 +12,7 @@
 bool UN2CCustomOpenAIService::Initialize(const FN2CLLMConfig& InConfig)
 {
     const UN2CCustomProviderSettings* Settings = GetDefault<UN2CCustomProviderSettings>();
-    const FString RequestProviderName = FN2CRequestRuntime::GetSelectedCustomProviderName();
+    const FString RequestProviderName = FN2CRequestRuntime::ConsumeSelectedCustomProviderName();
     const FN2CCustomProviderDefinition* Provider = Settings
         ? (RequestProviderName.IsEmpty()
             ? Settings->GetActiveProvider()
