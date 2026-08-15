@@ -312,7 +312,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             SAssignNew(ProviderList, SListView<TSharedPtr<FN2CProviderChoice>>)
             .ListItemsSource(&Choices)
             .SelectionMode(ESelectionMode::Single)
-            .ItemHeight(42.0f)
             .OnGenerateRow_Lambda([](
                 TSharedPtr<FN2CProviderChoice> Item,
                 const TSharedRef<STableViewBase>& OwnerTable)
