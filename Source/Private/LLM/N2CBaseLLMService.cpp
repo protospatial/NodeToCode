@@ -1,6 +1,8 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "LLM/N2CBaseLLMService.h"
+
+#include "Core/N2CRequestSettings.h"
 #include "LLM/N2CHttpHandler.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CResponseParserBase.h"
@@ -81,8 +83,37 @@ void UN2CBaseLLMService::SendRequest(
         TEXT("BaseLLMService")
     );
 
-    // Format request payload
-    FString FormattedPayload = FormatRequestPayload(JsonPayload, SystemMessage);
+    // Compose request-wide custom instructions only after the concrete provider service has been
+    // initialized. This ensures model-specific matching uses the model that will actually receive
+    // the request, including transient provider choices and named custom providers.
+    FString EffectiveSystemMessage = SystemMessage;
+    if (const UN2CRequestSettings* RequestSettings = GetDefault<UN2CRequestSettings>())
+    {
+        const FString CustomInstructions = RequestSettings->GetEffectiveCustomInstructions(
+            Config.Provider,
+            Config.Model);
+
+        if (!CustomInstructions.IsEmpty())
+        {
+            if (!EffectiveSystemMessage.IsEmpty())
+            {
+                EffectiveSystemMessage += TEXT("\n\n");
+            }
+
+            EffectiveSystemMessage += TEXT("<customInstructions>\n");
+            EffectiveSystemMessage += CustomInstructions;
+            EffectiveSystemMessage += TEXT("\n</customInstructions>");
+
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Applied custom instructions for model: %s"), *Config.Model),
+                EN2CLogSeverity::Debug,
+                TEXT("BaseLLMService"));
+        }
+    }
+
+    // Format request payload. Providers without a separate system-message channel already merge
+    // this system message into the user content in their provider-specific payload builder.
+    FString FormattedPayload = FormatRequestPayload(JsonPayload, EffectiveSystemMessage);
 
     // Get endpoint and auth token
     FString Endpoint, AuthToken;
