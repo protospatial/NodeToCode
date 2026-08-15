@@ -120,8 +120,8 @@ public:
         const TArray<EN2CLLMProvider>& AvailableProviders,
         FN2CResolvedRequestProvider& OutProvider);
 
-    /** Named custom provider selected for the current request, if any. */
-    static FString GetSelectedCustomProviderName();
+    /** Consume the named custom provider selected for this request, if any. */
+    static FString ConsumeSelectedCustomProviderName();
 
 private:
     static bool ResolveProviderConfig(
