@@ -4,10 +4,15 @@
 
 #include "Core/N2CCustomProviderSettings.h"
 #include "Core/N2CSettings.h"
+#include "DesktopPlatformModule.h"
 #include "Framework/Application/SlateApplication.h"
+#include "IDesktopPlatform.h"
 #include "LLM/N2CLLMModels.h"
+#include "Misc/Paths.h"
+#include "Styling/SlateTypes.h"
 #include "Utils/N2CLogger.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
@@ -15,6 +20,7 @@
 #include "Widgets/Views/STableRow.h"
 
 FString FN2CRequestRuntime::SelectedCustomProviderName;
+TArray<FString> FN2CRequestRuntime::AdditionalContextFilePaths;
 
 namespace
 {
@@ -179,21 +185,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     FN2CResolvedRequestProvider& OutProvider)
 {
     SelectedCustomProviderName.Empty();
-
-    const UN2CSettings* RequestSettings = GetDefault<UN2CSettings>();
-    const bool bSelectProvider = RequestSettings &&
-        RequestSettings->RequestDispatchMode == EN2CRequestDispatchMode::SelectProviderBeforeSending;
-
-    if (!bSelectProvider)
-    {
-        if (!ResolveProviderConfig(DefaultProvider, FString(), OutProvider))
-        {
-            return false;
-        }
-
-        SelectedCustomProviderName = OutProvider.CustomProviderName;
-        return true;
-    }
+    AdditionalContextFilePaths.Reset();
 
     if (!FSlateApplication::IsInitialized())
     {
@@ -283,12 +275,16 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         : Choices[0];
     bool bConfirmed = false;
 
+    TArray<TSharedPtr<FString>> AttachedFileItems;
+    TSharedPtr<FString> SelectedAttachedFile;
+
     TSharedPtr<SWindow> DialogWindow;
     TSharedPtr<SListView<TSharedPtr<FN2CProviderChoice>>> ProviderList;
+    TSharedPtr<SListView<TSharedPtr<FString>>> AttachedFileList;
 
     SAssignNew(DialogWindow, SWindow)
         .Title(NSLOCTEXT("NodeToCode", "SelectProviderWindowTitle", "Select LLM Provider"))
-        .ClientSize(FVector2D(620.0f, 390.0f))
+        .ClientSize(FVector2D(700.0f, 560.0f))
         .SupportsMinimize(false)
         .SupportsMaximize(false);
 
@@ -307,7 +303,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         ]
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
-        .Padding(12.0f, 0.0f, 12.0f, 12.0f)
+        .Padding(12.0f, 0.0f, 12.0f, 8.0f)
         [
             SAssignNew(ProviderList, SListView<TSharedPtr<FN2CProviderChoice>>)
             .ListItemsSource(&Choices)
@@ -334,6 +330,164 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                     SelectedChoice = Item;
                 }
             })
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 0.0f, 12.0f, 4.0f)
+        [
+            SNew(STextBlock)
+            .Text(NSLOCTEXT(
+                "NodeToCode",
+                "AdHocContextFilesLabel",
+                "Additional Context Files (optional)"))
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 0.0f, 12.0f, 6.0f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SButton)
+                .Text(NSLOCTEXT("NodeToCode", "AttachContextFiles", "Attach Files..."))
+                .ToolTipText(NSLOCTEXT(
+                    "NodeToCode",
+                    "AttachContextFilesToolTip",
+                    "Attach text/source files as context for this translation request only."))
+                .OnClicked_Lambda([DialogWindow, &AttachedFileItems, &AttachedFileList]()
+                {
+                    IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+                    if (!DesktopPlatform)
+                    {
+                        FN2CLogger::Get().LogError(TEXT("Desktop platform file dialog is unavailable"));
+                        return FReply::Handled();
+                    }
+
+                    const void* ParentWindowHandle = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(
+                        DialogWindow,
+                        ESlateParentWindowSearchMethod::ActiveWindow);
+
+                    TArray<FString> SelectedFiles;
+                    const FString FileTypes =
+                        TEXT("Text and Source Files|*.h;*.hpp;*.hh;*.cpp;*.c;*.cc;*.cxx;*.inl;*.cs;*.py;*.js;*.ts;*.json;*.md;*.txt;*.ini;*.yaml;*.yml;*.toml;*.usf;*.ush|")
+                        TEXT("All Files|*.*");
+
+                    if (DesktopPlatform->OpenFileDialog(
+                            ParentWindowHandle,
+                            TEXT("Attach Additional Context Files"),
+                            FPaths::ProjectDir(),
+                            FString(),
+                            FileTypes,
+                            EFileDialogFlags::Multiple,
+                            SelectedFiles))
+                    {
+                        for (FString FilePath : SelectedFiles)
+                        {
+                            FPaths::NormalizeFilename(FilePath);
+
+                            const bool bAlreadyAttached = AttachedFileItems.ContainsByPredicate(
+                                [&FilePath](const TSharedPtr<FString>& Existing)
+                                {
+                                    return Existing.IsValid() && Existing->Equals(FilePath, ESearchCase::IgnoreCase);
+                                });
+
+                            if (!bAlreadyAttached)
+                            {
+                                AttachedFileItems.Add(MakeShared<FString>(MoveTemp(FilePath)));
+                            }
+                        }
+
+                        if (AttachedFileList.IsValid())
+                        {
+                            AttachedFileList->RequestListRefresh();
+                        }
+                    }
+
+                    return FReply::Handled();
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SButton)
+                .Text(NSLOCTEXT("NodeToCode", "RemoveAttachedContextFile", "Remove Selected"))
+                .IsEnabled_Lambda([&SelectedAttachedFile]()
+                {
+                    return SelectedAttachedFile.IsValid();
+                })
+                .OnClicked_Lambda([&AttachedFileItems, &SelectedAttachedFile, &AttachedFileList]()
+                {
+                    if (SelectedAttachedFile.IsValid())
+                    {
+                        AttachedFileItems.Remove(SelectedAttachedFile);
+                        SelectedAttachedFile.Reset();
+                        if (AttachedFileList.IsValid())
+                        {
+                            AttachedFileList->ClearSelection();
+                            AttachedFileList->RequestListRefresh();
+                        }
+                    }
+                    return FReply::Handled();
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SButton)
+                .Text(NSLOCTEXT("NodeToCode", "ClearAttachedContextFiles", "Clear"))
+                .IsEnabled_Lambda([&AttachedFileItems]()
+                {
+                    return !AttachedFileItems.IsEmpty();
+                })
+                .OnClicked_Lambda([&AttachedFileItems, &SelectedAttachedFile, &AttachedFileList]()
+                {
+                    AttachedFileItems.Reset();
+                    SelectedAttachedFile.Reset();
+                    if (AttachedFileList.IsValid())
+                    {
+                        AttachedFileList->ClearSelection();
+                        AttachedFileList->RequestListRefresh();
+                    }
+                    return FReply::Handled();
+                })
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 0.0f, 12.0f, 10.0f)
+        [
+            SNew(SBox)
+            .HeightOverride(110.0f)
+            [
+                SAssignNew(AttachedFileList, SListView<TSharedPtr<FString>>)
+                .ListItemsSource(&AttachedFileItems)
+                .SelectionMode(ESelectionMode::Single)
+                .OnGenerateRow_Lambda([](
+                    TSharedPtr<FString> Item,
+                    const TSharedRef<STableViewBase>& OwnerTable)
+                {
+                    return SNew(STableRow<TSharedPtr<FString>>, OwnerTable)
+                        .Padding(FMargin(8.0f, 4.0f))
+                        [
+                            SNew(STextBlock)
+                            .Text(Item.IsValid()
+                                ? FText::FromString(FPaths::GetCleanFilename(*Item))
+                                : FText::GetEmpty())
+                            .ToolTipText(Item.IsValid()
+                                ? FText::FromString(*Item)
+                                : FText::GetEmpty())
+                        ];
+                })
+                .OnSelectionChanged_Lambda([&SelectedAttachedFile](
+                    TSharedPtr<FString> Item,
+                    ESelectInfo::Type)
+                {
+                    SelectedAttachedFile = Item;
+                })
+            ]
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -385,6 +539,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
 
     if (!bConfirmed || !SelectedChoice.IsValid())
     {
+        AdditionalContextFilePaths.Reset();
         FN2CLogger::Get().Log(TEXT("Translation request cancelled during provider selection"), EN2CLogSeverity::Info);
         return false;
     }
@@ -392,11 +547,21 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     OutProvider = SelectedChoice->ResolvedProvider;
     SelectedCustomProviderName = OutProvider.CustomProviderName;
 
+    AdditionalContextFilePaths.Reserve(AttachedFileItems.Num());
+    for (const TSharedPtr<FString>& AttachedFile : AttachedFileItems)
+    {
+        if (AttachedFile.IsValid())
+        {
+            AdditionalContextFilePaths.Add(*AttachedFile);
+        }
+    }
+
     FN2CLogger::Get().Log(
         FString::Printf(
-            TEXT("Selected request provider: %s, model: %s"),
+            TEXT("Selected request provider: %s, model: %s, ad-hoc context files: %d"),
             *GetProviderDisplayName(OutProvider.Provider),
-            *OutProvider.Model),
+            *OutProvider.Model,
+            AdditionalContextFilePaths.Num()),
         EN2CLogSeverity::Info,
         TEXT("RequestSelection"));
 

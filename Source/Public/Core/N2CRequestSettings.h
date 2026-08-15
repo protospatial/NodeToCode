@@ -7,14 +7,6 @@
 #include "LLM/N2CLLMTypes.h"
 #include "N2CRequestSettings.generated.h"
 
-/** Controls whether translation commands send immediately or ask for a provider first. */
-UENUM(BlueprintType)
-enum class EN2CRequestDispatchMode : uint8
-{
-    SendImmediatelyToDefaultProvider UMETA(DisplayName = "Send Request Immediately to Default Provider"),
-    SelectProviderBeforeSending UMETA(DisplayName = "Select Provider Before Sending Request")
-};
-
 /** Controls how model-specific instructions interact with global custom instructions. */
 UENUM(BlueprintType)
 enum class EN2CModelInstructionMode : uint8
@@ -63,12 +55,6 @@ class NODETOCODE_API UN2CRequestSettings : public UDeveloperSettings
     GENERATED_BODY()
 
 public:
-    /** Behavior used by Translate Blueprint Graph to Code and Translate Entire Blueprint. */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Request Dispatch",
-        meta = (DisplayName = "Translation Request Behavior"))
-    EN2CRequestDispatchMode RequestDispatchMode =
-        EN2CRequestDispatchMode::SendImmediatelyToDefaultProvider;
-
     /** Enable the global custom instructions for every LLM request. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Custom Instructions",
         meta = (DisplayName = "Enable Global Custom Instructions"))
@@ -101,13 +87,13 @@ struct FN2CResolvedRequestProvider
     FString Model;
 };
 
-/** Runtime helpers for transient per-request provider selection. */
+/** Runtime helpers for transient per-request provider selection and ad-hoc context. */
 class NODETOCODE_API FN2CRequestRuntime
 {
 public:
     /**
-     * Resolve the provider used by the next translation operation. In selection mode this displays
-     * a modal provider picker. Returning false means the user cancelled or no provider was usable.
+     * Resolve the provider used by the next translation operation. This always displays the modal
+     * provider picker. Returning false means the user cancelled or no provider was usable.
      */
     static bool ResolveProviderForRequest(
         EN2CLLMProvider DefaultProvider,
@@ -117,6 +103,12 @@ public:
     /** Consume the named custom provider selected for this request, if any. */
     static FString ConsumeSelectedCustomProviderName();
 
+    /** Files attached in the provider picker for the current translation operation. */
+    static const TArray<FString>& GetAdditionalContextFilePaths()
+    {
+        return AdditionalContextFilePaths;
+    }
+
 private:
     static bool ResolveProviderConfig(
         EN2CLLMProvider Provider,
@@ -124,4 +116,5 @@ private:
         FN2CResolvedRequestProvider& OutProvider);
 
     static FString SelectedCustomProviderName;
+    static TArray<FString> AdditionalContextFilePaths;
 };

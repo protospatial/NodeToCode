@@ -2,10 +2,13 @@
 
 #include "LLM/N2CBaseLLMService.h"
 
+#include "Core/N2CRequestSettings.h"
 #include "Core/N2CSettings.h"
 #include "LLM/N2CHttpHandler.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CResponseParserBase.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Utils/N2CLogger.h"
 
 bool UN2CBaseLLMService::Initialize(const FN2CLLMConfig& InConfig)
@@ -83,11 +86,13 @@ void UN2CBaseLLMService::SendRequest(
         TEXT("BaseLLMService")
     );
 
+    const UN2CSettings* RequestSettings = GetDefault<UN2CSettings>();
+
     // Compose request-wide custom instructions only after the concrete provider service has been
     // initialized. This ensures model-specific matching uses the model that will actually receive
     // the request, including transient provider choices and named custom providers.
     FString EffectiveSystemMessage = SystemMessage;
-    if (const UN2CSettings* RequestSettings = GetDefault<UN2CSettings>())
+    if (RequestSettings)
     {
         const FString CustomInstructions = RequestSettings->GetEffectiveCustomInstructions(
             Config.Provider,
@@ -111,9 +116,77 @@ void UN2CBaseLLMService::SendRequest(
         }
     }
 
+    // Ad-hoc attachments selected in the provider picker apply only to this translation operation.
+    // Persistent Reference Source Files continue to be added by the provider's prompt manager. Skip
+    // duplicates here if the same file is already configured globally.
+    FString EffectiveUserMessage = JsonPayload;
+    FString AdHocContext;
+
+    auto NormalizeContextPath = [](const FString& InPath)
+    {
+        FString Normalized = FPaths::ConvertRelativePathToFull(InPath);
+        FPaths::NormalizeFilename(Normalized);
+        return Normalized;
+    };
+
+    TSet<FString> GlobalReferencePaths;
+    if (RequestSettings)
+    {
+        for (const FFilePath& GlobalPath : RequestSettings->ReferenceSourceFilePaths)
+        {
+            if (!GlobalPath.FilePath.IsEmpty())
+            {
+                GlobalReferencePaths.Add(NormalizeContextPath(GlobalPath.FilePath).ToLower());
+            }
+        }
+    }
+
+    int32 LoadedAdHocFileCount = 0;
+    for (const FString& AttachedPath : FN2CRequestRuntime::GetAdditionalContextFilePaths())
+    {
+        const FString NormalizedPath = NormalizeContextPath(AttachedPath);
+        if (GlobalReferencePaths.Contains(NormalizedPath.ToLower()))
+        {
+            continue;
+        }
+
+        FString Content;
+        if (!FFileHelper::LoadFileToString(Content, *NormalizedPath))
+        {
+            FN2CLogger::Get().LogWarning(
+                FString::Printf(TEXT("Failed to load ad-hoc context file: %s"), *NormalizedPath),
+                TEXT("BaseLLMService"));
+            continue;
+        }
+
+        if (!AdHocContext.IsEmpty())
+        {
+            AdHocContext += TEXT("\n\n");
+        }
+
+        AdHocContext += FString::Printf(
+            TEXT("File: %s\n```\n%s\n```"),
+            *FPaths::GetCleanFilename(NormalizedPath),
+            *Content);
+        ++LoadedAdHocFileCount;
+    }
+
+    if (!AdHocContext.IsEmpty())
+    {
+        EffectiveUserMessage = FString::Printf(
+            TEXT("<adHocContextFiles>\n%s\n</adHocContextFiles>\n\n%s"),
+            *AdHocContext,
+            *EffectiveUserMessage);
+
+        FN2CLogger::Get().Log(
+            FString::Printf(TEXT("Attached %d ad-hoc context file(s) to request"), LoadedAdHocFileCount),
+            EN2CLogSeverity::Debug,
+            TEXT("BaseLLMService"));
+    }
+
     // Format request payload. Providers without a separate system-message channel already merge
     // this system message into the user content in their provider-specific payload builder.
-    FString FormattedPayload = FormatRequestPayload(JsonPayload, EffectiveSystemMessage);
+    FString FormattedPayload = FormatRequestPayload(EffectiveUserMessage, EffectiveSystemMessage);
 
     // Get endpoint and auth token
     FString Endpoint, AuthToken;
