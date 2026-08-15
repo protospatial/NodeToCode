@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2CCustomOpenAIService.h"
 
 #include "Core/N2CCustomProviderSettings.h"
+#include "Core/N2CRequestSettings.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/Providers/N2COpenAIResponseParser.h"
@@ -11,7 +12,13 @@
 bool UN2CCustomOpenAIService::Initialize(const FN2CLLMConfig& InConfig)
 {
     const UN2CCustomProviderSettings* Settings = GetDefault<UN2CCustomProviderSettings>();
-    const FN2CCustomProviderDefinition* Provider = Settings ? Settings->GetActiveProvider() : nullptr;
+    const FString RequestProviderName = FN2CRequestRuntime::GetSelectedCustomProviderName();
+    const FN2CCustomProviderDefinition* Provider = Settings
+        ? (RequestProviderName.IsEmpty()
+            ? Settings->GetActiveProvider()
+            : Settings->GetProvider(RequestProviderName))
+        : nullptr;
+
     if (!Provider)
     {
         FN2CLogger::Get().LogError(TEXT("No active custom provider is configured"), TEXT("CustomProvider"));
