@@ -391,7 +391,9 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     return true;
 }
 
-FString FN2CRequestRuntime::GetSelectedCustomProviderName()
+FString FN2CRequestRuntime::ConsumeSelectedCustomProviderName()
 {
-    return SelectedCustomProviderName;
+    FString Result = SelectedCustomProviderName;
+    SelectedCustomProviderName.Empty();
+    return Result;
 }
