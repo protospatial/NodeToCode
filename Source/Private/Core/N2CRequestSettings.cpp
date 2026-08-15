@@ -8,10 +8,11 @@
 #include "LLM/N2CLLMModels.h"
 #include "Utils/N2CLogger.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SComboBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/SListView.h"
+#include "Widgets/Views/STableRow.h"
 
 FString FN2CRequestRuntime::SelectedCustomProviderName;
 
@@ -283,9 +284,11 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     bool bConfirmed = false;
 
     TSharedPtr<SWindow> DialogWindow;
+    TSharedPtr<SListView<TSharedPtr<FN2CProviderChoice>>> ProviderList;
+
     SAssignNew(DialogWindow, SWindow)
         .Title(NSLOCTEXT("NodeToCode", "SelectProviderWindowTitle", "Select LLM Provider"))
-        .ClientSize(FVector2D(560.0f, 170.0f))
+        .ClientSize(FVector2D(620.0f, 390.0f))
         .SupportsMinimize(false)
         .SupportsMaximize(false);
 
@@ -303,16 +306,25 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             .AutoWrapText(true)
         ]
         + SVerticalBox::Slot()
-        .AutoHeight()
+        .FillHeight(1.0f)
         .Padding(12.0f, 0.0f, 12.0f, 12.0f)
         [
-            SNew(SComboBox<TSharedPtr<FN2CProviderChoice>>)
-            .OptionsSource(&Choices)
-            .InitiallySelectedItem(SelectedChoice)
-            .OnGenerateWidget_Lambda([](TSharedPtr<FN2CProviderChoice> Item)
+            SAssignNew(ProviderList, SListView<TSharedPtr<FN2CProviderChoice>>)
+            .ListItemsSource(&Choices)
+            .SelectionMode(ESelectionMode::Single)
+            .ItemHeight(42.0f)
+            .OnGenerateRow_Lambda([](
+                TSharedPtr<FN2CProviderChoice> Item,
+                const TSharedRef<STableViewBase>& OwnerTable)
             {
-                return SNew(STextBlock)
-                    .Text(Item.IsValid() ? FText::FromString(Item->DisplayName) : FText::GetEmpty());
+                return SNew(STableRow<TSharedPtr<FN2CProviderChoice>>, OwnerTable)
+                    .Padding(FMargin(10.0f, 5.0f))
+                    [
+                        SNew(STextBlock)
+                        .Text(Item.IsValid()
+                            ? FText::FromString(Item->DisplayName)
+                            : FText::GetEmpty())
+                    ];
             })
             .OnSelectionChanged_Lambda([&SelectedChoice](
                 TSharedPtr<FN2CProviderChoice> Item,
@@ -323,15 +335,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                     SelectedChoice = Item;
                 }
             })
-            [
-                SNew(STextBlock)
-                .Text_Lambda([&SelectedChoice]()
-                {
-                    return SelectedChoice.IsValid()
-                        ? FText::FromString(SelectedChoice->DisplayName)
-                        : FText::GetEmpty();
-                })
-            ]
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -356,6 +359,10 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             [
                 SNew(SButton)
                 .Text(NSLOCTEXT("NodeToCode", "SelectProviderSend", "Send Request"))
+                .IsEnabled_Lambda([&SelectedChoice]()
+                {
+                    return SelectedChoice.IsValid();
+                })
                 .OnClicked_Lambda([DialogWindow, &bConfirmed]()
                 {
                     bConfirmed = true;
@@ -365,6 +372,12 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             ]
         ]
     );
+
+    if (ProviderList.IsValid() && SelectedChoice.IsValid())
+    {
+        ProviderList->SetSelection(SelectedChoice, ESelectInfo::Direct);
+        ProviderList->RequestScrollIntoView(SelectedChoice);
+    }
 
     FSlateApplication::Get().AddModalWindow(
         DialogWindow.ToSharedRef(),
