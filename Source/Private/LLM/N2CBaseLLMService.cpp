@@ -116,6 +116,27 @@ void UN2CBaseLLMService::SendRequest(
         }
     }
 
+    // Per-operation ad hoc instructions are always additive. They are separate from persistent
+    // global/model instructions so model-level replacement semantics cannot discard request-specific
+    // guidance entered immediately before dispatch.
+    const FString AdHocInstructions = FN2CRequestRuntime::GetAdHocInstructions().TrimStartAndEnd();
+    if (!AdHocInstructions.IsEmpty())
+    {
+        if (!EffectiveSystemMessage.IsEmpty())
+        {
+            EffectiveSystemMessage += TEXT("\n\n");
+        }
+
+        EffectiveSystemMessage += TEXT("<adHocInstructions>\n");
+        EffectiveSystemMessage += AdHocInstructions;
+        EffectiveSystemMessage += TEXT("\n</adHocInstructions>");
+
+        FN2CLogger::Get().Log(
+            TEXT("Applied ad hoc instructions for the current translation operation"),
+            EN2CLogSeverity::Debug,
+            TEXT("BaseLLMService"));
+    }
+
     // Ad-hoc attachments selected in the provider picker apply only to this translation operation.
     // Persistent Reference Source Files continue to be added by the provider's prompt manager. Skip
     // duplicates here if the same file is already configured globally.

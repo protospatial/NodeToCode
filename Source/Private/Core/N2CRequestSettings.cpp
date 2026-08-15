@@ -12,6 +12,7 @@
 #include "Styling/SlateTypes.h"
 #include "Utils/N2CLogger.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SWindow.h"
@@ -20,6 +21,7 @@
 #include "Widgets/Views/STableRow.h"
 
 FString FN2CRequestRuntime::SelectedCustomProviderName;
+FString FN2CRequestRuntime::AdHocInstructions;
 TArray<FString> FN2CRequestRuntime::AdditionalContextFilePaths;
 
 namespace
@@ -185,6 +187,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     FN2CResolvedRequestProvider& OutProvider)
 {
     SelectedCustomProviderName.Empty();
+    AdHocInstructions.Empty();
     AdditionalContextFilePaths.Reset();
 
     if (!FSlateApplication::IsInitialized())
@@ -275,6 +278,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         : Choices[0];
     bool bConfirmed = false;
 
+    FString PendingAdHocInstructions;
     TArray<TSharedPtr<FString>> AttachedFileItems;
     TSharedPtr<FString> SelectedAttachedFile;
 
@@ -283,8 +287,8 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     TSharedPtr<SListView<TSharedPtr<FString>>> AttachedFileList;
 
     SAssignNew(DialogWindow, SWindow)
-        .Title(NSLOCTEXT("NodeToCode", "SelectProviderWindowTitle", "Select LLM Provider"))
-        .ClientSize(FVector2D(700.0f, 560.0f))
+        .Title(NSLOCTEXT("NodeToCode", "SelectProviderWindowTitle", "Configure Translation Request"))
+        .ClientSize(FVector2D(720.0f, 700.0f))
         .SupportsMinimize(false)
         .SupportsMaximize(false);
 
@@ -298,39 +302,41 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             .Text(NSLOCTEXT(
                 "NodeToCode",
                 "SelectProviderDescription",
-                "Choose the provider for this translation request. Your saved default provider will not be changed."))
+                "Configure optional per-request context, then choose the provider/model for this translation. Your saved defaults will not be changed."))
             .AutoWrapText(true)
         ]
+
+        // 1) Ad hoc instructions
         + SVerticalBox::Slot()
-        .FillHeight(1.0f)
-        .Padding(12.0f, 0.0f, 12.0f, 8.0f)
+        .AutoHeight()
+        .Padding(12.0f, 0.0f, 12.0f, 4.0f)
         [
-            SAssignNew(ProviderList, SListView<TSharedPtr<FN2CProviderChoice>>)
-            .ListItemsSource(&Choices)
-            .SelectionMode(ESelectionMode::Single)
-            .OnGenerateRow_Lambda([](
-                TSharedPtr<FN2CProviderChoice> Item,
-                const TSharedRef<STableViewBase>& OwnerTable)
-            {
-                return SNew(STableRow<TSharedPtr<FN2CProviderChoice>>, OwnerTable)
-                    .Padding(FMargin(10.0f, 5.0f))
-                    [
-                        SNew(STextBlock)
-                        .Text(Item.IsValid()
-                            ? FText::FromString(Item->DisplayName)
-                            : FText::GetEmpty())
-                    ];
-            })
-            .OnSelectionChanged_Lambda([&SelectedChoice](
-                TSharedPtr<FN2CProviderChoice> Item,
-                ESelectInfo::Type)
-            {
-                if (Item.IsValid())
-                {
-                    SelectedChoice = Item;
-                }
-            })
+            SNew(STextBlock)
+            .Text(NSLOCTEXT(
+                "NodeToCode",
+                "AdHocInstructionsLabel",
+                "Ad Hoc Instructions (optional)"))
         ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 0.0f, 12.0f, 10.0f)
+        [
+            SNew(SBox)
+            .HeightOverride(125.0f)
+            [
+                SNew(SMultiLineEditableTextBox)
+                .HintText(NSLOCTEXT(
+                    "NodeToCode",
+                    "AdHocInstructionsHint",
+                    "Add instructions that apply only to this translation request..."))
+                .OnTextChanged_Lambda([&PendingAdHocInstructions](const FText& NewText)
+                {
+                    PendingAdHocInstructions = NewText.ToString();
+                })
+            ]
+        ]
+
+        // 2) File selection
         + SVerticalBox::Slot()
         .AutoHeight()
         .Padding(12.0f, 0.0f, 12.0f, 4.0f)
@@ -460,7 +466,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         .Padding(12.0f, 0.0f, 12.0f, 10.0f)
         [
             SNew(SBox)
-            .HeightOverride(110.0f)
+            .HeightOverride(100.0f)
             [
                 SAssignNew(AttachedFileList, SListView<TSharedPtr<FString>>)
                 .ListItemsSource(&AttachedFileItems)
@@ -489,6 +495,53 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                 })
             ]
         ]
+
+        // 3) Provider/model scroll list
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 0.0f, 12.0f, 4.0f)
+        [
+            SNew(STextBlock)
+            .Text(NSLOCTEXT(
+                "NodeToCode",
+                "ProviderModelListLabel",
+                "Provider / Model"))
+        ]
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        .Padding(12.0f, 0.0f, 12.0f, 10.0f)
+        [
+            SNew(SBox)
+            .MinDesiredHeight(175.0f)
+            [
+                SAssignNew(ProviderList, SListView<TSharedPtr<FN2CProviderChoice>>)
+                .ListItemsSource(&Choices)
+                .SelectionMode(ESelectionMode::Single)
+                .OnGenerateRow_Lambda([](
+                    TSharedPtr<FN2CProviderChoice> Item,
+                    const TSharedRef<STableViewBase>& OwnerTable)
+                {
+                    return SNew(STableRow<TSharedPtr<FN2CProviderChoice>>, OwnerTable)
+                        .Padding(FMargin(10.0f, 5.0f))
+                        [
+                            SNew(STextBlock)
+                            .Text(Item.IsValid()
+                                ? FText::FromString(Item->DisplayName)
+                                : FText::GetEmpty())
+                        ];
+                })
+                .OnSelectionChanged_Lambda([&SelectedChoice](
+                    TSharedPtr<FN2CProviderChoice> Item,
+                    ESelectInfo::Type)
+                {
+                    if (Item.IsValid())
+                    {
+                        SelectedChoice = Item;
+                    }
+                })
+            ]
+        ]
+
         + SVerticalBox::Slot()
         .AutoHeight()
         .HAlign(HAlign_Right)
@@ -539,6 +592,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
 
     if (!bConfirmed || !SelectedChoice.IsValid())
     {
+        AdHocInstructions.Empty();
         AdditionalContextFilePaths.Reset();
         FN2CLogger::Get().Log(TEXT("Translation request cancelled during provider selection"), EN2CLogSeverity::Info);
         return false;
@@ -546,6 +600,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
 
     OutProvider = SelectedChoice->ResolvedProvider;
     SelectedCustomProviderName = OutProvider.CustomProviderName;
+    AdHocInstructions = PendingAdHocInstructions.TrimStartAndEnd();
 
     AdditionalContextFilePaths.Reserve(AttachedFileItems.Num());
     for (const TSharedPtr<FString>& AttachedFile : AttachedFileItems)
@@ -558,9 +613,10 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
 
     FN2CLogger::Get().Log(
         FString::Printf(
-            TEXT("Selected request provider: %s, model: %s, ad-hoc context files: %d"),
+            TEXT("Selected request provider: %s, model: %s, ad-hoc instructions: %s, ad-hoc context files: %d"),
             *GetProviderDisplayName(OutProvider.Provider),
             *OutProvider.Model,
+            AdHocInstructions.IsEmpty() ? TEXT("no") : TEXT("yes"),
             AdditionalContextFilePaths.Num()),
         EN2CLogSeverity::Info,
         TEXT("RequestSelection"));

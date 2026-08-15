@@ -103,6 +103,12 @@ public:
     /** Consume the named custom provider selected for this request, if any. */
     static FString ConsumeSelectedCustomProviderName();
 
+    /** Ad hoc instructions entered in the provider picker for the current translation operation. */
+    static const FString& GetAdHocInstructions()
+    {
+        return AdHocInstructions;
+    }
+
     /** Files attached in the provider picker for the current translation operation. */
     static const TArray<FString>& GetAdditionalContextFilePaths()
     {
@@ -116,5 +122,6 @@ private:
         FN2CResolvedRequestProvider& OutProvider);
 
     static FString SelectedCustomProviderName;
+    static FString AdHocInstructions;
     static TArray<FString> AdditionalContextFilePaths;
 };
