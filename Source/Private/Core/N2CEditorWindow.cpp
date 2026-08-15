@@ -27,7 +27,7 @@ struct FN2CRawResponseViewItem
     FString DisplayText;
 };
 
-FString GetProviderDisplayName(EN2CLLMProvider Provider)
+FString GetRawResponseProviderDisplayName(EN2CLLMProvider Provider)
 {
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
     {
@@ -60,7 +60,7 @@ FReply OpenRawResponseViewer()
             TEXT("#%d  %s  |  %s"),
             Record.RequestId,
             *Record.RequestLabel,
-            *GetProviderDisplayName(Record.Provider));
+            *GetRawResponseProviderDisplayName(Record.Provider));
         Items.Add(Item);
     }
 
