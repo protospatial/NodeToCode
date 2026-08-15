@@ -28,6 +28,34 @@ enum class EN2CLLMProvider : uint8
     Custom      UMETA(DisplayName = "Custom")
 };
 
+/** Raw provider response captured for one request in the current translation session. */
+USTRUCT(BlueprintType)
+struct FN2CRawResponseRecord
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    int32 RequestId = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString RequestLabel;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString Model;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString Timestamp;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString FormattedResponse;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    bool bParsedSuccessfully = false;
+};
+
 /** Status of the Node to Code system */
 UENUM(BlueprintType)
 enum class EN2CSystemStatus : uint8

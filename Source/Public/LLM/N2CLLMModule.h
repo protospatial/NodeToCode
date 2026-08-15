@@ -76,6 +76,24 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     EN2CSystemStatus GetSystemStatus() const { return CurrentStatus; }
 
+    /** Number of requests that have been sent but have not fully finished processing. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
+    int32 GetInFlightRequestCount() const { return InFlightRequestCount; }
+
+    /** True while any request or its completion work is still in progress. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
+    bool IsWorkInProgress() const { return InFlightRequestCount > 0 || CurrentStatus == EN2CSystemStatus::Initializing; }
+
+    /** Number of raw provider responses retained for the current translation session. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
+    int32 GetRawResponseCount() const { return SessionRawResponses.Num(); }
+
+    /** Raw provider responses retained for the current translation session. */
+    const TArray<FN2CRawResponseRecord>& GetRawResponseHistory() const { return SessionRawResponses; }
+
+    /** Aggregate parsed response for the current translation session. */
+    const FN2CTranslationResponse& GetSessionTranslationResponse() const { return SessionTranslationResponse; }
+
     /** Get the path to the latest translation */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     FString GetLatestTranslationPath() const { return LatestTranslationPath; }
@@ -94,6 +112,18 @@ public:
     void EndBatchTranslation();
 
 private:
+    /** Reset response/progress state at the start of a new user translation operation. */
+    void ResetRequestSession();
+
+    /** Merge one parsed response into the aggregate response exposed to the UI. */
+    void AppendSessionResponse(const FN2CTranslationResponse& Response);
+
+    /** Finish one in-flight request and update aggregate status. */
+    void FinishRequest(bool bSuccess);
+
+    /** Pretty-print a JSON provider response while leaving non-JSON text untouched. */
+    FString FormatRawResponseForDisplay(const FString& RawResponse) const;
+
     /** Generate file paths for translation */
     FString GenerateTranslationRootPath(const FString& BlueprintName) const;
 
@@ -159,7 +189,22 @@ private:
     
     /** Cached root path for the current translation batch (e.g. one Translate Entire Blueprint run) */
     FString CurrentBatchRootPath;
+
+    /** Aggregate parsed response for every successful request in the current operation. */
+    FN2CTranslationResponse SessionTranslationResponse;
+
+    /** Raw provider responses for every completed request in the current operation. */
+    TArray<FN2CRawResponseRecord> SessionRawResponses;
+
+    /** Number of request completions still outstanding. */
+    int32 InFlightRequestCount = 0;
+
+    /** Monotonic request identifier within the current operation. */
+    int32 NextRequestId = 1;
+
+    /** Tracks whether any request in the current operation failed to parse. */
+    bool bSessionHadError = false;
     
     /** Initialization state */
-    bool bIsInitialized;
+    bool bIsInitialized = false;
 };

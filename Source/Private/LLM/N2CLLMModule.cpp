@@ -15,6 +15,10 @@
 #include "LLM/Providers/N2COpenAIService.h"
 #include "LLM/Providers/N2COllamaService.h"
 #include "LLM/Providers/N2CMiniMaxService.h"
+#include "Policies/PrettyJsonPrintPolicy.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "Utils/N2CLogger.h"
 
 UN2CLLMModule* UN2CLLMModule::Get()
@@ -32,6 +36,9 @@ UN2CLLMModule* UN2CLLMModule::Get()
 
 bool UN2CLLMModule::Initialize()
 {
+    CurrentStatus = EN2CSystemStatus::Initializing;
+    bIsInitialized = false;
+    ResetRequestSession();
     CurrentStatus = EN2CSystemStatus::Initializing;
     
     // Load settings
@@ -64,6 +71,85 @@ bool UN2CLLMModule::Initialize()
     return true;
 }
 
+void UN2CLLMModule::ResetRequestSession()
+{
+    InFlightRequestCount = 0;
+    NextRequestId = 1;
+    bSessionHadError = false;
+    SessionRawResponses.Reset();
+    SessionTranslationResponse.Graphs.Reset();
+    SessionTranslationResponse.Usage.InputTokens = 0;
+    SessionTranslationResponse.Usage.OutputTokens = 0;
+
+    // A new Initialize() starts a new user operation. Clear any stale batch path left by an
+    // interrupted/failed prior batch, while intentionally retaining LatestTranslationPath so the
+    // Open Folder action can still reach the last completed output.
+    CurrentBatchRootPath.Empty();
+    CurrentStatus = EN2CSystemStatus::Idle;
+}
+
+void UN2CLLMModule::AppendSessionResponse(const FN2CTranslationResponse& Response)
+{
+    for (const FN2CGraphTranslation& Graph : Response.Graphs)
+    {
+        const int32 ExistingIndex = SessionTranslationResponse.Graphs.IndexOfByPredicate(
+            [&Graph](const FN2CGraphTranslation& Existing)
+            {
+                return Existing.GraphName.Equals(Graph.GraphName, ESearchCase::CaseSensitive) &&
+                       Existing.GraphType.Equals(Graph.GraphType, ESearchCase::CaseSensitive) &&
+                       Existing.GraphClass.Equals(Graph.GraphClass, ESearchCase::CaseSensitive);
+            });
+
+        if (ExistingIndex == INDEX_NONE)
+        {
+            SessionTranslationResponse.Graphs.Add(Graph);
+        }
+        else
+        {
+            SessionTranslationResponse.Graphs[ExistingIndex] = Graph;
+        }
+    }
+
+    SessionTranslationResponse.Usage.InputTokens += Response.Usage.InputTokens;
+    SessionTranslationResponse.Usage.OutputTokens += Response.Usage.OutputTokens;
+}
+
+void UN2CLLMModule::FinishRequest(bool bSuccess)
+{
+    bSessionHadError |= !bSuccess;
+    InFlightRequestCount = FMath::Max(0, InFlightRequestCount - 1);
+
+    if (InFlightRequestCount > 0)
+    {
+        CurrentStatus = EN2CSystemStatus::Processing;
+    }
+    else
+    {
+        CurrentStatus = bSessionHadError ? EN2CSystemStatus::Error : EN2CSystemStatus::Idle;
+    }
+}
+
+FString UN2CLLMModule::FormatRawResponseForDisplay(const FString& RawResponse) const
+{
+    if (RawResponse.IsEmpty())
+    {
+        return RawResponse;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RawResponse);
+    if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
+    {
+        return RawResponse;
+    }
+
+    FString FormattedResponse;
+    TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
+        TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&FormattedResponse);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+    return FormattedResponse;
+}
+
 void UN2CLLMModule::ProcessN2CJson(
     const FString& JsonInput,
     const FOnLLMResponseReceived& OnComplete)
@@ -72,19 +158,15 @@ void UN2CLLMModule::ProcessN2CJson(
     {
         CurrentStatus = EN2CSystemStatus::Error;
         FN2CLogger::Get().LogError(TEXT("LLM Module not initialized"), TEXT("LLMModule"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Module not initialized\"}"));
+        OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Module not initialized\"}"));
         return;
     }
 
-    CurrentStatus = EN2CSystemStatus::Processing;
-    
-    // Broadcast that request is being sent
-    OnTranslationRequestSent.Broadcast();
-
     if (!ActiveService.GetInterface())
     {
+        CurrentStatus = EN2CSystemStatus::Error;
         FN2CLogger::Get().LogError(TEXT("No active LLM service"), TEXT("LLMModule"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"No active service\"}"));
+        OnComplete.ExecuteIfBound(TEXT("{\"error\": \"No active service\"}"));
         return;
     }
 
@@ -92,7 +174,9 @@ void UN2CLLMModule::ProcessN2CJson(
     TScriptInterface<IN2CLLMService> Service = GetActiveService();
     if (!Service.GetInterface())
     {
+        CurrentStatus = EN2CSystemStatus::Error;
         FN2CLogger::Get().LogError(TEXT("No active service"), TEXT("LLMModule"));
+        OnComplete.ExecuteIfBound(TEXT("{\"error\": \"No active service\"}"));
         return;
     }
 
@@ -114,12 +198,24 @@ void UN2CLLMModule::ProcessN2CJson(
         HttpHandler->OnTranslationResponseReceived = OnTranslationResponseReceived;
     }
 
+    const int32 RequestId = NextRequestId++;
+    const EN2CLLMProvider RequestProvider = Config.Provider;
+    const FString RequestModel = Config.Model;
+    ++InFlightRequestCount;
+    CurrentStatus = EN2CSystemStatus::Processing;
+
+    // Broadcast that request is being sent
+    OnTranslationRequestSent.Broadcast();
+
     // Send request through service
     ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this](const FString& Response)
+        [this, OnComplete, RequestId, RequestProvider, RequestModel](const FString& Response)
         {
-            // Create translation response struct
             FN2CTranslationResponse TranslationResponse;
+            TranslationResponse.Usage.InputTokens = 0;
+            TranslationResponse.Usage.OutputTokens = 0;
+            bool bParsedSuccessfully = false;
+            FString RequestLabel = FString::Printf(TEXT("Request %d"), RequestId);
             
             // Get active service's response parser
             TScriptInterface<IN2CLLMService> ActiveServiceParser = GetActiveService();
@@ -130,7 +226,16 @@ void UN2CLLMModule::ProcessN2CJson(
                 {
                     if (Parser->ParseLLMResponse(Response, TranslationResponse))
                     {
-                        CurrentStatus = EN2CSystemStatus::Idle;
+                        bParsedSuccessfully = true;
+                        if (!TranslationResponse.Graphs.IsEmpty() &&
+                            !TranslationResponse.Graphs[0].GraphName.IsEmpty())
+                        {
+                            RequestLabel = TranslationResponse.Graphs[0].GraphName;
+                        }
+
+                        // Merge before saving/broadcasting so a batch manifest and the existing UI
+                        // always see every successful result accumulated in this translation session.
+                        AppendSessionResponse(TranslationResponse);
                             
                         // Save translation to disk
                         const FN2CBlueprint& Blueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
@@ -139,31 +244,46 @@ void UN2CLLMModule::ProcessN2CJson(
                             FN2CLogger::Get().Log(TEXT("Successfully saved translation to disk"), EN2CLogSeverity::Info);
                         }
                             
-                        OnTranslationResponseReceived.Broadcast(TranslationResponse, true);
+                        OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, true);
                         FN2CLogger::Get().Log(TEXT("Successfully parsed LLM response"), EN2CLogSeverity::Info);
                     }
                     else
                     {
-                        CurrentStatus = EN2CSystemStatus::Error;
                         FN2CLogger::Get().LogError(TEXT("Failed to parse LLM response"));
-                        // Save raw response for debugging when parsing fails
                         SaveRawResponseToDisk(Response);
-                        OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
+                        OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, false);
                     }
                 }
                 else
                 {
-                    CurrentStatus = EN2CSystemStatus::Error;
                     FN2CLogger::Get().LogError(TEXT("No response parser available"));
-                    OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
+                    OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, false);
                 }
             }
             else
             {
-                CurrentStatus = EN2CSystemStatus::Error;
                 FN2CLogger::Get().LogError(TEXT("No active LLM service"));
-                OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
+                OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, false);
             }
+
+            FN2CRawResponseRecord RawRecord;
+            RawRecord.RequestId = RequestId;
+            RawRecord.RequestLabel = RequestLabel;
+            RawRecord.Provider = RequestProvider;
+            RawRecord.Model = RequestModel;
+            RawRecord.Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+            RawRecord.FormattedResponse = FormatRawResponseForDisplay(Response);
+            RawRecord.bParsedSuccessfully = bParsedSuccessfully;
+            SessionRawResponses.Add(MoveTemp(RawRecord));
+
+            // The caller's completion delegate is part of the request lifecycle. This was
+            // previously omitted for normal HTTP completions, which prevented Translate Entire
+            // Blueprint's remaining-response counter from ever reaching zero.
+            OnComplete.ExecuteIfBound(Response);
+
+            // Keep Processing active until both the HTTP response and all caller completion work
+            // for this request have finished.
+            FinishRequest(bParsedSuccessfully);
         }));
 }
 
@@ -279,7 +399,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     FString MinifiedJsonFileName = FString::Printf(TEXT("N2C_BP_Minified_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString MinifiedJsonFilePath = FPaths::Combine(RootPath, MinifiedJsonFileName);
 
-    // Serialize the Blueprint to JSON without pretty printing
+    // Serialize the Blueprint JSON without pretty printing
     FN2CSerializer::SetPrettyPrint(false);
     FString MinifiedJsonContent = FN2CSerializer::ToJson(Blueprint);
 
@@ -289,7 +409,11 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         // Continue even if minified version fails
     }
 
-    // Save the raw LLM translation response JSON
+    // During a batch, write the accumulated session response so this manifest contains every graph
+    // completed so far rather than being overwritten by only the most recent response.
+    const FN2CTranslationResponse& ManifestResponse =
+        !CurrentBatchRootPath.IsEmpty() ? SessionTranslationResponse : Response;
+
     FString TranslationJsonFileName = FString::Printf(TEXT("N2C_Translation_%s.json"), *FPaths::GetBaseFilename(RootPath));
     FString TranslationJsonFilePath = FPaths::Combine(RootPath, TranslationJsonFileName);
 
@@ -298,7 +422,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
 
     // Create graphs array
     TArray<TSharedPtr<FJsonValue>> GraphsArray;
-    for (const FN2CGraphTranslation& Graph : Response.Graphs)
+    for (const FN2CGraphTranslation& Graph : ManifestResponse.Graphs)
     {
         TSharedPtr<FJsonObject> GraphObject = MakeShared<FJsonObject>();
         GraphObject->SetStringField(TEXT("graph_name"), Graph.GraphName);
@@ -318,11 +442,11 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     TranslationJsonObject->SetArrayField(TEXT("graphs"), GraphsArray);
 
     // Add usage information if available
-    if (Response.Usage.InputTokens > 0 || Response.Usage.OutputTokens > 0)
+    if (ManifestResponse.Usage.InputTokens > 0 || ManifestResponse.Usage.OutputTokens > 0)
     {
         TSharedPtr<FJsonObject> UsageObject = MakeShared<FJsonObject>();
-        UsageObject->SetNumberField(TEXT("input_tokens"), Response.Usage.InputTokens);
-        UsageObject->SetNumberField(TEXT("output_tokens"), Response.Usage.OutputTokens);
+        UsageObject->SetNumberField(TEXT("input_tokens"), ManifestResponse.Usage.InputTokens);
+        UsageObject->SetNumberField(TEXT("output_tokens"), ManifestResponse.Usage.OutputTokens);
         TranslationJsonObject->SetObjectField(TEXT("usage"), UsageObject);
     }
 
@@ -340,8 +464,6 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     // Get the target language from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
-
-
 
     // Determine if we're in batch mode (when CurrentBatchRootPath is set)
     const bool bIsBatchMode = !CurrentBatchRootPath.IsEmpty();
@@ -756,6 +878,7 @@ bool UN2CLLMModule::CreateServiceForProvider(EN2CLLMProvider Provider)
     ActiveService = ServiceInterface;
     return true;
 }
+
 void UN2CLLMModule::InitializeProviderRegistry()
 {
     // Get the provider registry
