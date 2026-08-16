@@ -3,6 +3,7 @@
 #include "Core/N2CRequestSettings.h"
 
 #include "Core/N2CCustomProviderSettings.h"
+#include "Core/N2CModelDiscovery.h"
 #include "Core/N2CSettings.h"
 #include "DesktopPlatformModule.h"
 #include "Framework/Application/SlateApplication.h"
@@ -32,6 +33,17 @@ struct FN2CProviderChoice
     FString DisplayName;
 };
 
+struct FN2CProviderPickerState
+{
+    TArray<TSharedPtr<FN2CProviderChoice>> Choices;
+    TSharedPtr<FN2CProviderChoice> SelectedChoice;
+    TWeakPtr<SListView<TSharedPtr<FN2CProviderChoice>>> ProviderList;
+    int32 PendingDiscoveryCount = 0;
+    int32 DynamicallyResolvedProviderCount = 0;
+    int32 FallbackProviderCount = 0;
+    bool bDialogOpen = true;
+};
+
 FString GetProviderDisplayName(EN2CLLMProvider Provider)
 {
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
@@ -40,6 +52,86 @@ FString GetProviderDisplayName(EN2CLLMProvider Provider)
     }
 
     return UEnum::GetValueAsString(Provider);
+}
+
+TSharedPtr<FN2CProviderChoice> MakeProviderChoice(
+    const FN2CResolvedRequestProvider& Provider,
+    const FString& Model)
+{
+    TSharedPtr<FN2CProviderChoice> Choice = MakeShared<FN2CProviderChoice>();
+    Choice->ResolvedProvider = Provider;
+    Choice->ResolvedProvider.Model = Model;
+
+    if (Provider.Provider == EN2CLLMProvider::Custom)
+    {
+        Choice->DisplayName = FString::Printf(
+            TEXT("Custom: %s%s%s"),
+            *Provider.CustomProviderName,
+            Model.IsEmpty() ? TEXT("") : TEXT(" - "),
+            *Model);
+    }
+    else
+    {
+        Choice->DisplayName = GetProviderDisplayName(Provider.Provider);
+        if (!Model.IsEmpty())
+        {
+            Choice->DisplayName += TEXT(" - ") + Model;
+        }
+    }
+
+    return Choice;
+}
+
+bool HasProviderModelChoice(
+    const TArray<TSharedPtr<FN2CProviderChoice>>& Choices,
+    EN2CLLMProvider Provider,
+    const FString& Model)
+{
+    return Choices.ContainsByPredicate([Provider, &Model](const TSharedPtr<FN2CProviderChoice>& Choice)
+    {
+        return Choice.IsValid() &&
+               Choice->ResolvedProvider.Provider == Provider &&
+               Choice->ResolvedProvider.Model.Equals(Model, ESearchCase::IgnoreCase);
+    });
+}
+
+void SortProviderChoices(TArray<TSharedPtr<FN2CProviderChoice>>& Choices)
+{
+    Choices.Sort([](
+        const TSharedPtr<FN2CProviderChoice>& Left,
+        const TSharedPtr<FN2CProviderChoice>& Right)
+    {
+        if (!Left.IsValid())
+        {
+            return false;
+        }
+        if (!Right.IsValid())
+        {
+            return true;
+        }
+
+        const uint8 LeftProvider = static_cast<uint8>(Left->ResolvedProvider.Provider);
+        const uint8 RightProvider = static_cast<uint8>(Right->ResolvedProvider.Provider);
+        if (LeftProvider != RightProvider)
+        {
+            return LeftProvider < RightProvider;
+        }
+
+        if (Left->ResolvedProvider.Provider == EN2CLLMProvider::Custom)
+        {
+            const int32 NameCompare = Left->ResolvedProvider.CustomProviderName.Compare(
+                Right->ResolvedProvider.CustomProviderName,
+                ESearchCase::IgnoreCase);
+            if (NameCompare != 0)
+            {
+                return NameCompare < 0;
+            }
+        }
+
+        return Left->ResolvedProvider.Model.Compare(
+            Right->ResolvedProvider.Model,
+            ESearchCase::IgnoreCase) < 0;
+    });
 }
 }
 
@@ -202,7 +294,8 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         return static_cast<uint8>(Left) < static_cast<uint8>(Right);
     });
 
-    TArray<TSharedPtr<FN2CProviderChoice>> Choices;
+    const TSharedRef<FN2CProviderPickerState> PickerState = MakeShared<FN2CProviderPickerState>();
+    TArray<FN2CResolvedRequestProvider> DiscoveryProviders;
     TSharedPtr<FN2CProviderChoice> DefaultChoice;
 
     const UN2CCustomProviderSettings* CustomSettings = GetDefault<UN2CCustomProviderSettings>();
@@ -227,14 +320,10 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                     continue;
                 }
 
-                TSharedPtr<FN2CProviderChoice> Choice = MakeShared<FN2CProviderChoice>();
-                Choice->ResolvedProvider = ResolvedProvider;
-                Choice->DisplayName = FString::Printf(
-                    TEXT("Custom: %s%s%s"),
-                    *Definition.Name,
-                    ResolvedProvider.Model.IsEmpty() ? TEXT("") : TEXT(" - "),
-                    *ResolvedProvider.Model);
-                Choices.Add(Choice);
+                TSharedPtr<FN2CProviderChoice> Choice = MakeProviderChoice(
+                    ResolvedProvider,
+                    ResolvedProvider.Model);
+                PickerState->Choices.Add(Choice);
 
                 if (DefaultProvider == EN2CLLMProvider::Custom &&
                     Definition.Name.Equals(ActiveCustomProviderName, ESearchCase::IgnoreCase))
@@ -242,7 +331,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                     DefaultChoice = Choice;
                 }
             }
-
             continue;
         }
 
@@ -252,14 +340,11 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             continue;
         }
 
-        TSharedPtr<FN2CProviderChoice> Choice = MakeShared<FN2CProviderChoice>();
-        Choice->ResolvedProvider = ResolvedProvider;
-        Choice->DisplayName = GetProviderDisplayName(Provider);
-        if (!ResolvedProvider.Model.IsEmpty())
-        {
-            Choice->DisplayName += TEXT(" - ") + ResolvedProvider.Model;
-        }
-        Choices.Add(Choice);
+        TSharedPtr<FN2CProviderChoice> Choice = MakeProviderChoice(
+            ResolvedProvider,
+            ResolvedProvider.Model);
+        PickerState->Choices.Add(Choice);
+        DiscoveryProviders.Add(ResolvedProvider);
 
         if (Provider == DefaultProvider)
         {
@@ -267,17 +352,18 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         }
     }
 
-    if (Choices.IsEmpty())
+    if (PickerState->Choices.IsEmpty())
     {
         FN2CLogger::Get().LogError(TEXT("No registered LLM providers are available for request selection"));
         return false;
     }
 
-    TSharedPtr<FN2CProviderChoice> SelectedChoice = DefaultChoice.IsValid()
+    SortProviderChoices(PickerState->Choices);
+    PickerState->SelectedChoice = DefaultChoice.IsValid()
         ? DefaultChoice
-        : Choices[0];
-    bool bConfirmed = false;
+        : PickerState->Choices[0];
 
+    bool bConfirmed = false;
     FString PendingAdHocInstructions;
     TArray<TSharedPtr<FString>> AttachedFileItems;
     TSharedPtr<FString> SelectedAttachedFile;
@@ -499,13 +585,36 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         // 3) Provider/model scroll list
         + SVerticalBox::Slot()
         .AutoHeight()
-        .Padding(12.0f, 0.0f, 12.0f, 4.0f)
+        .Padding(12.0f, 0.0f, 12.0f, 2.0f)
         [
             SNew(STextBlock)
             .Text(NSLOCTEXT(
                 "NodeToCode",
                 "ProviderModelListLabel",
                 "Provider / Model"))
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 0.0f, 12.0f, 4.0f)
+        [
+            SNew(STextBlock)
+            .Text_Lambda([PickerState]()
+            {
+                if (PickerState->PendingDiscoveryCount > 0)
+                {
+                    return FText::FromString(FString::Printf(
+                        TEXT("Discovering models... %d provider(s) remaining. %d live list(s) loaded; %d using configured fallback."),
+                        PickerState->PendingDiscoveryCount,
+                        PickerState->DynamicallyResolvedProviderCount,
+                        PickerState->FallbackProviderCount));
+                }
+
+                return FText::FromString(FString::Printf(
+                    TEXT("Model discovery complete: %d live provider list(s); %d provider(s) using configured fallback."),
+                    PickerState->DynamicallyResolvedProviderCount,
+                    PickerState->FallbackProviderCount));
+            })
+            .AutoWrapText(true)
         ]
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
@@ -515,7 +624,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             .MinDesiredHeight(175.0f)
             [
                 SAssignNew(ProviderList, SListView<TSharedPtr<FN2CProviderChoice>>)
-                .ListItemsSource(&Choices)
+                .ListItemsSource(&PickerState->Choices)
                 .SelectionMode(ESelectionMode::Single)
                 .OnGenerateRow_Lambda([](
                     TSharedPtr<FN2CProviderChoice> Item,
@@ -530,13 +639,13 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                                 : FText::GetEmpty())
                         ];
                 })
-                .OnSelectionChanged_Lambda([&SelectedChoice](
+                .OnSelectionChanged_Lambda([PickerState](
                     TSharedPtr<FN2CProviderChoice> Item,
                     ESelectInfo::Type)
                 {
                     if (Item.IsValid())
                     {
-                        SelectedChoice = Item;
+                        PickerState->SelectedChoice = Item;
                     }
                 })
             ]
@@ -565,9 +674,9 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             [
                 SNew(SButton)
                 .Text(NSLOCTEXT("NodeToCode", "SelectProviderSend", "Send Request"))
-                .IsEnabled_Lambda([&SelectedChoice]()
+                .IsEnabled_Lambda([PickerState]()
                 {
-                    return SelectedChoice.IsValid();
+                    return PickerState->SelectedChoice.IsValid();
                 })
                 .OnClicked_Lambda([DialogWindow, &bConfirmed]()
                 {
@@ -579,10 +688,81 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         ]
     );
 
-    if (ProviderList.IsValid() && SelectedChoice.IsValid())
+    PickerState->ProviderList = ProviderList;
+
+    if (ProviderList.IsValid() && PickerState->SelectedChoice.IsValid())
     {
-        ProviderList->SetSelection(SelectedChoice, ESelectInfo::Direct);
-        ProviderList->RequestScrollIntoView(SelectedChoice);
+        ProviderList->SetSelection(PickerState->SelectedChoice, ESelectInfo::Direct);
+        ProviderList->RequestScrollIntoView(PickerState->SelectedChoice);
+    }
+
+    // Start discovery after the list widget exists. The modal opens immediately with each
+    // provider's configured model, then additional live models are added as requests complete.
+    for (const FN2CResolvedRequestProvider& DiscoveryProvider : DiscoveryProviders)
+    {
+        ++PickerState->PendingDiscoveryCount;
+
+        const bool bStarted = FN2CModelDiscovery::FetchAvailableModels(
+            DiscoveryProvider,
+            [PickerState, DiscoveryProvider](
+                bool bSuccess,
+                TArray<FString> Models,
+                FString Error)
+            {
+                PickerState->PendingDiscoveryCount = FMath::Max(
+                    0,
+                    PickerState->PendingDiscoveryCount - 1);
+
+                if (!PickerState->bDialogOpen)
+                {
+                    return;
+                }
+
+                if (!bSuccess)
+                {
+                    ++PickerState->FallbackProviderCount;
+                    if (!Error.IsEmpty())
+                    {
+                        FN2CLogger::Get().Log(
+                            FString::Printf(
+                                TEXT("Using configured model fallback for %s: %s"),
+                                *GetProviderDisplayName(DiscoveryProvider.Provider),
+                                *Error),
+                            EN2CLogSeverity::Debug,
+                            TEXT("ModelDiscovery"));
+                    }
+                    return;
+                }
+
+                ++PickerState->DynamicallyResolvedProviderCount;
+                for (const FString& Model : Models)
+                {
+                    if (!HasProviderModelChoice(
+                            PickerState->Choices,
+                            DiscoveryProvider.Provider,
+                            Model))
+                    {
+                        PickerState->Choices.Add(MakeProviderChoice(
+                            DiscoveryProvider,
+                            Model));
+                    }
+                }
+
+                SortProviderChoices(PickerState->Choices);
+                if (const TSharedPtr<SListView<TSharedPtr<FN2CProviderChoice>>> List =
+                        PickerState->ProviderList.Pin())
+                {
+                    List->RequestListRefresh();
+                }
+            });
+
+        if (!bStarted)
+        {
+            PickerState->PendingDiscoveryCount = FMath::Max(
+                0,
+                PickerState->PendingDiscoveryCount - 1);
+            ++PickerState->FallbackProviderCount;
+        }
     }
 
     FSlateApplication::Get().AddModalWindow(
@@ -590,7 +770,9 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         FSlateApplication::Get().GetActiveTopLevelWindow(),
         false);
 
-    if (!bConfirmed || !SelectedChoice.IsValid())
+    PickerState->bDialogOpen = false;
+
+    if (!bConfirmed || !PickerState->SelectedChoice.IsValid())
     {
         AdHocInstructions.Empty();
         AdditionalContextFilePaths.Reset();
@@ -598,7 +780,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         return false;
     }
 
-    OutProvider = SelectedChoice->ResolvedProvider;
+    OutProvider = PickerState->SelectedChoice->ResolvedProvider;
     SelectedCustomProviderName = OutProvider.CustomProviderName;
     AdHocInstructions = PendingAdHocInstructions.TrimStartAndEnd();
 
