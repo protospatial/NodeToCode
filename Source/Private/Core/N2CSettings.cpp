@@ -22,6 +22,35 @@
 UN2CSettings::UN2CSettings()
 {
     FN2CLogger::Get().Log(TEXT("N2CSettings constructor called"), EN2CLogSeverity::Info);
+
+#if WITH_EDITOR
+    // Built-in provider keys are transient UI mirrors of the dedicated user secrets store. Ensure
+    // every key field is rendered as a password field before the settings details panel is built.
+    const FName ApiKeyPropertyNames[] =
+    {
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, MiniMax_API_Key_UI)
+    };
+
+    for (const FName PropertyName : ApiKeyPropertyNames)
+    {
+        if (FProperty* ApiKeyProperty = GetClass()->FindPropertyByName(PropertyName))
+        {
+            ApiKeyProperty->SetMetaData(TEXT("PasswordField"), TEXT("true"));
+        }
+    }
+
+    // Ollama already declares PasswordField metadata in FN2COllamaConfig, but set it here as well
+    // so all built-in provider API-key presentation is enforced from one initialization path.
+    if (FProperty* OllamaApiKeyProperty = FN2COllamaConfig::StaticStruct()->FindPropertyByName(
+            GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, ApiKey)))
+    {
+        OllamaApiKeyProperty->SetMetaData(TEXT("PasswordField"), TEXT("true"));
+    }
+#endif
     
     // Initialize pricing for each model
     InitializePricing();
