@@ -5,6 +5,7 @@
 #include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "LLM/N2CBatchTranslationConsolidator.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CLLMProviderRegistry.h"
@@ -345,6 +346,60 @@ void UN2CLLMModule::BeginBatchTranslation(const FString& BlueprintName)
 
 void UN2CLLMModule::EndBatchTranslation()
 {
+    if (CurrentBatchRootPath.IsEmpty())
+    {
+        FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
+        return;
+    }
+
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    const EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+
+    // Translate Entire Blueprint intentionally sends graphs independently so each request remains
+    // manageable, but C++ output represents one class. Consolidate the completed graph responses
+    // only once, after the final request callback reaches this batch completion point.
+    if (TargetLanguage == EN2CCodeLanguage::Cpp && !SessionTranslationResponse.Graphs.IsEmpty())
+    {
+        const FN2CBlueprint& Blueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
+        FN2CTranslationResponse ConsolidatedResponse;
+
+        if (FN2CBatchTranslationConsolidator::BuildCppResponse(
+                SessionTranslationResponse,
+                Blueprint,
+                ConsolidatedResponse))
+        {
+            SessionTranslationResponse = MoveTemp(ConsolidatedResponse);
+
+            // Rewrite the final translation manifest so the saved/UI-facing result matches the
+            // single consolidated C++ pair rather than the intermediate per-graph responses.
+            if (!SaveTranslationToDisk(SessionTranslationResponse, Blueprint))
+            {
+                FN2CLogger::Get().LogWarning(
+                    TEXT("Failed to rewrite final consolidated translation manifest"),
+                    TEXT("LLMModule"));
+            }
+
+            if (!FN2CBatchTranslationConsolidator::SaveCppFiles(
+                    SessionTranslationResponse,
+                    CurrentBatchRootPath))
+            {
+                FN2CLogger::Get().LogWarning(
+                    TEXT("Failed to save one or more consolidated full Blueprint C++ files"),
+                    TEXT("LLMModule"));
+            }
+
+            // Replace the cumulative per-graph view with the final header/source pair. Raw response
+            // history remains unchanged and can still be inspected request-by-request.
+            OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, true);
+        }
+        else
+        {
+            FN2CLogger::Get().LogWarning(
+                TEXT("Unable to consolidate full Blueprint C++ responses; retaining parsed response history"),
+                TEXT("LLMModule"));
+        }
+    }
+
     CurrentBatchRootPath.Empty();
     FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
 }
@@ -468,10 +523,15 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     // Determine if we're in batch mode (when CurrentBatchRootPath is set)
     const bool bIsBatchMode = !CurrentBatchRootPath.IsEmpty();
 
-    // Use batch-specific features for batch translations, original logic for single translations
     if (bIsBatchMode)
     {
-        SaveGraphFilesWithBatchFeatures(Response, RootPath, TargetLanguage);
+        // Full-Blueprint C++ output is emitted once in EndBatchTranslation after every graph
+        // response has been parsed. Do not create intermediate per-graph .h/.cpp directories.
+        // Preserve the existing behavior for non-C++ targets.
+        if (TargetLanguage != EN2CCodeLanguage::Cpp)
+        {
+            SaveGraphFilesWithBatchFeatures(Response, RootPath, TargetLanguage);
+        }
     }
     else
     {
