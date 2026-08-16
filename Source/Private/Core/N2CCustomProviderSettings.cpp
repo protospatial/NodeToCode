@@ -45,6 +45,85 @@ bool UN2CCustomProviderSettings::AddProvider(const FString& ProviderName, EN2CCu
     return true;
 }
 
+bool UN2CCustomProviderSettings::RenameProvider(
+    const FString& ProviderName,
+    const FString& NewProviderName)
+{
+    const FString TrimmedName = NewProviderName.TrimStartAndEnd();
+    FN2CCustomProviderDefinition* Provider = GetProvider(ProviderName);
+    if (!Provider || TrimmedName.IsEmpty())
+    {
+        return false;
+    }
+
+    const FN2CCustomProviderDefinition* ConflictingProvider = GetProvider(TrimmedName);
+    if (ConflictingProvider && ConflictingProvider != Provider)
+    {
+        return false;
+    }
+
+    const FString PreviousName = Provider->Name;
+    if (PreviousName.Equals(TrimmedName, ESearchCase::CaseSensitive))
+    {
+        return true;
+    }
+
+    LoadApiKeys();
+
+    FString ApiKey;
+    const bool bHadApiKey = ApiKeys.RemoveAndCopyValue(PreviousName, ApiKey);
+
+    Provider->Name = TrimmedName;
+    if (ActiveProviderName.Equals(PreviousName, ESearchCase::IgnoreCase))
+    {
+        ActiveProviderName = TrimmedName;
+    }
+
+    if (bHadApiKey && !ApiKey.IsEmpty())
+    {
+        ApiKeys.Add(TrimmedName, MoveTemp(ApiKey));
+    }
+
+    SaveDefinitions();
+    SaveApiKeys();
+    return true;
+}
+
+bool UN2CCustomProviderSettings::RemoveProvider(const FString& ProviderName)
+{
+    const int32 ProviderIndex = Providers.IndexOfByPredicate(
+        [&ProviderName](const FN2CCustomProviderDefinition& Provider)
+        {
+            return Provider.Name.Equals(ProviderName, ESearchCase::IgnoreCase);
+        });
+
+    if (ProviderIndex == INDEX_NONE)
+    {
+        return false;
+    }
+
+    const FString RemovedName = Providers[ProviderIndex].Name;
+    const bool bRemovedActiveProvider =
+        ActiveProviderName.Equals(RemovedName, ESearchCase::IgnoreCase);
+
+    Providers.RemoveAt(ProviderIndex);
+
+    LoadApiKeys();
+    ApiKeys.Remove(RemovedName);
+
+    if (bRemovedActiveProvider ||
+        (!ActiveProviderName.IsEmpty() && !GetProvider(ActiveProviderName)))
+    {
+        ActiveProviderName = Providers.IsEmpty()
+            ? FString()
+            : Providers[0].Name;
+    }
+
+    SaveDefinitions();
+    SaveApiKeys();
+    return true;
+}
+
 bool UN2CCustomProviderSettings::SetActiveProvider(const FString& ProviderName)
 {
     const FN2CCustomProviderDefinition* Provider = GetProvider(ProviderName);

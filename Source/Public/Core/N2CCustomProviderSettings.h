@@ -50,6 +50,8 @@ public:
     const FN2CCustomProviderDefinition* GetProvider(const FString& ProviderName) const;
 
     bool AddProvider(const FString& ProviderName, EN2CCustomProviderApiType ApiType);
+    bool RenameProvider(const FString& ProviderName, const FString& NewProviderName);
+    bool RemoveProvider(const FString& ProviderName);
     bool SetActiveProvider(const FString& ProviderName);
     void SaveDefinitions();
 

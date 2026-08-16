@@ -7,6 +7,7 @@
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
 #include "IDetailPropertyRow.h"
+#include "Misc/MessageDialog.h"
 #include "PropertyHandle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -377,6 +378,37 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
             .AutoHeight()
             [
                 MakeLabeledRow(
+                    FText::FromString(TEXT("Provider Name")),
+                    SNew(SEditableTextBox)
+                    .Text(FText::FromString(ProviderName))
+                    .ToolTipText(FText::FromString(TEXT("Rename this custom provider. Endpoint, model, API key, and active selection are preserved.")))
+                    .OnTextCommitted_Lambda([this, ProviderName](const FText& Text, ETextCommit::Type)
+                    {
+                        if (!CustomProviderSettings.IsValid())
+                        {
+                            return;
+                        }
+
+                        const FString NewName = Text.ToString().TrimStartAndEnd();
+                        if (NewName.Equals(ProviderName, ESearchCase::CaseSensitive))
+                        {
+                            return;
+                        }
+
+                        if (!CustomProviderSettings->RenameProvider(ProviderName, NewName))
+                        {
+                            FMessageDialog::Open(
+                                EAppMsgType::Ok,
+                                FText::FromString(TEXT("Unable to rename custom provider. The name cannot be empty or duplicate another custom provider.")));
+                        }
+
+                        ForceRefresh();
+                    }))
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                MakeLabeledRow(
                     FText::FromString(TEXT("API Type")),
                     SNew(STextBlock)
                     .Text_Lambda([this, ProviderIndex]()
@@ -509,6 +541,44 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                                     ProviderName,
                                     *CustomProviderSettings.Get());
                             }
+                            return FReply::Handled();
+                        })
+                    ])
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 6.0f, 0.0f, 0.0f)
+            [
+                MakeLabeledRow(
+                    FText::FromString(TEXT("Management")),
+                    SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        SNew(SButton)
+                        .Text(FText::FromString(TEXT("Delete Provider")))
+                        .ToolTipText(FText::FromString(TEXT("Permanently remove this custom provider and its saved API key.")))
+                        .OnClicked_Lambda([this, ProviderName]()
+                        {
+                            if (!CustomProviderSettings.IsValid())
+                            {
+                                return FReply::Handled();
+                            }
+
+                            const FText ConfirmationMessage = FText::FromString(FString::Printf(
+                                TEXT("Delete custom provider '%s'?\n\nThis will permanently remove its endpoint, model settings, and saved API key."),
+                                *ProviderName));
+
+                            if (FMessageDialog::Open(EAppMsgType::YesNo, ConfirmationMessage) != EAppReturnType::Yes)
+                            {
+                                return FReply::Handled();
+                            }
+
+                            if (CustomProviderSettings->RemoveProvider(ProviderName))
+                            {
+                                ForceRefresh();
+                            }
+
                             return FReply::Handled();
                         })
                     ])
