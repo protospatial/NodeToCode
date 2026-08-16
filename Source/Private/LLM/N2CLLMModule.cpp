@@ -5,6 +5,7 @@
 #include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "LLM/N2CBatchTranslationConsolidator.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CLLMProviderRegistry.h"
@@ -345,8 +346,174 @@ void UN2CLLMModule::BeginBatchTranslation(const FString& BlueprintName)
 
 void UN2CLLMModule::EndBatchTranslation()
 {
-    CurrentBatchRootPath.Empty();
-    FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
+    if (CurrentBatchRootPath.IsEmpty())
+    {
+        FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
+        return;
+    }
+
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    const EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+
+    // Preserve the existing non-C++ batch behavior. C++ full-Blueprint translations receive one
+    // additional semantic reconciliation request after all graph requests have completed.
+    if (TargetLanguage != EN2CCodeLanguage::Cpp || SessionTranslationResponse.Graphs.IsEmpty())
+    {
+        CurrentBatchRootPath.Empty();
+        FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
+        return;
+    }
+
+    if (!ActiveService.GetInterface())
+    {
+        bSessionHadError = true;
+        CurrentBatchRootPath.Empty();
+        FN2CLogger::Get().LogError(
+            TEXT("Cannot run final Blueprint consolidation because no active LLM service is available"),
+            TEXT("BatchConsolidation"));
+        OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, false);
+        return;
+    }
+
+    const FN2CBlueprint& Blueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
+    FString ConsolidationPayload;
+    if (!FN2CBatchTranslationConsolidator::BuildRequestPayload(
+            SessionTranslationResponse,
+            Blueprint,
+            ConsolidationPayload))
+    {
+        bSessionHadError = true;
+        CurrentBatchRootPath.Empty();
+        FN2CLogger::Get().LogError(
+            TEXT("Failed to build final Blueprint consolidation request"),
+            TEXT("BatchConsolidation"));
+        OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, false);
+        return;
+    }
+
+    const FString ConsolidationPrompt = FN2CBatchTranslationConsolidator::GetSystemPrompt();
+    const FString BatchRootPath = CurrentBatchRootPath;
+    const int32 PriorInputTokens = SessionTranslationResponse.Usage.InputTokens;
+    const int32 PriorOutputTokens = SessionTranslationResponse.Usage.OutputTokens;
+    const int32 RequestId = NextRequestId++;
+    const EN2CLLMProvider RequestProvider = Config.Provider;
+    const FString RequestModel = Config.Model;
+
+    ++InFlightRequestCount;
+    CurrentStatus = EN2CSystemStatus::Processing;
+    OnTranslationRequestSent.Broadcast();
+
+    FN2CLogger::Get().Log(
+        FString::Printf(
+            TEXT("Starting final Blueprint consolidation request with %d parsed graph translation(s)"),
+            SessionTranslationResponse.Graphs.Num()),
+        EN2CLogSeverity::Info,
+        TEXT("BatchConsolidation"));
+
+    // Use the same active provider/model selected for this translation operation. Calling the
+    // service directly gives this pass its dedicated reconciliation system prompt while still
+    // flowing through UN2CBaseLLMService, so global/model/ad-hoc instructions and attached context
+    // files continue to apply consistently.
+    ActiveService->SendRequest(
+        ConsolidationPayload,
+        ConsolidationPrompt,
+        FOnLLMResponseReceived::CreateLambda(
+            [this,
+             BatchRootPath,
+             PriorInputTokens,
+             PriorOutputTokens,
+             RequestId,
+             RequestProvider,
+             RequestModel](const FString& Response)
+            {
+                bool bSuccess = false;
+                FN2CTranslationResponse FinalResponse;
+                FinalResponse.Usage.InputTokens = 0;
+                FinalResponse.Usage.OutputTokens = 0;
+                FString ValidationError;
+
+                TScriptInterface<IN2CLLMService> Service = GetActiveService();
+                UN2CResponseParserBase* Parser = Service.GetInterface()
+                    ? Service->GetResponseParser()
+                    : nullptr;
+
+                if (!Parser)
+                {
+                    ValidationError = TEXT("No response parser available for final Blueprint consolidation");
+                }
+                else if (!Parser->ParseLLMResponse(Response, FinalResponse))
+                {
+                    ValidationError = TEXT("Failed to parse final Blueprint consolidation response");
+                }
+                else if (!FN2CBatchTranslationConsolidator::ValidateFinalResponse(
+                             FinalResponse,
+                             ValidationError))
+                {
+                    // ValidationError is populated by the structural validator.
+                }
+                else
+                {
+                    // Preserve aggregate usage from the graph translation phase while adding any
+                    // usage supplied by the final provider parser.
+                    FinalResponse.Usage.InputTokens += PriorInputTokens;
+                    FinalResponse.Usage.OutputTokens += PriorOutputTokens;
+                    SessionTranslationResponse = MoveTemp(FinalResponse);
+
+                    const FN2CBlueprint& CurrentBlueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
+                    const bool bManifestSaved = SaveTranslationToDisk(
+                        SessionTranslationResponse,
+                        CurrentBlueprint);
+                    const bool bCodeSaved = FN2CBatchTranslationConsolidator::SaveCppFiles(
+                        SessionTranslationResponse,
+                        BatchRootPath);
+
+                    bSuccess = bManifestSaved && bCodeSaved;
+                    if (!bManifestSaved)
+                    {
+                        ValidationError = TEXT("Failed to save final consolidated translation manifest");
+                    }
+                    else if (!bCodeSaved)
+                    {
+                        ValidationError = TEXT("Failed to save final consolidated C++ pair");
+                    }
+                }
+
+                FN2CRawResponseRecord RawRecord;
+                RawRecord.RequestId = RequestId;
+                RawRecord.RequestLabel = TEXT("Final Consolidation");
+                RawRecord.Provider = RequestProvider;
+                RawRecord.Model = RequestModel;
+                RawRecord.Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+                RawRecord.FormattedResponse = FormatRawResponseForDisplay(Response);
+                RawRecord.bParsedSuccessfully = bSuccess;
+                SessionRawResponses.Add(MoveTemp(RawRecord));
+
+                if (bSuccess)
+                {
+                    FN2CLogger::Get().Log(
+                        TEXT("Final Blueprint consolidation completed successfully"),
+                        EN2CLogSeverity::Info,
+                        TEXT("BatchConsolidation"));
+                    OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, true);
+                }
+                else
+                {
+                    bSessionHadError = true;
+                    FN2CLogger::Get().LogError(
+                        FString::Printf(
+                            TEXT("Final Blueprint consolidation failed: %s"),
+                            *ValidationError),
+                        TEXT("BatchConsolidation"));
+                    SaveRawResponseToDisk(Response);
+                    OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, false);
+                }
+
+                // The batch root must remain active through parsing/saving so failures and the final
+                // manifest are written into the same translation session directory.
+                CurrentBatchRootPath.Empty();
+                FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
+                FinishRequest(bSuccess);
+            }));
 }
 
 bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint)
@@ -468,10 +635,15 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     // Determine if we're in batch mode (when CurrentBatchRootPath is set)
     const bool bIsBatchMode = !CurrentBatchRootPath.IsEmpty();
 
-    // Use batch-specific features for batch translations, original logic for single translations
     if (bIsBatchMode)
     {
-        SaveGraphFilesWithBatchFeatures(Response, RootPath, TargetLanguage);
+        // Full-Blueprint C++ output is emitted once in EndBatchTranslation after every graph
+        // response has been parsed. Do not create intermediate per-graph .h/.cpp directories.
+        // Preserve the existing behavior for non-C++ targets.
+        if (TargetLanguage != EN2CCodeLanguage::Cpp)
+        {
+            SaveGraphFilesWithBatchFeatures(Response, RootPath, TargetLanguage);
+        }
     }
     else
     {
