@@ -366,10 +366,7 @@ FReply OpenRawResponseViewer()
         ResponseList->SetSelection(State->SelectedItem, ESelectInfo::Direct);
     }
 
-    FSlateApplication::Get().AddModalWindow(
-        ViewerWindow.ToSharedRef(),
-        FSlateApplication::Get().GetActiveTopLevelWindow(),
-        false);
+    FSlateApplication::Get().AddWindow(ViewerWindow.ToSharedRef(), true);
 
     return FReply::Handled();
 }
