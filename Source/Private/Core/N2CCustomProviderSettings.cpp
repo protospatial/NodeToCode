@@ -103,8 +103,24 @@ bool UN2CCustomProviderSettings::AddBuiltInProviderProfile(
             static_cast<int64>(BuiltInProvider)).ToString();
     }
 
-    OutProfileName = MakeUniqueProviderName(
-        FString::Printf(TEXT("%s - %s"), *ProviderDisplayName, *TrimmedModel));
+    const FString BaseProfileName = FString::Printf(
+        TEXT("%s %s"),
+        *ProviderDisplayName,
+        *TrimmedModel);
+
+    OutProfileName = BaseProfileName;
+    if (GetProvider(OutProfileName))
+    {
+        int32 Suffix = 2;
+        do
+        {
+            OutProfileName = FString::Printf(
+                TEXT("%s (%d)"),
+                *BaseProfileName,
+                Suffix++);
+        }
+        while (GetProvider(OutProfileName));
+    }
 
     FN2CCustomProviderDefinition& Profile = Providers.AddDefaulted_GetRef();
     Profile.Name = OutProfileName;
@@ -252,6 +268,39 @@ bool UN2CCustomProviderSettings::SetActiveProvider(const FString& ProviderName)
 void UN2CCustomProviderSettings::SaveDefinitions()
 {
     TryUpdateDefaultConfigFile(FString(), true);
+}
+
+FString UN2CCustomProviderSettings::GetBuiltInModelOverride(EN2CLLMProvider Provider) const
+{
+    if (Provider == EN2CLLMProvider::Custom)
+    {
+        return FString();
+    }
+
+    const FString* Override = BuiltInModelOverrides.Find(Provider);
+    return Override ? Override->TrimStartAndEnd() : FString();
+}
+
+void UN2CCustomProviderSettings::SetBuiltInModelOverride(
+    EN2CLLMProvider Provider,
+    const FString& Model)
+{
+    if (Provider == EN2CLLMProvider::Custom)
+    {
+        return;
+    }
+
+    const FString TrimmedModel = Model.TrimStartAndEnd();
+    if (TrimmedModel.IsEmpty())
+    {
+        BuiltInModelOverrides.Remove(Provider);
+    }
+    else
+    {
+        BuiltInModelOverrides.Add(Provider, TrimmedModel);
+    }
+
+    SaveDefinitions();
 }
 
 FString UN2CCustomProviderSettings::GetApiKey(const FString& ProviderName) const

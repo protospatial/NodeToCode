@@ -23,6 +23,8 @@ private:
     void ForceRefresh();
     void RebuildActiveProviderOptions();
     void AddPendingProvider();
+    void DiscoverModelsForProvider(EN2CLLMProvider Provider);
+    void SaveBuiltInProviderProfile(EN2CLLMProvider Provider);
 
     void CustomizeProviderProperty(
         IDetailLayoutBuilder& DetailBuilder,

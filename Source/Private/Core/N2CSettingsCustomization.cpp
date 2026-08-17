@@ -3,20 +3,28 @@
 #include "Core/N2CSettingsCustomization.h"
 
 #include "Core/N2CConnectionTester.h"
+#include "Core/N2CModelDiscovery.h"
 #include "Core/N2CSettings.h"
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
+#include "Framework/Application/SlateApplication.h"
 #include "IDetailPropertyRow.h"
+#include "LLM/N2CLLMModels.h"
 #include "Misc/MessageDialog.h"
 #include "PropertyHandle.h"
+#include "Utils/N2CLogger.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/SListView.h"
+#include "Widgets/Views/STableRow.h"
 
 namespace
 {
@@ -44,6 +52,89 @@ TSharedRef<SWidget> MakeLabeledRow(
             ValueWidget
         ];
 }
+
+FString GetSettingsProviderDisplayName(EN2CLLMProvider Provider)
+{
+    if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
+    {
+        return ProviderEnum->GetDisplayNameTextByValue(static_cast<int64>(Provider)).ToString();
+    }
+    return UEnum::GetValueAsString(Provider);
+}
+
+FString GetSettingsBuiltInFallbackModel(
+    const UN2CSettings& Settings,
+    EN2CLLMProvider Provider)
+{
+    switch (Provider)
+    {
+        case EN2CLLMProvider::OpenAI:
+            return FN2CLLMModelUtils::GetOpenAIModelValue(Settings.OpenAI_Model);
+        case EN2CLLMProvider::Anthropic:
+            return FN2CLLMModelUtils::GetAnthropicModelValue(Settings.AnthropicModel);
+        case EN2CLLMProvider::Gemini:
+            return FN2CLLMModelUtils::GetGeminiModelValue(Settings.Gemini_Model);
+        case EN2CLLMProvider::DeepSeek:
+            return FN2CLLMModelUtils::GetDeepSeekModelValue(Settings.DeepSeekModel);
+        case EN2CLLMProvider::Ollama:
+            return Settings.OllamaModel;
+        case EN2CLLMProvider::LMStudio:
+            return Settings.LMStudioModel;
+        case EN2CLLMProvider::MiniMax:
+            return Settings.MiniMaxModel;
+        default:
+            return FString();
+    }
+}
+
+FString GetSettingsConfiguredBuiltInModel(
+    const UN2CSettings& Settings,
+    const UN2CCustomProviderSettings* CustomSettings,
+    EN2CLLMProvider Provider)
+{
+    if (CustomSettings)
+    {
+        const FString Override = CustomSettings->GetBuiltInModelOverride(Provider);
+        if (!Override.IsEmpty())
+        {
+            return Override;
+        }
+    }
+    return GetSettingsBuiltInFallbackModel(Settings, Provider);
+}
+
+FString GetSettingsProviderApiKey(
+    const UN2CSettings& Settings,
+    EN2CLLMProvider Provider)
+{
+    switch (Provider)
+    {
+        case EN2CLLMProvider::OpenAI:
+            return Settings.OpenAI_API_Key_UI;
+        case EN2CLLMProvider::Anthropic:
+            return Settings.Anthropic_API_Key_UI;
+        case EN2CLLMProvider::Gemini:
+            return Settings.Gemini_API_Key_UI;
+        case EN2CLLMProvider::DeepSeek:
+            return Settings.DeepSeek_API_Key_UI;
+        case EN2CLLMProvider::Ollama:
+            return Settings.OllamaConfig.ApiKey;
+        case EN2CLLMProvider::LMStudio:
+            return TEXT("lm-studio");
+        case EN2CLLMProvider::MiniMax:
+            return Settings.MiniMax_API_Key_UI;
+        default:
+            return FString();
+    }
+}
+
+struct FSettingsModelDiscoveryDialogState
+{
+    TArray<TSharedPtr<FString>> Models;
+    TSharedPtr<FString> SelectedModel;
+    TWeakPtr<SListView<TSharedPtr<FString>>> ModelList;
+    FString StatusText = TEXT("Discovering models...");
+};
 }
 
 TSharedRef<IDetailCustomization> FN2CSettingsCustomization::MakeInstance()
@@ -75,9 +166,6 @@ void FN2CSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBui
         FSimpleDelegate::CreateSP(this, &FN2CSettingsCustomization::ForceRefresh));
     CustomizeProviderProperty(DetailBuilder, ProviderHandle);
 
-    // Edit only existing default property rows. EditDefaultProperty explicitly keeps
-    // each row in its native reflected category, preserving Unreal's pipe-delimited
-    // category hierarchy.
     AddConnectionButtonToProperty(
         DetailBuilder,
         GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModel),
@@ -271,7 +359,7 @@ void FN2CSettingsCustomization::AddConnectionButtonToProperty(
     TSharedPtr<SWidget> DefaultNameWidget;
     TSharedPtr<SWidget> DefaultValueWidget;
     PropertyRow->GetDefaultWidgets(DefaultNameWidget, DefaultValueWidget, true);
-    if (!DefaultNameWidget.IsValid() || !DefaultValueWidget.IsValid())
+    if (!DefaultNameWidget.IsValid())
     {
         return;
     }
@@ -282,14 +370,37 @@ void FN2CSettingsCustomization::AddConnectionButtonToProperty(
         DefaultNameWidget.ToSharedRef()
     ]
     .ValueContent()
-    .MinDesiredWidth(500.0f)
+    .MinDesiredWidth(860.0f)
     [
         SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .FillWidth(1.0f)
         .VAlign(VAlign_Center)
         [
-            DefaultValueWidget.ToSharedRef()
+            SNew(SEditableTextBox)
+            .ToolTipText(FText::FromString(
+                TEXT("Effective API model identifier. Use Discover Models to fetch current provider models. Clearing a discovered override restores the compiled/configured fallback model.")))
+            .Text_Lambda([this, Provider]()
+            {
+                if (!Settings.IsValid())
+                {
+                    return FText::GetEmpty();
+                }
+                return FText::FromString(GetSettingsConfiguredBuiltInModel(
+                    *Settings.Get(),
+                    CustomProviderSettings.Get(),
+                    Provider));
+            })
+            .OnTextCommitted_Lambda([this, Provider](const FText& Text, ETextCommit::Type)
+            {
+                if (CustomProviderSettings.IsValid())
+                {
+                    CustomProviderSettings->SetBuiltInModelOverride(
+                        Provider,
+                        Text.ToString().TrimStartAndEnd());
+                    ForceRefresh();
+                }
+            })
         ]
         + SHorizontalBox::Slot()
         .AutoWidth()
@@ -308,7 +419,327 @@ void FN2CSettingsCustomization::AddConnectionButtonToProperty(
                 return FReply::Handled();
             })
         ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(6.0f, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SButton)
+            .Text(FText::FromString(TEXT("Discover Models")))
+            .ToolTipText(FText::FromString(TEXT("Fetch the provider's currently available models and choose the configured model.")))
+            .OnClicked_Lambda([this, Provider]()
+            {
+                DiscoverModelsForProvider(Provider);
+                return FReply::Handled();
+            })
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(6.0f, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SButton)
+            .Text(FText::FromString(TEXT("Save Profile")))
+            .ToolTipText(FText::FromString(TEXT("Save this built-in provider/model as a reusable profile that continues sharing the built-in provider configuration and API key.")))
+            .IsEnabled_Lambda([this, Provider]()
+            {
+                return Settings.IsValid() &&
+                       !GetSettingsConfiguredBuiltInModel(
+                           *Settings.Get(),
+                           CustomProviderSettings.Get(),
+                           Provider).IsEmpty();
+            })
+            .OnClicked_Lambda([this, Provider]()
+            {
+                SaveBuiltInProviderProfile(Provider);
+                return FReply::Handled();
+            })
+        ]
     ];
+}
+
+void FN2CSettingsCustomization::DiscoverModelsForProvider(EN2CLLMProvider Provider)
+{
+    if (!Settings.IsValid() || !CustomProviderSettings.IsValid() ||
+        !FN2CModelDiscovery::SupportsProvider(Provider))
+    {
+        return;
+    }
+
+    const FString CurrentModel = GetSettingsConfiguredBuiltInModel(
+        *Settings.Get(),
+        CustomProviderSettings.Get(),
+        Provider);
+
+    FN2CResolvedRequestProvider DiscoveryProvider;
+    DiscoveryProvider.Provider = Provider;
+    DiscoveryProvider.ApiKey = GetSettingsProviderApiKey(*Settings.Get(), Provider);
+    DiscoveryProvider.Model = CurrentModel;
+
+    const TSharedRef<FSettingsModelDiscoveryDialogState> DialogState =
+        MakeShared<FSettingsModelDiscoveryDialogState>();
+
+    if (!CurrentModel.IsEmpty())
+    {
+        DialogState->SelectedModel = MakeShared<FString>(CurrentModel);
+        DialogState->Models.Add(DialogState->SelectedModel);
+    }
+
+    bool bModelApplied = false;
+    const TWeakObjectPtr<UN2CCustomProviderSettings> CustomSettingsObject = CustomProviderSettings;
+
+    TSharedPtr<SWindow> DialogWindow;
+    TSharedPtr<SListView<TSharedPtr<FString>>> ModelList;
+
+    SAssignNew(DialogWindow, SWindow)
+        .Title(FText::FromString(FString::Printf(
+            TEXT("Discover %s Models"),
+            *GetSettingsProviderDisplayName(Provider))))
+        .ClientSize(FVector2D(640.0f, 520.0f))
+        .SupportsMinimize(false)
+        .SupportsMaximize(false);
+
+    DialogWindow->SetContent(
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 12.0f, 12.0f, 6.0f)
+        [
+            SNew(STextBlock)
+            .Text_Lambda([DialogState]()
+            {
+                return FText::FromString(DialogState->StatusText);
+            })
+            .AutoWrapText(true)
+        ]
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        .Padding(12.0f, 0.0f, 12.0f, 10.0f)
+        [
+            SNew(SBox)
+            .MinDesiredHeight(360.0f)
+            [
+                SAssignNew(ModelList, SListView<TSharedPtr<FString>>)
+                .ListItemsSource(&DialogState->Models)
+                .SelectionMode(ESelectionMode::Single)
+                .OnGenerateRow_Lambda([](
+                    TSharedPtr<FString> Item,
+                    const TSharedRef<STableViewBase>& OwnerTable)
+                {
+                    return SNew(STableRow<TSharedPtr<FString>>, OwnerTable)
+                        .Padding(FMargin(10.0f, 5.0f))
+                        [
+                            SNew(STextBlock)
+                            .Text(Item.IsValid()
+                                ? FText::FromString(*Item)
+                                : FText::GetEmpty())
+                        ];
+                })
+                .OnSelectionChanged_Lambda([DialogState](
+                    TSharedPtr<FString> Item,
+                    ESelectInfo::Type)
+                {
+                    DialogState->SelectedModel = Item;
+                })
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .HAlign(HAlign_Right)
+        .Padding(12.0f, 0.0f, 12.0f, 12.0f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SButton)
+                .Text(FText::FromString(TEXT("Cancel")))
+                .OnClicked_Lambda([DialogWindow]()
+                {
+                    DialogWindow->RequestDestroyWindow();
+                    return FReply::Handled();
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SButton)
+                .Text(FText::FromString(TEXT("Use Selected Model")))
+                .IsEnabled_Lambda([DialogState]()
+                {
+                    return DialogState->SelectedModel.IsValid() &&
+                           !DialogState->SelectedModel->IsEmpty();
+                })
+                .OnClicked_Lambda([
+                    DialogWindow,
+                    DialogState,
+                    CustomSettingsObject,
+                    Provider,
+                    &bModelApplied]()
+                {
+                    if (CustomSettingsObject.IsValid() && DialogState->SelectedModel.IsValid())
+                    {
+                        CustomSettingsObject->SetBuiltInModelOverride(
+                            Provider,
+                            *DialogState->SelectedModel);
+                        bModelApplied = true;
+                    }
+                    DialogWindow->RequestDestroyWindow();
+                    return FReply::Handled();
+                })
+            ]
+        ]
+    );
+
+    DialogState->ModelList = ModelList;
+    if (ModelList.IsValid() && DialogState->SelectedModel.IsValid())
+    {
+        ModelList->SetSelection(DialogState->SelectedModel, ESelectInfo::Direct);
+    }
+
+    const TWeakPtr<SWindow> WeakDialogWindow = DialogWindow;
+    const bool bStarted = FN2CModelDiscovery::FetchAvailableModels(
+        DiscoveryProvider,
+        [DialogState, WeakDialogWindow, CurrentModel, Provider](
+            bool bSuccess,
+            TArray<FString> Models,
+            FString Error)
+        {
+            if (!WeakDialogWindow.IsValid())
+            {
+                return;
+            }
+
+            if (!bSuccess)
+            {
+                DialogState->StatusText = Error.IsEmpty()
+                    ? TEXT("Model discovery failed. The currently configured model remains available.")
+                    : FString::Printf(
+                        TEXT("Model discovery failed: %s. The currently configured model remains available."),
+                        *Error);
+                return;
+            }
+
+            Models.Sort([](const FString& Left, const FString& Right)
+            {
+                return Left.Compare(Right, ESearchCase::IgnoreCase) < 0;
+            });
+
+            DialogState->Models.Reset();
+            for (const FString& Model : Models)
+            {
+                if (!DialogState->Models.ContainsByPredicate(
+                        [&Model](const TSharedPtr<FString>& Existing)
+                        {
+                            return Existing.IsValid() &&
+                                   Existing->Equals(Model, ESearchCase::IgnoreCase);
+                        }))
+                {
+                    DialogState->Models.Add(MakeShared<FString>(Model));
+                }
+            }
+
+            if (!CurrentModel.IsEmpty() &&
+                !DialogState->Models.ContainsByPredicate(
+                    [&CurrentModel](const TSharedPtr<FString>& Existing)
+                    {
+                        return Existing.IsValid() &&
+                               Existing->Equals(CurrentModel, ESearchCase::IgnoreCase);
+                    }))
+            {
+                DialogState->Models.Insert(MakeShared<FString>(CurrentModel), 0);
+            }
+
+            DialogState->SelectedModel.Reset();
+            if (!CurrentModel.IsEmpty())
+            {
+                if (TSharedPtr<FString>* MatchingModel = DialogState->Models.FindByPredicate(
+                        [&CurrentModel](const TSharedPtr<FString>& Existing)
+                        {
+                            return Existing.IsValid() &&
+                                   Existing->Equals(CurrentModel, ESearchCase::IgnoreCase);
+                        }))
+                {
+                    DialogState->SelectedModel = *MatchingModel;
+                }
+            }
+            if (!DialogState->SelectedModel.IsValid() && !DialogState->Models.IsEmpty())
+            {
+                DialogState->SelectedModel = DialogState->Models[0];
+            }
+
+            DialogState->StatusText = FString::Printf(
+                TEXT("Discovered %d model(s). Select one to make it the configured %s model."),
+                Models.Num(),
+                *GetSettingsProviderDisplayName(Provider));
+
+            if (const TSharedPtr<SListView<TSharedPtr<FString>>> List =
+                    DialogState->ModelList.Pin())
+            {
+                List->RequestListRefresh();
+                if (DialogState->SelectedModel.IsValid())
+                {
+                    List->SetSelection(DialogState->SelectedModel, ESelectInfo::Direct);
+                    List->RequestScrollIntoView(DialogState->SelectedModel);
+                }
+            }
+        });
+
+    if (!bStarted)
+    {
+        DialogState->StatusText =
+            TEXT("Model discovery could not be started. Check the provider API key/endpoint. The currently configured model remains available.");
+    }
+
+    FSlateApplication::Get().AddModalWindow(
+        DialogWindow.ToSharedRef(),
+        FSlateApplication::Get().GetActiveTopLevelWindow(),
+        false);
+
+    if (bModelApplied)
+    {
+        ForceRefresh();
+    }
+}
+
+void FN2CSettingsCustomization::SaveBuiltInProviderProfile(EN2CLLMProvider Provider)
+{
+    if (!Settings.IsValid() || !CustomProviderSettings.IsValid())
+    {
+        return;
+    }
+
+    const FString Model = GetSettingsConfiguredBuiltInModel(
+        *Settings.Get(),
+        CustomProviderSettings.Get(),
+        Provider);
+    if (Model.IsEmpty())
+    {
+        return;
+    }
+
+    FString ProfileName;
+    if (!CustomProviderSettings->AddBuiltInProviderProfile(
+            Provider,
+            Model,
+            ProfileName))
+    {
+        FN2CLogger::Get().LogError(
+            TEXT("Failed to save built-in provider/model profile"),
+            TEXT("ProviderProfiles"));
+        return;
+    }
+
+    FN2CLogger::Get().Log(
+        FString::Printf(
+            TEXT("Saved provider profile '%s' referencing %s model %s"),
+            *ProfileName,
+            *GetSettingsProviderDisplayName(Provider),
+            *Model),
+        EN2CLogSeverity::Info,
+        TEXT("ProviderProfiles"));
+    ForceRefresh();
 }
 
 void FN2CSettingsCustomization::CustomizeCustomProvidersProperty(IDetailLayoutBuilder& DetailBuilder)
@@ -743,9 +1174,6 @@ void FN2CSettingsCustomization::RebuildActiveProviderOptions()
 
     for (const FN2CCustomProviderDefinition& Provider : CustomProviderSettings->Providers)
     {
-        // Active Custom Provider controls the Custom service itself. Built-in reference profiles
-        // resolve to their native provider service in the request picker and are intentionally not
-        // valid active custom-endpoint services.
         if (Provider.ProfileSource == EN2CCustomProviderProfileSource::CustomEndpoint)
         {
             ActiveProviderOptions.Add(MakeShared<FString>(Provider.Name));

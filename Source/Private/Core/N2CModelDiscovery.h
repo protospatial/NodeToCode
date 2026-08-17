@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Core/N2CRequestSettings.h"
 
-/** Runtime model discovery for built-in providers used by the per-request picker. */
+/** Runtime model discovery for built-in providers managed from Node to Code Project Settings. */
 class FN2CModelDiscovery
 {
 public:

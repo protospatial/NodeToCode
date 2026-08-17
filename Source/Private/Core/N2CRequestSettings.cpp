@@ -3,7 +3,6 @@
 #include "Core/N2CRequestSettings.h"
 
 #include "Core/N2CCustomProviderSettings.h"
-#include "Core/N2CModelDiscovery.h"
 #include "Core/N2CSettings.h"
 #include "DesktopPlatformModule.h"
 #include "Framework/Application/SlateApplication.h"
@@ -37,11 +36,6 @@ struct FN2CProviderPickerState
 {
     TArray<TSharedPtr<FN2CProviderChoice>> Choices;
     TSharedPtr<FN2CProviderChoice> SelectedChoice;
-    TWeakPtr<SListView<TSharedPtr<FN2CProviderChoice>>> ProviderList;
-    int32 PendingDiscoveryCount = 0;
-    int32 DynamicallyResolvedProviderCount = 0;
-    int32 FallbackProviderCount = 0;
-    bool bDialogOpen = true;
 };
 
 FString GetProviderDisplayName(EN2CLLMProvider Provider)
@@ -52,6 +46,41 @@ FString GetProviderDisplayName(EN2CLLMProvider Provider)
     }
 
     return UEnum::GetValueAsString(Provider);
+}
+
+FString GetRequestConfiguredBuiltInModel(
+    const UN2CSettings& Settings,
+    const UN2CCustomProviderSettings* CustomSettings,
+    EN2CLLMProvider Provider)
+{
+    if (CustomSettings)
+    {
+        const FString Override = CustomSettings->GetBuiltInModelOverride(Provider);
+        if (!Override.IsEmpty())
+        {
+            return Override;
+        }
+    }
+
+    switch (Provider)
+    {
+        case EN2CLLMProvider::OpenAI:
+            return FN2CLLMModelUtils::GetOpenAIModelValue(Settings.OpenAI_Model);
+        case EN2CLLMProvider::Anthropic:
+            return FN2CLLMModelUtils::GetAnthropicModelValue(Settings.AnthropicModel);
+        case EN2CLLMProvider::Gemini:
+            return FN2CLLMModelUtils::GetGeminiModelValue(Settings.Gemini_Model);
+        case EN2CLLMProvider::DeepSeek:
+            return FN2CLLMModelUtils::GetDeepSeekModelValue(Settings.DeepSeekModel);
+        case EN2CLLMProvider::Ollama:
+            return Settings.OllamaModel;
+        case EN2CLLMProvider::LMStudio:
+            return Settings.LMStudioModel;
+        case EN2CLLMProvider::MiniMax:
+            return Settings.MiniMaxModel;
+        default:
+            return FString();
+    }
 }
 
 TSharedPtr<FN2CProviderChoice> MakeProviderChoice(
@@ -94,22 +123,6 @@ TSharedPtr<FN2CProviderChoice> MakeProviderChoice(
     return Choice;
 }
 
-bool HasProviderModelChoice(
-    const TArray<TSharedPtr<FN2CProviderChoice>>& Choices,
-    const FN2CResolvedRequestProvider& Provider,
-    const FString& Model)
-{
-    return Choices.ContainsByPredicate([&Provider, &Model](const TSharedPtr<FN2CProviderChoice>& Choice)
-    {
-        return Choice.IsValid() &&
-               Choice->ResolvedProvider.Provider == Provider.Provider &&
-               Choice->ResolvedProvider.CustomProviderName.Equals(
-                   Provider.CustomProviderName,
-                   ESearchCase::IgnoreCase) &&
-               Choice->ResolvedProvider.Model.Equals(Model, ESearchCase::IgnoreCase);
-    });
-}
-
 void SortProviderChoices(TArray<TSharedPtr<FN2CProviderChoice>>& Choices)
 {
     Choices.Sort([](
@@ -136,7 +149,6 @@ void SortProviderChoices(TArray<TSharedPtr<FN2CProviderChoice>>& Choices)
         const bool bRightProfile = !Right->ResolvedProvider.CustomProviderName.IsEmpty();
         if (bLeftProfile != bRightProfile)
         {
-            // Keep native provider/model entries before saved profiles for that provider.
             return !bLeftProfile;
         }
 
@@ -171,8 +183,6 @@ FString UN2CRequestSettings::GetEffectiveCustomInstructions(
     const FString ModelToMatch = Model.TrimStartAndEnd();
     const FN2CModelCustomInstructions* MatchingEntry = nullptr;
 
-    // Later entries intentionally win so a user can append a temporary override without deleting
-    // an older configuration entry.
     for (int32 Index = ModelCustomInstructions.Num() - 1; Index >= 0; --Index)
     {
         const FN2CModelCustomInstructions& Entry = ModelCustomInstructions[Index];
@@ -228,46 +238,47 @@ bool FN2CRequestRuntime::ResolveProviderConfig(
         return false;
     }
 
+    const UN2CCustomProviderSettings* CustomSettings = GetDefault<UN2CCustomProviderSettings>();
+
     switch (Provider)
     {
         case EN2CLLMProvider::OpenAI:
             OutProvider.ApiKey = Settings->OpenAI_API_Key_UI;
-            OutProvider.Model = FN2CLLMModelUtils::GetOpenAIModelValue(Settings->OpenAI_Model);
+            OutProvider.Model = GetRequestConfiguredBuiltInModel(*Settings, CustomSettings, Provider);
             return true;
 
         case EN2CLLMProvider::Anthropic:
             OutProvider.ApiKey = Settings->Anthropic_API_Key_UI;
-            OutProvider.Model = FN2CLLMModelUtils::GetAnthropicModelValue(Settings->AnthropicModel);
+            OutProvider.Model = GetRequestConfiguredBuiltInModel(*Settings, CustomSettings, Provider);
             return true;
 
         case EN2CLLMProvider::Gemini:
             OutProvider.ApiKey = Settings->Gemini_API_Key_UI;
-            OutProvider.Model = FN2CLLMModelUtils::GetGeminiModelValue(Settings->Gemini_Model);
+            OutProvider.Model = GetRequestConfiguredBuiltInModel(*Settings, CustomSettings, Provider);
             return true;
 
         case EN2CLLMProvider::DeepSeek:
             OutProvider.ApiKey = Settings->DeepSeek_API_Key_UI;
-            OutProvider.Model = FN2CLLMModelUtils::GetDeepSeekModelValue(Settings->DeepSeekModel);
+            OutProvider.Model = GetRequestConfiguredBuiltInModel(*Settings, CustomSettings, Provider);
             return true;
 
         case EN2CLLMProvider::Ollama:
             OutProvider.ApiKey = Settings->OllamaConfig.ApiKey;
-            OutProvider.Model = Settings->OllamaModel;
+            OutProvider.Model = GetRequestConfiguredBuiltInModel(*Settings, CustomSettings, Provider);
             return true;
 
         case EN2CLLMProvider::LMStudio:
             OutProvider.ApiKey = TEXT("lm-studio");
-            OutProvider.Model = Settings->LMStudioModel;
+            OutProvider.Model = GetRequestConfiguredBuiltInModel(*Settings, CustomSettings, Provider);
             return true;
 
         case EN2CLLMProvider::MiniMax:
             OutProvider.ApiKey = Settings->MiniMax_API_Key_UI;
-            OutProvider.Model = Settings->MiniMaxModel;
+            OutProvider.Model = GetRequestConfiguredBuiltInModel(*Settings, CustomSettings, Provider);
             return true;
 
         case EN2CLLMProvider::Custom:
         {
-            const UN2CCustomProviderSettings* CustomSettings = GetDefault<UN2CCustomProviderSettings>();
             if (!CustomSettings)
             {
                 FN2CLogger::Get().LogError(TEXT("Failed to load custom provider settings"));
@@ -304,8 +315,6 @@ bool FN2CRequestRuntime::ResolveProviderConfig(
                     return false;
                 }
 
-                // API key and provider-specific endpoint/config remain owned by the built-in
-                // provider. Only the model is independently overridden by the saved profile.
                 ReferencedProvider.CustomProviderName = Definition->Name;
                 if (!Definition->Model.TrimStartAndEnd().IsEmpty())
                 {
@@ -350,10 +359,9 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     });
 
     const TSharedRef<FN2CProviderPickerState> PickerState = MakeShared<FN2CProviderPickerState>();
-    TArray<FN2CResolvedRequestProvider> DiscoveryProviders;
     TSharedPtr<FN2CProviderChoice> DefaultChoice;
 
-    UN2CCustomProviderSettings* CustomSettings = GetMutableDefault<UN2CCustomProviderSettings>();
+    const UN2CCustomProviderSettings* CustomSettings = GetDefault<UN2CCustomProviderSettings>();
     const FString ActiveCustomProviderName = CustomSettings
         ? CustomSettings->ActiveProviderName
         : FString();
@@ -399,7 +407,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             ResolvedProvider,
             ResolvedProvider.Model);
         PickerState->Choices.Add(Choice);
-        DiscoveryProviders.Add(ResolvedProvider);
 
         if (Provider == DefaultProvider)
         {
@@ -443,11 +450,10 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             .Text(NSLOCTEXT(
                 "NodeToCode",
                 "SelectProviderDescription",
-                "Configure optional per-request context, then choose the provider/model for this translation. Your saved defaults will not be changed."))
+                "Configure optional per-request context, then choose a configured provider/model or saved profile. Manage live model discovery in Project Settings > Plugins > Node to Code > LLM Services."))
             .AutoWrapText(true)
         ]
 
-        // 1) Ad hoc instructions
         + SVerticalBox::Slot()
         .AutoHeight()
         .Padding(12.0f, 0.0f, 12.0f, 4.0f)
@@ -477,7 +483,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             ]
         ]
 
-        // 2) File selection
         + SVerticalBox::Slot()
         .AutoHeight()
         .Padding(12.0f, 0.0f, 12.0f, 4.0f)
@@ -637,7 +642,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             ]
         ]
 
-        // 3) Provider/model scroll list
         + SVerticalBox::Slot()
         .AutoHeight()
         .Padding(12.0f, 0.0f, 12.0f, 2.0f)
@@ -647,29 +651,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                 "NodeToCode",
                 "ProviderModelListLabel",
                 "Provider / Model"))
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(12.0f, 0.0f, 12.0f, 4.0f)
-        [
-            SNew(STextBlock)
-            .Text_Lambda([PickerState]()
-            {
-                if (PickerState->PendingDiscoveryCount > 0)
-                {
-                    return FText::FromString(FString::Printf(
-                        TEXT("Discovering models... %d provider(s) remaining. %d live list(s) loaded; %d using configured fallback."),
-                        PickerState->PendingDiscoveryCount,
-                        PickerState->DynamicallyResolvedProviderCount,
-                        PickerState->FallbackProviderCount));
-                }
-
-                return FText::FromString(FString::Printf(
-                    TEXT("Model discovery complete: %d live provider list(s); %d provider(s) using configured fallback."),
-                    PickerState->DynamicallyResolvedProviderCount,
-                    PickerState->FallbackProviderCount));
-            })
-            .AutoWrapText(true)
         ]
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
@@ -717,72 +698,6 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             .Padding(0.0f, 0.0f, 8.0f, 0.0f)
             [
                 SNew(SButton)
-                .Text(NSLOCTEXT("NodeToCode", "SaveProviderModelProfile", "Save Selected as Profile"))
-                .ToolTipText(NSLOCTEXT(
-                    "NodeToCode",
-                    "SaveProviderModelProfileToolTip",
-                    "Save the selected built-in provider/model as a reusable profile. The profile keeps referencing the built-in API key, endpoint, and provider settings; only its model selection is independent."))
-                .IsEnabled_Lambda([PickerState]()
-                {
-                    return PickerState->SelectedChoice.IsValid() &&
-                           PickerState->SelectedChoice->ResolvedProvider.Provider != EN2CLLMProvider::Custom &&
-                           PickerState->SelectedChoice->ResolvedProvider.CustomProviderName.IsEmpty() &&
-                           !PickerState->SelectedChoice->ResolvedProvider.Model.IsEmpty();
-                })
-                .OnClicked_Lambda([PickerState, CustomSettings]()
-                {
-                    if (!CustomSettings || !PickerState->SelectedChoice.IsValid())
-                    {
-                        return FReply::Handled();
-                    }
-
-                    const FN2CResolvedRequestProvider SelectedProvider =
-                        PickerState->SelectedChoice->ResolvedProvider;
-                    FString SavedProfileName;
-                    if (!CustomSettings->AddBuiltInProviderProfile(
-                            SelectedProvider.Provider,
-                            SelectedProvider.Model,
-                            SavedProfileName))
-                    {
-                        FN2CLogger::Get().LogError(
-                            TEXT("Failed to save selected built-in provider/model as a profile"),
-                            TEXT("RequestSelection"));
-                        return FReply::Handled();
-                    }
-
-                    FN2CResolvedRequestProvider SavedProvider = SelectedProvider;
-                    SavedProvider.CustomProviderName = SavedProfileName;
-                    TSharedPtr<FN2CProviderChoice> SavedChoice = MakeProviderChoice(
-                        SavedProvider,
-                        SavedProvider.Model);
-                    PickerState->Choices.Add(SavedChoice);
-                    PickerState->SelectedChoice = SavedChoice;
-                    SortProviderChoices(PickerState->Choices);
-
-                    if (const TSharedPtr<SListView<TSharedPtr<FN2CProviderChoice>>> List =
-                            PickerState->ProviderList.Pin())
-                    {
-                        List->RequestListRefresh();
-                        List->SetSelection(SavedChoice, ESelectInfo::Direct);
-                        List->RequestScrollIntoView(SavedChoice);
-                    }
-
-                    FN2CLogger::Get().Log(
-                        FString::Printf(
-                            TEXT("Saved built-in provider profile '%s' referencing %s with model %s"),
-                            *SavedProfileName,
-                            *GetProviderDisplayName(SavedProvider.Provider),
-                            *SavedProvider.Model),
-                        EN2CLogSeverity::Info,
-                        TEXT("RequestSelection"));
-                    return FReply::Handled();
-                })
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
-            [
-                SNew(SButton)
                 .Text(NSLOCTEXT("NodeToCode", "SelectProviderCancel", "Cancel"))
                 .OnClicked_Lambda([DialogWindow]()
                 {
@@ -809,89 +724,16 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
         ]
     );
 
-    PickerState->ProviderList = ProviderList;
-
     if (ProviderList.IsValid() && PickerState->SelectedChoice.IsValid())
     {
         ProviderList->SetSelection(PickerState->SelectedChoice, ESelectInfo::Direct);
         ProviderList->RequestScrollIntoView(PickerState->SelectedChoice);
     }
 
-    // Start discovery after the list widget exists. The modal opens immediately with each
-    // provider's configured model, then additional live models are added as requests complete.
-    for (const FN2CResolvedRequestProvider& DiscoveryProvider : DiscoveryProviders)
-    {
-        ++PickerState->PendingDiscoveryCount;
-
-        const bool bStarted = FN2CModelDiscovery::FetchAvailableModels(
-            DiscoveryProvider,
-            [PickerState, DiscoveryProvider](
-                bool bSuccess,
-                TArray<FString> Models,
-                FString Error)
-            {
-                PickerState->PendingDiscoveryCount = FMath::Max(
-                    0,
-                    PickerState->PendingDiscoveryCount - 1);
-
-                if (!PickerState->bDialogOpen)
-                {
-                    return;
-                }
-
-                if (!bSuccess)
-                {
-                    ++PickerState->FallbackProviderCount;
-                    if (!Error.IsEmpty())
-                    {
-                        FN2CLogger::Get().Log(
-                            FString::Printf(
-                                TEXT("Using configured model fallback for %s: %s"),
-                                *GetProviderDisplayName(DiscoveryProvider.Provider),
-                                *Error),
-                            EN2CLogSeverity::Debug,
-                            TEXT("ModelDiscovery"));
-                    }
-                    return;
-                }
-
-                ++PickerState->DynamicallyResolvedProviderCount;
-                for (const FString& Model : Models)
-                {
-                    if (!HasProviderModelChoice(
-                            PickerState->Choices,
-                            DiscoveryProvider,
-                            Model))
-                    {
-                        PickerState->Choices.Add(MakeProviderChoice(
-                            DiscoveryProvider,
-                            Model));
-                    }
-                }
-
-                SortProviderChoices(PickerState->Choices);
-                if (const TSharedPtr<SListView<TSharedPtr<FN2CProviderChoice>>> List =
-                        PickerState->ProviderList.Pin())
-                {
-                    List->RequestListRefresh();
-                }
-            });
-
-        if (!bStarted)
-        {
-            PickerState->PendingDiscoveryCount = FMath::Max(
-                0,
-                PickerState->PendingDiscoveryCount - 1);
-            ++PickerState->FallbackProviderCount;
-        }
-    }
-
     FSlateApplication::Get().AddModalWindow(
         DialogWindow.ToSharedRef(),
         FSlateApplication::Get().GetActiveTopLevelWindow(),
         false);
-
-    PickerState->bDialogOpen = false;
 
     if (!bConfirmed || !PickerState->SelectedChoice.IsValid())
     {

@@ -73,6 +73,13 @@ public:
     UPROPERTY(Config)
     FString ActiveProviderName;
 
+    /**
+     * Persisted model identifiers selected through live discovery for built-in providers. These
+     * override the plugin's compiled enum/string defaults without duplicating provider credentials.
+     */
+    UPROPERTY(Config)
+    TMap<EN2CLLMProvider, FString> BuiltInModelOverrides;
+
     const FN2CCustomProviderDefinition* GetActiveProvider() const;
     FN2CCustomProviderDefinition* GetProvider(const FString& ProviderName);
     const FN2CCustomProviderDefinition* GetProvider(const FString& ProviderName) const;
@@ -92,6 +99,12 @@ public:
     bool RemoveProvider(const FString& ProviderName);
     bool SetActiveProvider(const FString& ProviderName);
     void SaveDefinitions();
+
+    /** Return the persisted discovered-model override for a built-in provider, if any. */
+    FString GetBuiltInModelOverride(EN2CLLMProvider Provider) const;
+
+    /** Persist the built-in provider's effective model identifier selected in Project Settings. */
+    void SetBuiltInModelOverride(EN2CLLMProvider Provider, const FString& Model);
 
     FString GetApiKey(const FString& ProviderName) const;
     void SetApiKey(const FString& ProviderName, const FString& ApiKey);
