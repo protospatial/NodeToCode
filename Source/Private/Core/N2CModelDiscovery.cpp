@@ -31,6 +31,17 @@ FString TrimTrailingSlashes(FString Url)
     return Url;
 }
 
+FString GetOpenAICompatibleRoot(const FString& ConfiguredEndpoint)
+{
+    FString Root = TrimTrailingSlashes(ConfiguredEndpoint.TrimStartAndEnd());
+    const TCHAR* CompletionSuffix = TEXT("/chat/completions");
+    if (Root.EndsWith(CompletionSuffix, ESearchCase::IgnoreCase))
+    {
+        Root.LeftChopInline(FCString::Strlen(CompletionSuffix), EAllowShrinking::No);
+    }
+    return TrimTrailingSlashes(Root);
+}
+
 FString GetLMStudioRoot(const FString& ConfiguredEndpoint)
 {
     FString Root = TrimTrailingSlashes(ConfiguredEndpoint.TrimStartAndEnd());
@@ -67,6 +78,13 @@ FString BuildCacheKey(const FN2CResolvedRequestProvider& Provider, const FString
         static_cast<int32>(Provider.Provider),
         *Url,
         GetTypeHash(Provider.ApiKey));
+}
+
+bool IsLocalEndpoint(const FString& Url)
+{
+    return Url.Contains(TEXT("://127."), ESearchCase::IgnoreCase) ||
+           Url.Contains(TEXT("://localhost"), ESearchCase::IgnoreCase) ||
+           Url.Contains(TEXT("://[::1]"), ESearchCase::IgnoreCase);
 }
 
 void AddUniqueModel(TArray<FString>& Models, const FString& Candidate)
@@ -267,6 +285,7 @@ bool ParseModelsResponse(
         case EN2CLLMProvider::Anthropic:
         case EN2CLLMProvider::DeepSeek:
         case EN2CLLMProvider::MiniMax:
+        case EN2CLLMProvider::Custom:
             bRecognized = ParseOpenAIStyleModels(Root, OutModels, false);
             break;
         case EN2CLLMProvider::Gemini:
@@ -360,43 +379,18 @@ bool BuildRequest(
     OutHeaders.Add(TEXT("Accept"), TEXT("application/json"));
     return true;
 }
-}
 
-bool FN2CModelDiscovery::SupportsProvider(EN2CLLMProvider Provider)
-{
-    return Provider != EN2CLLMProvider::Custom;
-}
-
-bool FN2CModelDiscovery::FetchAvailableModels(
+bool StartModelListRequest(
     const FN2CResolvedRequestProvider& Provider,
-    FOnModelsResolved OnComplete)
+    const FString& Url,
+    const TMap<FString, FString>& Headers,
+    FN2CModelDiscovery::FOnModelsResolved OnComplete)
 {
-    if (!SupportsProvider(Provider.Provider))
-    {
-        return false;
-    }
-
-    FString Url;
-    FString BuildError;
-    TMap<FString, FString> Headers;
-    if (!N2CModelDiscoveryPrivate::BuildRequest(Provider, Url, Headers, BuildError))
-    {
-        FN2CLogger::Get().Log(
-            FString::Printf(
-                TEXT("Skipping dynamic model discovery for %s: %s"),
-                *UEnum::GetValueAsString(Provider.Provider),
-                *BuildError),
-            EN2CLogSeverity::Debug,
-            TEXT("ModelDiscovery"));
-        return false;
-    }
-
-    const FString CacheKey = N2CModelDiscoveryPrivate::BuildCacheKey(Provider, Url);
+    const FString CacheKey = BuildCacheKey(Provider, Url);
     const double NowSeconds = FPlatformTime::Seconds();
-    if (const N2CModelDiscoveryPrivate::FCachedModelList* Cached =
-            N2CModelDiscoveryPrivate::ModelCache.Find(CacheKey))
+    if (const FCachedModelList* Cached = ModelCache.Find(CacheKey))
     {
-        if (NowSeconds - Cached->CachedAtSeconds <= N2CModelDiscoveryPrivate::ModelCacheLifetimeSeconds)
+        if (NowSeconds - Cached->CachedAtSeconds <= ModelCacheLifetimeSeconds)
         {
             OnComplete(true, Cached->Models, FString());
             return true;
@@ -410,7 +404,8 @@ bool FN2CModelDiscovery::FetchAvailableModels(
 
     const bool bLocalProvider =
         Provider.Provider == EN2CLLMProvider::Ollama ||
-        Provider.Provider == EN2CLLMProvider::LMStudio;
+        Provider.Provider == EN2CLLMProvider::LMStudio ||
+        IsLocalEndpoint(Url);
     Request->SetTimeout(bLocalProvider ? 1.0f : 3.0f);
 
     for (const TPair<FString, FString>& Header : Headers)
@@ -443,7 +438,7 @@ bool FN2CModelDiscovery::FetchAvailableModels(
 
             TArray<FString> Models;
             FString ParseError;
-            if (!N2CModelDiscoveryPrivate::ParseModelsResponse(
+            if (!ParseModelsResponse(
                     ProviderType,
                     Response->GetContentAsString(),
                     Models,
@@ -453,8 +448,7 @@ bool FN2CModelDiscovery::FetchAvailableModels(
                 return;
             }
 
-            N2CModelDiscoveryPrivate::FCachedModelList& CacheEntry =
-                N2CModelDiscoveryPrivate::ModelCache.FindOrAdd(CacheKey);
+            FCachedModelList& CacheEntry = ModelCache.FindOrAdd(CacheKey);
             CacheEntry.CachedAtSeconds = FPlatformTime::Seconds();
             CacheEntry.Models = Models;
 
@@ -476,4 +470,74 @@ bool FN2CModelDiscovery::FetchAvailableModels(
     }
 
     return true;
+}
+}
+
+bool FN2CModelDiscovery::SupportsProvider(EN2CLLMProvider Provider)
+{
+    return Provider != EN2CLLMProvider::Custom;
+}
+
+bool FN2CModelDiscovery::FetchAvailableModels(
+    const FN2CResolvedRequestProvider& Provider,
+    FOnModelsResolved OnComplete)
+{
+    if (!SupportsProvider(Provider.Provider))
+    {
+        return false;
+    }
+
+    FString Url;
+    FString BuildError;
+    TMap<FString, FString> Headers;
+    if (!N2CModelDiscoveryPrivate::BuildRequest(Provider, Url, Headers, BuildError))
+    {
+        FN2CLogger::Get().Log(
+            FString::Printf(
+                TEXT("Skipping dynamic model discovery for %s: %s"),
+                *UEnum::GetValueAsString(Provider.Provider),
+                *BuildError),
+            EN2CLogSeverity::Debug,
+            TEXT("ModelDiscovery"));
+        return false;
+    }
+
+    return N2CModelDiscoveryPrivate::StartModelListRequest(
+        Provider,
+        Url,
+        Headers,
+        MoveTemp(OnComplete));
+}
+
+bool FN2CModelDiscovery::FetchOpenAICompatibleModels(
+    const FString& ApiBaseEndpoint,
+    const FString& ApiKey,
+    FOnModelsResolved OnComplete)
+{
+    const FString Root = N2CModelDiscoveryPrivate::GetOpenAICompatibleRoot(ApiBaseEndpoint);
+    if (Root.IsEmpty())
+    {
+        FN2CLogger::Get().Log(
+            TEXT("Skipping custom model discovery because the API base endpoint is empty"),
+            EN2CLogSeverity::Debug,
+            TEXT("ModelDiscovery"));
+        return false;
+    }
+
+    FN2CResolvedRequestProvider Provider;
+    Provider.Provider = EN2CLLMProvider::Custom;
+    Provider.ApiKey = ApiKey;
+
+    TMap<FString, FString> Headers;
+    Headers.Add(TEXT("Accept"), TEXT("application/json"));
+    if (!ApiKey.IsEmpty())
+    {
+        Headers.Add(TEXT("Authorization"), TEXT("Bearer ") + ApiKey);
+    }
+
+    return N2CModelDiscoveryPrivate::StartModelListRequest(
+        Provider,
+        Root + TEXT("/models"),
+        Headers,
+        MoveTemp(OnComplete));
 }

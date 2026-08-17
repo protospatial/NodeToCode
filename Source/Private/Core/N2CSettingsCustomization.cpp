@@ -703,6 +703,291 @@ void FN2CSettingsCustomization::DiscoverModelsForProvider(EN2CLLMProvider Provid
     }
 }
 
+void FN2CSettingsCustomization::DiscoverModelsForProfile(const FString& ProviderName)
+{
+    if (!Settings.IsValid() || !CustomProviderSettings.IsValid())
+    {
+        return;
+    }
+
+    const FN2CCustomProviderDefinition* ProviderDefinition =
+        CustomProviderSettings->GetProvider(ProviderName);
+    if (!ProviderDefinition)
+    {
+        return;
+    }
+
+    const FN2CCustomProviderDefinition Definition = *ProviderDefinition;
+    const FString CurrentModel = Definition.Model.TrimStartAndEnd();
+    const bool bBuiltInReference =
+        Definition.ProfileSource == EN2CCustomProviderProfileSource::BuiltInProvider;
+
+    FN2CResolvedRequestProvider DiscoveryProvider;
+    FString DiscoveryLabel;
+    FString CustomEndpoint;
+    FString CustomApiKey;
+
+    if (bBuiltInReference)
+    {
+        if (!FN2CModelDiscovery::SupportsProvider(Definition.BuiltInProvider))
+        {
+            return;
+        }
+
+        DiscoveryProvider.Provider = Definition.BuiltInProvider;
+        DiscoveryProvider.ApiKey = GetSettingsProviderApiKey(
+            *Settings.Get(),
+            Definition.BuiltInProvider);
+        DiscoveryProvider.Model = CurrentModel;
+        DiscoveryLabel = GetSettingsProviderDisplayName(Definition.BuiltInProvider);
+    }
+    else
+    {
+        CustomEndpoint = Definition.Endpoint.TrimStartAndEnd();
+        CustomApiKey = CustomProviderSettings->GetApiKey(ProviderName);
+        DiscoveryLabel = TEXT("OpenAI-compatible");
+    }
+
+    const TSharedRef<FSettingsModelDiscoveryDialogState> DialogState =
+        MakeShared<FSettingsModelDiscoveryDialogState>();
+
+    if (!CurrentModel.IsEmpty())
+    {
+        DialogState->SelectedModel = MakeShared<FString>(CurrentModel);
+        DialogState->Models.Add(DialogState->SelectedModel);
+    }
+
+    bool bModelApplied = false;
+    const TWeakObjectPtr<UN2CCustomProviderSettings> CustomSettingsObject = CustomProviderSettings;
+
+    TSharedPtr<SWindow> DialogWindow;
+    TSharedPtr<SListView<TSharedPtr<FString>>> ModelList;
+
+    SAssignNew(DialogWindow, SWindow)
+        .Title(FText::FromString(FString::Printf(
+            TEXT("Discover Models - %s"),
+            *ProviderName)))
+        .ClientSize(FVector2D(640.0f, 520.0f))
+        .SupportsMinimize(false)
+        .SupportsMaximize(false);
+
+    DialogWindow->SetContent(
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(12.0f, 12.0f, 12.0f, 6.0f)
+        [
+            SNew(STextBlock)
+            .Text_Lambda([DialogState]()
+            {
+                return FText::FromString(DialogState->StatusText);
+            })
+            .AutoWrapText(true)
+        ]
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        .Padding(12.0f, 0.0f, 12.0f, 10.0f)
+        [
+            SNew(SBox)
+            .MinDesiredHeight(360.0f)
+            [
+                SAssignNew(ModelList, SListView<TSharedPtr<FString>>)
+                .ListItemsSource(&DialogState->Models)
+                .SelectionMode(ESelectionMode::Single)
+                .OnGenerateRow_Lambda([](
+                    TSharedPtr<FString> Item,
+                    const TSharedRef<STableViewBase>& OwnerTable)
+                {
+                    return SNew(STableRow<TSharedPtr<FString>>, OwnerTable)
+                        .Padding(FMargin(10.0f, 5.0f))
+                        [
+                            SNew(STextBlock)
+                            .Text(Item.IsValid()
+                                ? FText::FromString(*Item)
+                                : FText::GetEmpty())
+                        ];
+                })
+                .OnSelectionChanged_Lambda([DialogState](
+                    TSharedPtr<FString> Item,
+                    ESelectInfo::Type)
+                {
+                    DialogState->SelectedModel = Item;
+                })
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .HAlign(HAlign_Right)
+        .Padding(12.0f, 0.0f, 12.0f, 12.0f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SButton)
+                .Text(FText::FromString(TEXT("Cancel")))
+                .OnClicked_Lambda([DialogWindow]()
+                {
+                    DialogWindow->RequestDestroyWindow();
+                    return FReply::Handled();
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SButton)
+                .Text(FText::FromString(TEXT("Use Selected Model")))
+                .IsEnabled_Lambda([DialogState]()
+                {
+                    return DialogState->SelectedModel.IsValid() &&
+                           !DialogState->SelectedModel->IsEmpty();
+                })
+                .OnClicked_Lambda([
+                    DialogWindow,
+                    DialogState,
+                    CustomSettingsObject,
+                    ProviderName,
+                    &bModelApplied]()
+                {
+                    if (CustomSettingsObject.IsValid() && DialogState->SelectedModel.IsValid())
+                    {
+                        if (FN2CCustomProviderDefinition* Profile =
+                                CustomSettingsObject->GetProvider(ProviderName))
+                        {
+                            Profile->Model = *DialogState->SelectedModel;
+                            CustomSettingsObject->SaveDefinitions();
+                            bModelApplied = true;
+                        }
+                    }
+                    DialogWindow->RequestDestroyWindow();
+                    return FReply::Handled();
+                })
+            ]
+        ]
+    );
+
+    DialogState->ModelList = ModelList;
+    if (ModelList.IsValid() && DialogState->SelectedModel.IsValid())
+    {
+        ModelList->SetSelection(DialogState->SelectedModel, ESelectInfo::Direct);
+    }
+
+    const TWeakPtr<SWindow> WeakDialogWindow = DialogWindow;
+    const FN2CModelDiscovery::FOnModelsResolved OnModelsResolved =
+        [DialogState, WeakDialogWindow, CurrentModel, ProviderName, DiscoveryLabel](
+            bool bSuccess,
+            TArray<FString> Models,
+            FString Error)
+        {
+            if (!WeakDialogWindow.IsValid())
+            {
+                return;
+            }
+
+            if (!bSuccess)
+            {
+                DialogState->StatusText = Error.IsEmpty()
+                    ? TEXT("Model discovery failed. The profile's current model remains available.")
+                    : FString::Printf(
+                        TEXT("Model discovery failed: %s. The profile's current model remains available."),
+                        *Error);
+                return;
+            }
+
+            Models.Sort([](const FString& Left, const FString& Right)
+            {
+                return Left.Compare(Right, ESearchCase::IgnoreCase) < 0;
+            });
+
+            DialogState->Models.Reset();
+            for (const FString& Model : Models)
+            {
+                if (!DialogState->Models.ContainsByPredicate(
+                        [&Model](const TSharedPtr<FString>& Existing)
+                        {
+                            return Existing.IsValid() &&
+                                   Existing->Equals(Model, ESearchCase::IgnoreCase);
+                        }))
+                {
+                    DialogState->Models.Add(MakeShared<FString>(Model));
+                }
+            }
+
+            if (!CurrentModel.IsEmpty() &&
+                !DialogState->Models.ContainsByPredicate(
+                    [&CurrentModel](const TSharedPtr<FString>& Existing)
+                    {
+                        return Existing.IsValid() &&
+                               Existing->Equals(CurrentModel, ESearchCase::IgnoreCase);
+                    }))
+            {
+                DialogState->Models.Insert(MakeShared<FString>(CurrentModel), 0);
+            }
+
+            DialogState->SelectedModel.Reset();
+            if (!CurrentModel.IsEmpty())
+            {
+                if (TSharedPtr<FString>* MatchingModel = DialogState->Models.FindByPredicate(
+                        [&CurrentModel](const TSharedPtr<FString>& Existing)
+                        {
+                            return Existing.IsValid() &&
+                                   Existing->Equals(CurrentModel, ESearchCase::IgnoreCase);
+                        }))
+                {
+                    DialogState->SelectedModel = *MatchingModel;
+                }
+            }
+            if (!DialogState->SelectedModel.IsValid() && !DialogState->Models.IsEmpty())
+            {
+                DialogState->SelectedModel = DialogState->Models[0];
+            }
+
+            DialogState->StatusText = FString::Printf(
+                TEXT("Discovered %d %s model(s). Select one to update profile '%s'."),
+                Models.Num(),
+                *DiscoveryLabel,
+                *ProviderName);
+
+            if (const TSharedPtr<SListView<TSharedPtr<FString>>> List =
+                    DialogState->ModelList.Pin())
+            {
+                List->RequestListRefresh();
+                if (DialogState->SelectedModel.IsValid())
+                {
+                    List->SetSelection(DialogState->SelectedModel, ESelectInfo::Direct);
+                    List->RequestScrollIntoView(DialogState->SelectedModel);
+                }
+            }
+        };
+
+    const bool bStarted = bBuiltInReference
+        ? FN2CModelDiscovery::FetchAvailableModels(
+            DiscoveryProvider,
+            OnModelsResolved)
+        : FN2CModelDiscovery::FetchOpenAICompatibleModels(
+            CustomEndpoint,
+            CustomApiKey,
+            OnModelsResolved);
+
+    if (!bStarted)
+    {
+        DialogState->StatusText = bBuiltInReference
+            ? TEXT("Model discovery could not be started. Check the referenced provider API key/endpoint. The profile's current model remains available.")
+            : TEXT("Model discovery could not be started. Check this profile's endpoint. The profile's current model remains available.");
+    }
+
+    FSlateApplication::Get().AddModalWindow(
+        DialogWindow.ToSharedRef(),
+        FSlateApplication::Get().GetActiveTopLevelWindow(),
+        false);
+
+    if (bModelApplied)
+    {
+        ForceRefresh();
+    }
+}
+
 void FN2CSettingsCustomization::SaveBuiltInProviderProfile(EN2CLLMProvider Provider)
 {
     if (!Settings.IsValid() || !CustomProviderSettings.IsValid())
@@ -966,29 +1251,52 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
             [
                 MakeLabeledRow(
                     FText::FromString(TEXT("Model Name")),
-                    SNew(SEditableTextBox)
-                    .HintText(FText::FromString(TEXT("Provider model identifier")))
-                    .Text_Lambda([this, ProviderIndex]()
-                    {
-                        return CustomProviderSettings.IsValid() &&
-                               CustomProviderSettings->Providers.IsValidIndex(ProviderIndex)
-                            ? FText::FromString(CustomProviderSettings->Providers[ProviderIndex].Model)
-                            : FText::GetEmpty();
-                    })
-                    .OnTextCommitted_Lambda([this, ProviderIndex](const FText& Text, ETextCommit::Type)
-                    {
-                        if (CustomProviderSettings.IsValid() &&
-                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex))
+                    SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SEditableTextBox)
+                        .HintText(FText::FromString(TEXT("Provider model identifier")))
+                        .Text_Lambda([this, ProviderIndex]()
                         {
-                            CustomProviderSettings->Providers[ProviderIndex].Model =
-                                Text.ToString().TrimStartAndEnd();
-                            CustomProviderSettings->SaveDefinitions();
-                        }
-                    }),
+                            return CustomProviderSettings.IsValid() &&
+                                   CustomProviderSettings->Providers.IsValidIndex(ProviderIndex)
+                                ? FText::FromString(CustomProviderSettings->Providers[ProviderIndex].Model)
+                                : FText::GetEmpty();
+                        })
+                        .OnTextCommitted_Lambda([this, ProviderIndex](const FText& Text, ETextCommit::Type)
+                        {
+                            if (CustomProviderSettings.IsValid() &&
+                                CustomProviderSettings->Providers.IsValidIndex(ProviderIndex))
+                            {
+                                CustomProviderSettings->Providers[ProviderIndex].Model =
+                                    Text.ToString().TrimStartAndEnd();
+                                CustomProviderSettings->SaveDefinitions();
+                            }
+                        })
+                    ]
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                    [
+                        SNew(SButton)
+                        .Text(FText::FromString(TEXT("Discover Models")))
+                        .ToolTipText(FText::FromString(
+                            bBuiltInReference
+                                ? TEXT("Fetch models from the referenced built-in provider and update only this profile's model selection.")
+                                : TEXT("Fetch models from this OpenAI-compatible profile's /models endpoint and update the profile model selection.")))
+                        .OnClicked_Lambda([this, ProviderName]()
+                        {
+                            DiscoverModelsForProfile(ProviderName);
+                            return FReply::Handled();
+                        })
+                    ],
                     FText::FromString(
                         bBuiltInReference
                             ? TEXT("Independent model override for this profile. All other provider configuration stays linked to the built-in provider.")
-                            : TEXT("Provider model identifier.")))
+                            : TEXT("Provider model identifier. Use Discover Models to query this profile's OpenAI-compatible /models endpoint.")))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()

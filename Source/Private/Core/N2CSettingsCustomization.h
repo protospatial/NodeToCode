@@ -24,6 +24,7 @@ private:
     void RebuildActiveProviderOptions();
     void AddPendingProvider();
     void DiscoverModelsForProvider(EN2CLLMProvider Provider);
+    void DiscoverModelsForProfile(const FString& ProviderName);
     void SaveBuiltInProviderProfile(EN2CLLMProvider Provider);
 
     void CustomizeProviderProperty(
