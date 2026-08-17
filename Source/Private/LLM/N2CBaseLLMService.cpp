@@ -90,26 +90,10 @@ void UN2CBaseLLMService::ResendFormattedRequest(
         OnComplete);
 }
 
-void UN2CBaseLLMService::SendRequest(
+FString UN2CBaseLLMService::BuildFormattedRequestPayload(
     const FString& JsonPayload,
-    const FString& SystemMessage,
-    const FOnLLMResponseReceived& OnComplete)
+    const FString& SystemMessage)
 {
-    if (!bIsInitialized)
-    {
-        FN2CLogger::Get().LogError(TEXT("Service not initialized"), TEXT("BaseLLMService"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Service not initialized\"}"));
-        return;
-    }
-    
-    // Log provider and model info
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Sending request to %s using model: %s"), 
-            *UEnum::GetValueAsString(GetProviderType()), *Config.Model),
-        EN2CLogSeverity::Info,
-        TEXT("BaseLLMService")
-    );
-
     const UN2CSettings* RequestSettings = GetDefault<UN2CSettings>();
 
     // Compose request-wide custom instructions only after the concrete provider service has been
@@ -229,10 +213,33 @@ void UN2CBaseLLMService::SendRequest(
             TEXT("BaseLLMService"));
     }
 
-    // Format request payload. Providers without a separate system-message channel already merge
-    // this system message into the user content in their provider-specific payload builder.
-    const FString FormattedPayload = FormatRequestPayload(EffectiveUserMessage, EffectiveSystemMessage);
-    LastFormattedRequestPayload = FormattedPayload;
+    // Providers without a separate system-message channel already merge this system message into
+    // the user content in their provider-specific payload builder.
+    LastFormattedRequestPayload = FormatRequestPayload(EffectiveUserMessage, EffectiveSystemMessage);
+    return LastFormattedRequestPayload;
+}
+
+void UN2CBaseLLMService::SendRequest(
+    const FString& JsonPayload,
+    const FString& SystemMessage,
+    const FOnLLMResponseReceived& OnComplete)
+{
+    if (!bIsInitialized)
+    {
+        FN2CLogger::Get().LogError(TEXT("Service not initialized"), TEXT("BaseLLMService"));
+        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Service not initialized\"}"));
+        return;
+    }
+    
+    // Log provider and model info
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("Sending request to %s using model: %s"), 
+            *UEnum::GetValueAsString(GetProviderType()), *Config.Model),
+        EN2CLogSeverity::Info,
+        TEXT("BaseLLMService")
+    );
+
+    const FString FormattedPayload = BuildFormattedRequestPayload(JsonPayload, SystemMessage);
 
     // Get endpoint and auth token
     FString Endpoint, AuthToken;
