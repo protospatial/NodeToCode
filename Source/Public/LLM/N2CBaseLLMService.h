@@ -32,6 +32,11 @@ public:
     /** Exact provider-specific POST body most recently produced by SendRequest. */
     const FString& GetLastFormattedRequestPayload() const { return LastFormattedRequestPayload; }
 
+    /** Build the same final provider request body used by SendRequest without dispatching it. */
+    FString BuildFormattedRequestPayload(
+        const FString& JsonPayload,
+        const FString& SystemMessage);
+
     /** Replay an already formatted provider request body without rebuilding prompts/context. */
     void ResendFormattedRequest(
         const FString& FormattedPayload,
