@@ -47,13 +47,38 @@ protected:
         const FString& Payload
     ) const;
 
-    /** Handle request completion */
+    /** Handle request completion after transport-level retry handling has finished. */
     virtual void OnRequestComplete(
         FHttpRequestPtr Request,
         FHttpResponsePtr Response,
         bool bWasSuccessful,
         FOnLLMResponseReceived OnComplete
     );
+
+    /** Send one HTTP attempt while retaining the original request data for possible 429 replay. */
+    void SendRequestAttempt(
+        const FString& Endpoint,
+        const FString& AuthToken,
+        const FString& Payload,
+        const FOnLLMResponseReceived& OnComplete,
+        int32 RateLimitRetryCount
+    );
+
+    /** Schedule another attempt when a valid HTTP 429 response is received. */
+    bool TryScheduleRateLimitRetry(
+        const FString& Endpoint,
+        const FString& AuthToken,
+        const FString& Payload,
+        const FOnLLMResponseReceived& OnComplete,
+        FHttpResponsePtr Response,
+        int32 RateLimitRetryCount
+    );
+
+    /** Resolve provider-supplied retry timing or calculate bounded exponential fallback backoff. */
+    float CalculateRateLimitRetryDelay(
+        FHttpResponsePtr Response,
+        int32 RateLimitRetryCount
+    ) const;
 
     /** Current configuration */
     FN2CLLMConfig Config;
