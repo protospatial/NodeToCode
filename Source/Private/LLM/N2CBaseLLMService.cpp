@@ -66,6 +66,30 @@ void UN2CBaseLLMService::InitializeComponents()
     PromptManager->Initialize(Config);
 }
 
+void UN2CBaseLLMService::ResendFormattedRequest(
+    const FString& FormattedPayload,
+    const FOnLLMResponseReceived& OnComplete)
+{
+    if (!bIsInitialized || !HttpHandler)
+    {
+        FN2CLogger::Get().LogError(TEXT("Cannot replay request because the service is not initialized"), TEXT("BaseLLMService"));
+        OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Service not initialized\"}"));
+        return;
+    }
+
+    LastFormattedRequestPayload = FormattedPayload;
+
+    FString Endpoint, AuthToken;
+    bool bSupportsSystemPrompts = false;
+    GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
+
+    HttpHandler->PostLLMRequest(
+        Endpoint,
+        AuthToken,
+        FormattedPayload,
+        OnComplete);
+}
+
 void UN2CBaseLLMService::SendRequest(
     const FString& JsonPayload,
     const FString& SystemMessage,
@@ -207,7 +231,8 @@ void UN2CBaseLLMService::SendRequest(
 
     // Format request payload. Providers without a separate system-message channel already merge
     // this system message into the user content in their provider-specific payload builder.
-    FString FormattedPayload = FormatRequestPayload(EffectiveUserMessage, EffectiveSystemMessage);
+    const FString FormattedPayload = FormatRequestPayload(EffectiveUserMessage, EffectiveSystemMessage);
+    LastFormattedRequestPayload = FormattedPayload;
 
     // Get endpoint and auth token
     FString Endpoint, AuthToken;

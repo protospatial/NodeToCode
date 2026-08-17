@@ -13,6 +13,7 @@
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
@@ -27,6 +28,16 @@ struct FN2CRawResponseViewItem
     FString DisplayText;
 };
 
+struct FN2CRawResponseViewerState
+{
+    TArray<TSharedPtr<FN2CRawResponseViewItem>> Items;
+    TSharedPtr<FN2CRawResponseViewItem> SelectedItem;
+    TWeakPtr<SListView<TSharedPtr<FN2CRawResponseViewItem>>> ResponseList;
+    int32 ActiveTabIndex = 1; // Response by default.
+    bool bRetryInFlight = false;
+    FString StatusText;
+};
+
 FString GetRawResponseProviderDisplayName(EN2CLLMProvider Provider)
 {
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
@@ -34,6 +45,57 @@ FString GetRawResponseProviderDisplayName(EN2CLLMProvider Provider)
         return ProviderEnum->GetDisplayNameTextByValue(static_cast<int64>(Provider)).ToString();
     }
     return UEnum::GetValueAsString(Provider);
+}
+
+void RefreshN2CRawResponseViewer(
+    const TSharedRef<FN2CRawResponseViewerState>& State,
+    int32 PreferredRequestId = INDEX_NONE)
+{
+    UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
+    if (!LLMModule)
+    {
+        return;
+    }
+
+    const int32 PreviouslySelectedRequestId =
+        State->SelectedItem.IsValid() ? State->SelectedItem->Record.RequestId : INDEX_NONE;
+    const int32 RequestIdToSelect =
+        PreferredRequestId != INDEX_NONE ? PreferredRequestId : PreviouslySelectedRequestId;
+
+    State->Items.Reset();
+    State->SelectedItem.Reset();
+
+    for (const FN2CRawResponseRecord& Record : LLMModule->GetRawResponseHistory())
+    {
+        TSharedPtr<FN2CRawResponseViewItem> Item = MakeShared<FN2CRawResponseViewItem>();
+        Item->Record = Record;
+        Item->DisplayText = FString::Printf(
+            TEXT("#%d  %s  |  %s"),
+            Record.RequestId,
+            *Record.RequestLabel,
+            *GetRawResponseProviderDisplayName(Record.Provider));
+        State->Items.Add(Item);
+
+        if (Record.RequestId == RequestIdToSelect)
+        {
+            State->SelectedItem = Item;
+        }
+    }
+
+    if (!State->SelectedItem.IsValid() && !State->Items.IsEmpty())
+    {
+        State->SelectedItem = State->Items[0];
+    }
+
+    if (const TSharedPtr<SListView<TSharedPtr<FN2CRawResponseViewItem>>> List = State->ResponseList.Pin())
+    {
+        List->RequestListRefresh();
+        if (State->SelectedItem.IsValid())
+        {
+            List->SetSelection(State->SelectedItem, ESelectInfo::Direct);
+            List->RequestScrollIntoView(State->SelectedItem);
+        }
+    }
 }
 
 FReply OpenRawResponseViewer()
@@ -44,33 +106,21 @@ FReply OpenRawResponseViewer()
         return FReply::Handled();
     }
 
-    const TArray<FN2CRawResponseRecord>& RawResponses = LLMModule->GetRawResponseHistory();
-    if (RawResponses.IsEmpty())
+    if (LLMModule->GetRawResponseHistory().IsEmpty())
     {
         return FReply::Handled();
     }
 
-    TArray<TSharedPtr<FN2CRawResponseViewItem>> Items;
-    Items.Reserve(RawResponses.Num());
-    for (const FN2CRawResponseRecord& Record : RawResponses)
-    {
-        TSharedPtr<FN2CRawResponseViewItem> Item = MakeShared<FN2CRawResponseViewItem>();
-        Item->Record = Record;
-        Item->DisplayText = FString::Printf(
-            TEXT("#%d  %s  |  %s"),
-            Record.RequestId,
-            *Record.RequestLabel,
-            *GetRawResponseProviderDisplayName(Record.Provider));
-        Items.Add(Item);
-    }
+    const TSharedRef<FN2CRawResponseViewerState> State =
+        MakeShared<FN2CRawResponseViewerState>();
+    RefreshN2CRawResponseViewer(State);
 
-    TSharedPtr<FN2CRawResponseViewItem> SelectedItem = Items[0];
     TSharedPtr<SListView<TSharedPtr<FN2CRawResponseViewItem>>> ResponseList;
     TSharedPtr<SWindow> ViewerWindow;
 
     SAssignNew(ViewerWindow, SWindow)
-        .Title(NSLOCTEXT("NodeToCode", "RawResponsesWindowTitle", "Raw LLM Responses"))
-        .ClientSize(FVector2D(1050.0f, 650.0f))
+        .Title(NSLOCTEXT("NodeToCode", "RawResponsesWindowTitle", "Raw LLM Requests / Responses"))
+        .ClientSize(FVector2D(1120.0f, 700.0f))
         .SupportsMinimize(false)
         .SupportsMaximize(true);
 
@@ -85,7 +135,7 @@ FReply OpenRawResponseViewer()
             .Value(0.28f)
             [
                 SAssignNew(ResponseList, SListView<TSharedPtr<FN2CRawResponseViewItem>>)
-                .ListItemsSource(&Items)
+                .ListItemsSource(&State->Items)
                 .SelectionMode(ESelectionMode::Single)
                 .OnGenerateRow_Lambda([](
                     TSharedPtr<FN2CRawResponseViewItem> Item,
@@ -114,36 +164,118 @@ FReply OpenRawResponseViewer()
                                     {
                                         return FText::GetEmpty();
                                     }
-                                    return FText::FromString(FString::Printf(
-                                        TEXT("%s%s%s"),
+
+                                    FString Details = FString::Printf(
+                                        TEXT("%s%s%s  |  %s"),
                                         *Item->Record.Timestamp,
                                         Item->Record.Model.IsEmpty() ? TEXT("") : TEXT("  |  "),
-                                        *Item->Record.Model));
+                                        *Item->Record.Model,
+                                        Item->Record.bParsedSuccessfully ? TEXT("Parsed") : TEXT("Parse failed"));
+
+                                    if (Item->Record.RetriedFromRequestId > 0)
+                                    {
+                                        Details += FString::Printf(
+                                            TEXT("  |  Retry of #%d"),
+                                            Item->Record.RetriedFromRequestId);
+                                    }
+                                    return FText::FromString(Details);
                                 })
                             ]
                         ];
                 })
-                .OnSelectionChanged_Lambda([&SelectedItem](
+                .OnSelectionChanged_Lambda([State](
                     TSharedPtr<FN2CRawResponseViewItem> Item,
                     ESelectInfo::Type)
                 {
                     if (Item.IsValid())
                     {
-                        SelectedItem = Item;
+                        State->SelectedItem = Item;
                     }
                 })
             ]
             + SSplitter::Slot()
             .Value(0.72f)
             [
-                SNew(SMultiLineEditableTextBox)
-                .IsReadOnly(true)
-                .Text_Lambda([&SelectedItem]()
-                {
-                    return SelectedItem.IsValid()
-                        ? FText::FromString(SelectedItem->Record.FormattedResponse)
-                        : FText::GetEmpty();
-                })
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 6.0f)
+                [
+                    SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                    [
+                        SNew(SButton)
+                        .Text(NSLOCTEXT("NodeToCode", "RawRequestTab", "Request"))
+                        .IsEnabled_Lambda([State]()
+                        {
+                            return State->ActiveTabIndex != 0;
+                        })
+                        .OnClicked_Lambda([State]()
+                        {
+                            State->ActiveTabIndex = 0;
+                            return FReply::Handled();
+                        })
+                    ]
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        SNew(SButton)
+                        .Text(NSLOCTEXT("NodeToCode", "RawResponseTab", "Response"))
+                        .IsEnabled_Lambda([State]()
+                        {
+                            return State->ActiveTabIndex != 1;
+                        })
+                        .OnClicked_Lambda([State]()
+                        {
+                            State->ActiveTabIndex = 1;
+                            return FReply::Handled();
+                        })
+                    ]
+                ]
+                + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                [
+                    SNew(SWidgetSwitcher)
+                    .WidgetIndex_Lambda([State]()
+                    {
+                        return State->ActiveTabIndex;
+                    })
+                    + SWidgetSwitcher::Slot()
+                    [
+                        SNew(SMultiLineEditableTextBox)
+                        .IsReadOnly(true)
+                        .Text_Lambda([State]()
+                        {
+                            return State->SelectedItem.IsValid()
+                                ? FText::FromString(State->SelectedItem->Record.RawRequest)
+                                : FText::GetEmpty();
+                        })
+                    ]
+                    + SWidgetSwitcher::Slot()
+                    [
+                        SNew(SMultiLineEditableTextBox)
+                        .IsReadOnly(true)
+                        .Text_Lambda([State]()
+                        {
+                            return State->SelectedItem.IsValid()
+                                ? FText::FromString(State->SelectedItem->Record.FormattedResponse)
+                                : FText::GetEmpty();
+                        })
+                    ]
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 6.0f, 0.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([State]()
+                    {
+                        return FText::FromString(State->StatusText);
+                    })
+                    .AutoWrapText(true)
+                ]
             ]
         ]
         + SVerticalBox::Slot()
@@ -151,19 +283,87 @@ FReply OpenRawResponseViewer()
         .HAlign(HAlign_Right)
         .Padding(10.0f, 0.0f, 10.0f, 10.0f)
         [
-            SNew(SButton)
-            .Text(NSLOCTEXT("NodeToCode", "CloseRawResponses", "Close"))
-            .OnClicked_Lambda([ViewerWindow]()
-            {
-                ViewerWindow->RequestDestroyWindow();
-                return FReply::Handled();
-            })
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SButton)
+                .Text(NSLOCTEXT("NodeToCode", "ResendRawRequest", "Resend & Re-parse"))
+                .ToolTipText(NSLOCTEXT(
+                    "NodeToCode",
+                    "ResendRawRequestToolTip",
+                    "Replay the exact captured request body using the same active provider/model, then parse the new response through the normal Node to Code parser. The original history entry is preserved."))
+                .IsEnabled_Lambda([State]()
+                {
+                    return State->SelectedItem.IsValid() &&
+                           !State->SelectedItem->Record.RawRequest.IsEmpty() &&
+                           !State->bRetryInFlight;
+                })
+                .OnClicked_Lambda([State, ViewerWindow]()
+                {
+                    if (!State->SelectedItem.IsValid())
+                    {
+                        return FReply::Handled();
+                    }
+
+                    const int32 RequestId = State->SelectedItem->Record.RequestId;
+                    State->bRetryInFlight = true;
+                    State->StatusText = FString::Printf(
+                        TEXT("Resending request #%d and waiting for a new response..."),
+                        RequestId);
+
+                    const TWeakPtr<SWindow> WeakViewerWindow = ViewerWindow;
+                    const bool bStarted = UN2CLLMModule::Get()->ResendRawRequest(
+                        RequestId,
+                        [State, WeakViewerWindow](bool bSuccess)
+                        {
+                            State->bRetryInFlight = false;
+                            State->StatusText = bSuccess
+                                ? TEXT("Retry completed and parsed successfully.")
+                                : TEXT("Retry completed but the new response did not parse successfully.");
+
+                            if (!WeakViewerWindow.IsValid())
+                            {
+                                return;
+                            }
+
+                            const TArray<FN2CRawResponseRecord>& History =
+                                UN2CLLMModule::Get()->GetRawResponseHistory();
+                            const int32 NewRequestId = History.IsEmpty()
+                                ? INDEX_NONE
+                                : History.Last().RequestId;
+                            RefreshN2CRawResponseViewer(State, NewRequestId);
+                        });
+
+                    if (!bStarted)
+                    {
+                        State->bRetryInFlight = false;
+                        State->StatusText =
+                            TEXT("Unable to resend this request. The captured body may be unavailable or the active provider/model no longer matches it.");
+                    }
+
+                    return FReply::Handled();
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SButton)
+                .Text(NSLOCTEXT("NodeToCode", "CloseRawResponses", "Close"))
+                .OnClicked_Lambda([ViewerWindow]()
+                {
+                    ViewerWindow->RequestDestroyWindow();
+                    return FReply::Handled();
+                })
+            ]
         ]
     );
 
-    if (ResponseList.IsValid())
+    State->ResponseList = ResponseList;
+    if (ResponseList.IsValid() && State->SelectedItem.IsValid())
     {
-        ResponseList->SetSelection(SelectedItem, ESelectInfo::Direct);
+        ResponseList->SetSelection(State->SelectedItem, ESelectInfo::Direct);
     }
 
     FSlateApplication::Get().AddModalWindow(
@@ -331,7 +531,7 @@ void SN2CEditorWindow::Construct(const FArguments& InArgs)
                     .ToolTipText(NSLOCTEXT(
                         "NodeToCode",
                         "RawResponsesToolTip",
-                        "View the formatted raw provider response for any request in the current translation session."))
+                        "View the exact request body and formatted provider response for any request in the current translation session, and optionally replay it."))
                     .IsEnabled_Lambda([]()
                     {
                         return UN2CLLMModule::Get()->GetRawResponseCount() > 0;

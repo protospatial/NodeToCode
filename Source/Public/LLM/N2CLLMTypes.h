@@ -28,7 +28,7 @@ enum class EN2CLLMProvider : uint8
     Custom      UMETA(DisplayName = "Custom")
 };
 
-/** Raw provider response captured for one request in the current translation session. */
+/** Raw provider request/response captured for one request in the current translation session. */
 USTRUCT(BlueprintType)
 struct FN2CRawResponseRecord
 {
@@ -49,11 +49,23 @@ struct FN2CRawResponseRecord
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
     FString Timestamp;
 
+    /** Exact provider-specific POST body that was sent. Authorization headers are not stored. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString RawRequest;
+
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
     FString FormattedResponse;
 
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
     bool bParsedSuccessfully = false;
+
+    /** Non-zero when this record was created by replaying another captured request. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    int32 RetriedFromRequestId = 0;
+
+    /** True for the final semantic reconciliation request in Translate Entire Blueprint. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    bool bFinalConsolidation = false;
 };
 
 /** Status of the Node to Code system */

@@ -202,6 +202,7 @@ void UN2CLLMModule::ProcessN2CJson(
     const int32 RequestId = NextRequestId++;
     const EN2CLLMProvider RequestProvider = Config.Provider;
     const FString RequestModel = Config.Model;
+    const TSharedRef<FString> CapturedRawRequest = MakeShared<FString>();
     ++InFlightRequestCount;
     CurrentStatus = EN2CSystemStatus::Processing;
 
@@ -210,7 +211,7 @@ void UN2CLLMModule::ProcessN2CJson(
 
     // Send request through service
     ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, OnComplete, RequestId, RequestProvider, RequestModel](const FString& Response)
+        [this, OnComplete, RequestId, RequestProvider, RequestModel, CapturedRawRequest](const FString& Response)
         {
             FN2CTranslationResponse TranslationResponse;
             TranslationResponse.Usage.InputTokens = 0;
@@ -273,6 +274,7 @@ void UN2CLLMModule::ProcessN2CJson(
             RawRecord.Provider = RequestProvider;
             RawRecord.Model = RequestModel;
             RawRecord.Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+            RawRecord.RawRequest = *CapturedRawRequest;
             RawRecord.FormattedResponse = FormatRawResponseForDisplay(Response);
             RawRecord.bParsedSuccessfully = bParsedSuccessfully;
             SessionRawResponses.Add(MoveTemp(RawRecord));
@@ -286,6 +288,187 @@ void UN2CLLMModule::ProcessN2CJson(
             // for this request have finished.
             FinishRequest(bParsedSuccessfully);
         }));
+
+    if (UN2CBaseLLMService* BaseService = Cast<UN2CBaseLLMService>(ActiveService.GetObject()))
+    {
+        *CapturedRawRequest = BaseService->GetLastFormattedRequestPayload();
+    }
+}
+
+bool UN2CLLMModule::ResendRawRequest(
+    int32 RequestId,
+    TFunction<void(bool)> OnComplete)
+{
+    const FN2CRawResponseRecord* ExistingRecord = SessionRawResponses.FindByPredicate(
+        [RequestId](const FN2CRawResponseRecord& Record)
+        {
+            return Record.RequestId == RequestId;
+        });
+
+    if (!ExistingRecord)
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Cannot resend unknown raw request #%d"), RequestId),
+            TEXT("RawRequestRetry"));
+        return false;
+    }
+
+    const FN2CRawResponseRecord OriginalRecord = *ExistingRecord;
+    if (OriginalRecord.RawRequest.IsEmpty())
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(TEXT("Cannot resend request #%d because its raw request body was not captured"), RequestId),
+            TEXT("RawRequestRetry"));
+        return false;
+    }
+
+    UN2CBaseLLMService* BaseService = Cast<UN2CBaseLLMService>(ActiveService.GetObject());
+    if (!BaseService || !BaseService->IsInitialized())
+    {
+        FN2CLogger::Get().LogError(
+            TEXT("Cannot resend raw request because the active LLM service is unavailable"),
+            TEXT("RawRequestRetry"));
+        return false;
+    }
+
+    if (OriginalRecord.Provider != Config.Provider ||
+        !OriginalRecord.Model.Equals(Config.Model, ESearchCase::CaseSensitive))
+    {
+        FN2CLogger::Get().LogError(
+            FString::Printf(
+                TEXT("Cannot replay request #%d because the active provider/model no longer matches the captured request"),
+                RequestId),
+            TEXT("RawRequestRetry"));
+        return false;
+    }
+
+    const int32 RetryRequestId = NextRequestId++;
+    ++InFlightRequestCount;
+    CurrentStatus = EN2CSystemStatus::Processing;
+    OnTranslationRequestSent.Broadcast();
+
+    FN2CLogger::Get().Log(
+        FString::Printf(
+            TEXT("Replaying raw request #%d as request #%d using %s / %s"),
+            RequestId,
+            RetryRequestId,
+            *UEnum::GetValueAsString(OriginalRecord.Provider),
+            *OriginalRecord.Model),
+        EN2CLogSeverity::Info,
+        TEXT("RawRequestRetry"));
+
+    BaseService->ResendFormattedRequest(
+        OriginalRecord.RawRequest,
+        FOnLLMResponseReceived::CreateLambda(
+            [this, OriginalRecord, RetryRequestId, OnComplete = MoveTemp(OnComplete)](const FString& Response) mutable
+            {
+                bool bParsedSuccessfully = false;
+                FString ParseError;
+                FN2CTranslationResponse RetriedResponse;
+                RetriedResponse.Usage.InputTokens = 0;
+                RetriedResponse.Usage.OutputTokens = 0;
+
+                TScriptInterface<IN2CLLMService> Service = GetActiveService();
+                UN2CResponseParserBase* Parser = Service.GetInterface()
+                    ? Service->GetResponseParser()
+                    : nullptr;
+
+                if (!Parser)
+                {
+                    ParseError = TEXT("No response parser available for retried request");
+                }
+                else if (!Parser->ParseLLMResponse(Response, RetriedResponse))
+                {
+                    ParseError = TEXT("Failed to parse retried LLM response");
+                }
+                else if (OriginalRecord.bFinalConsolidation &&
+                         !FN2CBatchTranslationConsolidator::ValidateFinalResponse(
+                             RetriedResponse,
+                             ParseError))
+                {
+                    // ParseError is populated by the final-response validator.
+                }
+                else
+                {
+                    bParsedSuccessfully = true;
+
+                    if (OriginalRecord.bFinalConsolidation)
+                    {
+                        SessionTranslationResponse = RetriedResponse;
+
+                        // A final-consolidation retry is a direct recovery path. Rewrite the final
+                        // manifest and C++ pair in the existing translation directory when one is
+                        // available, without rebuilding or changing the captured request itself.
+                        if (!LatestTranslationPath.IsEmpty())
+                        {
+                            const FString PreviousBatchRootPath = CurrentBatchRootPath;
+                            CurrentBatchRootPath = LatestTranslationPath;
+
+                            const FN2CBlueprint& Blueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
+                            const bool bManifestSaved = SaveTranslationToDisk(
+                                SessionTranslationResponse,
+                                Blueprint);
+                            const bool bCodeSaved = FN2CBatchTranslationConsolidator::SaveCppFiles(
+                                SessionTranslationResponse,
+                                LatestTranslationPath);
+
+                            CurrentBatchRootPath = PreviousBatchRootPath;
+
+                            if (!bManifestSaved || !bCodeSaved)
+                            {
+                                FN2CLogger::Get().LogWarning(
+                                    TEXT("Retried final consolidation parsed successfully, but one or more final output files could not be rewritten"),
+                                    TEXT("RawRequestRetry"));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        AppendSessionResponse(RetriedResponse);
+                    }
+
+                    OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, true);
+                    FN2CLogger::Get().Log(
+                        FString::Printf(TEXT("Successfully re-parsed retried request #%d"), RetryRequestId),
+                        EN2CLogSeverity::Info,
+                        TEXT("RawRequestRetry"));
+                }
+
+                if (!bParsedSuccessfully)
+                {
+                    FN2CLogger::Get().LogError(
+                        FString::Printf(
+                            TEXT("Retried request #%d failed to parse: %s"),
+                            RetryRequestId,
+                            *ParseError),
+                        TEXT("RawRequestRetry"));
+                    SaveRawResponseToDisk(Response);
+                    OnTranslationResponseReceived.Broadcast(SessionTranslationResponse, false);
+                }
+
+                FN2CRawResponseRecord RetryRecord;
+                RetryRecord.RequestId = RetryRequestId;
+                RetryRecord.RequestLabel = FString::Printf(
+                    TEXT("%s (Retry)"),
+                    *OriginalRecord.RequestLabel);
+                RetryRecord.Provider = OriginalRecord.Provider;
+                RetryRecord.Model = OriginalRecord.Model;
+                RetryRecord.Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+                RetryRecord.RawRequest = OriginalRecord.RawRequest;
+                RetryRecord.FormattedResponse = FormatRawResponseForDisplay(Response);
+                RetryRecord.bParsedSuccessfully = bParsedSuccessfully;
+                RetryRecord.RetriedFromRequestId = OriginalRecord.RequestId;
+                RetryRecord.bFinalConsolidation = OriginalRecord.bFinalConsolidation;
+                SessionRawResponses.Add(MoveTemp(RetryRecord));
+
+                FinishRequest(bParsedSuccessfully);
+                if (OnComplete)
+                {
+                    OnComplete(bParsedSuccessfully);
+                }
+            }));
+
+    return true;
 }
 
 bool UN2CLLMModule::InitializeComponents()
@@ -398,6 +581,7 @@ void UN2CLLMModule::EndBatchTranslation()
     const int32 RequestId = NextRequestId++;
     const EN2CLLMProvider RequestProvider = Config.Provider;
     const FString RequestModel = Config.Model;
+    const TSharedRef<FString> CapturedRawRequest = MakeShared<FString>();
 
     ++InFlightRequestCount;
     CurrentStatus = EN2CSystemStatus::Processing;
@@ -424,7 +608,8 @@ void UN2CLLMModule::EndBatchTranslation()
              PriorOutputTokens,
              RequestId,
              RequestProvider,
-             RequestModel](const FString& Response)
+             RequestModel,
+             CapturedRawRequest](const FString& Response)
             {
                 bool bSuccess = false;
                 FN2CTranslationResponse FinalResponse;
@@ -484,8 +669,10 @@ void UN2CLLMModule::EndBatchTranslation()
                 RawRecord.Provider = RequestProvider;
                 RawRecord.Model = RequestModel;
                 RawRecord.Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+                RawRecord.RawRequest = *CapturedRawRequest;
                 RawRecord.FormattedResponse = FormatRawResponseForDisplay(Response);
                 RawRecord.bParsedSuccessfully = bSuccess;
+                RawRecord.bFinalConsolidation = true;
                 SessionRawResponses.Add(MoveTemp(RawRecord));
 
                 if (bSuccess)
@@ -514,6 +701,11 @@ void UN2CLLMModule::EndBatchTranslation()
                 FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
                 FinishRequest(bSuccess);
             }));
+
+    if (UN2CBaseLLMService* BaseService = Cast<UN2CBaseLLMService>(ActiveService.GetObject()))
+    {
+        *CapturedRawRequest = BaseService->GetLastFormattedRequestPayload();
+    }
 }
 
 bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint)

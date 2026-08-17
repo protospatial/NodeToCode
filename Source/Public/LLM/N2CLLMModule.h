@@ -88,8 +88,13 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     int32 GetRawResponseCount() const { return SessionRawResponses.Num(); }
 
-    /** Raw provider responses retained for the current translation session. */
+    /** Raw provider requests/responses retained for the current translation session. */
     const TArray<FN2CRawResponseRecord>& GetRawResponseHistory() const { return SessionRawResponses; }
+
+    /** Replay a captured provider request body and parse the new response through the normal parser. */
+    bool ResendRawRequest(
+        int32 RequestId,
+        TFunction<void(bool)> OnComplete = TFunction<void(bool)>());
 
     /** Aggregate parsed response for the current translation session. */
     const FN2CTranslationResponse& GetSessionTranslationResponse() const { return SessionTranslationResponse; }
