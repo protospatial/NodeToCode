@@ -10,6 +10,14 @@
 #include "Models/N2CBlueprint.h"
 #include "N2CLLMModule.generated.h"
 
+struct FN2CPendingNativeBatchRequest
+{
+    int32 RequestId = 0;
+    FString RequestLabel;
+    FString FormattedPayload;
+    FOnLLMResponseReceived OnComplete;
+};
+
 /**
  * @class UN2CLLMModule
  * @brief Main module for managing LLM integration and translation requests
@@ -91,7 +99,7 @@ public:
     /** Raw provider requests/responses retained for the current translation session. */
     const TArray<FN2CRawResponseRecord>& GetRawResponseHistory() const { return SessionRawResponses; }
 
-    /** Replay a captured provider request body and parse the new response through the normal parser. */
+    /** Replay a captured provider request and replace that request's existing history/result in place. */
     bool ResendRawRequest(
         int32 RequestId,
         TFunction<void(bool)> OnComplete = TFunction<void(bool)>());
@@ -102,6 +110,9 @@ public:
     /** Get the path to the latest translation */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     FString GetLatestTranslationPath() const { return LatestTranslationPath; }
+
+    /** Base directory containing all saved translation batches. */
+    FString GetTranslationBaseDirectory() const { return GetTranslationBasePath(); }
 
     /** Open the latest translation folder in file explorer */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
@@ -122,6 +133,33 @@ private:
 
     /** Merge one parsed response into the aggregate response exposed to the UI. */
     void AppendSessionResponse(const FN2CTranslationResponse& Response);
+
+    /** Rebuild graph-phase aggregate state from authoritative per-request parsed responses. */
+    FN2CTranslationResponse BuildGraphAggregateResponse() const;
+    void RebuildSessionResponseFromGraphRequests();
+
+    /** Queue same-frame whole-Blueprint requests for a provider-native batch API. */
+    bool TryQueueNativeBatchRequest(
+        const FString& JsonInput,
+        const FString& SystemPrompt,
+        const FOnLLMResponseReceived& OnComplete);
+    void FlushNativeBatchRequests();
+    void DispatchPendingBatchIndividually(TArray<FN2CPendingNativeBatchRequest> Requests, const FString& Reason);
+    void HandleCompletedBatchItem(
+        int32 RequestId,
+        const FString& RequestLabel,
+        const FString& RawRequest,
+        const FString& Response,
+        const FOnLLMResponseReceived& OnComplete);
+
+    /** Start or replace the final semantic consolidation request using current graph results. */
+    bool StartFinalConsolidation(
+        int32 ExistingRequestId = INDEX_NONE,
+        TFunction<void(bool)> OnComplete = TFunction<void(bool)>());
+    void StartQueuedConsolidationIfReady();
+
+    /** Persist current raw request/response history into the active/latest translation batch. */
+    void PersistRequestHistory() const;
 
     /** Finish one in-flight request and update aggregate status. */
     void FinishRequest(bool bSuccess);
@@ -195,11 +233,25 @@ private:
     /** Cached root path for the current translation batch (e.g. one Translate Entire Blueprint run) */
     FString CurrentBatchRootPath;
 
-    /** Aggregate parsed response for every successful request in the current operation. */
+    /** Aggregate parsed response currently exposed to the UI. */
     FN2CTranslationResponse SessionTranslationResponse;
 
-    /** Raw provider responses for every completed request in the current operation. */
+    /** Successful graph-phase responses keyed by their stable request id. */
+    TMap<int32, FN2CTranslationResponse> ParsedGraphResponsesByRequestId;
+
+    /** Raw provider requests/responses for every request in the current operation. */
     TArray<FN2CRawResponseRecord> SessionRawResponses;
+
+    /** Whole-Blueprint requests collected until the next tick for native batch dispatch. */
+    TArray<FN2CPendingNativeBatchRequest> PendingNativeBatchRequests;
+    bool bNativeBatchFlushScheduled = false;
+
+    /** Prevent duplicate retry dispatch for the same raw-history entry. */
+    TSet<int32> RetryInFlightRequestIds;
+
+    /** A requested consolidation retry waits here until all ordinary requests/retries finish. */
+    int32 PendingConsolidationRetryRequestId = INDEX_NONE;
+    TFunction<void(bool)> PendingConsolidationRetryCompletion;
 
     /** Number of request completions still outstanding. */
     int32 InFlightRequestCount = 0;
