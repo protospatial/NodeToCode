@@ -21,4 +21,7 @@ protected:
     virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const override;
     virtual UN2CResponseParserBase* CreateResponseParser() override;
     virtual FString GetDefaultEndpoint() const override { return FString(); }
+
+private:
+    int32 MaxOutputTokens = 32768;
 };

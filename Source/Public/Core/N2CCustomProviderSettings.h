@@ -31,6 +31,15 @@ struct FN2CCustomProviderDefinition
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Custom Provider")
     bool bUseSystemPrompts = true;
+
+    /**
+     * Maximum completion budget sent to OpenAI-compatible custom providers. Reasoning models may
+     * spend part of this budget in a separate reasoning_content field before producing final JSON,
+     * so the previous 8K default was too small for full Blueprint translation/consolidation.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Custom Provider",
+        meta = (ClampMin = "1024", ClampMax = "131072", UIMin = "1024", UIMax = "131072"))
+    int32 MaxOutputTokens = 32768;
 };
 
 UCLASS(Config = NodeToCode, DefaultConfig)

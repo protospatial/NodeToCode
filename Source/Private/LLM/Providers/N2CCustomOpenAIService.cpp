@@ -45,6 +45,8 @@ bool UN2CCustomOpenAIService::Initialize(const FN2CLLMConfig& InConfig)
         BaseUrl.LeftChopInline(1);
     }
 
+    MaxOutputTokens = FMath::Clamp(Provider->MaxOutputTokens, 1024, 131072);
+
     FN2CLLMConfig UpdatedConfig = InConfig;
     UpdatedConfig.ApiEndpoint = BaseUrl.EndsWith(TEXT("/chat/completions"), ESearchCase::IgnoreCase)
         ? BaseUrl
@@ -52,6 +54,14 @@ bool UN2CCustomOpenAIService::Initialize(const FN2CLLMConfig& InConfig)
     UpdatedConfig.ApiKey = Settings->GetApiKey(Provider->Name);
     UpdatedConfig.Model = Provider->Model;
     UpdatedConfig.bUseSystemPrompts = Provider->bUseSystemPrompts;
+
+    FN2CLogger::Get().Log(
+        FString::Printf(
+            TEXT("Custom provider '%s' output token budget: %d"),
+            *Provider->Name,
+            MaxOutputTokens),
+        EN2CLogSeverity::Debug,
+        TEXT("CustomProvider"));
 
     return Super::Initialize(UpdatedConfig);
 }
@@ -77,7 +87,7 @@ FString UN2CCustomOpenAIService::FormatRequestPayload(const FString& UserMessage
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForOpenAI();
     PayloadBuilder->SetTemperature(0.0f);
-    PayloadBuilder->SetMaxTokens(8192);
+    PayloadBuilder->SetMaxTokens(MaxOutputTokens);
     PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
 
     FString FinalContent = UserMessage;

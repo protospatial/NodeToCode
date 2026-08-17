@@ -13,6 +13,7 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -495,6 +496,35 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                             CustomProviderSettings->SaveDefinitions();
                         }
                     }))
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                MakeLabeledRow(
+                    FText::FromString(TEXT("Max Output Tokens")),
+                    SNew(SSpinBox<int32>)
+                    .MinValue(1024)
+                    .MaxValue(131072)
+                    .MinSliderValue(1024)
+                    .MaxSliderValue(65536)
+                    .Value_Lambda([this, ProviderIndex]()
+                    {
+                        return CustomProviderSettings.IsValid() &&
+                               CustomProviderSettings->Providers.IsValidIndex(ProviderIndex)
+                            ? CustomProviderSettings->Providers[ProviderIndex].MaxOutputTokens
+                            : 32768;
+                    })
+                    .OnValueCommitted_Lambda([this, ProviderIndex](int32 Value, ETextCommit::Type)
+                    {
+                        if (CustomProviderSettings.IsValid() &&
+                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex))
+                        {
+                            CustomProviderSettings->Providers[ProviderIndex].MaxOutputTokens =
+                                FMath::Clamp(Value, 1024, 131072);
+                            CustomProviderSettings->SaveDefinitions();
+                        }
+                    }),
+                    FText::FromString(TEXT("Maximum completion tokens for this OpenAI-compatible provider. Reasoning models may consume part of this budget before emitting the final structured response. Default: 32768.")))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
