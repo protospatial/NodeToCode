@@ -365,7 +365,24 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
         return SNew(STextBlock).Text(FText::GetEmpty());
     }
 
-    const FString ProviderName = CustomProviderSettings->Providers[ProviderIndex].Name;
+    const FN2CCustomProviderDefinition& ProviderDefinition =
+        CustomProviderSettings->Providers[ProviderIndex];
+    const FString ProviderName = ProviderDefinition.Name;
+    const bool bBuiltInReference =
+        ProviderDefinition.ProfileSource == EN2CCustomProviderProfileSource::BuiltInProvider;
+    const EN2CLLMProvider ReferencedBuiltInProvider = ProviderDefinition.BuiltInProvider;
+
+    FString ReferencedProviderName = UEnum::GetValueAsString(ReferencedBuiltInProvider);
+    if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
+    {
+        ReferencedProviderName = ProviderEnum->GetDisplayNameTextByValue(
+            static_cast<int64>(ReferencedBuiltInProvider)).ToString();
+    }
+
+    const FText ProfileSourceText = FText::FromString(
+        bBuiltInReference
+            ? FString::Printf(TEXT("Built-in %s (shared configuration)"), *ReferencedProviderName)
+            : TEXT("Custom OpenAI-compatible endpoint"));
 
     return SNew(SExpandableArea)
         .InitiallyCollapsed(true)
@@ -382,7 +399,7 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                     FText::FromString(TEXT("Provider Name")),
                     SNew(SEditableTextBox)
                     .Text(FText::FromString(ProviderName))
-                    .ToolTipText(FText::FromString(TEXT("Rename this custom provider. Endpoint, model, API key, and active selection are preserved.")))
+                    .ToolTipText(FText::FromString(TEXT("Rename this saved provider profile.")))
                     .OnTextCommitted_Lambda([this, ProviderName](const FText& Text, ETextCommit::Type)
                     {
                         if (!CustomProviderSettings.IsValid())
@@ -410,6 +427,18 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
             .AutoHeight()
             [
                 MakeLabeledRow(
+                    FText::FromString(TEXT("Profile Source")),
+                    SNew(STextBlock)
+                    .Text(ProfileSourceText),
+                    FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("This profile references the built-in provider's API key, endpoint, authentication, and provider configuration. Only the model selection is stored independently here.")
+                            : TEXT("This profile owns its custom endpoint and API-key settings.")))
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                MakeLabeledRow(
                     FText::FromString(TEXT("API Type")),
                     SNew(STextBlock)
                     .Text_Lambda([this, ProviderIndex]()
@@ -420,8 +449,20 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                             return FText::GetEmpty();
                         }
 
+                        const FN2CCustomProviderDefinition& Definition =
+                            CustomProviderSettings->Providers[ProviderIndex];
+                        if (Definition.ProfileSource == EN2CCustomProviderProfileSource::BuiltInProvider)
+                        {
+                            if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
+                            {
+                                return ProviderEnum->GetDisplayNameTextByValue(
+                                    static_cast<int64>(Definition.BuiltInProvider));
+                            }
+                            return FText::FromString(UEnum::GetValueAsString(Definition.BuiltInProvider));
+                        }
+
                         return StaticEnum<EN2CCustomProviderApiType>()->GetDisplayNameTextByValue(
-                            static_cast<int64>(CustomProviderSettings->Providers[ProviderIndex].ApiType));
+                            static_cast<int64>(Definition.ApiType));
                     }))
             ]
             + SVerticalBox::Slot()
@@ -430,7 +471,11 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                 MakeLabeledRow(
                     FText::FromString(TEXT("Provider Endpoint *")),
                     SNew(SEditableTextBox)
-                    .HintText(FText::FromString(TEXT("Required, e.g. https://host/api/v1")))
+                    .IsEnabled(!bBuiltInReference)
+                    .HintText(FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("Uses referenced built-in provider endpoint/config")
+                            : TEXT("Required, e.g. https://host/api/v1")))
                     .Text_Lambda([this, ProviderIndex]()
                     {
                         return CustomProviderSettings.IsValid() &&
@@ -441,14 +486,19 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                     .OnTextCommitted_Lambda([this, ProviderIndex](const FText& Text, ETextCommit::Type)
                     {
                         if (CustomProviderSettings.IsValid() &&
-                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex))
+                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex) &&
+                            CustomProviderSettings->Providers[ProviderIndex].ProfileSource ==
+                                EN2CCustomProviderProfileSource::CustomEndpoint)
                         {
                             CustomProviderSettings->Providers[ProviderIndex].Endpoint =
                                 Text.ToString().TrimStartAndEnd();
                             CustomProviderSettings->SaveDefinitions();
                         }
                     }),
-                    FText::FromString(TEXT("Required OpenAI-compatible API base endpoint. NodeToCode appends /chat/completions internally.")))
+                    FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("Owned by the referenced built-in provider and intentionally not duplicated into this profile.")
+                            : TEXT("Required OpenAI-compatible API base endpoint. NodeToCode appends /chat/completions internally.")))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -456,21 +506,29 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                 MakeLabeledRow(
                     FText::FromString(TEXT("API Key (Optional)")),
                     SNew(SEditableTextBox)
+                    .IsEnabled(!bBuiltInReference)
                     .IsPassword(true)
-                    .HintText(FText::FromString(TEXT("Optional")))
-                    .Text_Lambda([this, ProviderName]()
+                    .HintText(FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("Uses referenced built-in provider API key")
+                            : TEXT("Optional")))
+                    .Text_Lambda([this, ProviderName, bBuiltInReference]()
                     {
-                        return CustomProviderSettings.IsValid()
+                        return CustomProviderSettings.IsValid() && !bBuiltInReference
                             ? FText::FromString(CustomProviderSettings->GetApiKey(ProviderName))
                             : FText::GetEmpty();
                     })
-                    .OnTextCommitted_Lambda([this, ProviderName](const FText& Text, ETextCommit::Type)
+                    .OnTextCommitted_Lambda([this, ProviderName, bBuiltInReference](const FText& Text, ETextCommit::Type)
                     {
-                        if (CustomProviderSettings.IsValid())
+                        if (CustomProviderSettings.IsValid() && !bBuiltInReference)
                         {
                             CustomProviderSettings->SetApiKey(ProviderName, Text.ToString());
                         }
-                    }))
+                    }),
+                    FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("The referenced built-in provider remains the single source of truth for its API key.")
+                            : TEXT("Optional provider API key.")))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -495,7 +553,11 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                                 Text.ToString().TrimStartAndEnd();
                             CustomProviderSettings->SaveDefinitions();
                         }
-                    }))
+                    }),
+                    FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("Independent model override for this profile. All other provider configuration stays linked to the built-in provider.")
+                            : TEXT("Provider model identifier.")))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -503,6 +565,7 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                 MakeLabeledRow(
                     FText::FromString(TEXT("Max Output Tokens")),
                     SNew(SSpinBox<int32>)
+                    .IsEnabled(!bBuiltInReference)
                     .MinValue(1024)
                     .MaxValue(131072)
                     .MinSliderValue(1024)
@@ -517,14 +580,19 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                     .OnValueCommitted_Lambda([this, ProviderIndex](int32 Value, ETextCommit::Type)
                     {
                         if (CustomProviderSettings.IsValid() &&
-                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex))
+                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex) &&
+                            CustomProviderSettings->Providers[ProviderIndex].ProfileSource ==
+                                EN2CCustomProviderProfileSource::CustomEndpoint)
                         {
                             CustomProviderSettings->Providers[ProviderIndex].MaxOutputTokens =
                                 FMath::Clamp(Value, 1024, 131072);
                             CustomProviderSettings->SaveDefinitions();
                         }
                     }),
-                    FText::FromString(TEXT("Maximum completion tokens for this OpenAI-compatible provider. Reasoning models may consume part of this budget before emitting the final structured response. Default: 32768.")))
+                    FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("Uses the referenced built-in provider's request behavior.")
+                            : TEXT("Maximum completion tokens for this OpenAI-compatible provider. Reasoning models may consume part of this budget before emitting the final structured response. Default: 32768.")))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -532,6 +600,7 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                 MakeLabeledRow(
                     FText::FromString(TEXT("Use System Prompts")),
                     SNew(SCheckBox)
+                    .IsEnabled(!bBuiltInReference)
                     .IsChecked_Lambda([this, ProviderIndex]()
                     {
                         return CustomProviderSettings.IsValid() &&
@@ -543,13 +612,19 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                     .OnCheckStateChanged_Lambda([this, ProviderIndex](ECheckBoxState State)
                     {
                         if (CustomProviderSettings.IsValid() &&
-                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex))
+                            CustomProviderSettings->Providers.IsValidIndex(ProviderIndex) &&
+                            CustomProviderSettings->Providers[ProviderIndex].ProfileSource ==
+                                EN2CCustomProviderProfileSource::CustomEndpoint)
                         {
                             CustomProviderSettings->Providers[ProviderIndex].bUseSystemPrompts =
                                 State == ECheckBoxState::Checked;
                             CustomProviderSettings->SaveDefinitions();
                         }
-                    }))
+                    }),
+                    FText::FromString(
+                        bBuiltInReference
+                            ? TEXT("System-prompt behavior is inherited from the referenced built-in provider.")
+                            : TEXT("Whether this custom OpenAI-compatible provider accepts a separate system message.")))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -563,9 +638,18 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                         SNew(SButton)
                         .Text(FText::FromString(TEXT("Check Connection")))
                         .ToolTipText(FText::FromString(TEXT("Verify provider reachability and authentication without generating text.")))
-                        .OnClicked_Lambda([this, ProviderName]()
+                        .OnClicked_Lambda([this, ProviderName, bBuiltInReference, ReferencedBuiltInProvider]()
                         {
-                            if (CustomProviderSettings.IsValid())
+                            if (bBuiltInReference)
+                            {
+                                if (Settings.IsValid())
+                                {
+                                    FN2CConnectionTester::TestProvider(
+                                        ReferencedBuiltInProvider,
+                                        *Settings.Get());
+                                }
+                            }
+                            else if (CustomProviderSettings.IsValid())
                             {
                                 FN2CConnectionTester::TestCustomProvider(
                                     ProviderName,
@@ -584,10 +668,35 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                     SNew(SHorizontalBox)
                     + SHorizontalBox::Slot()
                     .AutoWidth()
+                    .Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                    [
+                        SNew(SButton)
+                        .Text(FText::FromString(TEXT("Duplicate Provider")))
+                        .ToolTipText(FText::FromString(
+                            bBuiltInReference
+                                ? TEXT("Duplicate this saved built-in provider/model profile. The duplicate keeps the same built-in configuration reference.")
+                                : TEXT("Duplicate this custom provider profile, including its endpoint, model, options, and current API key.")))
+                        .OnClicked_Lambda([this, ProviderName]()
+                        {
+                            if (!CustomProviderSettings.IsValid())
+                            {
+                                return FReply::Handled();
+                            }
+
+                            FString DuplicateName;
+                            if (CustomProviderSettings->DuplicateProvider(ProviderName, DuplicateName))
+                            {
+                                ForceRefresh();
+                            }
+                            return FReply::Handled();
+                        })
+                    ]
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
                     [
                         SNew(SButton)
                         .Text(FText::FromString(TEXT("Delete Provider")))
-                        .ToolTipText(FText::FromString(TEXT("Permanently remove this custom provider and its saved API key.")))
+                        .ToolTipText(FText::FromString(TEXT("Permanently remove this saved provider profile.")))
                         .OnClicked_Lambda([this, ProviderName]()
                         {
                             if (!CustomProviderSettings.IsValid())
@@ -596,7 +705,7 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
                             }
 
                             const FText ConfirmationMessage = FText::FromString(FString::Printf(
-                                TEXT("Delete custom provider '%s'?\n\nThis will permanently remove its endpoint, model settings, and saved API key."),
+                                TEXT("Delete provider profile '%s'?\n\nThis removes the saved profile. Built-in provider settings referenced by linked profiles are not modified."),
                                 *ProviderName));
 
                             if (FMessageDialog::Open(EAppMsgType::YesNo, ConfirmationMessage) != EAppReturnType::Yes)
@@ -634,7 +743,13 @@ void FN2CSettingsCustomization::RebuildActiveProviderOptions()
 
     for (const FN2CCustomProviderDefinition& Provider : CustomProviderSettings->Providers)
     {
-        ActiveProviderOptions.Add(MakeShared<FString>(Provider.Name));
+        // Active Custom Provider controls the Custom service itself. Built-in reference profiles
+        // resolve to their native provider service in the request picker and are intentionally not
+        // valid active custom-endpoint services.
+        if (Provider.ProfileSource == EN2CCustomProviderProfileSource::CustomEndpoint)
+        {
+            ActiveProviderOptions.Add(MakeShared<FString>(Provider.Name));
+        }
     }
 }
 

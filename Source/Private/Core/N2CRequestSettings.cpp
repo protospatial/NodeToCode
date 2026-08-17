@@ -62,13 +62,25 @@ TSharedPtr<FN2CProviderChoice> MakeProviderChoice(
     Choice->ResolvedProvider = Provider;
     Choice->ResolvedProvider.Model = Model;
 
-    if (Provider.Provider == EN2CLLMProvider::Custom)
+    if (!Provider.CustomProviderName.IsEmpty())
     {
-        Choice->DisplayName = FString::Printf(
-            TEXT("Custom: %s%s%s"),
-            *Provider.CustomProviderName,
-            Model.IsEmpty() ? TEXT("") : TEXT(" - "),
-            *Model);
+        if (Provider.Provider == EN2CLLMProvider::Custom)
+        {
+            Choice->DisplayName = FString::Printf(
+                TEXT("Custom: %s%s%s"),
+                *Provider.CustomProviderName,
+                Model.IsEmpty() ? TEXT("") : TEXT(" - "),
+                *Model);
+        }
+        else
+        {
+            Choice->DisplayName = FString::Printf(
+                TEXT("Profile: %s (%s)%s%s"),
+                *Provider.CustomProviderName,
+                *GetProviderDisplayName(Provider.Provider),
+                Model.IsEmpty() ? TEXT("") : TEXT(" - "),
+                *Model);
+        }
     }
     else
     {
@@ -84,13 +96,16 @@ TSharedPtr<FN2CProviderChoice> MakeProviderChoice(
 
 bool HasProviderModelChoice(
     const TArray<TSharedPtr<FN2CProviderChoice>>& Choices,
-    EN2CLLMProvider Provider,
+    const FN2CResolvedRequestProvider& Provider,
     const FString& Model)
 {
-    return Choices.ContainsByPredicate([Provider, &Model](const TSharedPtr<FN2CProviderChoice>& Choice)
+    return Choices.ContainsByPredicate([&Provider, &Model](const TSharedPtr<FN2CProviderChoice>& Choice)
     {
         return Choice.IsValid() &&
-               Choice->ResolvedProvider.Provider == Provider &&
+               Choice->ResolvedProvider.Provider == Provider.Provider &&
+               Choice->ResolvedProvider.CustomProviderName.Equals(
+                   Provider.CustomProviderName,
+                   ESearchCase::IgnoreCase) &&
                Choice->ResolvedProvider.Model.Equals(Model, ESearchCase::IgnoreCase);
     });
 }
@@ -117,7 +132,15 @@ void SortProviderChoices(TArray<TSharedPtr<FN2CProviderChoice>>& Choices)
             return LeftProvider < RightProvider;
         }
 
-        if (Left->ResolvedProvider.Provider == EN2CLLMProvider::Custom)
+        const bool bLeftProfile = !Left->ResolvedProvider.CustomProviderName.IsEmpty();
+        const bool bRightProfile = !Right->ResolvedProvider.CustomProviderName.IsEmpty();
+        if (bLeftProfile != bRightProfile)
+        {
+            // Keep native provider/model entries before saved profiles for that provider.
+            return !bLeftProfile;
+        }
+
+        if (bLeftProfile && bRightProfile)
         {
             const int32 NameCompare = Left->ResolvedProvider.CustomProviderName.Compare(
                 Right->ResolvedProvider.CustomProviderName,
@@ -261,6 +284,38 @@ bool FN2CRequestRuntime::ResolveProviderConfig(
                 return false;
             }
 
+            if (Definition->ProfileSource == EN2CCustomProviderProfileSource::BuiltInProvider)
+            {
+                if (Definition->BuiltInProvider == EN2CLLMProvider::Custom)
+                {
+                    FN2CLogger::Get().LogError(
+                        FString::Printf(
+                            TEXT("Saved profile '%s' has an invalid Custom built-in reference"),
+                            *Definition->Name));
+                    return false;
+                }
+
+                FN2CResolvedRequestProvider ReferencedProvider;
+                if (!ResolveProviderConfig(
+                        Definition->BuiltInProvider,
+                        FString(),
+                        ReferencedProvider))
+                {
+                    return false;
+                }
+
+                // API key and provider-specific endpoint/config remain owned by the built-in
+                // provider. Only the model is independently overridden by the saved profile.
+                ReferencedProvider.CustomProviderName = Definition->Name;
+                if (!Definition->Model.TrimStartAndEnd().IsEmpty())
+                {
+                    ReferencedProvider.Model = Definition->Model.TrimStartAndEnd();
+                }
+
+                OutProvider = MoveTemp(ReferencedProvider);
+                return true;
+            }
+
             OutProvider.CustomProviderName = Definition->Name;
             OutProvider.ApiKey = CustomSettings->GetApiKey(Definition->Name);
             OutProvider.Model = Definition->Model;
@@ -298,7 +353,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     TArray<FN2CResolvedRequestProvider> DiscoveryProviders;
     TSharedPtr<FN2CProviderChoice> DefaultChoice;
 
-    const UN2CCustomProviderSettings* CustomSettings = GetDefault<UN2CCustomProviderSettings>();
+    UN2CCustomProviderSettings* CustomSettings = GetMutableDefault<UN2CCustomProviderSettings>();
     const FString ActiveCustomProviderName = CustomSettings
         ? CustomSettings->ActiveProviderName
         : FString();
@@ -662,6 +717,72 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
             .Padding(0.0f, 0.0f, 8.0f, 0.0f)
             [
                 SNew(SButton)
+                .Text(NSLOCTEXT("NodeToCode", "SaveProviderModelProfile", "Save Selected as Profile"))
+                .ToolTipText(NSLOCTEXT(
+                    "NodeToCode",
+                    "SaveProviderModelProfileToolTip",
+                    "Save the selected built-in provider/model as a reusable profile. The profile keeps referencing the built-in API key, endpoint, and provider settings; only its model selection is independent."))
+                .IsEnabled_Lambda([PickerState]()
+                {
+                    return PickerState->SelectedChoice.IsValid() &&
+                           PickerState->SelectedChoice->ResolvedProvider.Provider != EN2CLLMProvider::Custom &&
+                           PickerState->SelectedChoice->ResolvedProvider.CustomProviderName.IsEmpty() &&
+                           !PickerState->SelectedChoice->ResolvedProvider.Model.IsEmpty();
+                })
+                .OnClicked_Lambda([PickerState, CustomSettings]()
+                {
+                    if (!CustomSettings || !PickerState->SelectedChoice.IsValid())
+                    {
+                        return FReply::Handled();
+                    }
+
+                    const FN2CResolvedRequestProvider SelectedProvider =
+                        PickerState->SelectedChoice->ResolvedProvider;
+                    FString SavedProfileName;
+                    if (!CustomSettings->AddBuiltInProviderProfile(
+                            SelectedProvider.Provider,
+                            SelectedProvider.Model,
+                            SavedProfileName))
+                    {
+                        FN2CLogger::Get().LogError(
+                            TEXT("Failed to save selected built-in provider/model as a profile"),
+                            TEXT("RequestSelection"));
+                        return FReply::Handled();
+                    }
+
+                    FN2CResolvedRequestProvider SavedProvider = SelectedProvider;
+                    SavedProvider.CustomProviderName = SavedProfileName;
+                    TSharedPtr<FN2CProviderChoice> SavedChoice = MakeProviderChoice(
+                        SavedProvider,
+                        SavedProvider.Model);
+                    PickerState->Choices.Add(SavedChoice);
+                    PickerState->SelectedChoice = SavedChoice;
+                    SortProviderChoices(PickerState->Choices);
+
+                    if (const TSharedPtr<SListView<TSharedPtr<FN2CProviderChoice>>> List =
+                            PickerState->ProviderList.Pin())
+                    {
+                        List->RequestListRefresh();
+                        List->SetSelection(SavedChoice, ESelectInfo::Direct);
+                        List->RequestScrollIntoView(SavedChoice);
+                    }
+
+                    FN2CLogger::Get().Log(
+                        FString::Printf(
+                            TEXT("Saved built-in provider profile '%s' referencing %s with model %s"),
+                            *SavedProfileName,
+                            *GetProviderDisplayName(SavedProvider.Provider),
+                            *SavedProvider.Model),
+                        EN2CLogSeverity::Info,
+                        TEXT("RequestSelection"));
+                    return FReply::Handled();
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SButton)
                 .Text(NSLOCTEXT("NodeToCode", "SelectProviderCancel", "Cancel"))
                 .OnClicked_Lambda([DialogWindow]()
                 {
@@ -739,7 +860,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
                 {
                     if (!HasProviderModelChoice(
                             PickerState->Choices,
-                            DiscoveryProvider.Provider,
+                            DiscoveryProvider,
                             Model))
                     {
                         PickerState->Choices.Add(MakeProviderChoice(
@@ -781,7 +902,9 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     }
 
     OutProvider = PickerState->SelectedChoice->ResolvedProvider;
-    SelectedCustomProviderName = OutProvider.CustomProviderName;
+    SelectedCustomProviderName = OutProvider.Provider == EN2CLLMProvider::Custom
+        ? OutProvider.CustomProviderName
+        : FString();
     AdHocInstructions = PendingAdHocInstructions.TrimStartAndEnd();
 
     AdditionalContextFilePaths.Reserve(AttachedFileItems.Num());
@@ -795,9 +918,10 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
 
     FN2CLogger::Get().Log(
         FString::Printf(
-            TEXT("Selected request provider: %s, model: %s, ad-hoc instructions: %s, ad-hoc context files: %d"),
+            TEXT("Selected request provider: %s, model: %s, profile: %s, ad-hoc instructions: %s, ad-hoc context files: %d"),
             *GetProviderDisplayName(OutProvider.Provider),
             *OutProvider.Model,
+            OutProvider.CustomProviderName.IsEmpty() ? TEXT("none") : *OutProvider.CustomProviderName,
             AdHocInstructions.IsEmpty() ? TEXT("no") : TEXT("yes"),
             AdditionalContextFilePaths.Num()),
         EN2CLogSeverity::Info,
