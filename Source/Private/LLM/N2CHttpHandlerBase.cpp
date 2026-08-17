@@ -7,7 +7,6 @@
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Misc/DateTime.h"
-#include "Misc/LexFromString.h"
 
 namespace N2CHttpRateLimitRetryPrivate
 {
@@ -27,8 +26,8 @@ float AddPositiveJitter(float DelaySeconds)
 
 bool TryParsePositiveSeconds(const FString& Value, float& OutSeconds)
 {
-    float ParsedSeconds = 0.0f;
-    if (!LexTryParseString(ParsedSeconds, *Value) || ParsedSeconds <= 0.0f)
+    const float ParsedSeconds = FCString::Atof(*Value);
+    if (ParsedSeconds <= 0.0f)
     {
         return false;
     }
@@ -255,10 +254,8 @@ float UN2CHttpHandlerBase::CalculateRateLimitRetryDelay(
 
         const FString RetryAfterMilliseconds =
             Response->GetHeader(TEXT("retry-after-ms")).TrimStartAndEnd();
-        float ParsedMilliseconds = 0.0f;
-        if (!RetryAfterMilliseconds.IsEmpty() &&
-            LexTryParseString(ParsedMilliseconds, *RetryAfterMilliseconds) &&
-            ParsedMilliseconds > 0.0f)
+        const float ParsedMilliseconds = FCString::Atof(*RetryAfterMilliseconds);
+        if (ParsedMilliseconds > 0.0f)
         {
             return AddPositiveJitter(FMath::Clamp(
                 ParsedMilliseconds / 1000.0f,
