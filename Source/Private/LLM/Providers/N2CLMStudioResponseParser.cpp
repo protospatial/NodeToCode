@@ -40,6 +40,35 @@ bool UN2CLMStudioResponseParser::ParseLLMResponse(
         return false;
     }
 
+    // Some reasoning models served through LM Studio return the final structured output
+    // in reasoning_content while leaving content empty.
+    if (MessageContent.TrimStartAndEnd().IsEmpty())
+    {
+        const TArray<TSharedPtr<FJsonValue>>* ChoicesArray = nullptr;
+        if (JsonObject->TryGetArrayField(TEXT("choices"), ChoicesArray) && ChoicesArray && ChoicesArray->Num() > 0)
+        {
+            const TSharedPtr<FJsonObject> ChoiceObject = (*ChoicesArray)[0]->AsObject();
+            if (ChoiceObject.IsValid())
+            {
+                const TSharedPtr<FJsonObject> MessageObject = ChoiceObject->GetObjectField(TEXT("message"));
+                if (MessageObject.IsValid())
+                {
+                    FString ReasoningContent;
+                    if (MessageObject->TryGetStringField(TEXT("reasoning_content"), ReasoningContent) &&
+                        !ReasoningContent.TrimStartAndEnd().IsEmpty())
+                    {
+                        MessageContent = ReasoningContent;
+                        FN2CLogger::Get().Log(
+                            TEXT("Using LM Studio reasoning_content because message content was empty"),
+                            EN2CLogSeverity::Info,
+                            TEXT("LMStudioResponseParser")
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // Extract usage information (OpenAI-compatible format)
     const TSharedPtr<FJsonObject> UsageObject = JsonObject->GetObjectField(TEXT("usage"));
     if (UsageObject.IsValid())
@@ -80,7 +109,9 @@ bool UN2CLMStudioResponseParser::ParseLLMResponse(
     }
 
     // Log model info if available
-    const TSharedPtr<FJsonObject> ModelInfoObject = JsonObject->GetObjectField(TEXT("model_info"));
+    const TSharedPtr<FJsonObject> ModelInfoObject = JsonObject->HasTypedField<EJson::Object>(TEXT("model_info"))
+        ? JsonObject->GetObjectField(TEXT("model_info"))
+        : nullptr;
     if (ModelInfoObject.IsValid())
     {
         FString Architecture, Quantization, Format;
