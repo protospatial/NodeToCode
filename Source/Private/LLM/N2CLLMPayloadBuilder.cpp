@@ -53,6 +53,10 @@ void UN2CLLMPayloadBuilder::SetTemperature(float Value)
                 RootObject->SetNumberField(TEXT("temperature"), Value);
             }
             break;
+        case EN2CLLMProvider::Anthropic:
+            // Current Claude models reject non-default sampling parameters
+            FN2CLogger::Get().Log(TEXT("Temperature parameter not supported for current Claude models, skipping"), EN2CLogSeverity::Debug);
+            break;
         case EN2CLLMProvider::LMStudio:
             // Skip setting temperature for LM Studio - let the LM Studio UI handle this
             // This allows users to configure temperature in LM Studio and prevents
@@ -340,7 +344,10 @@ void UN2CLLMPayloadBuilder::ConfigureForOpenAI()
 void UN2CLLMPayloadBuilder::ConfigureForAnthropic()
 {
     ProviderType = EN2CLLMProvider::Anthropic;
-    
+
+    // Current Claude models reject temperature; Initialize() sets it before the provider is known
+    RootObject->RemoveField(TEXT("temperature"));
+
     // Clear messages array and recreate it
     MessagesArray.Empty();
 }

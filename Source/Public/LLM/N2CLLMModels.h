@@ -23,17 +23,6 @@ enum class EN2COpenAIModel : uint8
     GPT4o_Mini_2024_07_18   UMETA(DisplayName = "GPT-4o Mini", Value = "gpt-4o-mini-2024-07-18"),
 };
 
-/** Available Anthropic models */
-UENUM(BlueprintType)
-enum class EN2CAnthropicModel : uint8
-{
-    Claude4_Opus            UMETA(DisplayName = "Claude 4 Opus", Value = "claude-4-opus-20250514"),
-    Claude4_Sonnet          UMETA(DisplayName = "Claude 4 Sonnet", Value = "claude-4-sonnet-20250514"),
-    Claude3_7_Sonnet        UMETA(DisplayName = "Claude 3.7 Sonnet", Value = "claude-3-7-sonnet-20250219"),
-    Claude3_5_Sonnet        UMETA(DisplayName = "Claude 3.5 Sonnet", Value = "claude-3-5-sonnet-20241022"),
-    Claude3_5_Haiku         UMETA(DisplayName = "Claude 3.5 Haiku", Value = "claude-3-5-haiku-20241022"),
-};
-
 /** Available Gemini models */
 UENUM(BlueprintType)
 enum class EN2CGeminiModel : uint8
@@ -62,13 +51,16 @@ struct FN2CLLMModelUtils
 {
     /** Model value getters */
     static FString GetOpenAIModelValue(EN2COpenAIModel Model);
-    static FString GetAnthropicModelValue(EN2CAnthropicModel Model);
     static FString GetGeminiModelValue(EN2CGeminiModel Model);
     static FString GetDeepSeekModelValue(EN2CDeepSeekModel Model);
 
     /** Pricing getters */
     static FN2COpenAIPricing GetOpenAIPricing(EN2COpenAIModel Model);
-    static FN2CAnthropicPricing GetAnthropicPricing(EN2CAnthropicModel Model);
+    static FN2CAnthropicPricing GetAnthropicPricing(const FString& ModelId);
+
+    /** Anthropic models used until the live list has been fetched from the Models API */
+    static const TArray<FString> FallbackAnthropicModels;
+    static const FString DefaultAnthropicModel;
     static FN2CDeepSeekPricing GetDeepSeekPricing(EN2CDeepSeekModel Model);
     static FN2CGeminiPricing GetGeminiPricing(EN2CGeminiModel Model);
 
@@ -86,12 +78,10 @@ struct FN2CLLMModelUtils
         }
     }
 
-    static bool SupportsSystemPrompts(EN2CAnthropicModel Model) { return true; }  // All Claude models support system prompts
-
 private:
     /** Static pricing maps */
     static const TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIPricing;
-    static const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> AnthropicPricing;
+    static const TMap<FString, FN2CAnthropicPricing> AnthropicPricing;
     static const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> DeepSeekPricing;
     static const TMap<EN2CGeminiModel, FN2CGeminiPricing> GeminiPricing;
 };

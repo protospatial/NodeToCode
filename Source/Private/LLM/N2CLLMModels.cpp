@@ -27,13 +27,19 @@ const TMap<EN2CGeminiModel, FN2CGeminiPricing> FN2CLLMModelUtils::GeminiPricing 
     {EN2CGeminiModel::Gemini_2_0_FlashThinkingExp, FN2CGeminiPricing(0.0f, 0.0f)},
 };
 
-const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> FN2CLLMModelUtils::AnthropicPricing = {
-    {EN2CAnthropicModel::Claude4_Opus, FN2CAnthropicPricing(15.0f, 75.0f)},
-    {EN2CAnthropicModel::Claude4_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
-    {EN2CAnthropicModel::Claude3_7_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
-    {EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f)},
-    {EN2CAnthropicModel::Claude3_5_Haiku, FN2CAnthropicPricing(0.8f, 4.0f)}
+const TMap<FString, FN2CAnthropicPricing> FN2CLLMModelUtils::AnthropicPricing = {
+    {TEXT("claude-opus-5-5"), FN2CAnthropicPricing(4.0f, 20.0f)},
+    {TEXT("claude-sonnet-5-5"), FN2CAnthropicPricing(2.0f, 10.0f)},
+    {TEXT("claude-haiku-5-5"), FN2CAnthropicPricing(0.1f, 0.5f)}
 };
+
+const TArray<FString> FN2CLLMModelUtils::FallbackAnthropicModels = {
+    TEXT("claude-opus-5-5"),
+    TEXT("claude-sonnet-5-5"),
+    TEXT("claude-haiku-5-5")
+};
+
+const FString FN2CLLMModelUtils::DefaultAnthropicModel = TEXT("claude-sonnet-5-5");
 
 const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> FN2CLLMModelUtils::DeepSeekPricing = {
     {EN2CDeepSeekModel::DeepSeek_R1, FN2CDeepSeekPricing(0.14f, 0.55f)},
@@ -64,25 +70,6 @@ FString FN2CLLMModelUtils::GetOpenAIModelValue(EN2COpenAIModel Model)
             return TEXT("o1-mini-2024-09-12");
         default:
             return TEXT("gpt-4o-2024-08-06");
-    }
-}
-
-FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
-{
-    switch (Model)
-    {
-        case EN2CAnthropicModel::Claude4_Opus:
-            return TEXT("claude-4-opus-20250514");
-        case EN2CAnthropicModel::Claude4_Sonnet:
-            return TEXT("claude-4-sonnet-20250514");
-        case EN2CAnthropicModel::Claude3_7_Sonnet:
-            return TEXT("claude-3-7-sonnet-20250219");
-        case EN2CAnthropicModel::Claude3_5_Sonnet:
-            return TEXT("claude-3-5-sonnet-20241022");
-        case EN2CAnthropicModel::Claude3_5_Haiku:
-            return TEXT("claude-3-5-haiku-20241022");
-        default:
-            return TEXT("claude-4-sonnet-20250514");
     }
 }
 
@@ -134,9 +121,9 @@ FN2COpenAIPricing FN2CLLMModelUtils::GetOpenAIPricing(EN2COpenAIModel Model)
     return FN2COpenAIPricing();
 }
 
-FN2CAnthropicPricing FN2CLLMModelUtils::GetAnthropicPricing(EN2CAnthropicModel Model)
+FN2CAnthropicPricing FN2CLLMModelUtils::GetAnthropicPricing(const FString& ModelId)
 {
-    if (const FN2CAnthropicPricing* Found = AnthropicPricing.Find(Model))
+    if (const FN2CAnthropicPricing* Found = AnthropicPricing.Find(ModelId))
     {
         return *Found;
     }

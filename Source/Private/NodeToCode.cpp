@@ -55,6 +55,9 @@ void FNodeToCodeModule::StartupModule()
         FN2CLogger::Get().Log(TEXT("Applied log severity from settings"), EN2CLogSeverity::Debug);
     }
 
+    // Fetch the Anthropic model list in the background if an API key is set
+    GetMutableDefault<UN2CSettings>()->FetchAnthropicModels(false);
+
     
     // Initialize style system
     N2CStyle::Initialize();
