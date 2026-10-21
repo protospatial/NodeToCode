@@ -9,6 +9,8 @@
 #include "LLM/N2CLLMModels.h"
 #include "Utils/N2CLogger.h"
 
+#include "HAL/PlatformApplicationMisc.h"
+
 #if PLATFORM_WINDOWS
 #include "Windows/WindowsPlatformApplicationMisc.h"
 #endif
