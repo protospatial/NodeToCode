@@ -8,6 +8,12 @@
 #include "IDetailsView.h"
 #include "LLM/N2CLLMModels.h"
 #include "Utils/N2CLogger.h"
+#include "HttpModule.h"
+#include "Interfaces/IHttpRequest.h"
+#include "Interfaces/IHttpResponse.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/WindowsPlatformApplicationMisc.h"
@@ -94,7 +100,7 @@ FString UN2CSettings::GetActiveModel() const
         case EN2CLLMProvider::OpenAI:
             return FN2CLLMModelUtils::GetOpenAIModelValue(OpenAI_Model);
         case EN2CLLMProvider::Anthropic:
-            return FN2CLLMModelUtils::GetAnthropicModelValue(AnthropicModel);
+            return GetAnthropicModel();
         case EN2CLLMProvider::Gemini:
             return FN2CLLMModelUtils::GetGeminiModelValue(Gemini_Model);
         case EN2CLLMProvider::DeepSeek:
@@ -106,6 +112,127 @@ FString UN2CSettings::GetActiveModel() const
         default:
             return FString();
     }
+}
+
+FString UN2CSettings::GetAnthropicModel() const
+{
+    const FString CustomModel = AnthropicCustomModelId.TrimStartAndEnd();
+    if (!CustomModel.IsEmpty())
+    {
+        return CustomModel;
+    }
+    return AnthropicModelId.IsEmpty() ? FN2CLLMModelUtils::DefaultAnthropicModel : AnthropicModelId;
+}
+
+TArray<FString> UN2CSettings::GetAnthropicModelOptions() const
+{
+    TArray<FString> Options = AvailableAnthropicModels.Num() > 0
+        ? AvailableAnthropicModels
+        : FN2CLLMModelUtils::FallbackAnthropicModels;
+
+    // Keep the saved selection visible even if it is not in the list
+    if (!AnthropicModelId.IsEmpty())
+    {
+        Options.AddUnique(AnthropicModelId);
+    }
+    return Options;
+}
+
+void UN2CSettings::RefreshAnthropicModels()
+{
+    FetchAnthropicModels(true);
+}
+
+void UN2CSettings::FetchAnthropicModels(bool bWarnIfNoApiKey)
+{
+    if (!UserSecrets)
+    {
+        UserSecrets = NewObject<UN2CUserSecrets>();
+        UserSecrets->LoadSecrets();
+    }
+
+    const FString ApiKey = UserSecrets->Anthropic_API_Key;
+    if (ApiKey.IsEmpty())
+    {
+        if (bWarnIfNoApiKey)
+        {
+            FN2CLogger::Get().LogWarning(TEXT("Set an Anthropic API key before refreshing the model list"), TEXT("AnthropicModels"));
+        }
+        return;
+    }
+
+    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+    Request->SetURL(TEXT("https://api.anthropic.com/v1/models?limit=100"));
+    Request->SetVerb(TEXT("GET"));
+    Request->SetHeader(TEXT("x-api-key"), ApiKey);
+    Request->SetHeader(TEXT("anthropic-version"), TEXT("2023-06-01"));
+
+    TWeakObjectPtr<UN2CSettings> WeakThis(this);
+    Request->OnProcessRequestComplete().BindLambda(
+        [WeakThis](FHttpRequestPtr, FHttpResponsePtr Response, bool bSucceeded)
+        {
+            UN2CSettings* Settings = WeakThis.Get();
+            if (!Settings)
+            {
+                return;
+            }
+
+            if (!bSucceeded || !Response.IsValid())
+            {
+                FN2CLogger::Get().LogWarning(TEXT("Could not reach the Anthropic Models API, using the built-in model list"), TEXT("AnthropicModels"));
+                return;
+            }
+
+            if (Response->GetResponseCode() != 200)
+            {
+                FN2CLogger::Get().LogWarning(
+                    FString::Printf(TEXT("Anthropic Models API returned HTTP %d: %s"), Response->GetResponseCode(), *Response->GetContentAsString()),
+                    TEXT("AnthropicModels"));
+                return;
+            }
+
+            TSharedPtr<FJsonObject> JsonObject;
+            const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response->GetContentAsString());
+            const TArray<TSharedPtr<FJsonValue>>* Data = nullptr;
+            if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid() || !JsonObject->TryGetArrayField(TEXT("data"), Data))
+            {
+                FN2CLogger::Get().LogWarning(TEXT("Could not parse the Anthropic Models API response"), TEXT("AnthropicModels"));
+                return;
+            }
+
+            // The API returns the newest models first
+            TArray<FString> ModelIds;
+            for (const TSharedPtr<FJsonValue>& Value : *Data)
+            {
+                const TSharedPtr<FJsonObject>* ModelObject = nullptr;
+                FString ModelId;
+                if (Value.IsValid() && Value->TryGetObject(ModelObject) && (*ModelObject)->TryGetStringField(TEXT("id"), ModelId))
+                {
+                    ModelIds.Add(ModelId);
+                }
+            }
+
+            if (ModelIds.Num() == 0)
+            {
+                FN2CLogger::Get().LogWarning(TEXT("Anthropic Models API returned no models, using the built-in model list"), TEXT("AnthropicModels"));
+                return;
+            }
+
+            Settings->AvailableAnthropicModels = MoveTemp(ModelIds);
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("Loaded %d Anthropic models"), Settings->AvailableAnthropicModels.Num()),
+                EN2CLogSeverity::Info);
+
+            if (Settings->AnthropicCustomModelId.TrimStartAndEnd().IsEmpty()
+                && !Settings->AvailableAnthropicModels.Contains(Settings->AnthropicModelId))
+            {
+                FN2CLogger::Get().LogWarning(
+                    FString::Printf(TEXT("Selected Anthropic model '%s' is not available for this API key. Pick another model in Project Settings > Node to Code."), *Settings->AnthropicModelId),
+                    TEXT("AnthropicModels"));
+            }
+        });
+
+    Request->ProcessRequest();
 }
 
 void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
@@ -161,9 +288,9 @@ void UN2CSettings::InitializePricing()
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o1_Preview, FN2COpenAIPricing(15.0f, 60.0f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o1_Mini, FN2COpenAIPricing(1.1f, 4.4f));
 
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude_Opus_5_5, FN2CAnthropicPricing(4.0f, 20.0f));
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude_Sonnet_5_5, FN2CAnthropicPricing(2.0f, 10.0f));
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude_Haiku_5_5, FN2CAnthropicPricing(0.1f, 0.5f));
+    AnthropicModelPricing.Add(TEXT("claude-opus-5-5"), FN2CAnthropicPricing(4.0f, 20.0f));
+    AnthropicModelPricing.Add(TEXT("claude-sonnet-5-5"), FN2CAnthropicPricing(2.0f, 10.0f));
+    AnthropicModelPricing.Add(TEXT("claude-haiku-5-5"), FN2CAnthropicPricing(0.1f, 0.5f));
 
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_Pro, FN2CGeminiPricing(1.25f, 10.0f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_Flash, FN2CGeminiPricing(0.0f, 0.0f));
@@ -243,6 +370,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             }
             UserSecrets->Anthropic_API_Key = Anthropic_API_Key_UI;
             UserSecrets->SaveSecrets();
+            FetchAnthropicModels(false);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))

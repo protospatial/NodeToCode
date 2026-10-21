@@ -23,15 +23,6 @@ enum class EN2COpenAIModel : uint8
     GPT4o_Mini_2024_07_18   UMETA(DisplayName = "GPT-4o Mini", Value = "gpt-4o-mini-2024-07-18"),
 };
 
-/** Available Anthropic models */
-UENUM(BlueprintType)
-enum class EN2CAnthropicModel : uint8
-{
-    Claude_Opus_5_5         UMETA(DisplayName = "Claude Opus 5.5", Value = "claude-opus-5-5"),
-    Claude_Sonnet_5_5       UMETA(DisplayName = "Claude Sonnet 5.5", Value = "claude-sonnet-5-5"),
-    Claude_Haiku_5_5        UMETA(DisplayName = "Claude Haiku 5.5", Value = "claude-haiku-5-5"),
-};
-
 /** Available Gemini models */
 UENUM(BlueprintType)
 enum class EN2CGeminiModel : uint8
@@ -60,13 +51,16 @@ struct FN2CLLMModelUtils
 {
     /** Model value getters */
     static FString GetOpenAIModelValue(EN2COpenAIModel Model);
-    static FString GetAnthropicModelValue(EN2CAnthropicModel Model);
     static FString GetGeminiModelValue(EN2CGeminiModel Model);
     static FString GetDeepSeekModelValue(EN2CDeepSeekModel Model);
 
     /** Pricing getters */
     static FN2COpenAIPricing GetOpenAIPricing(EN2COpenAIModel Model);
-    static FN2CAnthropicPricing GetAnthropicPricing(EN2CAnthropicModel Model);
+    static FN2CAnthropicPricing GetAnthropicPricing(const FString& ModelId);
+
+    /** Anthropic models used until the live list has been fetched from the Models API */
+    static const TArray<FString> FallbackAnthropicModels;
+    static const FString DefaultAnthropicModel;
     static FN2CDeepSeekPricing GetDeepSeekPricing(EN2CDeepSeekModel Model);
     static FN2CGeminiPricing GetGeminiPricing(EN2CGeminiModel Model);
 
@@ -84,12 +78,10 @@ struct FN2CLLMModelUtils
         }
     }
 
-    static bool SupportsSystemPrompts(EN2CAnthropicModel Model) { return true; }  // All Claude models support system prompts
-
 private:
     /** Static pricing maps */
     static const TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIPricing;
-    static const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> AnthropicPricing;
+    static const TMap<FString, FN2CAnthropicPricing> AnthropicPricing;
     static const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> DeepSeekPricing;
     static const TMap<EN2CGeminiModel, FN2CGeminiPricing> GeminiPricing;
 };

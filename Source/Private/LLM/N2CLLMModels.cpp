@@ -27,11 +27,19 @@ const TMap<EN2CGeminiModel, FN2CGeminiPricing> FN2CLLMModelUtils::GeminiPricing 
     {EN2CGeminiModel::Gemini_2_0_FlashThinkingExp, FN2CGeminiPricing(0.0f, 0.0f)},
 };
 
-const TMap<EN2CAnthropicModel, FN2CAnthropicPricing> FN2CLLMModelUtils::AnthropicPricing = {
-    {EN2CAnthropicModel::Claude_Opus_5_5, FN2CAnthropicPricing(4.0f, 20.0f)},
-    {EN2CAnthropicModel::Claude_Sonnet_5_5, FN2CAnthropicPricing(2.0f, 10.0f)},
-    {EN2CAnthropicModel::Claude_Haiku_5_5, FN2CAnthropicPricing(0.1f, 0.5f)}
+const TMap<FString, FN2CAnthropicPricing> FN2CLLMModelUtils::AnthropicPricing = {
+    {TEXT("claude-opus-5-5"), FN2CAnthropicPricing(4.0f, 20.0f)},
+    {TEXT("claude-sonnet-5-5"), FN2CAnthropicPricing(2.0f, 10.0f)},
+    {TEXT("claude-haiku-5-5"), FN2CAnthropicPricing(0.1f, 0.5f)}
 };
+
+const TArray<FString> FN2CLLMModelUtils::FallbackAnthropicModels = {
+    TEXT("claude-opus-5-5"),
+    TEXT("claude-sonnet-5-5"),
+    TEXT("claude-haiku-5-5")
+};
+
+const FString FN2CLLMModelUtils::DefaultAnthropicModel = TEXT("claude-sonnet-5-5");
 
 const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> FN2CLLMModelUtils::DeepSeekPricing = {
     {EN2CDeepSeekModel::DeepSeek_R1, FN2CDeepSeekPricing(0.14f, 0.55f)},
@@ -62,21 +70,6 @@ FString FN2CLLMModelUtils::GetOpenAIModelValue(EN2COpenAIModel Model)
             return TEXT("o1-mini-2024-09-12");
         default:
             return TEXT("gpt-4o-2024-08-06");
-    }
-}
-
-FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
-{
-    switch (Model)
-    {
-        case EN2CAnthropicModel::Claude_Opus_5_5:
-            return TEXT("claude-opus-5-5");
-        case EN2CAnthropicModel::Claude_Sonnet_5_5:
-            return TEXT("claude-sonnet-5-5");
-        case EN2CAnthropicModel::Claude_Haiku_5_5:
-            return TEXT("claude-haiku-5-5");
-        default:
-            return TEXT("claude-sonnet-5-5");
     }
 }
 
@@ -128,9 +121,9 @@ FN2COpenAIPricing FN2CLLMModelUtils::GetOpenAIPricing(EN2COpenAIModel Model)
     return FN2COpenAIPricing();
 }
 
-FN2CAnthropicPricing FN2CLLMModelUtils::GetAnthropicPricing(EN2CAnthropicModel Model)
+FN2CAnthropicPricing FN2CLLMModelUtils::GetAnthropicPricing(const FString& ModelId)
 {
-    if (const FN2CAnthropicPricing* Found = AnthropicPricing.Find(Model))
+    if (const FN2CAnthropicPricing* Found = AnthropicPricing.Find(ModelId))
     {
         return *Found;
     }

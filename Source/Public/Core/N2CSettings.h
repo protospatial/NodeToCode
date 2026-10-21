@@ -385,9 +385,34 @@ public:
     UPROPERTY(Transient)
     mutable UN2CUserSecrets* UserSecrets;
 
-    /** Anthropic Model Selection - Sonnet 5.5 recommended*/
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")
-    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude_Sonnet_5_5;
+    /** Anthropic Model Selection - Sonnet 5.5 recommended. The list is fetched from the Anthropic Models API for your API key. */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "Model", GetOptions = "GetAnthropicModelOptions"))
+    FString AnthropicModelId = TEXT("claude-sonnet-5-5");
+
+    /** Custom Anthropic model ID - When set, used instead of the Model selection above */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "Custom Model ID"))
+    FString AnthropicCustomModelId;
+
+    /** Fetch the list of models available to your API key from the Anthropic Models API */
+    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "Refresh Model List"))
+    void RefreshAnthropicModels();
+
+    /** Fetch the Anthropic model list in the background. Does nothing if no API key is set. */
+    void FetchAnthropicModels(bool bWarnIfNoApiKey);
+
+    /** Options for the Anthropic Model dropdown */
+    UFUNCTION()
+    TArray<FString> GetAnthropicModelOptions() const;
+
+    /** Get the Anthropic model ID to send, taking the custom model ID into account */
+    FString GetAnthropicModel() const;
+
+    /** Models returned by the Anthropic Models API during this editor session */
+    UPROPERTY(Transient)
+    TArray<FString> AvailableAnthropicModels;
     
     /** Anthropic API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Anthropic",
@@ -452,7 +477,7 @@ public:
 
     /** Anthropic Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | Anthropic")
-    TMap<EN2CAnthropicModel, FN2CAnthropicPricing> AnthropicModelPricing;
+    TMap<FString, FN2CAnthropicPricing> AnthropicModelPricing;
 
     /** Gemini Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | Gemini")
@@ -539,11 +564,11 @@ public:
                 }
                 return FN2CLLMModelUtils::GetOpenAIPricing(OpenAI_Model).InputCost;
             case EN2CLLMProvider::Anthropic:
-                if (const FN2CAnthropicPricing* Pricing = AnthropicModelPricing.Find(AnthropicModel))
+                if (const FN2CAnthropicPricing* Pricing = AnthropicModelPricing.Find(GetAnthropicModel()))
                 {
                     return Pricing->InputCost;
                 }
-                return FN2CLLMModelUtils::GetAnthropicPricing(AnthropicModel).InputCost;
+                return FN2CLLMModelUtils::GetAnthropicPricing(GetAnthropicModel()).InputCost;
             case EN2CLLMProvider::DeepSeek:
                 if (const FN2CDeepSeekPricing* Pricing = DeepSeekModelPricing.Find(DeepSeekModel))
                 {
@@ -571,11 +596,11 @@ public:
                 }
                 return FN2CLLMModelUtils::GetOpenAIPricing(OpenAI_Model).OutputCost;
             case EN2CLLMProvider::Anthropic:
-                if (const FN2CAnthropicPricing* Pricing = AnthropicModelPricing.Find(AnthropicModel))
+                if (const FN2CAnthropicPricing* Pricing = AnthropicModelPricing.Find(GetAnthropicModel()))
                 {
                     return Pricing->OutputCost;
                 }
-                return FN2CLLMModelUtils::GetAnthropicPricing(AnthropicModel).OutputCost;
+                return FN2CLLMModelUtils::GetAnthropicPricing(GetAnthropicModel()).OutputCost;
             case EN2CLLMProvider::DeepSeek:
                 if (const FN2CDeepSeekPricing* Pricing = DeepSeekModelPricing.Find(DeepSeekModel))
                 {
