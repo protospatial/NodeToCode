@@ -41,7 +41,7 @@ FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, c
     
     // Set common parameters
     PayloadBuilder->SetTemperature(0.0f);
-    PayloadBuilder->SetMaxTokens(8192);
+    PayloadBuilder->SetMaxTokens(16000);
     
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;

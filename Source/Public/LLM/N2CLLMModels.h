@@ -27,11 +27,9 @@ enum class EN2COpenAIModel : uint8
 UENUM(BlueprintType)
 enum class EN2CAnthropicModel : uint8
 {
-    Claude4_Opus            UMETA(DisplayName = "Claude 4 Opus", Value = "claude-4-opus-20250514"),
-    Claude4_Sonnet          UMETA(DisplayName = "Claude 4 Sonnet", Value = "claude-4-sonnet-20250514"),
-    Claude3_7_Sonnet        UMETA(DisplayName = "Claude 3.7 Sonnet", Value = "claude-3-7-sonnet-20250219"),
-    Claude3_5_Sonnet        UMETA(DisplayName = "Claude 3.5 Sonnet", Value = "claude-3-5-sonnet-20241022"),
-    Claude3_5_Haiku         UMETA(DisplayName = "Claude 3.5 Haiku", Value = "claude-3-5-haiku-20241022"),
+    Claude_Opus_5_5         UMETA(DisplayName = "Claude Opus 5.5", Value = "claude-opus-5-5"),
+    Claude_Sonnet_5_5       UMETA(DisplayName = "Claude Sonnet 5.5", Value = "claude-sonnet-5-5"),
+    Claude_Haiku_5_5        UMETA(DisplayName = "Claude Haiku 5.5", Value = "claude-haiku-5-5"),
 };
 
 /** Available Gemini models */

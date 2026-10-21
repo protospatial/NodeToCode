@@ -161,11 +161,9 @@ void UN2CSettings::InitializePricing()
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o1_Preview, FN2COpenAIPricing(15.0f, 60.0f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT_o1_Mini, FN2COpenAIPricing(1.1f, 4.4f));
 
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude4_Opus, FN2CAnthropicPricing(15.0f, 75.0f));
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude4_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f));
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_7_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f));
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_5_Sonnet, FN2CAnthropicPricing(3.0f, 15.0f));
-    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude3_5_Haiku, FN2CAnthropicPricing(0.8f, 4.0f));
+    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude_Opus_5_5, FN2CAnthropicPricing(4.0f, 20.0f));
+    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude_Sonnet_5_5, FN2CAnthropicPricing(2.0f, 10.0f));
+    AnthropicModelPricing.Add(EN2CAnthropicModel::Claude_Haiku_5_5, FN2CAnthropicPricing(0.1f, 0.5f));
 
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_Pro, FN2CGeminiPricing(1.25f, 10.0f));
     GeminiModelPricing.Add(EN2CGeminiModel::Gemini_2_5_Flash, FN2CGeminiPricing(0.0f, 0.0f));
