@@ -3,7 +3,7 @@
 #include "Utils/N2CLogger.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "HAL/PlatformFilemanager.h"
+#include "HAL/PlatformFileManager.h"
 #include "Misc/OutputDeviceConsole.h"
 
 FN2CLogger& FN2CLogger::Get()

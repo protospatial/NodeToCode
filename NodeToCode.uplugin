@@ -21,7 +21,8 @@
                         "LoadingPhase":  "PostEngineInit",
                         "PlatformAllowList":  [
                                                   "Win64",
-                                                  "Mac"
+                                                  "Mac",
+                                                  "Linux"
                                               ]
                     }
                 ]

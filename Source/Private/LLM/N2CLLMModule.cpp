@@ -197,7 +197,7 @@ void UN2CLLMModule::OpenTranslationFolder(bool& Success)
         PathToOpen = GetTranslationBasePath();
     }
 
-#if PLATFORM_WINDOWS
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
     FPlatformProcess::ExploreFolder(*PathToOpen);
     Success = true;
 #endif
