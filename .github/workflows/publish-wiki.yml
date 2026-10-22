@@ -1,7 +1,7 @@
 # Publishes wiki/ to the GitHub wiki (https://github.com/protospatial/NodeToCode/wiki).
 # The published wiki is a derived copy: edit pages in wiki/, never in the browser.
-# Until 2.0-beta this runs only by hand (Actions -> Publish wiki -> Run workflow, branch dev-2.0), because
-# the live wiki still documents 1.2.x. When dev-2.0 becomes the default branch, add:
+# Until the 2.0 pages are ready this runs only by hand (Actions -> Publish wiki -> Run workflow, branch
+# dev-2.0), because the live wiki still documents 1.2.x. After the first 2.0 publish, add:
 #   push: { branches: [dev-2.0], paths: ["wiki/**"] }
 # Nothing is ever published from main.
 name: Publish wiki

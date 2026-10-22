@@ -9,9 +9,10 @@ script can; review checks the rest. Keep this page current when the docs' shape 
 - **Source of truth:** `wiki/` on dev-2.0 describes NodeToCode 2.0. It was copied from the wiki repository at
   1dc2904 on 2026-10-22; that repository keeps the older history.
 - **Published at:** https://github.com/protospatial/NodeToCode/wiki, by `.github/workflows/publish-wiki.yml`.
-  Until 2.0-beta the live wiki stays as the 1.2.x docs and the workflow runs only by hand (Run workflow, on
-  dev-2.0). When dev-2.0 becomes the default branch, switch it to run on every push to that branch. Nothing is
-  ever published from `main`.
+  Until the 2.0 pages are ready the live wiki stays as the 1.2.x docs, and the workflow runs only by hand
+  (Actions, Publish wiki, Run workflow on dev-2.0). The first publish is the board's "Publish the 2.0 user pages"
+  card; after it, switch the workflow to run on every push to dev-2.0 that touches `wiki/`. Nothing is ever
+  published from `main`.
 - **Derived copy:** the published wiki. Nobody edits it in the browser; a browser edit is overwritten by the
   next publish. Fixes for 1.2.x readers before the beta are the one exception, made in the wiki repository by
   the owner.
