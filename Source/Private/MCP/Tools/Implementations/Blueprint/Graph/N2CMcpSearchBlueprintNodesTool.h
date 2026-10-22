@@ -47,17 +47,17 @@ private:
                             FString& OutError);
     
     TSharedPtr<FJsonObject> ConvertActionToJson(
-        const FGraphActionListBuilderBase::ActionGroup& Action,
+        const TSharedPtr<FEdGraphSchemaAction>& Action,
         bool bIsContextSensitive,
         UBlueprint* ContextBlueprint,
         UEdGraph* ContextGraph);
     
-    static FString ExtractInternalName(const FGraphActionListBuilderBase::ActionGroup& Action);
-    static TArray<FString> ExtractCategoryPath(const FGraphActionListBuilderBase::ActionGroup& Action);
+    static FString ExtractInternalName(const TSharedPtr<FEdGraphSchemaAction>& Action);
+    static TArray<FString> ExtractCategoryPath(const TSharedPtr<FEdGraphSchemaAction>& Action);
     
     // New helper method to convert UK2Node to N2CJSON format
     static TSharedPtr<FJsonObject> ConvertNodeToN2CJson(UK2Node* Node, const FString& NodeId);
     
     // Helper to create a template node definition from action metadata
-    static FN2CNodeDefinition CreateNodeDefinitionFromAction(const FGraphActionListBuilderBase::ActionGroup& Action, const FString& NodeId);
+    static FN2CNodeDefinition CreateNodeDefinitionFromAction(const TSharedPtr<FEdGraphSchemaAction>& Action, const FString& NodeId);
 };

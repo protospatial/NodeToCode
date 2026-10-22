@@ -843,8 +843,12 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 
 	for (int32 i = 0; i < MenuBuilder.GetNumActions() && ResultCount < MaxResults; ++i)
 	{
-		FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(i);
-		const FString& ActionSearchText = Action.GetSearchTextForFirstAction();
+		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
+		if (!Action.IsValid())
+		{
+			continue;
+		}
+		const FString& ActionSearchText = Action->GetFullSearchText();
 		FString LowerSearchText = ActionSearchText.ToLower();
 
 		bool bMatchesAllTerms = true;
@@ -1011,8 +1015,12 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 
 	for (int32 i = 0; i < MenuBuilder.GetNumActions(); ++i)
 	{
-		FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(i);
-		const FString& ActionSearchText = Action.GetSearchTextForFirstAction();
+		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
+		if (!Action.IsValid())
+		{
+			continue;
+		}
+		const FString& ActionSearchText = Action->GetFullSearchText();
 		FString LowerSearchText = ActionSearchText.ToLower();
 
 		bool bMatchesAllTerms = true;
@@ -1042,8 +1050,8 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 
 	for (int32 Index : MatchingActionIndices)
 	{
-		FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(Index);
-		FString CurrentActionId = Action.GetSearchTextForFirstAction();
+		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(Index);
+		FString CurrentActionId = Action.IsValid() ? Action->GetFullSearchText() : FString();
 
 		if (CurrentActionId == SearchActionId)
 		{
@@ -1059,15 +1067,7 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	}
 
 	// Get the matching action
-	FGraphActionListBuilderBase::ActionGroup MatchedAction = MenuBuilder.GetAction(ExactMatchIndex);
-
-	if (MatchedAction.Actions.Num() == 0)
-	{
-		return MakeErrorJson(TEXT("Matched action has no executable actions"));
-	}
-
-	// Execute the action to spawn the node
-	TSharedPtr<FEdGraphSchemaAction> SchemaAction = MatchedAction.Actions[0];
+	TSharedPtr<FEdGraphSchemaAction> SchemaAction = MenuBuilder.GetSchemaAction(ExactMatchIndex);
 	if (!SchemaAction.IsValid())
 	{
 		return MakeErrorJson(TEXT("Invalid schema action"));
@@ -1077,7 +1077,7 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	int32 PreSpawnNodeCount = ActiveGraph->Nodes.Num();
 
 	// Perform the action
-	FVector2D Location(LocationX, LocationY);
+	const FVector2f Location(LocationX, LocationY);
 	UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(ActiveGraph, nullptr, Location);
 
 	if (!SpawnedNode)

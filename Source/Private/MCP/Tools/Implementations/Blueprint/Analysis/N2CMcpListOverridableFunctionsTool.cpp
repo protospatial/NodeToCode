@@ -19,7 +19,7 @@
 #include "Serialization/JsonWriter.h"
 #include "UObject/UnrealType.h"
 #include "UObject/TextProperty.h"
-#include "Engine/UserDefinedStruct.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "Engine/UserDefinedEnum.h"
 
 REGISTER_MCP_TOOL(FN2CMcpListOverridableFunctionsTool)

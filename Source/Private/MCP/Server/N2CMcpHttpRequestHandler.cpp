@@ -757,7 +757,7 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& P
 		{
 			if (Pair.Value.IsValid() && Pair.Value->Type == EJson::String)
 			{
-				Arguments.Add(Pair.Key, Pair.Value->AsString());
+				Arguments.Add(FString(*Pair.Key), Pair.Value->AsString());
 			}
 			else if (Pair.Value.IsValid())
 			{
@@ -775,9 +775,9 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& P
 				{
 					// For complex types, serialize to JSON string
 					TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&StringValue);
-					FJsonSerializer::Serialize(Pair.Value, Pair.Key, Writer);
+					FJsonSerializer::Serialize(Pair.Value, FString(*Pair.Key), Writer);
 				}
-				Arguments.Add(Pair.Key, StringValue);
+				Arguments.Add(FString(*Pair.Key), StringValue);
 			}
 		}
 	}

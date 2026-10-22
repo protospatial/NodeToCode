@@ -3,7 +3,7 @@
 #include "BlueprintLibraries/N2CStructUtilsLibrary.h"
 #include "Utils/N2CLogger.h"
 #include "Kismet2/StructureEditorUtils.h"
-#include "Engine/UserDefinedStruct.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "EdGraphSchema_K2.h"
 #include "EditorAssetLibrary.h"
