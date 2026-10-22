@@ -10,6 +10,29 @@
 
 UN2CUserSecrets::UN2CUserSecrets()
 {
+#if WITH_EDITOR
+    // User secrets should never render as plain text if this object is inspected in an editor
+    // details view. PasswordField only affects presentation; persistence remains handled by the
+    // dedicated NodeToCode user secrets store below.
+    const FName SecretPropertyNames[] =
+    {
+        GET_MEMBER_NAME_CHECKED(UN2CUserSecrets, OpenAI_API_Key),
+        GET_MEMBER_NAME_CHECKED(UN2CUserSecrets, Anthropic_API_Key),
+        GET_MEMBER_NAME_CHECKED(UN2CUserSecrets, Gemini_API_Key),
+        GET_MEMBER_NAME_CHECKED(UN2CUserSecrets, DeepSeek_API_Key),
+        GET_MEMBER_NAME_CHECKED(UN2CUserSecrets, Ollama_API_Key),
+        GET_MEMBER_NAME_CHECKED(UN2CUserSecrets, MiniMax_API_Key)
+    };
+
+    for (const FName PropertyName : SecretPropertyNames)
+    {
+        if (FProperty* SecretProperty = GetClass()->FindPropertyByName(PropertyName))
+        {
+            SecretProperty->SetMetaData(TEXT("PasswordField"), TEXT("true"));
+        }
+    }
+#endif
+
     // Load secrets when the object is created
     LoadSecrets();
 }
@@ -72,6 +95,7 @@ void UN2CUserSecrets::LoadSecrets()
     Gemini_API_Key = JsonObject->GetStringField(TEXT("Gemini_API_Key"));
     DeepSeek_API_Key = JsonObject->GetStringField(TEXT("DeepSeek_API_Key"));
     JsonObject->TryGetStringField(TEXT("Ollama_API_Key"), Ollama_API_Key);
+    JsonObject->TryGetStringField(TEXT("MiniMax_API_Key"), MiniMax_API_Key);
     
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Successfully loaded secrets from: %s"), *SecretsFilePath),
@@ -90,6 +114,7 @@ void UN2CUserSecrets::SaveSecrets()
     JsonObject->SetStringField(TEXT("Gemini_API_Key"), Gemini_API_Key);
     JsonObject->SetStringField(TEXT("DeepSeek_API_Key"), DeepSeek_API_Key);
     JsonObject->SetStringField(TEXT("Ollama_API_Key"), Ollama_API_Key);
+    JsonObject->SetStringField(TEXT("MiniMax_API_Key"), MiniMax_API_Key);
     
     // Serialize to string
     FString JsonString;

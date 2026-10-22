@@ -23,7 +23,61 @@ enum class EN2CLLMProvider : uint8
     Gemini      UMETA(DisplayName = "Gemini"),
     Ollama      UMETA(DisplayName = "Ollama"),
     DeepSeek    UMETA(DisplayName = "DeepSeek"),
-    LMStudio    UMETA(DisplayName = "LM Studio")
+    LMStudio    UMETA(DisplayName = "LM Studio"),
+    MiniMax     UMETA(DisplayName = "MiniMax"),
+    Custom      UMETA(DisplayName = "Custom")
+};
+
+/** Raw provider request/response captured for one request in the current translation session. */
+USTRUCT(BlueprintType)
+struct FN2CRawResponseRecord
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    int32 RequestId = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString RequestLabel;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
+
+    /** Named custom/saved profile used for the request, when applicable. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString CustomProviderName;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString Model;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString Timestamp;
+
+    /** Exact provider-specific POST body that was sent. Authorization headers are not stored. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString RawRequest;
+
+    /** Prepared semantic user content retained for future cross-provider retries. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString SourceRequestPayload;
+
+    /** Prepared semantic system content paired with SourceRequestPayload. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString SourceSystemPrompt;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    FString FormattedResponse;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    bool bParsedSuccessfully = false;
+
+    /** Non-zero when this record was created by replaying another captured request. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    int32 RetriedFromRequestId = 0;
+
+    /** True for the final semantic reconciliation request in Translate Entire Blueprint. */
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code | LLM Module")
+    bool bFinalConsolidation = false;
 };
 
 /** Status of the Node to Code system */
@@ -62,4 +116,8 @@ struct FN2CLLMConfig
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     FString Model;
+
+    /** Named custom/saved provider profile used to resolve provider-specific settings. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    FString CustomProviderName;
 };

@@ -15,6 +15,8 @@
 ### 💬 **Blueprint Communication Solved**
 - 🆕 Support for Claude 4, Gemini 2.5 Flash, & OpenAI's latest models
 - 🆕 Support for LM Studio -> [Quick Start Guide](https://github.com/protospatial/NodeToCode/wiki/LM-Studio-Quick-Start)
+- 🆕 **Complete Blueprint Translation:** Translate entire Blueprints with all graphs, variables, and components at once
+- 🆕 **Variable & Component Support:** Full support for Blueprint variables, local variables, and component overrides
 - **Pseudocode Translation:** Convert Blueprints into universally understandable pseudocode
 - **Automatic Translation Saving:** Each translation is saved locally for easy archiving & sharing via chat or docs
 - Share complete Blueprint logic as text in forums, chat, emails, or documentation
@@ -45,6 +47,8 @@
 ## 🔧 Under the Hood
 
 - **Blueprint Analysis:** Captures your entire Blueprint graph structure, including execution flows, data connections, variable references, and comments
+- **Complete Blueprint Translation:** Translate entire Blueprints with all graphs, variables, and components in a single operation
+- **Variable & Component Support:** Full support for Blueprint-level variables, local variables, and component property overrides
 - **Multiple LLM Options:** Use cloud providers (OpenAI, Anthropic Claude, Google Gemini, DeepSeek) or run 100% locally via Ollama for complete privacy
 - **Efficient Serialization:** Converts blueprints into a bespoke JSON schema that reduces token usage by 60-90% compared to UE's verbose Blueprint text format
 - **Style Guidance:** Supply your own C++ files as reference to maintain your project's coding standards and patterns
@@ -56,6 +60,29 @@
 - **C++ Programmers:** Understand designer intent without deciphering complex visual graphs
 - **Project Leads:** Improve team communication and maintain better system documentation
 - **Educators & Students:** Bridge the visual-to-code learning gap with real examples
+
+## 🆕 Recent Updates
+
+### Complete Blueprint Translation
+- **Translate Entire Blueprint:** New toolbar command to translate all graphs in a Blueprint at once
+- **Batch Processing:** Each graph generates independent JSON and LLM requests, all sharing the same root directory
+- **Error Feedback:** Comprehensive success/failure reporting for batch translations
+
+### Enhanced Variable & Component Support
+- **Blueprint Variables:** Full support for Blueprint-level variables with complete type mapping (including Array, Set, Map)
+- **Local Variables:** Function-level local variable collection and serialization
+- **Component Overrides:** Automatic detection and serialization of component property overrides
+- **Component Hierarchy:** Support for component parent-child relationships
+- **Map Key Types:** Improved Map key type extraction from Blueprint pin types
+
+### ClassItSelf Graph Type
+- **Class Structure Marking:** New graph type for representing class skeleton structure
+- **C++ Class Generation:** Enables LLM to generate proper C++ class declarations, constructors, and member variables
+- **Conditional Creation:** Automatically created when variables or components are present
+
+### Code Generation Improvements
+- **Enhanced Prompts:** Significantly expanded CodeGen_CPP.md with detailed guidance for components, variables, class structures, event handling, and network replication
+- **Better Type Mapping:** Improved handling of complex Unreal Engine types
 
 ## 🏃Get Started
 

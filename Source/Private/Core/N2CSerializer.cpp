@@ -127,6 +127,48 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
     }
     JsonObject->SetArrayField(TEXT("enums"), EnumsArray);
 
+    // Add variables array
+    TArray<TSharedPtr<FJsonValue>> VarsArray;
+    for (const FN2CVariable& Var : Blueprint.Variables)
+    {
+        TSharedPtr<FJsonObject> VarObject = VariableToJsonObject(Var);
+        if (VarObject.IsValid())
+        {
+            VarsArray.Add(MakeShared<FJsonValueObject>(VarObject));
+        }
+    }
+    JsonObject->SetArrayField(TEXT("variables"), VarsArray);
+
+    // Add components array
+    TArray<TSharedPtr<FJsonValue>> ComponentsArray;
+    for (const FN2CComponentOverride& Component : Blueprint.Components)
+    {
+        TSharedPtr<FJsonObject> ComponentObject = MakeShared<FJsonObject>();
+
+        ComponentObject->SetStringField(TEXT("component_name"), Component.ComponentName);
+        ComponentObject->SetStringField(TEXT("component_class_name"), Component.ComponentClassName);
+
+        if (!Component.AttachParentName.IsEmpty())
+        {
+            ComponentObject->SetStringField(TEXT("attach_parent_name"), Component.AttachParentName);
+        }
+
+        // Serialize overridden properties as an array of variable objects
+        TArray<TSharedPtr<FJsonValue>> OverriddenPropsArray;
+        for (const FN2CVariable& Var : Component.OverriddenProperties)
+        {
+            TSharedPtr<FJsonObject> VarObject = VariableToJsonObject(Var);
+            if (VarObject.IsValid())
+            {
+                OverriddenPropsArray.Add(MakeShared<FJsonValueObject>(VarObject));
+            }
+        }
+        ComponentObject->SetArrayField(TEXT("overridden_properties"), OverriddenPropsArray);
+
+        ComponentsArray.Add(MakeShared<FJsonValueObject>(ComponentObject));
+    }
+    JsonObject->SetArrayField(TEXT("components"), ComponentsArray);
+
     return JsonObject;
 }
 
@@ -399,6 +441,50 @@ TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
     return JsonObject;
 }
 
+TSharedPtr<FJsonObject> FN2CSerializer::VariableToJsonObject(const FN2CVariable& Var)
+{
+    TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
+
+    JsonObject->SetStringField(TEXT("name"), Var.Name);
+    JsonObject->SetStringField(TEXT("type"),
+        StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Var.Type)));
+
+    if (!Var.TypeName.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("type_name"), Var.TypeName);
+    }
+
+    if (Var.bIsArray)
+    {
+        JsonObject->SetBoolField(TEXT("is_array"), true);
+    }
+    if (Var.bIsSet)
+    {
+        JsonObject->SetBoolField(TEXT("is_set"), true);
+    }
+    if (Var.bIsMap)
+    {
+        JsonObject->SetBoolField(TEXT("is_map"), true);
+        JsonObject->SetStringField(TEXT("key_type"),
+            StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Var.KeyType)));
+        if (!Var.KeyTypeName.IsEmpty())
+        {
+            JsonObject->SetStringField(TEXT("key_type_name"), Var.KeyTypeName);
+        }
+    }
+
+    if (!Var.DefaultValue.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("default_value"), Var.DefaultValue);
+    }
+    if (!Var.Comment.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("comment"), Var.Comment);
+    }
+
+    return JsonObject;
+}
+
 bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CBlueprint& OutBlueprint)
 {
     if (!JsonObject.IsValid())
@@ -493,6 +579,78 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
         FN2CLogger::Get().LogWarning(TEXT("Partial deserialization completed"), Context);
         return ValidGraphCount > 0;  // Return true if we got at least one valid graph
     }
+
+    // Optionally parse variables array
+    const TArray<TSharedPtr<FJsonValue>>* VarsArray;
+    if (JsonObject->TryGetArrayField(TEXT("variables"), VarsArray))
+    {
+        OutBlueprint.Variables.Empty();
+        for (const TSharedPtr<FJsonValue>& VarValue : *VarsArray)
+        {
+            const TSharedPtr<FJsonObject>& VarObject = VarValue->AsObject();
+            if (!VarObject.IsValid())
+            {
+                continue;
+            }
+
+            FN2CVariable Var;
+            if (ParseVariableFromJson(VarObject, Var))
+            {
+                OutBlueprint.Variables.Add(Var);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool FN2CSerializer::ParseVariableFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CVariable& OutVar)
+{
+    if (!JsonObject.IsValid())
+    {
+        return false;
+    }
+
+    FString Name, TypeString;
+    if (!JsonObject->TryGetStringField(TEXT("name"), Name) ||
+        !JsonObject->TryGetStringField(TEXT("type"), TypeString))
+    {
+        FN2CLogger::Get().LogError(TEXT("Missing required variable fields in JSON"));
+        return false;
+    }
+
+    OutVar.Name = Name;
+
+    int64 TypeValue = StaticEnum<EN2CStructMemberType>()->GetValueByNameString(TypeString, EGetByNameFlags::None);
+    if (TypeValue == INDEX_NONE)
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Invalid variable type: %s"), *TypeString));
+        return false;
+    }
+    OutVar.Type = static_cast<EN2CStructMemberType>(TypeValue);
+
+    // Optional fields
+    JsonObject->TryGetStringField(TEXT("type_name"), OutVar.TypeName);
+    JsonObject->TryGetBoolField(TEXT("is_array"), OutVar.bIsArray);
+    JsonObject->TryGetBoolField(TEXT("is_set"), OutVar.bIsSet);
+    JsonObject->TryGetBoolField(TEXT("is_map"), OutVar.bIsMap);
+
+    if (OutVar.bIsMap)
+    {
+        FString KeyTypeString;
+        if (JsonObject->TryGetStringField(TEXT("key_type"), KeyTypeString))
+        {
+            int64 KeyTypeValue = StaticEnum<EN2CStructMemberType>()->GetValueByNameString(KeyTypeString, EGetByNameFlags::None);
+            if (KeyTypeValue != INDEX_NONE)
+            {
+                OutVar.KeyType = static_cast<EN2CStructMemberType>(KeyTypeValue);
+            }
+        }
+        JsonObject->TryGetStringField(TEXT("key_type_name"), OutVar.KeyTypeName);
+    }
+
+    JsonObject->TryGetStringField(TEXT("default_value"), OutVar.DefaultValue);
+    JsonObject->TryGetStringField(TEXT("comment"), OutVar.Comment);
 
     return true;
 }

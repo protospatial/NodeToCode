@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "N2CUserSecrets.h"
+#include "N2CRequestSettings.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Engine/DeveloperSettings.h"
 #include "LLM/N2CLLMModels.h"
@@ -365,7 +366,7 @@ struct FN2CCodeEditorThemes
 
 // Questions? Check out the Docs: github.com/protospatial/NodeToCode/wiki
 UCLASS(Config = NodeToCode, DefaultConfig, meta = (Category = "Node to Code", DisplayName = "Node to Code"))
-class NODETOCODE_API UN2CSettings : public UDeveloperSettings
+class NODETOCODE_API UN2CSettings : public UN2CRequestSettings
 {
     GENERATED_BODY()
 
@@ -445,7 +446,27 @@ public:
         meta=(DisplayName="Prepended Model Command", 
               ToolTip="Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear on first line of each user message."))
     FString LMStudioPrependedModelCommand = "";
-    
+
+    /** MiniMax API Key */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | MiniMax",
+        meta = (DisplayName = "API Key"))
+    FString MiniMax_API_Key_UI;
+
+    /** MiniMax endpoint */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | MiniMax",
+        meta = (DisplayName = "Server Endpoint"))
+    FString MiniMaxEndpoint = "https://api.minimax.io";
+
+    /** MiniMax Model */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | MiniMax",
+        meta = (DisplayName = "Model Name"))
+    FString MiniMaxModel = "MiniMax-M2.7";
+
+    /** Native details-row anchor for dynamic custom provider UI. */
+    UPROPERTY(Transient, EditAnywhere, Category = "Node to Code | Custom LLM Services",
+        meta=(DisplayName="Custom Providers"))
+    bool bCustomProvidersUIAnchor = false;
+
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
     TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIModelPricing;
@@ -471,6 +492,11 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
         meta=(DisplayName="Max Translation Depth", ClampMin="0", ClampMax="5", UIMin="0", UIMax="5"))
     int32 TranslationDepth = 0;
+
+    /** Include Blueprint variables in serialization output */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
+        meta=(DisplayName="Include Variables"))
+    bool bIncludeVariables = true;
     
     /** Minimum severity level for logging */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Logging")

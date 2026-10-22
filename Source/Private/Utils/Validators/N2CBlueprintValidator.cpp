@@ -69,20 +69,27 @@ bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, FS
 
 bool FN2CBlueprintValidator::ValidateGraphs(const FN2CBlueprint& Blueprint, FString& OutError)
 {
-    // Check that at least one graph has nodes
-    bool bHasNodes = false;
+    // Check that at least one non-ClassItSelf graph has nodes. Blueprints
+    // that consist only of synthetic ClassItSelf graphs are allowed, since
+    // they carry class-level structure but no executable flow.
+    bool bHasNonSkeletonGraph = false;
+    bool bHasNodesInNonSkeletonGraph = false;
     for (const FN2CGraph& Graph : Blueprint.Graphs)
     {
-        if (Graph.Nodes.Num() > 0)
+        if (Graph.GraphType != EN2CGraphType::ClassItSelf)
         {
-            bHasNodes = true;
-            break;
+            bHasNonSkeletonGraph = true;
+            if (Graph.Nodes.Num() > 0)
+            {
+                bHasNodesInNonSkeletonGraph = true;
+                break;
+            }
         }
     }
 
-    if (!bHasNodes)
+    if (bHasNonSkeletonGraph && !bHasNodesInNonSkeletonGraph)
     {
-        OutError = TEXT("No nodes found in any graph");
+        OutError = TEXT("No nodes found in any non-ClassItSelf graph");
         FN2CLogger::Get().LogError(OutError);
         return false;
     }
@@ -110,7 +117,24 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
         return false;
     }
 
-    // Check nodes array
+    // Special-case synthetic ClassItSelf graphs: they are allowed to have
+    // no nodes, because they only carry class-level structure (UCLASS,
+    // UPROPERTY members, ctor/dtor, components) and do not represent an
+    // executable flow graph. For these graphs we skip node/flow validation
+    // and treat them as structurally valid.
+    if (Graph.GraphType == EN2CGraphType::ClassItSelf)
+    {
+        if (Graph.Nodes.Num() == 0)
+        {
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("ClassItSelf graph %s has no nodes (expected for synthetic class skeleton graphs)"), *Graph.Name),
+                EN2CLogSeverity::Debug
+            );
+            return true;
+        }
+    }
+
+    // Check nodes array for all non-ClassItSelf graphs
     if (Graph.Nodes.Num() == 0)
     {
         OutError = FString::Printf(TEXT("No nodes in graph %s"), *Graph.Name);

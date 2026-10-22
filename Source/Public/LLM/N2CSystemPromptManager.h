@@ -33,7 +33,10 @@ public:
     FString MergePrompts(const FString& SystemPrompt, const FString& UserMessage) const;
     
     /** Prepend reference source files to user message */                                                                                                                                                 
-    bool PrependSourceFilesToUserMessage(FString& UserMessage) const; 
+    bool PrependSourceFilesToUserMessage(FString& UserMessage) const;
+
+    /** Suppress reference-file insertion while reformatting an already-prepared request. */
+    void SetSkipReferenceSourceFiles(bool bSkip) { bSkipReferenceSourceFiles = bSkip; }
 
     /** Initialize with configuration */
     void Initialize(const FN2CLLMConfig& Config);
@@ -62,4 +65,6 @@ private:
 
     /** Base directory for prompt files */
     FString PromptsDirectory;
+
+    bool bSkipReferenceSourceFiles = false;
 };
