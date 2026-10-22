@@ -1,0 +1,71 @@
+{
+  "target": "wiki:github",
+  "docsRoot": "wiki",
+  "nav": "sidebar",
+  "frontmatter": [],
+  "summary": true,
+  "pageBudget": 120,
+  "roots": [
+    {"name": "developers", "path": "developers"}
+  ],
+  "images": {"dir": "wiki/images", "themes": ["default"]},
+  "surfaces": [
+    {
+      "name": "translate-entry",
+      "code": ["Source/Private/Core/N2CEditorIntegration.cpp", "Source/Public/Core/N2CEditorIntegration.h",
+               "Source/Private/Core/N2CToolbarCommand.cpp", "Source/Public/Core/N2CToolbarCommand.h",
+               "Source/Private/Core/N2CEditorWindow.cpp", "Source/Public/Core/N2CEditorWindow.h",
+               "Source/Private/Core/Widgets/SN2CGraphOverlay.cpp", "Source/Public/Core/Widgets/SN2CGraphOverlay.h"],
+      "pages": ["wiki/Accessing-and-Triggering-Translation.md", "wiki/Opening-the-Editor.md", "wiki/Blueprint-Selection.md"]
+    },
+    {
+      "name": "main-window",
+      "code": ["Source/Private/Core/Widgets/SN2CMainWindow.cpp", "Source/Public/Core/Widgets/SN2CMainWindow.h",
+               "Source/Private/Core/Widgets/SN2CHeaderBar.cpp", "Source/Public/Core/Widgets/SN2CHeaderBar.h",
+               "Source/Private/Core/Widgets/SN2CTranslationViewer.cpp", "Source/Public/Core/Widgets/SN2CTranslationViewer.h",
+               "Source/Private/Core/Widgets/SN2CGraphListRow.cpp", "Source/Public/Core/Widgets/SN2CGraphListRow.h"],
+      "pages": ["wiki/Top-Navbar-Overview.md", "wiki/Viewing-the-Results.md", "wiki/Implementation-Notes.md", "wiki/Copy-&-Integrate.md"]
+    },
+    {
+      "name": "code-editor",
+      "code": ["Source/Private/Code Editor/**", "Source/Public/Code Editor/**", "Source/Public/Core/N2CDesignTokens.h",
+               "Source/Public/Models/N2CStyle.cpp", "Source/Public/Models/N2CStyle.h"],
+      "pages": ["wiki/Code-Editor.md", "wiki/Theme-&-Syntax-Highlighting.md"]
+    },
+    {
+      "name": "settings",
+      "code": ["Source/Public/Core/N2CSettings.h", "Source/Private/Core/N2CSettings.cpp"],
+      "pages": ["wiki/Initial-Configuration.md", "wiki/Provider-Configuration.md", "wiki/Target-Language-Settings.md",
+                "wiki/Max-Translation-Depth.md", "wiki/Reference-Source-Files.md", "wiki/Logging-Configuration.md"]
+    },
+    {
+      "name": "providers",
+      "code": ["Source/Public/LLM/N2CLLMModels.h", "Source/Private/LLM/N2CLLMModelRegistry.cpp", "Source/Public/LLM/N2CLLMModelRegistry.h",
+               "Source/Private/LLM/Providers/**", "Source/Public/LLM/Providers/**"],
+      "pages": ["wiki/Provider-Configuration.md", "wiki/Choosing-an-LLM-Provider.md", "wiki/LM-Studio-Quick-Start.md",
+                "wiki/LLM-Provider-Documentation-&-Resources.md"]
+    },
+    {
+      "name": "saved-translations",
+      "code": ["Source/Private/LLM/N2CLLMModule.cpp", "Source/Private/Utils/N2CPathUtils.cpp", "Source/Public/Utils/N2CPathUtils.h"],
+      "pages": ["wiki/Utilizing-Saved-Translations.md"]
+    },
+    {
+      "name": "depth-and-size",
+      "code": ["Source/Private/Core/N2CNodeTranslator.cpp", "Source/Private/Core/Widgets/SN2CContextWindowVisualizer.cpp",
+               "Source/Private/Core/Services/N2CTokenEstimationService.cpp"],
+      "pages": ["wiki/Translation-Depth.md", "wiki/Handling-Large-Graphs.md"]
+    },
+    {
+      "name": "prompts",
+      "code": ["Content/Prompting/**", "Source/Private/LLM/N2CSystemPromptManager.cpp"],
+      "pages": ["wiki/Target-Language-Settings.md", "wiki/Improving-Generated-Code.md", "wiki/Reference-Source-Files.md"]
+    },
+    {
+      "name": "install",
+      "code": ["NodeToCode.uplugin"],
+      "pages": ["wiki/Plugin-Installation.md", "wiki/Plugin-Updates.md", "wiki/Latest-Updates.md"]
+    }
+  ],
+  "accept": []
+}
