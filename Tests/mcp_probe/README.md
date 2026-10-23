@@ -109,6 +109,18 @@ its environment when no key is saved, so a live check never types or saves a key
   was cancelled and the task completed once, no response was handled after the cancel, and there is no crash, ensure
   or "context not found" line. Use `--windowed` on UE 5.6 and 5.7 (closing a Blueprint editor under `-nullrhi` fails
   there with no translation involved). Report: `logs/live_translate_exit.json`.
+- `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
+  0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
+  and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a
+  `translate-focused-blueprint` returns code; (2) `nodetocode/cancelTask` 2 s in answers `cancellation_initiated`, the
+  one response is the cancelled error, and `/mcp/health` answers every 5 s for 180 s with no crash line; (4) `obj gc`
+  + `obj list class=<service class>` before and after 10 MCP translations give the same count (console output is
+  read from the log between `LogPython` markers); (3) it starts `obj gc` every 5 s from a Slate post-tick callback,
+  writes `logs/0377/ready_<label>` and waits for `logs/0377/toolbar_done_<label>` while someone presses the Node to
+  Code toolbar button in the focused Blueprint editor, then checks the log for the toolbar request, a parsed response
+  and a GC inside it. `--toolbar-only` runs check 3 alone, `--skip-toolbar` skips it. It quits by deleting the
+  in-memory probe Blueprint and calling `quit_editor()`, so no save prompt (or a force kill and a Restore Packages
+  dialog on the next start) follows. Report: `logs/0377/gate_<label>.json`.
 - `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
   runs real translations through several providers and models in one headless editor (`--list` prints the case
   ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session so each request payload is
