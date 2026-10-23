@@ -45,3 +45,25 @@ its environment when no key is saved, so a live check never types or saves a key
   then checks the response parsed, Project Settings shows the key's source by variable name only, and no key value is
   in the editor log or the report (`logs/live_env_translation.json`). It refuses to run if a key for that provider is
   saved in the per-user secrets file, since the saved key would be used instead.
+- `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
+  runs real translations through several providers and models in one headless editor (`--list` prints the case
+  ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session so each request payload is
+  logged, wires BeginPlay to a Print String in the in-memory Blueprint so there is logic to translate, then per case
+  applies the case's settings (DeepSeek model entry, Max Output Tokens), translates, restores the settings and checks
+  that case's logged payload: no temperature/top_p/top_k where the provider rules forbid them, the expected output
+  budget field and value, OpenAI `response_format` `json_schema` with `strict: true`, Gemini `responseSchema` with no
+  `additionalProperties`, DeepSeek `thinking` and `reasoning_effort`. A case passes when the translation returns
+  code and every rule holds. It also scans the editor log, `Saved/Logs`, the plugin log and new translation folders
+  for key values and `Saved/Logs` for `key=`. Report: `logs/live_provider_matrix_<label>.json`.
+  - The case list holds current models only (the live entries of `N2CLLMModelRegistry.cpp`): no retired, deprecated
+    or "shuts down" IDs are tested. Update it when the registry's lineup changes.
+  - Each translation is bounded by `--timeout` (wall clock; the task stream's half-second progress events keep a
+    socket timeout from ever firing). A case that gets no response in time fails as timed out and the remaining cases
+    are skipped, since the editor still holds that request. Pass `--cases` in the order to run them and put slow
+    models last.
+  - `EditorSession` puts the editor in a Windows job object that kills it when the Python process exits, so a killed
+    or crashed run cannot leave an editor running; only `stop()` restores the `Saved/Config` patches.
+  - The editor runs with `-RenderOffScreen`: on UE 5.6 under `-nullrhi` the opened Blueprint editor's window
+    otherwise reaches `FGenericWindow::GetRestoredDimensions`, which is Fatal.
+  - Provider HTTP errors (429, 503, 402) surface in the response as "Failed to parse LLM response" with the raw body;
+    the case's `log_errors` hold the HTTP status.
