@@ -76,13 +76,13 @@ public:
     UFUNCTION(BlueprintPure, Category = "Code Editor|Cursor")
     void GetCursorPosition(int32& OutLine, int32& OutColumn) const;
 
-    /** Select text range using line and column positions */
+    /** Select text range using zero-based line and column positions; out-of-range values clamp to the document */
     UFUNCTION(BlueprintCallable, Category = "Code Editor|Selection", meta=(DisplayName="Select Text"))
     void SelectText(int32 StartLine, int32 StartColumn, int32 EndLine, int32 EndColumn);
 
-    /** Get the current text selection */
+    /** Get the first and last line of the current selection (zero-based line indices, not character offsets) */
     UFUNCTION(BlueprintPure, Category = "Code Editor|Selection")
-    void GetSelection(int32& OutStartIndex, int32& OutEndIndex) const;
+    void GetSelection(int32& OutStartLine, int32& OutEndLine) const;
 
     /** Set the font size */
     UFUNCTION(BlueprintCallable, Category = "Code Editor|Appearance")

@@ -5,6 +5,7 @@
 #include "Code Editor/Syntax/N2CRichTextSyntaxHighlighter.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Models/N2CStyle.h"
+#include "Runtime/Launch/Resources/Version.h"
 
 const FName SN2CCodeEditor::CurrentTheme = FName(TEXT("Unreal Engine"));
 
@@ -46,10 +47,7 @@ void SN2CCodeEditor::Construct(const FArguments& InArgs)
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(FN2CCodeEditorStyle::Get().GetBrush(
-            *FString::Printf(TEXT("N2CCodeEditor.%s.%s.Background"), 
-                *FN2CCodeEditorStyle::GetLanguageString(CurrentLanguage),
-                *CurrentTheme.ToString())))
+        .BorderImage(UpdateBackgroundBrush(CurrentLanguage))
         [
             SNew(SHorizontalBox)
 
@@ -118,10 +116,7 @@ void SN2CCodeEditor::SetLanguage(EN2CCodeLanguage NewLanguage)
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(FN2CCodeEditorStyle::Get().GetBrush(
-            *FString::Printf(TEXT("N2CCodeEditor.%s.%s.Background"), 
-                *FN2CCodeEditorStyle::GetLanguageString(NewLanguage),
-                *CurrentTheme.ToString())))
+        .BorderImage(UpdateBackgroundBrush(NewLanguage))
         [
             SNew(SGridPanel)
             .FillColumn(0, 1.0f)
@@ -232,33 +227,79 @@ void SN2CCodeEditor::GetCursorPosition(int32& OutLine, int32& OutColumn) const
     }
 }
 
+const FSlateBrush* SN2CCodeEditor::UpdateBackgroundBrush(EN2CCodeLanguage Language)
+{
+    // The style set lives until module shutdown and Reinitialize retints this brush in place, so the raw pointer
+    // the SBorder keeps stays valid for the widget's lifetime
+    BackgroundBrush = FN2CCodeEditorStyle::Get().GetBrush(
+        *FString::Printf(TEXT("N2CCodeEditor.%s.%s.Background"),
+            *FN2CCodeEditorStyle::GetLanguageString(Language),
+            *CurrentTheme.ToString()));
+    return BackgroundBrush;
+}
+
+int32 SN2CCodeEditor::GetLineCount() const
+{
+    if (!EditableText.IsValid())
+    {
+        return 0;
+    }
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8
+    // 5.8 deprecates the non-const overload
+    return static_cast<const SMultiLineEditableText*>(EditableText.Get())->GetTextLineCount();
+#else
+    return EditableText->GetTextLineCount();
+#endif
+}
+
+FTextLocation SN2CCodeEditor::ClampLocation(int32 Line, int32 Column) const
+{
+    const int32 NumLines = GetLineCount();
+    if (NumLines <= 0)
+    {
+        return FTextLocation(0, 0);
+    }
+
+    // FSlateEditableTextLayout::SelectText indexes the line array without bounds checks, so clamp here
+    const int32 ClampedLine = FMath::Clamp(Line, 0, NumLines - 1);
+    FString LineText;
+    EditableText->GetTextLine(ClampedLine, LineText);
+    return FTextLocation(ClampedLine, FMath::Clamp(Column, 0, LineText.Len()));
+}
+
 void SN2CCodeEditor::SelectText(int32 StartLine, int32 StartColumn, int32 EndLine, int32 EndColumn)
 {
-    if (EditableText.IsValid())
+    if (EditableText.IsValid() && GetLineCount() > 0)
     {
-        EditableText->SelectText(
-            FTextLocation(StartLine, StartColumn),
-            FTextLocation(EndLine, EndColumn)
-        );
+        EditableText->SelectText(ClampLocation(StartLine, StartColumn), ClampLocation(EndLine, EndColumn));
     }
 }
 
-void SN2CCodeEditor::GetSelection(int32& OutStartIndex, int32& OutEndIndex) const
+void SN2CCodeEditor::GetSelection(int32& OutStartLine, int32& OutEndLine) const
+{
+    int32 StartColumn = 0;
+    int32 EndColumn = 0;
+    GetSelection(OutStartLine, StartColumn, OutEndLine, EndColumn);
+}
+
+void SN2CCodeEditor::GetSelection(int32& OutStartLine, int32& OutStartColumn, int32& OutEndLine, int32& OutEndColumn) const
 {
     if (EditableText.IsValid())
     {
-        FTextSelection Selection = EditableText->GetSelection();
+        const FTextSelection Selection = EditableText->GetSelection();
         const FTextLocation& Begin = Selection.GetBeginning();
         const FTextLocation& End = Selection.GetEnd();
-        
-        // Convert line/column positions to indices
-        OutStartIndex = Begin.GetLineIndex();
-        OutEndIndex = End.GetLineIndex();
+        OutStartLine = Begin.GetLineIndex();
+        OutStartColumn = Begin.GetOffset();
+        OutEndLine = End.GetLineIndex();
+        OutEndColumn = End.GetOffset();
     }
     else
     {
-        OutStartIndex = 0;
-        OutEndIndex = 0;
+        OutStartLine = 0;
+        OutStartColumn = 0;
+        OutEndLine = 0;
+        OutEndColumn = 0;
     }
 }
 
@@ -300,10 +341,7 @@ void SN2CCodeEditor::SetFontSize(int32 NewSize)
         ChildSlot
         [
             SNew(SBorder)
-            .BorderImage(FN2CCodeEditorStyle::Get().GetBrush(
-                *FString::Printf(TEXT("N2CCodeEditor.%s.%s.Background"), 
-                    *FN2CCodeEditorStyle::GetLanguageString(CurrentLanguage),
-                    *CurrentTheme.ToString())))
+            .BorderImage(UpdateBackgroundBrush(CurrentLanguage))
             [
                 SNew(SGridPanel)
                 .FillColumn(0, 1.0f)
@@ -360,10 +398,7 @@ void SN2CCodeEditor::SetTabSize(int32 NewSize)
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(FN2CCodeEditorStyle::Get().GetBrush(
-            *FString::Printf(TEXT("N2CCodeEditor.%s.%s.Background"), 
-                *FN2CCodeEditorStyle::GetLanguageString(CurrentLanguage),
-                *CurrentTheme.ToString())))
+        .BorderImage(UpdateBackgroundBrush(CurrentLanguage))
         [
             SNew(SGridPanel)
             .FillColumn(0, 1.0f)

@@ -27,6 +27,8 @@ Customize syntax highlighting for [target language](Target-Language-Settings):
 - **CurlyBraces**: Curly braces
 - **SquareBrackets**: Square brackets
 
+You can change these colors while a translation is open. The **Background** color of an open code editor updates right away; syntax colors apply the next time the code view is rebuilt (for example when you switch language or reopen the translation).
+
     <p align="left">
         <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_ThemeSettings.png" alt="Node to Code theme settings" width="500">
     </p>

@@ -55,11 +55,23 @@ public:
     /** Get cursor position */
     void GetCursorPosition(int32& OutLine, int32& OutColumn) const;
 
-    /** Select text range using line and column positions */
+    /**
+     * Select text range using line and column positions. Lines are clamped to [0, NumLines - 1] and columns to
+     * [0, line length], so out-of-range values from Blueprint or Python select up to the document edge
+     */
     void SelectText(int32 StartLine, int32 StartColumn, int32 EndLine, int32 EndColumn);
 
-    /** Get selection range */
-    void GetSelection(int32& OutStartIndex, int32& OutEndIndex) const;
+    /** Get the first and last line of the selection (zero-based line indices, not character offsets) */
+    void GetSelection(int32& OutStartLine, int32& OutEndLine) const;
+
+    /** Get the selection as zero-based line and column positions */
+    void GetSelection(int32& OutStartLine, int32& OutStartColumn, int32& OutEndLine, int32& OutEndColumn) const;
+
+    /** Number of lines in the text layout */
+    int32 GetLineCount() const;
+
+    /** Background brush the border paints with (owned by FN2CCodeEditorStyle's style set) */
+    const FSlateBrush* GetBackgroundBrush() const { return BackgroundBrush; }
 
     /** Set font size */
     void SetFontSize(int32 NewSize);
@@ -97,6 +109,15 @@ private:
     
     /** Current text style */
     FTextBlockStyle TextStyle;
+
+    /** Background brush for the current language, looked up from FN2CCodeEditorStyle */
+    const FSlateBrush* BackgroundBrush = nullptr;
+
+    /** Looks up and stores the background brush for a language */
+    const FSlateBrush* UpdateBackgroundBrush(EN2CCodeLanguage Language);
+
+    /** Clamps a line/column pair to the current text layout */
+    FTextLocation ClampLocation(int32 Line, int32 Column) const;
 
     /** Create a new syntax highlighter for the specified language */
     void CreateSyntaxHighlighter(EN2CCodeLanguage Language);

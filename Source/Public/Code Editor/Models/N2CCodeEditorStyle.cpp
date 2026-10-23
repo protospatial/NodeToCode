@@ -27,27 +27,56 @@ void FN2CCodeEditorStyle::Initialize()
     check(IsInGameThread());
 
     StyleSet = MakeShareable(new FSlateStyleSet("N2CCodeEditor"));
-    
-    // Base editor style
-    const FTextBlockStyle NormalText = CreateDefaultTextStyle(TEXT("CPP"));
 
-    StyleSet->Set("N2CCodeEditor.TextEditor.NormalText", NormalText);
+    ApplyThemeColors();
+
+    FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
+}
+
+void FN2CCodeEditorStyle::ApplyThemeColors()
+{
+    check(StyleSet.IsValid());
+
+    // Base editor style
+    SetOrUpdateTextStyle("N2CCodeEditor.TextEditor.NormalText", CreateDefaultTextStyle(TEXT("CPP")));
+
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (Settings && Settings->CodeEditorTheme.Themes.Contains(TEXT("Unreal Engine")))
     {
         const FN2CCodeEditorColors& Colors = *Settings->CodeEditorTheme.Themes.Find(TEXT("Unreal Engine"));
-        StyleSet->Set("N2CCodeEditor.TextEditor.Border", new FSlateColorBrush(FLinearColor(Colors.Background)));
+        SetOrUpdateColorBrush("N2CCodeEditor.TextEditor.Border", FLinearColor(Colors.Background));
     }
     else
     {
         // Fallback to a default color if themes aren't initialized yet
-        StyleSet->Set("N2CCodeEditor.TextEditor.Border", new FSlateColorBrush(FN2CUIColors::ToLinear(UN2CSettings::GetUIColors().FallbackBorder)));
+        SetOrUpdateColorBrush("N2CCodeEditor.TextEditor.Border", FN2CUIColors::ToLinear(UN2CSettings::GetUIColors().FallbackBorder));
     }
 
     // Initialize language-specific styles
     InitializeLanguageStyles();
+}
 
-    FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
+void FN2CCodeEditorStyle::SetOrUpdateColorBrush(const FName& Name, const FLinearColor& Color)
+{
+    // GetOptionalBrush returns the default (null here) when the name is not registered yet
+    if (const FSlateBrush* Existing = StyleSet->GetOptionalBrush(Name, nullptr, nullptr))
+    {
+        // The set owns this brush and widgets point at it: retint it, never replace it
+        const_cast<FSlateBrush*>(Existing)->TintColor = FSlateColor(Color);
+        return;
+    }
+    StyleSet->Set(Name, new FSlateColorBrush(Color));
+}
+
+void FN2CCodeEditorStyle::SetOrUpdateTextStyle(const FName& Name, const FTextBlockStyle& Style)
+{
+    if (StyleSet->HasWidgetStyle<FTextBlockStyle>(Name))
+    {
+        // FSlateStyleSet::Set would swap in a new shared object and free the one widgets point at, so assign in place
+        const_cast<FTextBlockStyle&>(StyleSet->GetWidgetStyle<FTextBlockStyle>(Name)) = Style;
+        return;
+    }
+    StyleSet->Set(Name, Style);
 }
 
 void FN2CCodeEditorStyle::InitializeLanguageStyles()
@@ -71,31 +100,31 @@ void FN2CCodeEditorStyle::InitializeStylesForLanguage(const FName& LanguageId, c
     const FName ThemeName = TEXT("Unreal Engine");
 
     // Set background color
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Background"), *LanguageId.ToString(), *ThemeName.ToString()),
-        new FSlateColorBrush(FLinearColor(Colors.Background)));
+    SetOrUpdateColorBrush(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Background"), *LanguageId.ToString(), *ThemeName.ToString()),
+        FLinearColor(Colors.Background));
 
     // For Pseudocode, all syntax elements use NormalText color
     const FLinearColor NormalColor(Colors.NormalText);
 
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Normal"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Normal"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(NormalColor));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Operator"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Operator"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.Operators)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Keyword"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Keyword"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.Keywords)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.String"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.String"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.Strings)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Number"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Number"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.Numbers)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Comment"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Comment"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.Comments)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Preprocessor"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Preprocessor"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.Preprocessor)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Parentheses"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.Parentheses"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.Parentheses)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.CurlyBraces"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.CurlyBraces"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.CurlyBraces)));
-    StyleSet->Set(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.SquareBrackets"), *LanguageId.ToString(), *ThemeName.ToString()),
+    SetOrUpdateTextStyle(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.SquareBrackets"), *LanguageId.ToString(), *ThemeName.ToString()),
         FTextBlockStyle(BaseStyle).SetColorAndOpacity(bIsPseudocode ? NormalColor : FLinearColor(Colors.SquareBrackets)));
 }
 
@@ -124,8 +153,22 @@ void FN2CCodeEditorStyle::Shutdown()
 
 void FN2CCodeEditorStyle::Reinitialize()
 {
-    Shutdown();
-    Initialize();
+    if (!StyleSet.IsValid())
+    {
+        Initialize();
+        return;
+    }
+
+    // Never Shutdown() here: SN2CCodeEditor's SBorder keeps the raw brush pointer it got from GetBrush and would
+    // paint through freed memory on the next frame. Updating in place keeps every pointer valid and retints the
+    // background of open editors right away; syntax colors copied into a highlighter apply when it is rebuilt
+    check(IsInGameThread());
+    ApplyThemeColors();
+}
+
+TSharedPtr<const FSlateStyleSet> FN2CCodeEditorStyle::GetStyleSetPtr()
+{
+    return StyleSet;
 }
 
 const ISlateStyle& FN2CCodeEditorStyle::Get()
