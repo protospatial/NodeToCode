@@ -4,91 +4,178 @@
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
-#include "Async/Async.h" // For AsyncTask TPromise/TFuture
-#include "HAL/PlatformProcess.h" // For FEvent
+#include "Async/Async.h"
+#include "HAL/PlatformTime.h"
 
 FN2CTranslateBlueprintAsyncTask::FN2CTranslateBlueprintAsyncTask(const FGuid& TaskId, const FString& ProgressToken, const TSharedPtr<FJsonObject>& Arguments)
     : FN2CToolAsyncTaskBase(TaskId, ProgressToken, TEXT("translate-focused-blueprint"), Arguments)
+    , CallbackState(MakeShared<FCallbackState, ESPMode::ThreadSafe>())
 {
+}
+
+FN2CTranslateBlueprintAsyncTask::~FN2CTranslateBlueprintAsyncTask()
+{
+    StopTicker();
 }
 
 void FN2CTranslateBlueprintAsyncTask::Execute()
 {
-    if (CheckCancellationAndReport()) return;
+    // Collecting the graph, creating the provider service and sending the request create UObjects and touch editor
+    // state: all of it belongs on the game thread. The HTTP completion arrives on the game thread too.
+    check(IsInGameThread());
+
+    if (CallbackState->bDone.load())
+    {
+        // Cancelled before it started; the cancel already reported
+        return;
+    }
+    if (CheckCancellationAndReport())
+    {
+        CallbackState->bDone.store(true);
+        return;
+    }
     ReportProgress(0.05f, TEXT("Preparing Blueprint data..."));
 
-    // FN2CEditorIntegration::TranslateFocusedBlueprintAsync handles its own GameThread dispatches for Blueprint data collection.
-    // So, we can call it directly from this worker thread. The OnComplete lambda will be called back on whatever thread
-    // the LLM response is processed on (likely an HTTP thread or another worker thread).
-
     FN2CMcpArgumentParser ArgParser(Arguments);
-    FString ProviderId = ArgParser.GetOptionalString(TEXT("provider"));
-    FString ModelId = ArgParser.GetOptionalString(TEXT("model"));
-    FString LanguageId = ArgParser.GetOptionalString(TEXT("language"));
+    const FString ProviderId = ArgParser.GetOptionalString(TEXT("provider"));
+    const FString ModelId = ArgParser.GetOptionalString(TEXT("model"));
+    const FString LanguageId = ArgParser.GetOptionalString(TEXT("language"));
 
-    FEvent* LLMCompleteEvent = FPlatformProcess::GetSynchEventFromPool(false); // false for auto-reset
-    FMcpToolCallResult FinalLLMResult;
-    bool bLLMOperationCompleted = false;
+    StartTime = FPlatformTime::Seconds();
+    WaitProgress = 0.1f;
+    ReportProgress(WaitProgress, TEXT("Sending translation request to LLM..."));
 
-    ReportProgress(0.1f, TEXT("Sending translation request to LLM..."));
-
-    FN2CEditorIntegration::Get().TranslateFocusedBlueprintAsync(
-        ProviderId, ModelId, LanguageId,
-        FOnLLMResponseReceived::CreateLambda([&FinalLLMResult, LLMCompleteEvent, &bLLMOperationCompleted](const FString& LLMResponse)
+    // The callback holds the shared state by value and the task weakly: a callback that arrives after the task gave up
+    // or was destroyed touches nothing but the shared state.
+    const TWeakPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> WeakTask = AsShared();
+    const TSharedRef<FCallbackState, ESPMode::ThreadSafe> State = CallbackState;
+    FOnLLMResponseReceived OnLLMResponse = FOnLLMResponseReceived::CreateLambda(
+        [WeakTask, State](const FString& LLMResponse)
         {
-            if (LLMResponse.StartsWith(TEXT("{\"error\"")))
+            if (State->bCancelled.load() || State->bDone.exchange(true))
             {
-                FinalLLMResult = FMcpToolCallResult::CreateErrorResult(LLMResponse);
+                return;
             }
-            else
+            if (const TSharedPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> Task = WeakTask.Pin())
             {
-                FinalLLMResult = FMcpToolCallResult::CreateTextResult(LLMResponse);
+                Task->HandleLLMResponse(LLMResponse);
             }
-            bLLMOperationCompleted = true;
-            LLMCompleteEvent->Trigger();
-        })
-    );
+        });
 
-    // Wait for LLM completion or cancellation
-    float WaitProgress = 0.1f; // Initial progress after BP data prep
-    const float MaxWaitTimeSeconds = 3600.0f; // Max wait time (e.g., 1 hour)
-    const float StartTime = FPlatformTime::Seconds();
-    const float ProgressUpdateIntervalSeconds = 0.5f; // How often we check/update progress
-    const float TotalProgressSpanForWait = 0.85f; // Progress from 0.1 (initial) to 0.95 (before completion)
-
-    // Calculate increment per cycle to make progress span MaxWaitTimeSeconds
-    // Ensure CyclesInMaxWait is not zero to prevent division by zero, though MaxWaitTimeSeconds is large.
-    const float CyclesInMaxWait = (MaxWaitTimeSeconds > 0 && ProgressUpdateIntervalSeconds > 0) ? (MaxWaitTimeSeconds / ProgressUpdateIntervalSeconds) : 1.0f;
-    const float IncrementPerCycle = TotalProgressSpanForWait / CyclesInMaxWait; // This will be a very small number
-
-    while (!bLLMOperationCompleted)
+    if (RequestStarter)
     {
-        if (CheckCancellationAndReport())
-        {
-            FPlatformProcess::ReturnSynchEventToPool(LLMCompleteEvent);
-            return;
-        }
-
-        if ((FPlatformTime::Seconds() - StartTime) > MaxWaitTimeSeconds)
-        {
-            FinalLLMResult = FMcpToolCallResult::CreateErrorResult(TEXT("LLM request timed out."));
-            ReportComplete(FinalLLMResult);
-            FPlatformProcess::ReturnSynchEventToPool(LLMCompleteEvent);
-            return;
-        }
-        
-        if (LLMCompleteEvent->Wait(FTimespan::FromSeconds(ProgressUpdateIntervalSeconds))) // Check with defined interval
-        {
-            // Event was triggered, bLLMOperationCompleted should be true. Loop will exit.
-        }
-
-        // Increment progress based on the calculated per-cycle increment
-        WaitProgress = FMath::Min(WaitProgress + IncrementPerCycle, 0.95f); 
-        ReportProgress(WaitProgress, TEXT("Waiting for LLM response..."));
+        RequestHandle = RequestStarter(ProviderId, ModelId, LanguageId, OnLLMResponse);
     }
-    
-    FPlatformProcess::ReturnSynchEventToPool(LLMCompleteEvent);
+    else
+    {
+        RequestHandle = FN2CEditorIntegration::Get().TranslateFocusedBlueprintAsync(ProviderId, ModelId, LanguageId, OnLLMResponse);
+    }
+
+    if (CallbackState->bDone.load())
+    {
+        // An error found before sending completed the request inside the call
+        return;
+    }
+
+    // Progress and timeout from the core ticker; nothing waits on a thread
+    TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+        [WeakTask](float DeltaTime)
+        {
+            const TSharedPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> Task = WeakTask.Pin();
+            return Task.IsValid() && Task->Tick(DeltaTime);
+        }), ProgressIntervalSeconds);
+}
+
+void FN2CTranslateBlueprintAsyncTask::RequestCancel()
+{
+    FN2CToolAsyncTaskBase::RequestCancel();
+
+    if (IsInGameThread())
+    {
+        AbortRequest(TEXT("Task was cancelled"));
+        return;
+    }
+
+    // The request handle and the completion live on the game thread
+    const TWeakPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> WeakTask = AsShared();
+    AsyncTask(ENamedThreads::GameThread, [WeakTask]()
+    {
+        if (const TSharedPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> Task = WeakTask.Pin())
+        {
+            Task->AbortRequest(TEXT("Task was cancelled"));
+        }
+    });
+}
+
+bool FN2CTranslateBlueprintAsyncTask::Tick(float DeltaTime)
+{
+    check(IsInGameThread());
+
+    if (CallbackState->bDone.load())
+    {
+        TickerHandle.Reset();
+        return false;
+    }
+
+    if (IsCancellationRequested())
+    {
+        AbortRequest(TEXT("Task was cancelled"));
+        return false;
+    }
+
+    const double Elapsed = FPlatformTime::Seconds() - StartTime;
+    if (Elapsed > TimeoutSeconds)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Translate task %s timed out after %.1f s; cancelling the LLM request"),
+            *GetTaskId().ToString(), Elapsed));
+        AbortRequest(TEXT("LLM request timed out."));
+        return false;
+    }
+
+    // Progress creeps from 0.1 towards 0.95 over the timeout so clients see the task is alive
+    const double Cycles = FMath::Max(TimeoutSeconds / ProgressIntervalSeconds, 1.0);
+    const float IncrementPerCycle = static_cast<float>(0.85 / Cycles);
+    WaitProgress = FMath::Min(WaitProgress + IncrementPerCycle, 0.95f);
+    ReportProgress(WaitProgress, TEXT("Waiting for LLM response..."));
+    return true;
+}
+
+void FN2CTranslateBlueprintAsyncTask::HandleLLMResponse(const FString& LLMResponse)
+{
+    StopTicker();
+
+    const FMcpToolCallResult Result = LLMResponse.StartsWith(TEXT("{\"error\""))
+        ? FMcpToolCallResult::CreateErrorResult(LLMResponse)
+        : FMcpToolCallResult::CreateTextResult(LLMResponse);
 
     ReportProgress(1.0f, TEXT("Translation received."));
-    ReportComplete(FinalLLMResult);
+    ReportComplete(Result);
+}
+
+void FN2CTranslateBlueprintAsyncTask::AbortRequest(const FString& Message)
+{
+    // Whoever sets bDone first reports: the LLM callback or this abort, never both
+    if (CallbackState->bDone.exchange(true))
+    {
+        return;
+    }
+    CallbackState->bCancelled.store(true);
+    StopTicker();
+
+    if (RequestHandle.IsValid() && !RequestHandle->Cancel())
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Translate task %s: the LLM request had already completed when it was cancelled"),
+            *GetTaskId().ToString()));
+    }
+
+    ReportComplete(FMcpToolCallResult::CreateErrorResult(Message));
+}
+
+void FN2CTranslateBlueprintAsyncTask::StopTicker()
+{
+    if (TickerHandle.IsValid())
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(TickerHandle);
+        TickerHandle.Reset();
+    }
 }

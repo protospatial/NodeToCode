@@ -140,58 +140,68 @@ FMcpToolDefinition FN2CMcpLongRunningTool::GetDefinition() const
 
 ### Creating an Async Task
 
-Create a task class that inherits from `FN2CToolAsyncTaskBase`:
+Create a task class that inherits from `FN2CToolAsyncTaskBase`. The task manager calls `Execute()` once, on the
+game thread, and there is no worker thread: `Execute()` must start the work (for example an async HTTP request) and
+return at once, never block or sleep. Report progress from an `FTSTicker` and the result from the work's completion
+callback, both on the game thread. Keep anything the callback touches in a `TSharedPtr` captured by value (plus a weak
+pointer to the task), and override `RequestCancel()` to cancel the in-flight work so no callback arrives after the
+task has reported. `FN2CTranslateBlueprintAsyncTask` is the reference implementation: it keeps the
+`FN2CLLMRequestHandle` that `ProcessN2CJsonWithOverrides` returns and calls `Cancel()` on it on cancel and on
+timeout.
 
 ```cpp
 // N2CMyAsyncTask.h
 #pragma once
 
 #include "MCP/Async/N2CToolAsyncTaskBase.h"
+#include "LLM/N2CLLMRequestHandle.h"
 
-class FN2CMyAsyncTask : public FN2CToolAsyncTaskBase
+class FN2CMyAsyncTask : public FN2CToolAsyncTaskBase, public TSharedFromThis<FN2CMyAsyncTask, ESPMode::ThreadSafe>
 {
 public:
-    FN2CMyAsyncTask(const FGuid& TaskId, const FString& ProgressToken, 
+    FN2CMyAsyncTask(const FGuid& TaskId, const FString& ProgressToken,
         const TSharedPtr<FJsonObject>& Arguments)
         : FN2CToolAsyncTaskBase(TaskId, ProgressToken, TEXT("long-running-tool"), Arguments)
     {
     }
 
     virtual void Execute() override;
+    virtual void RequestCancel() override;
+
+private:
+    FN2CLLMRequestHandlePtr Request;
 };
 
 // N2CMyAsyncTask.cpp
 void FN2CMyAsyncTask::Execute()
 {
-    // Check for cancellation at the start
+    check(IsInGameThread());
     if (CheckCancellationAndReport())
     {
         return;
     }
+    ReportProgress(0.1f, TEXT("Sending request..."));
 
-    // Report initial progress
-    ReportProgress(0.0f, TEXT("Starting processing..."));
-
-    // Simulate long-running work
-    for (int32 i = 0; i < 100; i++)
-    {
-        // Check cancellation periodically
-        if (CheckCancellationAndReport())
+    TWeakPtr<FN2CMyAsyncTask, ESPMode::ThreadSafe> WeakTask = AsShared();
+    Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, FOnLLMResponseReceived::CreateLambda(
+        [WeakTask](const FString& Response)
         {
-            return;
-        }
+            // Runs on the game thread, at most once, and never after Request->Cancel() succeeded
+            if (TSharedPtr<FN2CMyAsyncTask, ESPMode::ThreadSafe> Task = WeakTask.Pin())
+            {
+                Task->ReportComplete(FMcpToolCallResult::CreateTextResult(Response));
+            }
+        }));
+    // Returns now; add an FTSTicker here for progress and a timeout
+}
 
-        // Do some work...
-        FPlatformProcess::Sleep(0.1f);
-
-        // Report progress
-        float Progress = (i + 1) / 100.0f;
-        ReportProgress(Progress, FString::Printf(TEXT("Processing step %d of 100"), i + 1));
+void FN2CMyAsyncTask::RequestCancel()
+{
+    FN2CToolAsyncTaskBase::RequestCancel();
+    if (Request.IsValid() && Request->Cancel())
+    {
+        ReportComplete(FMcpToolCallResult::CreateErrorResult(TEXT("Task was cancelled")));
     }
-
-    // Report completion
-    FMcpToolCallResult Result = FMcpToolCallResult::CreateTextResult(TEXT("Processing complete!"));
-    ReportComplete(Result);
 }
 ```
 

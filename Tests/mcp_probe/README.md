@@ -45,6 +45,13 @@ its environment when no key is saved, so a live check never types or saves a key
   then checks the response parsed, Project Settings shows the key's source by variable name only, and no key value is
   in the editor log or the report (`logs/live_env_translation.json`). It refuses to run if a key for that provider is
   saved in the per-user secrets file, since the saved key would be used instead.
+- `live_translate_cancel.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5]` cancels a
+  live translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, sends `nodetocode/cancelTask`
+  `--cancel-after` seconds in (default 1.5), watches the task stream for `--settle` seconds (default 30), and checks
+  the cancel answered `cancellation_initiated`, the one response is the cancelled error, no event arrives after it,
+  the log shows the LLM request cancelled and the task completed once, a second cancel answers
+  `task_already_completed`, the editor stays up, and a control translation run to the end returns code. It also
+  scans the editor log and report for key values. Report: `logs/live_translate_cancel.json`.
 - `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
   runs real translations through several providers and models in one headless editor (`--list` prints the case
   ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session so each request payload is

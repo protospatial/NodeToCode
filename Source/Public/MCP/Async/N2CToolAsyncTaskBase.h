@@ -28,6 +28,7 @@ public:
 	virtual void RequestCancel() override;
 	virtual bool IsCancellable() const override { return true; }
 	virtual bool IsCancellationRequested() const override;
+	virtual bool IsComplete() const override { return bHasCompleted; }
 	virtual FGuid GetTaskId() const override { return TaskId; }
 	virtual FString GetProgressToken() const override { return ProgressToken; }
 	virtual void SetProgressDelegate(const FN2CAsyncTaskProgressDelegate& InDelegate) override;

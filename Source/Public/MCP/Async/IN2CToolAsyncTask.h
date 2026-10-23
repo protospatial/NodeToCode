@@ -28,14 +28,13 @@ public:
 	virtual ~IN2CToolAsyncTask() = default;
 
 	/**
-	 * Executes the main task logic
-	 * This method will be called on a background thread
+	 * Starts the task. Called once, on the game thread. It must not block: start the work (for example an async HTTP
+	 * request) and return, then report progress and completion from callbacks or a ticker on the game thread.
 	 */
 	virtual void Execute() = 0;
 
 	/**
-	 * Requests cancellation of the task
-	 * Tasks should check IsCancellationRequested() periodically and exit gracefully
+	 * Requests cancellation of the task. Tasks with in-flight work cancel it and report a cancelled result once.
 	 */
 	virtual void RequestCancel() = 0;
 
@@ -50,6 +49,12 @@ public:
 	 * @return true if cancellation was requested, false otherwise
 	 */
 	virtual bool IsCancellationRequested() const = 0;
+
+	/**
+	 * Checks if the task has reported its result (success, error or cancelled)
+	 * @return true once ReportComplete has run
+	 */
+	virtual bool IsComplete() const = 0;
 
 	/**
 	 * Gets the unique task identifier

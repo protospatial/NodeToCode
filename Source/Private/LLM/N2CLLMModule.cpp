@@ -90,6 +90,9 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     const FString& JsonInput,
     const FOnLLMResponseReceived& OnComplete)
 {
+    // Creates and uses UObjects and writes CurrentStatus: game thread only (objects made elsewhere are never collected)
+    check(IsInGameThread());
+
     if (!bIsInitialized)
     {
         CurrentStatus = EN2CSystemStatus::Error;
@@ -537,6 +540,10 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     EN2CCodeLanguage RequestLanguage,
     const FOnLLMResponseReceived& OnComplete)
 {
+    // Creates a provider service and a prompt manager and writes CurrentStatus: game thread only. Objects created on
+    // another thread get EInternalObjectFlags::Async and are never collected.
+    check(IsInGameThread());
+
     CurrentStatus = EN2CSystemStatus::Processing;
     // Note: We don't broadcast OnTranslationRequestSent here as this is for a specific tool call,
     // not necessarily a UI-driven translation. The async task can report its own start.
@@ -556,13 +563,18 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
         return CompleteWithoutRequest(OnComplete, FString::Printf(TEXT("{\"error\":\"%s\"}"), *ErrorMsg));
     }
     
-    // Create a temporary prompt manager for this request to ensure correct language-specific prompt
-    UN2CSystemPromptManager* TempPromptManager = NewObject<UN2CSystemPromptManager>(this);
+    // The temporary service is referenced only by this request: hold it strongly so GC cannot free it mid-request
+    TStrongObjectPtr<UObject> TempServiceObject(TempService.GetObject());
+
+    // Create a temporary prompt manager for this request to ensure correct language-specific prompt. Nothing else
+    // references it, so hold it strongly while it builds the prompt; it is collected after this call.
+    TStrongObjectPtr<UN2CSystemPromptManager> TempPromptManager(NewObject<UN2CSystemPromptManager>(this));
     TempPromptManager->Initialize(RequestConfig); // Initialize with the request-specific config
     FString SystemPrompt = TempPromptManager->GetLanguageSpecificPrompt(TEXT("CodeGen"), RequestLanguage);
 
-    // The temporary service is referenced only by this callback: hold it strongly so GC cannot free it mid-request
-    TStrongObjectPtr<UObject> TempServiceObject(TempService.GetObject());
+    TempPromptManager.Reset();
+
+    // The callback keeps TempServiceObject (and so the service) alive until the request completes or is cancelled
     FN2CLLMRequestHandleRef Handle = TempService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
         [this, TempService, TempServiceObject, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
         {
