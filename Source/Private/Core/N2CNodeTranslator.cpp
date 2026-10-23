@@ -25,20 +25,46 @@ bool FN2CNodeTranslator::ProcessSingleNode(UK2Node* Node, FN2CNodeDefinition& Ou
         return false;
     }
     
-    // Generate a node ID if not already present
+    // Keep a caller-supplied ID; generate one otherwise
+    const FString CallerID = OutNodeDef.ID;
     if (OutNodeDef.ID.IsEmpty())
     {
         OutNodeDef.ID = GenerateNodeID();
     }
-    
-    // Use the existing ProcessNode method
-    return ProcessNode(Node, OutNodeDef);
+
+    // Flows go into a scratch graph that lives only for this call (CurrentGraph used to dangle at a previous
+    // capture's stack local), and a lone node never queues nested graphs for the next capture.
+    FN2CGraph ScratchGraph;
+    TGuardValue<FN2CGraph*> GraphGuard(CurrentGraph, &ScratchGraph);
+    TGuardValue<bool> DiscoveryGuard(bSuppressGraphDiscovery, true);
+
+    // Struct and enum definitions a lone node pulls in must not be appended to the last capture's output
+    const int32 StructCount = N2CBlueprint.Structs.Num();
+    const int32 EnumCount = N2CBlueprint.Enums.Num();
+    const TSet<FString> SavedStructPaths = ProcessedStructPaths;
+    const TSet<FString> SavedEnumPaths = ProcessedEnumPaths;
+
+    const bool bProcessed = ProcessNode(Node, OutNodeDef);
+
+    N2CBlueprint.Structs.SetNum(StructCount);
+    N2CBlueprint.Enums.SetNum(EnumCount);
+    ProcessedStructPaths = SavedStructPaths;
+    ProcessedEnumPaths = SavedEnumPaths;
+
+    if (!CallerID.IsEmpty())
+    {
+        OutNodeDef.ID = CallerID;
+    }
+    return bProcessed;
 }
 
 bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNodes)
 {
-    // Clear any existing data
+    // Clear any existing data, including state a previous capture or ProcessSingleNode could have left behind
     N2CBlueprint = FN2CBlueprint();
+    AdditionalGraphsToProcess.Empty();
+    CurrentDepth = 0;
+    CurrentGraph = nullptr;
     NodeIDMap.Empty();
     PinIDMap.Empty();
     ProcessedStructPaths.Empty();  // Clear processed structs set
@@ -141,11 +167,11 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
     while (AdditionalGraphsToProcess.Num() > 0)
     {
         FGraphProcessInfo GraphInfo = AdditionalGraphsToProcess.Pop();
-        if (GraphInfo.Graph)
+        if (UEdGraph* QueuedGraph = GraphInfo.Graph.Get())
         {
             // Set the depth to parent depth before processing
             CurrentDepth = GraphInfo.ParentDepth;
-            ProcessGraph(GraphInfo.Graph, DetermineGraphType(GraphInfo.Graph));
+            ProcessGraph(QueuedGraph, DetermineGraphType(QueuedGraph));
         }
     }
 
@@ -153,6 +179,9 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
         MainGraph.Nodes.Num(), 
         N2CBlueprint.Graphs.Num());
     FN2CLogger::Get().Log(TEXT("Node translation complete"), EN2CLogSeverity::Info, Context);
+
+    // MainGraph and ProcessGraph's NewGraph are locals; never leave CurrentGraph pointing at them
+    CurrentGraph = nullptr;
 
     return N2CBlueprint.Graphs.Num() > 0;
 }
@@ -229,6 +258,10 @@ bool FN2CNodeTranslator::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeD
 
 void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
 {
+    if (bSuppressGraphDiscovery)
+    {
+        return;
+    }
     if (!Graph)
     {
         return;
