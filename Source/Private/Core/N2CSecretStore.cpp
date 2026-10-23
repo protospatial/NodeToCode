@@ -12,11 +12,8 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Utils/N2CFileUtils.h"
 #include "Utils/N2CLogger.h"
-
-#if PLATFORM_MAC || PLATFORM_LINUX
-#include <sys/stat.h>
-#endif
 
 namespace
 {
@@ -32,9 +29,6 @@ namespace
         TEXT("Google_OAuth_AccessToken"), TEXT("Google_OAuth_RefreshToken"), TEXT("Google_OAuth_ExpiresAt"), TEXT("Google_OAuth_Scope"),
     };
 
-    FString TempPathFor(const FString& Path) { return Path + TEXT(".tmp"); }
-    FString BackupPathFor(const FString& Path) { return Path + TEXT(".bak"); }
-
     /** The provider name in a key field, for log lines ("OpenAI_API_Key" -> "OpenAI") */
     FString ProviderNameOf(const FString& Field)
     {
@@ -48,14 +42,6 @@ namespace
         {
             Json.SetNumberField(VersionField, FN2CSecretFileBackend::FileVersion);
         }
-    }
-
-    /** Keep the file readable by its owner only where the platform has POSIX modes (Windows: the per-user AppData ACL) */
-    void RestrictToOwner(const FString& Path)
-    {
-#if PLATFORM_MAC || PLATFORM_LINUX
-        chmod(TCHAR_TO_UTF8(*Path), S_IRUSR | S_IWUSR);
-#endif
     }
 
     void LogRetiredSignInRemoval(const FString& Path)
@@ -136,10 +122,8 @@ FN2CSecretFileBackend::EReadResult FN2CSecretFileBackend::ReadJsonFile(const FSt
 
 bool FN2CSecretFileBackend::QuarantineCorruptFile() const
 {
-    const FString CorruptPath = FString::Printf(TEXT("%s.corrupt-%s"), *FilePath,
-        *FDateTime::UtcNow().ToString(TEXT("%Y%m%d-%H%M%S")));
-    if (!IFileManager::Get().Move(*CorruptPath, *FilePath, /*Replace*/ false, /*EvenIfReadOnly*/ true,
-        /*Attributes*/ false, /*bDoNotRetryOrError*/ true))
+    FString CorruptPath;
+    if (!FN2CFileUtils::QuarantineCorruptFile(FilePath, CorruptPath))
     {
         FN2CLogger::Get().LogError(FString::Printf(
             TEXT("The secrets file %s does not parse and could not be set aside; it is left as it is and no key is saved until it is fixed or removed."),
@@ -186,41 +170,10 @@ bool FN2CSecretFileBackend::WriteJsonFile(const TSharedRef<FJsonObject>& Json) c
         return false;
     }
 
-    IFileManager& FileManager = IFileManager::Get();
-    const FString Dir = FPaths::GetPath(FilePath);
-    if (!Dir.IsEmpty() && !FileManager.DirectoryExists(*Dir))
+    FN2CAtomicWriteOptions Options;
+    Options.bOwnerOnly = true;
+    if (!FN2CFileUtils::SaveStringAtomically(JsonString, FilePath, Options))
     {
-        FileManager.MakeDirectory(*Dir, true);
-    }
-
-    const FString TempPath = TempPathFor(FilePath);
-    if (!FFileHelper::SaveStringToFile(JsonString, *TempPath))
-    {
-        FileManager.Delete(*TempPath, false, true, true);
-        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to write %s"), *TempPath), LogContext);
-        return false;
-    }
-    RestrictToOwner(TempPath);
-
-    // The previous file is copied, not moved, so secrets.json is only absent for the instant the move replaces it,
-    // and then secrets.json.tmp is complete (RecoverInterruptedWrite finishes the move on the next load)
-    const FString BackupPath = BackupPathFor(FilePath);
-    if (FileManager.FileExists(*FilePath))
-    {
-        if (FileManager.Copy(*BackupPath, *FilePath, /*Replace*/ true, /*EvenIfReadOnly*/ true) == COPY_OK)
-        {
-            RestrictToOwner(BackupPath);
-        }
-        else
-        {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Could not refresh the backup %s"), *BackupPath), LogContext);
-        }
-    }
-
-    if (!FileManager.Move(*FilePath, *TempPath, /*Replace*/ true, /*EvenIfReadOnly*/ true, /*Attributes*/ false,
-        /*bDoNotRetryOrError*/ true))
-    {
-        FileManager.Delete(*TempPath, false, true, true);
         FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to save secrets to %s"), *FilePath), LogContext);
         return false;
     }
@@ -229,14 +182,12 @@ bool FN2CSecretFileBackend::WriteJsonFile(const TSharedRef<FJsonObject>& Json) c
 
 void FN2CSecretFileBackend::RecoverInterruptedWrite() const
 {
-    const FString TempPath = TempPathFor(FilePath);
-    TSharedPtr<FJsonObject> TempJson;
-    if (!FPaths::FileExists(FilePath) && ReadJsonFile(TempPath, TempJson) == EReadResult::Parsed
-        && IFileManager::Get().Move(*FilePath, *TempPath, false, true, false, true))
+    FN2CFileUtils::FinishInterruptedWrite(FilePath, [](const FString& Content)
     {
-        FN2CLogger::Get().LogWarning(FString::Printf(
-            TEXT("Finished an interrupted save of %s from %s"), *FilePath, *TempPath), LogContext);
-    }
+        TSharedPtr<FJsonObject> Parsed;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Content);
+        return FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid();
+    });
 }
 
 void FN2CSecretFileBackend::MigrateLegacyFile() const
@@ -329,7 +280,7 @@ void FN2CSecretFileBackend::MigrateLegacyFile() const
     }
 
     IFileManager& FileManager = IFileManager::Get();
-    FileManager.Delete(*TempPathFor(LegacyFilePath), false, true, true);
+    FileManager.Delete(*FN2CFileUtils::TempPathFor(LegacyFilePath), false, true, true);
     if (!FileManager.Delete(*LegacyFilePath, false, /*EvenReadOnly*/ true, /*Quiet*/ true))
     {
         FN2CLogger::Get().LogWarning(FString::Printf(

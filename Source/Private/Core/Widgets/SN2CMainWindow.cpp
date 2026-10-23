@@ -384,14 +384,17 @@ void SN2CMainWindow::HandleRemoveSelectedRequested()
 		return;
 	}
 
-	// Remove tags from all selected graphs
+	// Remove tags from all selected graphs: one save and one reload broadcast for the whole selection
 	UN2CGraphStateManager& StateManager = UN2CGraphStateManager::Get();
-	for (const FN2CTagInfo& Graph : SelectedGraphs)
 	{
-		FGuid GraphGuid;
-		if (FGuid::Parse(Graph.GraphGuid, GraphGuid))
+		FN2CGraphStateBulkUpdate Bulk(StateManager);
+		for (const FN2CTagInfo& Graph : SelectedGraphs)
 		{
-			StateManager.RemoveTag(GraphGuid, Graph.Tag, Graph.Category);
+			FGuid GraphGuid;
+			if (FGuid::Parse(Graph.GraphGuid, GraphGuid))
+			{
+				StateManager.RemoveTag(GraphGuid, Graph.Tag, Graph.Category);
+			}
 		}
 	}
 

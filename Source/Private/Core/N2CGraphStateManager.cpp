@@ -2,10 +2,20 @@
 
 #include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Utils/N2CFileUtils.h"
 #include "Utils/N2CPathUtils.h"
+#include "Widgets/Notifications/SNotificationList.h"
+
+namespace
+{
+	const TCHAR* const StateFileName = TEXT("BlueprintGraphState.json");
+}
 
 UN2CGraphStateManager* UN2CGraphStateManager::Instance = nullptr;
 
@@ -30,12 +40,26 @@ void UN2CGraphStateManager::Initialize()
 {
 	FN2CLogger::Get().Log(TEXT("Initializing Graph State Manager"), EN2CLogSeverity::Info);
 
-	// Try to load existing state
-	if (!LoadState())
+	if (LoadStateInternal() != ELoadResult::Missing)
 	{
-		// If no state file exists, try migration from legacy tags
-		MigrateFromLegacyTags();
+		// Loaded, or set aside / unreadable: either way the legacy tags must not replace it
+		return;
 	}
+
+	// A state file existed before (a backup or a set-aside corrupt copy is next to it), so the legacy tags are older
+	// than what the user had: do not rebuild state from them
+	const FString StateFilePath = GetStateFilePath();
+	TArray<FString> CorruptCopies;
+	IFileManager::Get().FindFiles(CorruptCopies, *(StateFilePath + TEXT(".corrupt-*")), true, false);
+	if (CorruptCopies.Num() > 0 || FPaths::FileExists(FN2CFileUtils::BackupPathFor(StateFilePath)))
+	{
+		FN2CLogger::Get().Log(FString::Printf(
+			TEXT("No graph state file, but earlier copies of it are in %s; legacy tags are not migrated over them"),
+			*GetStateDirectory()), EN2CLogSeverity::Warning);
+		return;
+	}
+
+	MigrateFromLegacyTags();
 }
 
 void UN2CGraphStateManager::Shutdown()
@@ -47,11 +71,29 @@ void UN2CGraphStateManager::Shutdown()
 		SaveState();
 	}
 
-	if (Instance)
+	if (Instance == this)
 	{
-		Instance->RemoveFromRoot();
+		RemoveFromRoot();
 		Instance = nullptr;
 	}
+}
+
+void UN2CGraphStateManager::ShutdownInstance()
+{
+	if (Instance)
+	{
+		Instance->Shutdown();
+	}
+}
+
+UN2CGraphStateManager* UN2CGraphStateManager::CreateIsolated(const FString& StateDirectory)
+{
+	UN2CGraphStateManager* Manager = NewObject<UN2CGraphStateManager>(GetTransientPackage(),
+		UN2CGraphStateManager::StaticClass(), NAME_None, RF_Transient);
+	Manager->StateDirectoryOverride = FPaths::ConvertRelativePathToFull(StateDirectory);
+	Manager->bNotifyUser = false;
+	Manager->Initialize();
+	return Manager;
 }
 
 // ============================================================================
@@ -176,6 +218,11 @@ bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphN
 			FN2CLogger::Get().Log(FString::Printf(TEXT("Tag '%s' in category '%s' already exists for graph %s"),
 				*Tag, *Category, *GraphGuid.ToString()),
 				EN2CLogSeverity::Warning);
+			if (bIsDirty)
+			{
+				// GetOrCreateGraphState may have updated the graph name or Blueprint path
+				SaveState();
+			}
 			return true; // Desired state achieved
 		}
 	}
@@ -195,8 +242,8 @@ bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphN
 		EN2CLogSeverity::Info);
 
 	// Fire delegates
-	OnGraphTagAdded.Broadcast(State);
-	OnGraphStateChanged.Broadcast(GraphGuid);
+	BroadcastTagAdded(State);
+	BroadcastStateChanged(GraphGuid);
 
 	// Auto-save
 	SaveState();
@@ -239,8 +286,8 @@ bool UN2CGraphStateManager::RemoveTag(const FGuid& GraphGuid, const FString& Tag
 			EN2CLogSeverity::Info);
 
 		// Fire delegates
-		OnGraphTagRemoved.Broadcast(GraphGuid, Tag);
-		OnGraphStateChanged.Broadcast(GraphGuid);
+		BroadcastTagRemoved(GraphGuid, Tag);
+		BroadcastStateChanged(GraphGuid);
 
 		// Clean up empty graph states (no tags, no translation, no export)
 		if (State->Tags.Num() == 0 && !State->HasTranslation() && !State->HasJsonExport())
@@ -280,8 +327,8 @@ int32 UN2CGraphStateManager::RemoveTagByName(const FGuid& GraphGuid, const FStri
 			RemovedCount, *Tag, *GraphGuid.ToString()),
 			EN2CLogSeverity::Info);
 
-		OnGraphTagRemoved.Broadcast(GraphGuid, Tag);
-		OnGraphStateChanged.Broadcast(GraphGuid);
+		BroadcastTagRemoved(GraphGuid, Tag);
+		BroadcastStateChanged(GraphGuid);
 
 		// Clean up empty graph states
 		if (State->Tags.Num() == 0 && !State->HasTranslation() && !State->HasJsonExport())
@@ -295,7 +342,7 @@ int32 UN2CGraphStateManager::RemoveTagByName(const FGuid& GraphGuid, const FStri
 	return RemovedCount;
 }
 
-int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(const FGuid& GraphGuid)
+int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(FGuid GraphGuid)
 {
 	FN2CGraphState* State = FindGraphState(GraphGuid);
 	if (!State)
@@ -308,7 +355,7 @@ int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(const FGuid& GraphGuid)
 	// Fire delegate for each removed tag
 	for (const FN2CTagEntry& Tag : State->Tags)
 	{
-		OnGraphTagRemoved.Broadcast(GraphGuid, Tag.Tag);
+		BroadcastTagRemoved(GraphGuid, Tag.Tag);
 	}
 
 	State->Tags.Empty();
@@ -321,7 +368,7 @@ int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(const FGuid& GraphGuid)
 			RemovedCount, *GraphGuid.ToString()),
 			EN2CLogSeverity::Info);
 
-		OnGraphStateChanged.Broadcast(GraphGuid);
+		BroadcastStateChanged(GraphGuid);
 
 		// Clean up empty graph states
 		if (!State->HasTranslation() && !State->HasJsonExport())
@@ -332,6 +379,35 @@ int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(const FGuid& GraphGuid)
 		SaveState();
 	}
 
+	return RemovedCount;
+}
+
+int32 UN2CGraphStateManager::ClearAllTags()
+{
+	FN2CGraphStateBulkUpdate Bulk(*this);
+
+	int32 RemovedCount = 0;
+	for (FN2CGraphState& State : StateFile.Graphs)
+	{
+		RemovedCount += State.Tags.Num();
+		State.Tags.Empty();
+	}
+	if (RemovedCount == 0)
+	{
+		return 0;
+	}
+
+	const int32 GraphsRemoved = StateFile.Graphs.RemoveAll([](const FN2CGraphState& State)
+	{
+		return State.Tags.Num() == 0 && !State.HasTranslation() && !State.HasJsonExport();
+	});
+	MarkDirty();
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Cleared %d tags (%d graphs had nothing else and were removed)"),
+		RemovedCount, GraphsRemoved), EN2CLogSeverity::Info);
+
+	// Saved once when Bulk ends, which also broadcasts OnGraphStatesReloaded once
+	SaveState();
 	return RemovedCount;
 }
 
@@ -390,8 +466,8 @@ void UN2CGraphStateManager::SetTranslationState(const FGuid& GraphGuid, const FN
 			*GraphGuid.ToString()),
 			EN2CLogSeverity::Info);
 
-		OnGraphTranslationUpdated.Broadcast(GraphGuid);
-		OnGraphStateChanged.Broadcast(GraphGuid);
+		BroadcastTranslationUpdated(GraphGuid);
+		BroadcastStateChanged(GraphGuid);
 
 		SaveState();
 	}
@@ -418,8 +494,8 @@ void UN2CGraphStateManager::SetTranslationState(const FGuid& GraphGuid, const FS
 		*GraphGuid.ToString(), *OutputPath),
 		EN2CLogSeverity::Info);
 
-	OnGraphTranslationUpdated.Broadcast(GraphGuid);
-	OnGraphStateChanged.Broadcast(GraphGuid);
+	BroadcastTranslationUpdated(GraphGuid);
+	BroadcastStateChanged(GraphGuid);
 
 	SaveState();
 }
@@ -436,8 +512,8 @@ void UN2CGraphStateManager::ClearTranslationState(const FGuid& GraphGuid)
 			*GraphGuid.ToString()),
 			EN2CLogSeverity::Info);
 
-		OnGraphTranslationUpdated.Broadcast(GraphGuid);
-		OnGraphStateChanged.Broadcast(GraphGuid);
+		BroadcastTranslationUpdated(GraphGuid);
+		BroadcastStateChanged(GraphGuid);
 
 		// Clean up empty graph states
 		if (State->Tags.Num() == 0 && !State->HasJsonExport())
@@ -607,7 +683,7 @@ void UN2CGraphStateManager::SetJsonExportState(const FGuid& GraphGuid, const FN2
 			*GraphGuid.ToString()),
 			EN2CLogSeverity::Info);
 
-		OnGraphStateChanged.Broadcast(GraphGuid);
+		BroadcastStateChanged(GraphGuid);
 
 		SaveState();
 	}
@@ -629,7 +705,7 @@ void UN2CGraphStateManager::SetJsonExportState(const FGuid& GraphGuid, const FSt
 		*GraphGuid.ToString(), *OutputPath),
 		EN2CLogSeverity::Info);
 
-	OnGraphStateChanged.Broadcast(GraphGuid);
+	BroadcastStateChanged(GraphGuid);
 
 	SaveState();
 }
@@ -646,7 +722,7 @@ void UN2CGraphStateManager::ClearJsonExportState(const FGuid& GraphGuid)
 			*GraphGuid.ToString()),
 			EN2CLogSeverity::Info);
 
-		OnGraphStateChanged.Broadcast(GraphGuid);
+		BroadcastStateChanged(GraphGuid);
 
 		// Clean up empty graph states
 		if (State->Tags.Num() == 0 && !State->HasTranslation())
@@ -701,7 +777,7 @@ FN2CGraphState& UN2CGraphStateManager::GetOrCreateGraphState(const FGuid& GraphG
 	return StateFile.Graphs[Index];
 }
 
-bool UN2CGraphStateManager::RemoveGraphState(const FGuid& GraphGuid)
+bool UN2CGraphStateManager::RemoveGraphState(FGuid GraphGuid)
 {
 	for (int32 i = StateFile.Graphs.Num() - 1; i >= 0; --i)
 	{
@@ -729,49 +805,168 @@ void UN2CGraphStateManager::ClearAllState()
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Cleared all %d graph states"), Count),
 		EN2CLogSeverity::Info);
+
+	if (bSavingBlocked)
+	{
+		bSavingBlocked = false;
+		FN2CLogger::Get().Log(TEXT("Graph state was reset, so saving is on again"), EN2CLogSeverity::Info);
+	}
+
+	if (IsInBulkUpdate())
+	{
+		bBulkChanged = true;
+	}
+	else
+	{
+		OnGraphStatesReloaded.Broadcast();
+	}
+	SaveState();
+}
+
+// ============================================================================
+// Bulk updates and broadcasts
+// ============================================================================
+
+void UN2CGraphStateManager::BeginBulkUpdate()
+{
+	++BulkUpdateDepth;
+}
+
+void UN2CGraphStateManager::EndBulkUpdate()
+{
+	if (!ensureMsgf(BulkUpdateDepth > 0, TEXT("EndBulkUpdate without BeginBulkUpdate")))
+	{
+		return;
+	}
+	if (--BulkUpdateDepth > 0)
+	{
+		return;
+	}
+
+	const bool bChanged = bBulkChanged;
+	const bool bSaveRequested = bBulkSavePending;
+	bBulkChanged = false;
+	bBulkSavePending = false;
+
+	if (bSaveRequested || (bChanged && bIsDirty))
+	{
+		SaveState();
+	}
+	if (bChanged)
+	{
+		OnGraphStatesReloaded.Broadcast();
+	}
+}
+
+void UN2CGraphStateManager::BroadcastTagAdded(const FN2CGraphState& State)
+{
+	if (IsInBulkUpdate())
+	{
+		bBulkChanged = true;
+		return;
+	}
+	OnGraphTagAdded.Broadcast(State);
+}
+
+void UN2CGraphStateManager::BroadcastTagRemoved(const FGuid& GraphGuid, const FString& Tag)
+{
+	if (IsInBulkUpdate())
+	{
+		bBulkChanged = true;
+		return;
+	}
+	OnGraphTagRemoved.Broadcast(GraphGuid, Tag);
+}
+
+void UN2CGraphStateManager::BroadcastStateChanged(const FGuid& GraphGuid)
+{
+	if (IsInBulkUpdate())
+	{
+		bBulkChanged = true;
+		return;
+	}
+	OnGraphStateChanged.Broadcast(GraphGuid);
+}
+
+void UN2CGraphStateManager::BroadcastTranslationUpdated(const FGuid& GraphGuid)
+{
+	if (IsInBulkUpdate())
+	{
+		bBulkChanged = true;
+		return;
+	}
+	OnGraphTranslationUpdated.Broadcast(GraphGuid);
 }
 
 // ============================================================================
 // Persistence
 // ============================================================================
 
+FString UN2CGraphStateManager::GetStateDirectory() const
+{
+	if (!StateDirectoryOverride.IsEmpty())
+	{
+		return StateDirectoryOverride;
+	}
+	return FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode")));
+}
+
 FString UN2CGraphStateManager::GetStateFilePath() const
 {
-	FString ProjectSavedDir = FPaths::ProjectSavedDir();
-	FString StateDir = FPaths::Combine(ProjectSavedDir, TEXT("NodeToCode"));
+	const FString StateDir = GetStateDirectory();
 
 	// Ensure directory exists
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	PlatformFile.CreateDirectoryTree(*StateDir);
 
-	return FPaths::Combine(StateDir, TEXT("BlueprintGraphState.json"));
+	return FPaths::Combine(StateDir, StateFileName);
 }
 
 FString UN2CGraphStateManager::GetLegacyTagsFilePath() const
 {
-	FString ProjectSavedDir = FPaths::ProjectSavedDir();
-	return FPaths::Combine(ProjectSavedDir, TEXT("NodeToCode"), TEXT("Tags"), TEXT("BlueprintTags.json"));
+	return FPaths::Combine(GetStateDirectory(), TEXT("Tags"), TEXT("BlueprintTags.json"));
 }
 
 void UN2CGraphStateManager::MarkDirty()
 {
 	bIsDirty = true;
+	if (IsInBulkUpdate())
+	{
+		bBulkChanged = true;
+	}
 }
 
 bool UN2CGraphStateManager::SaveState()
 {
-	FString FilePath = GetStateFilePath();
+	if (IsInBulkUpdate())
+	{
+		// Written once when the outermost bulk update ends
+		bBulkSavePending = true;
+		return true;
+	}
+
+	const FString FilePath = GetStateFilePath();
+
+	if (bSavingBlocked)
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(
+			TEXT("Graph state was not saved to %s: the previous file could not be read%s. Reload the tags (restart the editor, or Load Tags) or reset them to turn saving back on."),
+			*FilePath,
+			QuarantinedFilePath.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" and was kept as %s"), *QuarantinedFilePath)));
+		return false;
+	}
 
 	StateFile.LastSaved = FDateTime::UtcNow();
 	FString JsonString = StateFile.ToJsonString(true);
 
-	if (!FFileHelper::SaveStringToFile(JsonString, *FilePath))
+	if (!FN2CFileUtils::SaveStringAtomically(JsonString, FilePath))
 	{
 		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to save graph state to file: %s"), *FilePath));
 		return false;
 	}
 
 	bIsDirty = false;
+	++SaveCount;
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Saved %d graph states to %s"),
 		StateFile.Graphs.Num(), *FilePath),
 		EN2CLogSeverity::Info);
@@ -781,36 +976,110 @@ bool UN2CGraphStateManager::SaveState()
 
 bool UN2CGraphStateManager::LoadState()
 {
-	FString FilePath = GetStateFilePath();
+	const ELoadResult Result = LoadStateInternal();
+
+	if ((Result == ELoadResult::Loaded || Result == ELoadResult::Missing) && bSavingBlocked)
+	{
+		bSavingBlocked = false;
+		FN2CLogger::Get().Log(TEXT("Graph state reloaded, so saving is on again"), EN2CLogSeverity::Info);
+	}
+
+	if (Result == ELoadResult::Loaded)
+	{
+		if (IsInBulkUpdate())
+		{
+			bBulkChanged = true;
+		}
+		else
+		{
+			OnGraphStatesReloaded.Broadcast();
+		}
+	}
+
+	return Result == ELoadResult::Loaded;
+}
+
+UN2CGraphStateManager::ELoadResult UN2CGraphStateManager::LoadStateInternal()
+{
+	const FString FilePath = GetStateFilePath();
+
+	// A save that stopped after the temporary file was complete: finish it
+	FN2CFileUtils::FinishInterruptedWrite(FilePath, [](const FString& Content)
+	{
+		FN2CGraphStateFile Probe;
+		return FN2CGraphStateFile::FromJsonString(Content, Probe);
+	});
 
 	// Check if file exists
 	if (!FPaths::FileExists(FilePath))
 	{
 		FN2CLogger::Get().Log(TEXT("No graph state file found"), EN2CLogSeverity::Info);
-		return false;
+		return ELoadResult::Missing;
 	}
 
 	// Load file content
 	FString JsonString;
 	if (!FFileHelper::LoadFileToString(JsonString, *FilePath))
 	{
-		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to load graph state from file: %s"), *FilePath));
-		return false;
+		// Locked or unreadable: keep it as it is and do not write over it
+		bSavingBlocked = true;
+		QuarantinedFilePath.Reset();
+		FN2CLogger::Get().LogError(FString::Printf(
+			TEXT("Failed to read graph state from %s; tag changes are not saved until it can be read and the tags are reloaded"),
+			*FilePath));
+		return ELoadResult::Unreadable;
 	}
 
-	// Parse JSON
-	if (!FN2CGraphStateFile::FromJsonString(JsonString, StateFile))
+	// Parse into a copy so a bad file never replaces the state in memory
+	FN2CGraphStateFile Loaded;
+	if (!FN2CGraphStateFile::FromJsonString(JsonString, Loaded))
 	{
-		FN2CLogger::Get().LogError(TEXT("Failed to parse graph state JSON"));
-		return false;
+		FString CorruptPath;
+		const bool bMoved = FN2CFileUtils::QuarantineCorruptFile(FilePath, CorruptPath);
+		QuarantinedFilePath = CorruptPath;
+		bSavingBlocked = true;
+		ReportCorruptFile(FilePath, bMoved);
+		return ELoadResult::Corrupt;
 	}
 
+	StateFile = MoveTemp(Loaded);
 	bIsDirty = false;
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Loaded %d graph states from %s"),
 		StateFile.Graphs.Num(), *FilePath),
 		EN2CLogSeverity::Info);
 
-	return true;
+	return ELoadResult::Loaded;
+}
+
+void UN2CGraphStateManager::ReportCorruptFile(const FString& FilePath, bool bMoved)
+{
+	const FString BackupPath = FN2CFileUtils::BackupPathFor(FilePath);
+	const FString BackupHint = FPaths::FileExists(BackupPath)
+		? FString::Printf(TEXT(" The previous save is in %s."), *BackupPath)
+		: FString();
+
+	const FString Message = bMoved
+		? FString::Printf(
+			TEXT("NodeToCode could not read its tag and translation history file, so it was kept as %s and nothing was overwritten. Tag changes are not saved until you reload the tags (restart the editor, or Load Tags) or reset them. To recover, repair that file (or use the backup) and rename it to %s.%s"),
+			*QuarantinedFilePath, StateFileName, *BackupHint)
+		: FString::Printf(
+			TEXT("NodeToCode could not read its tag and translation history file %s and could not set it aside. Tag changes are not saved until it is repaired or removed and the tags are reloaded.%s"),
+			*FilePath, *BackupHint);
+
+	FN2CLogger::Get().LogError(Message);
+
+	if (bNotifyUser && IsInGameThread() && FSlateApplication::IsInitialized())
+	{
+		FNotificationInfo Info(FText::FromString(Message));
+		Info.ExpireDuration = 20.0f;
+		Info.bFireAndForget = true;
+		Info.bUseLargeFont = false;
+		TSharedPtr<SNotificationItem> Item = FSlateNotificationManager::Get().AddNotification(Info);
+		if (Item.IsValid())
+		{
+			Item->SetCompletionState(SNotificationItem::CS_Fail);
+		}
+	}
 }
 
 void UN2CGraphStateManager::MigrateFromLegacyTags()
@@ -849,35 +1118,53 @@ void UN2CGraphStateManager::MigrateFromLegacyTags()
 		return;
 	}
 
-	// Convert tags to new format
-	const TArray<TSharedPtr<FJsonValue>>* TagsArray;
-	if (RootObject->TryGetArrayField(TEXT("tags"), TagsArray))
 	{
-		for (const TSharedPtr<FJsonValue>& Value : *TagsArray)
-		{
-			TSharedPtr<FJsonObject> TagObject = Value->AsObject();
-			if (TagObject.IsValid())
-			{
-				FN2CTaggedBlueprintGraph LegacyTag = FN2CTaggedBlueprintGraph::FromJson(TagObject);
+		// One save and one broadcast for the whole migration instead of one per tag
+		FN2CGraphStateBulkUpdate Bulk(*this);
 
-				// Add to new format (this will merge into existing graph states)
-				AddTag(LegacyTag);
+		// Convert tags to new format
+		const TArray<TSharedPtr<FJsonValue>>* TagsArray;
+		if (RootObject->TryGetArrayField(TEXT("tags"), TagsArray))
+		{
+			for (const TSharedPtr<FJsonValue>& Value : *TagsArray)
+			{
+				TSharedPtr<FJsonObject> TagObject = Value->AsObject();
+				if (TagObject.IsValid())
+				{
+					FN2CTaggedBlueprintGraph LegacyTag = FN2CTaggedBlueprintGraph::FromJson(TagObject);
+
+					// Add to new format (this will merge into existing graph states)
+					AddTag(LegacyTag);
+				}
 			}
 		}
+
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Migration complete: %d graph states created"),
+			StateFile.Graphs.Num()),
+			EN2CLogSeverity::Info);
+
+		// Save the migrated state (written when Bulk ends)
+		SaveState();
 	}
 
-	// Create backup of legacy file
-	FString BackupPath = LegacyPath + TEXT(".backup");
-	if (IFileManager::Get().Copy(*BackupPath, *LegacyPath) == COPY_OK)
+	if (bIsDirty || bSavingBlocked)
 	{
-		FN2CLogger::Get().Log(FString::Printf(TEXT("Created backup of legacy tags at: %s"), *BackupPath),
+		FN2CLogger::Get().LogError(FString::Printf(
+			TEXT("The migrated tags could not be saved, so the legacy tags file %s was left in place"), *LegacyPath));
+		return;
+	}
+
+	// Rename the legacy file so it is never migrated again over newer state
+	const FString MigratedPath = LegacyPath + TEXT(".migrated");
+	if (IFileManager::Get().Move(*MigratedPath, *LegacyPath, /*Replace*/ true, /*EvenIfReadOnly*/ true,
+		/*Attributes*/ false, /*bDoNotRetryOrError*/ true))
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Renamed the migrated legacy tags file to %s"), *MigratedPath),
 			EN2CLogSeverity::Info);
 	}
-
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Migration complete: %d graph states created"),
-		StateFile.Graphs.Num()),
-		EN2CLogSeverity::Info);
-
-	// Save the migrated state
-	SaveState();
+	else
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(
+			TEXT("Could not rename the migrated legacy tags file %s; delete it so it is not migrated again"), *LegacyPath));
+	}
 }

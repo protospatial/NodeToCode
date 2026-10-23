@@ -8,6 +8,8 @@
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBlueprintTagAdded, const FN2CTaggedBlueprintGraph&);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnBlueprintTagRemoved, const FGuid& /*GraphGuid*/, const FString& /*Tag*/);
+/** Many tags may have changed at once (Clear All, a bulk removal, a migration or a reload): re-read all tags */
+DECLARE_MULTICAST_DELEGATE(FOnBlueprintTagsReloaded);
 
 /**
  * @class UN2CTagManager
@@ -29,6 +31,9 @@ class NODETOCODE_API UN2CTagManager : public UObject
 public:
 	/** Get the singleton instance */
 	static UN2CTagManager& Get();
+
+	/** The singleton if Get() has created it and it has not been shut down, else nullptr (does not create it) */
+	static UN2CTagManager* GetIfExists() { return Instance; }
 
 	/** Initialize the tag manager (initializes UN2CGraphStateManager) */
 	void Initialize();
@@ -66,7 +71,7 @@ public:
 	 * @param GraphGuid The GUID of the graph
 	 * @return Number of tags removed
 	 */
-	int32 RemoveAllTagsFromGraph(const FGuid& GraphGuid);
+	int32 RemoveAllTagsFromGraph(FGuid GraphGuid);
 
 	/**
 	 * Get all tags for a specific graph
@@ -114,7 +119,7 @@ public:
 	/** Get all tags in the system */
 	const TArray<FN2CTaggedBlueprintGraph>& GetAllTags() const;
 
-	/** Clear all tags (use with caution) */
+	/** Clear all tags (use with caution); translation and export state are kept. Saves once and broadcasts OnTagsReloaded once */
 	void ClearAllTags();
 
 	/** Save tags to persistent storage */
@@ -129,10 +134,21 @@ public:
 	/** Delegate fired when a tag is removed */
 	FOnBlueprintTagRemoved OnBlueprintTagRemoved;
 
+	/** Delegate fired when many tags changed at once (no per-tag events were sent for them) */
+	FOnBlueprintTagsReloaded OnTagsReloaded;
+
+	/** Shuts the singleton down if it exists (module shutdown); does not create it */
+	static void ShutdownInstance();
+
 private:
 	/** Constructor */
 	UN2CTagManager();
 
 	/** The singleton instance */
 	static UN2CTagManager* Instance;
+
+	/** Subscriptions to the graph state manager, removed in Shutdown */
+	FDelegateHandle GraphTagAddedHandle;
+	FDelegateHandle GraphTagRemovedHandle;
+	FDelegateHandle GraphStatesReloadedHandle;
 };

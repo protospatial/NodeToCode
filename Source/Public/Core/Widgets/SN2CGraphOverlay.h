@@ -67,6 +67,7 @@ private:
 	// Delegate handles for cleanup
 	FDelegateHandle OnTagAddedHandle;
 	FDelegateHandle OnTagRemovedHandle;
+	FDelegateHandle OnTagsReloadedHandle;
 	FDelegateHandle OnTranslationStateChangedHandle;
 	FDelegateHandle OnModelChangedHandle;
 	FDelegateHandle OnCacheInvalidatedHandle;
