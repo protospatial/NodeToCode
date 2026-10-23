@@ -103,11 +103,12 @@ Manages interactions with LLMs.
     *   Note: Ollama and LM Studio use dynamic string-based model names instead of enums
     *   `FN2CLLMModelUtils`: Model string ID getters, pricing getters, system prompt support checks
 *   **`N2CLLMPricing.h`**: Pricing structs per provider - `FN2COpenAIPricing`, `FN2CAnthropicPricing`, `FN2CGeminiPricing`, `FN2CDeepSeekPricing`. Each has `InputCost` and `OutputCost` (per 1M tokens).
-*   **`N2COllamaConfig.h`**: `FN2COllamaConfig` USTRUCT with extensive Ollama-specific settings:
-    *   General: `OllamaEndpoint`, `bUseSystemPrompts`, `PrependedModelCommand`, `KeepAlive`
-    *   Generation: `Temperature`, `NumPredict` (max tokens), `TopP`, `TopK`, `MinP`, `RepeatPenalty`
-    *   Context: `NumCtx` (context window size)
-    *   Advanced: `Mirostat`, `MirostatEta`, `MirostatTau`, `Seed`
+*   **`N2COllamaConfig.h`**: `FN2COllamaConfig` USTRUCT with Ollama-specific settings. Only what the user sets is sent (`ConfigureForOllama`):
+    *   General: `OllamaEndpoint`, `bUseSystemPrompts` (default true), `PrependedModelCommand`, `Think` (`EN2COllamaThink`: Default omits `think`, On/Off send true/false, Level sends `ThinkLevel`), `KeepAlive` (seconds, top-level `keep_alive`)
+    *   Generation: `NumPredict` (max tokens, sent only when > 0), and `Temperature`, `TopP`, `TopK`, `MinP`, `RepeatPenalty`, each sent only when its `bOverride_*` toggle is on
+    *   Context: `NumCtx` (sent only when > 0, otherwise the server's context length applies; the token estimator uses it and `WarnIfPromptExceedsContext` warns when a prompt does not fit)
+    *   Advanced: `Mirostat`, `MirostatEta`, `MirostatTau`, `Seed`, each behind a `bOverride_*` toggle
+    *   Saved configs from before 2.0 are migrated by `UN2CSettings::MigrateLegacyOllamaDefaults` while `SettingsVersion` < 1: values at the old always-sent defaults are cleared, other saved sampler values get their override on
 
 ## OAuth Authentication Support
 
@@ -135,7 +136,7 @@ Support for model-specific command prefixes for local providers:
 
 *   **Ollama Configuration** (`N2COllamaConfig.h`):
     *   `PrependedModelCommand`: Text prepended to user messages
-    *   Use cases: `/no_think`, `/think`, reasoning control
+    *   Use cases: model-specific commands; thinking is controlled with `Think` instead
 *   **LM Studio Configuration** (`N2CSettings.h`):
     *   `LMStudioPrependedModelCommand`: Similar functionality for LM Studio
 *   **Implementation**: Commands are prepended with `\n\n` separator before N2C JSON payload in both services.

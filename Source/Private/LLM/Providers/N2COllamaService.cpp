@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2COllamaService.h"
 
 #include "Core/N2CSettings.h"
+#include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
@@ -99,7 +100,12 @@ FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, cons
     }
     
     const bool bSupportsSystemPrompts = OllamaConfig.bUseSystemPrompts;
-    
+
+    // Ollama cuts a prompt longer than num_ctx without an error, so say so when the estimate does not fit
+    FN2CTokenEstimationService::WarnIfPromptExceedsContext(
+        FN2CTokenEstimationService::EstimateTokensForChars(SystemMessage.Len() + FinalUserMessage.Len()),
+        OllamaConfig.NumCtx, TEXT("Ollama"));
+
     // Add messages
     if (bSupportsSystemPrompts && !SystemMessage.IsEmpty())
     {

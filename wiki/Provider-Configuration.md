@@ -61,18 +61,23 @@ here).
 - **No API Key Required**
 - **Advanced Settings**:
   - Model name (e.g., codellama:code)
-  - Temperature (0.0 - 2.0)
-  - Context Window size (see [Translation Depth](Translation-Depth) for guidance)
-  - Max Output Tokens
-  - Keep Alive Duration
-  - Top P
-  - Top K
-  - Min P
-  - Repeat Penalty
-  - Mirostat Mode
-  - Mirostat Eta
-  - Mirostat Tau
-  - Random Seed
+  - Use System Prompts (on by default; turn it off only for a model whose template drops system messages)
+  - Think: **Model Default** sends nothing, **On** and **Off** switch thinking on or off, and **Level** sends a
+    level name for models that take one (for example `low`, `medium` or `high` for gpt-oss; `ollama show <model>`
+    lists them). This replaces typing `/no_think` into Prepended Model Command.
+  - Context Window (0 = the server's context length). The system prompt alone is about 4-5K tokens, so 32K-64K is
+    recommended (see [Translation Depth](Translation-Depth) for guidance). Ollama cuts a prompt that is longer than
+    the window without an error; NodeToCode logs a warning when its estimate of the prompt does not fit.
+  - Max Tokens (0 = no limit, the server default)
+  - Keep Alive Duration (seconds; 0 unloads the model after each request, -1 keeps it loaded)
+  - Temperature, Top P, Top K, Min P, Repeat Penalty, Mirostat Mode, Mirostat Eta, Mirostat Tau and Random Seed:
+    each is sent only when its checkbox is ticked. Unticked, the model's own defaults apply, which are usually
+    tuned for that model.
+
+Settings saved by an earlier version are updated once when the editor loads them: values equal to the old built-in
+defaults (Context Window 8192, Max Tokens 8192, Temperature 0, Top P 0.5, Top K 40, Min P 0.05, Repeat Penalty 1.1,
+Use System Prompts off) are cleared so the server and model defaults apply, and any other value you had set is kept
+with its checkbox ticked.
 
 ## Sampling Settings for Cloud Models
 

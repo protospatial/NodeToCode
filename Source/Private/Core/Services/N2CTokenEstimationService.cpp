@@ -363,6 +363,23 @@ void FN2CTokenEstimationService::FindReferencedGraphs(const FN2CTagInfo& GraphIn
 	}
 }
 
+int32 FN2CTokenEstimationService::EstimateTokensForChars(int32 CharCount)
+{
+	return FMath::CeilToInt(FMath::Max(CharCount, 0) / 4.0f);
+}
+
+bool FN2CTokenEstimationService::WarnIfPromptExceedsContext(int32 EstimatedPromptTokens, int32 ContextWindow, const TCHAR* ProviderLabel)
+{
+	if (ContextWindow <= 0 || EstimatedPromptTokens <= ContextWindow)
+	{
+		return false;
+	}
+	FN2CLogger::Get().LogWarning(FString::Printf(
+		TEXT("Estimated prompt of about %d tokens is larger than the %s Context Window of %d tokens; the server may cut the prompt without an error, giving a wrong or failed translation. Raise Context Window (32K-64K recommended) or set it to 0 to use the server's context length."),
+		EstimatedPromptTokens, ProviderLabel, ContextWindow), TEXT("TokenEstimation"));
+	return true;
+}
+
 float FN2CTokenEstimationService::CalculateCost(int32 TokenCount) const
 {
 	if (bCachedIsLocal || CachedInputCostPer1M <= 0.0f)
@@ -401,7 +418,8 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 		break;
 	case EN2CLLMProvider::Ollama:
 		CachedModelName = Settings->OllamaModel;
-		CachedFullContextWindow = 128000; // Default estimate for local models
+		// The Context Window the requests send; unset (0), the server's own length applies, which is not known here
+		CachedFullContextWindow = Settings->OllamaConfig.NumCtx > 0 ? Settings->OllamaConfig.NumCtx : 128000;
 		CachedUsableContextWindow = FMath::RoundToInt(CachedFullContextWindow * ContextWindowFactor);
 		CachedInputCostPer1M = 0.0f;
 		bCachedIsLocal = true;
@@ -451,7 +469,8 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_Model) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModel) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaModel) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel))
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, NumCtx))
 	{
 		RefreshModelInfo();
 		// Model change invalidates cost calculations, so clear the cache

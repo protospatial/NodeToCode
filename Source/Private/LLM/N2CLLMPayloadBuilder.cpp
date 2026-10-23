@@ -471,22 +471,61 @@ void UN2CLLMPayloadBuilder::ConfigureForOllama(const FN2COllamaConfig& OllamaCon
     // Clear messages array and recreate it
     MessagesArray.Empty();
 
-    // Add Ollama-specific options
+    // Only what the user set goes into options; everything else is left to the server and the model's own
+    // parameters (docs.ollama.com/api/chat). Sampler values are sent only when their override toggle is on,
+    // since 0 is a valid value for most of them; num_ctx and num_predict only when greater than 0, so the
+    // server's context length (OLLAMA_CONTEXT_LENGTH, or its VRAM-based default) is not cut down.
     TSharedPtr<FJsonObject> OptionsObject = MakeShared<FJsonObject>();
-    OptionsObject->SetNumberField(TEXT("temperature"), OllamaConfig.Temperature);
-    OptionsObject->SetNumberField(TEXT("num_predict"), OllamaConfig.NumPredict);
-    OptionsObject->SetNumberField(TEXT("top_p"), OllamaConfig.TopP);
-    OptionsObject->SetNumberField(TEXT("top_k"), OllamaConfig.TopK);
-    OptionsObject->SetNumberField(TEXT("min_p"), OllamaConfig.MinP);
-    OptionsObject->SetNumberField(TEXT("repeat_penalty"), OllamaConfig.RepeatPenalty);
-    OptionsObject->SetNumberField(TEXT("mirostat"), OllamaConfig.Mirostat);
-    OptionsObject->SetNumberField(TEXT("mirostat_eta"), OllamaConfig.MirostatEta);
-    OptionsObject->SetNumberField(TEXT("mirostat_tau"), OllamaConfig.MirostatTau);
-    OptionsObject->SetNumberField(TEXT("num_ctx"), OllamaConfig.NumCtx);
-    OptionsObject->SetNumberField(TEXT("seed"), OllamaConfig.Seed);
+    if (OllamaConfig.NumCtx > 0)
+    {
+        OptionsObject->SetNumberField(TEXT("num_ctx"), OllamaConfig.NumCtx);
+    }
+    if (OllamaConfig.NumPredict > 0)
+    {
+        OptionsObject->SetNumberField(TEXT("num_predict"), OllamaConfig.NumPredict);
+    }
+    if (OllamaConfig.bOverride_Temperature) { OptionsObject->SetNumberField(TEXT("temperature"), OllamaConfig.Temperature); }
+    if (OllamaConfig.bOverride_TopP) { OptionsObject->SetNumberField(TEXT("top_p"), OllamaConfig.TopP); }
+    if (OllamaConfig.bOverride_TopK) { OptionsObject->SetNumberField(TEXT("top_k"), OllamaConfig.TopK); }
+    if (OllamaConfig.bOverride_MinP) { OptionsObject->SetNumberField(TEXT("min_p"), OllamaConfig.MinP); }
+    if (OllamaConfig.bOverride_RepeatPenalty) { OptionsObject->SetNumberField(TEXT("repeat_penalty"), OllamaConfig.RepeatPenalty); }
+    if (OllamaConfig.bOverride_Mirostat) { OptionsObject->SetNumberField(TEXT("mirostat"), OllamaConfig.Mirostat); }
+    if (OllamaConfig.bOverride_MirostatEta) { OptionsObject->SetNumberField(TEXT("mirostat_eta"), OllamaConfig.MirostatEta); }
+    if (OllamaConfig.bOverride_MirostatTau) { OptionsObject->SetNumberField(TEXT("mirostat_tau"), OllamaConfig.MirostatTau); }
+    if (OllamaConfig.bOverride_Seed) { OptionsObject->SetNumberField(TEXT("seed"), OllamaConfig.Seed); }
+    if (OptionsObject->Values.Num() > 0)
+    {
+        RootObject->SetObjectField(TEXT("options"), OptionsObject);
+    }
 
-    RootObject->SetObjectField(TEXT("options"), OptionsObject);
+    // think: true/false, or a model-defined level string (as /api/show lists it); omitted, the model default
+    switch (OllamaConfig.Think)
+    {
+        case EN2COllamaThink::On:
+            RootObject->SetBoolField(TEXT("think"), true);
+            break;
+        case EN2COllamaThink::Off:
+            RootObject->SetBoolField(TEXT("think"), false);
+            break;
+        case EN2COllamaThink::Level:
+            {
+                const FString Level = OllamaConfig.ThinkLevel.TrimStartAndEnd();
+                if (Level.IsEmpty())
+                {
+                    FN2CLogger::Get().LogWarning(TEXT("Ollama Think is Level but Think Level is empty; no think field sent"), TEXT("LLMPayloadBuilder"));
+                }
+                else
+                {
+                    RootObject->SetStringField(TEXT("think"), Level);
+                }
+            }
+            break;
+        default:
+            break;
+    }
+
     RootObject->SetBoolField(TEXT("stream"), false);
+    // A number is seconds; 0 unloads right after the response, a negative value keeps the model loaded
     RootObject->SetNumberField(TEXT("keep_alive"), OllamaConfig.KeepAlive);
 }
 
