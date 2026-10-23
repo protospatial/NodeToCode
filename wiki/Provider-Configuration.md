@@ -8,28 +8,40 @@ Choose and configure your [preferred LLM provider](Choosing-an-LLM-Provider) thr
 ### [Anthropic](LLM-Provider-Documentation-&-Resources#anthropic-claude)
 - **API Key**: Enter your Claude API key
 - **Model**:
-  - Claude3_5_Sonnet **(Recommended)**
-  - Claude3_5_Haiku
+  - **Claude Sonnet 5.5** (default, recommended)
+  - **Claude Opus 5.5** (most capable)
+  - **Claude Haiku 5.5** (lowest cost)
+  - **Claude Opus 4.5**
+  - **Claude Sonnet 4.5 (retires 2026-11-30)**
 
 ### [OpenAI](LLM-Provider-Documentation-&-Resources#openai)
 - **API Key**: Enter your OpenAI API key
 - **Model**:
-  - GPT_o1
-  - GPT_o1_Preview
-  - GPT_o3_Mini **(Recommended)**
-  - GPT_o1_Mini
-  - GPT4o_2024_08_06
-  - GPT4o_Mini_2024_07_18
+  - **GPT-6.1 Sol** (default, recommended)
+  - **GPT-6 Astra** (most capable)
+  - **GPT-6 Luna** (lowest cost)
+  - **GPT-5.2**, **GPT-5.2 Pro**
+  - **GPT-5**, **GPT-5 Mini**, **GPT-5 Nano** and **o3** (shut down 2026-12-11)
+  - **GPT-4.1**, **GPT-4o** and **GPT-4o Mini** (shut down 2027-01-14)
 
-### [Google's Gemini](LLM-Provider-Documentation-&Resources#gemini)
-- **API Key**: Enter your OpenAI API key
+### [Google's Gemini](LLM-Provider-Documentation-&-Resources#gemini)
+- **API Key**: Enter your Gemini API key
 - **Model**:
-  - Gemini 2.0 Flash Thinking Exp 01-21
-  - Gemini 2.0 Pro Exp 02-05
-  - Gemini 2.0 Flash
-  - Gemini 2.0 Flash-Lite-Preview-02-05
-  - Gemini 1.5 Pro
-  - Gemini 1.5 Flash
+  - **Gemini 3.8 Flash** (default, recommended)
+  - **Gemini 4 Argon** (most capable)
+  - **Gemini 3.5 Flash-Lite** (lowest cost)
+  - **Gemini 3 Flash Preview**
+
+A model whose name ends in a date still works until that date, then the provider turns it off. Switch to one of
+the recommended models before then.
+
+### Retired models
+
+Models the provider has shut down are no longer offered in the **Model** list. If your project had one selected
+(for example Claude 3.7 Sonnet, o4-mini or Gemini 2.5 Flash Preview), Node to Code uses that provider's default
+model instead when the editor starts and writes a warning to the Output Log. Your project's config file is not
+changed until you choose a **Model** in **Project Settings → Plugins → Node to Code**, so the warning repeats on
+each start until you do.
 
 ### [DeepSeek](LLM-Provider-Documentation-&-Resources#deepseek)
 - **API Key**: Enter your DeepSeek API key

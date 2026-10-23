@@ -36,19 +36,10 @@ void UN2COpenAIService::GetConfiguration(
     OutEndpoint = Config.ApiEndpoint;
     OutAuthToken = Config.ApiKey;
     
-    // Find matching model enum for system prompt support check
-    for (int32 i = 0; i < static_cast<int32>(EN2COpenAIModel::GPT_o1_Mini) + 1; i++)
-    {
-        EN2COpenAIModel Model = static_cast<EN2COpenAIModel>(i);
-        if (FN2CLLMModelUtils::GetOpenAIModelValue(Model) == Config.Model)
-        {
-            OutSupportsSystemPrompts = FN2CLLMModelUtils::SupportsSystemPrompts(Model);
-            return;
-        }
-    }
-    
-    // Default to supporting system prompts if model not found
-    OutSupportsSystemPrompts = true;
+    // System prompt support comes from the registry by model ID; IDs it does not know (for example an MCP
+    // model override) are assumed to accept developer/system messages
+    const FN2CModelMetadata* ModelMeta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Config.Model);
+    OutSupportsSystemPrompts = ModelMeta ? ModelMeta->bSupportsSystemPrompts : true;
 }
 
 void UN2COpenAIService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const

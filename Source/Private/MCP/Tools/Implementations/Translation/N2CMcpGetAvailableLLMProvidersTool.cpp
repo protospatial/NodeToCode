@@ -5,6 +5,7 @@
 #include "Core/N2CSettings.h"
 #include "Core/N2CUserSecrets.h"
 #include "LLM/N2CLLMModels.h"
+#include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2COllamaConfig.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -250,41 +251,61 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpGetAvailableLLMProvidersTool::GetAvailable
     
     if (ModelEnum)
     {
+        const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
+
         // Iterate through enum values (skip _MAX)
         for (int32 i = 0; i < ModelEnum->NumEnums() - 1; ++i)
         {
-            TSharedPtr<FJsonObject> ModelObj = MakeShareable(new FJsonObject);
-            
-            // Get model ID and display name
-            FString ModelId;
+            // Models the provider has shut down stay in the enum for saved settings but are not offered
+            if (ModelEnum->HasMetaData(TEXT("Hidden"), i))
+            {
+                continue;
+            }
+
+            const int64 Value = ModelEnum->GetValueByIndex(i);
+            const FN2CModelMetadata* Meta = nullptr;
             switch (Provider)
             {
                 case EN2CLLMProvider::OpenAI:
-                    ModelId = FN2CLLMModelUtils::GetOpenAIModelValue(static_cast<EN2COpenAIModel>(i));
+                    Meta = Registry.GetModelMetadata(static_cast<EN2COpenAIModel>(Value));
                     break;
                 case EN2CLLMProvider::Anthropic:
-                    ModelId = FN2CLLMModelUtils::GetAnthropicModelValue(static_cast<EN2CAnthropicModel>(i));
+                    Meta = Registry.GetModelMetadata(static_cast<EN2CAnthropicModel>(Value));
                     break;
                 case EN2CLLMProvider::Gemini:
-                    ModelId = FN2CLLMModelUtils::GetGeminiModelValue(static_cast<EN2CGeminiModel>(i));
+                    Meta = Registry.GetModelMetadata(static_cast<EN2CGeminiModel>(Value));
                     break;
                 case EN2CLLMProvider::DeepSeek:
-                    ModelId = FN2CLLMModelUtils::GetDeepSeekModelValue(static_cast<EN2CDeepSeekModel>(i));
+                    Meta = Registry.GetModelMetadata(static_cast<EN2CDeepSeekModel>(Value));
+                    break;
+                default:
                     break;
             }
-            
-            FString DisplayName = ModelEnum->GetDisplayNameTextByIndex(i).ToString();
-            
-            ModelObj->SetStringField(TEXT("id"), ModelId);
-            ModelObj->SetStringField(TEXT("name"), DisplayName);
-            
+            if (!Meta || Meta->bIsRetired)
+            {
+                continue;
+            }
+
+            TSharedPtr<FJsonObject> ModelObj = MakeShareable(new FJsonObject);
+            ModelObj->SetStringField(TEXT("id"), Meta->ModelId);
+            ModelObj->SetStringField(TEXT("name"), ModelEnum->GetDisplayNameTextByIndex(i).ToString());
+
+            // Deprecated but still served: say when it stops working
+            if (Meta->bIsDeprecated)
+            {
+                ModelObj->SetBoolField(TEXT("deprecated"), true);
+                if (!Meta->ShutdownDate.IsEmpty())
+                {
+                    ModelObj->SetStringField(TEXT("shutdownDate"), Meta->ShutdownDate);
+                }
+            }
+
             // Add system prompt support for OpenAI models
             if (Provider == EN2CLLMProvider::OpenAI)
             {
-                bool bSupportsSystemPrompts = FN2CLLMModelUtils::SupportsSystemPrompts(static_cast<EN2COpenAIModel>(i));
-                ModelObj->SetBoolField(TEXT("supportsSystemPrompts"), bSupportsSystemPrompts);
+                ModelObj->SetBoolField(TEXT("supportsSystemPrompts"), Meta->bSupportsSystemPrompts);
             }
-            
+
             Models.Add(MakeShareable(new FJsonValueObject(ModelObj)));
         }
     }
