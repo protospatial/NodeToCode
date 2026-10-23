@@ -65,7 +65,28 @@ bool UN2CLLMModule::Initialize()
     return true;
 }
 
-void UN2CLLMModule::ProcessN2CJson(
+FN2CLLMRequestHandleRef UN2CLLMModule::CompleteWithoutRequest(const FOnLLMResponseReceived& OnComplete, const FString& Response)
+{
+    FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+    Handle->Complete(OnComplete, Response);
+    return Handle;
+}
+
+void UN2CLLMModule::ResetStatusOnCancel(const FN2CLLMRequestHandleRef& Handle)
+{
+    TWeakObjectPtr<UN2CLLMModule> WeakThis(this);
+    Handle->OnCancelled([WeakThis]()
+    {
+        UN2CLLMModule* StrongThis = WeakThis.Get();
+        if (StrongThis && StrongThis->CurrentStatus == EN2CSystemStatus::Processing)
+        {
+            StrongThis->CurrentStatus = EN2CSystemStatus::Idle;
+        }
+        FN2CLogger::Get().Log(TEXT("LLM request cancelled"), EN2CLogSeverity::Info, TEXT("LLMModule"));
+    });
+}
+
+FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     const FString& JsonInput,
     const FOnLLMResponseReceived& OnComplete)
 {
@@ -73,8 +94,7 @@ void UN2CLLMModule::ProcessN2CJson(
     {
         CurrentStatus = EN2CSystemStatus::Error;
         FN2CLogger::Get().LogError(TEXT("LLM Module not initialized"), TEXT("LLMModule"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Module not initialized\"}"));
-        return;
+        return CompleteWithoutRequest(OnComplete, TEXT("{\"error\": \"Module not initialized\"}"));
     }
 
     CurrentStatus = EN2CSystemStatus::Processing;
@@ -85,8 +105,7 @@ void UN2CLLMModule::ProcessN2CJson(
     if (!ActiveService.GetInterface())
     {
         FN2CLogger::Get().LogError(TEXT("No active LLM service"), TEXT("LLMModule"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"No active service\"}"));
-        return;
+        return CompleteWithoutRequest(OnComplete, TEXT("{\"error\": \"No active service\"}"));
     }
 
     // Get active service
@@ -94,7 +113,7 @@ void UN2CLLMModule::ProcessN2CJson(
     if (!Service.GetInterface())
     {
         FN2CLogger::Get().LogError(TEXT("No active service"), TEXT("LLMModule"));
-        return;
+        return CompleteWithoutRequest(OnComplete, TEXT("{\"error\": \"No active service\"}"));
     }
 
     // Check if service supports system prompts
@@ -118,7 +137,7 @@ void UN2CLLMModule::ProcessN2CJson(
     // Send request through service. The callback keeps the service it was sent on alive and parses with that
     // service's parser, even if the active provider changes or GC runs while the request is in flight.
     TStrongObjectPtr<UObject> RequestServiceObject(Service.GetObject());
-    ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
+    FN2CLLMRequestHandleRef Handle = ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
         [this, OnComplete, RequestServiceObject, RequestService = Service](const FString& Response)
         {
             // Create translation response struct
@@ -169,6 +188,8 @@ void UN2CLLMModule::ProcessN2CJson(
             // Invoke the completion callback with the raw response
             OnComplete.ExecuteIfBound(Response);
         }));
+    ResetStatusOnCancel(Handle);
+    return Handle;
 }
 
 bool UN2CLLMModule::InitializeComponents()
@@ -510,7 +531,7 @@ void UN2CLLMModule::InitializeProviderRegistry()
     FN2CLogger::Get().Log(TEXT("Provider registry initialized"), EN2CLogSeverity::Info, TEXT("LLMModule"));
 }
 
-void UN2CLLMModule::ProcessN2CJsonWithOverrides(
+FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     const FString& JsonInput,
     const FN2CLLMConfig& RequestConfig,
     EN2CCodeLanguage RequestLanguage,
@@ -531,9 +552,8 @@ void UN2CLLMModule::ProcessN2CJsonWithOverrides(
     {
         FString ErrorMsg = TEXT("Failed to create/initialize temporary service for override request.");
         FN2CLogger::Get().LogError(ErrorMsg, TEXT("LLMModule"));
-        OnComplete.ExecuteIfBound(FString::Printf(TEXT("{\"error\":\"%s\"}"), *ErrorMsg));
         CurrentStatus = EN2CSystemStatus::Error;
-        return;
+        return CompleteWithoutRequest(OnComplete, FString::Printf(TEXT("{\"error\":\"%s\"}"), *ErrorMsg));
     }
     
     // Create a temporary prompt manager for this request to ensure correct language-specific prompt
@@ -543,7 +563,7 @@ void UN2CLLMModule::ProcessN2CJsonWithOverrides(
 
     // The temporary service is referenced only by this callback: hold it strongly so GC cannot free it mid-request
     TStrongObjectPtr<UObject> TempServiceObject(TempService.GetObject());
-    TempService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
+    FN2CLLMRequestHandleRef Handle = TempService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
         [this, TempService, TempServiceObject, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
         {
             FN2CTranslationResponse TranslationResponse;
@@ -594,4 +614,6 @@ void UN2CLLMModule::ProcessN2CJsonWithOverrides(
             }
         }
     ));
+    ResetStatusOnCancel(Handle);
+    return Handle;
 }

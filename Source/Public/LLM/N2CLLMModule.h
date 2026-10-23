@@ -6,6 +6,7 @@
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "LLM/N2CLLMTypes.h"
 #include "LLM/N2CHttpHandlerBase.h"
+#include "LLM/N2CLLMRequestHandle.h"
 #include "LLM/N2CResponseParserBase.h"
 #include "Models/N2CBlueprint.h"
 #include "N2CLLMModule.generated.h"
@@ -30,14 +31,17 @@ public:
     /** Initialize module */
     bool Initialize();
 
-    /** Process N2C JSON through LLM */
-    void ProcessN2CJson(
+    /**
+     * Process N2C JSON through LLM. Returns the request's handle: Cancel() stops the HTTP request, OnComplete and the
+     * OnTranslationResponseReceived broadcast, and returns the module to Idle. Callers may ignore it.
+     */
+    FN2CLLMRequestHandleRef ProcessN2CJson(
         const FString& JsonInput,
         const FOnLLMResponseReceived& OnComplete
     );
 
-    /** Process N2C JSON through LLM with specific overrides for provider, model, and language */
-    void ProcessN2CJsonWithOverrides(
+    /** Process N2C JSON through LLM with specific overrides for provider, model, and language. Returns the request's handle. */
+    FN2CLLMRequestHandleRef ProcessN2CJsonWithOverrides(
         const FString& JsonInput,
         const FN2CLLMConfig& RequestConfig,
         EN2CCodeLanguage RequestLanguage,
@@ -103,6 +107,12 @@ private:
 
     /** Create appropriate service for provider */
     bool CreateServiceForProvider(EN2CLLMProvider Provider);
+
+    /** A handle already completed with Response (for errors found before a request is sent) */
+    static FN2CLLMRequestHandleRef CompleteWithoutRequest(const FOnLLMResponseReceived& OnComplete, const FString& Response);
+
+    /** Returns the module to Idle when Handle is cancelled while the module is still Processing */
+    void ResetStatusOnCancel(const FN2CLLMRequestHandleRef& Handle);
 
     /** Current configuration */
     UPROPERTY()

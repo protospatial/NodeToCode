@@ -24,7 +24,7 @@ class NODETOCODE_API UN2CBaseLLMService : public UObject, public IN2CLLMService
 public:
     // Common implementations from IN2CLLMService
     virtual bool Initialize(const FN2CLLMConfig& InConfig) override;
-    virtual void SendRequest(const FString& JsonPayload, const FString& SystemMessage, 
+    virtual FN2CLLMRequestHandleRef SendRequest(const FString& JsonPayload, const FString& SystemMessage, 
                            const FOnLLMResponseReceived& OnComplete) override;
     virtual bool IsInitialized() const override { return bIsInitialized; }
     virtual UN2CResponseParserBase* GetResponseParser() const override { return ResponseParser; }

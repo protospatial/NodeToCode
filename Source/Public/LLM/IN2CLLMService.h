@@ -6,6 +6,7 @@
 #include "N2CLLMTypes.h"
 #include "Models/N2CTranslation.h"
 #include "LLM/N2CResponseParserBase.h"
+#include "LLM/N2CLLMRequestHandle.h"
 #include "IN2CLLMService.generated.h"
 
 /**
@@ -30,8 +31,11 @@ public:
     /** Initialize the service with configuration */
     virtual bool Initialize(const FN2CLLMConfig& Config) = 0;
 
-    /** Send N2C JSON to LLM and receive translation response */
-    virtual void SendRequest(
+    /**
+     * Send N2C JSON to LLM and receive translation response. Returns the request's handle (see FN2CLLMRequestHandle):
+     * Cancel() stops the HTTP request and OnComplete; callers that do not cancel can ignore it.
+     */
+    virtual FN2CLLMRequestHandleRef SendRequest(
         const FString& JsonPayload,
         const FString& SystemMessage,
         const FOnLLMResponseReceived& OnComplete
