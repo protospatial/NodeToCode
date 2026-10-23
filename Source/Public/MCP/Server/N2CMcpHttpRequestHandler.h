@@ -14,14 +14,23 @@ class NODETOCODE_API FN2CMcpHttpRequestHandler
 {
 public:
 	/**
-	 * Processes an MCP request body and generates a response.
-	 * @param RequestBody The raw HTTP request body containing JSON-RPC message(s)
-	 * @param OutResponseBody The generated JSON-RPC response body
+	 * Parses an HTTP request body as one JSON value: exactly Body.Num() bytes of UTF-8, nothing cut off and
+	 * nothing ignored. A JSON-RPC batch parses to an array; trailing bytes after the root value fail the parse.
+	 * @param Body The raw request body (HTTPServer sizes it to Content-Length)
+	 * @param OutJsonValue The parsed value, or null when the body is not valid JSON
+	 * @return true if the body is a single valid JSON value
+	 */
+	static bool ParseRequestBody(const TArray<uint8>& Body, TSharedPtr<FJsonValue>& OutJsonValue);
+
+	/**
+	 * Processes an already parsed MCP request and generates a response.
+	 * @param JsonValue The parsed request body (ParseRequestBody); null or invalid gives a -32700 Parse error
+	 * @param OutResponseBody The generated JSON-RPC response body (condensed, single line)
 	 * @param OutStatusCode The HTTP status code to return
 	 * @param OutWasInitializeCall Set to true if the request was an 'initialize' method call
 	 * @return true if the request was processed successfully, false otherwise
 	 */
-	static bool ProcessMcpRequest(const FString& RequestBody, FString& OutResponseBody, int32& OutStatusCode, bool& OutWasInitializeCall);
+	static bool ProcessMcpRequest(const TSharedPtr<FJsonValue>& JsonValue, FString& OutResponseBody, int32& OutStatusCode, bool& OutWasInitializeCall);
 
 private:
 	/**

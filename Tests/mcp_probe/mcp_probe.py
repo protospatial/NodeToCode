@@ -23,13 +23,13 @@ from editor_session import EditorSession, free_port  # noqa: E402
 TOOLS_LIST = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
 
 
-def post(port, body, headers, path='/mcp'):
+def post(port, body, headers, path='/mcp', keep=400):
     conn = http.client.HTTPConnection('127.0.0.1', port, timeout=60)
     try:
         conn.request('POST', path, body=body.encode('utf-8'), headers=headers)
         r = conn.getresponse()
         data = r.read().decode('utf-8', 'replace')
-        return {'status': r.status, 'headers': {k.lower(): v for k, v in r.getheaders()}, 'body': data[:400]}
+        return {'status': r.status, 'headers': {k.lower(): v for k, v in r.getheaders()}, 'body': data[:keep] if keep else data}
     except Exception as e:
         return {'status': None, 'error': str(e)}
     finally:
@@ -68,7 +68,8 @@ def probe_p3(port):
     """A two-element JSON-RPC batch. Fixed means both answered, or the batch rejected with -32600."""
     batch = json.dumps([{'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'},
                         {'jsonrpc': '2.0', 'id': 2, 'method': 'ping'}])
-    r = post(port, batch, {'Content-Type': 'application/json'})
+    # Parse the whole body (a tools/list answer runs to tens of KB), then keep 400 chars as evidence
+    r = post(port, batch, {'Content-Type': 'application/json'}, keep=None)
     fixed = False
     try:
         parsed = json.loads(r.get('body', ''))
@@ -78,6 +79,8 @@ def probe_p3(port):
             fixed = True
     except ValueError:
         pass
+    if 'body' in r:
+        r['body'] = r['body'][:400]
     return {'ids': ['mcp-transport-9'], 'status': 'fixed' if fixed else 'reproduced', 'evidence': r}
 
 

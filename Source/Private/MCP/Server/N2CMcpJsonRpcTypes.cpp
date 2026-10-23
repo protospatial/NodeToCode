@@ -3,6 +3,7 @@
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Utils/N2CLogger.h"
 
 // FJsonRpcRequest Implementation
@@ -206,7 +207,7 @@ bool FJsonRpcUtils::ParseNotification(const FString& JsonString, FJsonRpcNotific
 FString FJsonRpcUtils::SerializeRequest(const FJsonRpcRequest& Request)
 {
 	FString OutputString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutputString);
 	FJsonSerializer::Serialize(Request.ToJson().ToSharedRef(), Writer);
 	return OutputString;
 }
@@ -214,7 +215,7 @@ FString FJsonRpcUtils::SerializeRequest(const FJsonRpcRequest& Request)
 FString FJsonRpcUtils::SerializeResponse(const FJsonRpcResponse& Response)
 {
 	FString OutputString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutputString);
 	FJsonSerializer::Serialize(Response.ToJson().ToSharedRef(), Writer);
 	return OutputString;
 }
@@ -222,7 +223,7 @@ FString FJsonRpcUtils::SerializeResponse(const FJsonRpcResponse& Response)
 FString FJsonRpcUtils::SerializeNotification(const FJsonRpcNotification& Notification)
 {
 	FString OutputString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutputString);
 	FJsonSerializer::Serialize(Notification.ToJson().ToSharedRef(), Writer);
 	return OutputString;
 }

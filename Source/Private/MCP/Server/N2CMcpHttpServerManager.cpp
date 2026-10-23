@@ -224,62 +224,14 @@ void FN2CMcpHttpServerManager::StopServer()
 
 bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete)
 {
-	// Get request body using a specified length to avoid extraneous characters
-	FString RequestBody;
-	if (Request.Body.Num() > 0)
-	{
-		// Use FUTF8ToTCHAR to correctly convert the specified number of bytes from the request body.
-		// We'll use the full Body.Num() for now, as we don't have direct access to ContentLength
-		int32 LengthToConvert = Request.Body.Num();
-		
-		// First, find the actual JSON content length by looking for the end of valid JSON
-		// This is necessary because Request.Body might contain extra bytes
-		const char* BodyData = reinterpret_cast<const char*>(Request.Body.GetData());
-		int32 ActualLength = 0;
-		int32 BraceDepth = 0;
-		bool InString = false;
-		bool Escaped = false;
-		
-		for (int32 i = 0; i < Request.Body.Num(); ++i)
-		{
-			char c = BodyData[i];
-			
-			if (!InString)
-			{
-				if (c == '{') BraceDepth++;
-				else if (c == '}') 
-				{
-					BraceDepth--;
-					if (BraceDepth == 0)
-					{
-						ActualLength = i + 1; // Include the closing brace
-						break;
-					}
-				}
-				else if (c == '"' && !Escaped) InString = true;
-			}
-			else
-			{
-				if (c == '"' && !Escaped) InString = false;
-			}
-			
-			Escaped = (c == '\\' && !Escaped);
-		}
-		
-		// If we found valid JSON, use that length; otherwise fall back to full buffer
-		if (ActualLength > 0)
-		{
-			LengthToConvert = ActualLength;
-		}
-		
-		FUTF8ToTCHAR Converter(reinterpret_cast<const ANSICHAR*>(Request.Body.GetData()), LengthToConvert);
-		RequestBody = FString(Converter.Length(), Converter.Get());
-	}
-
-	// Log the received body for debugging - essential for diagnosing these kinds of issues.
-	// Limit log length to avoid flooding with very large requests.
-	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP HTTP Request Body (Body.Num: %d, First 500 chars): '%s'"),
-		Request.Body.Num(), *RequestBody.Left(500)), EN2CLogSeverity::Debug);
+	// Parse the body once, over exactly the bytes received (HTTPServer sizes Body to Content-Length). A batch
+	// parses to an array, and trailing bytes after the root value are a parse error. The parsed value is used
+	// below for the long-running check and handed to ProcessMcpRequest; null means -32700 Parse error.
+	TSharedPtr<FJsonValue> JsonValue;
+	FN2CMcpHttpRequestHandler::ParseRequestBody(Request.Body, JsonValue);
+	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP HTTP request: %d body bytes, %s"), Request.Body.Num(),
+		JsonValue.IsValid() ? (JsonValue->Type == EJson::Array ? TEXT("batch") : TEXT("single message")) : TEXT("not valid JSON")),
+		EN2CLogSeverity::Debug);
 
 	// Process the MCP request
 	FString ResponseBody;
@@ -301,10 +253,8 @@ bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Reques
 	TSharedPtr<FJsonValue> RequestId; // This is the JSON-RPC request ID
 	FString ProgressToken;           // This is the MCP progress token for SSE
 	
-	// Parse the request to check if it's a tools/call
-	TSharedPtr<FJsonValue> JsonValue;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RequestBody);
-	if (FJsonSerializer::Deserialize(Reader, JsonValue) && JsonValue.IsValid() && JsonValue->Type == EJson::Object)
+	// Check whether this is a tools/call of a long-running tool, from the value parsed above
+	if (JsonValue.IsValid() && JsonValue->Type == EJson::Object)
 	{
 		TSharedPtr<FJsonObject> RequestObject = JsonValue->AsObject();
 		FString Method;
@@ -446,7 +396,7 @@ bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Reques
 	else
 	{
 		// Process the request normally (synchronous)
-		FN2CMcpHttpRequestHandler::ProcessMcpRequest(RequestBody, ResponseBody, StatusCode, bWasInitializeCall);
+		FN2CMcpHttpRequestHandler::ProcessMcpRequest(JsonValue, ResponseBody, StatusCode, bWasInitializeCall);
 	}
 
 	// Create response
