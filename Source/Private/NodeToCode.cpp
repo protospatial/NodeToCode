@@ -8,6 +8,10 @@
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
+#include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidgetFactory.h"
@@ -105,7 +109,32 @@ void FNodeToCodeModule::StartupModule()
     const UN2CSettings* McpSettings = GetDefault<UN2CSettings>();
     int32 McpPort = McpSettings ? McpSettings->McpServerPort : 27000;
     
-    if (FN2CMcpHttpServerManager::Get().StartServer(McpPort))
+    // Not in commandlets or unattended runs (build agents, smoke tests) unless -N2CMcp is on the command
+    // line, and never when the user turned the server off.
+    const bool bForceMcp = FParse::Param(FCommandLine::Get(), TEXT("N2CMcp"));
+    FString McpSkipReason;
+    if (!GetDefault<UN2CUserSettings>()->bEnableMcpServer)
+    {
+        McpSkipReason = TEXT("Enable MCP Server is off in Project Settings > Plugins > Node to Code (User)");
+    }
+    else if (!bForceMcp && IsRunningCommandlet())
+    {
+        McpSkipReason = TEXT("running a commandlet (pass -N2CMcp to start it anyway)");
+    }
+    else if (!bForceMcp && FApp::IsUnattended())
+    {
+        McpSkipReason = TEXT("running unattended (pass -N2CMcp to start it anyway)");
+    }
+    if (McpSkipReason.IsEmpty() && McpSettings && McpSettings->bEnablePythonScriptOnlyMode && !GetDefault<UN2CUserSettings>()->bAllowMcpPythonExecution)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("Python script-only mode is on but Allow MCP Python Execution is off: only the list, search and get script tools are available"));
+    }
+
+    if (!McpSkipReason.IsEmpty())
+    {
+        FN2CLogger::Get().Log(FString::Printf(TEXT("MCP server not started: %s"), *McpSkipReason), EN2CLogSeverity::Info);
+    }
+    else if (FN2CMcpHttpServerManager::Get().StartServer(McpPort))
     {
         FN2CLogger::Get().Log(TEXT("MCP HTTP server initialized successfully"), EN2CLogSeverity::Info);
     }
@@ -116,7 +145,11 @@ void FNodeToCodeModule::StartupModule()
     
     // Start SSE server for long-running operations
     int32 SsePort = McpPort + 1;
-    if (NodeToCodeSseServer::StartSseServer(SsePort))
+    if (!McpSkipReason.IsEmpty())
+    {
+        // Skipped together with the MCP server.
+    }
+    else if (NodeToCodeSseServer::StartSseServer(SsePort))
     {
         FN2CLogger::Get().Log(FString::Printf(TEXT("SSE server started on port %d"), SsePort), EN2CLogSeverity::Info);
     }

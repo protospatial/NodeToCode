@@ -5,6 +5,7 @@
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "Utils/N2CLogger.h"
+#include "Core/N2CUserSettings.h"
 
 FN2CMcpToolManager& FN2CMcpToolManager::Get()
 {
@@ -24,6 +25,14 @@ bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
 	if (ToolName.IsEmpty())
 	{
 		FN2CLogger::Get().LogWarning(TEXT("Cannot register tool with empty name"));
+		return false;
+	}
+
+	// Python execution tools exist only when the user opted in (per-user setting, off by default).
+	// Every registration path (startup, dynamic discovery) goes through here.
+	if (UN2CUserSettings::IsPythonExecutionTool(ToolName) && !GetDefault<UN2CUserSettings>()->bAllowMcpPythonExecution)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping MCP tool '%s': Allow MCP Python Execution is off"), *ToolName), EN2CLogSeverity::Debug);
 		return false;
 	}
 
