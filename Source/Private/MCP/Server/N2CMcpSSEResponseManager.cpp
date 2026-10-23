@@ -30,7 +30,6 @@ FString FN2CMcpSSEResponseManager::CreateSSEConnection(const TSharedPtr<FHttpSer
 	Response->Headers.Add(TEXT("Content-Type"), { TEXT("text/event-stream") });
 	Response->Headers.Add(TEXT("Cache-Control"), { TEXT("no-cache") });
 	Response->Headers.Add(TEXT("Connection"), { TEXT("keep-alive") });
-	Response->Headers.Add(TEXT("Access-Control-Allow-Origin"), { TEXT("*") });
 	
 	// Add MCP session ID header
 	if (!SessionId.IsEmpty())
@@ -98,7 +97,6 @@ TSharedPtr<FHttpServerResponse> FN2CMcpSSEResponseManager::CreateSSEConnectionAn
     SseHttpResponse->Headers.Add(TEXT("Content-Type"), { TEXT("text/event-stream") });
     SseHttpResponse->Headers.Add(TEXT("Cache-Control"), { TEXT("no-cache") });
     SseHttpResponse->Headers.Add(TEXT("Connection"), { TEXT("keep-alive") });
-    SseHttpResponse->Headers.Add(TEXT("Access-Control-Allow-Origin"), { TEXT("*") }); // For local dev
     
     if (!SessionId.IsEmpty())
     {

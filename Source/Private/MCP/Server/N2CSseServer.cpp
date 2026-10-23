@@ -197,6 +197,38 @@ namespace NodeToCodeSseServer
         GSseServerPort = Port;
         GSseHttpServer = MakeShareable(new httplib::Server());
 
+        if (GSseHttpServer.IsValid()) {
+            // Same policy as the /mcp listener: only loopback Origins and Hosts, so a web page or a
+            // DNS-rebinding attack cannot open the notification streams.
+            GSseHttpServer->set_pre_routing_handler([](const httplib::Request& req, httplib::Response& res) {
+                auto IsLoopback = [](std::string HostPort) {
+                    if (!HostPort.empty() && HostPort[0] == '[') {
+                        const size_t Close = HostPort.find(']');
+                        HostPort = Close == std::string::npos ? HostPort : HostPort.substr(0, Close + 1);
+                    } else {
+                        const size_t Colon = HostPort.find(':');
+                        if (Colon != std::string::npos) HostPort = HostPort.substr(0, Colon);
+                    }
+                    for (char& C : HostPort) C = static_cast<char>(std::tolower(static_cast<unsigned char>(C)));
+                    return HostPort == "localhost" || HostPort == "127.0.0.1" || HostPort == "[::1]";
+                };
+                const std::string Origin = req.get_header_value("Origin");
+                if (!Origin.empty()) {
+                    const size_t Scheme = Origin.find("://");
+                    if (Scheme == std::string::npos || !IsLoopback(Origin.substr(Scheme + 3))) {
+                        res.status = 403;
+                        return httplib::Server::HandlerResponse::Handled;
+                    }
+                }
+                const std::string Host = req.get_header_value("Host");
+                if (!Host.empty() && !IsLoopback(Host)) {
+                    res.status = 403;
+                    return httplib::Server::HandlerResponse::Handled;
+                }
+                return httplib::Server::HandlerResponse::Unhandled;
+            });
+        }
+
         if (!GSseHttpServer.IsValid()) {
             FN2CLogger::Get().LogError(TEXT("SSE: Failed to create httplib::Server instance."));
             return false;
@@ -263,7 +295,6 @@ namespace NodeToCodeSseServer
             res.set_header("Content-Type", "text/event-stream");
             res.set_header("Cache-Control", "no-cache");
             res.set_header("Connection", "keep-alive");
-            res.set_header("Access-Control-Allow-Origin", "*"); 
             
             // Send an initial comment to establish the connection immediately.
             std::string InitialComment = FormatSseMessage(TEXT(""), TEXT(": SSE connection established for task ") + TaskIdStr);
@@ -347,7 +378,6 @@ namespace NodeToCodeSseServer
             res.set_header("Content-Type", "text/event-stream");
             res.set_header("Cache-Control", "no-cache");
             res.set_header("Connection", "keep-alive");
-            res.set_header("Access-Control-Allow-Origin", "*");
         
             res.set_content_provider(
                 "text/event-stream",
@@ -389,10 +419,10 @@ namespace NodeToCodeSseServer
         
         GbSseServerIsRunning.store(false); // Ensure it's false before starting thread
         GSseServerThreadPtr = std::make_unique<std::thread>([Port]() {
-            FN2CLogger::Get().Log(FString::Printf(TEXT("SSE: httplib server thread starting, attempting to listen on 0.0.0.0:%d"), Port), EN2CLogSeverity::Info);
+            FN2CLogger::Get().Log(FString::Printf(TEXT("SSE: httplib server thread starting, attempting to listen on 127.0.0.1:%d"), Port), EN2CLogSeverity::Info);
             // GbSseServerIsRunning.store(true); // MOVED: Set this after listen() call or based on is_running()
             
-            bool bListenSuccess = GSseHttpServer->listen("0.0.0.0", Port); // This is blocking
+            bool bListenSuccess = GSseHttpServer->listen("127.0.0.1", Port); // Loopback only. This is blocking
             
             // After listen() returns (i.e., server stopped or failed to start)
             GbSseServerIsRunning.store(false); 

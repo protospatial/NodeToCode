@@ -1,6 +1,8 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CMainWindow.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "Widgets/Notifications/SNotificationList.h"
 #include "Models/N2CStyle.h"
 #include "Core/Widgets/SN2CTagManager.h"
 #include "Core/N2CDesignTokens.h"
@@ -345,8 +347,17 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 	}
 	ShowBatchProgress();
 
-	// Start the batch translation
-	UN2CBatchTranslationOrchestrator::Get().StartBatchTranslation(SelectedGraphs);
+	// Start the batch translation. It returns false without calling OnBatchComplete when the module is busy,
+	// fails to initialize or no item resolves, so roll the UI state back here.
+	if (!UN2CBatchTranslationOrchestrator::Get().StartBatchTranslation(SelectedGraphs))
+	{
+		UE_LOG(LogNodeToCode, Error, TEXT("[SN2CMainWindow] Batch translation did not start (busy, LLM module failed to initialize, or no graph could be resolved)"));
+		FN2CEditorIntegration::Get().SetTranslationInProgress(false);
+		HideBatchProgress();
+		FNotificationInfo Info(NSLOCTEXT("NodeToCode", "BatchDidNotStart", "Batch translation did not start. Check the provider settings and the Output Log."));
+		Info.ExpireDuration = 6.0f;
+		FSlateNotificationManager::Get().AddNotification(Info);
+	}
 }
 
 void SN2CMainWindow::HandleExportJsonRequested()
@@ -392,65 +403,15 @@ void SN2CMainWindow::HandleRemoveSelectedRequested()
 
 void SN2CMainWindow::TranslateSingleGraph(const FN2CTagInfo& Graph)
 {
-	if (bIsSingleTranslationInProgress)
-	{
-		return; // Already translating
-	}
-
-	// Load the blueprint
-	FSoftObjectPath BlueprintPath(Graph.BlueprintPath);
-	UBlueprint* Blueprint = Cast<UBlueprint>(BlueprintPath.TryLoad());
-	if (!Blueprint)
-	{
-		return;
-	}
-
-	// Find the graph
+	// One path for row and overlay translations: it checks and sets both in-progress flags, initializes the
+	// LLM module, shows progress, and clears the flags on every success and error path.
 	FGuid GraphGuid;
 	if (!FGuid::Parse(Graph.GraphGuid, GraphGuid))
 	{
+		UE_LOG(LogNodeToCode, Error, TEXT("[SN2CMainWindow] Invalid graph GUID for row translation: %s"), *Graph.GraphGuid);
 		return;
 	}
-
-	UEdGraph* EdGraph = FindGraphByGuid(Blueprint, GraphGuid);
-	if (!EdGraph)
-	{
-		return;
-	}
-
-	// Collect and translate nodes
-	TArray<UK2Node*> CollectedNodes;
-	FN2CEditorIntegration::Get().CollectNodesFromGraph(EdGraph, CollectedNodes);
-
-	FN2CBlueprint N2CBlueprint;
-	FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprint(CollectedNodes, N2CBlueprint);
-
-	FString JsonContent = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(N2CBlueprint, true);
-	if (JsonContent.IsEmpty())
-	{
-		return;
-	}
-
-	// Store pending graph info for callback
-	PendingSingleTranslateGraph = Graph;
-	bIsSingleTranslationInProgress = true;
-
-	// Send to LLM - bind to the module's response delegate
-	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
-	if (LLMModule)
-	{
-		// Store weak reference for safe lambda capture
-		TWeakPtr<SN2CMainWindow> WeakSelf = SharedThis(this);
-
-		// Process JSON with callback that captures raw response
-		LLMModule->ProcessN2CJson(JsonContent, FOnLLMResponseReceived::CreateLambda(
-			[WeakSelf](const FString& RawResponse)
-			{
-				// Response parsing is handled by LLM module - we get notified via OnTranslationResponseReceived
-				// The actual handling is done through that delegate if we need it
-			}
-		));
-	}
+	HandleOverlayTranslationRequest(GraphGuid, Graph.GraphName, Graph.BlueprintPath);
 }
 
 void SN2CMainWindow::ExportSingleGraphToJson(const FN2CTagInfo& Graph)

@@ -303,3 +303,9 @@ def _make_success(data: Any) -> Dict[str, Any]:
 def _make_error(message: str) -> Dict[str, Any]:
     return {"success": False, "data": None, "error": message}
 ```
+
+## Enabling run-python over MCP
+
+`run-python`, `save-python-script` and `delete-python-script` are only registered when the per-user setting
+**Allow MCP Python Execution** (`UN2CUserSettings::bAllowMcpPythonExecution`) is on; it is off by default and
+needs an editor restart. Python script-only mode without it leaves only the list, search and get script tools.

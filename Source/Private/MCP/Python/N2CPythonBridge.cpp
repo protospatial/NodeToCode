@@ -843,8 +843,12 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 
 	for (int32 i = 0; i < MenuBuilder.GetNumActions() && ResultCount < MaxResults; ++i)
 	{
-		FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(i);
-		const FString& ActionSearchText = Action.GetSearchTextForFirstAction();
+		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
+		if (!Action.IsValid())
+		{
+			continue;
+		}
+		const FString& ActionSearchText = Action->GetFullSearchText();
 		FString LowerSearchText = ActionSearchText.ToLower();
 
 		bool bMatchesAllTerms = true;
@@ -1011,8 +1015,12 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 
 	for (int32 i = 0; i < MenuBuilder.GetNumActions(); ++i)
 	{
-		FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(i);
-		const FString& ActionSearchText = Action.GetSearchTextForFirstAction();
+		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
+		if (!Action.IsValid())
+		{
+			continue;
+		}
+		const FString& ActionSearchText = Action->GetFullSearchText();
 		FString LowerSearchText = ActionSearchText.ToLower();
 
 		bool bMatchesAllTerms = true;
@@ -1042,8 +1050,8 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 
 	for (int32 Index : MatchingActionIndices)
 	{
-		FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(Index);
-		FString CurrentActionId = Action.GetSearchTextForFirstAction();
+		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(Index);
+		FString CurrentActionId = Action.IsValid() ? Action->GetFullSearchText() : FString();
 
 		if (CurrentActionId == SearchActionId)
 		{
@@ -1059,15 +1067,7 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	}
 
 	// Get the matching action
-	FGraphActionListBuilderBase::ActionGroup MatchedAction = MenuBuilder.GetAction(ExactMatchIndex);
-
-	if (MatchedAction.Actions.Num() == 0)
-	{
-		return MakeErrorJson(TEXT("Matched action has no executable actions"));
-	}
-
-	// Execute the action to spawn the node
-	TSharedPtr<FEdGraphSchemaAction> SchemaAction = MatchedAction.Actions[0];
+	TSharedPtr<FEdGraphSchemaAction> SchemaAction = MenuBuilder.GetSchemaAction(ExactMatchIndex);
 	if (!SchemaAction.IsValid())
 	{
 		return MakeErrorJson(TEXT("Invalid schema action"));
@@ -1077,7 +1077,7 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	int32 PreSpawnNodeCount = ActiveGraph->Nodes.Num();
 
 	// Perform the action
-	FVector2D Location(LocationX, LocationY);
+	const FVector2f Location(LocationX, LocationY);
 	UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(ActiveGraph, nullptr, Location);
 
 	if (!SpawnedNode)
@@ -1155,6 +1155,44 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
 
 	return MakeSuccessJson(ResultJsonString);
+}
+
+namespace N2CPinConnectPolicy
+{
+	/** Responses where the schema itself breaks links (replace) before connecting */
+	static bool BreaksOthers(ECanCreateConnectionResponse R)
+	{
+		return R == CONNECT_RESPONSE_BREAK_OTHERS_A || R == CONNECT_RESPONSE_BREAK_OTHERS_B || R == CONNECT_RESPONSE_BREAK_OTHERS_AB;
+	}
+
+	/**
+	 * Whether to go ahead with a connection, given the schema's answer. Exec inputs take many incoming links, so
+	 * nothing is broken by hand: the schema's TryCreateConnection breaks exactly what its response says, and only
+	 * when the caller allowed breaking links. Conversion-node responses are allowed.
+	 */
+	static bool Allow(const FPinConnectionResponse& Response, const UEdGraphPin* FromPin, const UEdGraphPin* ToPin, bool bBreakExistingLinks, FString& OutError)
+	{
+		if (Response.Response == CONNECT_RESPONSE_DISALLOW)
+		{
+			OutError = Response.Message.ToString();
+			return false;
+		}
+		if (BreaksOthers(Response.Response) && !bBreakExistingLinks)
+		{
+			const UEdGraphPin* Busy = (Response.Response == CONNECT_RESPONSE_BREAK_OTHERS_A) ? FromPin : ToPin;
+			FString Existing;
+			if (Busy && Busy->LinkedTo.Num() > 0 && Busy->LinkedTo[0] && Busy->LinkedTo[0]->GetOwningNode())
+			{
+				Existing = FString::Printf(TEXT(" (currently linked to %s.%s)"),
+					*Busy->LinkedTo[0]->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+					*Busy->LinkedTo[0]->PinName.ToString());
+			}
+			OutError = FString::Printf(TEXT("Connecting would replace the existing link on %s%s. Pass breakExistingLinks=true to replace it."),
+				Busy ? *Busy->PinName.ToString() : TEXT("the pin"), *Existing);
+			return false;
+		}
+		return true;
+	}
 }
 
 FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks)
@@ -1317,31 +1355,15 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 			continue;
 		}
 
-		// Validate connection
+		// Validate connection; the schema decides what (if anything) a connection breaks or converts
 		const FPinConnectionResponse Response = Schema->CanCreateConnection(FromPin, ToPin);
-		if (!Response.CanSafeConnect())
+		FString PolicyError;
+		if (!N2CPinConnectPolicy::Allow(Response, FromPin, ToPin, bBreakExistingLinks, PolicyError))
 		{
 			TSharedPtr<FJsonObject> FailedObj = MakeShareable(new FJsonObject);
-			FailedObj->SetStringField(TEXT("error"), Response.Message.ToString());
+			FailedObj->SetStringField(TEXT("error"), PolicyError);
 			FailedArray.Add(MakeShareable(new FJsonValueObject(FailedObj)));
 			continue;
-		}
-
-		// Break existing links if requested
-		if (bBreakExistingLinks)
-		{
-			if (UEdGraphSchema_K2::IsExecPin(*FromPin))
-			{
-				FromPin->BreakAllPinLinks();
-			}
-			if (UEdGraphSchema_K2::IsExecPin(*ToPin))
-			{
-				ToPin->BreakAllPinLinks();
-			}
-			else if (ToPin->Direction == EGPD_Input)
-			{
-				ToPin->BreakAllPinLinks();
-			}
 		}
 
 		// Make the connection

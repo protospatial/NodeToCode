@@ -3,7 +3,7 @@
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/UserDefinedEnum.h"
-#include "Engine/UserDefinedStruct.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "UObject/UnrealType.h" // For FProperty, FStructProperty etc.
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Utils/N2CLogger.h"

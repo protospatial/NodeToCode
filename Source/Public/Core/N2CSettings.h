@@ -355,7 +355,7 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
         meta=(DisplayName="Enable Python Script-Only Mode",
               ToolTip="When enabled, most C++ tools are disabled. LLMs use Python scripts via run-python instead. Includes script library tools for reusable script management. Pair with Context7 MCP for API docs. Requires editor restart."))
-    bool bEnablePythonScriptOnlyMode = true;
+    bool bEnablePythonScriptOnlyMode = false;
 
     /** Get the API key for the selected provider */
     FString GetActiveApiKey() const;

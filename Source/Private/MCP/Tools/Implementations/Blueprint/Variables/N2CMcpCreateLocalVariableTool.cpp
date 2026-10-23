@@ -97,13 +97,13 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		
 		// Extract required parameters
 		FString VariableName;
-		if (!ArgParser.TryGetRequiredString(TEXT("variableName"), VariableName, ErrorMsg))
+		if (!ArgParser.TryGetRequiredName(TEXT("variableName"), VariableName, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
 		
 		FString TypeIdentifier;
-		if (!ArgParser.TryGetRequiredString(TEXT("typeIdentifier"), TypeIdentifier, ErrorMsg))
+		if (!ArgParser.TryGetRequiredName(TEXT("typeIdentifier"), TypeIdentifier, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}

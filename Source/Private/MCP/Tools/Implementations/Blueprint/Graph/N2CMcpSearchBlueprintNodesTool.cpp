@@ -206,8 +206,12 @@ FMcpToolCallResult FN2CMcpSearchBlueprintNodesTool::Execute(const TSharedPtr<FJs
 
         for (int32 i = 0; i < MenuBuilder.GetNumActions() && ResultCount < MaxResults; ++i)
         {
-            FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(i);
-            const FString& ActionSearchText = Action.GetSearchTextForFirstAction();
+            const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
+            if (!Action.IsValid())
+            {
+                continue;
+            }
+            const FString& ActionSearchText = Action->GetFullSearchText();
             FString LowerSearchText = ActionSearchText.ToLower();
 
             // Check if all search terms match (case-insensitive)
@@ -420,7 +424,7 @@ bool FN2CMcpSearchBlueprintNodesTool::GetContextFromPaths(
 }
 
 TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertActionToJson(
-    const FGraphActionListBuilderBase::ActionGroup& Action,
+    const TSharedPtr<FEdGraphSchemaAction>& Action,
     bool bIsContextSensitive,
     UBlueprint* ContextBlueprint,
     UEdGraph* ContextGraph)
@@ -432,13 +436,13 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertActionToJson(
     TSharedPtr<FJsonObject> NodeJson;
     
     // Try to spawn the actual node if we have a context
-    if (ContextGraph && Action.Actions.Num() > 0)
+    if (ContextGraph && Action.IsValid())
     {
-        TSharedPtr<FEdGraphSchemaAction> SchemaAction = Action.Actions[0];
+        const TSharedPtr<FEdGraphSchemaAction>& SchemaAction = Action;
         if (SchemaAction.IsValid())
         {
             // Perform the action to spawn the node in the context graph
-            FVector2D SpawnLocation(0, 0);
+            const FVector2f SpawnLocation(0.0f, 0.0f);
             UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(ContextGraph, nullptr, SpawnLocation);
             
             // Try to cast to K2Node
@@ -470,13 +474,13 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertActionToJson(
     }
     
     // Add minimal spawning metadata for future node creation
-    if (NodeJson.IsValid() && Action.Actions.Num() > 0)
+    if (NodeJson.IsValid() && Action.IsValid())
     {
         TSharedPtr<FJsonObject> SpawnMetadata = MakeShareable(new FJsonObject);
         
         // Use the raw search text as the unique action identifier
         // This is the most precise way to identify a specific action
-        FString ActionIdentifier = Action.GetSearchTextForFirstAction();
+        FString ActionIdentifier = Action->GetFullSearchText();
         
         // Replace newlines with a delimiter that's easier for LLMs to handle
         // This makes the identifier a single line that's easier to copy/paste
@@ -494,18 +498,18 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertActionToJson(
     return NodeJson;
 }
 
-FString FN2CMcpSearchBlueprintNodesTool::ExtractInternalName(const FGraphActionListBuilderBase::ActionGroup& Action)
+FString FN2CMcpSearchBlueprintNodesTool::ExtractInternalName(const TSharedPtr<FEdGraphSchemaAction>& Action)
 {
     // For now, we'll return an empty string as accessing internal action structure is complex
     return FString();
 }
 
-TArray<FString> FN2CMcpSearchBlueprintNodesTool::ExtractCategoryPath(const FGraphActionListBuilderBase::ActionGroup& Action)
+TArray<FString> FN2CMcpSearchBlueprintNodesTool::ExtractCategoryPath(const TSharedPtr<FEdGraphSchemaAction>& Action)
 {
     TArray<FString> CategoryPath;
     
     // Extract categories from the search text if possible
-    FString SearchText = Action.GetSearchTextForFirstAction();
+    FString SearchText = Action.IsValid() ? Action->GetFullSearchText() : FString();
     
     // Simple heuristic: split by common separators that might appear in search text
     // This is a simplified approach since we can't directly access the category structure
@@ -553,13 +557,13 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertNodeToN2CJson(UK
     return FN2CSerializer::NodeToJsonObject(NodeDef);
 }
 
-FN2CNodeDefinition FN2CMcpSearchBlueprintNodesTool::CreateNodeDefinitionFromAction(const FGraphActionListBuilderBase::ActionGroup& Action, const FString& NodeId)
+FN2CNodeDefinition FN2CMcpSearchBlueprintNodesTool::CreateNodeDefinitionFromAction(const TSharedPtr<FEdGraphSchemaAction>& Action, const FString& NodeId)
 {
     FN2CNodeDefinition NodeDef;
     NodeDef.ID = NodeId;
     
     // Get search text as the node name
-    FString SearchText = Action.GetSearchTextForFirstAction();
+    FString SearchText = Action.IsValid() ? Action->GetFullSearchText() : FString();
     NodeDef.Name = SearchText;
     
     // Try to determine node type from the action

@@ -5,6 +5,7 @@
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Utils/N2CPathUtils.h"
 
 UN2CGraphStateManager* UN2CGraphStateManager::Instance = nullptr;
 
@@ -493,9 +494,11 @@ bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTra
 	}
 
 	// Build file paths
-	FString DeclarationPath = FPaths::Combine(FullPath, State->GraphName + TEXT(".h"));
-	FString ImplementationPath = FPaths::Combine(FullPath, State->GraphName + Extension);
-	FString NotesPath = FPaths::Combine(FullPath, State->GraphName + TEXT("_Notes.txt"));
+	// Same stem the save path used (identical to the raw name for names without path characters)
+	const FString Stem = FN2CPathUtils::GetTranslationFileStem(State->GraphName);
+	FString DeclarationPath = FPaths::Combine(FullPath, Stem + TEXT(".h"));
+	FString ImplementationPath = FPaths::Combine(FullPath, Stem + Extension);
+	FString NotesPath = FPaths::Combine(FullPath, Stem + TEXT("_Notes.txt"));
 
 	// Load declaration (header) if it exists
 	FString Declaration;
@@ -553,7 +556,7 @@ bool UN2CGraphStateManager::LoadN2CJson(const FGuid& GraphGuid, FString& OutJson
 	// 1. Batch translation format: {GraphName}.json
 	// 2. Individual translation format: N2C_BP_{FolderName}.json
 	TArray<FString> PossibleJsonPaths;
-	PossibleJsonPaths.Add(FPaths::Combine(FullPath, State->GraphName + TEXT(".json")));
+	PossibleJsonPaths.Add(FPaths::Combine(FullPath, FN2CPathUtils::GetTranslationFileStem(State->GraphName) + TEXT(".json")));
 	PossibleJsonPaths.Add(FPaths::Combine(FullPath, TEXT("N2C_BP_") + FPaths::GetBaseFilename(FullPath) + TEXT(".json")));
 
 	FString FoundJsonPath;

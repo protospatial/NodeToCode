@@ -115,6 +115,33 @@ FMcpToolCallResult FN2CMcpSavePythonScriptTool::Execute(const TSharedPtr<FJsonOb
 	}
 	FString Category = Parser.GetOptionalString(TEXT("category"), TEXT("general"));
 
+	// Name and category become a file and a folder under the scripts directory: allow plain identifiers only,
+	// never a reserved module name (init_unreal.py runs at every editor start).
+	auto CheckIdentifier = [](const FString& Value, const TCHAR* What, FString& OutError) -> bool
+	{
+		bool bValid = Value.Len() > 0 && Value.Len() <= 64 && (FChar::IsAlpha(Value[0]) || Value[0] == TEXT('_'));
+		for (TCHAR C : Value)
+		{
+			bValid &= (C < 128) && (FChar::IsAlnum(C) || C == TEXT('_'));
+		}
+		if (!bValid)
+		{
+			OutError = FString::Printf(TEXT("Invalid %s '%s': use letters, digits and underscores, starting with a letter or underscore (64 characters at most)"), What, *Value);
+			return false;
+		}
+		if (Value.Equals(TEXT("init_unreal"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("__init__"), ESearchCase::IgnoreCase))
+		{
+			OutError = FString::Printf(TEXT("Invalid %s '%s': this name is reserved"), What, *Value);
+			return false;
+		}
+		return true;
+	};
+	FString NameError;
+	if (!CheckIdentifier(Name, TEXT("name"), NameError) || !CheckIdentifier(Category, TEXT("category"), NameError))
+	{
+		return FMcpToolCallResult::CreateErrorResult(NameError);
+	}
+
 	// Build Python function call
 	// Note: Using triple-quoted string for code to handle multi-line scripts
 	FString FunctionCall = FString::Printf(

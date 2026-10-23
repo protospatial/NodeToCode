@@ -89,7 +89,7 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   **`N2CMcpHttpServerManager.h/.cpp`**: Central server management
     *   Singleton pattern for server lifecycle control
     *   HTTP routing: `/mcp` (main), `/mcp/health` (health check)
-    *   CORS headers for local development
+    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; the httplib SSE server binds 127.0.0.1
     *   Client notification channel management
     *   Session protocol version tracking
 
@@ -461,3 +461,15 @@ curl -X POST http://localhost:27000/mcp \
     *   Location: `Content/Python/mcp_bridge/nodetocode_bridge.py`
     *   Enables Claude for Desktop and other MCP client integration
     *   Handles protocol translation and session management
+
+## Server switches (per-user)
+
+`UN2CUserSettings` (Project Settings > Plugins > Node to Code (User), stored in the user's
+EditorPerProjectUserSettings.ini, never the shared project config):
+
+- **Enable MCP Server** (default on): starts the MCP server on `McpServerPort` and the notification server on port+1.
+- **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
+  `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so dynamic discovery cannot add them either.
+
+The servers do not start in commandlets or `-unattended` runs (build agents, the smoke test) unless the command
+line has `-N2CMcp`. `bEnablePythonScriptOnlyMode` now defaults to false.

@@ -18,6 +18,97 @@
 #include "MCP/Server/N2CMcpSSEResponseManager.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 
+namespace N2CMcpRequestPolicy
+{
+	/** True when Host (an Origin's or a Host header's host part, port stripped) is a loopback name. */
+	static bool IsLoopbackHost(const FString& HostAndPort)
+	{
+		FString Host = HostAndPort;
+		if (Host.StartsWith(TEXT("[")))
+		{
+			int32 CloseBracket = INDEX_NONE;
+			if (Host.FindChar(TEXT(']'), CloseBracket))
+			{
+				Host = Host.Left(CloseBracket + 1);
+			}
+		}
+		else
+		{
+			FString Left, Right;
+			if (Host.Split(TEXT(":"), &Left, &Right))
+			{
+				Host = Left;
+			}
+		}
+		return Host.Equals(TEXT("localhost"), ESearchCase::IgnoreCase) || Host == TEXT("127.0.0.1") || Host == TEXT("[::1]");
+	}
+
+	static const FString* FirstHeader(const FHttpServerRequest& Request, const TCHAR* Name)
+	{
+		for (const TPair<FString, TArray<FString>>& Pair : Request.Headers)
+		{
+			if (Pair.Key.Equals(Name, ESearchCase::IgnoreCase) && Pair.Value.Num() > 0)
+			{
+				return &Pair.Value[0];
+			}
+		}
+		return nullptr;
+	}
+
+	static void Reject(const FHttpResultCallback& OnComplete, EHttpServerResponseCodes Code, const FString& Reason)
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("MCP request rejected (%d): %s"), static_cast<int32>(Code), *Reason));
+		TUniquePtr<FHttpServerResponse> Response = FHttpServerResponse::Create(
+			FString::Printf(TEXT("{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"%s\"}}"), *Reason),
+			TEXT("application/json"));
+		Response->Code = Code;
+		OnComplete(MoveTemp(Response));
+	}
+
+	/**
+	 * Allows only requests a local, non-browser client (or a page served from localhost) can make:
+	 * Origin absent or loopback, Host loopback, and for POST a JSON body. Prevents drive-by requests from
+	 * web pages and DNS rebinding. Returns false after answering the request when it is rejected.
+	 */
+	bool ValidateLocalRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete, bool bRequireJsonBody)
+	{
+		if (const FString* Origin = FirstHeader(Request, TEXT("Origin")))
+		{
+			FString Scheme, HostPart;
+			if (!Origin->Split(TEXT("://"), &Scheme, &HostPart) || !IsLoopbackHost(HostPart))
+			{
+				Reject(OnComplete, EHttpServerResponseCodes::Forbidden, TEXT("Origin not allowed"));
+				return false;
+			}
+		}
+		if (const FString* Host = FirstHeader(Request, TEXT("Host")))
+		{
+			if (!IsLoopbackHost(*Host))
+			{
+				Reject(OnComplete, EHttpServerResponseCodes::Forbidden, TEXT("Host not allowed"));
+				return false;
+			}
+		}
+		if (bRequireJsonBody)
+		{
+			const FString* ContentType = FirstHeader(Request, TEXT("Content-Type"));
+			FString MediaType = ContentType ? *ContentType : FString();
+			int32 Semicolon = INDEX_NONE;
+			if (MediaType.FindChar(TEXT(';'), Semicolon))
+			{
+				MediaType = MediaType.Left(Semicolon);
+			}
+			MediaType.TrimStartAndEndInline();
+			if (!MediaType.Equals(TEXT("application/json"), ESearchCase::IgnoreCase))
+			{
+				Reject(OnComplete, EHttpServerResponseCodes::UnsupportedMedia, TEXT("Content-Type must be application/json"));
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
 FN2CMcpHttpServerManager& FN2CMcpHttpServerManager::Get()
 {
 	static FN2CMcpHttpServerManager Instance;
@@ -52,6 +143,10 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port)
 	FHttpRequestHandler McpHandler;
 	McpHandler.BindLambda([this](const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete) -> bool
 	{
+		if (!N2CMcpRequestPolicy::ValidateLocalRequest(Request, OnComplete, /*bRequireJsonBody=*/true))
+		{
+			return true;
+		}
 		return HandleMcpRequest(Request, OnComplete);
 	});
 	HttpRouter->BindRoute(FHttpPath(TEXT("/mcp")), EHttpServerRequestVerbs::VERB_POST, McpHandler);
@@ -60,6 +155,10 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port)
 	FHttpRequestHandler HealthHandler;
 	HealthHandler.BindLambda([this](const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete) -> bool
 	{
+		if (!N2CMcpRequestPolicy::ValidateLocalRequest(Request, OnComplete, /*bRequireJsonBody=*/false))
+		{
+			return true;
+		}
 		return HandleHealthRequest(Request, OnComplete);
 	});
 	HttpRouter->BindRoute(FHttpPath(TEXT("/mcp/health")), EHttpServerRequestVerbs::VERB_GET, HealthHandler);
@@ -69,14 +168,14 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port)
 	FHttpRequestHandler SseDummyHandler;
 	SseDummyHandler.BindLambda([](const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete) -> bool
 	{
+		if (!N2CMcpRequestPolicy::ValidateLocalRequest(Request, OnComplete, /*bRequireJsonBody=*/false))
+		{
+			return true;
+		}
 		FN2CLogger::Get().Log(TEXT("Received probe for default SSE endpoint at /mcp/sse. Responding with 204 No Content."), EN2CLogSeverity::Debug);
 		auto Response = FHttpServerResponse::Create(TEXT(""), TEXT("text/plain"));
 		Response->Code = EHttpServerResponseCodes::NoContent;
-		
-		// Add CORS headers to be safe, as this is a pre-flight like request.
-		Response->Headers.Add(TEXT("Access-Control-Allow-Origin"), { TEXT("*") });
-		Response->Headers.Add(TEXT("Access-Control-Allow-Methods"), { TEXT("GET, OPTIONS") });
-		Response->Headers.Add(TEXT("Access-Control-Allow-Headers"), { TEXT("Content-Type, Mcp-Session-Id") });
+
 		OnComplete(MoveTemp(Response));
 		return true;
 	});
@@ -88,7 +187,7 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port)
 	bIsServerRunning = true;
 	ServerPort = Port;
 
-	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP HTTP server started successfully on localhost:%d"), Port), EN2CLogSeverity::Info);
+	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP HTTP server started on port %d (HTTPServer listener; loopback unless [HTTPServer.Listeners] overrides it)"), Port), EN2CLogSeverity::Info);
 	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP endpoint available at: http://localhost:%d/mcp"), Port), EN2CLogSeverity::Info);
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Health check available at: http://localhost:%d/mcp/health"), Port), EN2CLogSeverity::Info);
 
@@ -358,12 +457,6 @@ bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Reques
 	}
 	Response->Code = static_cast<EHttpServerResponseCodes>(StatusCode);
 
-	// Add CORS headers for local development
-	Response->Headers.Add(TEXT("Access-Control-Allow-Origin"), { TEXT("*") });
-	Response->Headers.Add(TEXT("Access-Control-Allow-Methods"), { TEXT("POST, GET, OPTIONS") });
-	Response->Headers.Add(TEXT("Access-Control-Allow-Headers"), { TEXT("Content-Type, Mcp-Session-Id") });
-	Response->Headers.Add(TEXT("Access-Control-Expose-Headers"), { TEXT("Mcp-Session-Id") }); // Important for client to read it
-
 	// Session ID Handling for HTTP Transport (as per MCP Spec 2025-03-26)
 	if (bWasInitializeCall && StatusCode == 200)
 	{
@@ -407,9 +500,6 @@ bool FN2CMcpHttpServerManager::HandleHealthRequest(const FHttpServerRequest& Req
 	
 	TUniquePtr<FHttpServerResponse> Response = FHttpServerResponse::Create(HealthResponse, TEXT("application/json"));
 	Response->Code = EHttpServerResponseCodes::Ok;
-
-	// Add CORS headers
-	Response->Headers.Add(TEXT("Access-Control-Allow-Origin"), { TEXT("*") });
 
 	OnComplete(MoveTemp(Response));
 

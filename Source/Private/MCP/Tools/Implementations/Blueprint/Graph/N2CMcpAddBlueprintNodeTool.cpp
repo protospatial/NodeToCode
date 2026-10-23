@@ -265,8 +265,12 @@ bool FN2CMcpAddBlueprintNodeTool::FindAndSpawnNode(
     
     for (int32 i = 0; i < MenuBuilder.GetNumActions(); ++i)
     {
-        FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(i);
-        const FString& ActionSearchText = Action.GetSearchTextForFirstAction();
+        const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
+        if (!Action.IsValid())
+        {
+            continue;
+        }
+        const FString& ActionSearchText = Action->GetFullSearchText();
         FString LowerSearchText = ActionSearchText.ToLower();
         
         // Check if all search terms match (case-insensitive) - same as search-blueprint-nodes
@@ -301,8 +305,8 @@ bool FN2CMcpAddBlueprintNodeTool::FindAndSpawnNode(
     
     for (int32 Index : MatchingActionIndices)
     {
-        FGraphActionListBuilderBase::ActionGroup Action = MenuBuilder.GetAction(Index);
-        FString CurrentActionId = Action.GetSearchTextForFirstAction();
+        const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(Index);
+        FString CurrentActionId = Action.IsValid() ? Action->GetFullSearchText() : FString();
         
         // Compare using the converted identifier
         if (CurrentActionId == SearchActionId)
@@ -320,16 +324,7 @@ bool FN2CMcpAddBlueprintNodeTool::FindAndSpawnNode(
     }
     
     // Get the matching action
-    FGraphActionListBuilderBase::ActionGroup MatchedAction = MenuBuilder.GetAction(ExactMatchIndex);
-
-    if (MatchedAction.Actions.Num() == 0)
-    {
-        OutError = TEXT("Matched action has no executable actions");
-        return false;
-    }
-    
-    // Execute the action to spawn the node
-    TSharedPtr<FEdGraphSchemaAction> SchemaAction = MatchedAction.Actions[0];
+    TSharedPtr<FEdGraphSchemaAction> SchemaAction = MenuBuilder.GetSchemaAction(ExactMatchIndex);
     if (!SchemaAction.IsValid())
     {
         OutError = TEXT("Invalid schema action");
@@ -340,7 +335,7 @@ bool FN2CMcpAddBlueprintNodeTool::FindAndSpawnNode(
     int32 PreSpawnNodeCount = Graph->Nodes.Num();
     
     // Perform the action to spawn the node
-    UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(Graph, nullptr, Location);
+    UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(Graph, nullptr, FVector2f(Location));
     
     if (!SpawnedNode)
     {

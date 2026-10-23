@@ -163,7 +163,7 @@ public:
 	 * @return JSON with succeeded/failed connections
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks = true);
+	static FString ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks = false);
 
 	/**
 	 * Set the default value of an input pin on a Blueprint node.

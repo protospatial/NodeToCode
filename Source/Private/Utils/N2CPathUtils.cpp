@@ -4,6 +4,16 @@
 #include "Core/N2CSettings.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Misc/Paths.h"
+#include "HAL/FileManager.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <windows.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#else
+#include <limits.h>
+#include <stdlib.h>
+#endif
 
 FString FN2CPathUtils::GetTranslationsBasePath()
 {
@@ -33,8 +43,18 @@ bool FN2CPathUtils::ValidatePathWithinBounds(const FString& BasePath, const FStr
     // Convert to absolute path for final validation
     OutNormalizedPath = FPaths::ConvertRelativePathToFull(OutNormalizedPath);
     
-    // Security check: Ensure the resolved path is still within the base path
-    return OutNormalizedPath.StartsWith(NormalizedBasePath);
+    // Lexical check first, then the same check after resolving junctions and symlinks, so a link inside the
+    // base cannot point the caller at another tree on disk.
+    if (!OutNormalizedPath.StartsWith(NormalizedBasePath))
+    {
+        return false;
+    }
+    if (!IsUnderDirectoryResolved(OutNormalizedPath, NormalizedBasePath))
+    {
+        return false;
+    }
+    OutNormalizedPath = ResolveRealPath(OutNormalizedPath);
+    return true;
 }
 
 FString FN2CPathUtils::GetFileExtensionForLanguage(EN2CCodeLanguage Language)
@@ -56,4 +76,149 @@ FString FN2CPathUtils::GetFileExtensionForLanguage(EN2CCodeLanguage Language)
         default:
             return TEXT(".txt");
     }
+}
+
+
+bool FN2CPathUtils::IsDeniedForAgentAccess(const FString& AbsolutePath)
+{
+    FString Path = FPaths::ConvertRelativePathToFull(AbsolutePath);
+    FPaths::NormalizeFilename(Path);
+    FPaths::CollapseRelativeDirectories(Path);
+
+    auto IsAtOrUnder = [&Path](FString Dir) -> bool
+    {
+        Dir = FPaths::ConvertRelativePathToFull(Dir);
+        FPaths::NormalizeDirectoryName(Dir);
+        return Path.Equals(Dir, ESearchCase::IgnoreCase) || FPaths::IsUnderDirectory(Path, Dir);
+    };
+
+    if (IsAtOrUnder(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User"))) ||
+        IsAtOrUnder(FPaths::Combine(FPaths::ProjectDir(), TEXT(".git"))))
+    {
+        return true;
+    }
+
+    const FString FileName = FPaths::GetCleanFilename(Path);
+    return FileName.Equals(TEXT("secrets.json"), ESearchCase::IgnoreCase)
+        || FileName.Equals(TEXT(".env"), ESearchCase::IgnoreCase)
+        || FileName.EndsWith(TEXT(".env"), ESearchCase::IgnoreCase);
+}
+
+FString FN2CPathUtils::MakeSafeFileStem(const FString& Name)
+{
+    FString Stem;
+    Stem.Reserve(Name.Len() + 1);
+    for (TCHAR C : Name)
+    {
+        const bool bSafe = (C >= TEXT('A') && C <= TEXT('Z')) || (C >= TEXT('a') && C <= TEXT('z'))
+            || (C >= TEXT('0') && C <= TEXT('9')) || C == TEXT('_');
+        Stem.AppendChar(bSafe ? C : TEXT('_'));
+    }
+    if (Stem.Len() > 0 && Stem[0] >= TEXT('0') && Stem[0] <= TEXT('9'))
+    {
+        Stem.InsertAt(0, TEXT('_'));
+    }
+    return Stem.Left(64);
+}
+
+FString FN2CPathUtils::GetTranslationFileStem(const FString& Name)
+{
+    const FString Trimmed = Name.TrimStartAndEnd();
+    if (Trimmed.IsEmpty())
+    {
+        return FString();
+    }
+    bool bPlain = Trimmed.Len() <= 128 && !Trimmed.Contains(TEXT("..")) && Trimmed != TEXT(".");
+    for (TCHAR C : Trimmed)
+    {
+        if (C < 32 || C == TEXT('/') || C == TEXT('\\') || C == TEXT(':') || C == TEXT('*') || C == TEXT('?')
+            || C == TEXT('"') || C == TEXT('<') || C == TEXT('>') || C == TEXT('|'))
+        {
+            bPlain = false;
+            break;
+        }
+    }
+    return bPlain ? Trimmed : MakeSafeFileStem(Trimmed);
+}
+
+namespace
+{
+    /** Resolve an existing path through links; returns false when the OS cannot open it. */
+    bool ResolveExisting(const FString& Path, FString& OutResolved)
+    {
+#if PLATFORM_WINDOWS
+        HANDLE Handle = ::CreateFileW(*Path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (Handle == INVALID_HANDLE_VALUE)
+        {
+            return false;
+        }
+        TCHAR Buffer[4096];
+        const DWORD Len = ::GetFinalPathNameByHandleW(Handle, Buffer, UE_ARRAY_COUNT(Buffer), FILE_NAME_NORMALIZED);
+        ::CloseHandle(Handle);
+        if (Len == 0 || Len >= UE_ARRAY_COUNT(Buffer))
+        {
+            return false;
+        }
+        FString Result(Buffer);
+        if (Result.StartsWith(TEXT("\\\\?\\UNC\\")))
+        {
+            Result = TEXT("\\\\") + Result.Mid(8);
+        }
+        else if (Result.StartsWith(TEXT("\\\\?\\")))
+        {
+            Result = Result.Mid(4);
+        }
+        FPaths::NormalizeFilename(Result);
+        OutResolved = Result;
+        return true;
+#else
+        char Buffer[PATH_MAX];
+        if (!realpath(TCHAR_TO_UTF8(*Path), Buffer))
+        {
+            return false;
+        }
+        OutResolved = UTF8_TO_TCHAR(Buffer);
+        return true;
+#endif
+    }
+}
+
+FString FN2CPathUtils::ResolveRealPath(const FString& Path)
+{
+    FString Full = FPaths::ConvertRelativePathToFull(Path);
+    FPaths::NormalizeFilename(Full);
+    FPaths::CollapseRelativeDirectories(Full);
+    while (Full.EndsWith(TEXT("/")) && Full.Len() > 3)
+    {
+        Full.LeftChopInline(1);
+    }
+
+    // Walk up to the deepest ancestor that exists, resolve it, and re-append the rest.
+    FString Existing = Full;
+    FString Remainder;
+    while (!Existing.IsEmpty())
+    {
+        FString Resolved;
+        if (ResolveExisting(Existing, Resolved))
+        {
+            return Remainder.IsEmpty() ? Resolved : Resolved / Remainder;
+        }
+        int32 Slash = INDEX_NONE;
+        if (!Existing.FindLastChar(TEXT('/'), Slash) || Slash <= 0)
+        {
+            break;
+        }
+        const FString Leaf = Existing.Mid(Slash + 1);
+        Remainder = Remainder.IsEmpty() ? Leaf : Leaf / Remainder;
+        Existing = Existing.Left(Slash);
+    }
+    return Full;
+}
+
+bool FN2CPathUtils::IsUnderDirectoryResolved(const FString& Path, const FString& Root)
+{
+    const FString ResolvedPath = ResolveRealPath(Path);
+    const FString ResolvedRoot = ResolveRealPath(Root);
+    return ResolvedPath.Equals(ResolvedRoot, ESearchCase::IgnoreCase) || FPaths::IsUnderDirectory(ResolvedPath, ResolvedRoot);
 }

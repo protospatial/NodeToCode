@@ -135,7 +135,6 @@ void SN2CBatchProgressModal::Construct(const FArguments& InArgs)
 								+ SScrollBox::Slot()
 								[
 									SAssignNew(ProgressListView, SListView<TSharedPtr<FN2CBatchProgressItem>>)
-									.ItemHeight(24.0f)
 									.ListItemsSource(&ProgressItems)
 									.OnGenerateRow(this, &SN2CBatchProgressModal::GenerateProgressRow)
 									.SelectionMode(ESelectionMode::None)

@@ -1,9 +1,10 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "BlueprintLibraries/N2CStructUtilsLibrary.h"
+#include "Editor.h"
 #include "Utils/N2CLogger.h"
 #include "Kismet2/StructureEditorUtils.h"
-#include "Engine/UserDefinedStruct.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "EdGraphSchema_K2.h"
 #include "EditorAssetLibrary.h"
@@ -33,15 +34,51 @@ UUserDefinedStruct* UN2CStructUtilsLibrary::CreateUserDefinedStruct(
 	// Construct the full asset path
 	FString FullPath = PackagePath / StructName;
 
-	// Check if struct already exists
-	if (UEditorAssetLibrary::DoesAssetExist(FullPath))
+	// Validate before touching the package system: LongPackageNameToFilename is fatal for an invalid or
+	// unmounted path ("Game/Data", "/NoSuchMount/Data")
+	FText NameReason;
+	if (!FName::IsValidXName(StructName, INVALID_OBJECTNAME_CHARACTERS, &NameReason))
+	{
+		ErrorMessage = FString::Printf(TEXT("Invalid struct name '%s': %s"), *StructName, *NameReason.ToString());
+		return nullptr;
+	}
+	FText PathReason;
+	if (!FPackageName::IsValidLongPackageName(FullPath, false, &PathReason))
+	{
+		ErrorMessage = FString::Printf(TEXT("Invalid package path '%s': %s"), *FullPath, *PathReason.ToString());
+		return nullptr;
+	}
+	FString UnusedFileName;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(FullPath, UnusedFileName, FPackageName::GetAssetPackageExtension()))
+	{
+		ErrorMessage = FString::Printf(TEXT("Package path '%s' is not under a mounted content root (for example /Game)"), *FullPath);
+		return nullptr;
+	}
+
+	// Never replace a live struct: during PIE the asset library reports false, and CreatePackage would return the
+	// loaded package so the new struct replaced the one DataTables and Blueprints use
+	if (GEditor && GEditor->PlayWorld)
+	{
+		ErrorMessage = TEXT("Cannot create a struct while Play In Editor is running");
+		return nullptr;
+	}
+	if (FindPackage(nullptr, *FullPath) || FindObject<UObject>(nullptr, *(FullPath + TEXT(".") + StructName)))
 	{
 		ErrorMessage = FString::Printf(TEXT("Asset already exists at path: %s"), *FullPath);
 		return nullptr;
 	}
+	{
+		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		TArray<FAssetData> Existing;
+		AssetRegistryModule.Get().GetAssetsByPackageName(FName(*FullPath), Existing, /*bIncludeOnlyOnDiskAssets=*/false);
+		if (Existing.Num() > 0)
+		{
+			ErrorMessage = FString::Printf(TEXT("Asset already exists at path: %s"), *FullPath);
+			return nullptr;
+		}
+	}
 
 	// Create the package
-	FString PackageFileName = FPackageName::LongPackageNameToFilename(PackagePath / StructName, FPackageName::GetAssetPackageExtension());
 	UPackage* Package = CreatePackage(*FullPath);
 	if (!Package)
 	{
@@ -292,13 +329,19 @@ bool UN2CStructUtilsLibrary::SaveStruct(UUserDefinedStruct* Struct)
 		return false;
 	}
 
-	// Save the package
-	FString PackageFileName = FPackageName::LongPackageNameToFilename(
-		Package->GetName(), FPackageName::GetAssetPackageExtension());
+	// Save the package. Errors go to the log (SAVE_NoError), never to GError, which would be fatal for a
+	// read-only file or a rejected save.
+	FString PackageFileName;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(Package->GetName(), PackageFileName, FPackageName::GetAssetPackageExtension()))
+	{
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("SaveStruct: package %s is not under a mounted content root"), *Package->GetName()));
+		return false;
+	}
 
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
-	SaveArgs.Error = GError;
+	SaveArgs.Error = GWarn;
+	SaveArgs.SaveFlags = SAVE_NoError;
 
 	bool bSaved = UPackage::SavePackage(Package, Struct, *PackageFileName, SaveArgs);
 
@@ -306,6 +349,10 @@ bool UN2CStructUtilsLibrary::SaveStruct(UUserDefinedStruct* Struct)
 	{
 		FN2CLogger::Get().Log(FString::Printf(
 			TEXT("Saved struct '%s' to %s"), *Struct->GetName(), *PackageFileName), EN2CLogSeverity::Info);
+	}
+	else
+	{
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("SaveStruct: could not save %s (read-only file, or the save was rejected)"), *PackageFileName));
 	}
 
 	return bSaved;

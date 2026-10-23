@@ -15,6 +15,8 @@
 #include "LLM/Providers/N2COpenAIService.h"
 #include "LLM/Providers/N2COllamaService.h"
 #include "Utils/N2CLogger.h"
+#include "Utils/N2CPathUtils.h"
+#include "UObject/StrongObjectPtr.h"
 
 UN2CLLMModule* UN2CLLMModule::Get()
 {
@@ -113,17 +115,18 @@ void UN2CLLMModule::ProcessN2CJson(
         HttpHandler->OnTranslationResponseReceived = OnTranslationResponseReceived;
     }
 
-    // Send request through service
-    // Capture OnComplete callback to invoke it when response is received
+    // Send request through service. The callback keeps the service it was sent on alive and parses with that
+    // service's parser, even if the active provider changes or GC runs while the request is in flight.
+    TStrongObjectPtr<UObject> RequestServiceObject(Service.GetObject());
     ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, OnComplete](const FString& Response)
+        [this, OnComplete, RequestServiceObject, RequestService = Service](const FString& Response)
         {
             // Create translation response struct
             FN2CTranslationResponse TranslationResponse;
 
-            // Get active service's response parser
-            TScriptInterface<IN2CLLMService> ActiveServiceParser = GetActiveService();
-            if (ActiveServiceParser.GetInterface())
+            // Parser of the service this request was sent on
+            const TScriptInterface<IN2CLLMService>& ActiveServiceParser = RequestService;
+            if (RequestServiceObject.IsValid() && ActiveServiceParser.GetInterface())
             {
                 UN2CResponseParserBase* Parser = ActiveServiceParser->GetResponseParser();
                 if (Parser)
@@ -317,14 +320,20 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     // Save each graph's files
     for (const FN2CGraphTranslation& Graph : Response.Graphs)
     {
-        // Skip graphs with empty names
-        if (Graph.GraphName.IsEmpty())
+        // The graph name comes from the LLM response: never use it as a path without making it a safe stem
+        const FString Stem = FN2CPathUtils::GetTranslationFileStem(Graph.GraphName);
+        if (Stem.IsEmpty())
         {
             continue;
         }
-        
+
         // Create directory for this graph
-        FString GraphDir = FPaths::Combine(RootPath, Graph.GraphName);
+        FString GraphDir = FPaths::Combine(RootPath, Stem);
+        if (!FN2CPathUtils::IsUnderDirectoryResolved(GraphDir, RootPath))
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Skipping graph '%s': its folder would be outside the translation root"), *Graph.GraphName));
+            continue;
+        }
         if (!EnsureDirectoryExists(GraphDir))
         {
             FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to create graph directory: %s"), *GraphDir));
@@ -334,7 +343,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         // Save declaration file (C++ only)
         if (TargetLanguage == EN2CCodeLanguage::Cpp && !Graph.Code.GraphDeclaration.IsEmpty())
         {
-            FString HeaderPath = FPaths::Combine(GraphDir, Graph.GraphName + TEXT(".h"));
+            FString HeaderPath = FPaths::Combine(GraphDir, Stem + TEXT(".h"));
             if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
             {
                 FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save header file: %s"), *HeaderPath));
@@ -345,7 +354,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         if (!Graph.Code.GraphImplementation.IsEmpty())
         {
             FString Extension = GetFileExtensionForLanguage(TargetLanguage);
-            FString ImplPath = FPaths::Combine(GraphDir, Graph.GraphName + Extension);
+            FString ImplPath = FPaths::Combine(GraphDir, Stem + Extension);
             if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
             {
                 FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save implementation file: %s"), *ImplPath));
@@ -355,7 +364,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         // Save implementation notes
         if (!Graph.Code.ImplementationNotes.IsEmpty())
         {
-            FString NotesPath = FPaths::Combine(GraphDir, Graph.GraphName + TEXT("_Notes.txt"));
+            FString NotesPath = FPaths::Combine(GraphDir, Stem + TEXT("_Notes.txt"));
             if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
             {
                 FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save notes file: %s"), *NotesPath));
@@ -374,7 +383,7 @@ FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName)
     FString Timestamp = Now.ToString(TEXT("%Y-%m-%d-%H.%M.%S"));
     
     // Create folder name
-    FString FolderName = FString::Printf(TEXT("%s_%s"), *BlueprintName, *Timestamp);
+    FString FolderName = FString::Printf(TEXT("%s_%s"), *FN2CPathUtils::GetTranslationFileStem(BlueprintName), *Timestamp);
 
     // Get the saved translations base path
     FString BasePath = GetTranslationBasePath();
@@ -532,11 +541,13 @@ void UN2CLLMModule::ProcessN2CJsonWithOverrides(
     TempPromptManager->Initialize(RequestConfig); // Initialize with the request-specific config
     FString SystemPrompt = TempPromptManager->GetLanguageSpecificPrompt(TEXT("CodeGen"), RequestLanguage);
 
+    // The temporary service is referenced only by this callback: hold it strongly so GC cannot free it mid-request
+    TStrongObjectPtr<UObject> TempServiceObject(TempService.GetObject());
     TempService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, TempService, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
+        [this, TempService, TempServiceObject, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
         {
             FN2CTranslationResponse TranslationResponse;
-            UN2CResponseParserBase* Parser = TempService->GetResponseParser(); // Get parser from the temp service
+            UN2CResponseParserBase* Parser = TempServiceObject.IsValid() ? TempService->GetResponseParser() : nullptr; // Parser from the temp service
             bool bParseSuccess = Parser && Parser->ParseLLMResponse(RawResponse, TranslationResponse);
 
             if (bParseSuccess)

@@ -235,7 +235,7 @@ def add_node_to_graph(
 
 def connect_pins(
     connections: List[Dict[str, Any]],
-    break_existing_links: bool = True
+    break_existing_links: bool = False
 ) -> Dict[str, Any]:
     """
     Connect pins between Blueprint nodes.

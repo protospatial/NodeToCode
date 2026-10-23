@@ -48,7 +48,7 @@ This directory contains MCP tools for safely reading files and directories withi
 ### Path Jail Enforcement
 - All paths are restricted to the project directory
 - Relative path components (`..` and `.`) are collapsed
-- Symlinks are not followed (UE default behavior)
+- Symlinks and junctions are resolved, and a path that resolves outside the project is refused (so in a dev host whose Plugins/NodeToCode folders are junctions to a checkout, those files are not readable)
 - Absolute paths are rejected
 
 ### File Restrictions

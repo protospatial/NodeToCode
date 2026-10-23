@@ -35,4 +35,30 @@ public:
      * @return The file extension including the dot (e.g., ".cpp")
      */
     static FString GetFileExtensionForLanguage(EN2CCodeLanguage Language);
+
+    /**
+     * True for paths MCP clients must never read or list because they hold credentials:
+     * <ProjectSaved>/NodeToCode/User (the secrets store), any secrets.json, <Project>/.git, and .env files.
+     * @param AbsolutePath A normalized absolute path
+     */
+    static bool IsDeniedForAgentAccess(const FString& AbsolutePath);
+
+    /**
+     * Map a name to a safe file or folder stem: every character outside [A-Za-z0-9_] becomes '_', a leading
+     * digit gets a '_' prefix, the result is capped at 64 characters. Empty input gives an empty stem.
+     */
+    static FString MakeSafeFileStem(const FString& Name);
+
+    /**
+     * The file stem translations use for a graph or Blueprint name. A name with no path separators, "..",
+     * drive colon or control characters is kept as-is (so translations saved by older versions still load);
+     * anything else goes through MakeSafeFileStem. Names can come from an LLM response, so never use them raw.
+     */
+    static FString GetTranslationFileStem(const FString& Name);
+
+    /** Resolve symlinks and junctions. For a path that does not exist yet, resolves its deepest existing ancestor. */
+    static FString ResolveRealPath(const FString& Path);
+
+    /** True when Path, after resolving links, is Root itself or inside it. */
+    static bool IsUnderDirectoryResolved(const FString& Path, const FString& Root);
 };

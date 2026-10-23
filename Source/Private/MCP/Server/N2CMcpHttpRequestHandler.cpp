@@ -747,43 +747,6 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& P
 	FString PromptName;
 	ParamsObject->TryGetStringField(TEXT("name"), PromptName);  // Already validated as required
 
-	// Extract arguments (optional)
-	FMcpPromptArguments Arguments;
-	const TSharedPtr<FJsonObject>* ArgumentsObj = nullptr;
-	if (ParamsObject->TryGetObjectField(TEXT("arguments"), ArgumentsObj) && ArgumentsObj->IsValid())
-	{
-		// Convert JSON object to string map
-		for (const auto& Pair : (*ArgumentsObj)->Values)
-		{
-			if (Pair.Value.IsValid() && Pair.Value->Type == EJson::String)
-			{
-				Arguments.Add(Pair.Key, Pair.Value->AsString());
-			}
-			else if (Pair.Value.IsValid())
-			{
-				// Try to convert non-string values to string
-				FString StringValue;
-				if (Pair.Value->Type == EJson::Number)
-				{
-					StringValue = FString::Printf(TEXT("%f"), Pair.Value->AsNumber());
-				}
-				else if (Pair.Value->Type == EJson::Boolean)
-				{
-					StringValue = Pair.Value->AsBool() ? TEXT("true") : TEXT("false");
-				}
-				else
-				{
-					// For complex types, serialize to JSON string
-					TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&StringValue);
-					FJsonSerializer::Serialize(Pair.Value, Pair.Key, Writer);
-				}
-				Arguments.Add(Pair.Key, StringValue);
-			}
-		}
-	}
-
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Getting prompt: %s with %d arguments"), *PromptName, Arguments.Num()), EN2CLogSeverity::Info);
-
 	// Check if prompt exists
 	if (!FN2CMcpPromptManager::Get().IsPromptRegistered(PromptName))
 	{
@@ -791,6 +754,25 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& P
 		OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::MethodNotFound, FString::Printf(TEXT("Prompt not found: %s"), *PromptName));
 		return true;
 	}
+
+	// Extract arguments (optional). MCP prompt arguments are strings; anything else is a client error.
+	FMcpPromptArguments Arguments;
+	const TSharedPtr<FJsonObject>* ArgumentsObj = nullptr;
+	if (ParamsObject->TryGetObjectField(TEXT("arguments"), ArgumentsObj) && ArgumentsObj->IsValid())
+	{
+		for (const auto& Pair : (*ArgumentsObj)->Values)
+		{
+			if (!Pair.Value.IsValid() || Pair.Value->Type != EJson::String)
+			{
+				OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::InvalidParams,
+					FString::Printf(TEXT("Prompt argument '%s' must be a string"), *FString(*Pair.Key)));
+				return true;
+			}
+			Arguments.Add(FString(*Pair.Key), Pair.Value->AsString());
+		}
+	}
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Getting prompt: %s with %d arguments"), *PromptName, Arguments.Num()), EN2CLogSeverity::Info);
 
 	// Get the prompt
 	FMcpPromptResult PromptResult = FN2CMcpPromptManager::Get().GetPrompt(PromptName, Arguments);

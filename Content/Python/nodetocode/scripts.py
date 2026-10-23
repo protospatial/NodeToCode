@@ -242,6 +242,28 @@ def _save_registry(registry: Dict[str, Any]) -> bool:
         return False
 
 
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+_RESERVED_NAMES = {"init_unreal", "__init__"}
+
+
+def _check_identifier(value: str, what: str) -> Optional[str]:
+    """Return an error message when value is not a safe script or category name, else None."""
+    if not _SAFE_IDENTIFIER.match(value or ""):
+        return f"Invalid {what} '{value}': use letters, digits and underscores, starting with a letter or underscore (64 characters at most)"
+    if value.lower() in _RESERVED_NAMES:
+        return f"Invalid {what} '{value}': this name is reserved"
+    return None
+
+
+def _is_inside(base_dir: str, target: str) -> bool:
+    """True when target resolves (symlinks and junctions followed) to a path inside base_dir."""
+    base = os.path.realpath(base_dir)
+    try:
+        return os.path.commonpath([base, os.path.realpath(target)]) == base
+    except ValueError:  # different drives
+        return False
+
+
 def _sanitize_name(name: str) -> str:
     """
     Sanitize a script name to be a valid filename.
@@ -462,6 +484,10 @@ def get_script(name: str) -> Dict[str, Any]:
         base_dir = script_info.get("_base_dir", _get_scripts_dir())
         script_path = os.path.join(base_dir, script_info.get("path", ""))
 
+        if not _is_inside(base_dir, script_path):
+            log_warning(f"get_script refused a registry path outside the scripts folder: {script_info.get('path')}")
+            return make_error_result(f"Script '{actual_name}' points outside the scripts folder")
+
         if not os.path.exists(script_path):
             return make_error_result(f"Script file not found: {script_path}")
 
@@ -601,17 +627,25 @@ def save_script(
 
         # Sanitize and normalize
         sanitized_name = _sanitize_name(name)
-        category = category.lower().strip() or "general"
+        category = (category or "").lower().strip() or "general"
         tags = [t.strip().lower() for t in (tags or []) if t and t.strip()]
 
-        # Ensure category directory exists
-        category_dir = os.path.join(_get_scripts_dir(), category)
+        # Names become file and folder names: only plain identifiers, never a reserved module name
+        error = _check_identifier(sanitized_name, "script name") or _check_identifier(category, "category")
+        if error:
+            return make_error_result(error)
+
+        # Ensure category directory exists, inside the scripts folder
+        scripts_dir = _get_scripts_dir()
+        category_dir = os.path.join(scripts_dir, category)
+        relative_path = f"{category}/{sanitized_name}.py"
+        script_path = os.path.join(scripts_dir, relative_path)
+        if not _is_inside(scripts_dir, category_dir) or not _is_inside(scripts_dir, script_path):
+            return make_error_result(f"Category '{category}' resolves outside the scripts folder")
         if not os.path.exists(category_dir):
             os.makedirs(category_dir)
 
         # Write script file
-        relative_path = f"{category}/{sanitized_name}.py"
-        script_path = os.path.join(_get_scripts_dir(), relative_path)
 
         with open(script_path, 'w', encoding='utf-8') as f:
             f.write(code)
@@ -691,6 +725,10 @@ def delete_script(name: str) -> Dict[str, Any]:
 
         # Delete the file from project scripts directory
         script_path = os.path.join(_get_project_scripts_dir(), script_info.get("path", ""))
+
+        if not _is_inside(_get_project_scripts_dir(), script_path):
+            log_warning(f"delete_script refused a registry path outside the scripts folder: {script_info.get('path')}")
+            return make_error_result(f"Script '{actual_name}' points outside the scripts folder")
 
         if os.path.exists(script_path):
             os.remove(script_path)
@@ -791,6 +829,10 @@ def get_script_functions(script_name: str) -> Dict[str, Any]:
         # Get the base directory for this script (plugin or project)
         base_dir = script_info.get("_base_dir", _get_scripts_dir())
         script_path = os.path.join(base_dir, script_info.get("path", ""))
+
+        if not _is_inside(base_dir, script_path):
+            log_warning(f"get_script_functions refused a registry path outside the scripts folder: {script_info.get('path')}")
+            return make_error_result(f"Script '{script_name}' points outside the scripts folder")
 
         if not os.path.exists(script_path):
             return make_error_result(f"Script file not found: {script_path}")

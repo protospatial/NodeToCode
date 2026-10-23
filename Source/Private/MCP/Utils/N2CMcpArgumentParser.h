@@ -15,6 +15,12 @@ public:
 
     // String
     bool TryGetRequiredString(const FString& FieldName, FString& OutValue, FString& OutErrorMsg, bool bAllowEmpty = false);
+
+    /** Longest value accepted for a field that becomes an FName or object name (FName's NAME_SIZE limit is 1024) */
+    static constexpr int32 MaxNameLength = 255;
+
+    /** A required string that becomes an FName or object name: also rejects values longer than MaxNameLength */
+    bool TryGetRequiredName(const FString& FieldName, FString& OutValue, FString& OutErrorMsg);
     FString GetOptionalString(const FString& FieldName, const FString& DefaultValue = TEXT("")) const;
 
     // Bool

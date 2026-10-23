@@ -18,30 +18,6 @@
 #include "Utils/Processors/N2CArrayProcessor.h"
 #include "Utils/Processors/N2CCastProcessor.h"
 
-#include "NodeToCode.generated.h"  // Add this for GENERATED_BODY() support
-
-/** 
- * Helper class to update HTTP config settings
- * Uses the PerObjectConfig system to write to DefaultEngine.ini
- */
-UCLASS(Config=Engine, PerObjectConfig)
-class UHttpTimeoutConfig : public UObject
-{
-    GENERATED_BODY()
-
-public:
-
-    UPROPERTY(Config)
-    float HttpConnectionTimeout = 300.0f;
-
-    UPROPERTY(Config)
-    float HttpActivityTimeout = 3600.0f;
-    
-    virtual void OverridePerObjectConfigSection(FString& SectionName) override 
-    { 
-        SectionName = TEXT("HTTP"); 
-    }
-};
 
 /**
  * @class FNodeToCodeModule
@@ -58,10 +34,8 @@ public:
     virtual void ShutdownModule() override;
 
 private:
-    
-    /** Configure HTTP timeout settings for LLM operations */
-    void ConfigureHttpTimeouts();
 
-    /** Show notification that editor restart is required for config settings to work*/
-    void ShowRestartRequiredNotification();
+    /** Handle of the entry in GEditor->ShouldDisableCPUThrottlingDelegates (keeps the editor at full speed only
+     *  while a translation runs, without changing the user's preference) */
+    FDelegateHandle DisableThrottleHandle;
 };

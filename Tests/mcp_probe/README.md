@@ -1,0 +1,31 @@
+# MCP transport probes
+
+Live checks of NodeToCode's MCP server against a headless editor on a host project. They confirm or correct the
+review's static findings, then stay as regression tests. Nothing here ships with the plugin.
+
+```bash
+python -I Tests/mcp_probe/mcp_probe.py --engine G:/UE/UE_5.8 \
+  --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+```
+
+The run starts `UnrealEditor-Cmd` (see `editor_session.py` for the launch form), uses a free port pair from 27150 so
+an editor on 27000 cannot answer, probes, stops the editor (no UnrealEditor process is left), and writes
+`logs/report_<label>.json`. It exits 0 only when every status matches `expected.json` for the label. `--skip-p4`
+skips the probe that launches a second editor.
+
+| Probe | Checks | Finding ids |
+|---|---|---|
+| P1 | A cross-origin `text/plain` POST (what any web page can send) lists tools and runs `run-python`, which writes `Saved/n2c_probe.txt` | mcp-transport-1, dx-docs-release-1, p0-1 |
+| P2 | A POST whose `Host` is `attacker.example` (DNS rebinding) is answered | mcp-transport-1 |
+| P3 | A two-element JSON-RPC batch is answered element by element, or rejected with -32600 | mcp-transport-9 |
+| P4 | With the MCP port already held by another process, the editor logs that the server started | mcp-transport-10 |
+| P5 | The notification server (port+1) accepts a connection on a non-loopback local address | mcp-transport-14 |
+
+Statuses are `reproduced` (the finding's defect is present), `fixed`, or `skipped` (with a reason). P4 holds the
+port with a plain socket instead of a second editor on a copy of the project; the effect on the bind is the same.
+
+**Rule:** a card that fixes one of these findings flips its probe's entry in `expected.json` to `fixed` in the same
+commit as the fix, and runs the probe on 5.6, 5.7 and 5.8.
+
+The session temporarily writes the port and Allow MCP Python Execution into the host's `Saved/Config/<Platform>Editor`
+files and restores them when it stops; the host's shared `Config/` folder is never changed.

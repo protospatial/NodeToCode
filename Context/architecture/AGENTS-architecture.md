@@ -38,7 +38,7 @@ Source/
     *   `FNodeToCodeModule`: Main plugin class.
         *   `StartupModule`: Initializes:
             *   Logging system (`FN2CLogger`)
-            *   HTTP timeouts (`UHttpTimeoutConfig` for `DefaultEngine.ini`)
+            *   No project or editor config is written at startup: HTTP timeouts are set per request (`UN2CHttpHandlerBase`), and CPU throttling is suspended only while a translation runs (a `ShouldDisableCPUThrottlingDelegates` entry). The MCP servers are skipped in commandlets and unattended runs unless `-N2CMcp` is passed
             *   Editor performance settings (disables "Use Less CPU when in Background")
             *   User secrets (`UN2CUserSecrets`)
             *   Styles (`N2CStyle`, `FN2CCodeEditorStyle`)
@@ -50,7 +50,6 @@ Source/
             *   OAuth settings customization (`FN2COAuthSettingsCustomization`)
             *   Console commands for OAuth (Claude and Gemini)
         *   `ShutdownModule`: Cleans up all resources in reverse order.
-    *   `UHttpTimeoutConfig`: Helper to adjust global HTTP timeouts for LLM requests.
 
 ### Console Commands
 
@@ -190,7 +189,7 @@ OAuth authentication support for LLM providers.
 
 *   **`Source/Public/Utils/N2CLogger.h` / `Source/Private/Utils/N2CLogger.cpp` (`FN2CLogger`)**: Singleton for centralized logging.
     *   `Log()`, `LogError()`, `LogWarning()` - Logging methods
-    *   `GetErrors()`, `GetErrorsBySeverity()` - Error retrieval
+    *   `GetErrors()`, `GetErrorsBySeverity()` - The most recent 1,000 records (a ring buffer, oldest first). Thread-safe: `Log()` locks the buffer and file append and calls UE_LOG outside the lock
     *   `SetMinSeverity()` - Filter log level
     *   `EnableFileLogging()`, `SetLogFilePath()` - File logging support
     *   `SeverityToVerbosity()` - Maps N2C severity to UE verbosity

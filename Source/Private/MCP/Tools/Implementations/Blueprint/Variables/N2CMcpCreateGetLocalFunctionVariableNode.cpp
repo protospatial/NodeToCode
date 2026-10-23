@@ -52,7 +52,7 @@ FMcpToolCallResult FN2CMcpCreateGetLocalFunctionVariableNode::Execute(const TSha
         FN2CMcpArgumentParser Parser(Arguments);
         FString VariableName;
         FString ErrorMsg;
-        if (!Parser.TryGetRequiredString(TEXT("variableName"), VariableName, ErrorMsg))
+        if (!Parser.TryGetRequiredName(TEXT("variableName"), VariableName, ErrorMsg))
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }

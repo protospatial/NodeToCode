@@ -67,7 +67,7 @@ private:
 	struct FConnectionOptions
 	{
 		FString TransactionName = TEXT("NodeToCode: Connect Pins");
-		bool bBreakExistingLinks = true;
+		bool bBreakExistingLinks = false;
 	};
 	
 	// Core methods

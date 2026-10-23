@@ -18,6 +18,44 @@
 // Register this tool with the MCP tool manager
 REGISTER_MCP_TOOL(FN2CMcpConnectPinsTool)
 
+namespace N2CPinConnectPolicy
+{
+	/** Responses where the schema itself breaks links (replace) before connecting */
+	static bool BreaksOthers(ECanCreateConnectionResponse R)
+	{
+		return R == CONNECT_RESPONSE_BREAK_OTHERS_A || R == CONNECT_RESPONSE_BREAK_OTHERS_B || R == CONNECT_RESPONSE_BREAK_OTHERS_AB;
+	}
+
+	/**
+	 * Whether to go ahead with a connection, given the schema's answer. Exec inputs take many incoming links, so
+	 * nothing is broken by hand: the schema's TryCreateConnection breaks exactly what its response says, and only
+	 * when the caller allowed breaking links. Conversion-node responses are allowed.
+	 */
+	static bool Allow(const FPinConnectionResponse& Response, const UEdGraphPin* FromPin, const UEdGraphPin* ToPin, bool bBreakExistingLinks, FString& OutError)
+	{
+		if (Response.Response == CONNECT_RESPONSE_DISALLOW)
+		{
+			OutError = Response.Message.ToString();
+			return false;
+		}
+		if (BreaksOthers(Response.Response) && !bBreakExistingLinks)
+		{
+			const UEdGraphPin* Busy = (Response.Response == CONNECT_RESPONSE_BREAK_OTHERS_A) ? FromPin : ToPin;
+			FString Existing;
+			if (Busy && Busy->LinkedTo.Num() > 0 && Busy->LinkedTo[0] && Busy->LinkedTo[0]->GetOwningNode())
+			{
+				Existing = FString::Printf(TEXT(" (currently linked to %s.%s)"),
+					*Busy->LinkedTo[0]->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+					*Busy->LinkedTo[0]->PinName.ToString());
+			}
+			OutError = FString::Printf(TEXT("Connecting would replace the existing link on %s%s. Pass breakExistingLinks=true to replace it."),
+				Busy ? *Busy->PinName.ToString() : TEXT("the pin"), *Existing);
+			return false;
+		}
+		return true;
+	}
+}
+
 #define LOCTEXT_NAMESPACE "NodeToCode"
 
 FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
@@ -144,7 +182,8 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	
 	TSharedPtr<FJsonObject> BreakExistingLinksProp = MakeShareable(new FJsonObject);
 	BreakExistingLinksProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	BreakExistingLinksProp->SetBoolField(TEXT("default"), true);
+	BreakExistingLinksProp->SetBoolField(TEXT("default"), false);
+	BreakExistingLinksProp->SetStringField(TEXT("description"), TEXT("Allow the connection to replace an existing link where the pin takes only one (data inputs, exec outputs). Exec inputs keep all their incoming links either way."));
 	OptionsProperties->SetObjectField(TEXT("breakExistingLinks"), BreakExistingLinksProp);
 	
 	OptionsProp->SetObjectField(TEXT("properties"), OptionsProperties);
@@ -570,59 +609,17 @@ FN2CMcpConnectPinsTool::FConnectionResult FN2CMcpConnectPinsTool::ProcessConnect
 		return Result;
 	}
 	
-	// Validate connection via schema
+	// Validate connection via schema; the schema decides what (if anything) a connection breaks
 	const FPinConnectionResponse Response = Schema->CanCreateConnection(FromPin, ToPin);
-	if (!Response.CanSafeConnect())
+	FString PolicyError;
+	if (!N2CPinConnectPolicy::Allow(Response, FromPin, ToPin, Options.bBreakExistingLinks, PolicyError))
 	{
 		Result.bSuccess = false;
-		Result.ErrorCode = TEXT("SCHEMA_VALIDATION_FAILED");
-		Result.ErrorMessage = Response.Message.ToString();
+		Result.ErrorCode = N2CPinConnectPolicy::BreaksOthers(Response.Response) ? TEXT("WOULD_BREAK_EXISTING_LINK") : TEXT("SCHEMA_VALIDATION_FAILED");
+		Result.ErrorMessage = PolicyError;
 		return Result;
 	}
-	
-	// Break existing connections if requested
-	if (Options.bBreakExistingLinks)
-	{
-		// Log pin types for debugging
-		FN2CLogger::Get().Log(FString::Printf(TEXT("ConnectPins: FromPin type: %s, Direction: %s"), 
-			*FromPin->PinType.PinCategory.ToString(),
-			FromPin->Direction == EGPD_Input ? TEXT("Input") : TEXT("Output")), EN2CLogSeverity::Debug);
-		FN2CLogger::Get().Log(FString::Printf(TEXT("ConnectPins: ToPin type: %s, Direction: %s"), 
-			*ToPin->PinType.PinCategory.ToString(),
-			ToPin->Direction == EGPD_Input ? TEXT("Input") : TEXT("Output")), EN2CLogSeverity::Debug);
-		
-		// For execution pins, break all connections as they should only have one connection
-		if (UEdGraphSchema_K2::IsExecPin(*FromPin))
-		{
-			FN2CLogger::Get().Log(TEXT("ConnectPins: FromPin is exec pin, breaking all links"), EN2CLogSeverity::Debug);
-			FromPin->BreakAllPinLinks();
-		}
-		
-		if (UEdGraphSchema_K2::IsExecPin(*ToPin))
-		{
-			FN2CLogger::Get().Log(TEXT("ConnectPins: ToPin is exec pin, breaking all links"), EN2CLogSeverity::Debug);
-			ToPin->BreakAllPinLinks();
-		}
-		// For data pins:
-		// - Input pins can only have one connection, so break existing connections
-		// - Output pins can have multiple connections, so don't break them
-		else
-		{
-			// Input pins should only have one connection
-			if (ToPin->Direction == EGPD_Input)
-			{
-				FN2CLogger::Get().Log(TEXT("ConnectPins: ToPin is input data pin, breaking all links"), EN2CLogSeverity::Debug);
-				ToPin->BreakAllPinLinks();
-			}
-			else
-			{
-				FN2CLogger::Get().Log(TEXT("ConnectPins: FromPin is output data pin, preserving existing connections"), EN2CLogSeverity::Debug);
-			}
-			// Output data pins can connect to multiple inputs, so we don't break their connections
-			// The connection from FromPin (output) to ToPin (input) will be added without breaking FromPin's existing connections
-		}
-	}
-	
+
 	// Make the connection
 	FromNode->Modify();
 	ToNode->Modify();

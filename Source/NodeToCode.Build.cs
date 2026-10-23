@@ -29,6 +29,7 @@ public class NodeToCode : ModuleRules
 				"InputCore",
 				"Json",
 				"UnrealEd",
+				"EditorFramework",
 				"BlueprintGraph",
 				"Slate",
 				"SlateCore",

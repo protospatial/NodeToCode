@@ -12,6 +12,7 @@
 #include "EdGraph/EdGraph.h"
 #include "K2Node.h"
 #include "Misc/Paths.h"
+#include "Utils/N2CPathUtils.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonWriter.h"
@@ -571,8 +572,22 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 			continue;
 		}
 
+		// Names can come from the LLM response: use a safe stem for every path
+		const FString Stem = FN2CPathUtils::GetTranslationFileStem(GraphName);
+		if (Stem.IsEmpty())
+		{
+			continue;
+		}
+
 		// Create directory for this graph
-		FString GraphDir = FPaths::Combine(BatchOutputPath, GraphName);
+		FString GraphDir = FPaths::Combine(BatchOutputPath, Stem);
+		if (!FN2CPathUtils::IsUnderDirectoryResolved(GraphDir, BatchOutputPath))
+		{
+			FN2CLogger::Get().LogWarning(
+				FString::Printf(TEXT("Skipping graph '%s': its folder would be outside the batch output folder"), *GraphName),
+				TEXT("BatchOrchestrator"));
+			continue;
+		}
 		if (!EnsureDirectoryExists(GraphDir))
 		{
 			FN2CLogger::Get().LogWarning(
@@ -584,7 +599,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		// Save declaration file (C++ only)
 		if (TargetLanguage == EN2CCodeLanguage::Cpp && !Graph.Code.GraphDeclaration.IsEmpty())
 		{
-			FString HeaderPath = FPaths::Combine(GraphDir, GraphName + TEXT(".h"));
+			FString HeaderPath = FPaths::Combine(GraphDir, Stem + TEXT(".h"));
 			if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
 			{
 				FN2CLogger::Get().LogWarning(
@@ -597,7 +612,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		if (!Graph.Code.GraphImplementation.IsEmpty())
 		{
 			FString Extension = GetFileExtensionForLanguage();
-			FString ImplPath = FPaths::Combine(GraphDir, GraphName + Extension);
+			FString ImplPath = FPaths::Combine(GraphDir, Stem + Extension);
 			if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
 			{
 				FN2CLogger::Get().LogWarning(
@@ -609,7 +624,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		// Save implementation notes
 		if (!Graph.Code.ImplementationNotes.IsEmpty())
 		{
-			FString NotesPath = FPaths::Combine(GraphDir, GraphName + TEXT("_Notes.txt"));
+			FString NotesPath = FPaths::Combine(GraphDir, Stem + TEXT("_Notes.txt"));
 			if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
 			{
 				FN2CLogger::Get().LogWarning(
@@ -621,7 +636,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		// Save the N2C Blueprint JSON (the serialized graph that was sent to the LLM)
 		if (!Item.CachedJsonPayload.IsEmpty())
 		{
-			FString JsonPath = FPaths::Combine(GraphDir, GraphName + TEXT(".json"));
+			FString JsonPath = FPaths::Combine(GraphDir, Stem + TEXT(".json"));
 			if (!FFileHelper::SaveStringToFile(Item.CachedJsonPayload, *JsonPath))
 			{
 				FN2CLogger::Get().LogWarning(
@@ -990,7 +1005,7 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 		}
 
 		// Save individual JSON file
-		FString SafeGraphName = Item.TagInfo.GraphName.Replace(TEXT("/"), TEXT("_")).Replace(TEXT("\\"), TEXT("_"));
+		FString SafeGraphName = FN2CPathUtils::GetTranslationFileStem(Item.TagInfo.GraphName);
 		FString JsonPath = OutputPath / FString::Printf(TEXT("%s.json"), *SafeGraphName);
 
 		if (FFileHelper::SaveStringToFile(JsonOutput, *JsonPath))
@@ -1217,7 +1232,7 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 		}
 
 		// Read the JSON file we saved
-		FString SafeGraphName = Item.TagInfo.GraphName.Replace(TEXT("/"), TEXT("_")).Replace(TEXT("\\"), TEXT("_"));
+		FString SafeGraphName = FN2CPathUtils::GetTranslationFileStem(Item.TagInfo.GraphName);
 		FString JsonPath = OutputPath / FString::Printf(TEXT("%s.json"), *SafeGraphName);
 		FString JsonContent;
 
