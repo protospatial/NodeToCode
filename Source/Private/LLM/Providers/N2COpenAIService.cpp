@@ -94,12 +94,8 @@ FString UN2COpenAIService::FormatChatCompletionsPayload(const FString& UserMessa
     // ConfigureForOpenAI only for models that accept it; reasoning and unregistered models get none.
     PayloadBuilder->SetMaxTokens(16000);
 
-    // Add JSON response format for models that support it
-    // The payload builder will handle the differences between model types
-    if (Config.Model != TEXT("o1-preview-2024-09-12") && Config.Model != TEXT("o1-mini-2024-09-12"))
-    {
-        PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
-    }
+    // JSON response format: the payload builder picks strict json_schema or none from the registry
+    PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
 
     // Determine final content based on system prompt support
     FString FinalContent = UserMessage;
