@@ -1,0 +1,220 @@
+### Translation Workflow → Utilizing Saved Translations
+***
+
+## Automatic Translation Saving
+Translations are automatically saved locally to your project's Saved path when a translation successfully completes. This allows you to easily revisit previous translations or share translation files with other people, LLMs, and applications.
+
+### Translation File Structure Visualization
+
+The following file structure is created in the user's project:
+
+```
+ProjectRoot/
+└── Saved/
+    └── NodeToCode/
+        └── Translations/
+            └── BlueprintName_YYYY-MM-DD-HH.MM.SS/  (Timestamp format)
+                ├── N2C_BP_BlueprintName.json       (Pretty-printed Blueprint JSON)
+                ├── N2C_BP_Minified_BlueprintName.json  (Minified Blueprint JSON)
+                ├── N2C_Translation_BlueprintName.json  (LLM translation response)
+                └── GraphName/                      (Directory for each graph)
+                    ├── GraphName.h                 (C++ header - only for C++ target)
+                    ├── GraphName.ext               (Implementation file with language-specific extension)
+                    └── GraphName_Notes.txt         (Implementation notes)
+```
+
+### Key Details:
+
+1. **Root Location**: Files are saved in the project's `Saved/NodeToCode/Translations` directory
+2. **Folder Naming**: Each translation gets a timestamped folder (`BlueprintName_YYYY-MM-DD-HH.MM.SS`)
+3. **Blueprint JSON files**: A **Prettified** version for human readability and a **Minified** version for sharing with other LLMs or applications
+    - This is the efficient JSON representation of your Blueprint that's sent to the LLM for translation
+    - Can be really helpful if using nested translation on a Blueprint system and you want to discuss the entire system with a peer or another LLM
+4. **Translation Response**: The raw LLM translation response saved as JSON, including input/output token usage details
+5. **Per-Graph Folders**: Each graph in the Blueprint gets its own subfolder
+6. **Language-Specific Files**: The file extension for implementation files depends on the target language:
+   - C++: `.cpp`
+   - Python: `.py`
+   - JavaScript: `.js`
+   - C#: `.cs`
+   - Swift: `.swift`
+   - Pseudocode: `.md`
+
+7. **Header Files**: Header files (`.h`) are only generated for C++ translations
+
+## Quick Access
+You can quickly navigate to the path of your last translation by [clicking the folder button in the Translations window](Viewing-the-Results).
+
+## Practical Examples for Utilizing Saved Translations
+
+Once you have your translations saved locally, there are numerous ways to leverage these files in your development workflow. Here are some practical examples:
+
+### 1. Remote Collaboration & Communication
+
+**Example: Troubleshooting Complex Blueprint Logic**
+```
+// In Discord/Slack/Email
+Hey Jane! I'm struggling with understanding why the grabbing logic isn't working in BP_TrackedHand.
+I think I narrowed it down to the DetectInteractableObjects function.
+Instead of sending screenshots of the Blueprint, I've attached the pseudocode version of function. Thoughts?
+
+[Attach the GraphName.md file from your Pseudocode translation]
+
+The issue seems to be around line 42 where the path calculation occurs.
+```
+
+**Example: Code Reviews Without Editor Access**
+```
+// In a PR comment or code review tool
+I've implemented the inventory system in Blueprint but looking for feedback on the structure.
+Here's the C++ equivalent for easier review:
+
+[Paste the contents of GraphName.h and GraphName.cpp]
+
+Specifically, I'm unsure about the efficiency of the item lookup method.
+```
+
+### 2. Documentation & Knowledge Sharing
+
+**Example: Adding to Internal Wiki/Documentation**
+```markdown
+## Inventory System Technical Documentation
+
+### Design Overview
+[Paste system diagram or high-level description]
+
+### Implementation Details
+Our inventory system uses the following core algorithm (extracted from Blueprint):
+
+[Paste relevant sections from the C++ translation inside a code block]
+
+
+### Blueprint Flow Explanation
+For a complete overview of the Blueprint logic flow in text form:
+
+[Paste pseudocode translation here inside a code block]
+
+```
+
+**Example: Onboarding New Team Members**
+```
+// In onboarding docs
+To understand our camera system without diving into complex Blueprint graphs, review these
+translated versions that show the core implementation patterns we use:
+
+- Blueprint System #1: [link to saved .cpp file]
+- Blueprint System #2: [link to saved .cpp file] 
+- Blueprint System #3: [link to saved .cpp file]
+```
+
+### 3. AI-Assisted Development
+
+**Example: Getting Help from other LLMs**
+```
+I have a Blueprint system in Unreal Engine that I've translated to C++.
+I'm seeing performance issues in this specific part:
+
+[Paste relevant section from the C++ translation inside a code block]
+
+How can I optimize this to reduce game thread overhead while maintaining the same functionality?
+```
+
+**Example: Expanding Blueprint Logic with LLMs**
+```
+Here's my current Blueprint logic translated to C++:
+
+[Paste GraphName.cpp content]
+
+I want to expand this to include [new feature description]. 
+Can you suggest how I would modify this code to implement that functionality?
+```
+
+### 4. C++ Learning & Conversion
+
+**Example: Studying UE C++ Patterns**
+
+Create side-by-side comparisons of your Blueprint screenshots and the generated C++ code to build a personal reference library of patterns:
+
+```
+# My UE C++ Pattern Reference
+
+## Event Binding Implementation
+Blueprint: [Screenshot of Event Binding nodes]
+C++ Implementation:
+
+[Paste the relevant event binding code section from translation]
+
+## Custom Trace/Raycast Pattern
+Blueprint: [Screenshot of trace/raycast nodes]
+C++ Implementation:
+
+[Paste the relevant trace/raycast code from translation]
+
+```
+
+**Example: Incremental Blueprint to C++ Migration**
+```cpp
+// Start with Node to Code translation
+[Paste GraphName.h and GraphName.cpp to your IDE]
+
+// Then annotate and optimize as needed:
+// TODO: Optimize this loop for better cache coherency
+// TODO: Add error handling for edge cases
+// FIXME: This allocation could be moved outside the tick function
+```
+
+### 5. Performance Optimization
+
+**Example: Profiling & Bottleneck Identification**
+```
+// In a development note or performance ticket
+Title: Critical Performance Investigation - AI Navigation System Bottleneck
+Priority: High
+Platform: Quest 3
+
+Profiling Results:
+- Game Thread spike identified during heavy combat (15+ AI agents)
+- Unreal Insights shows BP_EnemyController→UpdateTacticalPosition consuming 3.8ms average
+- Occurring every tick (90fps target = 11.11ms budget)
+- Major hitching when multiple agents recalculate paths simultaneously
+
+I've translated the Blueprint to C++ using N2C:
+
+[Paste relevant C++ translation]
+
+Recommended Action:
+1. Convert this entire function to C++
+2. Implement spatial partitioning to reduce cover point checks
+3. Batch raycasts using AsyncLineTraceMultiByChannel
+4. Cache squad matrix calculations and update less frequently
+5. Move intensive calculations to async task graph
+```
+
+**Example: Communication with Performance Engineers**
+```
+We need to optimize this Blueprint function that's running on every tick:
+
+[Paste pseudocode or C++ translation]
+
+The main issue appears to be at lines 36-63, where we're:
+Computing quaternion interpolation (Slerp) between each bone's orientation
+
+Each frame we're doing these calculations for every skeletal mesh component in view (currently ~50 characters).
+The Blueprint VM overhead for matrix/quaternion math is significant here.
+```
+
+### 6. Integration with Other Tools
+
+**Example: Version Control**
+```bash
+# Include translations in version control to track Blueprint evolution over time
+git add ProjectRoot/Saved/NodeToCode/Translations/MyImportantSystem_*/*.{h,cpp,md}
+git commit -m "Add Blueprint translations for reference"
+```
+
+**Example: Blueprint Diffing**
+```
+# To compare Blueprint changes over time:
+diff ProjectRoot/Saved/NodeToCode/Translations/MySystem_2025-03-01/CalculatePath.cpp \
+     ProjectRoot/Saved/NodeToCode/Translations/MySystem_2025-04-01/CalculatePath.cpp
+```

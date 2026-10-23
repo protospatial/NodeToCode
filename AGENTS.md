@@ -18,6 +18,13 @@ UE_SOURCE_PATH: <!-- RUN DETECT SCRIPT TO POPULATE -->
 
 This is where source files for Unreal Engine 5 can be found and searched through for research purposes. NEVER try to modify files here.
 
+## User docs
+
+- **User docs move with the code.** A change that alters anything a plugin user or integrator sees or depends on
+  updates the affected pages in `wiki/` (and, once the capture harness exists, retakes the affected screenshots
+  through it, never by hand) in the same change, and the commit or PR body says `Docs: <pages>` or
+  `Docs: none, <why>`. The writer contract is `.agents/contracts/docs.md`; `tools/docs_check.py --changed` checks it.
+
 ## TESTING COMPILATION
 
 The build scripts support UE 5.4, 5.5, 5.6, and 5.7 with auto-detection of installations.

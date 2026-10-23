@@ -1,0 +1,28 @@
+# Publishes wiki/ to the GitHub wiki (https://github.com/protospatial/NodeToCode/wiki).
+# The published wiki is a derived copy: edit pages in wiki/, never in the browser.
+# Until the 2.0 pages are ready this runs only by hand (Actions -> Publish wiki -> Run workflow, branch
+# dev-2.0), because the live wiki still documents 1.2.x. After the first 2.0 publish, add:
+#   push: { branches: [dev-2.0], paths: ["wiki/**"] }
+# Nothing is ever published from main.
+name: Publish wiki
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish-wiki:
+    if: github.ref == 'refs/heads/dev-2.0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the docs
+        run: python3 tools/docs_check.py || [ $? -eq 1 ]   # warnings do not block a publish; critical findings do
+      - name: Sync wiki/ to the wiki repository
+        run: |
+          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" ../wiki
+          rsync -a --delete --exclude .git wiki/ ../wiki/
+          cd ../wiki && git add -A
+          git -c user.name=docs-bot -c user.email=docs-bot@users.noreply.github.com commit -m "docs: sync from ${GITHUB_SHA::8}" || exit 0
+          git push
