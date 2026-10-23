@@ -35,6 +35,12 @@ public:
     virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Anthropic; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override { }
 
+    /**
+     * The error SendRequest reports instead of sending when Provider needs an API key and ApiKey is empty: it names
+     * the provider and where to set the key. Empty when no key is needed or one is set.
+     */
+    static FString GetMissingApiKeyError(EN2CLLMProvider Provider, const FString& ApiKey);
+
     /** Builds the request body this service would send, without sending it (used by the payload automation tests) */
     FString BuildRequestPayloadForTesting(const FString& UserMessage, const FString& SystemMessage) const
     {

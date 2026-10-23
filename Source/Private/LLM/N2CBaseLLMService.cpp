@@ -5,6 +5,37 @@
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CResponseParserBase.h"
 #include "Utils/N2CLogger.h"
+#include "Core/N2CUserSecrets.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+
+FString UN2CBaseLLMService::GetMissingApiKeyError(EN2CLLMProvider Provider, const FString& ApiKey)
+{
+    const TCHAR* Name = nullptr;
+    switch (Provider)
+    {
+    case EN2CLLMProvider::OpenAI: Name = TEXT("OpenAI"); break;
+    case EN2CLLMProvider::Anthropic: Name = TEXT("Anthropic"); break;
+    case EN2CLLMProvider::Gemini: Name = TEXT("Gemini"); break;
+    case EN2CLLMProvider::DeepSeek: Name = TEXT("DeepSeek"); break;
+    default: return FString(); // Ollama and LM Studio run locally without a key
+    }
+    if (!ApiKey.TrimStartAndEnd().IsEmpty())
+    {
+        return FString();
+    }
+
+    FString Message = FString::Printf(
+        TEXT("No %s API key is set. Add one in Project Settings > Plugins > Node to Code > LLM Services > %s > API Key."),
+        Name, Name);
+    if (Provider == EN2CLLMProvider::Anthropic || Provider == EN2CLLMProvider::Gemini)
+    {
+        Message += FString::Printf(TEXT(" Claude Pro/Max and Google account sign-in were removed in NodeToCode 2.0; see %s"),
+            N2CSignInRemoval::DocsUrl);
+    }
+    return Message;
+}
 
 bool UN2CBaseLLMService::Initialize(const FN2CLLMConfig& InConfig)
 {
@@ -73,6 +104,20 @@ void UN2CBaseLLMService::SendRequest(
         return;
     }
     
+    // A cloud provider without a key would only get a 401 back; stop before any request is made
+    const FString MissingKeyError = GetMissingApiKeyError(GetProviderType(), Config.ApiKey);
+    if (!MissingKeyError.IsEmpty())
+    {
+        FN2CLogger::Get().LogError(MissingKeyError, TEXT("BaseLLMService"));
+        TSharedRef<FJsonObject> ErrorJson = MakeShared<FJsonObject>();
+        ErrorJson->SetStringField(TEXT("error"), MissingKeyError);
+        FString ErrorString;
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ErrorString);
+        FJsonSerializer::Serialize(ErrorJson, Writer);
+        const bool bExecuted = OnComplete.ExecuteIfBound(ErrorString);
+        return;
+    }
+
     // Log provider and model info
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Sending request to %s using model: %s"), 

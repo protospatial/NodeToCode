@@ -1,12 +1,36 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CUserSecrets.h"
+#include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "Utils/N2CLogger.h"
+
+namespace
+{
+    /** The API key fields, in file order */
+    const TCHAR* const ApiKeyFields[] = {
+        TEXT("OpenAI_API_Key"), TEXT("Anthropic_API_Key"), TEXT("Gemini_API_Key"), TEXT("DeepSeek_API_Key")
+    };
+
+    /** Sign-in token fields written before 2.0: the nested block and the older flat fields */
+    const TCHAR* const RetiredSignInFields[] = {
+        TEXT("OAuth"),
+        TEXT("Claude_OAuth_AccessToken"), TEXT("Claude_OAuth_RefreshToken"), TEXT("Claude_OAuth_ExpiresAt"), TEXT("Claude_OAuth_Scope"),
+        TEXT("Google_OAuth_AccessToken"), TEXT("Google_OAuth_RefreshToken"), TEXT("Google_OAuth_ExpiresAt"), TEXT("Google_OAuth_Scope"),
+    };
+
+    FString GetKeyField(const FJsonObject& Json, const TCHAR* Field)
+    {
+        FString Value;
+        Json.TryGetStringField(Field, Value);
+        return Value;
+    }
+}
 
 UN2CUserSecrets::UN2CUserSecrets()
 {
@@ -20,338 +44,140 @@ FString UN2CUserSecrets::GetSecretsFilePath()
         FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User"), TEXT("secrets.json")));
 }
 
-void UN2CUserSecrets::EnsureSecretsDirectoryExists()
+void UN2CUserSecrets::EnsureDirectoryExists(const FString& FilePath)
 {
-    FString SecretsDir = FPaths::ConvertRelativePathToFull(
-        FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User")));
-
-    if (!IFileManager::Get().DirectoryExists(*SecretsDir))
+    const FString Dir = FPaths::GetPath(FilePath);
+    if (!Dir.IsEmpty() && !IFileManager::Get().DirectoryExists(*Dir))
     {
-        IFileManager::Get().MakeDirectory(*SecretsDir, true);
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Created secrets directory: %s"), *SecretsDir),
-            EN2CLogSeverity::Info);
+        IFileManager::Get().MakeDirectory(*Dir, true);
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Created secrets directory: %s"), *Dir), EN2CLogSeverity::Info);
     }
 }
 
-FString UN2CUserSecrets::GetProviderKeyName(EN2COAuthProvider ProviderId)
+bool UN2CUserSecrets::ReadJsonFile(const FString& FilePath, TSharedPtr<FJsonObject>& OutJson)
 {
-    switch (ProviderId)
+    OutJson.Reset();
+    FString JsonString;
+    if (!FPaths::FileExists(FilePath) || !FFileHelper::LoadFileToString(JsonString, *FilePath))
     {
-    case EN2COAuthProvider::Anthropic:
-        return TEXT("Anthropic");
-    case EN2COAuthProvider::Google:
-        return TEXT("Google");
-    default:
-        return TEXT("Unknown");
+        return false;
     }
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+    return FJsonSerializer::Deserialize(Reader, OutJson) && OutJson.IsValid();
+}
+
+bool UN2CUserSecrets::WriteJsonFile(const FString& FilePath, const TSharedRef<FJsonObject>& Json)
+{
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    if (!FJsonSerializer::Serialize(Json, Writer))
+    {
+        FN2CLogger::Get().LogError(TEXT("Failed to serialize secrets to JSON"));
+        return false;
+    }
+
+    EnsureDirectoryExists(FilePath);
+    const FString TempPath = FilePath + TEXT(".tmp");
+    if (!FFileHelper::SaveStringToFile(JsonString, *TempPath)
+        || !IFileManager::Get().Move(*FilePath, *TempPath, /*bReplace*/ true))
+    {
+        IFileManager::Get().Delete(*TempPath);
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to save secrets to: %s"), *FilePath));
+        return false;
+    }
+    return true;
+}
+
+int32 UN2CUserSecrets::RemoveRetiredSignInEntries(FJsonObject& Json)
+{
+    int32 Removed = 0;
+    for (const TCHAR* Field : RetiredSignInFields)
+    {
+        if (Json.HasField(Field))
+        {
+            Json.RemoveField(Field);
+            ++Removed;
+        }
+    }
+    return Removed;
 }
 
 void UN2CUserSecrets::LoadSecrets()
 {
-    FString SecretsFilePath = GetSecretsFilePath();
-
-    // Check if the file exists
-    if (!FPaths::FileExists(SecretsFilePath))
-    {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Secrets file not found at: %s"), *SecretsFilePath),
-            EN2CLogSeverity::Info);
-        return;
-    }
-
-    // Load the file content
-    FString JsonString;
-    if (!FFileHelper::LoadFileToString(JsonString, *SecretsFilePath))
-    {
-        FN2CLogger::Get().LogError(
-            FString::Printf(TEXT("Failed to load secrets from: %s"), *SecretsFilePath));
-        return;
-    }
-
-    // Parse the JSON
-    TSharedPtr<FJsonObject> JsonObject;
-    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-    if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
-    {
-        FN2CLogger::Get().LogError(
-            FString::Printf(TEXT("Failed to parse secrets JSON from: %s"), *SecretsFilePath));
-        return;
-    }
-
-    // Extract the API keys
-    OpenAI_API_Key = JsonObject->GetStringField(TEXT("OpenAI_API_Key"));
-    Anthropic_API_Key = JsonObject->GetStringField(TEXT("Anthropic_API_Key"));
-    Gemini_API_Key = JsonObject->GetStringField(TEXT("Gemini_API_Key"));
-    DeepSeek_API_Key = JsonObject->GetStringField(TEXT("DeepSeek_API_Key"));
-
-    // Load OAuth tokens (handles migration from legacy format)
-    LoadOAuthTokensFromJson(JsonObject);
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Successfully loaded secrets from: %s"), *SecretsFilePath),
-        EN2CLogSeverity::Info);
+    LoadSecretsFromFile(GetSecretsFilePath());
 }
 
-void UN2CUserSecrets::LoadOAuthTokensFromJson(const TSharedPtr<FJsonObject>& JsonObject)
+bool UN2CUserSecrets::LoadSecretsFromFile(const FString& FilePath)
 {
-    // Clear existing tokens
-    OAuthTokensMap.Empty();
-
-    // Check for new nested OAuth format first
-    if (JsonObject->HasField(TEXT("OAuth")))
+    if (!FPaths::FileExists(FilePath))
     {
-        const TSharedPtr<FJsonObject>* OAuthObject;
-        if (JsonObject->TryGetObjectField(TEXT("OAuth"), OAuthObject))
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Secrets file not found at: %s"), *FilePath), EN2CLogSeverity::Info);
+        return false;
+    }
+
+    TSharedPtr<FJsonObject> Json;
+    if (!ReadJsonFile(FilePath, Json))
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to load or parse secrets JSON from: %s"), *FilePath));
+        return false;
+    }
+
+    OpenAI_API_Key = GetKeyField(*Json, ApiKeyFields[0]);
+    Anthropic_API_Key = GetKeyField(*Json, ApiKeyFields[1]);
+    Gemini_API_Key = GetKeyField(*Json, ApiKeyFields[2]);
+    DeepSeek_API_Key = GetKeyField(*Json, ApiKeyFields[3]);
+
+    // Sign-in tokens from before 2.0 are deleted from the file; the parsed object keeps every other field
+    // (the API keys included), so writing it back loses nothing else
+    if (RemoveRetiredSignInEntries(*Json) > 0)
+    {
+        if (WriteJsonFile(FilePath, Json.ToSharedRef()))
         {
-            // Load Anthropic tokens
-            const TSharedPtr<FJsonObject>* AnthropicObject;
-            if ((*OAuthObject)->TryGetObjectField(TEXT("Anthropic"), AnthropicObject))
+            FN2CLogger::Get().LogWarning(FString::Printf(
+                TEXT("Claude Pro/Max and Google account sign-in were removed in NodeToCode 2.0, so the saved sign-in tokens were deleted from %s (API keys kept). Set an API key in Project Settings > Plugins > Node to Code > LLM Services. See %s"),
+                *FilePath, N2CSignInRemoval::DocsUrl), TEXT("UserSecrets"));
+        }
+        else
+        {
+            static bool bWarned = false;
+            if (!bWarned)
             {
-                FN2COAuthTokens AnthropicTokens;
-                AnthropicTokens.AccessToken = (*AnthropicObject)->GetStringField(TEXT("AccessToken"));
-                AnthropicTokens.RefreshToken = (*AnthropicObject)->GetStringField(TEXT("RefreshToken"));
-                AnthropicTokens.ExpiresAt = (*AnthropicObject)->GetStringField(TEXT("ExpiresAt"));
-                AnthropicTokens.Scope = (*AnthropicObject)->GetStringField(TEXT("Scope"));
-
-                if (AnthropicTokens.HasTokens())
-                {
-                    OAuthTokensMap.Add(EN2COAuthProvider::Anthropic, AnthropicTokens);
-                }
+                bWarned = true;
+                FN2CLogger::Get().LogWarning(FString::Printf(
+                    TEXT("%s still holds sign-in tokens that NodeToCode 2.0 no longer uses, and they could not be removed; they are ignored. See %s"),
+                    *FilePath, N2CSignInRemoval::DocsUrl), TEXT("UserSecrets"));
             }
-
-            // Load Google tokens
-            const TSharedPtr<FJsonObject>* GoogleObject;
-            if ((*OAuthObject)->TryGetObjectField(TEXT("Google"), GoogleObject))
-            {
-                FN2COAuthTokens GoogleTokens;
-                GoogleTokens.AccessToken = (*GoogleObject)->GetStringField(TEXT("AccessToken"));
-                GoogleTokens.RefreshToken = (*GoogleObject)->GetStringField(TEXT("RefreshToken"));
-                GoogleTokens.ExpiresAt = (*GoogleObject)->GetStringField(TEXT("ExpiresAt"));
-                GoogleTokens.Scope = (*GoogleObject)->GetStringField(TEXT("Scope"));
-
-                if (GoogleTokens.HasTokens())
-                {
-                    OAuthTokensMap.Add(EN2COAuthProvider::Google, GoogleTokens);
-                }
-            }
-
-            FN2CLogger::Get().Log(TEXT("Loaded OAuth tokens from new nested format"), EN2CLogSeverity::Debug);
-            return;
         }
     }
 
-    // Fall back to legacy flat format (migration)
-    bool bMigratedLegacy = false;
-
-    // Check for legacy Claude tokens
-    FString LegacyClaudeAccessToken = JsonObject->GetStringField(TEXT("Claude_OAuth_AccessToken"));
-    FString LegacyClaudeRefreshToken = JsonObject->GetStringField(TEXT("Claude_OAuth_RefreshToken"));
-    if (!LegacyClaudeAccessToken.IsEmpty() || !LegacyClaudeRefreshToken.IsEmpty())
-    {
-        FN2COAuthTokens AnthropicTokens;
-        AnthropicTokens.AccessToken = LegacyClaudeAccessToken;
-        AnthropicTokens.RefreshToken = LegacyClaudeRefreshToken;
-        AnthropicTokens.ExpiresAt = JsonObject->GetStringField(TEXT("Claude_OAuth_ExpiresAt"));
-        AnthropicTokens.Scope = JsonObject->GetStringField(TEXT("Claude_OAuth_Scope"));
-
-        if (AnthropicTokens.HasTokens())
-        {
-            OAuthTokensMap.Add(EN2COAuthProvider::Anthropic, AnthropicTokens);
-            bMigratedLegacy = true;
-        }
-    }
-
-    // Check for legacy Google tokens
-    FString LegacyGoogleAccessToken = JsonObject->GetStringField(TEXT("Google_OAuth_AccessToken"));
-    FString LegacyGoogleRefreshToken = JsonObject->GetStringField(TEXT("Google_OAuth_RefreshToken"));
-    if (!LegacyGoogleAccessToken.IsEmpty() || !LegacyGoogleRefreshToken.IsEmpty())
-    {
-        FN2COAuthTokens GoogleTokens;
-        GoogleTokens.AccessToken = LegacyGoogleAccessToken;
-        GoogleTokens.RefreshToken = LegacyGoogleRefreshToken;
-        GoogleTokens.ExpiresAt = JsonObject->GetStringField(TEXT("Google_OAuth_ExpiresAt"));
-        GoogleTokens.Scope = JsonObject->GetStringField(TEXT("Google_OAuth_Scope"));
-
-        if (GoogleTokens.HasTokens())
-        {
-            OAuthTokensMap.Add(EN2COAuthProvider::Google, GoogleTokens);
-            bMigratedLegacy = true;
-        }
-    }
-
-    if (bMigratedLegacy)
-    {
-        FN2CLogger::Get().Log(TEXT("Migrated OAuth tokens from legacy flat format to nested format"), EN2CLogSeverity::Info);
-        // Save immediately to migrate the file to the new format
-        // Note: We call SaveSecrets() after LoadSecrets() completes to avoid re-entrancy
-    }
-}
-
-void UN2CUserSecrets::SaveOAuthTokensToJson(TSharedPtr<FJsonObject>& JsonObject) const
-{
-    // Create OAuth container object
-    TSharedPtr<FJsonObject> OAuthObject = MakeShareable(new FJsonObject);
-
-    // Save each provider's tokens
-    for (const auto& Pair : OAuthTokensMap)
-    {
-        const FString ProviderKey = GetProviderKeyName(Pair.Key);
-        const FN2COAuthTokens& Tokens = Pair.Value;
-
-        TSharedPtr<FJsonObject> ProviderObject = MakeShareable(new FJsonObject);
-        ProviderObject->SetStringField(TEXT("AccessToken"), Tokens.AccessToken);
-        ProviderObject->SetStringField(TEXT("RefreshToken"), Tokens.RefreshToken);
-        ProviderObject->SetStringField(TEXT("ExpiresAt"), Tokens.ExpiresAt);
-        ProviderObject->SetStringField(TEXT("Scope"), Tokens.Scope);
-
-        OAuthObject->SetObjectField(ProviderKey, ProviderObject);
-    }
-
-    JsonObject->SetObjectField(TEXT("OAuth"), OAuthObject);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully loaded secrets from: %s"), *FilePath), EN2CLogSeverity::Info);
+    return true;
 }
 
 void UN2CUserSecrets::SaveSecrets()
 {
-    // Ensure the directory exists
-    EnsureSecretsDirectoryExists();
+    SaveSecretsToFile(GetSecretsFilePath());
+}
 
-    // Create a JSON object
-    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
-
-    // Save API keys
-    JsonObject->SetStringField(TEXT("OpenAI_API_Key"), OpenAI_API_Key);
-    JsonObject->SetStringField(TEXT("Anthropic_API_Key"), Anthropic_API_Key);
-    JsonObject->SetStringField(TEXT("Gemini_API_Key"), Gemini_API_Key);
-    JsonObject->SetStringField(TEXT("DeepSeek_API_Key"), DeepSeek_API_Key);
-
-    // Save OAuth tokens in nested format
-    SaveOAuthTokensToJson(JsonObject);
-
-    // Serialize to string
-    FString JsonString;
-    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
-    if (!FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer))
+bool UN2CUserSecrets::SaveSecretsToFile(const FString& FilePath) const
+{
+    // Read-modify-write: keep the fields this version does not write
+    TSharedPtr<FJsonObject> Json;
+    if (!ReadJsonFile(FilePath, Json))
     {
-        FN2CLogger::Get().LogError(TEXT("Failed to serialize secrets to JSON"));
-        return;
+        Json = MakeShared<FJsonObject>();
     }
+    RemoveRetiredSignInEntries(*Json);
 
-    // Save to file
-    FString SecretsFilePath = GetSecretsFilePath();
-    if (!FFileHelper::SaveStringToFile(JsonString, *SecretsFilePath))
+    Json->SetStringField(ApiKeyFields[0], OpenAI_API_Key);
+    Json->SetStringField(ApiKeyFields[1], Anthropic_API_Key);
+    Json->SetStringField(ApiKeyFields[2], Gemini_API_Key);
+    Json->SetStringField(ApiKeyFields[3], DeepSeek_API_Key);
+
+    if (!WriteJsonFile(FilePath, Json.ToSharedRef()))
     {
-        FN2CLogger::Get().LogError(
-            FString::Printf(TEXT("Failed to save secrets to: %s"), *SecretsFilePath));
-        return;
+        return false;
     }
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Successfully saved secrets to: %s"), *SecretsFilePath),
-        EN2CLogSeverity::Info);
-}
-
-// ============================================
-// Unified OAuth Token Storage API
-// ============================================
-
-void UN2CUserSecrets::SetOAuthTokensForProvider(EN2COAuthProvider ProviderId, const FN2COAuthTokens& Tokens)
-{
-    OAuthTokensMap.Add(ProviderId, Tokens);
-    SaveSecrets();
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("%s OAuth tokens saved successfully"), *GetProviderKeyName(ProviderId)),
-        EN2CLogSeverity::Info);
-}
-
-bool UN2CUserSecrets::GetOAuthTokensForProvider(EN2COAuthProvider ProviderId, FN2COAuthTokens& OutTokens) const
-{
-    const FN2COAuthTokens* FoundTokens = OAuthTokensMap.Find(ProviderId);
-    if (FoundTokens)
-    {
-        OutTokens = *FoundTokens;
-        return OutTokens.HasTokens();
-    }
-
-    OutTokens = FN2COAuthTokens();
-    return false;
-}
-
-void UN2CUserSecrets::ClearOAuthTokensForProvider(EN2COAuthProvider ProviderId)
-{
-    OAuthTokensMap.Remove(ProviderId);
-    SaveSecrets();
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("%s OAuth tokens cleared"), *GetProviderKeyName(ProviderId)),
-        EN2CLogSeverity::Info);
-}
-
-bool UN2CUserSecrets::HasOAuthTokensForProvider(EN2COAuthProvider ProviderId) const
-{
-    const FN2COAuthTokens* FoundTokens = OAuthTokensMap.Find(ProviderId);
-    return FoundTokens && FoundTokens->HasTokens();
-}
-
-// ============================================
-// Legacy OAuth API (Anthropic/Claude)
-// ============================================
-
-void UN2CUserSecrets::SetOAuthTokens(const FString& AccessToken, const FString& RefreshToken,
-                                      const FString& ExpiresAt, const FString& Scope)
-{
-    FN2COAuthTokens Tokens;
-    Tokens.AccessToken = AccessToken;
-    Tokens.RefreshToken = RefreshToken;
-    Tokens.ExpiresAt = ExpiresAt;
-    Tokens.Scope = Scope;
-
-    SetOAuthTokensForProvider(EN2COAuthProvider::Anthropic, Tokens);
-}
-
-bool UN2CUserSecrets::GetOAuthTokens(FN2COAuthTokens& OutTokens) const
-{
-    return GetOAuthTokensForProvider(EN2COAuthProvider::Anthropic, OutTokens);
-}
-
-void UN2CUserSecrets::ClearOAuthTokens()
-{
-    ClearOAuthTokensForProvider(EN2COAuthProvider::Anthropic);
-}
-
-bool UN2CUserSecrets::HasOAuthTokens() const
-{
-    return HasOAuthTokensForProvider(EN2COAuthProvider::Anthropic);
-}
-
-// ============================================
-// Legacy OAuth API (Google/Gemini)
-// ============================================
-
-void UN2CUserSecrets::SetGoogleOAuthTokens(const FString& AccessToken, const FString& RefreshToken,
-                                            const FString& ExpiresAt, const FString& Scope)
-{
-    FN2COAuthTokens Tokens;
-    Tokens.AccessToken = AccessToken;
-    Tokens.RefreshToken = RefreshToken;
-    Tokens.ExpiresAt = ExpiresAt;
-    Tokens.Scope = Scope;
-
-    SetOAuthTokensForProvider(EN2COAuthProvider::Google, Tokens);
-}
-
-bool UN2CUserSecrets::GetGoogleOAuthTokens(FN2COAuthTokens& OutTokens) const
-{
-    return GetOAuthTokensForProvider(EN2COAuthProvider::Google, OutTokens);
-}
-
-void UN2CUserSecrets::ClearGoogleOAuthTokens()
-{
-    ClearOAuthTokensForProvider(EN2COAuthProvider::Google);
-}
-
-bool UN2CUserSecrets::HasGoogleOAuthTokens() const
-{
-    return HasOAuthTokensForProvider(EN2COAuthProvider::Google);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully saved secrets to: %s"), *FilePath), EN2CLogSeverity::Info);
+    return true;
 }

@@ -219,14 +219,9 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 	/** Gemini 3+ body: no sampling fields, maxOutputTokens and a responseSchema without additionalProperties */
 	void TestGemini3Payload(const FString& Payload)
 	{
-		TSharedPtr<FJsonObject> Root = Parse(Payload);
+		const TSharedPtr<FJsonObject> Root = Parse(Payload);
 		if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
-		// The Code Assist (OAuth) route wraps the same body in "request"
-		if (const TSharedPtr<FJsonObject> Wrapped = Child(Root, TEXT("request")))
-		{
-			Root = Wrapped;
-		}
-		TestNoSampling(TEXT("Gemini root"), Root);
+TestNoSampling(TEXT("Gemini root"), Root);
 		const TSharedPtr<FJsonObject> GenConfig = Child(Root, TEXT("generationConfig"));
 		if (!TestTrue(TEXT("Gemini has generationConfig"), GenConfig.IsValid())) { return; }
 		TestNoSampling(TEXT("Gemini generationConfig"), GenConfig);
@@ -340,23 +335,14 @@ void FN2CPayloadBuilderSpec::Define()
 
 		It(TEXT("sends no sampling fields for an unregistered Gemini ID"), [this]()
 		{
-			TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, TEXT("gemini-9-not-registered")));
+			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, TEXT("gemini-9-not-registered")));
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
-			if (const TSharedPtr<FJsonObject> Wrapped = Child(Root, TEXT("request")))
-			{
-				Root = Wrapped;
-			}
-			TestNoSampling(TEXT("Gemini unregistered root"), Root);
+TestNoSampling(TEXT("Gemini unregistered root"), Root);
 			TestNoSampling(TEXT("Gemini unregistered generationConfig"), Child(Root, TEXT("generationConfig")));
 		});
 
 		It(TEXT("keeps the API key out of the endpoint URL and sends it in x-goog-api-key"), [this]()
 		{
-			// Force the API-key route for this check; the user's own auth setting is restored afterwards
-			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			const EN2CGeminiAuthMethod SavedMethod = Settings->GeminiAuthMethod;
-			Settings->GeminiAuthMethod = EN2CGeminiAuthMethod::APIKey;
-
 			const FString FakeKey = TEXT("n2c-test-key-not-real");
 			UN2CGeminiService* Service = NewObject<UN2CGeminiService>(GetTransientPackage());
 			FN2CLLMConfig Config;
@@ -370,7 +356,6 @@ void FN2CPayloadBuilderSpec::Define()
 			Service->GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
 			TMap<FString, FString> Headers;
 			Service->GetProviderHeaders(Headers);
-			Settings->GeminiAuthMethod = SavedMethod;
 
 			TestEqual(TEXT("Gemini endpoint is <endpoint><model>:generateContent"), Endpoint,
 				FString(TEXT("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent")));

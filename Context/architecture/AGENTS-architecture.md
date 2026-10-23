@@ -11,14 +11,12 @@ Source/
 ├── Public/                      # Public headers (API surface)
 │   ├── Core/                    # Editor integration, settings, widgets
 │   │   └── Widgets/             # Slate widget headers
-│   ├── Auth/                    # OAuth authentication types and managers
 │   ├── Models/                  # Data models (N2CStyle, N2CLogging)
 │   └── Utils/                   # Utility classes and validators
 │       └── Validators/          # Blueprint, Node, Pin validators
 ├── Private/                     # Private implementations
 │   ├── Core/                    # Implementation files
 │   │   └── Widgets/             # Widget implementations
-│   ├── Auth/                    # OAuth implementation and customization
 │   ├── Models/                  # Model implementations
 │   └── Utils/                   # Utility implementations
 │       └── Validators/          # Validator implementations
@@ -47,27 +45,7 @@ Source/
             *   Syntax definitions (`FN2CSyntaxDefinitionFactory`)
             *   MCP HTTP server (`FN2CMcpHttpServerManager`)
             *   SSE server (`NodeToCodeSseServer`) for long-running operations
-            *   OAuth settings customization (`FN2COAuthSettingsCustomization`)
-            *   Console commands for OAuth (Claude and Gemini)
-        *   `ShutdownModule`: Cleans up all resources in reverse order.
-
-### Console Commands
-
-The plugin registers console commands for OAuth authentication.
-
-> **Note:** These OAuth commands are experimental and may violate service TOS. See [Authentication System](#authentication-system-sourceauth) for important warnings.
-
-**Claude/Anthropic OAuth:**
-*   `N2C.OAuth.Claude.Login` - Opens browser for Claude Pro/Max OAuth login
-*   `N2C.OAuth.Claude.Submit <code#state>` - Submit authorization code
-*   `N2C.OAuth.Claude.Logout` - Log out from Claude OAuth
-*   `N2C.OAuth.Claude.Status` - Show current authentication status
-
-**Gemini/Google OAuth:**
-*   `N2C.OAuth.Gemini.Login` - Opens browser for Gemini OAuth login
-*   `N2C.OAuth.Gemini.Submit <code>` - Submit authorization code
-*   `N2C.OAuth.Gemini.Logout` - Log out from Gemini OAuth
-*   `N2C.OAuth.Gemini.Status` - Show current authentication status
+            *   `ShutdownModule`: Cleans up all resources in reverse order.
 
 ## Editor Integration & UI
 
@@ -115,42 +93,15 @@ Pure Slate widgets for the plugin UI:
 *   **`Source/Public/Models/N2CStyle.h` / `Source/Public/Models/N2CStyle.cpp` (`N2CStyle`)**: Manages plugin's global Slate style (toolbar icon). Provides `N2C_PLUGIN_BRUSH` macro for content paths.
 *   **`Source/Public/Core/N2CWidgetContainer.h` / `Source/Private/Core/N2CWidgetContainer.cpp` (`UN2CWidgetContainer`)**: Persistent UObject outer for widgets to maintain state.
 
-## Authentication System (`Source/*/Auth/`)
-
-OAuth authentication support for LLM providers.
-
-> **⚠️ EXPERIMENTAL - USE AT YOUR OWN RISK ⚠️**
->
-> The OAuth authentication systems for Claude (Anthropic) and Gemini (Google) are **highly experimental** and intended for **research purposes only**. These features:
-> - **Will NOT be actively maintained**
-> - **May violate the Terms of Service** of Claude Code and Gemini CLI
-> - **Could result in account suspension or banning** by Anthropic or Google
->
-> Users should be fully aware of these risks before enabling OAuth authentication. The recommended approach is to use standard API keys instead.
-
-*   **`Source/Public/Auth/N2COAuthTypes.h`**: OAuth type definitions including:
-    *   `EN2COAuthProvider` - Provider enum (Anthropic, Google)
-    *   `EN2CAnthropicAuthMethod` - APIKey or OAuth
-    *   `EN2CGeminiAuthMethod` - APIKey or OAuth
-    *   `FN2COAuthTokens` - Token storage struct
-
-*   **`Source/Public/Auth/N2COAuthTokenManagerBase.h`**: Base class for OAuth token managers with refresh token logic.
-
-*   **`Source/Public/Auth/N2CAnthropicOAuthTokenManager.h`**: Anthropic/Claude OAuth manager (PKCE flow).
-
-*   **`Source/Public/Auth/N2CGoogleOAuthTokenManager.h`**: Google/Gemini OAuth manager.
-
-*   **`Source/Private/Auth/N2COAuthSettingsCustomization.h`**: Property customization for OAuth settings in Project Settings.
-
 ## Plugin Settings
 
 *   **`Source/Public/Core/N2CSettings.h` / `Source/Private/Core/N2CSettings.cpp` (`UN2CSettings`)**: `UDeveloperSettings` class for all plugin configurations:
 
     **LLM Provider Settings:**
     *   `Provider` - Selected LLM provider (`EN2CLLMProvider`)
-    *   `AnthropicModel`, `AnthropicAuthMethod` - Anthropic settings
+    *   `AnthropicModel` - Anthropic model selection
     *   `OpenAI_Model` - OpenAI model selection
-    *   `Gemini_Model`, `GeminiAuthMethod` - Gemini settings
+    *   `Gemini_Model` - Gemini model selection
     *   `DeepSeekModel` - DeepSeek model selection
     *   `OllamaConfig`, `OllamaModel` - Ollama settings
     *   `LMStudioModel`, `LMStudioEndpoint`, `LMStudioPrependedModelCommand` - LM Studio settings
@@ -174,10 +125,11 @@ OAuth authentication support for LLM providers.
     **Logging:**
     *   `MinSeverity` - Minimum log severity level
 
-*   **`Source/Public/Core/N2CUserSecrets.h` / `Source/Private/Core/N2CUserSecrets.cpp` (`UN2CUserSecrets`)**: UObject for secure local storage of API keys and OAuth tokens in `secrets.json`.
+*   **`Source/Public/Core/N2CUserSecrets.h` / `Source/Private/Core/N2CUserSecrets.cpp` (`UN2CUserSecrets`)**: UObject for local storage of the provider API keys in `Saved/NodeToCode/User/secrets.json`.
     *   API keys: `OpenAI_API_Key`, `Anthropic_API_Key`, `Gemini_API_Key`, `DeepSeek_API_Key`
-    *   Unified OAuth storage API: `SetOAuthTokensForProvider()`, `GetOAuthTokensForProvider()`, `ClearOAuthTokensForProvider()`, `HasOAuthTokensForProvider()`
-    *   Legacy OAuth methods for backward compatibility
+    *   Saving is a read-modify-write that keeps fields it does not know. Loading deletes the sign-in token entries older versions wrote (`RemoveRetiredSignInEntries`) and logs that once.
+
+**Authentication:** every cloud provider (OpenAI, Anthropic, Gemini, DeepSeek) authenticates with its API key only; Ollama and LM Studio need none. NodeToCode 2.0 removed Claude Pro/Max and Google account sign-in. A config that still selects it loads normally and is reported once per session (`UN2CSettings::ReportRemovedSignInSelections`), and a cloud request without a key fails before it is sent (`UN2CBaseLLMService::GetMissingApiKeyError`).
 
 ## Logging System
 

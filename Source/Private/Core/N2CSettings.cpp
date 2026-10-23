@@ -3,8 +3,6 @@
 #include "Core/N2CSettings.h"
 #include "Core/N2CUserSecrets.h"
 #include "Core/Services/N2CTokenEstimationService.h"
-#include "Auth/N2CAnthropicOAuthTokenManager.h"
-#include "Auth/N2CGoogleOAuthTokenManager.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Models/N2CStyle.h"
@@ -60,10 +58,6 @@ UN2CSettings::UN2CSettings()
     // Initialize token estimate
     EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
 
-    // Initialize OAuth status
-    RefreshOAuthStatus();
-    RefreshGeminiOAuthStatus();
-
     // Set tooltip for ReferenceSourceFilePaths
     FProperty* ReferenceFilesProperty = GetClass()->FindPropertyByName(TEXT("ReferenceSourceFilePaths"));
     if (ReferenceFilesProperty)
@@ -78,6 +72,7 @@ void UN2CSettings::PostInitProperties()
     Super::PostInitProperties();
     MigrateRetiredModelSelections();
     MigrateSavedSettings();
+    ReportRemovedSignInSelections();
 }
 
 void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
@@ -87,6 +82,7 @@ void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
     Super::PostReloadConfig(PropertyThatWasLoaded);
     MigrateRetiredModelSelections();
     MigrateSavedSettings();
+    ReportRemovedSignInSelections();
 }
 
 namespace
@@ -196,6 +192,46 @@ int32 UN2CSettings::MigrateSavedSettings()
             *FString::Join(Changes, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
     }
     return Changes.Num();
+}
+
+TArray<FString> UN2CSettings::FindRemovedSignInSelections(const FString& ConfigFilename)
+{
+    // Config keys of the sign-in selectors removed in 2.0, whose value "OAuth" chose subscription or Google
+    // account sign-in. Kept only to tell users who had them selected; nothing reads them otherwise.
+    static const TCHAR* const RemovedKeys[][2] = {
+        { TEXT("AnthropicAuthMethod"), TEXT("Anthropic") },
+        { TEXT("GeminiAuthMethod"), TEXT("Gemini") },
+    };
+
+    TArray<FString> Providers;
+    if (!GConfig || ConfigFilename.IsEmpty())
+    {
+        return Providers;
+    }
+    const FString Section = StaticClass()->GetPathName();
+    for (const auto& Key : RemovedKeys)
+    {
+        FString Value;
+        if (GConfig->GetString(*Section, Key[0], Value, ConfigFilename) && Value.TrimStartAndEnd().Equals(TEXT("OAuth"), ESearchCase::IgnoreCase))
+        {
+            Providers.Add(Key[1]);
+        }
+    }
+    return Providers;
+}
+
+int32 UN2CSettings::ReportRemovedSignInSelections() const
+{
+    const TArray<FString> Providers = FindRemovedSignInSelections(GetClass()->GetConfigName());
+    static bool bReported = false;
+    if (Providers.Num() > 0 && !bReported)
+    {
+        bReported = true;
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Claude Pro/Max and Google account sign-in were removed in NodeToCode 2.0. %s now use the API key set in Project Settings > Plugins > Node to Code > LLM Services; the old sign-in setting is ignored and is dropped the next time these settings are saved. See %s"),
+            *FString::Join(Providers, TEXT(" and ")), N2CSignInRemoval::DocsUrl), TEXT("N2CSettings"));
+    }
+    return Providers.Num();
 }
 
 FText UN2CSettings::GetSectionText() const
@@ -610,48 +646,6 @@ void UN2CSettings::ShowRestartEditorNotification()
     #undef LOCTEXT_NAMESPACE
 }
 #endif
-
-void UN2CSettings::RefreshOAuthStatus()
-{
-    UN2CAnthropicOAuthTokenManager* TokenManager = UN2CAnthropicOAuthTokenManager::Get();
-    if (TokenManager && TokenManager->IsAuthenticated())
-    {
-        if (TokenManager->IsTokenExpired())
-        {
-            OAuthConnectionStatus = TEXT("Token expired - will refresh on next request");
-        }
-        else
-        {
-            OAuthConnectionStatus = FString::Printf(TEXT("Connected (expires: %s)"),
-                *TokenManager->GetExpirationTimeString());
-        }
-    }
-    else
-    {
-        OAuthConnectionStatus = TEXT("Not connected");
-    }
-}
-
-void UN2CSettings::RefreshGeminiOAuthStatus()
-{
-    UN2CGoogleOAuthTokenManager* TokenManager = UN2CGoogleOAuthTokenManager::Get();
-    if (TokenManager && TokenManager->IsAuthenticated())
-    {
-        if (TokenManager->IsTokenExpired())
-        {
-            GeminiOAuthConnectionStatus = TEXT("Token expired - will refresh on next request");
-        }
-        else
-        {
-            GeminiOAuthConnectionStatus = FString::Printf(TEXT("Connected (expires: %s)"),
-                *TokenManager->GetExpirationTimeString());
-        }
-    }
-    else
-    {
-        GeminiOAuthConnectionStatus = TEXT("Not connected");
-    }
-}
 
 void UN2CSettings::NotifyModelSettingsChanged()
 {
