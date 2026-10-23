@@ -79,6 +79,65 @@ def read_content_browser_huge_page(url):
     return ok, text
 
 
+# Runs in the editor: a scratch Blueprint with one function, compiled and saved (so its package is clean), with that
+# function's graph opened so add-function-return-pin targets it
+DIRTY_SETUP_PY = r'''
+import json, unreal
+path = "%(dir)s/%(name)s"
+factory = unreal.BlueprintFactory()
+factory.set_editor_property("parent_class", unreal.Actor)
+bp = unreal.AssetToolsHelpers.get_asset_tools().create_asset("%(name)s", "%(dir)s", unreal.Blueprint, factory)
+steps = {"created": bp is not None}
+if bp:
+    steps["function"] = unreal.BlueprintEditorLibrary.add_function_graph(bp, "N2CProbeFunction") is not None
+    unreal.BlueprintEditorLibrary.compile_blueprint(bp)
+    steps["saved"] = unreal.EditorAssetLibrary.save_loaded_asset(bp, False)
+    steps["opened"] = json.loads(unreal.N2CPythonBridge.open_blueprint(path, "N2CProbeFunction")).get("success")
+    dirty = [p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+    steps["clean_before"] = path not in dirty
+result = steps
+'''
+
+# Runs in the editor: is the scratch package in the dirty list now; then close its editor and delete the folder
+DIRTY_CHECK_PY = r'''
+import unreal
+path = "%(dir)s/%(name)s"
+dirty = [p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+bp = unreal.load_asset(path)
+if bp:
+    unreal.get_editor_subsystem(unreal.AssetEditorSubsystem).close_all_editors_for_asset(bp)
+deleted = unreal.EditorAssetLibrary.delete_directory("%(dir)s")
+result = {"dirty_after": path in dirty, "deleted": deleted}
+'''
+
+
+def run_python(url, code):
+    resp = tool(url, 'run-python', {'code': code})
+    text = ''.join(c.get('text', '') for c in (resp.get('result') or {}).get('content', []))
+    try:
+        return (json.loads(text).get('data') or {}), text[:300]
+    except ValueError:
+        return {}, text[:300]
+
+
+@case
+def add_return_pin_marks_package_dirty(url):
+    """Card 0064: on a saved, clean Blueprint, add-function-return-pin leaves the package in the dirty list"""
+    names = {'dir': '/Game/E05Probe', 'name': 'BP_N2CDirtyProbe_%d' % os.getpid()}
+    setup, text = run_python(url, DIRTY_SETUP_PY % names)
+    if not setup:
+        return None, 'run-python unavailable: %s' % text
+    if not (setup.get('saved') and setup.get('opened') and setup.get('clean_before')):
+        run_python(url, DIRTY_CHECK_PY % names)
+        return False, 'setup %s' % setup
+    added = tool(url, 'add-function-return-pin', {'pinName': 'bOk', 'typeIdentifier': 'bool'})
+    add_error, add_text = is_tool_error(added)
+    check, text = run_python(url, DIRTY_CHECK_PY % names)
+    return (not add_error and check.get('dirty_after') is True and check.get('deleted') is True,
+            'add error=%s dirty_after=%s deleted=%s %s' % (add_error, check.get('dirty_after'), check.get('deleted'),
+                                                        add_text[:80] if add_error else ''))
+
+
 def main():
     ap = argparse.ArgumentParser(description='E05 regression cases over MCP')
     ap.add_argument('--url')
@@ -91,7 +150,10 @@ def main():
         from editor_session import EditorSession, free_port
         port = free_port(27160)
         os.makedirs(os.path.join(HERE, 'logs'), exist_ok=True)
-        session = EditorSession(args.engine, args.project, port, os.path.join(HERE, 'logs', 'e05_editor.log'), allow_python=False)
+        # Python on for the cases that set up assets; -RenderOffScreen because on UE 5.6 under -nullrhi an opened
+        # Blueprint editor's window otherwise reaches FGenericWindow::GetRestoredDimensions, which is Fatal
+        session = EditorSession(args.engine, args.project, port, os.path.join(HERE, 'logs', 'e05_editor.log'),
+                                allow_python=True, extra_args=['-RenderOffScreen'])
         if not session.start():
             print('FAIL editor did not start')
             session.stop()

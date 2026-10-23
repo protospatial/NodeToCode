@@ -82,6 +82,8 @@ public:
      * This is a safer alternative to FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified
      * which queues deferred compilation. Deferred compilation can cause crashes when Slate
      * UI updates occur before the compile finishes, leaving preview actors in a "DEADCLASS" state.
+     * After the compile it marks the Blueprint's package dirty, since the compile restores the pre-compile
+     * dirty flag; call it only after a change the user should be asked to save.
      *
      * @param Blueprint The Blueprint to mark as modified and compile.
      * @param bSkipGarbageCollection If true, skips garbage collection during compilation for better performance.
