@@ -120,7 +120,8 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
     *   5-minute connection timeout with cleanup
 
 *   **`N2CSseServer.h/.cpp`** (Private): SSE server implementation
-    *   Uses httplib for standalone SSE HTTP server
+    *   Uses httplib for standalone SSE HTTP server (vendored cpp-httplib, version and hash in `ThirdParty/cpp-httplib/README.md`)
+    *   Request limits: at most 64 header fields, 8 KB per header line, a 2 KB request target and a 64 KB body (400, 414 or 413 above these), 5 s read and write timeouts; checked by `Tests/mcp_probe` P6
     *   `StartSseServer()`, `StopSseServer()`, `IsSseServerRunning()`
     *   `PrepareSseStreamForTask()`, `CleanupStreamForCompletedTask()`
     *   `PushFormattedSseEventToClient()`, `SignalSseClientCompletion()`

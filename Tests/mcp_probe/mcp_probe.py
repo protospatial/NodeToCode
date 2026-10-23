@@ -12,6 +12,7 @@ import http.client
 import json
 import os
 import socket
+import subprocess
 import sys
 import time
 
@@ -124,6 +125,129 @@ def probe_p4(args, port, log_dir):
     return {'ids': ['mcp-transport-10'], 'status': status, 'evidence': {'success_lines': claims, 'failure_lines': failures}}
 
 
+def raw_exchange(port, chunks, timeout=20):
+    """Send raw request bytes to 127.0.0.1:port and read the status line. Returns (status or None, error).
+
+    The server may answer and close while the request is still being sent; a send error is recorded and the
+    response is still read if one arrived. A 200 status line means the request was accepted."""
+    status, error = None, None
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(timeout)
+        try:
+            s.connect(('127.0.0.1', port))
+        except OSError as e:
+            return None, 'connect: %s' % e
+        try:
+            for c in chunks:
+                s.sendall(c)
+        except OSError as e:
+            error = 'send: %s' % e
+        buf = b''
+        try:
+            while b'\r\n' not in buf and len(buf) < 4096:
+                data = s.recv(4096)
+                if not data:
+                    break
+                buf += data
+        except OSError as e:
+            error = (error + '; ' if error else '') + 'recv: %s' % e
+        line = buf.split(b'\r\n', 1)[0].decode('latin-1', 'replace')
+        parts = line.split(' ')
+        if len(parts) >= 2 and parts[0].startswith('HTTP/') and parts[1].isdigit():
+            status = int(parts[1])
+    return status, error
+
+
+def working_set_kb(pid):
+    """Working set of a process in KB (Windows tasklist), or None."""
+    if os.name != 'nt' or not pid:
+        return None
+    try:
+        out = subprocess.run(['tasklist', '/FI', 'PID eq %d' % pid, '/FO', 'CSV', '/NH'],
+                             capture_output=True, text=True, timeout=30).stdout
+        field = out.strip().splitlines()[0].split('","')[-1]
+        return int(''.join(ch for ch in field if ch.isdigit()))
+    except (OSError, IndexError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def probe_p6(port, pid):
+    """Request-size caps on the notification server (port+1): 10,000 headers, a 10 MB chunked body and a 4 KB
+    request target sent to /mcp/notifications must each be refused (no 200), the server must keep answering, and
+    the editor's working set is recorded before and after."""
+    sse = port + 1
+    head = b'GET /mcp/notifications HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n' % sse
+    alive_req = [b'GET /not-a-route HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nConnection: close\r\n\r\n' % sse]
+    before_alive = raw_exchange(sse, alive_req)
+    mem_before = working_set_kb(pid)
+
+    many_headers = head + b''.join(b'X-Pad-%05d: v\r\n' % i for i in range(10000)) + b'\r\n'
+    headers_result = raw_exchange(sse, [many_headers])
+
+    chunk = b'x' * 65536
+    def chunked():
+        yield head + b'Transfer-Encoding: chunked\r\n\r\n'
+        for _ in range(160):  # 160 x 64 KB = 10 MB
+            yield b'%x\r\n' % len(chunk) + chunk + b'\r\n'
+        yield b'0\r\n\r\n'
+    body_result = raw_exchange(sse, chunked())
+
+    long_uri = [b'GET /mcp/notifications?' + b'a' * 4096 + b' HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n' % sse]
+    uri_result = raw_exchange(sse, long_uri)
+
+    time.sleep(2)
+    mem_after = working_set_kb(pid)
+    after_alive = raw_exchange(sse, alive_req)
+
+    cases = {'headers_10000': headers_result, 'chunked_body_10mb': body_result, 'uri_4kb': uri_result}
+    refused = all(r[0] != 200 for r in cases.values())
+    answering = before_alive[0] is not None and after_alive[0] == before_alive[0]
+    status = 'fixed' if (refused and answering) else 'reproduced'
+    evidence = {k: {'status': v[0], 'error': v[1]} for k, v in cases.items()}
+    evidence['alive_before'] = before_alive[0]
+    evidence['alive_after'] = after_alive[0]
+    evidence['working_set_kb'] = {'before': mem_before, 'after': mem_after,
+                                  'delta': (mem_after - mem_before) if mem_before and mem_after else None}
+    return {'ids': ['auth-settings-module-17', 'dx-docs-release-4', 'p0-9'], 'status': status, 'evidence': evidence}
+
+
+def task_stream_check(port):
+    """Start the long-running translate-focused-blueprint tool and read its task stream on port+1 until it closes.
+
+    With no Blueprint focused (headless) the task fails after its first progress report, which is enough to show
+    the stream delivers progress and the final response; a real translation needs a provider key and a focused
+    Blueprint. Recorded as evidence only."""
+    call = post(port, json.dumps({'jsonrpc': '2.0', 'id': 7, 'method': 'tools/call',
+                                  'params': {'name': 'translate-focused-blueprint', 'arguments': {},
+                                             '_meta': {'progressToken': 'probe-p6'}}}),
+                {'Content-Type': 'application/json'})
+    try:
+        result = json.loads(call.get('body', ''))['result']
+        task_id, sse_url = result['taskId'], result.get('sseUrl')
+    except (ValueError, KeyError, TypeError):
+        return {'ok': False, 'call': call}
+    # The route only matches the hyphenated GUID form, while taskId and sseUrl use the 32-digit form, so the
+    # advertised URL itself is answered 404; FGuid::Parse reads either form, so ask for the hyphenated one.
+    if len(task_id) == 32:
+        task_id = '-'.join((task_id[:8], task_id[8:12], task_id[12:16], task_id[16:20], task_id[20:]))
+    events, error = [], None
+    conn = http.client.HTTPConnection('127.0.0.1', port + 1, timeout=60)
+    try:
+        conn.request('GET', '/mcp/events/%s' % task_id)
+        r = conn.getresponse()
+        stream_status = r.status
+        for raw in r:
+            line = raw.decode('utf-8', 'replace').strip()
+            if line.startswith('event:'):
+                events.append(line[6:].strip())
+    except Exception as e:
+        stream_status, error = None, str(e)
+    finally:
+        conn.close()
+    return {'ok': stream_status == 200 and 'progress' in events and 'response' in events,
+            'sse_url': sse_url, 'stream_status': stream_status, 'events': events, 'error': error}
+
+
 def main():
     ap = argparse.ArgumentParser(description='NodeToCode MCP transport probes')
     ap.add_argument('--engine', required=True)
@@ -148,6 +272,8 @@ def main():
             results['P2'] = probe_p2(port)
             results['P3'] = probe_p3(port)
             results['P5'] = probe_p5(port)
+            results['P6'] = probe_p6(port, session.proc.pid)
+            results['P6']['evidence']['task_stream'] = task_stream_check(port)
     finally:
         session.stop()
     if args.skip_p4:
