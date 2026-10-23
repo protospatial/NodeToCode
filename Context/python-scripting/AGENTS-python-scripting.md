@@ -182,7 +182,7 @@ JSON index for fast script discovery:
 | `project_folder_scaffold` | utilities | Create standardized folder structures |
 | `asset_duplicator` | utilities | Clone assets with renaming/batch support |
 | `asset_validator` | utilities | Validate naming conventions/compilation |
-| `datatable_populator` | data | Populate DataTables from JSON/CSV |
+| `datatable_populator` | data | Merge rows into DataTables from JSON/CSV (`clear_existing=True` replaces; saves only with `save=True`) |
 | `utility_widget_launcher` | ui | Launch Editor Utility Widgets programmatically |
 
 ## Token-Efficient Function Discovery
