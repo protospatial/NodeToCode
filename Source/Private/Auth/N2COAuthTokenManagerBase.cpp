@@ -166,6 +166,7 @@ void UN2COAuthTokenManagerBase::ExchangeCodeForTokensInternal(const FString& Cod
 
 	// Create HTTP request
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+	Request->SetTimeout(30.0f);
 	Request->SetURL(Config.TokenEndpoint);
 	Request->SetVerb(TEXT("POST"));
 	Request->SetHeader(TEXT("Content-Type"), GetTokenRequestContentType());
@@ -206,6 +207,7 @@ void UN2COAuthTokenManagerBase::RefreshAccessTokenInternal(TFunction<void(bool)>
 
 	// Create HTTP request
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+	Request->SetTimeout(30.0f);
 	Request->SetURL(Config.TokenEndpoint);
 	Request->SetVerb(TEXT("POST"));
 	Request->SetHeader(TEXT("Content-Type"), GetTokenRequestContentType());

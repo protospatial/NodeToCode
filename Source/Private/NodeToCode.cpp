@@ -8,6 +8,9 @@
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
+#include "Editor/EditorEngine.h"
+#include "LLM/N2CBatchTranslationOrchestrator.h"
+#include "LLM/N2CLLMModule.h"
 #include "Core/N2CUserSettings.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
@@ -40,19 +43,20 @@ void FNodeToCodeModule::StartupModule()
     // Initialize logging
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
 
-    // Configure HTTP timeout settings for LLM operations
-    ConfigureHttpTimeouts();
-    
-    // Force disable "Use Less CPU when in Background" setting to prevent HTTP request issues when the editor is not focused
+    // HTTP timeouts are set per request by the LLM HTTP handler; nothing is written to project config.
+    // While a translation is in flight, keep the editor at full speed even when it is in the background, without
+    // changing the user's "Use Less CPU when in Background" preference.
     if (GEditor)
     {
-        UEditorPerformanceSettings* PerfSettings = GetMutableDefault<UEditorPerformanceSettings>();
-        if (PerfSettings)
+        UEditorEngine::FShouldDisableCPUThrottling ShouldDisable = UEditorEngine::FShouldDisableCPUThrottling::CreateLambda([]()
         {
-            PerfSettings->bThrottleCPUWhenNotForeground = false;
-            PerfSettings->SaveConfig();
-            FN2CLogger::Get().Log(TEXT("Disabled 'Use Less CPU when in Background' setting"), EN2CLogSeverity::Info);
-        }
+            const UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
+            return FN2CEditorIntegration::Get().IsAnyTranslationInProgress()
+                || UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress()
+                || (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing);
+        });
+        DisableThrottleHandle = ShouldDisable.GetHandle();
+        GEditor->ShouldDisableCPUThrottlingDelegates.Add(MoveTemp(ShouldDisable));
     }
 
     // Load user secrets
@@ -363,6 +367,15 @@ void FNodeToCodeModule::StartupModule()
 
 void FNodeToCodeModule::ShutdownModule()
 {
+    if (GEditor && DisableThrottleHandle.IsValid())
+    {
+        GEditor->ShouldDisableCPUThrottlingDelegates.RemoveAll([this](const UEditorEngine::FShouldDisableCPUThrottling& D)
+        {
+            return D.GetHandle() == DisableThrottleHandle;
+        });
+        DisableThrottleHandle.Reset();
+    }
+
     // Unregister Claude OAuth console commands
     IConsoleManager::Get().UnregisterConsoleObject(TEXT("N2C.OAuth.Claude.Login"), false);
     IConsoleManager::Get().UnregisterConsoleObject(TEXT("N2C.OAuth.Claude.Submit"), false);
@@ -419,80 +432,6 @@ void FNodeToCodeModule::ShutdownModule()
 
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin shutting down"), EN2CLogSeverity::Info);
 }
-
-void FNodeToCodeModule::ConfigureHttpTimeouts()
-{
-    FN2CLogger::Get().Log(TEXT("Checking HTTP timeout settings for Ollama support..."), EN2CLogSeverity::Info);
-    
-    // Get the project's DefaultEngine.ini path
-    FString DefaultEngineIniPath = FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini");
-    
-    // Check if the file exists
-    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-    if (!PlatformFile.FileExists(*DefaultEngineIniPath))
-    {
-        FN2CLogger::Get().LogWarning(TEXT("Could not find DefaultEngine.ini"), TEXT("NodeToCode"));
-        return;
-    }
-    
-    // Create config object
-    UHttpTimeoutConfig* TimeoutConfig = NewObject<UHttpTimeoutConfig>();
-    
-    // Check current settings
-    TimeoutConfig->LoadConfig();
-    if (TimeoutConfig->HttpConnectionTimeout >= 300.0f && 
-    TimeoutConfig->HttpActivityTimeout >= 3600.0f)
-    {
-        FN2CLogger::Get().Log(TEXT("HTTP timeout settings already configured correctly"), EN2CLogSeverity::Info);
-        return;
-    }
-
-    // Apply our settings values
-    TimeoutConfig->HttpConnectionTimeout = 300.0f;
-    TimeoutConfig->HttpActivityTimeout = 3600.0f;
-    
-    // Save the config, which writes to the specified ini file
-    TimeoutConfig->TryUpdateDefaultConfigFile(*DefaultEngineIniPath);
-    
-    FN2CLogger::Get().Log(
-        TEXT("Added HTTP timeout settings to DefaultEngine.ini to support long-running Ollama requests"), 
-        EN2CLogSeverity::Info
-    );
-    
-    // Apply the changes immediately
-    FConfigCacheIni::LoadGlobalIniFile(GEngineIni, TEXT("Engine"));
-    FHttpModule::Get().UpdateConfigs();
-
-    // Show notification that restart is required for full effect
-    ShowRestartRequiredNotification();
-}
-
-void FNodeToCodeModule::ShowRestartRequiredNotification()
-{
-#if WITH_EDITOR
-    if (!GIsEditor)
-    {
-        return;
-    }
-
-    FNotificationInfo Info(LOCTEXT("HttpSettingsChangedTitle", "Node To Code Plugin"));
-    Info.Text = LOCTEXT("HttpSettingsChangedMessage", 
-                       "HTTP timeout settings have been updated for Node To Code. Please restart the editor for them to take effect.");
-    Info.bFireAndForget = true;
-    Info.FadeOutDuration = 0.5f;
-    Info.ExpireDuration = 10.0f;
-    Info.bUseThrobber = false;
-    Info.bUseSuccessFailIcons = true;
-    Info.bUseLargeFont = false;
-
-    TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
-    if (NotificationItem.IsValid())
-    {
-        NotificationItem->SetCompletionState(SNotificationItem::CS_Success);
-    }
-#endif
-}
-
 
 #undef LOCTEXT_NAMESPACE
     

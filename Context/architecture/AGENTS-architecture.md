@@ -38,7 +38,7 @@ Source/
     *   `FNodeToCodeModule`: Main plugin class.
         *   `StartupModule`: Initializes:
             *   Logging system (`FN2CLogger`)
-            *   HTTP timeouts (`UHttpTimeoutConfig` for `DefaultEngine.ini`)
+            *   No project or editor config is written at startup: HTTP timeouts are set per request (`UN2CHttpHandlerBase`), and CPU throttling is suspended only while a translation runs (a `ShouldDisableCPUThrottlingDelegates` entry). The MCP servers are skipped in commandlets and unattended runs unless `-N2CMcp` is passed
             *   Editor performance settings (disables "Use Less CPU when in Background")
             *   User secrets (`UN2CUserSecrets`)
             *   Styles (`N2CStyle`, `FN2CCodeEditorStyle`)
@@ -50,7 +50,6 @@ Source/
             *   OAuth settings customization (`FN2COAuthSettingsCustomization`)
             *   Console commands for OAuth (Claude and Gemini)
         *   `ShutdownModule`: Cleans up all resources in reverse order.
-    *   `UHttpTimeoutConfig`: Helper to adjust global HTTP timeouts for LLM requests.
 
 ### Console Commands
 

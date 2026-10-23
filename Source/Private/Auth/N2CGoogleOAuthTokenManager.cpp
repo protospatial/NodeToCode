@@ -232,6 +232,7 @@ void UN2CGoogleOAuthTokenManager::InitializeCodeAssistSession(TFunction<void(boo
 
 	// Create HTTP request
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+	Request->SetTimeout(30.0f);
 	Request->SetURL(TEXT("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"));
 	Request->SetVerb(TEXT("POST"));
 	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
