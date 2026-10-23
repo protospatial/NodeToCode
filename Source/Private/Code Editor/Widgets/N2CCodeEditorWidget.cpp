@@ -137,16 +137,16 @@ void UN2CCodeEditorWidget::SelectText(int32 StartLine, int32 StartColumn, int32 
     }
 }
 
-void UN2CCodeEditorWidget::GetSelection(int32& OutStartIndex, int32& OutEndIndex) const
+void UN2CCodeEditorWidget::GetSelection(int32& OutStartLine, int32& OutEndLine) const
 {
     if (CodeEditorWidget.IsValid())
     {
-        CodeEditorWidget->GetSelection(OutStartIndex, OutEndIndex);
+        CodeEditorWidget->GetSelection(OutStartLine, OutEndLine);
     }
     else
     {
-        OutStartIndex = 0;
-        OutEndIndex = 0;
+        OutStartLine = 0;
+        OutEndLine = 0;
     }
 }
 
