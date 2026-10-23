@@ -69,6 +69,9 @@ public:
         OutPinIDMap = PinIDMap;
     }
 
+    /** True while a capture is writing into a graph; false between calls (exposed for tests) */
+    bool HasActiveGraph() const { return CurrentGraph != nullptr; }
+
 private:
     /** Constructor */
     FN2CNodeTranslator() = default;
@@ -76,8 +79,12 @@ private:
     /** The Blueprint structure being built */
     FN2CBlueprint N2CBlueprint;
 
-    /** Current graph being processed */
-    FN2CGraph* CurrentGraph;
+    /** Current graph being processed. Points at a local only for the length of a GenerateN2CStruct or
+     *  ProcessSingleNode call; null otherwise. */
+    FN2CGraph* CurrentGraph = nullptr;
+
+    /** Set while ProcessSingleNode runs, so a lone node never queues nested graphs */
+    bool bSuppressGraphDiscovery = false;
 
     /** Maps node GUIDs to simplified IDs */
     TMap<FGuid, FString> NodeIDMap;
@@ -92,7 +99,8 @@ private:
     /** Struct to track graph processing information */
     struct FGraphProcessInfo
     {
-        UEdGraph* Graph;
+        /** Weak: a queued graph may be deleted (or its Blueprint unloaded) before it is processed */
+        TWeakObjectPtr<UEdGraph> Graph;
         int32 ParentDepth;
 
         FGraphProcessInfo(UEdGraph* InGraph, int32 InParentDepth)
