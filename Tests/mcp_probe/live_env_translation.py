@@ -18,7 +18,9 @@ import argparse
 import http.client
 import json
 import os
+import socket
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -109,30 +111,50 @@ def tool_text(response):
 
 
 def read_task_stream(port, task_id, timeout):
-    """The task stream's events as [(event, data)] until it closes"""
+    """The task stream's events as [(event, data)] until it closes, the response arrives or `timeout` seconds of wall
+    clock pass. The bound is on the whole read, not per socket read: the task sends a progress event every half
+    second while it waits for the provider, so a socket timeout alone never fires (a Gemini request that hung for 14
+    minutes kept a run waiting). A read that hits the bound ends with ('timeout', '<seconds>')."""
     if len(task_id) == 32:
         task_id = '-'.join((task_id[:8], task_id[8:12], task_id[12:16], task_id[16:20], task_id[20:]))
-    events, event = [], None
+    events = []
     conn = http.client.HTTPConnection('127.0.0.1', port + 1, timeout=timeout)
-    try:
-        conn.request('GET', '/mcp/events/%s' % task_id)
-        r = conn.getresponse()
-        data = []
-        for raw in r:
-            line = raw.decode('utf-8', 'replace').rstrip('\r\n')
-            if line.startswith('event:'):
-                event = line[6:].strip()
-            elif line.startswith('data:'):
-                data.append(line[6:] if line[5:6] == ' ' else line[5:])
-            elif not line and (event or data):
-                # A blank line ends an event; its data lines are joined with newlines
-                events.append((event or 'message', '\n'.join(data)))
-                if event == 'response':
-                    break
-                event, data = None, []
-    finally:
-        conn.close()
-    return events
+
+    def read():
+        event, data = None, []
+        try:
+            conn.request('GET', '/mcp/events/%s' % task_id)
+            r = conn.getresponse()
+            for raw in r:
+                line = raw.decode('utf-8', 'replace').rstrip('\r\n')
+                if line.startswith('event:'):
+                    event = line[6:].strip()
+                elif line.startswith('data:'):
+                    data.append(line[6:] if line[5:6] == ' ' else line[5:])
+                elif not line and (event or data):
+                    # A blank line ends an event; its data lines are joined with newlines
+                    events.append((event or 'message', '\n'.join(data)))
+                    if event == 'response':
+                        break
+                    event, data = None, []
+        except (OSError, http.client.HTTPException):
+            pass  # closed below on timeout, or the server went away; the caller sees no response event
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    reader.join(timeout)
+    timed_out = reader.is_alive()
+    if timed_out and conn.sock is not None:
+        try:
+            conn.sock.shutdown(socket.SHUT_RDWR)  # unblocks the reader
+        except OSError:
+            pass
+    conn.close()
+    reader.join(5)
+    result = list(events)
+    if timed_out:
+        result.append(('timeout', str(timeout)))
+    return result
 
 
 def stored_key_present(store_id):

@@ -1,0 +1,454 @@
+"""Live translations through several cloud providers and models in one headless editor, with each request's payload
+checked against the rules the provider cards set. Keys reach only the editor's environment.
+
+Stdlib only; run with `python -I`:
+
+    python -I live_provider_matrix.py --engine G:/UE/UE_5.8 \
+        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 \
+        [--cases anthropic/claude-haiku-5-5 deepseek/deepseek-flash:off ...] [--providers gemini openai]
+
+It reads the keys from the repo's .env (env_keys.py) and refuses to run if a key for a selected provider is saved in
+the per-user secrets file (the saved key would be used, not the variable). For the session it sets Min Severity to
+Debug in the host's Saved/Config layer (restored afterwards), so UN2CLLMPayloadBuilder::Build logs each payload.
+It makes one in-memory probe Blueprint (live_env_translation.SETUP_PY: an Actor with a Print String node, never
+saved), then per case: applies the case's settings (model enum, Max Output Tokens) on the settings object, runs
+translate-focused-blueprint over MCP, reads the task stream, restores the settings, and takes that case's slice of
+the editor log: the payload (summarised: model, sampling fields, output budget, response_format, Gemini
+responseSchema, thinking), token usage and any NodeToCode errors. A case passes when the translation parses with
+code and every payload rule for it holds. Key values are never printed; the editor log, Saved/Logs, the plugin's
+own log file, new translation folders and the report are scanned with find_leaks, and the Saved/Logs files for
+'key='. Report: logs/live_provider_matrix_<label>.json.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from editor_session import EditorSession, free_port  # noqa: E402
+from env_keys import find_leaks, load_provider_keys  # noqa: E402
+from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, call_tool,  # noqa: E402
+                                  read_task_stream, stored_key_present, tool_text)
+
+SETTINGS_SECTION = '[/Script/NodeToCode.N2CSettings]'
+
+# Auto (0) sends the model's maximum output, at most 32000 while requests are not streamed, 65536 for DeepSeek
+# thinking modes (N2CSettings.h tooltips, PR #41)
+AUTO = 32000
+AUTO_DEEPSEEK_THINKING = 65536
+
+
+def case(provider, model, role, expect, settings=None, suffix=''):
+    return {'id': '%s/%s%s' % (provider, model, suffix), 'provider': provider, 'model': model, 'role': role,
+            'expect': expect, 'settings': settings or {}}
+
+
+# Current models only (owner instruction 2026-10-23): the live entries of N2CLLMModelRegistry.cpp per provider, with no
+# retired, deprecated or "shuts down" IDs. Update the list when the registry's lineup changes.
+# expect: sampling (False = no temperature/top_p/top_k), budget_field and budget, response_format,
+# thinking (enabled/disabled), reasoning_effort
+CASES = [
+    case('anthropic', 'claude-sonnet-5-5', 'default', {'sampling': False, 'budget_field': 'max_tokens', 'budget': AUTO}),
+    case('anthropic', 'claude-haiku-5-5', 'cheap', {'sampling': False, 'budget_field': 'max_tokens', 'budget': AUTO}),
+    case('anthropic', 'claude-haiku-5-5', 'cheap, explicit budget 4000',
+         {'sampling': False, 'budget_field': 'max_tokens', 'budget': 4000},
+         settings={'anthropic_max_output_tokens': 4000}, suffix=':budget4000'),
+    case('anthropic', 'claude-opus-5-5', 'quality', {'sampling': False, 'budget_field': 'max_tokens', 'budget': AUTO}),
+    case('openai', 'gpt-6.1-sol', 'default (reasoning)',
+         {'sampling': False, 'budget_field': 'max_completion_tokens', 'budget': AUTO, 'response_format': 'strict_json_schema'}),
+    case('openai', 'gpt-6-luna', 'cheap (reasoning)',
+         {'sampling': False, 'budget_field': 'max_completion_tokens', 'budget': AUTO, 'response_format': 'strict_json_schema'}),
+    case('openai', 'gpt-6-luna', 'cheap (reasoning), explicit budget 8000',
+         {'sampling': False, 'budget_field': 'max_completion_tokens', 'budget': 8000, 'response_format': 'strict_json_schema'},
+         settings={'open_ai_max_output_tokens': 8000}, suffix=':budget8000'),
+    case('openai', 'gpt-6-astra', 'quality (reasoning)',
+         {'sampling': False, 'budget_field': 'max_completion_tokens', 'budget': AUTO, 'response_format': 'strict_json_schema'}),
+    case('gemini', 'gemini-3.8-flash', 'default',
+         {'sampling': False, 'budget_field': 'maxOutputTokens', 'budget': AUTO, 'response_format': 'gemini_response_schema'}),
+    case('gemini', 'gemini-3.5-flash-lite', 'cheap',
+         {'sampling': False, 'budget_field': 'maxOutputTokens', 'budget': AUTO, 'response_format': 'gemini_response_schema'}),
+    case('gemini', 'gemini-4-argon', 'quality',
+         {'sampling': False, 'budget_field': 'maxOutputTokens', 'budget': AUTO, 'response_format': 'gemini_response_schema'}),
+    case('deepseek', 'deepseek-flash', 'default (R1 entry, thinking on)',
+         {'sampling': False, 'budget_field': 'max_tokens', 'budget': AUTO_DEEPSEEK_THINKING, 'response_format': None,
+          'thinking': 'enabled', 'reasoning_effort': 'high'},
+         settings={'deep_seek_model': ('N2CDeepSeekModel', 'DeepSeek_R1')}, suffix=':on'),
+    case('deepseek', 'deepseek-flash', 'cheap (V3 entry, thinking off)',
+         {'sampling': True, 'budget_field': 'max_tokens', 'budget': AUTO, 'response_format': 'json_object',
+          'thinking': 'disabled', 'reasoning_effort': None},
+         settings={'deep_seek_model': ('N2CDeepSeekModel', 'DeepSeek_V3')}, suffix=':off'),
+    case('deepseek', 'deepseek-v4-pro', 'quality (thinking on)',
+         {'sampling': False, 'budget_field': 'max_tokens', 'budget': AUTO_DEEPSEEK_THINKING, 'response_format': None,
+          'thinking': 'enabled', 'reasoning_effort': 'high'},
+         settings={'deep_seek_model': ('N2CDeepSeekModel', 'DeepSeek_V4_Pro')}),
+]
+
+# Runs in the editor: sets settings on the settings object for one case and returns the previous values (as
+# strings for enums). spec values: an int, or [EnumName, member] matched without underscores and case.
+APPLY_PY = r'''
+import json, unreal
+settings = unreal.get_default_object(unreal.N2CSettings)
+spec = json.loads(%(spec)r)
+previous, applied = {}, {}
+def norm(s):
+    return str(s).replace("_", "").lower()
+for prop, value in spec.items():
+    old = settings.get_editor_property(prop)
+    previous[prop] = [type(old).__name__, old.name] if hasattr(old, "name") and not isinstance(old, (int, float, str)) else old
+    if isinstance(value, list):
+        enum_type = getattr(unreal, value[0])
+        member = next((getattr(enum_type, n) for n in dir(enum_type)
+                       if not n.startswith("_") and norm(n) == norm(value[1])), None)
+        if member is None:
+            applied[prop] = "no member %%s in %%s" %% (value[1], value[0])
+            continue
+        value = member
+    settings.set_editor_property(prop, value)
+    now = settings.get_editor_property(prop)
+    applied[prop] = now.name if hasattr(now, "name") and not isinstance(now, (int, float, str)) else now
+result = {"previous": previous, "applied": applied}
+'''
+
+
+# Runs in the editor after SETUP_PY: wires BeginPlay's exec output to the Print String node and sets its text, so
+# the graph has logic to translate (an unconnected Print String can rightly come back with empty code)
+CONNECT_PY = r"""
+import json, unreal
+bridge = unreal.N2CPythonBridge
+found = json.loads(bridge.find_nodes_in_graph(json.dumps(["BeginPlay", "Print String"]), "keyword", False, 20))
+nodes = (found.get("data") or {}).get("nodes") or []
+def label(n):
+    return (str(n.get("nodeName", "")) + " " + str(n.get("nodeClass", ""))).replace(" ", "").lower()
+begin = next((n for n in nodes if "beginplay" in label(n)), None)
+prints = next((n for n in nodes if "printstring" in label(n)), None)
+steps = {"nodes": [label(n) for n in nodes][:10]}
+def pin(n, side, want_exec, name=None):
+    for p in n.get(side) or []:
+        is_exec = str(p.get("type", "")).lower() == "exec"
+        if is_exec == want_exec and (name is None or str(p.get("pinName", "")).lower() == name):
+            return p
+    return None
+if begin and prints:
+    out_pin, in_pin = pin(begin, "outputPins", True), pin(prints, "inputPins", True)
+    if out_pin and in_pin:
+        conn = [{"from": {"nodeGuid": begin["nodeGuid"], "pinGuid": out_pin["pinGuid"]},
+                 "to": {"nodeGuid": prints["nodeGuid"], "pinGuid": in_pin["pinGuid"]}}]
+        res = json.loads(bridge.connect_pins(json.dumps(conn), False))
+        steps["connected"] = res.get("success")
+        if not res.get("success"):
+            steps["connect_result"] = json.dumps(res)[:600]
+    text_pin = pin(prints, "inputPins", False, "instring")
+    if text_pin:
+        steps["text_set"] = json.loads(bridge.set_pin_value(prints["nodeGuid"], text_pin["pinGuid"],
+                                                           "Hello from the provider matrix", "InString")).get("success")
+else:
+    steps["found_head"] = json.dumps(found)[:1200]
+steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success")
+result = steps
+"""
+
+
+def run_py(port, code, rid):
+    status, response = call_tool(port, 'run-python', {'code': code}, rid)
+    text = tool_text(response)
+    try:
+        return json.loads(text or '{}').get('data')
+    except ValueError:
+        return {'status': status, 'text': text[:600]}
+
+
+def apply_settings(port, spec, rid):
+    if not spec:
+        return {}
+    wire = {k: list(v) if isinstance(v, tuple) else v for k, v in spec.items()}
+    return run_py(port, APPLY_PY % {'spec': json.dumps(wire)}, rid)
+
+
+def restore_spec(previous):
+    """APPLY_PY's previous values as a spec that sets them back"""
+    out = {}
+    for prop, value in (previous or {}).items():
+        out[prop] = list(value) if isinstance(value, list) else value
+    return out
+
+
+def extract_payloads(text):
+    """Every 'LLM Request Payload:' JSON object in a log slice"""
+    payloads = []
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r'LLM Request Payload:', text):
+        start = text.find('{', m.end())
+        if start < 0:
+            continue
+        try:
+            obj, _ = decoder.raw_decode(text[start:])
+            payloads.append(obj)
+        except ValueError:
+            payloads.append({'_unparsed_head': text[start:start + 300]})
+    return payloads
+
+
+def count_key(value, name):
+    if isinstance(value, dict):
+        return (1 if name in value else 0) + sum(count_key(v, name) for v in value.values())
+    if isinstance(value, list):
+        return sum(count_key(v, name) for v in value)
+    return 0
+
+
+def summarise(payload):
+    gen = payload.get('generationConfig') or {}
+    rf = payload.get('response_format') or {}
+    js = rf.get('json_schema') or {}
+    sampling = {k: payload[k] for k in ('temperature', 'top_p', 'top_k') if k in payload}
+    sampling.update({'generationConfig.' + k: gen[k] for k in ('temperature', 'topP', 'topK') if k in gen})
+    return {
+        'model': payload.get('model'),
+        'keys': sorted(payload),
+        'sampling': sampling,
+        'max_tokens': payload.get('max_tokens'),
+        'max_completion_tokens': payload.get('max_completion_tokens'),
+        'maxOutputTokens': gen.get('maxOutputTokens'),
+        'response_format': {'type': rf.get('type'), 'strict': js.get('strict'), 'name': js.get('name')} if rf else None,
+        'gemini': {'responseMimeType': gen.get('responseMimeType'), 'responseSchema': 'responseSchema' in gen,
+                   'responseFormat': 'responseFormat' in gen} if gen else None,
+        'additionalProperties_count': count_key(payload, 'additionalProperties'),
+        'thinking': payload.get('thinking'),
+        'reasoning_effort': payload.get('reasoning_effort'),
+        'chars': len(json.dumps(payload)),
+    }
+
+
+def check_payload(expect, summary):
+    """[(rule, ok, detail)] for one case's payload summary"""
+    rules = []
+    if expect.get('sampling') is False:
+        rules.append(('no sampling fields', not summary['sampling'], summary['sampling']))
+    elif expect.get('sampling') is True:
+        rules.append(('temperature sent', bool(summary['sampling']), summary['sampling']))
+    field = expect.get('budget_field')
+    if field:
+        rules.append(('%s == %s' % (field, expect.get('budget')), summary.get(field) == expect.get('budget'),
+                      {k: summary.get(k) for k in ('max_tokens', 'max_completion_tokens', 'maxOutputTokens')}))
+        other = [k for k in ('max_tokens', 'max_completion_tokens', 'maxOutputTokens') if k != field and summary.get(k) is not None]
+        rules.append(('only %s sent' % field, not other, other))
+    rf = expect.get('response_format', 'unset')
+    if rf == 'strict_json_schema':
+        got = summary['response_format'] or {}
+        rules.append(('response_format json_schema strict:true', got.get('type') == 'json_schema' and got.get('strict') is True, got))
+    elif rf == 'gemini_response_schema':
+        g = summary['gemini'] or {}
+        rules.append(('responseSchema + application/json', g.get('responseSchema') and g.get('responseMimeType') == 'application/json', g))
+        rules.append(('no additionalProperties', summary['additionalProperties_count'] == 0, summary['additionalProperties_count']))
+    elif rf == 'json_object':
+        got = summary['response_format'] or {}
+        rules.append(('response_format json_object', got.get('type') == 'json_object', got))
+    elif rf is None:
+        rules.append(('no response_format', summary['response_format'] is None, summary['response_format']))
+    if 'thinking' in expect:
+        got = (summary['thinking'] or {}).get('type')
+        rules.append(('thinking.type %s' % expect['thinking'], got == expect['thinking'], summary['thinking']))
+    if 'reasoning_effort' in expect:
+        rules.append(('reasoning_effort %s' % expect['reasoning_effort'], summary['reasoning_effort'] == expect['reasoning_effort'],
+                      summary['reasoning_effort']))
+    return rules
+
+
+def nodetocode_errors(text):
+    out = []
+    for line in text.splitlines():
+        # Errors, and warnings other than the graph overlay's construction trace
+        if 'LogNodeToCode: Error' in line or ('LogNodeToCode: Warning' in line and 'GraphOverlay' not in line):
+            out.append(line.strip()[:700])
+    return out[:8]
+
+
+def run_case(port, c, rid, timeout, log_reader):
+    rec = {'id': c['id'], 'provider': c['provider'], 'model': c['model'], 'role': c['role']}
+    rec['settings_applied'] = apply_settings(port, c['settings'], rid)
+    offset = log_reader.size()
+    started_at = time.time()
+    status, started = call_tool(port, 'translate-focused-blueprint',
+                                {'provider': c['provider'], 'model': c['model'], 'language': 'cpp'}, rid + 1,
+                                meta={'progressToken': 'matrix-%d' % rid})
+    task_id = (started.get('result') or {}).get('taskId')
+    if task_id:
+        events = read_task_stream(port, task_id, timeout)
+        final = [d for e, d in events if e == 'response']
+        # A response read in the grace after the bound still counts; only a missing response is a timeout
+        rec['timed_out'] = not final and any(e == 'timeout' for e, _ in events)
+        rec['seconds'] = round(time.time() - started_at, 1)
+        message = {}
+        if final:
+            try:
+                message = json.loads(final[-1])
+            except ValueError:
+                message = {'raw': final[-1][:600]}
+        text = tool_text(message)
+        rec['is_error'] = bool((message.get('result') or {}).get('isError')) or 'error' in message or not final
+        try:
+            translation = json.loads(text)
+        except ValueError:
+            translation = None
+        if isinstance(translation, dict):
+            graphs = translation.get('graphs') or []
+            rec['graphs'] = len(graphs)
+            rec['code_chars'] = sum(len((g.get('code') or {}).get('graphDeclaration', '') or '')
+                                    + len((g.get('code') or {}).get('graphImplementation', '') or '')
+                                    for g in graphs if isinstance(g, dict))
+        else:
+            rec['response_head'] = (text or final[-1] if final else '')[:900]
+    else:
+        rec['is_error'] = True
+        rec['task_start'] = started
+    time.sleep(1.0)  # let the log flush
+    if c['settings'] and isinstance(rec['settings_applied'], dict):
+        rec['settings_restored'] = apply_settings(port, restore_spec(rec['settings_applied'].get('previous')), rid + 2)
+    slice_text = log_reader.read_from(offset)
+    payloads = extract_payloads(slice_text)
+    rec['payload_count'] = len(payloads)
+    rec['payloads'] = [summarise(p) for p in payloads if '_unparsed_head' not in p]
+    usage = re.findall(r'LLM Token Usage - Input: (\d+) Output: (\d+)', slice_text)
+    rec['usage'] = [{'input': int(a), 'output': int(b)} for a, b in usage]
+    rec['log_errors'] = nodetocode_errors(slice_text)
+    rec['rules'] = []
+    if rec['payloads']:
+        rec['rules'] = [{'rule': r, 'ok': bool(ok), 'detail': d} for r, ok, d in check_payload(c['expect'], rec['payloads'][0])]
+    rec['translated'] = bool(not rec['is_error'] and rec.get('code_chars'))
+    rec['ok'] = bool(rec['translated'] and rec['payloads'] and all(r['ok'] for r in rec['rules']))
+    return rec
+
+
+class LogReader:
+    def __init__(self, path):
+        self.path = path
+
+    def size(self):
+        try:
+            return os.path.getsize(self.path)
+        except OSError:
+            return 0
+
+    def read_from(self, offset):
+        try:
+            with open(self.path, 'rb') as f:
+                f.seek(offset)
+                return f.read().decode('utf-8', 'replace').replace('\x00', '')
+        except OSError:
+            return ''
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--engine', required=True)
+    ap.add_argument('--project', required=True)
+    ap.add_argument('--label', default='5.8')
+    ap.add_argument('--cases', nargs='*', help='case ids to run (default: all, or all of --providers)')
+    ap.add_argument('--providers', nargs='*', choices=sorted(PROVIDER_VARIABLE))
+    ap.add_argument('--list', action='store_true', help='list the case ids and exit')
+    ap.add_argument('--port', type=int, default=27190)
+    ap.add_argument('--timeout', type=int, default=300,
+                    help='seconds per translation; a case that hits it fails as timed out and the rest are skipped, '
+                         'since the editor still holds that request')
+    args = ap.parse_args()
+
+    if args.list:
+        for c in CASES:
+            print(c['id'], '-', c['role'])
+        return 0
+    # --cases runs in the order given (put a slow or flaky model last); otherwise the table's order
+    by_id = {c['id']: c for c in CASES}
+    cases = [by_id[i] for i in args.cases if i in by_id] if args.cases else list(CASES)
+    cases = [c for c in cases if not args.providers or c['provider'] in args.providers]
+    unknown = set(args.cases or []) - {c['id'] for c in CASES}
+    if unknown or not cases:
+        print(json.dumps({'ok': False, 'reason': 'unknown or no cases', 'unknown': sorted(unknown)}))
+        return 2
+    providers = sorted({c['provider'] for c in cases})
+    keys = load_provider_keys(only=[PROVIDER_VARIABLE[p] for p in providers])
+    missing = [p for p in providers if PROVIDER_VARIABLE[p] not in keys]
+    saved = [p for p in providers if stored_key_present(STORE_ID[p])]
+    if saved:
+        print(json.dumps({'ok': False, 'reason': 'keys saved in the per-user secrets file for %s' % saved}))
+        return 2
+    cases = [c for c in cases if c['provider'] not in missing]
+
+    logs = os.path.join(HERE, 'logs')
+    os.makedirs(logs, exist_ok=True)
+    log_path = os.path.join(logs, 'live_provider_matrix_%s_editor.log' % args.label)
+    report_path = os.path.join(logs, 'live_provider_matrix_%s.json' % args.label)
+    project_dir = os.path.dirname(os.path.abspath(args.project))
+    saved_logs = os.path.join(project_dir, 'Saved', 'Logs')
+    plugin_log = os.path.join(project_dir, 'Saved', 'NodeToCode.log')
+    translations_dir = os.path.join(project_dir, 'Saved', 'NodeToCode', 'Translations')
+    before = set(os.listdir(translations_dir)) if os.path.isdir(translations_dir) else set()
+    port = free_port(args.port)
+    report = {'label': args.label, 'engine': args.engine, 'date': time.strftime('%Y-%m-%d'), 'port': port,
+              'not_verified': [{'provider': p, 'reason': '%s not in .env' % PROVIDER_VARIABLE[p]} for p in missing],
+              'cases': []}
+
+    session = EditorSession(args.engine, args.project, port, log_path, allow_python=True, extra_env=keys,
+                            # -RenderOffScreen: on UE 5.6 with -nullrhi the opened Blueprint editor's window hits
+                            # FGenericWindow::GetRestoredDimensions, which is Fatal unless this flag is on
+                            extra_args=['-LogCmds=LogNodeToCode VeryVerbose', '-RenderOffScreen'])
+    with session as s:
+        # Payloads are logged at Debug; restored with the other Saved/Config patches when the session stops
+        s._patch('NodeToCode.ini', SETTINGS_SECTION, 'MinSeverity', 'Debug')
+        report['started'] = s.start()
+        if report['started']:
+            name = 'BP_N2CProviderMatrix_%s' % time.strftime('%H%M%S')
+            report['setup'] = run_py(port, SETUP_PY % {'dir': ASSET_DIR, 'name': name}, 1)
+            report['wiring'] = run_py(port, CONNECT_PY, 2)
+            print('setup', json.dumps(report['setup']), 'wiring', json.dumps(report['wiring'])[:400], flush=True)
+            reader = LogReader(log_path)
+            for i, c in enumerate(cases):
+                if any(r.get('timed_out') for r in report['cases']):
+                    report['cases'].append({'id': c['id'], 'provider': c['provider'], 'model': c['model'],
+                                            'role': c['role'], 'ok': False, 'skipped': 'an earlier case timed out'})
+                    continue
+                rec = run_case(port, c, 100 + 10 * i, args.timeout, reader)
+                report['cases'].append(rec)
+                print('%-40s %s  %ss  usage=%s' % (c['id'], 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
+                                                   rec.get('usage')), flush=True)
+
+    log_text = session.log_text()
+    report['log_names_variables'] = {v: ('the %s environment variable is used' % v) in log_text for v in sorted(keys)}
+    new_dirs = [os.path.join(translations_dir, d) for d in sorted((set(os.listdir(translations_dir)) if os.path.isdir(translations_dir) else set()) - before)]
+    report['translation_dirs'] = len(new_dirs)
+    key_eq = []
+    for root, _, names in os.walk(saved_logs) if os.path.isdir(saved_logs) else []:
+        for n in names:
+            p = os.path.join(root, n)
+            try:
+                data = open(p, 'rb').read()
+            except OSError:
+                continue
+            if b'key=' in data or 'key='.encode('utf-16-le') in data:
+                key_eq.append(p)
+    for p in (log_path, plugin_log):
+        try:
+            data = open(p, 'rb').read()
+        except OSError:
+            continue
+        if b'key=' in data or 'key='.encode('utf-16-le') in data:
+            key_eq.append(p)
+    report['key_eq_in_logs'] = key_eq
+    with open(report_path, 'w', encoding='utf-8') as f:
+        json.dump(report, f, indent=1)
+    leaks = find_leaks(keys, [log_path, report_path, saved_logs, plugin_log] + new_dirs)
+    report['leaks'] = [{'path': p, 'variable': n} for p, n in leaks]
+    report['ok'] = bool(report['started'] and report['cases'] and all(c['ok'] for c in report['cases'])
+                        and not leaks and not key_eq)
+    with open(report_path, 'w', encoding='utf-8') as f:
+        json.dump(report, f, indent=1)
+    print(json.dumps({'ok': report['ok'], 'report': report_path, 'leaks': report['leaks'], 'key_eq_in_logs': key_eq,
+                      'not_verified': report['not_verified'],
+                      'failed': [c['id'] for c in report['cases'] if not c['ok']]}, indent=1))
+    return 0 if report['ok'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

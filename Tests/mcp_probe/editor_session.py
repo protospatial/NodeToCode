@@ -13,6 +13,10 @@ this writes the probe's port (and, when asked, Allow MCP Python Execution) into 
 (NodeToCode.ini and EditorPerProjectUserSettings.ini under Saved/Config/<Platform>Editor) and restores both files
 when the session stops. The project's shared Config/ folder is never touched. Using a non-default port means an
 editor already running on 27000 cannot answer the probe.
+
+Lifetime: on Windows the editor is put in a job object that kills it (and its crash reporter) when this Python
+process exits, so a probe that is killed or dies cannot leave an editor running. The Saved/Config patches are only
+restored by stop(); after a hard kill, check the host's Saved/Config/<Platform>Editor files.
 """
 import argparse
 import json
@@ -31,6 +35,52 @@ def find_editor(engine_root):
     if not os.path.isfile(exe):
         raise SystemExit('UnrealEditor-Cmd not found under %s' % engine_root)
     return exe
+
+
+def kill_with_parent(proc):
+    """Windows: put proc in a job object that kills it when the last handle to the job closes, which happens when this
+    process exits however it exits. Returns the job handle (keep it referenced) or None where unsupported."""
+    if os.name != 'nt':
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except ImportError:
+        return None
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(n, ctypes.c_ulonglong) for n in ('ReadOperationCount', 'WriteOperationCount', 'OtherOperationCount',
+                                                      'ReadTransferCount', 'WriteTransferCount', 'OtherTransferCount')]
+
+    class BasicLimits(ctypes.Structure):
+        _fields_ = [('PerProcessUserTimeLimit', ctypes.c_longlong), ('PerJobUserTimeLimit', ctypes.c_longlong),
+                    ('LimitFlags', wintypes.DWORD), ('MinimumWorkingSetSize', ctypes.c_size_t),
+                    ('MaximumWorkingSetSize', ctypes.c_size_t), ('ActiveProcessLimit', wintypes.DWORD),
+                    ('Affinity', ctypes.c_size_t), ('PriorityClass', wintypes.DWORD), ('SchedulingClass', wintypes.DWORD)]
+
+    class ExtendedLimits(ctypes.Structure):
+        _fields_ = [('BasicLimitInformation', BasicLimits), ('IoInfo', IoCounters),
+                    ('ProcessMemoryLimit', ctypes.c_size_t), ('JobMemoryLimit', ctypes.c_size_t),
+                    ('PeakProcessMemoryUsed', ctypes.c_size_t), ('PeakJobMemoryUsed', ctypes.c_size_t)]
+
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = (ctypes.c_void_p, wintypes.LPCWSTR)
+    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD)
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        return None
+    info = ExtendedLimits()
+    info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    # 9 = JobObjectExtendedLimitInformation
+    if not kernel32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+        kernel32.CloseHandle(job)
+        return None
+    if not kernel32.AssignProcessToJobObject(job, wintypes.HANDLE(int(proc._handle))):
+        kernel32.CloseHandle(job)
+        return None
+    return job
 
 
 def free_port(preferred):
@@ -60,6 +110,7 @@ class EditorSession:
         self.extra_args = list(extra_args)
         self.extra_env = dict(extra_env or {})
         self.proc = None
+        self._job = None
         self._backups = {}
 
     def args(self):
@@ -114,6 +165,7 @@ class EditorSession:
             env = dict(os.environ)
             env.update(self.extra_env)
         self.proc = subprocess.Popen(self.args(), stdout=self.log, stderr=subprocess.STDOUT, env=env)
+        self._job = kill_with_parent(self.proc)
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.proc.poll() is not None:
