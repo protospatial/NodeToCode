@@ -10,7 +10,7 @@ Interaction design, UI/UX design, editor/pipeline tooling, virtual production, s
 **I've applied the aforementioned skillsets to:**
 
 - Building and launching [Swing Genius for the Meta Quest 3](https://www.swinggenius.com)
-- Overhauling the ears menu and implementing the takes browser for [Unreal Engine 5.3+ Virtual Camera UI](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-5.3-release-notes?application_version=5.3#virtualcamera)
+- Overhauling the ears menu and implementing the takes browser for [Unreal Engine 5.3 (and later) Virtual Camera UI](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-5.3-release-notes?application_version=5.3#virtualcamera)
 - Implementing the front-end for [Unreal Engine's 4.26 Virtual Camera v2](https://www.nmcclure.com/virtual-camera)
 - Exploring [future spatial computing ecosystems](https://www.nmcclure.com/empowering-device-ecosystems-with-xr) and [remote desktop systems](https://www.nmcclure.com/spatial-remote-desktop)
 - Prototyping and implementing the spatial interfaces and interactions for [Unreal Engine's 4.23 Virtual Scouting toolset](https://www.nmcclure.com/vr-scouting)

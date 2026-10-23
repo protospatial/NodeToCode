@@ -27,13 +27,13 @@
 
 ## Plugins Config Files & Source Control
 
-Node to Code utilizes two separate Config files:
+Node to Code uses two separate files:
 - DefaultNodeToCode.ini
   - Stores all of your modified non-sensitive plugin settings
   - Saved in your Project's **Config** path
   - Can be committed to source control without leaking API Keys
 
-- NodeToCodeSecrets.ini
-  - Stores your LLM service provider API keys
-  - Saved in your Project's **Saved** path
-  - Should be ignored by default when using a properly configured UE .gitignore or .p4ignore
+- secrets.json
+  - Stores your LLM service provider API keys, in plain text
+  - Saved at `Saved/NodeToCode/User/secrets.json` in your project folder
+  - **Keep it out of source control.** A standard UE .gitignore or .p4ignore that ignores the whole `Saved/` folder already covers it; if yours does not, add `Saved/NodeToCode/User/secrets.json` (or `Saved/`) to it, and never submit or share this file
