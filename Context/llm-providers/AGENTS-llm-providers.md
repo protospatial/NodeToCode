@@ -17,7 +17,8 @@ Source/
 │   ├── N2CHttpHandler.h                  # HTTP handler concrete
 │   ├── N2CSystemPromptManager.h          # Prompt management
 │   ├── N2CLLMTypes.h                     # Enums, delegates, config struct
-│   ├── N2CLLMModels.h                    # Model enums and utilities
+│   ├── N2CLLMModels.h                    # Model enums, N2CDefaultModels, FN2CLLMModelUtils
+│   ├── N2CLLMModelRegistry.h             # FN2CModelMetadata + FN2CLLMModelRegistry (model data)
 │   ├── N2CLLMPricing.h                   # Pricing structs
 │   ├── N2COllamaConfig.h                 # Ollama config struct
 │   ├── N2CBatchTranslationOrchestrator.h # Batch translation
@@ -43,7 +44,8 @@ Source/
     ├── N2CResponseParserBase.cpp
     ├── N2CHttpHandlerBase.cpp
     ├── N2CSystemPromptManager.cpp
-    ├── N2CLLMModels.cpp
+    ├── N2CLLMModels.cpp                  # FN2CLLMModelUtils, forwards to the registry
+    ├── N2CLLMModelRegistry.cpp           # InitializeRegistry: one entry per cloud model
     ├── N2CBatchTranslationOrchestrator.cpp
     └── Providers/                        # Provider implementations
         ├── N2COpenAIService.cpp
@@ -69,7 +71,7 @@ Manages interactions with LLMs.
 *   **`N2CBaseLLMService.h/.cpp` (`UN2CBaseLLMService`)**: Abstract base class for LLM services, providing common initialization and request flow. Derived classes implement: `CreateResponseParser()`, `GetConfiguration()`, `GetProviderHeaders()`, `FormatRequestPayload()`, `GetDefaultEndpoint()`.
 *   **Provider Implementations (`Source/Public/LLM/Providers/`):**
     *   Service classes inheriting `UN2CBaseLLMService`:
-        *   `UN2COpenAIService` - OpenAI Chat Completions API
+        *   `UN2COpenAIService` - OpenAI Chat Completions API (`/v1/chat/completions`), or the Responses API (`/v1/responses`, `FormatResponsesAPIPayload`) for a model whose registry entry sets `bRequiresResponsesAPI` (GPT-5.2 Pro today). An ID the registry does not know goes to Chat Completions.
         *   `UN2CAnthropicService` - Anthropic Claude API (`x-api-key`, plain string `system`)
         *   `UN2CGeminiService` - Google Gemini API (`generativelanguage.googleapis.com`, key in `x-goog-api-key`)
         *   `UN2CDeepSeekService` - DeepSeek API
@@ -100,7 +102,14 @@ Manages interactions with LLMs.
     *   `EN2CDeepSeekModel`: DeepSeek_R1 (default: `deepseek-flash`, thinking high), DeepSeek_V3 (`deepseek-flash`, thinking off, `json_object`), DeepSeek_V4_Pro (`deepseek-v4-pro`, thinking high). The old IDs `deepseek-reasoner`/`deepseek-chat` were discontinued 2026-07-24; the enumerator names stay. R1 and V3 share a model ID and differ in `FN2CModelMetadata::ReasoningEffort`, which travels per request in `FN2CLLMConfig::ReasoningEffort` (filled by `UN2CSettings::ResolveRequestModel`); `GetModelMetadataById(Id, Effort)` picks the entry, and a bare ID gets the first entry registered (the API default, thinking on)
     *   Defaults live in `N2CDefaultModels` (same header). Enumerators are never renamed or removed, because settings save them by name: new models are appended, retired ones get `UMETA(Hidden)` plus `.Retired(date)` in the registry, deprecated-but-live ones get `.ShutsDown(date)` and the date in their display name. `UN2CSettings::PostInitProperties` moves a saved retired selection to the default and logs one warning. `NodeToCode.LLM.Registry` checks these rules.
     *   Note: Ollama and LM Studio use dynamic string-based model names instead of enums
-    *   `FN2CLLMModelUtils`: Model string ID getters, pricing getters, system prompt support checks
+    *   `FN2CLLMModelUtils`: Model string ID getters, pricing getters, system prompt support checks. Every function forwards to `FN2CLLMModelRegistry`; it holds no model data of its own.
+*   **`N2CLLMModelRegistry.h/.cpp` (`FN2CLLMModelRegistry`, `FN2CModelMetadata`)**: The single source of model data for the four cloud providers. `FN2CLLMModelRegistry::Get()` builds it once in `InitializeRegistry()`, which adds one `FN2CModelMetadata` per enumerator to the provider's map (`OpenAIModels`, `AnthropicModels`, `GeminiModels`, `DeepSeekModels`) and then indexes every entry by model ID. Lookups: `GetModelMetadata(Enum)`, `GetModelMetadataById(Id)` and `GetModelMetadataById(Id, ReasoningEffort)`, `GetModelId`, `RequiresResponsesAPI`, the per-provider pricing getters and `GetAllModelsForProvider`. `FN2CModelMetadata` fields:
+    *   Identity: `ModelId` (the API ID sent to the provider), `DisplayName`, `Provider`
+    *   Pricing (USD per 1M tokens): `InputCostPer1M`, `OutputCostPer1M`
+    *   Capabilities: `ContextWindowSize` (default 128000; the token estimator reads it), `MaxOutputTokens`, `bSupportsSystemPrompts` (false merges the system prompt into the user message), `bSupportsStructuredOutput` (OpenAI: false sends no `response_format`; DeepSeek: only true sends `json_object`; Gemini always gets the schema), `bIsReasoningModel` (descriptive only: request building reads the sampling and max-tokens flags instead), `bRequiresResponsesAPI`, `bAcceptsSamplingParams` (false sends no temperature/top_p/top_k), `bUsesMaxCompletionTokens` (OpenAI: `max_completion_tokens` instead of `max_tokens`), `ReasoningEffort` (per-request thinking control; entries may share a `ModelId` when it differs)
+    *   Generation defaults: `DefaultTemperature` (sent only with `bAcceptsSamplingParams`), `DefaultMaxTokens` (at most `MaxOutputTokens`)
+    *   Lifecycle: `bIsDeprecated`, `bIsRetired`, `ShutdownDate`, set with `.ShutsDown(date)` or `.Retired(date)`; `.WithReasoningEffort(effort)` sets `ReasoningEffort`
+    *   An enumerator with no entry gets no metadata: `GetModelId` returns the provider default's ID, so the request silently goes to the default model. A model ID with no entry (for example an MCP model override) gets no sampling fields; on OpenAI it also gets `max_completion_tokens`, strict `json_schema` and Chat Completions, and on DeepSeek no `response_format`.
 *   **`N2CLLMPricing.h`**: Pricing structs per provider - `FN2COpenAIPricing`, `FN2CAnthropicPricing`, `FN2CGeminiPricing`, `FN2CDeepSeekPricing`. Each has `InputCost` and `OutputCost` (per 1M tokens).
 *   **`N2COllamaConfig.h`**: `FN2COllamaConfig` USTRUCT with Ollama-specific settings. Only what the user sets is sent (`ConfigureForOllama`):
     *   General: `OllamaEndpoint`, `bUseSystemPrompts` (default true), `PrependedModelCommand`, `Think` (`EN2COllamaThink`: Default omits `think`, On/Off send true/false, Level sends `ThinkLevel`), `KeepAlive` (seconds, top-level `keep_alive`)
@@ -149,21 +158,27 @@ Some models have limited or no system prompt support:
 
 ## Adding/Updating LLM Providers/Models (Guide)
 
-1.  **Define Core Types (`N2CLLMTypes.h`, `N2CLLMModels.h/.cpp`, `N2CLLMPricing.h`):**
-    *   Add to `EN2CLLMProvider` enum (if new provider). Current providers: OpenAI, Anthropic, Gemini, DeepSeek, Ollama, LMStudio.
-    *   Define/update model enum (e.g., `EN2CNewProviderModel`). Note: Ollama and LMStudio use dynamic string-based model names instead of enums.
-    *   Update `FN2CLLMModelUtils`: Add `Get[ProviderName]ModelValue()`, `Get[ProviderName]Pricing()`, and static pricing map entry.
-    *   If new pricing structure, define `FN2CNewProviderPricing` struct.
+1.  **Add the model to the registry (`N2CLLMModels.h`, `N2CLLMModelRegistry.cpp`).** This is the only step for a new or changed model of an existing cloud provider:
+    *   Append an enumerator at the end of the provider's enum in `N2CLLMModels.h` (never rename, reorder or remove one: settings save them by name).
+    *   Add its entry in `FN2CLLMModelRegistry::InitializeRegistry()` (`N2CLLMModelRegistry.cpp`) with every `FN2CModelMetadata` field set from the provider's model page: ID, display name, prices, context window, max output, and the capability flags above. Set `bRequiresResponsesAPI` for an OpenAI model that the Chat Completions endpoint does not serve; leave `bAcceptsSamplingParams` false unless the provider documents that the model accepts temperature. Nothing else holds model data: `FN2CLLMModelUtils` forwards to the registry and the `UN2CSettings` pricing `TMap`s (`OpenAIModelPricing` and the others) hold only user overrides.
+    *   Retiring a model: keep the enumerator, add `UMETA(Hidden)` and `.Retired(date)`. Deprecated but still served: `.ShutsDown(date)` and the date in the display name. Changing a default: update `N2CDefaultModels` and the default checks in `Source/Private/Tests/LLM/N2CModelRegistry.spec.cpp`.
+    *   Run the `NodeToCode.LLM.Registry` automation tests, which fail when an enumerator has no entry, when `UMETA(Hidden)` and `.Retired` disagree, or when a live model ID with the same `ReasoningEffort` appears twice.
+
+    **New provider only (`N2CLLMTypes.h`, `N2CLLMModels.h/.cpp`, `N2CLLMModelRegistry.h/.cpp`, `N2CLLMPricing.h`):**
+    *   Add to `EN2CLLMProvider` enum. Current providers: OpenAI, Anthropic, Gemini, DeepSeek, Ollama, LMStudio.
+    *   Define the model enum (e.g., `EN2CNewProviderModel`) and its `N2CDefaultModels` entry. Ollama and LMStudio use dynamic string-based model names instead of enums and have no registry entries.
+    *   In `FN2CLLMModelRegistry`, add a `TMap<EN2CNewProviderModel, FN2CModelMetadata>`, its `GetModelMetadata`/`GetModelId`/pricing overloads, its entries in `InitializeRegistry()` and its loop in the model ID index at the end of `InitializeRegistry()`.
+    *   Add `FN2CLLMModelUtils` forwarders only if callers need them, and a `FN2CNewProviderPricing` struct if the pricing getters need one.
 
 2.  **Plugin Settings (`N2CSettings.h/.cpp`):**
-    *   Add UPROPERTY for new provider's model enum, API Key UI string, and pricing map (if new).
-    *   Update `GetActiveApiKey()`, `GetActiveModel()`, and pricing getters.
-    *   In constructor/`InitializePricing()`, set default model and pricing.
+    *   Add UPROPERTY for new provider's model enum (defaulting to its `N2CDefaultModels` value), API Key UI string, and pricing override `TMap` (user overrides; the getters fall back to the registry).
+    *   Update `GetActiveApiKey()`, `GetActiveModel()`, the `*ForProvider` variants, and pricing getters.
+    *   Add the provider's model property to `MigrateRetiredModelSelections()`. `InitializePricing()` is kept but empty: default prices come from the registry.
     *   In `PostEditChangeProperty()`, handle saving the new API key UI string to `UserSecrets`.
 
 3.  **User Secrets (`N2CUserSecrets.h/.cpp`):**
     *   Add `FString` UPROPERTY for the new provider's API key.
-    *   Update `LoadSecrets()` and `SaveSecrets()` to handle the new key.
+    *   Add its JSON field name to `ApiKeyFields` (`N2CUserSecrets.cpp`) and read and write it in `LoadSecretsFromFile()` and `SaveSecretsToFile()`.
 
 4.  **Service Implementation (`Source/Public/LLM/Providers/` and `Source/Private/LLM/Providers/`):**
     *   Create `N2CNewProviderService.h` (in Public) and `.cpp` (in Private) inheriting `UN2CBaseLLMService`.
