@@ -170,6 +170,19 @@ JSON index for fast script discovery:
 }
 ```
 
+Writing and recovery (project registry; same pattern as `FN2CFileUtils`):
+
+*   `_save_registry` writes `script_registry.json.tmp`, copies the previous file to `script_registry.json.bak` and
+    `os.replace`s the temporary file over it. Unknown top-level fields are kept.
+*   A project registry that does not parse (or is not an object with a `scripts` object) is copied to
+    `script_registry.json.corrupt-<UTC yyyymmdd-hhmmss>` (once per distinct content), left in place, and
+    `RegistryUnreadableError` is raised: list/search/get/save/delete return an error naming the file, `save_script`
+    writes no `.py` file, and nothing writes over the registry until it is repaired or deleted. An unreadable file
+    (locked, no permission) is refused the same way without a copy.
+*   A complete `.tmp` left by an interrupted save, with no registry beside it, is moved into place on the next load.
+*   The bundled plugin registry is read-only: if it does not parse, it is logged and treated as empty.
+*   Headless check: `Tests/mcp_probe/e05_registry_check.py` (run with `-ExecutePythonScript`).
+
 ### Bundled Scripts (10 scripts, 4 categories)
 
 | Script | Category | Description |
