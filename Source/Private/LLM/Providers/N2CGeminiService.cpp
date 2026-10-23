@@ -4,6 +4,7 @@
 
 #include "Auth/N2CGoogleOAuthTokenManager.h"
 #include "Core/N2CSettings.h"
+#include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
@@ -69,15 +70,14 @@ FString UN2CGeminiService::FormatRequestPayload(const FString& UserMessage, cons
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForGemini();
 
+    // Max output tokens from the registry default (16000 for unregistered IDs). Temperature is applied by
+    // ConfigureForGemini only where the registry allows it.
+    const FN2CModelMetadata* ModelMeta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Config.Model);
+    PayloadBuilder->SetMaxTokens(ModelMeta ? ModelMeta->DefaultMaxTokens : 16000);
+
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);
-
-    // Gemini 2.5 Pro seems to respond with more reliable structured outputs with a temp of 1.0
-    if (Config.Model.Contains("gemini-2.5-pro"))
-    {
-        PayloadBuilder->SetTemperature(1.0f);
-    }
 
     // Add system message and user message
     PayloadBuilder->AddSystemMessage(SystemMessage);

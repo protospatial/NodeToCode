@@ -90,9 +90,8 @@ FString UN2COpenAIService::FormatChatCompletionsPayload(const FString& UserMessa
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForOpenAI();
 
-    // Set common parameters
-    // Note: Temperature is not supported for o1/o3 models, but the payload builder will handle this
-    PayloadBuilder->SetTemperature(0.0f);
+    // Max tokens (max_tokens or max_completion_tokens per the registry). Temperature is applied by
+    // ConfigureForOpenAI only for models that accept it; reasoning and unregistered models get none.
     PayloadBuilder->SetMaxTokens(16000);
 
     // Add JSON response format for models that support it

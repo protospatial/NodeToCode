@@ -90,7 +90,8 @@ FString UN2CLMStudioService::FormatRequestPayload(const FString& UserMessage, co
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForLMStudio();
-    
+    PayloadBuilder->SetMaxTokens(16000);
+
     // Try prepending source files to user message
     FString FinalUserMessage = UserMessage;
     PromptManager->PrependSourceFilesToUserMessage(FinalUserMessage);

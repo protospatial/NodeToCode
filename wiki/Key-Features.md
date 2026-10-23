@@ -28,7 +28,7 @@ The plugin offers flexible API integration with multiple LLM providers:
     - Excellent handling of complex Blueprint structures
 - **OpenAI**
     - Support for latest GPT models
-    - Configurable temperature and token settings
+    - Sends sampling settings only to models that accept them
     - Strong general code translation capabilities
 - **DeepSeek**
     - Cost-effective alternative

@@ -53,15 +53,42 @@ public:
     /** Get the JSON schema for N2C translation responses */
     static TSharedPtr<FJsonObject> GetN2CResponseSchema();
 
+    /**
+     * Deep copy of a JSON schema with every "additionalProperties" key removed at every level.
+     * Gemini's responseSchema is an OpenAPI subset that rejects the field with a 400.
+     */
+    static TSharedPtr<FJsonObject> StripAdditionalProperties(const TSharedPtr<FJsonObject>& Schema);
+
 private:
+    /** Returns the named sub-object of the root, creating and attaching it when missing */
+    TSharedPtr<FJsonObject> GetOrCreateRootObjectField(const FString& FieldName);
+
+    /** Logs and returns false when a provider-dependent field is written before a ConfigureFor* call */
+    bool EnsureProviderConfigured(const TCHAR* Caller) const;
+
+    /** Whether temperature/top_p/top_k may be sent for the current provider and model (registry flag) */
+    bool AcceptsSamplingParams() const;
+
+    /** Whether the current OpenAI model takes max_completion_tokens (unregistered IDs are treated as reasoning models) */
+    bool UsesMaxCompletionTokens() const;
+
+    /** Writes the registry's default temperature when the model accepts sampling parameters */
+    void ApplyModelSamplingDefaults();
+
+    /** Registry entry for ModelName when it belongs to the configured provider, else nullptr */
+    const struct FN2CModelMetadata* FindModelMetadata() const;
+
     /** Root JSON object */
     TSharedPtr<FJsonObject> RootObject;
     
     /** Messages array for providers that use it */
     TArray<TSharedPtr<FJsonValue>> MessagesArray;
     
-    /** Current provider type */
-    EN2CLLMProvider ProviderType;
+    /** Current provider type, valid once bProviderConfigured is true */
+    EN2CLLMProvider ProviderType = EN2CLLMProvider::OpenAI;
+
+    /** Set by the ConfigureFor* calls; fields that depend on the provider are written only after it */
+    bool bProviderConfigured = false;
     
     /** Model name */
     FString ModelName;

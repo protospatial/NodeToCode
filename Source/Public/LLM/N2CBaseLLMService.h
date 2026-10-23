@@ -35,6 +35,12 @@ public:
     virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Anthropic; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override { }
 
+    /** Builds the request body this service would send, without sending it (used by the payload automation tests) */
+    FString BuildRequestPayloadForTesting(const FString& UserMessage, const FString& SystemMessage) const
+    {
+        return FormatRequestPayload(UserMessage, SystemMessage);
+    }
+
 protected:
     // Common functionality for derived classes
     virtual void InitializeComponents();

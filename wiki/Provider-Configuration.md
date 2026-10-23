@@ -55,6 +55,10 @@ Choose and configure your [preferred LLM provider](Choosing-an-LLM-Provider) thr
   - Mirostat Tau
   - Random Seed
 
+## Sampling Settings for Cloud Models
+
+For cloud providers, NodeToCode sends a temperature only to models that accept one, and otherwise leaves the provider's default in place. Current Claude models (Opus 4.7 and later), OpenAI reasoning models (the o-series and GPT-5 family) and Gemini 3 models get no temperature, top P or top K, because they reject those settings or work worse with them. A model name NodeToCode does not list, such as a newer ID passed by an MCP client, is treated the same way. Ollama uses the **Advanced Settings** above, and LM Studio uses the sampling settings in the LM Studio app.
+
 ## Best Practices
 
 1. **API Key Security**
