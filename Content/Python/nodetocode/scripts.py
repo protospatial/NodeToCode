@@ -41,6 +41,7 @@ Usage:
 import os
 import json
 import re
+import shutil
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
@@ -101,41 +102,143 @@ def _ensure_scripts_dir() -> bool:
         return False
 
 
-def _load_single_registry(registry_path: str) -> Dict[str, Any]:
+class RegistryUnreadableError(Exception):
+    """The project script registry exists but cannot be read or parsed, so nothing may be written over it."""
+
+
+def _default_registry() -> Dict[str, Any]:
+    """The registry used when no registry file exists yet."""
+    return {
+        "version": "1.0",
+        "scripts": {},
+        "categories": ["general"],
+        "stats": {
+            "total_scripts": 0,
+            "last_updated": datetime.utcnow().isoformat() + "Z"
+        }
+    }
+
+
+def _parse_registry(text: str) -> Dict[str, Any]:
+    """
+    Parse registry JSON and check its shape.
+
+    Raises:
+        ValueError: when the text is not JSON or not a registry object
+    """
+    registry = json.loads(text)
+    if not isinstance(registry, dict):
+        raise ValueError("the top level is not a JSON object")
+    scripts = registry.setdefault("scripts", {})
+    if not isinstance(scripts, dict) or not all(isinstance(info, dict) for info in scripts.values()):
+        raise ValueError("'scripts' is not an object of script entries")
+    if not isinstance(registry.get("categories", []), list):
+        raise ValueError("'categories' is not a list")
+    if not isinstance(registry.get("stats", {}), dict):
+        raise ValueError("'stats' is not an object")
+    return registry
+
+
+def _copy_corrupt_registry(registry_path: str) -> Optional[str]:
+    """
+    Copy a registry that does not parse to <file>.corrupt-<UTC yyyymmdd-hhmmss>, the name the plugin's other state
+    files use. The bad file itself stays in place. A copy with the same bytes already there is reused, so repeated
+    calls do not pile up copies.
+
+    Returns:
+        The copy's path, or None when the copy failed
+    """
+    try:
+        with open(registry_path, 'rb') as f:
+            content = f.read()
+        folder, base = os.path.split(registry_path)
+        prefix = base + ".corrupt-"
+        for entry in sorted(os.listdir(folder)):
+            if entry.startswith(prefix):
+                existing = os.path.join(folder, entry)
+                try:
+                    with open(existing, 'rb') as f:
+                        if f.read() == content:
+                            return existing
+                except OSError:
+                    continue
+        stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        candidate = f"{registry_path}.corrupt-{stamp}"
+        suffix = 1
+        while os.path.exists(candidate):
+            candidate = f"{registry_path}.corrupt-{stamp}-{suffix}"
+            suffix += 1
+        shutil.copyfile(registry_path, candidate)
+        return candidate
+    except OSError as e:
+        log_error(f"Could not copy the unreadable script registry {registry_path}: {e}")
+        return None
+
+
+def _finish_interrupted_write(registry_path: str) -> None:
+    """
+    Finish a save that stopped after <file>.tmp was complete but before it replaced <file>: when the registry is
+    missing and a temporary file that parses is beside it, move that file into place.
+    """
+    temp_path = registry_path + ".tmp"
+    if os.path.exists(registry_path) or not os.path.exists(temp_path):
+        return
+    try:
+        with open(temp_path, 'r', encoding='utf-8') as f:
+            _parse_registry(f.read())
+        os.replace(temp_path, registry_path)
+        log_warning(f"Finished an interrupted save of {registry_path} from {temp_path}")
+    except (OSError, ValueError) as e:
+        log_warning(f"Left the incomplete temporary registry {temp_path} as it is: {e}")
+
+
+def _load_single_registry(registry_path: str, writable: bool = False) -> Dict[str, Any]:
     """
     Load a single script registry from JSON.
 
     Args:
         registry_path: Path to the registry JSON file
+        writable: True for the project registry, which this module saves. A project registry that cannot be read
+                  or parsed raises instead of loading as empty, so no save can write over it; one that does not
+                  parse is also copied to <file>.corrupt-<timestamp>. The plugin's bundled registry is read-only:
+                  a bad one is logged and treated as empty.
 
     Returns:
         Registry dictionary or empty default structure
+
+    Raises:
+        RegistryUnreadableError: writable is True and the file exists but cannot be read or parsed
     """
+    if writable:
+        _finish_interrupted_write(registry_path)
+
     if not os.path.exists(registry_path):
-        return {
-            "version": "1.0",
-            "scripts": {},
-            "categories": ["general"],
-            "stats": {
-                "total_scripts": 0,
-                "last_updated": datetime.utcnow().isoformat() + "Z"
-            }
-        }
+        return _default_registry()
 
     try:
         with open(registry_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        log_error(f"Failed to load script registry from {registry_path}: {e}")
-        return {
-            "version": "1.0",
-            "scripts": {},
-            "categories": ["general"],
-            "stats": {
-                "total_scripts": 0,
-                "last_updated": datetime.utcnow().isoformat() + "Z"
-            }
-        }
+            text = f.read()
+    except OSError as e:
+        message = (f"Could not read the script registry {registry_path} ({e}). It was not changed, and scripts "
+                   f"cannot be saved or deleted until it can be read.")
+        log_error(message)
+        if writable:
+            raise RegistryUnreadableError(message) from e
+        return _default_registry()
+
+    try:
+        return _parse_registry(text)
+    except ValueError as e:  # json.JSONDecodeError and UnicodeDecodeError are ValueErrors too
+        if not writable:
+            log_error(f"The bundled script registry {registry_path} does not parse ({e}); its scripts are not listed.")
+            return _default_registry()
+        copy_path = _copy_corrupt_registry(registry_path)
+        kept = f" A copy was kept as {copy_path}." if copy_path else ""
+        message = (f"The script registry {registry_path} does not parse ({e}). It was left as it is and nothing is "
+                   f"saved to it until it is repaired or removed.{kept} Fix the JSON, or delete the file to start "
+                   f"a new registry (the .py files in the scripts folder are not affected).")
+        log_error(message)
+        raise RegistryUnreadableError(message) from e
 
 
 def _load_registry() -> Dict[str, Any]:
@@ -157,8 +260,8 @@ def _load_registry() -> Dict[str, Any]:
         # Store the base directory for resolving paths
         info["_base_dir"] = _get_plugin_scripts_dir()
 
-    # Load project's user scripts
-    project_registry = _load_single_registry(_get_registry_path())
+    # Load project's user scripts (raises RegistryUnreadableError when the file exists but does not load)
+    project_registry = _load_single_registry(_get_registry_path(), writable=True)
 
     # Mark project scripts with their source
     for name, info in project_registry.get("scripts", {}).items():
@@ -195,13 +298,45 @@ def _load_project_registry() -> Dict[str, Any]:
 
     Returns:
         Project registry dictionary
+
+    Raises:
+        RegistryUnreadableError: the file exists but cannot be read or parsed
     """
-    return _load_single_registry(_get_registry_path())
+    return _load_single_registry(_get_registry_path(), writable=True)
+
+
+def _write_registry_file(registry_path: str, text: str) -> None:
+    """
+    Write the registry through <file>.tmp and os.replace, keeping the previous file as <file>.bak, so a crash leaves
+    either the old registry or the new one, never a truncated one (the plugin's other state files use the same
+    pattern).
+    """
+    temp_path = registry_path + ".tmp"
+    try:
+        with open(temp_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(registry_path):
+            try:
+                shutil.copyfile(registry_path, registry_path + ".bak")
+            except OSError as e:
+                log_warning(f"Could not refresh the backup {registry_path}.bak: {e}")
+        os.replace(temp_path, registry_path)
+    except BaseException:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _save_registry(registry: Dict[str, Any]) -> bool:
     """
     Save the script registry to JSON (project registry only).
+
+    Refuses (returns False) when the registry file on disk cannot be read or parsed, so a registry that loaded as
+    empty can never replace one with entries.
 
     Args:
         registry: Registry dictionary to save
@@ -213,14 +348,19 @@ def _save_registry(registry: Dict[str, Any]) -> bool:
         return False
 
     registry_path = _get_registry_path()
+    try:
+        _load_single_registry(registry_path, writable=True)
+    except RegistryUnreadableError:
+        return False
 
-    # Remove internal metadata fields before saving
-    clean_registry = {
+    # Remove internal metadata fields before saving; unknown top-level fields are kept
+    clean_registry = {k: v for k, v in registry.items() if not k.startswith("_")}
+    clean_registry.update({
         "version": registry.get("version", "1.0"),
         "scripts": {},
         "categories": registry.get("categories", ["general"]),
-        "stats": registry.get("stats", {})
-    }
+        "stats": dict(registry.get("stats", {}))
+    })
 
     # Only save project scripts, exclude plugin scripts and internal fields
     for name, info in registry.get("scripts", {}).items():
@@ -234,8 +374,7 @@ def _save_registry(registry: Dict[str, Any]) -> bool:
     clean_registry["stats"]["last_updated"] = datetime.utcnow().isoformat() + "Z"
 
     try:
-        with open(registry_path, 'w', encoding='utf-8') as f:
-            json.dump(clean_registry, f, indent=2)
+        _write_registry_file(registry_path, json.dumps(clean_registry, indent=2))
         return True
     except Exception as e:
         log_error(f"Failed to save script registry: {e}")
@@ -642,16 +781,16 @@ def save_script(
         script_path = os.path.join(scripts_dir, relative_path)
         if not _is_inside(scripts_dir, category_dir) or not _is_inside(scripts_dir, script_path):
             return make_error_result(f"Category '{category}' resolves outside the scripts folder")
+        # Load the project registry (not the plugin one) first: if it cannot be read, nothing is written at all
+        registry = _load_project_registry()
+
         if not os.path.exists(category_dir):
             os.makedirs(category_dir)
 
         # Write script file
-
         with open(script_path, 'w', encoding='utf-8') as f:
             f.write(code)
 
-        # Update project registry only (not plugin registry)
-        registry = _load_project_registry()
         now = datetime.utcnow().isoformat() + "Z"
 
         registry["scripts"][sanitized_name] = {
