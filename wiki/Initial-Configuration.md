@@ -35,5 +35,16 @@ Node to Code uses two separate files:
 
 - secrets.json
   - Stores your LLM service provider API keys, in plain text
-  - Saved at `Saved/NodeToCode/User/secrets.json` in your project folder
-  - **Keep it out of source control.** A standard UE .gitignore or .p4ignore that ignores the whole `Saved/` folder already covers it; if yours does not, add `Saved/NodeToCode/User/secrets.json` (or `Saved/`) to it, and never submit or share this file
+  - Saved in your user folder, outside every project, so the keys are never in a project you commit, zip or sync:
+    - Windows: `%LOCALAPPDATA%\NodeToCode\secrets.json`
+    - macOS: `~/Library/Application Support/Epic/NodeToCode/secrets.json`
+    - Linux: `~/.config/Epic/NodeToCode/secrets.json`
+  - The keys belong to you, not to a project: every project you open on this machine uses the same keys
+  - Never share this file. Node to Code keeps the previous version next to it as `secrets.json.bak`
+  - If the file is damaged so it cannot be read, Node to Code renames it to `secrets.json.corrupt-<date>` instead of
+    writing over it, and the Output Log says so; re-enter your keys, or repair that file and rename it back
+
+Earlier versions saved the keys in the project, at `Saved/NodeToCode/User/secrets.json`. The first time a project
+opens with this version, its keys move to the file in your user folder and the project copy is deleted. A key already
+in your user folder is kept; if the project held a different key for the same provider, the Output Log names the
+provider and the project's key is kept in the user file under `MigrationConflicts`, so no key is lost.

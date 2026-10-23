@@ -131,7 +131,8 @@ For cloud providers, NodeToCode sends a temperature only to models that accept o
 ## Best Practices
 
 1. **API Key Security**
-   - Never commit API keys to version control
+   - Never commit API keys to version control. Node to Code keeps them in your user folder, outside the project
+     (see [where keys are saved](Initial-Configuration#plugins-config-files--source-control))
    - Regularly rotate keys for security
    - Configure through [Plugin Settings](Initial-Configuration#accessing-plugin-settings)
 

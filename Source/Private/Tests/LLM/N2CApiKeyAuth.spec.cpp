@@ -5,7 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
-#include "Core/N2CUserSecrets.h"
+#include "Core/N2CSecretStore.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/Providers/N2CAnthropicService.h"
 #include "LLM/Providers/N2CGeminiService.h"
@@ -137,12 +137,11 @@ void FN2CApiKeyAuthSpec::Define()
 			if (!TestTrue(TEXT("test secrets written"), FFileHelper::SaveStringToFile(Saved, *Path))) { return; }
 
 			AddExpectedMessage(TEXT("sign-in were removed in NodeToCode 2.0"), EAutomationExpectedMessageFlags::Contains, 1);
-			UN2CUserSecrets* Secrets = NewObject<UN2CUserSecrets>(GetTransientPackage());
-			TestTrue(TEXT("secrets load"), Secrets->LoadSecretsFromFile(Path));
-			TestEqual(TEXT("OpenAI key loaded"), Secrets->OpenAI_API_Key, FString(TEXT("k-openai")));
-			TestEqual(TEXT("Anthropic key loaded"), Secrets->Anthropic_API_Key, FString(TEXT("k-anthropic")));
-			TestEqual(TEXT("Gemini key loaded"), Secrets->Gemini_API_Key, FString(TEXT("k-gemini")));
-			TestEqual(TEXT("DeepSeek key loaded"), Secrets->DeepSeek_API_Key, FString(TEXT("k-deepseek")));
+			FN2CSecretStore Secrets(MakeUnique<FN2CSecretFileBackend>(Path));
+			TestEqual(TEXT("OpenAI key loaded"), Secrets.GetApiKey(EN2CLLMProvider::OpenAI), FString(TEXT("k-openai")));
+			TestEqual(TEXT("Anthropic key loaded"), Secrets.GetApiKey(EN2CLLMProvider::Anthropic), FString(TEXT("k-anthropic")));
+			TestEqual(TEXT("Gemini key loaded"), Secrets.GetApiKey(EN2CLLMProvider::Gemini), FString(TEXT("k-gemini")));
+			TestEqual(TEXT("DeepSeek key loaded"), Secrets.GetApiKey(EN2CLLMProvider::DeepSeek), FString(TEXT("k-deepseek")));
 
 			const TSharedPtr<FJsonObject> After = ParseFile(Path);
 			if (TestTrue(TEXT("rewritten secrets parse"), After.IsValid()))
@@ -158,12 +157,11 @@ void FN2CApiKeyAuthSpec::Define()
 			}
 
 			// A second load finds nothing to remove, so it neither rewrites nor logs again
-			TestTrue(TEXT("secrets load again"), Secrets->LoadSecretsFromFile(Path));
-			TestEqual(TEXT("keys still loaded"), Secrets->Anthropic_API_Key, FString(TEXT("k-anthropic")));
+			Secrets.Reload();
+			TestEqual(TEXT("keys still loaded"), Secrets.GetApiKey(EN2CLLMProvider::Anthropic), FString(TEXT("k-anthropic")));
 
 			// Saving keeps the unknown field too
-			Secrets->Gemini_API_Key = TEXT("k-gemini-2");
-			TestTrue(TEXT("secrets save"), Secrets->SaveSecretsToFile(Path));
+			TestTrue(TEXT("secrets save"), Secrets.SetApiKey(EN2CLLMProvider::Gemini, TEXT("k-gemini-2")));
 			const TSharedPtr<FJsonObject> Resaved = ParseFile(Path);
 			if (TestTrue(TEXT("saved secrets parse"), Resaved.IsValid()))
 			{
@@ -171,6 +169,7 @@ void FN2CApiKeyAuthSpec::Define()
 				TestEqual(TEXT("unknown field survives a save"), Resaved->GetStringField(TEXT("Custom_Field")), FString(TEXT("kept")));
 			}
 			IFileManager::Get().Delete(*Path);
+			IFileManager::Get().Delete(*(Path + TEXT(".bak")));
 		});
 	});
 

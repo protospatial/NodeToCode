@@ -5,6 +5,7 @@
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -93,13 +94,15 @@ bool FN2CPathUtils::IsDeniedForAgentAccess(const FString& AbsolutePath)
     };
 
     if (IsAtOrUnder(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User"))) ||
+        IsAtOrUnder(FPaths::Combine(FPlatformProcess::UserSettingsDir(), TEXT("NodeToCode"))) ||
         IsAtOrUnder(FPaths::Combine(FPaths::ProjectDir(), TEXT(".git"))))
     {
         return true;
     }
 
     const FString FileName = FPaths::GetCleanFilename(Path);
-    return FileName.Equals(TEXT("secrets.json"), ESearchCase::IgnoreCase)
+    // secrets.json and its .tmp, .bak and .corrupt-<timestamp> siblings
+    return FileName.StartsWith(TEXT("secrets.json"), ESearchCase::IgnoreCase)
         || FileName.Equals(TEXT(".env"), ESearchCase::IgnoreCase)
         || FileName.EndsWith(TEXT(".env"), ESearchCase::IgnoreCase);
 }

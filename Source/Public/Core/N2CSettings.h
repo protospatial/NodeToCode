@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Misc/Attribute.h"
-#include "N2CUserSecrets.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Engine/DeveloperSettings.h"
 #include "LLM/N2CLLMModels.h"
@@ -217,10 +216,6 @@ public:
     /** Selected LLM provider */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Provider")
     EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
-
-    /** Reference to user secrets containing API keys */
-    UPROPERTY(Transient)
-    mutable UN2CUserSecrets* UserSecrets;
 
     /** Anthropic Model Selection - Sonnet 5.5 recommended for the best quality/cost balance, Opus 5.5 for the most capability, Haiku 5.5 for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")

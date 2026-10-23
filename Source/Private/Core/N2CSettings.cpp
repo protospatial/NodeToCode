@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CSettings.h"
-#include "Core/N2CUserSecrets.h"
+#include "Core/N2CSecretStore.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
@@ -39,21 +39,12 @@ UN2CSettings::UN2CSettings()
     // Validate reference source paths on startup
     ValidateReferenceSourcePaths();
     
-    if (!UserSecrets)
-    {
-        UserSecrets = NewObject<UN2CUserSecrets>();
-        UserSecrets->LoadSecrets();
-        
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Loaded user secrets from: %s"), *UN2CUserSecrets::GetSecretsFilePath()),
-            EN2CLogSeverity::Info);
-    }
-
-    // Initialize API Keys
-    OpenAI_API_Key_UI = UserSecrets->OpenAI_API_Key;
-    Anthropic_API_Key_UI = UserSecrets->Anthropic_API_Key;
-    Gemini_API_Key_UI = UserSecrets->Gemini_API_Key;
-    DeepSeek_API_Key_UI = UserSecrets->DeepSeek_API_Key;
+    // The key fields only mirror the process-wide secret store for the details panel; edits go back through it
+    const FN2CSecretStore& Secrets = FN2CSecretStore::Get();
+    OpenAI_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::OpenAI);
+    Anthropic_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::Anthropic);
+    Gemini_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::Gemini);
+    DeepSeek_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::DeepSeek);
     
     // Initialize token estimate
     EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
@@ -268,28 +259,11 @@ FText UN2CSettings::GetSectionText() const
 
 FString UN2CSettings::GetActiveApiKey() const
 {
-    if (!UserSecrets)
+    if (Provider == EN2CLLMProvider::LMStudio)
     {
-        // Create and load secrets if not already done
-        UserSecrets = NewObject<UN2CUserSecrets>();
-        UserSecrets->LoadSecrets();
+        return TEXT("lm-studio"); // LM Studio just requires a dummy API key for its OpenAI endpoint
     }
-
-    switch (Provider)
-    {
-        case EN2CLLMProvider::OpenAI:
-            return UserSecrets->OpenAI_API_Key;
-        case EN2CLLMProvider::Anthropic:
-            return UserSecrets->Anthropic_API_Key;
-        case EN2CLLMProvider::Gemini:
-            return UserSecrets->Gemini_API_Key;
-        case EN2CLLMProvider::DeepSeek:
-            return UserSecrets->DeepSeek_API_Key;
-        case EN2CLLMProvider::LMStudio:
-            return "lm-studio"; // LM Studio just requires a dummy API key for its OpenAI endpoint
-        default:
-            return FString();
-    }
+    return FN2CSecretStore::Get().GetApiKey(Provider);
 }
 
 FString UN2CSettings::GetActiveModel() const
@@ -411,46 +385,22 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
         // Handle API key changes
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_API_Key_UI))
         {
-            if (!UserSecrets)
-            {
-                UserSecrets = NewObject<UN2CUserSecrets>();
-                UserSecrets->LoadSecrets();
-            }
-            UserSecrets->OpenAI_API_Key = OpenAI_API_Key_UI;
-            UserSecrets->SaveSecrets();
+            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::OpenAI, OpenAI_API_Key_UI);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI))
         {
-            if (!UserSecrets)
-            {
-                UserSecrets = NewObject<UN2CUserSecrets>();
-                UserSecrets->LoadSecrets();
-            }
-            UserSecrets->Anthropic_API_Key = Anthropic_API_Key_UI;
-            UserSecrets->SaveSecrets();
+            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::Anthropic, Anthropic_API_Key_UI);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))
         {
-            if (!UserSecrets)
-            {
-                UserSecrets = NewObject<UN2CUserSecrets>();
-                UserSecrets->LoadSecrets();
-            }
-            UserSecrets->Gemini_API_Key = Gemini_API_Key_UI;
-            UserSecrets->SaveSecrets();
+            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::Gemini, Gemini_API_Key_UI);
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI))
         {
-            if (!UserSecrets)
-            {
-                UserSecrets = NewObject<UN2CUserSecrets>();
-                UserSecrets->LoadSecrets();
-            }
-            UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
-            UserSecrets->SaveSecrets();
+            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::DeepSeek, DeepSeek_API_Key_UI);
             return;
         }
 
@@ -532,28 +482,11 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 
 FString UN2CSettings::GetActiveApiKeyForProvider(EN2CLLMProvider InProvider) const
 {
-    if (!UserSecrets)
+    if (InProvider == EN2CLLMProvider::LMStudio)
     {
-        // Create and load secrets if not already done
-        UserSecrets = NewObject<UN2CUserSecrets>();
-        UserSecrets->LoadSecrets();
+        return TEXT("lm-studio"); // LM Studio just requires a dummy API key for its OpenAI endpoint
     }
-
-    switch (InProvider)
-    {
-        case EN2CLLMProvider::OpenAI:
-            return UserSecrets->OpenAI_API_Key;
-        case EN2CLLMProvider::Anthropic:
-            return UserSecrets->Anthropic_API_Key;
-        case EN2CLLMProvider::Gemini:
-            return UserSecrets->Gemini_API_Key;
-        case EN2CLLMProvider::DeepSeek:
-            return UserSecrets->DeepSeek_API_Key;
-        case EN2CLLMProvider::LMStudio:
-            return TEXT("lm-studio"); // LM Studio just requires a dummy API key for its OpenAI endpoint
-        default:
-            return FString();
-    }
+    return FN2CSecretStore::Get().GetApiKey(InProvider);
 }
 
 FString UN2CSettings::GetActiveModelForProvider(EN2CLLMProvider InProvider) const

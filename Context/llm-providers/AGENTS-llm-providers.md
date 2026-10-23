@@ -120,7 +120,7 @@ Manages interactions with LLMs.
 
 ## Authentication
 
-Every cloud provider authenticates with its API key from `UN2CUserSecrets` (see `Context/architecture/AGENTS-architecture.md`); Ollama and LM Studio need none. `UN2CBaseLLMService::SendRequest` fails a cloud request whose key is empty before anything is sent, with an error that names the key (`GetMissingApiKeyError`). NodeToCode 2.0 removed Claude Pro/Max and Google account sign-in; do not add provider sign-in flows or reuse another application's client credentials. Users with a Claude, ChatGPT or Google AI subscription connect that vendor's own agent (Claude Code, Antigravity CLI, Codex CLI) to the MCP server instead; the user guide is `wiki/developers/Using-a-Claude-or-Gemini-Subscription.md`, and a change to the MCP endpoint, its port setting or the stdio bridge updates that page.
+Every cloud provider authenticates with its API key from `FN2CSecretStore` (see `Context/architecture/AGENTS-architecture.md`); Ollama and LM Studio need none. `UN2CBaseLLMService::SendRequest` fails a cloud request whose key is empty before anything is sent, with an error that names the key (`GetMissingApiKeyError`). NodeToCode 2.0 removed Claude Pro/Max and Google account sign-in; do not add provider sign-in flows or reuse another application's client credentials. Users with a Claude, ChatGPT or Google AI subscription connect that vendor's own agent (Claude Code, Antigravity CLI, Codex CLI) to the MCP server instead; the user guide is `wiki/developers/Using-a-Claude-or-Gemini-Subscription.md`, and a change to the MCP endpoint, its port setting or the stdio bridge updates that page.
 
 ## Structured Output Support
 
@@ -174,11 +174,10 @@ Some models have limited or no system prompt support:
     *   Add UPROPERTY for new provider's model enum (defaulting to its `N2CDefaultModels` value), API Key UI string, and pricing override `TMap` (user overrides; the getters fall back to the registry).
     *   Update `GetActiveApiKey()`, `GetActiveModel()`, the `*ForProvider` variants, and pricing getters.
     *   Add the provider's model property to `MigrateRetiredModelSelections()`. `InitializePricing()` is kept but empty: default prices come from the registry.
-    *   In `PostEditChangeProperty()`, handle saving the new API key UI string to `UserSecrets`.
+    *   In `PostEditChangeProperty()`, save the new API key UI string with `FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::NewProvider, ...)`, and fill the UI string from `GetApiKey` in the constructor.
 
-3.  **User Secrets (`N2CUserSecrets.h/.cpp`):**
-    *   Add `FString` UPROPERTY for the new provider's API key.
-    *   Add its JSON field name to `ApiKeyFields` (`N2CUserSecrets.cpp`) and read and write it in `LoadSecretsFromFile()` and `SaveSecretsToFile()`.
+3.  **Secret store (`N2CSecretStore.h/.cpp`):**
+    *   Add the provider to `FN2CSecretStore::GetProviderId()`. Its key is stored as `<ProviderId>_API_Key`; nothing else in the store changes.
 
 4.  **Service Implementation (`Source/Public/LLM/Providers/` and `Source/Private/LLM/Providers/`):**
     *   Create `N2CNewProviderService.h` (in Public) and `.cpp` (in Private) inheriting `UN2CBaseLLMService`.

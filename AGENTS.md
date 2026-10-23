@@ -60,7 +60,7 @@ NodeToCode is an Unreal Engine 5 plugin for translating Blueprints into various 
 *   **Multi-LLM Support:** Integrates with OpenAI, Anthropic, Google Gemini, DeepSeek, local Ollama instances, and LM Studio.
 *   **Editor Integration:** Adds a "Node to Code" toolbar button in the Blueprint Editor for translation, JSON export, and a dedicated plugin window.
 *   **Interactive Code Editor:** Displays generated code with syntax highlighting and theme customization.
-*   **Configuration:** Plugin settings for LLM provider selection, API keys (entered in Project Settings, not written to config `.ini` files; `UN2CUserSecrets` keeps them as plain, unencrypted JSON in the project's `Saved/NodeToCode/User/secrets.json`), target language, and logging.
+*   **Configuration:** Plugin settings for LLM provider selection, API keys (entered in Project Settings, not written to config `.ini` files; `FN2CSecretStore` keeps them as plain, unencrypted JSON in the per-user `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json`, outside the project; a project's old `Saved/NodeToCode/User/secrets.json` is moved there once), target language, and logging.
 *   **Reasoning Model Support:** Prepended model commands for controlling reasoning models and feature toggles.
 
 ## Context Navigation
