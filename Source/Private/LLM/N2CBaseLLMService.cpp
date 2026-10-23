@@ -27,8 +27,8 @@ FString UN2CBaseLLMService::GetMissingApiKeyError(EN2CLLMProvider Provider, cons
     }
 
     FString Message = FString::Printf(
-        TEXT("No %s API key is set. Add one in Project Settings > Plugins > Node to Code > LLM Services > %s > API Key."),
-        Name, Name);
+        TEXT("No %s API key is set. Add one in Project Settings > Plugins > Node to Code > LLM Services > %s > API Key, or set %s in the editor's environment."),
+        Name, Name, *FString::Join(FN2CSecretStore::GetEnvironmentVariableNames(Provider), TEXT(" or ")));
     if (Provider == EN2CLLMProvider::Anthropic || Provider == EN2CLLMProvider::Gemini)
     {
         Message += FString::Printf(TEXT(" Claude Pro/Max and Google account sign-in were removed in NodeToCode 2.0; see %s"),

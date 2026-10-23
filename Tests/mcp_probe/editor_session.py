@@ -49,13 +49,16 @@ def free_port(preferred):
 
 
 class EditorSession:
-    def __init__(self, engine_root, project, port, log_path, allow_python=True, extra_args=()):
+    def __init__(self, engine_root, project, port, log_path, allow_python=True, extra_args=(), extra_env=None):
+        """extra_env: variables added to the editor's environment only (for example provider keys from
+        env_keys.load_provider_keys()); they are never written to a file or printed."""
         self.exe = find_editor(engine_root)
         self.project = project
         self.port = port
         self.log_path = log_path
         self.allow_python = allow_python
         self.extra_args = list(extra_args)
+        self.extra_env = dict(extra_env or {})
         self.proc = None
         self._backups = {}
 
@@ -106,7 +109,11 @@ class EditorSession:
         self._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]',
                     'bAllowMcpPythonExecution', 'True' if self.allow_python else 'False')
         self.log = open(self.log_path, 'wb')
-        self.proc = subprocess.Popen(self.args(), stdout=self.log, stderr=subprocess.STDOUT)
+        env = None
+        if self.extra_env:
+            env = dict(os.environ)
+            env.update(self.extra_env)
+        self.proc = subprocess.Popen(self.args(), stdout=self.log, stderr=subprocess.STDOUT, env=env)
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.proc.poll() is not None:

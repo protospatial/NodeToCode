@@ -30,3 +30,18 @@ commit as the fix, and runs the probe on 5.6, 5.7 and 5.8.
 
 The session temporarily writes the port and Allow MCP Python Execution into the host's `Saved/Config/<Platform>Editor`
 files and restores them when it stops; the host's shared `Config/` folder is never changed.
+
+## Live provider checks
+
+The editor uses `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`) from
+its environment when no key is saved, so a live check never types or saves a key:
+
+- `env_keys.py`: `load_provider_keys()` parses the repo's gitignored `.env` into a dict for a child process
+  (`DEEPSEEK_API` becomes `DEEPSEEK_API_KEY`); `find_leaks(keys, paths)` lists files that contain a key value. Run
+  alone, it prints only the variable names it found (`--check <paths>` adds a leak scan). Never print the dict.
+- `EditorSession(..., extra_env=keys)` adds those variables to the editor's environment only.
+- `live_env_translation.py --engine ... --project ... [--provider gemini --model gemini-3.5-flash-lite]` runs one
+  real translation that way: an in-memory Blueprint under `/Game/N2CTest`, `translate-focused-blueprint` over MCP,
+  then checks the response parsed, Project Settings shows the key's source by variable name only, and no key value is
+  in the editor log or the report (`logs/live_env_translation.json`). It refuses to run if a key for that provider is
+  saved in the per-user secrets file, since the saved key would be used instead.

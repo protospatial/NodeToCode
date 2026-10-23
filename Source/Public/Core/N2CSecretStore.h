@@ -109,25 +109,63 @@ private:
     FString LegacyFilePath;
 };
 
+/** Where the API key a provider's requests use comes from */
+enum class EN2CApiKeySource : uint8
+{
+    /** No key: neither the store nor the environment has one */
+    None,
+    /** The secret store (the key typed in Project Settings) */
+    Store,
+    /** An environment variable of the editor process (see FN2CSecretStore::GetEnvironmentVariableNames) */
+    Environment,
+};
+
 /**
  * The one owner of the provider API keys in this process. Every read and write of a key goes through Get(); nothing
  * else keeps a copy that it later writes back, so one key edit cannot undo another.
+ *
+ * When the store has no key for a provider, GetApiKey falls back to the provider's environment variable
+ * (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY or DEEPSEEK_API), so CI, build machines and
+ * agents can supply keys without typing them into a field. A stored key always wins. Environment keys are never
+ * written to the store, and logs name the variable, never its value.
  */
 class NODETOCODE_API FN2CSecretStore
 {
 public:
+    /** Reads one environment variable; empty when it is not set */
+    using FEnvironmentReader = TFunction<FString(const FString& VariableName)>;
+
     /** The process-wide store, backed by the per-user file. The first call loads it and migrates a project file. */
     static FN2CSecretStore& Get();
 
-    /** A store over a given backend (tests use one with a temporary folder) */
-    explicit FN2CSecretStore(TUniquePtr<IN2CSecretBackend> InBackend);
+    /**
+     * A store over a given backend (tests use one with a temporary folder).
+     * @param InEnvironmentReader reads environment variables; unset means the process environment
+     */
+    explicit FN2CSecretStore(TUniquePtr<IN2CSecretBackend> InBackend, FEnvironmentReader InEnvironmentReader = FEnvironmentReader());
 
     /** The id a provider's key is stored under, or empty for providers without a key (Ollama, LM Studio) */
     static FString GetProviderId(EN2CLLMProvider Provider);
 
+    /** The environment variables read for ProviderId when the store has no key, in the order they are tried */
+    static TArray<FString> GetEnvironmentVariableNames(const FString& ProviderId);
+    static TArray<FString> GetEnvironmentVariableNames(EN2CLLMProvider Provider);
+
+    /** The key requests use: the stored key, else the first set environment variable, else empty */
     FString GetApiKey(const FString& ProviderId) const;
     FString GetApiKey(EN2CLLMProvider Provider) const;
     bool HasApiKey(EN2CLLMProvider Provider) const;
+
+    /** The stored key only, without the environment fallback (what the settings field shows and edits) */
+    FString GetStoredApiKey(const FString& ProviderId) const;
+    FString GetStoredApiKey(EN2CLLMProvider Provider) const;
+
+    /**
+     * Where GetApiKey's key for ProviderId comes from.
+     * @param OutVariableName receives the variable's name when the source is Environment
+     */
+    EN2CApiKeySource GetApiKeySource(const FString& ProviderId, FString* OutVariableName = nullptr) const;
+    EN2CApiKeySource GetApiKeySource(EN2CLLMProvider Provider, FString* OutVariableName = nullptr) const;
 
     /**
      * Sets one provider's key and saves it at once. If the save fails the key is still used for this session and an
@@ -147,7 +185,14 @@ public:
     static FString GetLegacyProjectSecretsFilePath();
 
 private:
+    /** The first set environment variable for ProviderId: its value, and its name in OutVariableName */
+    FString FindEnvironmentKey(const FString& ProviderId, FString& OutVariableName) const;
+
     mutable FCriticalSection Mutex;
     TUniquePtr<IN2CSecretBackend> Backend;
     TMap<FString, FString> Keys;
+    FEnvironmentReader EnvironmentReader;
+
+    /** "<ProviderId>=<variable>" pairs already logged, so the environment fallback is logged once per variable */
+    mutable TSet<FString> LoggedEnvironmentKeys;
 };

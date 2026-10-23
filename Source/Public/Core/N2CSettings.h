@@ -230,6 +230,14 @@ public:
         meta = (DisplayName = "API Key"))
     FString Anthropic_API_Key_UI;
 
+    /**
+     * Where the Anthropic key that requests use comes from: the API Key field above, or the ANTHROPIC_API_KEY environment
+     * variable of the editor process when the field is empty. The variable's value is never shown.
+     */
+    UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "API Key Source"))
+    FString Anthropic_API_Key_Source;
+
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
         meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
@@ -244,6 +252,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | OpenAI",
         meta = (DisplayName = "API Key"))
     FString OpenAI_API_Key_UI;
+
+    /**
+     * Where the OpenAI key that requests use comes from: the API Key field above, or the OPENAI_API_KEY environment
+     * variable of the editor process when the field is empty. The variable's value is never shown.
+     */
+    UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | OpenAI",
+        meta = (DisplayName = "API Key Source"))
+    FString OpenAI_API_Key_Source;
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI",
@@ -260,6 +276,14 @@ public:
         meta = (DisplayName = "API Key"))
     FString Gemini_API_Key_UI;
 
+    /**
+     * Where the Gemini key that requests use comes from: the API Key field above, or the GEMINI_API_KEY environment
+     * variable of the editor process when the field is empty. The variable's value is never shown.
+     */
+    UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | Gemini",
+        meta = (DisplayName = "API Key Source"))
+    FString Gemini_API_Key_Source;
+
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
         meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
@@ -274,6 +298,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | DeepSeek",
         meta = (DisplayName = "API Key"))
     FString DeepSeek_API_Key_UI;
+
+    /**
+     * Where the DeepSeek key that requests use comes from: the API Key field above, or the DEEPSEEK_API_KEY environment
+     * variable of the editor process when the field is empty. The variable's value is never shown.
+     */
+    UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | DeepSeek",
+        meta = (DisplayName = "API Key Source"))
+    FString DeepSeek_API_Key_Source;
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek",
@@ -387,6 +419,12 @@ public:
 
     /** Get the API key for a specific provider */
     FString GetActiveApiKeyForProvider(EN2CLLMProvider Provider) const;
+
+    /** Fills the API Key Source fields from the secret store and the environment (never shows a key) */
+    void RefreshApiKeySources();
+
+    /** The API Key Source text for Provider: the saved key, the environment variable it uses, or none */
+    static FString DescribeApiKeySource(EN2CLLMProvider Provider);
 
     /** Get the model for a specific provider */
     FString GetActiveModelForProvider(EN2CLLMProvider Provider) const;
