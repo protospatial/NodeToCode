@@ -23,7 +23,21 @@ public:
     virtual FMcpToolDefinition GetDefinition() const override;
     virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
     virtual bool RequiresGameThread() const override { return true; }
-    
+
+    /**
+     * Runs the search against an explicit context and returns the result nodes. Read-only: it never spawns,
+     * removes or modifies nodes in ContextGraph and never transacts on or dirties ContextBlueprint. Pins come
+     * from the node spawner's template node, which lives in FBlueprintNodeTemplateCache's transient graph.
+     * Game thread only. Public so automation tests can run the search without a focused editor.
+     */
+    TArray<TSharedPtr<FJsonValue>> SearchActions(const FString& SearchTerm,
+                                                 int32 MaxResults,
+                                                 bool bContextSensitive,
+                                                 UBlueprint* ContextBlueprint,
+                                                 UEdGraph* ContextGraph,
+                                                 const FString& CategoryFilter,
+                                                 bool bExcludeVMFunctions);
+
 private:
     // Helper methods
     bool ParseArguments(const TSharedPtr<FJsonObject>& Arguments,
@@ -58,6 +72,9 @@ private:
     // New helper method to convert UK2Node to N2CJSON format
     static TSharedPtr<FJsonObject> ConvertNodeToN2CJson(UK2Node* Node, const FString& NodeId);
     
+    /** The spawner's cached template node for a menu action, or null; never spawns into ContextGraph */
+    static UEdGraphNode* GetTemplateNodeForAction(const TSharedPtr<FEdGraphSchemaAction>& Action, UEdGraph* ContextGraph);
+
     // Helper to create a template node definition from action metadata
     static FN2CNodeDefinition CreateNodeDefinitionFromAction(const TSharedPtr<FEdGraphSchemaAction>& Action, const FString& NodeId);
 };
