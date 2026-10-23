@@ -61,8 +61,8 @@ FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, c
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForAnthropic();
 
-    // Set common parameters
-    PayloadBuilder->SetTemperature(0.0f);
+    // Max tokens is required by Anthropic. No temperature: the builder sends sampling parameters only
+    // for registered models that accept them (Claude Opus 4.7 and later reject them).
     PayloadBuilder->SetMaxTokens(16000);
 
     // Try prepending source files to the user message

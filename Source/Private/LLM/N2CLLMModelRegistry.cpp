@@ -35,7 +35,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Supports structured output
 		false,                // Not a reasoning model (has reasoning_effort param)
 		0.0f,                 // Default temperature
-		16000                 // Default max tokens
+		16000,                // Default max tokens
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// GPT-5.2 Pro - More compute for harder problems (requires Responses API)
@@ -51,7 +54,9 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		0.0f,
 		16000,
-		true                  // Requires OpenAI Responses API
+		true,                 // Requires OpenAI Responses API
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// GPT-5 - Strong coding model (August 2025)
@@ -66,7 +71,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// GPT-5 Mini - Faster, cost-efficient
@@ -81,7 +89,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// GPT-5 Nano - Smallest, fastest, most affordable
@@ -96,7 +107,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// o4 Mini - Reasoning model (supports developer prompts)
@@ -111,7 +125,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Supports structured output
 		true,                 // Is reasoning model
 		1.0f,                 // Default temperature (required for reasoning)
-		16000                 // Default max tokens
+		16000,                // Default max tokens
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// o3 - Advanced reasoning model
@@ -123,10 +140,13 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		200000,
 		100000,
 		true,                 // Supports developer prompts
-		true,
+		false,                // Structured output: json_object only (no json_schema), as before
 		true,                 // Is reasoning model
 		1.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// o3 Mini - Smaller o3 variant
@@ -138,10 +158,13 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		200000,
 		100000,
 		true,
-		true,
+		false,                // Structured output: json_object only (no json_schema), as before
 		true,
 		1.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// o1 - Original reasoning model (NO system prompts)
@@ -153,10 +176,13 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		200000,
 		100000,
 		false,                // Does NOT support system prompts
-		true,
+		false,                // Structured output: json_object only (no json_schema), as before
 		true,
 		1.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// o1 Preview (NO system prompts)
@@ -171,7 +197,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,
 		1.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// o1 Mini (NO system prompts)
@@ -186,7 +215,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,
 		1.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
+		true                  // Uses max_completion_tokens
 	));
 
 	// GPT-4.1
@@ -201,7 +233,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,                // Not a reasoning model
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
+		false                 // Uses max_completion_tokens
 	));
 
 	// GPT-4o
@@ -216,7 +251,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
+		false                 // Uses max_completion_tokens
 	));
 
 	// GPT-4o Mini
@@ -231,7 +269,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
+		false                 // Uses max_completion_tokens
 	));
 
 	// ========================================================================
@@ -250,7 +291,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Anthropic uses tool use for structured output, not native
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Claude Sonnet 4.5
@@ -265,7 +309,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Claude Opus 4.1
@@ -280,7 +327,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Claude Opus 4
@@ -295,7 +345,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Claude Sonnet 4
@@ -310,7 +363,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Claude 3.7 Sonnet
@@ -325,7 +381,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Claude 3.5 Sonnet
@@ -340,7 +399,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Claude 3.5 Haiku
@@ -355,7 +417,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
+		false                 // Uses max_completion_tokens
 	));
 
 	// ========================================================================
@@ -374,7 +439,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 3 Flash Preview
@@ -389,7 +457,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 2.5 Pro
@@ -403,8 +474,11 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,
 		false,
-		0.0f,
-		16000
+		1.0f,                 // Default temperature (more reliable structured output at 1.0)
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 2.5 Flash
@@ -419,7 +493,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 2.0 Flash
@@ -434,7 +511,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 2.0 Flash Lite Preview
@@ -449,7 +529,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 1.5 Flash
@@ -464,7 +547,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 1.5 Pro
@@ -479,7 +565,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 2.0 Pro Exp
@@ -494,7 +583,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// Gemini 2.0 Flash Thinking Exp (reasoning model)
@@ -509,7 +601,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,                 // This is a reasoning/thinking model
 		1.0f,
-		16000
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Thinking model: no sampling fields
+		false                 // Uses max_completion_tokens
 	));
 
 	// ========================================================================
@@ -528,7 +623,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,                 // Is reasoning model
 		1.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: DeepSeek reasoner ignores sampling parameters
+		false                 // Uses max_completion_tokens
 	));
 
 	// DeepSeek V3
@@ -543,7 +641,10 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192
+		8192,
+		false,                // Chat Completions (not Responses API)
+		true,                 // Accepts sampling params: DeepSeek chat accepts temperature
+		false                 // Uses max_completion_tokens
 	));
 
 	// ========================================================================

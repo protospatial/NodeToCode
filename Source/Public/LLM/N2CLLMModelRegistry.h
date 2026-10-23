@@ -66,9 +66,22 @@ struct NODETOCODE_API FN2CModelMetadata
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
 	bool bRequiresResponsesAPI = false;
 
+	/**
+	 * Whether the provider accepts sampling parameters (temperature, top_p, top_k) for this model.
+	 * When false the payload builder sends none of them, so the provider's own default applies.
+	 * Set from provider docs; false when unsure (current Claude, OpenAI reasoning and Gemini 3 models
+	 * reject or discourage non-default sampling values).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
+	bool bAcceptsSamplingParams = false;
+
+	/** Whether this OpenAI model takes max_completion_tokens instead of max_tokens (reasoning models) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
+	bool bUsesMaxCompletionTokens = false;
+
 	// === Generation Defaults ===
 
-	/** Default temperature for this model (reasoning models typically use 1.0) */
+	/** Default temperature for this model, sent only when bAcceptsSamplingParams is true */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
 	float DefaultTemperature = 0.0f;
 
@@ -99,7 +112,9 @@ struct NODETOCODE_API FN2CModelMetadata
 		bool bInIsReasoning = false,
 		float InDefaultTemp = 0.0f,
 		int32 InDefaultMaxTokens = 16000,
-		bool bInRequiresResponsesAPI = false
+		bool bInRequiresResponsesAPI = false,
+		bool bInAcceptsSamplingParams = false,
+		bool bInUsesMaxCompletionTokens = false
 	)
 		: ModelId(InModelId)
 		, DisplayName(InDisplayName)
@@ -112,6 +127,8 @@ struct NODETOCODE_API FN2CModelMetadata
 		, bSupportsStructuredOutput(bInSupportsStructured)
 		, bIsReasoningModel(bInIsReasoning)
 		, bRequiresResponsesAPI(bInRequiresResponsesAPI)
+		, bAcceptsSamplingParams(bInAcceptsSamplingParams)
+		, bUsesMaxCompletionTokens(bInUsesMaxCompletionTokens)
 		, DefaultTemperature(InDefaultTemp)
 		, DefaultMaxTokens(InDefaultMaxTokens)
 		, bIsDeprecated(false)

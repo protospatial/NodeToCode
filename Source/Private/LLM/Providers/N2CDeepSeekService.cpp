@@ -43,8 +43,7 @@ FString UN2CDeepSeekService::FormatRequestPayload(const FString& UserMessage, co
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForDeepSeek();
     
-    // Set common parameters
-    PayloadBuilder->SetTemperature(0.0f);
+    // Max tokens; temperature is applied by ConfigureForDeepSeek only for models that accept it
     PayloadBuilder->SetMaxTokens(16000);
     
     // Try prepending source files to the user message
