@@ -516,7 +516,12 @@ AddReadOnlyAnnotation(Definition);
 ```
 
 ### `ExecuteOnGameThread`
-Safely executes code on the Game Thread with timeout handling:
+Runs code on the Game Thread and waits for it, with a timeout. Called on the Game Thread it runs the logic
+directly. From another thread it queues the logic and waits up to `TimeoutSeconds`; the logic and its result live
+in shared state, not on the caller's stack. On timeout it returns an error result and abandons the work: if the
+queued task has not started, it skips the logic when it finally runs. Abandoned is not cancelled: logic the Game
+Thread had already started still runs to completion and its result is dropped, so keep the logic free of
+references to the caller's locals (capture by value).
 ```cpp
 return ExecuteOnGameThread([this]() -> FMcpToolCallResult
 {
