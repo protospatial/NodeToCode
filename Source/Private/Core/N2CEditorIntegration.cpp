@@ -628,42 +628,36 @@ void FN2CEditorIntegration::TranslateFocusedBlueprintGraph()
     TranslateBlueprintNodesForEditor(ActiveEditor);
 }
 
-void FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
+FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
     const FString& ProviderIdOverride,
     const FString& ModelIdOverride,
     const FString& LanguageIdOverride,
     FOnLLMResponseReceived OnComplete)
 {
-    // This initial part MUST run on GameThread if GetFocusedBlueprintAsJson is not thread-safe
-    // GetFocusedBlueprintAsJson itself handles some GameThread dispatching for its internal calls.
-    // However, the overall call to TranslateFocusedBlueprintAsync is expected from a worker thread.
-    // So, we'll dispatch the JSON retrieval to the game thread and wait.
-    
-    TPromise<FString> JsonPromise;
-    TFuture<FString> JsonFuture = JsonPromise.GetFuture();
+    // Editor and UObject work: the whole request is built and sent on the game thread, so every object it creates is
+    // an ordinary (collectable) object and no state is shared with a worker thread.
+    check(IsInGameThread());
 
-    AsyncTask(ENamedThreads::GameThread, [this, &JsonPromise]()
+    FString ErrorMsg;
+    const FString JsonInput = GetFocusedBlueprintAsJson(false /*bPrettyPrint*/, ErrorMsg);
+    if (JsonInput.IsEmpty())
     {
-        FString ErrorMsg;
-        FString JsonInput = GetFocusedBlueprintAsJson(false /*bPrettyPrint*/, ErrorMsg);
-        if (JsonInput.IsEmpty())
-        {
-            JsonPromise.SetValue(FString::Printf(TEXT("{\"error\":\"Failed to get Blueprint JSON: %s\"}"), *ErrorMsg));
-        }
-        else
-        {
-            JsonPromise.SetValue(JsonInput);
-        }
-    });
-
-    JsonFuture.Wait(); // Wait for the game thread task to complete
-    FString JsonInput = JsonFuture.Get();
-
-    if (JsonInput.StartsWith(TEXT("{\"error\":")))
-    {
-        OnComplete.ExecuteIfBound(JsonInput);
-        return;
+        FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+        Handle->Complete(OnComplete, FString::Printf(TEXT("{\"error\":\"Failed to get Blueprint JSON: %s\"}"), *ErrorMsg));
+        return Handle;
     }
+
+    return TranslateJsonAsync(JsonInput, ProviderIdOverride, ModelIdOverride, LanguageIdOverride, MoveTemp(OnComplete));
+}
+
+FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateJsonAsync(
+    const FString& JsonInput,
+    const FString& ProviderIdOverride,
+    const FString& ModelIdOverride,
+    const FString& LanguageIdOverride,
+    FOnLLMResponseReceived OnComplete)
+{
+    check(IsInGameThread());
 
     UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
     if (!LLMModule || !LLMModule->IsInitialized())
@@ -671,13 +665,14 @@ void FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
         // Attempt to initialize if not already
         if (!LLMModule || !LLMModule->Initialize())
         {
-             OnComplete.ExecuteIfBound(TEXT("{\"error\":\"LLMModule failed to initialize.\"}"));
-             return;
+            FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+            Handle->Complete(OnComplete, TEXT("{\"error\":\"LLMModule failed to initialize.\"}"));
+            return Handle;
         }
     }
-    
+
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    
+
     FN2CLLMConfig RequestConfig = LLMModule->GetConfig(); // Start with default config from module
 
     EN2CLLMProvider FinalProvider = RequestConfig.Provider;
@@ -696,7 +691,7 @@ void FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
         }
         else
         {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid ProviderId '%s' provided. Using default: %s"), 
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid ProviderId '%s' provided. Using default: %s"),
                 *ProviderIdOverride, *UEnum::GetValueAsString(FinalProvider)));
         }
     }
@@ -705,16 +700,15 @@ void FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
 
     // The override model, or the final provider's selected model with its thinking mode
     Settings->ResolveRequestModel(FinalProvider, ModelIdOverride, RequestConfig);
-    
+
     EN2CCodeLanguage TargetLanguage = Settings->TargetLanguage; // Default from settings
     if (!LanguageIdOverride.IsEmpty())
     {
         const UEnum* LangEnum = StaticEnum<EN2CCodeLanguage>();
-        FString SearchLangId = LanguageIdOverride;
-        int64 EnumValue = LangEnum->GetValueByNameString(SearchLangId, EGetByNameFlags::CaseSensitive);
+        int64 EnumValue = LangEnum->GetValueByNameString(LanguageIdOverride, EGetByNameFlags::CaseSensitive);
         if (EnumValue == INDEX_NONE) // Try with "EN2CCodeLanguage::" prefix
         {
-            EnumValue = LangEnum->GetValueByNameString(FString(TEXT("EN2CCodeLanguage::")) + SearchLangId, EGetByNameFlags::CaseSensitive);
+            EnumValue = LangEnum->GetValueByNameString(FString(TEXT("EN2CCodeLanguage::")) + LanguageIdOverride, EGetByNameFlags::CaseSensitive);
         }
 
         if (EnumValue != INDEX_NONE)
@@ -723,13 +717,13 @@ void FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
         }
         else
         {
-             FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid LanguageId '%s' provided. Using default: %s"), 
+             FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid LanguageId '%s' provided. Using default: %s"),
                 *LanguageIdOverride, *UEnum::GetValueAsString(TargetLanguage)));
         }
     }
 
     // Now call the LLMModule method that handles overrides
-    LLMModule->ProcessN2CJsonWithOverrides(JsonInput, RequestConfig, TargetLanguage, OnComplete);
+    return LLMModule->ProcessN2CJsonWithOverrides(JsonInput, RequestConfig, TargetLanguage, OnComplete);
 }
 
 TSharedPtr<SOverlay> FN2CEditorIntegration::FindGraphEditorOverlay(TSharedPtr<SWidget> GraphEditorWidget)

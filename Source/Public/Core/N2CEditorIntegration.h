@@ -8,6 +8,7 @@
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Utils/N2CLogger.h"
 #include "LLM/IN2CLLMService.h"
+#include "LLM/N2CLLMRequestHandle.h"
 #include "Models/N2CBlueprint.h"
 
 // Forward declarations
@@ -82,14 +83,28 @@ public:
     void TranslateFocusedBlueprintGraph();
 
     /**
-     * Asynchronously translates the focused Blueprint graph using specified or default LLM settings.
-     * This method is designed to be called from a background thread.
+     * Translates the focused Blueprint graph using specified or default LLM settings. Game thread only: collects the
+     * graph JSON, sends the request and returns at once. OnComplete runs later on the game thread (or inside this call
+     * for an error found before sending).
      * @param ProviderIdOverride Optional override for the LLM provider ID.
      * @param ModelIdOverride Optional override for the LLM model ID.
      * @param LanguageIdOverride Optional override for the target language ID.
      * @param OnComplete Delegate called with the translation result (JSON string) or an error message.
+     * @return The request's handle; Cancel() stops the request and OnComplete.
      */
-    void TranslateFocusedBlueprintAsync(
+    FN2CLLMRequestHandleRef TranslateFocusedBlueprintAsync(
+        const FString& ProviderIdOverride,
+        const FString& ModelIdOverride,
+        const FString& LanguageIdOverride,
+        FOnLLMResponseReceived OnComplete
+    );
+
+    /**
+     * Sends already collected N2C JSON for translation with the same overrides as TranslateFocusedBlueprintAsync.
+     * Game thread only. Builds the request config from the settings and calls ProcessN2CJsonWithOverrides.
+     */
+    FN2CLLMRequestHandleRef TranslateJsonAsync(
+        const FString& JsonInput,
         const FString& ProviderIdOverride,
         const FString& ModelIdOverride,
         const FString& LanguageIdOverride,

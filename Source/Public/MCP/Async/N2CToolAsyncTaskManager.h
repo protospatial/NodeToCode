@@ -31,11 +31,8 @@ struct FN2CAsyncTaskContext
 	/** Tool arguments */
 	TSharedPtr<FJsonObject> Arguments;
 
-	/** The async task instance */
+	/** The async task instance. It runs on the game thread; Task->IsComplete() says whether it has reported. */
 	TSharedPtr<IN2CToolAsyncTask> Task;
-
-	/** Future for the running task */
-	TFuture<void> TaskFuture;
 
 	FN2CAsyncTaskContext()
 	{
@@ -55,7 +52,8 @@ public:
 	static FN2CToolAsyncTaskManager& Get();
 
 	/**
-	 * Launches an async task for a long-running tool
+	 * Launches an async task for a long-running tool. The task starts on the game thread (at once when called there)
+	 * and runs without a worker thread.
 	 * @param ToolName The name of the tool to execute
 	 * @param Arguments The tool arguments
 	 * @param ProgressToken The progress token from the connector

@@ -54,17 +54,25 @@ FGuid FN2CToolAsyncTaskManager::LaunchTask(const FGuid& InTaskId, const FString&
 			this->OnTaskCompleted(TaskId, Result);
 		}));
 
-	// Launch the task on a background thread
-	TaskContext->TaskFuture = Async(EAsyncExecution::ThreadPool, [AsyncTask]()
-	{
-		AsyncTask->Execute();
-	});
-
-	// Store the task context
+	// Store the task context before starting, so progress and a result reported during Execute() find it
 	{
 		FScopeLock Lock(&TaskMapLock);
 		RunningTasks.Add(TaskId, TaskContext);
 		ProgressTokenToTaskId.Add(ProgressToken, TaskId);
+	}
+
+	// Start the task on the game thread. Execute() only starts the work (an async LLM request) and returns, so there
+	// is no worker thread: UObjects are created on the game thread and callbacks land there too.
+	if (IsInGameThread())
+	{
+		AsyncTask->Execute();
+	}
+	else
+	{
+		::AsyncTask(ENamedThreads::GameThread, [AsyncTask]()
+		{
+			AsyncTask->Execute();
+		});
 	}
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Launched async task %s for tool: %s (ProgressToken: %s)"), 
@@ -75,50 +83,48 @@ FGuid FN2CToolAsyncTaskManager::LaunchTask(const FGuid& InTaskId, const FString&
 
 bool FN2CToolAsyncTaskManager::CancelTask(const FGuid& TaskId)
 {
-	FScopeLock Lock(&TaskMapLock);
-	
-	auto TaskContext = RunningTasks.Find(TaskId);
-	if (!TaskContext || !TaskContext->IsValid())
+	TSharedPtr<IN2CToolAsyncTask> Task;
+	{
+		FScopeLock Lock(&TaskMapLock);
+		const TSharedPtr<FN2CAsyncTaskContext>* TaskContext = RunningTasks.Find(TaskId);
+		if (!TaskContext || !TaskContext->IsValid())
+		{
+			return false;
+		}
+		Task = (*TaskContext)->Task;
+	}
+
+	// Cancel outside the lock: the task reports its cancelled result, which looks the context up again
+	if (!Task.IsValid() || Task->IsComplete())
 	{
 		return false;
 	}
 
-	if ((*TaskContext)->Task.IsValid())
-	{
-		(*TaskContext)->Task->RequestCancel();
-		FN2CLogger::Get().Log(FString::Printf(TEXT("Cancellation requested for task %s"), *TaskId.ToString()), EN2CLogSeverity::Info);
-		return true;
-	}
-
-	return false;
+	Task->RequestCancel();
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Cancellation requested for task %s"), *TaskId.ToString()), EN2CLogSeverity::Info);
+	return true;
 }
 
 bool FN2CToolAsyncTaskManager::CancelTaskByProgressToken(const FString& ProgressToken)
 {
-	FScopeLock Lock(&TaskMapLock);
-	
-	FGuid* TaskId = ProgressTokenToTaskId.Find(ProgressToken);
-	if (!TaskId)
+	FGuid TaskId;
 	{
-		return false;
+		FScopeLock Lock(&TaskMapLock);
+		const FGuid* FoundTaskId = ProgressTokenToTaskId.Find(ProgressToken);
+		if (!FoundTaskId)
+		{
+			return false;
+		}
+		TaskId = *FoundTaskId;
 	}
 
-	// Use the non-locked version since we already have the lock
-	auto TaskContext = RunningTasks.Find(*TaskId);
-	if (!TaskContext || !TaskContext->IsValid())
+	const bool bCancelled = CancelTask(TaskId);
+	if (bCancelled)
 	{
-		return false;
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Cancellation requested for task %s via progress token %s"),
+			*TaskId.ToString(), *ProgressToken), EN2CLogSeverity::Info);
 	}
-
-	if ((*TaskContext)->Task.IsValid())
-	{
-		(*TaskContext)->Task->RequestCancel();
-		FN2CLogger::Get().Log(FString::Printf(TEXT("Cancellation requested for task %s via progress token %s"), 
-			*TaskId->ToString(), *ProgressToken), EN2CLogSeverity::Info);
-		return true;
-	}
-
-	return false;
+	return bCancelled;
 }
 
 TSharedPtr<FN2CAsyncTaskContext> FN2CToolAsyncTaskManager::GetTaskContext(const FGuid& TaskId) const
@@ -156,42 +162,42 @@ TSharedPtr<FN2CAsyncTaskContext> FN2CToolAsyncTaskManager::GetTaskContextByProgr
 bool FN2CToolAsyncTaskManager::IsTaskRunning(const FGuid& TaskId) const
 {
 	FScopeLock Lock(&TaskMapLock);
-	
+
 	auto TaskContext = RunningTasks.Find(TaskId);
 	if (!TaskContext || !TaskContext->IsValid())
 	{
 		return false;
 	}
 
-	// Check if the future is still valid and not completed
-	return (*TaskContext)->TaskFuture.IsValid() && !(*TaskContext)->TaskFuture.IsReady();
+	// Running until the task has reported its result
+	return (*TaskContext)->Task.IsValid() && !(*TaskContext)->Task->IsComplete();
 }
 
 TArray<FGuid> FN2CToolAsyncTaskManager::GetRunningTaskIds() const
 {
 	FScopeLock Lock(&TaskMapLock);
-	
+
 	TArray<FGuid> RunningIds;
 	for (const auto& Pair : RunningTasks)
 	{
-		if (Pair.Value.IsValid() && Pair.Value->TaskFuture.IsValid() && !Pair.Value->TaskFuture.IsReady())
+		if (Pair.Value.IsValid() && Pair.Value->Task.IsValid() && !Pair.Value->Task->IsComplete())
 		{
 			RunningIds.Add(Pair.Key);
 		}
 	}
-	
+
 	return RunningIds;
 }
 
 void FN2CToolAsyncTaskManager::CleanupCompletedTasks()
 {
 	FScopeLock Lock(&TaskMapLock);
-	
+
 	TArray<FGuid> TasksToRemove;
-	
+
 	for (const auto& Pair : RunningTasks)
 	{
-		if (!Pair.Value.IsValid() || !Pair.Value->TaskFuture.IsValid() || Pair.Value->TaskFuture.IsReady())
+		if (!Pair.Value.IsValid() || !Pair.Value->Task.IsValid() || Pair.Value->Task->IsComplete())
 		{
 			TasksToRemove.Add(Pair.Key);
 		}
@@ -217,17 +223,25 @@ void FN2CToolAsyncTaskManager::CleanupCompletedTasks()
 
 void FN2CToolAsyncTaskManager::CancelAllTasks()
 {
-	FScopeLock Lock(&TaskMapLock);
-	
-	for (auto& Pair : RunningTasks)
+	TArray<TSharedPtr<IN2CToolAsyncTask>> TasksToCancel;
 	{
-		if (Pair.Value.IsValid() && Pair.Value->Task.IsValid())
+		FScopeLock Lock(&TaskMapLock);
+		for (auto& Pair : RunningTasks)
 		{
-			Pair.Value->Task->RequestCancel();
+			if (Pair.Value.IsValid() && Pair.Value->Task.IsValid() && !Pair.Value->Task->IsComplete())
+			{
+				TasksToCancel.Add(Pair.Value->Task);
+			}
 		}
 	}
 
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Requested cancellation for all %d running tasks"), RunningTasks.Num()), EN2CLogSeverity::Info);
+	// Cancel outside the lock: each task reports its cancelled result through OnTaskCompleted
+	for (const TSharedPtr<IN2CToolAsyncTask>& Task : TasksToCancel)
+	{
+		Task->RequestCancel();
+	}
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Requested cancellation for all %d running tasks"), TasksToCancel.Num()), EN2CLogSeverity::Info);
 }
 
 TSharedPtr<IN2CToolAsyncTask> FN2CToolAsyncTaskManager::CreateAsyncTask(const FString& ToolName, const FGuid& TaskId, 
