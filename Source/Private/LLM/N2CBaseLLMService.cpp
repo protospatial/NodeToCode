@@ -5,7 +5,7 @@
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CResponseParserBase.h"
 #include "Utils/N2CLogger.h"
-#include "Core/N2CUserSecrets.h"
+#include "Core/N2CSecretStore.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"

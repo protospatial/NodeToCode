@@ -135,7 +135,8 @@ The `translate-focused-blueprint` tool uses the `FN2CTranslateBlueprintAsyncTask
 
 ### API Keys
 - Cloud providers require API keys configured in settings
-- Keys are stored as plaintext JSON at `Saved/NodeToCode/User/secrets.json`; the MCP file tools (read-file, read-path) refuse that folder
+- Keys are stored as plaintext JSON in the per-user `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json` (`FN2CSecretStore`), outside the project; the MCP file tools (read-file, read-path) refuse that folder, the old project folder `Saved/NodeToCode/User`, and any `secrets.json*` file
+- `get-available-llm-providers` reports a cloud provider as configured when `FN2CSecretStore::Get().HasApiKey()` is true
 - Local providers don't require API keys
 
 ### Model Selection

@@ -7,6 +7,7 @@
 #include "HttpModule.h"
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
 #include "Editor/EditorEngine.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
@@ -54,9 +55,8 @@ void FNodeToCodeModule::StartupModule()
         GEditor->ShouldDisableCPUThrottlingDelegates.Add(MoveTemp(ShouldDisable));
     }
 
-    // Load user secrets
-    UN2CUserSecrets* UserSecrets = NewObject<UN2CUserSecrets>();
-    UserSecrets->LoadSecrets();
+    // Load the API keys once, moving a project's Saved/NodeToCode/User/secrets.json to the per-user file
+    FN2CSecretStore::Get();
     
     // Apply configured log severity from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();

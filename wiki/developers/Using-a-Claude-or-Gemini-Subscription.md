@@ -9,8 +9,9 @@ URL; if you change the port, change it in the snippet too.
 ## API keys
 
 To translate inside the editor, set the **API Key** for your provider in **Project Settings → Plugins → Node to
-Code** (see [Provider Configuration](Provider-Configuration)). Keys are saved in the project's
-`Saved/NodeToCode/User/secrets.json`, outside its `Config` folder, so they are not in the config files you commit.
+Code** (see [Provider Configuration](Provider-Configuration)). Keys are saved in `secrets.json` in your user folder,
+outside every project (see [Initial Configuration](Initial-Configuration#plugins-config-files--source-control)), so
+they are not in anything you commit, and the MCP file tools refuse to read that file.
 
 | Provider | Get a key at | Notes |
 |---|---|---|

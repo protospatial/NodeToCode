@@ -38,7 +38,7 @@ Source/
             *   Logging system (`FN2CLogger`)
             *   No project or editor config is written at startup: HTTP timeouts are set per request (`UN2CHttpHandlerBase`), and CPU throttling is suspended only while a translation runs (a `ShouldDisableCPUThrottlingDelegates` entry). The MCP servers are skipped in commandlets and unattended runs unless `-N2CMcp` is passed
             *   Editor performance settings (disables "Use Less CPU when in Background")
-            *   User secrets (`UN2CUserSecrets`)
+            *   API keys (`FN2CSecretStore::Get()`, which also moves a project's old secrets file to the per-user one)
             *   Styles (`N2CStyle`, `FN2CCodeEditorStyle`)
             *   Editor integration (`FN2CEditorIntegration`)
             *   Widget factories (`FN2CCodeEditorWidgetFactory`)
@@ -125,9 +125,12 @@ Pure Slate widgets for the plugin UI:
     **Logging:**
     *   `MinSeverity` - Minimum log severity level
 
-*   **`Source/Public/Core/N2CUserSecrets.h` / `Source/Private/Core/N2CUserSecrets.cpp` (`UN2CUserSecrets`)**: UObject for local storage of the provider API keys in `Saved/NodeToCode/User/secrets.json`.
-    *   API keys: `OpenAI_API_Key`, `Anthropic_API_Key`, `Gemini_API_Key`, `DeepSeek_API_Key`
-    *   Saving is a read-modify-write that keeps fields it does not know. Loading deletes the sign-in token entries older versions wrote (`RemoveRetiredSignInEntries`) and logs that once.
+*   **`Source/Public/Core/N2CSecretStore.h` / `Source/Private/Core/N2CSecretStore.cpp`**: the provider API keys.
+    *   `FN2CSecretStore` (not a UObject) is the one owner of the keys in the process: `FN2CSecretStore::Get()`. Everything reads and writes keys through it (`GetApiKey`, `HasApiKey`, `SetApiKey`), keyed by provider id (`GetProviderId`: `OpenAI`, `Anthropic`, `Gemini`, `DeepSeek`). Nothing else may hold a copy of the keys that it later writes back. `UN2CSettings` has no secrets member; its `*_API_Key_UI` fields only mirror the store for the details panel.
+    *   The store sits on an `IN2CSecretBackend` (`LoadAll`, `StoreKey`). The OS keychain backend (board card 0161) implements that interface; tests build a store over a backend in a temporary folder.
+    *   `FN2CSecretFileBackend` is the Phase 0 backend: `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json` (Windows `%LOCALAPPDATA%`), per user, not per project. Fields are `<ProviderId>_API_Key` plus `Version`. Every write re-reads the file under the store's lock and changes one field (unknown fields kept), writes `secrets.json.tmp`, copies the old file to `secrets.json.bak` and moves the temporary file over it. A file that does not parse is renamed to `secrets.json.corrupt-<UTC timestamp>` and never written over. Loading deletes the sign-in token entries older versions wrote (`RemoveRetiredSignInEntries`) and logs that once.
+    *   Migration: on load, `<Project>/Saved/NodeToCode/User/secrets.json` is merged in (per-user values win, an empty per-user value is filled, a differing project key is kept under `MigrationConflicts.<project file path>`), then deleted. Logs name the provider, never the key. A project file that does not parse is left in place with an error.
+    *   `FN2CPathUtils::IsDeniedForAgentAccess` refuses both locations and any `secrets.json*` file to the MCP file tools. Two editors on one machine share the file; the read-modify-write keeps their edits to different keys, but there is no cross-process lock.
 
 **Authentication:** every cloud provider (OpenAI, Anthropic, Gemini, DeepSeek) authenticates with its API key only; Ollama and LM Studio need none. NodeToCode 2.0 removed Claude Pro/Max and Google account sign-in. A config that still selects it loads normally and is reported once per session (`UN2CSettings::ReportRemovedSignInSelections`), and a cloud request without a key fails before it is sent (`UN2CBaseLLMService::GetMissingApiKeyError`).
 

@@ -3,7 +3,7 @@
 #include "N2CMcpGetAvailableLLMProvidersTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CSettings.h"
-#include "Core/N2CUserSecrets.h"
+#include "Core/N2CSecretStore.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2COllamaConfig.h"
@@ -111,27 +111,8 @@ bool FN2CMcpGetAvailableLLMProvidersTool::IsProviderConfigured(EN2CLLMProvider P
         return true;
     }
     
-    // Get settings to access user secrets
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (!Settings || !Settings->UserSecrets)
-    {
-        return false;
-    }
-    
-    // Check API key for cloud providers
-    switch (Provider)
-    {
-        case EN2CLLMProvider::OpenAI:
-            return !Settings->UserSecrets->OpenAI_API_Key.IsEmpty();
-        case EN2CLLMProvider::Anthropic:
-            return !Settings->UserSecrets->Anthropic_API_Key.IsEmpty();
-        case EN2CLLMProvider::Gemini:
-            return !Settings->UserSecrets->Gemini_API_Key.IsEmpty();
-        case EN2CLLMProvider::DeepSeek:
-            return !Settings->UserSecrets->DeepSeek_API_Key.IsEmpty();
-        default:
-            return false;
-    }
+    // Cloud providers need a saved API key
+    return FN2CSecretStore::Get().HasApiKey(Provider);
 }
 
 FString FN2CMcpGetAvailableLLMProvidersTool::GetProviderDisplayName(EN2CLLMProvider Provider) const
