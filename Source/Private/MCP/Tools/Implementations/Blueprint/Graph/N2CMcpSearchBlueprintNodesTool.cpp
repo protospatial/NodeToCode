@@ -8,6 +8,9 @@
 #include "Utils/N2CLogger.h"
 #include "BlueprintActionFilter.h"
 #include "BlueprintActionMenuBuilder.h"
+#include "BlueprintActionMenuItem.h"
+#include "BlueprintDragDropMenuItem.h"
+#include "BlueprintNodeSpawner.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Core/N2CNodeTranslator.h"
@@ -173,83 +176,10 @@ FMcpToolCallResult FN2CMcpSearchBlueprintNodesTool::Execute(const TSharedPtr<FJs
             }
         }
     
-        // Set up the action filter
-        FBlueprintActionFilter Filter;
-        if (bContextSensitive && ContextBlueprint && ContextGraph)
-        {
-            Filter.Context.Blueprints.Add(ContextBlueprint);
-            Filter.Context.Graphs.Add(ContextGraph);
-        }
-        // For global search, leave Context empty
-    
-        // Build the action list
-        FBlueprintActionMenuBuilder MenuBuilder;
-        MenuBuilder.AddMenuSection(Filter, FText::GetEmpty(), 0);
-    
-        // Rebuild to populate from database
-        MenuBuilder.RebuildActionList();
-    
-        // Tokenize search terms
-        TArray<FString> FilterTerms;
-        SearchTerm.ParseIntoArray(FilterTerms, TEXT(" "), true);
-    
-        // Also create case-insensitive versions
-        TArray<FString> LowerFilterTerms;
-        for (const FString& Term : FilterTerms)
-        {
-            LowerFilterTerms.Add(Term.ToLower());
-        }
-    
-        // Search through actions
-        TArray<TSharedPtr<FJsonValue>> ResultNodes;
-        int32 ResultCount = 0;
+        TArray<TSharedPtr<FJsonValue>> ResultNodes = SearchActions(SearchTerm, MaxResults, bContextSensitive,
+            ContextBlueprint, ContextGraph, CategoryFilter, bExcludeVMFunctions);
+        const int32 ResultCount = ResultNodes.Num();
 
-        for (int32 i = 0; i < MenuBuilder.GetNumActions() && ResultCount < MaxResults; ++i)
-        {
-            const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
-            if (!Action.IsValid())
-            {
-                continue;
-            }
-            const FString& ActionSearchText = Action->GetFullSearchText();
-            FString LowerSearchText = ActionSearchText.ToLower();
-
-            // Check if all search terms match (case-insensitive)
-            bool bMatchesAllTerms = true;
-            for (const FString& Term : LowerFilterTerms)
-            {
-                if (!LowerSearchText.Contains(Term))
-                {
-                    bMatchesAllTerms = false;
-                    break;
-                }
-            }
-
-            if (!bMatchesAllTerms)
-            {
-                continue;
-            }
-
-            // Apply category filter if specified
-            if (!CategoryFilter.IsEmpty() && !MatchesCategoryFilter(ActionSearchText, CategoryFilter))
-            {
-                continue;
-            }
-
-            // Apply VMFunction exclusion filter
-            if (bExcludeVMFunctions && IsExcludedVMFunction(ActionSearchText))
-            {
-                continue;
-            }
-
-            TSharedPtr<FJsonObject> NodeJson = ConvertActionToJson(Action, bContextSensitive, ContextBlueprint, ContextGraph);
-            if (NodeJson.IsValid())
-            {
-                ResultNodes.Add(MakeShareable(new FJsonValueObject(NodeJson)));
-                ResultCount++;
-            }
-        }
-    
         // Build result JSON
         TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
         ResultObject->SetArrayField(TEXT("nodes"), ResultNodes);
@@ -260,11 +190,96 @@ FMcpToolCallResult FN2CMcpSearchBlueprintNodesTool::Execute(const TSharedPtr<FJs
     
         FN2CLogger::Get().Log(FString::Printf(TEXT("Blueprint node search completed. Found %d results"), ResultCount), EN2CLogSeverity::Info);
 
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-        
+        // No BlueprintActionDatabase refresh: the search no longer adds or removes nodes, so there is nothing to resync
+
         return FMcpToolCallResult::CreateTextResult(ResultJsonString); // Return the result from the lambda
     });
+}
+
+TArray<TSharedPtr<FJsonValue>> FN2CMcpSearchBlueprintNodesTool::SearchActions(
+    const FString& SearchTerm,
+    int32 MaxResults,
+    bool bContextSensitive,
+    UBlueprint* ContextBlueprint,
+    UEdGraph* ContextGraph,
+    const FString& CategoryFilter,
+    bool bExcludeVMFunctions)
+{
+    check(IsInGameThread());
+
+    // Set up the action filter
+    FBlueprintActionFilter Filter;
+    if (bContextSensitive && ContextBlueprint && ContextGraph)
+    {
+        Filter.Context.Blueprints.Add(ContextBlueprint);
+        Filter.Context.Graphs.Add(ContextGraph);
+    }
+    else
+    {
+        // Global search: no context graph to build templates against
+        ContextGraph = nullptr;
+    }
+
+    // Build the action list from the database
+    FBlueprintActionMenuBuilder MenuBuilder;
+    MenuBuilder.AddMenuSection(Filter, FText::GetEmpty(), 0);
+    MenuBuilder.RebuildActionList();
+
+    // Tokenize search terms (case-insensitive)
+    TArray<FString> FilterTerms;
+    SearchTerm.ParseIntoArray(FilterTerms, TEXT(" "), true);
+    TArray<FString> LowerFilterTerms;
+    for (const FString& Term : FilterTerms)
+    {
+        LowerFilterTerms.Add(Term.ToLower());
+    }
+
+    TArray<TSharedPtr<FJsonValue>> ResultNodes;
+    for (int32 i = 0; i < MenuBuilder.GetNumActions() && ResultNodes.Num() < MaxResults; ++i)
+    {
+        const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
+        if (!Action.IsValid())
+        {
+            continue;
+        }
+        const FString& ActionSearchText = Action->GetFullSearchText();
+        const FString LowerSearchText = ActionSearchText.ToLower();
+
+        // Check if all search terms match
+        bool bMatchesAllTerms = true;
+        for (const FString& Term : LowerFilterTerms)
+        {
+            if (!LowerSearchText.Contains(Term))
+            {
+                bMatchesAllTerms = false;
+                break;
+            }
+        }
+        if (!bMatchesAllTerms)
+        {
+            continue;
+        }
+
+        // Apply category filter if specified
+        if (!CategoryFilter.IsEmpty() && !MatchesCategoryFilter(ActionSearchText, CategoryFilter))
+        {
+            continue;
+        }
+
+        // Apply VMFunction exclusion filter
+        if (bExcludeVMFunctions && IsExcludedVMFunction(ActionSearchText))
+        {
+            continue;
+        }
+
+        TSharedPtr<FJsonObject> NodeJson = ConvertActionToJson(Action, bContextSensitive, ContextBlueprint, ContextGraph);
+        if (NodeJson.IsValid())
+        {
+            ResultNodes.Add(MakeShareable(new FJsonValueObject(NodeJson)));
+        }
+    }
+
+    return ResultNodes;
 }
 
 bool FN2CMcpSearchBlueprintNodesTool::ParseArguments(
@@ -434,36 +449,17 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertActionToJson(
     FString NodeId = FString::Printf(TEXT("SearchNode_%d"), ++SearchNodeCounter);
     
     TSharedPtr<FJsonObject> NodeJson;
-    
-    // Try to spawn the actual node if we have a context
-    if (ContextGraph && Action.IsValid())
+
+    // Read pins from the spawner's template node. Never PerformAction here: for an event that already exists
+    // the event spawner returns the user's own node, and every spawn opens an "Add Node" transaction, dirties
+    // the Blueprint and creates timeline/component templates. Template nodes live in a transient graph owned
+    // by FBlueprintNodeTemplateCache, where spawners skip all of that.
+    if (UK2Node* TemplateNode = Cast<UK2Node>(GetTemplateNodeForAction(Action, ContextGraph)))
     {
-        const TSharedPtr<FEdGraphSchemaAction>& SchemaAction = Action;
-        if (SchemaAction.IsValid())
-        {
-            // Perform the action to spawn the node in the context graph
-            const FVector2f SpawnLocation(0.0f, 0.0f);
-            UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(ContextGraph, nullptr, SpawnLocation);
-            
-            // Try to cast to K2Node
-            UK2Node* K2Node = Cast<UK2Node>(SpawnedNode);
-            if (K2Node)
-            {
-                // Convert the actual spawned node to N2CJSON
-                NodeJson = ConvertNodeToN2CJson(K2Node, NodeId);
-                
-                // Remove the node from the graph immediately
-                ContextGraph->RemoveNode(SpawnedNode);
-            }
-            else if (SpawnedNode)
-            {
-                // Clean up non-K2 nodes
-                ContextGraph->RemoveNode(SpawnedNode);
-            }
-        }
+        NodeJson = ConvertNodeToN2CJson(TemplateNode, NodeId);
     }
-    
-    // Fallback if we couldn't spawn the node
+
+    // Fallback if there is no template node
     if (!NodeJson.IsValid())
     {
         // Create a template node definition from the action metadata
@@ -496,6 +492,46 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertActionToJson(
     }
     
     return NodeJson;
+}
+
+UEdGraphNode* FN2CMcpSearchBlueprintNodesTool::GetTemplateNodeForAction(const TSharedPtr<FEdGraphSchemaAction>& Action, UEdGraph* ContextGraph)
+{
+    if (!Action.IsValid())
+    {
+        return nullptr;
+    }
+
+    const UBlueprintNodeSpawner* Spawner = nullptr;
+    const FName TypeId = Action->GetTypeId();
+    if (TypeId == FBlueprintActionMenuItem::StaticGetTypeId())
+    {
+        Spawner = StaticCastSharedPtr<FBlueprintActionMenuItem>(Action)->GetRawAction();
+    }
+    else if (TypeId == FBlueprintDragDropMenuItem::StaticGetTypeId())
+    {
+        Spawner = StaticCastSharedPtr<FBlueprintDragDropMenuItem>(Action)->GetSampleAction();
+    }
+
+    if (!Spawner)
+    {
+        return nullptr;
+    }
+
+    // ContextGraph only selects the kind of transient outer the template is built in (the action filter already
+    // checked compatibility against it); the template is never added to ContextGraph
+    UEdGraphNode* TemplateNode = Spawner->GetTemplateNode(ContextGraph);
+    if (TemplateNode && ContextGraph && TemplateNode->GetGraph() == ContextGraph)
+    {
+        // Should be impossible; refuse rather than hand back a node from the user's graph
+        return nullptr;
+    }
+
+    // Spawners do not allocate pins on template nodes; allocate them the way BlueprintActionFilter's pin matching does
+    if (TemplateNode && TemplateNode->Pins.Num() == 0)
+    {
+        TemplateNode->AllocateDefaultPins();
+    }
+    return TemplateNode;
 }
 
 FString FN2CMcpSearchBlueprintNodesTool::ExtractInternalName(const TSharedPtr<FEdGraphSchemaAction>& Action)
