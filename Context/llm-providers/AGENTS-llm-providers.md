@@ -98,7 +98,7 @@ Manages interactions with LLMs.
     *   `EN2COpenAIModel`: GPT-6.1 Sol (default), GPT-6 Astra, GPT-6 Luna, GPT-5.2, GPT-5.2 Pro; deprecated but live: GPT-5/Mini/Nano and o3 (shut down 2026-12-11), GPT-4.1, GPT-4o, GPT-4o Mini (2027-01-14); retired (hidden): o4-mini, o3-mini, o1, o1-preview, o1-mini
     *   `EN2CAnthropicModel`: Claude Sonnet 5.5 (default), Opus 5.5, Haiku 5.5, Opus 4.5; deprecated but live: Sonnet 4.5 (retires 2026-11-30); retired (hidden): Opus 4.1, Opus 4, Sonnet 4, 3.7 Sonnet, 3.5 Sonnet, 3.5 Haiku
     *   `EN2CGeminiModel`: Gemini 3.8 Flash (default), Gemini 4 Argon, Gemini 3.5 Flash-Lite, Gemini 3 Flash Preview; retired (hidden): 3 Pro Preview, 2.5 Pro/Flash previews, 2.0 Flash/Flash-Lite, 1.5 Flash/Pro, 2.0 experimental models
-    *   `EN2CDeepSeekModel`: DeepSeek R1, DeepSeek V3
+    *   `EN2CDeepSeekModel`: DeepSeek_R1 (default: `deepseek-flash`, thinking high), DeepSeek_V3 (`deepseek-flash`, thinking off, `json_object`), DeepSeek_V4_Pro (`deepseek-v4-pro`, thinking high). The old IDs `deepseek-reasoner`/`deepseek-chat` were discontinued 2026-07-24; the enumerator names stay. R1 and V3 share a model ID and differ in `FN2CModelMetadata::ReasoningEffort`, which travels per request in `FN2CLLMConfig::ReasoningEffort` (filled by `UN2CSettings::ResolveRequestModel`); `GetModelMetadataById(Id, Effort)` picks the entry, and a bare ID gets the first entry registered (the API default, thinking on)
     *   Defaults live in `N2CDefaultModels` (same header). Enumerators are never renamed or removed, because settings save them by name: new models are appended, retired ones get `UMETA(Hidden)` plus `.Retired(date)` in the registry, deprecated-but-live ones get `.ShutsDown(date)` and the date in their display name. `UN2CSettings::PostInitProperties` moves a saved retired selection to the default and logs one warning. `NodeToCode.LLM.Registry` checks these rules.
     *   Note: Ollama and LM Studio use dynamic string-based model names instead of enums
     *   `FN2CLLMModelUtils`: Model string ID getters, pricing getters, system prompt support checks
@@ -125,7 +125,7 @@ Comprehensive structured output support across providers:
 *   **OpenAI**: `json_schema` type with strict schema validation
 *   **LM Studio**: OpenAI-compatible with `strict: true` parameter
 *   **Gemini**: `responseMimeType` and `responseSchema` in generation config
-*   **DeepSeek**: `json_object` type format
+*   **DeepSeek**: `json_object` type format, sent only for registry entries with `bSupportsStructuredOutput` (the non-thinking mode); thinking is `thinking.type` plus a top-level `reasoning_effort`, and no temperature is sent with thinking on
 *   **Ollama**: Direct schema in `format` field
 *   **Schema Definition**: `GetN2CResponseSchema()` provides consistent N2C translation format
 

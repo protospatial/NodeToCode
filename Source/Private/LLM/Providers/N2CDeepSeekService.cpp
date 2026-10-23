@@ -2,8 +2,8 @@
 
 #include "LLM/Providers/N2CDeepSeekService.h"
 
-#include "Core/N2CSettings.h"
-#include "LLM/N2CLLMModels.h"
+#include "LLM/N2CLLMModelRegistry.h"
+#include "LLM/N2CLLMPayloadBuilder.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
@@ -31,20 +31,16 @@ void UN2CDeepSeekService::GetProviderHeaders(TMap<FString, FString>& OutHeaders)
 
 FString UN2CDeepSeekService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
-    // Load settings
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (!Settings)
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to load plugin settings"), TEXT("LLMModule"));
-    }
-
-    // Create and configure payload builder
+    // Everything below is decided from the request (Config.Model and Config.ReasoningEffort) through the registry,
+    // never from the Project Settings selection, so an MCP model override gets its own model's mode
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
     PayloadBuilder->Initialize(Config.Model);
-    PayloadBuilder->ConfigureForDeepSeek();
-    
-    // Max tokens; temperature is applied by ConfigureForDeepSeek only for models that accept it
-    PayloadBuilder->SetMaxTokens(16000);
+    PayloadBuilder->ConfigureForDeepSeek(Config.ReasoningEffort);
+
+    // Max tokens from the registry entry (thinking output counts against it); temperature is applied by
+    // ConfigureForDeepSeek only in non-thinking mode
+    const FN2CModelMetadata* ModelMeta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Config.Model, Config.ReasoningEffort);
+    PayloadBuilder->SetMaxTokens(ModelMeta && ModelMeta->Provider == EN2CLLMProvider::DeepSeek ? ModelMeta->DefaultMaxTokens : 16000);
     
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
@@ -54,11 +50,8 @@ FString UN2CDeepSeekService::FormatRequestPayload(const FString& UserMessage, co
     PayloadBuilder->AddSystemMessage(SystemMessage);
     PayloadBuilder->AddUserMessage(FinalUserMessage);
     
-    // Add JSON schema for response format if model supports it
-    if (Settings && FN2CLLMModelUtils::GetDeepSeekModelValue(Settings->DeepSeekModel) == TEXT("deepseek-chat"))
-    {
-        PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
-    }
+    // json_object response format; the builder sends it only for entries flagged for structured output
+    PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
     
     // Build and return the payload
     return PayloadBuilder->Build();

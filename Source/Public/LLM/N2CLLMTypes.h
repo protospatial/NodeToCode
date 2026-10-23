@@ -62,4 +62,12 @@ struct FN2CLLMConfig
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     FString Model;
+
+    /**
+     * Thinking control for this request, for providers that switch thinking per request (DeepSeek: "none",
+     * "low", "high" or "max"; see FN2CModelMetadata::ReasoningEffort). Empty: the registry entry for Model
+     * decides. UN2CSettings::ResolveRequestModel fills it from the selected model.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    FString ReasoningEffort;
 };

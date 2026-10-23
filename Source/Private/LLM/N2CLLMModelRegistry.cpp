@@ -786,61 +786,98 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 	// DeepSeek Models
 	// ========================================================================
 
-	// DeepSeek R1 (reasoning model)
-	DeepSeekModels.Add(EN2CDeepSeekModel::DeepSeek_R1, FN2CModelMetadata(
-		TEXT("deepseek-reasoner"),
-		TEXT("DeepSeek R1"),
-		EN2CLLMProvider::DeepSeek,
-		0.55f, 2.19f,         // Cache miss pricing
-		64000,
-		32768,                // 32K max output (includes reasoning chains)
-		true,
-		true,
-		true,                 // Is reasoning model
-		1.0f,
-		8192,
-		false,                // Chat Completions (not Responses API)
-		false,                // Accepts sampling params: DeepSeek reasoner ignores sampling parameters
-		false                 // Uses max_completion_tokens
-	));
+	// Checked 2026-10-22 against api-docs.deepseek.com (quick_start/pricing, api/create-chat-completion,
+	// guides/thinking_mode, updates). The API takes two model IDs, deepseek-flash and deepseek-v4-pro, each with
+	// a 1M context and up to 384K (393216) output tokens. Thinking is switched per request (thinking.type, plus a
+	// top-level reasoning_effort of low/high/max) and is on by default. temperature has no effect in thinking
+	// mode. deepseek-chat and deepseek-reasoner were discontinued 2026-07-24, so the DeepSeek_R1 and DeepSeek_V3
+	// enumerators now select thinking modes of deepseek-flash. Entries that share an ID differ in ReasoningEffort.
+	// Prices are the peak-hour cache-miss rates (off-peak is half).
 
-	// DeepSeek V3
-	DeepSeekModels.Add(EN2CDeepSeekModel::DeepSeek_V3, FN2CModelMetadata(
-		TEXT("deepseek-chat"),
-		TEXT("DeepSeek V3"),
+	// Registered first, so it is the entry GetModelMetadataById("deepseek-flash") returns: thinking on at high
+	// effort is the API's own default for the ID. No response_format: the docs do not say JSON Output works
+	// with thinking on.
+	DeepSeekModels.Add(EN2CDeepSeekModel::DeepSeek_R1, FN2CModelMetadata(
+		TEXT("deepseek-flash"),
+		TEXT("DeepSeek Flash, thinking (high effort)"),
 		EN2CLLMProvider::DeepSeek,
-		0.27f, 1.1f,          // Cache miss pricing
-		64000,
-		8192,
+		0.3f, 1.2f,
+		1000000,
+		393216,
 		true,
+		false,                // Structured output: no response_format with thinking on
+		true,                 // Is reasoning model
+		0.0f,
+		65536,                // The API's own default max_tokens in thinking mode (reasoning counts against it)
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: temperature has no effect in thinking mode
+		false                 // Uses max_completion_tokens
+	).WithReasoningEffort(TEXT("high")));
+
+	DeepSeekModels.Add(EN2CDeepSeekModel::DeepSeek_V3, FN2CModelMetadata(
+		TEXT("deepseek-flash"),
+		TEXT("DeepSeek Flash, no thinking (JSON output)"),
+		EN2CLLMProvider::DeepSeek,
+		0.3f, 1.2f,
+		1000000,
+		393216,
 		true,
+		true,                 // Structured output: response_format json_object
 		false,
 		0.0f,
-		8192,
+		32768,
 		false,                // Chat Completions (not Responses API)
-		true,                 // Accepts sampling params: DeepSeek chat accepts temperature
+		true,                 // Accepts sampling params: temperature applies in non-thinking mode
 		false                 // Uses max_completion_tokens
-	));
+	).WithReasoningEffort(TEXT("none")));
+
+	DeepSeekModels.Add(EN2CDeepSeekModel::DeepSeek_V4_Pro, FN2CModelMetadata(
+		TEXT("deepseek-v4-pro"),
+		TEXT("DeepSeek V4 Pro, thinking (high effort)"),
+		EN2CLLMProvider::DeepSeek,
+		1.32f, 3.96f,
+		1000000,
+		393216,
+		true,
+		false,                // Structured output: no response_format with thinking on
+		true,                 // Is reasoning model
+		0.0f,
+		65536,                // The API's own default max_tokens in thinking mode (reasoning counts against it)
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: temperature has no effect in thinking mode
+		false                 // Uses max_completion_tokens
+	).WithReasoningEffort(TEXT("high")));
 
 	// ========================================================================
 	// Build Model ID Index for fast lookup
 	// ========================================================================
 
-	for (auto& Pair : OpenAIModels)
+	// For an ID shared by several entries the index keeps the first live one registered (maps iterate in
+	// insertion order); a retired entry only fills an ID no live entry has.
+	auto IndexEntry = [this](const FN2CModelMetadata& Entry)
 	{
-		ModelIdIndex.Add(Pair.Value.ModelId, &Pair.Value);
+		ModelIdEntries.Add(Entry.ModelId, &Entry);
+		const FN2CModelMetadata*& Slot = ModelIdIndex.FindOrAdd(Entry.ModelId, nullptr);
+		if (!Slot || (Slot->bIsRetired && !Entry.bIsRetired))
+		{
+			Slot = &Entry;
+		}
+	};
+	for (const auto& Pair : OpenAIModels)
+	{
+		IndexEntry(Pair.Value);
 	}
-	for (auto& Pair : AnthropicModels)
+	for (const auto& Pair : AnthropicModels)
 	{
-		ModelIdIndex.Add(Pair.Value.ModelId, &Pair.Value);
+		IndexEntry(Pair.Value);
 	}
-	for (auto& Pair : GeminiModels)
+	for (const auto& Pair : GeminiModels)
 	{
-		ModelIdIndex.Add(Pair.Value.ModelId, &Pair.Value);
+		IndexEntry(Pair.Value);
 	}
-	for (auto& Pair : DeepSeekModels)
+	for (const auto& Pair : DeepSeekModels)
 	{
-		ModelIdIndex.Add(Pair.Value.ModelId, &Pair.Value);
+		IndexEntry(Pair.Value);
 	}
 }
 
@@ -872,6 +909,23 @@ const FN2CModelMetadata* FN2CLLMModelRegistry::GetModelMetadataById(const FStrin
 {
 	const FN2CModelMetadata* const* Found = ModelIdIndex.Find(ModelId);
 	return Found ? *Found : nullptr;
+}
+
+const FN2CModelMetadata* FN2CLLMModelRegistry::GetModelMetadataById(const FString& ModelId, const FString& ReasoningEffort) const
+{
+	if (!ReasoningEffort.IsEmpty())
+	{
+		TArray<const FN2CModelMetadata*, TInlineAllocator<4>> Entries;
+		ModelIdEntries.MultiFind(ModelId, Entries, /*bMaintainOrder*/ true);
+		for (const FN2CModelMetadata* Entry : Entries)
+		{
+			if (Entry->ReasoningEffort == ReasoningEffort && !Entry->bIsRetired)
+			{
+				return Entry;
+			}
+		}
+	}
+	return GetModelMetadataById(ModelId);
 }
 
 // ============================================================================
@@ -911,7 +965,7 @@ FString FN2CLLMModelRegistry::GetModelId(EN2CDeepSeekModel Model) const
 	{
 		return Meta->ModelId;
 	}
-	return TEXT("deepseek-reasoner"); // Fallback: N2CDefaultModels::DeepSeek
+	return TEXT("deepseek-flash"); // Fallback: N2CDefaultModels::DeepSeek
 }
 
 // ============================================================================

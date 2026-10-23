@@ -12,6 +12,8 @@ void UN2CLLMPayloadBuilder::Initialize(const FString& InModelName)
     MessagesArray.Empty();
     ModelName = InModelName;
     bProviderConfigured = false;
+    RequestedReasoningEffort.Reset();
+    SentReasoningEffort.Reset();
 
     // Only the model is written here. Every other field depends on the provider, so it is written after a
     // ConfigureFor* call; sampling fields are written only when the model's registry flag allows them,
@@ -54,7 +56,8 @@ bool UN2CLLMPayloadBuilder::EnsureProviderConfigured(const TCHAR* Caller) const
 
 const FN2CModelMetadata* UN2CLLMPayloadBuilder::FindModelMetadata() const
 {
-    const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadataById(ModelName);
+    // Entries can share a model ID and differ in thinking mode (DeepSeek), so the request's mode picks the entry
+    const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadataById(ModelName, RequestedReasoningEffort);
     return (Meta && Meta->Provider == ProviderType) ? Meta : nullptr;
 }
 
@@ -73,6 +76,11 @@ bool UN2CLLMPayloadBuilder::AcceptsSamplingParams() const
                 // Cloud providers: only what the registry says. IDs not in the registry (for example an MCP
                 // model override) get no sampling fields, so the provider default applies.
                 const FN2CModelMetadata* Meta = FindModelMetadata();
+                if (ProviderType == EN2CLLMProvider::DeepSeek && !SentReasoningEffort.IsEmpty() && SentReasoningEffort != TEXT("none"))
+                {
+                    // DeepSeek ignores temperature in thinking mode
+                    return false;
+                }
                 return Meta && Meta->bAcceptsSamplingParams;
             }
     }
@@ -346,10 +354,20 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
 
         case EN2CLLMProvider::DeepSeek:
             {
-                // DeepSeek uses response_format.type = json_object
-                TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
-                ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_object"));
-                RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
+                // DeepSeek takes response_format.type = json_object (no schema). Only entries flagged for
+                // structured output get it: the non-thinking mode. Unregistered IDs get none.
+                const FN2CModelMetadata* Meta = FindModelMetadata();
+                if (Meta && Meta->bSupportsStructuredOutput)
+                {
+                    TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
+                    ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_object"));
+                    RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
+                }
+                else
+                {
+                    FN2CLogger::Get().Log(FString::Printf(TEXT("Model %s (thinking %s) takes no response_format, skipping"),
+                        *ModelName, SentReasoningEffort.IsEmpty() ? TEXT("default") : *SentReasoningEffort), EN2CLogSeverity::Debug);
+                }
             }
             break;
 
@@ -416,14 +434,32 @@ void UN2CLLMPayloadBuilder::ConfigureForGemini()
     ApplyModelSamplingDefaults();
 }
 
-void UN2CLLMPayloadBuilder::ConfigureForDeepSeek()
+void UN2CLLMPayloadBuilder::ConfigureForDeepSeek(const FString& ReasoningEffort)
 {
     ProviderType = EN2CLLMProvider::DeepSeek;
     bProviderConfigured = true;
+    RequestedReasoningEffort = ReasoningEffort;
 
     // Clear messages array and recreate it
     MessagesArray.Empty();
 
+    // Thinking is switched per request (api-docs.deepseek.com/api/create-chat-completion): thinking.type
+    // enabled/disabled, and a top-level reasoning_effort (low/high/max) when it is on. The request's own value
+    // wins; otherwise the registry entry's. Unregistered IDs send neither, so the API default applies.
+    const FN2CModelMetadata* Meta = FindModelMetadata();
+    SentReasoningEffort = !RequestedReasoningEffort.IsEmpty() ? RequestedReasoningEffort
+        : (Meta ? Meta->ReasoningEffort : FString());
+    if (!SentReasoningEffort.IsEmpty())
+    {
+        const bool bThinking = SentReasoningEffort != TEXT("none");
+        GetOrCreateRootObjectField(TEXT("thinking"))->SetStringField(TEXT("type"), bThinking ? TEXT("enabled") : TEXT("disabled"));
+        if (bThinking)
+        {
+            RootObject->SetStringField(TEXT("reasoning_effort"), SentReasoningEffort);
+        }
+    }
+
+    // Temperature only in non-thinking mode, and only where the registry allows it
     ApplyModelSamplingDefaults();
 }
 

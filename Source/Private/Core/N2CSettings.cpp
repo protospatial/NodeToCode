@@ -441,6 +441,34 @@ FString UN2CSettings::GetActiveModelForProvider(EN2CLLMProvider InProvider) cons
     }
 }
 
+FString UN2CSettings::GetActiveReasoningEffortForProvider(EN2CLLMProvider InProvider) const
+{
+    // Only DeepSeek switches thinking per request on a shared model ID
+    if (InProvider == EN2CLLMProvider::DeepSeek)
+    {
+        if (const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadata(DeepSeekModel))
+        {
+            return Meta->ReasoningEffort;
+        }
+    }
+    return FString();
+}
+
+void UN2CSettings::ResolveRequestModel(EN2CLLMProvider InProvider, const FString& ModelIdOverride, FN2CLLMConfig& InOutConfig) const
+{
+    const FString SelectedModel = GetActiveModelForProvider(InProvider);
+    if (ModelIdOverride.IsEmpty() || ModelIdOverride == SelectedModel)
+    {
+        InOutConfig.Model = SelectedModel;
+        InOutConfig.ReasoningEffort = GetActiveReasoningEffortForProvider(InProvider);
+    }
+    else
+    {
+        InOutConfig.Model = ModelIdOverride;
+        InOutConfig.ReasoningEffort.Reset();
+    }
+}
+
 #undef LOCTEXT_NAMESPACE
 const FN2CCodeEditorColors* UN2CSettings::GetThemeColors(EN2CCodeLanguage Language, const FName& ThemeName) const
 {

@@ -23,7 +23,8 @@
  * Builds each provider's request body through its service (no request is sent, no key is used) and checks
  * the fields: no sampling parameters where the registry says the model rejects them, the right max-token
  * field, a Gemini schema without additionalProperties, strict json_schema as a JSON boolean for OpenAI and
- * LM Studio, and a Gemini API key carried in the x-goog-api-key header rather than the URL.
+ * LM Studio, a Gemini API key carried in the x-goog-api-key header rather than the URL, and DeepSeek thinking
+ * and JSON mode decided from the request's own model and thinking control rather than from Project Settings.
  */
 BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -38,6 +39,62 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 		Config.Model = Model;
 		Service->Initialize(Config);
 		return Service->BuildRequestPayloadForTesting(TEXT("Translate this graph."), TEXT("You are a translator."));
+	}
+
+	/**
+	 * DeepSeek body for a request resolved the way the editor resolves one: Selected is the Project Settings
+	 * selection (set on the settings default object for the duration, so a service that read Settings would see
+	 * it) and ModelIdOverride the MCP model argument (empty for none).
+	 */
+	TSharedPtr<FJsonObject> BuildDeepSeek(EN2CDeepSeekModel Selected, const FString& ModelIdOverride = FString())
+	{
+		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+		const EN2CDeepSeekModel Saved = Settings->DeepSeekModel;
+		Settings->DeepSeekModel = Selected;
+
+		FN2CLLMConfig Config;
+		Config.Provider = EN2CLLMProvider::DeepSeek;
+		Settings->ResolveRequestModel(EN2CLLMProvider::DeepSeek, ModelIdOverride, Config);
+		UN2CDeepSeekService* Service = NewObject<UN2CDeepSeekService>(GetTransientPackage());
+		Service->Initialize(Config);
+		const FString Payload = Service->BuildRequestPayloadForTesting(TEXT("Translate this graph to JSON."), TEXT("You are a translator."));
+
+		Settings->DeepSeekModel = Saved;
+		return Parse(Payload);
+	}
+
+	/** thinking.type is Type; reasoning_effort is Effort, or absent when Effort is null */
+	void TestDeepSeekThinking(const FString& What, const TSharedPtr<FJsonObject>& Root, const TCHAR* Type, const TCHAR* Effort)
+	{
+		const TSharedPtr<FJsonObject> Thinking = Child(Root, TEXT("thinking"));
+		if (TestTrue(FString::Printf(TEXT("%s has thinking"), *What), Thinking.IsValid()))
+		{
+			TestEqual(FString::Printf(TEXT("%s thinking.type"), *What), Thinking->GetStringField(TEXT("type")), FString(Type));
+		}
+		if (Effort)
+		{
+			FString Sent;
+			TestTrue(FString::Printf(TEXT("%s has reasoning_effort"), *What), Root->TryGetStringField(TEXT("reasoning_effort"), Sent));
+			TestEqual(FString::Printf(TEXT("%s reasoning_effort"), *What), Sent, FString(Effort));
+		}
+		else
+		{
+			TestFalse(FString::Printf(TEXT("%s has no reasoning_effort"), *What), Root->HasField(TEXT("reasoning_effort")));
+		}
+	}
+
+	/** response_format is json_object when bJson, else absent */
+	void TestDeepSeekJson(const FString& What, const TSharedPtr<FJsonObject>& Root, bool bJson)
+	{
+		const TSharedPtr<FJsonObject> ResponseFormat = Child(Root, TEXT("response_format"));
+		if (!bJson)
+		{
+			TestFalse(FString::Printf(TEXT("%s has no response_format"), *What), ResponseFormat.IsValid());
+		}
+		else if (TestTrue(FString::Printf(TEXT("%s has response_format"), *What), ResponseFormat.IsValid()))
+		{
+			TestEqual(FString::Printf(TEXT("%s response_format type"), *What), ResponseFormat->GetStringField(TEXT("type")), FString(TEXT("json_object")));
+		}
 	}
 
 	TSharedPtr<FJsonObject> Parse(const FString& Payload)
@@ -265,12 +322,73 @@ void FN2CPayloadBuilderSpec::Define()
 
 	Describe(TEXT("DeepSeek"), [this]()
 	{
-		It(TEXT("sends no temperature for the reasoner and keeps max_tokens"), [this]()
+		It(TEXT("DeepSeek_V3 sends deepseek-flash with thinking disabled and json_object"), [this]()
 		{
-			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-reasoner")));
+			const TSharedPtr<FJsonObject> Root = BuildDeepSeek(EN2CDeepSeekModel::DeepSeek_V3);
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
-			TestNoSampling(TEXT("DeepSeek reasoner root"), Root);
-			TestTrue(TEXT("DeepSeek has max_tokens"), Root->HasField(TEXT("max_tokens")));
+			TestEqual(TEXT("V3 model"), Root->GetStringField(TEXT("model")), FString(TEXT("deepseek-flash")));
+			TestDeepSeekThinking(TEXT("V3"), Root, TEXT("disabled"), nullptr);
+			TestDeepSeekJson(TEXT("V3"), Root, true);
+			TestTrue(TEXT("V3 has max_tokens"), Root->HasField(TEXT("max_tokens")));
+		});
+
+		It(TEXT("DeepSeek_R1 sends deepseek-flash with thinking enabled at high effort and no temperature"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Root = BuildDeepSeek(EN2CDeepSeekModel::DeepSeek_R1);
+			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
+			TestEqual(TEXT("R1 model"), Root->GetStringField(TEXT("model")), FString(TEXT("deepseek-flash")));
+			TestDeepSeekThinking(TEXT("R1"), Root, TEXT("enabled"), TEXT("high"));
+			TestNoSampling(TEXT("R1 root"), Root);
+			TestDeepSeekJson(TEXT("R1"), Root, false);
+			int32 MaxTokens = 0;
+			TestTrue(TEXT("R1 has max_tokens"), Root->TryGetNumberField(TEXT("max_tokens"), MaxTokens));
+			TestEqual(TEXT("R1 max_tokens leaves room for reasoning"), MaxTokens, 65536);
+		});
+
+		It(TEXT("DeepSeek_V4_Pro sends deepseek-v4-pro with thinking enabled at high effort and no temperature"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Root = BuildDeepSeek(EN2CDeepSeekModel::DeepSeek_V4_Pro);
+			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
+			TestEqual(TEXT("V4 Pro model"), Root->GetStringField(TEXT("model")), FString(TEXT("deepseek-v4-pro")));
+			TestDeepSeekThinking(TEXT("V4 Pro"), Root, TEXT("enabled"), TEXT("high"));
+			TestNoSampling(TEXT("V4 Pro root"), Root);
+			TestDeepSeekJson(TEXT("V4 Pro"), Root, false);
+		});
+
+		It(TEXT("an override ID that differs from Settings gets its own model's thinking and JSON mode"), [this]()
+		{
+			// Settings select the non-thinking JSON mode; the MCP override names another model
+			const TSharedPtr<FJsonObject> Root = BuildDeepSeek(EN2CDeepSeekModel::DeepSeek_V3, TEXT("deepseek-v4-pro"));
+			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
+			TestEqual(TEXT("override model"), Root->GetStringField(TEXT("model")), FString(TEXT("deepseek-v4-pro")));
+			TestDeepSeekThinking(TEXT("override"), Root, TEXT("enabled"), TEXT("high"));
+			TestNoSampling(TEXT("override root"), Root);
+			TestDeepSeekJson(TEXT("override"), Root, false);
+
+			// Settings select thinking; the override names deepseek-flash, which is the selected model
+			const TSharedPtr<FJsonObject> Same = BuildDeepSeek(EN2CDeepSeekModel::DeepSeek_V3, TEXT("deepseek-flash"));
+			if (!TestTrue(TEXT("same-model payload parses"), Same.IsValid())) { return; }
+			TestDeepSeekThinking(TEXT("override naming the selection"), Same, TEXT("disabled"), nullptr);
+			TestDeepSeekJson(TEXT("override naming the selection"), Same, true);
+		});
+
+		It(TEXT("a bare deepseek-flash request gets the API default, thinking at high effort"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-flash")));
+			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
+			TestDeepSeekThinking(TEXT("bare deepseek-flash"), Root, TEXT("enabled"), TEXT("high"));
+			TestNoSampling(TEXT("bare deepseek-flash root"), Root);
+		});
+
+		It(TEXT("an unregistered DeepSeek ID gets no thinking, sampling or response_format fields"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-v9-unknown")));
+			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
+			TestFalse(TEXT("unregistered: no thinking"), Root->HasField(TEXT("thinking")));
+			TestFalse(TEXT("unregistered: no reasoning_effort"), Root->HasField(TEXT("reasoning_effort")));
+			TestNoSampling(TEXT("unregistered root"), Root);
+			TestDeepSeekJson(TEXT("unregistered"), Root, false);
+			TestTrue(TEXT("unregistered: has max_tokens"), Root->HasField(TEXT("max_tokens")));
 		});
 	});
 

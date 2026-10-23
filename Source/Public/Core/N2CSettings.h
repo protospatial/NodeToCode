@@ -270,7 +270,7 @@ public:
         meta = (DisplayName = "OAuth Status", EditCondition = "GeminiAuthMethod == EN2CGeminiAuthMethod::OAuth", EditConditionHides))
     FString GeminiOAuthConnectionStatus = TEXT("Not connected");
 
-    /** DeepSeek Model Selection - R1 recommended for most accurate results */
+    /** DeepSeek Model Selection - each entry names the model and thinking mode it sends */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek")
     EN2CDeepSeekModel DeepSeekModel = N2CDefaultModels::DeepSeek;
     
@@ -368,6 +368,16 @@ public:
 
     /** Get the model for a specific provider */
     FString GetActiveModelForProvider(EN2CLLMProvider Provider) const;
+
+    /** Thinking control of the selected model's registry entry (see FN2CLLMConfig::ReasoningEffort); empty if none */
+    FString GetActiveReasoningEffortForProvider(EN2CLLMProvider InProvider) const;
+
+    /**
+     * Sets InOutConfig.Model and InOutConfig.ReasoningEffort for a request to InProvider: the selected model and
+     * its thinking mode, or ModelIdOverride. An override naming a different model than the selection leaves
+     * ReasoningEffort empty, so that model's own registry entry decides.
+     */
+    void ResolveRequestModel(EN2CLLMProvider InProvider, const FString& ModelIdOverride, FN2CLLMConfig& InOutConfig) const;
 
     /** Get the minimum severity level for logging */
     EN2CLogSeverity GetMinLogSeverity() const { return MinSeverity; }
