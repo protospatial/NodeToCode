@@ -65,6 +65,12 @@
       "name": "install",
       "code": ["NodeToCode.uplugin"],
       "pages": ["wiki/Plugin-Installation.md", "wiki/Plugin-Updates.md", "wiki/Latest-Updates.md"]
+    },
+    {
+      "name": "mcp-clients",
+      "code": ["Source/Private/MCP/Server/N2CMcpHttpServerManager.cpp", "Source/Public/Core/N2CUserSettings.h",
+               "Content/Python/mcp_bridge/**"],
+      "pages": ["wiki/developers/Using-a-Claude-or-Gemini-Subscription.md"]
     }
   ],
   "accept": []

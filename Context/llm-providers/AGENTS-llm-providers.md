@@ -111,7 +111,7 @@ Manages interactions with LLMs.
 
 ## Authentication
 
-Every cloud provider authenticates with its API key from `UN2CUserSecrets` (see `Context/architecture/AGENTS-architecture.md`); Ollama and LM Studio need none. `UN2CBaseLLMService::SendRequest` fails a cloud request whose key is empty before anything is sent, with an error that names the key (`GetMissingApiKeyError`). NodeToCode 2.0 removed Claude Pro/Max and Google account sign-in; do not add provider sign-in flows or reuse another application's client credentials.
+Every cloud provider authenticates with its API key from `UN2CUserSecrets` (see `Context/architecture/AGENTS-architecture.md`); Ollama and LM Studio need none. `UN2CBaseLLMService::SendRequest` fails a cloud request whose key is empty before anything is sent, with an error that names the key (`GetMissingApiKeyError`). NodeToCode 2.0 removed Claude Pro/Max and Google account sign-in; do not add provider sign-in flows or reuse another application's client credentials. Users with a Claude, ChatGPT or Google AI subscription connect that vendor's own agent (Claude Code, Antigravity CLI, Codex CLI) to the MCP server instead; the user guide is `wiki/developers/Using-a-Claude-or-Gemini-Subscription.md`, and a change to the MCP endpoint, its port setting or the stdio bridge updates that page.
 
 ## Structured Output Support
 

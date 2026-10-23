@@ -82,18 +82,10 @@ with its checkbox ticked.
 ## Subscription sign-in removed in 2.0
 
 Every cloud provider (Anthropic, OpenAI, Gemini, DeepSeek) needs its **API Key**; Ollama and LM Studio need
-none. Development builds of NodeToCode 2.0 could sign in with a Claude Pro/Max subscription or a Google account. That
-was removed, because Anthropic and Google do not allow third-party apps to use those sign-ins.
-
-If your project had **Claude Pro/Max** or **Google Account** selected as the authentication method:
-
-- The setting is ignored and the provider uses its API key. The Output Log says so once per editor session, and
-  the old entry is dropped the next time you save **Project Settings → Plugins → Node to Code**.
-- Saved sign-in tokens are deleted from `Saved/NodeToCode/User/secrets.json` the first time the editor loads it.
-  Your API keys and anything else in the file are kept.
-- A translation with no API key set stops before anything is sent, and the error names the key to set.
-
-To use a Claude subscription, run Claude Code with the NodeToCode MCP server instead of translating with a key here.
+none. Sign-in with a Claude Pro/Max subscription or a Google account was removed; a project that had it selected
+now uses the API key. To use a Claude, ChatGPT or Google AI subscription, connect Claude Code, Antigravity CLI or
+Codex CLI to the NodeToCode MCP server: see [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription),
+which also covers the old setting and saved tokens.
 
 ## Sampling Settings for Cloud Models
 
