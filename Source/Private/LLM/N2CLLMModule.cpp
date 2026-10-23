@@ -16,6 +16,7 @@
 #include "LLM/Providers/N2COllamaService.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CPathUtils.h"
+#include "UObject/StrongObjectPtr.h"
 
 UN2CLLMModule* UN2CLLMModule::Get()
 {
@@ -114,17 +115,18 @@ void UN2CLLMModule::ProcessN2CJson(
         HttpHandler->OnTranslationResponseReceived = OnTranslationResponseReceived;
     }
 
-    // Send request through service
-    // Capture OnComplete callback to invoke it when response is received
+    // Send request through service. The callback keeps the service it was sent on alive and parses with that
+    // service's parser, even if the active provider changes or GC runs while the request is in flight.
+    TStrongObjectPtr<UObject> RequestServiceObject(Service.GetObject());
     ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, OnComplete](const FString& Response)
+        [this, OnComplete, RequestServiceObject, RequestService = Service](const FString& Response)
         {
             // Create translation response struct
             FN2CTranslationResponse TranslationResponse;
 
-            // Get active service's response parser
-            TScriptInterface<IN2CLLMService> ActiveServiceParser = GetActiveService();
-            if (ActiveServiceParser.GetInterface())
+            // Parser of the service this request was sent on
+            const TScriptInterface<IN2CLLMService>& ActiveServiceParser = RequestService;
+            if (RequestServiceObject.IsValid() && ActiveServiceParser.GetInterface())
             {
                 UN2CResponseParserBase* Parser = ActiveServiceParser->GetResponseParser();
                 if (Parser)
@@ -539,11 +541,13 @@ void UN2CLLMModule::ProcessN2CJsonWithOverrides(
     TempPromptManager->Initialize(RequestConfig); // Initialize with the request-specific config
     FString SystemPrompt = TempPromptManager->GetLanguageSpecificPrompt(TEXT("CodeGen"), RequestLanguage);
 
+    // The temporary service is referenced only by this callback: hold it strongly so GC cannot free it mid-request
+    TStrongObjectPtr<UObject> TempServiceObject(TempService.GetObject());
     TempService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, TempService, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
+        [this, TempService, TempServiceObject, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
         {
             FN2CTranslationResponse TranslationResponse;
-            UN2CResponseParserBase* Parser = TempService->GetResponseParser(); // Get parser from the temp service
+            UN2CResponseParserBase* Parser = TempServiceObject.IsValid() ? TempService->GetResponseParser() : nullptr; // Parser from the temp service
             bool bParseSuccess = Parser && Parser->ParseLLMResponse(RawResponse, TranslationResponse);
 
             if (bParseSuccess)

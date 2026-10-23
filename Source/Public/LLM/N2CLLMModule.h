@@ -120,7 +120,8 @@ private:
     UPROPERTY()
     class UN2CResponseParserBase* ResponseParser;
 
-    /** Active LLM service */
+    /** Active LLM service. A UPROPERTY so garbage collection keeps it (and its HTTP handler) alive. */
+    UPROPERTY()
     TScriptInterface<class IN2CLLMService> ActiveService;
 
     /** Current system status */
