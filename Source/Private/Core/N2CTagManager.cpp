@@ -29,7 +29,7 @@ void UN2CTagManager::Initialize()
 	UN2CGraphStateManager::Get();
 
 	// Subscribe to graph state manager events and forward them to our delegates
-	UN2CGraphStateManager::Get().OnGraphTagAdded.AddLambda([this](const FN2CGraphState& GraphState)
+	GraphTagAddedHandle = UN2CGraphStateManager::Get().OnGraphTagAdded.AddLambda([this](const FN2CGraphState& GraphState)
 	{
 		// Convert to legacy format for each tag in the state
 		for (const FN2CTagEntry& TagEntry : GraphState.Tags)
@@ -48,9 +48,14 @@ void UN2CTagManager::Initialize()
 		}
 	});
 
-	UN2CGraphStateManager::Get().OnGraphTagRemoved.AddLambda([this](const FGuid& GraphGuid, const FString& Tag)
+	GraphTagRemovedHandle = UN2CGraphStateManager::Get().OnGraphTagRemoved.AddLambda([this](const FGuid& GraphGuid, const FString& Tag)
 	{
 		OnBlueprintTagRemoved.Broadcast(GraphGuid, Tag);
+	});
+
+	GraphStatesReloadedHandle = UN2CGraphStateManager::Get().OnGraphStatesReloaded.AddLambda([this]()
+	{
+		OnTagsReloaded.Broadcast();
 	});
 }
 
@@ -58,13 +63,29 @@ void UN2CTagManager::Shutdown()
 {
 	FN2CLogger::Get().Log(TEXT("Shutting down Tag Manager"), EN2CLogSeverity::Info);
 
-	// Note: We don't shut down the graph state manager here because other systems may still need it
-	// The graph state manager has its own shutdown called from the module
+	// The graph state manager is shut down separately, after this, by FNodeToCodeModule::ShutdownStateManagers
+	if (UN2CGraphStateManager* GraphStateManager = UN2CGraphStateManager::GetIfExists())
+	{
+		GraphStateManager->OnGraphTagAdded.Remove(GraphTagAddedHandle);
+		GraphStateManager->OnGraphTagRemoved.Remove(GraphTagRemovedHandle);
+		GraphStateManager->OnGraphStatesReloaded.Remove(GraphStatesReloadedHandle);
+	}
+	GraphTagAddedHandle.Reset();
+	GraphTagRemovedHandle.Reset();
+	GraphStatesReloadedHandle.Reset();
 
+	if (Instance == this)
+	{
+		RemoveFromRoot();
+		Instance = nullptr;
+	}
+}
+
+void UN2CTagManager::ShutdownInstance()
+{
 	if (Instance)
 	{
-		Instance->RemoveFromRoot();
-		Instance = nullptr;
+		Instance->Shutdown();
 	}
 }
 
@@ -107,7 +128,7 @@ int32 UN2CTagManager::RemoveTagByName(const FGuid& GraphGuid, const FString& Tag
 	return UN2CGraphStateManager::Get().RemoveTagByName(GraphGuid, Tag);
 }
 
-int32 UN2CTagManager::RemoveAllTagsFromGraph(const FGuid& GraphGuid)
+int32 UN2CTagManager::RemoveAllTagsFromGraph(FGuid GraphGuid)
 {
 	return UN2CGraphStateManager::Get().RemoveAllTagsFromGraph(GraphGuid);
 }
@@ -220,11 +241,8 @@ const TArray<FN2CTaggedBlueprintGraph>& UN2CTagManager::GetAllTags() const
 
 void UN2CTagManager::ClearAllTags()
 {
-	// Only clear tags, not translation/export state
-	for (const FN2CGraphState& State : UN2CGraphStateManager::Get().GetAllGraphStates())
-	{
-		UN2CGraphStateManager::Get().RemoveAllTagsFromGraph(State.GraphGuid);
-	}
+	// Only clear tags, not translation/export state (one pass, one save, one OnTagsReloaded)
+	UN2CGraphStateManager::Get().ClearAllTags();
 }
 
 bool UN2CTagManager::SaveTags()

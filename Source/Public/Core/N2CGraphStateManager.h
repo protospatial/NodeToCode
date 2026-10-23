@@ -12,6 +12,8 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphStateChanged, const FGuid& /*Grap
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphTagAdded, const FN2CGraphState& /*GraphState*/);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnN2CGraphTagRemoved, const FGuid& /*GraphGuid*/, const FString& /*Tag*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphTranslationUpdated, const FGuid& /*GraphGuid*/);
+/** Many graphs may have changed at once (a bulk update ended, or the state was reloaded): re-read everything */
+DECLARE_MULTICAST_DELEGATE(FOnN2CGraphStatesReloaded);
 
 /**
  * @class UN2CGraphStateManager
@@ -24,6 +26,11 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphTranslationUpdated, const FGuid& 
  *
  * It replaces the previous tag-only system with a unified approach that enables
  * the UI to accurately reflect graph state, including whether translations exist.
+ *
+ * Persistence: Saved/NodeToCode/BlueprintGraphState.json, written atomically (FN2CFileUtils::SaveStringAtomically,
+ * keeping BlueprintGraphState.json.bak). A file that does not parse is renamed to
+ * BlueprintGraphState.json.corrupt-<UTC timestamp>, the user is notified, and saving stays off until LoadState
+ * (reload) or ClearAllState (reset), so the next change cannot overwrite the user's data.
  */
 UCLASS()
 class NODETOCODE_API UN2CGraphStateManager : public UObject
@@ -39,6 +46,20 @@ public:
 
 	/** Shutdown the manager (saves state if dirty) */
 	void Shutdown();
+
+	/** The singleton if Get() has created it, else nullptr (does not create it) */
+	static UN2CGraphStateManager* GetIfExists() { return Instance; }
+
+	/** Shuts the singleton down if it exists (module shutdown); does not create it */
+	static void ShutdownInstance();
+
+	/**
+	 * A manager that is not the singleton and keeps its files in StateDirectory instead of Saved/NodeToCode
+	 * (BlueprintGraphState.json there, legacy tags in StateDirectory/Tags/BlueprintTags.json). It is initialized
+	 * (loaded or migrated) before it is returned and does not show notifications. For automation tests: hold it in a
+	 * TStrongObjectPtr.
+	 */
+	static UN2CGraphStateManager* CreateIsolated(const FString& StateDirectory);
 
 	// ========================================================================
 	// Graph State Queries
@@ -138,7 +159,14 @@ public:
 	 * @param GraphGuid The GUID of the graph
 	 * @return Number of tags removed
 	 */
-	int32 RemoveAllTagsFromGraph(const FGuid& GraphGuid);
+	int32 RemoveAllTagsFromGraph(FGuid GraphGuid);
+
+	/**
+	 * Remove every tag from every graph (translation and export state are kept; graphs left with nothing are removed).
+	 * Broadcasts OnGraphStatesReloaded once and saves once.
+	 * @return Number of tags removed
+	 */
+	int32 ClearAllTags();
 
 	/**
 	 * Check if a graph has a specific tag
@@ -272,25 +300,54 @@ public:
 	 * @param GraphGuid The GUID of the graph
 	 * @return True if removed
 	 */
-	bool RemoveGraphState(const FGuid& GraphGuid);
+	bool RemoveGraphState(FGuid GraphGuid);
 
 	/**
-	 * Clear all state (use with caution)
+	 * Clear all state (use with caution). Also turns saving back on after a corrupt file was set aside, and saves.
 	 */
 	void ClearAllState();
+
+	// ========================================================================
+	// Bulk updates
+	// ========================================================================
+
+	/**
+	 * Start a bulk update: until the matching EndBulkUpdate, saves and per-graph broadcasts are held back. When the
+	 * outermost bulk update ends, the state is saved once and OnGraphStatesReloaded is broadcast once if anything
+	 * changed. Prefer FN2CGraphStateBulkUpdate.
+	 */
+	void BeginBulkUpdate();
+	void EndBulkUpdate();
+	bool IsInBulkUpdate() const { return BulkUpdateDepth > 0; }
 
 	// ========================================================================
 	// Persistence
 	// ========================================================================
 
-	/** Save state to disk */
+	/** Save state to disk (deferred inside a bulk update; refused while a corrupt file blocks saving) */
 	bool SaveState();
 
-	/** Load state from disk */
+	/**
+	 * Load state from disk. A file that does not parse is set aside as .corrupt-<timestamp> and saving is turned off;
+	 * a later LoadState that finds a good file or no file turns saving back on.
+	 * @return True if a state file was read
+	 */
 	bool LoadState();
 
 	/** Check if there are unsaved changes */
 	bool IsDirty() const { return bIsDirty; }
+
+	/** True after a state file failed to parse, until LoadState or ClearAllState */
+	bool IsSavingBlocked() const { return bSavingBlocked; }
+
+	/** Where the last unparseable state file was moved (empty if none, or if it could not be moved) */
+	const FString& GetQuarantinedFilePath() const { return QuarantinedFilePath; }
+
+	/** How many times this manager has written the state file */
+	int32 GetSaveCount() const { return SaveCount; }
+
+	/** Full path of BlueprintGraphState.json (creates its folder) */
+	FString GetStateFilePath() const;
 
 	/** Migrate from legacy BlueprintTags.json file */
 	void MigrateFromLegacyTags();
@@ -311,18 +368,35 @@ public:
 	/** Fired when translation state is updated */
 	FOnN2CGraphTranslationUpdated OnGraphTranslationUpdated;
 
+	/** Fired once after a bulk update that changed something, and after LoadState: listeners should re-read all state */
+	FOnN2CGraphStatesReloaded OnGraphStatesReloaded;
+
 private:
 	/** Constructor */
 	UN2CGraphStateManager();
 
-	/** Get the file path for state persistence */
-	FString GetStateFilePath() const;
+	enum class ELoadResult : uint8 { Loaded, Missing, Unreadable, Corrupt };
+
+	/** Reads the state file into StateFile; sets the file aside and blocks saving when it does not parse */
+	ELoadResult LoadStateInternal();
+
+	/** The folder holding the state file: StateDirectoryOverride, or Saved/NodeToCode */
+	FString GetStateDirectory() const;
 
 	/** Get the legacy tags file path */
 	FString GetLegacyTagsFilePath() const;
 
 	/** Mark state as modified */
 	void MarkDirty();
+
+	/** Per-graph broadcasts, held back during a bulk update */
+	void BroadcastTagAdded(const FN2CGraphState& State);
+	void BroadcastTagRemoved(const FGuid& GraphGuid, const FString& Tag);
+	void BroadcastStateChanged(const FGuid& GraphGuid);
+	void BroadcastTranslationUpdated(const FGuid& GraphGuid);
+
+	/** Logs and (unless isolated) shows a notification that the state file was set aside */
+	void ReportCorruptFile(const FString& FilePath, bool bMoved);
 
 	/** The singleton instance */
 	static UN2CGraphStateManager* Instance;
@@ -336,4 +410,50 @@ private:
 
 	/** Flag to track if migration has been attempted */
 	bool bMigrationAttempted;
+
+	/** Set by CreateIsolated: the folder used instead of Saved/NodeToCode */
+	FString StateDirectoryOverride;
+
+	/** False for isolated managers (tests): no Slate notifications */
+	bool bNotifyUser = true;
+
+	/** Nesting depth of BeginBulkUpdate */
+	int32 BulkUpdateDepth = 0;
+
+	/** Something changed during the current bulk update */
+	bool bBulkChanged = false;
+
+	/** A save was requested during the current bulk update */
+	bool bBulkSavePending = false;
+
+	/** A state file failed to parse; saving is off until LoadState or ClearAllState */
+	bool bSavingBlocked = false;
+
+	/** Where the unparseable file was moved */
+	FString QuarantinedFilePath;
+
+	/** Successful writes of the state file */
+	int32 SaveCount = 0;
+};
+
+/** Holds back saves and per-graph broadcasts on a graph state manager for its lifetime (see BeginBulkUpdate) */
+class FN2CGraphStateBulkUpdate
+{
+public:
+	explicit FN2CGraphStateBulkUpdate(UN2CGraphStateManager& InManager)
+		: Manager(InManager)
+	{
+		Manager.BeginBulkUpdate();
+	}
+
+	~FN2CGraphStateBulkUpdate()
+	{
+		Manager.EndBulkUpdate();
+	}
+
+	FN2CGraphStateBulkUpdate(const FN2CGraphStateBulkUpdate&) = delete;
+	FN2CGraphStateBulkUpdate& operator=(const FN2CGraphStateBulkUpdate&) = delete;
+
+private:
+	UN2CGraphStateManager& Manager;
 };

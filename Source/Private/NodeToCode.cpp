@@ -7,14 +7,17 @@
 #include "HttpModule.h"
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CTagManager.h"
 #include "Editor/EditorEngine.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
 #include "Core/N2CUserSettings.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
+#include "Misc/CoreDelegates.h"
 #include "Misc/Parse.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
@@ -38,6 +41,10 @@ void FNodeToCodeModule::StartupModule()
 {
     // Initialize logging
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
+
+    // On editor exit, UObjects (the rooted graph state singleton included) are purged before ShutdownModule runs,
+    // so state marked dirty without a save is flushed here, while the singletons still exist
+    PreExitHandle = FCoreDelegates::OnPreExit.AddStatic(&FNodeToCodeModule::ShutdownStateManagers);
 
     // HTTP timeouts are set per request by the LLM HTTP handler; nothing is written to project config.
     // While a translation is in flight, keep the editor at full speed even when it is in the background, without
@@ -158,8 +165,17 @@ void FNodeToCodeModule::StartupModule()
     }
 }
 
+void FNodeToCodeModule::ShutdownStateManagers()
+{
+    UN2CTagManager::ShutdownInstance();
+    UN2CGraphStateManager::ShutdownInstance();
+}
+
 void FNodeToCodeModule::ShutdownModule()
 {
+    FCoreDelegates::OnPreExit.Remove(PreExitHandle);
+    PreExitHandle.Reset();
+
     if (GEditor && DisableThrottleHandle.IsValid())
     {
         GEditor->ShouldDisableCPUThrottlingDelegates.RemoveAll([this](const UEditorEngine::FShouldDisableCPUThrottling& D)
@@ -201,6 +217,10 @@ void FNodeToCodeModule::ShutdownModule()
     if (!GExitPurge)  // Only clean up if not already in exit purge
     {
         UN2CWidgetContainer::Reset();
+
+        // Unloaded without exiting (OnPreExit already did this on exit): save graph state that was marked dirty
+        // without a save, and release the rooted singletons
+        ShutdownStateManagers();
     }
 
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin shutting down"), EN2CLogSeverity::Info);

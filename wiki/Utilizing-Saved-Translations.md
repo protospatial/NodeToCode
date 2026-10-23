@@ -42,6 +42,16 @@ ProjectRoot/
 
 7. **Header Files**: Header files (`.h`) are only generated for C++ translations
 
+### Tags and translation history file
+
+Graph tags and the record of which graphs have translations are kept in `Saved/NodeToCode/BlueprintGraphState.json`.
+Each save writes a temporary file first and keeps the previous version as `BlueprintGraphState.json.bak`, so a crash
+during a save cannot leave the file half written. If the file cannot be read (for example after a hand edit with a
+JSON mistake), NodeToCode renames it to `BlueprintGraphState.json.corrupt-<date-time>`, shows a notification naming
+it, and stops saving tag changes until you restart the editor or reload the tags, so nothing overwrites it. To
+recover, fix that file (or copy the `.bak`) to `BlueprintGraphState.json` and restart the editor. After an upgrade
+from 1.x, the old `Tags/BlueprintTags.json` is migrated once and renamed to `BlueprintTags.json.migrated`.
+
 ## Quick Access
 You can quickly navigate to the path of your last translation by [clicking the folder button in the Translations window](Viewing-the-Results).
 

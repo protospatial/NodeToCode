@@ -58,6 +58,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 	FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: Subscribing to tag manager events"), EN2CLogSeverity::Warning);
 	OnTagAddedHandle = UN2CTagManager::Get().OnBlueprintTagAdded.AddRaw(this, &SN2CGraphOverlay::OnTagAdded);
 	OnTagRemovedHandle = UN2CTagManager::Get().OnBlueprintTagRemoved.AddRaw(this, &SN2CGraphOverlay::OnTagRemoved);
+	OnTagsReloadedHandle = UN2CTagManager::Get().OnTagsReloaded.AddRaw(this, &SN2CGraphOverlay::RefreshTagCount);
 	FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: Tag event subscriptions done"), EN2CLogSeverity::Warning);
 
 	// Subscribe to global translation state changes
@@ -319,14 +320,12 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 
 SN2CGraphOverlay::~SN2CGraphOverlay()
 {
-	// Unsubscribe from tag manager events
-	if (OnTagAddedHandle.IsValid())
+	// Unsubscribe from tag manager events (it may already be shut down when the editor exits)
+	if (UN2CTagManager* TagManager = UN2CTagManager::GetIfExists())
 	{
-		UN2CTagManager::Get().OnBlueprintTagAdded.Remove(OnTagAddedHandle);
-	}
-	if (OnTagRemovedHandle.IsValid())
-	{
-		UN2CTagManager::Get().OnBlueprintTagRemoved.Remove(OnTagRemovedHandle);
+		TagManager->OnBlueprintTagAdded.Remove(OnTagAddedHandle);
+		TagManager->OnBlueprintTagRemoved.Remove(OnTagRemovedHandle);
+		TagManager->OnTagsReloaded.Remove(OnTagsReloadedHandle);
 	}
 	// Unsubscribe from global translation state
 	if (OnTranslationStateChangedHandle.IsValid())

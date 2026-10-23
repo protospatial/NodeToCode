@@ -277,6 +277,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 	// Subscribe to tag manager events for live updates
 	OnTagAddedHandle = UN2CTagManager::Get().OnBlueprintTagAdded.AddRaw(this, &SN2CTagManager::HandleTagAdded);
 	OnTagRemovedHandle = UN2CTagManager::Get().OnBlueprintTagRemoved.AddRaw(this, &SN2CTagManager::HandleTagRemoved);
+	OnTagsReloadedHandle = UN2CTagManager::Get().OnTagsReloaded.AddRaw(this, &SN2CTagManager::RefreshData);
 
 	// Initial data load
 	RefreshData();
@@ -284,14 +285,12 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 
 SN2CTagManager::~SN2CTagManager()
 {
-	// Unsubscribe from tag manager events
-	if (OnTagAddedHandle.IsValid())
+	// Unsubscribe from tag manager events (it may already be shut down when the editor exits)
+	if (UN2CTagManager* TagManager = UN2CTagManager::GetIfExists())
 	{
-		UN2CTagManager::Get().OnBlueprintTagAdded.Remove(OnTagAddedHandle);
-	}
-	if (OnTagRemovedHandle.IsValid())
-	{
-		UN2CTagManager::Get().OnBlueprintTagRemoved.Remove(OnTagRemovedHandle);
+		TagManager->OnBlueprintTagAdded.Remove(OnTagAddedHandle);
+		TagManager->OnBlueprintTagRemoved.Remove(OnTagRemovedHandle);
+		TagManager->OnTagsReloaded.Remove(OnTagsReloadedHandle);
 	}
 }
 

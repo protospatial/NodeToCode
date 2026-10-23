@@ -38,4 +38,10 @@ private:
     /** Handle of the entry in GEditor->ShouldDisableCPUThrottlingDelegates (keeps the editor at full speed only
      *  while a translation runs, without changing the user's preference) */
     FDelegateHandle DisableThrottleHandle;
+
+    /** FCoreDelegates::OnPreExit entry that saves graph state before UObjects are purged on exit */
+    FDelegateHandle PreExitHandle;
+
+    /** Saves dirty graph state and releases the tag and graph state singletons (tag manager first) */
+    static void ShutdownStateManagers();
 };

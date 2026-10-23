@@ -16,6 +16,8 @@ void UN2CTagSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	UN2CTagManager& TagManager = UN2CTagManager::Get();
 	TagManager.OnBlueprintTagAdded.AddUObject(this, &UN2CTagSubsystem::HandleTagAdded);
 	TagManager.OnBlueprintTagRemoved.AddUObject(this, &UN2CTagSubsystem::HandleTagRemoved);
+	// Many tags changed at once (Clear All, bulk removal, migration, reload): same as a fresh load for listeners
+	TagManager.OnTagsReloaded.AddUObject(this, &UN2CTagSubsystem::RefreshTags);
 	
 	FN2CLogger::Get().Log(TEXT("N2C Tag Subsystem initialized"), EN2CLogSeverity::Info);
 	
@@ -25,10 +27,13 @@ void UN2CTagSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UN2CTagSubsystem::Deinitialize()
 {
-	// Unsubscribe from tag manager events
-	UN2CTagManager& TagManager = UN2CTagManager::Get();
-	TagManager.OnBlueprintTagAdded.RemoveAll(this);
-	TagManager.OnBlueprintTagRemoved.RemoveAll(this);
+	// Unsubscribe from tag manager events (it may already be shut down when the editor exits)
+	if (UN2CTagManager* TagManager = UN2CTagManager::GetIfExists())
+	{
+		TagManager->OnBlueprintTagAdded.RemoveAll(this);
+		TagManager->OnBlueprintTagRemoved.RemoveAll(this);
+		TagManager->OnTagsReloaded.RemoveAll(this);
+	}
 	
 	FN2CLogger::Get().Log(TEXT("N2C Tag Subsystem deinitialized"), EN2CLogSeverity::Info);
 	

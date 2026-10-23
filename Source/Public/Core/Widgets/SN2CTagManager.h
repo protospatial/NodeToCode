@@ -184,6 +184,7 @@ private:
 	/** Delegate handles for tag manager events */
 	FDelegateHandle OnTagAddedHandle;
 	FDelegateHandle OnTagRemovedHandle;
+	FDelegateHandle OnTagsReloadedHandle;
 
 	/** Handle tag added event */
 	void HandleTagAdded(const struct FN2CTaggedBlueprintGraph& TagInfo);
