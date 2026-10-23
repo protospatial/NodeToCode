@@ -198,6 +198,12 @@ void FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(UBlueprint* Bluepr
 
     FKismetEditorUtilities::CompileBlueprint(Blueprint, CompileOptions);
 
+    // The compile manager restores the package's pre-compile dirty flag, and the Modify(false) calls on the pin
+    // and node paths (CreatePin, ReconstructNode) never set it, so mark the package dirty here, after the compile,
+    // or an edit to a saved Blueprint is skipped by Save All and gets no save prompt on exit. MarkPackageDirty
+    // queues no compile, unlike MarkBlueprintAsStructurallyModified above.
+    Blueprint->MarkPackageDirty();
+
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Blueprint '%s' marked as modified and compiled synchronously"), *Blueprint->GetName()),
         EN2CLogSeverity::Debug
