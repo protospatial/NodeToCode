@@ -29,10 +29,10 @@ void UN2CGeminiService::GetConfiguration(
     }
     else
     {
-        // API key in URL - use standard Generative Language API
-        OutEndpoint = FString::Printf(TEXT("%s%s:generateContent?key=%s"),
-                                      *Config.ApiEndpoint, *Config.Model, *Config.ApiKey);
-        OutAuthToken = TEXT("");  // Gemini uses key in URL, not in auth header
+        // Standard Generative Language API. The key goes in the x-goog-api-key header (GetProviderHeaders),
+        // never in the URL: UE's HTTP module logs full URLs on timeouts and failures.
+        OutEndpoint = FString::Printf(TEXT("%s%s:generateContent"), *Config.ApiEndpoint, *Config.Model);
+        OutAuthToken = TEXT("");  // Gemini takes the key in x-goog-api-key, not a Bearer header
     }
 
     // Default to supporting system prompts since all Gemini models currently support system prompts
@@ -54,6 +54,10 @@ void UN2CGeminiService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) c
                 OutHeaders.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *AccessToken));
             }
         }
+    }
+    else if (!Config.ApiKey.IsEmpty())
+    {
+        OutHeaders.Add(TEXT("x-goog-api-key"), Config.ApiKey);
     }
 }
 

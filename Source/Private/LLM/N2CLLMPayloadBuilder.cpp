@@ -307,28 +307,23 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
     {
         case EN2CLLMProvider::OpenAI:
             {
+                // The registry decides: models flagged without structured output (o1-preview, o1-mini) take no
+                // response_format at all; every other model, unregistered IDs included, gets strict json_schema.
                 const FN2CModelMetadata* Meta = FindModelMetadata();
-                if (ModelName == TEXT("o1-preview-2024-09-12") || ModelName == TEXT("o1-mini-2024-09-12"))
+                if (Meta && !Meta->bSupportsStructuredOutput)
                 {
-                    // o1-preview and o1-mini don't support response_format at all
-                    FN2CLogger::Get().Log(TEXT("Response format not supported for o1-preview/o1-mini, skipping"), EN2CLogSeverity::Debug);
-                }
-                else if (Meta && !Meta->bSupportsStructuredOutput)
-                {
-                    // Registered models without json_schema support get plain JSON mode
-                    TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
-                    ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_object"));
-                    RootObject->SetObjectField(TEXT("response_format"), ResponseFormatObject);
+                    FN2CLogger::Get().Log(FString::Printf(TEXT("Model %s takes no response_format, skipping"), *ModelName), EN2CLogSeverity::Debug);
                 }
                 else
                 {
-                    // Other models use json_schema with schema object
                     TSharedPtr<FJsonObject> ResponseFormatObject = MakeShared<FJsonObject>();
                     ResponseFormatObject->SetStringField(TEXT("type"), TEXT("json_schema"));
 
-                    // Create a wrapper object with name and schema fields
+                    // strict makes OpenAI enforce the schema; GetN2CResponseSchema meets the strict-mode rules
+                    // (every property required, additionalProperties false at every level)
                     TSharedPtr<FJsonObject> JsonSchemaWrapper = MakeShared<FJsonObject>();
                     JsonSchemaWrapper->SetStringField(TEXT("name"), TEXT("n2c_translation_schema"));
+                    JsonSchemaWrapper->SetBoolField(TEXT("strict"), true);
                     JsonSchemaWrapper->SetObjectField(TEXT("schema"), Schema);
 
                     ResponseFormatObject->SetObjectField(TEXT("json_schema"), JsonSchemaWrapper);
@@ -372,7 +367,7 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
                 // Create a wrapper object with name and schema fields
                 TSharedPtr<FJsonObject> JsonSchemaWrapper = MakeShared<FJsonObject>();
                 JsonSchemaWrapper->SetStringField(TEXT("name"), TEXT("n2c_translation_schema"));
-                JsonSchemaWrapper->SetStringField(TEXT("strict"), TEXT("true"));
+                JsonSchemaWrapper->SetBoolField(TEXT("strict"), true);
                 JsonSchemaWrapper->SetObjectField(TEXT("schema"), Schema);
 
                 ResponseFormatObject->SetObjectField(TEXT("json_schema"), JsonSchemaWrapper);

@@ -4,6 +4,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Core/N2CSettings.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
@@ -21,7 +22,8 @@
 /**
  * Builds each provider's request body through its service (no request is sent, no key is used) and checks
  * the fields: no sampling parameters where the registry says the model rejects them, the right max-token
- * field, and a Gemini schema without additionalProperties.
+ * field, a Gemini schema without additionalProperties, strict json_schema as a JSON boolean for OpenAI and
+ * LM Studio, and a Gemini API key carried in the x-goog-api-key header rather than the URL.
  */
 BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -73,6 +75,22 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 	{
 		const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Model);
 		return Meta && Meta->bAcceptsSamplingParams;
+	}
+
+	/** response_format is json_schema with a schema and "strict" as the JSON boolean true (not the string "true") */
+	void TestStrictJsonSchema(const FString& What, const TSharedPtr<FJsonObject>& Root)
+	{
+		const TSharedPtr<FJsonObject> ResponseFormat = Child(Root, TEXT("response_format"));
+		if (!TestTrue(FString::Printf(TEXT("%s has response_format"), *What), ResponseFormat.IsValid())) { return; }
+		TestEqual(FString::Printf(TEXT("%s response_format type"), *What), ResponseFormat->GetStringField(TEXT("type")), FString(TEXT("json_schema")));
+		const TSharedPtr<FJsonObject> Wrapper = Child(ResponseFormat, TEXT("json_schema"));
+		if (!TestTrue(FString::Printf(TEXT("%s has json_schema"), *What), Wrapper.IsValid())) { return; }
+		TestTrue(FString::Printf(TEXT("%s json_schema has a schema"), *What), Child(Wrapper, TEXT("schema")).IsValid());
+		const TSharedPtr<FJsonValue> Strict = Wrapper->TryGetField(TEXT("strict"));
+		if (!TestTrue(FString::Printf(TEXT("%s json_schema has strict"), *What), Strict.IsValid())) { return; }
+		TestEqual(FString::Printf(TEXT("%s strict is a JSON boolean"), *What), static_cast<int32>(Strict->Type), static_cast<int32>(EJson::Boolean));
+		bool bStrict = false;
+		TestTrue(FString::Printf(TEXT("%s strict is true"), *What), Strict->TryGetBool(bStrict) && bStrict);
 	}
 
 END_DEFINE_SPEC(FN2CPayloadBuilderSpec)
@@ -133,6 +151,30 @@ void FN2CPayloadBuilderSpec::Define()
 			TestTrue(TEXT("gpt-4.1 has temperature"), Root->HasField(TEXT("temperature")));
 			TestTrue(TEXT("gpt-4.1 has max_tokens"), Root->HasField(TEXT("max_tokens")));
 			TestTrue(TEXT("OpenAI still receives additionalProperties"), Payload.Contains(TEXT("additionalProperties")));
+			TestStrictJsonSchema(TEXT("OpenAI gpt-4.1"), Root);
+		});
+
+		It(TEXT("sends strict json_schema to every model the registry flags for structured output"), [this]()
+		{
+			// o3 and o1 were downgraded to json_object by name before; the registry flag now decides
+			for (const TCHAR* Model : { TEXT("gpt-5.2"), TEXT("o4-mini"), TEXT("o3"), TEXT("o3-mini"), TEXT("o1"), TEXT("gpt-6.1-sol") })
+			{
+				const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Model));
+				if (!TestTrue(FString::Printf(TEXT("%s payload parses"), Model), Root.IsValid())) { continue; }
+				TestStrictJsonSchema(FString::Printf(TEXT("OpenAI %s"), Model), Root);
+			}
+		});
+
+		It(TEXT("sends no response_format to models the registry flags without structured output"), [this]()
+		{
+			for (const TCHAR* Model : { TEXT("o1-preview-2024-09-12"), TEXT("o1-mini-2024-09-12") })
+			{
+				const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Model);
+				TestTrue(FString::Printf(TEXT("%s is registered without structured output"), Model), Meta && !Meta->bSupportsStructuredOutput);
+				const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Model));
+				if (!TestTrue(FString::Printf(TEXT("%s payload parses"), Model), Root.IsValid())) { continue; }
+				TestFalse(FString::Printf(TEXT("%s has no response_format"), Model), Root->HasField(TEXT("response_format")));
+			}
 		});
 	});
 
@@ -168,6 +210,41 @@ void FN2CPayloadBuilderSpec::Define()
 			}
 			TestNoSampling(TEXT("Gemini unregistered root"), Root);
 			TestNoSampling(TEXT("Gemini unregistered generationConfig"), Child(Root, TEXT("generationConfig")));
+		});
+
+		It(TEXT("keeps the API key out of the endpoint URL and sends it in x-goog-api-key"), [this]()
+		{
+			// Force the API-key route for this check; the user's own auth setting is restored afterwards
+			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+			const EN2CGeminiAuthMethod SavedMethod = Settings->GeminiAuthMethod;
+			Settings->GeminiAuthMethod = EN2CGeminiAuthMethod::APIKey;
+
+			const FString FakeKey = TEXT("n2c-test-key-not-real");
+			UN2CGeminiService* Service = NewObject<UN2CGeminiService>(GetTransientPackage());
+			FN2CLLMConfig Config;
+			Config.Provider = EN2CLLMProvider::Gemini;
+			Config.Model = TEXT("gemini-3-flash-preview");
+			Config.ApiKey = FakeKey;
+			Service->Initialize(Config);
+
+			FString Endpoint, AuthToken;
+			bool bSupportsSystemPrompts = false;
+			Service->GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
+			TMap<FString, FString> Headers;
+			Service->GetProviderHeaders(Headers);
+			Settings->GeminiAuthMethod = SavedMethod;
+
+			TestEqual(TEXT("Gemini endpoint is <endpoint><model>:generateContent"), Endpoint,
+				FString(TEXT("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent")));
+			TestFalse(TEXT("Gemini endpoint has no query string"), Endpoint.Contains(TEXT("?")));
+			TestFalse(TEXT("Gemini endpoint does not contain the key"), Endpoint.Contains(FakeKey));
+			TestTrue(TEXT("Gemini sends no Bearer token for an API key"), AuthToken.IsEmpty());
+			const FString* HeaderKey = Headers.Find(TEXT("x-goog-api-key"));
+			if (TestNotNull(TEXT("Gemini has an x-goog-api-key header"), HeaderKey))
+			{
+				TestEqual(TEXT("x-goog-api-key carries the key"), *HeaderKey, FakeKey);
+			}
+			TestFalse(TEXT("Gemini API-key route sends no Authorization header"), Headers.Contains(TEXT("Authorization")));
 		});
 	});
 
@@ -205,6 +282,7 @@ void FN2CPayloadBuilderSpec::Define()
 			TestNoSampling(TEXT("LM Studio root"), Root);
 			TestTrue(TEXT("LM Studio has max_tokens"), Root->HasField(TEXT("max_tokens")));
 			TestTrue(TEXT("LM Studio still receives additionalProperties"), Payload.Contains(TEXT("additionalProperties")));
+			TestStrictJsonSchema(TEXT("LM Studio"), Root);
 		});
 	});
 

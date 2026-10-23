@@ -140,7 +140,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		200000,
 		100000,
 		true,                 // Supports developer prompts
-		false,                // Structured output: json_object only (no json_schema), as before
+		true,                 // Structured output: strict json_schema (Structured Outputs supported)
 		true,                 // Is reasoning model
 		1.0f,
 		16000,
@@ -158,7 +158,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		200000,
 		100000,
 		true,
-		false,                // Structured output: json_object only (no json_schema), as before
+		true,                 // Structured output: strict json_schema (Structured Outputs supported)
 		true,
 		1.0f,
 		16000,
@@ -176,7 +176,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		200000,
 		100000,
 		false,                // Does NOT support system prompts
-		false,                // Structured output: json_object only (no json_schema), as before
+		true,                 // Structured output: strict json_schema (Structured Outputs supported)
 		true,
 		1.0f,
 		16000,
@@ -194,7 +194,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		128000,
 		32768,
 		false,
-		true,
+		false,                // No response_format at all (neither json_schema nor json_object)
 		true,
 		1.0f,
 		16000,
@@ -212,7 +212,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		128000,
 		65536,
 		false,
-		true,
+		false,                // No response_format at all (neither json_schema nor json_object)
 		true,
 		1.0f,
 		16000,
