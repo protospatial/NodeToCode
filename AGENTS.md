@@ -27,23 +27,27 @@ This is where source files for Unreal Engine 5 can be found and searched through
 
 ## TESTING COMPILATION
 
-The build scripts support UE 5.4, 5.5, 5.6, and 5.7 with auto-detection of installations.
+NodeToCode 2.0 supports UE 5.6 (the floor) through UE 5.8 (the ceiling). Any C++ change must build on 5.6, 5.7
+and 5.8. Guard version-specific code with `ENGINE_MINOR_VERSION` (include `Runtime/Launch/Resources/Version.h`).
 
-**Windows (build.ps1):**
+`build.ps1` is local-only for now: it is not in the repository (`.gitignore` ignores `*.ps1`) because it holds
+machine-specific paths, so a fresh clone has no build script. Where a local copy exists, it takes these switches:
+
 ```powershell
-.\build.ps1 -UEVersion 5.5       # Build for specific version
-.\build.ps1 -All                  # Build all detected versions
-.\build.ps1 -WhatIf               # Preview detected UE installations
+.\build.ps1 -UEVersion 5.7           # incremental editor build for one version (5.6, 5.7 or 5.8)
+.\build.ps1 -All                     # build every detected version in turn
+.\build.ps1 -All -Smoke              # build, then load the plugin in a headless editor
+.\build.ps1 -UEVersion 5.8 -Clean    # remove the host's plugin Binaries/Intermediate first
+.\build.ps1 -UEVersion 5.6 -Launch   # build, then open the host editor
+.\build.ps1 -All -Package            # RunUAT BuildPlugin instead of the incremental host build
+.\build.ps1 -WhatIf                  # list detected engines and host projects
 ```
 
-**Mac/Linux (build.sh):**
-```bash
-./build.sh -v 5.5                 # Build for specific version
-./build.sh --all                  # Build all detected versions
-./build.sh --whatif               # Preview detected UE installations
-```
+`-Config` picks the build configuration (default `Development`). Logs go to
+`BuildLogs/Build_<version>_<timestamp>.log` (and `Smoke_*` / `Package_*` for those runs). Running it with no
+arguments prints the examples and the detected engines.
 
-Logs are saved to `BuildLogs/Build_<version>_<timestamp>.log`. Running without arguments shows help and detected UE versions.
+Automation tests live in `Source/Private/Tests/` and run in the editor with `Automation RunTests NodeToCode`.
 
 # CRITICAL - END
 
@@ -56,7 +60,7 @@ NodeToCode is an Unreal Engine 5 plugin for translating Blueprints into various 
 *   **Multi-LLM Support:** Integrates with OpenAI, Anthropic, Google Gemini, DeepSeek, local Ollama instances, and LM Studio.
 *   **Editor Integration:** Adds a "Node to Code" toolbar button in the Blueprint Editor for translation, JSON export, and a dedicated plugin window.
 *   **Interactive Code Editor:** Displays generated code with syntax highlighting and theme customization.
-*   **Configuration:** Plugin settings for LLM provider selection, API keys (stored securely), target language, and logging.
+*   **Configuration:** Plugin settings for LLM provider selection, API keys (entered in Project Settings, not written to config `.ini` files; `UN2CUserSecrets` keeps them as plain, unencrypted JSON in the project's `Saved/NodeToCode/User/secrets.json`), target language, and logging.
 *   **Reasoning Model Support:** Prepended model commands for controlling reasoning models and feature toggles.
 
 ## Context Navigation
