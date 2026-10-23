@@ -66,6 +66,12 @@
 </details>
 
 <details>
+<summary>🤖 Agents & MCP</summary>
+
+* [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription)
+</details>
+
+<details>
 <summary>📚 Additional Resources</summary>
 
 * [Unreal Engine C++ Documentation](https://docs.unrealengine.com/en-US/ProgrammingAndScripting/ProgrammingWithCPP/)

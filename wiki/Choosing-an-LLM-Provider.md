@@ -37,6 +37,9 @@ models that are still listed in **Project Settings** show their shutdown date in
 their models, so use at your own discretion.
 
 
+Each cloud provider here is billed to its API key, not to a Claude, ChatGPT or Google AI subscription. To use a
+subscription instead, see [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription).
+
 ## Model Selection Guidelines
 
 1. **Consider Your Needs**

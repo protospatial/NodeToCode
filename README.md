@@ -63,6 +63,9 @@ Check out the Releases page for the latest stable builds of Node to Code - ready
 ### :books: [Visit the Wiki](https://github.com/protospatial/NodeToCode/wiki)
 Explore the documentation, including setup guides, best practices, and troubleshooting steps
 
+### :key: [API Keys or Your Claude Subscription](https://github.com/protospatial/NodeToCode/wiki/Using-a-Claude-or-Gemini-Subscription)
+Node to Code translates with your own API key for each cloud provider (Ollama and LM Studio need none). To use a Claude, ChatGPT or Google AI subscription instead, connect Claude Code, Antigravity CLI or Codex CLI to Node to Code's MCP server
+
 ### 🆕 [See What's New](https://github.com/protospatial/NodeToCode/wiki/Latest-Updates)
 Read the latest release notes
 
