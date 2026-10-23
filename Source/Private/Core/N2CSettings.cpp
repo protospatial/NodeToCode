@@ -40,11 +40,13 @@ UN2CSettings::UN2CSettings()
     ValidateReferenceSourcePaths();
     
     // The key fields only mirror the process-wide secret store for the details panel; edits go back through it
+    // (the stored keys only: a key from an environment variable is used for requests but never shown or saved)
     const FN2CSecretStore& Secrets = FN2CSecretStore::Get();
-    OpenAI_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::OpenAI);
-    Anthropic_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::Anthropic);
-    Gemini_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::Gemini);
-    DeepSeek_API_Key_UI = Secrets.GetApiKey(EN2CLLMProvider::DeepSeek);
+    OpenAI_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::OpenAI);
+    Anthropic_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::Anthropic);
+    Gemini_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::Gemini);
+    DeepSeek_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::DeepSeek);
+    RefreshApiKeySources();
     
     // Initialize token estimate
     EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
@@ -386,21 +388,25 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_API_Key_UI))
         {
             FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::OpenAI, OpenAI_API_Key_UI);
+            RefreshApiKeySources();
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI))
         {
             FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::Anthropic, Anthropic_API_Key_UI);
+            RefreshApiKeySources();
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))
         {
             FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::Gemini, Gemini_API_Key_UI);
+            RefreshApiKeySources();
             return;
         }
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI))
         {
             FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::DeepSeek, DeepSeek_API_Key_UI);
+            RefreshApiKeySources();
             return;
         }
 
@@ -478,6 +484,32 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
         FString::Printf(TEXT("Saving settings to: %s"), *ConfigPath),
         EN2CLogSeverity::Info
     );
+}
+
+FString UN2CSettings::DescribeApiKeySource(EN2CLLMProvider InProvider)
+{
+    const TArray<FString> Variables = FN2CSecretStore::GetEnvironmentVariableNames(InProvider);
+    FString VariableName;
+    switch (FN2CSecretStore::Get().GetApiKeySource(InProvider, &VariableName))
+    {
+        case EN2CApiKeySource::Store:
+            return TEXT("Saved key (the API Key field)");
+        case EN2CApiKeySource::Environment:
+            return FString::Printf(TEXT("Environment variable %s (value not shown). A key entered in the API Key field takes priority."),
+                *VariableName);
+        case EN2CApiKeySource::None:
+        default:
+            return FString::Printf(TEXT("No key. Enter one in the API Key field, or set %s in the editor's environment."),
+                *FString::Join(Variables, TEXT(" or ")));
+    }
+}
+
+void UN2CSettings::RefreshApiKeySources()
+{
+    OpenAI_API_Key_Source = DescribeApiKeySource(EN2CLLMProvider::OpenAI);
+    Anthropic_API_Key_Source = DescribeApiKeySource(EN2CLLMProvider::Anthropic);
+    Gemini_API_Key_Source = DescribeApiKeySource(EN2CLLMProvider::Gemini);
+    DeepSeek_API_Key_Source = DescribeApiKeySource(EN2CLLMProvider::DeepSeek);
 }
 
 FString UN2CSettings::GetActiveApiKeyForProvider(EN2CLLMProvider InProvider) const

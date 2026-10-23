@@ -111,7 +111,7 @@ bool FN2CMcpGetAvailableLLMProvidersTool::IsProviderConfigured(EN2CLLMProvider P
         return true;
     }
     
-    // Cloud providers need a saved API key
+    // Cloud providers need an API key, saved or from an environment variable
     return FN2CSecretStore::Get().HasApiKey(Provider);
 }
 

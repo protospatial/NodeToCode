@@ -30,7 +30,9 @@ BEGIN_DEFINE_SPEC(FN2CSecretStoreSpec, "NodeToCode.Secrets.Store",
 
 	TUniquePtr<FN2CSecretStore> MakeStore(bool bWithLegacy = false) const
 	{
-		return MakeUnique<FN2CSecretStore>(MakeUnique<FN2CSecretFileBackend>(UserFile, bWithLegacy ? LegacyFile : FString()));
+		// No environment fallback, so a key in the test machine's environment cannot stand in for a stored one
+		return MakeUnique<FN2CSecretStore>(MakeUnique<FN2CSecretFileBackend>(UserFile, bWithLegacy ? LegacyFile : FString()),
+			[](const FString&) { return FString(); });
 	}
 
 	static TSharedPtr<FJsonObject> ParseFile(const FString& Path)

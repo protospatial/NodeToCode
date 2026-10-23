@@ -3,6 +3,7 @@
 #include "Core/N2CSecretStore.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
@@ -412,10 +413,15 @@ FN2CSecretStore& FN2CSecretStore::Get()
     return Store;
 }
 
-FN2CSecretStore::FN2CSecretStore(TUniquePtr<IN2CSecretBackend> InBackend)
+FN2CSecretStore::FN2CSecretStore(TUniquePtr<IN2CSecretBackend> InBackend, FEnvironmentReader InEnvironmentReader)
     : Backend(MoveTemp(InBackend))
+    , EnvironmentReader(MoveTemp(InEnvironmentReader))
 {
     check(Backend.IsValid());
+    if (!EnvironmentReader)
+    {
+        EnvironmentReader = [](const FString& VariableName) { return FPlatformMisc::GetEnvironmentVariable(*VariableName); };
+    }
     Backend->LoadAll(Keys);
 }
 
@@ -443,17 +449,110 @@ FString FN2CSecretStore::GetProviderId(EN2CLLMProvider Provider)
     }
 }
 
-FString FN2CSecretStore::GetApiKey(const FString& ProviderId) const
+TArray<FString> FN2CSecretStore::GetEnvironmentVariableNames(const FString& ProviderId)
+{
+    if (ProviderId == TEXT("OpenAI")) { return { TEXT("OPENAI_API_KEY") }; }
+    if (ProviderId == TEXT("Anthropic")) { return { TEXT("ANTHROPIC_API_KEY") }; }
+    if (ProviderId == TEXT("Gemini")) { return { TEXT("GEMINI_API_KEY") }; }
+    // DEEPSEEK_API is the name some local .env files use
+    if (ProviderId == TEXT("DeepSeek")) { return { TEXT("DEEPSEEK_API_KEY"), TEXT("DEEPSEEK_API") }; }
+    return {};
+}
+
+TArray<FString> FN2CSecretStore::GetEnvironmentVariableNames(EN2CLLMProvider Provider)
+{
+    return GetEnvironmentVariableNames(GetProviderId(Provider));
+}
+
+FString FN2CSecretStore::FindEnvironmentKey(const FString& ProviderId, FString& OutVariableName) const
+{
+    OutVariableName.Reset();
+    for (const FString& Name : GetEnvironmentVariableNames(ProviderId))
+    {
+        FString Value = EnvironmentReader(Name).TrimStartAndEnd();
+        if (!Value.IsEmpty())
+        {
+            OutVariableName = Name;
+            return Value;
+        }
+    }
+    return FString();
+}
+
+FString FN2CSecretStore::GetStoredApiKey(const FString& ProviderId) const
 {
     FScopeLock Lock(&Mutex);
     const FString* Key = Keys.Find(ProviderId);
     return Key ? *Key : FString();
 }
 
+FString FN2CSecretStore::GetStoredApiKey(EN2CLLMProvider Provider) const
+{
+    const FString Id = GetProviderId(Provider);
+    return Id.IsEmpty() ? FString() : GetStoredApiKey(Id);
+}
+
+FString FN2CSecretStore::GetApiKey(const FString& ProviderId) const
+{
+    const FString Stored = GetStoredApiKey(ProviderId);
+    if (!Stored.TrimStartAndEnd().IsEmpty())
+    {
+        return Stored;
+    }
+
+    FString VariableName;
+    const FString FromEnvironment = FindEnvironmentKey(ProviderId, VariableName);
+    if (FromEnvironment.IsEmpty())
+    {
+        return Stored;
+    }
+
+    bool bAlreadyLogged = false;
+    {
+        FScopeLock Lock(&Mutex);
+        LoggedEnvironmentKeys.Add(ProviderId + TEXT("=") + VariableName, &bAlreadyLogged);
+    }
+    if (!bAlreadyLogged)
+    {
+        // The variable's name only: its value is a secret
+        FN2CLogger::Get().Log(FString::Printf(
+            TEXT("No %s API key is saved, so the %s environment variable is used. A key saved in Project Settings takes priority."),
+            *ProviderId, *VariableName), EN2CLogSeverity::Info, LogContext);
+    }
+    return FromEnvironment;
+}
+
 FString FN2CSecretStore::GetApiKey(EN2CLLMProvider Provider) const
 {
     const FString Id = GetProviderId(Provider);
     return Id.IsEmpty() ? FString() : GetApiKey(Id);
+}
+
+EN2CApiKeySource FN2CSecretStore::GetApiKeySource(const FString& ProviderId, FString* OutVariableName) const
+{
+    if (OutVariableName)
+    {
+        OutVariableName->Reset();
+    }
+    if (!GetStoredApiKey(ProviderId).TrimStartAndEnd().IsEmpty())
+    {
+        return EN2CApiKeySource::Store;
+    }
+    FString VariableName;
+    if (FindEnvironmentKey(ProviderId, VariableName).IsEmpty())
+    {
+        return EN2CApiKeySource::None;
+    }
+    if (OutVariableName)
+    {
+        *OutVariableName = VariableName;
+    }
+    return EN2CApiKeySource::Environment;
+}
+
+EN2CApiKeySource FN2CSecretStore::GetApiKeySource(EN2CLLMProvider Provider, FString* OutVariableName) const
+{
+    return GetApiKeySource(GetProviderId(Provider), OutVariableName);
 }
 
 bool FN2CSecretStore::HasApiKey(EN2CLLMProvider Provider) const

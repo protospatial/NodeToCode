@@ -48,3 +48,24 @@ Earlier versions saved the keys in the project, at `Saved/NodeToCode/User/secret
 opens with this version, its keys move to the file in your user folder and the project copy is deleted. A key already
 in your user folder is kept; if the project held a different key for the same provider, the Output Log names the
 provider and the project's key is kept in the user file under `MigrationConflicts`, so no key is lost.
+
+## API Keys from Environment Variables
+
+When a provider's **API Key** field is empty, Node to Code uses the matching environment variable of the editor
+process instead. This lets build machines, CI and agents run translations without typing a key into Project Settings.
+
+| Provider | Environment variable |
+|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Gemini | `GEMINI_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`) |
+
+- A key entered in the **API Key** field always wins over the environment variable
+- A key from the environment is used for requests only: it is never shown in the **API Key** field and never saved
+  to `secrets.json`
+- Each provider's **API Key Source** line shows where its key comes from: the saved key, the environment variable it
+  uses (by name; the value is never shown), or no key
+- The Output Log names the variable the first time it is used, never its value
+- Set the variable before the editor starts (for example in the shell or CI job that launches it); the editor reads
+  its own environment, so a variable set after launch is not seen
