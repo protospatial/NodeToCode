@@ -17,7 +17,7 @@ void UN2CLLMPayloadBuilder::Initialize(const FString& InModelName)
 
     // Only the model is written here. Every other field depends on the provider, so it is written after a
     // ConfigureFor* call; sampling fields are written only when the model's registry flag allows them,
-    // and each service sets its own max tokens.
+    // and each service sets its output budget (SetOutputBudget) from its Max Output Tokens setting.
     RootObject->SetStringField(TEXT("model"), ModelName);
 }
 
@@ -169,6 +169,66 @@ void UN2CLLMPayloadBuilder::SetMaxTokens(int32 Value)
             // Anthropic, DeepSeek and LM Studio (OpenAI-compatible) use max_tokens
             RootObject->SetNumberField(TEXT("max_tokens"), Value);
             break;
+    }
+}
+
+int32 UN2CLLMPayloadBuilder::NonStreamingAutoCapFor(EN2CLLMProvider Provider, const FN2CModelMetadata* Meta)
+{
+    // DeepSeek thinking modes count reasoning against max_tokens; 65536 is the API's own thinking-mode default
+    if (Provider == EN2CLLMProvider::DeepSeek && Meta && Meta->bIsReasoningModel)
+    {
+        return FMath::Max(NonStreamingAutoCap, DeepSeekReasoningAutoCap);
+    }
+    return NonStreamingAutoCap;
+}
+
+int32 UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider Provider, const FN2CModelMetadata* Meta, int32 Requested, int32 EstimatedInputTokens)
+{
+    if (Meta && Meta->Provider != Provider)
+    {
+        Meta = nullptr;
+    }
+    const int32 ModelMax = Meta ? FMath::Max(Meta->MaxOutputTokens, 0) : 0;
+
+    if (Requested > 0)
+    {
+        // Explicit: sent as-is, but never above what the model can produce (a larger value is a 400)
+        return ModelMax > 0 ? FMath::Min(Requested, ModelMax) : Requested;
+    }
+
+    // Auto
+    if (Provider == EN2CLLMProvider::LMStudio || Provider == EN2CLLMProvider::Ollama)
+    {
+        // The server knows its loaded context; omitting the field lets it use what the prompt leaves
+        return 0;
+    }
+    if (!Meta || ModelMax == 0)
+    {
+        return Provider == EN2CLLMProvider::Anthropic ? AnthropicUnregisteredMaxTokens : 0;
+    }
+    // Requests are not streamed yet, so Auto stays under the non-streaming cap (see NonStreamingAutoCap). Remove the
+    // cap when SSE streaming lands; Auto then becomes the registry maximum limited by the window.
+    const int32 AutoMax = FMath::Min(ModelMax, NonStreamingAutoCapFor(Provider, Meta));
+    const int64 Remaining = static_cast<int64>(Meta->ContextWindowSize) - FMath::Max(EstimatedInputTokens, 0) - AutoOutputMarginTokens;
+    const int32 Floor = FMath::Min(MinAutoOutputTokens, AutoMax);
+    return static_cast<int32>(FMath::Clamp<int64>(Remaining, Floor, AutoMax));
+}
+
+void UN2CLLMPayloadBuilder::SetOutputBudget(int32 Requested, int32 EstimatedInputTokens)
+{
+    if (!EnsureProviderConfigured(TEXT("SetOutputBudget")))
+    {
+        return;
+    }
+    const int32 Budget = ResolveMaxOutputTokens(ProviderType, FindModelMetadata(), Requested, EstimatedInputTokens);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Output budget for %s: %s (setting %s, estimated input %d tokens)"),
+        *ModelName,
+        Budget > 0 ? *FString::FromInt(Budget) : TEXT("not sent, server default"),
+        Requested > 0 ? *FString::FromInt(Requested) : TEXT("Auto"),
+        EstimatedInputTokens), EN2CLogSeverity::Debug);
+    if (Budget > 0)
+    {
+        SetMaxTokens(Budget);
     }
 }
 

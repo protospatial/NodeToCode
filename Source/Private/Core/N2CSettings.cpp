@@ -177,6 +177,28 @@ int32 UN2CSettings::MigrateLegacyOllamaDefaults(FN2COllamaConfig& Config, TArray
     return OutChanges.Num() - Before;
 }
 
+int32 UN2CSettings::MigrateLegacyLMStudioMaxTokens(const FString& ConfigFilename, int32& InOutLMStudioMaxOutputTokens, TArray<FString>& OutChanges)
+{
+    // PR #20's setting and its default; the default was sent on every request whether or not the user chose it
+    static const TCHAR* const LegacyKey = TEXT("LMStudioMaxTokens");
+    constexpr int32 LegacyDefault = 32768;
+
+    int32 Legacy = 0;
+    if (InOutLMStudioMaxOutputTokens > 0 || !GConfig || ConfigFilename.IsEmpty()
+        || !GConfig->GetInt(*StaticClass()->GetPathName(), LegacyKey, Legacy, ConfigFilename))
+    {
+        return 0;
+    }
+    if (Legacy <= 0 || Legacy == LegacyDefault)
+    {
+        // Not a choice the user made: Auto (already 0) applies, and the stale key is dropped on the next save
+        return 0;
+    }
+    InOutLMStudioMaxOutputTokens = Legacy;
+    OutChanges.Add(FString::Printf(TEXT("LM Studio %s=%d -> Max Output Tokens %d"), LegacyKey, Legacy, Legacy));
+    return 1;
+}
+
 int32 UN2CSettings::MigrateSavedSettings()
 {
     TArray<FString> Changes;
@@ -184,11 +206,16 @@ int32 UN2CSettings::MigrateSavedSettings()
     {
         MigrateLegacyOllamaDefaults(OllamaConfig, Changes);
     }
+    if (SettingsVersion < 2)
+    {
+        // Max Output Tokens keys are new, so they load as 0 = Auto; only PR #20's LM Studio key carries over
+        MigrateLegacyLMStudioMaxTokens(GetClass()->GetConfigName(), LMStudioMaxOutputTokens, Changes);
+    }
 
     if (Changes.Num() > 0)
     {
         FN2CLogger::Get().Log(FString::Printf(
-            TEXT("Ollama settings saved before NodeToCode 2.0 updated so the server and model defaults apply: %s. Saving Project Settings > Plugins > Node to Code stores this."),
+            TEXT("Settings saved before NodeToCode 2.0 updated so the server and model defaults apply: %s. Saving Project Settings > Plugins > Node to Code stores this."),
             *FString::Join(Changes, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
     }
     return Changes.Num();
@@ -563,8 +590,29 @@ FString UN2CSettings::GetActiveReasoningEffortForProvider(EN2CLLMProvider InProv
     return FString();
 }
 
+int32 UN2CSettings::GetMaxOutputTokensForProvider(EN2CLLMProvider InProvider) const
+{
+    switch (InProvider)
+    {
+        case EN2CLLMProvider::Anthropic:
+            return FMath::Max(AnthropicMaxOutputTokens, 0);
+        case EN2CLLMProvider::OpenAI:
+            return FMath::Max(OpenAIMaxOutputTokens, 0);
+        case EN2CLLMProvider::Gemini:
+            return FMath::Max(GeminiMaxOutputTokens, 0);
+        case EN2CLLMProvider::DeepSeek:
+            return FMath::Max(DeepSeekMaxOutputTokens, 0);
+        case EN2CLLMProvider::LMStudio:
+            return FMath::Max(LMStudioMaxOutputTokens, 0);
+        default:
+            // Ollama: OllamaConfig.NumPredict
+            return 0;
+    }
+}
+
 void UN2CSettings::ResolveRequestModel(EN2CLLMProvider InProvider, const FString& ModelIdOverride, FN2CLLMConfig& InOutConfig) const
 {
+    InOutConfig.MaxOutputTokens = GetMaxOutputTokensForProvider(InProvider);
     const FString SelectedModel = GetActiveModelForProvider(InProvider);
     if (ModelIdOverride.IsEmpty() || ModelIdOverride == SelectedModel)
     {

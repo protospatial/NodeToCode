@@ -70,4 +70,15 @@ struct FN2CLLMConfig
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     FString ReasoningEffort;
+
+    /**
+     * Output token budget for this request. 0 is Auto: cloud providers get the model's registry maximum (held to
+     * UN2CLLMPayloadBuilder::NonStreamingAutoCap while requests are not streamed), reduced so
+     * prompt plus output fits its context window, and local servers (LM Studio, vLLM) get no field so the server
+     * uses the context left after the prompt. A value above 0 is sent as-is, capped at the registry maximum when
+     * the model is registered. UN2CSettings::ResolveRequestModel fills it from the provider's Max Output Tokens
+     * setting; Ollama ignores it (its own Max Tokens setting, num_predict, applies).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    int32 MaxOutputTokens = 0;
 };

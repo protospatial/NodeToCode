@@ -2,6 +2,7 @@
 
 #include "LLM/Providers/N2COpenAIService.h"
 
+#include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CSystemPromptManager.h"
@@ -81,9 +82,8 @@ FString UN2COpenAIService::FormatChatCompletionsPayload(const FString& UserMessa
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForOpenAI();
 
-    // Max tokens (max_tokens or max_completion_tokens per the registry). Temperature is applied by
-    // ConfigureForOpenAI only for models that accept it; reasoning and unregistered models get none.
-    PayloadBuilder->SetMaxTokens(16000);
+    // Temperature is applied by ConfigureForOpenAI only for models that accept it; reasoning and unregistered
+    // models get none.
 
     // JSON response format: the payload builder picks strict json_schema or none from the registry
     PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
@@ -93,6 +93,11 @@ FString UN2COpenAIService::FormatChatCompletionsPayload(const FString& UserMessa
 
     // Try prepending source files to the user message
     PromptManager->PrependSourceFilesToUserMessage(FinalContent);
+
+    // Output budget from the OpenAI Max Output Tokens setting, in max_tokens or max_completion_tokens per the
+    // registry flag (see ResolveMaxOutputTokens)
+    PayloadBuilder->SetOutputBudget(Config.MaxOutputTokens,
+        FN2CTokenEstimationService::EstimateTokensForChars(SystemMessage.Len() + FinalContent.Len()));
 
     // Add messages
     if (bSupportsSystemPrompts)
@@ -169,8 +174,14 @@ FString UN2COpenAIService::FormatResponsesAPIPayload(const FString& UserMessage,
     TextConfig->SetObjectField(TEXT("format"), FormatConfig);
     RootObject->SetObjectField(TEXT("text"), TextConfig);
 
-    // Set max output tokens (Responses API uses max_output_tokens)
-    RootObject->SetNumberField(TEXT("max_output_tokens"), 16000);
+    // Output budget, resolved as for Chat Completions; the Responses API names it max_output_tokens
+    const int32 OutputBudget = UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::OpenAI,
+        FN2CLLMModelRegistry::Get().GetModelMetadataById(Config.Model), Config.MaxOutputTokens,
+        FN2CTokenEstimationService::EstimateTokensForChars(SystemMessage.Len() + FinalContent.Len()));
+    if (OutputBudget > 0)
+    {
+        RootObject->SetNumberField(TEXT("max_output_tokens"), OutputBudget);
+    }
 
     // Serialize to JSON string
     FString OutputString;

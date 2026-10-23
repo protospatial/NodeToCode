@@ -35,14 +35,18 @@
 BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-	/** Builds the payload FormatRequestPayload would send for this provider and model */
+	/**
+	 * Builds the payload FormatRequestPayload would send for this provider and model, with this Max Output Tokens
+	 * value (0 = Auto, the default)
+	 */
 	template <typename TService>
-	FString BuildPayload(EN2CLLMProvider Provider, const FString& Model)
+	FString BuildPayload(EN2CLLMProvider Provider, const FString& Model, int32 MaxOutputTokens = 0)
 	{
 		TService* Service = NewObject<TService>(GetTransientPackage());
 		FN2CLLMConfig Config;
 		Config.Provider = Provider;
 		Config.Model = Model;
+		Config.MaxOutputTokens = MaxOutputTokens;
 		Service->Initialize(Config);
 		return Service->BuildRequestPayloadForTesting(TEXT("Translate this graph."), TEXT("You are a translator."));
 	}
@@ -171,6 +175,31 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 		}
 	}
 
+	/** The named number field of Object, or -1 when it is missing */
+	static int64 NumberOr(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field)
+	{
+		double Value = -1.0;
+		if (!Object.IsValid() || !Object->TryGetNumberField(Field, Value))
+		{
+			return -1;
+		}
+		return static_cast<int64>(Value);
+	}
+
+	/** Registry MaxOutputTokens for a registered model ID */
+	static int64 RegistryMaxOutput(const FString& Model, const FString& ReasoningEffort = FString())
+	{
+		const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Model, ReasoningEffort);
+		return Meta ? Meta->MaxOutputTokens : -1;
+	}
+
+	/** Auto budget for a short prompt: the registry maximum, at most the non-streaming ceiling Cap */
+	static int64 AutoExpected(const FString& Model, int64 Cap, const FString& ReasoningEffort = FString())
+	{
+		const int64 Registered = RegistryMaxOutput(Model, ReasoningEffort);
+		return Registered > 0 ? FMath::Min(Registered, Cap) : -1;
+	}
+
 	/** The named sub-object, or null; never the engine's shared empty fallback object */
 	static TSharedPtr<FJsonObject> Child(const TSharedPtr<FJsonObject>& Object, const FString& Name)
 	{
@@ -237,17 +266,18 @@ void FN2CPayloadBuilderSpec::Define()
 {
 	Describe(TEXT("Anthropic"), [this]()
 	{
-		It(TEXT("sends no sampling fields for the current models or an unregistered ID and keeps max_tokens"), [this]()
+		It(TEXT("sends no sampling fields for the current models or an unregistered ID and always sends max_tokens"), [this]()
 		{
-			// Opus 4.7 and later reject sampling parameters; IDs the registry does not know get none either
+			// Opus 4.7 and later reject sampling parameters; IDs the registry does not know get none either.
+			// max_tokens is required, so Auto sends the registry maximum, or the fallback for an unknown ID.
 			for (const TCHAR* Model : { TEXT("claude-sonnet-5-5"), TEXT("claude-opus-5-5"), TEXT("claude-haiku-5-5"), TEXT("claude-future-not-registered") })
 			{
 				const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, Model));
 				if (!TestTrue(FString::Printf(TEXT("%s payload parses"), Model), Root.IsValid())) { continue; }
 				TestNoSampling(FString::Printf(TEXT("Anthropic %s root"), Model), Root);
-				double MaxTokens = 0.0;
-				TestTrue(FString::Printf(TEXT("%s has max_tokens"), Model), Root->TryGetNumberField(TEXT("max_tokens"), MaxTokens));
-				TestEqual(FString::Printf(TEXT("%s max_tokens"), Model), MaxTokens, 16000.0);
+				const int64 Registered = RegistryMaxOutput(Model);
+				TestEqual(FString::Printf(TEXT("%s Auto max_tokens"), Model), NumberOr(Root, TEXT("max_tokens")),
+					Registered > 0 ? AutoExpected(Model, 32000) : static_cast<int64>(UN2CLLMPayloadBuilder::AnthropicUnregisteredMaxTokens));
 			}
 		});
 
@@ -269,8 +299,12 @@ void FN2CPayloadBuilderSpec::Define()
 			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, TEXT("gpt-7-not-registered")));
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
 			TestNoSampling(TEXT("OpenAI unregistered root"), Root);
-			TestTrue(TEXT("unregistered ID uses max_completion_tokens"), Root->HasField(TEXT("max_completion_tokens")));
+			TestFalse(TEXT("unregistered ID in Auto sends no max_completion_tokens (provider default)"), Root->HasField(TEXT("max_completion_tokens")));
 			TestFalse(TEXT("unregistered ID sends no max_tokens"), Root->HasField(TEXT("max_tokens")));
+
+			const TSharedPtr<FJsonObject> Explicit = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, TEXT("gpt-7-not-registered"), 4096));
+			TestEqual(TEXT("unregistered ID with 4096 uses max_completion_tokens"), NumberOr(Explicit, TEXT("max_completion_tokens")), static_cast<int64>(4096));
+			TestFalse(TEXT("unregistered ID with 4096 sends no max_tokens"), Explicit.IsValid() && Explicit->HasField(TEXT("max_tokens")));
 		});
 
 		It(TEXT("sends no temperature for a registered reasoning model"), [this]()
@@ -391,9 +425,9 @@ TestNoSampling(TEXT("Gemini unregistered root"), Root);
 			TestDeepSeekThinking(TEXT("R1"), Root, TEXT("enabled"), TEXT("high"));
 			TestNoSampling(TEXT("R1 root"), Root);
 			TestDeepSeekJson(TEXT("R1"), Root, false);
-			int32 MaxTokens = 0;
-			TestTrue(TEXT("R1 has max_tokens"), Root->TryGetNumberField(TEXT("max_tokens"), MaxTokens));
-			TestEqual(TEXT("R1 max_tokens leaves room for reasoning"), MaxTokens, 65536);
+			const int64 MaxTokens = NumberOr(Root, TEXT("max_tokens"));
+			// Not streamed yet: Auto stays at the 65536 reasoning ceiling, which leaves room for reasoning
+			TestEqual(TEXT("R1 Auto max_tokens is the DeepSeek reasoning ceiling"), MaxTokens, static_cast<int64>(65536));
 		});
 
 		It(TEXT("DeepSeek_V4_Pro sends deepseek-v4-pro with thinking enabled at high effort and no temperature"), [this]()
@@ -439,7 +473,7 @@ TestNoSampling(TEXT("Gemini unregistered root"), Root);
 			TestFalse(TEXT("unregistered: no reasoning_effort"), Root->HasField(TEXT("reasoning_effort")));
 			TestNoSampling(TEXT("unregistered root"), Root);
 			TestDeepSeekJson(TEXT("unregistered"), Root, false);
-			TestTrue(TEXT("unregistered: has max_tokens"), Root->HasField(TEXT("max_tokens")));
+			TestFalse(TEXT("unregistered: Auto sends no max_tokens (API default)"), Root->HasField(TEXT("max_tokens")));
 		});
 	});
 
@@ -608,9 +642,162 @@ TestNoSampling(TEXT("Gemini unregistered root"), Root);
 			const TSharedPtr<FJsonObject> Root = Parse(Payload);
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
 			TestNoSampling(TEXT("LM Studio root"), Root);
-			TestTrue(TEXT("LM Studio has max_tokens"), Root->HasField(TEXT("max_tokens")));
+			TestFalse(TEXT("LM Studio Auto sends no max_tokens"), Root->HasField(TEXT("max_tokens")));
 			TestTrue(TEXT("LM Studio still receives additionalProperties"), Payload.Contains(TEXT("additionalProperties")));
 			TestStrictJsonSchema(TEXT("LM Studio"), Root);
+		});
+	});
+
+	Describe(TEXT("OutputBudget"), [this]()
+	{
+		It(TEXT("Anthropic: Auto sends the registry maximum, an explicit value is sent and capped at the maximum"), [this]()
+		{
+			const FString Model = TEXT("claude-sonnet-5-5");
+			TestEqual(TEXT("Auto max_tokens is the 32000 non-streaming ceiling"), NumberOr(Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, Model)), TEXT("max_tokens")), static_cast<int64>(32000));
+			TestEqual(TEXT("explicit 100000 is not held to the Auto ceiling"), NumberOr(Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, Model, 100000)), TEXT("max_tokens")), static_cast<int64>(100000));
+			TestEqual(TEXT("explicit 4096"), NumberOr(Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, Model, 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+			TestEqual(TEXT("explicit 10,000,000 capped at the registry maximum"),
+				NumberOr(Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, Model, 10000000)), TEXT("max_tokens")), RegistryMaxOutput(Model));
+			TestEqual(TEXT("explicit 4096 for an unregistered ID is sent as-is"),
+				NumberOr(Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, TEXT("claude-future-not-registered"), 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+		});
+
+		It(TEXT("OpenAI: max_completion_tokens or max_tokens per the registry flag, and the Responses API uses the same value"), [this]()
+		{
+			// Reasoning model: max_completion_tokens
+			const FString Reasoning = TEXT("gpt-6.1-sol");
+			const TSharedPtr<FJsonObject> Auto = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Reasoning));
+			TestEqual(TEXT("reasoning Auto max_completion_tokens"), NumberOr(Auto, TEXT("max_completion_tokens")), static_cast<int64>(32000));
+			TestFalse(TEXT("reasoning Auto has no max_tokens"), Auto.IsValid() && Auto->HasField(TEXT("max_tokens")));
+			TestEqual(TEXT("reasoning explicit 4096"), NumberOr(Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Reasoning, 4096)), TEXT("max_completion_tokens")), static_cast<int64>(4096));
+
+			// Chat model: max_tokens
+			const FString Chat = TEXT("gpt-4.1");
+			TestEqual(TEXT("chat Auto max_tokens"), NumberOr(Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Chat)), TEXT("max_tokens")), AutoExpected(Chat, 32000));
+			const TSharedPtr<FJsonObject> ChatExplicit = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Chat, 4096));
+			TestEqual(TEXT("chat explicit 4096"), NumberOr(ChatExplicit, TEXT("max_tokens")), static_cast<int64>(4096));
+			TestFalse(TEXT("chat explicit has no max_completion_tokens"), ChatExplicit.IsValid() && ChatExplicit->HasField(TEXT("max_completion_tokens")));
+
+			// Responses API model: max_output_tokens
+			const FString Pro = TEXT("gpt-5.2-pro");
+			if (!TestTrue(TEXT("gpt-5.2-pro uses the Responses API"), FN2CLLMModelRegistry::Get().RequiresResponsesAPI(Pro))) { return; }
+			const TSharedPtr<FJsonObject> ProAuto = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Pro));
+			TestTrue(TEXT("Responses payload has input"), ProAuto.IsValid() && ProAuto->HasField(TEXT("input")));
+			TestEqual(TEXT("Responses Auto max_output_tokens"), NumberOr(ProAuto, TEXT("max_output_tokens")), AutoExpected(Pro, 32000));
+			TestEqual(TEXT("Responses explicit 4096"), NumberOr(Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Pro, 4096)), TEXT("max_output_tokens")), static_cast<int64>(4096));
+		});
+
+		It(TEXT("Gemini and DeepSeek: Auto sends the registry maximum, explicit 4096 gives 4096"), [this]()
+		{
+			const FString Gemini = TEXT("gemini-3.8-flash");
+			TestEqual(TEXT("Gemini Auto maxOutputTokens"),
+				NumberOr(Child(Parse(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, Gemini)), TEXT("generationConfig")), TEXT("maxOutputTokens")), AutoExpected(Gemini, 32000));
+			TestEqual(TEXT("Gemini explicit 4096"),
+				NumberOr(Child(Parse(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, Gemini, 4096)), TEXT("generationConfig")), TEXT("maxOutputTokens")), static_cast<int64>(4096));
+			const TSharedPtr<FJsonObject> GeminiUnknown = Child(Parse(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, TEXT("gemini-9-not-registered"))), TEXT("generationConfig"));
+			TestFalse(TEXT("Gemini unregistered Auto sends no maxOutputTokens"), GeminiUnknown.IsValid() && GeminiUnknown->HasField(TEXT("maxOutputTokens")));
+
+			const FString DeepSeek = TEXT("deepseek-v4-pro");
+			TestEqual(TEXT("DeepSeek thinking Auto max_tokens is the 65536 reasoning ceiling"), NumberOr(Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, DeepSeek)), TEXT("max_tokens")), static_cast<int64>(65536));
+			TestEqual(TEXT("DeepSeek non-thinking Auto max_tokens is the 32000 ceiling"), NumberOr(BuildDeepSeek(EN2CDeepSeekModel::DeepSeek_V3), TEXT("max_tokens")), static_cast<int64>(32000));
+			TestEqual(TEXT("DeepSeek explicit 4096"), NumberOr(Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, DeepSeek, 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+			TestEqual(TEXT("DeepSeek unregistered explicit 4096"),
+				NumberOr(Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-v9-unknown"), 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+		});
+
+		It(TEXT("LM Studio: Auto sends no max_tokens, explicit 4096 gives 4096"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Auto = Parse(BuildPayload<UN2CLMStudioService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b")));
+			if (!TestTrue(TEXT("payload parses"), Auto.IsValid())) { return; }
+			TestFalse(TEXT("Auto has no max_tokens"), Auto->HasField(TEXT("max_tokens")));
+			TestFalse(TEXT("Auto has no max_completion_tokens"), Auto->HasField(TEXT("max_completion_tokens")));
+			TestEqual(TEXT("explicit 4096"), NumberOr(Parse(BuildPayload<UN2CLMStudioService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"), 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+			// No registry entry for a local model, so a large explicit value is not capped
+			TestEqual(TEXT("explicit 200000 sent as-is"), NumberOr(Parse(BuildPayload<UN2CLMStudioService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"), 200000)), TEXT("max_tokens")), static_cast<int64>(200000));
+		});
+
+		It(TEXT("Auto shrinks to the room the prompt leaves in the context window"), [this]()
+		{
+			FN2CModelMetadata Small(TEXT("small-test-model"), TEXT("Small"), EN2CLLMProvider::OpenAI, 0.0f, 0.0f, 16384, 16000);
+			const int32 Margin = UN2CLLMPayloadBuilder::AutoOutputMarginTokens;
+			TestEqual(TEXT("short prompt: the window less the prompt and margin"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::OpenAI, &Small, 0, 100), 16384 - 100 - Margin);
+			TestEqual(TEXT("10000-token prompt: what is left"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::OpenAI, &Small, 0, 10000), 16384 - 10000 - Margin);
+			TestEqual(TEXT("prompt larger than the window: the floor"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::OpenAI, &Small, 0, 50000), UN2CLLMPayloadBuilder::MinAutoOutputTokens);
+			FN2CModelMetadata Large(TEXT("large-test-model"), TEXT("Large"), EN2CLLMProvider::OpenAI, 0.0f, 0.0f, 1000000, 128000);
+			TestEqual(TEXT("1M window: held to the non-streaming ceiling"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::OpenAI, &Large, 0, 100000), UN2CLLMPayloadBuilder::NonStreamingAutoCap);
+			TestEqual(TEXT("1M window, explicit 100000: sent, under the registry maximum"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::OpenAI, &Large, 100000, 100000), 100000);
+			TestEqual(TEXT("explicit is not reduced for the prompt"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::OpenAI, &Small, 12000, 10000), 12000);
+			TestEqual(TEXT("an entry of another provider is ignored"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::Gemini, &Small, 0, 100), 0);
+			TestEqual(TEXT("LM Studio Auto omits even with an entry"), UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider::LMStudio, &Small, 0, 100), 0);
+		});
+
+		It(TEXT("ResolveRequestModel carries each provider's Max Output Tokens setting into the request"), [this]()
+		{
+			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+			const int32 SavedAnthropic = Settings->AnthropicMaxOutputTokens;
+			const int32 SavedLMStudio = Settings->LMStudioMaxOutputTokens;
+			Settings->AnthropicMaxOutputTokens = 4096;
+			Settings->LMStudioMaxOutputTokens = 2048;
+
+			FN2CLLMConfig Config;
+			Settings->ResolveRequestModel(EN2CLLMProvider::Anthropic, FString(), Config);
+			TestEqual(TEXT("Anthropic setting"), Config.MaxOutputTokens, 4096);
+			Settings->ResolveRequestModel(EN2CLLMProvider::Anthropic, TEXT("claude-future-not-registered"), Config);
+			TestEqual(TEXT("an override model gets the provider setting"), Config.MaxOutputTokens, 4096);
+			Settings->ResolveRequestModel(EN2CLLMProvider::LMStudio, FString(), Config);
+			TestEqual(TEXT("LM Studio setting"), Config.MaxOutputTokens, 2048);
+			Settings->ResolveRequestModel(EN2CLLMProvider::Ollama, FString(), Config);
+			TestEqual(TEXT("Ollama uses NumPredict instead"), Config.MaxOutputTokens, 0);
+
+			Settings->AnthropicMaxOutputTokens = SavedAnthropic;
+			Settings->LMStudioMaxOutputTokens = SavedLMStudio;
+		});
+	});
+
+	Describe(TEXT("MaxOutputTokensMigration"), [this]()
+	{
+		It(TEXT("a config saved before the setting existed loads as Auto for every provider"), [this]()
+		{
+			UN2CSettings* Settings = LoadSettingsFromIni(TEXT("SettingsVersion=1\nLMStudioModel=\"qwen3-32b\""));
+			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
+			for (const EN2CLLMProvider Provider : { EN2CLLMProvider::Anthropic, EN2CLLMProvider::OpenAI, EN2CLLMProvider::Gemini, EN2CLLMProvider::DeepSeek, EN2CLLMProvider::LMStudio })
+			{
+				TestEqual(FString::Printf(TEXT("%s is Auto"), *UEnum::GetValueAsString(Provider)), Settings->GetMaxOutputTokensForProvider(Provider), 0);
+			}
+		});
+
+		It(TEXT("a saved Max Output Tokens value loads as-is"), [this]()
+		{
+			UN2CSettings* Settings = LoadSettingsFromIni(TEXT("SettingsVersion=2\nAnthropicMaxOutputTokens=4096\nLMStudioMaxOutputTokens=3000"));
+			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
+			TestEqual(TEXT("Anthropic 4096"), Settings->AnthropicMaxOutputTokens, 4096);
+			TestEqual(TEXT("LM Studio 3000"), Settings->LMStudioMaxOutputTokens, 3000);
+		});
+
+		It(TEXT("carries a PR #20 LMStudioMaxTokens choice over and leaves its 32768 default as Auto"), [this]()
+		{
+			auto Migrate = [](const FString& Lines, int32 Current, int32& OutChanged) -> int32
+			{
+				const FString Path = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Automation")
+					/ FString::Printf(TEXT("N2CMaxTokensSpec_%s.ini"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+				FFileHelper::SaveStringToFile(FString::Printf(TEXT("[%s]\n%s\n"), *UN2CSettings::StaticClass()->GetPathName(), *Lines), *Path);
+				GConfig->LoadFile(Path);
+				TArray<FString> Changes;
+				int32 Value = Current;
+				OutChanged = UN2CSettings::MigrateLegacyLMStudioMaxTokens(Path, Value, Changes);
+				GConfig->UnloadFile(Path);
+				IFileManager::Get().Delete(*Path);
+				return Value;
+			};
+
+			int32 Changed = 0;
+			TestEqual(TEXT("8192 carried over"), Migrate(TEXT("LMStudioMaxTokens=8192"), 0, Changed), 8192);
+			TestEqual(TEXT("8192 counts as one change"), Changed, 1);
+			TestEqual(TEXT("the PR's 32768 default becomes Auto"), Migrate(TEXT("LMStudioMaxTokens=32768"), 0, Changed), 0);
+			TestEqual(TEXT("32768 changes nothing"), Changed, 0);
+			TestEqual(TEXT("a new setting already set wins"), Migrate(TEXT("LMStudioMaxTokens=8192"), 3000, Changed), 3000);
+			TestEqual(TEXT("no legacy key: Auto"), Migrate(TEXT("LMStudioModel=\"qwen3-32b\""), 0, Changed), 0);
+			TestEqual(TEXT("no legacy key changes nothing"), Changed, 0);
 		});
 	});
 

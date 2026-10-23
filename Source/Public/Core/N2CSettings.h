@@ -235,6 +235,12 @@ public:
         meta = (DisplayName = "API Key"))
     FString Anthropic_API_Key_UI;
 
+    /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
+            ToolTip = "Most output tokens a translation may use. 0 = Auto: sends the model's maximum output, at most 32000 while requests are not streamed (65536 for DeepSeek thinking modes), reduced so the prompt plus the output fits the model's context window (the Messages API requires a value, so one is always sent). Any other value is sent as-is, capped at the model's maximum. Thinking tokens count against it on reasoning models."))
+    int32 AnthropicMaxOutputTokens = 0;
+
     /** OpenAI Model Selection - GPT-6.1 Sol recommended for the best quality/cost balance, GPT-6 Astra for the most capability, GPT-6 Luna for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI")
     EN2COpenAIModel OpenAI_Model = N2CDefaultModels::OpenAI;
@@ -243,6 +249,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | OpenAI",
         meta = (DisplayName = "API Key"))
     FString OpenAI_API_Key_UI;
+
+    /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI",
+        meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
+            ToolTip = "Most output tokens a translation may use. 0 = Auto: sends the model's maximum output, at most 32000 while requests are not streamed (65536 for DeepSeek thinking modes), reduced so the prompt plus the output fits the model's context window; sent as max_completion_tokens to reasoning models and as max_output_tokens on the Responses API. Any other value is sent as-is, capped at the model's maximum. Thinking tokens count against it on reasoning models."))
+    int32 OpenAIMaxOutputTokens = 0;
 
     /** Gemini Model Selection - Gemini 3.8 Flash recommended for the best price-performance, Gemini 4 Argon for the most capability, Gemini 3.5 Flash-Lite for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
@@ -253,6 +265,12 @@ public:
         meta = (DisplayName = "API Key"))
     FString Gemini_API_Key_UI;
 
+    /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
+        meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
+            ToolTip = "Most output tokens a translation may use. 0 = Auto: sends the model's maximum output, at most 32000 while requests are not streamed (65536 for DeepSeek thinking modes), reduced so the prompt plus the output fits the model's context window. Any other value is sent as-is, capped at the model's maximum. Thinking tokens count against it on reasoning models."))
+    int32 GeminiMaxOutputTokens = 0;
+
     /** DeepSeek Model Selection - each entry names the model and thinking mode it sends */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek")
     EN2CDeepSeekModel DeepSeekModel = N2CDefaultModels::DeepSeek;
@@ -261,6 +279,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | DeepSeek",
         meta = (DisplayName = "API Key"))
     FString DeepSeek_API_Key_UI;
+
+    /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek",
+        meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
+            ToolTip = "Most output tokens a translation may use. 0 = Auto: sends the model's maximum output, at most 32000 while requests are not streamed (65536 for DeepSeek thinking modes), reduced so the prompt plus the output fits the model's context window. Any other value is sent as-is, capped at the model's maximum. Thinking tokens count against it on reasoning models."))
+    int32 DeepSeekMaxOutputTokens = 0;
 
     /** Ollama configuration */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama")
@@ -274,8 +298,11 @@ public:
     UPROPERTY(Config)
     int32 SettingsVersion = 0;
 
-    /** 1: Ollama options are sent only when set (override toggles, num_ctx and num_predict 0 = omitted) */
-    static constexpr int32 CurrentSettingsVersion = 1;
+    /**
+     * 1: Ollama options are sent only when set (override toggles, num_ctx and num_predict 0 = omitted).
+     * 2: per-provider Max Output Tokens (0 = Auto); a LMStudioMaxTokens value saved by the PR #20 build carries over.
+     */
+    static constexpr int32 CurrentSettingsVersion = 2;
     
     /** Ollama Model Selection */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama",
@@ -297,6 +324,12 @@ public:
         meta=(DisplayName="Prepended Model Command", 
               ToolTip="Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear on first line of each user message."))
     FString LMStudioPrependedModelCommand = "";
+
+    /** Output token budget per request; 0 = Auto sends none, so the server decides (see the tooltip) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
+        meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
+            ToolTip = "Most output tokens a translation may use. 0 = Auto: no max_tokens is sent, so the server uses the context the prompt leaves (needed for servers with a small window, such as vLLM with max_model_len 16384). Any other value is sent as-is; keep prompt plus this value inside the model's loaded context length."))
+    int32 LMStudioMaxOutputTokens = 0;
     
     /** OpenAI Model Pricing */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
@@ -367,9 +400,16 @@ public:
     FString GetActiveReasoningEffortForProvider(EN2CLLMProvider InProvider) const;
 
     /**
+     * The provider's Max Output Tokens setting (0 = Auto, see FN2CLLMConfig::MaxOutputTokens). Ollama returns 0:
+     * its budget is OllamaConfig.NumPredict, which ConfigureForOllama sends.
+     */
+    int32 GetMaxOutputTokensForProvider(EN2CLLMProvider InProvider) const;
+
+    /**
      * Sets InOutConfig.Model and InOutConfig.ReasoningEffort for a request to InProvider: the selected model and
      * its thinking mode, or ModelIdOverride. An override naming a different model than the selection leaves
-     * ReasoningEffort empty, so that model's own registry entry decides.
+     * ReasoningEffort empty, so that model's own registry entry decides. Also sets InOutConfig.MaxOutputTokens
+     * from the provider's Max Output Tokens setting, which an override model gets too (capped at its own maximum).
      */
     void ResolveRequestModel(EN2CLLMProvider InProvider, const FString& ModelIdOverride, FN2CLLMConfig& InOutConfig) const;
 
@@ -451,6 +491,19 @@ public:
      * @return the number of values changed
      */
     static int32 MigrateLegacyOllamaDefaults(FN2COllamaConfig& Config, TArray<FString>& OutChanges);
+
+    /**
+     * Version 2 migration. Before it every request sent a fixed 16000 output tokens (no setting), so configs saved
+     * then have no Max Output Tokens keys and load as 0 = Auto, which needs no change. The one setting that did
+     * exist is LMStudioMaxTokens from the PR #20 build (default 32768, no way to omit the field): a value other
+     * than that default was the user's choice and moves to LMStudioMaxOutputTokens; the default itself becomes
+     * Auto (nothing to change), since 32768 overflows small local windows. Nothing happens when
+     * LMStudioMaxOutputTokens is already set.
+     * @param ConfigFilename config holding this class's section (reads only the legacy key)
+     * @param OutChanges one entry per changed value, for the log
+     * @return the number of values changed
+     */
+    static int32 MigrateLegacyLMStudioMaxTokens(const FString& ConfigFilename, int32& InOutLMStudioMaxOutputTokens, TArray<FString>& OutChanges);
 
     /** Check if a property is a color property in our editor colors structs */
     bool IsColorProperty(const FProperty* Property) const;

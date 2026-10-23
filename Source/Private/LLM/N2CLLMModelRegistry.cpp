@@ -35,7 +35,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Supports structured output
 		false,                // Not a reasoning model (has reasoning_effort param)
 		0.0f,                 // Default temperature
-		16000,                // Default max tokens
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -53,7 +52,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		true,                 // Requires OpenAI Responses API
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -71,7 +69,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -89,7 +86,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -107,7 +103,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -125,7 +120,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Supports structured output
 		true,                 // Is reasoning model
 		1.0f,                 // Default temperature (required for reasoning)
-		16000,                // Default max tokens
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -143,7 +137,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Structured output: strict json_schema (Structured Outputs supported)
 		true,                 // Is reasoning model
 		1.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -161,7 +154,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Structured output: strict json_schema (Structured Outputs supported)
 		true,
 		1.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -179,7 +171,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Structured output: strict json_schema (Structured Outputs supported)
 		true,
 		1.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -197,7 +188,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // No response_format at all (neither json_schema nor json_object)
 		true,
 		1.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -215,7 +205,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // No response_format at all (neither json_schema nor json_object)
 		true,
 		1.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
@@ -233,7 +222,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,                // Not a reasoning model
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
 		false                 // Uses max_completion_tokens
@@ -251,7 +239,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
 		false                 // Uses max_completion_tokens
@@ -269,7 +256,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
 		false                 // Uses max_completion_tokens
@@ -291,7 +277,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Structured output: strict json_schema
 		true,                 // Is reasoning model
 		0.0f,                 // Default temperature (not sent)
-		16000,                // Default max tokens
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p
 		true                  // Uses max_completion_tokens
@@ -309,7 +294,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p
 		true                  // Uses max_completion_tokens
@@ -327,7 +311,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p
 		true                  // Uses max_completion_tokens
@@ -349,7 +332,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Anthropic uses tool use for structured output, not native
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -367,7 +349,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -385,7 +366,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -403,7 +383,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -421,7 +400,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -439,7 +417,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -457,7 +434,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		8192,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -475,7 +451,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		8192,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
@@ -497,7 +472,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Anthropic uses tool use for structured output, not native
 		false,
 		0.0f,
-		16000,                // Non-streaming request: keep under the SDK-style HTTP timeout
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Claude 4.7 and later reject temperature/top_p/top_k
 		false                 // Uses max_completion_tokens
@@ -515,7 +489,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Claude 4.7 and later reject temperature/top_p/top_k
 		false                 // Uses max_completion_tokens
@@ -533,7 +506,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Claude 4.7 and later reject temperature/top_p/top_k
 		false                 // Uses max_completion_tokens
@@ -555,7 +527,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
 		false                 // Uses max_completion_tokens
@@ -573,7 +544,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
 		false                 // Uses max_completion_tokens
@@ -591,7 +561,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		1.0f,                 // Default temperature (more reliable structured output at 1.0)
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
@@ -609,7 +578,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
@@ -627,7 +595,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
@@ -645,7 +612,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
@@ -663,7 +629,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
@@ -681,7 +646,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
@@ -699,7 +663,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		8192,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
@@ -717,7 +680,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		true,                 // This is a reasoning/thinking model
 		1.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Thinking model: no sampling fields
 		false                 // Uses max_completion_tokens
@@ -739,7 +701,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
 		false                 // Uses max_completion_tokens
@@ -758,7 +719,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
 		false                 // Uses max_completion_tokens
@@ -776,7 +736,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,
 		false,
 		0.0f,
-		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
 		false                 // Uses max_completion_tokens
@@ -808,7 +767,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Structured output: no response_format with thinking on
 		true,                 // Is reasoning model
 		0.0f,
-		65536,                // The API's own default max_tokens in thinking mode (reasoning counts against it)
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: temperature has no effect in thinking mode
 		false                 // Uses max_completion_tokens
@@ -825,7 +783,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		true,                 // Structured output: response_format json_object
 		false,
 		0.0f,
-		32768,
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: temperature applies in non-thinking mode
 		false                 // Uses max_completion_tokens
@@ -842,7 +799,6 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Structured output: no response_format with thinking on
 		true,                 // Is reasoning model
 		0.0f,
-		65536,                // The API's own default max_tokens in thinking mode (reasoning counts against it)
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: temperature has no effect in thinking mode
 		false                 // Uses max_completion_tokens
@@ -1140,42 +1096,6 @@ float FN2CLLMModelRegistry::GetDefaultTemperature(EN2CDeepSeekModel Model) const
 		return Meta->DefaultTemperature;
 	}
 	return 0.0f;
-}
-
-int32 FN2CLLMModelRegistry::GetDefaultMaxTokens(EN2COpenAIModel Model) const
-{
-	if (const FN2CModelMetadata* Meta = GetModelMetadata(Model))
-	{
-		return Meta->DefaultMaxTokens;
-	}
-	return 16000;
-}
-
-int32 FN2CLLMModelRegistry::GetDefaultMaxTokens(EN2CAnthropicModel Model) const
-{
-	if (const FN2CModelMetadata* Meta = GetModelMetadata(Model))
-	{
-		return Meta->DefaultMaxTokens;
-	}
-	return 16000;
-}
-
-int32 FN2CLLMModelRegistry::GetDefaultMaxTokens(EN2CGeminiModel Model) const
-{
-	if (const FN2CModelMetadata* Meta = GetModelMetadata(Model))
-	{
-		return Meta->DefaultMaxTokens;
-	}
-	return 16000;
-}
-
-int32 FN2CLLMModelRegistry::GetDefaultMaxTokens(EN2CDeepSeekModel Model) const
-{
-	if (const FN2CModelMetadata* Meta = GetModelMetadata(Model))
-	{
-		return Meta->DefaultMaxTokens;
-	}
-	return 8192;
 }
 
 // ============================================================================

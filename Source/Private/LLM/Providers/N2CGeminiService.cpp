@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2CGeminiService.h"
 
 #include "Core/N2CSettings.h"
+#include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
@@ -44,10 +45,7 @@ FString UN2CGeminiService::FormatRequestPayload(const FString& UserMessage, cons
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForGemini();
 
-    // Max output tokens from the registry default (16000 for unregistered IDs). Temperature is applied by
-    // ConfigureForGemini only where the registry allows it.
-    const FN2CModelMetadata* ModelMeta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Config.Model);
-    PayloadBuilder->SetMaxTokens(ModelMeta ? ModelMeta->DefaultMaxTokens : 16000);
+    // Temperature is applied by ConfigureForGemini only where the registry allows it
 
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
@@ -56,6 +54,10 @@ FString UN2CGeminiService::FormatRequestPayload(const FString& UserMessage, cons
     // Add system message and user message
     PayloadBuilder->AddSystemMessage(SystemMessage);
     PayloadBuilder->AddUserMessage(FinalUserMessage);
+
+    // generationConfig.maxOutputTokens from the Gemini Max Output Tokens setting (see ResolveMaxOutputTokens)
+    PayloadBuilder->SetOutputBudget(Config.MaxOutputTokens,
+        FN2CTokenEstimationService::EstimateTokensForChars(SystemMessage.Len() + FinalUserMessage.Len()));
 
     // Add JSON schema for response format if model supports it
     if (Config.Model != TEXT("gemini-2.0-flash-thinking-exp-01-21"))

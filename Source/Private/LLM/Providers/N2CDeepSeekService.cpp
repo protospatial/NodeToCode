@@ -2,6 +2,7 @@
 
 #include "LLM/Providers/N2CDeepSeekService.h"
 
+#include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
 #include "LLM/N2CSystemPromptManager.h"
@@ -37,10 +38,7 @@ FString UN2CDeepSeekService::FormatRequestPayload(const FString& UserMessage, co
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForDeepSeek(Config.ReasoningEffort);
 
-    // Max tokens from the registry entry (thinking output counts against it); temperature is applied by
-    // ConfigureForDeepSeek only in non-thinking mode
-    const FN2CModelMetadata* ModelMeta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Config.Model, Config.ReasoningEffort);
-    PayloadBuilder->SetMaxTokens(ModelMeta && ModelMeta->Provider == EN2CLLMProvider::DeepSeek ? ModelMeta->DefaultMaxTokens : 16000);
+    // Temperature is applied by ConfigureForDeepSeek only in non-thinking mode
     
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
@@ -49,6 +47,11 @@ FString UN2CDeepSeekService::FormatRequestPayload(const FString& UserMessage, co
     // Add messages
     PayloadBuilder->AddSystemMessage(SystemMessage);
     PayloadBuilder->AddUserMessage(FinalUserMessage);
+
+    // Output budget from the DeepSeek Max Output Tokens setting; thinking output counts against it, and the
+    // request's thinking mode picks the registry entry (see ResolveMaxOutputTokens)
+    PayloadBuilder->SetOutputBudget(Config.MaxOutputTokens,
+        FN2CTokenEstimationService::EstimateTokensForChars(SystemMessage.Len() + FinalUserMessage.Len()));
     
     // json_object response format; the builder sends it only for entries flagged for structured output
     PayloadBuilder->SetJsonResponseFormat(UN2CLLMPayloadBuilder::GetN2CResponseSchema());
