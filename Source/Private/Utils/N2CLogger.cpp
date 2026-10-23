@@ -33,17 +33,30 @@ void FN2CLogger::Log(const FString& Message, EN2CLogSeverity Severity, const FSt
     Error.Context = Context;
     Error.Timestamp = FDateTime::Now();
 
-    // Add to collection
-    LoggedErrors.Add(Error);
-
     // Format for output
     FString FormattedMessage = FormatError(Error);
 
-    // Write to log file if enabled
-    if (bFileLoggingEnabled)
     {
-        WriteToFile(FormattedMessage);
+        FScopeLock ScopeLock(&Lock);
+
+        // Retain the record in the bounded ring buffer
+        if (LoggedErrors.Num() < MaxRetainedRecords)
+        {
+            LoggedErrors.Add(MoveTemp(Error));
+        }
+        else
+        {
+            LoggedErrors[NextRecordIndex] = MoveTemp(Error);
+            NextRecordIndex = (NextRecordIndex + 1) % MaxRetainedRecords;
+        }
+
+        // Write to log file if enabled (serialized with the buffer so lines never interleave)
+        if (bFileLoggingEnabled)
+        {
+            WriteToFile(FormattedMessage);
+        }
     }
+    // UE_LOG below runs outside the lock
 
     // Output to console window
     const TCHAR* SeverityColor = TEXT("");
@@ -99,13 +112,25 @@ void FN2CLogger::LogWarning(const FString& Message, const FString& Context)
 
 TArray<FN2CError> FN2CLogger::GetErrors() const
 {
-    return LoggedErrors;
+    FScopeLock ScopeLock(&Lock);
+    if (LoggedErrors.Num() < MaxRetainedRecords || NextRecordIndex == 0)
+    {
+        return LoggedErrors;
+    }
+    // Oldest first
+    TArray<FN2CError> Ordered;
+    Ordered.Reserve(LoggedErrors.Num());
+    for (int32 i = 0; i < LoggedErrors.Num(); ++i)
+    {
+        Ordered.Add(LoggedErrors[(NextRecordIndex + i) % LoggedErrors.Num()]);
+    }
+    return Ordered;
 }
 
 TArray<FN2CError> FN2CLogger::GetErrorsBySeverity(EN2CLogSeverity Severity) const
 {
     TArray<FN2CError> FilteredErrors;
-    for (const FN2CError& Error : LoggedErrors)
+    for (const FN2CError& Error : GetErrors())
     {
         if (Error.Severity == Severity)
         {
@@ -117,7 +142,9 @@ TArray<FN2CError> FN2CLogger::GetErrorsBySeverity(EN2CLogSeverity Severity) cons
 
 void FN2CLogger::ClearErrors()
 {
+    FScopeLock ScopeLock(&Lock);
     LoggedErrors.Empty();
+    NextRecordIndex = 0;
 }
 
 void FN2CLogger::SetMinSeverity(EN2CLogSeverity Severity)
@@ -135,6 +162,7 @@ void FN2CLogger::EnableFileLogging(bool bEnable)
 
 void FN2CLogger::SetLogFilePath(const FString& Path)
 {
+    FScopeLock ScopeLock(&Lock);
     LogFilePath = Path;
 }
 

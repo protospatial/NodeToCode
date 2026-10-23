@@ -9,6 +9,8 @@
 
 #include "CoreMinimal.h"
 #include "Models/N2CLogging.h"
+#include "HAL/CriticalSection.h"
+#include <atomic>
 
 /**
  * @class FN2CLogger
@@ -88,14 +90,24 @@ private:
     /** Format error for output */
     FString FormatError(const FN2CError& Error) const;
 
-    /** Collection of logged errors */
+    /** Most recent log records, a ring buffer of at most MaxRetainedRecords entries (oldest overwritten first) */
     TArray<FN2CError> LoggedErrors;
 
+    /** Index in LoggedErrors where the next record goes once the buffer is full */
+    int32 NextRecordIndex = 0;
+
+    /** Cap on retained records, so a long session or a chatty worker thread cannot grow memory without bound */
+    static constexpr int32 MaxRetainedRecords = 1000;
+
+    /** Guards LoggedErrors, NextRecordIndex, LogFilePath and the file append. Log() is called from the game
+     *  thread, HTTP server threads and task-graph workers. */
+    mutable FCriticalSection Lock;
+
     /** Minimum severity level for logging */
-    EN2CLogSeverity MinSeverity;
+    std::atomic<EN2CLogSeverity> MinSeverity;
 
     /** Whether file logging is enabled */
-    bool bFileLoggingEnabled;
+    std::atomic<bool> bFileLoggingEnabled;
 
     /** Path for log file */
     FString LogFilePath;

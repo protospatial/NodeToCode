@@ -190,7 +190,7 @@ OAuth authentication support for LLM providers.
 
 *   **`Source/Public/Utils/N2CLogger.h` / `Source/Private/Utils/N2CLogger.cpp` (`FN2CLogger`)**: Singleton for centralized logging.
     *   `Log()`, `LogError()`, `LogWarning()` - Logging methods
-    *   `GetErrors()`, `GetErrorsBySeverity()` - Error retrieval
+    *   `GetErrors()`, `GetErrorsBySeverity()` - The most recent 1,000 records (a ring buffer, oldest first). Thread-safe: `Log()` locks the buffer and file append and calls UE_LOG outside the lock
     *   `SetMinSeverity()` - Filter log level
     *   `EnableFileLogging()`, `SetLogFilePath()` - File logging support
     *   `SeverityToVerbosity()` - Maps N2C severity to UE verbosity
