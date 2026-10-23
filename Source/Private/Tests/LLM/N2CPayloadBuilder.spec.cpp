@@ -93,21 +93,44 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 		TestTrue(FString::Printf(TEXT("%s strict is true"), *What), Strict->TryGetBool(bStrict) && bStrict);
 	}
 
+	/** Gemini 3+ body: no sampling fields, maxOutputTokens and a responseSchema without additionalProperties */
+	void TestGemini3Payload(const FString& Payload)
+	{
+		TSharedPtr<FJsonObject> Root = Parse(Payload);
+		if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
+		// The Code Assist (OAuth) route wraps the same body in "request"
+		if (const TSharedPtr<FJsonObject> Wrapped = Child(Root, TEXT("request")))
+		{
+			Root = Wrapped;
+		}
+		TestNoSampling(TEXT("Gemini root"), Root);
+		const TSharedPtr<FJsonObject> GenConfig = Child(Root, TEXT("generationConfig"));
+		if (!TestTrue(TEXT("Gemini has generationConfig"), GenConfig.IsValid())) { return; }
+		TestNoSampling(TEXT("Gemini generationConfig"), GenConfig);
+		TestTrue(TEXT("Gemini has maxOutputTokens"), GenConfig->HasField(TEXT("maxOutputTokens")));
+		TestTrue(TEXT("Gemini has responseSchema"), Child(GenConfig, TEXT("responseSchema")).IsValid());
+		TestFalse(TEXT("Gemini payload has no additionalProperties"), Payload.Contains(TEXT("additionalProperties")));
+		TestFalse(TEXT("Gemini has no root max_tokens"), Root->HasField(TEXT("max_tokens")));
+	}
+
 END_DEFINE_SPEC(FN2CPayloadBuilderSpec)
 
 void FN2CPayloadBuilderSpec::Define()
 {
 	Describe(TEXT("Anthropic"), [this]()
 	{
-		It(TEXT("sends no sampling fields for a current model ID and keeps max_tokens"), [this]()
+		It(TEXT("sends no sampling fields for the current models or an unregistered ID and keeps max_tokens"), [this]()
 		{
-			// claude-opus-5-5 is not in the registry; Opus 4.7 and later reject sampling parameters
-			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, TEXT("claude-opus-5-5")));
-			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
-			TestNoSampling(TEXT("Anthropic root"), Root);
-			double MaxTokens = 0.0;
-			TestTrue(TEXT("Anthropic has max_tokens"), Root->TryGetNumberField(TEXT("max_tokens"), MaxTokens));
-			TestEqual(TEXT("Anthropic max_tokens"), MaxTokens, 16000.0);
+			// Opus 4.7 and later reject sampling parameters; IDs the registry does not know get none either
+			for (const TCHAR* Model : { TEXT("claude-sonnet-5-5"), TEXT("claude-opus-5-5"), TEXT("claude-haiku-5-5"), TEXT("claude-future-not-registered") })
+			{
+				const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, Model));
+				if (!TestTrue(FString::Printf(TEXT("%s payload parses"), Model), Root.IsValid())) { continue; }
+				TestNoSampling(FString::Printf(TEXT("Anthropic %s root"), Model), Root);
+				double MaxTokens = 0.0;
+				TestTrue(FString::Printf(TEXT("%s has max_tokens"), Model), Root->TryGetNumberField(TEXT("max_tokens"), MaxTokens));
+				TestEqual(FString::Printf(TEXT("%s max_tokens"), Model), MaxTokens, 16000.0);
+			}
 		});
 
 		It(TEXT("sends temperature for a registered model only when its flag allows it"), [this]()
@@ -125,7 +148,7 @@ void FN2CPayloadBuilderSpec::Define()
 	{
 		It(TEXT("treats an unregistered ID as a reasoning model"), [this]()
 		{
-			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, TEXT("gpt-6.1-sol")));
+			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, TEXT("gpt-7-not-registered")));
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
 			TestNoSampling(TEXT("OpenAI unregistered root"), Root);
 			TestTrue(TEXT("unregistered ID uses max_completion_tokens"), Root->HasField(TEXT("max_completion_tokens")));
@@ -134,12 +157,15 @@ void FN2CPayloadBuilderSpec::Define()
 
 		It(TEXT("sends no temperature for a registered reasoning model"), [this]()
 		{
-			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, TEXT("gpt-5.2")));
-			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
-			TestFalse(TEXT("registry flag for gpt-5.2"), RegistryAcceptsSampling(TEXT("gpt-5.2")));
-			TestNoSampling(TEXT("OpenAI gpt-5.2 root"), Root);
-			TestTrue(TEXT("gpt-5.2 uses max_completion_tokens"), Root->HasField(TEXT("max_completion_tokens")));
-			TestFalse(TEXT("gpt-5.2 sends no max_tokens"), Root->HasField(TEXT("max_tokens")));
+			for (const TCHAR* Model : { TEXT("gpt-5.2"), TEXT("gpt-6.1-sol"), TEXT("gpt-6-astra"), TEXT("gpt-6-luna") })
+			{
+				const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Model));
+				if (!TestTrue(FString::Printf(TEXT("%s payload parses"), Model), Root.IsValid())) { continue; }
+				TestFalse(FString::Printf(TEXT("registry flag for %s"), Model), RegistryAcceptsSampling(Model));
+				TestNoSampling(FString::Printf(TEXT("OpenAI %s root"), Model), Root);
+				TestTrue(FString::Printf(TEXT("%s uses max_completion_tokens"), Model), Root->HasField(TEXT("max_completion_tokens")));
+				TestFalse(FString::Printf(TEXT("%s sends no max_tokens"), Model), Root->HasField(TEXT("max_tokens")));
+			}
 		});
 
 		It(TEXT("keeps temperature, max_tokens and the strict schema for a chat model"), [this]()
@@ -157,7 +183,7 @@ void FN2CPayloadBuilderSpec::Define()
 		It(TEXT("sends strict json_schema to every model the registry flags for structured output"), [this]()
 		{
 			// o3 and o1 were downgraded to json_object by name before; the registry flag now decides
-			for (const TCHAR* Model : { TEXT("gpt-5.2"), TEXT("o4-mini"), TEXT("o3"), TEXT("o3-mini"), TEXT("o1"), TEXT("gpt-6.1-sol") })
+			for (const TCHAR* Model : { TEXT("gpt-5.2"), TEXT("o4-mini"), TEXT("o3"), TEXT("o3-mini"), TEXT("o1"), TEXT("gpt-6.1-sol"), TEXT("gpt-6-astra"), TEXT("gpt-6-luna"), TEXT("gpt-7-not-registered") })
 			{
 				const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAIService>(EN2CLLMProvider::OpenAI, Model));
 				if (!TestTrue(FString::Printf(TEXT("%s payload parses"), Model), Root.IsValid())) { continue; }
@@ -180,29 +206,18 @@ void FN2CPayloadBuilderSpec::Define()
 
 	Describe(TEXT("Gemini"), [this]()
 	{
-		It(TEXT("sends no sampling fields and no additionalProperties for Gemini 3"), [this]()
+		It(TEXT("sends no sampling fields and no additionalProperties for Gemini 3 and later"), [this]()
 		{
-			const FString Payload = BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, TEXT("gemini-3-flash-preview"));
-			TSharedPtr<FJsonObject> Root = Parse(Payload);
-			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
-			// The Code Assist (OAuth) route wraps the same body in "request"
-			if (const TSharedPtr<FJsonObject> Wrapped = Child(Root, TEXT("request")))
+			for (const TCHAR* Model : { TEXT("gemini-3-flash-preview"), TEXT("gemini-3.8-flash"), TEXT("gemini-4-argon"), TEXT("gemini-3.5-flash-lite") })
 			{
-				Root = Wrapped;
+				AddInfo(FString::Printf(TEXT("Gemini model %s"), Model));
+				TestGemini3Payload(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, Model));
 			}
-			TestNoSampling(TEXT("Gemini root"), Root);
-			const TSharedPtr<FJsonObject> GenConfig = Child(Root, TEXT("generationConfig"));
-			if (!TestTrue(TEXT("Gemini has generationConfig"), GenConfig.IsValid())) { return; }
-			TestNoSampling(TEXT("Gemini generationConfig"), GenConfig);
-			TestTrue(TEXT("Gemini has maxOutputTokens"), GenConfig->HasField(TEXT("maxOutputTokens")));
-			TestTrue(TEXT("Gemini has responseSchema"), Child(GenConfig, TEXT("responseSchema")).IsValid());
-			TestFalse(TEXT("Gemini payload has no additionalProperties"), Payload.Contains(TEXT("additionalProperties")));
-			TestFalse(TEXT("Gemini has no root max_tokens"), Root->HasField(TEXT("max_tokens")));
 		});
 
 		It(TEXT("sends no sampling fields for an unregistered Gemini ID"), [this]()
 		{
-			TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, TEXT("gemini-3.8-flash")));
+			TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CGeminiService>(EN2CLLMProvider::Gemini, TEXT("gemini-9-not-registered")));
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
 			if (const TSharedPtr<FJsonObject> Wrapped = Child(Root, TEXT("request")))
 			{

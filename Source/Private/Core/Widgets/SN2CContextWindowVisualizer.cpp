@@ -244,25 +244,37 @@ void SN2CContextWindowVisualizer::PopulateModelOptions()
 	case EN2CLLMProvider::OpenAI:
 		for (const auto& Pair : Registry.GetAllOpenAIModels())
 		{
-			ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
+			{
+				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			}
 		}
 		break;
 	case EN2CLLMProvider::Anthropic:
 		for (const auto& Pair : Registry.GetAllAnthropicModels())
 		{
-			ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
+			{
+				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			}
 		}
 		break;
 	case EN2CLLMProvider::Gemini:
 		for (const auto& Pair : Registry.GetAllGeminiModels())
 		{
-			ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
+			{
+				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			}
 		}
 		break;
 	case EN2CLLMProvider::DeepSeek:
 		for (const auto& Pair : Registry.GetAllDeepSeekModels())
 		{
-			ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
+			{
+				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
+			}
 		}
 		break;
 	// Ollama and LM Studio use text input, not dropdown

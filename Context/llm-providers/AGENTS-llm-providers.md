@@ -95,10 +95,11 @@ Manages interactions with LLMs.
     *   `CodeGen_CSharp.md`, `CodeGen_Swift.md`, `CodeGen_Pseudocode.md`
 *   **`N2CLLMTypes.h`**: Defines `EN2CLLMProvider` (OpenAI, Anthropic, Gemini, DeepSeek, Ollama, LMStudio), `EN2CSystemStatus`, `FN2CLLMConfig` struct, and LLM-related delegates (`FOnLLMResponseReceived`, `FOnTranslationResponseReceived`, `FOnTranslationRequestSent`).
 *   **`N2CLLMModels.h/.cpp`**: Provider-specific model enums and `FN2CLLMModelUtils`:
-    *   `EN2COpenAIModel`: o4-mini, GPT-4.1, o3, o3-mini, o1, o1-preview, o1-mini, GPT-4o, GPT-4o-mini
-    *   `EN2CAnthropicModel`: Claude Opus 4.5, Sonnet 4.5, Opus 4.1, Opus 4, Sonnet 4, 3.7 Sonnet, 3.5 Sonnet, 3.5 Haiku
-    *   `EN2CGeminiModel`: Gemini 3 Pro/Flash Preview, 2.5 Pro/Flash, 2.0 Flash/Flash-Lite, 1.5 Flash/Pro, experimental models
+    *   `EN2COpenAIModel`: GPT-6.1 Sol (default), GPT-6 Astra, GPT-6 Luna, GPT-5.2, GPT-5.2 Pro; deprecated but live: GPT-5/Mini/Nano and o3 (shut down 2026-12-11), GPT-4.1, GPT-4o, GPT-4o Mini (2027-01-14); retired (hidden): o4-mini, o3-mini, o1, o1-preview, o1-mini
+    *   `EN2CAnthropicModel`: Claude Sonnet 5.5 (default), Opus 5.5, Haiku 5.5, Opus 4.5; deprecated but live: Sonnet 4.5 (retires 2026-11-30); retired (hidden): Opus 4.1, Opus 4, Sonnet 4, 3.7 Sonnet, 3.5 Sonnet, 3.5 Haiku
+    *   `EN2CGeminiModel`: Gemini 3.8 Flash (default), Gemini 4 Argon, Gemini 3.5 Flash-Lite, Gemini 3 Flash Preview; retired (hidden): 3 Pro Preview, 2.5 Pro/Flash previews, 2.0 Flash/Flash-Lite, 1.5 Flash/Pro, 2.0 experimental models
     *   `EN2CDeepSeekModel`: DeepSeek R1, DeepSeek V3
+    *   Defaults live in `N2CDefaultModels` (same header). Enumerators are never renamed or removed, because settings save them by name: new models are appended, retired ones get `UMETA(Hidden)` plus `.Retired(date)` in the registry, deprecated-but-live ones get `.ShutsDown(date)` and the date in their display name. `UN2CSettings::PostInitProperties` moves a saved retired selection to the default and logs one warning. `NodeToCode.LLM.Registry` checks these rules.
     *   Note: Ollama and LM Studio use dynamic string-based model names instead of enums
     *   `FN2CLLMModelUtils`: Model string ID getters, pricing getters, system prompt support checks
 *   **`N2CLLMPricing.h`**: Pricing structs per provider - `FN2COpenAIPricing`, `FN2CAnthropicPricing`, `FN2CGeminiPricing`, `FN2CDeepSeekPricing`. Each has `InputCost` and `OutputCost` (per 1M tokens).

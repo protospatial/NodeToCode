@@ -46,7 +46,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		TEXT("gpt-5.2-pro"),
 		TEXT("GPT-5.2 Pro"),
 		EN2CLLMProvider::OpenAI,
-		3.5f, 28.0f,          // Estimated 2x base pricing
+		21.0f, 168.0f,        // developers.openai.com/api/docs/models/gpt-5.2-pro (2026-10-22)
 		400000,
 		128000,
 		true,
@@ -62,7 +62,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 	// GPT-5 - Strong coding model (August 2025)
 	OpenAIModels.Add(EN2COpenAIModel::GPT_5, FN2CModelMetadata(
 		TEXT("gpt-5"),
-		TEXT("GPT-5"),
+		TEXT("GPT-5 (shuts down 2026-12-11)"),
 		EN2CLLMProvider::OpenAI,
 		1.25f, 10.0f,
 		400000,
@@ -75,12 +75,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).ShutsDown(TEXT("2026-12-11"));
 
 	// GPT-5 Mini - Faster, cost-efficient
 	OpenAIModels.Add(EN2COpenAIModel::GPT_5_Mini, FN2CModelMetadata(
 		TEXT("gpt-5-mini"),
-		TEXT("GPT-5 Mini"),
+		TEXT("GPT-5 Mini (shuts down 2026-12-11)"),
 		EN2CLLMProvider::OpenAI,
 		0.25f, 2.0f,
 		400000,
@@ -93,12 +93,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).ShutsDown(TEXT("2026-12-11"));
 
 	// GPT-5 Nano - Smallest, fastest, most affordable
 	OpenAIModels.Add(EN2COpenAIModel::GPT_5_Nano, FN2CModelMetadata(
 		TEXT("gpt-5-nano"),
-		TEXT("GPT-5 Nano"),
+		TEXT("GPT-5 Nano (shuts down 2026-12-11)"),
 		EN2CLLMProvider::OpenAI,
 		0.05f, 0.4f,
 		400000,
@@ -111,12 +111,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).ShutsDown(TEXT("2026-12-11"));
 
 	// o4 Mini - Reasoning model (supports developer prompts)
 	OpenAIModels.Add(EN2COpenAIModel::GPT_o4_mini, FN2CModelMetadata(
 		TEXT("o4-mini"),
-		TEXT("o4 Mini"),
+		TEXT("o4 Mini (retired)"),
 		EN2CLLMProvider::OpenAI,
 		1.1f, 4.4f,           // Pricing per 1M tokens
 		200000,               // Context window
@@ -129,12 +129,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-10-23"));
 
 	// o3 - Advanced reasoning model
 	OpenAIModels.Add(EN2COpenAIModel::GPT_o3, FN2CModelMetadata(
 		TEXT("o3"),
-		TEXT("o3"),
+		TEXT("o3 (shuts down 2026-12-11)"),
 		EN2CLLMProvider::OpenAI,
 		10.0f, 40.0f,
 		200000,
@@ -147,12 +147,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).ShutsDown(TEXT("2026-12-11"));
 
 	// o3 Mini - Smaller o3 variant
 	OpenAIModels.Add(EN2COpenAIModel::GPT_o3_mini, FN2CModelMetadata(
 		TEXT("o3-mini"),
-		TEXT("o3 Mini"),
+		TEXT("o3 Mini (retired)"),
 		EN2CLLMProvider::OpenAI,
 		1.1f, 4.4f,
 		200000,
@@ -165,12 +165,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-10-23"));
 
 	// o1 - Original reasoning model (NO system prompts)
 	OpenAIModels.Add(EN2COpenAIModel::GPT_o1, FN2CModelMetadata(
 		TEXT("o1"),
-		TEXT("o1"),
+		TEXT("o1 (retired)"),
 		EN2CLLMProvider::OpenAI,
 		15.0f, 60.0f,
 		200000,
@@ -183,12 +183,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-10-23"));
 
 	// o1 Preview (NO system prompts)
 	OpenAIModels.Add(EN2COpenAIModel::GPT_o1_Preview, FN2CModelMetadata(
 		TEXT("o1-preview-2024-09-12"),
-		TEXT("o1 Preview"),
+		TEXT("o1 Preview (retired)"),
 		EN2CLLMProvider::OpenAI,
 		15.0f, 60.0f,
 		128000,
@@ -201,12 +201,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2025-07-28"));
 
 	// o1 Mini (NO system prompts)
 	OpenAIModels.Add(EN2COpenAIModel::GPT_o1_Mini, FN2CModelMetadata(
 		TEXT("o1-mini-2024-09-12"),
-		TEXT("o1 Mini"),
+		TEXT("o1 Mini (retired)"),
 		EN2CLLMProvider::OpenAI,
 		1.1f, 4.4f,
 		128000,
@@ -219,12 +219,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p, max_completion_tokens
 		true                  // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2025-10-27"));
 
 	// GPT-4.1
 	OpenAIModels.Add(EN2COpenAIModel::GPT_4_1, FN2CModelMetadata(
 		TEXT("gpt-4.1"),
-		TEXT("GPT-4.1"),
+		TEXT("GPT-4.1 (shuts down 2027-01-14)"),
 		EN2CLLMProvider::OpenAI,
 		2.0f, 8.0f,
 		1000000,              // 1M context window
@@ -237,12 +237,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
 		false                 // Uses max_completion_tokens
-	));
+	)).ShutsDown(TEXT("2027-01-14"));
 
 	// GPT-4o
 	OpenAIModels.Add(EN2COpenAIModel::GPT4o_2024_08_06, FN2CModelMetadata(
 		TEXT("gpt-4o-2024-08-06"),
-		TEXT("GPT-4o"),
+		TEXT("GPT-4o (shuts down 2027-01-14)"),
 		EN2CLLMProvider::OpenAI,
 		2.5f, 10.0f,
 		128000,
@@ -255,12 +255,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
 		false                 // Uses max_completion_tokens
-	));
+	)).ShutsDown(TEXT("2027-01-14"));
 
 	// GPT-4o Mini
 	OpenAIModels.Add(EN2COpenAIModel::GPT4o_Mini_2024_07_18, FN2CModelMetadata(
 		TEXT("gpt-4o-mini-2024-07-18"),
-		TEXT("GPT-4o Mini"),
+		TEXT("GPT-4o Mini (shuts down 2027-01-14)"),
 		EN2CLLMProvider::OpenAI,
 		0.15f, 0.6f,
 		128000,
@@ -273,6 +273,64 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: OpenAI chat model: temperature and max_tokens accepted
 		false                 // Uses max_completion_tokens
+	)).ShutsDown(TEXT("2027-01-14"));
+
+	// GPT-6 family. Limits and prices from developers.openai.com/api/docs/models/<id> (checked 2026-10-22).
+	// All three are reasoning models (reasoning.effort): no temperature, max_completion_tokens. Chat Completions
+	// is supported on each (gpt-6.1-sol there without tool calling, which translation does not use).
+
+	// GPT-6.1 Sol - near-Astra quality at a lower cost (default)
+	OpenAIModels.Add(EN2COpenAIModel::GPT_6_1_Sol, FN2CModelMetadata(
+		TEXT("gpt-6.1-sol"),
+		TEXT("GPT-6.1 Sol"),
+		EN2CLLMProvider::OpenAI,
+		2.0f, 10.0f,          // Pricing per 1M tokens
+		1050000,              // Context window (922,000 max input)
+		128000,               // Max output
+		true,                 // Supports system prompts (developer messages)
+		true,                 // Structured output: strict json_schema
+		true,                 // Is reasoning model
+		0.0f,                 // Default temperature (not sent)
+		16000,                // Default max tokens
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p
+		true                  // Uses max_completion_tokens
+	));
+
+	// GPT-6 Astra - most capable
+	OpenAIModels.Add(EN2COpenAIModel::GPT_6_Astra, FN2CModelMetadata(
+		TEXT("gpt-6-astra"),
+		TEXT("GPT-6 Astra"),
+		EN2CLLMProvider::OpenAI,
+		10.0f, 50.0f,
+		1050000,
+		128000,
+		true,
+		true,
+		true,
+		0.0f,
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p
+		true                  // Uses max_completion_tokens
+	));
+
+	// GPT-6 Luna - most efficient
+	OpenAIModels.Add(EN2COpenAIModel::GPT_6_Luna, FN2CModelMetadata(
+		TEXT("gpt-6-luna"),
+		TEXT("GPT-6 Luna"),
+		EN2CLLMProvider::OpenAI,
+		0.1f, 0.5f,
+		1050000,
+		128000,
+		true,
+		true,
+		true,
+		0.0f,
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: OpenAI reasoning model: no temperature/top_p
+		true                  // Uses max_completion_tokens
 	));
 
 	// ========================================================================
@@ -300,7 +358,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 	// Claude Sonnet 4.5
 	AnthropicModels.Add(EN2CAnthropicModel::Claude4_5_Sonnet, FN2CModelMetadata(
 		TEXT("claude-sonnet-4-5-20250929"),
-		TEXT("Claude Sonnet 4.5"),
+		TEXT("Claude Sonnet 4.5 (retires 2026-11-30)"),
 		EN2CLLMProvider::Anthropic,
 		3.0f, 15.0f,
 		200000,
@@ -313,12 +371,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
-	));
+	)).ShutsDown(TEXT("2026-11-30"));
 
 	// Claude Opus 4.1
 	AnthropicModels.Add(EN2CAnthropicModel::Claude4_1_Opus, FN2CModelMetadata(
 		TEXT("claude-opus-4-1-20250805"),
-		TEXT("Claude Opus 4.1"),
+		TEXT("Claude Opus 4.1 (retired)"),
 		EN2CLLMProvider::Anthropic,
 		15.0f, 75.0f,
 		200000,
@@ -331,12 +389,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-08-05"));
 
 	// Claude Opus 4
 	AnthropicModels.Add(EN2CAnthropicModel::Claude4_Opus, FN2CModelMetadata(
 		TEXT("claude-opus-4-20250514"),
-		TEXT("Claude Opus 4"),
+		TEXT("Claude Opus 4 (retired)"),
 		EN2CLLMProvider::Anthropic,
 		15.0f, 75.0f,
 		200000,
@@ -349,12 +407,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-06-15"));
 
 	// Claude Sonnet 4
 	AnthropicModels.Add(EN2CAnthropicModel::Claude4_Sonnet, FN2CModelMetadata(
 		TEXT("claude-sonnet-4-20250514"),
-		TEXT("Claude Sonnet 4"),
+		TEXT("Claude Sonnet 4 (retired)"),
 		EN2CLLMProvider::Anthropic,
 		3.0f, 15.0f,
 		200000,
@@ -367,12 +425,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-06-15"));
 
 	// Claude 3.7 Sonnet
 	AnthropicModels.Add(EN2CAnthropicModel::Claude3_7_Sonnet, FN2CModelMetadata(
 		TEXT("claude-3-7-sonnet-20250219"),
-		TEXT("Claude 3.7 Sonnet"),
+		TEXT("Claude 3.7 Sonnet (retired)"),
 		EN2CLLMProvider::Anthropic,
 		3.0f, 15.0f,
 		200000,
@@ -385,12 +443,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-02-19"));
 
 	// Claude 3.5 Sonnet
 	AnthropicModels.Add(EN2CAnthropicModel::Claude3_5_Sonnet, FN2CModelMetadata(
 		TEXT("claude-3-5-sonnet-20241022"),
-		TEXT("Claude 3.5 Sonnet"),
+		TEXT("Claude 3.5 Sonnet (retired)"),
 		EN2CLLMProvider::Anthropic,
 		3.0f, 15.0f,
 		200000,
@@ -403,12 +461,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2025-10-28"));
 
 	// Claude 3.5 Haiku
 	AnthropicModels.Add(EN2CAnthropicModel::Claude3_5_Haiku, FN2CModelMetadata(
 		TEXT("claude-3-5-haiku-20241022"),
-		TEXT("Claude 3.5 Haiku"),
+		TEXT("Claude 3.5 Haiku (retired)"),
 		EN2CLLMProvider::Anthropic,
 		0.8f, 4.0f,
 		200000,
@@ -421,6 +479,64 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Claude 4.5 and older accept temperature (4.7+ reject it)
 		false                 // Uses max_completion_tokens
+	)).Retired(TEXT("2026-02-19"));
+
+	// Claude 5.5 family. IDs, limits and prices from platform.claude.com/docs/en/about-claude/models/overview
+	// (checked 2026-10-22): 1M context, 128K max output, adaptive thinking. Sampling parameters are rejected
+	// (removed in API version 2026-10-21, and 400 on Claude 4.7+ for non-default values).
+
+	// Claude Sonnet 5.5 (default)
+	AnthropicModels.Add(EN2CAnthropicModel::Claude5_5_Sonnet, FN2CModelMetadata(
+		TEXT("claude-sonnet-5-5"),
+		TEXT("Claude Sonnet 5.5"),
+		EN2CLLMProvider::Anthropic,
+		2.0f, 10.0f,
+		1000000,
+		128000,
+		true,
+		false,                // Anthropic uses tool use for structured output, not native
+		false,
+		0.0f,
+		16000,                // Non-streaming request: keep under the SDK-style HTTP timeout
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Claude 4.7 and later reject temperature/top_p/top_k
+		false                 // Uses max_completion_tokens
+	));
+
+	// Claude Opus 5.5
+	AnthropicModels.Add(EN2CAnthropicModel::Claude5_5_Opus, FN2CModelMetadata(
+		TEXT("claude-opus-5-5"),
+		TEXT("Claude Opus 5.5"),
+		EN2CLLMProvider::Anthropic,
+		4.0f, 20.0f,
+		1000000,
+		128000,
+		true,
+		false,
+		false,
+		0.0f,
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Claude 4.7 and later reject temperature/top_p/top_k
+		false                 // Uses max_completion_tokens
+	));
+
+	// Claude Haiku 5.5
+	AnthropicModels.Add(EN2CAnthropicModel::Claude5_5_Haiku, FN2CModelMetadata(
+		TEXT("claude-haiku-5-5"),
+		TEXT("Claude Haiku 5.5"),
+		EN2CLLMProvider::Anthropic,
+		0.1f, 0.5f,           // Prompts up to 100K tokens; $0.50/$2.50 beyond
+		1000000,
+		128000,
+		true,
+		false,
+		false,
+		0.0f,
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Claude 4.7 and later reject temperature/top_p/top_k
+		false                 // Uses max_completion_tokens
 	));
 
 	// ========================================================================
@@ -430,7 +546,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 	// Gemini 3 Pro Preview
 	GeminiModels.Add(EN2CGeminiModel::Gemini_3_Pro_Preview, FN2CModelMetadata(
 		TEXT("gemini-3-pro-preview"),
-		TEXT("Gemini 3 Pro Preview"),
+		TEXT("Gemini 3 Pro Preview (retired)"),
 		EN2CLLMProvider::Gemini,
 		0.0f, 0.0f,           // Preview - pricing TBD
 		1000000,
@@ -443,7 +559,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-03-09"));
 
 	// Gemini 3 Flash Preview
 	GeminiModels.Add(EN2CGeminiModel::Gemini_3_Flash_Preview, FN2CModelMetadata(
@@ -451,7 +567,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		TEXT("Gemini 3 Flash Preview"),
 		EN2CLLMProvider::Gemini,
 		0.5f, 3.0f,           // $0.50/1M input, $3/1M output
-		200000,               // 200K context (not 1M like Pro)
+		1048576,              // 1,048,576 input tokens (ai.google.dev model page, 2026-10-22)
 		65536,
 		true,
 		true,
@@ -466,7 +582,7 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 	// Gemini 2.5 Pro
 	GeminiModels.Add(EN2CGeminiModel::Gemini_2_5_Pro, FN2CModelMetadata(
 		TEXT("gemini-2.5-pro-preview-05-06"),
-		TEXT("Gemini 2.5 Pro Preview"),
+		TEXT("Gemini 2.5 Pro Preview (retired)"),
 		EN2CLLMProvider::Gemini,
 		1.25f, 10.0f,
 		1000000,
@@ -479,12 +595,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2025-12-02"));
 
 	// Gemini 2.5 Flash
 	GeminiModels.Add(EN2CGeminiModel::Gemini_2_5_Flash, FN2CModelMetadata(
 		TEXT("gemini-2.5-flash-preview-05-20"),
-		TEXT("Gemini 2.5 Flash Preview"),
+		TEXT("Gemini 2.5 Flash Preview (retired)"),
 		EN2CLLMProvider::Gemini,
 		0.0f, 0.0f,           // Preview - pricing TBD
 		1000000,
@@ -497,12 +613,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2025-11-18"));
 
 	// Gemini 2.0 Flash
 	GeminiModels.Add(EN2CGeminiModel::Gemini_Flash_2_0, FN2CModelMetadata(
 		TEXT("gemini-2.0-flash"),
-		TEXT("Gemini 2.0 Flash"),
+		TEXT("Gemini 2.0 Flash (retired)"),
 		EN2CLLMProvider::Gemini,
 		0.1f, 0.4f,
 		1000000,
@@ -515,12 +631,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2026-06-01"));
 
 	// Gemini 2.0 Flash Lite Preview
 	GeminiModels.Add(EN2CGeminiModel::Gemini_Flash_Lite_2_0, FN2CModelMetadata(
 		TEXT("gemini-2.0-flash-lite-preview-02-05"),
-		TEXT("Gemini 2.0 Flash-Lite-Preview-02-05"),
+		TEXT("Gemini 2.0 Flash-Lite-Preview-02-05 (retired)"),
 		EN2CLLMProvider::Gemini,
 		0.075f, 0.3f,
 		1000000,
@@ -533,12 +649,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT("2025-12-09"));
 
 	// Gemini 1.5 Flash
 	GeminiModels.Add(EN2CGeminiModel::Gemini_1_5_Flash, FN2CModelMetadata(
 		TEXT("gemini-1.5-flash"),
-		TEXT("Gemini 1.5 Flash"),
+		TEXT("Gemini 1.5 Flash (retired)"),
 		EN2CLLMProvider::Gemini,
 		0.075f, 0.3f,
 		1000000,
@@ -551,12 +667,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT(""));
 
 	// Gemini 1.5 Pro
 	GeminiModels.Add(EN2CGeminiModel::Gemini_1_5_Pro, FN2CModelMetadata(
 		TEXT("gemini-1.5-pro"),
-		TEXT("Gemini 1.5 Pro"),
+		TEXT("Gemini 1.5 Pro (retired)"),
 		EN2CLLMProvider::Gemini,
 		1.25f, 5.0f,
 		2000000,              // 2M context window
@@ -569,12 +685,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT(""));
 
 	// Gemini 2.0 Pro Exp
 	GeminiModels.Add(EN2CGeminiModel::Gemini_2_0_ProExp_02_05, FN2CModelMetadata(
 		TEXT("gemini-2.0-pro-exp-02-05"),
-		TEXT("Gemini 2.0 Pro Exp 02-05"),
+		TEXT("Gemini 2.0 Pro Exp 02-05 (retired)"),
 		EN2CLLMProvider::Gemini,
 		0.0f, 0.0f,           // Experimental - free
 		1000000,
@@ -587,12 +703,12 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		false,                // Chat Completions (not Responses API)
 		true,                 // Accepts sampling params: Gemini 1.5-2.5 accept temperature
 		false                 // Uses max_completion_tokens
-	));
+	)).Retired(TEXT(""));
 
 	// Gemini 2.0 Flash Thinking Exp (reasoning model)
 	GeminiModels.Add(EN2CGeminiModel::Gemini_2_0_FlashThinkingExp, FN2CModelMetadata(
 		TEXT("gemini-2.0-flash-thinking-exp-01-21"),
-		TEXT("Gemini 2.0 Flash Thinking Exp 01-21"),
+		TEXT("Gemini 2.0 Flash Thinking Exp 01-21 (retired)"),
 		EN2CLLMProvider::Gemini,
 		0.0f, 0.0f,           // Experimental - free
 		1000000,
@@ -604,6 +720,65 @@ void FN2CLLMModelRegistry::InitializeRegistry()
 		16000,
 		false,                // Chat Completions (not Responses API)
 		false,                // Accepts sampling params: Thinking model: no sampling fields
+		false                 // Uses max_completion_tokens
+	)).Retired(TEXT(""));
+
+	// Gemini 3.5+ and 4 (stable). Limits from ai.google.dev/gemini-api/docs/models/<id>, prices from
+	// ai.google.dev/gemini-api/docs/pricing (standard paid tier, checked 2026-10-22). Gemini 3 and later keep
+	// Google's default temperature.
+
+	// Gemini 3.8 Flash (default). Introductory price; Google lists $1.50/$7.50 from 2027-01-01.
+	GeminiModels.Add(EN2CGeminiModel::Gemini_3_8_Flash, FN2CModelMetadata(
+		TEXT("gemini-3.8-flash"),
+		TEXT("Gemini 3.8 Flash"),
+		EN2CLLMProvider::Gemini,
+		0.75f, 3.75f,
+		1048576,              // Input token limit
+		65536,                // Output token limit
+		true,
+		true,
+		false,
+		0.0f,
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
+		false                 // Uses max_completion_tokens
+	));
+
+	// Gemini 4 Argon. Unified 1,048,576-token input+output window; 65,536 output by default.
+	// Introductory price; Google lists $4/$20 from 2026-12-01.
+	GeminiModels.Add(EN2CGeminiModel::Gemini_4_Argon, FN2CModelMetadata(
+		TEXT("gemini-4-argon"),
+		TEXT("Gemini 4 Argon"),
+		EN2CLLMProvider::Gemini,
+		2.0f, 10.0f,
+		1048576,
+		65536,
+		true,
+		true,
+		false,
+		0.0f,
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
+		false                 // Uses max_completion_tokens
+	));
+
+	// Gemini 3.5 Flash-Lite
+	GeminiModels.Add(EN2CGeminiModel::Gemini_3_5_Flash_Lite, FN2CModelMetadata(
+		TEXT("gemini-3.5-flash-lite"),
+		TEXT("Gemini 3.5 Flash-Lite"),
+		EN2CLLMProvider::Gemini,
+		0.3f, 2.5f,
+		1048576,
+		65536,
+		true,
+		true,
+		false,
+		0.0f,
+		16000,
+		false,                // Chat Completions (not Responses API)
+		false,                // Accepts sampling params: Gemini 3: keep Google's default temperature (lower values can loop)
 		false                 // Uses max_completion_tokens
 	));
 
@@ -709,7 +884,7 @@ FString FN2CLLMModelRegistry::GetModelId(EN2COpenAIModel Model) const
 	{
 		return Meta->ModelId;
 	}
-	return TEXT("gpt-4o-2024-08-06"); // Default fallback
+	return TEXT("gpt-6.1-sol"); // Fallback: N2CDefaultModels::OpenAI
 }
 
 FString FN2CLLMModelRegistry::GetModelId(EN2CAnthropicModel Model) const
@@ -718,7 +893,7 @@ FString FN2CLLMModelRegistry::GetModelId(EN2CAnthropicModel Model) const
 	{
 		return Meta->ModelId;
 	}
-	return TEXT("claude-sonnet-4-5-20250929"); // Default fallback
+	return TEXT("claude-sonnet-5-5"); // Fallback: N2CDefaultModels::Anthropic
 }
 
 FString FN2CLLMModelRegistry::GetModelId(EN2CGeminiModel Model) const
@@ -727,7 +902,7 @@ FString FN2CLLMModelRegistry::GetModelId(EN2CGeminiModel Model) const
 	{
 		return Meta->ModelId;
 	}
-	return TEXT("gemini-3-flash-preview"); // Default fallback
+	return TEXT("gemini-3.8-flash"); // Fallback: N2CDefaultModels::Gemini
 }
 
 FString FN2CLLMModelRegistry::GetModelId(EN2CDeepSeekModel Model) const
@@ -736,7 +911,7 @@ FString FN2CLLMModelRegistry::GetModelId(EN2CDeepSeekModel Model) const
 	{
 		return Meta->ModelId;
 	}
-	return TEXT("deepseek-reasoner"); // Default fallback
+	return TEXT("deepseek-reasoner"); // Fallback: N2CDefaultModels::DeepSeek
 }
 
 // ============================================================================

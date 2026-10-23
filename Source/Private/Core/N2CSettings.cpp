@@ -12,6 +12,7 @@
 #include "PropertyEditorModule.h"
 #include "IDetailsView.h"
 #include "LLM/N2CLLMModels.h"
+#include "LLM/N2CLLMModelRegistry.h"
 #include "Utils/N2CLogger.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -69,6 +70,63 @@ UN2CSettings::UN2CSettings()
     {
         ReferenceFilesProperty->SetMetaData(TEXT("ToolTip"), TEXT("Source files to include as context in LLM prompts"));
     }
+}
+
+void UN2CSettings::PostInitProperties()
+{
+    // Config is loaded by now (LoadConfig runs before PostInitProperties), so saved selections can be checked
+    Super::PostInitProperties();
+    MigrateRetiredModelSelections();
+}
+
+void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
+{
+    // The NodeToCode config branch is applied to the class default object by a config reload once the plugin's
+    // config is mounted, which is after PostInitProperties; check the saved selections again
+    Super::PostReloadConfig(PropertyThatWasLoaded);
+    MigrateRetiredModelSelections();
+}
+
+namespace
+{
+    /** Moves Selected to Default when the registry marks it retired or does not know it; records the change */
+    template <typename TEnum>
+    void MigrateIfRetired(TEnum& Selected, TEnum Default, const TCHAR* PropertyName, TArray<FString>& OutChanges)
+    {
+        const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
+        const FN2CModelMetadata* Meta = Registry.GetModelMetadata(Selected);
+        if (Meta && !Meta->bIsRetired)
+        {
+            return;
+        }
+
+        const UEnum* Enum = StaticEnum<TEnum>();
+        const FString OldName = Enum ? Enum->GetNameStringByValue(static_cast<int64>(Selected)) : FString();
+        const FString OldId = Meta ? Meta->ModelId : FString(TEXT("unknown"));
+        const FString NewName = Enum ? Enum->GetNameStringByValue(static_cast<int64>(Default)) : FString();
+        OutChanges.Add(FString::Printf(TEXT("%s=%s (%s%s) -> %s (%s)"),
+            PropertyName, *OldName, *OldId,
+            (Meta && !Meta->ShutdownDate.IsEmpty()) ? *FString::Printf(TEXT(", shut down %s"), *Meta->ShutdownDate) : TEXT(", shut down"),
+            *NewName, *Registry.GetModelId(Default)));
+        Selected = Default;
+    }
+}
+
+int32 UN2CSettings::MigrateRetiredModelSelections()
+{
+    TArray<FString> Changes;
+    MigrateIfRetired(OpenAI_Model, N2CDefaultModels::OpenAI, TEXT("OpenAI_Model"), Changes);
+    MigrateIfRetired(AnthropicModel, N2CDefaultModels::Anthropic, TEXT("AnthropicModel"), Changes);
+    MigrateIfRetired(Gemini_Model, N2CDefaultModels::Gemini, TEXT("Gemini_Model"), Changes);
+    MigrateIfRetired(DeepSeekModel, N2CDefaultModels::DeepSeek, TEXT("DeepSeekModel"), Changes);
+
+    if (Changes.Num() > 0)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Saved model selection no longer served by its provider, using the current default instead: %s. Choose a model in Project Settings > Plugins > Node to Code to save the choice; until then this repeats on each start."),
+            *FString::Join(Changes, TEXT("; "))), TEXT("N2CSettings"));
+    }
+    return Changes.Num();
 }
 
 FText UN2CSettings::GetSectionText() const

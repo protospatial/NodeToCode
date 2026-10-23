@@ -19,6 +19,15 @@ public:
     
     // This tool requires Game Thread to access settings and user secrets
     virtual bool RequiresGameThread() const override { return true; }
+
+    /**
+     * Get the models offered for a provider: every enum entry except those hidden or marked retired in the
+     * registry. Deprecated models that still work carry "deprecated" and "shutdownDate". Public for the
+     * NodeToCode.LLM.Registry spec.
+     * @param Provider The LLM provider
+     * @return Array of model JSON objects
+     */
+    TArray<TSharedPtr<FJsonValue>> GetAvailableModels(EN2CLLMProvider Provider) const;
     
 private:
     /**
@@ -41,13 +50,6 @@ private:
      * @return JSON object with provider details
      */
     TSharedPtr<FJsonObject> BuildProviderInfo(EN2CLLMProvider Provider) const;
-    
-    /**
-     * Get available models for a provider
-     * @param Provider The LLM provider
-     * @return Array of model JSON objects
-     */
-    TArray<TSharedPtr<FJsonValue>> GetAvailableModels(EN2CLLMProvider Provider) const;
     
     /**
      * Get the current selected model for a provider

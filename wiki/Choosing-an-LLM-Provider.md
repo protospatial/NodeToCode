@@ -6,27 +6,29 @@
 
 ## Provider/Model Breakdown
 
-| Model | Strengths | Best For |
-|-------|-----------|-----------|
-| Anthropic Claude 3.5 Sonnet | - Exceptional use of UE C++ patterns<br>- Macro usage<br>- Great documentation | Complex systems, Performant code |
-| Anthropic Claude 3.5 Haiku | - Use of UE C++ patterns<br>- Macro usage<br>- Minimal or no documentation<br>- Fast<br> | Less complex systems, Prototypes, Affordability |
-| OpenAI GPT o3-mini | - Great use of UE C++ patterns<br>- Macro usage<br>- Great documentation | Complex systems requiring thoughtful logic reasoning, Performance-minded code, Great pricing
-| OpenAI GPT o1 | - Exceptional use of UE C++ patterns<br>- Macro usage<br>- Exceptional documentation | Complex systems requiring advanced logic reasoning, Performance-minded code
-| OpenAI GPT-4o | - Decent use of UE C++ patterns<br>- Moderate code structure | Medium complexity translations |
-| OpenAI GPT-4o-mini | - Inconsistent use of UE C++ patterns<br>- General code structure<br>- Fast<br> | Less complex translations, Prototypes, Affordability |
-| OpenAI GPT o3-mini | - Great use of UE C++ patterns<br>- Macro usage<br>- Great documentation | Complex systems requiring thoughtful logic reasoning, Performance-minded code, Great pricing
-| Gemini 2.0 Flash Thinking | - Great use of UE C++ patterns<br>- Macro usage<br>- Decent documentation | Complex systems requiring advanced logic reasoning, Performance-minded code, Massive 2M token context window
-| Gemini 2.0 Pro | - Good use of UE C++ patterns<br>- Macro usage<br>- Good documentation | Complex systems, Performance-minded code, Massive 2M token context window
-| Gemini 2.0 Flash | - Decent use of UE C++ patterns<br>- Macro usage<br>- Good documentation | Fast, Complex systems, Performant code, Huge 1M token context window
-| Gemini 1.5 Pro | - Adequate use of UE C++ patterns<br>- Okay documentation | Less complex systems, Massive 2M token context window
-| Gemini 1.5 Flash | - Use of UE C++ patterns<br> Okay documentation | Very fast, Quick Conversions, Huge 1M token context window
-| DeepSeek R1 | - Adequate use of UE C++ patterns<br>- Macro usage<br>- Acceptable documentation | Complex systems requiring thoughtful logic reasoning, Performance-minded code, Cost-Effective Capabilities
-| DeepSeek V3 | - Adequate use of UE C++ patterns<br>- Moderate code structure<br>- Moderate Macro usage<br>- Documentation<br>| Quick conversions, Prototypes, Affordability |
-| Ollama | - Local processing<br>- Wide range of model capabilities<br>- Ability to use custom models | Full control of model, 100% Privacy, Offline work, Cost-effectiveness |
+Each cloud provider offers a recommended default, a more capable model and a cheaper one. Prices are per
+million tokens on the provider's standard tier when this page was written (2026-10-22); check the provider's
+pricing page before relying on them.
+
+| Model | Input / output price | Context window | Best For |
+|-------|----------------------|----------------|----------|
+| Anthropic Claude Sonnet 5.5 (default) | $2 / $10 | 1M | Most translations: strong UE C++ at a moderate price |
+| Anthropic Claude Opus 5.5 | $4 / $20 | 1M | Large or complex graphs where quality matters most |
+| Anthropic Claude Haiku 5.5 | $0.10 / $0.50 | 1M | Quick conversions, prototypes, high volume |
+| OpenAI GPT-6.1 Sol (default) | $2 / $10 | 1.05M | Most translations |
+| OpenAI GPT-6 Astra | $10 / $50 | 1.05M | The hardest translations, cost no object |
+| OpenAI GPT-6 Luna | $0.10 / $0.50 | 1.05M | Quick conversions, prototypes, high volume |
+| Gemini 3.8 Flash (default) | $0.75 / $3.75 | 1M | Most translations, very large graphs |
+| Gemini 4 Argon | $2 / $10 | 1M | Complex graphs |
+| Gemini 3.5 Flash-Lite | $0.30 / $2.50 | 1M | Quick conversions, prototypes |
+| DeepSeek R1 | - | - | Complex systems requiring thoughtful logic reasoning, Cost-Effective Capabilities |
+| DeepSeek V3 | - | - | Quick conversions, Prototypes, Affordability |
+| Ollama | Free (local) | Set by you | Full control of model, 100% Privacy, Offline work, Cost-effectiveness |
 
 > [!NOTE]
-> Claude 3.5 Sonnet and o3-mini typically produce the most idiomatic Unreal Engine C++ code 
-with proper macro usage and memory management patterns for reasonable pricing.
+> Google lists higher prices for Gemini 3.8 Flash from 2027-01-01 and Gemini 4 Argon from 2026-12-01. Older
+models that are still listed in **Project Settings** show their shutdown date in their name; see
+[Provider Configuration](Provider-Configuration#retired-models) for what happens after it.
 
 > [!IMPORTANT]
 > DeepSeek very likely does use API data for training

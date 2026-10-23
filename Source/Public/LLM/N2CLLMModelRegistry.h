@@ -91,9 +91,24 @@ struct NODETOCODE_API FN2CModelMetadata
 
 	// === Metadata ===
 
-	/** Whether this model is deprecated/legacy */
+	/**
+	 * Whether the provider has deprecated this model: it is retired already, or it has an announced shutdown date.
+	 * A default model is never deprecated.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
 	bool bIsDeprecated = false;
+
+	/**
+	 * Whether the provider has shut this model down, so every request to it fails. Retired models stay in their
+	 * enum (UMETA(Hidden)) so saved settings still load; they are not offered in Project Settings, the context
+	 * window model picker or get-available-llm-providers, and a saved retired selection moves to the default.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
+	bool bIsRetired = false;
+
+	/** The provider's shutdown date (YYYY-MM-DD), past or announced; empty when none is known */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
+	FString ShutdownDate;
 
 	/** Default constructor */
 	FN2CModelMetadata() = default;
@@ -133,6 +148,24 @@ struct NODETOCODE_API FN2CModelMetadata
 		, DefaultMaxTokens(InDefaultMaxTokens)
 		, bIsDeprecated(false)
 	{
+	}
+
+	/** Marks a model the provider has shut down (an empty date when the provider no longer lists one) */
+	FN2CModelMetadata& Retired(const TCHAR* InShutdownDate)
+	{
+		bIsDeprecated = true;
+		bIsRetired = true;
+		ShutdownDate = InShutdownDate;
+		return *this;
+	}
+
+	/** Marks a model the provider still serves but will shut down on the given date */
+	FN2CModelMetadata& ShutsDown(const TCHAR* InShutdownDate)
+	{
+		bIsDeprecated = true;
+		bIsRetired = false;
+		ShutdownDate = InShutdownDate;
+		return *this;
 	}
 };
 

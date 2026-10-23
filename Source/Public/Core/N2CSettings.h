@@ -223,9 +223,9 @@ public:
     UPROPERTY(Transient)
     mutable UN2CUserSecrets* UserSecrets;
 
-    /** Anthropic Model Selection - Sonnet 4.5 recommended for best quality/cost balance */
+    /** Anthropic Model Selection - Sonnet 5.5 recommended for the best quality/cost balance, Opus 5.5 for the most capability, Haiku 5.5 for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")
-    EN2CAnthropicModel AnthropicModel = EN2CAnthropicModel::Claude4_5_Sonnet;
+    EN2CAnthropicModel AnthropicModel = N2CDefaultModels::Anthropic;
     
     /** Anthropic Authentication Method - API Key or Claude Pro/Max OAuth */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
@@ -242,18 +242,18 @@ public:
         meta = (DisplayName = "OAuth Status", EditCondition = "AnthropicAuthMethod == EN2CAnthropicAuthMethod::OAuth", EditConditionHides))
     FString OAuthConnectionStatus = TEXT("Not connected");
 
-    /** OpenAI Model Selection - o3-mini recommended for impressive results for a great price, o1 recommended for most thorough results (but quite expensive) */
+    /** OpenAI Model Selection - GPT-6.1 Sol recommended for the best quality/cost balance, GPT-6 Astra for the most capability, GPT-6 Luna for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI")
-    EN2COpenAIModel OpenAI_Model = EN2COpenAIModel::GPT_o4_mini;
+    EN2COpenAIModel OpenAI_Model = N2CDefaultModels::OpenAI;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | OpenAI",
         meta = (DisplayName = "API Key"))
     FString OpenAI_API_Key_UI;
 
-    /** Gemini Model Selection - 2.5 Flash recommended for best price-performance, 2.5 Pro for most capability */
+    /** Gemini Model Selection - Gemini 3.8 Flash recommended for the best price-performance, Gemini 4 Argon for the most capability, Gemini 3.5 Flash-Lite for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
-    EN2CGeminiModel Gemini_Model = EN2CGeminiModel::Gemini_2_5_Flash;
+    EN2CGeminiModel Gemini_Model = N2CDefaultModels::Gemini;
 
     /** Gemini Authentication Method - API Key or Google Account OAuth */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
@@ -272,7 +272,7 @@ public:
 
     /** DeepSeek Model Selection - R1 recommended for most accurate results */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek")
-    EN2CDeepSeekModel DeepSeekModel = EN2CDeepSeekModel::DeepSeek_R1;
+    EN2CDeepSeekModel DeepSeekModel = N2CDefaultModels::DeepSeek;
     
     /** DeepSeek API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | DeepSeek",
@@ -407,9 +407,22 @@ public:
     const FN2CCodeEditorColors* GetThemeColors(EN2CCodeLanguage Language, const FName& ThemeName) const;
 
     // Begin UObject Interface
+    virtual void PostInitProperties() override;
+    virtual void PostReloadConfig(FProperty* PropertyThatWasLoaded) override;
     virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
     virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
     // End UObject Interface
+
+    /**
+     * Moves each saved model selection whose model the provider has shut down (registry bIsRetired, or a value
+     * the registry does not know) to that provider's N2CDefaultModels value, and logs one warning naming every
+     * change. Called after the config is loaded (PostInitProperties) and after it is reloaded (PostReloadConfig,
+     * which is how a plugin's config branch reaches the settings object at startup), so a project that saved
+     * AnthropicModel=Claude3_7_Sonnet loads with the current default instead of failing every request.
+     * The config file is not rewritten; choosing a model in Project Settings persists the new value.
+     * @return the number of selections changed
+     */
+    int32 MigrateRetiredModelSelections();
 
     /** Check if a property is a color property in our editor colors structs */
     bool IsColorProperty(const FProperty* Property) const;
@@ -432,6 +445,12 @@ public:
                     return Pricing->InputCost;
                 }
                 return FN2CLLMModelUtils::GetAnthropicPricing(AnthropicModel).InputCost;
+            case EN2CLLMProvider::Gemini:
+                if (const FN2CGeminiPricing* Pricing = GeminiModelPricing.Find(Gemini_Model))
+                {
+                    return Pricing->InputCost;
+                }
+                return FN2CLLMModelUtils::GetGeminiPricing(Gemini_Model).InputCost;
             case EN2CLLMProvider::DeepSeek:
                 if (const FN2CDeepSeekPricing* Pricing = DeepSeekModelPricing.Find(DeepSeekModel))
                 {
@@ -464,6 +483,12 @@ public:
                     return Pricing->OutputCost;
                 }
                 return FN2CLLMModelUtils::GetAnthropicPricing(AnthropicModel).OutputCost;
+            case EN2CLLMProvider::Gemini:
+                if (const FN2CGeminiPricing* Pricing = GeminiModelPricing.Find(Gemini_Model))
+                {
+                    return Pricing->OutputCost;
+                }
+                return FN2CLLMModelUtils::GetGeminiPricing(Gemini_Model).OutputCost;
             case EN2CLLMProvider::DeepSeek:
                 if (const FN2CDeepSeekPricing* Pricing = DeepSeekModelPricing.Find(DeepSeekModel))
                 {
