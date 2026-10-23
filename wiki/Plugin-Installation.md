@@ -13,8 +13,15 @@ Regardless of whether you install via the launcher or manually, you'll want to m
 4. Click "Install to Engine" and select your Unreal Engine version
 5. Wait for the download and installation to complete
 
+## Supported Engine Versions
+
+| Node to Code version | Unreal Engine versions |
+|----------------------|------------------------|
+| 2.0 | 5.6, 5.7, 5.8 |
+| 1.2.x | 5.3, 5.4, 5.5 (the [v1.2.3 GitHub release](https://github.com/protospatial/NodeToCode/releases/tag/v1.2.3) ships a build for each) |
+
 > [!NOTE]
-> Currently only Unreal Engine versions 5.3+ are supported
+> On Fab, only the engine versions listed on the Fab page are offered. 2.0 does not build on Unreal Engine 5.5 or older; on those engines, stay on 1.2.x.
 
 ## Manual Installation
 
@@ -31,10 +38,13 @@ If you are copying the plugin from your engine installation over to a project:
     ```
     YourProject/Plugins/NodeToCode/
     ├── NodeToCode.uplugin
+    ├── Binaries/
+    ├── LICENSE
+    ├── Config/
+    ├── Content/
     ├── Resources/
     ├── Source/
-    ├── Docs/
-    └── Content/
+    └── ThirdParty/
     ```
     
 

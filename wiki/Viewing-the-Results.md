@@ -37,7 +37,7 @@ After translation completes, you'll see the code appear within the Node to Code 
 When examining the results:
 
 1. Check that the overall structure matches your Blueprint logic
-2. Review any warnings or notes in the [Implementation Notes panel](Implementation-Notes-Panel)
+2. Review any warnings or notes in the [Implementation Notes panel](Implementation-Notes)
 3. Verify that critical functionality is properly translated
 4. Look for any TODO comments or areas needing attention
 
@@ -49,5 +49,5 @@ If issues occur during translation:
 2. Verify your LLM provider connection is stable
 3. Ensure your Blueprint graph isn't [too complex](Handling-Large-Graphs) for the [selected model](Choosing-an-LLM-Provider)
 4. Consider reducing [translation depth](Translation-Depth) if dealing with nested graphs
-5. Review any error-specific suggestions in the [Implementation Notes](Implementation-Notes-Panel)
+5. Review any error-specific suggestions in the [Implementation Notes](Implementation-Notes)
 6. Take a look at the [Troubleshooting](Translation-Fails-or-Hangs) section

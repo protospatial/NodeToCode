@@ -79,6 +79,11 @@ defaults (Context Window 8192, Max Tokens 8192, Temperature 0, Top P 0.5, Top K 
 Use System Prompts off) are cleared so the server and model defaults apply, and any other value you had set is kept
 with its checkbox ticked.
 
+### [LM Studio (Local Processing)](LM-Studio-Quick-Start)
+- **Server Endpoint** (default http://localhost:1234) and **Model Name** (the model loaded in LM Studio, default `qwen3-32b`); no API key
+- **Prepended Model Command**: optional text added to the start of each message, for example `/no_think` to turn off
+  thinking on reasoning models. Sampling settings are set in the LM Studio app. Setup: [LM Studio Quick Start](LM-Studio-Quick-Start)
+
 ## Subscription sign-in removed in 2.0
 
 Every cloud provider (Anthropic, OpenAI, Gemini, DeepSeek) needs its **API Key**; Ollama and LM Studio need
@@ -104,16 +109,11 @@ For cloud providers, NodeToCode sends a temperature only to models that accept o
    - Monitor token usage and adjust as needed
 
 3. **Local Processing**
-   - Ensure sufficient system resources for Ollama
+   - Ensure sufficient system resources for Ollama or LM Studio
    - Monitor GPU/CPU usage
    - Adjust context window based on translation needs
 
 ## More Provider Resources
 
-**Not sure which model will work best for your needs?**
-
-- Check out [Choosing-an-LLM-Provider](Choosing-an-LLM-Provider)
-
-**Want to understand more specific details about the LLM service providers?**
-
-- Check out [LLM Provider Documentation & Resources](LLM-Provider-Documentation-&-Resources) for a quick reference to documentation and references from each supported provider.
+- Not sure which model fits your needs? See [Choosing an LLM Provider](Choosing-an-LLM-Provider).
+- Provider documentation and references: [LLM Provider Documentation & Resources](LLM-Provider-Documentation-&-Resources).
