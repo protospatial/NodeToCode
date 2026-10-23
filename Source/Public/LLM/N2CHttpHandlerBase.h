@@ -6,6 +6,7 @@
 #include "LLM/N2CLLMTypes.h"
 #include "Models/N2CTranslation.h"
 #include "Interfaces/IHttpRequest.h"
+#include "LLM/N2CLLMRequestHandle.h"
 #include "N2CHttpHandlerBase.generated.h"
 
 /**
@@ -32,8 +33,12 @@ public:
     /** Initialize with configuration */
     virtual void Initialize(const FN2CLLMConfig& Config);
 
-    /** Core request method */
-    virtual void PostLLMRequest(
+    /**
+     * Core request method. Returns the request's handle: Cancel() on it cancels the HTTP request, and OnComplete runs
+     * at most once and never after a successful Cancel(). Errors found before sending complete synchronously, so the
+     * returned handle is then already completed.
+     */
+    virtual FN2CLLMRequestHandleRef PostLLMRequest(
         const FString& Endpoint,
         const FString& AuthToken,
         const FString& Payload,

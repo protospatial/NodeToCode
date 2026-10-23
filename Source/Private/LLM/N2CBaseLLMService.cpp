@@ -92,7 +92,7 @@ void UN2CBaseLLMService::InitializeComponents()
     PromptManager->Initialize(Config);
 }
 
-void UN2CBaseLLMService::SendRequest(
+FN2CLLMRequestHandleRef UN2CBaseLLMService::SendRequest(
     const FString& JsonPayload,
     const FString& SystemMessage,
     const FOnLLMResponseReceived& OnComplete)
@@ -100,8 +100,9 @@ void UN2CBaseLLMService::SendRequest(
     if (!bIsInitialized)
     {
         FN2CLogger::Get().LogError(TEXT("Service not initialized"), TEXT("BaseLLMService"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Service not initialized\"}"));
-        return;
+        FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+        Handle->Complete(OnComplete, TEXT("{\"error\": \"Service not initialized\"}"));
+        return Handle;
     }
     
     // A cloud provider without a key would only get a 401 back; stop before any request is made
@@ -114,8 +115,9 @@ void UN2CBaseLLMService::SendRequest(
         FString ErrorString;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ErrorString);
         FJsonSerializer::Serialize(ErrorJson, Writer);
-        const bool bExecuted = OnComplete.ExecuteIfBound(ErrorString);
-        return;
+        FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+        Handle->Complete(OnComplete, ErrorString);
+        return Handle;
     }
 
     // Log provider and model info
@@ -134,8 +136,16 @@ void UN2CBaseLLMService::SendRequest(
     bool bSupportsSystemPrompts;
     GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
 
-    // Send request through HTTP handler
-    HttpHandler->PostLLMRequest(
+    if (!HttpHandler)
+    {
+        FN2CLogger::Get().LogError(TEXT("No HTTP handler"), TEXT("BaseLLMService"));
+        FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+        Handle->Complete(OnComplete, TEXT("{\"error\": \"Service has no HTTP handler\"}"));
+        return Handle;
+    }
+
+    // Send request through HTTP handler; its handle is this request's handle
+    return HttpHandler->PostLLMRequest(
         Endpoint,
         AuthToken,
         FormattedPayload,

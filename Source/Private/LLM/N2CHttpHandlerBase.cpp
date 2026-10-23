@@ -11,18 +11,21 @@ void UN2CHttpHandlerBase::Initialize(const FN2CLLMConfig& InConfig)
     RequestTimeout = Config.TimeoutSeconds;
 }
 
-void UN2CHttpHandlerBase::PostLLMRequest(
+FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     const FString& Endpoint,
     const FString& AuthToken,
     const FString& Payload,
     const FOnLLMResponseReceived& OnComplete)
 {
+    // Every path, including the early errors, delivers OnComplete through the handle so it runs at most once
+    FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+
     // Validate request parameters
     if (!ValidateRequest(Endpoint, Payload))
     {
         FN2CLogger::Get().LogError(TEXT("Invalid request parameters"), TEXT("HttpHandler"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Invalid request parameters\"}"));
-        return;
+        Handle->Complete(OnComplete, TEXT("{\"error\": \"Invalid request parameters\"}"));
+        return Handle;
     }
 
     // Create HTTP request
@@ -54,31 +57,44 @@ void UN2CHttpHandlerBase::PostLLMRequest(
     // Create a weak pointer to this for safety
     TWeakObjectPtr<UN2CHttpHandlerBase> WeakThis(this);
 
-    // Create a lambda to handle the completion and forward to our handler
+    // The completion runs on the game thread. The handle gates OnComplete: once Cancel() has won, the cancelled
+    // request's failure completion is dropped here, before any logging or broadcast. The lambda holds the handle
+    // strongly; the handle holds the request only weakly, so there is no cycle.
     Request->OnProcessRequestComplete().BindLambda(
-        [WeakThis, OnComplete](FHttpRequestPtr InRequest, FHttpResponsePtr InResponse, bool bWasSuccessful)
+        [WeakThis, OnComplete, Handle](FHttpRequestPtr InRequest, FHttpResponsePtr InResponse, bool bWasSuccessful)
         {
+            if (Handle->IsFinished())
+            {
+                return;
+            }
+
+            const FOnLLMResponseReceived GatedOnComplete = Handle->Wrap(OnComplete);
+
             if (UN2CHttpHandlerBase* StrongThis = WeakThis.Get())
             {
-                StrongThis->OnRequestComplete(InRequest, InResponse, bWasSuccessful, OnComplete);
+                StrongThis->OnRequestComplete(InRequest, InResponse, bWasSuccessful, GatedOnComplete);
             }
             else
             {
                 // Handler was destroyed, just call completion callback with error
-                OnComplete.ExecuteIfBound(TEXT("{\"error\": \"HTTP handler was destroyed\"}"));
+                GatedOnComplete.ExecuteIfBound(TEXT("{\"error\": \"HTTP handler was destroyed\"}"));
             }
         }
     );
+
+    Handle->SetHttpRequest(Request);
 
     // Send request
     if (!Request->ProcessRequest())
     {
         FN2CLogger::Get().LogError(TEXT("Failed to send HTTP request"), TEXT("HttpHandler"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(TEXT("{\"error\": \"Failed to send request\"}"));
-        return;
+        // A failed ProcessRequest may also fire the completion delegate; the handle keeps OnComplete to one call
+        Handle->Complete(OnComplete, TEXT("{\"error\": \"Failed to send request\"}"));
+        return Handle;
     }
 
     FN2CLogger::Get().Log(TEXT("HTTP request sent successfully"), EN2CLogSeverity::Info, TEXT("HttpHandler"));
+    return Handle;
 }
 
 bool UN2CHttpHandlerBase::ValidateRequest(const FString& Endpoint, const FString& Payload) const
