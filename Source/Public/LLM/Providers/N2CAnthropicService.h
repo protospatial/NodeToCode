@@ -25,10 +25,7 @@ public:
     virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Anthropic; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override;
 
-    /** Check if the Anthropic service is using OAuth authentication */
-    bool IsUsingOAuth() const;
-
-protected:
+    protected:
     // Provider-specific implementations
     virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const override;
     virtual UN2CResponseParserBase* CreateResponseParser() override;

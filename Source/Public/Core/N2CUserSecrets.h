@@ -3,24 +3,29 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Auth/N2COAuthTypes.h"
 #include "N2CUserSecrets.generated.h"
+
+class FJsonObject;
+
+namespace N2CSignInRemoval
+{
+    /** Wiki section on the Claude Pro/Max and Google account sign-in that NodeToCode 2.0 removed */
+    inline const TCHAR* const DocsUrl = TEXT("https://github.com/protospatial/NodeToCode/wiki/Provider-Configuration#subscription-sign-in-removed-in-20");
+}
 
 /**
  * @class UN2CUserSecrets
- * @brief Stores sensitive configuration data like API keys
+ * @brief Stores the provider API keys
  *
- * Uses a custom JSON storage system instead of Unreal's config system
- * to ensure consistent behavior across engine versions.
- *
- * OAuth tokens are stored in a nested structure for easy provider extension:
+ * Uses a JSON file (Saved/NodeToCode/User/secrets.json) instead of Unreal's config system to ensure consistent
+ * behavior across engine versions:
  * {
  *     "OpenAI_API_Key": "...",
- *     "OAuth": {
- *         "Anthropic": { "AccessToken": "...", "RefreshToken": "...", ... },
- *         "Google": { "AccessToken": "...", "RefreshToken": "...", ... }
- *     }
+ *     "Anthropic_API_Key": "...",
+ *     "Gemini_API_Key": "...",
+ *     "DeepSeek_API_Key": "..."
  * }
+ * Saving is a read-modify-write: fields this class does not know are kept.
  */
 
 UCLASS()
@@ -39,6 +44,23 @@ public:
     /** Get the path to the secrets file */
     static FString GetSecretsFilePath();
 
+    /**
+     * Loads the API keys from FilePath. Sign-in tokens saved by earlier versions (the "OAuth" block
+     * and the flat Claude_OAuth_* and Google_OAuth_* fields) are removed from the file by a read-modify-write
+     * that keeps every other field, and the removal is logged once.
+     * @return true if the file exists and was parsed
+     */
+    bool LoadSecretsFromFile(const FString& FilePath);
+
+    /** Writes the API keys to FilePath, keeping any other field already in the file */
+    bool SaveSecretsToFile(const FString& FilePath) const;
+
+    /**
+     * Removes the sign-in token entries NodeToCode 2.0 no longer uses from Json.
+     * @return the number of top-level fields removed
+     */
+    static int32 RemoveRetiredSignInEntries(FJsonObject& Json);
+
     /** OpenAI API Key */
     UPROPERTY(EditAnywhere, Category = "Node to Code | API Keys")
     FString OpenAI_API_Key;
@@ -55,107 +77,13 @@ public:
     UPROPERTY(EditAnywhere, Category = "Node to Code | API Keys")
     FString DeepSeek_API_Key;
 
-    // ============================================
-    // Unified OAuth Token Storage API
-    // ============================================
-
-    /**
-     * Set OAuth tokens for a specific provider
-     * @param ProviderId - The OAuth provider identifier
-     * @param Tokens - The tokens to store
-     */
-    void SetOAuthTokensForProvider(EN2COAuthProvider ProviderId, const FN2COAuthTokens& Tokens);
-
-    /**
-     * Get OAuth tokens for a specific provider
-     * @param ProviderId - The OAuth provider identifier
-     * @param OutTokens - Output token struct
-     * @return true if tokens are present
-     */
-    bool GetOAuthTokensForProvider(EN2COAuthProvider ProviderId, FN2COAuthTokens& OutTokens) const;
-
-    /**
-     * Clear OAuth tokens for a specific provider
-     * @param ProviderId - The OAuth provider identifier
-     */
-    void ClearOAuthTokensForProvider(EN2COAuthProvider ProviderId);
-
-    /**
-     * Check if OAuth tokens are present for a specific provider
-     * @param ProviderId - The OAuth provider identifier
-     * @return true if tokens are present
-     */
-    bool HasOAuthTokensForProvider(EN2COAuthProvider ProviderId) const;
-
-    // ============================================
-    // Legacy OAuth API (Anthropic/Claude)
-    // These methods delegate to the unified API
-    // ============================================
-
-    /**
-     * Set OAuth tokens from a token exchange response (Claude/Anthropic)
-     * @param AccessToken - The access token
-     * @param RefreshToken - The refresh token
-     * @param ExpiresAt - ISO 8601 expiration timestamp
-     * @param Scope - Granted scopes
-     */
-    void SetOAuthTokens(const FString& AccessToken, const FString& RefreshToken,
-                        const FString& ExpiresAt, const FString& Scope);
-
-    /**
-     * Get OAuth tokens as a struct (Claude/Anthropic)
-     * @param OutTokens - Output token struct
-     * @return true if tokens are present
-     */
-    bool GetOAuthTokens(struct FN2COAuthTokens& OutTokens) const;
-
-    /** Clear all OAuth tokens (Claude/Anthropic) */
-    void ClearOAuthTokens();
-
-    /** Check if OAuth tokens are present (Claude/Anthropic) */
-    bool HasOAuthTokens() const;
-
-    // ============================================
-    // Legacy OAuth API (Google/Gemini)
-    // These methods delegate to the unified API
-    // ============================================
-
-    /**
-     * Set Google OAuth tokens from a token exchange response
-     * @param AccessToken - The access token
-     * @param RefreshToken - The refresh token
-     * @param ExpiresAt - ISO 8601 expiration timestamp
-     * @param Scope - Granted scopes
-     */
-    void SetGoogleOAuthTokens(const FString& AccessToken, const FString& RefreshToken,
-                              const FString& ExpiresAt, const FString& Scope);
-
-    /**
-     * Get Google OAuth tokens as a struct
-     * @param OutTokens - Output token struct
-     * @return true if tokens are present
-     */
-    bool GetGoogleOAuthTokens(struct FN2COAuthTokens& OutTokens) const;
-
-    /** Clear all Google OAuth tokens */
-    void ClearGoogleOAuthTokens();
-
-    /** Check if Google OAuth tokens are present */
-    bool HasGoogleOAuthTokens() const;
-
 private:
-    /** Ensure the secrets directory exists */
-    static void EnsureSecretsDirectoryExists();
+    /** Ensure the directory holding FilePath exists */
+    static void EnsureDirectoryExists(const FString& FilePath);
 
-    /** Get the JSON key name for a provider */
-    static FString GetProviderKeyName(EN2COAuthProvider ProviderId);
+    /** Parses FilePath into OutJson; false if it is missing or not a JSON object */
+    static bool ReadJsonFile(const FString& FilePath, TSharedPtr<FJsonObject>& OutJson);
 
-    /** OAuth tokens storage map (provider -> tokens) */
-    TMap<EN2COAuthProvider, FN2COAuthTokens> OAuthTokensMap;
-
-    /** Load OAuth tokens from a JSON object (handles both legacy and new formats) */
-    void LoadOAuthTokensFromJson(const TSharedPtr<FJsonObject>& JsonObject);
-
-    /** Save OAuth tokens to a JSON object */
-    void SaveOAuthTokensToJson(TSharedPtr<FJsonObject>& JsonObject) const;
+    /** Serializes Json to FilePath through a temporary file, so a failed write leaves the old file in place */
+    static bool WriteJsonFile(const FString& FilePath, const TSharedRef<FJsonObject>& Json);
 };

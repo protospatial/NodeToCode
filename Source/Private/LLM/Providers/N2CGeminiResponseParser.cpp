@@ -32,19 +32,7 @@ bool UN2CGeminiResponseParser::ParseLLMResponse(
         return false;
     }
 
-    // Check if this is a Code Assist API response (wrapped in "response" field)
-    // Code Assist API format: { "response": { "candidates": [...], "usageMetadata": {...} }, "traceId": "..." }
-    TSharedPtr<FJsonObject> ResponseObject = JsonObject;
-    if (JsonObject->HasField(TEXT("response")))
-    {
-        ResponseObject = JsonObject->GetObjectField(TEXT("response"));
-        if (!ResponseObject.IsValid())
-        {
-            FN2CLogger::Get().LogError(TEXT("Failed to extract response object from Code Assist API response"), TEXT("GeminiResponseParser"));
-            return false;
-        }
-        FN2CLogger::Get().Log(TEXT("Detected Code Assist API response format"), EN2CLogSeverity::Debug);
-    }
+    const TSharedPtr<FJsonObject>& ResponseObject = JsonObject;
 
     // Extract message content from Gemini format - this is a special case
     // because Gemini's format is different from other providers

@@ -70,8 +70,8 @@ Manages interactions with LLMs.
 *   **Provider Implementations (`Source/Public/LLM/Providers/`):**
     *   Service classes inheriting `UN2CBaseLLMService`:
         *   `UN2COpenAIService` - OpenAI Chat Completions API
-        *   `UN2CAnthropicService` - Anthropic Claude API (with OAuth support)
-        *   `UN2CGeminiService` - Google Gemini API (with OAuth support)
+        *   `UN2CAnthropicService` - Anthropic Claude API (`x-api-key`, plain string `system`)
+        *   `UN2CGeminiService` - Google Gemini API (`generativelanguage.googleapis.com`, key in `x-goog-api-key`)
         *   `UN2CDeepSeekService` - DeepSeek API
         *   `UN2COllamaService` - Local Ollama API (with custom `FN2COllamaConfig`)
         *   `UN2CLMStudioService` - Local LM Studio API (OpenAI-compatible)
@@ -80,7 +80,6 @@ Manages interactions with LLMs.
 *   **`N2CLLMPayloadBuilder.h/.cpp` (`UN2CLLMPayloadBuilder`)**: Utility for building provider-specific JSON request payloads. Key methods:
     *   `Initialize()`, `SetModel()`, `SetTemperature()`, `SetMaxTokens()`
     *   `AddSystemMessage()`, `AddUserMessage()`
-    *   `AddAnthropicOAuthSystemMessages()` - OAuth-specific for Anthropic
     *   `SetJsonResponseFormat()` / `SetStructuredOutput()` - Schema-based output
     *   `ConfigureForOpenAI()`, `ConfigureForAnthropic()`, `ConfigureForGemini()`, `ConfigureForDeepSeek()`, `ConfigureForOllama()`, `ConfigureForLMStudio()`
     *   `GetN2CResponseSchema()` - Static method for N2C translation format schema
@@ -110,14 +109,9 @@ Manages interactions with LLMs.
     *   Advanced: `Mirostat`, `MirostatEta`, `MirostatTau`, `Seed`, each behind a `bOverride_*` toggle
     *   Saved configs from before 2.0 are migrated by `UN2CSettings::MigrateLegacyOllamaDefaults` while `SettingsVersion` < 1: values at the old always-sent defaults are cleared, other saved sampler values get their override on
 
-## OAuth Authentication Support
+## Authentication
 
-Anthropic and Gemini services support OAuth authentication in addition to API keys:
-
-*   **`UN2CAnthropicService::IsUsingOAuth()`**: Returns true if using OAuth authentication
-*   **`UN2CGeminiService::IsUsingOAuth()`**: Returns true if using Google OAuth
-*   **OAuth Payload Handling**: `UN2CLLMPayloadBuilder::AddAnthropicOAuthSystemMessages()` handles OAuth-specific system message formatting with content blocks
-*   **OAuth Token Storage**: Handled by `UN2CUserSecrets` (see `Context/architecture/AGENTS-architecture.md`)
+Every cloud provider authenticates with its API key from `UN2CUserSecrets` (see `Context/architecture/AGENTS-architecture.md`); Ollama and LM Studio need none. `UN2CBaseLLMService::SendRequest` fails a cloud request whose key is empty before anything is sent, with an error that names the key (`GetMissingApiKeyError`). NodeToCode 2.0 removed Claude Pro/Max and Google account sign-in; do not add provider sign-in flows or reuse another application's client credentials.
 
 ## Structured Output Support
 
@@ -179,7 +173,7 @@ Some models have limited or no system prompt support:
         *   `GetProviderHeaders()`: Define HTTP headers.
         *   `FormatRequestPayload()`: Use `UN2CLLMPayloadBuilder` with `ConfigureForNewProvider()`.
         *   `GetDefaultEndpoint()`.
-    *   If OAuth support needed, add `IsUsingOAuth()` method.
+    *   Add the provider to `UN2CBaseLLMService::GetMissingApiKeyError` if it needs an API key.
 
 5.  **Response Parser (`Source/Public/LLM/Providers/` and `Source/Private/LLM/Providers/`):**
     *   Create `N2CNewProviderResponseParser.h` (in Public) and `.cpp` (in Private) inheriting `UN2CResponseParserBase`.

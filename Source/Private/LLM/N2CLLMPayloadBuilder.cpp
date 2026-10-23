@@ -276,34 +276,6 @@ void UN2CLLMPayloadBuilder::AddUserMessage(const FString& Content)
     }
 }
 
-void UN2CLLMPayloadBuilder::AddAnthropicOAuthSystemMessages(const FString& OAuthPrefix, const FString& ActualContent)
-{
-    // For OAuth, system must be an array of content blocks
-    // Format: [{"type": "text", "text": "OAuth prefix"}, {"type": "text", "text": "actual content"}]
-    TArray<TSharedPtr<FJsonValue>> SystemArray;
-
-    // Always add the OAuth prefix as the first content block
-    if (!OAuthPrefix.IsEmpty())
-    {
-        TSharedPtr<FJsonObject> PrefixBlock = MakeShared<FJsonObject>();
-        PrefixBlock->SetStringField(TEXT("type"), TEXT("text"));
-        PrefixBlock->SetStringField(TEXT("text"), OAuthPrefix);
-        SystemArray.Add(MakeShared<FJsonValueObject>(PrefixBlock));
-    }
-
-    // Add the actual content as a separate content block
-    if (!ActualContent.IsEmpty())
-    {
-        TSharedPtr<FJsonObject> ContentBlock = MakeShared<FJsonObject>();
-        ContentBlock->SetStringField(TEXT("type"), TEXT("text"));
-        ContentBlock->SetStringField(TEXT("text"), ActualContent);
-        SystemArray.Add(MakeShared<FJsonValueObject>(ContentBlock));
-    }
-
-    // Set as array in root object
-    RootObject->SetArrayField(TEXT("system"), SystemArray);
-}
-
 void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>& Schema)
 {
     if (!Schema.IsValid() || !EnsureProviderConfigured(TEXT("SetJsonResponseFormat")))

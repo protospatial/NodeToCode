@@ -79,6 +79,22 @@ defaults (Context Window 8192, Max Tokens 8192, Temperature 0, Top P 0.5, Top K 
 Use System Prompts off) are cleared so the server and model defaults apply, and any other value you had set is kept
 with its checkbox ticked.
 
+## Subscription sign-in removed in 2.0
+
+Every cloud provider (Anthropic, OpenAI, Gemini, DeepSeek) needs its **API Key**; Ollama and LM Studio need
+none. Development builds of NodeToCode 2.0 could sign in with a Claude Pro/Max subscription or a Google account. That
+was removed, because Anthropic and Google do not allow third-party apps to use those sign-ins.
+
+If your project had **Claude Pro/Max** or **Google Account** selected as the authentication method:
+
+- The setting is ignored and the provider uses its API key. The Output Log says so once per editor session, and
+  the old entry is dropped the next time you save **Project Settings → Plugins → Node to Code**.
+- Saved sign-in tokens are deleted from `Saved/NodeToCode/User/secrets.json` the first time the editor loads it.
+  Your API keys and anything else in the file are kept.
+- A translation with no API key set stops before anything is sent, and the error names the key to set.
+
+To use a Claude subscription, run Claude Code with the NodeToCode MCP server instead of translating with a key here.
+
 ## Sampling Settings for Cloud Models
 
 For cloud providers, NodeToCode sends a temperature only to models that accept one, and otherwise leaves the provider's default in place. Current Claude models (Opus 4.7 and later), OpenAI reasoning models (the o-series and GPT-5 family) and Gemini 3 models get no temperature, top P or top K, because they reject those settings or work worse with them. A model name NodeToCode does not list, such as a newer ID passed by an MCP client, is treated the same way. Ollama uses the **Advanced Settings** above, and LM Studio uses the sampling settings in the LM Studio app.

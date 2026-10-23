@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 #include "Misc/Attribute.h"
 #include "N2CUserSecrets.h"
-#include "Auth/N2COAuthTypes.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Engine/DeveloperSettings.h"
 #include "LLM/N2CLLMModels.h"
@@ -227,20 +226,14 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")
     EN2CAnthropicModel AnthropicModel = N2CDefaultModels::Anthropic;
     
-    /** Anthropic Authentication Method - API Key or Claude Pro/Max OAuth */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
-        meta = (DisplayName = "Authentication Method"))
-    EN2CAnthropicAuthMethod AnthropicAuthMethod = EN2CAnthropicAuthMethod::APIKey;
-
-    /** Anthropic API Key - Stored separately in user secrets */
+    /**
+     * Anthropic API key from console.anthropic.com, stored separately in user secrets. NodeToCode needs an API key:
+     * a Claude Pro/Max subscription cannot be used here. To translate with a subscription, use Claude Code with the
+     * NodeToCode MCP server (see the Provider Configuration wiki page).
+     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Anthropic",
-        meta = (DisplayName = "API Key", EditCondition = "AnthropicAuthMethod == EN2CAnthropicAuthMethod::APIKey", EditConditionHides))
+        meta = (DisplayName = "API Key"))
     FString Anthropic_API_Key_UI;
-
-    /** OAuth Connection Status - Shows current OAuth authentication state */
-    UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | Anthropic",
-        meta = (DisplayName = "OAuth Status", EditCondition = "AnthropicAuthMethod == EN2CAnthropicAuthMethod::OAuth", EditConditionHides))
-    FString OAuthConnectionStatus = TEXT("Not connected");
 
     /** OpenAI Model Selection - GPT-6.1 Sol recommended for the best quality/cost balance, GPT-6 Astra for the most capability, GPT-6 Luna for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI")
@@ -255,20 +248,10 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
     EN2CGeminiModel Gemini_Model = N2CDefaultModels::Gemini;
 
-    /** Gemini Authentication Method - API Key or Google Account OAuth */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
-        meta = (DisplayName = "Authentication Method"))
-    EN2CGeminiAuthMethod GeminiAuthMethod = EN2CGeminiAuthMethod::APIKey;
-
-    /** Gemini API Key - Stored separately in user secrets */
+    /** Gemini API key from Google AI Studio, stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Gemini",
-        meta = (DisplayName = "API Key", EditCondition = "GeminiAuthMethod == EN2CGeminiAuthMethod::APIKey", EditConditionHides))
+        meta = (DisplayName = "API Key"))
     FString Gemini_API_Key_UI;
-
-    /** Gemini OAuth Connection Status - Shows current OAuth authentication state */
-    UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | Gemini",
-        meta = (DisplayName = "OAuth Status", EditCondition = "GeminiAuthMethod == EN2CGeminiAuthMethod::OAuth", EditConditionHides))
-    FString GeminiOAuthConnectionStatus = TEXT("Not connected");
 
     /** DeepSeek Model Selection - each entry names the model and thinking mode it sends */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek")
@@ -393,18 +376,6 @@ public:
     /** Get the minimum severity level for logging */
     EN2CLogSeverity GetMinLogSeverity() const { return MinSeverity; }
 
-    /** Check if Anthropic is configured to use OAuth authentication */
-    bool IsUsingAnthropicOAuth() const { return AnthropicAuthMethod == EN2CAnthropicAuthMethod::OAuth; }
-
-    /** Check if Gemini is configured to use OAuth authentication */
-    bool IsUsingGeminiOAuth() const { return GeminiAuthMethod == EN2CGeminiAuthMethod::OAuth; }
-
-    /** Refresh the Anthropic OAuth connection status display */
-    void RefreshOAuthStatus();
-
-    /** Refresh the Gemini OAuth connection status display */
-    void RefreshGeminiOAuthStatus();
-
     /** Notify that model settings have changed - call this to update token estimation UI */
     void NotifyModelSettingsChanged();
 
@@ -453,6 +424,21 @@ public:
      * @return the number of values changed
      */
     int32 MigrateSavedSettings();
+
+    /**
+     * Logs, once per editor session, when the config still selects the Claude Pro/Max or Google account sign-in
+     * that NodeToCode 2.0 removed. Those settings no longer exist, so the provider already uses its API key; the
+     * stale entry is ignored on load and dropped the next time Project Settings saves this section.
+     * Called from PostInitProperties and PostReloadConfig with this class's config.
+     * @return the providers whose saved setting chose the removed sign-in
+     */
+    int32 ReportRemovedSignInSelections() const;
+
+    /**
+     * The providers ("Anthropic", "Gemini") whose saved settings in ConfigFilename still select the removed
+     * sign-in. Reads the config only; does not log.
+     */
+    static TArray<FString> FindRemovedSignInSelections(const FString& ConfigFilename);
 
     /**
      * Version 1 Ollama migration. Before 2.0 every Ollama option was always sent, and Project Settings saves the
