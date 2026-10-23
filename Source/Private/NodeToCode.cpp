@@ -4,6 +4,8 @@
 
 #include <Core/N2CWidgetContainer.h>
 
+#include "ToolsetRegistry/UToolsetRegistry.h"
+#include "Toolsets/N2CBlueprintToolset.h"
 #include "HttpModule.h"
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
@@ -29,6 +31,8 @@ DEFINE_LOG_CATEGORY(LogNodeToCode);
 
 void FNodeToCodeModule::StartupModule()
 {
+    UToolsetRegistry::RegisterToolsetClass(UN2CBlueprintToolset::StaticClass());
+
     // Initialize logging
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
 
@@ -107,6 +111,8 @@ void FNodeToCodeModule::StartupModule()
 
 void FNodeToCodeModule::ShutdownModule()
 {
+    UToolsetRegistry::UnregisterToolsetClass(UN2CBlueprintToolset::StaticClass());
+
     if (FModuleManager::Get().IsModuleLoaded(TEXT("PropertyEditor")))
     {
         FPropertyEditorModule& PropertyEditorModule =
