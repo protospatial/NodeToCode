@@ -1,0 +1,23 @@
+{
+ "5.6": {
+  "P1": "fixed",
+  "P2": "fixed",
+  "P3": "reproduced",
+  "P4": "reproduced",
+  "P5": "fixed"
+ },
+ "5.7": {
+  "P1": "fixed",
+  "P2": "fixed",
+  "P3": "reproduced",
+  "P4": "reproduced",
+  "P5": "fixed"
+ },
+ "5.8": {
+  "P1": "fixed",
+  "P2": "fixed",
+  "P3": "reproduced",
+  "P4": "reproduced",
+  "P5": "fixed"
+ }
+}
