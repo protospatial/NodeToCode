@@ -26,8 +26,56 @@ public:
     
     /** Common configuration */
     void SetTemperature(float Value);
+    /** Writes Value into the provider's max-token field as-is (see SetOutputBudget for the setting-driven budget) */
     void SetMaxTokens(int32 Value);
-    
+
+    /**
+     * Writes the output budget for the configured provider and model: ResolveMaxOutputTokens(Requested,
+     * EstimatedInputTokens), or no field when that is 0. Call after a ConfigureFor* call.
+     * @param Requested the provider's Max Output Tokens setting (FN2CLLMConfig::MaxOutputTokens); 0 is Auto
+     * @param EstimatedInputTokens estimate of everything the request sends (system and user messages)
+     */
+    void SetOutputBudget(int32 Requested, int32 EstimatedInputTokens);
+
+    /** Kept free in the context window in Auto, to absorb the error of the 4-characters-per-token input estimate */
+    static constexpr int32 AutoOutputMarginTokens = 4096;
+
+    /** Smallest budget Auto sends when the prompt leaves less room (the request then fails on the provider's side) */
+    static constexpr int32 MinAutoOutputTokens = 1024;
+
+    /**
+     * Auto budget for an Anthropic model ID the registry does not know. The Messages API requires max_tokens, and
+     * every Claude model since Claude Opus 4 accepts at least 32000 output tokens.
+     */
+    static constexpr int32 AnthropicUnregisteredMaxTokens = 32000;
+
+    /**
+     * Ceiling on the Auto budget for cloud providers while requests are not streamed. A very large max_tokens on a
+     * non-streaming call risks long-request timeouts (Anthropic steers requests that can run past about 10 minutes
+     * to streaming, and UE's HTTP activity timeout applies too). Explicit values are not affected. Remove this cap
+     * (and DeepSeekReasoningAutoCap) when SSE streaming lands.
+     */
+    static constexpr int32 NonStreamingAutoCap = 32000;
+
+    /** Auto ceiling for DeepSeek reasoning entries: reasoning counts against max_tokens, and 65536 is the API default */
+    static constexpr int32 DeepSeekReasoningAutoCap = 65536;
+
+    /** The non-streaming Auto ceiling for this provider and registry entry */
+    static int32 NonStreamingAutoCapFor(EN2CLLMProvider Provider, const struct FN2CModelMetadata* Meta);
+
+    /**
+     * Output budget a request sends; 0 means no max-token field at all.
+     * - Requested > 0 (explicit): Requested, capped at Meta->MaxOutputTokens when the model is registered.
+     * - Requested <= 0 (Auto), LM Studio or Ollama: 0, so a local server (LM Studio, or vLLM through the LM Studio
+     *   provider) uses whatever context the prompt leaves; a fixed value would overflow a small max_model_len.
+     * - Auto, registered cloud model: min(MaxOutputTokens, NonStreamingAutoCapFor(), ContextWindowSize -
+     *   EstimatedInputTokens - AutoOutputMarginTokens), and at least MinAutoOutputTokens (or that ceiling if lower).
+     * - Auto, unregistered cloud model: AnthropicUnregisteredMaxTokens for Anthropic (the field is required), else
+     *   0 so the provider's own default applies.
+     * @param Meta the model's registry entry; ignored unless it belongs to Provider
+     */
+    static int32 ResolveMaxOutputTokens(EN2CLLMProvider Provider, const struct FN2CModelMetadata* Meta, int32 Requested, int32 EstimatedInputTokens);
+
     /** Message building */
     void AddSystemMessage(const FString& Content);
     void AddUserMessage(const FString& Content);

@@ -73,9 +73,8 @@ BEGIN_DEFINE_SPEC(FN2CModelRegistrySpec, "NodeToCode.LLM.Registry",
 				TestTrue(FString::Printf(TEXT("%s resolves from its model ID and thinking control"), *Name),
 					FN2CLLMModelRegistry::Get().GetModelMetadataById(Meta->ModelId, Meta->ReasoningEffort) == Meta);
 				TestTrue(FString::Printf(TEXT("%s has a context window"), *Name), Meta->ContextWindowSize > 0);
-				TestTrue(FString::Printf(TEXT("%s has a max output"), *Name), Meta->MaxOutputTokens > 0);
-				TestTrue(FString::Printf(TEXT("%s default max tokens fits its max output"), *Name),
-					Meta->DefaultMaxTokens > 0 && Meta->DefaultMaxTokens <= Meta->MaxOutputTokens);
+				TestTrue(FString::Printf(TEXT("%s has a max output that fits its context window"), *Name),
+					Meta->MaxOutputTokens > 0 && Meta->MaxOutputTokens <= Meta->ContextWindowSize);
 				SeenIds.Add(RequestKey);
 			}
 		}

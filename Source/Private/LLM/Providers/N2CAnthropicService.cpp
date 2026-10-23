@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2CAnthropicService.h"
 
 #include "Core/N2CSettings.h"
+#include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
@@ -41,9 +42,8 @@ FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, c
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForAnthropic();
 
-    // Max tokens is required by Anthropic. No temperature: the builder sends sampling parameters only
-    // for registered models that accept them (Claude Opus 4.7 and later reject them).
-    PayloadBuilder->SetMaxTokens(16000);
+    // No temperature: the builder sends sampling parameters only for registered models that accept them
+    // (Claude Opus 4.7 and later reject them).
 
     // Try prepending source files to the user message
     FString FinalUserMessage = UserMessage;
@@ -52,6 +52,10 @@ FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, c
     PayloadBuilder->AddSystemMessage(SystemMessage);
 
     PayloadBuilder->AddUserMessage(FinalUserMessage);
+
+    // max_tokens is required by the Messages API, so Auto always sends one (see ResolveMaxOutputTokens)
+    PayloadBuilder->SetOutputBudget(Config.MaxOutputTokens,
+        FN2CTokenEstimationService::EstimateTokensForChars(SystemMessage.Len() + FinalUserMessage.Len()));
 
     // Build and return the payload
     return PayloadBuilder->Build();

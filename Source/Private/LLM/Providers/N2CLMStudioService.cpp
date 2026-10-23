@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2CLMStudioService.h"
 
 #include "Core/N2CSettings.h"
+#include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
 
@@ -90,7 +91,6 @@ FString UN2CLMStudioService::FormatRequestPayload(const FString& UserMessage, co
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForLMStudio();
-    PayloadBuilder->SetMaxTokens(16000);
 
     // Try prepending source files to user message
     FString FinalUserMessage = UserMessage;
@@ -115,6 +115,11 @@ FString UN2CLMStudioService::FormatRequestPayload(const FString& UserMessage, co
         PayloadBuilder->AddSystemMessage(SystemMessage);
     }
     PayloadBuilder->AddUserMessage(FinalUserMessage);
+
+    // Auto sends no max_tokens, so the server (LM Studio, or vLLM with a small max_model_len) uses the context
+    // the prompt leaves; a value set in LM Studio > Max Output Tokens is sent as-is
+    PayloadBuilder->SetOutputBudget(Config.MaxOutputTokens,
+        FN2CTokenEstimationService::EstimateTokensForChars(SystemMessage.Len() + FinalUserMessage.Len()));
     
     // IMPORTANT: Use structured output for reliable JSON parsing
     // This ensures LM Studio returns properly formatted JSON responses

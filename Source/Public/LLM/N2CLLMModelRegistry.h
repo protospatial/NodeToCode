@@ -46,7 +46,11 @@ struct NODETOCODE_API FN2CModelMetadata
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
 	int32 ContextWindowSize = 128000;
 
-	/** Maximum output tokens this model can generate */
+	/**
+	 * Maximum output tokens this model can generate. Requests send this in Auto (up to the non-streaming cap, and
+	 * reduced so prompt plus output fits ContextWindowSize) and cap an explicit Max Output Tokens setting at it; see
+	 * UN2CLLMPayloadBuilder::ResolveMaxOutputTokens.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
 	int32 MaxOutputTokens = 16000;
 
@@ -94,10 +98,6 @@ struct NODETOCODE_API FN2CModelMetadata
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
 	float DefaultTemperature = 0.0f;
 
-	/** Default max tokens to request */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
-	int32 DefaultMaxTokens = 16000;
-
 	// === Metadata ===
 
 	/**
@@ -135,7 +135,6 @@ struct NODETOCODE_API FN2CModelMetadata
 		bool bInSupportsStructured = true,
 		bool bInIsReasoning = false,
 		float InDefaultTemp = 0.0f,
-		int32 InDefaultMaxTokens = 16000,
 		bool bInRequiresResponsesAPI = false,
 		bool bInAcceptsSamplingParams = false,
 		bool bInUsesMaxCompletionTokens = false
@@ -154,7 +153,6 @@ struct NODETOCODE_API FN2CModelMetadata
 		, bAcceptsSamplingParams(bInAcceptsSamplingParams)
 		, bUsesMaxCompletionTokens(bInUsesMaxCompletionTokens)
 		, DefaultTemperature(InDefaultTemp)
-		, DefaultMaxTokens(InDefaultMaxTokens)
 		, bIsDeprecated(false)
 	{
 	}
@@ -264,11 +262,6 @@ public:
 	float GetDefaultTemperature(EN2CAnthropicModel Model) const;
 	float GetDefaultTemperature(EN2CGeminiModel Model) const;
 	float GetDefaultTemperature(EN2CDeepSeekModel Model) const;
-
-	int32 GetDefaultMaxTokens(EN2COpenAIModel Model) const;
-	int32 GetDefaultMaxTokens(EN2CAnthropicModel Model) const;
-	int32 GetDefaultMaxTokens(EN2CGeminiModel Model) const;
-	int32 GetDefaultMaxTokens(EN2CDeepSeekModel Model) const;
 
 	// === Provider Enumeration ===
 
