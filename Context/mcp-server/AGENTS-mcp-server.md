@@ -89,7 +89,7 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   **`N2CMcpHttpServerManager.h/.cpp`**: Central server management
     *   Singleton pattern for server lifecycle control
     *   HTTP routing: `/mcp` (main), `/mcp/health` (health check)
-    *   CORS headers for local development
+    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; the httplib SSE server binds 127.0.0.1
     *   Client notification channel management
     *   Session protocol version tracking
 
