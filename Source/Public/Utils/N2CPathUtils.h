@@ -35,4 +35,11 @@ public:
      * @return The file extension including the dot (e.g., ".cpp")
      */
     static FString GetFileExtensionForLanguage(EN2CCodeLanguage Language);
+
+    /**
+     * True for paths MCP clients must never read or list because they hold credentials:
+     * <ProjectSaved>/NodeToCode/User (the secrets store), any secrets.json, <Project>/.git, and .env files.
+     * @param AbsolutePath A normalized absolute path
+     */
+    static bool IsDeniedForAgentAccess(const FString& AbsolutePath);
 };

@@ -57,3 +57,29 @@ FString FN2CPathUtils::GetFileExtensionForLanguage(EN2CCodeLanguage Language)
             return TEXT(".txt");
     }
 }
+
+
+bool FN2CPathUtils::IsDeniedForAgentAccess(const FString& AbsolutePath)
+{
+    FString Path = FPaths::ConvertRelativePathToFull(AbsolutePath);
+    FPaths::NormalizeFilename(Path);
+    FPaths::CollapseRelativeDirectories(Path);
+
+    auto IsAtOrUnder = [&Path](FString Dir) -> bool
+    {
+        Dir = FPaths::ConvertRelativePathToFull(Dir);
+        FPaths::NormalizeDirectoryName(Dir);
+        return Path.Equals(Dir, ESearchCase::IgnoreCase) || FPaths::IsUnderDirectory(Path, Dir);
+    };
+
+    if (IsAtOrUnder(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User"))) ||
+        IsAtOrUnder(FPaths::Combine(FPaths::ProjectDir(), TEXT(".git"))))
+    {
+        return true;
+    }
+
+    const FString FileName = FPaths::GetCleanFilename(Path);
+    return FileName.Equals(TEXT("secrets.json"), ESearchCase::IgnoreCase)
+        || FileName.Equals(TEXT(".env"), ESearchCase::IgnoreCase)
+        || FileName.EndsWith(TEXT(".env"), ESearchCase::IgnoreCase);
+}

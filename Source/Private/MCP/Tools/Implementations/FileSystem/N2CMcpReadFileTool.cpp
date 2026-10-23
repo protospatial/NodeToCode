@@ -86,6 +86,13 @@ FMcpToolCallResult FN2CMcpReadFileTool::Execute(const TSharedPtr<FJsonObject>& A
         
         // Use the normalized path for all operations
         RequestedPath = NormalizedPath;
+
+        // Credentials are never readable through MCP, whatever the client asks.
+        if (FN2CPathUtils::IsDeniedForAgentAccess(RequestedPath))
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Blocked MCP access to a credential path: %s"), *RelativePath));
+            return FMcpToolCallResult::CreateErrorResult(TEXT("Access denied: this path holds credentials and is not readable through MCP"));
+        }
         
         // Check if the file exists
         if (!FPaths::FileExists(RequestedPath))
