@@ -42,6 +42,21 @@ bool FN2CMcpArgumentParser::TryGetRequiredString(const FString& FieldName, FStri
     return true;
 }
 
+bool FN2CMcpArgumentParser::TryGetRequiredName(const FString& FieldName, FString& OutValue, FString& OutErrorMsg)
+{
+    if (!TryGetRequiredString(FieldName, OutValue, OutErrorMsg))
+    {
+        return false;
+    }
+    if (OutValue.Len() > MaxNameLength)
+    {
+        OutErrorMsg = FString::Printf(TEXT("Field '%s' is %d characters long; names are limited to %d characters."),
+            *FieldName, OutValue.Len(), MaxNameLength);
+        return false;
+    }
+    return true;
+}
+
 FString FN2CMcpArgumentParser::GetOptionalString(const FString& FieldName, const FString& DefaultValue) const
 {
     if (!ArgumentsJson.IsValid()) return DefaultValue;

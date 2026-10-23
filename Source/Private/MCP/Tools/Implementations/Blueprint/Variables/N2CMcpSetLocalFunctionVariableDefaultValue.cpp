@@ -49,7 +49,7 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         FString VariableName;
         FString DefaultValue;
         FString ErrorMsg;
-        if (!Parser.TryGetRequiredString(TEXT("variableName"), VariableName, ErrorMsg))
+        if (!Parser.TryGetRequiredName(TEXT("variableName"), VariableName, ErrorMsg))
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }

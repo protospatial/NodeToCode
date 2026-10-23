@@ -468,9 +468,15 @@ bool FN2CMcpContentBrowserUtils::CalculatePagination(int32 TotalItems, int32 Pag
 		return false;
 	}
 	
-	// Calculate indices
-	OutStartIndex = (Page - 1) * PageSize;
-	OutEndIndex = FMath::Min(OutStartIndex + PageSize, TotalItems);
+	// Calculate indices in 64 bits so a huge page number cannot wrap negative
+	const int64 Start = (static_cast<int64>(Page) - 1) * static_cast<int64>(PageSize);
+	if (Start >= TotalItems && TotalItems > 0)
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Page %d is beyond available items"), Page));
+		return false;
+	}
+	OutStartIndex = static_cast<int32>(FMath::Clamp<int64>(Start, 0, FMath::Max(TotalItems, 0)));
+	OutEndIndex = static_cast<int32>(FMath::Min<int64>(static_cast<int64>(OutStartIndex) + PageSize, TotalItems));
 	
 	// Check if start is beyond total items
 	if (OutStartIndex >= TotalItems && TotalItems > 0)

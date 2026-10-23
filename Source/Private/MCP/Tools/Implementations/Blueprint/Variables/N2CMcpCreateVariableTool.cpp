@@ -125,12 +125,12 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		FN2CMcpArgumentParser ArgParser(Arguments);
 		FString ErrorMsg;
 		
-		if (!ArgParser.TryGetRequiredString(TEXT("variableName"), Settings.VariableName, ErrorMsg))
+		if (!ArgParser.TryGetRequiredName(TEXT("variableName"), Settings.VariableName, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
 		
-		if (!ArgParser.TryGetRequiredString(TEXT("typeIdentifier"), Settings.TypeIdentifier, ErrorMsg))
+		if (!ArgParser.TryGetRequiredName(TEXT("typeIdentifier"), Settings.TypeIdentifier, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}

@@ -156,9 +156,8 @@ FMcpToolCallResult FN2CMcpReadContentBrowserPathTool::Execute(const TSharedPtr<F
 		
 		if (!FN2CMcpContentBrowserUtils::CalculatePagination(TotalCount, Page, PageSize, StartIndex, EndIndex, bHasMore))
 		{
-			// Return empty result if pagination is out of bounds
-			StartIndex = 0;
-			EndIndex = 0;
+			return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("Page %d is out of range: %d items at page_size %d"), Page, TotalCount, PageSize));
 		}
 		
 		// 8. Sync content browser if requested
