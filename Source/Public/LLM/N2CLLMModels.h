@@ -88,8 +88,12 @@ enum class EN2CGeminiModel : uint8
 UENUM(BlueprintType)
 enum class EN2CDeepSeekModel : uint8
 {
-    DeepSeek_R1      UMETA(DisplayName = "DeepSeek R1", Value = "deepseek-reasoner"),
-    DeepSeek_V3      UMETA(DisplayName = "DeepSeek V3", Value = "deepseek-chat"),
+    // deepseek-reasoner and deepseek-chat were discontinued 2026-07-24. The enumerator names stay (saved settings
+    // use them) and now select a thinking mode of a current model: the registry entry says what each one sends.
+    DeepSeek_R1      UMETA(DisplayName = "DeepSeek Flash, thinking (high effort)", Value = "deepseek-flash"),
+    DeepSeek_V3      UMETA(DisplayName = "DeepSeek Flash, no thinking (JSON output)", Value = "deepseek-flash"),
+    // DeepSeek V4 (2026)
+    DeepSeek_V4_Pro  UMETA(DisplayName = "DeepSeek V4 Pro, thinking (high effort)", Value = "deepseek-v4-pro"),
 };
 
 

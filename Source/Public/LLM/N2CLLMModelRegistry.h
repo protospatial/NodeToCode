@@ -79,6 +79,15 @@ struct NODETOCODE_API FN2CModelMetadata
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
 	bool bUsesMaxCompletionTokens = false;
 
+	/**
+	 * Thinking control sent with each request, for providers that switch thinking per request on one model ID
+	 * (DeepSeek: "none" sends thinking disabled; "low", "high" or "max" sends thinking enabled with that
+	 * reasoning_effort). Empty: the provider takes no such control, or its default applies.
+	 * Entries may share a ModelId when they differ here; ModelId plus ReasoningEffort is unique per entry.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
+	FString ReasoningEffort;
+
 	// === Generation Defaults ===
 
 	/** Default temperature for this model, sent only when bAcceptsSamplingParams is true */
@@ -159,6 +168,19 @@ struct NODETOCODE_API FN2CModelMetadata
 		return *this;
 	}
 
+	/** Sets the per-request thinking control (see ReasoningEffort) */
+	FN2CModelMetadata& WithReasoningEffort(const TCHAR* InReasoningEffort)
+	{
+		ReasoningEffort = InReasoningEffort;
+		return *this;
+	}
+
+	/** Whether ReasoningEffort turns thinking on ("low", "high", "max"; not empty or "none") */
+	bool IsThinkingEnabled() const
+	{
+		return !ReasoningEffort.IsEmpty() && ReasoningEffort != TEXT("none");
+	}
+
 	/** Marks a model the provider still serves but will shut down on the given date */
 	FN2CModelMetadata& ShutsDown(const TCHAR* InShutdownDate)
 	{
@@ -194,8 +216,17 @@ public:
 	/** Get metadata for a specific DeepSeek model */
 	const FN2CModelMetadata* GetModelMetadata(EN2CDeepSeekModel Model) const;
 
-	/** Get metadata by model ID string (for any provider) */
+	/**
+	 * Get metadata by model ID string (for any provider). When several entries share the ID (DeepSeek thinking
+	 * modes), this is the first live one registered, which sends the provider's default mode for that ID.
+	 */
 	const FN2CModelMetadata* GetModelMetadataById(const FString& ModelId) const;
+
+	/**
+	 * Get metadata by model ID and thinking control: the entry with both, or GetModelMetadataById(ModelId) when
+	 * ReasoningEffort is empty or no entry with that ID has it.
+	 */
+	const FN2CModelMetadata* GetModelMetadataById(const FString& ModelId, const FString& ReasoningEffort) const;
 
 	// === Model ID Accessors (replaces FN2CLLMModelUtils::Get*ModelValue) ===
 
@@ -269,8 +300,11 @@ private:
 	TMap<EN2CGeminiModel, FN2CModelMetadata> GeminiModels;
 	TMap<EN2CDeepSeekModel, FN2CModelMetadata> DeepSeekModels;
 
-	/** Index by model ID for fast lookup across all providers */
+	/** Index by model ID for fast lookup across all providers (first live entry per ID) */
 	TMap<FString, const FN2CModelMetadata*> ModelIdIndex;
+
+	/** Every entry per model ID, for IDs shared by several thinking modes */
+	TMultiMap<FString, const FN2CModelMetadata*> ModelIdEntries;
 
 	/** Flag to track initialization state */
 	bool bIsInitialized = false;

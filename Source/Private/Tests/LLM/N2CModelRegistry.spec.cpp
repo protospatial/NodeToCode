@@ -25,7 +25,11 @@
 BEGIN_DEFINE_SPEC(FN2CModelRegistrySpec, "NodeToCode.LLM.Registry",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-	/** Checks the per-entry rules for one provider's map; adds offered IDs to SeenIds to catch duplicates across providers */
+	/**
+	 * Checks the per-entry rules for one provider's map; adds offered requests to SeenIds to catch duplicates across
+	 * providers. A request is the model ID plus the thinking control (entries may share an ID when they differ in
+	 * ReasoningEffort), and each must resolve back to its own entry, so every request's thinking mode is known.
+	 */
 	template <typename TEnum>
 	void CheckEntries(const TMap<TEnum, FN2CModelMetadata>& Models, EN2CLLMProvider Provider, TSet<FString>& SeenIds)
 	{
@@ -63,12 +67,16 @@ BEGIN_DEFINE_SPEC(FN2CModelRegistrySpec, "NodeToCode.LLM.Registry",
 			if (!Meta->bIsDeprecated)
 			{
 				TestFalse(FString::Printf(TEXT("%s has a model ID"), *Name), Meta->ModelId.IsEmpty());
-				TestFalse(FString::Printf(TEXT("%s model ID %s is unique"), *Name, *Meta->ModelId), SeenIds.Contains(Meta->ModelId));
+				const FString RequestKey = FString::Printf(TEXT("%s|%s"), *Meta->ModelId, *Meta->ReasoningEffort);
+				TestFalse(FString::Printf(TEXT("%s model ID %s with thinking '%s' is unique"), *Name, *Meta->ModelId, *Meta->ReasoningEffort),
+					SeenIds.Contains(RequestKey));
+				TestTrue(FString::Printf(TEXT("%s resolves from its model ID and thinking control"), *Name),
+					FN2CLLMModelRegistry::Get().GetModelMetadataById(Meta->ModelId, Meta->ReasoningEffort) == Meta);
 				TestTrue(FString::Printf(TEXT("%s has a context window"), *Name), Meta->ContextWindowSize > 0);
 				TestTrue(FString::Printf(TEXT("%s has a max output"), *Name), Meta->MaxOutputTokens > 0);
 				TestTrue(FString::Printf(TEXT("%s default max tokens fits its max output"), *Name),
 					Meta->DefaultMaxTokens > 0 && Meta->DefaultMaxTokens <= Meta->MaxOutputTokens);
-				SeenIds.Add(Meta->ModelId);
+				SeenIds.Add(RequestKey);
 			}
 		}
 	}
@@ -167,6 +175,69 @@ void FN2CModelRegistrySpec::Define()
 			TestEqual(TEXT("OpenAI default"), Registry.GetModelId(N2CDefaultModels::OpenAI), FString(TEXT("gpt-6.1-sol")));
 			TestEqual(TEXT("Anthropic default"), Registry.GetModelId(N2CDefaultModels::Anthropic), FString(TEXT("claude-sonnet-5-5")));
 			TestEqual(TEXT("Gemini default"), Registry.GetModelId(N2CDefaultModels::Gemini), FString(TEXT("gemini-3.8-flash")));
+			// Checked on 2026-10-22 against api-docs.deepseek.com/api/create-chat-completion (deepseek-flash, deepseek-v4-pro)
+			TestEqual(TEXT("DeepSeek default"), Registry.GetModelId(N2CDefaultModels::DeepSeek), FString(TEXT("deepseek-flash")));
+		});
+	});
+
+	Describe(TEXT("DeepSeek"), [this]()
+	{
+		It(TEXT("maps every entry to a current model ID with a thinking control, a 1M context and current prices"), [this]()
+		{
+			const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
+			struct FExpected { EN2CDeepSeekModel Model; const TCHAR* Id; const TCHAR* Effort; bool bJson; };
+			for (const FExpected& E : {
+				FExpected{ EN2CDeepSeekModel::DeepSeek_R1, TEXT("deepseek-flash"), TEXT("high"), false },
+				FExpected{ EN2CDeepSeekModel::DeepSeek_V3, TEXT("deepseek-flash"), TEXT("none"), true },
+				FExpected{ EN2CDeepSeekModel::DeepSeek_V4_Pro, TEXT("deepseek-v4-pro"), TEXT("high"), false } })
+			{
+				const FN2CModelMetadata* Meta = Registry.GetModelMetadata(E.Model);
+				if (!TestNotNull(FString::Printf(TEXT("%s registered"), E.Id), Meta)) { continue; }
+				TestEqual(FString::Printf(TEXT("%s/%s model ID"), E.Id, E.Effort), Meta->ModelId, FString(E.Id));
+				TestEqual(FString::Printf(TEXT("%s/%s thinking"), E.Id, E.Effort), Meta->ReasoningEffort, FString(E.Effort));
+				TestEqual(FString::Printf(TEXT("%s/%s JSON output"), E.Id, E.Effort), Meta->bSupportsStructuredOutput, E.bJson);
+				TestEqual(FString::Printf(TEXT("%s/%s sampling only without thinking"), E.Id, E.Effort), Meta->bAcceptsSamplingParams, !Meta->IsThinkingEnabled());
+				TestEqual(FString::Printf(TEXT("%s/%s 1M context"), E.Id, E.Effort), Meta->ContextWindowSize, 1000000);
+				TestEqual(FString::Printf(TEXT("%s/%s 384K max output"), E.Id, E.Effort), Meta->MaxOutputTokens, 393216);
+				TestFalse(FString::Printf(TEXT("%s/%s not deprecated"), E.Id, E.Effort), Meta->bIsDeprecated);
+			}
+			// Peak-hour cache-miss prices from api-docs.deepseek.com/quick_start/pricing on 2026-10-22
+			TestEqual(TEXT("deepseek-flash input price"), Registry.GetDeepSeekPricing(EN2CDeepSeekModel::DeepSeek_V3).InputCost, 0.3f);
+			TestEqual(TEXT("deepseek-flash output price"), Registry.GetDeepSeekPricing(EN2CDeepSeekModel::DeepSeek_R1).OutputCost, 1.2f);
+			TestEqual(TEXT("deepseek-v4-pro input price"), Registry.GetDeepSeekPricing(EN2CDeepSeekModel::DeepSeek_V4_Pro).InputCost, 1.32f);
+			TestEqual(TEXT("deepseek-v4-pro output price"), Registry.GetDeepSeekPricing(EN2CDeepSeekModel::DeepSeek_V4_Pro).OutputCost, 3.96f);
+
+			// The discontinued IDs are gone from the registry
+			TestNull(TEXT("deepseek-chat not registered"), Registry.GetModelMetadataById(TEXT("deepseek-chat")));
+			TestNull(TEXT("deepseek-reasoner not registered"), Registry.GetModelMetadataById(TEXT("deepseek-reasoner")));
+		});
+
+		It(TEXT("resolves a bare deepseek-flash to the API default, thinking at high effort"), [this]()
+		{
+			const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
+			TestTrue(TEXT("ID alone gives the R1 entry"), Registry.GetModelMetadataById(TEXT("deepseek-flash")) == Registry.GetModelMetadata(EN2CDeepSeekModel::DeepSeek_R1));
+			TestTrue(TEXT("ID with none gives the V3 entry"), Registry.GetModelMetadataById(TEXT("deepseek-flash"), TEXT("none")) == Registry.GetModelMetadata(EN2CDeepSeekModel::DeepSeek_V3));
+			TestTrue(TEXT("unknown effort falls back to the ID's entry"), Registry.GetModelMetadataById(TEXT("deepseek-flash"), TEXT("max")) == Registry.GetModelMetadata(EN2CDeepSeekModel::DeepSeek_R1));
+		});
+
+		It(TEXT("fills the request model and thinking from the selection, and leaves an override's thinking to its entry"), [this]()
+		{
+			UN2CSettings* Settings = NewObject<UN2CSettings>(GetTransientPackage());
+			FN2CLLMConfig Config;
+			Settings->DeepSeekModel = EN2CDeepSeekModel::DeepSeek_V3;
+			Settings->ResolveRequestModel(EN2CLLMProvider::DeepSeek, FString(), Config);
+			TestEqual(TEXT("V3 selected: model"), Config.Model, FString(TEXT("deepseek-flash")));
+			TestEqual(TEXT("V3 selected: thinking off"), Config.ReasoningEffort, FString(TEXT("none")));
+
+			Settings->ResolveRequestModel(EN2CLLMProvider::DeepSeek, TEXT("deepseek-flash"), Config);
+			TestEqual(TEXT("override naming the selection keeps its thinking"), Config.ReasoningEffort, FString(TEXT("none")));
+
+			Settings->ResolveRequestModel(EN2CLLMProvider::DeepSeek, TEXT("deepseek-v4-pro"), Config);
+			TestEqual(TEXT("other override: model"), Config.Model, FString(TEXT("deepseek-v4-pro")));
+			TestTrue(TEXT("other override: thinking left to the registry"), Config.ReasoningEffort.IsEmpty());
+
+			Settings->ResolveRequestModel(EN2CLLMProvider::OpenAI, FString(), Config);
+			TestTrue(TEXT("OpenAI request carries no thinking control"), Config.ReasoningEffort.IsEmpty());
 		});
 	});
 
@@ -212,6 +283,19 @@ void FN2CModelRegistrySpec::Define()
 			TestEqual(TEXT("Gemini 3 Flash Preview kept"), Settings->Gemini_Model, EN2CGeminiModel::Gemini_3_Flash_Preview);
 			TestEqual(TEXT("o3 kept until it shuts down"), Settings->OpenAI_Model, EN2COpenAIModel::GPT_o3);
 			TestEqual(TEXT("DeepSeek V3 kept"), Settings->DeepSeekModel, EN2CDeepSeekModel::DeepSeek_V3);
+		});
+
+		It(TEXT("loads the DeepSeek_R1 and DeepSeek_V3 names saved before the V4 move as live selections"), [this]()
+		{
+			for (const TCHAR* Name : { TEXT("DeepSeek_R1"), TEXT("DeepSeek_V3") })
+			{
+				UN2CSettings* Settings = LoadSettingsFromIni(FString::Printf(TEXT("Provider=DeepSeek\nDeepSeekModel=%s"), Name));
+				if (!TestNotNull(TEXT("settings loaded"), Settings)) { continue; }
+				const UEnum* Enum = StaticEnum<EN2CDeepSeekModel>();
+				TestEqual(FString::Printf(TEXT("%s loads"), Name), Enum->GetNameStringByValue(static_cast<int64>(Settings->DeepSeekModel)), FString(Name));
+				TestEqual(FString::Printf(TEXT("%s not migrated"), Name), Settings->MigrateRetiredModelSelections(), 0);
+				TestEqual(FString::Printf(TEXT("%s sends deepseek-flash"), Name), Settings->GetActiveModel(), FString(TEXT("deepseek-flash")));
+			}
 		});
 	});
 
@@ -259,6 +343,24 @@ void FN2CModelRegistrySpec::Define()
 				}
 			}
 			TestTrue(TEXT("o3 entry found"), bFoundO3);
+		});
+
+		It(TEXT("get-available-llm-providers offers each DeepSeek ID once with its thinking control"), [this]()
+		{
+			const TArray<FString> DeepSeek = OfferedIds(EN2CLLMProvider::DeepSeek);
+			TestEqual(TEXT("two DeepSeek IDs offered"), DeepSeek.Num(), 2);
+			TestTrue(TEXT("deepseek-flash offered"), DeepSeek.Contains(TEXT("deepseek-flash")));
+			TestTrue(TEXT("deepseek-v4-pro offered"), DeepSeek.Contains(TEXT("deepseek-v4-pro")));
+
+			FN2CMcpGetAvailableLLMProvidersTool Tool;
+			for (const TSharedPtr<FJsonValue>& Value : Tool.GetAvailableModels(EN2CLLMProvider::DeepSeek))
+			{
+				const TSharedPtr<FJsonObject> Object = Value.IsValid() ? Value->AsObject() : nullptr;
+				if (!Object.IsValid()) { continue; }
+				FString Effort;
+				TestTrue(FString::Printf(TEXT("%s carries reasoningEffort"), *Object->GetStringField(TEXT("id"))), Object->TryGetStringField(TEXT("reasoningEffort"), Effort));
+				TestEqual(FString::Printf(TEXT("%s reasoningEffort"), *Object->GetStringField(TEXT("id"))), Effort, FString(TEXT("high")));
+			}
 		});
 
 		It(TEXT("prices Gemini from the registry when there is no override"), [this]()

@@ -47,7 +47,7 @@ bool UN2CLLMModule::Initialize()
     // Create config from settings
     Config.Provider = Settings->Provider;
     Config.ApiKey = Settings->GetActiveApiKey();
-    Config.Model = Settings->GetActiveModel();
+    Settings->ResolveRequestModel(Config.Provider, FString(), Config);
 
     // Initialize provider registry
     InitializeProviderRegistry();

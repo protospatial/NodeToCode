@@ -703,15 +703,8 @@ void FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
     RequestConfig.Provider = FinalProvider;
     RequestConfig.ApiKey = Settings->GetActiveApiKeyForProvider(FinalProvider); // Get API key for the potentially overridden provider
 
-    if (!ModelIdOverride.IsEmpty())
-    {
-        RequestConfig.Model = ModelIdOverride;
-    }
-    else
-    {
-        // If provider was overridden (or not), get the default model for the final provider
-        RequestConfig.Model = Settings->GetActiveModelForProvider(FinalProvider);
-    }
+    // The override model, or the final provider's selected model with its thinking mode
+    Settings->ResolveRequestModel(FinalProvider, ModelIdOverride, RequestConfig);
     
     EN2CCodeLanguage TargetLanguage = Settings->TargetLanguage; // Default from settings
     if (!LanguageIdOverride.IsEmpty())

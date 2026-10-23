@@ -21,12 +21,14 @@ pricing page before relying on them.
 | Gemini 3.8 Flash (default) | $0.75 / $3.75 | 1M | Most translations, very large graphs |
 | Gemini 4 Argon | $2 / $10 | 1M | Complex graphs |
 | Gemini 3.5 Flash-Lite | $0.30 / $2.50 | 1M | Quick conversions, prototypes |
-| DeepSeek R1 | - | - | Complex systems requiring thoughtful logic reasoning, Cost-Effective Capabilities |
-| DeepSeek V3 | - | - | Quick conversions, Prototypes, Affordability |
+| DeepSeek Flash, thinking (default) | $0.30 / $1.20 | 1M | Complex logic at a low price |
+| DeepSeek Flash, no thinking | $0.30 / $1.20 | 1M | Quick conversions, prototypes, affordability |
+| DeepSeek V4 Pro, thinking | $1.32 / $3.96 | 1M | Complex graphs where quality matters most |
 | Ollama | Free (local) | Set by you | Full control of model, 100% Privacy, Offline work, Cost-effectiveness |
 
 > [!NOTE]
-> Google lists higher prices for Gemini 3.8 Flash from 2027-01-01 and Gemini 4 Argon from 2026-12-01. Older
+> Google lists higher prices for Gemini 3.8 Flash from 2027-01-01 and Gemini 4 Argon from 2026-12-01.
+DeepSeek prices are its peak-hour rates for uncached input; off-peak hours cost half. Older
 models that are still listed in **Project Settings** show their shutdown date in their name; see
 [Provider Configuration](Provider-Configuration#retired-models) for what happens after it.
 

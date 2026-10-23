@@ -46,8 +46,15 @@ each start until you do.
 ### [DeepSeek](LLM-Provider-Documentation-&-Resources#deepseek)
 - **API Key**: Enter your DeepSeek API key
 - **Model**:
-  - DeepSeek_R1 **(Recommended)**
-  - DeepSeek_V3
+  - **DeepSeek Flash, thinking (high effort)** (default, recommended): `deepseek-flash` with thinking on
+  - **DeepSeek Flash, no thinking (JSON output)**: `deepseek-flash` with thinking off and JSON output, faster and cheaper
+  - **DeepSeek V4 Pro, thinking (high effort)** (most capable): `deepseek-v4-pro` with thinking on
+
+DeepSeek discontinued `deepseek-reasoner` and `deepseek-chat` on 2026-07-24. A project that saved DeepSeek R1 or
+DeepSeek V3 keeps working without changes: R1 now sends `deepseek-flash` with thinking on, and V3 sends
+`deepseek-flash` with thinking off. A model chosen per request through the MCP `translate-focused-blueprint` tool uses
+that model's own thinking mode (for `deepseek-flash` that is thinking on, unless it is also the model selected
+here).
 
 ### [Ollama (Local Processing)](LLM-Provider-Documentation-&-Resources#ollama-local)
 - **Endpoint**: Default http://localhost:11434/

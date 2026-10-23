@@ -252,6 +252,7 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpGetAvailableLLMProvidersTool::GetAvailable
     if (ModelEnum)
     {
         const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
+        TSet<FString> OfferedIds;
 
         // Iterate through enum values (skip _MAX)
         for (int32 i = 0; i < ModelEnum->NumEnums() - 1; ++i)
@@ -286,6 +287,15 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpGetAvailableLLMProvidersTool::GetAvailable
                 continue;
             }
 
+            // Entries that share an ID differ only in thinking mode (DeepSeek). A model override is just an ID: it
+            // gets the selected entry's mode when it names the selected model, otherwise the first entry's (the
+            // provider default), so the ID is offered once, with the first entry's mode.
+            if (OfferedIds.Contains(Meta->ModelId))
+            {
+                continue;
+            }
+            OfferedIds.Add(Meta->ModelId);
+
             TSharedPtr<FJsonObject> ModelObj = MakeShareable(new FJsonObject);
             ModelObj->SetStringField(TEXT("id"), Meta->ModelId);
             ModelObj->SetStringField(TEXT("name"), ModelEnum->GetDisplayNameTextByIndex(i).ToString());
@@ -304,6 +314,12 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpGetAvailableLLMProvidersTool::GetAvailable
             if (Provider == EN2CLLMProvider::OpenAI)
             {
                 ModelObj->SetBoolField(TEXT("supportsSystemPrompts"), Meta->bSupportsSystemPrompts);
+            }
+
+            // Thinking mode a request for this ID sends ("none" = thinking off)
+            if (!Meta->ReasoningEffort.IsEmpty())
+            {
+                ModelObj->SetStringField(TEXT("reasoningEffort"), Meta->ReasoningEffort);
             }
 
             Models.Add(MakeShareable(new FJsonValueObject(ModelObj)));
