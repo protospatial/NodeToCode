@@ -282,6 +282,17 @@ public:
     /** Ollama configuration */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama")
     FN2COllamaConfig OllamaConfig;
+
+    /**
+     * Layout version of the saved settings. A config saved before versioning has no value and loads as 0, so
+     * the migrations for later versions run on it (MigrateSavedSettings). Any edit in Project Settings stamps
+     * the current version, which is then saved with the edited values. Not shown in the editor.
+     */
+    UPROPERTY(Config)
+    int32 SettingsVersion = 0;
+
+    /** 1: Ollama options are sent only when set (override toggles, num_ctx and num_predict 0 = omitted) */
+    static constexpr int32 CurrentSettingsVersion = 1;
     
     /** Ollama Model Selection */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama",
@@ -433,6 +444,27 @@ public:
      * @return the number of selections changed
      */
     int32 MigrateRetiredModelSelections();
+
+    /**
+     * Runs the migrations for every settings version above SettingsVersion. It does not change SettingsVersion,
+     * and every step gives the same result when run again on its own output, so it is safe on each load and
+     * reload; SettingsVersion moves to CurrentSettingsVersion only on an edit (PreEditChange), so the config is
+     * not rewritten on load. Called from PostInitProperties and PostReloadConfig.
+     * @return the number of values changed
+     */
+    int32 MigrateSavedSettings();
+
+    /**
+     * Version 1 Ollama migration. Before 2.0 every Ollama option was always sent, and Project Settings saves the
+     * whole struct, so a saved value equal to the old default says nothing about the user's intent: those are
+     * cleared (num_ctx 8192 and num_predict 8192 become 0, sampler values at the old default keep their override
+     * off, and the old bUseSystemPrompts default false becomes true) so the server and model defaults apply.
+     * A saved sampler value that differs from the old default was the user's choice and gets its override toggle
+     * turned on, so it is still sent. Values with an override already on are left alone.
+     * @param OutChanges one entry per changed value, for the log
+     * @return the number of values changed
+     */
+    static int32 MigrateLegacyOllamaDefaults(FN2COllamaConfig& Config, TArray<FString>& OutChanges);
 
     /** Check if a property is a color property in our editor colors structs */
     bool IsColorProperty(const FProperty* Property) const;

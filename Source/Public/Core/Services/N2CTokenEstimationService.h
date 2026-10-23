@@ -145,6 +145,19 @@ public:
 	 */
 	void RefreshModelInfo();
 
+	/** Rough token count for a text of this many characters (4 characters per token, as for graph estimates) */
+	static int32 EstimateTokensForChars(int32 CharCount);
+
+	/**
+	 * Logs a warning when the estimated prompt is larger than the context window the request sets, since a local
+	 * server such as Ollama cuts an over-long prompt without returning an error.
+	 * @param EstimatedPromptTokens estimate of everything the request sends (system and user messages)
+	 * @param ContextWindow the window the request sets; 0 or less means the server default, which is unknown here
+	 * @param ProviderLabel provider name for the log line
+	 * @return true when the warning was logged
+	 */
+	static bool WarnIfPromptExceedsContext(int32 EstimatedPromptTokens, int32 ContextWindow, const TCHAR* ProviderLabel);
+
 	// ==================== Notifications ====================
 
 	/** Delegate fired when model settings change (provider or model) */

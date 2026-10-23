@@ -77,6 +77,7 @@ void UN2CSettings::PostInitProperties()
     // Config is loaded by now (LoadConfig runs before PostInitProperties), so saved selections can be checked
     Super::PostInitProperties();
     MigrateRetiredModelSelections();
+    MigrateSavedSettings();
 }
 
 void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
@@ -85,6 +86,7 @@ void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
     // config is mounted, which is after PostInitProperties; check the saved selections again
     Super::PostReloadConfig(PropertyThatWasLoaded);
     MigrateRetiredModelSelections();
+    MigrateSavedSettings();
 }
 
 namespace
@@ -125,6 +127,73 @@ int32 UN2CSettings::MigrateRetiredModelSelections()
         FN2CLogger::Get().LogWarning(FString::Printf(
             TEXT("Saved model selection no longer served by its provider, using the current default instead: %s. Choose a model in Project Settings > Plugins > Node to Code to save the choice; until then this repeats on each start."),
             *FString::Join(Changes, TEXT("; "))), TEXT("N2CSettings"));
+    }
+    return Changes.Num();
+}
+
+namespace
+{
+    /** Leaves the override off for a value at the old always-sent default, turns it on for any other value */
+    template <typename TValue>
+    void MigrateOllamaSampler(bool& bOverride, TValue Value, TValue OldDefault, const TCHAR* Name, TArray<FString>& OutChanges)
+    {
+        if (bOverride)
+        {
+            return;
+        }
+        if (FMath::IsNearlyEqual(static_cast<double>(Value), static_cast<double>(OldDefault), 1e-4))
+        {
+            return;
+        }
+        bOverride = true;
+        OutChanges.Add(FString::Printf(TEXT("%s=%s kept as an override"), Name, *LexToString(Value)));
+    }
+}
+
+int32 UN2CSettings::MigrateLegacyOllamaDefaults(FN2COllamaConfig& Config, TArray<FString>& OutChanges)
+{
+    const int32 Before = OutChanges.Num();
+    // The old always-sent defaults; num_ctx 8192 cut a 32K server default down and truncated large prompts
+    if (Config.NumCtx == 8192)
+    {
+        Config.NumCtx = 0;
+        OutChanges.Add(TEXT("NumCtx 8192 -> 0 (server context length)"));
+    }
+    if (Config.NumPredict == 8192)
+    {
+        Config.NumPredict = 0;
+        OutChanges.Add(TEXT("NumPredict 8192 -> 0 (server default)"));
+    }
+    if (!Config.bUseSystemPrompts)
+    {
+        Config.bUseSystemPrompts = true;
+        OutChanges.Add(TEXT("bUseSystemPrompts False -> True"));
+    }
+    MigrateOllamaSampler(Config.bOverride_Temperature, Config.Temperature, 0.0f, TEXT("Temperature"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_TopP, Config.TopP, 0.5f, TEXT("TopP"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_TopK, Config.TopK, 40, TEXT("TopK"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_MinP, Config.MinP, 0.05f, TEXT("MinP"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_RepeatPenalty, Config.RepeatPenalty, 1.1f, TEXT("RepeatPenalty"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_Mirostat, Config.Mirostat, 0, TEXT("Mirostat"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_MirostatEta, Config.MirostatEta, 0.1f, TEXT("MirostatEta"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_MirostatTau, Config.MirostatTau, 5.0f, TEXT("MirostatTau"), OutChanges);
+    MigrateOllamaSampler(Config.bOverride_Seed, Config.Seed, 0, TEXT("Seed"), OutChanges);
+    return OutChanges.Num() - Before;
+}
+
+int32 UN2CSettings::MigrateSavedSettings()
+{
+    TArray<FString> Changes;
+    if (SettingsVersion < 1)
+    {
+        MigrateLegacyOllamaDefaults(OllamaConfig, Changes);
+    }
+
+    if (Changes.Num() > 0)
+    {
+        FN2CLogger::Get().Log(FString::Printf(
+            TEXT("Ollama settings saved before NodeToCode 2.0 updated so the server and model defaults apply: %s. Saving Project Settings > Plugins > Node to Code stores this."),
+            *FString::Join(Changes, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
     }
     return Changes.Num();
 }
@@ -187,6 +256,10 @@ void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
     
     // Store the property being changed for use in PostEditChangeProperty
     LastEditedProperty = PropertyAboutToChange;
+
+    // The values being edited are already migrated (MigrateSavedSettings ran on load), so the config saved after
+    // this edit carries the current layout version and the migrations do not run on it again
+    SettingsVersion = CurrentSettingsVersion;
 }
 
 bool UN2CSettings::IsColorProperty(const FProperty* Property) const

@@ -5,6 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
@@ -18,6 +19,11 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
+#include "HAL/FileManager.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
+#include "Misc/Paths.h"
 
 /**
  * Builds each provider's request body through its service (no request is sent, no key is used) and checks
@@ -103,6 +109,66 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Payload);
 		FJsonSerializer::Deserialize(Reader, Root);
 		return Root;
+	}
+
+	/**
+	 * Ollama body FormatRequestPayload would send with this Ollama config: the config is set on the settings
+	 * default object for the duration, since the service reads it from Settings in Initialize
+	 */
+	TSharedPtr<FJsonObject> BuildOllama(const FN2COllamaConfig& OllamaConfig)
+	{
+		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+		const FN2COllamaConfig Saved = Settings->OllamaConfig;
+		Settings->OllamaConfig = OllamaConfig;
+		const FString Payload = BuildPayload<UN2COllamaService>(EN2CLLMProvider::Ollama, TEXT("qwen3:32b"));
+		Settings->OllamaConfig = Saved;
+		return Parse(Payload);
+	}
+
+	/** Body the payload builder writes for this Ollama config, without the service */
+	TSharedPtr<FJsonObject> BuildOllamaDirect(const FN2COllamaConfig& OllamaConfig)
+	{
+		UN2CLLMPayloadBuilder* Builder = NewObject<UN2CLLMPayloadBuilder>(GetTransientPackage());
+		Builder->Initialize(TEXT("qwen3:32b"));
+		Builder->ConfigureForOllama(OllamaConfig);
+		return Parse(Builder->Build());
+	}
+
+	/** A settings object loaded from an ini holding these lines, as a reload at startup applies saved config */
+	UN2CSettings* LoadSettingsFromIni(const FString& Lines)
+	{
+		const FString Path = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Automation")
+			/ FString::Printf(TEXT("N2CPayloadSpec_%s.ini"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		const FString Ini = FString::Printf(TEXT("[%s]\n%s\n"), *UN2CSettings::StaticClass()->GetPathName(), *Lines);
+		if (!TestTrue(TEXT("test ini written"), FFileHelper::SaveStringToFile(Ini, *Path))) { return nullptr; }
+
+		GConfig->LoadFile(Path);
+		UN2CSettings* Settings = NewObject<UN2CSettings>(GetTransientPackage());
+		Settings->LoadConfig(nullptr, *Path, UE::LCPF_ReloadingConfigData);
+		GConfig->UnloadFile(Path);
+		IFileManager::Get().Delete(*Path);
+		return Settings;
+	}
+
+	/** OllamaConfig as Project Settings saved it before 2.0: the whole struct, every field at its old default */
+	static FString LegacyOllamaLine(const TCHAR* TopP = TEXT("0.500000"), const TCHAR* NumCtx = TEXT("8192"))
+	{
+		return FString::Printf(TEXT("OllamaConfig=(OllamaEndpoint=\"http://localhost:11434\",bUseSystemPrompts=False,PrependedModelCommand=\"\",KeepAlive=3600,Temperature=0.000000,NumPredict=8192,TopP=%s,TopK=40,MinP=0.050000,RepeatPenalty=1.100000,NumCtx=%s,Mirostat=0,MirostatEta=0.100000,MirostatTau=5.000000,Seed=0)"), TopP, NumCtx);
+	}
+
+	/** options has none of the sampler fields Ollama used to get on every request */
+	void TestNoOllamaSamplers(const FString& What, const TSharedPtr<FJsonObject>& Root)
+	{
+		const TSharedPtr<FJsonObject> Options = Child(Root, TEXT("options"));
+		if (!Options.IsValid())
+		{
+			return;
+		}
+		for (const TCHAR* Field : { TEXT("temperature"), TEXT("top_p"), TEXT("top_k"), TEXT("min_p"), TEXT("repeat_penalty"),
+			TEXT("mirostat"), TEXT("mirostat_eta"), TEXT("mirostat_tau"), TEXT("seed") })
+		{
+			TestFalse(FString::Printf(TEXT("%s has no options.%s"), *What, Field), Options->HasField(Field));
+		}
 	}
 
 	/** The named sub-object, or null; never the engine's shared empty fallback object */
@@ -401,7 +467,151 @@ void FN2CPayloadBuilderSpec::Define()
 			TestFalse(TEXT("Ollama has no root temperature"), Root->HasField(TEXT("temperature")));
 			TestFalse(TEXT("Ollama has no root max_tokens"), Root->HasField(TEXT("max_tokens")));
 			TestFalse(TEXT("Ollama has no root max_completion_tokens"), Root->HasField(TEXT("max_completion_tokens")));
-			TestTrue(TEXT("Ollama keeps its options object"), Child(Root, TEXT("options")).IsValid());
+			});
+
+		It(TEXT("sends no num_ctx, num_predict, sampler or think fields with default settings"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Root = BuildOllama(FN2COllamaConfig());
+			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
+			TestFalse(TEXT("default payload has no options object"), Root->HasField(TEXT("options")));
+			TestNoOllamaSamplers(TEXT("default payload"), Root);
+			TestFalse(TEXT("default payload has no think"), Root->HasField(TEXT("think")));
+			TestTrue(TEXT("default payload keeps the schema in format"), Child(Root, TEXT("format")).IsValid());
+			bool bStream = true;
+			TestTrue(TEXT("default payload has stream false"), Root->TryGetBoolField(TEXT("stream"), bStream) && !bStream);
+			TestTrue(TEXT("default payload has keep_alive"), Root->HasField(TEXT("keep_alive")));
+
+			// bUseSystemPrompts now defaults to true: the system prompt is its own message
+			const TArray<TSharedPtr<FJsonValue>>* Messages = nullptr;
+			if (TestTrue(TEXT("default payload has a system and a user message"), Root->TryGetArrayField(TEXT("messages"), Messages) && Messages && Messages->Num() == 2))
+			{
+				TestEqual(TEXT("first message is the system prompt"), (*Messages)[0]->AsObject()->GetStringField(TEXT("role")), FString(TEXT("system")));
+			}
+		});
+
+		It(TEXT("sends num_ctx and num_predict only when greater than 0"), [this]()
+		{
+			FN2COllamaConfig Config;
+			Config.NumCtx = 32768;
+			const TSharedPtr<FJsonObject> Root = BuildOllama(Config);
+			const TSharedPtr<FJsonObject> Options = Child(Root, TEXT("options"));
+			if (!TestTrue(TEXT("NumCtx 32768 sends options"), Options.IsValid())) { return; }
+			TestEqual(TEXT("num_ctx"), Options->GetIntegerField(TEXT("num_ctx")), 32768);
+			TestFalse(TEXT("NumPredict 0 sends no num_predict"), Options->HasField(TEXT("num_predict")));
+			TestNoOllamaSamplers(TEXT("NumCtx only"), Root);
+
+			Config.NumCtx = 0;
+			Config.NumPredict = 4096;
+			const TSharedPtr<FJsonObject> Predict = Child(BuildOllama(Config), TEXT("options"));
+			if (!TestTrue(TEXT("NumPredict 4096 sends options"), Predict.IsValid())) { return; }
+			TestEqual(TEXT("num_predict"), Predict->GetIntegerField(TEXT("num_predict")), 4096);
+			TestFalse(TEXT("NumCtx 0 sends no num_ctx"), Predict->HasField(TEXT("num_ctx")));
+
+			// -1 (unlimited) saved by older versions is not sent; the server default is unlimited too
+			Config.NumPredict = -1;
+			TestFalse(TEXT("NumPredict -1 sends no options"), BuildOllama(Config)->HasField(TEXT("options")));
+		});
+
+		It(TEXT("sends each sampler value only when its override is on and sends 0 when set"), [this]()
+		{
+			FN2COllamaConfig Config;
+			Config.bOverride_Temperature = true;
+			Config.Temperature = 0.0f;
+			Config.bOverride_TopK = true;
+			Config.TopK = 20;
+			const TSharedPtr<FJsonObject> Options = Child(BuildOllama(Config), TEXT("options"));
+			if (!TestTrue(TEXT("overrides send options"), Options.IsValid())) { return; }
+			double Temperature = -1.0;
+			TestTrue(TEXT("temperature 0.0 is sent"), Options->TryGetNumberField(TEXT("temperature"), Temperature) && Temperature == 0.0);
+			TestEqual(TEXT("top_k"), Options->GetIntegerField(TEXT("top_k")), 20);
+			for (const TCHAR* Field : { TEXT("top_p"), TEXT("min_p"), TEXT("repeat_penalty"), TEXT("mirostat"), TEXT("seed"), TEXT("num_ctx") })
+			{
+				TestFalse(FString::Printf(TEXT("no %s without its override"), Field), Options->HasField(Field));
+			}
+		});
+
+		It(TEXT("maps Think to the think field"), [this]()
+		{
+			FN2COllamaConfig Config;
+			Config.Think = EN2COllamaThink::Off;
+			const TSharedPtr<FJsonObject> Off = BuildOllama(Config);
+			const TSharedPtr<FJsonValue> OffValue = Off.IsValid() ? Off->TryGetField(TEXT("think")) : nullptr;
+			if (TestTrue(TEXT("Think Off sends think"), OffValue.IsValid()))
+			{
+				TestEqual(TEXT("think is a JSON boolean"), static_cast<int32>(OffValue->Type), static_cast<int32>(EJson::Boolean));
+				TestFalse(TEXT("Think Off sends think false"), OffValue->AsBool());
+			}
+
+			Config.Think = EN2COllamaThink::On;
+			bool bThink = false;
+			TestTrue(TEXT("Think On sends think true"), BuildOllama(Config)->TryGetBoolField(TEXT("think"), bThink) && bThink);
+
+			Config.Think = EN2COllamaThink::Level;
+			Config.ThinkLevel = TEXT("high");
+			FString Level;
+			TestTrue(TEXT("Think Level sends the level string"), BuildOllama(Config)->TryGetStringField(TEXT("think"), Level));
+			TestEqual(TEXT("think level"), Level, FString(TEXT("high")));
+
+			Config.ThinkLevel = TEXT("  ");
+			AddExpectedMessage(TEXT("Think Level is empty"), EAutomationExpectedMessageFlags::Contains, 1);
+			TestFalse(TEXT("an empty level sends no think"), BuildOllama(Config)->HasField(TEXT("think")));
+		});
+
+		It(TEXT("warns when the estimated prompt is larger than the Context Window"), [this]()
+		{
+			AddExpectedMessage(TEXT("larger than the Ollama Context Window"), EAutomationExpectedMessageFlags::Contains, 1);
+			FN2COllamaConfig Config;
+			Config.NumCtx = 1;
+			BuildOllama(Config);
+
+			TestFalse(TEXT("no warning when the window is the server default"), FN2CTokenEstimationService::WarnIfPromptExceedsContext(100000, 0, TEXT("Ollama")));
+			TestFalse(TEXT("no warning when the prompt fits"), FN2CTokenEstimationService::WarnIfPromptExceedsContext(1000, 32768, TEXT("Ollama")));
+		});
+	});
+
+	Describe(TEXT("OllamaMigration"), [this]()
+	{
+		It(TEXT("clears values saved at the old defaults so the server defaults apply"), [this]()
+		{
+			UN2CSettings* Settings = LoadSettingsFromIni(LegacyOllamaLine());
+			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
+			const FN2COllamaConfig& Config = Settings->OllamaConfig;
+			TestEqual(TEXT("NumCtx 8192 cleared"), Config.NumCtx, 0);
+			TestEqual(TEXT("NumPredict 8192 cleared"), Config.NumPredict, 0);
+			TestTrue(TEXT("bUseSystemPrompts moved to the new default"), Config.bUseSystemPrompts);
+			TestFalse(TEXT("TopP at the old default stays unset"), Config.bOverride_TopP);
+			TestFalse(TEXT("Temperature at the old default stays unset"), Config.bOverride_Temperature);
+			TestEqual(TEXT("settings version not stamped on load"), Settings->SettingsVersion, 0);
+			TestFalse(TEXT("migrated legacy config sends no options"), BuildOllamaDirect(Config)->HasField(TEXT("options")));
+
+			// Running the migration again on its own output changes nothing
+			TestEqual(TEXT("migration is idempotent"), Settings->MigrateSavedSettings(), 0);
+		});
+
+		It(TEXT("keeps a saved value that differs from the old default as an explicit override"), [this]()
+		{
+			UN2CSettings* Settings = LoadSettingsFromIni(LegacyOllamaLine(TEXT("0.900000"), TEXT("32768")));
+			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
+			const FN2COllamaConfig& Config = Settings->OllamaConfig;
+			TestTrue(TEXT("TopP 0.9 becomes an override"), Config.bOverride_TopP);
+			TestEqual(TEXT("NumCtx 32768 kept"), Config.NumCtx, 32768);
+			TestFalse(TEXT("TopK at the old default stays unset"), Config.bOverride_TopK);
+
+			const TSharedPtr<FJsonObject> Options = Child(BuildOllamaDirect(Config), TEXT("options"));
+			if (!TestTrue(TEXT("user values still sent"), Options.IsValid())) { return; }
+			TestEqual(TEXT("num_ctx kept"), Options->GetIntegerField(TEXT("num_ctx")), 32768);
+			double TopP = 0.0;
+			TestTrue(TEXT("top_p 0.9 kept"), Options->TryGetNumberField(TEXT("top_p"), TopP) && FMath::IsNearlyEqual(TopP, 0.9, 1e-4));
+			TestFalse(TEXT("top_k at the old default not sent"), Options->HasField(TEXT("top_k")));
+		});
+
+		It(TEXT("leaves a config saved at the current version alone"), [this]()
+		{
+			UN2CSettings* Settings = LoadSettingsFromIni(TEXT("SettingsVersion=1\nOllamaConfig=(NumCtx=8192,bUseSystemPrompts=False,TopP=0.900000)"));
+			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
+			TestEqual(TEXT("an explicit NumCtx 8192 is kept"), Settings->OllamaConfig.NumCtx, 8192);
+			TestFalse(TEXT("an explicit bUseSystemPrompts false is kept"), Settings->OllamaConfig.bUseSystemPrompts);
+			TestFalse(TEXT("an override left off stays off"), Settings->OllamaConfig.bOverride_TopP);
 		});
 	});
 
