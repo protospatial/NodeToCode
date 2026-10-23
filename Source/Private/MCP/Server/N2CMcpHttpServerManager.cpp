@@ -384,63 +384,64 @@ bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Reques
 
         FGuid TaskId = FGuid::NewGuid(); // Generate TaskId for the SSE stream and async task.
 
-        // PREPARE SSE STREAM FOR THIS TASK ID
-        NodeToCodeSseServer::PrepareSseStreamForTask(TaskId);
+        // The result is delivered over the SSE stream: check the SSE server before starting any work
+        const int32 SsePort = NodeToCodeSseServer::GetSseServerPort();
+        if (SsePort < 0)
+        {
+            FN2CLogger::Get().LogError(TEXT("SSE server is not running, cannot handle long-running tools"));
+            ResponseBody = FJsonRpcUtils::SerializeResponse(
+                FJsonRpcUtils::CreateErrorResponse(RequestId, JsonRpcErrorCodes::InternalError,
+                    TEXT("SSE server is not available for long-running operations")
+                )
+            );
+            StatusCode = 500;
+        }
+        else
+        {
+            // Prepare the stream first: a task that finishes while it starts pushes its result there
+            NodeToCodeSseServer::PrepareSseStreamForTask(TaskId);
 
-		// Launch the async task, passing the generated TaskId
-		FGuid LaunchedTaskId = FN2CToolAsyncTaskManager::Get().LaunchTask(
-            TaskId, // Pass the pre-generated TaskId
-			ToolName, 
-			ToolArguments, 
-			ProgressToken, 
-			CurrentSessionId,
-			RequestId);
-		
-		if (LaunchedTaskId.IsValid() && LaunchedTaskId == TaskId) // Ensure the launched task used our ID
-		{
-			// Build the SSE URL
-			int32 SsePort = NodeToCodeSseServer::GetSseServerPort();
-			if (SsePort < 0)
-			{
-				FN2CLogger::Get().LogError(TEXT("SSE server is not running, cannot handle long-running tools"));
-				FN2CToolAsyncTaskManager::Get().CancelTask(TaskId);
-				
-				ResponseBody = FJsonRpcUtils::SerializeResponse(
-					FJsonRpcUtils::CreateErrorResponse(RequestId, JsonRpcErrorCodes::InternalError, 
-						TEXT("SSE server is not available for long-running operations")
-					)
-				);
-				StatusCode = 500;
-			}
-			else
-			{
-				// Create the SSE URL for this task
-				FString SseUrl = FString::Printf(TEXT("http://localhost:%d/mcp/events/%s"), SsePort, *TaskId.ToString());
-				
-				// Return a synchronous response with the SSE URL
-				TSharedPtr<FJsonObject> ResultObject = MakeShared<FJsonObject>();
-				ResultObject->SetStringField(TEXT("status"), TEXT("accepted"));
-				ResultObject->SetStringField(TEXT("taskId"), TaskId.ToString());
-				ResultObject->SetStringField(TEXT("progressToken"), ProgressToken);
-				ResultObject->SetStringField(TEXT("sseUrl"), SseUrl);
-				
-				FJsonRpcResponse Response(RequestId, MakeShared<FJsonValueObject>(ResultObject));
-				ResponseBody = FJsonRpcUtils::SerializeResponse(Response);
-				
-				FN2CLogger::Get().Log(FString::Printf(TEXT("Launched async task %s for tool %s. SSE URL: %s"), 
-					*TaskId.ToString(), *ToolName, *SseUrl), EN2CLogSeverity::Info);
-			}
-		}
-		else
-		{
-			FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to launch async task for tool: %s"), *ToolName));
-			ResponseBody = FJsonRpcUtils::SerializeResponse(
-				FJsonRpcUtils::CreateErrorResponse(RequestId, JsonRpcErrorCodes::InternalError, 
-					FString::Printf(TEXT("Failed to initiate asynchronous task execution for tool '%s'"), *ToolName)
-				)
-			);
-			StatusCode = 500;
-		}
+            // Launch the async task, passing the generated TaskId
+            const FGuid LaunchedTaskId = FN2CToolAsyncTaskManager::Get().LaunchTask(
+                TaskId, // Pass the pre-generated TaskId
+                ToolName,
+                ToolArguments,
+                ProgressToken,
+                CurrentSessionId,
+                RequestId);
+
+            if (LaunchedTaskId.IsValid() && LaunchedTaskId == TaskId) // Ensure the launched task used our ID
+            {
+                // Create the SSE URL for this task
+                FString SseUrl = FString::Printf(TEXT("http://localhost:%d/mcp/events/%s"), SsePort, *TaskId.ToString());
+
+                // Return a synchronous response with the SSE URL
+                TSharedPtr<FJsonObject> ResultObject = MakeShared<FJsonObject>();
+                ResultObject->SetStringField(TEXT("status"), TEXT("accepted"));
+                ResultObject->SetStringField(TEXT("taskId"), TaskId.ToString());
+                ResultObject->SetStringField(TEXT("progressToken"), ProgressToken);
+                ResultObject->SetStringField(TEXT("sseUrl"), SseUrl);
+
+                FJsonRpcResponse Response(RequestId, MakeShared<FJsonValueObject>(ResultObject));
+                ResponseBody = FJsonRpcUtils::SerializeResponse(Response);
+
+                FN2CLogger::Get().Log(FString::Printf(TEXT("Launched async task %s for tool %s. SSE URL: %s"),
+                    *TaskId.ToString(), *ToolName, *SseUrl), EN2CLogSeverity::Info);
+            }
+            else
+            {
+                // Nothing will ever complete this stream
+                NodeToCodeSseServer::DiscardStreamForTask(TaskId);
+
+                FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to launch async task for tool: %s"), *ToolName));
+                ResponseBody = FJsonRpcUtils::SerializeResponse(
+                    FJsonRpcUtils::CreateErrorResponse(RequestId, JsonRpcErrorCodes::InternalError,
+                        FString::Printf(TEXT("Failed to initiate asynchronous task execution for tool '%s'"), *ToolName)
+                    )
+                );
+                StatusCode = 500;
+            }
+        }
 	}
 	else
 	{

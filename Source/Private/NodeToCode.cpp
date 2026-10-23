@@ -28,6 +28,7 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "MCP/Server/N2CSseServer.h"
+#include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #if WITH_EDITOR
 #include "UnrealEdMisc.h"
@@ -43,8 +44,10 @@ void FNodeToCodeModule::StartupModule()
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
 
     // On editor exit, UObjects (the rooted graph state singleton included) are purged before ShutdownModule runs,
-    // so state marked dirty without a save is flushed here, while the singletons still exist
-    PreExitHandle = FCoreDelegates::OnPreExit.AddStatic(&FNodeToCodeModule::ShutdownStateManagers);
+    // so running MCP translations are cancelled and state marked dirty without a save is flushed here, while the
+    // LLM services and singletons still exist
+    PreExitHandle = FCoreDelegates::OnPreExit.AddStatic(&FNodeToCodeModule::HandlePreExit);
+    EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddStatic(&FNodeToCodeModule::CancelAsyncTasks);
 
     // HTTP timeouts are set per request by the LLM HTTP handler; nothing is written to project config.
     // While a translation is in flight, keep the editor at full speed even when it is in the background, without
@@ -165,6 +168,19 @@ void FNodeToCodeModule::StartupModule()
     }
 }
 
+void FNodeToCodeModule::CancelAsyncTasks()
+{
+    // A running translation holds an in-flight LLM request on UObjects that are about to be purged: cancel it now, so
+    // no completion or ticker runs after the purge and exit does not wait for the LLM
+    FN2CToolAsyncTaskManager::Get().CancelAllTasks();
+}
+
+void FNodeToCodeModule::HandlePreExit()
+{
+    CancelAsyncTasks();
+    ShutdownStateManagers();
+}
+
 void FNodeToCodeModule::ShutdownStateManagers()
 {
     UN2CTagManager::ShutdownInstance();
@@ -175,6 +191,8 @@ void FNodeToCodeModule::ShutdownModule()
 {
     FCoreDelegates::OnPreExit.Remove(PreExitHandle);
     PreExitHandle.Reset();
+    FCoreDelegates::OnEnginePreExit.Remove(EnginePreExitHandle);
+    EnginePreExitHandle.Reset();
 
     if (GEditor && DisableThrottleHandle.IsValid())
     {
@@ -184,6 +202,10 @@ void FNodeToCodeModule::ShutdownModule()
         });
         DisableThrottleHandle.Reset();
     }
+
+    // Cancel running MCP async tasks while the SSE server can still deliver their cancelled results (on exit,
+    // HandlePreExit already did this and there is nothing left to cancel)
+    FN2CToolAsyncTaskManager::Get().CancelAllTasks();
 
     // Stop SSE server
     NodeToCodeSseServer::StopSseServer();

@@ -39,8 +39,21 @@ private:
      *  while a translation runs, without changing the user's preference) */
     FDelegateHandle DisableThrottleHandle;
 
-    /** FCoreDelegates::OnPreExit entry that saves graph state before UObjects are purged on exit */
+    /** FCoreDelegates::OnPreExit entry (HandlePreExit) that runs before UObjects are purged on exit */
     FDelegateHandle PreExitHandle;
+
+    /** FCoreDelegates::OnEnginePreExit entry (CancelAsyncTasks), the earliest exit notification */
+    FDelegateHandle EnginePreExitHandle;
+
+    /** On exit, while UObjects still exist: cancels running MCP async tasks, then shuts down the state managers */
+    static void HandlePreExit();
+
+    /**
+     * Cancels running MCP async tasks (an in-flight translation and its LLM request). Runs at the start of
+     * UEngine::PreExit, before engine analytics flushes the HTTP manager (which would otherwise wait for the LLM
+     * request), and again on OnPreExit for exits that skip UEngine::PreExit.
+     */
+    static void CancelAsyncTasks();
 
     /** Saves dirty graph state and releases the tag and graph state singletons (tag manager first) */
     static void ShutdownStateManagers();

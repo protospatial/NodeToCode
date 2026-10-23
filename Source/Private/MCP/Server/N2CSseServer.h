@@ -32,11 +32,31 @@ namespace NodeToCodeSseServer
     void PrepareSseStreamForTask(const FGuid& TaskId);
 
     /**
-     * Cleans up a stream context for a task that has completed or been cancelled,
-     * especially if the client never connected to the SSE endpoint.
-     * @param TaskId The Task ID of the completed/cancelled task.
+     * How long a finished task's stream (its queued result) waits for a client that never connected before it is
+     * dropped. A client that connects in time reads the result and the stream is released when it closes.
      */
-    void CleanupStreamForCompletedTask(const FGuid& TaskId);
+    constexpr double CompletedStreamTtlSeconds = 600.0;
+
+    /**
+     * Drops the stream contexts of tasks that finished at least MaxAgeSeconds ago and that no client is reading.
+     * Runs on every PrepareSseStreamForTask, so streams nobody connects to do not accumulate.
+     * @param MaxAgeSeconds Minimum time since the task signalled completion.
+     * @return The number of streams dropped.
+     */
+    int32 ExpireCompletedStreams(double MaxAgeSeconds = CompletedStreamTtlSeconds);
+
+    /**
+     * Removes the stream context of a task that never started (for example its launch failed), unless a client is
+     * already reading it.
+     * @param TaskId The Task ID passed to PrepareSseStreamForTask.
+     */
+    void DiscardStreamForTask(const FGuid& TaskId);
+
+    /**
+     * Checks whether a stream context exists for the task (prepared and not yet released, discarded or expired).
+     * @param TaskId The Task ID.
+     */
+    bool HasStreamForTask(const FGuid& TaskId);
 
     /**
      * Starts the SSE HTTP server on a separate thread.
