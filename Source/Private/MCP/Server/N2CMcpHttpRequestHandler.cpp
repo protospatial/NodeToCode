@@ -5,6 +5,7 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Interfaces/IPluginManager.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Resources/N2CMcpResourceManager.h"
@@ -22,20 +23,41 @@ const TArray<FString> FN2CMcpHttpRequestHandler::SUPPORTED_PROTOCOL_VERSIONS = {
 	TEXT("2024-11-05")   // Previous version for compatibility
 };
 
-bool FN2CMcpHttpRequestHandler::ProcessMcpRequest(const FString& RequestBody, FString& OutResponseBody, int32& OutStatusCode, bool& OutWasInitializeCall)
+bool FN2CMcpHttpRequestHandler::ParseRequestBody(const TArray<uint8>& Body, TSharedPtr<FJsonValue>& OutJsonValue)
+{
+	OutJsonValue.Reset();
+	if (Body.Num() == 0)
+	{
+		return false;
+	}
+
+	// Convert exactly the bytes HTTPServer received (it sizes Body to Content-Length). The JSON reader then
+	// rejects anything after the root value except whitespace, so trailing garbage is a parse error.
+	const FUTF8ToTCHAR Converter(reinterpret_cast<const ANSICHAR*>(Body.GetData()), Body.Num());
+	const FString BodyString(Converter.Length(), Converter.Get());
+
+	TSharedPtr<FJsonValue> JsonValue;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(BodyString);
+	if (!FJsonSerializer::Deserialize(Reader, JsonValue) || !JsonValue.IsValid())
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to parse JSON-RPC request (%s): %s"),
+			*Reader->GetErrorMessage(), *BodyString.Left(500)));
+		return false;
+	}
+
+	OutJsonValue = JsonValue;
+	return true;
+}
+
+bool FN2CMcpHttpRequestHandler::ProcessMcpRequest(const TSharedPtr<FJsonValue>& JsonValue, FString& OutResponseBody, int32& OutStatusCode, bool& OutWasInitializeCall)
 {
 	// Default to success
 	OutStatusCode = 200;
 	OutWasInitializeCall = false;
 
-	// Parse the request body as JSON
-	TSharedPtr<FJsonValue> JsonValue;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RequestBody);
-
-	if (!FJsonSerializer::Deserialize(Reader, JsonValue) || !JsonValue.IsValid())
+	// The body was parsed once, by ParseRequestBody; a null value means it was not valid JSON
+	if (!JsonValue.IsValid())
 	{
-		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to parse JSON-RPC request: %s"), *RequestBody));
-		
 		// Create parse error response
 		FJsonRpcResponse ErrorResponse = FJsonRpcUtils::CreateErrorResponse(nullptr, JsonRpcErrorCodes::ParseError, TEXT("Parse error"));
 		OutResponseBody = FJsonRpcUtils::SerializeResponse(ErrorResponse);
@@ -547,7 +569,8 @@ bool FN2CMcpHttpRequestHandler::ProcessBatchRequest(const TArray<TSharedPtr<FJso
 	if (bHasResponses)
 	{
 		// Serialize the response array
-		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponseBody);
+		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutResponseBody);
 		if (!FJsonSerializer::Serialize(ResponseArray, Writer))
 		{
 			FN2CLogger::Get().LogError(TEXT("Failed to serialize batch response array"));
