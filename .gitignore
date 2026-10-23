@@ -86,3 +86,4 @@ DerivedDataCache/*
 .aider*
 CLAUDE.md
 /.claude
+/.codex
