@@ -183,6 +183,9 @@ private:
     /** Delegate handle for tab foregrounded subscription */
     FDelegateHandle OnTabForegroundedHandle;
 
+    /** Handle for the OnAssetEditorOpened subscription (a lambda, so RemoveAll(this) cannot remove it) */
+    FDelegateHandle OnAssetEditorOpenedHandle;
+
     /** Global flag tracking if any translation is in progress */
     bool bIsAnyTranslationInProgress = false;
 

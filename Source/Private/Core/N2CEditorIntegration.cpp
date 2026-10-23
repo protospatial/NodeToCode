@@ -1,6 +1,29 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CEditorIntegration.h"
+#include "Toolkits/ToolkitManager.h"
+
+namespace
+{
+	/**
+	 * The Blueprint editor open on Asset, or null when the asset's editor is not a Blueprint editor.
+	 * UBlueprint subclasses can have their own toolkits (for example Control Rig with RigVM.UseNewEditor=1),
+	 * so an IAssetEditorInstance for a UBlueprint is not necessarily an FBlueprintEditor.
+	 */
+	FBlueprintEditor* FindBlueprintEditorFor(UObject* Asset)
+	{
+		if (!Asset)
+		{
+			return nullptr;
+		}
+		TSharedPtr<IToolkit> Toolkit = FToolkitManager::Get().FindEditorForAsset(Asset);
+		if (!Toolkit.IsValid() || !Toolkit->IsBlueprintEditor())
+		{
+			return nullptr;
+		}
+		return static_cast<FBlueprintEditor*>(Toolkit.Get());
+	}
+}
 
 #include "BlueprintEditorModes.h"
 #include "Core/N2CNodeCollector.h"
@@ -239,7 +262,7 @@ void FN2CEditorIntegration::Initialize()
         UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
         if (ensure(AssetEditorSubsystem))
         {
-            AssetEditorSubsystem->OnAssetEditorOpened().AddLambda([this](UObject* Asset)
+            OnAssetEditorOpenedHandle = AssetEditorSubsystem->OnAssetEditorOpened().AddLambda([this](UObject* Asset)
             {
                 if (IAssetEditorInstance* EditorInstance = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorForAsset(Asset, false))
                 {
@@ -295,7 +318,11 @@ void FN2CEditorIntegration::Initialize()
                         continue;
                     }
 
-                    FBlueprintEditor* RawEditor = static_cast<FBlueprintEditor*>(EditorInstance);
+                    FBlueprintEditor* RawEditor = FindBlueprintEditorFor(Blueprint);
+                    if (!RawEditor)
+                    {
+                        continue; // not a Blueprint editor (custom toolkit)
+                    }
 
                     UEdGraph* FocusedGraph = RawEditor->GetFocusedGraph();
                     if (!FocusedGraph)
@@ -376,7 +403,8 @@ void FN2CEditorIntegration::Shutdown()
         UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
         if (AssetEditorSubsystem)
         {
-            AssetEditorSubsystem->OnAssetEditorOpened().RemoveAll(this);
+            AssetEditorSubsystem->OnAssetEditorOpened().Remove(OnAssetEditorOpenedHandle);
+            OnAssetEditorOpenedHandle.Reset();
         }
     }
 
@@ -405,8 +433,8 @@ void FN2CEditorIntegration::HandleAssetEditorOpened(UObject* Asset, IAssetEditor
         return; // Not a Blueprint, so ignore
     }
 
-    // Convert the EditorInstance to the correct type
-    FBlueprintEditor* BlueprintEditorPtr = static_cast<FBlueprintEditor*>(EditorInstance);
+    // Only real Blueprint editors: some UBlueprint subclasses open in their own toolkits
+    FBlueprintEditor* BlueprintEditorPtr = FindBlueprintEditorFor(OpenedBlueprint);
     if (!BlueprintEditorPtr)
     {
         return;
@@ -1083,7 +1111,11 @@ void FN2CEditorIntegration::OnTabForegrounded(TSharedPtr<SDockTab> PreviouslyAct
                         continue;
                     }
 
-                    FBlueprintEditor* RawEditor = static_cast<FBlueprintEditor*>(EditorInstance);
+                    FBlueprintEditor* RawEditor = FindBlueprintEditorFor(Blueprint);
+                    if (!RawEditor)
+                    {
+                        continue; // not a Blueprint editor (custom toolkit)
+                    }
 
                     UEdGraph* FocusedGraph = RawEditor->GetFocusedGraph();
                     if (!FocusedGraph)
