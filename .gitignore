@@ -92,7 +92,8 @@ __pycache__/
 /.aider.tags.cache.v3
 .aider.chat.history.md
 .aider.input.history
-/Config
+/Config/*
+!/Config/FilterPlugin.ini
 /Development
 .aider*
 # Agent instructions (CLAUDE.md is local-only, AGENTS.md is tracked)
