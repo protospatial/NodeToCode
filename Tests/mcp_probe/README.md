@@ -31,6 +31,55 @@ commit as the fix, and runs the probe on 5.6, 5.7 and 5.8.
 The session temporarily writes the port and Allow MCP Python Execution into the host's `Saved/Config/<Platform>Editor`
 files and restores them when it stops; the host's shared `Config/` folder is never changed.
 
+## E05 regression probe
+
+`e05_regressions.py` proves the epic E05 fixes: every p0-6 input returns an error instead of crashing the editor,
+and every p0-7 case leaves user data intact. Stdlib only.
+
+```bash
+# MCP cases against a running editor, for example one opened with .\build.ps1 -UEVersion 5.8 -Launch
+python -I Tests/mcp_probe/e05_regressions.py --url http://127.0.0.1:27000/mcp
+
+# Everything headless for one engine: MCP cases on a headless editor it starts and stops, the headless Python
+# checks, and the automation tests (NodeToCode.Robustness + NodeToCode.Secrets.Store; --all-tests runs NodeToCode)
+python -I Tests/mcp_probe/e05_regressions.py --headless --engine G:/UE/UE_5.8 \
+  --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+```
+
+It prints one `PASS`, `FAIL` or `SKIP` line per case (per check file and per automation test with `--headless`)
+and exits non-zero on any failure. The MCP run ends by checking that the editor still answers. Use `--no-mcp` with
+`--headless` to run only the checks and the tests, `--tests <filter>` to change the automation filter.
+
+- The graph cases set up scratch Blueprints with `run-python`, so a running editor needs Allow MCP Python Execution
+  (Editor Preferences, or `bAllowMcpPythonExecution=True` under `[/Script/NodeToCode.N2CUserSettings]` in the host's
+  `Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini` before it starts); without it they print `SKIP`.
+  The headless run turns it on for its own session.
+- Everything the probe makes is under `/Game/E05Probe`, and the folder is deleted at the end (a `PASS scratch
+  folder` line). run-python executes in the editor's shared `__main__` namespace, so the probe runs each snippet
+  inside a function: a module-level variable holding an asset would keep it loaded and block the delete.
+- The headless checks run through `UnrealEditor-Cmd -ExecutePythonScript=<check> -nullrhi` and the tests through
+  `-ExecCmds="Automation RunTests <filter>" -TestExit="Automation Test Queue Empty"`; logs go to `logs/`.
+
+| Item | Covered by | Card |
+|---|---|---|
+| p0-6 `prompts/get` with null, array and object arguments | MCP `prompts_get_non_string_argument` (-32602 each) | 0043 |
+| p0-6 1,100-character `typeIdentifier` / `variableName` | MCP `create_variable_long_type`, `create_local_variable_long_name`, `get_local_variable_node_long_name` | 0043 |
+| p0-6 page 2147483647 | MCP `read_content_browser_huge_page`; test `NodeToCode.Robustness.Pagination` | 0043 |
+| p0-6 `create_user_defined_struct` on unmounted and invalid paths; `save_struct` on a read-only file | `e05_struct_check.py` | 0048 |
+| p0-6 `SelectText` out of range | test `NodeToCode.Robustness.CodeEditor` (clamps lines and columns on a live `SN2CCodeEditor`, and an empty document) | 0063 |
+| p0-6 theme change with a live code editor | test `NodeToCode.Robustness.CodeEditor` (a widget's brush survives `Reinitialize` and is retinted in place); the on-screen check is interactive gate 0378 | 0063 |
+| p0-6 non-Blueprint asset editors | MCP `non_blueprint_asset_editor`: a Control Rig opened with `RigVM.UseNewEditor=1` (a `UBlueprint` whose toolkit is not an `FBlueprintEditor`) stays open through two overlay polls, the editor answers, and it is not listed as a Blueprint editor | 0044 |
+| p0-7 `search-blueprint-nodes` leaves the graph unchanged | MCP `search_blueprint_nodes_read_only` (node set, node count and package clean after four searches); test `NodeToCode.Robustness.SearchIsReadOnly` | 0050 |
+| p0-7 `connect-pins` fan-in keeps both links | MCP `connect_pins_fan_in_keeps_both_links`, `connect_pins_refuses_silent_replace` (a link that would replace one fails with `WOULD_BREAK_EXISTING_LINK`), `bridge_connect_pins_fan_in_keeps_both_links` (the Python bridge's `ConnectPins`) | 0046 |
+| p0-7 `add-function-return-pin` dirties the package | MCP `add_return_pin_marks_package_dirty`; test `NodeToCode.Robustness.MarkModifiedDirties` | 0064 |
+| p0-7 DataTable append keeps rows | `e05_datatable_check.py` | 0065 |
+| p0-7 secrets survive a truncated file | test `NodeToCode.Secrets.Store` ("sets a truncated file aside and never writes over it", "finishes a save that stopped before the temporary file replaced the file") | 0062, 0067 |
+| p0-7 script registry survives a truncated file | `e05_registry_check.py` | 0067 |
+| p0-7 graph-state file survives a truncated file | test `NodeToCode.Robustness.GraphStatePersistence` | 0066 |
+
+The default test filter also runs the other `NodeToCode.Robustness` tests (async task cleanup and cancel, LLM
+request cancel, `ExecuteOnGameThread` timeout, logger concurrency, LLM service GC, `ProcessSingleNode`).
+
 ## Live provider checks
 
 The editor uses `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`) from
