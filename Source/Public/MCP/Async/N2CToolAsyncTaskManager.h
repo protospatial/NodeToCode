@@ -65,6 +65,15 @@ public:
 		const FString& ProgressToken, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId);
 
 	/**
+	 * Launches an already created task: tracks it under Task->GetTaskId() and its progress token, binds its delegates
+	 * and starts it on the game thread. LaunchTask uses this after creating the task for the tool; tests use it to run
+	 * their own task types.
+	 * @return The task ID
+	 */
+	FGuid LaunchTaskInstance(const TSharedRef<IN2CToolAsyncTask, ESPMode::ThreadSafe>& Task, const FString& ToolName,
+		const TSharedPtr<FJsonObject>& Arguments, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId);
+
+	/**
 	 * Attempts to cancel a running task
 	 * @param TaskId The ID of the task to cancel
 	 * @return true if cancellation was initiated, false if task not found or already completed
@@ -106,16 +115,35 @@ public:
 	TArray<FGuid> GetRunningTaskIds() const;
 
 	/**
-	 * Cleans up completed tasks
-	 * Should be called periodically to free memory
+	 * Checks whether a task with this progress token finished recently (within CompletedTokenTtlSeconds). A finished
+	 * task is no longer tracked, so this is how nodetocode/cancelTask tells "already completed" from "not found".
+	 */
+	bool WasProgressTokenCompleted(const FString& ProgressToken) const;
+
+	/**
+	 * Removes tracked tasks that have already reported, and drops SSE streams of finished tasks that no client read
+	 * within the SSE TTL. OnTaskCompleted already removes each task as it reports, so this is a safety net.
 	 */
 	void CleanupCompletedTasks();
 
 	/**
-	 * Cancels all running tasks
-	 * Called during shutdown
+	 * Cancels all running tasks, then removes every task that has reported. Called on editor exit (OnPreExit, while
+	 * UObjects still exist) and in ShutdownModule before the servers stop. On the game thread, tasks that cancel their
+	 * work there (translate-focused-blueprint) report and are removed before this returns.
 	 */
 	void CancelAllTasks();
+
+	/** Number of tracked (launched and not yet reported) tasks */
+	int32 GetTrackedTaskCount() const;
+
+	/** Number of tracked progress-token mappings */
+	int32 GetTrackedProgressTokenCount() const;
+
+	/** How long a finished task's progress token is remembered for WasProgressTokenCompleted */
+	static constexpr double CompletedTokenTtlSeconds = 600.0;
+
+	/** At most this many finished tokens are remembered; the oldest go first */
+	static constexpr int32 MaxCompletedTokens = 1024;
 
 private:
 	// Private constructor for singleton
@@ -156,6 +184,12 @@ private:
 
 	/** Map of progress tokens to task IDs for quick lookup */
 	TMap<FString, FGuid> ProgressTokenToTaskId;
+
+	/** Progress tokens of recently finished tasks, with FPlatformTime::Seconds() of completion */
+	TMap<FString, double> CompletedProgressTokens;
+
+	/** Drops expired and excess entries from CompletedProgressTokens. Caller holds TaskMapLock. */
+	void PruneCompletedTokens(double Now);
 
 	/** Thread safety for task map access */
 	mutable FCriticalSection TaskMapLock;

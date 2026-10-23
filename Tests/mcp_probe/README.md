@@ -52,6 +52,14 @@ its environment when no key is saved, so a live check never types or saves a key
   the log shows the LLM request cancelled and the task completed once, a second cancel answers
   `task_already_completed`, the editor stays up, and a control translation run to the end returns code. It also
   scans the editor log and report for key values. Report: `logs/live_translate_cancel.json`.
+- `live_translate_exit.py --engine ... --project ... [--windowed] [--provider anthropic --model claude-haiku-5-5]`
+  exits the editor mid-translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, and
+  `--quit-after` seconds in (default 1) closes the Blueprint editor and calls `unreal.SystemLibrary.quit_editor()`.
+  It checks the editor exits by itself with code 0 in under 10 s (not waiting for the LLM), the log shows
+  `CancelAllTasks` cancelled the task on exit before the module shut down and UObjects were purged, the LLM request
+  was cancelled and the task completed once, no response was handled after the cancel, and there is no crash, ensure
+  or "context not found" line. Use `--windowed` on UE 5.6 and 5.7 (closing a Blueprint editor under `-nullrhi` fails
+  there with no translation involved). Report: `logs/live_translate_exit.json`.
 - `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
   runs real translations through several providers and models in one headless editor (`--list` prints the case
   ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session so each request payload is

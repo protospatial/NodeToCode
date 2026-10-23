@@ -156,7 +156,7 @@ timeout.
 #include "MCP/Async/N2CToolAsyncTaskBase.h"
 #include "LLM/N2CLLMRequestHandle.h"
 
-class FN2CMyAsyncTask : public FN2CToolAsyncTaskBase, public TSharedFromThis<FN2CMyAsyncTask, ESPMode::ThreadSafe>
+class FN2CMyAsyncTask : public FN2CToolAsyncTaskBase // the base is already TSharedFromThis: use SharedThis(this)
 {
 public:
     FN2CMyAsyncTask(const FGuid& TaskId, const FString& ProgressToken,
@@ -182,7 +182,7 @@ void FN2CMyAsyncTask::Execute()
     }
     ReportProgress(0.1f, TEXT("Sending request..."));
 
-    TWeakPtr<FN2CMyAsyncTask, ESPMode::ThreadSafe> WeakTask = AsShared();
+    TWeakPtr<FN2CMyAsyncTask, ESPMode::ThreadSafe> WeakTask = SharedThis(this);
     Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, FOnLLMResponseReceived::CreateLambda(
         [WeakTask](const FString& Response)
         {

@@ -16,7 +16,7 @@
  * reports progress and enforces the timeout. Cancel and timeout cancel the in-flight request through its
  * FN2CLLMRequestHandle, so no callback arrives after the task has reported.
  */
-class FN2CTranslateBlueprintAsyncTask : public FN2CToolAsyncTaskBase, public TSharedFromThis<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe>
+class FN2CTranslateBlueprintAsyncTask : public FN2CToolAsyncTaskBase
 {
 public:
     /** Starts the LLM request for the given provider, model and language overrides and returns its handle */

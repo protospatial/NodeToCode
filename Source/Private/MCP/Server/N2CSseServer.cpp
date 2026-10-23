@@ -3,6 +3,7 @@
 #include "MCP/Server/N2CSseServer.h"
 #include "Utils/N2CLogger.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "HAL/CriticalSection.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -70,6 +71,7 @@ namespace NodeToCodeSseServer
         std::atomic<bool> stop_requested{false};
         FGuid taskId;
         std::atomic<bool> is_http_stream_active{false}; // True when httplib is actively using this for a response stream
+        std::atomic<double> completed_at{0.0}; // FPlatformTime::Seconds() when the task signalled completion, 0 before
     };
 
     // Map for active SSE clients
@@ -88,6 +90,9 @@ namespace NodeToCodeSseServer
 
     void PrepareSseStreamForTask(const FGuid& TaskId)
     {
+        // Drop finished streams no client came for, so they do not pile up over a long session
+        ExpireCompletedStreams(CompletedStreamTtlSeconds);
+
         FScopeLock Lock(&GActiveSseClientsMutex);
         if (GActiveSseClients.Contains(TaskId))
         {
@@ -103,21 +108,53 @@ namespace NodeToCodeSseServer
         FN2CLogger::Get().Log(FString::Printf(TEXT("SSE: Prepared stream context for TaskId %s. Client connection pending."), *TaskId.ToString()), EN2CLogSeverity::Info);
     }
 
-    void CleanupStreamForCompletedTask(const FGuid& TaskId)
+    int32 ExpireCompletedStreams(double MaxAgeSeconds)
+    {
+        const double Now = FPlatformTime::Seconds();
+        TArray<FGuid> Expired;
+        {
+            FScopeLock Lock(&GActiveSseClientsMutex);
+            for (auto It = GActiveSseClients.CreateIterator(); It; ++It)
+            {
+                const TSharedPtr<SseClientConnection>& Conn = It.Value();
+                if (!Conn.IsValid())
+                {
+                    It.RemoveCurrent();
+                    continue;
+                }
+                // A stream being read is released by its releaser lambda when it closes
+                const double CompletedAt = Conn->completed_at.load();
+                if (Conn->stop_requested.load() && !Conn->is_http_stream_active.load() && CompletedAt > 0.0
+                    && Now - CompletedAt >= MaxAgeSeconds)
+                {
+                    Expired.Add(It.Key());
+                    It.RemoveCurrent();
+                }
+            }
+        }
+
+        for (const FGuid& TaskId : Expired)
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("SSE: Dropped the stream for TaskId %s: the task finished and no client connected."),
+                *TaskId.ToString()), EN2CLogSeverity::Debug);
+        }
+        return Expired.Num();
+    }
+
+    void DiscardStreamForTask(const FGuid& TaskId)
     {
         FScopeLock Lock(&GActiveSseClientsMutex);
-        TSharedPtr<SseClientConnection>* FoundConnPtr = GActiveSseClients.Find(TaskId);
-        if (FoundConnPtr && FoundConnPtr->IsValid())
+        const TSharedPtr<SseClientConnection>* FoundConnPtr = GActiveSseClients.Find(TaskId);
+        if (FoundConnPtr && (!FoundConnPtr->IsValid() || !(*FoundConnPtr)->is_http_stream_active.load()))
         {
-            // If the task is marked to stop (completed/cancelled) AND httplib is not actively streaming for it,
-            // then it's safe to clean up. This handles cases where client never connected.
-            if ((*FoundConnPtr)->stop_requested.load() && !(*FoundConnPtr)->is_http_stream_active.load()) {
-                GActiveSseClients.Remove(TaskId);
-                FN2CLogger::Get().Log(FString::Printf(TEXT("SSE: Cleaned up orphaned/completed stream for TaskId %s."), *TaskId.ToString()), EN2CLogSeverity::Info);
-            }
-            // If is_http_stream_active is true, the releaser lambda will handle cleanup when the stream ends.
-            // If stop_requested is false, the task isn't fully done from SSE perspective, so don't remove yet.
+            GActiveSseClients.Remove(TaskId);
         }
+    }
+
+    bool HasStreamForTask(const FGuid& TaskId)
+    {
+        FScopeLock Lock(&GActiveSseClientsMutex);
+        return GActiveSseClients.Contains(TaskId);
     }
 
     std::string FormatSseMessage(const FString& EventType, const FString& JsonData)
@@ -210,6 +247,7 @@ namespace NodeToCodeSseServer
             {
                 std::lock_guard<std::mutex> q_lock(ClientConn->queue_mutex);
                 ClientConn->stop_requested.store(true);
+                ClientConn->completed_at.store(FPlatformTime::Seconds());
             }
             ClientConn->cv.notify_one();
             FN2CLogger::Get().Log(FString::Printf(TEXT("SSE: Signaled completion for TaskId %s."), *TaskId.ToString()), EN2CLogSeverity::Info);

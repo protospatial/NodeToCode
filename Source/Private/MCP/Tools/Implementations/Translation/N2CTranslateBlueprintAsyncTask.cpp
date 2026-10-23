@@ -47,7 +47,7 @@ void FN2CTranslateBlueprintAsyncTask::Execute()
 
     // The callback holds the shared state by value and the task weakly: a callback that arrives after the task gave up
     // or was destroyed touches nothing but the shared state.
-    const TWeakPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> WeakTask = AsShared();
+    const TWeakPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> WeakTask = SharedThis(this);
     const TSharedRef<FCallbackState, ESPMode::ThreadSafe> State = CallbackState;
     FOnLLMResponseReceived OnLLMResponse = FOnLLMResponseReceived::CreateLambda(
         [WeakTask, State](const FString& LLMResponse)
@@ -97,7 +97,7 @@ void FN2CTranslateBlueprintAsyncTask::RequestCancel()
     }
 
     // The request handle and the completion live on the game thread
-    const TWeakPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> WeakTask = AsShared();
+    const TWeakPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> WeakTask = SharedThis(this);
     AsyncTask(ENamedThreads::GameThread, [WeakTask]()
     {
         if (const TSharedPtr<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> Task = WeakTask.Pin())

@@ -8,6 +8,7 @@
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "Utils/N2CLogger.h"
 #include "Async/TaskGraphInterfaces.h"
+#include "HAL/PlatformTime.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -20,15 +21,22 @@ FN2CToolAsyncTaskManager& FN2CToolAsyncTaskManager::Get()
 FGuid FN2CToolAsyncTaskManager::LaunchTask(const FGuid& InTaskId, const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments,
 	const FString& ProgressToken, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId)
 {
-	FGuid TaskId = InTaskId; // USE THE PASSED-IN TASK ID
-	
-	// Create the async task
-	TSharedPtr<IN2CToolAsyncTask> AsyncTask = CreateAsyncTask(ToolName, TaskId, ProgressToken, Arguments);
+	// Create the async task under the caller's task ID (the SSE stream was prepared for it)
+	TSharedPtr<IN2CToolAsyncTask> AsyncTask = CreateAsyncTask(ToolName, InTaskId, ProgressToken, Arguments);
 	if (!AsyncTask.IsValid())
 	{
 		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to create async task for tool: %s"), *ToolName));
 		return FGuid();
 	}
+
+	return LaunchTaskInstance(AsyncTask.ToSharedRef(), ToolName, Arguments, SessionId, OriginalRequestId);
+}
+
+FGuid FN2CToolAsyncTaskManager::LaunchTaskInstance(const TSharedRef<IN2CToolAsyncTask, ESPMode::ThreadSafe>& AsyncTask,
+	const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId)
+{
+	const FGuid TaskId = AsyncTask->GetTaskId();
+	const FString ProgressToken = AsyncTask->GetProgressToken();
 
 	// Create task context
 	auto TaskContext = MakeShared<FN2CAsyncTaskContext>();
@@ -189,35 +197,79 @@ TArray<FGuid> FN2CToolAsyncTaskManager::GetRunningTaskIds() const
 	return RunningIds;
 }
 
-void FN2CToolAsyncTaskManager::CleanupCompletedTasks()
+bool FN2CToolAsyncTaskManager::WasProgressTokenCompleted(const FString& ProgressToken) const
 {
 	FScopeLock Lock(&TaskMapLock);
+	const double* CompletedAt = CompletedProgressTokens.Find(ProgressToken);
+	return CompletedAt && FPlatformTime::Seconds() - *CompletedAt < CompletedTokenTtlSeconds;
+}
 
-	TArray<FGuid> TasksToRemove;
-
-	for (const auto& Pair : RunningTasks)
+void FN2CToolAsyncTaskManager::PruneCompletedTokens(double Now)
+{
+	for (auto It = CompletedProgressTokens.CreateIterator(); It; ++It)
 	{
-		if (!Pair.Value.IsValid() || !Pair.Value->Task.IsValid() || Pair.Value->Task->IsComplete())
+		if (Now - It.Value() >= CompletedTokenTtlSeconds)
 		{
-			TasksToRemove.Add(Pair.Key);
+			It.RemoveCurrent();
 		}
 	}
 
-	for (const FGuid& TaskIdToRemove : TasksToRemove) // Renamed TaskId to TaskIdToRemove for clarity
+	while (CompletedProgressTokens.Num() > MaxCompletedTokens)
 	{
-		auto TaskContextPtr = RunningTasks.Find(TaskIdToRemove);
-		if (TaskContextPtr && TaskContextPtr->IsValid())
+		const FString* Oldest = nullptr;
+		double OldestTime = TNumericLimits<double>::Max();
+		for (const TPair<FString, double>& Pair : CompletedProgressTokens)
 		{
-			// Call the new cleanup function in NodeToCodeSseServer
-			NodeToCodeSseServer::CleanupStreamForCompletedTask((*TaskContextPtr)->TaskId);
-			ProgressTokenToTaskId.Remove((*TaskContextPtr)->ProgressToken);
+			if (Pair.Value < OldestTime)
+			{
+				OldestTime = Pair.Value;
+				Oldest = &Pair.Key;
+			}
 		}
-		RunningTasks.Remove(TaskIdToRemove);
+		if (!Oldest)
+		{
+			break;
+		}
+		const FString OldestToken = *Oldest;
+		CompletedProgressTokens.Remove(OldestToken);
+	}
+}
+
+void FN2CToolAsyncTaskManager::CleanupCompletedTasks()
+{
+	int32 NumRemoved = 0;
+	{
+		FScopeLock Lock(&TaskMapLock);
+		const double Now = FPlatformTime::Seconds();
+		for (auto It = RunningTasks.CreateIterator(); It; ++It)
+		{
+			const TSharedPtr<FN2CAsyncTaskContext>& Context = It.Value();
+			if (Context.IsValid() && Context->Task.IsValid() && !Context->Task->IsComplete())
+			{
+				continue;
+			}
+			if (Context.IsValid())
+			{
+				const FGuid* MappedTaskId = ProgressTokenToTaskId.Find(Context->ProgressToken);
+				if (MappedTaskId && *MappedTaskId == It.Key())
+				{
+					ProgressTokenToTaskId.Remove(Context->ProgressToken);
+				}
+				CompletedProgressTokens.Add(Context->ProgressToken, Now);
+			}
+			It.RemoveCurrent();
+			++NumRemoved;
+		}
+		PruneCompletedTokens(Now);
 	}
 
-	if (TasksToRemove.Num() > 0)
+	// The SSE side keeps a finished task's result for a client that connects late, up to its TTL
+	const int32 NumStreamsExpired = NodeToCodeSseServer::ExpireCompletedStreams();
+
+	if (NumRemoved > 0 || NumStreamsExpired > 0)
 	{
-		FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned up %d completed async tasks"), TasksToRemove.Num()), EN2CLogSeverity::Debug);
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned up %d completed async tasks and %d expired SSE streams"),
+			NumRemoved, NumStreamsExpired), EN2CLogSeverity::Debug);
 	}
 }
 
@@ -235,13 +287,32 @@ void FN2CToolAsyncTaskManager::CancelAllTasks()
 		}
 	}
 
-	// Cancel outside the lock: each task reports its cancelled result through OnTaskCompleted
+	// Cancel outside the lock: each task reports its cancelled result through OnTaskCompleted, which removes it
 	for (const TSharedPtr<IN2CToolAsyncTask>& Task : TasksToCancel)
 	{
 		Task->RequestCancel();
 	}
 
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Requested cancellation for all %d running tasks"), TasksToCancel.Num()), EN2CLogSeverity::Info);
+	// Drop whatever has reported but is still tracked (for example a task whose report was queued)
+	CleanupCompletedTasks();
+
+	if (TasksToCancel.Num() > 0)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Requested cancellation for all %d running tasks (%d still tracked)"),
+			TasksToCancel.Num(), GetTrackedTaskCount()), EN2CLogSeverity::Info);
+	}
+}
+
+int32 FN2CToolAsyncTaskManager::GetTrackedTaskCount() const
+{
+	FScopeLock Lock(&TaskMapLock);
+	return RunningTasks.Num();
+}
+
+int32 FN2CToolAsyncTaskManager::GetTrackedProgressTokenCount() const
+{
+	FScopeLock Lock(&TaskMapLock);
+	return ProgressTokenToTaskId.Num();
 }
 
 TSharedPtr<IN2CToolAsyncTask> FN2CToolAsyncTaskManager::CreateAsyncTask(const FString& ToolName, const FGuid& TaskId, 
@@ -290,6 +361,22 @@ void FN2CToolAsyncTaskManager::OnTaskCompleted(const FGuid& TaskId, const FMcpTo
 
 	// Signal the SSE connection to close after sending the response
 	NodeToCodeSseServer::SignalSseClientCompletion(TaskId);
+
+	// The result is delivered: stop tracking the task. The SSE stream keeps the result for a client that has not
+	// connected yet (up to its TTL), and the token is remembered so a late cancel answers task_already_completed.
+	// TaskContext (and the task's own ReportComplete) keep the task alive until this call returns.
+	{
+		FScopeLock Lock(&TaskMapLock);
+		RunningTasks.Remove(TaskId);
+		const FGuid* MappedTaskId = ProgressTokenToTaskId.Find(TaskContext->ProgressToken);
+		if (MappedTaskId && *MappedTaskId == TaskId)
+		{
+			ProgressTokenToTaskId.Remove(TaskContext->ProgressToken);
+		}
+		const double Now = FPlatformTime::Seconds();
+		PruneCompletedTokens(Now);
+		CompletedProgressTokens.Add(TaskContext->ProgressToken, Now);
+	}
 }
 
 void FN2CToolAsyncTaskManager::OnTaskProgress(const FGuid& TaskId, float Progress, const FString& Message)

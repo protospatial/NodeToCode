@@ -123,7 +123,8 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
     *   Uses httplib for standalone SSE HTTP server (vendored cpp-httplib, version and hash in `ThirdParty/cpp-httplib/README.md`)
     *   Request limits: at most 64 header fields, 8 KB per header line, a 2 KB request target and a 64 KB body (400, 414 or 413 above these), 5 s read and write timeouts; checked by `Tests/mcp_probe` P6
     *   `StartSseServer()`, `StopSseServer()`, `IsSseServerRunning()`
-    *   `PrepareSseStreamForTask()`, `CleanupStreamForCompletedTask()`
+    *   `PrepareSseStreamForTask()`, `DiscardStreamForTask()`, `HasStreamForTask()`
+    *   `ExpireCompletedStreams()` - a finished task's result waits on its stream for a late client for `CompletedStreamTtlSeconds` (10 min), then is dropped; runs on every `PrepareSseStreamForTask()`
     *   `PushFormattedSseEventToClient()`, `SignalSseClientCompletion()`
     *   `FormatSseMessage()` for SSE event formatting
     *   `PushNotificationToAllClients()` for broadcast notifications
@@ -138,7 +139,7 @@ Supports long-running tool operations with progress streaming:
     *   `IsCancelled()` - Check cancellation state
     *   `GetTaskId()`, `GetProgressToken()`, `GetToolName()`
 
-*   **`N2CToolAsyncTaskBase.h/.cpp`**: Base class for async tasks
+*   **`N2CToolAsyncTaskBase.h/.cpp`**: Base class for async tasks (derives `TSharedFromThis<FN2CToolAsyncTaskBase, ESPMode::ThreadSafe>`; reports queued to the game thread hold the task weakly, so derived tasks use `SharedThis(this)`)
     *   `ReportProgress(float Progress, const FString& Message)` - Progress updates
     *   `ReportComplete(const FMcpToolCallResult& Result)` - Task completion
     *   `CheckCancellationAndReport()` - Cancellation check with auto-reporting
@@ -146,10 +147,12 @@ Supports long-running tool operations with progress streaming:
 
 *   **`N2CToolAsyncTaskManager.h/.cpp`**: Task lifecycle management
     *   Singleton for managing all async tasks
-    *   `LaunchTask()` - Start async execution
+    *   `LaunchTask()` - Start async execution; `LaunchTaskInstance()` launches an already created task (tests)
     *   `CancelTask()`, `CancelTaskByProgressToken()` - Cancellation
     *   `GetTaskContext()`, `IsTaskRunning()`, `GetRunningTaskIds()`
-    *   `CleanupCompletedTasks()`, `CancelAllTasks()`
+    *   A task stops being tracked once it has delivered its result (`OnTaskCompleted`); its progress token is remembered for 10 min so `nodetocode/cancelTask` answers `task_already_completed` (`WasProgressTokenCompleted()`)
+    *   `CleanupCompletedTasks()` (safety net), `CancelAllTasks()` - called from `FCoreDelegates::OnPreExit` (before UObjects are purged) and in `ShutdownModule` before the SSE server stops
+    *   `GetTrackedTaskCount()`, `GetTrackedProgressTokenCount()`
     *   Thread-safe with FCriticalSection
 
 ## Validation Framework (`Source/Public/MCP/Validation/`)

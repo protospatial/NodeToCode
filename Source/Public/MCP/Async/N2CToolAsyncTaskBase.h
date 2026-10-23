@@ -8,9 +8,14 @@
 
 /**
  * Base implementation for asynchronous MCP tool tasks
- * Provides common functionality for progress reporting, cancellation, and completion handling
+ * Provides common functionality for progress reporting, cancellation, and completion handling.
+ *
+ * Tasks are owned through a thread-safe TSharedPtr (the task manager drops its reference once the task has reported).
+ * Reports queued to the game thread hold the task weakly, and ReportComplete keeps the task alive while the completion
+ * delegate runs, so a delegate that releases the last reference never leaves the task running on freed memory.
+ * Derived tasks get their own type from SharedThis(this).
  */
-class NODETOCODE_API FN2CToolAsyncTaskBase : public IN2CToolAsyncTask
+class NODETOCODE_API FN2CToolAsyncTaskBase : public IN2CToolAsyncTask, public TSharedFromThis<FN2CToolAsyncTaskBase, ESPMode::ThreadSafe>
 {
 public:
 	/**

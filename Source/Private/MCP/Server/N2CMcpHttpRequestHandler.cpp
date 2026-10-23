@@ -824,9 +824,15 @@ bool FN2CMcpHttpRequestHandler::HandleCancelTask(const TSharedPtr<FJsonValue>& P
 	}
 	else
 	{
-		// Task not found or already completed
+		// Task not found or already completed. A task stops being tracked once it has reported, so a finished task
+		// is recognised by its remembered progress token.
 		auto TaskContext = FN2CToolAsyncTaskManager::Get().GetTaskContextByProgressToken(ProgressToken);
-		if (!TaskContext.IsValid())
+		if (!TaskContext.IsValid() && FN2CToolAsyncTaskManager::Get().WasProgressTokenCompleted(ProgressToken))
+		{
+			ResultObject->SetStringField(TEXT("status"), TEXT("task_already_completed"));
+			FN2CLogger::Get().Log(FString::Printf(TEXT("Task already completed for progress token: %s"), *ProgressToken), EN2CLogSeverity::Info);
+		}
+		else if (!TaskContext.IsValid())
 		{
 			ResultObject->SetStringField(TEXT("status"), TEXT("task_not_found"));
 			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Task not found for progress token: %s"), *ProgressToken));
