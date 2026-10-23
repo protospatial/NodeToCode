@@ -62,7 +62,7 @@ public class NodeToCode : ModuleRules
 		);
 
 		// --- httplib.h Integration ---
-		// httplib.h is header-only and requires C++11 features at a minimum.
+		// httplib.h (cpp-httplib, version and hash in ThirdParty/cpp-httplib/README.md) is header-only and requires C++11 at a minimum.
 		// Modern UE (5.x) uses C++17 or C++20 by default, so this should be fine.
 		// httplib.h handles its own Windows socket library linking via #pragma comment(lib, "ws2_32.lib").
 	}

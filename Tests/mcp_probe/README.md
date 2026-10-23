@@ -20,6 +20,7 @@ skips the probe that launches a second editor.
 | P3 | A two-element JSON-RPC batch is answered element by element, or rejected with -32600 | mcp-transport-9 |
 | P4 | With the MCP port already held by another process, the editor logs that the server started | mcp-transport-10 |
 | P5 | The notification server (port+1) accepts a connection on a non-loopback local address | mcp-transport-14 |
+| P6 | The notification server (port+1) answers 200 to `/mcp/notifications` with 10,000 headers, a 10 MB chunked body or a 4 KB request target, or stops answering afterwards. Evidence also records the editor's working set before and after, and `task_stream`: whether a `translate-focused-blueprint` task stream delivers its `progress` and `response` events (not gating; headless, the task fails after its first progress report) | auth-settings-module-17, dx-docs-release-4, p0-9 |
 
 Statuses are `reproduced` (the finding's defect is present), `fixed`, or `skipped` (with a reason). P4 holds the
 port with a plain socket instead of a second editor on a copy of the project; the effect on the bind is the same.

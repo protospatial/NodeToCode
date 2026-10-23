@@ -19,7 +19,40 @@
 #pragma warning(disable : 4244) // conversion from 'X' to 'Y', possible loss of data
 #endif
 
+// Request limits for the SSE listener. Both routes are header-only GETs, so these are far above what a real
+// client sends; anything larger is rejected before it can grow editor memory. httplib.h is included only in
+// this file, so the macros cannot disagree with another translation unit.
+#define CPPHTTPLIB_HEADER_MAX_COUNT 64            // header fields per request (431 above this)
+#define CPPHTTPLIB_HEADER_MAX_LENGTH 8192         // bytes per header line
+#define CPPHTTPLIB_REQUEST_URI_MAX_LENGTH 2048    // bytes in the request target (414 above this)
+
+// cpp-httplib refuses to compile when _WIN32_WINNT is below Windows 10 (0x0A00). UE 5.7 and later target
+// Windows 10 already; UE 5.6 still targets Windows 7 (0x0601) on x64, although its editor only runs on
+// Windows 10 or later. For this file only, raise the macro around the include. windows.h was included earlier
+// at the lower version, so the Windows 8+ kernel32 functions httplib calls from always-compiled code (its
+// read-only file mapping) are declared here as the Windows SDK declares them.
+#if PLATFORM_WINDOWS && defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0A00
+#define N2C_HTTPLIB_RAISED_WIN32_WINNT 1
+#pragma push_macro("_WIN32_WINNT")
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+extern "C"
+{
+    __declspec(dllimport) HANDLE __stdcall CreateFile2(LPCWSTR lpFileName, DWORD dwDesiredAccess,
+        DWORD dwShareMode, DWORD dwCreationDisposition, struct _CREATEFILE2_EXTENDED_PARAMETERS* pCreateExParams);
+    __declspec(dllimport) HANDLE __stdcall CreateFileMappingFromApp(HANDLE hFile,
+        PSECURITY_ATTRIBUTES SecurityAttributes, ULONG PageProtection, ULONG64 MaximumSize, PCWSTR Name);
+    __declspec(dllimport) PVOID __stdcall MapViewOfFileFromApp(HANDLE hFileMappingObject, ULONG DesiredAccess,
+        ULONG64 FileOffset, SIZE_T NumberOfBytesToMap);
+}
+#endif
+
 #include "httplib.h"
+
+#ifdef N2C_HTTPLIB_RAISED_WIN32_WINNT
+#pragma pop_macro("_WIN32_WINNT")
+#undef N2C_HTTPLIB_RAISED_WIN32_WINNT
+#endif
 
 #if PLATFORM_WINDOWS
 #pragma warning(pop)
@@ -198,6 +231,12 @@ namespace NodeToCodeSseServer
         GSseHttpServer = MakeShareable(new httplib::Server());
 
         if (GSseHttpServer.IsValid()) {
+            // Both routes are GETs with no body: cap any body at 64 KB (413 above this, including chunked
+            // bodies), and bound how long a client may take to send its request or accept a write.
+            GSseHttpServer->set_payload_max_length(64 * 1024);
+            GSseHttpServer->set_read_timeout(5, 0);
+            GSseHttpServer->set_write_timeout(5, 0);
+
             // Same policy as the /mcp listener: only loopback Origins and Hosts, so a web page or a
             // DNS-rebinding attack cannot open the notification streams.
             GSseHttpServer->set_pre_routing_handler([](const httplib::Request& req, httplib::Response& res) {
