@@ -32,6 +32,7 @@ private:
     /** Internal JSON conversion helpers */
     static TSharedPtr<FJsonObject> BlueprintToJsonObject(const FN2CBlueprint& Blueprint);
     static TSharedPtr<FJsonObject> GraphToJsonObject(const FN2CGraph& Graph);
+    static TSharedPtr<FJsonObject> GraphPinToJsonObject(const FN2CGraphPin& Pin);
     static TSharedPtr<FJsonObject> NodeToJsonObject(const FN2CNodeDefinition& Node);
     static TSharedPtr<FJsonObject> PinToJsonObject(const FN2CPinDefinition& Pin);
     static TSharedPtr<FJsonObject> FlowsToJsonObject(const FN2CFlows& Flows);
@@ -41,6 +42,7 @@ private:
 
     /** JSON parsing helpers */
     static bool ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CBlueprint& OutBlueprint);
+    static bool ParseGraphPinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraphPin& OutPin);
     static bool ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraph& OutGraph);
     static bool ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CNodeDefinition& OutNode);
     static bool ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CPinDefinition& OutPin);

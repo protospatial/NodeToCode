@@ -19,6 +19,8 @@ struct FN2CBlueprintExportResult
 
 	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
 	FString Error;
+	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+	TArray<FString> Errors;
 };
 
 USTRUCT(BlueprintType)

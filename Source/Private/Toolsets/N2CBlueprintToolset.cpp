@@ -35,60 +35,71 @@ UBlueprint* LoadBlueprintOrLevelScriptReadOnly(const FString& AssetPath)
 
 FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FString& BlueprintAssetPath)
 {
-	FN2CBlueprintExportResult Result;
-	const FString AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
-	if (AssetObjectPath.IsEmpty())
-	{
-		Result.Error = TEXT("BlueprintAssetPath must be a non-empty Blueprint object path.");
-		return Result;
-	}
+    FN2CBlueprintExportResult Result;
+    const FString AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
+    auto Fail = [&Result](const FString& Message)
+    {
+        Result.Error = Message;
+        Result.Errors.Add(Message);
+        return Result;
+    };
 
-	if (!IsInGameThread())
-	{
-		Result.Error = TEXT("Blueprint export must run on the Unreal game thread.");
-		return Result;
-	}
+    if (AssetObjectPath.IsEmpty())
+    {
+        return Fail(TEXT("BlueprintAssetPath must be a non-empty Blueprint object path."));
+    }
 
-	UBlueprint* Blueprint = LoadBlueprintOrLevelScriptReadOnly(AssetObjectPath);
-	if (!Blueprint)
-	{
-		Result.Error = FString::Printf(
-			TEXT("Could not load Blueprint at '%s'. Use its object path, such as /Game/Blueprints/BP_Character.BP_Character."),
-			*AssetObjectPath);
-		return Result;
-	}
+    if (!IsInGameThread())
+    {
+        return Fail(TEXT("Blueprint export must run on the Unreal game thread."));
+    }
 
-	FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
-	if (!Translator.GenerateFromBlueprint(Blueprint, true))
-	{
-		Result.Error = FString::Printf(TEXT("NodeToCode could not translate Blueprint '%s'."), *AssetObjectPath);
-		return Result;
-	}
+    UBlueprint* Blueprint = LoadBlueprintOrLevelScriptReadOnly(AssetObjectPath);
+    if (!Blueprint)
+    {
+        return Fail(FString::Printf(
+            TEXT("Could not load Blueprint at '%s'. Use its object path, such as /Game/Blueprints/BP_Character.BP_Character."),
+            *AssetObjectPath));
+    }
 
-	const FN2CBlueprint& BlueprintData = Translator.GetN2CBlueprint();
-	if (!BlueprintData.IsValid())
-	{
-		Result.Error = FString::Printf(TEXT("NodeToCode produced invalid data for Blueprint '%s'."), *AssetObjectPath);
-		return Result;
-	}
+    FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
+    if (!Translator.GenerateFromBlueprint(Blueprint, true))
+    {
+        return Fail(FString::Printf(TEXT("NodeToCode could not translate Blueprint '%s'."), *AssetObjectPath));
+    }
 
-	Result.BlueprintJson = FN2CSerializer::ToJson(BlueprintData);
-	if (Result.BlueprintJson.IsEmpty())
-	{
-		Result.Error = FString::Printf(TEXT("NodeToCode could not serialize Blueprint '%s' to JSON."), *AssetObjectPath);
-		return Result;
-	}
+    const FN2CBlueprint& BlueprintData = Translator.GetN2CBlueprint();
+    if (!BlueprintData.IsValid())
+    {
+        return Fail(FString::Printf(TEXT("NodeToCode produced invalid data for Blueprint '%s'."), *AssetObjectPath));
+    }
+
+    Result.BlueprintJson = FN2CSerializer::ToJson(BlueprintData);
+    if (Result.BlueprintJson.IsEmpty())
+    {
+        return Fail(FString::Printf(TEXT("NodeToCode could not serialize Blueprint '%s' to JSON."), *AssetObjectPath));
+    }
 
     for (const FN2CGraph& Graph : BlueprintData.Graphs)
     {
-        if (Graph.UnresolvedConnectionCount > 0)
+        for (const FString& GraphError : Graph.ConnectionErrors)
         {
-            Result.Error = FString::Printf(
-                TEXT("Graph '%s' contains %d malformed pin links; check the returned JSON."),
-                *Graph.Name, Graph.UnresolvedConnectionCount);
-            return Result;
+            Result.Errors.Add(FString::Printf(TEXT("Graph '%s': %s"), *Graph.Name, *GraphError));
+        }
+        if (Graph.UnresolvedConnectionCount > 0 && Graph.ConnectionErrors.Num() == 0)
+        {
+            Result.Errors.Add(FString::Printf(
+                TEXT("Graph '%s' contains %d unresolved pin links."),
+                *Graph.Name, Graph.UnresolvedConnectionCount));
         }
     }
+
+    if (Result.Errors.Num() > 0)
+    {
+        Result.Error = FString::Join(Result.Errors, TEXT("\n"));
+        return Result;
+    }
+
     Result.bSuccess = true;
     return Result;
 }

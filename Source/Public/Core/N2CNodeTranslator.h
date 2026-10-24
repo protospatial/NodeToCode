@@ -51,8 +51,8 @@ private:
     /** Maps node GUIDs to simplified IDs */
     TMap<FGuid, FString> NodeIDMap;
 
-    /** Maps pin GUIDs to simplified IDs */
-    TMap<FGuid, FString> PinIDMap;
+    /** Maps pin objects to simplified IDs; pin GUIDs are not graph-global. */
+    TMap<const UEdGraphPin*, FString> PinIDMap;
 
     /** Tracking sets to prevent duplicate processing */
     TSet<FString> ProcessedStructPaths;
