@@ -1359,8 +1359,12 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
 
     if (bHasCoverageMetadata)
     {
+        const bool bHasExecutableNode = OutGraph.Nodes.ContainsByPredicate([](const FN2CNodeDefinition& Node)
+        {
+            return Node.NodeType != EN2CNodeType::Comment && Node.NodeType != EN2CNodeType::Knot;
+        });
         if (OutGraph.NativeNodeCount != OutGraph.Nodes.Num() + OutGraph.SkippedNodeCount ||
-            (OutGraph.bNoExecutableNodes && OutGraph.Nodes.Num() > 0))
+            (OutGraph.bNoExecutableNodes && bHasExecutableNode))
         {
             FN2CLogger::Get().LogError(FString::Printf(
                 TEXT("Graph '%s' native/translated/skipped node counts disagree."), *Name));

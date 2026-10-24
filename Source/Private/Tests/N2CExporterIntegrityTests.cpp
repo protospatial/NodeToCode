@@ -991,6 +991,56 @@ bool FNodeToCodeNativeGraphNodeExportTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNodeToCodeCommentOnlyGraphRoundTripTest,
+    "NodeToCode.Exporter.CommentOnlyGraphRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNodeToCodeCommentOnlyGraphRoundTripTest::RunTest(const FString& Parameters)
+{
+    UBlueprint* Blueprint = MakeTestBlueprint(TEXT("N2CCommentOnlyFixture"));
+    UEdGraph* Graph = MakeBlueprintGraph(Blueprint, TEXT("CommentOnlyGraph"), false);
+    UEdGraphNode_Comment* Comment = NewObject<UEdGraphNode_Comment>(Graph, TEXT("Comment"), RF_Transient);
+    Graph->AddNode(Comment, false, false);
+    Comment->CreateNewGuid();
+    Comment->NodeComment = TEXT("This graph contains source annotation only.");
+
+    FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
+    if (!TestTrue(TEXT("Comment-only Blueprint translates"), Translator.GenerateFromBlueprint(Blueprint, false)))
+    {
+        return false;
+    }
+    const FN2CBlueprint& ExportedBlueprint = Translator.GetN2CBlueprint();
+    const FN2CGraph* ExportedGraph = ExportedBlueprint.Graphs.FindByPredicate([](const FN2CGraph& Candidate)
+    {
+        return Candidate.Name == TEXT("CommentOnlyGraph");
+    });
+    if (!TestNotNull(TEXT("Comment-only graph is exported"), ExportedGraph))
+    {
+        return false;
+    }
+    TestTrue(TEXT("Comment-only graph is marked non-executable"), ExportedGraph->bNoExecutableNodes);
+    TestEqual(TEXT("Comment node is preserved"), ExportedGraph->Nodes.Num(), 1);
+    if (ExportedGraph->Nodes.Num() == 1)
+    {
+        TestEqual(TEXT("Comment node keeps its semantic type"), ExportedGraph->Nodes[0].NodeType,
+            EN2CNodeType::Comment);
+        TestEqual(TEXT("Comment text is preserved"), ExportedGraph->Nodes[0].Comment, Comment->NodeComment);
+    }
+
+    FN2CBlueprint SerializableBlueprint = ExportedBlueprint;
+    SerializableBlueprint.Metadata.BlueprintClass = TEXT("N2CCommentOnlyFixture_C");
+    FN2CBlueprint RoundTrip;
+    TestTrue(TEXT("Comment-only graph JSON round-trips"),
+        FN2CSerializer::FromJson(FN2CSerializer::ToJson(SerializableBlueprint), RoundTrip));
+    const FN2CGraph* RoundTripGraph = RoundTrip.Graphs.FindByPredicate([](const FN2CGraph& Candidate)
+    {
+        return Candidate.Name == TEXT("CommentOnlyGraph");
+    });
+    TestNotNull(TEXT("Comment-only graph remains after round-trip"), RoundTripGraph);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FNodeToCodeAnimBlueprintNodeExportTest,
     "NodeToCode.Exporter.AnimBlueprintNodeExport",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
