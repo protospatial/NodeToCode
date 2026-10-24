@@ -328,11 +328,75 @@ def probe_p7(port):
             'status': 'fixed' if ok else 'reproduced', 'evidence': calls}
 
 
+def probe_p9(port):
+    """Capabilities, error codes and cancellation (card 0110, MCP 2025-11-25): initialize advertises no logging and
+    returns instructions; resources/templates/list lists nodetocode://blueprint/{name} and resources/list no longer
+    carries resourceTemplates; an unknown tool and an unknown prompt are -32602, a missing required prompt argument
+    (python-scripting's task) is -32602, an unknown resource uri is -32002 with the uri in data; notifications/cancelled
+    for an id with no running call is accepted with 202 and no body. The live cancel of a running call is
+    live_translate_cancel.py's (it needs a provider key)."""
+    ids = ['next-1', 'mcp-transport-15', 'mcp-transport-19', 'mcp-transport-20',
+           'mcp-tools-python-translation-resources-16', 'mcp-tools-python-translation-resources-23', 'imp-mcp-transport-5']
+    headers = {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}
+    checks, ev = {}, {}
+
+    def rpc(rid, method, params=None):
+        body = {'jsonrpc': '2.0', 'id': rid, 'method': method}
+        if params is not None:
+            body['params'] = params
+        r = post(port, json.dumps(body), headers, keep=None)
+        try:
+            message = json.loads(r.get('body') or '')
+        except ValueError:
+            message = {}
+        ev[method if method not in ev else '%s#%d' % (method, rid)] = {'status': r.get('status'),
+                                                                        'body': (r.get('body') or '')[:300]}
+        return message
+
+    def error_code(message):
+        return (message.get('error') or {}).get('code')
+
+    init = request(port, 'POST', json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {
+        'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'n2c-probe-p9', 'version': '1'}}}),
+        headers, keep=None)
+    try:
+        result = json.loads(init.get('body') or '').get('result') or {}
+    except ValueError:
+        result = {}
+    if init.get('headers', {}).get('mcp-session-id'):
+        request(port, 'DELETE', None, {'Mcp-Session-Id': init['headers']['mcp-session-id']})
+    capabilities = result.get('capabilities') or {}
+    ev['capabilities'] = capabilities
+    checks['no_logging_capability'] = bool(capabilities) and 'logging' not in capabilities
+    checks['instructions'] = isinstance(result.get('instructions'), str) and 'get-focused-blueprint' in result['instructions']
+
+    templates = (rpc(2, 'resources/templates/list').get('result') or {}).get('resourceTemplates')
+    checks['templates_list'] = isinstance(templates, list) and any(
+        t.get('uriTemplate') == 'nodetocode://blueprint/{name}' for t in templates if isinstance(t, dict))
+    listed = rpc(3, 'resources/list').get('result') or {}
+    checks['resources_list_without_templates'] = isinstance(listed.get('resources'), list) and 'resourceTemplates' not in listed
+
+    checks['unknown_tool_32602'] = error_code(rpc(4, 'tools/call', {'name': 'n2c-probe-no-such-tool', 'arguments': {}})) == -32602
+    missing = rpc(5, 'resources/read', {'uri': 'nodetocode://no/such"resource'})
+    checks['unknown_resource_32002'] = error_code(missing) == -32002 \
+        and ((missing.get('error') or {}).get('data') or {}).get('uri') == 'nodetocode://no/such"resource'
+    checks['unknown_prompt_32602'] = error_code(rpc(6, 'prompts/get', {'name': 'n2c-probe-no-such-prompt'})) == -32602
+    checks['missing_prompt_argument_32602'] = error_code(rpc(7, 'prompts/get', {'name': 'python-scripting'})) == -32602
+
+    cancelled = post(port, json.dumps({'jsonrpc': '2.0', 'method': 'notifications/cancelled',
+                                       'params': {'requestId': 424242, 'reason': 'probe'}}), headers)
+    ev['cancel_unknown'] = cancelled
+    checks['cancel_unknown_id_202'] = cancelled.get('status') == 202 and cancelled.get('body') == ''
+    checks['still_answers'] = 'result' in rpc(8, 'ping')
+    ev['checks'] = checks
+    return {'ids': ids, 'status': 'fixed' if all(checks.values()) else 'reproduced', 'evidence': ev}
+
+
 def session_probes(port, pid, saved_dir):
     """The probes that run against an editor already answering on port (all but P4, which needs its own editor).
     Tests/smoke/smoke_check.py calls this inside its own session."""
     return {'P1': probe_p1(port, saved_dir), 'P2': probe_p2(port), 'P3': probe_p3(port), 'P5': probe_p5(port),
-            'P6': probe_p6(port, pid), 'P7': probe_p7(port), 'P8': probe_p8(port)}
+            'P6': probe_p6(port, pid), 'P7': probe_p7(port), 'P8': probe_p8(port), 'P9': probe_p9(port)}
 
 
 def mismatches(results, label):

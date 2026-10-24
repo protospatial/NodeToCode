@@ -13,6 +13,11 @@
 #include "MCP/Prompts/N2CMcpPromptTypes.h"
 #include "MCP/Resources/N2CMcpResourceManager.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
+#include "Async/Async.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 /**
  * Characterization specs for the MCP protocol layer: FN2CMcpProtocol::ProcessMessage (the protocol core) driven with
@@ -243,24 +248,10 @@ void FN2CMcpProtocolSpec::Define()
 			}
 		});
 
-		// Today: logging is advertised but logging/setLevel does not exist. Finding mcp-transport-19; capability
-		// negotiation: both parties "Only use capabilities that were successfully negotiated", so an advertised
-		// capability must work. Card 0110 stops advertising it and deletes this case.
-		It(TEXT("advertises logging today"), [this]()
-		{
-			const TSharedPtr<FJsonObject> Result = ResultOf(Send(Initialize(1, TEXT("2025-03-26"))));
-			const TSharedPtr<FJsonObject>* Capabilities = nullptr;
-			if (Result.IsValid() && Result->TryGetObjectField(TEXT("capabilities"), Capabilities))
-			{
-				TestTrue(TEXT("logging capability present"), (*Capabilities)->HasField(TEXT("logging")));
-			}
-			TestError(TEXT("logging/setLevel"), Send(Request(2, TEXT("logging/setLevel"), TEXT("{\"level\":\"info\"}"))),
-				JsonRpcErrorCodes::MethodNotFound, 2, 200);
-		});
-
-		// Known defect mcp-transport-19: logging is advertised without logging/setLevel (and logging is deprecated in
-		// 2026-07-28). Enable (xIt -> It) with card 0110.
-		xIt(TEXT("does not advertise logging"), [this]()
+		// Finding mcp-transport-19, fixed by card 0110: logging was advertised without logging/setLevel. Capability
+		// negotiation: both parties "Only use capabilities that were successfully negotiated" (and logging is
+		// deprecated in 2026-07-28), so it is no longer advertised and logging/setLevel is an unknown method.
+		It(TEXT("does not advertise logging"), [this]()
 		{
 			const TSharedPtr<FJsonObject> Result = ResultOf(Send(Initialize(1, TEXT("2025-11-25"))));
 			const TSharedPtr<FJsonObject>* Capabilities = nullptr;
@@ -268,6 +259,18 @@ void FN2CMcpProtocolSpec::Define()
 			{
 				TestFalse(TEXT("logging capability absent"), (*Capabilities)->HasField(TEXT("logging")));
 			}
+			TestError(TEXT("logging/setLevel"), Send(Request(2, TEXT("logging/setLevel"), TEXT("{\"level\":\"info\"}"))),
+				JsonRpcErrorCodes::MethodNotFound, 2, 200);
+		});
+
+		// imp-mcp-transport-5 (card 0110): InitializeResult.instructions tells the agent which tools to start with
+		It(TEXT("returns instructions that name the tools to start with"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Result = ResultOf(Send(Initialize(1, TEXT("2025-11-25"))));
+			FString Instructions;
+			TestTrue(TEXT("instructions is a string"), Result.IsValid() && Result->TryGetStringField(TEXT("instructions"), Instructions));
+			TestTrue(TEXT("names get-focused-blueprint"), Instructions.Contains(TEXT("get-focused-blueprint")));
+			TestTrue(TEXT("names translate-focused-blueprint"), Instructions.Contains(TEXT("translate-focused-blueprint")));
 		});
 
 		It(TEXT("refuses an initialize without protocolVersion with -32602"), [this]()
@@ -360,18 +363,11 @@ void FN2CMcpProtocolSpec::Define()
 
 	Describe(TEXT("tools/call"), [this]()
 	{
-		// Today: an unknown tool is -32601 Method not found. Finding mcp-transport-20; tools, error handling: an
-		// unknown tool is a protocol error with -32602 in the spec's example, and -32601 is for unknown methods. Card
-		// 0110 deletes this case and enables the one below.
-		It(TEXT("refuses an unknown tool with -32601 today"), [this]()
-		{
-			TestError(TEXT("unknown tool"), Send(Request(31, TEXT("tools/call"), TEXT("{\"name\":\"n2c-no-such-tool\",\"arguments\":{}}"))),
-				JsonRpcErrorCodes::MethodNotFound, 31, 200);
-		});
-
-		// Known defect mcp-transport-20: unknown tool returns -32601. Card 0110 accepts either a CallToolResult with
-		// isError true naming the tool, or -32602 as in the 2025-11-25 tools page. Enable (xIt -> It) with card 0110.
-		xIt(TEXT("reports an unknown tool as an isError result or -32602"), [this]()
+		// Finding mcp-transport-20, fixed by card 0110: an unknown tool was -32601. Tools, error handling: an unknown
+		// tool is a protocol error, -32602 in the 2025-11-25 example ("Unknown tool: invalid_tool_name"); -32601 is for
+		// unknown methods. Either that or a CallToolResult with isError true naming the tool is accepted here; the
+		// server answers -32602.
+		It(TEXT("reports an unknown tool as an isError result or -32602"), [this]()
 		{
 			const FReply Reply = Send(Request(32, TEXT("tools/call"), TEXT("{\"name\":\"n2c-no-such-tool\",\"arguments\":{}}")));
 			TestEqual(TEXT("HTTP status"), Reply.Status, 200);
@@ -412,17 +408,9 @@ void FN2CMcpProtocolSpec::Define()
 			TestTrue(TEXT("result.resources is an array"), Result.IsValid() && Result->HasTypedField<EJson::Array>(TEXT("resources")));
 		});
 
-		// Today: an unknown resource is -32601 Method not found. Finding mcp-transport-20 and
-		// mcp-tools-python-translation-resources-23; resources, error handling: "Resource not found: -32002" with the
-		// uri in data. Card 0110 deletes this case and enables the one below.
-		It(TEXT("refuses an unknown uri with -32601 today"), [this]()
-		{
-			TestError(TEXT("unknown uri"), Send(Request(42, TEXT("resources/read"), TEXT("{\"uri\":\"n2ctest://no/such/resource\"}"))),
-				JsonRpcErrorCodes::MethodNotFound, 42, 200);
-		});
-
-		// Known defect mcp-transport-20: unknown resource returns -32601. Enable (xIt -> It) with card 0110.
-		xIt(TEXT("refuses an unknown uri with -32002 and the uri in data"), [this]()
+		// Findings mcp-transport-20 and mcp-tools-python-translation-resources-23, fixed by card 0110: an unknown
+		// resource was -32601. Resources, error handling: "Resource not found: -32002" with the uri in data.
+		It(TEXT("refuses an unknown uri with -32002 and the uri in data"), [this]()
 		{
 			const FReply Reply = Send(Request(43, TEXT("resources/read"), TEXT("{\"uri\":\"n2ctest://no/such/resource\"}")));
 			TestError(TEXT("unknown uri"), Reply, -32002, 43, 200);
@@ -440,12 +428,33 @@ void FN2CMcpProtocolSpec::Define()
 			TestError(TEXT("no uri"), Send(Request(44, TEXT("resources/read"), TEXT("{}"))), JsonRpcErrorCodes::InvalidParams, 44, 200);
 		});
 
-		// Known defect mcp-transport-19: resources/templates/list does not exist; templates ride in a non-standard
-		// resourceTemplates field of resources/list. Enable (xIt -> It) with card 0110.
-		xIt(TEXT("answers resources/templates/list with a resourceTemplates array"), [this]()
+		// Findings mcp-transport-19 and mcp-tools-python-translation-resources-16, fixed by card 0110:
+		// resources/templates/list did not exist and templates rode in a non-standard resourceTemplates field of
+		// resources/list. Resources, resource templates: resources/templates/list answers {resourceTemplates: [...]}.
+		It(TEXT("answers resources/templates/list with a resourceTemplates array"), [this]()
 		{
 			const TSharedPtr<FJsonObject> Result = ResultOf(Send(Request(45, TEXT("resources/templates/list"))));
-			TestTrue(TEXT("result.resourceTemplates is an array"), Result.IsValid() && Result->HasTypedField<EJson::Array>(TEXT("resourceTemplates")));
+			const TArray<TSharedPtr<FJsonValue>>* Templates = nullptr;
+			if (TestTrue(TEXT("result.resourceTemplates is an array"), Result.IsValid() && Result->TryGetArrayField(TEXT("resourceTemplates"), Templates)))
+			{
+				// Every registered template is listed (nodetocode://blueprint/{name} once the server has registered it)
+				const TArray<FMcpResourceTemplate> Registered = FN2CMcpResourceManager::Get().ListResourceTemplates();
+				TestEqual(TEXT("one entry per registered template"), Templates->Num(), Registered.Num());
+				for (const FMcpResourceTemplate& Template : Registered)
+				{
+					bool bListed = false;
+					for (const TSharedPtr<FJsonValue>& Value : *Templates)
+					{
+						const TSharedPtr<FJsonObject>* Entry = nullptr;
+						FString UriTemplate;
+						bListed |= Value->TryGetObject(Entry) && (*Entry)->TryGetStringField(TEXT("uriTemplate"), UriTemplate)
+							&& UriTemplate == Template.UriTemplate;
+					}
+					TestTrue(FString::Printf(TEXT("%s listed"), *Template.UriTemplate), bListed);
+				}
+			}
+			const TSharedPtr<FJsonObject> Listed = ResultOf(Send(Request(46, TEXT("resources/list"))));
+			TestFalse(TEXT("resources/list has no resourceTemplates field"), Listed.IsValid() && Listed->HasField(TEXT("resourceTemplates")));
 		});
 	});
 
@@ -534,16 +543,9 @@ void FN2CMcpProtocolSpec::Define()
 			}
 		});
 
-		// Today: an unknown prompt is -32601 Method not found. Finding mcp-transport-20; prompts, error handling:
-		// "Invalid prompt name: -32602 (Invalid params)". Card 0110 deletes this case and enables the one below.
-		It(TEXT("refuses an unknown prompt with -32601 today"), [this]()
-		{
-			TestError(TEXT("unknown prompt"), Send(Request(53, TEXT("prompts/get"), TEXT("{\"name\":\"n2c-no-such-prompt\"}"))),
-				JsonRpcErrorCodes::MethodNotFound, 53, 200);
-		});
-
-		// Known defect mcp-transport-20: unknown prompt returns -32601. Enable (xIt -> It) with card 0110.
-		xIt(TEXT("refuses an unknown prompt with -32602"), [this]()
+		// Finding mcp-transport-20, fixed by card 0110: an unknown prompt was -32601. Prompts, error handling:
+		// "Invalid prompt name: -32602 (Invalid params)".
+		It(TEXT("refuses an unknown prompt with -32602"), [this]()
 		{
 			TestError(TEXT("unknown prompt"), Send(Request(54, TEXT("prompts/get"), TEXT("{\"name\":\"n2c-no-such-prompt\"}"))),
 				JsonRpcErrorCodes::InvalidParams, 54, 200);
@@ -572,23 +574,80 @@ void FN2CMcpProtocolSpec::Define()
 			TestNotNull(TEXT("an error response"), ErrorOf(Reply).Get());
 		});
 
-		// Today: a missing required argument gives a success with an empty messages array and the problem in the
-		// description. Finding mcp-tools-python-translation-resources-23; prompts, error handling: "Missing required
-		// arguments: -32602 (Invalid params)". Card 0110 deletes this case and enables the one below.
-		It(TEXT("answers a missing required argument with an empty success today"), [this]()
-		{
-			const TSharedPtr<FJsonObject> Result = ResultOf(Send(Request(61, TEXT("prompts/get"),
-				FString::Printf(TEXT("{\"name\":\"%s\"}"), *TestPromptName))));
-			const TArray<TSharedPtr<FJsonValue>>* Messages = nullptr;
-			TestTrue(TEXT("no messages"), Result.IsValid() && (!Result->TryGetArrayField(TEXT("messages"), Messages) || Messages->Num() == 0));
-		});
-
-		// Known defect mcp-tools-python-translation-resources-23: a missing required prompt argument is an empty
-		// success. Enable (xIt -> It) with card 0110.
-		xIt(TEXT("refuses a missing required argument with -32602"), [this]()
+		// Finding mcp-tools-python-translation-resources-23, fixed by card 0110: a missing required argument gave a
+		// success with an empty messages array. Prompts, error handling: "Missing required arguments: -32602 (Invalid
+		// params)".
+		It(TEXT("refuses a missing required argument with -32602"), [this]()
 		{
 			TestError(TEXT("missing topic"), Send(Request(62, TEXT("prompts/get"), FString::Printf(TEXT("{\"name\":\"%s\"}"), *TestPromptName))),
 				JsonRpcErrorCodes::InvalidParams, 62, 200);
+		});
+	});
+
+	// Finding mcp-tools-python-translation-resources-23 (card 0110): a resource or prompt handler that timed out came
+	// back as a success with an error text built with Printf (the uri unescaped). Resources and prompts, error
+	// handling: "Internal errors: -32603". The managers now mark the result with -32603, which resources/read and
+	// prompts/get answer with; the resource text is JSON built with FJsonObject. The handlers need the game thread and
+	// are called from a worker while this test holds the game thread, so each wait (5 s) runs out.
+	Describe(TEXT("handler timeouts"), [this]()
+	{
+		It(TEXT("mark a resource or prompt handler that timed out with -32603"), [this]()
+		{
+			const FString Uri = TEXT("n2ctest://slow/\"quoted\"");
+			const FString PromptName = TEXT("n2c-test-protocol-slow-prompt");
+			FMcpResourceDefinition Resource;
+			Resource.Uri = Uri;
+			Resource.Name = TEXT("slow");
+			Resource.MimeType = TEXT("text/plain");
+			const bool bResource = FN2CMcpResourceManager::Get().RegisterStaticResource(Resource,
+				FMcpResourceReadDelegate::CreateLambda([](const FString& InUri)
+				{
+					FMcpResourceContents Contents;
+					Contents.Uri = InUri;
+					Contents.Text = TEXT("late");
+					return Contents;
+				}), /*bRequiresGameThread=*/true);
+			FMcpPromptDefinition Prompt;
+			Prompt.Name = PromptName;
+			Prompt.Description = TEXT("Slow prompt registered by NodeToCode.MCP.Protocol");
+			const bool bPrompt = FN2CMcpPromptManager::Get().RegisterPrompt(Prompt,
+				FMcpPromptGetDelegate::CreateLambda([](const FMcpPromptArguments&) { return FMcpPromptResult(); }), /*bRequiresGameThread=*/true);
+			if (!TestTrue(TEXT("slow resource and prompt registered"), bResource && bPrompt))
+			{
+				FN2CMcpResourceManager::Get().UnregisterStaticResource(Uri);
+				FN2CMcpPromptManager::Get().UnregisterPrompt(PromptName);
+				return;
+			}
+
+			// The managers log each timeout as an error
+			AddExpectedMessage(TEXT("Timeout reading resource on game thread"), EAutomationExpectedMessageFlags::Contains, 1);
+			AddExpectedMessage(TEXT("Timeout getting prompt on game thread"), EAutomationExpectedMessageFlags::Contains, 1);
+			TFuture<FMcpResourceContents> Read = Async(EAsyncExecution::Thread, [Uri]() { return FN2CMcpResourceManager::Get().ReadResource(Uri); });
+			TFuture<FMcpPromptResult> Get = Async(EAsyncExecution::Thread, [PromptName]()
+			{
+				return FN2CMcpPromptManager::Get().GetPrompt(PromptName, FMcpPromptArguments());
+			});
+			// Hold the game thread (without pumping its task queue) until both waits have run out
+			const double Deadline = FPlatformTime::Seconds() + 15.0;
+			while ((!Read.IsReady() || !Get.IsReady()) && FPlatformTime::Seconds() < Deadline)
+			{
+				FPlatformProcess::Sleep(0.05f);
+			}
+			if (TestTrue(TEXT("both calls returned"), Read.IsReady() && Get.IsReady()))
+			{
+				const FMcpResourceContents Contents = Read.Get();
+				TestEqual(TEXT("resource: -32603"), Contents.ErrorCode, static_cast<int32>(JsonRpcErrorCodes::InternalError));
+				TSharedPtr<FJsonObject> ErrorText;
+				FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Contents.Text), ErrorText);
+				FString TextUri;
+				TestTrue(TEXT("resource: the error text is JSON carrying the uri"), ErrorText.IsValid()
+					&& ErrorText->TryGetStringField(TEXT("uri"), TextUri) && TextUri == Uri);
+				const FMcpPromptResult PromptResult = Get.Get();
+				TestEqual(TEXT("prompt: -32603"), PromptResult.ErrorCode, static_cast<int32>(JsonRpcErrorCodes::InternalError));
+				TestEqual(TEXT("prompt: no messages"), PromptResult.Messages.Num(), 0);
+			}
+			FN2CMcpResourceManager::Get().UnregisterStaticResource(Uri);
+			FN2CMcpPromptManager::Get().UnregisterPrompt(PromptName);
 		});
 	});
 

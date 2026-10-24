@@ -137,6 +137,17 @@ struct FN2CMcpCatalogs
  * JSON-RPC batches are accepted only on sessions negotiated at 2025-03-26 (batching was added there and removed in
  * 2025-06-18) and get 400 with -32600 otherwise.
  *
+ * Capabilities and errors (card 0110): initialize advertises tools (listChanged), resources and prompts, not logging,
+ * and returns instructions for the agent. resources/templates/list lists the resource templates. An unknown tool or
+ * prompt, or a missing required prompt argument, is -32602; an unknown resource uri is -32002 with the uri in data; a
+ * resource or prompt handler that timed out is -32603; -32601 is only for an unknown method.
+ *
+ * Cancellation (basic/utilities/cancellation): notifications/cancelled {requestId} cancels the running long-running
+ * call with that request id in the same session through its call context; no response is sent for that request (a
+ * stream closes without it, a held request ends with 202 and no body). Unknown or finished ids are ignored. The
+ * custom nodetocode/cancelTask {progressToken} still works, is deprecated, and its call answers with the cancelled
+ * result.
+ *
  * Server-initiated notifications (notifications/tools/list_changed) flow from the core to the sink a transport sets
  * with SetBroadcastSink; tools never call a transport.
  *
@@ -204,6 +215,9 @@ public:
 	/** Supported protocol versions, newest first */
 	static const TArray<FString>& GetSupportedProtocolVersions();
 
+	/** InitializeResult.instructions: which tools an agent starts with */
+	static const FString& GetServerInstructions();
+
 	/** The most sessions kept at once; initialize beyond it drops the least recently used one */
 	static constexpr int32 MaxSessions = 64;
 
@@ -225,12 +239,16 @@ private:
 	bool ProcessBatchRequest(const TArray<TSharedPtr<FJsonValue>>& BatchArray, FString& OutResponseBody, int32& OutStatusCode);
 	bool ProcessRequest(const FJsonRpcRequest& Request, FJsonRpcResponse& OutResponse);
 	bool ProcessNotification(const FJsonRpcNotification& Notification);
+
+	/** notifications/cancelled: cancels the session's running call with that requestId (no response is sent for it) */
+	void HandleCancelledNotification(const FJsonRpcNotification& Notification);
 	bool DispatchMethod(const FString& Method, const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 
 	bool HandleInitialize(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandleToolsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandleToolsCall(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandleResourcesList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
+	bool HandleResourceTemplatesList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandleResourcesRead(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandlePromptsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandlePromptsGet(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
@@ -240,6 +258,9 @@ private:
 
 	/** Live sessions by Mcp-Session-Id */
 	TMap<FString, FN2CMcpSession> Sessions;
+
+	/** The session of the message Handle is processing (empty outside Handle): where notifications/cancelled looks */
+	FString ActiveSessionId;
 
 	/** What the initialize being handled negotiated: set by HandleInitialize on success, read by Handle */
 	FString LastNegotiatedVersion;

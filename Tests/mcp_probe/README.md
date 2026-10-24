@@ -24,6 +24,7 @@ probes inside its default-mode editor session (`mcp_probe.session_probes`) plus 
 | P6 | The notification server (port+1) answers 200 to `/mcp/notifications` with 10,000 headers, a 10 MB chunked body or a 4 KB request target, or stops answering afterwards. Evidence also records the editor's working set before and after | auth-settings-module-17, dx-docs-release-4, p0-9 |
 | P7 | `translate-focused-blueprint` (numeric progressToken 7, no Blueprint focused) is not answered with a CallToolResult on its own POST: once with `Accept: application/json, text/event-stream` (UE 5.8 streams `notifications/progress` then the response; 5.6/5.7 send one JSON response) and once JSON-only. Fixed when each call gets exactly one JSON-RPC response with id 7 and a `content` array (here `isError`), no `accepted`/`sseUrl` result, the connection closes, and any progress echoes the token as a number | p0-10, mcp-transport-3, mcp-transport-21, dx-docs-release-8 |
 | P8 | Per-client sessions (card 0109): two initializes get different `Mcp-Session-Id`s and each answers in its own; no session gives 400, an unknown one 404, an unsupported `MCP-Protocol-Version` 400; GET is 405 with `Allow: POST, DELETE`; a client response is 202 with no body; DELETE ends a session (2xx), after which it gets 404 while the other session still answers. Fixed when every check holds | next-1, mcp-transport-16, mcp-transport-18, mcp-transport-19 |
+| P9 | Capabilities, error codes and cancellation (card 0110): `initialize` advertises no `logging` and returns `instructions`; `resources/templates/list` lists `nodetocode://blueprint/{name}` and `resources/list` has no `resourceTemplates`; an unknown tool, an unknown prompt and a missing required prompt argument are -32602; an unknown resource uri is -32002 with the uri in `data`; `notifications/cancelled` for an id with no running call is 202 with no body. Fixed when every check holds (the live cancel of a running call is `live_translate_cancel.py`) | next-1, mcp-transport-15, mcp-transport-19, mcp-transport-20, mcp-tools-python-translation-resources-16, mcp-tools-python-translation-resources-23, imp-mcp-transport-5 |
 
 Statuses are `reproduced` (the finding's defect is present), `fixed`, or `skipped` (with a reason). P4 holds the
 port with a plain socket instead of a second editor on a copy of the project; the effect on the bind is the same.
@@ -106,14 +107,19 @@ its environment when no key is saved, so a live check never types or saves a key
   then checks the response parsed, Project Settings shows the key's source by variable name only, and no key value is
   in the editor log or the report (`logs/live_env_translation.json`). It refuses to run if a key for that provider is
   saved in the per-user secrets file, since the saved key would be used instead.
-- `live_translate_cancel.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5]` cancels a
-  live translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, sends `nodetocode/cancelTask`
-  `--cancel-after` seconds in (default 1.5), keeps reading the call's own response (a `text/event-stream` on UE 5.8,
-  where it also checks progress arrived before the cancel) for `--settle` seconds (default 30), and checks
-  the cancel answered `cancellation_initiated`, the one response is the cancelled error, no event arrives after it,
-  the log shows the LLM request cancelled and the task completed once, a second cancel answers
-  `task_already_completed`, the editor stays up, and a control translation run to the end returns code. It also
-  scans the editor log and report for key values. Report: `logs/live_translate_cancel.json`.
+- `live_translate_cancel.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5] [--via notification|cancelTask]`
+  cancels a live translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, cancels it
+  `--cancel-after` seconds in (default 1.5) and keeps reading the call's own response (a `text/event-stream` on UE
+  5.8, where it also checks progress arrived before the cancel) for `--settle` seconds (default 30). With `--via
+  notification` (the default) it sends the standard `notifications/cancelled {requestId}` and checks the notification
+  is accepted with 202, no JSON-RPC response is sent for the call and its response ends soon after (the stream closes;
+  on 5.6/5.7 the held request ends with 202 and no body), no progress follows, and the log shows the LLM request
+  cancelled, the task completed once and its response suppressed. With `--via cancelTask` it sends the deprecated
+  `nodetocode/cancelTask` and checks the cancel answered `cancellation_initiated`, the one response is the cancelled
+  error and no event arrives after it. Both check a later `nodetocode/cancelTask` answers `task_already_completed`
+  (and logs its deprecation), the editor stays up, and a control translation run to the end returns code, and scan
+  the editor log and report for key values. Report: `logs/live_translate_cancel.json` (`_cancelTask.json` with
+  `--via cancelTask`).
 - `live_claude_cli_translate.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]`
   is the end-to-end check with a standard MCP client: on a headless editor (`-RenderOffScreen`) with only the
   provider's key in its environment and an in-memory probe Blueprint focused, it runs the headless Claude Code CLI

@@ -191,6 +191,23 @@ FGuid FN2CToolAsyncTaskManager::FindTaskByRequestId(const FString& SessionId, co
 	return FGuid();
 }
 
+bool FN2CToolAsyncTaskManager::CancelTaskByRequestId(const FString& SessionId, const TSharedPtr<FJsonValue>& RequestId, const FString& Reason)
+{
+	const FGuid TaskId = FindTaskByRequestId(SessionId, RequestId);
+	const TSharedPtr<FN2CToolCallRecord> Record = TaskId.IsValid() ? GetTaskContext(TaskId) : nullptr;
+	if (!Record.IsValid() || Record->bCompleted.load())
+	{
+		return false;
+	}
+
+	// Mark first: a tool that stops at once reports its cancelled result inside Cancel, and that result is not sent
+	Record->bResponseSuppressed.store(true);
+	CancelTask(TaskId, Reason);
+	FN2CLogger::Get().Log(FString::Printf(TEXT("notifications/cancelled: cancelling task %s (Tool: %s); no response will be sent for its request"),
+		*TaskId.ToString(), *Record->ToolName), EN2CLogSeverity::Info);
+	return true;
+}
+
 TSharedPtr<FN2CToolCallRecord> FN2CToolAsyncTaskManager::GetTaskContext(const FGuid& TaskId) const
 {
 	FScopeLock Lock(&TaskMapLock);
@@ -362,28 +379,27 @@ void FN2CToolAsyncTaskManager::OnTaskCompleted(const FGuid& TaskId, const FMcpTo
 		Record->CallContext->MarkCompleted();
 	}
 
-	// Create the JSON-RPC response
-	FJsonRpcResponse Response;
-	Response.Id = Record->OriginalRequestId;
-	Response.Result = MakeShared<FJsonValueObject>(Result.ToJson());
-
-	FString ResponseJson = FJsonRpcUtils::SerializeResponse(Response);
-	if (ResponseJson.IsEmpty())
-	{
-		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to serialize response for task %s"), *TaskId.ToString()));
-		ResponseJson = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(Record->OriginalRequestId,
-			JsonRpcErrorCodes::InternalError, TEXT("Failed to serialize the tool result")));
-	}
-
-	// Exactly one response per call: the HTTP response is completed (or its stream closed) by this write
+	// Exactly one end per call: the HTTP response is completed (or its stream closed) by this write
 	FN2CAsyncTaskResponder Responder = MoveTemp(Record->Responder);
 	Record->Responder = FN2CAsyncTaskResponder();
-	if (Responder.SendResponse)
+
+	if (Record->bResponseSuppressed.load())
 	{
-		Responder.SendResponse(ResponseJson);
+		// The client cancelled the request with notifications/cancelled: end the exchange with no response.
+		// Tests/mcp_probe/live_translate_cancel.py parses this line.
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Async task %s: request cancelled by the client; no response sent"), *TaskId.ToString()),
+			EN2CLogSeverity::Info);
+		if (Responder.EndWithoutResponse)
+		{
+			Responder.EndWithoutResponse();
+		}
+	}
+	else
+	{
+		SendTaskResponse(Responder, Record->OriginalRequestId, TaskId, Result);
 	}
 
-	// The result is delivered: stop tracking the call. The token is remembered so a late cancel answers
+	// The call is finished: stop tracking it. The token is remembered so a late cancel answers
 	// task_already_completed.
 	{
 		FScopeLock Lock(&TaskMapLock);
@@ -396,6 +412,28 @@ void FN2CToolAsyncTaskManager::OnTaskCompleted(const FGuid& TaskId, const FMcpTo
 		const double Now = FPlatformTime::Seconds();
 		PruneCompletedTokens(Now);
 		CompletedProgressTokens.Add(Record->ProgressToken, Now);
+	}
+}
+
+void FN2CToolAsyncTaskManager::SendTaskResponse(const FN2CAsyncTaskResponder& Responder, const TSharedPtr<FJsonValue>& RequestId,
+	const FGuid& TaskId, const FMcpToolCallResult& Result)
+{
+	// Create the JSON-RPC response
+	FJsonRpcResponse Response;
+	Response.Id = RequestId;
+	Response.Result = MakeShared<FJsonValueObject>(Result.ToJson());
+
+	FString ResponseJson = FJsonRpcUtils::SerializeResponse(Response);
+	if (ResponseJson.IsEmpty())
+	{
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to serialize response for task %s"), *TaskId.ToString()));
+		ResponseJson = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(RequestId,
+			JsonRpcErrorCodes::InternalError, TEXT("Failed to serialize the tool result")));
+	}
+
+	if (Responder.SendResponse)
+	{
+		Responder.SendResponse(ResponseJson);
 	}
 }
 

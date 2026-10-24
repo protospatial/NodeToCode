@@ -3,6 +3,7 @@
 #include "MCP/Prompts/N2CMcpPromptManager.h"
 #include "Utils/N2CLogger.h"
 #include "Async/Async.h"
+#include "MCP/Server/N2CMcpJsonRpcTypes.h"
 
 FN2CMcpPromptManager& FN2CMcpPromptManager::Get()
 {
@@ -91,8 +92,9 @@ FMcpPromptResult FN2CMcpPromptManager::GetPrompt(const FString& Name, const FMcp
 		{
 			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Prompt not found: %s"), *Name));
 			
-			// Return error result
-			Result.Description = FString::Printf(TEXT("Prompt not found: %s"), *Name);
+			// MCP 2025-11-25, server/prompts, error handling: "Invalid prompt name: -32602 (Invalid params)"
+			Result.ErrorCode = JsonRpcErrorCodes::InvalidParams;
+			Result.ErrorMessage = FString::Printf(TEXT("Unknown prompt: %s"), *Name);
 			return Result;
 		}
 	}
@@ -103,8 +105,9 @@ FMcpPromptResult FN2CMcpPromptManager::GetPrompt(const FString& Name, const FMcp
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid arguments for prompt %s: %s"), *Name, *ValidationError));
 		
-		// Return error result
-		Result.Description = FString::Printf(TEXT("Invalid arguments: %s"), *ValidationError);
+		// MCP 2025-11-25, server/prompts, error handling: "Missing required arguments: -32602 (Invalid params)"
+		Result.ErrorCode = JsonRpcErrorCodes::InvalidParams;
+		Result.ErrorMessage = FString::Printf(TEXT("Invalid arguments for prompt '%s': %s"), *Name, *ValidationError);
 		return Result;
 	}
 
@@ -130,7 +133,9 @@ FMcpPromptResult FN2CMcpPromptManager::GetPrompt(const FString& Name, const FMcp
 			else
 			{
 				FN2CLogger::Get().LogError(FString::Printf(TEXT("Timeout getting prompt on game thread: %s"), *Name));
-				Result.Description = FString::Printf(TEXT("Timeout getting prompt: %s"), *Name);
+				// MCP 2025-11-25, server/prompts, error handling: "Internal errors: -32603 (Internal error)"
+				Result.ErrorCode = JsonRpcErrorCodes::InternalError;
+				Result.ErrorMessage = FString::Printf(TEXT("Timed out getting prompt '%s' on the game thread"), *Name);
 			}
 		}
 		else

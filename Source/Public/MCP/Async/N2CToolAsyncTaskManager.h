@@ -21,6 +21,13 @@ struct FN2CAsyncTaskResponder
 
 	/** Writes the serialized JSON-RPC response that carries the call's CallToolResult. Called once per call. */
 	TFunction<void(const FString& /*ResponseJson*/)> SendResponse;
+
+	/**
+	 * Ends the call's exchange without a JSON-RPC response: called instead of SendResponse when the client cancelled
+	 * the request with notifications/cancelled (MCP cancellation: the receiver SHOULD "Not send a response for the
+	 * cancelled request"). A stream is closed; a held request is answered with no body.
+	 */
+	TFunction<void()> EndWithoutResponse;
 };
 
 /**
@@ -62,12 +69,16 @@ struct FN2CToolCallRecord
 
 	/** Set once the call's result has been delivered */
 	std::atomic<bool> bCompleted{false};
+
+	/** Set when the client cancelled the request with notifications/cancelled: its result is not sent */
+	std::atomic<bool> bResponseSuppressed{false};
 };
 
 /**
  * Runs long-running MCP tool calls. A call is the tool's IN2CMcpTool::InvokeAsync with an FN2CToolCallContext: the
- * manager binds the context's progress to the call's responder, cancels it on request (nodetocode/cancelTask, editor
- * exit) and writes the one JSON-RPC response when the tool's future is set. It knows nothing about any one tool.
+ * manager binds the context's progress to the call's responder, cancels it on request (notifications/cancelled, the
+ * deprecated nodetocode/cancelTask, DELETE of its session, editor exit) and writes the one JSON-RPC response when the
+ * tool's future is set (none after notifications/cancelled). It knows nothing about any one tool.
  */
 class NODETOCODE_API FN2CToolAsyncTaskManager
 {
@@ -127,6 +138,16 @@ public:
 	 * @return The task ID, or an invalid GUID when no running call matches
 	 */
 	FGuid FindTaskByRequestId(const FString& SessionId, const TSharedPtr<FJsonValue>& RequestId) const;
+
+	/**
+	 * Cancels a running call for notifications/cancelled: finds it by session and request id, marks its response
+	 * suppressed (no JSON-RPC response is sent for it, whatever result the tool still reports) and cancels its context.
+	 * @param SessionId The session the notification came in
+	 * @param RequestId The notification's requestId
+	 * @param Reason The notification's reason (empty: "Task was cancelled")
+	 * @return true when a running call matched (it is cancelled and gets no response), false when none did
+	 */
+	bool CancelTaskByRequestId(const FString& SessionId, const TSharedPtr<FJsonValue>& RequestId, const FString& Reason = FString());
 
 	/**
 	 * Gets a call's record by task ID
@@ -198,8 +219,13 @@ private:
 	/** Invokes the tool for a tracked call and waits (without blocking) for its future. Game thread. */
 	void InvokeTool(const TSharedRef<IN2CMcpTool>& Tool, const TSharedRef<FN2CToolCallRecord>& Record);
 
-	/** Delivers a call's result: writes the JSON-RPC response once and stops tracking the call. Game thread. */
+	/** Delivers a call's result: writes the JSON-RPC response once (or ends without one after notifications/cancelled)
+	 *  and stops tracking the call. Game thread. */
 	void OnTaskCompleted(const FGuid& TaskId, const FMcpToolCallResult& Result);
+
+	/** Serializes Result as the JSON-RPC response to RequestId and writes it through Responder */
+	static void SendTaskResponse(const FN2CAsyncTaskResponder& Responder, const TSharedPtr<FJsonValue>& RequestId,
+		const FGuid& TaskId, const FMcpToolCallResult& Result);
 
 	/** Writes a notifications/progress for the call when its client asked for progress. Game thread. */
 	void OnTaskProgress(const FGuid& TaskId, float Progress, const FString& Message);

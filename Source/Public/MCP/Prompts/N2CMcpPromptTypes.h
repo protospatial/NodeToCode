@@ -123,6 +123,17 @@ struct NODETOCODE_API FMcpPromptResult
 	TArray<FMcpPromptMessage> Messages;
 
 	/**
+	 * Set when getting the prompt failed: the JSON-RPC error code prompts/get answers with (InvalidParams for an
+	 * unknown prompt or a missing required argument, InternalError for a handler that timed out), and its message.
+	 * 0 when the prompt was produced.
+	 */
+	int32 ErrorCode = 0;
+	FString ErrorMessage;
+
+	/** True when getting the prompt failed (ErrorCode is set) */
+	bool IsError() const { return ErrorCode != 0; }
+
+	/**
 	 * Converts this result to JSON format
 	 */
 	TSharedPtr<FJsonObject> ToJson() const;

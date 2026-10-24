@@ -22,6 +22,9 @@ namespace JsonRpcErrorCodes
 	constexpr int32 InvalidParams = -32602;		// Invalid method parameter(s)
 	constexpr int32 InternalError = -32603;		// Internal JSON-RPC error
 	// Server error range: -32000 to -32099 (reserved for implementation-defined server-errors)
+
+	/** MCP 2025-11-25, server/resources, error handling: "Resource not found: -32002", with the uri in data */
+	constexpr int32 ResourceNotFound = -32002;
 }
 
 /**

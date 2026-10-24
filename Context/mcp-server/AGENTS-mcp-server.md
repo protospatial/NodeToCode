@@ -114,6 +114,33 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   Not yet per session: the dynamic tool set (`assess-needed-tools`) is still one global list, and
     `notifications/tools/list_changed` still goes to every client of the port+1 notification stream.
 
+### Capabilities, errors and cancellation (card 0110)
+
+*   **Capabilities**: `initialize` advertises `tools` (`listChanged: true`), `resources` and `prompts`. It does not
+    advertise `logging` (the server sends no `notifications/message`, and logging is deprecated in 2026-07-28), so
+    `logging/setLevel` is an unknown method (-32601). `InitializeResult.instructions` tells the agent which tools to
+    start with (`FN2CMcpProtocol::GetServerInstructions()`).
+*   **Resource templates**: `resources/templates/list` answers `{resourceTemplates: [...]}`
+    (`nodetocode://blueprint/{name}`); `resources/list` lists only `resources`.
+*   **Error codes** (JSON-RPC errors, `data` built with `FJsonObject`): an unknown tool is **-32602** "Unknown tool:
+    <name>" with `data.name` (the 2025-11-25 tools page's example); an unknown prompt and a missing required prompt
+    argument are **-32602**; an unknown resource uri is **-32002** "Resource not found" with `data.uri`; a resource or
+    prompt handler that timed out on the game thread is **-32603**. **-32601** is only for an unknown method. The
+    managers report these through `FMcpResourceContents::ErrorCode` and `FMcpPromptResult::ErrorCode`.
+*   **Cancellation** (basic/utilities/cancellation): `notifications/cancelled {requestId, reason?}` cancels the
+    running long-running call with that JSON-RPC id (string and number ids are distinct) in the same session, through
+    its call context (`FN2CToolAsyncTaskManager::CancelTaskByRequestId`). No response is sent for that request,
+    whatever the tool still reports: a streamed call's `text/event-stream` closes without the response event, a held
+    call (UE 5.6/5.7, or no progressToken) ends with **202** and no body. Unknown ids, finished calls, other
+    sessions' calls and malformed notifications are ignored (the notification itself gets 202). Calls answered at
+    once (every tool that is not long-running) cannot be cancelled.
+*   **`nodetocode/cancelTask {progressToken}`** still works and is **deprecated**: it logs a warning, cancels the
+    same way, and the call answers its own request with the cancelled result (as DELETE of a session and editor exit
+    do).
+*   Tests: `NodeToCode.MCP.Protocol` (capabilities, codes, templates, handler timeouts), `NodeToCode.MCP.Core`
+    (`cancellation`), probe P9, `Tests/mcp_probe/live_translate_cancel.py` (a live cancel, `--via notification` or
+    `--via cancelTask`), and the conformance baseline (`logging-set-level` is not applicable).
+
 ## Core Server Components (`Source/Public/MCP/Server/`)
 
 *   **`N2CMcpHttpServerManager.h/.cpp`**: the HTTP transport
@@ -190,7 +217,9 @@ Supports long-running tool operations with progress and cancellation through one
         writes the one JSON-RPC response when the future is set; `LaunchToolCall()` runs a given tool instance,
         `SetToolResolverForTesting()` swaps in test tools
     *   `CancelTask()`, `CancelTaskByProgressToken()` - cancel through the context;
-        `FindTaskByRequestId(SessionId, RequestId)` - for `notifications/cancelled`
+        `FindTaskByRequestId(SessionId, RequestId)`, `CancelTaskByRequestId()` - for `notifications/cancelled`, which
+        also suppresses the call's response (`FN2CToolCallRecord::bResponseSuppressed`; the responder's
+        `EndWithoutResponse` ends the request instead)
     *   `GetTaskContext()` (an `FN2CToolCallRecord`), `IsTaskRunning()`, `GetRunningTaskIds()`
     *   A call stops being tracked once it has delivered its result (`OnTaskCompleted`); its progress token is remembered for 10 min so `nodetocode/cancelTask` answers `task_already_completed` (`WasProgressTokenCompleted()`)
     *   `CleanupCompletedTasks()` (safety net), `CancelAllTasks()` - called from `FCoreDelegates::OnPreExit` (before UObjects are purged) and in `ShutdownModule` before the SSE server stops
@@ -393,7 +422,8 @@ The server implements these MCP methods:
 *   `tools/call`: Execute tools with arguments
 
 ### Resource Methods
-*   `resources/list`: List available resources and templates
+*   `resources/list`: List available resources
+*   `resources/templates/list`: List resource templates
 *   `resources/read`: Read resource contents
 
 ### Prompt Methods
@@ -405,7 +435,7 @@ The server implements these MCP methods:
 *   Progress notifications on the tools/call's own text/event-stream response (UE 5.8)
 *   Protocol version negotiation (2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05)
 *   Per-client sessions (`Mcp-Session-Id`), ended with HTTP DELETE
-*   Task cancellation (`nodetocode/cancelTask`)
+*   Request cancellation (`notifications/cancelled`; the custom `nodetocode/cancelTask` is deprecated)
 
 ## Dynamic Tool Management
 
@@ -498,10 +528,10 @@ curl -N -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "translate-focused-blueprint", "arguments": {"language": "cpp"}, "_meta": {"progressToken": "unique-token-123"}}, "id": 7}'
 
-# Cancel a running task
+# Cancel the running call (id 7): answered 202; the call's own response then ends without a JSON-RPC response
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
-  -d '{"jsonrpc": "2.0", "method": "nodetocode/cancelTask", "params": {"progressToken": "unique-token-123"}, "id": 8}'
+  -d '{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 7, "reason": "user pressed Stop"}}'
 
 # End the session
 curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"

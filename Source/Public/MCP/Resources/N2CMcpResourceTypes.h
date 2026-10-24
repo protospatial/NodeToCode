@@ -69,6 +69,16 @@ struct NODETOCODE_API FMcpResourceContents
 	TArray<uint8> BlobData;
 
 	/**
+	 * Set when the read failed: the JSON-RPC error code resources/read answers with (JsonRpcErrorCodes::ResourceNotFound
+	 * for an unknown uri, InternalError for a handler that timed out), and its message. 0 when the read succeeded.
+	 */
+	int32 ErrorCode = 0;
+	FString ErrorMessage;
+
+	/** True when the read failed (ErrorCode is set) */
+	bool IsError() const { return ErrorCode != 0; }
+
+	/**
 	 * Checks if this resource contains text data
 	 */
 	bool IsText() const { return !Text.IsEmpty(); }
