@@ -18,17 +18,13 @@ bool UN2CDeepSeekResponseParser::ParseLLMResponse(
             FString::Printf(TEXT("Failed to parse DeepSeek response JSON: %s"), *InJson),
             TEXT("DeepSeekResponseParser")
         );
+        SetParseError(OutResponse, TEXT("The provider response is not valid JSON"));
         return false;
     }
 
-    // Check for DeepSeek error response
-    FString ErrorMessage;
-    if (JsonObject->HasField(TEXT("error")))
+    // Check for a provider error (the HTTP handler adds the HTTP status to it)
+    if (HandleCommonErrorResponse(JsonObject, TEXT("error"), OutResponse))
     {
-        if (HandleCommonErrorResponse(JsonObject, TEXT("error"), ErrorMessage))
-        {
-            FN2CLogger::Get().LogError(ErrorMessage, TEXT("DeepSeekResponseParser"));
-        }
         return false;
     }
 
@@ -37,6 +33,7 @@ bool UN2CDeepSeekResponseParser::ParseLLMResponse(
     if (!ExtractStandardMessageContent(JsonObject, TEXT("choices"), TEXT("message"), TEXT("content"), MessageContent))
     {
         FN2CLogger::Get().LogError(TEXT("Failed to extract message content from DeepSeek response"), TEXT("DeepSeekResponseParser"));
+        SetParseError(OutResponse, TEXT("The provider response has no message content"));
         return false;
     }
 

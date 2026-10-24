@@ -110,13 +110,8 @@ FN2CLLMRequestHandleRef UN2CBaseLLMService::SendRequest(
     if (!MissingKeyError.IsEmpty())
     {
         FN2CLogger::Get().LogError(MissingKeyError, TEXT("BaseLLMService"));
-        TSharedRef<FJsonObject> ErrorJson = MakeShared<FJsonObject>();
-        ErrorJson->SetStringField(TEXT("error"), MissingKeyError);
-        FString ErrorString;
-        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ErrorString);
-        FJsonSerializer::Serialize(ErrorJson, Writer);
         FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
-        Handle->Complete(OnComplete, ErrorString);
+        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(MissingKeyError, EN2CTranslationErrorKind::Auth));
         return Handle;
     }
 

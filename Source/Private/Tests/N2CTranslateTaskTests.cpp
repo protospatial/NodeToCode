@@ -197,8 +197,8 @@ bool FN2CTranslateTaskCancelTest::RunTest(const FString& Parameters)
     //    delivers completions
     {
         AddExpectedError(TEXT("HTTP request failed"), EAutomationExpectedErrorFlags::Contains, 0);
-        AddExpectedError(TEXT("Failed to parse LLM response"), EAutomationExpectedErrorFlags::Contains, 0);
-        AddExpectedError(TEXT("Ollama API error"), EAutomationExpectedErrorFlags::Contains, 0);
+        AddExpectedError(TEXT("Translation failed"), EAutomationExpectedErrorFlags::Contains, 0);
+        AddExpectedError(TEXT("No response from the provider"), EAutomationExpectedErrorFlags::Contains, 0);
         const TSharedRef<FTaskObserver> Observer = MakeShared<FTaskObserver>();
         FTaskRef Task = MakeTask(Observer);
         Task->Execute();

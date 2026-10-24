@@ -545,7 +545,8 @@ void SN2CMainWindow::OnBatchItemComplete(const FN2CTagInfo& TagInfo, const FN2CT
 
 	if (BatchProgressModal.IsValid())
 	{
-		BatchProgressModal->MarkItemComplete(TagInfo.GraphName, bSuccess);
+		BatchProgressModal->MarkItemComplete(TagInfo.GraphName, bSuccess,
+			bSuccess ? FString() : Response.Error.ToDisplayString());
 	}
 }
 
@@ -680,6 +681,12 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 						UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] Overlay translation completed successfully"));
 					}
 				}
+				if (!bSuccess)
+				{
+					// The typed error (HTTP status, provider message) for the modal
+					const FN2CLLMConfig& ModuleConfig = UN2CLLMModule::Get()->GetConfig();
+					UN2CLLMModule::FillTranslationError(TranslationResponse, ModuleConfig.Provider, ModuleConfig.Model, Response);
+				}
 
 				// UI updates must happen on Game Thread
 				AsyncTask(ENamedThreads::GameThread, [WeakSelf, CapturedGraphName, TranslationResponse, bSuccess]()
@@ -695,7 +702,8 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 					// Update progress modal
 					if (StrongSelf->BatchProgressModal.IsValid())
 					{
-						StrongSelf->BatchProgressModal->MarkItemComplete(CapturedGraphName, bSuccess);
+						StrongSelf->BatchProgressModal->MarkItemComplete(CapturedGraphName, bSuccess,
+							bSuccess ? FString() : TranslationResponse.Error.ToDisplayString());
 
 						// Create result for the modal
 						FN2CBatchTranslationResult Result;
