@@ -23,6 +23,10 @@ Regardless of whether you install via the launcher or manually, you'll want to m
 > [!NOTE]
 > On Fab, only the engine versions listed on the Fab page are offered. 2.0 does not build on Unreal Engine 5.5 or older; on those engines, stay on 1.2.x.
 
+## Supported Platforms
+
+Node to Code 2.0.0-beta.1 is an editor plugin for **Windows (Win64)** only. 1.2.x also listed Mac, but no Mac build of 2.0 has been verified yet, so 2.0 does not load on Mac; Mac users should stay on 1.2.x for now. Mac will be listed again, and Linux added, once a build on that platform has been verified.
+
 ## Manual Installation
 
 If you are copying the plugin from your engine installation over to a project:

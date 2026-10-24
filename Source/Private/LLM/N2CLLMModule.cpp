@@ -16,6 +16,7 @@
 #include "LLM/Providers/N2COllamaService.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CPathUtils.h"
+#include "HAL/PlatformProcess.h"
 #include "UObject/StrongObjectPtr.h"
 
 UN2CLLMModule* UN2CLLMModule::Get()
@@ -228,14 +229,8 @@ void UN2CLLMModule::OpenTranslationFolder(bool& Success)
         PathToOpen = GetTranslationBasePath();
     }
 
-#if PLATFORM_WINDOWS
     FPlatformProcess::ExploreFolder(*PathToOpen);
     Success = true;
-#endif
-#if PLATFORM_MAC
-    FMacPlatformProcess::ExploreFolder(*PathToOpen);
-    Success = true;
-#endif
     
 }
 

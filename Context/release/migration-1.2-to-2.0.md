@@ -18,10 +18,14 @@ on dev-2.0 at 860182e and on `origin/main`; rows marked **Unverified** say what 
 - **Provisional** marks behaviour that applies a review recommendation for an owner decision card that is not
   confirmed: 0019 (run-python off by default; the board shows it done, but there is no decision record in
   `.agents/decisions/`), 0038 (subscription sign-in removed), 0061 (per-user secrets file), 0085 (5.6/5.7 MCP
-  transport).
+  transport), 0073 (2.0-beta is Win64 only; `.agents/decisions/0001-platforms-for-2-0-beta.md`).
 - 1.2.x had no MCP server, Python library, tag manager or batch translation. Changes to those since earlier 2.0
   development builds are in the last section; they do not affect a 1.2.x user.
 - **Engine:** 2.0 builds for UE 5.6 to 5.8 only, so a 1.2.x project on 5.5 or older must upgrade the engine first.
+- **Platform (Provisional, 0073):** 1.2.x allowlisted Win64 and Mac; 2.0.0-beta.1 allowlists Win64 only, because Mac
+  has never been compiled. A Mac user stays on 1.2.x until a verified Mac build re-adds it (card 0074).
+- **Version:** 1.2.x reports `Version` 2, `VersionName` "1.2.2"; 2.0 reports `Version` 3, `VersionName`
+  "2.0.0-beta.1" (also the MCP `serverInfo.version`).
 
 ## Settings: `[/Script/NodeToCode.N2CSettings]`
 
@@ -258,4 +262,5 @@ No `EnumRedirects` were added: no 1.2.x enum value was renamed; the one removed 
 
 ## Other release notes found while writing this
 
-- dev-2.0's `NodeToCode.uplugin` says `"VersionName": "1.3"`; the release card should set the 2.0.0-beta version.
+- dev-2.0's `NodeToCode.uplugin` said `"VersionName": "1.3"`; card 0074 set `Version` 3 and `VersionName`
+  "2.0.0-beta.1", with `IsBetaVersion` true, `Installed` false and the Fab `MarketplaceURL`.

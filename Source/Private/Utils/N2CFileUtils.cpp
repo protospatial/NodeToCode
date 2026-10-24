@@ -7,7 +7,7 @@
 #include "Misc/Paths.h"
 #include "Utils/N2CLogger.h"
 
-#if PLATFORM_MAC || PLATFORM_LINUX
+#if PLATFORM_UNIX || PLATFORM_APPLE
 #include <sys/stat.h>
 #endif
 
@@ -28,7 +28,7 @@ FString FN2CFileUtils::BackupPathFor(const FString& Path)
 
 void FN2CFileUtils::RestrictToOwner(const FString& Path)
 {
-#if PLATFORM_MAC || PLATFORM_LINUX
+#if PLATFORM_UNIX || PLATFORM_APPLE
     chmod(TCHAR_TO_UTF8(*Path), S_IRUSR | S_IWUSR);
 #endif
 }

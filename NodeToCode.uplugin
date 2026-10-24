@@ -1,27 +1,26 @@
 {
     "FileVersion":  1,
-    "Version":  2,
-    "VersionName":  "1.3",
+    "Version":  3,
+    "VersionName":  "2.0.0-beta.1",
     "FriendlyName":  "Node to Code",
-    "Description":  "Quickly translate any Unreal Engine Blueprint to C++",
+    "Description":  "Translate Unreal Engine Blueprint graphs into C++, Python, JavaScript, C#, Swift or pseudocode with the LLM of your choice, and let AI agents read and edit Blueprints through the built-in MCP server and agent tools",
     "Category":  "Code Plugins",
     "CreatedBy":  "Protospatial",
     "CreatedByURL":  "https://www.protospatial.com",
     "DocsURL":  "https://github.com/protospatial/NodeToCode/wiki",
-    "MarketplaceURL":  "com.epicgames.launcher://ue/marketplace/product/865c44cc-4ff6-4fc1-9c19-6fbc6ac430eb",
+    "MarketplaceURL":  "https://www.fab.com/listings/29955a71-cd04-4111-ac43-6a0264429ce6",
     "SupportURL":  "https://www.protospatial.com/support",
     "CanContainContent":  true,
-    "IsBetaVersion":  false,
+    "IsBetaVersion":  true,
     "IsExperimentalVersion":  false,
-    "Installed":  true,
+    "Installed":  false,
     "Modules":  [
                     {
                         "Name":  "NodeToCode",
                         "Type":  "Editor",
                         "LoadingPhase":  "PostEngineInit",
                         "PlatformAllowList":  [
-                                                  "Win64",
-                                                  "Mac"
+                                                  "Win64"
                                               ]
                     }
                 ],

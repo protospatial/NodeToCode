@@ -46,13 +46,7 @@ namespace
 #include "TimerManager.h"
 #include "Engine/Blueprint.h"
 
-#if PLATFORM_WINDOWS
-#include "Windows/WindowsPlatformApplicationMisc.h"
-#endif
-
-#if PLATFORM_MAC
-#include "Mac/MacPlatformApplicationMisc.h"
-#endif
+#include "HAL/PlatformApplicationMisc.h"
 
 FN2CEditorIntegration& FN2CEditorIntegration::Get()
 {

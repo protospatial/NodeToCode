@@ -27,13 +27,7 @@
 #include "UnrealEdMisc.h"
 #endif
 
-#if PLATFORM_WINDOWS
-#include "Windows/WindowsPlatformApplicationMisc.h"
-#endif
-
-#if PLATFORM_MAC
-#include "Mac/MacPlatformApplicationMisc.h"
-#endif
+#include "HAL/PlatformApplicationMisc.h"
 
 #define LOCTEXT_NAMESPACE "NodeToCode"
 
@@ -789,16 +783,8 @@ bool UN2CSettings::IsColorProperty(const FProperty* Property) const
 
 void UN2CSettings::CopyToClipboard(const FString& Text)
 {
-    #if PLATFORM_MAC
-    
     FPlatformApplicationMisc::ClipboardCopy(*Text);
     FN2CLogger::Get().Log(TEXT("Copied text to clipboard"), EN2CLogSeverity::Info);
-    return
-    
-    #endif
-    
-    FPlatformApplicationMisc::ClipboardCopy(*Text);
-    FN2CLogger::Get().Log(TEXT("Copied text to clipboard"), EN2CLogSeverity::Info);                                                                                                          
 }
 
 void UN2CSettings::InitializePricing()
