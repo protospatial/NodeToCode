@@ -18,7 +18,8 @@ runs the card's checks:
      again: the counts match;
   3. a toolbar translation while `obj gc` runs every 5 s: the probe starts a Slate post-tick timer that runs `obj gc`
      every --gc-interval seconds, writes logs/0377/ready_<label>, and waits for logs/0377/toolbar_done_<label>. In
-     between, a person (or computer use) presses the Node to Code toolbar button in the focused Blueprint editor and
+     between, a person (or computer use) presses Translate in the N2C graph overlay (the Blueprint editor's toolbar
+     translation; the plugin adds no Blueprint-toolbar button) and
      screenshots the result. The probe then stops the timer and checks the log: at least one GC ran while the
      request was in flight, the response was parsed, and no crash or ensure line.
 
@@ -336,7 +337,7 @@ def main():
             gc_mark = len(s.log_text())
             report['gc_timer'] = run_py(port, GC_TIMER_START_PY % {'interval': args.gc_interval}, 71)
             open(ready_marker, 'w').write(asset_path)
-            print('READY for toolbar translation: press the Node to Code button in %s, then create %s'
+            print('READY for toolbar translation: press Translate in the N2C graph overlay of %s, then create %s'
                   % (asset_path, done_marker), flush=True)
             wait_start = time.time()
             while not os.path.exists(done_marker) and time.time() - wait_start < args.toolbar_wait:
@@ -350,9 +351,11 @@ def main():
             seg = s.log_text()[gc_mark:]
             # Timeline of the toolbar request inside the GC segment: GC ticks before, during and after
             gc_pos = [m.start() for m in re.finditer(r'N2C0377 GC \d+', seg)]
-            start_pos = seg.find('ExecuteCollectNodesForEditor called')
-            if start_pos < 0:
-                start_pos = seg.find('Node to Code window shown')
+            # The graph overlay's Translate button (the editor's toolbar translation) logs RequestOverlayTranslation;
+            # the older Collect path logged ExecuteCollectNodesForEditor
+            starts = [p for p in (seg.find('RequestOverlayTranslation'), seg.find('ExecuteCollectNodesForEditor called'),
+                                  seg.find('Node to Code window shown')) if p >= 0]
+            start_pos = min(starts) if starts else -1
             parsed_pos = seg.find('Successfully parsed LLM response')
             c3['gc_lines'] = len(gc_pos)
             c3['toolbar_started'] = start_pos >= 0
@@ -361,7 +364,8 @@ def main():
             c3['parse_failed_lines'] = seg.count('Failed to parse LLM response')
             c3['crash_lines'] = len(CRASH_RE.findall(seg))
             c3['toolbar_lines'] = [l[:120] for l in seg.splitlines()
-                                   if 'ExecuteCollectNodesForEditor called' in l or 'Successfully parsed LLM response' in l][:4]
+                                   if 'ExecuteCollectNodesForEditor called' in l or 'RequestOverlayTranslation' in l
+                                   or 'Successfully parsed LLM response' in l][:4]
             checks['3_toolbar_translation_parsed'] = c3['toolbar_started'] and c3['response_parsed'] and c3['parse_failed_lines'] == 0
             checks['3_gc_ran_during_request'] = c3['gc_during_request'] >= 1
             checks['3_no_crash'] = c3['editor_alive'] and c3['crash_lines'] == 0
