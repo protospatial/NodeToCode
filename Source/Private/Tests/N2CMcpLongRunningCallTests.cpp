@@ -5,7 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "MCP/Server/N2CMcpHttpServerManager.h"
-#include "MCP/Async/N2CToolAsyncTaskBase.h"
+#include "MCP/Tools/IN2CMcpTool.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
@@ -23,39 +23,54 @@ namespace N2CMcpLongRunningCallTest
 {
 	const TCHAR* TranslateToolName = TEXT("translate-focused-blueprint");
 
-	/** Stand-in for the translation task: reports when the test says so, never calls an LLM */
-	class FStubTask : public FN2CToolAsyncTaskBase
+	/** One call of the stand-in tool: the test reports progress and sets the result when it says so */
+	class FStubCall
 	{
 	public:
-		FStubTask(const FGuid& TaskId, const FString& ProgressToken, bool bInCompleteInExecute)
-			: FN2CToolAsyncTaskBase(TaskId, ProgressToken, TranslateToolName, MakeShared<FJsonObject>())
-			, bCompleteInExecute(bInCompleteInExecute)
-		{
-		}
+		explicit FStubCall(const FN2CToolCallContextRef& InContext) : Context(InContext) {}
+		~FStubCall() { Set(FMcpToolCallResult::CreateErrorResult(TEXT("stub call dropped"))); }
 
-		virtual void Execute() override
+		void Progress(float Value, const FString& Message) { Context->ReportProgress(Value, Message); }
+		void Finish() { Set(FMcpToolCallResult::CreateTextResult(TEXT("stub translation"))); }
+		void Set(const FMcpToolCallResult& Result)
 		{
-			ReportProgress(0.02f, TEXT("Collecting the focused Blueprint"));
-			if (bCompleteInExecute)
+			if (!bSet)
 			{
-				ReportComplete(FMcpToolCallResult::CreateErrorResult(TEXT("stub failed before sending")));
+				bSet = true;
+				Promise.SetValue(Result);
 			}
 		}
 
-		virtual void RequestCancel() override
+		FN2CToolCallContextRef Context;
+		TPromise<FMcpToolCallResult> Promise;
+		bool bSet = false;
+	};
+
+	/** Stand-in for the translation tool: never calls an LLM */
+	class FStubTool : public IN2CMcpTool
+	{
+	public:
+		virtual FMcpToolDefinition GetDefinition() const override
 		{
-			FN2CToolAsyncTaskBase::RequestCancel();
-			if (!IsComplete())
-			{
-				ReportComplete(FMcpToolCallResult::CreateErrorResult(TEXT("Task was cancelled")));
-			}
+			FMcpToolDefinition Definition(TranslateToolName);
+			Definition.bIsLongRunning = true;
+			return Definition;
 		}
 
-		void Progress(float Value, const FString& Message) { ReportProgress(Value, Message); }
-		void Finish() { ReportComplete(FMcpToolCallResult::CreateTextResult(TEXT("stub translation"))); }
+		virtual TFuture<FMcpToolCallResult> InvokeAsync(const FN2CToolCallContextRef& Context, const TSharedPtr<FJsonObject>&) override
+		{
+			LastCall = MakeShared<FStubCall>(Context);
+			TFuture<FMcpToolCallResult> Future = LastCall->Promise.GetFuture();
+			LastCall->Progress(0.02f, TEXT("Collecting the focused Blueprint"));
+			if (bCompleteInInvoke)
+			{
+				LastCall->Set(FMcpToolCallResult::CreateErrorResult(TEXT("stub failed before sending")));
+			}
+			return Future;
+		}
 
-	private:
-		bool bCompleteInExecute;
+		bool bCompleteInInvoke = false;
+		TSharedPtr<FStubCall> LastCall;
 	};
 
 	/** Everything the server wrote through OnComplete */
@@ -143,15 +158,13 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	TSharedPtr<FStubTask, ESPMode::ThreadSafe> LastTask;
-	bool bCompleteInExecute = false;
-	FN2CToolAsyncTaskManager::Get().SetTaskFactoryForTesting(
-		[&LastTask, &bCompleteInExecute](const FString&, const FGuid& TaskId, const FString& Token, const TSharedPtr<FJsonObject>&)
-			-> TSharedPtr<IN2CToolAsyncTask>
-		{
-			LastTask = MakeShared<FStubTask, ESPMode::ThreadSafe>(TaskId, Token, bCompleteInExecute);
-			return LastTask;
-		});
+	const TSharedRef<FStubTool> StubTool = MakeShared<FStubTool>();
+	TSharedPtr<FStubCall>& LastTask = StubTool->LastCall;
+	bool& bCompleteInExecute = StubTool->bCompleteInInvoke;
+	FN2CToolAsyncTaskManager::Get().SetToolResolverForTesting([StubTool](const FString&) -> TSharedPtr<IN2CMcpTool>
+	{
+		return StubTool;
+	});
 
 	FN2CMcpHttpServerManager& Server = FN2CMcpHttpServerManager::Get();
 	const TSharedRef<FCapture> Capture = MakeShared<FCapture>();
@@ -267,7 +280,7 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 				{
 					LastTask->Finish();
 					LastTask.Reset();
-					FN2CToolAsyncTaskManager::Get().SetTaskFactoryForTesting(nullptr);
+					FN2CToolAsyncTaskManager::Get().SetToolResolverForTesting(nullptr);
 					if (bRegisteredHere)
 					{
 						Tools.UnregisterTool(TranslateToolName);
@@ -351,7 +364,7 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 		LastTask.Reset();
 	}
 
-	FN2CToolAsyncTaskManager::Get().SetTaskFactoryForTesting(nullptr);
+	FN2CToolAsyncTaskManager::Get().SetToolResolverForTesting(nullptr);
 	if (bRegisteredHere)
 	{
 		Tools.UnregisterTool(TranslateToolName);

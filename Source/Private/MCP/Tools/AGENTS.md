@@ -7,7 +7,8 @@ This directory contains the MCP (Model Context Protocol) tools framework and imp
 ```
 MCP/Tools/
 ├── Framework Files (in this directory)
-│   ├── IN2CMcpTool.h           - Tool interface definition
+│   ├── IN2CMcpTool.h           - Tool interface definition (Execute, InvokeAsync)
+│   ├── N2CToolCallContext.h/.cpp - Progress and cancellation for one long-running call
 │   ├── N2CMcpToolBase.h/.cpp   - Base class for all tools
 │   ├── N2CMcpToolRegistry.h/.cpp - Auto-registration system
 │   ├── N2CMcpToolManager.h/.cpp  - Tool lifecycle management
@@ -30,7 +31,7 @@ MCP/Tools/
 
 1. **`IN2CMcpTool`** - The interface that all MCP tools must implement
    - Defines the contract for tool definition and execution
-   - Supports both synchronous and asynchronous operations
+   - `Execute` for quick tools; `InvokeAsync` (a `TFuture` plus an `FN2CToolCallContext`) for long-running ones
 
 2. **`FN2CMcpToolBase`** - Base class providing common functionality
    - Implements helper methods for schema building
@@ -100,129 +101,86 @@ Each category has its own README with detailed documentation.
 
 ## Long-Running Tools and Async Execution
 
-NodeToCode runs long-running tools (LLM translation) as async tasks on the game thread and answers the client's
-`tools/call` on that same POST, with an ordinary CallToolResult, once the task finishes.
+NodeToCode runs long-running tools (LLM translation) on the game thread without blocking it and answers the client's
+`tools/call` on that same POST, with an ordinary CallToolResult, once the call finishes. A long-running tool gets an
+`FN2CToolCallContext` (`Source/Public/MCP/Tools/N2CToolCallContext.h`) for progress and cancellation and returns its
+result as a `TFuture`; `FN2CToolAsyncTaskManager` runs the call and knows nothing about any one tool.
 
 ### How Async Tools Work
 
-1. **Tool Declaration**: Mark a tool as long-running by setting `bIsLongRunning = true` in its definition
-2. **Same-POST response**: `FN2CMcpHttpServerManager::HandleMcpRequest` starts the task and does not answer at once.
+1. **Tool Declaration**: Mark a tool as long-running by setting `bIsLongRunning = true` in its definition, and
+   override `InvokeAsync` instead of `Execute`
+2. **Same-POST response**: `FN2CMcpHttpServerManager::HandleMcpRequest` starts the call and does not answer at once.
    On UE 5.8, when the request's `Accept` lists `text/event-stream` and `params._meta.progressToken` is set, the
    response is a `text/event-stream`: `notifications/progress` events (the token echoed with its JSON type, a number
    stays a number), then the JSON-RPC response with the CallToolResult, then the connection closes. Otherwise (no
    token, JSON-only Accept, or UE 5.6/5.7) the request is held and answered with one `application/json` response
    when the task finishes; no progress is sent. The 5.6/5.7 choice follows the open decision card 0085 and lives in
    `FN2CMcpHttpServerManager::CanStreamToolProgress()`. A long-running tool inside a JSON-RPC batch is refused.
-3. **Progress Reporting**: Tools report progress from the game thread; the translation reports real stages
+3. **Progress Reporting**: Tools report progress through `Context->ReportProgress(Progress, Message)` (any thread;
+   delivered on the game thread, dropped once the call has its result); the translation reports real stages
    (collecting the Blueprint, request sent, waiting with elapsed seconds, parsing) at least once per second, and each
    value sent is larger than the last, as MCP requires
-4. **Cancellation**: Clients can cancel running tasks using the `nodetocode/cancelTask` method with the call's
-   progress token; the call's own response then carries the cancelled error result
+4. **Cancellation**: Clients can cancel running calls using the `nodetocode/cancelTask` method with the call's
+   progress token. The manager cancels the call's context; the tool's `OnCancelled` callbacks run on the game thread,
+   stop the work (the translation cancels its provider HTTP request) and set a cancelled error result, which the
+   call's own response then carries. `FN2CToolAsyncTaskManager::FindTaskByRequestId` finds a call by session and
+   JSON-RPC id for `notifications/cancelled`.
 
 ### Creating a Long-Running Tool
 
-To create a long-running tool, you need to:
+1. Mark the tool as long-running in its definition (`Definition.bIsLongRunning = true`).
+2. Override `InvokeAsync(const FN2CToolCallContextRef& Context, const TSharedPtr<FJsonObject>& Arguments)`. It is
+   called once per call, on the game thread, and must not block: start the work (for example an async HTTP request)
+   and return a `TFuture<FMcpToolCallResult>`. Set its promise exactly once, on the game thread, with the result or a
+   cancelled result. A broken promise (destroyed unset) asserts, so whatever owns the promise sets it on every path.
+3. Report progress with `Context->ReportProgress`, and register `Context->OnCancelled` to stop the work. Hold your
+   own state weakly in that callback: the context can outlive it.
 
-1. Mark the tool as long-running in its definition
-2. Create an async task class that implements `IN2CToolAsyncTask`
-3. Register the async task in the tool manager
-
-Here's an example:
-
-```cpp
-// In your tool's GetDefinition() method
-FMcpToolDefinition FN2CMcpLongRunningTool::GetDefinition() const
-{
-    FMcpToolDefinition Definition(
-        TEXT("long-running-tool"),
-        TEXT("A tool that takes time to complete")
-    );
-    
-    // Mark as long-running
-    Definition.bIsLongRunning = true;
-    
-    // Define input schema as usual
-    Definition.InputSchema = BuildInputSchema(Properties, Required);
-    
-    return Definition;
-}
-```
-
-### Creating an Async Task
-
-Create a task class that inherits from `FN2CToolAsyncTaskBase`. The task manager calls `Execute()` once, on the
-game thread, and there is no worker thread: `Execute()` must start the work (for example an async HTTP request) and
-return at once, never block or sleep. Report progress from an `FTSTicker` and the result from the work's completion
-callback, both on the game thread. Keep anything the callback touches in a `TSharedPtr` captured by value (plus a weak
-pointer to the task), and override `RequestCancel()` to cancel the in-flight work so no callback arrives after the
-task has reported. `FN2CTranslateBlueprintAsyncTask` is the reference implementation: it keeps the
-`FN2CLLMRequestHandle` that `ProcessN2CJsonWithOverrides` returns and calls `Cancel()` on it on cancel and on
-timeout.
+There is no registration step and no tool-name switch: the server sees `bIsLongRunning` and the manager calls the
+tool's `InvokeAsync`. `Execute` keeps its default (an error); inside a JSON-RPC batch the tool manager refuses a
+long-running tool. `FN2CTranslateBlueprintCall` is the reference implementation: it keeps itself alive until its
+result is set, holds the `FN2CLLMRequestHandle` that `ProcessN2CJsonWithOverrides` returns, reports progress from an
+`FTSTicker`, and calls `Cancel()` on the handle on cancel and on timeout.
 
 ```cpp
-// N2CMyAsyncTask.h
-#pragma once
-
-#include "MCP/Async/N2CToolAsyncTaskBase.h"
-#include "LLM/N2CLLMRequestHandle.h"
-
-class FN2CMyAsyncTask : public FN2CToolAsyncTaskBase // the base is already TSharedFromThis: use SharedThis(this)
-{
-public:
-    FN2CMyAsyncTask(const FGuid& TaskId, const FString& ProgressToken,
-        const TSharedPtr<FJsonObject>& Arguments)
-        : FN2CToolAsyncTaskBase(TaskId, ProgressToken, TEXT("long-running-tool"), Arguments)
-    {
-    }
-
-    virtual void Execute() override;
-    virtual void RequestCancel() override;
-
-private:
-    FN2CLLMRequestHandlePtr Request;
-};
-
-// N2CMyAsyncTask.cpp
-void FN2CMyAsyncTask::Execute()
+// N2CMcpMyLongTool.cpp
+TFuture<FMcpToolCallResult> FN2CMcpMyLongTool::InvokeAsync(const FN2CToolCallContextRef& Context,
+    const TSharedPtr<FJsonObject>& Arguments)
 {
     check(IsInGameThread());
-    if (CheckCancellationAndReport())
-    {
-        return;
-    }
-    ReportProgress(0.1f, TEXT("Sending request..."));
 
-    TWeakPtr<FN2CMyAsyncTask, ESPMode::ThreadSafe> WeakTask = SharedThis(this);
-    Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, FOnLLMResponseReceived::CreateLambda(
-        [WeakTask](const FString& Response)
+    struct FState
+    {
+        TPromise<FMcpToolCallResult> Promise;
+        bool bSet = false;
+        FN2CLLMRequestHandlePtr Request;
+        void Set(const FMcpToolCallResult& Result) { if (!bSet) { bSet = true; Promise.SetValue(Result); } }
+        ~FState() { Set(FMcpToolCallResult::CreateErrorResult(TEXT("dropped"))); }
+    };
+    const TSharedRef<FState> State = MakeShared<FState>();
+    TFuture<FMcpToolCallResult> Future = State->Promise.GetFuture();
+
+    Context->ReportProgress(0.1f, TEXT("Sending request..."));
+    State->Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, FOnLLMResponseReceived::CreateLambda(
+        [State](const FString& Response)
         {
             // Runs on the game thread, at most once, and never after Request->Cancel() succeeded
-            if (TSharedPtr<FN2CMyAsyncTask, ESPMode::ThreadSafe> Task = WeakTask.Pin())
-            {
-                Task->ReportComplete(FMcpToolCallResult::CreateTextResult(Response));
-            }
+            State->Set(FMcpToolCallResult::CreateTextResult(Response));
         }));
-    // Returns now; add an FTSTicker here for progress and a timeout
-}
 
-void FN2CMyAsyncTask::RequestCancel()
-{
-    FN2CToolAsyncTaskBase::RequestCancel();
-    if (Request.IsValid() && Request->Cancel())
+    const TWeakPtr<FState> WeakState = State;
+    const TWeakPtr<FN2CToolCallContext, ESPMode::ThreadSafe> WeakContext = Context;
+    Context->OnCancelled([WeakState, WeakContext]()
     {
-        ReportComplete(FMcpToolCallResult::CreateErrorResult(TEXT("Task was cancelled")));
-    }
-}
-```
-
-### Registering the Async Task
-
-Update `FN2CToolAsyncTaskManager::CreateAsyncTask` to create your task:
-
-```cpp
-if (ToolName == TEXT("long-running-tool"))
-{
-    return MakeShared<FN2CMyAsyncTask>(TaskId, ProgressToken, Arguments);
+        const TSharedPtr<FState> Pinned = WeakState.Pin();
+        const FN2CToolCallContextPtr PinnedContext = WeakContext.Pin();
+        if (Pinned && PinnedContext && Pinned->Request.IsValid() && Pinned->Request->Cancel())
+        {
+            Pinned->Set(FMcpToolCallResult::CreateErrorResult(PinnedContext->GetCancelledMessage()));
+        }
+    });
+    return Future;
 }
 ```
 

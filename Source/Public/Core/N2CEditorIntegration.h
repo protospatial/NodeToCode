@@ -9,6 +9,7 @@
 #include "Utils/N2CLogger.h"
 #include "LLM/IN2CLLMService.h"
 #include "LLM/N2CLLMRequestHandle.h"
+#include "LLM/N2CLLMTypes.h"
 #include "Models/N2CBlueprint.h"
 
 // Forward declarations
@@ -26,6 +27,21 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CTranslationStateChanged, bool /* bIsTr
  * The main window can subscribe to show progress modal
  */
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnN2COverlayTranslationRequested, const FGuid& /* GraphGuid */, const FString& /* GraphName */, const FString& /* BlueprintPath */);
+
+/**
+ * Provider, model and language overrides for one translation, resolved against the IDs that
+ * get-available-llm-providers and get-available-translation-targets offer (lowercase, matched case-insensitively).
+ * An unset Provider or Language means "use the settings default".
+ */
+struct FN2CTranslationOverrides
+{
+    TOptional<EN2CLLMProvider> Provider;
+    TOptional<EN2CCodeLanguage> Language;
+    FString ModelId;
+
+    /** Things the caller should hear about but that do not stop the translation (an unrecognised model ID) */
+    TArray<FString> Warnings;
+};
 
 /**
  * @class FN2CEditorIntegration
@@ -110,6 +126,22 @@ public:
         const FString& LanguageIdOverride,
         FOnLLMResponseReceived OnComplete
     );
+
+    /**
+     * Resolves translation overrides. Provider and language IDs match the lowercase IDs the MCP listing tools return,
+     * ignoring case; empty means the settings default. An unknown provider or language fails with OutError naming
+     * the valid IDs. A model ID that the model registry does not list for a cloud provider is still used, with an
+     * entry in OutOverrides.Warnings.
+     * @return false when a provider or language ID is unknown
+     */
+    static bool ResolveTranslationOverrides(const FString& ProviderId, const FString& ModelId, const FString& LanguageId,
+        FN2CTranslationOverrides& OutOverrides, FString& OutError);
+
+    /** Provider IDs a translation accepts (lowercase enum names, as get-available-llm-providers returns them) */
+    static TArray<FString> GetTranslationProviderIds();
+
+    /** Language IDs a translation accepts (lowercase, as get-available-translation-targets returns them) */
+    static TArray<FString> GetTranslationLanguageIds();
 
     /**
      * Wrap a graph tab with the NodeToCode overlay if not already wrapped

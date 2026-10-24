@@ -37,6 +37,8 @@ namespace
 #include "Core/Widgets/SN2CGraphOverlay.h"
 #include "LLM/N2CLLMModule.h"
 #include "LLM/N2CLLMTypes.h"
+#include "LLM/N2CLLMModelRegistry.h"
+#include "Models/N2CTranslation.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -668,57 +670,158 @@ FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateJsonAsync(
 
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
 
+    // Unknown provider or language IDs fail the request rather than silently falling back to the defaults
+    FN2CTranslationOverrides Overrides;
+    FString OverrideError;
+    if (!ResolveTranslationOverrides(ProviderIdOverride, ModelIdOverride, LanguageIdOverride, Overrides, OverrideError))
+    {
+        FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(OverrideError, EN2CTranslationErrorKind::InvalidRequest));
+        return Handle;
+    }
+    for (const FString& Warning : Overrides.Warnings)
+    {
+        FN2CLogger::Get().LogWarning(Warning);
+    }
+
     FN2CLLMConfig RequestConfig = LLMModule->GetConfig(); // Start with default config from module
 
-    EN2CLLMProvider FinalProvider = RequestConfig.Provider;
-    if (!ProviderIdOverride.IsEmpty())
-    {
-        const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>();
-        int64 EnumValue = ProviderEnum->GetValueByNameString(ProviderIdOverride, EGetByNameFlags::CaseSensitive);
-        if (EnumValue == INDEX_NONE) // Try with "EN2CLLMProvider::" prefix
-        {
-            EnumValue = ProviderEnum->GetValueByNameString(FString(TEXT("EN2CLLMProvider::")) + ProviderIdOverride, EGetByNameFlags::CaseSensitive);
-        }
-
-        if (EnumValue != INDEX_NONE)
-        {
-            FinalProvider = static_cast<EN2CLLMProvider>(EnumValue);
-        }
-        else
-        {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid ProviderId '%s' provided. Using default: %s"),
-                *ProviderIdOverride, *UEnum::GetValueAsString(FinalProvider)));
-        }
-    }
+    const EN2CLLMProvider FinalProvider = Overrides.Provider.Get(RequestConfig.Provider);
     RequestConfig.Provider = FinalProvider;
     RequestConfig.ApiKey = Settings->GetActiveApiKeyForProvider(FinalProvider); // Get API key for the potentially overridden provider
 
     // The override model, or the final provider's selected model with its thinking mode
     Settings->ResolveRequestModel(FinalProvider, ModelIdOverride, RequestConfig);
 
-    EN2CCodeLanguage TargetLanguage = Settings->TargetLanguage; // Default from settings
-    if (!LanguageIdOverride.IsEmpty())
-    {
-        const UEnum* LangEnum = StaticEnum<EN2CCodeLanguage>();
-        int64 EnumValue = LangEnum->GetValueByNameString(LanguageIdOverride, EGetByNameFlags::CaseSensitive);
-        if (EnumValue == INDEX_NONE) // Try with "EN2CCodeLanguage::" prefix
-        {
-            EnumValue = LangEnum->GetValueByNameString(FString(TEXT("EN2CCodeLanguage::")) + LanguageIdOverride, EGetByNameFlags::CaseSensitive);
-        }
-
-        if (EnumValue != INDEX_NONE)
-        {
-            TargetLanguage = static_cast<EN2CCodeLanguage>(EnumValue);
-        }
-        else
-        {
-             FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid LanguageId '%s' provided. Using default: %s"),
-                *LanguageIdOverride, *UEnum::GetValueAsString(TargetLanguage)));
-        }
-    }
+    const EN2CCodeLanguage TargetLanguage = Overrides.Language.Get(Settings->TargetLanguage);
 
     // Now call the LLMModule method that handles overrides
     return LLMModule->ProcessN2CJsonWithOverrides(JsonInput, RequestConfig, TargetLanguage, OnComplete);
+}
+
+namespace N2CTranslationOverridesPrivate
+{
+    /** Lowercase IDs of an enum's offered entries (no _MAX, no Hidden entries), with their values */
+    static TArray<TPair<FString, int64>> ListIds(const UEnum* Enum)
+    {
+        TArray<TPair<FString, int64>> Ids;
+        for (int32 Index = 0; Index < Enum->NumEnums() - 1; ++Index) // -1: the generated _MAX entry
+        {
+            if (Enum->HasMetaData(TEXT("Hidden"), Index))
+            {
+                continue;
+            }
+            FString Id = Enum->GetNameStringByIndex(Index);
+            int32 Separator = INDEX_NONE;
+            if (Id.FindLastChar(TEXT(':'), Separator))
+            {
+                Id.RightChopInline(Separator + 1);
+            }
+            Ids.Emplace(Id.ToLower(), Enum->GetValueByIndex(Index));
+        }
+        return Ids;
+    }
+
+    /** The value whose ID equals Id ignoring case, or INDEX_NONE */
+    static int64 FindId(const TArray<TPair<FString, int64>>& Ids, const FString& Id)
+    {
+        const FString Wanted = Id.TrimStartAndEnd();
+        for (const TPair<FString, int64>& Pair : Ids)
+        {
+            if (Pair.Key.Equals(Wanted, ESearchCase::IgnoreCase))
+            {
+                return Pair.Value;
+            }
+        }
+        return INDEX_NONE;
+    }
+
+    static TArray<FString> Keys(const TArray<TPair<FString, int64>>& Ids)
+    {
+        TArray<FString> Out;
+        for (const TPair<FString, int64>& Pair : Ids)
+        {
+            Out.Add(Pair.Key);
+        }
+        return Out;
+    }
+}
+
+TArray<FString> FN2CEditorIntegration::GetTranslationProviderIds()
+{
+    return N2CTranslationOverridesPrivate::Keys(N2CTranslationOverridesPrivate::ListIds(StaticEnum<EN2CLLMProvider>()));
+}
+
+TArray<FString> FN2CEditorIntegration::GetTranslationLanguageIds()
+{
+    return N2CTranslationOverridesPrivate::Keys(N2CTranslationOverridesPrivate::ListIds(StaticEnum<EN2CCodeLanguage>()));
+}
+
+bool FN2CEditorIntegration::ResolveTranslationOverrides(const FString& ProviderId, const FString& ModelId, const FString& LanguageId,
+    FN2CTranslationOverrides& OutOverrides, FString& OutError)
+{
+    using namespace N2CTranslationOverridesPrivate;
+    OutOverrides = FN2CTranslationOverrides();
+    OutError.Reset();
+
+    if (!ProviderId.TrimStartAndEnd().IsEmpty())
+    {
+        const TArray<TPair<FString, int64>> Ids = ListIds(StaticEnum<EN2CLLMProvider>());
+        const int64 Value = FindId(Ids, ProviderId);
+        if (Value == INDEX_NONE)
+        {
+            OutError = FString::Printf(TEXT("Unknown provider '%s'. Valid providers: %s"), *ProviderId, *FString::Join(Keys(Ids), TEXT(", ")));
+            return false;
+        }
+        OutOverrides.Provider = static_cast<EN2CLLMProvider>(Value);
+    }
+
+    if (!LanguageId.TrimStartAndEnd().IsEmpty())
+    {
+        const TArray<TPair<FString, int64>> Ids = ListIds(StaticEnum<EN2CCodeLanguage>());
+        const int64 Value = FindId(Ids, LanguageId);
+        if (Value == INDEX_NONE)
+        {
+            OutError = FString::Printf(TEXT("Unknown language '%s'. Valid languages: %s"), *LanguageId, *FString::Join(Keys(Ids), TEXT(", ")));
+            return false;
+        }
+        OutOverrides.Language = static_cast<EN2CCodeLanguage>(Value);
+    }
+
+    OutOverrides.ModelId = ModelId.TrimStartAndEnd();
+    if (!OutOverrides.ModelId.IsEmpty())
+    {
+        // Local providers serve whatever models the user installed: only cloud model IDs can be checked
+        const EN2CLLMProvider Provider = OutOverrides.Provider.Get(GetDefault<UN2CSettings>()->Provider);
+        if (Provider != EN2CLLMProvider::Ollama && Provider != EN2CLLMProvider::LMStudio)
+        {
+            const FString ProviderName = StaticEnum<EN2CLLMProvider>()->GetNameStringByValue(static_cast<int64>(Provider)).ToLower();
+            bool bListed = false;
+            bool bRetired = false;
+            TArray<FString> LiveIds;
+            for (const FN2CModelMetadata& Meta : FN2CLLMModelRegistry::Get().GetAllModelsForProvider(Provider))
+            {
+                if (Meta.ModelId == OutOverrides.ModelId)
+                {
+                    bListed = true;
+                    bRetired = Meta.bIsRetired;
+                }
+                if (!Meta.bIsRetired)
+                {
+                    LiveIds.AddUnique(Meta.ModelId);
+                }
+            }
+            if (!bListed || bRetired)
+            {
+                OutOverrides.Warnings.Add(FString::Printf(
+                    TEXT("Model '%s' is %s for provider '%s'; it was sent to the provider as given. Listed models: %s"),
+                    *OutOverrides.ModelId, bRetired ? TEXT("retired") : TEXT("not in NodeToCode's model list"), *ProviderName,
+                    *FString::Join(LiveIds, TEXT(", "))));
+            }
+        }
+    }
+
+    return true;
 }
 
 TSharedPtr<SOverlay> FN2CEditorIntegration::FindGraphEditorOverlay(TSharedPtr<SWidget> GraphEditorWidget)

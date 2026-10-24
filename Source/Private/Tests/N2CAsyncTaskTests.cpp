@@ -4,88 +4,90 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "MCP/Async/N2CToolAsyncTaskBase.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
+#include "MCP/Tools/IN2CMcpTool.h"
+#include "MCP/Tools/N2CToolCallContext.h"
 #include "Async/Async.h"
+#include "Async/Future.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include <atomic>
 
 namespace N2CAsyncTaskTestsPrivate
 {
-	/** What a stub task reported through its delegates */
-	struct FObserver
+	/** One stub call: its promise is set once, and it is never broken */
+	struct FStubCall
 	{
-		int32 Completions = 0;
-		int32 ProgressReports = 0;
-		int32 ErrorCompletions = 0;
+		TPromise<FMcpToolCallResult> Promise;
+		std::atomic<bool> bSet{false};
+
+		void Set(const FMcpToolCallResult& Result)
+		{
+			if (!bSet.exchange(true))
+			{
+				Promise.SetValue(Result);
+			}
+		}
+		~FStubCall()
+		{
+			Set(FMcpToolCallResult::CreateErrorResult(TEXT("stub call dropped")));
+		}
 	};
 
 	/**
-	 * Minimal async task. With bCompleteInExecute it reports progress and its result inside Execute(), like a task whose
-	 * work fails before it is sent; otherwise it waits until cancelled, like a translation waiting for the LLM.
+	 * Minimal long-running tool. With bCompleteInInvoke each call reports progress and its result inside InvokeAsync,
+	 * like a call whose work fails before it is sent; otherwise it waits until cancelled, like a translation waiting
+	 * for the LLM. The tool keeps only weak references to its calls, so a test can see them freed.
 	 */
-	class FStubAsyncTask : public FN2CToolAsyncTaskBase
+	class FStubTool : public IN2CMcpTool
 	{
 	public:
-		FStubAsyncTask(bool bInCompleteInExecute)
-			: FN2CToolAsyncTaskBase(FGuid::NewGuid(), FGuid::NewGuid().ToString(), TEXT("n2c-test-stub"), MakeShared<FJsonObject>())
-			, bCompleteInExecute(bInCompleteInExecute)
+		explicit FStubTool(bool bInCompleteInInvoke) : bCompleteInInvoke(bInCompleteInInvoke) {}
+
+		virtual FMcpToolDefinition GetDefinition() const override
 		{
+			FMcpToolDefinition Definition(TEXT("n2c-test-stub"));
+			Definition.bIsLongRunning = true;
+			return Definition;
 		}
 
-		virtual void Execute() override
+		virtual TFuture<FMcpToolCallResult> InvokeAsync(const FN2CToolCallContextRef& Context, const TSharedPtr<FJsonObject>&) override
 		{
-			ReportProgress(0.5f, TEXT("stub working"));
-			if (bCompleteInExecute)
+			const TSharedRef<FStubCall, ESPMode::ThreadSafe> Call = MakeShared<FStubCall, ESPMode::ThreadSafe>();
+			Calls.Add(Call);
+			TFuture<FMcpToolCallResult> Future = Call->Promise.GetFuture();
+			Context->ReportProgress(0.5f, TEXT("stub working"));
+			if (bCompleteInInvoke)
 			{
-				ReportComplete(FMcpToolCallResult::CreateTextResult(TEXT("stub done")));
+				Call->Set(FMcpToolCallResult::CreateTextResult(TEXT("stub done")));
 			}
-		}
-
-		virtual void RequestCancel() override
-		{
-			FN2CToolAsyncTaskBase::RequestCancel();
-			if (!IsComplete())
+			else
 			{
-				ReportComplete(FMcpToolCallResult::CreateErrorResult(TEXT("Task was cancelled")));
+				// The cancel callback is the only owner of a running call
+				const TWeakPtr<FN2CToolCallContext, ESPMode::ThreadSafe> WeakContext = Context;
+				Context->OnCancelled([Call, WeakContext]()
+				{
+					const FN2CToolCallContextPtr Pinned = WeakContext.Pin();
+					Call->Set(FMcpToolCallResult::CreateErrorResult(Pinned.IsValid() ? Pinned->GetCancelledMessage() : TEXT("Task was cancelled")));
+				});
 			}
+			return Future;
 		}
 
-		/** Reports from the calling thread (the protected reporters, exposed for the test) */
-		void ReportFromAnyThread()
-		{
-			ReportProgress(0.75f, TEXT("off-thread progress"));
-			ReportComplete(FMcpToolCallResult::CreateTextResult(TEXT("off-thread result")));
-		}
+		TArray<TWeakPtr<FStubCall, ESPMode::ThreadSafe>> Calls;
 
 	private:
-		bool bCompleteInExecute;
+		bool bCompleteInInvoke;
 	};
 
-	using FStubRef = TSharedRef<FStubAsyncTask, ESPMode::ThreadSafe>;
-
-	/** Binds counting delegates directly (no task manager) */
-	static void Observe(const FStubRef& Task, const TSharedRef<FObserver>& Observer)
-	{
-		Task->SetProgressDelegate(FN2CAsyncTaskProgressDelegate::CreateLambda([Observer](float, const FString&)
-		{
-			++Observer->ProgressReports;
-		}));
-		Task->SetCompleteDelegate(FN2CAsyncTaskCompleteDelegate::CreateLambda([Observer](const FMcpToolCallResult& Result)
-		{
-			++Observer->Completions;
-			Observer->ErrorCompletions += Result.bIsError ? 1 : 0;
-		}));
-	}
-
-	/** Launches the task through the manager, the way the MCP server does, counting the responses it writes */
-	static void Launch(const FStubRef& Task, const TSharedRef<int32>& Responses)
+	/** Launches one call through the manager, the way the MCP server does, counting the responses it writes */
+	static FGuid Launch(const TSharedRef<FStubTool>& Tool, const FString& Token, const TSharedRef<int32>& Responses)
 	{
 		FN2CAsyncTaskResponder Responder;
 		Responder.SendResponse = [Responses](const FString&) { ++*Responses; };
-		FN2CToolAsyncTaskManager::Get().LaunchTaskInstance(Task, TEXT("n2c-test-stub"), MakeShared<FJsonObject>(),
-			TEXT("n2c-test-session"), MakeShared<FJsonValueNumber>(1), Responder);
+		return FN2CToolAsyncTaskManager::Get().LaunchToolCall(Tool, FGuid::NewGuid(), TEXT("n2c-test-stub"), MakeShared<FJsonObject>(),
+			Token, TEXT("n2c-test-session"), MakeShared<FJsonValueNumber>(1), Responder);
 	}
 }
 
@@ -105,17 +107,16 @@ bool FN2CAsyncTaskCleanupTest::RunTest(const FString& Parameters)
 	const int32 BaseTasks = Manager.GetTrackedTaskCount();
 	const int32 BaseTokens = Manager.GetTrackedProgressTokenCount();
 
-	// 1. Fifty tasks that complete: each is released by the manager once it has delivered its result
+	// 1. Fifty calls that complete: each is released by the manager once it has delivered its result
 	constexpr int32 NumCompleted = 50;
+	const TSharedRef<FStubTool> CompletingTool = MakeShared<FStubTool>(true);
 	const TSharedRef<int32> CompletedResponses = MakeShared<int32>(0);
-TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> CompletedTasks;
 	TArray<FString> CompletedTokens;
 	for (int32 Index = 0; Index < NumCompleted; ++Index)
 	{
-		FStubRef Task = MakeShared<FStubAsyncTask, ESPMode::ThreadSafe>(true);
-		CompletedTasks.Add(Task);
-		CompletedTokens.Add(Task->GetProgressToken());
-		Launch(Task, CompletedResponses);
+		const FString Token = FGuid::NewGuid().ToString();
+		CompletedTokens.Add(Token);
+		Launch(CompletingTool, Token, CompletedResponses);
 	}
 
 	TestEqual(TEXT("no completed task is still tracked"), Manager.GetTrackedTaskCount(), BaseTasks);
@@ -128,25 +129,22 @@ TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> CompletedTasks;
 	int32 NumCancelAccepted = 0;
 	for (int32 Index = 0; Index < NumCompleted; ++Index)
 	{
-		NumAlive += CompletedTasks[Index].IsValid() ? 1 : 0;
+		NumAlive += CompletingTool->Calls[Index].IsValid() ? 1 : 0;
 		NumRemembered += Manager.WasProgressTokenCompleted(CompletedTokens[Index]) ? 1 : 0;
 		NumCancelAccepted += Manager.CancelTaskByProgressToken(CompletedTokens[Index]) ? 1 : 0;
 	}
-	TestEqual(TEXT("every completed task object was freed"), NumAlive, 0);
+	TestEqual(TEXT("every completed call was freed"), NumAlive, 0);
 	TestEqual(TEXT("each finished progress token is remembered (cancel answers task_already_completed)"), NumRemembered, NumCompleted);
 	TestEqual(TEXT("cancel is refused for a finished task"), NumCancelAccepted, 0);
 
-	// 2. Running tasks are tracked until CancelAllTasks (the shutdown path) cancels and removes them
+	// 2. Running calls are tracked until CancelAllTasks (the shutdown path) cancels and removes them
 	constexpr int32 NumRunning = 5;
+	const TSharedRef<FStubTool> WaitingTool = MakeShared<FStubTool>(false);
 	const TSharedRef<int32> RunningResponses = MakeShared<int32>(0);
-TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> RunningTasks;
 	TArray<FGuid> RunningTaskIds;
 	for (int32 Index = 0; Index < NumRunning; ++Index)
 	{
-		FStubRef Task = MakeShared<FStubAsyncTask, ESPMode::ThreadSafe>(false);
-		RunningTasks.Add(Task);
-		RunningTaskIds.Add(Task->GetTaskId());
-		Launch(Task, RunningResponses);
+		RunningTaskIds.Add(Launch(WaitingTool, FGuid::NewGuid().ToString(), RunningResponses));
 	}
 
 	TestEqual(TEXT("running tasks are tracked"), Manager.GetTrackedTaskCount(), BaseTasks + NumRunning);
@@ -164,11 +162,11 @@ TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> RunningTasks;
 	TestEqual(TEXT("CancelAllTasks leaves no task tracked"), Manager.GetTrackedTaskCount(), BaseTasks);
 	TestEqual(TEXT("CancelAllTasks leaves no progress token mapped"), Manager.GetTrackedProgressTokenCount(), BaseTokens);
 	int32 NumRunningAlive = 0;
-	for (const TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>& Task : RunningTasks)
+	for (const TWeakPtr<FStubCall, ESPMode::ThreadSafe>& Call : WaitingTool->Calls)
 	{
-		NumRunningAlive += Task.IsValid() ? 1 : 0;
+		NumRunningAlive += Call.IsValid() ? 1 : 0;
 	}
-	TestEqual(TEXT("every cancelled task object was freed"), NumRunningAlive, 0);
+	TestEqual(TEXT("every cancelled call was freed"), NumRunningAlive, 0);
 	TestEqual(TEXT("each cancelled task wrote exactly one response (its cancelled result)"), *RunningResponses, NumRunning);
 
 	return true;
@@ -179,53 +177,71 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FN2CAsyncTaskQueuedReportTest, "NodeToCode.Robu
 
 bool FN2CAsyncTaskQueuedReportTest::RunTest(const FString& Parameters)
 {
-	using namespace N2CAsyncTaskTestsPrivate;
-
 	if (!TestTrue(TEXT("test runs on the game thread"), IsInGameThread()))
 	{
 		return false;
 	}
 
-	// A report made off the game thread is queued there. If the task is released before the queue runs, the queued
-	// report must find nothing (it holds the task weakly) instead of running on a freed task.
+	struct FObserver
 	{
-		TSharedRef<FObserver> Observer = MakeShared<FObserver>();
-		FStubRef Task = MakeShared<FStubAsyncTask, ESPMode::ThreadSafe>(false);
-		Observe(Task, Observer);
-		TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe> WeakTask = Task;
+		int32 ProgressReports = 0;
+		int32 CancelCallbacks = 0;
+	};
 
-		// Raw pointer: only this scope owns the task, and it outlives the wait
-		FStubAsyncTask* RawTask = &Task.Get();
-		TFuture<void> Reported = Async(EAsyncExecution::Thread, [RawTask]()
+	// Progress reported off the game thread is queued there. If the context is released before the queue runs, the
+	// queued report must find nothing (it holds the context weakly) instead of running on a freed context.
+	{
+		const TSharedRef<FObserver> Observer = MakeShared<FObserver>();
+		FN2CToolCallContextPtr Context = FN2CToolCallContext::Create([Observer](float, const FString&) { ++Observer->ProgressReports; });
+		const TWeakPtr<FN2CToolCallContext, ESPMode::ThreadSafe> WeakContext = Context;
+
+		// Raw pointer: only this scope owns the context, and it outlives the wait
+		FN2CToolCallContext* RawContext = Context.Get();
+		TFuture<void> Reported = Async(EAsyncExecution::Thread, [RawContext]()
 		{
-			RawTask->ReportFromAnyThread();
+			RawContext->ReportProgress(0.75f, TEXT("off-thread progress"));
 		});
 		Reported.Wait();
 
-		Task = MakeShared<FStubAsyncTask, ESPMode::ThreadSafe>(false); // drop the last reference to the reported task
-		TestFalse(TEXT("the reported task was released before the game thread ran its queued reports"), WeakTask.IsValid());
+		Context.Reset(); // drop the last reference
+		TestFalse(TEXT("the context was released before the game thread ran its queued reports"), WeakContext.IsValid());
 
 		FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
-		TestEqual(TEXT("no queued progress ran for the released task"), Observer->ProgressReports, 0);
-		TestEqual(TEXT("no queued completion ran for the released task"), Observer->Completions, 0);
+		TestEqual(TEXT("no queued progress ran for the released context"), Observer->ProgressReports, 0);
 	}
 
-	// While the task is alive, the same off-thread reports arrive on the game thread
+	// While the context is alive, off-thread progress and an off-thread cancel arrive on the game thread
 	{
-		TSharedRef<FObserver> Observer = MakeShared<FObserver>();
-		FStubRef Task = MakeShared<FStubAsyncTask, ESPMode::ThreadSafe>(false);
-		Observe(Task, Observer);
-
-		FStubAsyncTask* RawTask = &Task.Get();
-		TFuture<void> Reported = Async(EAsyncExecution::Thread, [RawTask]()
+		const TSharedRef<FObserver> Observer = MakeShared<FObserver>();
+		const FN2CToolCallContextRef Context = FN2CToolCallContext::Create([Observer](float, const FString&)
 		{
-			RawTask->ReportFromAnyThread();
+			check(IsInGameThread());
+			++Observer->ProgressReports;
+		});
+		Context->OnCancelled([Observer]()
+		{
+			check(IsInGameThread());
+			++Observer->CancelCallbacks;
+		});
+
+		TFuture<void> Reported = Async(EAsyncExecution::Thread, [Context]()
+		{
+			Context->ReportProgress(0.75f, TEXT("off-thread progress"));
+			Context->Cancel(TEXT("off-thread cancel"));
+			Context->Cancel(TEXT("second cancel"));
 		});
 		Reported.Wait();
+		TestEqual(TEXT("nothing ran off the game thread"), Observer->ProgressReports + Observer->CancelCallbacks, 0);
 		FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
 
-		TestEqual(TEXT("queued progress ran for the live task"), Observer->ProgressReports, 1);
-		TestEqual(TEXT("queued completion ran for the live task"), Observer->Completions, 1);
+		TestEqual(TEXT("queued progress ran for the live context"), Observer->ProgressReports, 1);
+		TestEqual(TEXT("the cancel callback ran once"), Observer->CancelCallbacks, 1);
+		TestEqual(TEXT("the first cancel's reason is kept"), Context->GetCancelledMessage(), FString(TEXT("off-thread cancel")));
+
+		// Progress after the result is dropped
+		Context->MarkCompleted();
+		Context->ReportProgress(0.9f, TEXT("late"));
+		TestEqual(TEXT("progress after completion is dropped"), Observer->ProgressReports, 1);
 	}
 
 	return true;

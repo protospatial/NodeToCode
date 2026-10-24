@@ -61,6 +61,11 @@ A translation cut at the output limit looks like this (no `http_status`, since t
 
 `http_status` is left out when there was no HTTP response (for example a connection failure or a missing API key).
 
+An unknown `provider` or `language` argument to `translate-focused-blueprint` is refused before anything is sent: the
+result has `isError: true` and names the valid IDs, which are the ones `get-available-llm-providers` and
+`get-available-translation-targets` list (case does not matter). A `model` that NodeToCode does not list for a cloud
+provider is still sent as given, and the result JSON gets a `warnings` array that says so.
+
 ## Translation Timeout Issues
 
 If your translation appears to hang indefinitely:
