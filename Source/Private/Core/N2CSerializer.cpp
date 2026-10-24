@@ -193,8 +193,32 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
     }
     JsonObject->SetArrayField(TEXT("nodes"), NodesArray);
 
-    // Add flows
+    // Legacy compact flows are retained only for backward compatibility.
     JsonObject->SetObjectField(TEXT("flows"), FlowsToJsonObject(Graph.Flows));
+
+    TArray<TSharedPtr<FJsonValue>> DirectLinks;
+    for (const FN2CDirectLink& Link : Graph.Connections)
+    {
+        TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+        Entry->SetStringField(TEXT("source_node_guid"), Link.SourceNodeGuid);
+        Entry->SetStringField(TEXT("source_pin_guid"), Link.SourcePinGuid);
+        Entry->SetStringField(TEXT("target_node_guid"), Link.TargetNodeGuid);
+        Entry->SetStringField(TEXT("target_pin_guid"), Link.TargetPinGuid);
+        Entry->SetStringField(TEXT("source_node_id"), Link.SourceNodeId);
+        Entry->SetStringField(TEXT("source_pin_id"), Link.SourcePinId);
+        Entry->SetStringField(TEXT("target_node_id"), Link.TargetNodeId);
+        Entry->SetStringField(TEXT("target_pin_id"), Link.TargetPinId);
+        Entry->SetStringField(TEXT("source_node_name"), Link.SourceNodeName);
+        Entry->SetStringField(TEXT("source_pin_name"), Link.SourcePinName);
+        Entry->SetStringField(TEXT("target_node_name"), Link.TargetNodeName);
+        Entry->SetStringField(TEXT("target_pin_name"), Link.TargetPinName);
+        Entry->SetBoolField(TEXT("is_execution"), Link.bIsExecution);
+        Entry->SetBoolField(TEXT("source_hidden"), Link.bSourceHidden);
+        Entry->SetBoolField(TEXT("target_hidden"), Link.bTargetHidden);
+        DirectLinks.Add(MakeShared<FJsonValueObject>(Entry));
+    }
+    JsonObject->SetArrayField(TEXT("connections"), DirectLinks);
+    JsonObject->SetNumberField(TEXT("unresolved_connection_count"), Graph.UnresolvedConnectionCount);
 
     return JsonObject;
 }
@@ -268,12 +292,9 @@ TSharedPtr<FJsonObject> FN2CSerializer::PinToJsonObject(const FN2CPinDefinition&
     JsonObject->SetStringField(TEXT("id"), Pin.ID);
     JsonObject->SetStringField(TEXT("name"), Pin.Name);
     
-    // Only add type if not Exec
-    if (Pin.Type != EN2CPinType::Exec)
-    {
-        JsonObject->SetStringField(TEXT("type"), 
-            StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)));
-    }
+    // Exec is required too: ParsePinFromJson expects the type field.
+    JsonObject->SetStringField(TEXT("type"),
+        StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)));
     
     // Optional fields - only add if non-empty
     if (!Pin.SubType.IsEmpty())
@@ -714,7 +735,45 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
         return false;
     }
 
-    return ParseFlowsFromJson(*FlowsObject, OutGraph.Flows);
+    if (!ParseFlowsFromJson(*FlowsObject, OutGraph.Flows))
+    {
+        return false;
+    }
+    OutGraph.Connections.Empty();
+    const TArray<TSharedPtr<FJsonValue>>* DirectLinks = nullptr;
+    if (JsonObject->TryGetArrayField(TEXT("connections"), DirectLinks))
+    {
+        for (const TSharedPtr<FJsonValue>& Value : *DirectLinks)
+        {
+            const TSharedPtr<FJsonObject> Entry = Value.IsValid() ? Value->AsObject() : nullptr;
+            if (!Entry.IsValid()) return false;
+            FN2CDirectLink Link;
+            Entry->TryGetStringField(TEXT("source_node_guid"), Link.SourceNodeGuid);
+            Entry->TryGetStringField(TEXT("source_pin_guid"), Link.SourcePinGuid);
+            Entry->TryGetStringField(TEXT("target_node_guid"), Link.TargetNodeGuid);
+            Entry->TryGetStringField(TEXT("target_pin_guid"), Link.TargetPinGuid);
+            Entry->TryGetStringField(TEXT("source_node_id"), Link.SourceNodeId);
+            Entry->TryGetStringField(TEXT("source_pin_id"), Link.SourcePinId);
+            Entry->TryGetStringField(TEXT("target_node_id"), Link.TargetNodeId);
+            Entry->TryGetStringField(TEXT("target_pin_id"), Link.TargetPinId);
+            Entry->TryGetStringField(TEXT("source_node_name"), Link.SourceNodeName);
+            Entry->TryGetStringField(TEXT("source_pin_name"), Link.SourcePinName);
+            Entry->TryGetStringField(TEXT("target_node_name"), Link.TargetNodeName);
+            Entry->TryGetStringField(TEXT("target_pin_name"), Link.TargetPinName);
+            Entry->TryGetBoolField(TEXT("is_execution"), Link.bIsExecution);
+            Entry->TryGetBoolField(TEXT("source_hidden"), Link.bSourceHidden);
+            Entry->TryGetBoolField(TEXT("target_hidden"), Link.bTargetHidden);
+            if (Link.SourceNodeGuid.IsEmpty() || Link.SourcePinGuid.IsEmpty() ||
+                Link.TargetNodeGuid.IsEmpty() || Link.TargetPinGuid.IsEmpty()) return false;
+            OutGraph.Connections.Add(MoveTemp(Link));
+        }
+    }
+    double Count = 0.0;
+    if (JsonObject->TryGetNumberField(TEXT("unresolved_connection_count"), Count))
+    {
+        OutGraph.UnresolvedConnectionCount = FMath::Max(0, static_cast<int32>(Count));
+    }
+    return true;
 }
 
 bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CNodeDefinition& OutNode)
@@ -824,11 +883,15 @@ bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject,
     // Parse basic properties
     FString ID, Name, TypeString, SubType, DefaultValue;
     if (!JsonObject->TryGetStringField(TEXT("id"), ID) ||
-        !JsonObject->TryGetStringField(TEXT("name"), Name) ||
-        !JsonObject->TryGetStringField(TEXT("type"), TypeString))
+        !JsonObject->TryGetStringField(TEXT("name"), Name))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required pin fields in JSON"));
         return false;
+    }
+    // Earlier NodeToCode exports omitted Exec pin types.
+    if (!JsonObject->TryGetStringField(TEXT("type"), TypeString))
+    {
+        TypeString = TEXT("Exec");
     }
 
     OutPin.ID = ID;

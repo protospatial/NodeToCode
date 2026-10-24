@@ -789,6 +789,9 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
         }
     }
 
+    // Preserve the complete original topology independently of lossy legacy flows.
+    CollectDirectConnections(Graph, NewGraph);
+
     // Add the processed graph to the blueprint if it has nodes
     if (CurrentGraph->Nodes.Num() > 0)
     {
@@ -932,6 +935,89 @@ EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
 
     // Default to wildcard for unknown types
     return EN2CPinType::Wildcard;
+}
+
+void FN2CNodeTranslator::CollectDirectConnections(UEdGraph* Graph, FN2CGraph& OutGraph)
+{
+    if (!Graph)
+    {
+        ++OutGraph.UnresolvedConnectionCount;
+        return;
+    }
+
+    TSet<FString> Seen;
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (!Node)
+        {
+            continue;
+        }
+        for (UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!Pin)
+            {
+                ++OutGraph.UnresolvedConnectionCount;
+                continue;
+            }
+            for (UEdGraphPin* Linked : Pin->LinkedTo)
+            {
+                if (!Linked || !Linked->GetOwningNode())
+                {
+                    ++OutGraph.UnresolvedConnectionCount;
+                    continue;
+                }
+                UEdGraphPin* Source = Pin;
+                UEdGraphPin* Target = Linked;
+                if (Linked->Direction == EGPD_Output && Pin->Direction != EGPD_Output)
+                {
+                    Swap(Source, Target);
+                }
+                const bool bValidDirections =
+                    Source->Direction == EGPD_Output && Target->Direction == EGPD_Input;
+                if (!bValidDirections && Source->PinId.ToString() > Target->PinId.ToString())
+                {
+                    Swap(Source, Target);
+                }
+                const FString Key = Source->PinId.ToString() + TEXT("->") + Target->PinId.ToString();
+                if (Seen.Contains(Key))
+                {
+                    continue;
+                }
+                Seen.Add(Key);
+                UEdGraphNode* SourceNode = Source->GetOwningNode();
+                UEdGraphNode* TargetNode = Target->GetOwningNode();
+                if (!SourceNode || !TargetNode || SourceNode->GetGraph() != Graph ||
+                    TargetNode->GetGraph() != Graph || !bValidDirections)
+                {
+                    ++OutGraph.UnresolvedConnectionCount;
+                }
+
+                FN2CDirectLink Link;
+                Link.SourceNodeGuid = SourceNode ? SourceNode->NodeGuid.ToString() : FString();
+                Link.SourcePinGuid = Source->PinId.ToString();
+                Link.TargetNodeGuid = TargetNode ? TargetNode->NodeGuid.ToString() : FString();
+                Link.TargetPinGuid = Target->PinId.ToString();
+                Link.SourceNodeId = SourceNode ? NodeIDMap.FindRef(SourceNode->NodeGuid) : FString();
+                Link.TargetNodeId = TargetNode ? NodeIDMap.FindRef(TargetNode->NodeGuid) : FString();
+                Link.SourcePinId = PinIDMap.FindRef(Source->PinId);
+                Link.TargetPinId = PinIDMap.FindRef(Target->PinId);
+                Link.SourceNodeName = SourceNode ? SourceNode->GetNodeTitle(ENodeTitleType::ListView).ToString() : FString();
+                Link.TargetNodeName = TargetNode ? TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString() : FString();
+                Link.SourcePinName = Source->PinName.ToString();
+                Link.TargetPinName = Target->PinName.ToString();
+                Link.bIsExecution = Source->PinType.PinCategory == TEXT("exec");
+                Link.bSourceHidden = Source->bHidden;
+                Link.bTargetHidden = Target->bHidden;
+                OutGraph.Connections.Add(MoveTemp(Link));
+            }
+        }
+    }
+    if (OutGraph.UnresolvedConnectionCount != 0)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Direct edge export for graph '%s' found %d unresolved links."),
+            *OutGraph.Name, OutGraph.UnresolvedConnectionCount));
+    }
 }
 
 UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const

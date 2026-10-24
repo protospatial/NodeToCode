@@ -82,6 +82,9 @@ private:
     /** Process a single graph */
     bool ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType);
 
+    /** Capture direct native connections after node and pin ID assignment. */
+    void CollectDirectConnections(UEdGraph* Graph, FN2CGraph& OutGraph);
+
     /** Validate all flow references after processing */
     bool ValidateFlowReferences(FN2CGraph& Graph);
 

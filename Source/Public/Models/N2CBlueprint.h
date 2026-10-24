@@ -94,6 +94,44 @@ struct FN2CFlows
     }
 };
 
+/** Native UEdGraphPin::LinkedTo edge. GUIDs remain available even for skipped knot/hidden nodes. */
+USTRUCT(BlueprintType)
+struct FN2CDirectLink
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString SourceNodeGuid;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString SourcePinGuid;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TargetNodeGuid;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TargetPinGuid;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString SourceNodeId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString SourcePinId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TargetNodeId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TargetPinId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString SourceNodeName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString SourcePinName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TargetNodeName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TargetPinName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsExecution = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bSourceHidden = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bTargetHidden = false;
+};
+
 /**
  * @enum EN2CStructMemberType
  * @brief Defines the type of a struct member
@@ -410,6 +448,14 @@ struct FN2CGraph
     /** Execution and data flow connections for this graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CFlows Flows;
+
+    /** Authoritative lossless native pin edges; flows remains for legacy consumers. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CDirectLink> Connections;
+
+    /** Links which could not be represented or had unexpected directions. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int32 UnresolvedConnectionCount = 0;
 
     /** Local variables declared for this graph (e.g. function-local variables) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
