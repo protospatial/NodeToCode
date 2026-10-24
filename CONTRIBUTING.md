@@ -32,7 +32,8 @@ C++ must compile on all three.
 3. Run the plugin's automation tests on each engine: `.\build.ps1 -All -Test` builds, runs
    `Automation RunTests NodeToCode` in a headless editor and fails if any test fails. You can also run them in the
    editor's Session Frontend (Automation tab, filter `NodeToCode`). Every test should pass. Tests live in
-   `Source/Private/Tests/`; add one for a bug you fix where you can.
+   `Source/Private/Tests/` (its `README.md` covers naming, layout and helpers); add one for a bug you fix where
+   you can.
 4. If you cannot build on every engine, say which ones you built and tested in the pull request. The maintainer
    runs the rest before merging.
 
