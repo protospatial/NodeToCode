@@ -103,6 +103,8 @@ __pycache__/
 .mcp.json
 /build.sh
 *.ps1
+# Committed release tooling (build.ps1 stays local: machine-specific paths)
+!/Scripts/*.ps1
 /BuildLogs
 /Documentation
 nul

@@ -49,6 +49,17 @@ arguments prints the examples and the detected engines.
 
 Automation tests live in `Source/Private/Tests/` and run in the editor with `Automation RunTests NodeToCode`.
 
+Release packages come from `Scripts/package-release.ps1` (tracked), never from `build.ps1 -Package`. It exports a
+commit with `git archive` (so nothing uncommitted or ignored can ship), runs RunUAT BuildPlugin for UE 5.6, 5.7 and
+5.8, writes `NodeToCode-<VersionName>-UE<ver>.zip` plus a SHA256SUMS file to `..\Packages`, verifies each zip
+(required and forbidden files, `.uplugin` fields, no secrets), rebuilds it from source in a scratch C++ host and
+loads it in a headless editor to check the MCP server answers. It never tags or uploads.
+
+```powershell
+.\Scripts\package-release.ps1                              # HEAD, all three engines
+.\Scripts\package-release.ps1 -Ref <tag-or-sha> -UEVersion 5.8
+```
+
 # CRITICAL - END
 
 ## Overview
