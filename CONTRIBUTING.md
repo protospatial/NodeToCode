@@ -1,0 +1,94 @@
+# Contributing to NodeToCode
+
+Thanks for helping. This page covers where to send changes, how to build and test them, and the sign-off every
+commit needs. For questions and support, use the [Discord](https://discord.gg/4t3Syvk4AG); for bugs and feature
+ideas, open an issue with one of the templates. Security problems go through [SECURITY.md](SECURITY.md), never a
+public issue.
+
+## Branches
+
+- **`dev-2.0` is the target branch.** NodeToCode 2.0 (UE 5.6 to 5.8, the MCP server and agent tools) is developed
+  there. Branch from an up-to-date `dev-2.0` and open your pull request against it.
+- **`main` holds 1.2.x** and only receives critical fixes from the maintainer. Pull requests against `main` are not
+  merged. If one carries something 2.0 needs, the maintainer ports it to `dev-2.0` by hand, keeps you as a
+  co-author with a `Co-authored-by:` trailer, and closes the original with a link to the port. You can save that
+  step by rebasing your change onto `dev-2.0` yourself.
+- Keep one topic per pull request. Open an issue first for anything large (a new provider, a new MCP tool family,
+  a change to the translation format), so the design can be agreed before you write it.
+
+## Building and testing
+
+NodeToCode 2.0 supports Unreal Engine 5.6 (the floor), 5.7 and 5.8 (the ceiling), editor only, Win64. A change to
+C++ must compile on all three.
+
+1. Put the plugin in a host project's `Plugins/NodeToCode` folder (a clone, or a junction or symlink to one) and
+   build the host's editor target for each engine version you have. The maintainer keeps one host project per
+   engine, with each host's `Source`, `Content`, `Resources` and `ThirdParty` folders junctioned to a single
+   checkout, so every engine builds the same branch; switch branches only when no host editor is open.
+2. Guard version-specific code with `ENGINE_MINOR_VERSION` (include `Runtime/Launch/Resources/Version.h`).
+3. Run the plugin's automation tests on each engine, in the editor's Session Frontend (Automation tab, filter
+   `NodeToCode`) or headless:
+   `UnrealEditor-Cmd.exe <Host>.uproject -ExecCmds="Automation RunTests NodeToCode,Quit" -unattended -nullrhi -TestExit="Automation Test Queue Empty"`.
+   Every test should pass. Tests live in `Source/Private/Tests/`; add one for a bug you fix where you can.
+4. The maintainer's loop wraps this in a local `build.ps1` (`.\build.ps1 -All -Smoke` builds 5.6, 5.7 and 5.8 and
+   loads the plugin headless). It is not committed yet because it holds machine-specific paths; see `AGENTS.md`.
+5. If you cannot build on every engine, say which ones you built and tested in the pull request. The maintainer
+   runs the rest before merging.
+
+## Code and headers
+
+- Follow the style of the code around your change (Unreal naming, `N2C` prefixes, tabs or spaces as the file uses).
+- New source files start with the project header from decision record
+  [`0002`](.agents/decisions/0002-licence-and-contribution-model.md) (`#` instead of `//` in Python and shell):
+
+  ```
+  // Copyright (c) 2025 Nick McClure (Protospatial)
+  // SPDX-License-Identifier: Apache-2.0
+  ```
+
+  Use the current year in new files. Code you bring in from elsewhere keeps its own licence header, must have a
+  licence compatible with Apache-2.0, and is listed in `NOTICE`.
+- Never commit API keys, `.env` files or a `secrets.json`, including in tests, logs or screenshots.
+
+## Commits
+
+Commit messages follow the style of `git log` on `dev-2.0`:
+
+```
+fix(mcp): refuse conversion-node links into an already linked input
+
+What was wrong, and what the change does.
+
+Verified: what you built and ran, on which engine versions, and what you saw.
+
+Docs: wiki/Some-Page.md
+Signed-off-by: Your Name <you@example.com>
+```
+
+- Subject: `type(scope): summary`, with `type` one of `feat`, `fix`, `docs`, `test`, `chore` or `refactor`.
+- `Docs:` names the `wiki/` pages the change updates, or says `Docs: none, <why>`. A change to anything a user or
+  an MCP client sees updates its wiki page in the same pull request; the rules for those pages are in
+  [`.agents/contracts/docs.md`](.agents/contracts/docs.md), and `python tools/docs_check.py --changed dev-2.0`
+  checks them.
+
+## Sign-off (DCO)
+
+NodeToCode is licensed under the [Apache License 2.0](LICENSE), and contributions are accepted under the same
+licence. Every commit in a pull request must be signed off, certifying the
+[Developer Certificate of Origin 1.1](https://developercertificate.org/): that you wrote the change, or otherwise
+have the right to submit it under the project's licence.
+
+Sign off with `git commit -s`, which adds a line with your name and the email address of the commit author:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+Use your real name or the name you are known by publicly. To sign off commits you already made, run
+`git rebase --signoff dev-2.0` and force-push your branch. There is no CLA.
+
+## Pull requests
+
+Fill in the pull request template: what changed and why, the engine versions you built and tested, the `Docs:`
+line, and the sign-off box. The maintainer may squash your commits when merging; your authorship and sign-off are
+kept.
