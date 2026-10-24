@@ -33,6 +33,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonWriter.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "ScopedTransaction.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -81,25 +82,24 @@ FString UN2CPythonBridge::GetFocusedBlueprintJson()
 	FString BlueprintPath = OwningBlueprint ? OwningBlueprint->GetPathName() : TEXT("");
 	FString GraphName = FocusedGraph ? FocusedGraph->GetName() : TEXT("Unknown");
 
+	// The N2CJSON goes in as an object, so the response is one document the writer escapes throughout
+	TSharedPtr<FJsonObject> N2CJsonObject;
+	const TSharedRef<TJsonReader<>> N2CJsonReader = TJsonReaderFactory<>::Create(JsonOutput);
+	if (!FJsonSerializer::Deserialize(N2CJsonReader, N2CJsonObject) || !N2CJsonObject.IsValid())
+	{
+		return MakeErrorJson(TEXT("The serialized N2CBlueprint is not a JSON object."));
+	}
+
 	// Create a simplified metadata response along with the full N2CJSON
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"name\": \"%s\","
-		"\"path\": \"%s\","
-		"\"graph_name\": \"%s\","
-		"\"node_count\": %d,"
-		"\"n2c_json\": %s"
-		"}"
-	),
-		*BlueprintName.ReplaceCharWithEscapedChar(),
-		*BlueprintPath.ReplaceCharWithEscapedChar(),
-		*GraphName.ReplaceCharWithEscapedChar(),
-		CollectedNodes.Num(),
-		*JsonOutput
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("name"), BlueprintName);
+	Data->SetStringField(TEXT("path"), BlueprintPath);
+	Data->SetStringField(TEXT("graph_name"), GraphName);
+	Data->SetNumberField(TEXT("node_count"), CollectedNodes.Num());
+	Data->SetObjectField(TEXT("n2c_json"), N2CJsonObject);
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("GetFocusedBlueprintJson: Retrieved %s with %d nodes"), *BlueprintName, CollectedNodes.Num()), EN2CLogSeverity::Info);
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::CompileFocusedBlueprint()
@@ -156,26 +156,18 @@ FString UN2CPythonBridge::CompileFocusedBlueprint()
 		break;
 	}
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"blueprint_name\": \"%s\","
-		"\"status\": \"%s\","
-		"\"had_errors\": %s,"
-		"\"had_warnings\": %s"
-		"}"
-	),
-		*OwningBlueprint->GetName().ReplaceCharWithEscapedChar(),
-		*StatusStr,
-		bHadErrors ? TEXT("true") : TEXT("false"),
-		bHadWarnings ? TEXT("true") : TEXT("false")
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetStringField(TEXT("status"), StatusStr);
+	Data->SetBoolField(TEXT("had_errors"), bHadErrors);
+	Data->SetBoolField(TEXT("had_warnings"), bHadWarnings);
 
 	if (bHadErrors)
 	{
-		return FString::Printf(TEXT("{\"success\": false, \"data\": %s, \"error\": \"Compilation failed with errors\"}"), *DataJson);
+		return MakeErrorJson(TEXT("Compilation failed with errors"), Data);
 	}
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty)
@@ -202,15 +194,11 @@ FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty)
 	// Skip if not dirty and only_if_dirty is true
 	if (bOnlyIfDirty && !bWasDirty)
 	{
-		FString DataJson = FString::Printf(TEXT(
-			"{"
-			"\"blueprint_name\": \"%s\","
-			"\"was_dirty\": false,"
-			"\"was_saved\": false"
-			"}"
-		), *OwningBlueprint->GetName().ReplaceCharWithEscapedChar());
-
-		return MakeSuccessJson(DataJson);
+		const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+		Data->SetBoolField(TEXT("was_dirty"), false);
+		Data->SetBoolField(TEXT("was_saved"), false);
+		return MakeSuccessJson(Data);
 	}
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("SaveFocusedBlueprint: Saving %s"), *OwningBlueprint->GetName()), EN2CLogSeverity::Info);
@@ -219,24 +207,17 @@ FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty)
 	FString AssetPath = OwningBlueprint->GetPathName();
 	bool bSaved = UEditorAssetLibrary::SaveAsset(AssetPath, bOnlyIfDirty);
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"blueprint_name\": \"%s\","
-		"\"was_dirty\": %s,"
-		"\"was_saved\": %s"
-		"}"
-	),
-		*OwningBlueprint->GetName().ReplaceCharWithEscapedChar(),
-		bWasDirty ? TEXT("true") : TEXT("false"),
-		bSaved ? TEXT("true") : TEXT("false")
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetBoolField(TEXT("was_dirty"), bWasDirty);
+	Data->SetBoolField(TEXT("was_saved"), bSaved);
 
 	if (!bSaved && bWasDirty)
 	{
-		return FString::Printf(TEXT("{\"success\": false, \"data\": %s, \"error\": \"Failed to save Blueprint\"}"), *DataJson);
+		return MakeErrorJson(TEXT("Failed to save Blueprint"), Data);
 	}
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 // ========== Tagging System ==========
@@ -284,25 +265,15 @@ FString UN2CPythonBridge::TagFocusedGraph(const FString& Tag, const FString& Cat
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("TagFocusedGraph: Added tag '%s' to %s"), *Tag, *FocusedGraph->GetName()), EN2CLogSeverity::Info);
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"tag\": \"%s\","
-		"\"category\": \"%s\","
-		"\"description\": \"%s\","
-		"\"graph_guid\": \"%s\","
-		"\"graph_name\": \"%s\","
-		"\"blueprint_name\": \"%s\""
-		"}"
-	),
-		*Tag.ReplaceCharWithEscapedChar(),
-		*TaggedGraph.Category.ReplaceCharWithEscapedChar(),
-		*Description.ReplaceCharWithEscapedChar(),
-		*FocusedGraph->GraphGuid.ToString(),
-		*FocusedGraph->GetName().ReplaceCharWithEscapedChar(),
-		*OwningBlueprint->GetName().ReplaceCharWithEscapedChar()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("tag"), Tag);
+	Data->SetStringField(TEXT("category"), TaggedGraph.Category);
+	Data->SetStringField(TEXT("description"), Description);
+	Data->SetStringField(TEXT("graph_guid"), FocusedGraph->GraphGuid.ToString());
+	Data->SetStringField(TEXT("graph_name"), FocusedGraph->GetName());
+	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
@@ -332,57 +303,31 @@ FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
 	}
 
 	// Build JSON array
-	FString TagsArrayJson = TEXT("[");
-	for (int32 i = 0; i < Tags.Num(); ++i)
+	TArray<TSharedPtr<FJsonValue>> TagsArray;
+	for (const FN2CTaggedBlueprintGraph& TagInfo : Tags)
 	{
-		const FN2CTaggedBlueprintGraph& TagInfo = Tags[i];
-
-		if (i > 0)
-		{
-			TagsArrayJson += TEXT(",");
-		}
-
-		TagsArrayJson += FString::Printf(TEXT(
-			"{"
-			"\"tag\": \"%s\","
-			"\"category\": \"%s\","
-			"\"description\": \"%s\","
-			"\"graph_guid\": \"%s\","
-			"\"graph_name\": \"%s\","
-			"\"blueprint_path\": \"%s\","
-			"\"timestamp\": \"%s\""
-			"}"
-		),
-			*TagInfo.Tag.ReplaceCharWithEscapedChar(),
-			*TagInfo.Category.ReplaceCharWithEscapedChar(),
-			*TagInfo.Description.ReplaceCharWithEscapedChar(),
-			*TagInfo.GraphGuid.ToString(),
-			*TagInfo.GraphName.ReplaceCharWithEscapedChar(),
-			*TagInfo.OwningBlueprint.ToString().ReplaceCharWithEscapedChar(),
-			*TagInfo.Timestamp.ToString()
-		);
+		const TSharedPtr<FJsonObject> TagObject = MakeShared<FJsonObject>();
+		TagObject->SetStringField(TEXT("tag"), TagInfo.Tag);
+		TagObject->SetStringField(TEXT("category"), TagInfo.Category);
+		TagObject->SetStringField(TEXT("description"), TagInfo.Description);
+		TagObject->SetStringField(TEXT("graph_guid"), TagInfo.GraphGuid.ToString());
+		TagObject->SetStringField(TEXT("graph_name"), TagInfo.GraphName);
+		TagObject->SetStringField(TEXT("blueprint_path"), TagInfo.OwningBlueprint.ToString());
+		TagObject->SetStringField(TEXT("timestamp"), TagInfo.Timestamp.ToString());
+		TagsArray.Add(MakeShared<FJsonValueObject>(TagObject));
 	}
-	TagsArrayJson += TEXT("]");
 
 	// Get summary info
 	TArray<FString> AllCategories = UN2CTagManager::Get().GetAllCategories();
 	TArray<FString> AllTagNames = UN2CTagManager::Get().GetAllTagNames();
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"tags\": %s,"
-		"\"count\": %d,"
-		"\"total_categories\": %d,"
-		"\"total_unique_tags\": %d"
-		"}"
-	),
-		*TagsArrayJson,
-		Tags.Num(),
-		AllCategories.Num(),
-		AllTagNames.Num()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetArrayField(TEXT("tags"), TagsArray);
+	Data->SetNumberField(TEXT("count"), Tags.Num());
+	Data->SetNumberField(TEXT("total_categories"), AllCategories.Num());
+	Data->SetNumberField(TEXT("total_unique_tags"), AllTagNames.Num());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag)
@@ -416,22 +361,14 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveTag: Removed %d tag(s) '%s' from graph %s"), RemovedCount, *Tag, *GraphGuid), EN2CLogSeverity::Info);
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"removed\": true,"
-		"\"removed_count\": %d,"
-		"\"tag\": \"%s\","
-		"\"graph_guid\": \"%s\","
-		"\"remaining_tags\": %d"
-		"}"
-	),
-		RemovedCount,
-		*Tag.ReplaceCharWithEscapedChar(),
-		*GraphGuid.ReplaceCharWithEscapedChar(),
-		RemainingTags.Num()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetBoolField(TEXT("removed"), true);
+	Data->SetNumberField(TEXT("removed_count"), RemovedCount);
+	Data->SetStringField(TEXT("tag"), Tag);
+	Data->SetStringField(TEXT("graph_guid"), GraphGuid);
+	Data->SetNumberField(TEXT("remaining_tags"), RemainingTags.Num());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 // ========== LLM Provider Info ==========
@@ -445,7 +382,7 @@ FString UN2CPythonBridge::GetLLMProviders()
 	}
 
 	// Build providers array
-	FString ProvidersJson = TEXT("[");
+	TArray<TSharedPtr<FJsonValue>> ProvidersArray;
 
 	// Define provider info (matching EN2CLLMProvider enum)
 	struct FProviderInfo
@@ -468,28 +405,13 @@ FString UN2CPythonBridge::GetLLMProviders()
 
 	for (int32 i = 0; i < Providers.Num(); ++i)
 	{
-		if (i > 0)
-		{
-			ProvidersJson += TEXT(",");
-		}
-
-		bool bIsCurrent = (i == static_cast<int32>(CurrentProvider));
-
-		ProvidersJson += FString::Printf(TEXT(
-			"{"
-			"\"name\": \"%s\","
-			"\"display_name\": \"%s\","
-			"\"is_local\": %s,"
-			"\"is_current\": %s"
-			"}"
-		),
-			*Providers[i].Name,
-			*Providers[i].DisplayName,
-			Providers[i].bIsLocal ? TEXT("true") : TEXT("false"),
-			bIsCurrent ? TEXT("true") : TEXT("false")
-		);
+		const TSharedPtr<FJsonObject> ProviderObject = MakeShared<FJsonObject>();
+		ProviderObject->SetStringField(TEXT("name"), Providers[i].Name);
+		ProviderObject->SetStringField(TEXT("display_name"), Providers[i].DisplayName);
+		ProviderObject->SetBoolField(TEXT("is_local"), Providers[i].bIsLocal);
+		ProviderObject->SetBoolField(TEXT("is_current"), i == static_cast<int32>(CurrentProvider));
+		ProvidersArray.Add(MakeShared<FJsonValueObject>(ProviderObject));
 	}
-	ProvidersJson += TEXT("]");
 
 	// Get current provider name
 	FString CurrentProviderName;
@@ -504,19 +426,12 @@ FString UN2CPythonBridge::GetLLMProviders()
 	default: CurrentProviderName = TEXT("Unknown"); break;
 	}
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"providers\": %s,"
-		"\"current_provider\": \"%s\","
-		"\"provider_count\": %d"
-		"}"
-	),
-		*ProvidersJson,
-		*CurrentProviderName,
-		Providers.Num()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetArrayField(TEXT("providers"), ProvidersArray);
+	Data->SetStringField(TEXT("current_provider"), CurrentProviderName);
+	Data->SetNumberField(TEXT("provider_count"), Providers.Num());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::GetActiveProvider()
@@ -587,23 +502,14 @@ FString UN2CPythonBridge::GetActiveProvider()
 		break;
 	}
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"name\": \"%s\","
-		"\"display_name\": \"%s\","
-		"\"model\": \"%s\","
-		"\"endpoint\": \"%s\","
-		"\"is_local\": %s"
-		"}"
-	),
-		*ProviderName.ReplaceCharWithEscapedChar(),
-		*DisplayName.ReplaceCharWithEscapedChar(),
-		*Model.ReplaceCharWithEscapedChar(),
-		*Endpoint.ReplaceCharWithEscapedChar(),
-		bIsLocal ? TEXT("true") : TEXT("false")
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("name"), ProviderName);
+	Data->SetStringField(TEXT("display_name"), DisplayName);
+	Data->SetStringField(TEXT("model"), Model);
+	Data->SetStringField(TEXT("endpoint"), Endpoint);
+	Data->SetBoolField(TEXT("is_local"), bIsLocal);
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 // ========== Blueprint Editor Navigation ==========
@@ -688,23 +594,14 @@ FString UN2CPythonBridge::OpenBlueprint(const FString& BlueprintPath, const FStr
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("OpenBlueprint: Opened %s"), *Blueprint->GetName()), EN2CLogSeverity::Info);
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"blueprintName\": \"%s\","
-		"\"blueprintPath\": \"%s\","
-		"\"focusedGraph\": \"%s\","
-		"\"eventGraphCount\": %d,"
-		"\"functionCount\": %d"
-		"}"
-	),
-		*Blueprint->GetName().ReplaceCharWithEscapedChar(),
-		*Blueprint->GetPathName().ReplaceCharWithEscapedChar(),
-		*FocusedGraphName.ReplaceCharWithEscapedChar(),
-		Blueprint->UbergraphPages.Num(),
-		Blueprint->FunctionGraphs.Num()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("blueprintName"), Blueprint->GetName());
+	Data->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
+	Data->SetStringField(TEXT("focusedGraph"), FocusedGraphName);
+	Data->SetNumberField(TEXT("eventGraphCount"), Blueprint->UbergraphPages.Num());
+	Data->SetNumberField(TEXT("functionCount"), Blueprint->FunctionGraphs.Num());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::OpenBlueprintFunction(const FString& FunctionName)
@@ -773,21 +670,13 @@ FString UN2CPythonBridge::OpenBlueprintFunction(const FString& FunctionName)
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("OpenBlueprintFunction: Opened %s in %s"), *FunctionName, *Blueprint->GetName()), EN2CLogSeverity::Info);
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"functionName\": \"%s\","
-		"\"blueprintName\": \"%s\","
-		"\"blueprintPath\": \"%s\","
-		"\"graphGuid\": \"%s\""
-		"}"
-	),
-		*FunctionName.ReplaceCharWithEscapedChar(),
-		*Blueprint->GetName().ReplaceCharWithEscapedChar(),
-		*Blueprint->GetPathName().ReplaceCharWithEscapedChar(),
-		*FunctionGraph->GraphGuid.ToString()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("functionName"), FunctionName);
+	Data->SetStringField(TEXT("blueprintName"), Blueprint->GetName());
+	Data->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
+	Data->SetStringField(TEXT("graphGuid"), FunctionGraph->GraphGuid.ToString());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 // ========== Blueprint Graph Editing ==========
@@ -908,14 +797,10 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 	ResultObject->SetArrayField(TEXT("nodes"), ResultNodes);
 	ResultObject->SetNumberField(TEXT("count"), ResultCount);
 
-	FString ResultJsonString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJsonString);
-	FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
-
 	// Schedule deferred refresh
 	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
 
-	return MakeSuccessJson(ResultJsonString);
+	return MakeSuccessJson(ResultObject);
 }
 
 bool UN2CPythonBridge::MatchesCategoryFilter(const FString& ActionSearchText, const FString& CategoryFilter)
@@ -1151,11 +1036,7 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	NextStepObject->SetStringField(TEXT("description"), TEXT("Use nodetocode.connect_pins() with the nodeGuid and pinGuid values above to wire this node to other nodes in the graph."));
 	ResultObject->SetObjectField(TEXT("nextStep"), NextStepObject);
 
-	FString ResultJsonString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJsonString);
-	FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
-
-	return MakeSuccessJson(ResultJsonString);
+	return MakeSuccessJson(ResultObject);
 }
 
 FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks)
@@ -1363,11 +1244,7 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	SummaryObject->SetNumberField(TEXT("failed"), FailedArray.Num());
 	ResultObject->SetObjectField(TEXT("summary"), SummaryObject);
 
-	FString ResultJsonString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJsonString);
-	FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
-
-	return MakeSuccessJson(ResultJsonString);
+	return MakeSuccessJson(ResultObject);
 }
 
 FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName)
@@ -1474,23 +1351,14 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
 	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"nodeGuid\": \"%s\","
-		"\"pinGuid\": \"%s\","
-		"\"pinName\": \"%s\","
-		"\"oldValue\": \"%s\","
-		"\"newValue\": \"%s\""
-		"}"
-	),
-		*NodeGuid.ReplaceCharWithEscapedChar(),
-		*PinGuid.ReplaceCharWithEscapedChar(),
-		*TargetPin->GetDisplayName().ToString().ReplaceCharWithEscapedChar(),
-		*OldValue.ReplaceCharWithEscapedChar(),
-		*Value.ReplaceCharWithEscapedChar()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("nodeGuid"), NodeGuid);
+	Data->SetStringField(TEXT("pinGuid"), PinGuid);
+	Data->SetStringField(TEXT("pinName"), TargetPin->GetDisplayName().ToString());
+	Data->SetStringField(TEXT("oldValue"), OldValue);
+	Data->SetStringField(TEXT("newValue"), Value);
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections, bool bForce)
@@ -1596,11 +1464,7 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 	ResultObject->SetArrayField(TEXT("deletedNodes"), DeletedArray);
 	ResultObject->SetNumberField(TEXT("deletedCount"), DeletedArray.Num());
 
-	FString ResultJsonString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJsonString);
-	FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
-
-	return MakeSuccessJson(ResultJsonString);
+	return MakeSuccessJson(ResultObject);
 }
 
 FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const FString& SearchType, bool bCaseSensitive, int32 MaxResults)
@@ -1771,11 +1635,7 @@ FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const
 	MetadataObject->SetNumberField(TEXT("totalInGraph"), AllNodes.Num());
 	ResultObject->SetObjectField(TEXT("metadata"), MetadataObject);
 
-	FString ResultJsonString;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJsonString);
-	FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
-
-	return MakeSuccessJson(ResultJsonString);
+	return MakeSuccessJson(ResultObject);
 }
 
 FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText, float ColorR, float ColorG, float ColorB, int32 FontSize, const FString& MoveMode, float Padding)
@@ -1908,23 +1768,22 @@ FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const 
 	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
 
 	// Build result
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"commentGuid\": \"%s\","
-		"\"commentText\": \"%s\","
-		"\"includedNodeCount\": %d,"
-		"\"position\": {\"x\": %d, \"y\": %d},"
-		"\"size\": {\"width\": %d, \"height\": %d}"
-		"}"
-	),
-		*CommentNode->NodeGuid.ToString(),
-		*CommentText.ReplaceCharWithEscapedChar(),
-		NodesToComment.Num(),
-		CommentNode->NodePosX, CommentNode->NodePosY,
-		CommentNode->NodeWidth, CommentNode->NodeHeight
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("commentGuid"), CommentNode->NodeGuid.ToString());
+	Data->SetStringField(TEXT("commentText"), CommentText);
+	Data->SetNumberField(TEXT("includedNodeCount"), NodesToComment.Num());
 
-	return MakeSuccessJson(DataJson);
+	const TSharedPtr<FJsonObject> PositionObject = MakeShared<FJsonObject>();
+	PositionObject->SetNumberField(TEXT("x"), CommentNode->NodePosX);
+	PositionObject->SetNumberField(TEXT("y"), CommentNode->NodePosY);
+	Data->SetObjectField(TEXT("position"), PositionObject);
+
+	const TSharedPtr<FJsonObject> SizeObject = MakeShared<FJsonObject>();
+	SizeObject->SetNumberField(TEXT("width"), CommentNode->NodeWidth);
+	SizeObject->SetNumberField(TEXT("height"), CommentNode->NodeHeight);
+	Data->SetObjectField(TEXT("size"), SizeObject);
+
+	return MakeSuccessJson(Data);
 }
 
 // ========== Function Pin Management ==========
@@ -2008,23 +1867,14 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
 	}
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"pinName\": \"%s\","
-		"\"actualName\": \"%s\","
-		"\"pinGuid\": \"%s\","
-		"\"functionName\": \"%s\","
-		"\"typeIdentifier\": \"%s\""
-		"}"
-	),
-		*PinName.ReplaceCharWithEscapedChar(),
-		*NewPin->PinName.ToString().ReplaceCharWithEscapedChar(),
-		*NewPin->PinId.ToString(),
-		*FocusedGraph->GetName().ReplaceCharWithEscapedChar(),
-		*TypeIdentifier.ReplaceCharWithEscapedChar()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("pinName"), PinName);
+	Data->SetStringField(TEXT("actualName"), NewPin->PinName.ToString());
+	Data->SetStringField(TEXT("pinGuid"), NewPin->PinId.ToString());
+	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
+	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip)
@@ -2095,23 +1945,14 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
 	}
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"pinName\": \"%s\","
-		"\"actualName\": \"%s\","
-		"\"pinGuid\": \"%s\","
-		"\"functionName\": \"%s\","
-		"\"typeIdentifier\": \"%s\""
-		"}"
-	),
-		*PinName.ReplaceCharWithEscapedChar(),
-		*NewPin->PinName.ToString().ReplaceCharWithEscapedChar(),
-		*NewPin->PinId.ToString(),
-		*FocusedGraph->GetName().ReplaceCharWithEscapedChar(),
-		*TypeIdentifier.ReplaceCharWithEscapedChar()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("pinName"), PinName);
+	Data->SetStringField(TEXT("actualName"), NewPin->PinName.ToString());
+	Data->SetStringField(TEXT("pinGuid"), NewPin->PinId.ToString());
+	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
+	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
@@ -2159,17 +2000,11 @@ FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 	FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
 	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"removedPin\": \"%s\","
-		"\"functionName\": \"%s\""
-		"}"
-	),
-		*PinName.ReplaceCharWithEscapedChar(),
-		*FocusedGraph->GetName().ReplaceCharWithEscapedChar()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("removedPin"), PinName);
+	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
@@ -2217,28 +2052,49 @@ FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
 	FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
 	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
 
-	FString DataJson = FString::Printf(TEXT(
-		"{"
-		"\"removedPin\": \"%s\","
-		"\"functionName\": \"%s\""
-		"}"
-	),
-		*PinName.ReplaceCharWithEscapedChar(),
-		*FocusedGraph->GetName().ReplaceCharWithEscapedChar()
-	);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("removedPin"), PinName);
+	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 
-	return MakeSuccessJson(DataJson);
+	return MakeSuccessJson(Data);
 }
 
 #undef LOCTEXT_NAMESPACE
 
-FString UN2CPythonBridge::MakeSuccessJson(const FString& DataJson)
+FString UN2CPythonBridge::MakeResultJson(bool bSuccess, const TSharedPtr<FJsonObject>& Data, const FString* Error)
 {
-	return FString::Printf(TEXT("{\"success\": true, \"data\": %s, \"error\": null}"), *DataJson);
+	const TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetBoolField(TEXT("success"), bSuccess);
+	if (Data.IsValid())
+	{
+		Result->SetObjectField(TEXT("data"), Data);
+	}
+	else
+	{
+		Result->SetField(TEXT("data"), MakeShared<FJsonValueNull>());
+	}
+	if (Error)
+	{
+		Result->SetStringField(TEXT("error"), *Error);
+	}
+	else
+	{
+		Result->SetField(TEXT("error"), MakeShared<FJsonValueNull>());
+	}
+
+	FString Json;
+	const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Json);
+	FJsonSerializer::Serialize(Result, Writer);
+	return Json;
 }
 
-FString UN2CPythonBridge::MakeErrorJson(const FString& ErrorMessage)
+FString UN2CPythonBridge::MakeSuccessJson(const TSharedPtr<FJsonObject>& Data)
 {
-	return FString::Printf(TEXT("{\"success\": false, \"data\": null, \"error\": \"%s\"}"),
-		*ErrorMessage.ReplaceCharWithEscapedChar());
+	return MakeResultJson(true, Data, nullptr);
+}
+
+FString UN2CPythonBridge::MakeErrorJson(const FString& ErrorMessage, const TSharedPtr<FJsonObject>& Data)
+{
+	return MakeResultJson(false, Data, &ErrorMessage);
 }

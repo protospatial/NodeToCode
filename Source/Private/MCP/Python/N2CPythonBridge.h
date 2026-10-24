@@ -6,6 +6,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "N2CPythonBridge.generated.h"
 
+class FJsonObject;
+
 /**
  * Bridge class exposing NodeToCode functionality to Python scripts.
  *
@@ -262,9 +264,15 @@ public:
 	static FString RemoveFunctionReturnPin(const FString& PinName);
 
 private:
-	/** Helper to create a success JSON response */
-	static FString MakeSuccessJson(const FString& DataJson);
+	/**
+	 * The one response builder: {"success": bSuccess, "data": Data or null, "error": Error or null}, serialized with a
+	 * condensed TJsonWriter so every name, value and message is escaped as JSON (the nodetocode package json.loads it).
+	 */
+	static FString MakeResultJson(bool bSuccess, const TSharedPtr<FJsonObject>& Data, const FString* Error);
 
-	/** Helper to create an error JSON response */
-	static FString MakeErrorJson(const FString& ErrorMessage);
+	/** {"success": true, "data": Data, "error": null} */
+	static FString MakeSuccessJson(const TSharedPtr<FJsonObject>& Data);
+
+	/** {"success": false, "data": Data or null, "error": ErrorMessage} */
+	static FString MakeErrorJson(const FString& ErrorMessage, const TSharedPtr<FJsonObject>& Data = nullptr);
 };

@@ -7,31 +7,15 @@ with 'success', 'data', and 'error' keys.
 """
 
 import unreal
-import json
 from typing import Dict, Any, Optional
 
 from .utils import (
     make_success_result,
     make_error_result,
     log_info,
-    log_error
+    log_error,
+    _parse_bridge_result,
 )
-
-
-def _parse_bridge_result(json_str: str) -> Dict[str, Any]:
-    """
-    Parse the JSON result from UN2CPythonBridge functions.
-
-    Args:
-        json_str: JSON string returned by the bridge function
-
-    Returns:
-        Parsed dictionary with success, data, and error keys
-    """
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        return make_error_result(f"Failed to parse bridge response: {e}")
 
 
 def get_focused_blueprint() -> Dict[str, Any]:
