@@ -1,0 +1,4 @@
+# Fixture files are kept byte for byte as 1.2.x wrote them (CRLF ini files, JSON)
+1.2.3/** -text
+1.2.x-main/** -text
+prerelease/** -text

@@ -86,9 +86,9 @@ properties with no editor flags (`SettingsVersion`) are not visible to Python; r
 | S21 | `CSharpThemes` | As S18 | As S18 | - | As S18 |
 | S22 | `SwiftThemes` | As S18 | As S18 | - | As S18 |
 | S23 | `PseudocodeThemes` | As S18 | As S18 | - | As S18 |
-| S24 | `EstimatedReferenceTokens` (int, recomputed) | Same; recomputed in the constructor from the reference files | Unchanged (the saved number is overwritten in memory) | - | Equals the sum of the files' lengths / 4 |
-| S25 | `ReferenceSourceFilePaths` (file paths) | Same; paths whose file is missing are dropped in memory with a warning, as in 1.2.x | Unchanged | - | Existing paths equal the fixture's |
-| S26 | `CustomTranslationOutputDirectory` (directory) | Same; used by the single, batch and MCP output paths | Unchanged | - | Value equals the fixture's; a translation lands there |
+| S24 | `EstimatedReferenceTokens` (int, recomputed) | Same; the constructor computes it, but before LoadConfig, so the saved number is what loads (as in 1.2.x) | Unchanged: the saved number shows until a reference file is edited. **Finding (0079):** not recomputed on load in either version | Card 0186 (load order) | Equals the sum of the files' lengths / 4 (today: the saved number, reported KNOWN by the 0079 check) |
+| S25 | `ReferenceSourceFilePaths` (file paths) | Same; the constructor's missing-file check runs before LoadConfig, so it sees an empty list (as in 1.2.x) | Unchanged: every saved path loads, a missing one included, and each translation then warns "Failed to load reference source file". **Finding (0079):** the matrix said missing paths are dropped with a warning; they are not, in either version | Card 0186 (load order) | Existing paths equal the fixture's; a missing path is kept (reported KNOWN by the 0079 check) |
+| S26 | `CustomTranslationOutputDirectory` (directory) | Same; used by the single (toolbar) and batch output paths. MCP `translate-focused-blueprint` returns the code and saves no folder | Unchanged | - | Value equals the fixture's; a translation lands there |
 
 New 2.0 keys in the same section (absent from a 1.2.x ini, so the default applies):
 
@@ -164,7 +164,7 @@ Values present in 1.2.x (main or tag). No 1.2.x value of `EN2CLLMProvider`, `EN2
 
 | ID | 1.2.x | 2.0 | Handling | Owner | Check |
 |---|---|---|---|---|---|
-| U1 | Editor Utility Widget UI under `/NodeToCode/UI/` (NodeToCodeUI, the N2C_EUW_* components, N2C_Theme_* data assets, N2C_T_UI_* icons, MPC/M_ComboBoxText) | Removed; the 2.0 window is Slate, opened from the Blueprint editor toolbar | User: project assets that reference `/NodeToCode/UI/...` lose those references. An open-tab entry in `[/Script/Blutility.EditorUtilitySubsystem] LoadedUIs` gives one "Could not load" warning on the first start, then the engine prunes it | PR #61 done | First start logs one `/NodeToCode/UI` warning, the second none |
+| U1 | Editor Utility Widget UI under `/NodeToCode/UI/` (NodeToCodeUI, the N2C_EUW_* components, N2C_Theme_* data assets, N2C_T_UI_* icons, MPC/M_ComboBoxText) | Removed; the 2.0 window is Slate, opened from the Blueprint editor toolbar | User: project assets that reference `/NodeToCode/UI/...` lose those references. An open-tab entry in `[/Script/Blutility.EditorUtilitySubsystem] LoadedUIs` gives one "Could not load" warning on the first start, then the engine prunes it. Seen in 0079: a windowed v1.2.3 start (UE 5.6) wrote no `LoadedUIs` entry; 1.2.3 embeds the widget in its own tab spawner, so such an entry comes only from a user who ran the widget by hand | PR #61 done | First start logs one `/NodeToCode/UI` warning, the second none |
 | U2 | `UN2CMainWindowWidget`, `UN2CTagManagerWidget`, `UN2CCodeEditorWidget` UMG classes | Kept for 2.0-beta, unsupported, planned for removal; the first two show a placeholder in the UMG designer | Unchanged for now; User: move off them before removal | PR #61 | User EUW embedding them still loads |
 | U3 | `UN2CCodeEditorWidget` BlueprintCallable `SetTheme`, `GetAvailableThemes`, `GetThemeFromName`, `GetCurrentTheme` | Removed (commit a4f66d6) | User: Blueprints calling them fail to compile until the nodes are removed | - | Compile a Blueprint with those nodes: errors name the functions |
 | U4 | `UN2CCodeEditorWidget::GetSelection` outputs `OutStartIndex`, `OutEndIndex` | Renamed `OutStartLine`, `OutEndLine` (they were line indices already) | User: reconnect the output pins | Card 0063 | Old pins show as orphaned |
@@ -198,9 +198,63 @@ These affect people who ran a dev-2.0 build before the beta. 0079 does not need 
   says so for the sign-in keys, but it was not re-run here. A single-key save (any non-container edit) keeps them,
   and card 0418 leaves them on purpose.
 - The secrets location on macOS and Linux (`UserSettingsDir()` there was not checked).
-- None of the rows were run in an editor for card 0078; card 0418 ran S2 to S4, S6, S11 to S14, S18, N2, F7 and F8
-  in a headless 5.8 editor on a scratch copy of the 5.8 host with a 1.2.x-style config (two starts); card 0079 runs
-  every row on 5.8 with a 1.2.3 fixture.
+- Card 0078 ran no row in an editor; card 0418 ran S2 to S4, S6, S11 to S14, S18, N2, F7 and F8 on 5.8 with a
+  1.2.x-style config; card 0079 ran every row a project's files can show on 5.6, 5.7 and 5.8 (see Verification).
+- U1 with a `LoadedUIs` entry: a windowed v1.2.3 start wrote none (see U1), so the 2.0 warning path was not run.
+- U2 to U5, A1 and A2 (Blueprint-facing and C++ API): card 0079 checked a project's settings and saved files only;
+  these need 1.2.x Blueprint assets or third-party C++ and were not run.
+- S5's request payload (`deepseek-flash`) is covered by PR #33's tests, not by the 0079 check.
+
+## Verification (card 0079)
+
+`Tests/Migration/migration_12x_check.py` (README next to it) runs every row below against real 1.2.x data and
+prints PASS / FAIL / KNOWN / SKIP per row. Its fixtures were written by 1.2.x itself: v1.2.3 (tag c7aa4c0) and
+origin/main (cb1483a) built for UE 5.6 into scratch hosts, every setting set through 1.2.x's own
+`PostEditChangeProperty` save, the four API keys saved through `UN2CUserSecrets` (dummy values), and the `[HTTP]`
+keys written by 1.2.x's startup. Added by hand, following 1.2.3's code: the reference-file lines (1.2.x saved
+the array only on a whole-section save), the 1.2.3 translation folder (1.2.3 sends retired model IDs, so it could
+not run a translation), the pre-release `BlueprintTags.json`, and in the main fixture a user `[HTTP]` value.
+Each run makes a scratch copy of the built host, starts a headless 2.0 editor twice per fixture (1.2.3, then the
+main fixture as a second project sharing the per-user secrets file), then once more with only an environment key.
+Run on 2026-10-23 at dev-2.0 8c9a3c1: UE 5.6, 5.7 and 5.8 each 79 PASS, 0 FAIL, 4 KNOWN, 10 SKIP; 5.8 ran a
+second time with `--live` (81 PASS: S26 and F2 with a claude-haiku-5-5 batch translation). Results were the same
+on every engine and in both 5.8 runs.
+
+| Row | 1.2.3 fixture | 1.2.x-main fixture | Result |
+|---|---|---|---|
+| S1 | Gemini kept | LMStudio kept | Pass |
+| S2 | Claude3_5_Haiku -> Claude5_5_Sonnet, warned once, written | Claude4_Opus -> Claude5_5_Sonnet, warned once, written | Pass |
+| S3 | GPT_o1 (retired) -> GPT_6_1_Sol, warned once, written | GPT_4_1 kept, line untouched | Pass |
+| S4 | Gemini_2_5_ProExp: engine import error and NodeToCode warning on start 1, Gemini_3_8_Flash written, start 2 silent | Gemini_2_5_Pro -> Gemini_3_8_Flash, warned once | Pass |
+| S5 | DeepSeek_V3 kept, no warning | Same | Pass (payload not checked) |
+| S6 | NumCtx/NumPredict 0, bUseSystemPrompts True, overrides on for changed samplers only, written with the Info line | Same, PrependedModelCommand kept | Pass |
+| S7 | Kept | Kept | Pass |
+| S8 to S10 | Not in the tag | Kept | Pass (main) |
+| S11 | Only the user's GPT4o_2024_08_06 1.5/6 stays; GPT_o3 costs the registry's 10/40 | Only the user's GPT_4_1 1.5/6 stays | Pass |
+| S12 | Map empty (the user's price was for a retired model) | Same | Pass |
+| S13 | Whole map failed to import on start 1, `GeminiModelPricing=()` written, start 2 silent | Map empty | Pass |
+| S14 | User's DeepSeek_V3 0.2/0.5 kept, R1's 1.2.x price dropped | Same | Pass |
+| S15 to S17 | Kept | Kept | Pass |
+| S18 to S23 | Keys left in the ini, one warning names all six, 2.0 theme in use | Same | Pass |
+| S24 | Saved 999 loads instead of 57 | Same | **Finding**, card 0186 (KNOWN) |
+| S25 | Missing `Removed.h` is kept, no load-time warning | Same | **Finding**, card 0186 (KNOWN) |
+| S26 | Value kept | Value kept; `--live` batch translation landed there | Pass |
+| N1 to N7 | Defaults; `SettingsVersion=3` written on start 1 | Same | Pass |
+| K1 | Project file and `User` folder removed, per-user file `Version` 1 with the four keys, Project Settings shows them, log names both paths, no key in logs | Moved too | Pass |
+| K2 | - | First project's keys kept, this one's under `MigrationConflicts.<its file>`, warning logged | Pass |
+| K3 | Environment key used and named, field empty, nothing saved | - | Pass |
+| K4 | Not 1.2.x data | - | Skip |
+| F1 | Translation folder byte-identical after two starts, not listed in graph state | No folder | Pass |
+| F2 | `--live`: new N2C JSON says 1.0.0 | - | Pass |
+| F3, F4 | Pre-release tags migrated into `BlueprintGraphState.json`, file renamed `.migrated`, not migrated again | No state file written | Pass |
+| F6 | No `Saved/NodeToCode.log` | Same | Pass |
+| F7 | Both 1.2.x keys removed, rest of DefaultEngine.ini unchanged | User's `HttpConnectionTimeout=120` and `HttpTimeout=180` kept, 3600 removed | Pass |
+| F8 | One warning on start 1, none on start 2, preference left off | Same | Pass |
+| F9 | `bEnableMcpServer` true, Python off, server on 27000 and 27001 | Same (lines not logged at Min Severity Warning) | Pass |
+| Idempotence | Start 2: both ini files, loaded values and graph state unchanged, no NodeToCode warning, no import error | Same | Pass |
+
+No `EnumRedirects` were added: no 1.2.x enum value was renamed; the one removed name (Gemini_2_5_ProExp) has no
+2.0 equivalent, and card 0418's write-back gives the default with a warning, checked on 5.6 to 5.8.
 
 ## Other release notes found while writing this
 
