@@ -1,0 +1,64 @@
+name: Feature request
+description: Suggest a new feature or an improvement to NodeToCode.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New work happens on NodeToCode 2.0 (`dev-2.0`, UE 5.6 to 5.8). For an open-ended idea, a quick chat in the Discord first can help shape it.
+
+        **Never paste an API key** in an issue, a log or a screenshot.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How the feature would work from your side, in the editor or from an MCP client.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Blueprint translation
+        - LLM providers and models
+        - MCP server and agent tools
+        - Python scripting
+        - Code editor and themes
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: ue-version
+    attributes:
+      label: Unreal Engine version you use
+      multiple: true
+      options:
+        - "5.6"
+        - "5.7"
+        - "5.8"
+        - Other
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have tried
+    validations:
+      required: false
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to work on this myself (see CONTRIBUTING.md).
+          required: false

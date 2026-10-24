@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and support (Discord)
+    url: https://discord.gg/4t3Syvk4AG
+    about: Ask how to set up or use NodeToCode, and talk with other users.
+  - name: Documentation (wiki)
+    url: https://github.com/protospatial/NodeToCode/wiki
+    about: Installation, provider setup and troubleshooting guides.
+  - name: Report a security vulnerability
+    url: https://github.com/protospatial/NodeToCode/security/advisories/new
+    about: Report it privately, never in a public issue. See SECURITY.md.

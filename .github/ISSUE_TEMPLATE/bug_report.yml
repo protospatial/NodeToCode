@@ -1,0 +1,140 @@
+name: Bug report
+description: Something in NodeToCode does not work as it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A few details about your setup save a round of questions.
+
+        **Never paste an API key.** Check logs, settings and screenshots before you submit, and replace any key with `<redacted>`. If a key was posted by mistake, revoke it with its provider.
+
+        Security problems go through a private report instead (see SECURITY.md), not this form.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What went wrong, and any error text shown in the editor.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From opening the project to the problem. Name the Blueprint type and the nodes involved if it is about a translation.
+      placeholder: |
+        1. Open a Blueprint with ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: false
+  - type: dropdown
+    id: ue-version
+    attributes:
+      label: Unreal Engine version
+      options:
+        - "5.6"
+        - "5.7"
+        - "5.8"
+        - Other (say which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: plugin-line
+    attributes:
+      label: Plugin version line
+      options:
+        - 2.0 beta (dev-2.0 branch or a 2.0 release)
+        - 1.2.x (main branch or the Fab release)
+        - Other or unsure
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Exact plugin version or commit
+      description: The version shown in Edit > Plugins, or the branch and commit you built from.
+      placeholder: 2.0.0-beta.1, or dev-2.0 at 5de97c4
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM provider
+      options:
+        - Anthropic
+        - OpenAI
+        - Gemini
+        - DeepSeek
+        - Ollama
+        - LM Studio
+        - Not related to a provider
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: The model selected in Project Settings or passed by your MCP client, if a provider is involved.
+    validations:
+      required: false
+  - type: dropdown
+    id: mcp-client
+    attributes:
+      label: MCP client
+      description: Which agent or client talked to the editor's MCP server, if any.
+      options:
+        - Not using MCP
+        - Claude Code
+        - Claude Desktop
+        - Codex
+        - Gemini CLI
+        - Cursor
+        - VS Code (GitHub Copilot)
+        - Cline
+        - Zed
+        - Other (say which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: python-only
+    attributes:
+      label: Python script-only mode
+      description: Project Settings > Plugins > Node to Code > Enable Python Script-Only Mode (2.0 only).
+      options:
+        - "Off"
+        - "On"
+        - Not sure, or using 1.2.x
+    validations:
+      required: true
+  - type: textarea
+    id: output-log
+    attributes:
+      label: Output Log excerpt
+      description: The lines around the problem from Window > Output Log (filter on `LogNodeToCode`), or from the project's `Saved/Logs`. Remove any API key first.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: OS, other plugins, screenshots, or a small sample project or Blueprint that shows the problem.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: This report, its log and its screenshots contain no API key or other secret.
+          required: true
+        - label: I searched the open issues for this problem.
+          required: false
