@@ -12,8 +12,7 @@ For creating new MCP tools, see: `@Source/Private/MCP/Tools/AGENTS.md`
 Source/
 ├── Public/MCP/                           # Public headers
 │   ├── Server/                           # HTTP/SSE server components
-│   │   ├── N2CMcpHttpServerManager.h     # Main HTTP server
-│   │   ├── N2CMcpHttpRequestHandler.h    # Request handling
+│   │   ├── N2CMcpHttpServerManager.h     # HTTP transport (HTTPServer routes, responder)
 │   │   ├── N2CMcpJsonRpcTypes.h          # JSON-RPC types
 │   │   ├── N2CMcpSSEResponseManager.h    # SSE response management
 │   │   └── IN2CMcpNotificationChannel.h  # Notification interface
@@ -86,19 +85,29 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 
 ## Core Server Components (`Source/Public/MCP/Server/`)
 
-*   **`N2CMcpHttpServerManager.h/.cpp`**: Central server management
+*   **`N2CMcpHttpServerManager.h/.cpp`**: the HTTP transport
     *   Singleton pattern for server lifecycle control
     *   HTTP routing: `/mcp` (main), `/mcp/health` (health check)
     *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; the httplib SSE server binds 127.0.0.1
-    *   Client notification channel management
-    *   Session protocol version tracking
+    *   `HandleMcpRequest` copies the request into an `FN2CMcpInbound` and calls the protocol core with an
+        HTTPServer responder: one `application/json` response, or on UE 5.8 a `text/event-stream` response drained
+        from a queue (`CanStreamToolProgress()`)
+    *   Sets the core's broadcast sink to the port+1 notification stream
 
-*   **`N2CMcpHttpRequestHandler.h/.cpp`**: Request processing engine
-    *   Full JSON-RPC 2.0 message parsing and validation
-    *   Method routing with extensible dispatch system
-    *   Batch request processing support
+*   **`N2CMcpProtocol.h/.cpp`** (Private): the transport-neutral protocol core, `FN2CMcpProtocol`
+    *   `Handle(const FN2CMcpInbound&, TSharedRef<IN2CMcpResponder>)`: the inbound message is the verb, the headers
+        and the body bytes; the responder has `Reply` (one body), `Stream` (one message on a stream) and `Close`
+    *   Parses the body once (`ParseBody`), classifies JSON-RPC messages (a non-string method or a null, boolean or
+        object id is -32600), answers batches and dispatches methods to the catalogs given at construction
+        (`FN2CMcpCatalogs`: tool, resource and prompt managers and the long-running call manager)
+    *   Owns the long-running `tools/call` branch (streamed when the responder can stream, the client accepts
+        `text/event-stream` and sent a progressToken; else one reply when the call finishes) and the session and
+        protocol-version table
+    *   Server notifications (`notifications/tools/list_changed`, from `FN2CMcpToolManager::OnToolListChanged`) go
+        to the sink set with `SetBroadcastSink`; tools never call the transport
     *   Protocol version negotiation (supports "2025-03-26", "2024-11-05")
-    *   Comprehensive error responses with proper codes
+    *   Tests drive it without a listener: `NodeToCode.MCP.Core` (in-memory responder in
+        `Source/Private/Tests/MCP/N2CMcpMemoryResponder.h`) and `NodeToCode.MCP.Protocol`
 
 *   **`N2CMcpJsonRpcTypes.h/.cpp`**: JSON-RPC type system
     *   `FJsonRpcRequest/Response/Error/Notification` structures

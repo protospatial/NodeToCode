@@ -90,6 +90,12 @@ public:
 	/** Clear all registered tools */
 	void ClearAllTools();
 
+	/**
+	 * Broadcast after UpdateActiveTools changes the active tool set. The MCP protocol core turns it into a
+	 * notifications/tools/list_changed for its clients; the tool manager knows nothing about transports.
+	 */
+	FSimpleMulticastDelegate& OnToolListChanged() { return ToolListChanged; }
+
 private:
 	/** Private constructor for singleton */
 	FN2CMcpToolManager() = default;
@@ -103,4 +109,7 @@ private:
 
 	/** Mutex for thread-safe access */
 	mutable FCriticalSection ToolsLock;
+
+	/** See OnToolListChanged */
+	FSimpleMulticastDelegate ToolListChanged;
 };

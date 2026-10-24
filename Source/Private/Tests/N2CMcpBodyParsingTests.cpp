@@ -4,7 +4,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "MCP/Server/N2CMcpHttpRequestHandler.h"
+#include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -40,7 +40,7 @@ bool FN2CMcpBodyParsingTest::RunTest(const FString& Parameters)
 	{
 		const TArray<uint8> Body = Utf8Body(TEXT("[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"},{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}]"));
 		TSharedPtr<FJsonValue> Value;
-		TestTrue(TEXT("batch parses"), FN2CMcpHttpRequestHandler::ParseRequestBody(Body, Value));
+		TestTrue(TEXT("batch parses"), FN2CMcpProtocol::ParseBody(Body, Value));
 		if (TestTrue(TEXT("batch is an array"), Value.IsValid() && Value->Type == EJson::Array))
 		{
 			TestEqual(TEXT("batch keeps both items"), Value->AsArray().Num(), 2);
@@ -49,7 +49,7 @@ bool FN2CMcpBodyParsingTest::RunTest(const FString& Parameters)
 		FString ResponseBody;
 		int32 StatusCode = 0;
 		bool bWasInitialize = false;
-		FN2CMcpHttpRequestHandler::ProcessMcpRequest(Value, ResponseBody, StatusCode, bWasInitialize);
+		FN2CMcpProtocol().ProcessMessage(Value, ResponseBody, StatusCode, bWasInitialize);
 		TestEqual(TEXT("batch status is 200"), StatusCode, 200);
 		TestFalse(TEXT("batch response has no newline"), ResponseBody.Contains(TEXT("\n")));
 
@@ -69,13 +69,13 @@ bool FN2CMcpBodyParsingTest::RunTest(const FString& Parameters)
 	{
 		const TArray<uint8> Body = Utf8Body(TEXT("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}xyz"));
 		TSharedPtr<FJsonValue> Value;
-		TestFalse(TEXT("trailing garbage fails to parse"), FN2CMcpHttpRequestHandler::ParseRequestBody(Body, Value));
+		TestFalse(TEXT("trailing garbage fails to parse"), FN2CMcpProtocol::ParseBody(Body, Value));
 		TestFalse(TEXT("trailing garbage gives no value"), Value.IsValid());
 
 		FString ResponseBody;
 		int32 StatusCode = 0;
 		bool bWasInitialize = false;
-		FN2CMcpHttpRequestHandler::ProcessMcpRequest(Value, ResponseBody, StatusCode, bWasInitialize);
+		FN2CMcpProtocol().ProcessMessage(Value, ResponseBody, StatusCode, bWasInitialize);
 		TestEqual(TEXT("parse error status is 400"), StatusCode, 400);
 		const TSharedPtr<FJsonValue> Response = ParseText(ResponseBody);
 		const TSharedPtr<FJsonObject>* ErrorObject = nullptr;
@@ -90,12 +90,12 @@ bool FN2CMcpBodyParsingTest::RunTest(const FString& Parameters)
 	{
 		const TArray<uint8> Body = Utf8Body(FString(TEXT("{\"jsonrpc\":\"2.0\",\"id\":\"caf")) + TCHAR(0x00E9) + TEXT("\",\"method\":\"ping\"}\r\n"));
 		TSharedPtr<FJsonValue> Value;
-		TestTrue(TEXT("trailing whitespace parses"), FN2CMcpHttpRequestHandler::ParseRequestBody(Body, Value));
+		TestTrue(TEXT("trailing whitespace parses"), FN2CMcpProtocol::ParseBody(Body, Value));
 
 		FString ResponseBody;
 		int32 StatusCode = 0;
 		bool bWasInitialize = false;
-		FN2CMcpHttpRequestHandler::ProcessMcpRequest(Value, ResponseBody, StatusCode, bWasInitialize);
+		FN2CMcpProtocol().ProcessMessage(Value, ResponseBody, StatusCode, bWasInitialize);
 		TestEqual(TEXT("single ping status is 200"), StatusCode, 200);
 		const TSharedPtr<FJsonValue> Response = ParseText(ResponseBody);
 		if (TestTrue(TEXT("single response is an object"), Response.IsValid() && Response->Type == EJson::Object))
@@ -107,17 +107,17 @@ bool FN2CMcpBodyParsingTest::RunTest(const FString& Parameters)
 	// An empty body is a parse error
 	{
 		TSharedPtr<FJsonValue> Value;
-		TestFalse(TEXT("empty body fails to parse"), FN2CMcpHttpRequestHandler::ParseRequestBody(TArray<uint8>(), Value));
+		TestFalse(TEXT("empty body fails to parse"), FN2CMcpProtocol::ParseBody(TArray<uint8>(), Value));
 	}
 
 	// Wire responses are condensed: a tools/list response is one line
 	{
 		TSharedPtr<FJsonValue> Value;
-		FN2CMcpHttpRequestHandler::ParseRequestBody(Utf8Body(TEXT("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}")), Value);
+		FN2CMcpProtocol::ParseBody(Utf8Body(TEXT("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}")), Value);
 		FString ResponseBody;
 		int32 StatusCode = 0;
 		bool bWasInitialize = false;
-		FN2CMcpHttpRequestHandler::ProcessMcpRequest(Value, ResponseBody, StatusCode, bWasInitialize);
+		FN2CMcpProtocol().ProcessMessage(Value, ResponseBody, StatusCode, bWasInitialize);
 		TestEqual(TEXT("tools/list status is 200"), StatusCode, 200);
 		TestTrue(TEXT("tools/list response is not empty"), ResponseBody.Len() > 0);
 		TestFalse(TEXT("tools/list response has no newline"), ResponseBody.Contains(TEXT("\n")));

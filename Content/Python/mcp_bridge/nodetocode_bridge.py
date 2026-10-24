@@ -92,8 +92,9 @@ def error_response(request_id: Any, code: int, message: str, data: Any = None) -
 
 
 def is_request(message: Any) -> bool:
-    """True for a JSON-RPC request (a method and an id), the only kind of message that gets a response."""
-    return isinstance(message, dict) and "method" in message and message.get("id") is not None
+    """True for a JSON-RPC request (a method and an id member), the only kind of message that gets a response. An
+    "id": null counts: the server refuses it with an Invalid Request error (-32600) the client must see."""
+    return isinstance(message, dict) and "method" in message and "id" in message
 
 
 def batch_has_request(message: Any) -> bool:

@@ -1,6 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "MCP/Server/N2CMcpHttpRequestHandler.h"
+#include "MCP/Server/N2CMcpProtocol.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -11,19 +11,308 @@
 #include "MCP/Resources/N2CMcpResourceManager.h"
 #include "MCP/Prompts/N2CMcpPromptManager.h"
 #include "MCP/Validation/N2CMcpRequestValidator.h"
-#include "MCP/Server/N2CMcpHttpServerManager.h"
-#include "MCP/Server/N2CMcpSSEResponseManager.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "MCP/Server/N2CSseServer.h"
-#include "HttpServerRequest.h"
 
-// Define supported protocol versions in order of preference (newest first)
-const TArray<FString> FN2CMcpHttpRequestHandler::SUPPORTED_PROTOCOL_VERSIONS = {
-	TEXT("2025-03-26"),  // Latest version
-	TEXT("2024-11-05")   // Previous version for compatibility
-};
+// ----------------------------------------------------------------------------------------------------------------
+// Inbound message
+// ----------------------------------------------------------------------------------------------------------------
 
-bool FN2CMcpHttpRequestHandler::ParseRequestBody(const TArray<uint8>& Body, TSharedPtr<FJsonValue>& OutJsonValue)
+const FString* FN2CMcpInbound::FindHeader(const TCHAR* Name) const
+{
+	for (const TPair<FString, TArray<FString>>& Pair : Headers)
+	{
+		if (Pair.Key.Equals(Name, ESearchCase::IgnoreCase) && Pair.Value.Num() > 0)
+		{
+			return &Pair.Value[0];
+		}
+	}
+	return nullptr;
+}
+
+bool FN2CMcpInbound::AcceptsEventStream() const
+{
+	for (const TPair<FString, TArray<FString>>& Pair : Headers)
+	{
+		if (Pair.Key.Equals(TEXT("Accept"), ESearchCase::IgnoreCase))
+		{
+			for (const FString& Value : Pair.Value)
+			{
+				if (Value.Contains(TEXT("text/event-stream"), ESearchCase::IgnoreCase))
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+FN2CMcpCatalogs FN2CMcpCatalogs::Default()
+{
+	FN2CMcpCatalogs Catalogs;
+	Catalogs.Tools = &FN2CMcpToolManager::Get();
+	Catalogs.Resources = &FN2CMcpResourceManager::Get();
+	Catalogs.Prompts = &FN2CMcpPromptManager::Get();
+	Catalogs.Tasks = &FN2CToolAsyncTaskManager::Get();
+	return Catalogs;
+}
+
+// ----------------------------------------------------------------------------------------------------------------
+// Core
+// ----------------------------------------------------------------------------------------------------------------
+
+const TArray<FString>& FN2CMcpProtocol::GetSupportedProtocolVersions()
+{
+	// In order of preference (newest first)
+	static const TArray<FString> Versions = {
+		TEXT("2025-03-26"),
+		TEXT("2024-11-05")
+	};
+	return Versions;
+}
+
+FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
+	: Catalogs(InCatalogs)
+{
+	check(Catalogs.Tools && Catalogs.Resources && Catalogs.Prompts && Catalogs.Tasks);
+
+	// The tool list changes when assess-needed-tools activates categories: tell clients through the broadcast sink
+	ToolListChangedHandle = Catalogs.Tools->OnToolListChanged().AddLambda([this]()
+	{
+		FJsonRpcNotification Notification;
+		Notification.Method = TEXT("notifications/tools/list_changed");
+		Notification.Params = MakeShared<FJsonValueObject>(MakeShared<FJsonObject>());
+		BroadcastNotification(Notification);
+	});
+}
+
+FN2CMcpProtocol::~FN2CMcpProtocol()
+{
+	Catalogs.Tools->OnToolListChanged().Remove(ToolListChangedHandle);
+}
+
+void FN2CMcpProtocol::BroadcastNotification(const FJsonRpcNotification& Notification)
+{
+	const FString NotificationJson = FJsonRpcUtils::SerializeNotification(Notification);
+	if (NotificationJson.IsEmpty())
+	{
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to serialize notification: %s"), *Notification.Method));
+		return;
+	}
+	if (!BroadcastSink)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("No notification channel; '%s' not sent"), *Notification.Method), EN2CLogSeverity::Debug);
+		return;
+	}
+	BroadcastSink(NotificationJson);
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Broadcast notification '%s'"), *Notification.Method), EN2CLogSeverity::Debug);
+}
+
+FString FN2CMcpProtocol::GetSessionProtocolVersion(const FString& SessionId) const
+{
+	const FString* Version = SessionProtocolVersions.Find(SessionId);
+	return Version ? *Version : FString();
+}
+
+void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder)
+{
+	if (!Inbound.Verb.Equals(TEXT("POST"), ESearchCase::IgnoreCase))
+	{
+		FN2CMcpReply Reply;
+		Reply.Status = 405;
+		Reply.Body = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(nullptr, JsonRpcErrorCodes::InvalidRequest,
+			FString::Printf(TEXT("Method %s not allowed; send JSON-RPC messages with POST"), *Inbound.Verb)));
+		Responder->Reply(Reply);
+		return;
+	}
+
+	// Parse the body once, over exactly the bytes received. A batch parses to an array, and trailing bytes after the
+	// root value are a parse error. The parsed value is used for the long-running check and dispatch; null means
+	// -32700 Parse error.
+	TSharedPtr<FJsonValue> JsonValue;
+	ParseBody(Inbound.Body, JsonValue);
+	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP request: %d body bytes, %s"), Inbound.Body.Num(),
+		JsonValue.IsValid() ? (JsonValue->Type == EJson::Array ? TEXT("batch") : TEXT("single message")) : TEXT("not valid JSON")),
+		EN2CLogSeverity::Debug);
+
+	const FString* SessionHeader = Inbound.FindHeader(TEXT("Mcp-Session-Id"));
+	const FString ClientSentSessionId = SessionHeader ? *SessionHeader : FString();
+
+	// A single tools/call of a long-running tool runs as a call answered on this same request
+	if (JsonValue.IsValid() && JsonValue->Type == EJson::Object)
+	{
+		const TSharedPtr<FJsonObject> RequestObject = JsonValue->AsObject();
+		FString Method;
+		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+		FString ToolName;
+		if (FJsonRpcUtils::GetMessageType(RequestObject) == FJsonRpcUtils::EJsonRpcMessageType::Request
+			&& RequestObject->TryGetStringField(TEXT("method"), Method) && Method == TEXT("tools/call")
+			&& RequestObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
+			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName) && IsLongRunningTool(ToolName))
+		{
+			HandleLongRunningToolCall(Inbound, Responder, RequestObject, *ParamsObj, ToolName, ClientSentSessionId);
+			return;
+		}
+	}
+
+	// Everything else is answered at once
+	FN2CMcpReply Reply;
+	bool bWasInitializeCall = false;
+	LastNegotiatedVersion.Reset();
+	ProcessMessage(JsonValue, Reply.Body, Reply.Status, bWasInitializeCall);
+	const bool bSuccessfulInitialize = bWasInitializeCall && Reply.Status == 200;
+	Reply.SessionId = ResolveResponseSessionId(bSuccessfulInitialize, ClientSentSessionId);
+	if (bSuccessfulInitialize && !Reply.SessionId.IsEmpty() && !LastNegotiatedVersion.IsEmpty())
+	{
+		SessionProtocolVersions.Add(Reply.SessionId, LastNegotiatedVersion);
+	}
+	Responder->Reply(Reply);
+}
+
+FString FN2CMcpProtocol::ResolveResponseSessionId(bool bSuccessfulInitialize, const FString& ClientSentSessionId)
+{
+	// Session ID handling for the HTTP transport (MCP spec 2025-03-26)
+	if (bSuccessfulInitialize)
+	{
+		// Successful initialize - generate or reuse session ID
+		if (CurrentSessionId.IsEmpty())
+		{
+			CurrentSessionId = FGuid::NewGuid().ToString();
+		}
+		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP Initialize successful. Responding with Mcp-Session-Id: %s"), *CurrentSessionId), EN2CLogSeverity::Info);
+		return CurrentSessionId;
+	}
+	if (!ClientSentSessionId.IsEmpty())
+	{
+		// For non-initialize requests, if client sent a session ID, echo it back if it matches our current one
+		if (ClientSentSessionId == CurrentSessionId || CurrentSessionId.IsEmpty())
+		{
+			return ClientSentSessionId;
+		}
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Mcp-Session-Id mismatch. Client: %s, Server: %s. Not adding Mcp-Session-Id to response."), *ClientSentSessionId, *CurrentSessionId));
+		return FString();
+	}
+	if (!CurrentSessionId.IsEmpty())
+	{
+		// Client did not send session ID for an ongoing session
+		FN2CLogger::Get().LogWarning(TEXT("Client did not send Mcp-Session-Id for an ongoing session. Responded with current session ID."));
+		return CurrentSessionId;
+	}
+	return FString();
+}
+
+bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
+{
+	if (ToolName.IsEmpty())
+	{
+		return false;
+	}
+	for (const FMcpToolDefinition& Def : Catalogs.Tools->GetAllToolDefinitions())
+	{
+		if (Def.Name == ToolName)
+		{
+			return Def.bIsLongRunning;
+		}
+	}
+	return false;
+}
+
+void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
+	const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
+	const FString& ClientSentSessionId)
+{
+	const TSharedPtr<FJsonObject>* ArgsObj = nullptr;
+	const TSharedPtr<FJsonObject> ToolArguments = Params->TryGetObjectField(TEXT("arguments"), ArgsObj) && ArgsObj && ArgsObj->IsValid()
+		? *ArgsObj : MakeShared<FJsonObject>();
+
+	const TSharedPtr<FJsonValue> RequestId = RequestObject->TryGetField(TEXT("id"));
+
+	// _meta.progressToken is a string or an integer (MCP). It is kept as sent, so notifications echo it with its
+	// type; its string form is the key nodetocode/cancelTask finds the call by.
+	TSharedPtr<FJsonValue> ClientProgressToken;
+	FString ProgressTokenKey;
+	const TSharedPtr<FJsonObject>* MetaObj = nullptr;
+	if (Params->TryGetObjectField(TEXT("_meta"), MetaObj) && MetaObj && MetaObj->IsValid())
+	{
+		const TSharedPtr<FJsonValue> Token = (*MetaObj)->TryGetField(TEXT("progressToken"));
+		if (Token.IsValid() && (Token->Type == EJson::String || Token->Type == EJson::Number)
+			&& Token->TryGetString(ProgressTokenKey) && !ProgressTokenKey.IsEmpty())
+		{
+			ClientProgressToken = Token;
+		}
+		else if (Token.IsValid())
+		{
+			ProgressTokenKey.Reset();
+			FN2CLogger::Get().LogWarning(TEXT("_meta.progressToken is neither a non-empty string nor a number; the call runs without progress notifications"), TEXT("MCP"));
+		}
+	}
+	if (ProgressTokenKey.IsEmpty())
+	{
+		// No client token: a generated key still lets the call be found (logs, nodetocode/cancelTask)
+		ProgressTokenKey = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
+	}
+
+	const FString ResponseSessionId = ResolveResponseSessionId(/*bSuccessfulInitialize=*/false, ClientSentSessionId);
+
+	// Stream when the transport can stream, the client can read a stream (Accept lists text/event-stream) and wants
+	// progress (sent a token); otherwise answer with one JSON reply when the call finishes.
+	const bool bStream = Responder->CanStream() && ClientProgressToken.IsValid() && Inbound.AcceptsEventStream();
+
+	FN2CAsyncTaskResponder CallResponder;
+	if (bStream)
+	{
+		CallResponder.SendProgress = [Responder, ResponseSessionId](const FString& NotificationJson)
+		{
+			check(IsInGameThread());
+			Responder->Stream(NotificationJson, ResponseSessionId);
+		};
+		CallResponder.SendResponse = [Responder, ResponseSessionId](const FString& ResponseJson)
+		{
+			check(IsInGameThread());
+			Responder->Stream(ResponseJson, ResponseSessionId);
+			Responder->Close();
+		};
+	}
+	else
+	{
+		// The transport holds the request open and answers it once, when the call reports
+		CallResponder.SendResponse = [Responder, ResponseSessionId](const FString& ResponseJson)
+		{
+			check(IsInGameThread());
+			FN2CMcpReply Reply;
+			Reply.Body = ResponseJson;
+			Reply.SessionId = ResponseSessionId;
+			Responder->Reply(Reply);
+		};
+	}
+
+	// A call that fails inside InvokeAsync (no Blueprint focused, no key) writes its response before LaunchTask returns
+	const FGuid TaskId = FGuid::NewGuid();
+	const FGuid LaunchedTaskId = Catalogs.Tasks->LaunchTask(TaskId, ToolName, ToolArguments,
+		ProgressTokenKey, bStream ? ClientProgressToken : nullptr, CurrentSessionId, RequestId, CallResponder);
+
+	if (!LaunchedTaskId.IsValid())
+	{
+		// Nothing was started and nothing written: answer with a JSON-RPC error
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to launch async task for tool: %s"), *ToolName));
+		FN2CMcpReply Reply;
+		Reply.Body = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(RequestId,
+			JsonRpcErrorCodes::InternalError, FString::Printf(TEXT("Failed to start tool '%s'"), *ToolName)));
+		Reply.SessionId = ResponseSessionId;
+		Responder->Reply(Reply);
+		return;
+	}
+
+	// Tests/mcp_probe/live_*.py parse this line: keep "Started task ... answering ..." and "text/event-stream" (the
+	// stream a transport writes is an SSE stream today)
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Started task %s for tool %s (progress token %s), answering %s"),
+		*TaskId.ToString(), *ToolName, *ProgressTokenKey,
+		bStream ? TEXT("as text/event-stream on the same request") : TEXT("with one JSON response when it finishes")),
+		EN2CLogSeverity::Info);
+}
+
+bool FN2CMcpProtocol::ParseBody(const TArray<uint8>& Body, TSharedPtr<FJsonValue>& OutJsonValue)
 {
 	OutJsonValue.Reset();
 	if (Body.Num() == 0)
@@ -31,8 +320,8 @@ bool FN2CMcpHttpRequestHandler::ParseRequestBody(const TArray<uint8>& Body, TSha
 		return false;
 	}
 
-	// Convert exactly the bytes HTTPServer received (it sizes Body to Content-Length). The JSON reader then
-	// rejects anything after the root value except whitespace, so trailing garbage is a parse error.
+	// Convert exactly the bytes received (HTTPServer sizes Body to Content-Length). The JSON reader then rejects
+	// anything after the root value except whitespace, so trailing garbage is a parse error.
 	const FUTF8ToTCHAR Converter(reinterpret_cast<const ANSICHAR*>(Body.GetData()), Body.Num());
 	const FString BodyString(Converter.Length(), Converter.Get());
 
@@ -49,7 +338,7 @@ bool FN2CMcpHttpRequestHandler::ParseRequestBody(const TArray<uint8>& Body, TSha
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::ProcessMcpRequest(const TSharedPtr<FJsonValue>& JsonValue, FString& OutResponseBody, int32& OutStatusCode, bool& OutWasInitializeCall)
+bool FN2CMcpProtocol::ProcessMessage(const TSharedPtr<FJsonValue>& JsonValue, FString& OutResponseBody, int32& OutStatusCode, bool& OutWasInitializeCall)
 {
 	// Default to success
 	OutStatusCode = 200;
@@ -158,26 +447,7 @@ bool FN2CMcpHttpRequestHandler::ProcessMcpRequest(const TSharedPtr<FJsonValue>& 
 	}
 }
 
-bool FN2CMcpHttpRequestHandler::ParseJsonRpcMessage(const FString& JsonString, TSharedPtr<FJsonObject>& OutJsonObject)
-{
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-	TSharedPtr<FJsonValue> JsonValue;
-
-	if (FJsonSerializer::Deserialize(Reader, JsonValue) && JsonValue.IsValid() && JsonValue->Type == EJson::Object)
-	{
-		OutJsonObject = JsonValue->AsObject();
-		return true;
-	}
-
-	return false;
-}
-
-bool FN2CMcpHttpRequestHandler::ValidateJsonRpcMessage(const TSharedPtr<FJsonObject>& JsonObject)
-{
-	return FJsonRpcUtils::IsValidJsonRpcMessage(JsonObject);
-}
-
-bool FN2CMcpHttpRequestHandler::ProcessRequest(const FJsonRpcRequest& Request, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::ProcessRequest(const FJsonRpcRequest& Request, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Processing JSON-RPC request: %s"), *Request.Method), EN2CLogSeverity::Debug);
 
@@ -185,7 +455,7 @@ bool FN2CMcpHttpRequestHandler::ProcessRequest(const FJsonRpcRequest& Request, F
 	return DispatchMethod(Request.Method, Request.Params, Request.Id, OutResponse);
 }
 
-bool FN2CMcpHttpRequestHandler::ProcessNotification(const FJsonRpcNotification& Notification)
+bool FN2CMcpProtocol::ProcessNotification(const FJsonRpcNotification& Notification)
 {
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Received JSON-RPC notification: %s"), *Notification.Method), EN2CLogSeverity::Info);
 	
@@ -202,7 +472,7 @@ bool FN2CMcpHttpRequestHandler::ProcessNotification(const FJsonRpcNotification& 
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::DispatchMethod(const FString& Method, const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::DispatchMethod(const FString& Method, const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Dispatching JSON-RPC method: %s"), *Method), EN2CLogSeverity::Debug);
 
@@ -255,7 +525,7 @@ bool FN2CMcpHttpRequestHandler::DispatchMethod(const FString& Method, const TSha
 	}
 }
 
-bool FN2CMcpHttpRequestHandler::HandleInitialize(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing MCP initialize request"), EN2CLogSeverity::Info);
 
@@ -307,7 +577,7 @@ bool FN2CMcpHttpRequestHandler::HandleInitialize(const TSharedPtr<FJsonValue>& P
 	FString NegotiatedProtocolVersion;
 	
 	// First, check if we support the exact version requested
-	if (SUPPORTED_PROTOCOL_VERSIONS.Contains(ClientProtocolVersion))
+	if (GetSupportedProtocolVersions().Contains(ClientProtocolVersion))
 	{
 		NegotiatedProtocolVersion = ClientProtocolVersion;
 		FN2CLogger::Get().Log(
@@ -317,19 +587,20 @@ bool FN2CMcpHttpRequestHandler::HandleInitialize(const TSharedPtr<FJsonValue>& P
 	else
 	{
 		// We don't support their version - use our latest
-		NegotiatedProtocolVersion = SUPPORTED_PROTOCOL_VERSIONS[0];
+		NegotiatedProtocolVersion = GetSupportedProtocolVersions()[0];
 		FN2CLogger::Get().LogWarning(
 			FString::Printf(TEXT("Client requested unsupported version '%s'. Negotiating to '%s'"), 
 			*ClientProtocolVersion, *NegotiatedProtocolVersion));
 		
 		// Log all supported versions for debugging
-		FString SupportedVersionsList = FString::Join(SUPPORTED_PROTOCOL_VERSIONS, TEXT(", "));
+		FString SupportedVersionsList = FString::Join(GetSupportedProtocolVersions(), TEXT(", "));
 		FN2CLogger::Get().Log(
 			FString::Printf(TEXT("Server supports protocol versions: %s"), 
 			*SupportedVersionsList), EN2CLogSeverity::Debug);
 	}
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Protocol version negotiated: %s"), *NegotiatedProtocolVersion), EN2CLogSeverity::Info);
+	LastNegotiatedVersion = NegotiatedProtocolVersion;
 
 	// Build InitializeServerResult
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -394,7 +665,7 @@ bool FN2CMcpHttpRequestHandler::HandleInitialize(const TSharedPtr<FJsonValue>& P
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::HandleToolsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandleToolsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing MCP tools/list request"), EN2CLogSeverity::Info);
 
@@ -402,7 +673,7 @@ bool FN2CMcpHttpRequestHandler::HandleToolsList(const TSharedPtr<FJsonValue>& Pa
 	// TODO: In the future, implement pagination if tool list becomes large
 
 	// Get all registered tools from the manager
-	TArray<FMcpToolDefinition> Tools = FN2CMcpToolManager::Get().GetAllToolDefinitions();
+	TArray<FMcpToolDefinition> Tools = Catalogs.Tools->GetAllToolDefinitions();
 
 	// Build the result object
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -430,7 +701,7 @@ bool FN2CMcpHttpRequestHandler::HandleToolsList(const TSharedPtr<FJsonValue>& Pa
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing MCP tools/call request"), EN2CLogSeverity::Info);
 
@@ -472,7 +743,7 @@ bool FN2CMcpHttpRequestHandler::HandleToolsCall(const TSharedPtr<FJsonValue>& Pa
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Calling tool: %s"), *ToolName), EN2CLogSeverity::Info);
 
 	// Check if tool exists
-	if (!FN2CMcpToolManager::Get().IsToolRegistered(ToolName))
+	if (!Catalogs.Tools->IsToolRegistered(ToolName))
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Tool not found: %s"), *ToolName));
 		OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::MethodNotFound, FString::Printf(TEXT("Tool not found: %s"), *ToolName));
@@ -482,7 +753,7 @@ bool FN2CMcpHttpRequestHandler::HandleToolsCall(const TSharedPtr<FJsonValue>& Pa
 	// TODO: Validate arguments against tool's input schema (for MVP, skip validation)
 
 	// Execute the tool
-	FMcpToolCallResult ToolResult = FN2CMcpToolManager::Get().ExecuteTool(ToolName, Arguments);
+	FMcpToolCallResult ToolResult = Catalogs.Tools->ExecuteTool(ToolName, Arguments);
 
 	// Convert tool result to JSON
 	TSharedPtr<FJsonObject> ResultJson = ToolResult.ToJson();
@@ -493,7 +764,7 @@ bool FN2CMcpHttpRequestHandler::HandleToolsCall(const TSharedPtr<FJsonValue>& Pa
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::ProcessBatchRequest(const TArray<TSharedPtr<FJsonValue>>& BatchArray, FString& OutResponseBody, int32& OutStatusCode)
+bool FN2CMcpProtocol::ProcessBatchRequest(const TArray<TSharedPtr<FJsonValue>>& BatchArray, FString& OutResponseBody, int32& OutStatusCode)
 {
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Processing JSON-RPC batch request with %d items"), BatchArray.Num()), EN2CLogSeverity::Info);
 	
@@ -596,7 +867,7 @@ bool FN2CMcpHttpRequestHandler::ProcessBatchRequest(const TArray<TSharedPtr<FJso
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::HandleResourcesList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandleResourcesList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing MCP resources/list request"), EN2CLogSeverity::Info);
 
@@ -604,7 +875,7 @@ bool FN2CMcpHttpRequestHandler::HandleResourcesList(const TSharedPtr<FJsonValue>
 	// TODO: In the future, implement pagination if resource list becomes large
 
 	// Get all registered resources from the manager
-	TArray<FMcpResourceDefinition> Resources = FN2CMcpResourceManager::Get().ListResources();
+	TArray<FMcpResourceDefinition> Resources = Catalogs.Resources->ListResources();
 
 	// Build the result object
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -623,7 +894,7 @@ bool FN2CMcpHttpRequestHandler::HandleResourcesList(const TSharedPtr<FJsonValue>
 	Result->SetArrayField(TEXT("resources"), ResourcesArray);
 
 	// Also include resource templates  
-	TArray<FMcpResourceTemplate> Templates = FN2CMcpResourceManager::Get().ListResourceTemplates();
+	TArray<FMcpResourceTemplate> Templates = Catalogs.Resources->ListResourceTemplates();
 	if (Templates.Num() > 0)
 	{
 		TArray<TSharedPtr<FJsonValue>> TemplatesArray;
@@ -649,7 +920,7 @@ bool FN2CMcpHttpRequestHandler::HandleResourcesList(const TSharedPtr<FJsonValue>
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::HandleResourcesRead(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandleResourcesRead(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing MCP resources/read request"), EN2CLogSeverity::Info);
 
@@ -678,7 +949,7 @@ bool FN2CMcpHttpRequestHandler::HandleResourcesRead(const TSharedPtr<FJsonValue>
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Reading resource: %s"), *ResourceUri), EN2CLogSeverity::Info);
 
 	// Check if resource exists
-	if (!FN2CMcpResourceManager::Get().IsResourceRegistered(ResourceUri))
+	if (!Catalogs.Resources->IsResourceRegistered(ResourceUri))
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Resource not found: %s"), *ResourceUri));
 		OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::MethodNotFound, FString::Printf(TEXT("Resource not found: %s"), *ResourceUri));
@@ -686,7 +957,7 @@ bool FN2CMcpHttpRequestHandler::HandleResourcesRead(const TSharedPtr<FJsonValue>
 	}
 
 	// Read the resource
-	FMcpResourceContents ResourceContents = FN2CMcpResourceManager::Get().ReadResource(ResourceUri);
+	FMcpResourceContents ResourceContents = Catalogs.Resources->ReadResource(ResourceUri);
 
 	// Build result object
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -708,7 +979,7 @@ bool FN2CMcpHttpRequestHandler::HandleResourcesRead(const TSharedPtr<FJsonValue>
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::HandlePromptsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandlePromptsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing MCP prompts/list request"), EN2CLogSeverity::Info);
 
@@ -716,7 +987,7 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsList(const TSharedPtr<FJsonValue>& 
 	// TODO: In the future, implement pagination if prompt list becomes large
 
 	// Get all registered prompts from the manager
-	TArray<FMcpPromptDefinition> Prompts = FN2CMcpPromptManager::Get().ListPrompts();
+	TArray<FMcpPromptDefinition> Prompts = Catalogs.Prompts->ListPrompts();
 
 	// Build the result object
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -744,7 +1015,7 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsList(const TSharedPtr<FJsonValue>& 
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandlePromptsGet(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing MCP prompts/get request"), EN2CLogSeverity::Info);
 
@@ -771,7 +1042,7 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& P
 	ParamsObject->TryGetStringField(TEXT("name"), PromptName);  // Already validated as required
 
 	// Check if prompt exists
-	if (!FN2CMcpPromptManager::Get().IsPromptRegistered(PromptName))
+	if (!Catalogs.Prompts->IsPromptRegistered(PromptName))
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Prompt not found: %s"), *PromptName));
 		OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::MethodNotFound, FString::Printf(TEXT("Prompt not found: %s"), *PromptName));
@@ -798,7 +1069,7 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& P
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Getting prompt: %s with %d arguments"), *PromptName, Arguments.Num()), EN2CLogSeverity::Info);
 
 	// Get the prompt
-	FMcpPromptResult PromptResult = FN2CMcpPromptManager::Get().GetPrompt(PromptName, Arguments);
+	FMcpPromptResult PromptResult = Catalogs.Prompts->GetPrompt(PromptName, Arguments);
 
 	// Convert result to JSON
 	TSharedPtr<FJsonObject> ResultJson = PromptResult.ToJson();
@@ -809,7 +1080,7 @@ bool FN2CMcpHttpRequestHandler::HandlePromptsGet(const TSharedPtr<FJsonValue>& P
 	return true;
 }
 
-bool FN2CMcpHttpRequestHandler::HandleCancelTask(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+bool FN2CMcpProtocol::HandleCancelTask(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(TEXT("Processing nodetocode/cancelTask request"), EN2CLogSeverity::Info);
 
@@ -835,7 +1106,7 @@ bool FN2CMcpHttpRequestHandler::HandleCancelTask(const TSharedPtr<FJsonValue>& P
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Attempting to cancel task with progress token: %s"), *ProgressToken), EN2CLogSeverity::Info);
 
 	// Attempt to cancel the task
-	bool bCancelled = FN2CToolAsyncTaskManager::Get().CancelTaskByProgressToken(ProgressToken);
+	bool bCancelled = Catalogs.Tasks->CancelTaskByProgressToken(ProgressToken);
 
 	// Create result object
 	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
@@ -849,8 +1120,8 @@ bool FN2CMcpHttpRequestHandler::HandleCancelTask(const TSharedPtr<FJsonValue>& P
 	{
 		// Task not found or already completed. A task stops being tracked once it has reported, so a finished task
 		// is recognised by its remembered progress token.
-		auto TaskContext = FN2CToolAsyncTaskManager::Get().GetTaskContextByProgressToken(ProgressToken);
-		if (!TaskContext.IsValid() && FN2CToolAsyncTaskManager::Get().WasProgressTokenCompleted(ProgressToken))
+		auto TaskContext = Catalogs.Tasks->GetTaskContextByProgressToken(ProgressToken);
+		if (!TaskContext.IsValid() && Catalogs.Tasks->WasProgressTokenCompleted(ProgressToken))
 		{
 			ResultObject->SetStringField(TEXT("status"), TEXT("task_already_completed"));
 			FN2CLogger::Get().Log(FString::Printf(TEXT("Task already completed for progress token: %s"), *ProgressToken), EN2CLogSeverity::Info);
@@ -860,7 +1131,7 @@ bool FN2CMcpHttpRequestHandler::HandleCancelTask(const TSharedPtr<FJsonValue>& P
 			ResultObject->SetStringField(TEXT("status"), TEXT("task_not_found"));
 			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Task not found for progress token: %s"), *ProgressToken));
 		}
-		else if (!FN2CToolAsyncTaskManager::Get().IsTaskRunning(TaskContext->TaskId))
+		else if (!Catalogs.Tasks->IsTaskRunning(TaskContext->TaskId))
 		{
 			ResultObject->SetStringField(TEXT("status"), TEXT("task_already_completed"));
 			FN2CLogger::Get().Log(FString::Printf(TEXT("Task already completed for progress token: %s"), *ProgressToken), EN2CLogSeverity::Info);
