@@ -201,6 +201,13 @@ its environment when no key is saved, so a live check never types or saves a key
   discovery file and the per-user index entry name the port and the editor's pid, `/mcp/health` answers on the new
   port, the old port's routes answer 404, the discovery files and **Server Status** follow, the log shows the restart
   and no error line, and the discovery files are gone after `quit_editor()`. Report: `logs/live_port_restart.json`.
+- `live_user_settings_0423.py --engine ... --project ...` (no provider key) checks that a committed project config
+  cannot switch on MCP Python execution (card 0423), in three headless sessions: `committed` (no
+  `bAllowMcpPythonExecution` in the user's Saved/Config layer, `EditorSession(allow_python=None)`, and the host's
+  `Config/DefaultEditorPerProjectUserSettings.ini` setting `bAllowMcpPythonExecution=True` and
+  `bEnableMcpServer=False`: the server starts, no Python tool is listed, one warning each), `user` (Saved/Config
+  True: run-python, save-python-script and delete-python-script are listed) and `both` (project True, user False:
+  none). The host files are put back byte for byte. Report: `logs/live_user_settings_0423.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

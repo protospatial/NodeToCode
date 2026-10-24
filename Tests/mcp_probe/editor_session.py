@@ -127,9 +127,28 @@ def patch_ini(path, section, key, value):
     open(path, 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
 
 
+def remove_ini_key(path, section, key):
+    """Delete every key= line in section of an ini file, keeping every other line; no file, no change"""
+    if not os.path.exists(path):
+        return
+    lines = open(path, 'rb').read().decode('utf-8-sig', 'replace').splitlines()
+    out, in_section = [], False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('['):
+            in_section = stripped == section
+        elif in_section and stripped.split('=', 1)[0].strip() == key:
+            continue
+        out.append(line)
+    open(path, 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
+
+
 class EditorSession:
     def __init__(self, engine_root, project, port, log_path, allow_python=True, extra_args=(), extra_env=None):
-        """extra_env: variables added to the editor's environment only (for example provider keys from
+        """allow_python: True or False writes bAllowMcpPythonExecution into the host's Saved/Config layer (the user's
+        own setting) for the session; None removes it from that layer, so the user has not set it (card 0423's
+        "committed" check: only a project Config/Default*.ini value is left, and the plugin must ignore it).
+        extra_env: variables added to the editor's environment only (for example provider keys from
         env_keys.load_provider_keys()); they are never written to a file or printed."""
         self.exe = find_editor(engine_root)
         self.project = project
@@ -186,8 +205,13 @@ class EditorSession:
     def start(self, timeout=240):
         self.guard_file(self.project_config_path())
         self._patch('NodeToCode.ini', '[/Script/NodeToCode.N2CSettings]', 'McpServerPort', str(self.port))
-        self._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]',
-                    'bAllowMcpPythonExecution', 'True' if self.allow_python else 'False')
+        if self.allow_python is None:
+            user_ini = os.path.join(self._saved_config_dir(), 'EditorPerProjectUserSettings.ini')
+            self.guard_file(user_ini)
+            remove_ini_key(user_ini, '[/Script/NodeToCode.N2CUserSettings]', 'bAllowMcpPythonExecution')
+        else:
+            self._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]',
+                        'bAllowMcpPythonExecution', 'True' if self.allow_python else 'False')
         self.log = open(self.log_path, 'wb')
         env = None
         if self.extra_env:

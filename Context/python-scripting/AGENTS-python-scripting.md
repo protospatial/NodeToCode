@@ -359,5 +359,6 @@ def _make_error(message: str) -> Dict[str, Any]:
 ## Enabling run-python over MCP
 
 `run-python`, `save-python-script` and `delete-python-script` are only registered when the per-user setting
-**Allow MCP Python Execution** (`UN2CUserSettings::bAllowMcpPythonExecution`) is on; it is off by default and
-needs an editor restart. Python script-only mode without it leaves only the list, search and get script tools.
+**Allow MCP Python Execution** (`UN2CUserSettings::bAllowMcpPythonExecution`, read through
+`UN2CUserSettings::IsMcpPythonExecutionAllowed()`) is on; it is off by default, needs an editor restart, and only the
+user's own Saved/Config value counts (a project's committed config cannot turn it on, card 0423). Python script-only mode without it leaves only the list, search and get script tools.

@@ -54,7 +54,7 @@ keys only. The client's `tools/list` request returns the current tool set.
 - **`run-python`** over MCP lets an agent run Python in the editor. It is **off by default**: the
   `run-python`, `save-python-script` and `delete-python-script` tools exist only when you turn on
   **Allow MCP Python Execution** (**Project Settings → Plugins → Node to Code (User) → MCP Server**), a per-user
-  setting. With it on, any connected MCP client can run arbitrary Python in your editor.
+  setting: a value in a project's committed config files is ignored. With it on, any connected MCP client can run arbitrary Python in your editor.
 - **stdio bridge** (`Content/Python/mcp_bridge`): for MCP clients that only start stdio servers.
   `launch_bridge.bat` (Windows) or `launch_bridge.sh` finds Python (the newest Unreal Engine install's, or Python 3
   on your PATH) and forwards to the HTTP server.

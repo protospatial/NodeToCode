@@ -132,7 +132,7 @@ void FNodeToCodeModule::StartupModule()
     // line, and never when the user turned the server off.
     const bool bForceMcp = FParse::Param(FCommandLine::Get(), TEXT("N2CMcp"));
     FString McpSkipReason;
-    if (!GetDefault<UN2CUserSettings>()->bEnableMcpServer)
+    if (!UN2CUserSettings::IsMcpServerEnabled())
     {
         McpSkipReason = TEXT("Enable MCP Server is off in Project Settings > Plugins > Node to Code (User)");
     }
@@ -144,7 +144,7 @@ void FNodeToCodeModule::StartupModule()
     {
         McpSkipReason = TEXT("running unattended (pass -N2CMcp to start it anyway)");
     }
-    if (McpSkipReason.IsEmpty() && McpSettings && McpSettings->bEnablePythonScriptOnlyMode && !GetDefault<UN2CUserSettings>()->bAllowMcpPythonExecution)
+    if (McpSkipReason.IsEmpty() && McpSettings && McpSettings->bEnablePythonScriptOnlyMode && !UN2CUserSettings::IsMcpPythonExecutionAllowed())
     {
         FN2CLogger::Get().LogWarning(TEXT("Python script-only mode is on but Allow MCP Python Execution is off: only the list, search and get script tools are available"));
     }
