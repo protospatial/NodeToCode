@@ -65,7 +65,7 @@ keys only. The client's `tools/list` request returns the current tool set.
 |---|---|
 | Unreal Engine | 5.6, 5.7 and 5.8. On 5.5 or older, stay on 1.2.x |
 | Platform | Windows (Win64), editor only. This beta does not list Mac or Linux; they are added once a build on that platform is verified ([decision record](.agents/decisions/0001-platforms-for-2-0-beta.md)) |
-| Project | A C++ (code) project |
+| Project | Any project when you install a prebuilt package (it ships Win64 binaries); a C++ (code) project to build the plugin from source |
 | Translation in the editor | An API key for a cloud provider, or a local Ollama or LM Studio server |
 
 ## Get started
@@ -76,8 +76,8 @@ keys only. The client's `tools/list` request returns the current tool set.
 2. Open **Project Settings → Plugins → Node to Code**, choose a **Provider** and enter its **API Key** (see
    [Initial Configuration](wiki/Initial-Configuration.md) and
    [Provider Configuration](wiki/Provider-Configuration.md)).
-3. Open a Blueprint graph, click the **Node to Code** button in the Blueprint editor toolbar, then
-   **Collect and Translate Nodes**.
+3. Open a Blueprint graph and click **Translate** in the Node to Code overlay on the graph. The result opens in the
+   Node to Code window.
 
 ### API keys
 
