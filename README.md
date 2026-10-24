@@ -101,6 +101,9 @@ Open your project in the editor first; the server runs only while the editor is 
 only (`127.0.0.1` / `localhost`) and refuses requests whose `Host` or `Origin` is not local, so the client must run
 on the same computer. **Enable MCP Server** (on by default) is in **Project Settings → Plugins → Node to Code
 (User)**, and **Server Port** (27000) in **Project Settings → Plugins → Node to Code**, under **MCP Server**.
+If another program (another editor, say) already uses the port, the server takes the next free one, shows a
+notification with its URL and lists it as **Server Status** under **MCP Server**; changing **Server Port** moves the
+server at once, without restarting the editor.
 
 **Claude Code over HTTP**, from your project's folder:
 

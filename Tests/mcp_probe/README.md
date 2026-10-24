@@ -19,7 +19,7 @@ probes inside its default-mode editor session (`mcp_probe.session_probes`) plus 
 | P1 | A cross-origin `text/plain` POST (what any web page can send) lists tools and runs `run-python`, which writes `Saved/n2c_probe.txt` | mcp-transport-1, dx-docs-release-1, p0-1 |
 | P2 | A POST whose `Host` is `attacker.example` (DNS rebinding) is answered | mcp-transport-1 |
 | P3 | A two-element JSON-RPC batch: answered element by element in a session negotiated at 2025-03-26, and rejected with -32600 in a 2025-11-25 session (batches exist only in 2025-03-26) | mcp-transport-9 |
-| P4 | With the MCP port already held by another process, the editor logs that the server started | mcp-transport-10 |
+| P4 | With the MCP port already held by another process, the editor logs that the server started on that port. Fixed (card 0112) when the log says the port is in use and the server either moved to another port in the fallback range or reported that it did not start | mcp-transport-10 |
 | P5 | The notification server (port+1) accepts a connection on a non-loopback local address | mcp-transport-14 |
 | P6 | The notification server (port+1) answers 200 to `/mcp/notifications` with 10,000 headers, a 10 MB chunked body or a 4 KB request target, or stops answering afterwards. Evidence also records the editor's working set before and after | auth-settings-module-17, dx-docs-release-4, p0-9 |
 | P7 | `translate-focused-blueprint` (numeric progressToken 7, no Blueprint focused) is not answered with a CallToolResult on its own POST: once with `Accept: application/json, text/event-stream` (UE 5.8 streams `notifications/progress` then the response; 5.6/5.7 send one JSON response) and once JSON-only. Fixed when each call gets exactly one JSON-RPC response with id 7 and a `content` array (here `isError`), no `accepted`/`sseUrl` result, the connection closes, and any progress echoes the token as a number | p0-10, mcp-transport-3, mcp-transport-21, dx-docs-release-8 |
@@ -146,6 +146,11 @@ its environment when no key is saved, so a live check never types or saves a key
   was cancelled and the task completed once, no response was handled after the cancel, and there is no crash, ensure
   or "context not found" line. Use `--windowed` on UE 5.6 and 5.7 (closing a Blueprint editor under `-nullrhi` fails
   there with no translation involved). Report: `logs/live_translate_exit.json`.
+- `live_port_restart.py --engine ... --project ...` (no provider key) changes **Server Port** in a running headless
+  editor through run-python with PostEditChangeProperty, as the settings page does (card 0112). It checks the
+  discovery file and the per-user index entry name the port and the editor's pid, `/mcp/health` answers on the new
+  port, the old port's routes answer 404, the discovery files and **Server Status** follow, the log shows the restart
+  and no error line, and the discovery files are gone after `quit_editor()`. Report: `logs/live_port_restart.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

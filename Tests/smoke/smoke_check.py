@@ -74,10 +74,10 @@ FAIL_PATTERNS = [
 # Known-benign lines that match FAIL_PATTERNS. Each entry: (regex, sessions it applies to, why it is benign). Keep it
 # narrow: match the specific message, never a whole category.
 ALLOWLIST = [
-    # P4 holds the MCP port with a plain socket on purpose, so the HTTPServer module's bind fails in that session only.
-    # The same line in any other session is a real failure (another process on the port).
-    (re.compile(r'LogHttpListener: Error: HttpListener unable to bind to 127\.0\.0\.1:\d+'), {'p4'},
-     'P4 holds the MCP port on purpose'),
+    # Empty since card 0112. P4 holds the MCP port with a plain socket, but NodeToCode now checks a port with its own
+    # bind before handing it to HTTPServer and moves on to the next one (a warning, not an error), so no
+    # "LogHttpListener: Error: HttpListener unable to bind" line appears there any more. That line in any session,
+    # P4 included, is now a real failure: HTTPServer was given a port someone else holds.
 ]
 
 

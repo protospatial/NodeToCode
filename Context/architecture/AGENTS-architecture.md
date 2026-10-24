@@ -111,7 +111,7 @@ The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is
     *   `CustomTranslationOutputDirectory` - Custom output path for translations
 
     **MCP Server Settings:**
-    *   `McpServerPort` - HTTP server port (default: 27000)
+    *   `McpServerPort` - HTTP server port (default: 27000); `McpServerPortRange` - fallback ports tried when it is taken (default: 10)
     *   `bEnableDynamicToolDiscovery` - Dynamic tool registration mode
     *   `bEnablePythonScriptOnlyMode` - Python-only MCP mode
 

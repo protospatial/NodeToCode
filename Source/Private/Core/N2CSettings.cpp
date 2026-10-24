@@ -12,6 +12,7 @@
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "Utils/N2CLogger.h"
+#include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "HAL/FileManager.h"
@@ -892,6 +893,15 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, bEnablePythonScriptOnlyMode))
         {
             ShowRestartEditorNotification();
+        }
+
+        // Restart the MCP server on the new port (not while a slider is being dragged). If no port in the range is
+        // free, the server's own error notification names the port and this setting.
+        if ((PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPort)
+            || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPortRange))
+            && PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
+        {
+            FN2CMcpHttpServerManager::Get().HandlePortSettingsChanged();
         }
 
         // Check for both array changes and changes to FilePath within the struct                                                                                                                         

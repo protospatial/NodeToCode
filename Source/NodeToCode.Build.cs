@@ -57,7 +57,8 @@ public class NodeToCode : ModuleRules
 				"ContentBrowserData",     // For content browser data subsystem
 				"DesktopPlatform",        // For folder browser dialog in Tag Manager
 				"PythonScriptPlugin",     // For Python script execution in Code Mode
-				"EditorScriptingUtilities" // For EditorAssetLibrary in Python bridge
+				"EditorScriptingUtilities", // For EditorAssetLibrary in Python bridge
+				"Sockets"                 // MCP server port check before binding (N2CMcpHttpServerManager)
 			}
 		);
 
