@@ -472,8 +472,11 @@ Available tool categories for `assess-needed-tools`:
         *   `SerializeN2CBlueprintToJson()`: Serialization
 
 *   **Plugin Settings** (`N2CSettings.h/.cpp`):
-    *   `McpServerPort`: Configurable server port (default 27000)
-    *   `SseServerPort`: SSE server port (default 27001)
+    *   `McpServerPort`: Configurable server port (default 27000, at most 65534 while the port+1 server exists);
+        `McpServerPortRange` (default 10): ports tried from there when one is taken; `McpServerStatus` (transient,
+        read-only): where the server listens now. A port change restarts both servers on the next tick
+        (`FN2CMcpHttpServerManager::HandlePortSettingsChanged`), no editor restart
+    *   The notification (SSE) server takes the port after the one the HTTP server got
     *   `bEnableDynamicToolDiscovery`: Toggle dynamic tool management
     *   Exposed in Editor UI for runtime configuration
 
@@ -550,6 +553,18 @@ curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
 EditorPerProjectUserSettings.ini, never the shared project config):
 
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort` and the notification server on port+1.
+
+Ports and shutdown (card 0112): `FN2CMcpHttpServerManager::StartServer(Port, Range)` checks each port with a bind of
+its own before handing it to HTTPServer (`GetHttpRouter(Port, true)`), so a port another process or plugin holds is
+skipped with a warning and an editor notification naming the port it took and the Server Port setting; when none is
+free it returns false with an error notification. It calls `StartAllListeners` only when HTTPServer's listeners are
+not enabled yet (the module starts with them off and has no per-listener start). `StopServer` unbinds only its own
+route handles (`/mcp`, `/mcp/health`) and never calls `StopAllListeners`, so Remote Control and UE 5.8's Unreal MCP
+keep answering; the listener on the old port stays bound (404) until the editor exits. While the server runs it
+writes a discovery file, `<Project>/Saved/NodeToCode/mcp-server.json` plus
+`<UserSettingsDir>/NodeToCode/servers/<pid>.json` (port, requestedPort, url, pid, projectFile, projectName,
+engineVersion, pluginVersion, protocolVersions, startedAt), removed on stop; index entries of processes that are gone are pruned on the next start. Spec:
+`NodeToCode.MCP.ServerLifecycle`; live check: `Tests/mcp_probe/live_port_restart.py`.
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
   `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so dynamic discovery cannot add them either.
 

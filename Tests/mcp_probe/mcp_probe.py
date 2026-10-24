@@ -11,6 +11,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -200,10 +201,19 @@ def probe_p4(args, port, log_dir):
         text = s.log_text()
     finally:
         holder.close()
+    # Reproduced: the editor says it serves on the held port. Fixed (card 0112): it says the held port is in use, and
+    # either serves on another port (the fallback range) or reports that it did not start.
     claims = [l.strip()[:200] for l in text.splitlines() if 'MCP HTTP server started' in l or 'MCP HTTP server initialized' in l]
+    claimed_ports = sorted({int(m.group(1)) for l in claims for m in [re.search(r'started on port (\d+)', l)] if m})
     failures = [l.strip()[:200] for l in text.splitlines() if 'Failed to start MCP' in l or 'port' in l.lower() and 'in use' in l.lower()]
-    status = 'reproduced' if claims and not failures else ('fixed' if failures else 'skipped')
-    return {'ids': ['mcp-transport-10'], 'status': status, 'evidence': {'success_lines': claims, 'failure_lines': failures}}
+    if port in claimed_ports:
+        status = 'reproduced'
+    elif failures:
+        status = 'fixed'
+    else:
+        status = 'skipped'
+    return {'ids': ['mcp-transport-10'], 'status': status,
+            'evidence': {'held_port': port, 'claimed_ports': claimed_ports, 'success_lines': claims, 'failure_lines': failures}}
 
 
 def raw_exchange(port, chunks, timeout=20):

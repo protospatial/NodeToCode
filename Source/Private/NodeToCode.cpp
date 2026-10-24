@@ -126,10 +126,9 @@ void FNodeToCodeModule::StartupModule()
         FN2CLogger::Get().Log(TEXT("Syntax definitions initialized successfully"), EN2CLogSeverity::Debug);
     }
 
-    // Start MCP HTTP server
+    // Start the MCP HTTP server (and its port+1 notification server) on McpServerPort or the next free port
     const UN2CSettings* McpSettings = GetDefault<UN2CSettings>();
-    int32 McpPort = McpSettings ? McpSettings->McpServerPort : 27000;
-    
+
     // Not in commandlets or unattended runs (build agents, smoke tests) unless -N2CMcp is on the command
     // line, and never when the user turned the server off.
     const bool bForceMcp = FParse::Param(FCommandLine::Get(), TEXT("N2CMcp"));
@@ -154,29 +153,15 @@ void FNodeToCodeModule::StartupModule()
     if (!McpSkipReason.IsEmpty())
     {
         FN2CLogger::Get().Log(FString::Printf(TEXT("MCP server not started: %s"), *McpSkipReason), EN2CLogSeverity::Info);
-    }
-    else if (FN2CMcpHttpServerManager::Get().StartServer(McpPort))
-    {
-        FN2CLogger::Get().Log(TEXT("MCP HTTP server initialized successfully"), EN2CLogSeverity::Info);
-    }
-    else
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to start MCP HTTP server"), TEXT("NodeToCode"));
-    }
-    
-    // Start SSE server for long-running operations
-    int32 SsePort = McpPort + 1;
-    if (!McpSkipReason.IsEmpty())
-    {
-        // Skipped together with the MCP server.
-    }
-    else if (NodeToCodeSseServer::StartSseServer(SsePort))
-    {
-        FN2CLogger::Get().Log(FString::Printf(TEXT("SSE server started on port %d"), SsePort), EN2CLogSeverity::Info);
+        if (UN2CSettings* MutableSettings = GetMutableDefault<UN2CSettings>())
+        {
+            MutableSettings->McpServerStatus = FString::Printf(TEXT("Not started: %s"), *McpSkipReason);
+        }
     }
     else
     {
-        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to start SSE server on port %d"), SsePort));
+        // Logs and notifies on its own when the port is taken
+        FN2CMcpHttpServerManager::Get().StartConfiguredServers();
     }
 }
 
@@ -219,13 +204,8 @@ void FNodeToCodeModule::ShutdownModule()
     // HandlePreExit already did this and there is nothing left to cancel)
     FN2CToolAsyncTaskManager::Get().CancelAllTasks();
 
-    // Stop SSE server
-    NodeToCodeSseServer::StopSseServer();
-    FN2CLogger::Get().Log(TEXT("SSE server stopped"), EN2CLogSeverity::Info);
-
-    // Stop MCP HTTP server
-    FN2CMcpHttpServerManager::Get().StopServer();
-    FN2CLogger::Get().Log(TEXT("MCP HTTP server stopped"), EN2CLogSeverity::Info);
+    // Stop the SSE server, then unbind the MCP routes (other plugins' HTTPServer listeners keep running)
+    FN2CMcpHttpServerManager::Get().StopConfiguredServers();
 
     // Unregister menu extensions
     UToolMenus::UnRegisterStartupCallback(this);

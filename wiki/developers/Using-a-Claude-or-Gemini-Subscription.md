@@ -38,7 +38,7 @@ Pro/Max** or **Google Account** selected:
 - Open your project in the Unreal editor. The MCP server runs only while the editor is open.
 - **Enable MCP Server** (**Project Settings → Plugins → Node to Code (User) → MCP Server**) is on by default.
   Changing it needs an editor restart.
-- **Server Port** (**Project Settings → Plugins → Node to Code → MCP Server**) is 27000 by default.
+- **Server Port** (**Project Settings → Plugins → Node to Code → MCP Server**) is 27000; a change applies at once.
 - The server answers only on this machine (`localhost`, `127.0.0.1`), so run the agent on the same computer.
 
 ## Claude Code
@@ -113,7 +113,7 @@ from OpenAI's Codex docs and was not run against NodeToCode when this page was w
 
 | What you see | What to do |
 |---|---|
-| Failed to connect | Open the editor first, and check **Enable MCP Server** and **Server Port** |
+| Failed to connect, or the agent sees another project | Open the editor first, check **Enable MCP Server**, and use the URL in **Server Status** (a second editor moves to the next free port) |
 | Connected, but the agent sees no Blueprint | Click into a Blueprint graph so it has focus, then ask again |
 | Requests rejected with 403 | Use `127.0.0.1` or `localhost` in the URL; the server refuses other host names |
 | `Session not found` (404) after the editor restarted | Each agent gets its own session and a restarted editor forgets them: reconnect the agent (Claude Code: `/mcp`, **Reconnect**) |

@@ -162,6 +162,12 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - **MCP tasks:** translations run on the game thread with real cancel; finished tasks are released, and running
   ones are cancelled when the editor exits; `ExecuteOnGameThread` is safe when its caller times out
   ([#50], [#52], [#53]).
+- **MCP port conflicts:** a second editor no longer says its server started when the port was taken (its agent then
+  edited the first editor's project). The server takes the next free port in **Port Fallback Range** (default 10)
+  and says so in a notification and in **Server Status**, or shows an error naming the port and **Server Port**;
+  changing **Server Port** restarts it on the new port at once. A discovery file
+  (`Saved/NodeToCode/mcp-server.json`) names the port, project and process. Stopping the server no longer stops
+  every HTTP listener in the editor, so Remote Control and UE 5.8's Unreal MCP keep running (card 0112).
 - UE 5.8 compile errors and UE 5.7 deprecation warnings (8f16836); synchronous Blueprint compiles to avoid
   preview-actor crashes (d86db38).
 - A missing include in `N2CMcpAddFunctionEntryPinTool.cpp` (deca5c3), the fix first proposed in [#9].

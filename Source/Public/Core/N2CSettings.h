@@ -446,10 +446,25 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Logging")
     EN2CLogSeverity MinSeverity = EN2CLogSeverity::Info;
 
-    /** MCP server port (Model Context Protocol HTTP server) */
+    /** MCP server port (Model Context Protocol HTTP server, http://127.0.0.1:<port>/mcp). When another program
+     * already uses it, the server takes the next free port in Port Fallback Range and says so in a notification.
+     * Changing it restarts the server on the new port. At most 65534: the notification server uses the port after. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
-        meta=(DisplayName="Server Port", ClampMin="1024", ClampMax="65535", UIMin="1024", UIMax="65535"))
+        meta=(DisplayName="Server Port", ClampMin="1024", ClampMax="65534", UIMin="1024", UIMax="65534",
+              ToolTip="Port of the MCP server (http://127.0.0.1:<port>/mcp). If another program already uses it, the server takes the next free port in Port Fallback Range and shows a notification. Changing it restarts the server on the new port."))
     int32 McpServerPort = 27000;
+
+    /** How many ports, starting at Server Port, the MCP server tries when a port is already in use (1 = only Server
+     * Port). If none is free the server does not start and an error notification says so. */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
+        meta=(DisplayName="Port Fallback Range", ClampMin="1", ClampMax="100", UIMin="1", UIMax="100",
+              ToolTip="How many ports, starting at Server Port, the MCP server tries when a port is already in use (1 = only Server Port). If none is free the server does not start and an error notification says so."))
+    int32 McpServerPortRange = 10;
+
+    /** Where the MCP server is listening now (set by the server; not saved) */
+    UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | MCP Server",
+        meta=(DisplayName="Server Status", ToolTip="Where the MCP server is listening now, or why it is not running."))
+    FString McpServerStatus = TEXT("Not started");
     
     /** Enable dynamic tool discovery for MCP server. When enabled, only assess-needed-tools will be available initially.
      * This feature requires MCP clients that support discovery (e.g., VSCode, Cline).
