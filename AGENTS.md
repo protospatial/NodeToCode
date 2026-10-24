@@ -39,7 +39,7 @@ copy of the source while `Binaries/` and `Intermediate/` stay per host and every
 ```powershell
 .\build.ps1 -UEVersion 5.7           # incremental editor build for one version (5.6, 5.7 or 5.8)
 .\build.ps1 -All                     # build every detected version in turn
-.\build.ps1 -All -Smoke              # build, then load the plugin in a headless editor (Tests/smoke/smoke_check.py)
+.\build.ps1 -All -Smoke              # build, then the headless smoke check and MCP probes (Tests/smoke/smoke_check.py)
 .\build.ps1 -All -Test               # build, then run Automation RunTests NodeToCode headless and report pass/fail
 .\build.ps1 -UEVersion 5.8 -Clean    # remove the host's plugin Binaries/Intermediate first
 .\build.ps1 -UEVersion 5.6 -Launch   # build, then open the host editor
@@ -63,6 +63,15 @@ copy of the source while `Binaries/` and `Intermediate/` stay per host and every
   -culture=en`, reads the report's `index.json`, fails on any failed or unfinished test and warns when none ran.
   `-TestFilter` narrows the run and `-TestTimeoutMinutes` (default 60) stops a hung editor. If `-ExecCmds` ever holds
   more than one command, separate them with commas: a semicolon hangs the editor.
+- `-Smoke` runs `Tests/smoke/smoke_check.py` with the engine's own Python: one headless `-N2CMcp` editor per MCP
+  tool-registration mode (default, dynamic discovery, Python script-only, set in the host's
+  `Config/DefaultNodeToCode.ini` and put back), plus the `Tests/mcp_probe` probes in the default session. It fails on
+  an error, ensure, assertion or crash line in the editor log (the allowlist in the script names each benign
+  exception and why), a missing MCP start line or `/mcp/health` answer from that editor, a `tools/list` count other
+  than `Tests/smoke/expected.json`, any change to the host's `Config/*.ini` during a session, a failed
+  `get_focused_blueprint_json` on an engine Blueprint, or a probe status other than `Tests/mcp_probe/expected.json`.
+  A card that adds or removes an MCP tool updates `Tests/smoke/expected.json`; failures already present are listed
+  there under `known_failures` with their finding ids. About 1 minute per engine.
 - Logs: `BuildLogs/Build_<version>_<timestamp>.log`, `Smoke_*.log`, `Tests_*.log` (report in `Tests_*/`) and
   `Package_*.log`. The script exits non-zero when any build, smoke check or test run fails.
 - If a host editor is open, that version is skipped (Live Coding blocks UBT): use Ctrl+Alt+F11 in the editor, or

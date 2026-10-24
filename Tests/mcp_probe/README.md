@@ -11,7 +11,8 @@ python -I Tests/mcp_probe/mcp_probe.py --engine G:/UE/UE_5.8 \
 The run starts `UnrealEditor-Cmd` (see `editor_session.py` for the launch form), uses a free port pair from 27150 so
 an editor on 27000 cannot answer, probes, stops the editor (no UnrealEditor process is left), and writes
 `logs/report_<label>.json`. It exits 0 only when every status matches `expected.json` for the label. `--skip-p4`
-skips the probe that launches a second editor.
+skips the probe that launches a second editor. `build.ps1 -Smoke` (`Tests/smoke/smoke_check.py`) runs the same
+probes inside its default-mode editor session (`mcp_probe.session_probes`) plus P4, and fails on any mismatch.
 
 | Probe | Checks | Finding ids |
 |---|---|---|

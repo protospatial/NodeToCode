@@ -35,9 +35,17 @@
 
     Release packages come from Scripts\package-release.ps1, not from -Package (a quick local BuildPlugin check).
 
+    -Smoke runs Tests/smoke/smoke_check.py with the engine's own Python. It starts the host editor headless with
+    -N2CMcp once per MCP tool-registration mode (default, dynamic discovery, Python script-only) and fails on an error,
+    ensure, assertion or crash line in the editor log (minus a commented allowlist), a missing MCP start line or
+    /mcp/health answer from that editor, a tools/list count that differs from Tests/smoke/expected.json, any change to
+    the host's Config/*.ini during a session, a failed in-editor get_focused_blueprint_json on an engine Blueprint, or
+    a Tests/mcp_probe probe status that differs from Tests/mcp_probe/expected.json. The summary shows the tool count
+    per mode, the probe statuses and the config check. Editor logs: BuildLogs/Smoke_<ver>_<stamp>_<mode>.log.
+
 .EXAMPLE
     .\build.ps1 -UEVersion 5.7              # incremental editor build for 5.7
-    .\build.ps1 -All -Smoke                 # build 5.6, 5.7, 5.8, then load the plugin in a headless editor
+    .\build.ps1 -All -Smoke                 # build 5.6, 5.7, 5.8, then the headless smoke check (see -Smoke)
     .\build.ps1 -All -Test                  # build, then run the NodeToCode automation tests on each engine
     .\build.ps1 -UEVersion 5.6 -Launch      # build, then open the host editor
     .\build.ps1 -All -Package               # RunUAT BuildPlugin (clean, out-of-tree)
@@ -51,7 +59,7 @@ param(
     [switch]$All,
     [switch]$WhatIf,      # list detected engines and hosts, change nothing
     [switch]$Clean,       # wipe the host's plugin Binaries/Intermediate first
-    [switch]$Smoke,       # after build: headless editor load check (Tests/smoke/smoke_check.py)
+    [switch]$Smoke,       # after build: headless smoke check per MCP mode plus the MCP probes (Tests/smoke/smoke_check.py)
     [switch]$Test,        # after build: Automation RunTests <TestFilter>, report pass/fail from the exported report
     [switch]$Launch,      # after build: open the editor on the host project
     [switch]$Package,     # RunUAT BuildPlugin instead of the incremental host build
@@ -182,6 +190,9 @@ function Get-EngineTool([string]$engine, [string]$tool) {
         'RunUAT' { if ($OnWindows) { 'Engine\Build\BatchFiles\RunUAT.bat' } else { 'Engine/Build/BatchFiles/RunUAT.sh' } }
         'EditorCmd' {
             if ($OnWindows) { 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe' } else { "Engine/Binaries/$Platform/UnrealEditor-Cmd" } }
+        'Python' {
+            if ($OnWindows) { 'Engine\Binaries\ThirdParty\Python3\Win64\python.exe' }
+            else { "Engine/Binaries/ThirdParty/Python3/$Platform/bin/python3" } }
         'Editor' {
             if ($OnWindows) { 'Engine\Binaries\Win64\UnrealEditor.exe' }
             elseif ($OnMac) { 'Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor' }
@@ -234,10 +245,13 @@ function Initialize-HostProject($h, [string]$ver) {
 		{ "Name": "$n", "Type": "Runtime", "LoadingPhase": "Default" }
 	],
 	"Plugins": [
-		{ "Name": "NodeToCode", "Enabled": true }
+		{ "Name": "NodeToCode", "Enabled": true },
+		{ "Name": "AndroidFileServer", "Enabled": false }
 	]
 }
 "@
+    # AndroidFileServer is off because on first start it writes a generated SecurityToken into Config/DefaultEngine.ini,
+    # which the template below then resets on every run; the smoke check fails on any Config/*.ini the editor changes
     Write-IfChanged $h.UProject $uproject
 
     foreach ($kind in @('Game', 'Editor')) {
@@ -362,18 +376,25 @@ function Show-Failure([string]$log) {
 # ---------------------------------------------------------------------------
 # Smoke and tests
 
+# Returns 'smoke PASS (<summary>)' or 'smoke FAIL (<summary or reason>)'
 function Invoke-Smoke($h, [string]$engine, [string]$ver, [string]$stamp) {
     $script = Join-Path $PluginRoot 'Tests/smoke/smoke_check.py'
     $log = Join-Path $LogRoot "Smoke_${ver}_$stamp.log"
-    $exe = Get-EngineTool $engine 'EditorCmd'
-    Write-Step "Smoke test UE $ver (headless editor, -nullrhi)"
-    $code = Invoke-Logged $exe @($h.UProject, "-ExecutePythonScript=$($script -replace '\\', '/')", '-unattended', '-nullrhi',
-        '-nosplash', '-nosound', '-stdout', '-FullStdOutLogOutput', '-NoLiveCoding') $log
-    $pass = Select-String -Path $log -Pattern 'N2C_SMOKE PASS' -Quiet
-    $loaded = Select-String -Path $log -Pattern 'LogNodeToCode' -Quiet
-    if ($pass) { Write-Host "SMOKE PASS (UE $ver)" -ForegroundColor Green; return $true }
-    Write-Host "SMOKE FAIL (UE $ver, exit $code, LogNodeToCode seen: $loaded) - see $log" -ForegroundColor Red
-    return $false
+    $py = Get-EngineTool $engine 'Python'
+    Write-Step "Smoke test UE $ver (headless editor per MCP registration mode, MCP probes, log and config checks)"
+    if (-not (Test-Path $py)) { Write-Host "SMOKE FAIL (UE $ver): no engine Python at $py" -ForegroundColor Red; return 'smoke FAIL (no engine Python)' }
+    $code = Invoke-Logged $py @('-I', '-u', $script, '--engine', $engine, '--project', $h.UProject, '--label', $ver,
+        '--log-dir', $LogRoot, '--log-prefix', "Smoke_${ver}_$stamp") $log
+    $text = if (Test-Path $log) { [IO.File]::ReadAllText($log) } else { '' }
+    $summary = if ($text -match 'N2C_SMOKE SUMMARY UE [\d.]+: ([^\r\n]*)') { $Matches[1] } else { 'no summary' }
+    if ($code -eq 0 -and $text -match 'N2C_SMOKE PASS') {
+        Write-Host "SMOKE PASS (UE $ver): $summary" -ForegroundColor Green
+        return "smoke PASS ($summary)"
+    }
+    $failed = @([regex]::Matches($text, '(?m)^FAIL .*$') | ForEach-Object { $_.Value.Trim() })
+    Write-Host "SMOKE FAIL (UE $ver, exit $code): $($failed.Count) failed check(s) - see $log" -ForegroundColor Red
+    foreach ($f in $failed) { Write-Host "  $f" -ForegroundColor Red }
+    return "smoke FAIL ($($failed.Count) failed: $(($failed | ForEach-Object { ($_ -replace '^FAIL ', '') -replace '\s{2}.*$', '' }) -join '; '))"
 }
 
 # Returns a short result string: 'tests PASS (n)', 'tests WARN (0 run)' or 'tests FAIL (...)'
@@ -494,8 +515,8 @@ foreach ($ver in $targets) {
     $results[$ver] = "OK (${secs}s, $warn plugin warnings)"
 
     if ($Smoke) {
-        $ok = Invoke-Smoke $h $engine $ver $stamp
-        $results[$ver] += if ($ok) { ', smoke PASS' } else { ', smoke FAIL' }
+        $smokeWatch = [Diagnostics.Stopwatch]::StartNew()
+        $results[$ver] += ', ' + (Invoke-Smoke $h $engine $ver $stamp) + " [$([int]$smokeWatch.Elapsed.TotalSeconds)s]"
     }
     if ($Test) {
         $results[$ver] += ', ' + (Invoke-Tests $h $engine $ver $stamp)

@@ -9,7 +9,7 @@ PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every s
 
 ```powershell
 .\build.ps1 -WhatIf                  # detected engines and host projects
-.\build.ps1 -All -Smoke              # build every engine, then load the plugin headless
+.\build.ps1 -All -Smoke              # build every engine, then the headless smoke check and MCP probes
 .\build.ps1 -UEVersion 5.8 -Test     # build, then run Automation RunTests NodeToCode and report pass/fail
 ```
 
@@ -21,7 +21,9 @@ PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every s
   next to the checkout), whose `Plugins/NodeToCode/{Source,Content,Resources,ThirdParty}` are junctions (symbolic
   links on Mac and Linux) back into the checkout; `Binaries/` and `Intermediate/` stay per host.
 - Builds the host's editor target through `Engine/Build/BatchFiles/Build.bat` (UBT), then optionally runs
-  `Tests/smoke/smoke_check.py` (`-Smoke`) or the automation tests with an exported report (`-Test`).
+  `Tests/smoke/smoke_check.py` (`-Smoke`: one headless editor per MCP registration mode, log, config, tool-count and
+  probe checks against `Tests/smoke/expected.json` and `Tests/mcp_probe/expected.json`) or the automation tests
+  with an exported report (`-Test`).
 - Writes timestamped logs to `BuildLogs/` (`-LogRoot` to move them) and exits non-zero on any failure.
 
 Machine-specific settings (engine paths, hosts root) go in `build.local.ps1` next to the script; it is gitignored and
@@ -29,7 +31,8 @@ dot-sourced when present.
 
 ### BuildLogs Directory
 
-Logs are named `Build_<ver>_<stamp>.log`, `Smoke_<ver>_<stamp>.log`, `Tests_<ver>_<stamp>.log` (with the automation
+Logs are named `Build_<ver>_<stamp>.log`, `Smoke_<ver>_<stamp>.log` (editor logs `Smoke_<ver>_<stamp>_<mode>.log`),
+`Tests_<ver>_<stamp>.log` (with the automation
 report in `Tests_<ver>_<stamp>/`) and `Package_<ver>_<stamp>.log`. The directory is git-ignored and accumulates logs
 over time.
 
