@@ -7,6 +7,31 @@
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphUtilities.h"
+#include "Engine/World.h"
+#include "Engine/Level.h"
+#include "Engine/LevelScriptBlueprint.h"
+
+namespace
+{
+UBlueprint* LoadBlueprintOrLevelScriptReadOnly(const FString& AssetPath)
+{
+    if (UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath))
+    {
+        return Blueprint;
+    }
+    // Three inventory entries reference .umap World objects, not UBlueprint assets.
+    // bDontCreate=true prevents the read-only inspection from creating an asset.
+    if (UWorld* World = LoadObject<UWorld>(nullptr, *AssetPath))
+    {
+        if (World->PersistentLevel)
+        {
+            return World->PersistentLevel->GetLevelScriptBlueprint(true);
+        }
+    }
+    return nullptr;
+}
+}
+
 
 FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FString& BlueprintAssetPath)
 {
@@ -24,7 +49,7 @@ FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FStrin
 		return Result;
 	}
 
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetObjectPath);
+	UBlueprint* Blueprint = LoadBlueprintOrLevelScriptReadOnly(AssetObjectPath);
 	if (!Blueprint)
 	{
 		Result.Error = FString::Printf(
@@ -86,7 +111,7 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
         return Result;
     }
 
-    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+    UBlueprint* Blueprint = LoadBlueprintOrLevelScriptReadOnly(AssetPath);
     if (!Blueprint)
     {
         Result.Error = FString::Printf(TEXT("Unable to load Blueprint '%s'."), *AssetPath);
