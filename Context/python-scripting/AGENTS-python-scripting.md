@@ -35,24 +35,33 @@ Stdio-to-HTTP bridge enabling MCP clients (Claude Desktop, etc.) to communicate 
 *   **Location**: `Content/Python/mcp_bridge/nodetocode_bridge.py`
 *   **Purpose**: Forward JSON-RPC messages between MCP clients and UE5
 *   **Key Features**:
-    *   Reads JSON-RPC from stdin, forwards to HTTP server (localhost:27000)
-    *   SSE support for long-running tools with progress streaming
+    *   stdin and stdout are reconfigured to UTF-8 (the launchers also set `PYTHONUTF8=1`), so non-ASCII text is
+        not decoded with the Windows ANSI code page
+    *   Each stdin message is POSTed to `/mcp` with `Accept: application/json, text/event-stream`, on its own thread.
+        A `text/event-stream` response (UE 5.8's streamed `translate-focused-blueprint`) is parsed per the SSE spec
+        and each message in it is written to stdout as it arrives; the response to the request ends the call
+    *   stdout carries only JSON-RPC messages, one per line: a transport failure or non-JSON body (an HTTP error
+        page) becomes a JSON-RPC error with the request's id, and notifications never get a reply
     *   Health check with server discovery (scans ports 27000-27010)
-    *   Session management with `Mcp-Session-Id` header
-    *   5-minute timeout for long operations
-    *   Debug mode with `--debug` flag
+    *   Session management with `Mcp-Session-Id` (and `MCP-Protocol-Version` after initialize)
+    *   No read timeout by default (a held translation sends nothing until it finishes); `--timeout SECONDS` sets one
+    *   Debug mode with `--debug` flag (logs go to stderr)
 *   **Usage**:
     ```bash
-    python nodetocode_bridge.py [--port PORT] [--host HOST] [--debug]
+    python nodetocode_bridge.py [--port PORT] [--host HOST] [--timeout SECONDS] [--debug]
     ```
+*   **Tests**: `python -I -m unittest discover -s Content/Python/tests -p "test_mcp_bridge*.py"` (no editor);
+    live: `Tests/mcp_probe/live_stdio_bridge.py`
 
-### launch_bridge.sh (Mac/Linux)
+### launch_bridge.bat (Windows) and launch_bridge.sh (Mac/Linux)
 
-Shell script launcher that automatically finds Python:
+Launchers that pick the Python through `ue_python_finder.py`:
 
-1. Searches common UE installation paths for bundled Python
-2. Falls back to system Python3/Python
-3. Passes all arguments to the bridge script
+1. Run `ue_python_finder.py` with `py -3`, `python3` or `python` (the `.sh`: `python3`, then `python`); it prints
+   the bundled Python of the newest UE install it finds, else the Python that ran it
+2. Without a Python on PATH, the bundled Python of a registered launcher install (Windows registry, any version) or
+   of a `UE_*` folder in a common install folder (`.sh`) runs the finder
+3. Set `PYTHONUTF8=1` and pass all arguments to the bridge script
 
 ### ue_python_finder.py
 
@@ -60,7 +69,8 @@ Python installation finder using the same methods as UnrealVersionSelector:
 
 *   **Windows Registry**: `HKEY_CURRENT_USER\SOFTWARE\Epic Games\Unreal Engine\Builds`
 *   **Epic Games Launcher**: `LauncherInstalled.dat` file
-*   **Common paths**: Standard UE installation directories
+*   **Common paths**: every `UE_*` folder in standard UE installation directories (no fixed version list)
+*   Installs are ordered by the version in their `Engine/Build/Build.version`; `--list` prints them all
 *   **Functions**:
     *   `find_ue_python(prefer_newest=True)` - Find UE's bundled Python
     *   `find_ue_source(prefer_newest=True)` - Find Engine/Source path

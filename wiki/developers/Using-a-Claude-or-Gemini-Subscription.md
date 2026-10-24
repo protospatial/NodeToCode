@@ -58,11 +58,15 @@ session, `/mcp` lists the nodetocode tools, such as `get-focused-blueprint` and 
   it in every folder.
 - If `ANTHROPIC_API_KEY` is set in your environment, Claude Code can use that key instead of your subscription.
   Run `/status` to see which one it uses.
-- For a client that only runs stdio servers, the plugin ships a bridge with no dependencies besides Python 3, in
-  the plugin's folder at `Content/Python/mcp_bridge/nodetocode_bridge.py`:
-  `claude mcp add nodetocode -- python <plugin folder>/Content/Python/mcp_bridge/nodetocode_bridge.py --port 27000`
+- For a client that only runs stdio servers, the plugin ships a bridge with no dependencies besides Python 3 in
+  `Content/Python/mcp_bridge/`. Its launcher (`launch_bridge.bat`, or `launch_bridge.sh` on macOS and Linux) runs it
+  under the Python of your newest Unreal Engine install (any version), or Python 3 from your PATH:
+  `claude mcp add nodetocode -- "<plugin folder>/Content/Python/mcp_bridge/launch_bridge.bat" --port 27000`
+  (or `-- python <plugin folder>/Content/Python/mcp_bridge/nodetocode_bridge.py --port 27000`). It keeps text such
+  as `café` or `日本` intact and, on UE 5.8, passes on translation progress as it arrives.
 
-Tested on Windows with Claude Code 2.1.300 and UE 5.8: both forms connected and listed 59 tools.
+Tested on Windows with Claude Code 2.1.300 and UE 5.8: the HTTP form and both bridge forms connected and listed 59
+tools. The launcher form also ran translations through `claude -p` on UE 5.6 and 5.8.
 
 ## Translating with your subscription
 
