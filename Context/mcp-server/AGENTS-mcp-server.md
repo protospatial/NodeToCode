@@ -79,15 +79,46 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   **Long-running tools**: answered on the `tools/call` POST itself: `text/event-stream` with progress then the
     result on UE 5.8 (when Accept lists it and a progressToken is sent), else one held `application/json` response
 *   **SSE side server**: separate httplib server on port 27001 (`/mcp/notifications`); no longer used for tool results
-*   **Protocol**: JSON-RPC 2.0 with proper error handling and batch support
+*   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: Auto-starts with plugin, graceful shutdown on exit
-*   **Session Management**: Protocol version negotiation and session tracking
+*   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
+
+### Sessions and versions (MCP 2025-11-25, Streamable HTTP on one `/mcp` endpoint)
+
+*   **Versions**: `initialize` negotiates `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05` (newest first):
+    the requested version when supported, otherwise `2025-11-25` (so a `2026-07-28` client is answered with
+    `2025-11-25`). `FN2CMcpProtocol::GetSupportedProtocolVersions()`.
+*   **Sessions**: every successful `initialize` creates a new session with a new random `Mcp-Session-Id` (a GUID,
+    returned in the response header) holding the negotiated version, the client's `clientInfo` and `capabilities`, and
+    whether `notifications/initialized` arrived (`FN2CMcpSession`). Two clients on one editor get two sessions. At
+    most `FN2CMcpProtocol::MaxSessions` (64) are kept; a new `initialize` beyond that drops the least recently used.
+*   **Every other POST** must send `Mcp-Session-Id`: none gives **400** (JSON-RPC -32600, null id), an unknown or
+    ended session gives **404** (-32001 "Session not found"), after which the client must `initialize` again.
+*   **`MCP-Protocol-Version` header**: an unsupported value gives **400**; a missing header is accepted (2025-03-26
+    clients do not send it) and the session's negotiated version applies.
+*   **GET** `/mcp` (and PUT, PATCH) gives **405** with `Allow: POST, DELETE`: there is no server-to-client stream.
+    The old `/mcp/sse` 204 route is gone (a GET there now reaches the `/mcp` handler and gets 405).
+*   **DELETE** `/mcp` with `Mcp-Session-Id` ends the session (**204**) and cancels its running long-running calls
+    (each still answers its own request, with the cancelled result); unknown id **404**, no id **400**.
+*   **Client JSON-RPC responses and notifications** get **202** with no body.
+*   **Batches** (a JSON array body) are accepted only on sessions negotiated at `2025-03-26` (batching was added in
+    2025-03-26 and removed in 2025-06-18); on any other session they get **400** with -32600.
+*   Order of checks: the transport's Origin and Host checks (403) and, for POST, Content-Type (415) run first; then
+    the core's verb, `MCP-Protocol-Version`, session and batch checks; then dispatch. The version check comes before
+    the session check so that a stateless 2026-07-28 probe (Claude Code first sends `server/discover` with
+    `MCP-Protocol-Version: 2026-07-28` and no session) gets 400 for the version; the client then falls back to
+    `initialize`.
+*   Tests: `NodeToCode.MCP.Core` (sessions, verbs, batches), `NodeToCode.MCP.Transport.LongRunningCall` (the same
+    through `HandleMcpRequest`), probes P3 and P8 in `Tests/mcp_probe`, and the conformance suite's
+    `server-session-lifecycle` scenario. Probe scripts get their session from `Tests/mcp_probe/mcp_session.py`.
+*   Not yet per session: the dynamic tool set (`assess-needed-tools`) is still one global list, and
+    `notifications/tools/list_changed` still goes to every client of the port+1 notification stream.
 
 ## Core Server Components (`Source/Public/MCP/Server/`)
 
 *   **`N2CMcpHttpServerManager.h/.cpp`**: the HTTP transport
     *   Singleton pattern for server lifecycle control
-    *   HTTP routing: `/mcp` (main), `/mcp/health` (health check)
+    *   HTTP routing: `/mcp` (POST, DELETE; GET, PUT and PATCH answered 405 by the core), `/mcp/health` (health check)
     *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; the httplib SSE server binds 127.0.0.1
     *   `HandleMcpRequest` copies the request into an `FN2CMcpInbound` and calls the protocol core with an
         HTTPServer responder: one `application/json` response, or on UE 5.8 a `text/event-stream` response drained
@@ -101,11 +132,11 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
         object id is -32600), answers batches and dispatches methods to the catalogs given at construction
         (`FN2CMcpCatalogs`: tool, resource and prompt managers and the long-running call manager)
     *   Owns the long-running `tools/call` branch (streamed when the responder can stream, the client accepts
-        `text/event-stream` and sent a progressToken; else one reply when the call finishes) and the session and
-        protocol-version table
+        `text/event-stream` and sent a progressToken; else one reply when the call finishes) and the per-client
+        session table (`FN2CMcpSession`, see Sessions and versions)
     *   Server notifications (`notifications/tools/list_changed`, from `FN2CMcpToolManager::OnToolListChanged`) go
         to the sink set with `SetBroadcastSink`; tools never call the transport
-    *   Protocol version negotiation (supports "2025-03-26", "2024-11-05")
+    *   Protocol version negotiation (supports "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
     *   Tests drive it without a listener: `NodeToCode.MCP.Core` (in-memory responder in
         `Source/Private/Tests/MCP/N2CMcpMemoryResponder.h`) and `NodeToCode.MCP.Protocol`
 
@@ -370,10 +401,10 @@ The server implements these MCP methods:
 *   `prompts/get`: Get prompt with argument substitution
 
 ### Advanced Features
-*   Batch request processing
+*   Batch request processing (sessions negotiated at 2025-03-26 only)
 *   Progress notifications on the tools/call's own text/event-stream response (UE 5.8)
-*   Protocol version negotiation
-*   Session management
+*   Protocol version negotiation (2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05)
+*   Per-client sessions (`Mcp-Session-Id`), ended with HTTP DELETE
 *   Task cancellation (`nodetocode/cancelTask`)
 
 ## Dynamic Tool Management
@@ -424,50 +455,56 @@ Example test commands for the MCP server:
 # Basic connectivity
 curl -X GET http://localhost:27000/mcp/health
 
-# Protocol initialization
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2025-03-26", "clientInfo": {"name": "test", "version": "1.0"}}, "id": 1}'
+# Protocol initialization: keep the Mcp-Session-Id response header; every later request sends it
+SID=$(curl -s -D - -o /dev/null -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0"}}, "id": 1}' \
+  | tr -d '\r' | sed -n 's/^[Mm]cp-[Ss]ession-[Ii]d: //p')
+curl -X POST http://localhost:27000/mcp -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+  -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
 
 # List tools with schemas
 curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 2}'
 
 # Execute get-focused-blueprint tool
 curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get-focused-blueprint", "arguments": {}}, "id": 3}'
 
 # List resources
 curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "resources/list", "id": 4}'
 
 # Read current blueprint resource
 curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "resources/read", "params": {"uri": "nodetocode://blueprint/current"}, "id": 5}'
 
 # Get code generation prompt
 curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "prompts/get", "params": {"name": "generate-code", "arguments": {"language": "python", "style": "concise"}}, "id": 6}'
 
-# Batch request example
+# Batch request example (only in a session initialized with protocolVersion 2025-03-26; others get 400)
 curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID_2025_03_26" \
   -d '[{"jsonrpc": "2.0", "method": "ping", "id": 1}, {"jsonrpc": "2.0", "method": "tools/list", "id": 2}]'
 
 # Long-running tool with progress (the same response streams on UE 5.8; -N shows events as they arrive)
 curl -N -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "translate-focused-blueprint", "arguments": {"language": "cpp"}, "_meta": {"progressToken": "unique-token-123"}}, "id": 7}'
 
 # Cancel a running task
 curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "nodetocode/cancelTask", "params": {"progressToken": "unique-token-123"}, "id": 8}'
+
+# End the session
+curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
 ```
 
 ## Related Projects

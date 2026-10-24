@@ -3,8 +3,7 @@ Google AI subscription. To use a subscription, run the vendor's own coding agent
 Codex CLI), signed in with that subscription, and connect it to NodeToCode's MCP server. The agent reads your
 Blueprints through NodeToCode's tools and writes the code itself, so NodeToCode makes no LLM request and needs no key.
 
-The MCP server listens at **`http://127.0.0.1:27000/mcp`** while the editor is open. Every snippet below uses that
-URL; if you change the port, change it in the snippet too.
+The MCP server listens at **`http://127.0.0.1:27000/mcp`** while the editor is open; on another port, edit the URLs.
 
 ## API keys
 
@@ -117,3 +116,4 @@ from OpenAI's Codex docs and was not run against NodeToCode when this page was w
 | Failed to connect | Open the editor first, and check **Enable MCP Server** and **Server Port** |
 | Connected, but the agent sees no Blueprint | Click into a Blueprint graph so it has focus, then ask again |
 | Requests rejected with 403 | Use `127.0.0.1` or `localhost` in the URL; the server refuses other host names |
+| `Session not found` (404) after the editor restarted | Each agent gets its own session and a restarted editor forgets them: reconnect the agent (Claude Code: `/mcp`, **Reconnect**) |

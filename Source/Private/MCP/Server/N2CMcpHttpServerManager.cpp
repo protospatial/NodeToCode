@@ -142,17 +142,21 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port)
 		return false;
 	}
 
-	// Register MCP endpoint handler
+	// Register the MCP endpoint: POST carries messages, DELETE ends a session, and GET, PUT and PATCH get 405 from the
+	// protocol core (an unbound verb would get the router's 404). The Origin and Host checks run first for every verb;
+	// only POST needs a JSON body.
 	FHttpRequestHandler McpHandler;
 	McpHandler.BindLambda([this](const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete) -> bool
 	{
-		if (!N2CMcpRequestPolicy::ValidateLocalRequest(Request, OnComplete, /*bRequireJsonBody=*/true))
+		const bool bPost = Request.Verb == EHttpServerRequestVerbs::VERB_POST;
+		if (!N2CMcpRequestPolicy::ValidateLocalRequest(Request, OnComplete, /*bRequireJsonBody=*/bPost))
 		{
 			return true;
 		}
 		return HandleMcpRequest(Request, OnComplete);
 	});
-	HttpRouter->BindRoute(FHttpPath(TEXT("/mcp")), EHttpServerRequestVerbs::VERB_POST, McpHandler);
+	HttpRouter->BindRoute(FHttpPath(TEXT("/mcp")), EHttpServerRequestVerbs::VERB_POST | EHttpServerRequestVerbs::VERB_GET
+		| EHttpServerRequestVerbs::VERB_DELETE | EHttpServerRequestVerbs::VERB_PUT | EHttpServerRequestVerbs::VERB_PATCH, McpHandler);
 
 	// Register health check endpoint
 	FHttpRequestHandler HealthHandler;
@@ -165,24 +169,6 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port)
 		return HandleHealthRequest(Request, OnComplete);
 	});
 	HttpRouter->BindRoute(FHttpPath(TEXT("/mcp/health")), EHttpServerRequestVerbs::VERB_GET, HealthHandler);
-
-	// Register a dummy SSE endpoint to prevent 404s from clients that auto-probe for a default SSE stream.
-	// The official notification stream is advertised via the 'initialize' response's _meta.notificationUrl field.
-	FHttpRequestHandler SseDummyHandler;
-	SseDummyHandler.BindLambda([](const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete) -> bool
-	{
-		if (!N2CMcpRequestPolicy::ValidateLocalRequest(Request, OnComplete, /*bRequireJsonBody=*/false))
-		{
-			return true;
-		}
-		FN2CLogger::Get().Log(TEXT("Received probe for default SSE endpoint at /mcp/sse. Responding with 204 No Content."), EN2CLogSeverity::Debug);
-		auto Response = FHttpServerResponse::Create(TEXT(""), TEXT("text/plain"));
-		Response->Code = EHttpServerResponseCodes::NoContent;
-
-		OnComplete(MoveTemp(Response));
-		return true;
-	});
-	HttpRouter->BindRoute(FHttpPath(TEXT("/mcp/sse")), EHttpServerRequestVerbs::VERB_GET, SseDummyHandler);
 
 	// Start listening
 	HttpServerModule->StartAllListeners();
@@ -256,6 +242,10 @@ namespace N2CMcpHttpTransport
 			if (!Reply.SessionId.IsEmpty())
 			{
 				Response->Headers.Add(TEXT("Mcp-Session-Id"), { Reply.SessionId });
+			}
+			for (const TPair<FString, FString>& Header : Reply.Headers)
+			{
+				Response->Headers.FindOrAdd(Header.Key).Add(Header.Value);
 			}
 			OnComplete(MoveTemp(Response));
 		}
@@ -336,7 +326,15 @@ FN2CMcpHttpServerManager::~FN2CMcpHttpServerManager() = default;
 bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete)
 {
 	FN2CMcpInbound Inbound;
-	Inbound.Verb = TEXT("POST");
+	switch (Request.Verb)
+	{
+	case EHttpServerRequestVerbs::VERB_POST:   Inbound.Verb = TEXT("POST"); break;
+	case EHttpServerRequestVerbs::VERB_GET:    Inbound.Verb = TEXT("GET"); break;
+	case EHttpServerRequestVerbs::VERB_DELETE: Inbound.Verb = TEXT("DELETE"); break;
+	case EHttpServerRequestVerbs::VERB_PUT:    Inbound.Verb = TEXT("PUT"); break;
+	case EHttpServerRequestVerbs::VERB_PATCH:  Inbound.Verb = TEXT("PATCH"); break;
+	default:                                   Inbound.Verb = TEXT("OTHER"); break;
+	}
 	Inbound.Headers = Request.Headers;
 	Inbound.Body = Request.Body;
 	Protocol->Handle(Inbound, MakeShared<N2CMcpHttpTransport::FHttpServerResponder>(OnComplete));

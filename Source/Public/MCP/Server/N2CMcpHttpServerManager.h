@@ -12,9 +12,10 @@
 class FN2CMcpProtocol;
 
 /**
- * The HTTP transport of the MCP server: binds /mcp, /mcp/health and /mcp/sse on the engine's HTTPServer, applies the
- * local-request policy (Origin, Host, Content-Type) and hands every /mcp POST to the transport-neutral protocol core
- * (FN2CMcpProtocol, Source/Private/MCP/Server/N2CMcpProtocol.h) with an HTTPServer responder.
+ * The HTTP transport of the MCP server: binds /mcp and /mcp/health on the engine's HTTPServer, applies the
+ * local-request policy (Origin, Host, and Content-Type for POST) and hands every /mcp request (POST, DELETE, and GET,
+ * PUT or PATCH, which get 405) to the transport-neutral protocol core (FN2CMcpProtocol,
+ * Source/Private/MCP/Server/N2CMcpProtocol.h) with an HTTPServer responder. Sessions are per client (Mcp-Session-Id).
  */
 class NODETOCODE_API FN2CMcpHttpServerManager
 {
@@ -58,7 +59,7 @@ public:
 	void BroadcastNotification(const FJsonRpcNotification& Notification);
 
 	/**
-	 * Handles a POST to /mcp (the route handler; public so tests can drive it without a socket): copies the request
+	 * Handles a request to /mcp (the route handler; public so tests can drive it without a socket): copies the request
 	 * into an FN2CMcpInbound and lets the protocol core answer it through an HTTPServer responder. Most requests are
 	 * answered before it returns. A single tools/call of a long-running tool (translate-focused-blueprint) is answered
 	 * on the same request when its call finishes: as text/event-stream with notifications/progress and then the

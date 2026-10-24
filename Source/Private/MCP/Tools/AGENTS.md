@@ -185,6 +185,10 @@ TFuture<FMcpToolCallResult> FN2CMcpMyLongTool::InvokeAsync(const FN2CToolCallCon
 }
 ```
 
+> The curl examples in this file leave out the session headers. Every POST after `initialize` must send the
+> `Mcp-Session-Id` that `initialize` returned (and may send `MCP-Protocol-Version`), or the server answers 400
+> (404 for an ended session); see "Sessions and versions" in `Context/mcp-server/AGENTS-mcp-server.md`.
+
 ### Client Usage with Progress
 
 When calling a long-running tool, clients should provide a progress token:

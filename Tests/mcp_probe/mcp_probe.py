@@ -19,14 +19,15 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from editor_session import EditorSession, free_port  # noqa: E402
+from mcp_session import open_session, session_headers  # noqa: E402
 
 TOOLS_LIST = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
 
 
-def post(port, body, headers, path='/mcp', keep=400):
+def request(port, verb, body, headers, path='/mcp', keep=400):
     conn = http.client.HTTPConnection('127.0.0.1', port, timeout=60)
     try:
-        conn.request('POST', path, body=body.encode('utf-8'), headers=headers)
+        conn.request(verb, path, body=body.encode('utf-8') if body is not None else None, headers=headers)
         r = conn.getresponse()
         data = r.read().decode('utf-8', 'replace')
         return {'status': r.status, 'headers': {k.lower(): v for k, v in r.getheaders()}, 'body': data[:keep] if keep else data}
@@ -34,6 +35,18 @@ def post(port, body, headers, path='/mcp', keep=400):
         return {'status': None, 'error': str(e)}
     finally:
         conn.close()
+
+
+def post(port, body, headers, path='/mcp', keep=400, session=True):
+    """POST body; with session (the default) inside this probe's MCP session (Tests/mcp_probe/mcp_session.py), so
+    the check under test answers rather than the missing-session 400"""
+    if session and path == '/mcp':
+        headers = dict(session_headers(port), **headers)
+    r = request(port, 'POST', body, headers, path, keep)
+    if session and path == '/mcp' and r.get('status') == 404:
+        headers.update(session_headers(port, refresh=True))
+        r = request(port, 'POST', body, headers, path, keep)
+    return r
 
 
 def probe_p1(port, saved_dir):
@@ -65,23 +78,82 @@ def probe_p2(port):
 
 
 def probe_p3(port):
-    """A two-element JSON-RPC batch. Fixed means both answered, or the batch rejected with -32600."""
+    """A two-element JSON-RPC batch, sent in a 2025-03-26 session (batches exist only in that version) and in a
+    2025-11-25 one. Fixed means the 2025-03-26 batch is answered element by element and the 2025-11-25 one is rejected
+    with -32600 (card 0109)."""
     batch = json.dumps([{'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'},
                         {'jsonrpc': '2.0', 'id': 2, 'method': 'ping'}])
-    # Parse the whole body (a tools/list answer runs to tens of KB), then keep 400 chars as evidence
-    r = post(port, batch, {'Content-Type': 'application/json'}, keep=None)
-    fixed = False
-    try:
-        parsed = json.loads(r.get('body', ''))
+    evidence = {}
+    outcome = {}
+    for version in ('2025-03-26', '2025-11-25'):
+        try:
+            sid = open_session(port, 'n2c-probe-p3', version=version)
+        except (OSError, RuntimeError) as e:
+            evidence[version] = {'error': str(e)}
+            continue
+        # Parse the whole body (a tools/list answer runs to tens of KB), then keep 400 chars as evidence
+        r = request(port, 'POST', batch, {'Content-Type': 'application/json', 'Mcp-Session-Id': sid,
+                                          'MCP-Protocol-Version': version}, keep=None)
+        request(port, 'DELETE', None, {'Mcp-Session-Id': sid})
+        try:
+            parsed = json.loads(r.get('body', ''))
+        except ValueError:
+            parsed = None
         if isinstance(parsed, list) and len(parsed) == 2:
-            fixed = True
-        elif isinstance(parsed, dict) and parsed.get('error', {}).get('code') == -32600:
-            fixed = True
-    except ValueError:
-        pass
-    if 'body' in r:
-        r['body'] = r['body'][:400]
-    return {'ids': ['mcp-transport-9'], 'status': 'fixed' if fixed else 'reproduced', 'evidence': r}
+            outcome[version] = 'answered'
+        elif isinstance(parsed, dict) and (parsed.get('error') or {}).get('code') == -32600:
+            outcome[version] = 'rejected'
+        if 'body' in r:
+            r['body'] = r['body'][:400]
+        evidence[version] = r
+    evidence['outcome'] = outcome
+    fixed = outcome.get('2025-03-26') == 'answered' and outcome.get('2025-11-25') == 'rejected'
+    return {'ids': ['mcp-transport-9'], 'status': 'fixed' if fixed else 'reproduced', 'evidence': evidence}
+
+
+def probe_p8(port):
+    """Per-client sessions on /mcp (card 0109): two initializes get two different Mcp-Session-Ids, each answering in
+    its own session; a POST without Mcp-Session-Id is 400 and one with an unknown id 404; an unsupported
+    MCP-Protocol-Version is 400; GET is 405 with Allow: POST, DELETE; a client response is 202 with no body; DELETE
+    ends a session (2xx) and the next request on it is 404 while the other session still answers."""
+    ids = ['next-1', 'mcp-transport-16', 'mcp-transport-18', 'mcp-transport-19']
+    ping = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'ping'})
+    json_headers = {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}
+    checks, ev = {}, {}
+    try:
+        a = open_session(port, 'n2c-probe-p8-a')
+        b = open_session(port, 'n2c-probe-p8-b', version='2025-06-18')
+    except (OSError, RuntimeError) as e:
+        return {'ids': ids, 'status': 'reproduced', 'evidence': {'error': str(e)}}
+    checks['distinct_sessions'] = a != b
+
+    def in_session(sid, body=ping, extra=None):
+        headers = dict(json_headers, **{'Mcp-Session-Id': sid})
+        headers.update(extra or {})
+        return request(port, 'POST', body, headers)
+
+    ra = in_session(a)
+    rb = in_session(b)
+    checks['a_answers_in_a'] = ra.get('status') == 200 and ra.get('headers', {}).get('mcp-session-id') == a
+    checks['b_answers_in_b'] = rb.get('status') == 200 and rb.get('headers', {}).get('mcp-session-id') == b
+    ev['no_session'] = request(port, 'POST', ping, json_headers)
+    checks['no_session_400'] = ev['no_session'].get('status') == 400
+    ev['unknown_session'] = in_session('n2c-probe-no-such-session')
+    checks['unknown_session_404'] = ev['unknown_session'].get('status') == 404
+    ev['bad_version'] = in_session(a, extra={'MCP-Protocol-Version': '1999-01-01'})
+    checks['bad_version_400'] = ev['bad_version'].get('status') == 400
+    ev['client_response'] = in_session(a, body=json.dumps({'jsonrpc': '2.0', 'id': 99, 'result': {}}))
+    checks['client_response_202'] = ev['client_response'].get('status') == 202 and ev['client_response'].get('body') == ''
+    ev['get'] = request(port, 'GET', None, {'Accept': 'text/event-stream', 'Mcp-Session-Id': a})
+    checks['get_405_allow'] = ev['get'].get('status') == 405 and ev['get'].get('headers', {}).get('allow') == 'POST, DELETE'
+    ev['delete'] = request(port, 'DELETE', None, {'Mcp-Session-Id': a})
+    checks['delete_2xx'] = ev['delete'].get('status') in (200, 202, 204)
+    ev['after_delete'] = in_session(a)
+    checks['ended_session_404'] = ev['after_delete'].get('status') == 404
+    checks['other_session_still_answers'] = in_session(b).get('status') == 200
+    request(port, 'DELETE', None, {'Mcp-Session-Id': b})
+    ev['checks'] = checks
+    return {'ids': ids, 'status': 'fixed' if all(checks.values()) else 'reproduced', 'evidence': ev}
 
 
 def probe_p5(port):
@@ -260,7 +332,7 @@ def session_probes(port, pid, saved_dir):
     """The probes that run against an editor already answering on port (all but P4, which needs its own editor).
     Tests/smoke/smoke_check.py calls this inside its own session."""
     return {'P1': probe_p1(port, saved_dir), 'P2': probe_p2(port), 'P3': probe_p3(port), 'P5': probe_p5(port),
-            'P6': probe_p6(port, pid), 'P7': probe_p7(port)}
+            'P6': probe_p6(port, pid), 'P7': probe_p7(port), 'P8': probe_p8(port)}
 
 
 def mismatches(results, label):

@@ -79,12 +79,20 @@ namespace N2CMcpLongRunningCallTest
 		TArray<TUniquePtr<FHttpServerResponse>> Responses;
 	};
 
-	FHttpServerRequest MakeRequest(const FString& Body, const FString& Accept)
+	/** The Mcp-Session-Id MakeRequest sends (the test initializes a session first; card 0109) */
+	FString SessionId;
+
+	FHttpServerRequest MakeRequest(const FString& Body, const FString& Accept,
+		EHttpServerRequestVerbs Verb = EHttpServerRequestVerbs::VERB_POST)
 	{
 		FHttpServerRequest Request;
-		Request.Verb = EHttpServerRequestVerbs::VERB_POST;
+		Request.Verb = Verb;
 		Request.Headers.Add(TEXT("Content-Type"), { TEXT("application/json") });
 		Request.Headers.Add(TEXT("Accept"), { Accept });
+		if (!SessionId.IsEmpty())
+		{
+			Request.Headers.Add(TEXT("Mcp-Session-Id"), { SessionId });
+		}
 		const FTCHARToUTF8 Utf8(*Body);
 		Request.Body.Append(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
 		return Request;
@@ -172,6 +180,34 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 	{
 		Capture->Responses.Add(MoveTemp(Response));
 	};
+
+	// 0. Sessions through the HTTP transport (card 0109): a POST without Mcp-Session-Id is 400, initialize returns a new
+	//    session in the Mcp-Session-Id header, GET is 405 with Allow, and the calls below run in that session
+	{
+		SessionId.Reset();
+		Capture->Responses.Reset();
+		Server.HandleMcpRequest(MakeRequest(TEXT("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"), TEXT("application/json")), OnComplete);
+		if (TestEqual(TEXT("no session: one response"), Capture->Responses.Num(), 1))
+		{
+			TestEqual(TEXT("no session: 400"), static_cast<int32>(Capture->Responses[0]->Code), 400);
+		}
+		Capture->Responses.Reset();
+		Server.HandleMcpRequest(MakeRequest(TEXT("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",")
+			TEXT("\"capabilities\":{},\"clientInfo\":{\"name\":\"n2c-transport-test\",\"version\":\"1.0\"}}}"), TEXT("application/json")), OnComplete);
+		if (TestEqual(TEXT("initialize: one response"), Capture->Responses.Num(), 1))
+		{
+			TestEqual(TEXT("initialize: 200"), static_cast<int32>(Capture->Responses[0]->Code), 200);
+			SessionId = HeaderValue(*Capture->Responses[0], TEXT("Mcp-Session-Id"));
+		}
+		TestFalse(TEXT("initialize: Mcp-Session-Id header"), SessionId.IsEmpty());
+		Capture->Responses.Reset();
+		Server.HandleMcpRequest(MakeRequest(FString(), TEXT("text/event-stream"), EHttpServerRequestVerbs::VERB_GET), OnComplete);
+		if (TestEqual(TEXT("GET: one response"), Capture->Responses.Num(), 1))
+		{
+			TestEqual(TEXT("GET: 405"), static_cast<int32>(Capture->Responses[0]->Code), 405);
+			TestEqual(TEXT("GET: Allow"), HeaderValue(*Capture->Responses[0], TEXT("Allow")), FString(TEXT("POST, DELETE")));
+		}
+	}
 
 	/** Checks a JSON-RPC response body: id 7 and a CallToolResult (content array) with the expected text */
 	auto CheckCallToolResult = [this](const FString& What, const FString& Json, const FString& ExpectedText, bool bExpectError)
@@ -362,6 +398,19 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 			}
 		}
 		LastTask.Reset();
+	}
+
+	// 5. DELETE ends the session: 204, then 404 for it
+	{
+		Capture->Responses.Reset();
+		Server.HandleMcpRequest(MakeRequest(FString(), TEXT("application/json"), EHttpServerRequestVerbs::VERB_DELETE), OnComplete);
+		Server.HandleMcpRequest(MakeRequest(TEXT("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}"), TEXT("application/json")), OnComplete);
+		if (TestEqual(TEXT("DELETE then ping: two responses"), Capture->Responses.Num(), 2))
+		{
+			TestEqual(TEXT("DELETE: 204"), static_cast<int32>(Capture->Responses[0]->Code), 204);
+			TestEqual(TEXT("ended session: 404"), static_cast<int32>(Capture->Responses[1]->Code), 404);
+		}
+		SessionId.Reset();
 	}
 
 	FN2CToolAsyncTaskManager::Get().SetToolResolverForTesting(nullptr);

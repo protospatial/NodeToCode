@@ -14,6 +14,10 @@ UE plugin's Streamable HTTP MCP server.
   becomes a JSON-RPC error carrying the request's id, and nothing is written in reply to a notification. Logs go
   to stderr.
 - Requests run on their own threads, so a long tools/call (translate-focused-blueprint) does not hold up others.
+- The editor keeps one MCP session per client (Mcp-Session-Id). The bridge sends the session its client's initialize
+  opened on every request, with MCP-Protocol-Version. When the editor answers 404 (the session is gone: the editor
+  restarted, or the session was ended) the bridge replays the client's initialize and notifications/initialized to
+  open a new session and resends the message once. When stdin closes it ends the session with DELETE.
 
 Zero external dependencies - uses only the Python standard library.
 
@@ -193,6 +197,9 @@ class Upstream:
         self._lock = threading.Lock()
         self.session_id: Optional[str] = None
         self.protocol_version: Optional[str] = None
+        # The client's initialize request, replayed to open a new session after a 404
+        self._initialize_body: Optional[bytes] = None
+        self._reinitialize_lock = threading.Lock()
 
     def _headers(self) -> dict:
         headers = {"Content-Type": "application/json", "Accept": ACCEPT}
@@ -217,29 +224,88 @@ class Upstream:
                 with self._lock:
                     self.protocol_version = version
 
+    def _reinitialize(self, stale_session: Optional[str]) -> bool:
+        """Opens a new session by replaying the client's initialize (and notifications/initialized) after the editor
+        answered 404 for stale_session. True when a session other than stale_session is now in use."""
+        with self._reinitialize_lock:
+            with self._lock:
+                if self.session_id != stale_session:
+                    return True  # another thread already opened a new one
+                init_body = self._initialize_body
+                self.session_id = None
+            if init_body is None:
+                return False
+            log_debug("Session not found (404); replaying initialize to open a new session")
+            headers = {"Content-Type": "application/json", "Accept": ACCEPT}
+            try:
+                req = urllib.request.Request(self.url, data=init_body, headers=headers, method="POST")
+                with _opener.open(req, timeout=30) as resp:
+                    self._note_headers(resp.headers)
+                    content_type = (resp.headers.get("Content-Type") or "").lower()
+                    text = resp.read().decode("utf-8", "replace")
+                if content_type.startswith("text/event-stream"):
+                    text = "\n".join(line[5:].strip() for line in text.splitlines() if line.startswith("data:"))
+                try:
+                    self._note_message(json.loads(text), "initialize")
+                except ValueError:
+                    pass
+                notify = urllib.request.Request(self.url, data=b'{"jsonrpc":"2.0","method":"notifications/initialized"}',
+                                                headers=self._headers(), method="POST")
+                with _opener.open(notify, timeout=30) as resp:
+                    resp.read()
+            except Exception as e:  # HTTPError, URLError, timeouts
+                log_error(f"Re-initializing the MCP session failed: {e}")
+                return False
+            with self._lock:
+                return bool(self.session_id) and self.session_id != stale_session
+
+    def end_session(self) -> None:
+        """Ends the session with DELETE (best effort), when the client is done."""
+        headers = self._headers()
+        if "Mcp-Session-Id" not in headers:
+            return
+        try:
+            req = urllib.request.Request(self.url, headers={k: v for k, v in headers.items() if k != "Content-Type"},
+                                         method="DELETE")
+            with _opener.open(req, timeout=5) as resp:
+                resp.read()
+            log_debug("Ended the MCP session")
+        except Exception as e:
+            log_debug(f"Ending the MCP session failed: {e}")
+
     def forward(self, body: bytes, message: Any, emit: Callable[[Any], None]) -> None:
         """POST one client message and emit every JSON-RPC message meant for the client."""
         wants_reply = is_request(message) or batch_has_request(message)
         request_id = message.get("id") if isinstance(message, dict) else None
         method = message.get("method") if isinstance(message, dict) else None
+        if method == "initialize" and is_request(message):
+            with self._lock:
+                self._initialize_body = body
+                self.session_id = None  # an initialize opens a new session; it never carries an old one
 
-        req = urllib.request.Request(self.url, data=body, headers=self._headers(), method="POST")
-        try:
-            resp = _opener.open(req, timeout=self.timeout)
-        except urllib.error.HTTPError as e:
+        for attempt in (0, 1):
+            headers = self._headers()
+            req = urllib.request.Request(self.url, data=body, headers=headers, method="POST")
             try:
-                self._note_headers(e.headers)
-                error_body = e.read() if e.fp else b""
-            finally:
-                e.close()
-            self._emit_body(error_body, e.code, request_id, wants_reply, method, emit)
-            return
-        except Exception as e:  # URLError, timeouts, connection resets
-            reason = getattr(e, "reason", e)
-            log_error(f"Request to {self.url} failed: {reason}")
-            if wants_reply:
-                emit(error_response(request_id, INTERNAL_ERROR, f"NodeToCode editor not reachable at {self.url}: {reason}"))
-            return
+                resp = _opener.open(req, timeout=self.timeout)
+                break
+            except urllib.error.HTTPError as e:
+                try:
+                    self._note_headers(e.headers)
+                    error_body = e.read() if e.fp else b""
+                finally:
+                    e.close()
+                stale = headers.get("Mcp-Session-Id")
+                if e.code == 404 and attempt == 0 and stale and method != "initialize" and self._reinitialize(stale):
+                    continue
+                self._emit_body(error_body, e.code, request_id, wants_reply, method, emit)
+                return
+            except Exception as e:  # URLError, timeouts, connection resets
+                reason = getattr(e, "reason", e)
+                log_error(f"Request to {self.url} failed: {reason}")
+                if wants_reply:
+                    emit(error_response(request_id, INTERNAL_ERROR, f"NodeToCode editor not reachable at {self.url}: {reason}"))
+                return
 
         with resp:
             self._note_headers(resp.headers)
@@ -397,9 +463,10 @@ def main():
             worker.start()
             workers = [w for w in workers if w.is_alive()] + [worker]
 
-        # stdin closed: let the calls in flight answer before exiting
+        # stdin closed: let the calls in flight answer before exiting, then end the session
         for worker in workers:
             worker.join()
+        upstream.end_session()
 
     except KeyboardInterrupt:
         log_debug("Interrupted, shutting down...")

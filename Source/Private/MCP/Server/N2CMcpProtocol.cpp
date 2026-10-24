@@ -64,12 +64,44 @@ FN2CMcpCatalogs FN2CMcpCatalogs::Default()
 
 const TArray<FString>& FN2CMcpProtocol::GetSupportedProtocolVersions()
 {
-	// In order of preference (newest first)
+	// In order of preference (newest first). 2026-07-28 (stateless, no initialize) is not supported yet: initialize
+	// answers it with 2025-11-25.
 	static const TArray<FString> Versions = {
+		TEXT("2025-11-25"),
+		TEXT("2025-06-18"),
 		TEXT("2025-03-26"),
 		TEXT("2024-11-05")
 	};
 	return Versions;
+}
+
+namespace N2CMcpProtocolPrivate
+{
+	/** The only negotiated version whose sessions may send JSON-RPC batches (added in 2025-03-26, removed in 2025-06-18) */
+	const TCHAR* const BatchProtocolVersion = TEXT("2025-03-26");
+
+	/** JSON-RPC error code for an unknown or ended session (the code the MCP TypeScript SDK uses with its 404) */
+	constexpr int32 SessionNotFoundCode = -32001;
+
+	/** A reply carrying a JSON-RPC error with a null id */
+	static FN2CMcpReply ErrorReply(int32 Status, int32 Code, const FString& Message)
+	{
+		FN2CMcpReply Reply;
+		Reply.Status = Status;
+		Reply.Body = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(nullptr, Code, Message));
+		return Reply;
+	}
+
+	/** A client-sent value safe to echo in a log line (bounded, printable ASCII only) */
+	static FString ForLog(const FString& SessionId)
+	{
+		FString Safe;
+		for (const TCHAR Ch : SessionId.Left(64))
+		{
+			Safe.AppendChar(Ch >= 0x20 && Ch <= 0x7E ? Ch : TEXT('?'));
+		}
+		return Safe;
+	}
 }
 
 FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
@@ -111,47 +143,198 @@ void FN2CMcpProtocol::BroadcastNotification(const FJsonRpcNotification& Notifica
 
 FString FN2CMcpProtocol::GetSessionProtocolVersion(const FString& SessionId) const
 {
-	const FString* Version = SessionProtocolVersions.Find(SessionId);
-	return Version ? *Version : FString();
+	const FN2CMcpSession* Session = Sessions.Find(SessionId);
+	return Session ? Session->ProtocolVersion : FString();
+}
+
+FString FN2CMcpProtocol::CreateSession()
+{
+	// Keep the table bounded: a client that initializes in a loop must not grow it without limit
+	while (Sessions.Num() >= MaxSessions)
+	{
+		const FString* Oldest = nullptr;
+		double OldestSeconds = TNumericLimits<double>::Max();
+		for (const TPair<FString, FN2CMcpSession>& Pair : Sessions)
+		{
+			if (Pair.Value.LastUsedSeconds < OldestSeconds)
+			{
+				OldestSeconds = Pair.Value.LastUsedSeconds;
+				Oldest = &Pair.Key;
+			}
+		}
+		if (!Oldest)
+		{
+			break;
+		}
+		const FString OldestId = *Oldest;
+		EndSession(OldestId, TEXT("The MCP session was dropped to make room for a new one"));
+	}
+
+	FN2CMcpSession Session;
+	// A random v4 GUID: only hex digits and hyphens, so visible ASCII as the transport requires
+	Session.Id = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
+	Session.ProtocolVersion = LastNegotiatedVersion;
+	Session.ClientInfo = LastClientInfo;
+	Session.ClientCapabilities = LastClientCapabilities;
+	Session.CreatedSeconds = Session.LastUsedSeconds = FPlatformTime::Seconds();
+	const FString Id = Session.Id;
+	Sessions.Add(Id, MoveTemp(Session));
+	FString ClientName;
+	if (LastClientInfo.IsValid())
+	{
+		LastClientInfo->TryGetStringField(TEXT("name"), ClientName);
+	}
+	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP session %s created (protocol %s, client %s, %d live)"), *Id, *LastNegotiatedVersion,
+		*N2CMcpProtocolPrivate::ForLog(ClientName.IsEmpty() ? FString(TEXT("unnamed")) : ClientName), Sessions.Num()), EN2CLogSeverity::Info);
+	return Id;
+}
+
+bool FN2CMcpProtocol::EndSession(const FString& SessionId, const FString& Reason)
+{
+	if (Sessions.Remove(SessionId) == 0)
+	{
+		return false;
+	}
+
+	// Cancel the session's running calls. Each one answers its own request with the cancelled result.
+	int32 Cancelled = 0;
+	for (const FGuid& TaskId : Catalogs.Tasks->GetRunningTaskIds())
+	{
+		const TSharedPtr<FN2CToolCallRecord> Record = Catalogs.Tasks->GetTaskContext(TaskId);
+		if (Record.IsValid() && Record->SessionId == SessionId && Catalogs.Tasks->CancelTask(TaskId, Reason))
+		{
+			++Cancelled;
+		}
+	}
+	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP session %s ended (%s); %d running call(s) cancelled, %d session(s) live"),
+		*SessionId, *Reason, Cancelled, Sessions.Num()), EN2CLogSeverity::Info);
+	return true;
+}
+
+void FN2CMcpProtocol::HandleDelete(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder)
+{
+	using namespace N2CMcpProtocolPrivate;
+	const FString* SessionHeader = Inbound.FindHeader(TEXT("Mcp-Session-Id"));
+	if (!SessionHeader || SessionHeader->IsEmpty())
+	{
+		Responder->Reply(ErrorReply(400, JsonRpcErrorCodes::InvalidRequest, TEXT("Bad Request: DELETE needs the Mcp-Session-Id of the session to end")));
+		return;
+	}
+	if (!EndSession(*SessionHeader, TEXT("the client sent DELETE")))
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("DELETE for unknown MCP session %s"), *ForLog(*SessionHeader)));
+		Responder->Reply(ErrorReply(404, SessionNotFoundCode, TEXT("Session not found")));
+		return;
+	}
+	FN2CMcpReply Reply;
+	Reply.Status = 204;
+	Responder->Reply(Reply);
 }
 
 void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder)
 {
+	using namespace N2CMcpProtocolPrivate;
+
+	if (Inbound.Verb.Equals(TEXT("DELETE"), ESearchCase::IgnoreCase))
+	{
+		HandleDelete(Inbound, Responder);
+		return;
+	}
 	if (!Inbound.Verb.Equals(TEXT("POST"), ESearchCase::IgnoreCase))
 	{
-		FN2CMcpReply Reply;
-		Reply.Status = 405;
-		Reply.Body = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(nullptr, JsonRpcErrorCodes::InvalidRequest,
-			FString::Printf(TEXT("Method %s not allowed; send JSON-RPC messages with POST"), *Inbound.Verb)));
+		// GET would open a server-to-client stream; this server offers none, so it answers 405 as the transport allows
+		FN2CMcpReply Reply = ErrorReply(405, JsonRpcErrorCodes::InvalidRequest,
+			FString::Printf(TEXT("Method %s not allowed; send JSON-RPC messages with POST and end a session with DELETE"), *Inbound.Verb.Left(16)));
+		Reply.Headers.Emplace(TEXT("Allow"), TEXT("POST, DELETE"));
 		Responder->Reply(Reply);
 		return;
 	}
 
 	// Parse the body once, over exactly the bytes received. A batch parses to an array, and trailing bytes after the
-	// root value are a parse error. The parsed value is used for the long-running check and dispatch; null means
-	// -32700 Parse error.
+	// root value are a parse error. The parsed value is used for the session checks, the long-running check and
+	// dispatch; null means -32700 Parse error.
 	TSharedPtr<FJsonValue> JsonValue;
 	ParseBody(Inbound.Body, JsonValue);
 	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP request: %d body bytes, %s"), Inbound.Body.Num(),
 		JsonValue.IsValid() ? (JsonValue->Type == EJson::Array ? TEXT("batch") : TEXT("single message")) : TEXT("not valid JSON")),
 		EN2CLogSeverity::Debug);
 
-	const FString* SessionHeader = Inbound.FindHeader(TEXT("Mcp-Session-Id"));
-	const FString ClientSentSessionId = SessionHeader ? *SessionHeader : FString();
+	// Classify a single message: an initialize request opens a session, everything else must name one
+	const TSharedPtr<FJsonObject> SingleObject = JsonValue.IsValid() && JsonValue->Type == EJson::Object ? JsonValue->AsObject() : nullptr;
+	const FJsonRpcUtils::EJsonRpcMessageType SingleType = SingleObject.IsValid()
+		? FJsonRpcUtils::GetMessageType(SingleObject) : FJsonRpcUtils::EJsonRpcMessageType::Unknown;
+	FString SingleMethod;
+	if (SingleType == FJsonRpcUtils::EJsonRpcMessageType::Request || SingleType == FJsonRpcUtils::EJsonRpcMessageType::Notification)
+	{
+		SingleObject->TryGetStringField(TEXT("method"), SingleMethod);
+	}
+	const bool bInitialize = SingleType == FJsonRpcUtils::EJsonRpcMessageType::Request && SingleMethod == TEXT("initialize");
+
+	FString SessionId;
+	if (!bInitialize)
+	{
+		// MCP-Protocol-Version: an unsupported value is a 400; a missing one is accepted (2025-03-26 clients do not
+		// send it, and the session's negotiated version identifies the protocol). Checked before the session, so a
+		// stateless 2026-07-28 probe (Claude Code sends server/discover first, without a session) is told the version
+		// is unsupported and the client falls back to initialize.
+		if (const FString* VersionHeader = Inbound.FindHeader(TEXT("MCP-Protocol-Version")))
+		{
+			const FString Version = VersionHeader->TrimStartAndEnd();
+			if (!GetSupportedProtocolVersions().Contains(Version))
+			{
+				FN2CLogger::Get().Log(FString::Printf(TEXT("MCP request with unsupported MCP-Protocol-Version '%s' answered 400"), *ForLog(Version)),
+					EN2CLogSeverity::Info);
+				Responder->Reply(ErrorReply(400, JsonRpcErrorCodes::InvalidRequest, FString::Printf(
+					TEXT("Bad Request: unsupported MCP-Protocol-Version; supported: %s"), *FString::Join(GetSupportedProtocolVersions(), TEXT(", ")))));
+				return;
+			}
+		}
+
+		const FString* SessionHeader = Inbound.FindHeader(TEXT("Mcp-Session-Id"));
+		if (!SessionHeader || SessionHeader->IsEmpty())
+		{
+			FN2CLogger::Get().LogWarning(TEXT("MCP request without Mcp-Session-Id refused with 400; the client must send initialize first"));
+			Responder->Reply(ErrorReply(400, JsonRpcErrorCodes::InvalidRequest,
+				TEXT("Bad Request: Mcp-Session-Id header is required; send initialize first")));
+			return;
+		}
+		FN2CMcpSession* Session = Sessions.Find(*SessionHeader);
+		if (!Session)
+		{
+			// Unknown or ended (DELETE, an editor restart): 404 tells the client to initialize a new session
+			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("MCP request for unknown session %s refused with 404"), *ForLog(*SessionHeader)));
+			Responder->Reply(ErrorReply(404, SessionNotFoundCode, TEXT("Session not found")));
+			return;
+		}
+		SessionId = Session->Id;
+		Session->LastUsedSeconds = FPlatformTime::Seconds();
+
+
+		// JSON-RPC batches exist only in 2025-03-26
+		if (JsonValue.IsValid() && JsonValue->Type == EJson::Array && Session->ProtocolVersion != BatchProtocolVersion)
+		{
+			FN2CMcpReply Reply = ErrorReply(400, JsonRpcErrorCodes::InvalidRequest, FString::Printf(
+				TEXT("Invalid Request: JSON-RPC batches are not supported in protocol version %s; send one message per POST"), *Session->ProtocolVersion));
+			Reply.SessionId = SessionId;
+			Responder->Reply(Reply);
+			return;
+		}
+
+		if (SingleType == FJsonRpcUtils::EJsonRpcMessageType::Notification && SingleMethod == TEXT("notifications/initialized"))
+		{
+			Session->bInitialized = true;
+		}
+	}
 
 	// A single tools/call of a long-running tool runs as a call answered on this same request
-	if (JsonValue.IsValid() && JsonValue->Type == EJson::Object)
+	if (SingleType == FJsonRpcUtils::EJsonRpcMessageType::Request && SingleMethod == TEXT("tools/call"))
 	{
-		const TSharedPtr<FJsonObject> RequestObject = JsonValue->AsObject();
-		FString Method;
 		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
 		FString ToolName;
-		if (FJsonRpcUtils::GetMessageType(RequestObject) == FJsonRpcUtils::EJsonRpcMessageType::Request
-			&& RequestObject->TryGetStringField(TEXT("method"), Method) && Method == TEXT("tools/call")
-			&& RequestObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
+		if (SingleObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
 			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName) && IsLongRunningTool(ToolName))
 		{
-			HandleLongRunningToolCall(Inbound, Responder, RequestObject, *ParamsObj, ToolName, ClientSentSessionId);
+			HandleLongRunningToolCall(Inbound, Responder, SingleObject, *ParamsObj, ToolName, SessionId);
 			return;
 		}
 	}
@@ -160,46 +343,20 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 	FN2CMcpReply Reply;
 	bool bWasInitializeCall = false;
 	LastNegotiatedVersion.Reset();
+	LastClientInfo.Reset();
+	LastClientCapabilities.Reset();
 	ProcessMessage(JsonValue, Reply.Body, Reply.Status, bWasInitializeCall);
-	const bool bSuccessfulInitialize = bWasInitializeCall && Reply.Status == 200;
-	Reply.SessionId = ResolveResponseSessionId(bSuccessfulInitialize, ClientSentSessionId);
-	if (bSuccessfulInitialize && !Reply.SessionId.IsEmpty() && !LastNegotiatedVersion.IsEmpty())
+	if (bInitialize && Reply.Status == 200 && !LastNegotiatedVersion.IsEmpty())
 	{
-		SessionProtocolVersions.Add(Reply.SessionId, LastNegotiatedVersion);
+		// A successful initialize (HandleInitialize set the version; an invalid one answers -32602 and sets none)
+		// creates a new session, even when the request named an old one
+		Reply.SessionId = CreateSession();
+	}
+	else
+	{
+		Reply.SessionId = SessionId;
 	}
 	Responder->Reply(Reply);
-}
-
-FString FN2CMcpProtocol::ResolveResponseSessionId(bool bSuccessfulInitialize, const FString& ClientSentSessionId)
-{
-	// Session ID handling for the HTTP transport (MCP spec 2025-03-26)
-	if (bSuccessfulInitialize)
-	{
-		// Successful initialize - generate or reuse session ID
-		if (CurrentSessionId.IsEmpty())
-		{
-			CurrentSessionId = FGuid::NewGuid().ToString();
-		}
-		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP Initialize successful. Responding with Mcp-Session-Id: %s"), *CurrentSessionId), EN2CLogSeverity::Info);
-		return CurrentSessionId;
-	}
-	if (!ClientSentSessionId.IsEmpty())
-	{
-		// For non-initialize requests, if client sent a session ID, echo it back if it matches our current one
-		if (ClientSentSessionId == CurrentSessionId || CurrentSessionId.IsEmpty())
-		{
-			return ClientSentSessionId;
-		}
-		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Mcp-Session-Id mismatch. Client: %s, Server: %s. Not adding Mcp-Session-Id to response."), *ClientSentSessionId, *CurrentSessionId));
-		return FString();
-	}
-	if (!CurrentSessionId.IsEmpty())
-	{
-		// Client did not send session ID for an ongoing session
-		FN2CLogger::Get().LogWarning(TEXT("Client did not send Mcp-Session-Id for an ongoing session. Responded with current session ID."));
-		return CurrentSessionId;
-	}
-	return FString();
 }
 
 bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
@@ -220,7 +377,7 @@ bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
 
 void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
 	const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
-	const FString& ClientSentSessionId)
+	const FString& SessionId)
 {
 	const TSharedPtr<FJsonObject>* ArgsObj = nullptr;
 	const TSharedPtr<FJsonObject> ToolArguments = Params->TryGetObjectField(TEXT("arguments"), ArgsObj) && ArgsObj && ArgsObj->IsValid()
@@ -253,7 +410,7 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 		ProgressTokenKey = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
 	}
 
-	const FString ResponseSessionId = ResolveResponseSessionId(/*bSuccessfulInitialize=*/false, ClientSentSessionId);
+	const FString ResponseSessionId = SessionId;
 
 	// Stream when the transport can stream, the client can read a stream (Accept lists text/event-stream) and wants
 	// progress (sent a token); otherwise answer with one JSON reply when the call finishes.
@@ -290,7 +447,7 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 	// A call that fails inside InvokeAsync (no Blueprint focused, no key) writes its response before LaunchTask returns
 	const FGuid TaskId = FGuid::NewGuid();
 	const FGuid LaunchedTaskId = Catalogs.Tasks->LaunchTask(TaskId, ToolName, ToolArguments,
-		ProgressTokenKey, bStream ? ClientProgressToken : nullptr, CurrentSessionId, RequestId, CallResponder);
+		ProgressTokenKey, bStream ? ClientProgressToken : nullptr, SessionId, RequestId, CallResponder);
 
 	if (!LaunchedTaskId.IsValid())
 	{
@@ -421,6 +578,16 @@ bool FN2CMcpProtocol::ProcessMessage(const TSharedPtr<FJsonValue>& JsonValue, FS
 				OutStatusCode = 500; // Internal Server Error
 				return false;
 			}
+		}
+		else if (MessageType == FJsonRpcUtils::EJsonRpcMessageType::Response)
+		{
+			// A client's response to a server request (transports, sending messages to the server: "If the input is a
+			// JSON-RPC response or notification ... the server MUST return HTTP status code 202 Accepted with no
+			// body"). The server sends no requests to clients, so there is nothing to match it to.
+			FN2CLogger::Get().Log(TEXT("Client JSON-RPC response accepted (202); the server has no request waiting for it"), EN2CLogSeverity::Debug);
+			OutResponseBody.Reset();
+			OutStatusCode = 202;
+			return true;
 		}
 		else
 		{
@@ -600,7 +767,10 @@ bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, con
 	}
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Protocol version negotiated: %s"), *NegotiatedProtocolVersion), EN2CLogSeverity::Info);
+	// Handle stores these in the session it creates for this initialize
 	LastNegotiatedVersion = NegotiatedProtocolVersion;
+	LastClientInfo = ClientInfo && ClientInfo->IsValid() ? *ClientInfo : nullptr;
+	LastClientCapabilities = ClientCapabilities && ClientCapabilities->IsValid() ? *ClientCapabilities : nullptr;
 
 	// Build InitializeServerResult
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -824,6 +994,10 @@ bool FN2CMcpProtocol::ProcessBatchRequest(const TArray<TSharedPtr<FJsonValue>>& 
 				FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to process notification in batch: %s"), *Notification.Method));
 			}
 			// Notifications don't contribute to the response array
+		}
+		else if (MessageType == FJsonRpcUtils::EJsonRpcMessageType::Response)
+		{
+			// A client response gets no answer, like a notification (accepted, nothing to match it to)
 		}
 		else
 		{
