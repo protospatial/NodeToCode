@@ -77,8 +77,9 @@ copy of the source while `Binaries/` and `Intermediate/` stay per host and every
 - If a host editor is open, that version is skipped (Live Coding blocks UBT): use Ctrl+Alt+F11 in the editor, or
   close it.
 
-Automation tests live in `Source/Private/Tests/`. Live MCP probes and the headless editor helper live in
-`Tests/mcp_probe/`.
+Automation tests live in `Source/Private/Tests/`; its `README.md` gives the naming (`NodeToCode.<Area>.<Thing>`),
+layout, shared helpers, the known-defect rule and how to run them. Live MCP probes and the headless editor helper
+live in `Tests/mcp_probe/`.
 
 Release packages come from `Scripts/package-release.ps1` (tracked), never from `build.ps1 -Package`. It exports a
 commit with `git archive` (so nothing uncommitted or ignored can ship), runs RunUAT BuildPlugin for UE 5.6, 5.7 and
