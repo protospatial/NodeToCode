@@ -112,6 +112,15 @@ its environment when no key is saved, so a live check never types or saves a key
   code and not an error, the editor started exactly one task (the log line also says whether the call was answered as
   `text/event-stream` or one JSON response), and no key value is in the editor log, the CLI's output or the report.
   Report: `logs/live_claude_cli_<label>.json`; the CLI's stream is kept next to it.
+- `live_stdio_bridge.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]`
+  checks the stdio bridge (`Content/Python/mcp_bridge`) end to end through its launcher (`launch_bridge.bat`/`.sh`),
+  on a headless editor with only the provider's key in its environment and an in-memory probe Blueprint focused.
+  A small stdio client sends raw UTF-8 and checks that `run-python` sees `café あ日本 🙂` as the same code points, that
+  a member variable named with é and 日本 (tooltip with an emoji) reads back unchanged, and that
+  `translate-focused-blueprint` (numeric progressToken) returns code, with progress before the response on UE 5.8 and
+  none on 5.6/5.7 (held), and stdout carrying only JSON-RPC lines. Then the headless Claude CLI, with the launcher as
+  a stdio `--mcp-config` server, calls `run-python` with the same text and `translate-focused-blueprint` once.
+  `--skip-cli` runs only the client part. Report: `logs/live_stdio_bridge_<label>.json`.
 - `live_translate_exit.py --engine ... --project ... [--windowed] [--provider anthropic --model claude-haiku-5-5]`
   exits the editor mid-translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, and
   `--quit-after` seconds in (default 1) closes the Blueprint editor and calls `unreal.SystemLibrary.quit_editor()`.

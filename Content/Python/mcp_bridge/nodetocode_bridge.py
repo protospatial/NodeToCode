@@ -2,30 +2,50 @@
 """
 NodeToCode MCP Bridge
 
-A lightweight stdio-to-HTTP bridge that enables MCP clients (like Claude Desktop)
-to communicate with the NodeToCode UE5 plugin's HTTP MCP server.
+A lightweight stdio-to-HTTP bridge that lets stdio-only MCP clients (like Claude Desktop) talk to the NodeToCode
+UE plugin's Streamable HTTP MCP server.
 
-Zero external dependencies - uses only Python standard library.
+- stdin and stdout are UTF-8 whatever the console code page, so non-ASCII text (asset names, run-python code,
+  prompts) reaches the editor unchanged.
+- Each stdin message is POSTed to /mcp with Accept: application/json, text/event-stream. A JSON response is written
+  to stdout as one line; a text/event-stream response is read as it arrives: every JSON-RPC message in it (progress
+  notifications, then the response) is written to stdout at once, and the response to the request ends the call.
+- stdout carries only JSON-RPC messages, one per line. A transport failure or a non-JSON body (an HTTP error page)
+  becomes a JSON-RPC error carrying the request's id, and nothing is written in reply to a notification. Logs go
+  to stderr.
+- Requests run on their own threads, so a long tools/call (translate-focused-blueprint) does not hold up others.
+
+Zero external dependencies - uses only the Python standard library.
 
 Usage:
-    python nodetocode_bridge.py [--port PORT] [--host HOST] [--debug]
+    python nodetocode_bridge.py [--port PORT] [--host HOST] [--timeout SECONDS] [--debug]
 """
 
-import sys
-import json
-import urllib.request
-import urllib.error
 import argparse
+import json
+import sys
 import threading
-from typing import Optional
+import urllib.error
+import urllib.request
+from typing import Any, Callable, List, Optional, Tuple
 
 # Configuration
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 27000
-DEFAULT_TIMEOUT = 300  # 5 minutes for long-running tools
+ACCEPT = "application/json, text/event-stream"
+
+# JSON-RPC error codes
+PARSE_ERROR = -32700
+INTERNAL_ERROR = -32603
 
 # Global debug flag
 debug_mode = False
+
+# One message per stdout line, whichever thread writes it
+_stdout_lock = threading.Lock()
+
+# Plain HTTP to the loopback editor: never through a proxy from the environment or the Windows settings
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def log_debug(message: str) -> None:
@@ -39,16 +59,99 @@ def log_error(message: str) -> None:
     print(f"[NodeToCode-Bridge ERROR] {message}", file=sys.stderr, flush=True)
 
 
+def configure_stdio() -> None:
+    """Read and write UTF-8 on stdio whatever the locale. Without this, Python on Windows decodes piped stdin with
+    the ANSI code page (cp1252), so 'é' sent by the client reaches the editor as 'Ã©'.
+
+    stdin keeps undecodable bytes as surrogates (handle_line answers such a line with a parse error instead of
+    stopping the loop); stdout writes '\\n' line ends and escapes a lone surrogate as a JSON '\\udxxx' escape."""
+    for stream, errors in ((sys.stdin, "surrogateescape"), (sys.stdout, "backslashreplace"),
+                           (sys.stderr, "backslashreplace")):
+        if hasattr(stream, "reconfigure"):
+            if stream is sys.stdout:
+                stream.reconfigure(encoding="utf-8", errors=errors, newline="\n")
+            else:
+                stream.reconfigure(encoding="utf-8", errors=errors)
+
+
+def write_message(message: Any) -> None:
+    """Write one JSON-RPC message (or batch) to stdout as a single line."""
+    line = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+    with _stdout_lock:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    log_debug(f"Sent: {line[:200]}")
+
+
+def error_response(request_id: Any, code: int, message: str, data: Any = None) -> dict:
+    """A JSON-RPC error response."""
+    error = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return {"jsonrpc": "2.0", "id": request_id, "error": error}
+
+
+def is_request(message: Any) -> bool:
+    """True for a JSON-RPC request (a method and an id), the only kind of message that gets a response."""
+    return isinstance(message, dict) and "method" in message and message.get("id") is not None
+
+
+def batch_has_request(message: Any) -> bool:
+    return isinstance(message, list) and any(is_request(m) for m in message)
+
+
+class SseParser:
+    """Incremental text/event-stream parser (WHATWG HTML, 'Parsing an event stream').
+
+    Feed it lines without their terminators. An empty line dispatches the event: its data lines joined with '\\n'.
+    Comment lines (starting with ':') are ignored, as are the id and retry fields. A partial event at the end of the
+    stream is dropped."""
+
+    def __init__(self) -> None:
+        self._data: List[str] = []
+        self._event = ""
+
+    def feed_line(self, line: str) -> Optional[Tuple[str, str]]:
+        """Returns (event type, data) when this line ends an event that has data, else None."""
+        if line == "":
+            if not self._data:
+                self._event = ""
+                return None
+            event = (self._event or "message", "\n".join(self._data))
+            self._data, self._event = [], ""
+            return event
+        if line.startswith(":"):
+            return None
+        field, colon, value = line.partition(":")
+        if colon and value.startswith(" "):
+            value = value[1:]
+        if field == "data":
+            self._data.append(value)
+        elif field == "event":
+            self._event = value
+        return None
+
+    @staticmethod
+    def split_lines(raw: bytes) -> List[str]:
+        """The SSE lines in one readline() chunk: CRLF, LF and CR all end a line; the stream is UTF-8."""
+        text = raw.decode("utf-8", "replace")
+        if text.endswith("\n"):
+            text = text[:-1]
+            if text.endswith("\r"):
+                text = text[:-1]
+        return text.split("\r")
+
+
 def check_ue5_health(host: str, port: int) -> bool:
     """Check if UE5 MCP server is running."""
     url = f"http://{host}:{port}/mcp/health"
     log_debug(f"Probing health at {url}")
 
     try:
-        req = urllib.request.Request(url, method='GET')
-        with urllib.request.urlopen(req, timeout=2) as resp:
+        req = urllib.request.Request(url, method="GET")
+        with _opener.open(req, timeout=2) as resp:
             if resp.status == 200:
-                log_debug(f"Health check passed: {resp.read().decode('utf-8')}")
+                log_debug(f"Health check passed: {resp.read().decode('utf-8', 'replace')}")
                 return True
     except urllib.error.URLError as e:
         log_debug(f"Health check failed: {e}")
@@ -78,167 +181,190 @@ def find_ue5_server(host: str, port: int) -> Optional[tuple]:
     return None
 
 
-def forward_request(host: str, port: int, request_data: str, session_id: Optional[str] = None) -> tuple:
-    """Forward a request to UE5 and return (response_body, new_session_id)."""
-    url = f"http://{host}:{port}/mcp"
+class Upstream:
+    """The editor's /mcp endpoint plus the session state shared by all requests."""
 
-    headers = {'Content-Type': 'application/json'}
-    if session_id:
-        headers['Mcp-Session-Id'] = session_id
+    def __init__(self, host: str, port: int, timeout: Optional[float] = None) -> None:
+        self.url = f"http://{host}:{port}/mcp"
+        # None: wait as long as the editor takes. A held translate-focused-blueprint call (UE 5.6/5.7, or no
+        # progress token) sends nothing until the translation is done.
+        self.timeout = timeout
+        self._lock = threading.Lock()
+        self.session_id: Optional[str] = None
+        self.protocol_version: Optional[str] = None
 
-    log_debug(f"Forwarding to UE5: {request_data[:200]}...")
+    def _headers(self) -> dict:
+        headers = {"Content-Type": "application/json", "Accept": ACCEPT}
+        with self._lock:
+            if self.session_id:
+                headers["Mcp-Session-Id"] = self.session_id
+            if self.protocol_version:
+                headers["MCP-Protocol-Version"] = self.protocol_version
+        return headers
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=request_data.encode('utf-8'),
-            headers=headers,
-            method='POST'
-        )
+    def _note_headers(self, headers: Any) -> None:
+        session_id = headers.get("Mcp-Session-Id") if headers is not None else None
+        if session_id:
+            with self._lock:
+                self.session_id = session_id
 
-        with urllib.request.urlopen(req, timeout=DEFAULT_TIMEOUT) as resp:
-            response_body = resp.read().decode('utf-8')
-            new_session_id = resp.headers.get('Mcp-Session-Id', session_id)
+    def _note_message(self, message: Any, method: Optional[str]) -> None:
+        """Remember the protocol version an initialize response settled on, for the MCP-Protocol-Version header."""
+        if method == "initialize" and isinstance(message, dict) and isinstance(message.get("result"), dict):
+            version = message["result"].get("protocolVersion")
+            if isinstance(version, str) and version:
+                with self._lock:
+                    self.protocol_version = version
 
-            log_debug(f"Response status: {resp.status}")
-            log_debug(f"Response body: {response_body[:200]}...")
+    def forward(self, body: bytes, message: Any, emit: Callable[[Any], None]) -> None:
+        """POST one client message and emit every JSON-RPC message meant for the client."""
+        wants_reply = is_request(message) or batch_has_request(message)
+        request_id = message.get("id") if isinstance(message, dict) else None
+        method = message.get("method") if isinstance(message, dict) else None
 
-            # Handle 202 Accepted (long-running tool with SSE)
-            if resp.status == 202:
-                return handle_sse_response(host, response_body, new_session_id)
+        req = urllib.request.Request(self.url, data=body, headers=self._headers(), method="POST")
+        try:
+            resp = _opener.open(req, timeout=self.timeout)
+        except urllib.error.HTTPError as e:
+            try:
+                self._note_headers(e.headers)
+                error_body = e.read() if e.fp else b""
+            finally:
+                e.close()
+            self._emit_body(error_body, e.code, request_id, wants_reply, method, emit)
+            return
+        except Exception as e:  # URLError, timeouts, connection resets
+            reason = getattr(e, "reason", e)
+            log_error(f"Request to {self.url} failed: {reason}")
+            if wants_reply:
+                emit(error_response(request_id, INTERNAL_ERROR, f"NodeToCode editor not reachable at {self.url}: {reason}"))
+            return
 
-            return (response_body, new_session_id)
+        with resp:
+            self._note_headers(resp.headers)
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+            log_debug(f"Response status: {resp.status}, Content-Type: {content_type}")
+            try:
+                if content_type.startswith("text/event-stream"):
+                    self._read_stream(resp, request_id, wants_reply, method, emit)
+                else:
+                    self._emit_body(resp.read(), resp.status, request_id, wants_reply, method, emit)
+            except Exception as e:  # the connection broke or timed out mid-response
+                log_error(f"Reading the response failed: {e}")
+                if wants_reply:
+                    emit(error_response(request_id, INTERNAL_ERROR, f"Reading the editor's response failed: {e}"))
 
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode('utf-8') if e.fp else str(e)
-        log_error(f"HTTP error {e.code}: {error_body}")
-        return (error_body, session_id)
+    def _emit_body(self, body: bytes, status: int, request_id: Any, wants_reply: bool, method: Optional[str],
+                   emit: Callable[[Any], None]) -> None:
+        """Emit a complete application/json body. Anything that is not a JSON-RPC message becomes an error with
+        the request's id, and a notification never gets a reply."""
+        text = body.decode("utf-8", "replace").strip()
+        if not wants_reply:
+            if text or status >= 300:
+                log_debug(f"No reply to a notification or response (HTTP {status}): {text[:200]}")
+            return
 
-    except urllib.error.URLError as e:
-        log_error(f"URL error: {e.reason}")
-        error = {
-            "jsonrpc": "2.0",
-            "id": None,
-            "error": {"code": -32603, "message": f"Connection failed: {e.reason}"}
-        }
-        return (json.dumps(error), session_id)
+        parsed = None
+        if text:
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                parsed = None
 
-    except Exception as e:
-        log_error(f"Unexpected error: {e}")
-        error = {
-            "jsonrpc": "2.0",
-            "id": None,
-            "error": {"code": -32603, "message": str(e)}
-        }
-        return (json.dumps(error), session_id)
+        if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
+            if parsed.get("id") is None and request_id is not None:
+                # The server rejected the request before reading its id (Origin, Content-Type, parse error)
+                parsed["id"] = request_id
+            self._note_message(parsed, method)
+            emit(parsed)
+            return
+        if isinstance(parsed, list) and parsed:
+            emit(parsed)
+            return
 
+        if 200 <= status < 300:
+            message = f"The editor answered HTTP {status} without a JSON-RPC response"
+        else:
+            message = f"The editor answered HTTP {status}"
+        log_error(f"{message}: {text[:200]}")
+        emit(error_response(request_id, INTERNAL_ERROR, message, {"httpStatus": status, "body": text[:2000]}))
 
-def handle_sse_response(host: str, response_body: str, session_id: Optional[str]) -> tuple:
-    """Handle SSE streaming for long-running tools."""
-    try:
-        sse_info = json.loads(response_body)
-
-        if sse_info.get("status") != "accepted":
-            return (response_body, session_id)
-
-        sse_url = sse_info.get("sseUrl")
-        task_id = sse_info.get("taskId")
-
-        if not sse_url:
-            log_error("No SSE URL in accepted response")
-            return (response_body, session_id)
-
-        log_debug(f"Starting SSE listener for task: {task_id}")
-
-        # Connect to SSE stream
-        req = urllib.request.Request(sse_url, method='GET')
-
-        with urllib.request.urlopen(req, timeout=DEFAULT_TIMEOUT) as resp:
-            final_response = None
-            buffer = ""
-
-            for chunk in iter(lambda: resp.read(1024).decode('utf-8'), ''):
-                buffer += chunk
-
-                # Process complete SSE events
-                while '\n\n' in buffer:
-                    event_str, buffer = buffer.split('\n\n', 1)
-                    event_type, event_data = parse_sse_event(event_str)
-
-                    if event_type in ('progress', 'notification'):
-                        # Forward progress notifications immediately
-                        if event_data:
-                            print(event_data, flush=True)
-                            log_debug(f"Forwarded {event_type}: {event_data[:100]}...")
-
-                    elif event_type in ('response', 'result'):
-                        # Final response
-                        final_response = event_data
-                        break
-
-                if final_response:
+    def _read_stream(self, resp: Any, request_id: Any, wants_reply: bool, method: Optional[str],
+                     emit: Callable[[Any], None]) -> None:
+        """Emit each JSON-RPC message of a text/event-stream response as it arrives; the response to the request
+        ends the call."""
+        parser = SseParser()
+        answered = False
+        while not answered:
+            raw = resp.readline()
+            if not raw:
+                break
+            for line in SseParser.split_lines(raw):
+                event = parser.feed_line(line)
+                if event is None:
+                    continue
+                event_type, data = event
+                if event_type != "message":
+                    log_debug(f"Ignoring SSE event '{event_type}'")
+                    continue
+                try:
+                    message = json.loads(data)
+                except ValueError:
+                    log_error(f"Ignoring a non-JSON SSE event: {data[:200]}")
+                    continue
+                is_response = isinstance(message, dict) and "method" not in message and (
+                    "result" in message or "error" in message)
+                if is_response and message.get("id") == request_id:
+                    self._note_message(message, method)
+                    answered = True
+                emit(message)
+                if answered:
                     break
 
-            if final_response:
-                return (final_response, session_id)
-
-            # If we didn't get a final response, return the original
-            return (response_body, session_id)
-
-    except Exception as e:
-        log_error(f"SSE handling error: {e}")
-        return (response_body, session_id)
+        if wants_reply and not answered:
+            log_error("The event stream ended without a response to the request")
+            emit(error_response(request_id, INTERNAL_ERROR, "The editor's event stream ended without a response"))
 
 
-def parse_sse_event(event_str: str) -> tuple:
-    """Parse an SSE event string into (event_type, data)."""
-    event_type = "message"
-    data = ""
-
-    for line in event_str.split('\n'):
-        if line.startswith('event:'):
-            event_type = line[6:].strip()
-        elif line.startswith('data:'):
-            data = line[5:].strip()
-
-    return (event_type, data)
-
-
-def write_response(response: str) -> None:
-    """Write response to stdout as a single line (NDJSON format)."""
+def handle_line(upstream: Upstream, line: str, emit: Callable[[Any], None] = write_message) -> None:
+    """Forward one stdin line and emit what the client should see."""
     try:
-        # Parse and re-serialize to ensure single-line compact JSON
-        # This handles pretty-printed responses from UE5
-        obj = json.loads(response)
-        compact = json.dumps(obj, separators=(',', ':'))
-        print(compact, flush=True)
-        log_debug(f"Sent: {compact[:200]}...")
-    except json.JSONDecodeError:
-        # If not valid JSON, send as-is (shouldn't happen)
-        print(response.replace('\n', ' ').replace('\r', ''), flush=True)
-        log_debug(f"Sent (raw): {response[:200]}...")
+        message = json.loads(line)
+    except ValueError as e:
+        log_error(f"JSON parse error: {e}")
+        emit(error_response(None, PARSE_ERROR, f"Parse error: {e}"))
+        return
 
+    try:
+        body = line.encode("utf-8")
+    except UnicodeEncodeError:
+        # Bytes that were not UTF-8 survived stdin as surrogates
+        log_error("Message is not valid UTF-8")
+        if is_request(message) or batch_has_request(message):
+            request_id = message.get("id") if isinstance(message, dict) else None
+            emit(error_response(request_id, PARSE_ERROR, "Parse error: the message is not valid UTF-8"))
+        return
 
-def write_error(request_id, code: int, message: str) -> None:
-    """Write an error response to stdout."""
-    error = {
-        "jsonrpc": "2.0",
-        "id": request_id,
-        "error": {"code": code, "message": message}
-    }
-    # Use compact format directly since we're creating the JSON ourselves
-    print(json.dumps(error, separators=(',', ':')), flush=True)
-    log_debug(f"Sent error: {message}")
+    try:
+        upstream.forward(body, message, emit)
+    except Exception as e:
+        log_error(f"Error processing message: {e}")
+        if is_request(message):
+            emit(error_response(message.get("id"), INTERNAL_ERROR, str(e)))
 
 
 def main():
     global debug_mode
 
+    configure_stdio()
+
     # Parse arguments
-    parser = argparse.ArgumentParser(description='NodeToCode MCP Bridge')
-    parser.add_argument('--host', default=DEFAULT_HOST, help='UE5 server host')
-    parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='UE5 server port')
-    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser = argparse.ArgumentParser(description="NodeToCode MCP Bridge")
+    parser.add_argument("--host", default=DEFAULT_HOST, help="UE5 server host")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="UE5 server port")
+    parser.add_argument("--timeout", type=float, default=0,
+                        help="Seconds to wait for the editor to send data (0, the default: no limit)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
     debug_mode = args.debug
@@ -255,47 +381,24 @@ def main():
 
     host, port = server
     log_debug(f"Connected to UE5 MCP server at {host}:{port}")
+    upstream = Upstream(host, port, args.timeout if args.timeout and args.timeout > 0 else None)
 
-    # Session tracking
-    session_id = None
-
-    # Process stdin
+    # Process stdin: each message on its own thread so a long call does not block the others
+    workers: List[threading.Thread] = []
     try:
         for line in sys.stdin:
             line = line.strip()
             if not line:
                 continue
 
-            log_debug(f"Received: {line[:200]}...")
+            log_debug(f"Received: {line[:200]}")
+            worker = threading.Thread(target=handle_line, args=(upstream, line), daemon=True)
+            worker.start()
+            workers = [w for w in workers if w.is_alive()] + [worker]
 
-            try:
-                # Validate JSON
-                request = json.loads(line)
-                request_id = request.get("id")
-
-                # Forward to UE5
-                response, session_id = forward_request(host, port, line, session_id)
-
-                # Handle response
-                if response:
-                    # Ensure response has correct ID
-                    try:
-                        resp_obj = json.loads(response)
-                        if request_id is not None and resp_obj.get("id") is None:
-                            resp_obj["id"] = request_id
-                            response = json.dumps(resp_obj)
-                    except:
-                        pass
-
-                    write_response(response)
-
-            except json.JSONDecodeError as e:
-                log_error(f"JSON parse error: {e}")
-                write_error(None, -32700, f"Parse error: {e}")
-
-            except Exception as e:
-                log_error(f"Error processing request: {e}")
-                write_error(None, -32603, str(e))
+        # stdin closed: let the calls in flight answer before exiting
+        for worker in workers:
+            worker.join()
 
     except KeyboardInterrupt:
         log_debug("Interrupted, shutting down...")

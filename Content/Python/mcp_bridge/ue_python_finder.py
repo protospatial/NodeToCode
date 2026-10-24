@@ -5,7 +5,9 @@ Finds Unreal Engine's bundled Python installation using the same methods
 as UnrealVersionSelector:
 1. Windows Registry (HKEY_CURRENT_USER\SOFTWARE\Epic Games\Unreal Engine\Builds)
 2. Epic Games Launcher's LauncherInstalled.dat file
-3. Common installation paths as fallback
+3. Common installation paths as fallback (every UE_<version> folder, no fixed version list)
+
+Installs are ordered by the version in their Engine/Build/Build.version, so 5.6, 5.7, 5.8 and later are all found.
 
 This module uses only Python standard library.
 """
@@ -170,53 +172,47 @@ def get_source_path_for_ue_install(install_path: str, debug: bool = False) -> Op
     return None
 
 
-def find_ue_source(prefer_newest: bool = True, debug: bool = False) -> Optional[str]:
+def common_install_roots() -> List[str]:
+    """Folders that commonly hold UE_5.x installs, for machines whose installs are not registered."""
+    if sys.platform == 'win32':
+        roots = []
+        for drive in 'CDEFG':
+            roots += [f'{drive}:\\Program Files\\Epic Games', f'{drive}:\\Epic Games', f'{drive}:\\UE']
+        return roots
+    home = os.path.expanduser('~')
+    if sys.platform == 'darwin':
+        return ['/Users/Shared/Epic Games', os.path.join(home, 'Epic Games'), '/Applications/Epic Games']
+    return [os.path.join(home, 'Epic Games'), os.path.join(home, 'UnrealEngine'), os.path.join(home, 'UE'),
+            '/opt/UnrealEngine', '/opt/Epic Games']
+
+
+def get_ue_installs_from_common_paths(debug: bool = False) -> List[Tuple[str, str]]:
     """
-    Find UE Engine/Source path.
-
-    Args:
-        prefer_newest: If True, prefer the newest UE version. If False, prefer oldest.
-        debug: Enable debug logging.
-
-    Returns:
-        Path to Engine/Source directory, or None if not found.
+    Get UE installations from common install folders: every UE_<version> folder in them (no fixed version list).
+    Returns list of (version_name, install_path) tuples.
     """
-    all_installations = []
+    installations = []
+    for root in common_install_roots():
+        try:
+            names = os.listdir(root)
+        except OSError:
+            continue
+        for name in names:
+            path = os.path.join(root, name)
+            if name.upper().startswith('UE_') and os.path.isdir(os.path.join(path, 'Engine')):
+                log_debug(f"Common path found: {name} -> {path}", debug)
+                installations.append((name, path))
+    return installations
 
-    # Gather installations from all sources
-    all_installations.extend(get_ue_installs_from_registry(debug))
-    all_installations.extend(get_ue_installs_from_launcher(debug))
 
-    # Remove duplicates (by install path)
-    seen_paths = set()
-    unique_installations = []
-    for version, path in all_installations:
-        normalized_path = os.path.normpath(path).lower()
-        if normalized_path not in seen_paths:
-            seen_paths.add(normalized_path)
-            unique_installations.append((version, path))
-
-    if not unique_installations:
-        log_debug("No UE installations found via registry or launcher", debug)
+def read_build_version(install_path: str) -> Optional[Tuple[int, int, int]]:
+    """The engine version in Engine/Build/Build.version, or None when it cannot be read."""
+    try:
+        with open(os.path.join(install_path, 'Engine', 'Build', 'Build.version'), 'r', encoding='utf-8-sig') as f:
+            data = json.load(f)
+        return (int(data['MajorVersion']), int(data['MinorVersion']), int(data.get('PatchVersion', 0)))
+    except (OSError, ValueError, KeyError, TypeError):
         return None
-
-    # Sort by version
-    unique_installations.sort(
-        key=lambda x: parse_ue_version(x[0]),
-        reverse=prefer_newest
-    )
-
-    log_debug(f"Found {len(unique_installations)} UE installation(s)", debug)
-
-    # Find first installation with valid Source directory
-    for version, install_path in unique_installations:
-        source_path = get_source_path_for_ue_install(install_path, debug)
-        if source_path:
-            log_debug(f"Selected: {version} ({install_path})", debug)
-            return source_path
-
-    log_debug("No UE installation has valid Source directory", debug)
-    return None
 
 
 def parse_ue_version(version_str: str) -> Tuple[int, int, int]:
@@ -234,6 +230,57 @@ def parse_ue_version(version_str: str) -> Tuple[int, int, int]:
     return (0, 0, 0)
 
 
+def get_ue_installations(prefer_newest: bool = True, debug: bool = False) -> List[Tuple[Tuple[int, int, int], str]]:
+    """
+    Every UE installation found through the registry, LauncherInstalled.dat and common install folders, once each,
+    as (version, install_path) sorted by version (newest first by default). The version comes from the install's
+    Engine/Build/Build.version, else from its registered name, so any version (5.6, 5.7, 5.8, later) is found
+    without a version list.
+    """
+    candidates = []
+    candidates.extend(get_ue_installs_from_registry(debug))
+    candidates.extend(get_ue_installs_from_launcher(debug))
+    candidates.extend(get_ue_installs_from_common_paths(debug))
+
+    seen_paths = set()
+    installations = []
+    for name, path in candidates:
+        normalized_path = os.path.normcase(os.path.normpath(path))
+        if normalized_path in seen_paths or not os.path.isdir(os.path.join(path, 'Engine')):
+            continue
+        seen_paths.add(normalized_path)
+        version = read_build_version(path) or parse_ue_version(name)
+        if version == (0, 0, 0):  # a source build registered under a GUID, without Build.version
+            version = parse_ue_version(os.path.basename(os.path.normpath(path)))
+        installations.append((version, os.path.normpath(path)))
+
+    installations.sort(key=lambda x: x[0], reverse=prefer_newest)
+    log_debug(f"Found {len(installations)} UE installation(s): "
+              + ", ".join(f"{'.'.join(map(str, v))} {p}" for v, p in installations), debug)
+    return installations
+
+
+def find_ue_source(prefer_newest: bool = True, debug: bool = False) -> Optional[str]:
+    """
+    Find UE Engine/Source path.
+
+    Args:
+        prefer_newest: If True, prefer the newest UE version. If False, prefer oldest.
+        debug: Enable debug logging.
+
+    Returns:
+        Path to Engine/Source directory, or None if not found.
+    """
+    for version, install_path in get_ue_installations(prefer_newest, debug):
+        source_path = get_source_path_for_ue_install(install_path, debug)
+        if source_path:
+            log_debug(f"Selected: {'.'.join(map(str, version))} ({install_path})", debug)
+            return source_path
+
+    log_debug("No UE installation has valid Source directory", debug)
+    return None
+
+
 def find_ue_python(prefer_newest: bool = True, debug: bool = False) -> Optional[str]:
     """
     Find UE's bundled Python installation.
@@ -245,38 +292,10 @@ def find_ue_python(prefer_newest: bool = True, debug: bool = False) -> Optional[
     Returns:
         Path to Python executable, or None if not found.
     """
-    all_installations = []
-
-    # Gather installations from all sources
-    all_installations.extend(get_ue_installs_from_registry(debug))
-    all_installations.extend(get_ue_installs_from_launcher(debug))
-
-    # Remove duplicates (by install path)
-    seen_paths = set()
-    unique_installations = []
-    for version, path in all_installations:
-        normalized_path = os.path.normpath(path).lower()
-        if normalized_path not in seen_paths:
-            seen_paths.add(normalized_path)
-            unique_installations.append((version, path))
-
-    if not unique_installations:
-        log_debug("No UE installations found via registry or launcher", debug)
-        return None
-
-    # Sort by version
-    unique_installations.sort(
-        key=lambda x: parse_ue_version(x[0]),
-        reverse=prefer_newest
-    )
-
-    log_debug(f"Found {len(unique_installations)} UE installation(s)", debug)
-
-    # Find first installation with valid Python
-    for version, install_path in unique_installations:
+    for version, install_path in get_ue_installations(prefer_newest, debug):
         python_path = get_python_path_for_ue_install(install_path, debug)
         if python_path:
-            log_debug(f"Selected: {version} ({install_path})", debug)
+            log_debug(f"Selected: {'.'.join(map(str, version))} ({install_path})", debug)
             return python_path
 
     log_debug("No UE installation has valid Python", debug)
@@ -284,8 +303,14 @@ def find_ue_python(prefer_newest: bool = True, debug: bool = False) -> Optional[
 
 
 def find_system_python(debug: bool = False) -> Optional[str]:
-    """Find system Python installation."""
+    """Find system Python installation: the interpreter running this script when it is a standalone python
+    executable, else python3 or python on PATH."""
     import shutil
+
+    executable = sys.executable or ''
+    if os.path.isfile(executable) and os.path.basename(executable).lower().startswith('python'):
+        log_debug(f"Using the running Python: {executable}", debug)
+        return executable
 
     for cmd in ['python3', 'python']:
         path = shutil.which(cmd)
@@ -321,13 +346,19 @@ def find_python(prefer_ue: bool = True, debug: bool = False) -> Optional[str]:
 
 
 if __name__ == '__main__':
-    # When run directly, print the found Python path
+    # When run directly, print the found Python path (launch_bridge.bat/.sh and detect-ue-path.bat/.sh use this)
     import argparse
 
     parser = argparse.ArgumentParser(description='Find UE Python installation')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
     parser.add_argument('--system-first', action='store_true', help='Prefer system Python')
+    parser.add_argument('--list', action='store_true', help='List every UE installation found, newest first')
     args = parser.parse_args()
+
+    if args.list:
+        for found_version, found_path in get_ue_installations(debug=args.debug):
+            print(f"{'.'.join(map(str, found_version))}\t{found_path}\t{get_python_path_for_ue_install(found_path) or '-'}")
+        sys.exit(0)
 
     python_path = find_python(prefer_ue=not args.system_first, debug=args.debug)
 

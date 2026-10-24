@@ -73,15 +73,16 @@ Content/Scripts/detect-ue-path.sh
 
 ### How Detection Works
 
-1. **Shell scripts** (`detect-ue-path.sh`/`.bat`) locate a Python interpreter:
-   - First tries UE's bundled Python (`Engine/Binaries/ThirdParty/Python3/`)
-   - Falls back to system Python if UE Python not found
+1. **Shell scripts** (`detect-ue-path.sh`/`.bat`) locate a Python interpreter the same way as the bridge
+   launchers: they run `Content/Python/mcp_bridge/ue_python_finder.py` (with `py -3`, `python3` or `python`), which
+   prints UE's bundled Python (`Engine/Binaries/ThirdParty/Python3/`) of the newest install, else the Python that
+   ran it. Without a Python on PATH, a registered (Windows) or common-folder (macOS/Linux) UE install's Python runs it.
 
-2. **Windows-specific detection methods:**
+2. **Windows-specific detection methods** (in `ue_python_finder.py`, any UE version):
    - Registry: `HKEY_LOCAL_MACHINE\SOFTWARE\EpicGames\Unreal Engine\<version>`
    - Registry: `HKEY_CURRENT_USER\SOFTWARE\Epic Games\Unreal Engine\Builds` (custom builds)
    - LauncherInstalled.dat: `%PROGRAMDATA%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`
-   - Common paths: `C:\Program Files\Epic Games`, `C:\UE`, `D:\UE`, etc.
+   - Common paths: every `UE_*` folder in `C:\Program Files\Epic Games`, `C:\UE`, `D:\UE`, etc.
 
 3. **macOS-specific detection paths:**
    - `/Users/Shared/Epic Games`
