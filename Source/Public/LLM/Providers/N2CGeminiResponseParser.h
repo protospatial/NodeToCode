@@ -22,7 +22,14 @@ public:
         FN2CTranslationResponse& OutResponse) override;
 
 protected:
-    /** Extract message content from Gemini's unique response format */
+    /**
+     * promptFeedback.blockReason gives Blocked; the first candidate's finishReason MAX_TOKENS (or CONTINUATION) gives
+     * Truncated, SAFETY, RECITATION, BLOCKLIST, PROHIBITED_CONTENT, SPII and the other filter reasons give Blocked.
+     * Returns true when it recorded an error.
+     */
+    bool CheckBlockAndFinishReason(const TSharedPtr<FJsonObject>& JsonObject, FN2CTranslationResponse& OutResponse);
+
+    /** Joins the non-thought text parts of the first candidate; false when there are none */
     bool ExtractGeminiMessageContent(
         const TSharedPtr<FJsonObject>& JsonObject,
         FString& OutContent);

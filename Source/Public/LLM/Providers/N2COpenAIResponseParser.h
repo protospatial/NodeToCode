@@ -24,6 +24,10 @@ public:
 protected:
     // Using base class implementations for error handling and content extraction
 
-    /** Extract content from OpenAI Responses API format */
-    bool ExtractResponsesAPIContent(const TSharedPtr<FJsonObject>& JsonObject, FString& OutContent) const;
+    /**
+     * Extract content from OpenAI Responses API format. status "incomplete" gives Truncated (max_output_tokens) or
+     * Blocked (content_filter) and a refusal content part gives Refused, recorded on OutResponse.Error.
+     */
+    bool ExtractResponsesAPIContent(const TSharedPtr<FJsonObject>& JsonObject, FString& OutContent,
+        FN2CTranslationResponse& OutResponse) const;
 };

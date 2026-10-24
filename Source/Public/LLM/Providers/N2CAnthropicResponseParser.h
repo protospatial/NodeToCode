@@ -22,7 +22,13 @@ public:
         FN2CTranslationResponse& OutResponse) override;
 
 protected:
-    /** Extract message content from Anthropic's unique response format */
+    /**
+     * Reads stop_reason: max_tokens and model_context_window_exceeded give Truncated, refusal gives Refused with
+     * stop_details' category and explanation. Returns true when it recorded an error.
+     */
+    bool CheckStopReason(const TSharedPtr<FJsonObject>& JsonObject, FN2CTranslationResponse& OutResponse);
+
+    /** Joins the text blocks of Anthropic's content array (thinking blocks are skipped); false when there are none */
     bool ExtractAnthropicMessageContent(
         const TSharedPtr<FJsonObject>& JsonObject,
         FString& OutContent);

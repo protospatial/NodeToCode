@@ -141,6 +141,16 @@ its environment when no key is saved, so a live check never types or saves a key
   and a GC inside it. `--toolbar-only` runs check 3 alone, `--skip-toolbar` skips it. It quits by deleting the
   in-memory probe Blueprint and calling `quit_editor()`, so no save prompt (or a force kill and a Restore Packages
   dialog on the next start) follows. Report: `logs/0377/gate_<label>.json`.
+- `live_truncated.py --engine ... --project ... --label 5.8 [--only anthropic gemini ...]` (card 0092) sets each
+  provider's Max Output Tokens to 16 on the settings object, runs translate-focused-blueprint with a current model
+  (claude-haiku-5-5, gemini-3.5-flash-lite, gpt-6-luna, deepseek-flash), restores the setting and checks the
+  CallToolResult is error JSON with `error_kind` `Truncated`, the provider's reason in `provider_error_type`
+  (`max_tokens`, `MAX_TOKENS`, `length`) and a message naming the Max Output Tokens setting. Keys go into the
+  editor's environment only and the logs, report and translation folders are scanned for them. Changing a setting
+  in the editor saves the host's `Config/DefaultNodeToCode.ini` (with a settings version the migration specs then
+  see), so the probe puts that file back as it was. Refusals and safety
+  blocks are not triggered live; `NodeToCode.LLM.Parse` covers them with documented bodies. Report:
+  `logs/live_truncated_<label>.json`.
 - `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
   runs real translations through several providers and models in one headless editor (`--list` prints the case
   ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session so each request payload is
