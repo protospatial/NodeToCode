@@ -31,19 +31,31 @@ module, class and section names are unchanged. Values are stored by name; enum v
 
 General rules for every row:
 
-- A key absent from the ini takes the 2.0 default, which differs from 1.2.x for the model fields. **Unverified:**
-  whether a 1.2.x Project Settings save wrote every Config property or only the edited ones, so the 0079 fixture
-  should set every key explicitly.
-- An enum name 2.0 does not know fails `ImportEnumFromBuffer` (engine, `CoreUObject/Private/UObject/EnumProperty.cpp`, read on
-  5.8, not run): the engine logs a warning and the field keeps its 2.0 default. No CoreRedirects `EnumRedirects` exist (the plugin
-  has no Config ini besides `FilterPlugin.ini`).
+- A key absent from the ini takes the 2.0 default, which differs from 1.2.x for the model fields. A 1.2.x
+  Project Settings edit of a single value wrote only that key (`UpdateSinglePropertyInConfigFile`, from both the
+  engine's settings editor and 1.2.x's own `PostEditChangeProperty`); an edit of any map or array (a pricing or
+  theme map) saved the whole section, every pricing and theme map included (`SSettingsEditor::
+  HandleSettingsPropertyChanged` then `TryUpdateDefaultConfigFile`, read on 5.8 with `ini.UseNewPropertySaving` 0,
+  the default). The 0079 fixture should still set every key explicitly.
+- An enum name 2.0 does not know fails to import (run on 5.8): the engine logs `FEnumProperty: ... invalid value of
+  '<name>'` and `LogObj: Error: LoadConfig (...): import failed for <key>`, and the field keeps its 2.0 default. A map
+  keyed by such a name fails as a whole and loads empty. No CoreRedirects `EnumRedirects` exist (the plugin has no
+  Config ini besides `FilterPlugin.ini`).
 - `MigrateRetiredModelSelections` (PR #32) runs from `PostInitProperties` and `PostReloadConfig`: a selection the
   model registry marks retired, or does not know, becomes the provider's `N2CDefaultModels` value and one
   `LogNodeToCode` warning lists every change ("Saved model selection no longer served by its provider, using the
-  current default instead: ..."). The ini is not rewritten; it repeats on every start until the user picks a model.
-- `MigrateSavedSettings` runs the layout migrations for `SettingsVersion` < 2 on every load; the first edit in
-  Project Settings stamps `SettingsVersion=2` and saves the migrated values. One Info line lists the changes
-  ("Settings saved before NodeToCode 2.0 updated so the server and model defaults apply: ...").
+  current default instead: ...").
+- `MigrateSavedSettings` runs the layout migrations for `SettingsVersion` < 2 on every load. One Info line lists
+  the changes ("Settings saved before NodeToCode 2.0 updated so the server and model defaults apply: ...").
+- `MigrateLegacy12Settings` (card 0418) runs once per editor start from `FNodeToCodeModule::StartupModule` (not in
+  commandlets) and writes to `Config/DefaultNodeToCode.ini` with the engine's per-key update, leaving other lines
+  alone. On every start it writes back any enum value that did not load as saved (a retired model moved to the
+  default, a name 2.0 lacks) and any value the engine could not import, so those warnings and engine errors appear
+  on the first start only; names 2.0 lacks get a warning ("Saved settings hold values NodeToCode 2.0 does not have,
+  so these load as the 2.0 value instead: ..."). While `SettingsVersion` < 3 it also does the one-time steps in S6,
+  S11 to S23, F7 and F8, then writes `SettingsVersion=3`. A project with nothing to migrate is not written. One
+  Info line lists what it saved, dropped and removed ("Updated settings left by an earlier NodeToCode version:
+  ..."). The second start logs none of these lines.
 
 How 0079 checks a row: read the value from `unreal.get_default_object(unreal.N2CSettings)` in a headless 5.8
 editor started on the fixture, and grep the editor log for the `LogNodeToCode` lines quoted below. Config-only
@@ -52,23 +64,23 @@ properties with no editor flags (`SettingsVersion`) are not visible to Python; r
 | ID | 1.2.x key, type, default | 2.0 | Handling | Owner | Check |
 |---|---|---|---|---|---|
 | S1 | `Provider` (`EN2CLLMProvider`), Anthropic. Values OpenAI, Anthropic, Gemini, Ollama, DeepSeek, LMStudio (LMStudio not on the tag) | Same key and values | Unchanged | - | Value equals the fixture's |
-| S2 | `AnthropicModel` (`EN2CAnthropicModel`), main Claude4_Sonnet, tag Claude3_7_Sonnet | Same key; every 1.2.x value is retired (see the enum table) | Auto: becomes Claude5_5_Sonnet with the warning above; User: pick a model to persist it | PR #32 done; E09 replaces enums with string IDs | Value is Claude5_5_Sonnet; warning names `AnthropicModel=<old>` |
-| S3 | `OpenAI_Model` (`EN2COpenAIModel`), main GPT_o4_mini, tag GPT_o3_mini | Same key. Kept: GPT4o_2024_08_06, GPT4o_Mini_2024_07_18, GPT_4_1, GPT_o3. Retired: GPT_o1, GPT_o3_mini, GPT_o1_Preview, GPT_o1_Mini, GPT_o4_mini | Unchanged for kept values (each now deprecated, see the enum table); Auto to GPT_6_1_Sol with the warning for retired ones | PR #32; E09 | Kept value equals the fixture's; retired value reads GPT_6_1_Sol plus warning |
-| S4 | `Gemini_Model` (`EN2CGeminiModel`), main Gemini_2_5_Flash, tag Gemini_2_5_ProExp | Same key. Gemini_2_5_ProExp no longer exists; every other 1.2.x value is retired | Tag's Gemini_2_5_ProExp: **Reset** silently to Gemini_3_8_Flash (engine import warning only, no NodeToCode warning, because the default it falls back to is not retired). Others: Auto to Gemini_3_8_Flash with the warning | 0079 adds an EnumRedirect or records the loss; E09 | Value is Gemini_3_8_Flash; for ProExp the engine's invalid-enum warning, for others the NodeToCode warning |
+| S2 | `AnthropicModel` (`EN2CAnthropicModel`), main Claude4_Sonnet, tag Claude3_7_Sonnet | Same key; every 1.2.x value is retired (see the enum table) | Auto: becomes Claude5_5_Sonnet with the warning above, written to the ini on the first start, so the second start is silent | PR #32, card 0418 done; E09 replaces enums with string IDs | Value is Claude5_5_Sonnet; first start's warning names `AnthropicModel=<old>`; ini reads `AnthropicModel=Claude5_5_Sonnet`; second start has no warning |
+| S3 | `OpenAI_Model` (`EN2COpenAIModel`), main GPT_o4_mini, tag GPT_o3_mini | Same key. Kept: GPT4o_2024_08_06, GPT4o_Mini_2024_07_18, GPT_4_1, GPT_o3. Retired: GPT_o1, GPT_o3_mini, GPT_o1_Preview, GPT_o1_Mini, GPT_o4_mini | Unchanged for kept values (each now deprecated, see the enum table; the ini line is not touched); Auto to GPT_6_1_Sol with the warning for retired ones, written to the ini once (as S2) | PR #32, card 0418; E09 | Kept value equals the fixture's; retired value reads GPT_6_1_Sol plus warning on the first start only |
+| S4 | `Gemini_Model` (`EN2CGeminiModel`), main Gemini_2_5_Flash, tag Gemini_2_5_ProExp | Same key. Gemini_2_5_ProExp no longer exists; every other 1.2.x value is retired | Tag's Gemini_2_5_ProExp: **Reset** to Gemini_3_8_Flash; on the first start the engine's invalid-value warning and `import failed` error plus a NodeToCode warning naming `Gemini_Model=Gemini_2_5_ProExp -> Gemini_3_8_Flash`, and the new value is written (no EnumRedirect: the model is gone, so the default is the right target). Others: Auto to Gemini_3_8_Flash with the retired-model warning, written once | Card 0418 done; E09 | Value is Gemini_3_8_Flash; ini reads `Gemini_Model=Gemini_3_8_Flash`; second start has no engine or NodeToCode message |
 | S5 | `DeepSeekModel` (`EN2CDeepSeekModel`), DeepSeek_R1 (`deepseek-reasoner`); DeepSeek_V3 (`deepseek-chat`) | Same names; both now send `deepseek-flash` (R1 with thinking at high effort, V3 without thinking), since `deepseek-reasoner` and `deepseek-chat` were discontinued 2026-07-24 | Auto, silent (not retired, so no warning) | PR #33 done | Value equals the fixture's; a request's payload model is `deepseek-flash` |
-| S6 | `OllamaConfig` (struct): OllamaEndpoint, bUseSystemPrompts (false), PrependedModelCommand (not on the tag), KeepAlive, Temperature, NumPredict (8192), TopP, TopK, MinP, RepeatPenalty, NumCtx (8192), Mirostat, MirostatEta, MirostatTau, Seed | Same members plus Think, ThinkLevel and one `bOverride_*` per sampler; options are sent only when set | Auto (settings version 1, PR #34): NumCtx 8192 and NumPredict 8192 become 0 (server default); bUseSystemPrompts false becomes true (a deliberate false is lost too); a sampler that differs from the old default gets its override turned on, one at the old default stays off. Endpoint, command and KeepAlive unchanged | PR #34 done | Fixture with NumCtx 8192, Temperature 0.7, bUseSystemPrompts False reads NumCtx 0, bOverride_Temperature True, Temperature 0.7, bUseSystemPrompts True; Info line lists them |
+| S6 | `OllamaConfig` (struct): OllamaEndpoint, bUseSystemPrompts (false), PrependedModelCommand (not on the tag), KeepAlive, Temperature, NumPredict (8192), TopP, TopK, MinP, RepeatPenalty, NumCtx (8192), Mirostat, MirostatEta, MirostatTau, Seed | Same members plus Think, ThinkLevel and one `bOverride_*` per sampler; options are sent only when set | Auto (settings version 1, PR #34): NumCtx 8192 and NumPredict 8192 become 0 (server default); bUseSystemPrompts false becomes true (a deliberate false is lost too); a sampler that differs from the old default gets its override turned on, one at the old default stays off. Endpoint, command and KeepAlive unchanged. The migrated struct is written once with `SettingsVersion=3` (card 0418) | PR #34, card 0418 done | Fixture with NumCtx 8192, Temperature 0.7, bUseSystemPrompts False reads NumCtx 0, bOverride_Temperature True, Temperature 0.7, bUseSystemPrompts True; Info line lists them |
 | S7 | `OllamaModel` (string), main `qwen3:32b`, tag `qwen2.5-coder:32b` | Same | Unchanged (an absent key now gives `qwen3:32b`) | - | Value equals the fixture's |
 | S8 | `LMStudioModel` (string, main only) | Same | Unchanged | - | Value equals the fixture's |
 | S9 | `LMStudioEndpoint` (string, main only) | Same | Unchanged | - | Value equals the fixture's |
 | S10 | `LMStudioPrependedModelCommand` (string, main only) | Same | Unchanged | - | Value equals the fixture's |
-| S11 | `OpenAIModelPricing` (map enum to input/output price), filled with 1.2.x prices by the constructor | Same key; the constructor no longer fills it, prices come from the model registry and a map entry overrides them | Unchanged, so any 1.2.x prices saved in the ini stay as overrides (for example o3 at 15/60). User: clear the map to use registry prices | E09 (pricing moves to the registry) | Map in the CDO equals the ini; `GetCurrentInputCost` returns the saved price |
-| S12 | `AnthropicModelPricing` | As S11 | As S11; entries for retired models are unused | E09 | As S11 |
-| S13 | `GeminiModelPricing` | As S11 | As S11; a tag entry keyed Gemini_2_5_ProExp cannot import. **Unverified:** whether that drops one entry or the whole map | E09 | As S11; check the map's size |
-| S14 | `DeepSeekModelPricing` | As S11 | As S11 | E09 | As S11 |
+| S11 | `OpenAIModelPricing` (map enum to input/output price), filled with 1.2.x prices by the constructor | Same key; the constructor no longer fills it, prices come from the model registry and a map entry overrides them | Auto, once (card 0418): entries for retired or unknown models and entries still at 1.2.x's built-in price (for example o3 at 15/60) are dropped and the map is written, so registry prices apply; any other price is the user's and stays as an override (a user who typed exactly the 1.2.x price loses it; the two cannot be told apart) | Card 0418 done; E09 (pricing moves to the registry) | Fixture with GPT_4_1 at 1.5/6 and the 1.2.x prices: map keeps only GPT_4_1; `GetCurrentInputCost` for o3 is the registry price; Info line lists each dropped entry |
+| S12 | `AnthropicModelPricing` | As S11 | As S11; every 1.2.x entry is for a retired model, so the map is written empty | Card 0418; E09 | Map empty |
+| S13 | `GeminiModelPricing` | As S11 | As S11. A tag entry keyed Gemini_2_5_ProExp makes the whole map fail to import (run on 5.8: `import failed for GeminiModelPricing`, map empty); card 0418 writes the empty map so the error is not repeated. Every 1.2.x Gemini model is retired or removed, so nothing a user could keep is lost | Card 0418; E09 | Map empty; ini reads `GeminiModelPricing=()`; second start has no `import failed` |
+| S14 | `DeepSeekModelPricing` | As S11 | As S11 (R1 0.55/2.19 and V3 0.14/0.28 were the 1.2.x prices) | Card 0418; E09 | As S11 |
 | S15 | `TargetLanguage` (`EN2CCodeLanguage`), Cpp | Same key and values | Unchanged | - | Value equals the fixture's |
 | S16 | `TranslationDepth` (int, 0) | Same | Unchanged | - | Value equals the fixture's |
 | S17 | `MinSeverity` (`EN2CLogSeverity`), Info | Same | Unchanged | - | Value equals the fixture's |
-| S18 | `CPPThemes` (`FN2CCodeEditorThemes`: map of theme name to 11 colors) | Not read. 2.0 has one `CodeEditorTheme` and draws the code editor with its "Unreal Engine" entry | Reset: custom themes are ignored. User: re-create colors under Theming > Code Editor Theme | - | Key still in the ini; `CodeEditorTheme` holds the 2.0 defaults |
+| S18 | `CPPThemes` (`FN2CCodeEditorThemes`: map of theme name to 11 colors) | Not read. 2.0 has one `CodeEditorTheme` and draws the code editor with its "Unreal Engine" entry | Reset, not converted: 2.0 draws every language with one theme, and 1.2.x kept the selected theme name only in its UI asset (`SN2CCodeEditor::CurrentTheme`, default "Midnight Code"; removed with U1), never in the config, so there is no way to know which of the 21 themes per language was in use; a whole-section save also wrote every map at its defaults, so a key does not prove customisation. Card 0418 logs one warning on the first start naming the keys and pointing to Theming > Code Editor Theme, and leaves the keys in the ini so colours can be copied. User: re-create colours there | Card 0418 done | Key still in the ini; first start's warning names it; `CodeEditorTheme` holds the 2.0 defaults |
 | S19 | `PythonThemes` | As S18 | As S18 | - | As S18 |
 | S20 | `JavaScriptThemes` | As S18 | As S18 | - | As S18 |
 | S21 | `CSharpThemes` | As S18 | As S18 | - | As S18 |
@@ -83,7 +95,7 @@ New 2.0 keys in the same section (absent from a 1.2.x ini, so the default applie
 | ID | 2.0 key, default | Handling | Check |
 |---|---|---|---|
 | N1 | `AnthropicMaxOutputTokens`, `OpenAIMaxOutputTokens`, `GeminiMaxOutputTokens`, `DeepSeekMaxOutputTokens`, `LMStudioMaxOutputTokens`, all 0 = Auto (PR #41). 1.2.x had no setting and sent a fixed budget | New | All read 0 |
-| N2 | `SettingsVersion`, 0 when absent; `CurrentSettingsVersion` is 2 | New: 0 makes S6 and the LMStudioMaxTokens step run on load; the first edit writes 2 | Ini has no key after load; `SettingsVersion=2` after one edit and save |
+| N2 | `SettingsVersion`, 0 when absent; `CurrentSettingsVersion` is 3 | New: 0 makes S6, the LMStudioMaxTokens step and the 1.2.x clean-up (card 0418) run on load. The clean-up writes 3 when it found anything 1.2.x left; any Project Settings edit also writes it next to the edited key | `SettingsVersion=3` after the first start of a 1.2.x fixture; a 2.0 project with nothing to migrate gets no key until an edit |
 | N3 | `McpServerPort`, 27000 | New | Reads 27000 |
 | N4 | `bEnableDynamicToolDiscovery`, false | New | Reads false |
 | N5 | `bEnablePythonScriptOnlyMode`, false (provisional 0019) | New | Reads false |
@@ -143,8 +155,8 @@ Values present in 1.2.x (main or tag). No 1.2.x value of `EN2CLLMProvider`, `EN2
 | F4 | Nothing | Reads `Saved/NodeToCode/Tags/BlueprintTags.json` (written by 2.0 development builds from 2025-06-21) once when there is no state file and no `.bak`/`.corrupt-*`, then renames it `.migrated` | New for 1.2.x users (nothing to migrate); Auto for pre-release users | PR #48 done | 0079's legacy-tags fixture tests the pre-release path, not a 1.2.3 one |
 | F5 | Batch output: none | `Translations/BatchTranslation_<stamp>/` with `BatchSummary.json`, and `Translations/BatchJson_<stamp>/` | New | - | - |
 | F6 | `Saved/NodeToCode.log`: code path exists, but nothing calls `EnableFileLogging`, so it is never written | Same | Unchanged (not written by either) | - | No such file after a session |
-| F7 | `Config/DefaultEngine.ini`: `ConfigureHttpTimeouts` writes `HttpConnectionTimeout=300` and `HttpActivityTimeout=3600` (section `HTTP`, through a PerObjectConfig helper) when lower | Writes nothing; timeouts are set per LLM request | User: the 1.2.x values stay in the project and still raise the engine-wide HTTP timeouts; remove them if unwanted | - | DefaultEngine.ini unchanged by 2.0 |
-| F8 | `EditorPerProjectUserSettings.ini`: sets "Use Less CPU when in Background" (`bThrottleCPUWhenNotForeground`) to false on every start | Leaves the preference alone and disables throttling only while a translation runs | User: the saved false stays; turn the option back on in Editor Preferences if wanted | - | Value unchanged by 2.0 |
+| F7 | `Config/DefaultEngine.ini`: `ConfigureHttpTimeouts` writes `HttpConnectionTimeout=300` and `HttpActivityTimeout=3600` (section `HTTP`, through a PerObjectConfig helper) when lower | Writes nothing itself; timeouts are set per LLM request | Auto, once (card 0418): a key in `[HTTP]` holding exactly 300 / 3600 (the 1.2.x values) is removed; a key with any other value is the user's and stays; other keys and sections are untouched (an empty `[HTTP]` header can remain). The engine defaults apply from the next start. A read-only file gets a warning instead | Card 0418 done | After the first start the two keys are gone, `HttpTimeout` and other sections unchanged; a fixture with `HttpConnectionTimeout=120` keeps it |
+| F8 | Engine-wide `EditorSettings.ini` (`UEditorPerformanceSettings`, `config=EditorSettings`): sets "Use Less CPU when in Background" (`bThrottleCPUWhenNotForeground`) to false on every start | Leaves the preference alone and disables throttling only while a translation runs | User, told once: a saved false is the same whether 1.2.x or the user set it, so 2.0 leaves it. When the project shows any 1.2.x trace (a key in S18 to S23, an F7 key, a dropped S11 to S14 price or a 1.2.x model name) and the option is off, card 0418 logs one warning on the first start saying so and where to turn it back on | Card 0418 done | Value unchanged; first start's warning mentions "Use Less CPU when in Background", second start does not |
 | F9 | Nothing | `[/Script/NodeToCode.N2CUserSettings]` in `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`: `bEnableMcpServer` true, `bAllowMcpPythonExecution` false | New (provisional 0019 for the Python default). The MCP server starts on port 27000 and a second server on 27001 at editor start (not in commandlets or unattended runs without `-N2CMcp`), accepting loopback Host and Origin only | PR #26 done | Log "MCP endpoint available at: http://localhost:27000/mcp" and "SSE server started on port 27001" |
 | F10 | Nothing | `<Project>/Content/Python/scripts/script_registry.json` and `scripts/<category>/*.py`, written by the script library tools (`.tmp`, `.bak`, `.corrupt-<stamp>`) | New for 1.2.x users | PR #49 done | - |
 
@@ -182,12 +194,13 @@ These affect people who ran a dev-2.0 build before the beta. 0079 does not need 
 ## Not verified
 
 - Which commit the Fab 1.2.3 package was built from (see Baselines).
-- Whether 1.2.x saved every Config property on each Project Settings save, or only edited ones (S rows, S11 to S14).
-- How a pricing map entry with an unknown enum key imports (S13).
-- That 2.0 drops the stale 1.2.x keys (S18 to S23) from the ini on the next save; PR #35 says so for the sign-in keys,
-  but it was not re-run here.
+- That a whole-section Project Settings save in 2.0 drops the stale 1.2.x keys (S18 to S23) from the ini; PR #35
+  says so for the sign-in keys, but it was not re-run here. A single-key save (any non-container edit) keeps them,
+  and card 0418 leaves them on purpose.
 - The secrets location on macOS and Linux (`UserSettingsDir()` there was not checked).
-- None of the rows were run in an editor for this card; card 0079 runs them on 5.8 with a 1.2.3 fixture.
+- None of the rows were run in an editor for card 0078; card 0418 ran S2 to S4, S6, S11 to S14, S18, N2, F7 and F8
+  in a headless 5.8 editor on a scratch copy of the 5.8 host with a 1.2.x-style config (two starts); card 0079 runs
+  every row on 5.8 with a 1.2.3 fixture.
 
 ## Other release notes found while writing this
 

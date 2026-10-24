@@ -14,6 +14,14 @@
 #include "Utils/N2CLogger.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
+#include "HAL/FileManager.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/ConfigContext.h"
+#include "Misc/FileHelper.h"
+#include "Misc/OutputDeviceNull.h"
+#include "Misc/Paths.h"
+#include "UObject/EnumProperty.h"
+#include "UObject/UnrealType.h"
 
 #if WITH_EDITOR
 #include "UnrealEdMisc.h"
@@ -114,7 +122,7 @@ int32 UN2CSettings::MigrateRetiredModelSelections()
     if (Changes.Num() > 0)
     {
         FN2CLogger::Get().LogWarning(FString::Printf(
-            TEXT("Saved model selection no longer served by its provider, using the current default instead: %s. Choose a model in Project Settings > Plugins > Node to Code to save the choice; until then this repeats on each start."),
+            TEXT("Saved model selection no longer served by its provider, using the current default instead: %s. NodeToCode saves the new selection to the project's config at editor start, so this is reported once; choose another model in Project Settings > Plugins > Node to Code."),
             *FString::Join(Changes, TEXT("; "))), TEXT("N2CSettings"));
     }
     return Changes.Num();
@@ -212,6 +220,466 @@ int32 UN2CSettings::MigrateSavedSettings()
             *FString::Join(Changes, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
     }
     return Changes.Num();
+}
+
+namespace N2CLegacy12
+{
+    /** A price NodeToCode 1.2.x put in its pricing maps (constructor InitializePricing, per million tokens) */
+    struct FPrice
+    {
+        const TCHAR* Model;
+        float Input;
+        float Output;
+    };
+
+    // origin/main (1.2.x maintenance line). The v1.2.3 tag fills a subset of these with the same prices, plus
+    // Gemini_2_5_ProExp at 0/0, a value 2.0 no longer has (it cannot load, so it never reaches the map).
+    const FPrice OpenAIPrices[] = {
+        { TEXT("GPT4o_2024_08_06"), 2.5f, 10.0f }, { TEXT("GPT4o_Mini_2024_07_18"), 0.15f, 0.6f },
+        { TEXT("GPT_4_1"), 2.0f, 8.0f }, { TEXT("GPT_o1"), 15.0f, 60.0f }, { TEXT("GPT_o3_mini"), 1.1f, 4.4f },
+        { TEXT("GPT_o3"), 15.0f, 60.0f }, { TEXT("GPT_o4_mini"), 1.1f, 4.4f },
+        { TEXT("GPT_o1_Preview"), 15.0f, 60.0f }, { TEXT("GPT_o1_Mini"), 1.1f, 4.4f },
+    };
+    const FPrice AnthropicPrices[] = {
+        { TEXT("Claude4_Opus"), 15.0f, 75.0f }, { TEXT("Claude4_Sonnet"), 3.0f, 15.0f },
+        { TEXT("Claude3_7_Sonnet"), 3.0f, 15.0f }, { TEXT("Claude3_5_Sonnet"), 3.0f, 15.0f },
+        { TEXT("Claude3_5_Haiku"), 0.8f, 4.0f },
+    };
+    const FPrice GeminiPrices[] = {
+        { TEXT("Gemini_2_5_Pro"), 1.25f, 10.0f }, { TEXT("Gemini_2_5_Flash"), 0.0f, 0.0f },
+        { TEXT("Gemini_Flash_2_0"), 1.0f, 0.4f }, { TEXT("Gemini_Flash_Lite_2_0"), 0.075f, 0.3f },
+        { TEXT("Gemini_1_5_Flash"), 0.075f, 0.3f }, { TEXT("Gemini_1_5_Pro"), 1.25f, 5.0f },
+        { TEXT("Gemini_2_0_ProExp_02_05"), 0.0f, 0.0f }, { TEXT("Gemini_2_0_FlashThinkingExp"), 0.0f, 0.0f },
+    };
+    const FPrice DeepSeekPrices[] = {
+        { TEXT("DeepSeek_R1"), 0.55f, 2.19f }, { TEXT("DeepSeek_V3"), 0.14f, 0.28f },
+    };
+
+    /** Model enum names only 1.2.x saved (all retired or removed in 2.0); one in the config is a trace of 1.2.x */
+    const TCHAR* const ModelNames[] = {
+        TEXT("Claude3_7_Sonnet"), TEXT("Claude3_5_Sonnet"), TEXT("Claude3_5_Haiku"), TEXT("Claude4_Opus"),
+        TEXT("Claude4_Sonnet"), TEXT("GPT_o1"), TEXT("GPT_o3_mini"), TEXT("GPT_o1_Preview"), TEXT("GPT_o1_Mini"),
+        TEXT("GPT_o4_mini"), TEXT("Gemini_2_5_ProExp"), TEXT("Gemini_2_5_Pro"), TEXT("Gemini_2_5_Flash"),
+        TEXT("Gemini_Flash_2_0"), TEXT("Gemini_Flash_Lite_2_0"), TEXT("Gemini_1_5_Flash"), TEXT("Gemini_1_5_Pro"),
+        TEXT("Gemini_2_0_ProExp_02_05"), TEXT("Gemini_2_0_FlashThinkingExp"),
+    };
+
+    /** The per-language theme maps 1.2.x saved; 2.0 has one CodeEditorTheme instead */
+    const TCHAR* const ThemeKeys[] = {
+        TEXT("CPPThemes"), TEXT("PythonThemes"), TEXT("JavaScriptThemes"), TEXT("CSharpThemes"),
+        TEXT("SwiftThemes"), TEXT("PseudocodeThemes"),
+    };
+
+    /** What 1.2.x's ConfigureHttpTimeouts wrote to [HTTP] in DefaultEngine.ini (UHttpTimeoutConfig) */
+    const TCHAR* const HttpSection = TEXT("HTTP");
+    const TPair<const TCHAR*, float> HttpKeys[] = {
+        { TEXT("HttpConnectionTimeout"), 300.0f }, { TEXT("HttpActivityTimeout"), 3600.0f },
+    };
+
+    /** The name part of a saved enum value ("EN2CGeminiModel::Gemini_2_5_Pro" or "Gemini_2_5_Pro") */
+    FString ShortEnumName(FString Value)
+    {
+        Value.TrimStartAndEndInline();
+        Value.TrimQuotesInline();
+        int32 Separator = INDEX_NONE;
+        if (Value.FindLastChar(TEXT(':'), Separator))
+        {
+            Value.RightChopInline(Separator + 1);
+        }
+        return Value;
+    }
+
+    bool IsLegacyModelName(const FString& Name)
+    {
+        for (const TCHAR* Model : ModelNames)
+        {
+            if (Name == Model)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when the engine can import this saved text into the property, as LoadConfig does */
+    bool CanImport(const FProperty* Property, const FString& Text)
+    {
+        void* Value = FMemory::Malloc(Property->GetSize(), Property->GetMinAlignment());
+        Property->InitializeValue(Value);
+        FOutputDeviceNull Quiet;
+        const bool bImported = Property->ImportText_Direct(*Text, Value, nullptr, PPF_None, &Quiet) != nullptr;
+        Property->DestroyValue(Value);
+        FMemory::Free(Value);
+        return bImported;
+    }
+
+    bool IsKnownEnumName(const UEnum* Enum, const FString& Name)
+    {
+        return Enum->GetValueByNameString(Name) != INDEX_NONE
+            || Enum->GetValueByNameString(FString::Printf(TEXT("%s::%s"), *Enum->GetName(), *Name)) != INDEX_NONE;
+    }
+
+    template <typename TEnum, typename TPricing>
+    bool DropPrices(TMap<TEnum, TPricing>& Map, const TCHAR* PropertyName, TConstArrayView<FPrice> Legacy, TArray<FString>& OutDropped)
+    {
+        const UEnum* Enum = StaticEnum<TEnum>();
+        const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
+        bool bChanged = false;
+        for (auto It = Map.CreateIterator(); It; ++It)
+        {
+            const FString Name = Enum ? Enum->GetNameStringByValue(static_cast<int64>(It.Key())) : FString();
+            const FN2CModelMetadata* Meta = Registry.GetModelMetadata(It.Key());
+            const FPrice* Old = Legacy.FindByPredicate([&Name](const FPrice& Price) { return Name == Price.Model; });
+
+            const TCHAR* Reason = nullptr;
+            if (!Meta)
+            {
+                Reason = TEXT("unknown model");
+            }
+            else if (Meta->bIsRetired)
+            {
+                Reason = TEXT("retired model");
+            }
+            else if (Old && FMath::IsNearlyEqual(It.Value().InputCost, Old->Input, 1e-4f)
+                && FMath::IsNearlyEqual(It.Value().OutputCost, Old->Output, 1e-4f))
+            {
+                Reason = TEXT("NodeToCode 1.2.x built-in price");
+            }
+            if (!Reason)
+            {
+                continue;
+            }
+            OutDropped.Add(FString::Printf(TEXT("%s[%s] %s/%s (%s)"), PropertyName,
+                Name.IsEmpty() ? TEXT("?") : *Name, *FString::SanitizeFloat(It.Value().InputCost),
+                *FString::SanitizeFloat(It.Value().OutputCost), Reason));
+            It.RemoveCurrent();
+            bChanged = true;
+        }
+        return bChanged;
+    }
+}
+
+FN2CLegacyMigrationTargets FN2CLegacyMigrationTargets::ForProject()
+{
+    FN2CLegacyMigrationTargets Targets;
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    Targets.ReadConfig = Settings->GetClass()->GetConfigName();
+    Targets.WriteIni = Settings->GetDefaultConfigFilename();
+    Targets.bReloadGConfigAfterWrite = true;
+    Targets.EngineIni = FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini");
+    return Targets;
+}
+
+TArray<FName> UN2CSettings::DropLegacyPricing(TArray<FString>& OutDropped)
+{
+    TArray<FName> Changed;
+    if (N2CLegacy12::DropPrices(OpenAIModelPricing, TEXT("OpenAIModelPricing"), N2CLegacy12::OpenAIPrices, OutDropped))
+    {
+        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelPricing));
+    }
+    if (N2CLegacy12::DropPrices(AnthropicModelPricing, TEXT("AnthropicModelPricing"), N2CLegacy12::AnthropicPrices, OutDropped))
+    {
+        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelPricing));
+    }
+    if (N2CLegacy12::DropPrices(GeminiModelPricing, TEXT("GeminiModelPricing"), N2CLegacy12::GeminiPrices, OutDropped))
+    {
+        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiModelPricing));
+    }
+    if (N2CLegacy12::DropPrices(DeepSeekModelPricing, TEXT("DeepSeekModelPricing"), N2CLegacy12::DeepSeekPrices, OutDropped))
+    {
+        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModelPricing));
+    }
+    return Changed;
+}
+
+bool UN2CSettings::RemoveLegacyHttpTimeouts(const FString& EngineIniPath, TArray<FString>& OutRemoved)
+{
+    FString Text;
+    if (EngineIniPath.IsEmpty() || !FFileHelper::LoadFileToString(Text, *EngineIniPath))
+    {
+        return true;
+    }
+
+    // Find the 1.2.x values in [HTTP], matching keys the way the engine's single-property update does ("Key=")
+    TArray<FString> Lines;
+    Text.ParseIntoArrayLines(Lines, false);
+    const FString SectionHeader = FString::Printf(TEXT("[%s]"), N2CLegacy12::HttpSection);
+    TArray<TPair<FString, FString>> ToRemove;
+    bool bInSection = false;
+    for (const FString& RawLine : Lines)
+    {
+        const FString Line = RawLine.TrimStartAndEnd();
+        if (Line.StartsWith(TEXT("[")))
+        {
+            bInSection = Line == SectionHeader;
+            continue;
+        }
+        if (!bInSection)
+        {
+            continue;
+        }
+        for (const TPair<const TCHAR*, float>& Key : N2CLegacy12::HttpKeys)
+        {
+            const FString Prefix = FString::Printf(TEXT("%s="), Key.Key);
+            if (!Line.StartsWith(Prefix, ESearchCase::CaseSensitive))
+            {
+                continue;
+            }
+            const FString Value = Line.RightChop(Prefix.Len()).TrimStartAndEnd();
+            if (Value.IsNumeric() && FMath::IsNearlyEqual(FCString::Atof(*Value), Key.Value, 1e-3f))
+            {
+                ToRemove.AddUnique(TPair<FString, FString>(Key.Key, Value));
+            }
+        }
+    }
+    if (ToRemove.Num() == 0)
+    {
+        return true;
+    }
+    if (IFileManager::Get().IsReadOnly(*EngineIniPath))
+    {
+        return false;
+    }
+
+    bool bWritten = true;
+    for (const TPair<FString, FString>& Key : ToRemove)
+    {
+        // An empty config file has no value for the key, so the update removes its line from the file on disk
+        FConfigFile NoValue;
+        if (NoValue.UpdateSinglePropertyInSection(*EngineIniPath, *Key.Key, N2CLegacy12::HttpSection))
+        {
+            OutRemoved.Add(FString::Printf(TEXT("[%s] %s=%s"), N2CLegacy12::HttpSection, *Key.Key, *Key.Value));
+        }
+        else
+        {
+            bWritten = false;
+        }
+    }
+    return bWritten;
+}
+
+bool UN2CSettings::WriteConfigProperties(const TArray<FName>& PropertyNames, const FString& IniPath, bool bReloadGConfig)
+{
+    if (PropertyNames.Num() == 0)
+    {
+        return true;
+    }
+    const FString FullPath = FPaths::ConvertRelativePathToFull(IniPath);
+    if (IFileManager::Get().FileExists(*FullPath) && IFileManager::Get().IsReadOnly(*FullPath))
+    {
+        return false;
+    }
+
+    // As UObject::UpdateSinglePropertyInConfigFile: save the object into a sandbox config, then let the config
+    // system rewrite only these keys in the file on disk, keeping every other line (stale 1.2.x keys included)
+    FConfigCacheIni Sandbox(EConfigCacheType::Temporary);
+    FConfigFile& Saved = Sandbox.Add(IniPath, FConfigFile());
+    SaveConfig(CPF_Config, *IniPath, &Sandbox, false);
+    TArray<FString> Sections;
+    Saved.GetKeys(Sections);
+    if (Sections.Num() == 0)
+    {
+        return false;
+    }
+
+    const FString ConfigName = GetClass()->ClassConfigName.ToString();
+    if (bReloadGConfig)
+    {
+        // Keep changes GConfig has not written yet; the reload below replaces its copy with the file on disk
+        GConfig->Flush(false, *ConfigName);
+    }
+    bool bWritten = true;
+    for (const FName& Name : PropertyNames)
+    {
+        bWritten &= Saved.UpdateSinglePropertyInSection(*IniPath, *Name.ToString(), *Sections[0]);
+    }
+    if (bReloadGConfig)
+    {
+        FConfigContext Context = FConfigContext::ForceReloadIntoGConfig();
+        Context.bWriteDestIni = false;
+        Context.Load(*ConfigName);
+    }
+    return bWritten;
+}
+
+FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacyMigrationTargets& Targets)
+{
+    FN2CLegacyMigrationReport Report;
+    const FString Section = GetClass()->GetPathName();
+    auto ReadSaved = [&Targets, &Section](const TCHAR* Key, FString& OutValue)
+    {
+        return GConfig && !Targets.ReadConfig.IsEmpty() && GConfig->GetString(*Section, Key, OutValue, Targets.ReadConfig);
+    };
+
+    // Both normally ran when the config was loaded; they change nothing and log nothing the second time
+    MigrateRetiredModelSelections();
+    MigrateSavedSettings();
+
+    // Every start: write back enum values that did not load as saved, so their warnings are not repeated
+    TArray<FName> ToSave;
+    bool bLegacyTrace = false;
+    for (TFieldIterator<FProperty> It(GetClass(), EFieldIteratorFlags::ExcludeSuper); It; ++It)
+    {
+        const FProperty* Property = *It;
+        if (!Property->HasAnyPropertyFlags(CPF_Config))
+        {
+            continue;
+        }
+        FString Saved;
+        if (Property->IsA<FArrayProperty>() || Property->ArrayDim != 1 || !ReadSaved(*Property->GetName(), Saved))
+        {
+            continue;
+        }
+        const UEnum* Enum = nullptr;
+        int64 Value = 0;
+        if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+        {
+            Enum = EnumProperty->GetEnum();
+            Value = EnumProperty->GetUnderlyingProperty()->GetSignedIntPropertyValue(EnumProperty->ContainerPtrToValuePtr<void>(this));
+        }
+        else if (const FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+        {
+            Enum = ByteProperty->Enum;
+            Value = ByteProperty->GetPropertyValue_InContainer(this);
+        }
+        if (!Enum)
+        {
+            // Any other value the engine could not import (a pricing map keyed by a model 2.0 does not have loses
+            // the whole map) failed on load and would fail again on every start until rewritten
+            if (!N2CLegacy12::CanImport(Property, Saved))
+            {
+                Report.ResetEnumValues.Add(FString::Printf(TEXT("%s (it names a value 2.0 does not have, so the whole entry was skipped)"), *Property->GetName()));
+                ToSave.Add(Property->GetFName());
+            }
+            continue;
+        }
+        const FString SavedName = N2CLegacy12::ShortEnumName(Saved);
+        const FString CurrentName = Enum->GetNameStringByValue(Value);
+        if (SavedName.IsEmpty() || SavedName == CurrentName)
+        {
+            continue;
+        }
+        if (!N2CLegacy12::IsKnownEnumName(Enum, SavedName))
+        {
+            Report.ResetEnumValues.Add(FString::Printf(TEXT("%s=%s -> %s"), *Property->GetName(), *SavedName, *CurrentName));
+        }
+        bLegacyTrace |= N2CLegacy12::IsLegacyModelName(SavedName);
+        ToSave.Add(Property->GetFName());
+    }
+    if (Report.ResetEnumValues.Num() > 0)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Saved settings hold values NodeToCode 2.0 does not have, so these load as the 2.0 value instead: %s. The new value is saved to %s; choose another in Project Settings > Plugins > Node to Code."),
+            *FString::Join(Report.ResetEnumValues, TEXT("; ")), *Targets.WriteIni), TEXT("N2CSettings"));
+    }
+
+    // Once: what NodeToCode 1.2.x left in this project
+    bool bStamp = false;
+    TArray<FString> ThemeKeys;
+    if (SettingsVersion < 3)
+    {
+        Report.bRanLegacySteps = true;
+        FString Unused;
+
+        // The version 1 and 2 results exist only in memory until saved; once the version is stamped they no longer run
+        if (SettingsVersion < 1 && ReadSaved(TEXT("OllamaConfig"), Unused))
+        {
+            ToSave.AddUnique(GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaConfig));
+            bStamp = true;
+        }
+        if (SettingsVersion < 2 && LMStudioMaxOutputTokens > 0 && !ReadSaved(TEXT("LMStudioMaxOutputTokens"), Unused))
+        {
+            ToSave.AddUnique(GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioMaxOutputTokens));
+            bStamp = true;
+        }
+
+        for (const FName& Changed : DropLegacyPricing(Report.DroppedPrices))
+        {
+            ToSave.AddUnique(Changed);
+            bStamp = true;
+        }
+
+        for (const TCHAR* Key : N2CLegacy12::ThemeKeys)
+        {
+            if (ReadSaved(Key, Unused))
+            {
+                Report.LegacyThemeKeys.Add(Key);
+            }
+        }
+
+        if (!RemoveLegacyHttpTimeouts(Targets.EngineIni, Report.RemovedEngineKeys))
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(
+                TEXT("Could not remove the HTTP timeouts NodeToCode 1.2.x wrote to %s ([HTTP] HttpConnectionTimeout=300, HttpActivityTimeout=3600): the file is read-only. Check it out and restart the editor, or delete the two lines by hand."),
+                *Targets.EngineIni), TEXT("N2CSettings"));
+        }
+
+        bLegacyTrace |= Report.LegacyThemeKeys.Num() > 0 || Report.RemovedEngineKeys.Num() > 0 || Report.DroppedPrices.Num() > 0;
+        bStamp |= bLegacyTrace;
+
+        if (Report.LegacyThemeKeys.Num() > 0)
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(
+                TEXT("Code editor themes saved by NodeToCode 1.2.x (%s in %s) are not used by 2.0, which draws every language with one theme: Project Settings > Plugins > Node to Code > Theming > Code Editor Theme. If you changed theme colours in 1.2.x, set them there again; the old entries are left in the file so you can copy the colours, and can then be deleted. This is reported once."),
+                *FString::Join(Report.LegacyThemeKeys, TEXT(", ")), *Targets.WriteIni), TEXT("N2CSettings"));
+        }
+
+        if (bLegacyTrace && !Targets.bThrottleCPUWhenNotForeground)
+        {
+            Report.bReportedThrottle = true;
+            FN2CLogger::Get().LogWarning(
+                TEXT("NodeToCode 1.2.x turned off Editor Preferences > General > Performance > Use Less CPU when in Background on every editor start. 2.0 no longer changes it and keeps the editor at full speed only while a translation runs. The option is still off; NodeToCode cannot tell whether 1.2.x or you turned it off, so it is left as it is. Turn it back on there if you want the editor to slow down in the background. This is reported once."),
+                TEXT("N2CSettings"));
+        }
+    }
+
+    const int32 PreviousVersion = SettingsVersion;
+    if (bStamp)
+    {
+        SettingsVersion = CurrentSettingsVersion;
+        ToSave.AddUnique(GET_MEMBER_NAME_CHECKED(UN2CSettings, SettingsVersion));
+    }
+    if (ToSave.Num() > 0)
+    {
+        if (WriteConfigProperties(ToSave, Targets.WriteIni, Targets.bReloadGConfigAfterWrite))
+        {
+            Report.bStampedVersion = bStamp;
+            for (const FName& Name : ToSave)
+            {
+                Report.PersistedProperties.Add(Name.ToString());
+            }
+        }
+        else
+        {
+            Report.bWriteFailed = true;
+            SettingsVersion = PreviousVersion;
+            FN2CLogger::Get().LogWarning(FString::Printf(
+                TEXT("Could not save the updated NodeToCode settings (%s) to %s: the file is read-only or its folder is missing. Check it out or make it writable; until then the warnings above repeat on each start."),
+                *FString::JoinBy(ToSave, TEXT(", "), [](const FName& Name) { return Name.ToString(); }), *Targets.WriteIni),
+                TEXT("N2CSettings"));
+        }
+    }
+
+    TArray<FString> Done;
+    if (Report.PersistedProperties.Num() > 0)
+    {
+        Done.Add(FString::Printf(TEXT("saved %s to %s"), *FString::Join(Report.PersistedProperties, TEXT(", ")), *Targets.WriteIni));
+    }
+    if (Report.DroppedPrices.Num() > 0)
+    {
+        Done.Add(FString::Printf(TEXT("dropped pricing entries so the model registry's prices apply: %s"), *FString::Join(Report.DroppedPrices, TEXT(", "))));
+    }
+    if (Report.RemovedEngineKeys.Num() > 0)
+    {
+        Done.Add(FString::Printf(TEXT("removed %s from %s (2.0 sets HTTP timeouts per request; the engine defaults apply from the next start)"),
+            *FString::Join(Report.RemovedEngineKeys, TEXT(", ")), *Targets.EngineIni));
+    }
+    if (Done.Num() > 0)
+    {
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Updated settings left by an earlier NodeToCode version: %s."),
+            *FString::Join(Done, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
+    }
+    return Report;
 }
 
 TArray<FString> UN2CSettings::FindRemovedSignInSelections(const FString& ConfigFilename)
@@ -479,6 +947,16 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
     
     // Add debug logging for config save
     UpdateSinglePropertyInConfigFile(Property, ConfigPath);
+
+    // PreEditChange stamped the current layout version on the values being saved; save it with them so the
+    // load-time migrations do not run on this config again
+    if (Property && Property->GetFName() != GET_MEMBER_NAME_CHECKED(UN2CSettings, SettingsVersion))
+    {
+        if (const FProperty* VersionProperty = GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UN2CSettings, SettingsVersion)))
+        {
+            UpdateSinglePropertyInConfigFile(VersionProperty, ConfigPath);
+        }
+    }
 
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Saving settings to: %s"), *ConfigPath),
