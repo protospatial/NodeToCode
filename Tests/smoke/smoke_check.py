@@ -21,7 +21,10 @@ In the default mode, with the editor still up, it also fails on:
   * the in-editor check: run-python lists the plugin's N2C* types, opens an engine Blueprint that exists in UE 5.6-5.8,
     and json.loads get_focused_blueprint_json with node_count > 0;
   * any Tests/mcp_probe probe status (P1-P3, P5-P7 in this session, P4 in its own editor) that differs from
-    Tests/mcp_probe/expected.json.
+    Tests/mcp_probe/expected.json;
+  * the official MCP conformance suite and the MCP Inspector CLI (`--method tools/list`), both pinned, through
+    Tests/conformance/run_conformance.py: a scenario listed as passing in Tests/conformance/baseline.json that fails,
+    or a failure the baseline does not list. Needs Node.js (npx). Results: <log-dir>/<log-prefix>_conformance/.
 Failures already present at a commit are listed in expected.json under known_failures with their finding ids; a
 fix card removes its entry. Prints one PASS/FAIL line per check, a summary line, and N2C_SMOKE PASS or FAIL.
 """
@@ -39,6 +42,8 @@ import types
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROBE_DIR = os.path.join(os.path.dirname(HERE), 'mcp_probe')
 sys.path.insert(0, PROBE_DIR)
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'conformance'))
+import run_conformance  # noqa: E402
 from editor_session import EditorSession, free_port  # noqa: E402
 import mcp_probe  # noqa: E402
 from e05_regressions import rpc, run_python  # noqa: E402
@@ -175,7 +180,8 @@ class Smoke:
         self.expected_tools = expected.get('tool_counts', {}).get(self.label, {})
         self.known = expected.get('known_failures', {}).get(self.label, [])
         self.failures = []
-        self.summary = {'tools': {}, 'probes': {}, 'config': 'unchanged', 'in_editor': None, 'durations': {}}
+        self.summary = {'tools': {}, 'probes': {}, 'config': 'unchanged', 'in_editor': None, 'durations': {},
+                        'conformance': 'not run'}
 
     def check(self, ok, name, detail=''):
         """Record one check; a failure that matches a known_failures entry is reported as KNOWN and does not fail"""
@@ -224,6 +230,8 @@ class Smoke:
                 if mode == 'default':
                     self.in_editor(url)
                     self.probes(port, session.proc.pid)
+                    if not self.args.skip_conformance:
+                        self.conformance(url, count)
                 self.quit(url, session, mode)
         finally:
             session.stop(before_restore=lambda: after.update(config_hashes(self.args.project)))
@@ -287,6 +295,32 @@ class Smoke:
             self.check(k not in diff, 'probe %s' % k, '%s (expected %s; ids %s)' % (
                 v['status'], diff[k]['expected'] if k in diff else v['status'], ', '.join(v.get('ids', []))))
 
+    def conformance(self, url, tool_count):
+        """Pinned MCP conformance suite plus Inspector CLI tools/list, compared with Tests/conformance/baseline.json"""
+        start = time.time()
+        out_dir = os.path.join(self.args.log_dir, '%s_conformance' % self.args.log_prefix)
+        say('== conformance suite and Inspector CLI (results %s) %s' % (out_dir, ts()))
+        result = run_conformance.run(url, out_dir, self.label, expected_tools=tool_count)
+        lines, failures, counts = run_conformance.evaluate(result, self.label)
+        for kind, name, detail in lines:
+            if kind == 'FAIL':
+                self.check(False, name, detail)
+            else:
+                say('%s %s  %s' % (kind, name, detail))
+        tally = {}
+        for kind, _, _ in lines:
+            tally[kind] = tally.get(kind, 0) + 1
+        insp = result.get('inspector') or {}
+        self.summary['conformance'] = '%d pass %d fail (known %d, n/a %d, now passing %d), inspector %s' % (
+            counts['pass'], counts['fail'], sum(1 for k, n, _ in lines if k == 'KNOWN' and n.startswith('conformance')),
+            tally.get('N/A', 0), tally.get('NOW PASSES', 0) + tally.get('NEW', 0),
+            ('%s tools' % insp['tools']) if insp.get('tools') is not None else
+            'known' if any(k == 'KNOWN' and n == run_conformance.INSPECTOR_CHECK for k, n, _ in lines) else 'fail')
+        say('CONFORMANCE UE %s: %s; versions %s; %s' % (self.label, self.summary['conformance'],
+                                                        json.dumps(result.get('versions')),
+                                                        json.dumps(result.get('durations'))))
+        self.summary['durations']['conformance'] = int(time.time() - start)
+
     def run_p4(self):
         start = time.time()
         say('== P4 (MCP port held by another process) %s' % ts())
@@ -312,6 +346,8 @@ def main():
     ap.add_argument('--log-prefix', default=None, help='editor log name prefix (default Smoke_<label>)')
     ap.add_argument('--modes', nargs='*', default=[m for m, _ in MODES], help='registration modes to run')
     ap.add_argument('--skip-p4', action='store_true', help='skip P4 (its own editor launch)')
+    ap.add_argument('--skip-conformance', action='store_true',
+                    help='skip the MCP conformance suite and Inspector CLI (they need Node.js and npm registry access)')
     args = ap.parse_args()
     args.log_prefix = args.log_prefix or 'Smoke_%s' % args.label
     os.makedirs(args.log_dir, exist_ok=True)
@@ -328,8 +364,8 @@ def main():
     s = smoke.summary
     tools = ' '.join('%s=%s' % (m, s['tools'].get(m)) for m in args.modes)
     probes = ' '.join('%s=%s' % (k, v) for k, v in sorted(s['probes'].items()))
-    say('N2C_SMOKE SUMMARY UE %s: tools %s; probes %s; config %s; focused BP nodes %s; %ds' % (
-        args.label, tools, probes, s['config'], s['in_editor'], int(time.time() - t0)))
+    say('N2C_SMOKE SUMMARY UE %s: tools %s; probes %s; conformance %s; config %s; focused BP nodes %s; %ds' % (
+        args.label, tools, probes, s['conformance'], s['config'], s['in_editor'], int(time.time() - t0)))
     if smoke.failures:
         say('N2C_SMOKE FAIL (%d): %s' % (len(smoke.failures), ' | '.join(f.split('\n')[0] for f in smoke.failures)))
         return 1

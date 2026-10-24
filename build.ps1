@@ -40,8 +40,13 @@
     ensure, assertion or crash line in the editor log (minus a commented allowlist), a missing MCP start line or
     /mcp/health answer from that editor, a tools/list count that differs from Tests/smoke/expected.json, any change to
     the host's Config/*.ini during a session, a failed in-editor get_focused_blueprint_json on an engine Blueprint, or
-    a Tests/mcp_probe probe status that differs from Tests/mcp_probe/expected.json. The summary shows the tool count
-    per mode, the probe statuses and the config check. Editor logs: BuildLogs/Smoke_<ver>_<stamp>_<mode>.log.
+    a Tests/mcp_probe probe status that differs from Tests/mcp_probe/expected.json. In the default-mode session it
+    also runs the official MCP conformance suite and the MCP Inspector CLI (tools/list), both pinned in
+    Tests/conformance/baseline.json and fetched by npx (needs Node.js), and fails when a baseline scenario fails or a
+    failure is not listed there; a listed failure that starts passing prints a NOW PASSES reminder. The summary shows
+    the tool count per mode, the probe statuses, the conformance pass and fail counts and the config check. Editor
+    logs: BuildLogs/Smoke_<ver>_<stamp>_<mode>.log; conformance and Inspector JSON:
+    BuildLogs/Smoke_<ver>_<stamp>_conformance/.
 
 .EXAMPLE
     .\build.ps1 -UEVersion 5.7              # incremental editor build for 5.7
@@ -381,12 +386,14 @@ function Invoke-Smoke($h, [string]$engine, [string]$ver, [string]$stamp) {
     $script = Join-Path $PluginRoot 'Tests/smoke/smoke_check.py'
     $log = Join-Path $LogRoot "Smoke_${ver}_$stamp.log"
     $py = Get-EngineTool $engine 'Python'
-    Write-Step "Smoke test UE $ver (headless editor per MCP registration mode, MCP probes, log and config checks)"
+    Write-Step "Smoke test UE $ver (headless editor per MCP registration mode, MCP probes, MCP conformance, log and config checks)"
     if (-not (Test-Path $py)) { Write-Host "SMOKE FAIL (UE $ver): no engine Python at $py" -ForegroundColor Red; return 'smoke FAIL (no engine Python)' }
     $code = Invoke-Logged $py @('-I', '-u', $script, '--engine', $engine, '--project', $h.UProject, '--label', $ver,
         '--log-dir', $LogRoot, '--log-prefix', "Smoke_${ver}_$stamp") $log
     $text = if (Test-Path $log) { [IO.File]::ReadAllText($log) } else { '' }
     $summary = if ($text -match 'N2C_SMOKE SUMMARY UE [\d.]+: ([^\r\n]*)') { $Matches[1] } else { 'no summary' }
+    # A known conformance failure (or an unlisted scenario) that now passes: raise the baseline, not a failure
+    foreach ($m in [regex]::Matches($text, '(?m)^(NOW PASSES|NEW) .*$')) { Write-Host "  $($m.Value.Trim())" -ForegroundColor Yellow }
     if ($code -eq 0 -and $text -match 'N2C_SMOKE PASS') {
         Write-Host "SMOKE PASS (UE $ver): $summary" -ForegroundColor Green
         return "smoke PASS ($summary)"

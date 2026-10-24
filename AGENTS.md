@@ -36,6 +36,9 @@ creates on first use. The host's `Plugins/NodeToCode/{Source,Content,Resources,T
 links on Mac and Linux) back into this checkout, and `NodeToCode.uplugin` is copied in on every run, so there is one
 copy of the source while `Binaries/` and `Intermediate/` stay per host and every engine builds incrementally.
 
+Requirements: the UE 5.6, 5.7 and 5.8 engines, and for `-Smoke` Node.js 22.19 or newer with `npx` on `PATH` (it
+fetches the pinned MCP conformance suite and MCP Inspector from npm; checked with Node 24.11.1 and npm 11.6.2).
+
 ```powershell
 .\build.ps1 -UEVersion 5.7           # incremental editor build for one version (5.6, 5.7 or 5.8)
 .\build.ps1 -All                     # build every detected version in turn
@@ -71,7 +74,14 @@ copy of the source while `Binaries/` and `Intermediate/` stay per host and every
   than `Tests/smoke/expected.json`, any change to the host's `Config/*.ini` during a session, a failed
   `get_focused_blueprint_json` on an engine Blueprint, or a probe status other than `Tests/mcp_probe/expected.json`.
   A card that adds or removes an MCP tool updates `Tests/smoke/expected.json`; failures already present are listed
-  there under `known_failures` with their finding ids. About 1 minute per engine.
+  there under `known_failures` with their finding ids. About 1.5 minutes per engine, with the conformance step below.
+- In the default session `-Smoke` also runs `Tests/conformance/run_conformance.py`: the official MCP conformance
+  suite (`npx @modelcontextprotocol/conformance server --requirements 2025-11-25`) and the MCP Inspector CLI
+  (`--cli <url> --method tools/list`), at the exact versions pinned in `Tests/conformance/baseline.json`, about 4 s.
+  The baseline lists every scenario once as `pass`, `known_failures` (owning card, failing checks, why) or
+  `not_applicable` (why). The smoke step fails when a `pass` scenario fails or a check outside an entry fails, and
+  prints `NOW PASSES` when a listed failure passes: the owning card then moves it to `pass` in its own commit. The
+  JSON results land in `BuildLogs/Smoke_<ver>_<stamp>_conformance/`. The rejected-Origin case is probe P1's.
 - Logs: `BuildLogs/Build_<version>_<timestamp>.log`, `Smoke_*.log`, `Tests_*.log` (report in `Tests_*/`) and
   `Package_*.log`. The script exits non-zero when any build, smoke check or test run fails.
 - If a host editor is open, that version is skipped (Live Coding blocks UBT): use Ctrl+Alt+F11 in the editor, or
