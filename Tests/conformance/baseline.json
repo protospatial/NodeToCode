@@ -1,0 +1,73 @@
+{
+ "_doc": "Read by run_conformance.py (build.ps1 -Smoke, default-mode session). Every scenario the pinned suite runs is listed once: pass (passes today; a failure fails the smoke step), known_failures (a defect a later card fixes: card, the failing check ids, why) or not_applicable (needs something NodeToCode does not offer: the failing check ids, why). A check outside an entry's checks fails the smoke step; a listed scenario that passes prints NOW PASSES, and the owning card moves it to pass in its own commit. An optional engines list limits an entry to some engine labels. known_failures['inspector tools/list'] matches the Inspector's error text with the regex in match. known_warnings maps '<scenario>/<check id>' WARNING checks to the card that owns them (warnings never fail). Raising a pin: run the new version against 5.6, 5.7 and 5.8 and classify every new scenario.",
+ "conformance": {
+  "package": "@modelcontextprotocol/conformance@0.2.0-alpha.12",
+  "args": ["server", "--requirements", "2025-11-25"]
+ },
+ "inspector": {
+  "package": "@modelcontextprotocol/inspector@2.10.1"
+ },
+ "pass": [
+  "dns-rebinding-protection",
+  "ping",
+  "prompts-list",
+  "resources-list",
+  "server-initialize",
+  "server-session-lifecycle",
+  "server-sse-multiple-streams",
+  "server-sse-polling",
+  "tools-list"
+ ],
+ "known_failures": {
+  "logging-set-level": {
+   "card": "0110",
+   "checks": ["logging-set-level"],
+   "why": "initialize advertises the logging capability but logging/setLevel is not implemented (-32601). Card 0110 stops advertising logging (deprecated in 2026-07-28); the scenario then moves to not_applicable."
+  },
+  "inspector tools/list": {
+   "card": "0110",
+   "match": "logging/setLevel",
+   "why": "Inspector 2.x sends logging/setLevel right after initialize because the server advertises logging, gets -32601 and exits before tools/list. Passes once card 0110 drops the logging capability; the smoke step then checks the tool count."
+  }
+ },
+ "known_warnings": {
+  "server-session-lifecycle/server-session-delete-accepted": {
+   "card": "0109",
+   "why": "DELETE /mcp is not routed (404) and the session keeps answering; card 0109 adds DELETE (end the session) and GET 405."
+  }
+ },
+ "not_applicable": {
+  "completion-complete": {
+   "checks": ["completion-complete"],
+   "why": "The server does not advertise the completions capability, so -32601 for completion/complete is correct."
+  },
+  "resources-subscribe": {
+   "checks": ["resources-subscribe"],
+   "why": "The server advertises resources.subscribe false; resources/subscribe is not offered."
+  },
+  "resources-unsubscribe": {
+   "checks": ["resources-unsubscribe"],
+   "why": "The server advertises resources.subscribe false; resources/unsubscribe is not offered."
+  },
+  "tools-call-simple-text": {"checks": ["tools-call-simple-text"], "why": "Calls the suite's fixture tool test_simple_text, which NodeToCode does not register."},
+  "tools-call-image": {"checks": ["tools-call-image"], "why": "Calls the suite's fixture tool test_image_content."},
+  "tools-call-audio": {"checks": ["tools-call-audio"], "why": "Calls the suite's fixture tool test_audio_content."},
+  "tools-call-embedded-resource": {"checks": ["tools-call-embedded-resource"], "why": "Calls the suite's fixture tool test_embedded_resource."},
+  "tools-call-mixed-content": {"checks": ["tools-call-mixed-content"], "why": "Calls the suite's fixture tool test_multiple_content_types."},
+  "tools-call-with-logging": {"checks": ["tools-call-with-logging"], "why": "Calls the suite's fixture tool test_tool_with_logging after logging/setLevel (today it stops at setLevel, card 0110)."},
+  "tools-call-error": {"checks": ["tools-call-error"], "why": "Calls the suite's fixture tool test_error_handling."},
+  "tools-call-with-progress": {"checks": ["tools-call-with-progress"], "why": "Calls the suite's fixture tool test_tool_with_progress."},
+  "tools-call-sampling": {"checks": ["tools-call-sampling"], "why": "Calls the suite's fixture tool test_sampling (server-to-client sampling, which NodeToCode does not use)."},
+  "tools-call-elicitation": {"checks": ["tools-call-elicitation"], "why": "Calls the suite's fixture tool test_elicitation (server-to-client elicitation, which NodeToCode does not use)."},
+  "elicitation-sep1034-defaults": {"checks": ["elicitation-sep1034-general"], "why": "Calls the suite's fixture tool test_elicitation_sep1034_defaults."},
+  "elicitation-sep1330-enums": {"checks": ["elicitation-sep1330-general"], "why": "Calls the suite's fixture tool test_elicitation_sep1330_enums."},
+  "json-schema-2020-12": {"checks": ["json-schema-2020-12-tool-found"], "why": "Looks for the suite's fixture tool json_schema_2020_12_tool (pending scenario, not scored for 2025-11-25)."},
+  "resources-read-text": {"checks": ["resources-read-text"], "why": "Reads the suite's fixture resource test://static-text."},
+  "resources-read-binary": {"checks": ["resources-read-binary"], "why": "Reads the suite's fixture resource test://static-binary."},
+  "resources-templates-read": {"checks": ["resources-templates-read"], "why": "Reads the suite's fixture template test://template/{id}/data."},
+  "prompts-get-simple": {"checks": ["prompts-get-simple"], "why": "Gets the suite's fixture prompt test_simple_prompt."},
+  "prompts-get-with-args": {"checks": ["prompts-get-with-args"], "why": "Gets the suite's fixture prompt test_prompt_with_arguments."},
+  "prompts-get-embedded-resource": {"checks": ["prompts-get-embedded-resource"], "why": "Gets the suite's fixture prompt test_prompt_with_embedded_resource."},
+  "prompts-get-with-image": {"checks": ["prompts-get-with-image"], "why": "Gets the suite's fixture prompt test_prompt_with_image."}
+ }
+}
