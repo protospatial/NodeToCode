@@ -23,10 +23,12 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+from mcp_session import session_headers, url_port  # noqa: E402
 
 PROBE_DIR = '/Game/E05Probe'
 
@@ -44,10 +46,19 @@ HEADLESS_CHECKS = [('e05_struct_check.py', 'E05_STRUCT'),
 # ---------------------------------------------------------------------------------------------------------------------
 
 def rpc(url, method, params=None, rid=1):
+    """One JSON-RPC request in this script's MCP session (mcp_session.py); a 404 (the session is gone, for example
+    the editor on that port restarted) opens a new session and sends the request once more"""
     body = json.dumps({'jsonrpc': '2.0', 'id': rid, 'method': method, 'params': params or {}}).encode('utf-8')
-    req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.loads(r.read().decode('utf-8'))
+    port = url_port(url)
+    for refresh in (False, True):
+        headers = dict(session_headers(port, refresh=refresh), **{'Content-Type': 'application/json'})
+        req = urllib.request.Request(url, data=body, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            if e.code != 404 or refresh:
+                raise
 
 
 def tool(url, name, arguments):

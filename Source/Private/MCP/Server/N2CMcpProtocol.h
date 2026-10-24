@@ -21,7 +21,7 @@ class FN2CToolAsyncTaskManager;
  */
 struct FN2CMcpInbound
 {
-	/** The request verb. The endpoint takes POST; any other verb is answered with 405. */
+	/** The request verb: POST carries JSON-RPC messages, DELETE ends a session; any other verb is answered with 405. */
 	FString Verb = TEXT("POST");
 
 	/** Header names as sent (matched case-insensitively) and their values */
@@ -40,14 +40,45 @@ struct FN2CMcpInbound
 /** One complete answer to an inbound message */
 struct FN2CMcpReply
 {
-	/** Transport status (HTTP status code): 200, 202 for a message that needs no response, 400 for a bad message */
+	/**
+	 * Transport status (HTTP status code): 200; 202 for a message that needs no response; 204 for an ended session;
+	 * 400 for a bad message, a missing Mcp-Session-Id or an unsupported MCP-Protocol-Version; 404 for an unknown or
+	 * ended session; 405 for a verb the endpoint does not take
+	 */
 	int32 Status = 200;
 
-	/** The JSON-RPC message or batch (condensed JSON), or empty for no body (202) */
+	/** The JSON-RPC message or batch (condensed JSON), or empty for no body (202, 204) */
 	FString Body;
 
 	/** The Mcp-Session-Id to send with the answer, or empty for none */
 	FString SessionId;
+
+	/** Further transport headers (name, value), for example Allow on a 405 */
+	TArray<TPair<FString, FString>> Headers;
+};
+
+/**
+ * One client's MCP session: created by a successful initialize, named by a new random Mcp-Session-Id, ended by DELETE
+ * (or dropped as the least recently used when the table is full). Every request after initialize names it.
+ */
+struct FN2CMcpSession
+{
+	/** The Mcp-Session-Id (a random GUID, visible ASCII) */
+	FString Id;
+
+	/** The protocol version initialize negotiated */
+	FString ProtocolVersion;
+
+	/** clientInfo and capabilities as the client sent them in initialize (null when absent) */
+	TSharedPtr<FJsonObject> ClientInfo;
+	TSharedPtr<FJsonObject> ClientCapabilities;
+
+	/** True once the client sent notifications/initialized */
+	bool bInitialized = false;
+
+	/** FPlatformTime::Seconds() of initialize and of the last request that named the session */
+	double CreatedSeconds = 0.0;
+	double LastUsedSeconds = 0.0;
 };
 
 /**
@@ -94,7 +125,17 @@ struct FN2CMcpCatalogs
 /**
  * The MCP protocol core, independent of any transport. It owns body parsing, JSON-RPC classification, batches, method
  * dispatch, the long-running tools/call branch (answered on the same request, streamed when the responder can) and the
- * session and protocol-version table. Transports build an FN2CMcpInbound and an IN2CMcpResponder and call Handle.
+ * per-client session table. Transports build an FN2CMcpInbound and an IN2CMcpResponder and call Handle (after their
+ * own Origin and Host checks).
+ *
+ * Sessions and versions (MCP 2025-11-25, basic/transports and basic/lifecycle): initialize negotiates 2025-11-25,
+ * 2025-06-18, 2025-03-26 or 2024-11-05 (the requested one when supported, else the newest) and creates a session with
+ * a new random Mcp-Session-Id. Every other POST must name a live session: none gives 400, an unknown or ended one 404.
+ * An MCP-Protocol-Version header with an unsupported value gives 400; a missing one is accepted (2025-03-26 clients do
+ * not send it) and the session's negotiated version applies. GET and other verbs give 405 (Allow: POST, DELETE);
+ * DELETE ends the session and cancels its running calls. Client responses and notifications get 202 with no body.
+ * JSON-RPC batches are accepted only on sessions negotiated at 2025-03-26 (batching was added there and removed in
+ * 2025-06-18) and get 400 with -32600 otherwise.
  *
  * Server-initiated notifications (notifications/tools/list_changed) flow from the core to the sink a transport sets
  * with SetBroadcastSink; tools never call a transport.
@@ -128,7 +169,7 @@ public:
 
 	/**
 	 * Answers an already parsed message (or batch) synchronously: everything Handle does except the long-running
-	 * branch and sessions.
+	 * branch, sessions, the MCP-Protocol-Version check and the batch-per-version rule (a batch is always answered).
 	 * @param JsonValue The parsed body (ParseBody); null gives a -32700 Parse error
 	 * @param OutResponseBody The JSON-RPC response (condensed, one line), or empty for 202
 	 * @param OutStatusCode The transport status
@@ -144,18 +185,34 @@ public:
 	using FBroadcastSink = TFunction<void(const FString& /*NotificationJson*/)>;
 	void SetBroadcastSink(FBroadcastSink InSink) { BroadcastSink = MoveTemp(InSink); }
 
-	/** The current session id (empty before the first successful initialize) */
-	const FString& GetCurrentSessionId() const { return CurrentSessionId; }
+	/** The live session with this id, or null */
+	const FN2CMcpSession* FindSession(const FString& SessionId) const { return Sessions.Find(SessionId); }
+
+	/** How many sessions are live */
+	int32 GetSessionCount() const { return Sessions.Num(); }
 
 	/** The protocol version negotiated by a session's initialize, or empty */
 	FString GetSessionProtocolVersion(const FString& SessionId) const;
 
+	/**
+	 * Ends a session: later requests naming it get 404, and its running long-running calls are cancelled (each still
+	 * answers its own request, with the cancelled result).
+	 * @return true when the session was live
+	 */
+	bool EndSession(const FString& SessionId, const FString& Reason);
+
 	/** Supported protocol versions, newest first */
 	static const TArray<FString>& GetSupportedProtocolVersions();
 
+	/** The most sessions kept at once; initialize beyond it drops the least recently used one */
+	static constexpr int32 MaxSessions = 64;
+
 private:
-	/** The value the response's Mcp-Session-Id carries (empty for none); a successful initialize creates the session */
-	FString ResolveResponseSessionId(bool bSuccessfulInitialize, const FString& ClientSentSessionId);
+	/** Answers DELETE: ends the named session (204), or 400 without Mcp-Session-Id and 404 for an unknown one */
+	void HandleDelete(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder);
+
+	/** Creates the session a successful initialize asked for and returns its id */
+	FString CreateSession();
 
 	/** True when ToolName is a registered tool marked bIsLongRunning */
 	bool IsLongRunningTool(const FString& ToolName) const;
@@ -163,7 +220,7 @@ private:
 	/** Starts a long-running tool's call and answers the request from it (see Handle) */
 	void HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
 		const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
-		const FString& ClientSentSessionId);
+		const FString& SessionId);
 
 	bool ProcessBatchRequest(const TArray<TSharedPtr<FJsonValue>>& BatchArray, FString& OutResponseBody, int32& OutStatusCode);
 	bool ProcessRequest(const FJsonRpcRequest& Request, FJsonRpcResponse& OutResponse);
@@ -181,14 +238,13 @@ private:
 
 	FN2CMcpCatalogs Catalogs;
 
-	/** The current session (one for all clients today; card 0109 makes sessions per client) */
-	FString CurrentSessionId;
+	/** Live sessions by Mcp-Session-Id */
+	TMap<FString, FN2CMcpSession> Sessions;
 
-	/** Protocol version negotiated per session id */
-	TMap<FString, FString> SessionProtocolVersions;
-
-	/** Version negotiated by the last initialize, recorded against the session it creates or keeps */
+	/** What the initialize being handled negotiated: set by HandleInitialize on success, read by Handle */
 	FString LastNegotiatedVersion;
+	TSharedPtr<FJsonObject> LastClientInfo;
+	TSharedPtr<FJsonObject> LastClientCapabilities;
 
 	FBroadcastSink BroadcastSink;
 

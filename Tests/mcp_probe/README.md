@@ -18,17 +18,22 @@ probes inside its default-mode editor session (`mcp_probe.session_probes`) plus 
 |---|---|---|
 | P1 | A cross-origin `text/plain` POST (what any web page can send) lists tools and runs `run-python`, which writes `Saved/n2c_probe.txt` | mcp-transport-1, dx-docs-release-1, p0-1 |
 | P2 | A POST whose `Host` is `attacker.example` (DNS rebinding) is answered | mcp-transport-1 |
-| P3 | A two-element JSON-RPC batch is answered element by element, or rejected with -32600 | mcp-transport-9 |
+| P3 | A two-element JSON-RPC batch: answered element by element in a session negotiated at 2025-03-26, and rejected with -32600 in a 2025-11-25 session (batches exist only in 2025-03-26) | mcp-transport-9 |
 | P4 | With the MCP port already held by another process, the editor logs that the server started | mcp-transport-10 |
 | P5 | The notification server (port+1) accepts a connection on a non-loopback local address | mcp-transport-14 |
 | P6 | The notification server (port+1) answers 200 to `/mcp/notifications` with 10,000 headers, a 10 MB chunked body or a 4 KB request target, or stops answering afterwards. Evidence also records the editor's working set before and after | auth-settings-module-17, dx-docs-release-4, p0-9 |
 | P7 | `translate-focused-blueprint` (numeric progressToken 7, no Blueprint focused) is not answered with a CallToolResult on its own POST: once with `Accept: application/json, text/event-stream` (UE 5.8 streams `notifications/progress` then the response; 5.6/5.7 send one JSON response) and once JSON-only. Fixed when each call gets exactly one JSON-RPC response with id 7 and a `content` array (here `isError`), no `accepted`/`sseUrl` result, the connection closes, and any progress echoes the token as a number | p0-10, mcp-transport-3, mcp-transport-21, dx-docs-release-8 |
+| P8 | Per-client sessions (card 0109): two initializes get different `Mcp-Session-Id`s and each answers in its own; no session gives 400, an unknown one 404, an unsupported `MCP-Protocol-Version` 400; GET is 405 with `Allow: POST, DELETE`; a client response is 202 with no body; DELETE ends a session (2xx), after which it gets 404 while the other session still answers. Fixed when every check holds | next-1, mcp-transport-16, mcp-transport-18, mcp-transport-19 |
 
 Statuses are `reproduced` (the finding's defect is present), `fixed`, or `skipped` (with a reason). P4 holds the
 port with a plain socket instead of a second editor on a copy of the project; the effect on the bind is the same.
 
 **Rule:** a card that fixes one of these findings flips its probe's entry in `expected.json` to `fixed` in the same
 commit as the fix, and runs the probe on 5.6, 5.7 and 5.8.
+
+Every POST to `/mcp` other than `initialize` needs an `Mcp-Session-Id` (card 0109). The probes and live scripts get
+theirs from `mcp_session.py`: `session_headers(port)` initializes once per port and returns the headers to send,
+and after a 404 (a new editor on the same port) `session_headers(port, refresh=True)` opens a new session.
 
 The session temporarily writes the port and Allow MCP Python Execution into the host's `Saved/Config/<Platform>Editor`
 files and restores them when it stops. A NodeToCode setting changed through the editor (a probe's

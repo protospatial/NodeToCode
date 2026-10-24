@@ -30,12 +30,7 @@
    "why": "Inspector 2.x sends logging/setLevel right after initialize because the server advertises logging, gets -32601 and exits before tools/list. Passes once card 0110 drops the logging capability; the smoke step then checks the tool count."
   }
  },
- "known_warnings": {
-  "server-session-lifecycle/server-session-delete-accepted": {
-   "card": "0109",
-   "why": "DELETE /mcp is not routed (404) and the session keeps answering; card 0109 adds DELETE (end the session) and GET 405."
-  }
- },
+ "known_warnings": {},
  "not_applicable": {
   "completion-complete": {
    "checks": ["completion-complete"],

@@ -27,6 +27,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from editor_session import EditorSession, free_port  # noqa: E402
+from mcp_session import session_headers  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
 
 PROVIDER_VARIABLE = {'anthropic': 'ANTHROPIC_API_KEY', 'openai': 'OPENAI_API_KEY', 'gemini': 'GEMINI_API_KEY',
@@ -83,14 +84,19 @@ result = {"api_key_field_empty": settings.get_editor_property(prefix + "_api_key
 
 
 def post(port, payload, timeout=120):
-    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
-    try:
-        conn.request('POST', '/mcp', body=json.dumps(payload).encode('utf-8'),
-                     headers={'Content-Type': 'application/json'})
-        r = conn.getresponse()
-        return r.status, r.read().decode('utf-8', 'replace')
-    finally:
-        conn.close()
+    """POST one message in this script's MCP session (mcp_session.py); a 404 opens a new session and resends once"""
+    for refresh in (False, True):
+        conn = http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
+        try:
+            conn.request('POST', '/mcp', body=json.dumps(payload).encode('utf-8'),
+                         headers=dict(session_headers(port, refresh=refresh), **{'Content-Type': 'application/json'}))
+            r = conn.getresponse()
+            status, body = r.status, r.read().decode('utf-8', 'replace')
+        finally:
+            conn.close()
+        if status != 404:
+            break
+    return status, body
 
 
 def call_tool(port, name, arguments, rid, meta=None):
@@ -128,6 +134,8 @@ class ToolCallStream:
             params['_meta'] = meta
         self.body = json.dumps({'jsonrpc': '2.0', 'id': rid, 'method': 'tools/call', 'params': params}).encode('utf-8')
         self.accept = accept
+        # The call runs in this script's MCP session (mcp_session.py), opened here rather than on the reader thread
+        self.session = session_headers(port)
         self.events = []
         self.status = None
         self.content_type = None
@@ -149,7 +157,7 @@ class ToolCallStream:
     def _read(self):
         try:
             self.conn.request('POST', '/mcp', body=self.body,
-                              headers={'Content-Type': 'application/json', 'Accept': self.accept})
+                              headers=dict(self.session, **{'Content-Type': 'application/json', 'Accept': self.accept}))
             r = self.conn.getresponse()
             self.status = r.status
             self.content_type = r.getheader('Content-Type', '')

@@ -33,6 +33,9 @@ class FakeEditor:
     def __init__(self):
         self.posts = []  # (headers dict, body bytes)
         self.posted = threading.Condition()
+        self.sessions = 0  # initialize answers with Mcp-Session-Id sess-<n>
+        self.expired = set()  # session ids answered with 404, as the editor does for an ended session
+        self.deleted = []  # session ids sent with DELETE
         self.release_final = threading.Event()
         editor = self
 
@@ -48,6 +51,12 @@ class FakeEditor:
                 else:
                     self._send(404, 'text/plain', b'Not Found')
 
+            def do_DELETE(self):
+                with editor.posted:
+                    editor.deleted.append(self.headers.get('Mcp-Session-Id'))
+                    editor.posted.notify_all()
+                self._send(204, 'application/json', b'')
+
             def do_POST(self):
                 body = self.rfile.read(int(self.headers.get('Content-Length', '0')))
                 with editor.posted:
@@ -55,7 +64,18 @@ class FakeEditor:
                     editor.posted.notify_all()
                 message = json.loads(body.decode('utf-8'))
                 method = message.get('method')
-                if 'id' not in message:
+                session = self.headers.get('Mcp-Session-Id')
+                if session and session in editor.expired:
+                    self._send(404, 'application/json',
+                               b'{"jsonrpc":"2.0","id":null,"error":{"code":-32001,"message":"Session not found"}}')
+                elif method == 'initialize':
+                    editor.sessions += 1
+                    reply = {'jsonrpc': '2.0', 'id': message['id'],
+                             'result': {'protocolVersion': message['params']['protocolVersion'], 'capabilities': {},
+                                        'serverInfo': {'name': 'fake', 'version': '1'}}}
+                    self._send(200, 'application/json', json.dumps(reply).encode('utf-8'),
+                               {'Mcp-Session-Id': 'sess-%d' % editor.sessions})
+                elif 'id' not in message:
                     if method == 'notifications/http-error':
                         self._send(404, 'text/plain; charset=utf-8', b'Not Found')
                     else:
@@ -68,10 +88,12 @@ class FakeEditor:
                 else:
                     self._send(404, 'text/plain; charset=utf-8', 'No route for /mcp: café'.encode('utf-8'))
 
-            def _send(self, code, content_type, body):
+            def _send(self, code, content_type, body, headers=None):
                 self.send_response(code)
                 self.send_header('Content-Type', content_type)
                 self.send_header('Content-Length', str(len(body)))
+                for name, value in (headers or {}).items():
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -227,6 +249,39 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(self.bridge.read(), {'jsonrpc': '2.0', 'id': 3, 'result': {'echo': {}}})
         self.bridge.close()
         self.assertTrue(self.bridge.lines.empty())
+
+    def initialize(self, rid=1):
+        self.bridge.send({'jsonrpc': '2.0', 'id': rid, 'method': 'initialize',
+                          'params': {'protocolVersion': '2025-11-25', 'capabilities': {},
+                                     'clientInfo': {'name': 'bridge-test', 'version': '1'}}})
+        self.assertEqual(self.bridge.read()['result']['protocolVersion'], '2025-11-25')
+
+    def test_requests_carry_the_session_and_protocol_version_initialize_settled(self):
+        self.initialize()
+        self.bridge.send({'jsonrpc': '2.0', 'id': 2, 'method': 'test/echo', 'params': {}})
+        self.assertEqual(self.bridge.read()['id'], 2)
+        posts = self.editor.wait_for_posts(2)
+        self.assertNotIn('mcp-session-id', posts[0][0])
+        self.assertEqual(posts[1][0].get('mcp-session-id'), 'sess-1')
+        self.assertEqual(posts[1][0].get('mcp-protocol-version'), '2025-11-25')
+
+    def test_404_for_the_session_replays_initialize_and_resends_once(self):
+        self.initialize()
+        self.editor.expired.add('sess-1')  # the editor restarted, or the session was ended
+        self.bridge.send({'jsonrpc': '2.0', 'id': 2, 'method': 'test/echo', 'params': {'n': 1}})
+
+        # The client sees only the answer to its request, from the new session
+        self.assertEqual(self.bridge.read(), {'jsonrpc': '2.0', 'id': 2, 'result': {'echo': {'n': 1}}})
+        posts = self.editor.wait_for_posts(5)
+        methods = [(json.loads(b.decode('utf-8')).get('method'), h.get('mcp-session-id')) for h, b in posts]
+        self.assertEqual(methods, [('initialize', None), ('test/echo', 'sess-1'), ('initialize', None),
+                                   ('notifications/initialized', 'sess-2'), ('test/echo', 'sess-2')])
+        self.assertTrue(self.bridge.lines.empty())
+
+    def test_closing_stdin_ends_the_session_with_delete(self):
+        self.initialize()
+        self.bridge.close()
+        self.assertEqual(self.editor.deleted, ['sess-1'])
 
     def test_unparsable_line_gets_a_parse_error(self):
         self.bridge.proc.stdin.write(b'{"jsonrpc": "2.0", "id": \n')

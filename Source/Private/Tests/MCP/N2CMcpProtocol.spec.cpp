@@ -203,21 +203,9 @@ void FN2CMcpProtocolSpec::Define()
 			TestEqual(TEXT("2025-03-26"), NegotiatedVersion(TEXT("2025-03-26")), FString(TEXT("2025-03-26")));
 		});
 
-		// Today: the server knows only 2025-03-26 and 2024-11-05, so newer clients are answered with 2025-03-26.
-		// That is allowed by the version negotiation rule (answer with another version the server supports, SHOULD be
-		// its latest), but clients on 2025-06-18 and later then drop to an older protocol. Finding next-1
-		// (imp-mcp-transport-1): card 0109 adds 2025-06-18 and 2025-11-25 and deletes this case.
-		It(TEXT("answers 2025-06-18, 2025-11-25 and 2026-07-28 with 2025-03-26 today"), [this]()
-		{
-			TestEqual(TEXT("2025-06-18"), NegotiatedVersion(TEXT("2025-06-18")), FString(TEXT("2025-03-26")));
-			TestEqual(TEXT("2025-11-25"), NegotiatedVersion(TEXT("2025-11-25")), FString(TEXT("2025-03-26")));
-			TestEqual(TEXT("2026-07-28"), NegotiatedVersion(TEXT("2026-07-28")), FString(TEXT("2025-03-26")));
-		});
-
-		// Known defect next-1 (imp-mcp-transport-1): 2025-06-18 and 2025-11-25 are not supported. Lifecycle, version
-		// negotiation: "If the server supports the requested protocol version, it MUST respond with the same version";
-		// otherwise its latest. Enable (xIt -> It) with card 0109.
-		xIt(TEXT("echoes 2025-06-18 and 2025-11-25 and answers 2026-07-28 with 2025-11-25"), [this]()
+		// Finding next-1 (imp-mcp-transport-1), fixed by card 0109. Lifecycle, version negotiation: "If the server
+		// supports the requested protocol version, it MUST respond with the same version"; otherwise its latest.
+		It(TEXT("echoes 2025-06-18 and 2025-11-25 and answers 2026-07-28 with 2025-11-25"), [this]()
 		{
 			TestEqual(TEXT("2025-06-18"), NegotiatedVersion(TEXT("2025-06-18")), FString(TEXT("2025-06-18")));
 			TestEqual(TEXT("2025-11-25"), NegotiatedVersion(TEXT("2025-11-25")), FString(TEXT("2025-11-25")));
@@ -227,7 +215,7 @@ void FN2CMcpProtocolSpec::Define()
 		It(TEXT("answers an unknown version with a version it supports"), [this]()
 		{
 			const FString Version = NegotiatedVersion(TEXT("1999-01-01"));
-			TestTrue(TEXT("a supported version"), Version == TEXT("2025-03-26") || Version == TEXT("2025-11-25"));
+			TestEqual(TEXT("the newest supported version"), Version, FString(TEXT("2025-11-25")));
 		});
 
 		It(TEXT("returns tools, resources and prompts capabilities and a serverInfo"), [this]()
@@ -622,20 +610,10 @@ void FN2CMcpProtocolSpec::Define()
 
 	Describe(TEXT("client responses"), [this]()
 	{
-		// Today: a JSON-RPC response sent by the client (for example to a server request) falls into the Invalid
-		// Request branch. Finding mcp-transport-19; transports, sending messages to the server: "If the input is a
-		// JSON-RPC response or notification ... the server MUST return HTTP status code 202 Accepted with no body".
-		// Card 0109 deletes this case and enables the one below.
-		It(TEXT("refuse a result or error response with 400 and -32600 today"), [this]()
-		{
-			TestError(TEXT("client result"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":70,\"result\":{}}")),
-				JsonRpcErrorCodes::InvalidRequest, -1, 400);
-			TestError(TEXT("client error"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":71,\"error\":{\"code\":-1,\"message\":\"no\"}}")),
-				JsonRpcErrorCodes::InvalidRequest, -1, 400);
-		});
-
-		// Known defect mcp-transport-19: client responses get 400. Enable (xIt -> It) with card 0109.
-		xIt(TEXT("accept a result or error response with 202 and no body"), [this]()
+		// Finding mcp-transport-19 (client responses part), fixed by card 0109. Transports, sending messages to the
+		// server: "If the input is a JSON-RPC response or notification ... the server MUST return HTTP status code 202
+		// Accepted with no body".
+		It(TEXT("accept a result or error response with 202 and no body"), [this]()
 		{
 			TestAccepted(TEXT("client result"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":70,\"result\":{}}")));
 			TestAccepted(TEXT("client error"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":71,\"error\":{\"code\":-1,\"message\":\"no\"}}")));
@@ -750,10 +728,9 @@ void FN2CMcpProtocolSpec::Define()
 		});
 	});
 
-	// JSON-RPC batching was removed from MCP in 2025-06-18 (changelog, PR #416) and is not in 2025-11-25; 2025-03-26
-	// and 2024-11-05 allow it. Today batches are accepted whatever was negotiated. Card 0109 accepts them only on
-	// sessions negotiated at 2025-03-26 and refuses them with -32600 otherwise, which needs its session record; it
-	// rewrites these cases then.
+	// JSON-RPC batching was added in 2025-03-26 and removed in 2025-06-18 (changelog, PR #416). ProcessMessage answers
+	// any batch; FN2CMcpProtocol::Handle accepts one only on a session negotiated at 2025-03-26 and refuses it with 400
+	// and -32600 otherwise (card 0109). NodeToCode.MCP.Core.batches covers that rule.
 	Describe(TEXT("batch"), [this]()
 	{
 		It(TEXT("answers a batch of two requests with two responses in order and 200"), [this]()
@@ -794,7 +771,7 @@ void FN2CMcpProtocolSpec::Define()
 			}
 		});
 
-		It(TEXT("answers an invalid batch item with -32600 in its place"), [this]()
+		It(TEXT("answers an invalid batch item with -32600 in its place and a client response item with nothing"), [this]()
 		{
 			const FReply Reply = Send(FString::Printf(TEXT("[1,%s,{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{}}]"), *Request(104, TEXT("ping"))));
 			TestEqual(TEXT("HTTP status"), Reply.Status, 200);
@@ -803,16 +780,14 @@ void FN2CMcpProtocolSpec::Define()
 				return;
 			}
 			const TArray<TSharedPtr<FJsonValue>>& Items = Reply.Json->AsArray();
-			if (TestEqual(TEXT("three responses"), Items.Num(), 3))
+			// A client response item is accepted and, like a notification, gets no entry (mcp-transport-19, card 0109)
+			if (TestEqual(TEXT("two responses"), Items.Num(), 2))
 			{
 				const TSharedPtr<FJsonObject>* Error = nullptr;
 				TestTrue(TEXT("non-object item is -32600"), Items[0]->AsObject()->TryGetObjectField(TEXT("error"), Error)
 					&& static_cast<int32>((*Error)->GetNumberField(TEXT("code"))) == JsonRpcErrorCodes::InvalidRequest);
 				TestTrue(TEXT("non-object item has a null id"), Items[0]->AsObject()->TryGetField(TEXT("id"))->IsNull());
 				TestEqual(TEXT("ping answered"), Items[1]->AsObject()->GetNumberField(TEXT("id")), 104.0);
-				// Same defect as the single client response (mcp-transport-19): a response item is -32600 today
-				TestTrue(TEXT("client response item is -32600 today"), Items[2]->AsObject()->TryGetObjectField(TEXT("error"), Error)
-					&& static_cast<int32>((*Error)->GetNumberField(TEXT("code"))) == JsonRpcErrorCodes::InvalidRequest);
 			}
 		});
 
