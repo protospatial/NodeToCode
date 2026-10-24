@@ -20,7 +20,8 @@ skips the probe that launches a second editor.
 | P3 | A two-element JSON-RPC batch is answered element by element, or rejected with -32600 | mcp-transport-9 |
 | P4 | With the MCP port already held by another process, the editor logs that the server started | mcp-transport-10 |
 | P5 | The notification server (port+1) accepts a connection on a non-loopback local address | mcp-transport-14 |
-| P6 | The notification server (port+1) answers 200 to `/mcp/notifications` with 10,000 headers, a 10 MB chunked body or a 4 KB request target, or stops answering afterwards. Evidence also records the editor's working set before and after, and `task_stream`: whether a `translate-focused-blueprint` task stream delivers its `progress` and `response` events (not gating; headless, the task fails after its first progress report) | auth-settings-module-17, dx-docs-release-4, p0-9 |
+| P6 | The notification server (port+1) answers 200 to `/mcp/notifications` with 10,000 headers, a 10 MB chunked body or a 4 KB request target, or stops answering afterwards. Evidence also records the editor's working set before and after | auth-settings-module-17, dx-docs-release-4, p0-9 |
+| P7 | `translate-focused-blueprint` (numeric progressToken 7, no Blueprint focused) is not answered with a CallToolResult on its own POST: once with `Accept: application/json, text/event-stream` (UE 5.8 streams `notifications/progress` then the response; 5.6/5.7 send one JSON response) and once JSON-only. Fixed when each call gets exactly one JSON-RPC response with id 7 and a `content` array (here `isError`), no `accepted`/`sseUrl` result, the connection closes, and any progress echoes the token as a number | p0-10, mcp-transport-3, mcp-transport-21, dx-docs-release-8 |
 
 Statuses are `reproduced` (the finding's defect is present), `fixed`, or `skipped` (with a reason). P4 holds the
 port with a plain socket instead of a second editor on a copy of the project; the effect on the bind is the same.
@@ -96,11 +97,21 @@ its environment when no key is saved, so a live check never types or saves a key
   saved in the per-user secrets file, since the saved key would be used instead.
 - `live_translate_cancel.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5]` cancels a
   live translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, sends `nodetocode/cancelTask`
-  `--cancel-after` seconds in (default 1.5), watches the task stream for `--settle` seconds (default 30), and checks
+  `--cancel-after` seconds in (default 1.5), keeps reading the call's own response (a `text/event-stream` on UE 5.8,
+  where it also checks progress arrived before the cancel) for `--settle` seconds (default 30), and checks
   the cancel answered `cancellation_initiated`, the one response is the cancelled error, no event arrives after it,
   the log shows the LLM request cancelled and the task completed once, a second cancel answers
   `task_already_completed`, the editor stays up, and a control translation run to the end returns code. It also
   scans the editor log and report for key values. Report: `logs/live_translate_cancel.json`.
+- `live_claude_cli_translate.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]`
+  is the end-to-end check with a standard MCP client: on a headless editor (`-RenderOffScreen`) with only the
+  provider's key in its environment and an in-memory probe Blueprint focused, it runs the headless Claude Code CLI
+  (`claude -p ... --mcp-config <the editor's /mcp> --strict-mcp-config --allowedTools "mcp__nodetocode__*"
+  --output-format stream-json --verbose --model haiku`, its own login, the provider key removed from its environment)
+  and asks it to call `translate-focused-blueprint` once. It passes when the CLI's tool result is a translation with
+  code and not an error, the editor started exactly one task (the log line also says whether the call was answered as
+  `text/event-stream` or one JSON response), and no key value is in the editor log, the CLI's output or the report.
+  Report: `logs/live_claude_cli_<label>.json`; the CLI's stream is kept next to it.
 - `live_translate_exit.py --engine ... --project ... [--windowed] [--provider anthropic --model claude-haiku-5-5]`
   exits the editor mid-translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, and
   `--quit-after` seconds in (default 1) closes the Blueprint editor and calls `unreal.SystemLibrary.quit_editor()`.
@@ -133,8 +144,8 @@ its environment when no key is saved, so a live check never types or saves a key
   for key values and `Saved/Logs` for `key=`. Report: `logs/live_provider_matrix_<label>.json`.
   - The case list holds current models only (the live entries of `N2CLLMModelRegistry.cpp`): no retired, deprecated
     or "shuts down" IDs are tested. Update it when the registry's lineup changes.
-  - Each translation is bounded by `--timeout` (wall clock; the task stream's half-second progress events keep a
-    socket timeout from ever firing). A case that gets no response in time fails as timed out and the remaining cases
+  - Each translation is bounded by `--timeout` (wall clock; the streamed response's half-second progress events keep
+    a socket timeout from ever firing). A case that gets no response in time fails as timed out and the remaining cases
     are skipped, since the editor still holds that request. Pass `--cases` in the order to run them and put slow
     models last.
   - `EditorSession` puts the editor in a Windows job object that kills it when the Python process exits, so a killed

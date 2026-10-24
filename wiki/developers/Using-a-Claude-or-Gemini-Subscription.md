@@ -71,6 +71,9 @@ tool and translate that graph to Unreal C++." The agent does the translation wit
 
 The `translate-focused-blueprint` tool is different: it runs NodeToCode's own translation with the provider and
 **API Key** from Project Settings, and is billed to that key. Leave it out if you want to use only your subscription.
+The translation comes back as the tool's result once it finishes, which can take a few minutes. On UE 5.8 the call
+also reports progress while it runs (for example "Waiting for the LLM response (12 s elapsed)"); on UE 5.6 and 5.7
+it returns only the result.
 
 ## Antigravity CLI and Gemini CLI
 

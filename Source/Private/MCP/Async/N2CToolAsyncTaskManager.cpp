@@ -4,7 +4,6 @@
 #include "MCP/Tools/Implementations/Translation/N2CTranslateBlueprintAsyncTask.h"
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
-#include "MCP/Server/N2CSseServer.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "Utils/N2CLogger.h"
 #include "Async/TaskGraphInterfaces.h"
@@ -19,21 +18,25 @@ FN2CToolAsyncTaskManager& FN2CToolAsyncTaskManager::Get()
 }
 
 FGuid FN2CToolAsyncTaskManager::LaunchTask(const FGuid& InTaskId, const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments,
-	const FString& ProgressToken, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId)
+	const FString& ProgressToken, const TSharedPtr<FJsonValue>& ClientProgressToken, const FString& SessionId,
+	const TSharedPtr<FJsonValue>& OriginalRequestId, const FN2CAsyncTaskResponder& Responder)
 {
-	// Create the async task under the caller's task ID (the SSE stream was prepared for it)
-	TSharedPtr<IN2CToolAsyncTask> AsyncTask = CreateAsyncTask(ToolName, InTaskId, ProgressToken, Arguments);
+	// Create the async task under the caller's task ID
+	TSharedPtr<IN2CToolAsyncTask> AsyncTask = TaskFactoryForTesting
+		? TaskFactoryForTesting(ToolName, InTaskId, ProgressToken, Arguments)
+		: CreateAsyncTask(ToolName, InTaskId, ProgressToken, Arguments);
 	if (!AsyncTask.IsValid())
 	{
 		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to create async task for tool: %s"), *ToolName));
 		return FGuid();
 	}
 
-	return LaunchTaskInstance(AsyncTask.ToSharedRef(), ToolName, Arguments, SessionId, OriginalRequestId);
+	return LaunchTaskInstance(AsyncTask.ToSharedRef(), ToolName, Arguments, SessionId, OriginalRequestId, Responder, ClientProgressToken);
 }
 
 FGuid FN2CToolAsyncTaskManager::LaunchTaskInstance(const TSharedRef<IN2CToolAsyncTask, ESPMode::ThreadSafe>& AsyncTask,
-	const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId)
+	const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId,
+	const FN2CAsyncTaskResponder& Responder, const TSharedPtr<FJsonValue>& ClientProgressToken)
 {
 	const FGuid TaskId = AsyncTask->GetTaskId();
 	const FString ProgressToken = AsyncTask->GetProgressToken();
@@ -47,6 +50,8 @@ FGuid FN2CToolAsyncTaskManager::LaunchTaskInstance(const TSharedRef<IN2CToolAsyn
 	TaskContext->ToolName = ToolName;
 	TaskContext->Arguments = Arguments;
 	TaskContext->Task = AsyncTask;
+	TaskContext->ClientProgressToken = ClientProgressToken;
+	TaskContext->Responder = Responder;
 
 	// Set up progress callback with lambda to capture TaskId
 	AsyncTask->SetProgressDelegate(FN2CAsyncTaskProgressDelegate::CreateLambda(
@@ -263,13 +268,9 @@ void FN2CToolAsyncTaskManager::CleanupCompletedTasks()
 		PruneCompletedTokens(Now);
 	}
 
-	// The SSE side keeps a finished task's result for a client that connects late, up to its TTL
-	const int32 NumStreamsExpired = NodeToCodeSseServer::ExpireCompletedStreams();
-
-	if (NumRemoved > 0 || NumStreamsExpired > 0)
+	if (NumRemoved > 0)
 	{
-		FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned up %d completed async tasks and %d expired SSE streams"),
-			NumRemoved, NumStreamsExpired), EN2CLogSeverity::Debug);
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned up %d completed async tasks"), NumRemoved), EN2CLogSeverity::Debug);
 	}
 }
 
@@ -337,7 +338,7 @@ void FN2CToolAsyncTaskManager::OnTaskCompleted(const FGuid& TaskId, const FMcpTo
 		return;
 	}
 
-	// Send the final JSON-RPC response via the SSE stream
+	// Write the final JSON-RPC response on the tools/call's own HTTP response
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Task %s completed, sending final response"), *TaskId.ToString()), EN2CLogSeverity::Info);
 
 	// Create the JSON-RPC response
@@ -348,22 +349,23 @@ void FN2CToolAsyncTaskManager::OnTaskCompleted(const FGuid& TaskId, const FMcpTo
 
 	// Serialize to JSON string
 	FString ResponseJson = FJsonRpcUtils::SerializeResponse(Response);
-	if (!ResponseJson.IsEmpty())
-	{
-		// Push the final response to the SSE stream
-		std::string SseMessage = NodeToCodeSseServer::FormatSseMessage(TEXT("response"), ResponseJson);
-		NodeToCodeSseServer::PushFormattedSseEventToClient(TaskId, SseMessage);
-	}
-	else
+	if (ResponseJson.IsEmpty())
 	{
 		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to serialize response for task %s"), *TaskId.ToString()));
+		ResponseJson = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(TaskContext->OriginalRequestId,
+			JsonRpcErrorCodes::InternalError, TEXT("Failed to serialize the tool result")));
 	}
 
-	// Signal the SSE connection to close after sending the response
-	NodeToCodeSseServer::SignalSseClientCompletion(TaskId);
+	// Exactly one response per call: the HTTP response is completed (or its stream closed) by this write
+	FN2CAsyncTaskResponder Responder = MoveTemp(TaskContext->Responder);
+	TaskContext->Responder = FN2CAsyncTaskResponder();
+	if (Responder.SendResponse)
+	{
+		Responder.SendResponse(ResponseJson);
+	}
 
-	// The result is delivered: stop tracking the task. The SSE stream keeps the result for a client that has not
-	// connected yet (up to its TTL), and the token is remembered so a late cancel answers task_already_completed.
+	// The result is delivered: stop tracking the task. The token is remembered so a late cancel answers
+	// task_already_completed.
 	// TaskContext (and the task's own ReportComplete) keep the task alive until this call returns.
 	{
 		FScopeLock Lock(&TaskMapLock);
@@ -388,13 +390,26 @@ void FN2CToolAsyncTaskManager::OnTaskProgress(const FGuid& TaskId, float Progres
 		return;
 	}
 
-	// Create MCP progress notification
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Task %s progress: %.1f%% - %s"),
+		*TaskId.ToString(), Progress * 100.0f, *Message), EN2CLogSeverity::Debug);
+
+	// Progress goes only to a client that asked for it (sent a progressToken) on a response that can carry it
+	if (!TaskContext->ClientProgressToken.IsValid() || !TaskContext->Responder.SendProgress)
+	{
+		return;
+	}
+
+	// MCP: the progress value must increase with every notification
+	const double Value = FMath::Max(static_cast<double>(Progress), TaskContext->LastProgressSent + 1e-6);
+	TaskContext->LastProgressSent = Value;
+
+	// Create MCP progress notification. The token is echoed exactly as the client sent it (a number stays a number).
 	FJsonRpcNotification ProgressNotification;
 	ProgressNotification.Method = TEXT("notifications/progress");
-	
+
 	auto ParamsObject = MakeShared<FJsonObject>();
-	ParamsObject->SetStringField(TEXT("progressToken"), TaskContext->ProgressToken);
-	ParamsObject->SetNumberField(TEXT("progress"), Progress);
+	ParamsObject->SetField(TEXT("progressToken"), TaskContext->ClientProgressToken);
+	ParamsObject->SetNumberField(TEXT("progress"), Value);
 	if (!Message.IsEmpty())
 	{
 		ParamsObject->SetStringField(TEXT("message"), Message);
@@ -402,17 +417,11 @@ void FN2CToolAsyncTaskManager::OnTaskProgress(const FGuid& TaskId, float Progres
 	
 	ProgressNotification.Params = MakeShared<FJsonValueObject>(ParamsObject);
 
-	// Send the progress notification via the SSE stream
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Task %s progress: %.1f%% - %s"), 
-		*TaskId.ToString(), Progress * 100.0f, *Message), EN2CLogSeverity::Debug);
-
 	// Serialize the notification to JSON
 	FString NotificationJson = FJsonRpcUtils::SerializeNotification(ProgressNotification);
 	if (!NotificationJson.IsEmpty())
 	{
-		// Push the progress notification to the SSE stream
-		std::string SseMessage = NodeToCodeSseServer::FormatSseMessage(TEXT("progress"), NotificationJson);
-		NodeToCodeSseServer::PushFormattedSseEventToClient(TaskId, SseMessage);
+		TaskContext->Responder.SendProgress(NotificationJson);
 	}
 	else
 	{

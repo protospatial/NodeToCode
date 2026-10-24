@@ -9,7 +9,7 @@ Stdlib only; run with `python -I`:
 It reads the provider's key from the repo's .env (env_keys.py), starts a headless editor with only that key added to
 its environment (no key is saved: the per-user secrets file must have none for the provider, or the check would not
 prove the environment path), makes /Game/N2CTest/BP_N2CEnvKeyProbe_<time> in memory (an Actor with a Print String node,
-never saved), opens it, runs translate-focused-blueprint over MCP and reads the task stream until the response arrives. It passes
+never saved), opens it, runs translate-focused-blueprint over MCP and reads the call's response (streamed on UE 5.8) until it ends. It passes
 when the response parses as a translation with code, Project Settings shows an empty API Key field whose API Key
 Source names the variable, the editor log names the variable, and no key value is in the editor log, the run's report
 or any translation files. Key values are never printed. Report: logs/live_env_translation.json.
@@ -18,6 +18,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import socket
 import sys
 import threading
@@ -110,51 +111,103 @@ def tool_text(response):
         return ''
 
 
-def read_task_stream(port, task_id, timeout):
-    """The task stream's events as [(event, data)] until it closes, the response arrives or `timeout` seconds of wall
-    clock pass. The bound is on the whole read, not per socket read: the task sends a progress event every half
-    second while it waits for the provider, so a socket timeout alone never fires (a Gemini request that hung for 14
-    minutes kept a run waiting). A read that hits the bound ends with ('timeout', '<seconds>')."""
-    if len(task_id) == 32:
-        task_id = '-'.join((task_id[:8], task_id[8:12], task_id[12:16], task_id[16:20], task_id[20:]))
-    events = []
-    conn = http.client.HTTPConnection('127.0.0.1', port + 1, timeout=timeout)
+class ToolCallStream:
+    """One tools/call read on a thread, the way an MCP client reads it: the POST's own response is either a
+    text/event-stream (UE 5.8, when Accept lists it and a progressToken is sent) of notifications/progress events and
+    then the JSON-RPC response, or one application/json response when the tool finishes (UE 5.6/5.7, or no token).
 
-    def read():
-        event, data = None, []
-        try:
-            conn.request('GET', '/mcp/events/%s' % task_id)
-            r = conn.getresponse()
-            for raw in r:
-                line = raw.decode('utf-8', 'replace').rstrip('\r\n')
-                if line.startswith('event:'):
-                    event = line[6:].strip()
-                elif line.startswith('data:'):
-                    data.append(line[6:] if line[5:6] == ' ' else line[5:])
-                elif not line and (event or data):
-                    # A blank line ends an event; its data lines are joined with newlines
-                    events.append((event or 'message', '\n'.join(data)))
-                    if event == 'response':
-                        break
-                    event, data = None, []
-        except (OSError, http.client.HTTPException):
-            pass  # closed below on timeout, or the server went away; the caller sees no response event
+    events: [(seconds since start, 'progress' or 'response', data)]. Reading goes on after the response until the
+    server closes the connection, so anything later is a late event. content_type and status describe the response;
+    closed_at is when the connection closed (None while open)."""
 
-    reader = threading.Thread(target=read, daemon=True)
-    reader.start()
-    reader.join(timeout)
-    timed_out = reader.is_alive()
-    if timed_out and conn.sock is not None:
+    ACCEPT_STREAM = 'application/json, text/event-stream'
+
+    def __init__(self, port, name, arguments, rid, meta=None, accept=ACCEPT_STREAM, timeout=600):
+        params = {'name': name, 'arguments': arguments}
+        if meta:
+            params['_meta'] = meta
+        self.body = json.dumps({'jsonrpc': '2.0', 'id': rid, 'method': 'tools/call', 'params': params}).encode('utf-8')
+        self.accept = accept
+        self.events = []
+        self.status = None
+        self.content_type = None
+        self.closed_at = None
+        self.error = None
+        self.t0 = time.time()
+        self.conn = http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
+        self.thread = threading.Thread(target=self._read, daemon=True)
+        self.thread.start()
+
+    def _add(self, data):
         try:
-            conn.sock.shutdown(socket.SHUT_RDWR)  # unblocks the reader
-        except OSError:
-            pass
-    conn.close()
-    reader.join(5)
-    result = list(events)
-    if timed_out:
+            message = json.loads(data)
+        except ValueError:
+            message = {}
+        kind = 'progress' if message.get('method') == 'notifications/progress' else 'response'
+        self.events.append((round(time.time() - self.t0, 2), kind, data))
+
+    def _read(self):
+        try:
+            self.conn.request('POST', '/mcp', body=self.body,
+                              headers={'Content-Type': 'application/json', 'Accept': self.accept})
+            r = self.conn.getresponse()
+            self.status = r.status
+            self.content_type = r.getheader('Content-Type', '')
+            if 'text/event-stream' in self.content_type:
+                data = []
+                for raw in r:
+                    line = raw.decode('utf-8', 'replace').rstrip('\r\n')
+                    if line.startswith('data:'):
+                        data.append(line[6:] if line[5:6] == ' ' else line[5:])
+                    elif not line and data:
+                        # A blank line ends an event; its data lines are joined with newlines
+                        self._add('\n'.join(data))
+                        data = []
+            else:
+                body = r.read().decode('utf-8', 'replace')
+                if body:
+                    self._add(body)
+        except (OSError, http.client.HTTPException) as e:
+            self.error = str(e)
+        self.closed_at = round(time.time() - self.t0, 2)
+
+    def responses(self):
+        return [e for e in self.events if e[1] == 'response']
+
+    def wait(self, timeout):
+        """Waits up to `timeout` seconds of wall clock for the connection to close; True when it did"""
+        self.thread.join(timeout)
+        return not self.thread.is_alive()
+
+    def close(self):
+        if self.conn.sock is not None:
+            try:
+                self.conn.sock.shutdown(socket.SHUT_RDWR)  # unblocks the reader
+            except OSError:
+                pass
+        self.conn.close()
+        self.thread.join(5)
+
+
+def run_tool_call(port, name, arguments, rid, meta=None, timeout=300):
+    """A tools/call's events as [(event, data)] ('progress' or 'response') until the server closes the response or
+    `timeout` seconds of wall clock pass. The bound is on the whole read, not per socket read: progress arrives every
+    half second while the provider works, so a socket timeout alone never fires. A read that hits the bound ends with
+    ('timeout', '<seconds>')."""
+    call = ToolCallStream(port, name, arguments, rid, meta=meta, timeout=timeout)
+    finished = call.wait(timeout)
+    if not finished:
+        call.close()
+    result = [(e, d) for _, e, d in call.events]
+    if not finished:
         result.append(('timeout', str(timeout)))
     return result
+
+
+def task_id_for_token(log_text, token):
+    """The editor's task id for the call that sent progressToken `token` (from its 'Started task' log line)"""
+    match = re.search(r'Started task ([0-9A-F]{32}) for tool \S+ \(progress token %s\)' % re.escape(str(token)), log_text)
+    return match.group(1) if match else None
 
 
 def stored_key_present(store_id):
@@ -208,14 +261,10 @@ def main():
             status, providers = call_tool(port, 'get-available-llm-providers', {}, 5)
             report['providers_listed'] = sorted(p.get('id', '') for p in json.loads(tool_text(providers) or '{}').get('providers', []))
             started_at = time.time()
-            status, started = call_tool(port, 'translate-focused-blueprint',
-                                        {'provider': args.provider, 'model': args.model, 'language': args.language}, 2,
-                                        meta={'progressToken': 'live-env-translation'})
-            report['task_call'] = {'status': status}
-            result = started.get('result') or {}
-            task_id = result.get('taskId')
-            if task_id:
-                events = read_task_stream(port, task_id, args.timeout)
+            events = run_tool_call(port, 'translate-focused-blueprint',
+                                   {'provider': args.provider, 'model': args.model, 'language': args.language}, 2,
+                                   meta={'progressToken': 'live-env-translation'}, timeout=args.timeout)
+            if events:
                 report['seconds'] = round(time.time() - started_at, 1)
                 report['events'] = {e: sum(1 for x, _ in events if x == e) for e in sorted({x for x, _ in events})}
                 final = [d for e, d in events if e == 'response']
@@ -243,7 +292,7 @@ def main():
                     else:
                         report['response_head'] = text[:600]
             else:
-                report['task_start'] = started
+                report['task_call'] = 'no response'
     log_text = s.log_text()
     report['log_names_variable'] = ('the %s environment variable is used' % variable) in log_text
     after = set(os.listdir(translations_dir)) if os.path.isdir(translations_dir) else set()

@@ -38,9 +38,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from editor_session import EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
-from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, call_tool, post,  # noqa: E402
-                                  read_task_stream, stored_key_present, tool_text)
-from live_translate_cancel import TaskStream, response_of  # noqa: E402
+from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, ToolCallStream, call_tool,  # noqa: E402
+                                  post, run_tool_call, stored_key_present, task_id_for_token, tool_text)
+from live_translate_cancel import response_of  # noqa: E402
 
 SERVICE_CLASS = {'anthropic': 'N2CAnthropicService', 'openai': 'N2COpenAIService', 'gemini': 'N2CGeminiService',
                  'deepseek': 'N2CDeepSeekService'}
@@ -169,12 +169,10 @@ def obj_count(session, port, service_class, rid):
 def translate(port, arguments, rid, timeout):
     """One MCP translation run to the end: seconds, graphs, code characters and whether it was an error"""
     t0 = time.time()
-    status, started = call_tool(port, 'translate-focused-blueprint', arguments, rid,
-                                meta={'progressToken': 'gate0377-%d-%d' % (rid, int(t0))})
-    task_id = (started.get('result') or {}).get('taskId')
-    if not task_id:
-        return {'started': False, 'head': json.dumps(started)[:300]}
-    events = read_task_stream(port, task_id, timeout)
+    events = run_tool_call(port, 'translate-focused-blueprint', arguments, rid,
+                           meta={'progressToken': 'gate0377-%d-%d' % (rid, int(t0))}, timeout=timeout)
+    if not events:
+        return {'started': False, 'head': 'no response'}
     final = [d for e, d in events if e == 'response']
     message, text = response_of(final[-1]) if final else ({}, '')
     try:
@@ -263,53 +261,47 @@ def main():
 
             # 2. Cancel --cancel-at seconds in, then the editor stays up for --watch seconds
             token = 'gate0377-cancel-%d' % int(time.time())
-            status, started = call_tool(port, 'translate-focused-blueprint', arguments, 20, meta={'progressToken': token})
-            task_id = (started.get('result') or {}).get('taskId')
-            c2 = {'task_id': task_id}
-            if task_id:
-                stream = TaskStream(port, task_id)
-                time.sleep(max(0.0, args.cancel_at - (time.time() - stream.t0)))
-                c2['responses_before_cancel'] = len([e for e in stream.events if e[1] == 'response'])
-                c2['cancel_sent_at'] = round(time.time() - stream.t0, 2)
-                status, body = post(port, {'jsonrpc': '2.0', 'id': 21, 'method': 'nodetocode/cancelTask',
-                                           'params': {'progressToken': token}})
-                c2['cancel'] = json.loads(body).get('result')
-                watch_start = time.time()
-                samples, down = 0, []
-                while time.time() - watch_start < args.watch:
-                    samples += 1
-                    if not health(port) or s.proc.poll() is not None:
-                        down.append(round(time.time() - watch_start, 1))
-                    time.sleep(5.0)
-                c2['watch_seconds'] = round(time.time() - watch_start, 1)
-                c2['health_samples'] = samples
-                c2['health_failures_at'] = down
-                status, body = post(port, {'jsonrpc': '2.0', 'id': 22, 'method': 'nodetocode/cancelTask',
-                                           'params': {'progressToken': token}})
-                c2['second_cancel'] = json.loads(body).get('result')
-                stream.close()
-                responses = [e for e in stream.events if e[1] == 'response']
-                c2['responses'] = [{'at': t, 'text': response_of(d)[1][:160],
-                                    'isError': bool((response_of(d)[0].get('result') or {}).get('isError'))} for t, _, d in responses]
-                first = responses[0][0] if responses else None
-                c2['events_after_response'] = len([e for e in stream.events if first is not None and e[0] > first])
-                log_now = s.log_text()
-                tid = task_id.replace('-', '').upper()
-                c2['log_task_completed_lines'] = len(re.findall(r'Async task %s completed' % tid, log_now, re.I))
-                c2['log_llm_request_cancelled'] = log_now.count('LLM request cancelled')
-                c2['log_crash_lines'] = len(CRASH_RE.findall(log_now))
-                checks['2_cancel_initiated'] = (c2['cancel'] or {}).get('status') == 'cancellation_initiated'
-                checks['2_cancel_before_result'] = c2['responses_before_cancel'] == 0
-                checks['2_one_cancelled_response'] = len(responses) == 1 and c2['responses'][0]['isError'] \
-                    and 'cancelled' in c2['responses'][0]['text']
-                checks['2_no_late_events'] = c2['events_after_response'] == 0
-                checks['2_editor_up_for_watch'] = not down and c2['watch_seconds'] >= args.watch - 1
-                checks['2_second_cancel_already_completed'] = (c2['second_cancel'] or {}).get('status') == 'task_already_completed'
-                checks['2_log_task_completed_once'] = c2['log_task_completed_lines'] == 1
-                checks['2_log_no_crash'] = c2['log_crash_lines'] == 0
-            else:
-                c2['start'] = json.dumps(started)[:300]
-                checks['2_cancel_initiated'] = False
+            stream = ToolCallStream(port, 'translate-focused-blueprint', arguments, 20, meta={'progressToken': token})
+            c2 = {}
+            time.sleep(max(0.0, args.cancel_at - (time.time() - stream.t0)))
+            c2['responses_before_cancel'] = len([e for e in stream.events if e[1] == 'response'])
+            c2['cancel_sent_at'] = round(time.time() - stream.t0, 2)
+            status, body = post(port, {'jsonrpc': '2.0', 'id': 21, 'method': 'nodetocode/cancelTask',
+                                       'params': {'progressToken': token}})
+            c2['cancel'] = json.loads(body).get('result')
+            watch_start = time.time()
+            samples, down = 0, []
+            while time.time() - watch_start < args.watch:
+                samples += 1
+                if not health(port) or s.proc.poll() is not None:
+                    down.append(round(time.time() - watch_start, 1))
+                time.sleep(5.0)
+            c2['watch_seconds'] = round(time.time() - watch_start, 1)
+            c2['health_samples'] = samples
+            c2['health_failures_at'] = down
+            status, body = post(port, {'jsonrpc': '2.0', 'id': 22, 'method': 'nodetocode/cancelTask',
+                                       'params': {'progressToken': token}})
+            c2['second_cancel'] = json.loads(body).get('result')
+            stream.close()
+            responses = [e for e in stream.events if e[1] == 'response']
+            c2['responses'] = [{'at': t, 'text': response_of(d)[1][:160],
+                                'isError': bool((response_of(d)[0].get('result') or {}).get('isError'))} for t, _, d in responses]
+            first = responses[0][0] if responses else None
+            c2['events_after_response'] = len([e for e in stream.events if first is not None and e[0] > first])
+            log_now = s.log_text()
+            tid = c2['task_id'] = task_id_for_token(log_now, token) or 'unknown'
+            c2['log_task_completed_lines'] = len(re.findall(r'Async task %s completed' % tid, log_now, re.I))
+            c2['log_llm_request_cancelled'] = log_now.count('LLM request cancelled')
+            c2['log_crash_lines'] = len(CRASH_RE.findall(log_now))
+            checks['2_cancel_initiated'] = (c2['cancel'] or {}).get('status') == 'cancellation_initiated'
+            checks['2_cancel_before_result'] = c2['responses_before_cancel'] == 0
+            checks['2_one_cancelled_response'] = len(responses) == 1 and c2['responses'][0]['isError'] \
+                and 'cancelled' in c2['responses'][0]['text']
+            checks['2_no_late_events'] = c2['events_after_response'] == 0
+            checks['2_editor_up_for_watch'] = not down and c2['watch_seconds'] >= args.watch - 1
+            checks['2_second_cancel_already_completed'] = (c2['second_cancel'] or {}).get('status') == 'task_already_completed'
+            checks['2_log_task_completed_once'] = c2['log_task_completed_lines'] == 1
+            checks['2_log_no_crash'] = c2['log_crash_lines'] == 0
             report['check2'] = c2
             print('check2', json.dumps(c2), flush=True)
 

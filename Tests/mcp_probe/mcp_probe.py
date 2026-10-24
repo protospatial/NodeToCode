@@ -214,41 +214,40 @@ def probe_p6(port, pid):
     return {'ids': ['auth-settings-module-17', 'dx-docs-release-4', 'p0-9'], 'status': status, 'evidence': evidence}
 
 
-def task_stream_check(port):
-    """Start the long-running translate-focused-blueprint tool and read its task stream on port+1 until it closes.
-
-    With no Blueprint focused (headless) the task fails after its first progress report, which is enough to show
-    the stream delivers progress and the final response; a real translation needs a provider key and a focused
-    Blueprint. Recorded as evidence only."""
-    call = post(port, json.dumps({'jsonrpc': '2.0', 'id': 7, 'method': 'tools/call',
-                                  'params': {'name': 'translate-focused-blueprint', 'arguments': {},
-                                             '_meta': {'progressToken': 'probe-p6'}}}),
-                {'Content-Type': 'application/json'})
-    try:
-        result = json.loads(call.get('body', ''))['result']
-        task_id, sse_url = result['taskId'], result.get('sseUrl')
-    except (ValueError, KeyError, TypeError):
-        return {'ok': False, 'call': call}
-    # The route only matches the hyphenated GUID form, while taskId and sseUrl use the 32-digit form, so the
-    # advertised URL itself is answered 404; FGuid::Parse reads either form, so ask for the hyphenated one.
-    if len(task_id) == 32:
-        task_id = '-'.join((task_id[:8], task_id[8:12], task_id[12:16], task_id[16:20], task_id[20:]))
-    events, error = [], None
-    conn = http.client.HTTPConnection('127.0.0.1', port + 1, timeout=60)
-    try:
-        conn.request('GET', '/mcp/events/%s' % task_id)
-        r = conn.getresponse()
-        stream_status = r.status
-        for raw in r:
-            line = raw.decode('utf-8', 'replace').strip()
-            if line.startswith('event:'):
-                events.append(line[6:].strip())
-    except Exception as e:
-        stream_status, error = None, str(e)
-    finally:
-        conn.close()
-    return {'ok': stream_status == 200 and 'progress' in events and 'response' in events,
-            'sse_url': sse_url, 'stream_status': stream_status, 'events': events, 'error': error}
+def probe_p7(port):
+    """translate-focused-blueprint answered on the same POST. Two calls, each with a numeric progressToken: one whose
+    Accept lists text/event-stream (UE 5.8 answers with an SSE stream of notifications/progress and then the response;
+    5.6/5.7 with one JSON response) and one that accepts only JSON (one JSON response everywhere). Headless no
+    Blueprint is focused, so each result is an isError CallToolResult. Fixed when both responses carry a CallToolResult
+    (a content array), neither has the old 'accepted'/sseUrl result, and any progress echoes the token as a number."""
+    from live_env_translation import ToolCallStream  # noqa: E402
+    calls = {}
+    for label, accept in (('stream', ToolCallStream.ACCEPT_STREAM), ('json', 'application/json')):
+        call = ToolCallStream(port, 'translate-focused-blueprint', {}, 7, meta={'progressToken': 7}, accept=accept, timeout=60)
+        if not call.wait(60):
+            call.close()
+        responses = call.responses()
+        progress = [json.loads(d) for _, e, d in call.events if e == 'progress']
+        try:
+            message = json.loads(responses[0][2]) if responses else {}
+        except ValueError:
+            message = {}
+        result = message.get('result') or {}
+        calls[label] = {
+            'status': call.status, 'content_type': call.content_type, 'events': [(t, e) for t, e, _ in call.events],
+            'responses': len(responses), 'closed': call.closed_at is not None,
+            'call_tool_result': isinstance(result.get('content'), list) and len(result['content']) > 0,
+            'is_error': bool(result.get('isError')), 'id': message.get('id'),
+            'text_head': ''.join(c.get('text', '') for c in result.get('content') or [] if isinstance(c, dict))[:200],
+            'old_accepted_shape': 'sseUrl' in (responses[0][2] if responses else '') or result.get('status') == 'accepted',
+            'progress_tokens': sorted({type(m.get('params', {}).get('progressToken')).__name__ for m in progress}),
+            'progress_values': [m.get('params', {}).get('progress') for m in progress],
+            'progress_messages': [m.get('params', {}).get('message') for m in progress],
+        }
+    ok = all(c['responses'] == 1 and c['call_tool_result'] and not c['old_accepted_shape'] and c['id'] == 7 and c['closed']
+             and c['progress_tokens'] in ([], ['int']) for c in calls.values())
+    return {'ids': ['p0-10', 'mcp-transport-3', 'mcp-transport-21', 'dx-docs-release-8'],
+            'status': 'fixed' if ok else 'reproduced', 'evidence': calls}
 
 
 def main():
@@ -276,7 +275,7 @@ def main():
             results['P3'] = probe_p3(port)
             results['P5'] = probe_p5(port)
             results['P6'] = probe_p6(port, session.proc.pid)
-            results['P6']['evidence']['task_stream'] = task_stream_check(port)
+            results['P7'] = probe_p7(port)
     finally:
         session.stop()
     if args.skip_p4:

@@ -50,8 +50,21 @@ public:
     /** Default time a translation may take before the task cancels it */
     static constexpr double DefaultTimeoutSeconds = 3600.0;
 
-    /** How often the ticker reports progress and checks the timeout */
+    /** How often the ticker reports progress and checks the timeout (MCP clients get a heartbeat at least this often) */
     static constexpr float ProgressIntervalSeconds = 0.5f;
+
+    /** Progress after the request is sent; waiting rises from here towards ProgressParsing */
+    static constexpr float ProgressAfterSend = 0.1f;
+
+    /** Progress once the LLM response arrived and is being parsed */
+    static constexpr float ProgressParsing = 0.95f;
+
+    /** Progress while waiting Elapsed seconds for the LLM: strictly rising, always below ProgressParsing */
+    static float GetWaitProgress(double ElapsedSeconds)
+    {
+        const double Elapsed = FMath::Max(ElapsedSeconds, 0.0);
+        return ProgressAfterSend + (ProgressParsing - 0.01f - ProgressAfterSend) * static_cast<float>(Elapsed / (Elapsed + 60.0));
+    }
 
 private:
     /** State shared with the LLM callback, captured by value so a late callback never touches a dead task */
@@ -79,5 +92,4 @@ private:
 
     double TimeoutSeconds = DefaultTimeoutSeconds;
     double StartTime = 0.0;
-    float WaitProgress = 0.1f;
 };

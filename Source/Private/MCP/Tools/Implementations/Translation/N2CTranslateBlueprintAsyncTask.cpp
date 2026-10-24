@@ -34,16 +34,14 @@ void FN2CTranslateBlueprintAsyncTask::Execute()
         CallbackState->bDone.store(true);
         return;
     }
-    ReportProgress(0.05f, TEXT("Preparing Blueprint data..."));
-
+    
     FN2CMcpArgumentParser ArgParser(Arguments);
     const FString ProviderId = ArgParser.GetOptionalString(TEXT("provider"));
     const FString ModelId = ArgParser.GetOptionalString(TEXT("model"));
     const FString LanguageId = ArgParser.GetOptionalString(TEXT("language"));
 
     StartTime = FPlatformTime::Seconds();
-    WaitProgress = 0.1f;
-    ReportProgress(WaitProgress, TEXT("Sending translation request to LLM..."));
+    ReportProgress(0.02f, TEXT("Collecting the focused Blueprint"));
 
     // The callback holds the shared state by value and the task weakly: a callback that arrives after the task gave up
     // or was destroyed touches nothing but the shared state.
@@ -76,6 +74,7 @@ void FN2CTranslateBlueprintAsyncTask::Execute()
         // An error found before sending completed the request inside the call
         return;
     }
+    ReportProgress(ProgressAfterSend, TEXT("Translation request sent to the LLM provider"));
 
     // Progress and timeout from the core ticker; nothing waits on a thread
     TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
@@ -132,11 +131,11 @@ bool FN2CTranslateBlueprintAsyncTask::Tick(float DeltaTime)
         return false;
     }
 
-    // Progress creeps from 0.1 towards 0.95 over the timeout so clients see the task is alive
-    const double Cycles = FMath::Max(TimeoutSeconds / ProgressIntervalSeconds, 1.0);
-    const float IncrementPerCycle = static_cast<float>(0.85 / Cycles);
-    WaitProgress = FMath::Min(WaitProgress + IncrementPerCycle, 0.95f);
-    ReportProgress(WaitProgress, TEXT("Waiting for LLM response..."));
+    // A heartbeat while the provider works: clients such as Claude Code give up on a call that reports no progress for
+    // several minutes. The value rises with the elapsed time (never reaching the parsing stage) and the message says
+    // how long the request has been waiting.
+    ReportProgress(GetWaitProgress(Elapsed), FString::Printf(TEXT("Waiting for the LLM response (%d s elapsed)"),
+        FMath::FloorToInt32(Elapsed)));
     return true;
 }
 
@@ -144,11 +143,16 @@ void FN2CTranslateBlueprintAsyncTask::HandleLLMResponse(const FString& LLMRespon
 {
     StopTicker();
 
-    const FMcpToolCallResult Result = LLMResponse.StartsWith(TEXT("{\"error\""))
+    const bool bIsError = LLMResponse.StartsWith(TEXT("{\"error\""));
+    if (!bIsError)
+    {
+        ReportProgress(ProgressParsing, TEXT("LLM response received; parsing the translation"));
+    }
+    const FMcpToolCallResult Result = bIsError
         ? FMcpToolCallResult::CreateErrorResult(LLMResponse)
         : FMcpToolCallResult::CreateTextResult(LLMResponse);
 
-    ReportProgress(1.0f, TEXT("Translation received."));
+    ReportProgress(1.0f, Result.bIsError ? TEXT("Translation failed") : TEXT("Translation complete"));
     ReportComplete(Result);
 }
 
