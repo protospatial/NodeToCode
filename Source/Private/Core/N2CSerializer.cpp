@@ -597,8 +597,8 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
     {
         FString Context = FString::Printf(TEXT("Processed %d/%d graphs successfully"), 
             ValidGraphCount, TotalGraphCount);
-        FN2CLogger::Get().LogWarning(TEXT("Partial deserialization completed"), Context);
-        return ValidGraphCount > 0;  // Return true if we got at least one valid graph
+        FN2CLogger::Get().LogWarning(TEXT("Partial deserialization detected"), Context);
+        bHasPartialData = true;  // Preserve diagnostics and continue parsing variables.
     }
 
     // Optionally parse variables array
@@ -619,10 +619,14 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
             {
                 OutBlueprint.Variables.Add(Var);
             }
+            else
+            {
+                bHasPartialData = true;
+            }
         }
     }
 
-    return true;
+    return !bHasPartialData && ValidGraphCount == TotalGraphCount;
 }
 
 bool FN2CSerializer::ParseVariableFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CVariable& OutVar)
