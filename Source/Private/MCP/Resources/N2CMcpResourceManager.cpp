@@ -3,6 +3,33 @@
 #include "MCP/Resources/N2CMcpResourceManager.h"
 #include "Utils/N2CLogger.h"
 #include "Async/Async.h"
+#include "MCP/Server/N2CMcpJsonRpcTypes.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
+
+namespace N2CMcpResourceManagerPrivate
+{
+	/**
+	 * Marks Contents as a failed read: resources/read answers with Code and Message (and the uri in data). The text
+	 * also carries the error as JSON, built with FJsonObject so the uri is escaped, for callers that embed the
+	 * contents (the code-generation prompts).
+	 */
+	static void SetReadError(FMcpResourceContents& Contents, const FString& Uri, int32 Code, const FString& Message)
+	{
+		Contents.ErrorCode = Code;
+		Contents.ErrorMessage = Message;
+		Contents.MimeType = TEXT("application/json");
+		const TSharedRef<FJsonObject> Error = MakeShared<FJsonObject>();
+		Error->SetStringField(TEXT("error"), Message);
+		Error->SetStringField(TEXT("uri"), Uri);
+		Contents.Text.Reset();
+		const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Contents.Text);
+		FJsonSerializer::Serialize(Error, Writer);
+	}
+}
 
 FN2CMcpResourceManager& FN2CMcpResourceManager::Get()
 {
@@ -157,8 +184,7 @@ FMcpResourceContents FN2CMcpResourceManager::ReadResource(const FString& Uri)
 					else
 					{
 						FN2CLogger::Get().LogError(FString::Printf(TEXT("Timeout reading resource on game thread: %s"), *Uri));
-						Contents.MimeType = TEXT("application/json");
-						Contents.Text = FString::Printf(TEXT("{\"error\": \"Timeout reading resource: %s\"}"), *Uri);
+						N2CMcpResourceManagerPrivate::SetReadError(Contents, Uri, JsonRpcErrorCodes::InternalError, TEXT("Timed out reading the resource on the game thread"));
 					}
 				}
 				else
@@ -207,8 +233,7 @@ FMcpResourceContents FN2CMcpResourceManager::ReadResource(const FString& Uri)
 						else
 						{
 							FN2CLogger::Get().LogError(FString::Printf(TEXT("Timeout reading dynamic resource on game thread: %s"), *Uri));
-							Contents.MimeType = TEXT("application/json");
-							Contents.Text = FString::Printf(TEXT("{\"error\": \"Timeout reading resource: %s\"}"), *Uri);
+							N2CMcpResourceManagerPrivate::SetReadError(Contents, Uri, JsonRpcErrorCodes::InternalError, TEXT("Timed out reading the resource on the game thread"));
 						}
 					}
 					else
@@ -230,8 +255,7 @@ FMcpResourceContents FN2CMcpResourceManager::ReadResource(const FString& Uri)
 
 	// Resource not found
 	FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Resource not found: %s"), *Uri));
-	Contents.MimeType = TEXT("application/json");
-	Contents.Text = FString::Printf(TEXT("{\"error\": \"Resource not found: %s\"}"), *Uri);
+	N2CMcpResourceManagerPrivate::SetReadError(Contents, Uri, JsonRpcErrorCodes::ResourceNotFound, TEXT("Resource not found"));
 	
 	return Contents;
 }

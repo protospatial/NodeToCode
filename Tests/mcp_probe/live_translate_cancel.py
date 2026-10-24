@@ -7,13 +7,25 @@ Stdlib only; run with `python -I`:
         --provider anthropic --model claude-haiku-5-5
 
 It starts a headless editor with only the provider's key (from the repo's .env) added to its environment, makes an
-in-memory probe Blueprint under /Game/N2CTest (as live_env_translation.py does), starts a translation, sends
-nodetocode/cancelTask about --cancel-after seconds in, then watches for --settle seconds. It passes when the cancel
-answers cancellation_initiated, the call's own response (a text/event-stream on UE 5.8) carries exactly one JSON-RPC
-response, the cancelled error, and no second response or progress event arrives after it, the editor log shows the LLM request was cancelled and the task completed exactly once, a
-second cancel answers task_already_completed, the editor still answers /mcp/health, a control translation run to
-the end returns code (so the provider really works and the cancel was not vacuous), and no key value is in the
-editor log or the report. Key values are never printed. Report: logs/live_translate_cancel.json.
+in-memory probe Blueprint under /Game/N2CTest (as live_env_translation.py does), starts a translation, cancels it
+about --cancel-after seconds in, then watches for --settle seconds.
+
+--via notification (the default; MCP basic/utilities/cancellation, card 0110) sends notifications/cancelled
+{requestId} in the call's session. It passes when the notification is accepted with 202 and no body, the call's own
+response carries no JSON-RPC response at all and ends soon after the cancel (a text/event-stream closes on UE 5.8; a
+held JSON request ends with 202 and no body on 5.6/5.7), no progress arrives after it, the editor log shows the LLM
+request was cancelled, the task completed exactly once and its response was suppressed, and the deprecated
+nodetocode/cancelTask then answers task_already_completed (and logs its deprecation warning).
+
+--via cancelTask sends the deprecated nodetocode/cancelTask {progressToken}. It passes when the cancel answers
+cancellation_initiated, the call's own response carries exactly one JSON-RPC response, the cancelled error, and no
+second response or progress event arrives after it, the log shows the LLM request was cancelled and the task completed
+exactly once, and a second cancel answers task_already_completed.
+
+Both then check the editor still answers /mcp/health, a control translation run to the end returns code (so the
+provider really works and the cancel was not vacuous), and no key value is in the editor log or the report. Key
+values are never printed. Report: logs/live_translate_cancel.json (logs/live_translate_cancel_<via>.json with --via
+cancelTask).
 """
 import argparse
 import http.client
@@ -52,9 +64,14 @@ def main():
     ap.add_argument('--settle', type=float, default=30.0, help='seconds to watch for late events after the cancel')
     ap.add_argument('--timeout', type=int, default=300, help='bound on the control translation')
     ap.add_argument('--port', type=int, default=27180)
-    ap.add_argument('--log', default=os.path.join(HERE, 'logs', 'live_translate_cancel_editor.log'))
-    ap.add_argument('--report', default=os.path.join(HERE, 'logs', 'live_translate_cancel.json'))
+    ap.add_argument('--via', default='notification', choices=['notification', 'cancelTask'],
+                    help='notifications/cancelled (standard) or the deprecated nodetocode/cancelTask')
+    ap.add_argument('--log', default=None)
+    ap.add_argument('--report', default=None)
     args = ap.parse_args()
+    suffix = '' if args.via == 'notification' else '_' + args.via
+    args.log = args.log or os.path.join(HERE, 'logs', 'live_translate_cancel%s_editor.log' % suffix)
+    args.report = args.report or os.path.join(HERE, 'logs', 'live_translate_cancel%s.json' % suffix)
 
     variable = PROVIDER_VARIABLE[args.provider]
     keys = load_provider_keys(only=[variable])
@@ -68,7 +85,7 @@ def main():
     os.makedirs(os.path.dirname(args.log), exist_ok=True)
     port = free_port(args.port)
     report = {'provider': args.provider, 'model': args.model, 'port': port, 'cancel_after': args.cancel_after,
-              'settle': args.settle}
+              'settle': args.settle, 'via': args.via}
     checks = {}
 
     with EditorSession(args.engine, args.project, port, args.log, allow_python=True, extra_env=keys) as s:
@@ -87,9 +104,15 @@ def main():
             responses_before_cancel = [e for e in stream.events if e[1] == 'response']
             report['responses_before_cancel'] = len(responses_before_cancel)
             cancel_sent = round(time.time() - stream.t0, 2)
-            status, body = post(port, {'jsonrpc': '2.0', 'id': 3, 'method': 'nodetocode/cancelTask',
-                                       'params': {'progressToken': token}})
-            report['cancel'] = {'at': cancel_sent, 'status': status, 'body': json.loads(body).get('result')}
+            if args.via == 'notification':
+                # Same session as the call (mcp_session.py caches one per port); requestId is the tools/call's id 2
+                status, body = post(port, {'jsonrpc': '2.0', 'method': 'notifications/cancelled',
+                                           'params': {'requestId': 2, 'reason': 'live_translate_cancel probe'}})
+                report['cancel'] = {'at': cancel_sent, 'status': status, 'body': body[:200]}
+            else:
+                status, body = post(port, {'jsonrpc': '2.0', 'id': 3, 'method': 'nodetocode/cancelTask',
+                                           'params': {'progressToken': token}})
+                report['cancel'] = {'at': cancel_sent, 'status': status, 'body': json.loads(body).get('result')}
             time.sleep(args.settle)
             status, body = post(port, {'jsonrpc': '2.0', 'id': 4, 'method': 'nodetocode/cancelTask',
                                        'params': {'progressToken': token}})
@@ -107,13 +130,25 @@ def main():
             late = [e for e in stream.events if first_response_at is not None and e[0] > first_response_at]
             report['stream']['events_after_response'] = [(t, e) for t, e, _ in late]
 
-            checks['cancel_initiated'] = (report['cancel']['body'] or {}).get('status') == 'cancellation_initiated'
+            report['stream']['status'] = stream.status
             checks['no_result_before_cancel'] = not responses_before_cancel
-            checks['one_response'] = len(responses) == 1
-            checks['response_is_cancelled'] = bool(responses) and report['stream']['responses'][0]['isError'] \
-                and 'cancelled' in report['stream']['responses'][0]['text']
-            checks['response_soon_after_cancel'] = first_response_at is not None and first_response_at - cancel_sent < 2.0
-            checks['no_late_events'] = not late
+            if args.via == 'notification':
+                late_progress = [t for t, e, _ in stream.events if e == 'progress' and t > cancel_sent + 1.0]
+                report['stream']['progress_after_cancel'] = late_progress
+                checks['notification_accepted_202'] = report['cancel']['status'] == 202 and report['cancel']['body'] == ''
+                checks['no_response_sent'] = not responses
+                checks['call_ended_soon_after_cancel'] = stream.closed_at is not None and stream.closed_at - cancel_sent < 2.0
+                checks['no_progress_after_cancel'] = not late_progress
+                if 'text/event-stream' not in (stream.content_type or ''):
+                    # UE 5.6/5.7 (or a call cancelled before its first event): the held request ends with 202
+                    checks['held_request_ended_202'] = stream.status == 202
+            else:
+                checks['cancel_initiated'] = (report['cancel']['body'] or {}).get('status') == 'cancellation_initiated'
+                checks['one_response'] = len(responses) == 1
+                checks['response_is_cancelled'] = bool(responses) and report['stream']['responses'][0]['isError'] \
+                    and 'cancelled' in report['stream']['responses'][0]['text']
+                checks['response_soon_after_cancel'] = first_response_at is not None and first_response_at - cancel_sent < 2.0
+                checks['no_late_events'] = not late
             checks['second_cancel_already_completed'] = (report['second_cancel'] or {}).get('status') == 'task_already_completed'
             if 'text/event-stream' in (stream.content_type or ''):
                 # UE 5.8 streams: progress arrived on the same POST before the cancel
@@ -152,10 +187,18 @@ def main():
             'llm_request_cancelled_lines': log_text.count('LLM request cancelled'),
             'completed_multiple_times': log_text.count('attempted to complete multiple times'),
             'already_completed_when_cancelled': log_text.count('had already completed when it was cancelled'),
+            'response_suppressed_lines': len(re.findall(r'Async task %s: request cancelled by the client; no response sent' % tid,
+                                                        log_text, re.I)),
+            'cancel_task_deprecation_lines': log_text.count('nodetocode/cancelTask is deprecated'),
         }
         checks['log_task_completed_once'] = report['log']['task_completed_lines'] == 1
         checks['log_request_cancelled'] = report['log']['llm_request_cancelled_lines'] >= 1
         checks['log_no_double_completion'] = report['log']['completed_multiple_times'] == 0
+        if args.via == 'notification':
+            checks['log_response_suppressed'] = report['log']['response_suppressed_lines'] == 1
+        else:
+            checks['log_response_not_suppressed'] = report['log']['response_suppressed_lines'] == 0
+        checks['log_cancel_task_deprecated'] = report['log']['cancel_task_deprecation_lines'] >= 1
     report['checks'] = checks
 
     os.makedirs(os.path.dirname(args.report), exist_ok=True)

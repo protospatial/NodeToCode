@@ -122,11 +122,12 @@ result as a `TFuture`; `FN2CToolAsyncTaskManager` runs the call and knows nothin
    delivered on the game thread, dropped once the call has its result); the translation reports real stages
    (collecting the Blueprint, request sent, waiting with elapsed seconds, parsing) at least once per second, and each
    value sent is larger than the last, as MCP requires
-4. **Cancellation**: Clients can cancel running calls using the `nodetocode/cancelTask` method with the call's
-   progress token. The manager cancels the call's context; the tool's `OnCancelled` callbacks run on the game thread,
-   stop the work (the translation cancels its provider HTTP request) and set a cancelled error result, which the
-   call's own response then carries. `FN2CToolAsyncTaskManager::FindTaskByRequestId` finds a call by session and
-   JSON-RPC id for `notifications/cancelled`.
+4. **Cancellation**: Clients cancel a running call with the standard `notifications/cancelled` naming the
+   tools/call's JSON-RPC `requestId`, in the same session. The manager (`CancelTaskByRequestId`) cancels the call's
+   context; the tool's `OnCancelled` callbacks run on the game thread and stop the work (the translation cancels its
+   provider HTTP request). No response is sent for a request cancelled this way: a stream closes without the
+   response event, a held request ends with 202 and no body. The custom `nodetocode/cancelTask` with the call's
+   progress token still works but is deprecated; there the tool's cancelled error result is the call's response.
 
 ### Creating a Long-Running Tool
 
@@ -223,23 +224,25 @@ curl -X POST http://localhost:27000/mcp \
 
 ### Cancelling a Task
 
-To cancel a running task:
+To cancel a running call, send `notifications/cancelled` with the tools/call's id (here 1):
 
 ```bash
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "nodetocode/cancelTask",
+    "method": "notifications/cancelled",
     "params": {
-      "progressToken": "unique-progress-token-123"
-    },
-    "id": 2
+      "requestId": 1,
+      "reason": "User pressed Stop"
+    }
   }'
 
-# Response:
-# {"jsonrpc":"2.0","id":2,"result":{"status":"cancellation_initiated"}}
+# Response: 202 Accepted, no body. The tools/call's own response then ends without a JSON-RPC response.
 ```
+
+The deprecated `nodetocode/cancelTask` (`"params": {"progressToken": "unique-progress-token-123"}`) still answers
+`{"status":"cancellation_initiated"}`, and the call then answers with the cancelled error result.
 
 ## Dynamic Tool Management
 

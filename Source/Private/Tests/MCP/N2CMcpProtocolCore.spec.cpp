@@ -49,7 +49,10 @@ namespace N2CMcpProtocolCoreSpec
 		}
 	};
 
-	/** A long-running tool whose result the spec sets: reports progress once in InvokeAsync */
+	/**
+	 * A long-running tool whose result the spec sets: reports progress once in InvokeAsync. With bFinishOnCancel it
+	 * reports a cancelled result as soon as its context is cancelled, the way translate-focused-blueprint does.
+	 */
 	class FLongTool : public IN2CMcpTool
 	{
 	public:
@@ -61,14 +64,36 @@ namespace N2CMcpProtocolCoreSpec
 			return Definition;
 		}
 
+		/** One call's promise; set at most once */
+		struct FPending
+		{
+			TPromise<FMcpToolCallResult> Promise;
+			bool bSet = false;
+			void Set(const FMcpToolCallResult& Result) { if (!bSet) { bSet = true; Promise.SetValue(Result); } }
+		};
+
 		virtual TFuture<FMcpToolCallResult> InvokeAsync(const FN2CToolCallContextRef& Context, const TSharedPtr<FJsonObject>&) override
 		{
 			// Every call keeps its own promise until Finish: a promise destroyed unset asserts
-			const TSharedRef<TPromise<FMcpToolCallResult>> Promise = MakeShared<TPromise<FMcpToolCallResult>>();
-			Promises.Add(Promise);
+			const TSharedRef<FPending> Pending = MakeShared<FPending>();
+			Promises.Add(Pending);
 			LastContext = Context;
 			++Invocations;
-			TFuture<FMcpToolCallResult> Future = Promise->GetFuture();
+			TFuture<FMcpToolCallResult> Future = Pending->Promise.GetFuture();
+			if (bFinishOnCancel)
+			{
+				const TWeakPtr<FPending> WeakPending = Pending;
+				const TWeakPtr<FN2CToolCallContext, ESPMode::ThreadSafe> WeakContext = Context;
+				Context->OnCancelled([WeakPending, WeakContext]()
+				{
+					const TSharedPtr<FPending> Pinned = WeakPending.Pin();
+					const FN2CToolCallContextPtr PinnedContext = WeakContext.Pin();
+					if (Pinned.IsValid() && PinnedContext.IsValid())
+					{
+						Pinned->Set(FMcpToolCallResult::CreateErrorResult(PinnedContext->GetCancelledMessage()));
+					}
+				});
+			}
 			Context->ReportProgress(0.1f, TEXT("started"));
 			return Future;
 		}
@@ -78,17 +103,18 @@ namespace N2CMcpProtocolCoreSpec
 		/** Finishes every call still running, oldest first */
 		void Finish(const FString& Text)
 		{
-			TArray<TSharedPtr<TPromise<FMcpToolCallResult>>> Pending = MoveTemp(Promises);
+			TArray<TSharedPtr<FPending>> Pending = MoveTemp(Promises);
 			Promises.Reset();
-			for (const TSharedPtr<TPromise<FMcpToolCallResult>>& Promise : Pending)
+			for (const TSharedPtr<FPending>& Call : Pending)
 			{
-				Promise->SetValue(FMcpToolCallResult::CreateTextResult(Text));
+				Call->Set(FMcpToolCallResult::CreateTextResult(Text));
 			}
 		}
 
-		TArray<TSharedPtr<TPromise<FMcpToolCallResult>>> Promises;
+		TArray<TSharedPtr<FPending>> Promises;
 		FN2CToolCallContextPtr LastContext;
 		int32 Invocations = 0;
+		bool bFinishOnCancel = false;
 	};
 
 	TSharedPtr<FJsonValue> Parse(const FString& Text)
@@ -136,6 +162,13 @@ namespace N2CMcpProtocolCoreSpec
 		return FString::Printf(TEXT("{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"tools/call\",\"params\":{\"name\":\"%s\",\"arguments\":{}%s}}"),
 			Id, LongToolName, *MetaJson);
 	}
+
+	/** A notifications/cancelled for RequestIdJson (a JSON number or string, as written) */
+	FString Cancelled(const FString& RequestIdJson)
+	{
+		return FString::Printf(TEXT("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":%s,\"reason\":\"spec\"}}"),
+			*RequestIdJson);
+	}
 }
 
 /**
@@ -143,8 +176,8 @@ namespace N2CMcpProtocolCoreSpec
  * responder: no listener, no socket. NodeToCode.MCP.Protocol covers the JSON-RPC answers in detail; this spec covers
  * what the core adds over them: answering through a responder, per-client sessions and protocol versions (card 0109:
  * 400/404/405, DELETE, MCP-Protocol-Version, batches per version), the long-running branch (held reply and stream),
- * and server notifications flowing from the core to its sink. Review ids: next-1, mcp-transport-16, mcp-transport-18,
- * mcp-transport-19, imp-mcp-transport-1.
+ * notifications/cancelled (card 0110) and server notifications flowing from the core to its sink. Review ids: next-1,
+ * mcp-transport-15, mcp-transport-16, mcp-transport-18, mcp-transport-19, imp-mcp-transport-1.
  */
 BEGIN_DEFINE_SPEC(FN2CMcpProtocolCoreSpec, "NodeToCode.MCP.Core", N2C_TEST_FLAGS)
 
@@ -676,6 +709,92 @@ void FN2CMcpProtocolCoreSpec::Define()
 			TestEqual(TEXT("nothing streamed"), Responder->Streamed.Num(), 0);
 			TestEqual(TEXT("one reply"), Responder->ReplyCount, 1);
 			TestEqual(TEXT("result text"), CallToolText(ParseObject(Responder->LastReply().Body), 9), FString(TEXT("json done")));
+		});
+	});
+
+	// MCP 2025-11-25, basic/utilities/cancellation: the receiver SHOULD "Stop processing the cancelled request" and
+	// "Not send a response for the cancelled request"; unknown ids and finished requests "SHOULD be ignored".
+	// Findings next-1, mcp-transport-15 (card 0110).
+	Describe(TEXT("cancellation"), [this]()
+	{
+		It(TEXT("cancels a held call on notifications/cancelled and ends its request with 202 and no response"), [this]()
+		{
+			FN2CMcpProtocol Core;
+			const FString SessionId = Open(Core);
+			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Call = SendIn(Core, SessionId, LongCall(21, FString()));
+			const FN2CToolCallContextPtr Context = LongTool->LastContext;
+			if (!TestTrue(TEXT("call running"), Context.IsValid() && !Call->IsAnswered()))
+			{
+				return;
+			}
+			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Notification = SendIn(Core, SessionId, Cancelled(TEXT("21")));
+			TestEqual(TEXT("notification: 202"), Notification->LastReply().Status, 202);
+			TestTrue(TEXT("notification: no body"), Notification->LastReply().Body.IsEmpty());
+			TestTrue(TEXT("the call's context is cancelled"), Context->IsCancelled());
+
+			// The tool reports a result anyway (its work could not be stopped in time): it is not sent
+			LongTool->Finish(TEXT("too late"));
+			TestEqual(TEXT("the call's request ended once"), Call->ReplyCount, 1);
+			TestEqual(TEXT("with 202"), Call->LastReply().Status, 202);
+			TestTrue(TEXT("and no JSON-RPC response"), Call->LastReply().Body.IsEmpty());
+			TestFalse(TEXT("no longer tracked"), FN2CToolAsyncTaskManager::Get().FindTaskByRequestId(SessionId, MakeShared<FJsonValueNumber>(21)).IsValid());
+		});
+
+		It(TEXT("closes a streamed call without its response when the tool stops on cancel"), [this]()
+		{
+			LongTool->bFinishOnCancel = true;
+			FN2CMcpProtocol Core;
+			const FString SessionId = Open(Core);
+			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Call = SendIn(Core, SessionId, LongCall(22, TEXT(",\"_meta\":{\"progressToken\":\"tok-22\"}")),
+				/*bCanStream=*/true);
+			TestEqual(TEXT("the stream is open with the first progress"), Call->Streamed.Num(), 1);
+			SendIn(Core, SessionId, Cancelled(TEXT("22")));
+			TestEqual(TEXT("closed once"), Call->CloseCount, 1);
+			TestEqual(TEXT("no single reply"), Call->ReplyCount, 0);
+			TestEqual(TEXT("nothing streamed after the progress"), Call->Streamed.Num(), 1);
+			for (const FString& Message : Call->Streamed)
+			{
+				const TSharedPtr<FJsonObject> Object = ParseObject(Message);
+				TestFalse(TEXT("no JSON-RPC response on the stream"), Object.IsValid() && (Object->HasField(TEXT("result")) || Object->HasField(TEXT("error"))));
+			}
+		});
+
+		It(TEXT("ignores a cancel for another session, an id of another type or an unknown id"), [this]()
+		{
+			FN2CMcpProtocol Core;
+			const FString SessionId = Open(Core);
+			const FString Other = Open(Core);
+			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Call = SendIn(Core, SessionId, LongCall(23, FString()));
+			const FN2CToolCallContextPtr Context = LongTool->LastContext;
+			if (!TestTrue(TEXT("call running"), Context.IsValid()))
+			{
+				return;
+			}
+			TestEqual(TEXT("other session: 202"), SendIn(Core, Other, Cancelled(TEXT("23")))->LastReply().Status, 202);
+			TestEqual(TEXT("string id: 202"), SendIn(Core, SessionId, Cancelled(TEXT("\"23\"")))->LastReply().Status, 202);
+			TestEqual(TEXT("unknown id: 202"), SendIn(Core, SessionId, Cancelled(TEXT("99")))->LastReply().Status, 202);
+			TestEqual(TEXT("no requestId: 202"), SendIn(Core, SessionId,
+				TEXT("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{}}"))->LastReply().Status, 202);
+			TestFalse(TEXT("the call is not cancelled"), Context->IsCancelled());
+			LongTool->Finish(TEXT("still answered"));
+			TestEqual(TEXT("the call is answered with its result"), CallToolText(ParseObject(Call->LastReply().Body), 23), FString(TEXT("still answered")));
+		});
+
+		It(TEXT("still cancels through the deprecated nodetocode/cancelTask, which answers with the cancelled result"), [this]()
+		{
+			LongTool->bFinishOnCancel = true;
+			FN2CMcpProtocol Core;
+			const FString SessionId = Open(Core);
+			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Call = SendIn(Core, SessionId, LongCall(24, TEXT(",\"_meta\":{\"progressToken\":\"tok-24\"}")));
+			const TSharedPtr<FJsonObject> CancelResult = ResultOf(*SendIn(Core, SessionId,
+				Request(25, TEXT("nodetocode/cancelTask"), TEXT("{\"progressToken\":\"tok-24\"}"))));
+			TestEqual(TEXT("cancellation_initiated"), CancelResult.IsValid() ? CancelResult->GetStringField(TEXT("status")) : FString(),
+				FString(TEXT("cancellation_initiated")));
+			const TSharedPtr<FJsonObject> Response = ParseObject(Call->LastReply().Body);
+			const TSharedPtr<FJsonObject>* Result = nullptr;
+			bool bIsError = false;
+			TestTrue(TEXT("the call answers with an isError result"), Response.IsValid() && Response->TryGetObjectField(TEXT("result"), Result)
+				&& (*Result)->TryGetBoolField(TEXT("isError"), bIsError) && bIsError);
 		});
 	});
 

@@ -43,7 +43,13 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - `translate-focused-blueprint` answers on the same request when the translation finishes. On UE 5.8 it streams
   progress first when the client asks for `text/event-stream`; on 5.6 and 5.7 it returns one JSON result
   ([#59]). <!-- PROVISIONAL 0085 -->
-- `nodetocode/cancelTask` stops a running translation and its HTTP request ([#51], [#52]).
+- `nodetocode/cancelTask` stops a running translation and its HTTP request ([#51], [#52]). It is deprecated: the
+  standard `notifications/cancelled` with the tools/call's request id now stops the call the same way and no
+  response is sent for it (card 0110).
+- MCP errors and capabilities follow the 2025-11-25 spec: an unknown tool or prompt and a missing required prompt
+  argument are -32602, an unknown resource is -32002 with the uri, a handler timeout is -32603;
+  `resources/templates/list` lists the resource templates; `logging` is no longer advertised; `initialize` returns
+  `instructions` naming the tools to start with (card 0110).
 - Optional dynamic tool discovery: only `assess-needed-tools` is listed until the client asks for tool groups;
   off by default (66659c1, df65415, 9579c4a).
 - **Enable MCP Server** (on by default) and **Allow MCP Python Execution** (off by default), both per user under

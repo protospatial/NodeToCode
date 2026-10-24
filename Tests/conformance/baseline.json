@@ -18,20 +18,13 @@
   "server-sse-polling",
   "tools-list"
  ],
- "known_failures": {
-  "logging-set-level": {
-   "card": "0110",
-   "checks": ["logging-set-level"],
-   "why": "initialize advertises the logging capability but logging/setLevel is not implemented (-32601). Card 0110 stops advertising logging (deprecated in 2026-07-28); the scenario then moves to not_applicable."
-  },
-  "inspector tools/list": {
-   "card": "0110",
-   "match": "logging/setLevel",
-   "why": "Inspector 2.x sends logging/setLevel right after initialize because the server advertises logging, gets -32601 and exits before tools/list. Passes once card 0110 drops the logging capability; the smoke step then checks the tool count."
-  }
- },
+ "known_failures": {},
  "known_warnings": {},
  "not_applicable": {
+  "logging-set-level": {
+   "checks": ["logging-set-level"],
+   "why": "The server does not advertise the logging capability (card 0110: it sends no notifications/message, and logging is deprecated in 2026-07-28), so -32601 for logging/setLevel is correct."
+  },
   "completion-complete": {
    "checks": ["completion-complete"],
    "why": "The server does not advertise the completions capability, so -32601 for completion/complete is correct."
@@ -49,7 +42,7 @@
   "tools-call-audio": {"checks": ["tools-call-audio"], "why": "Calls the suite's fixture tool test_audio_content."},
   "tools-call-embedded-resource": {"checks": ["tools-call-embedded-resource"], "why": "Calls the suite's fixture tool test_embedded_resource."},
   "tools-call-mixed-content": {"checks": ["tools-call-mixed-content"], "why": "Calls the suite's fixture tool test_multiple_content_types."},
-  "tools-call-with-logging": {"checks": ["tools-call-with-logging"], "why": "Calls the suite's fixture tool test_tool_with_logging after logging/setLevel (today it stops at setLevel, card 0110)."},
+  "tools-call-with-logging": {"checks": ["tools-call-with-logging"], "why": "Calls logging/setLevel (not offered: no logging capability) and then the suite's fixture tool test_tool_with_logging."},
   "tools-call-error": {"checks": ["tools-call-error"], "why": "Calls the suite's fixture tool test_error_handling."},
   "tools-call-with-progress": {"checks": ["tools-call-with-progress"], "why": "Calls the suite's fixture tool test_tool_with_progress."},
   "tools-call-sampling": {"checks": ["tools-call-sampling"], "why": "Calls the suite's fixture tool test_sampling (server-to-client sampling, which NodeToCode does not use)."},
