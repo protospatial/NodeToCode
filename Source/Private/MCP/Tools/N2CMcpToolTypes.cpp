@@ -58,10 +58,10 @@ FMcpToolDefinition FMcpToolDefinition::FromJson(const TSharedPtr<FJsonObject>& J
 	return Definition;
 }
 
-FMcpToolCallResult FMcpToolCallResult::CreateTextResult(const FString& Text)
+FMcpToolCallResult FMcpToolCallResult::CreateTextResult(const FString& Text, bool bInIsError)
 {
 	FMcpToolCallResult Result;
-	Result.bIsError = false;
+	Result.bIsError = bInIsError;
 	
 	TSharedPtr<FJsonObject> TextContent = MakeShareable(new FJsonObject);
 	TextContent->SetStringField(TEXT("type"), TEXT("text"));

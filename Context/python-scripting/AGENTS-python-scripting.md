@@ -276,6 +276,13 @@ C++ tools in `Source/Private/MCP/Tools/Implementations/Python/`:
 
 All Python tools require Game Thread execution (`RequiresGameThread() = true`).
 
+Each tool answers with one text item holding JSON `{"success", "data", "error", ...}`. The script tools return the
+`nodetocode` function's own `{success, data, error}` dict as it is (not wrapped in another `data`). When `success`
+is false (the script raised or did not compile, or a script function reported an error) the
+CallToolResult also has `isError: true`, so MCP clients see a tool execution failure; run-python's body then keeps
+the error, `traceback`, `output`, `stderr` and a `hint`. A timeout, or Python being unavailable, is an
+`isError` result whose text is a plain message.
+
 ## Python-Only Mode
 
 Setting in Plugin Settings: `bEnablePythonScriptOnlyMode` (default: `true`)
