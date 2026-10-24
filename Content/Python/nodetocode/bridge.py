@@ -18,32 +18,11 @@ Usage:
     provider = n2c.get_active_provider()
 """
 
-import json
 from typing import Dict, Any, Optional
 
 import unreal
 
-from .utils import make_success_result, make_error_result, log_info, log_warning, log_error
-
-
-def _parse_bridge_result(json_str: str) -> Dict[str, Any]:
-    """
-    Parse JSON result from C++ bridge functions.
-
-    Args:
-        json_str: JSON string from bridge function
-
-    Returns:
-        Parsed dictionary with success/data/error structure
-    """
-    if not json_str:
-        return make_error_result("Empty response from bridge function")
-
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        log_error(f"Failed to parse bridge response: {e}")
-        return make_error_result(f"Failed to parse bridge response: {e}")
+from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result
 
 
 # ============== Tagging System ==============

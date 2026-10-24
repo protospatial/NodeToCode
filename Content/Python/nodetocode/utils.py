@@ -5,8 +5,10 @@ Provides common helpers for editor subsystem access, Blueprint validation,
 and logging operations.
 """
 
+import json
+
 import unreal
-from typing import Optional, Any, TypeVar
+from typing import Optional, Any, Dict, TypeVar
 
 T = TypeVar('T')
 
@@ -135,3 +137,34 @@ def make_error_result(error: str, data: Any = None) -> dict:
         'data': data,
         'error': error
     }
+
+
+def _parse_bridge_result(json_str: str) -> Dict[str, Any]:
+    """
+    Parse the JSON a UN2CPythonBridge function returns.
+
+    The bridge builds every response with one C++ helper (a TJsonWriter over an FJsonObject), so the text is
+    always {"success": bool, "data": ... or null, "error": str or null}. This is the only parser; blueprint.py,
+    bridge.py, functions.py and graph.py import it.
+
+    Args:
+        json_str: JSON string returned by the bridge function
+
+    Returns:
+        Parsed dictionary with success, data, and error keys, or an error result when the text is empty,
+        not JSON, or not a JSON object
+    """
+    if not json_str:
+        return make_error_result("Empty response from bridge function")
+
+    try:
+        result = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        log_error(f"Failed to parse bridge response: {e}")
+        return make_error_result(f"Failed to parse bridge response: {e}")
+
+    if not isinstance(result, dict):
+        log_error(f"Bridge response is not a JSON object: {type(result).__name__}")
+        return make_error_result(f"Bridge response is not a JSON object: {type(result).__name__}")
+
+    return result
