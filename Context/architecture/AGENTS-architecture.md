@@ -185,5 +185,5 @@ Content/
 *   **`.gitignore`**: Standard Git ignore.
 *   **`LICENSE`**, **`README.md`**: License and documentation.
 *   **`Resources/`**: Plugin/toolbar icons (`Icon128.png`, `button_icon.png`).
-*   **`build.sh`**, **`build.ps1`**: Build scripts for Mac and Windows.
+*   **`build.ps1`**: Build, smoke and automation-test runner for UE 5.6-5.8 (see `AGENTS.md`).
 *   **`assets/`**: Documentation/promotional images.

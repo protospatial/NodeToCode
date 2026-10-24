@@ -126,22 +126,11 @@ def main():
     report = {'label': args.label, 'date': time.strftime('%Y-%m-%d'), 'port': port, 'cases': []}
 
     # Changing a setting through the editor saves it to the host's Config/DefaultNodeToCode.ini (and stamps the
-    # settings version, which the settings migration specs then see), so the file is put back as it was afterwards
-    config_path = os.path.join(project_dir, 'Config', 'DefaultNodeToCode.ini')
-    config_before = open(config_path, 'rb').read() if os.path.isfile(config_path) else None
-
+    # settings version, which the settings migration specs then see); EditorSession puts that file back byte for byte
     session = EditorSession(args.engine, args.project, port, log_path, allow_python=True, extra_env=keys,
                             extra_args=['-RenderOffScreen'])
-    try:
-        run_session(session, args, port, cases, report)
-    finally:
-        if config_before is None:
-            if os.path.isfile(config_path):
-                os.remove(config_path)
-        else:
-            with open(config_path, 'wb') as f:
-                f.write(config_before)
-        report['config_restored'] = (open(config_path, 'rb').read() if os.path.isfile(config_path) else None) == config_before
+    run_session(session, args, port, cases, report)
+    report['config_restored'] = session.restore_ok
 
     log_text = session.log_text()
     report['log'] = {

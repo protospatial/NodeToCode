@@ -2,56 +2,36 @@
 
 Build scripts, UE path detection, git submodule setup, and IDE configuration for multi-version UE plugin development.
 
-## Build Scripts
+## Build Script
 
-The plugin includes platform-specific build scripts that compile the UE project and output timestamped logs.
-
-### Windows: `build.ps1`
-
-Located in the plugin root directory. Run from PowerShell:
+`build.ps1` at the plugin root (tracked) is the build, smoke and test runner for UE 5.6, 5.7 and 5.8 (Windows
+PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every switch; the short form:
 
 ```powershell
-.\build.ps1
+.\build.ps1 -WhatIf                  # detected engines and host projects
+.\build.ps1 -All -Smoke              # build every engine, then load the plugin headless
+.\build.ps1 -UEVersion 5.8 -Test     # build, then run Automation RunTests NodeToCode and report pass/fail
 ```
 
 **What it does:**
-- Invokes `Engine\Build\BatchFiles\Build.bat` via UBT (Unreal Build Tool)
-- Builds target: `NodeToCodeHost_5_4Editor` (Development, Win64)
-- Creates timestamped logs in `BuildLogs/Build_YYYYMMDD_HHMMSS.log`
-- Displays colored output (success/warning/error)
-- Shows last 10 error lines on failure
+- Finds each engine from `-Engine '<ver>=<path>'`, the `N2C_UE_5_X` environment variables, `build.local.ps1`, the
+  registry, the Epic launcher's `LauncherInstalled.dat`, registered source builds or the default install folder, and
+  checks each against `Engine/Build/Build.version`.
+- Creates (on first use) a minimal C++ host project per engine, `<HostsRoot>/NodeToCodeHost_5_X` (default `../Hosts`
+  next to the checkout), whose `Plugins/NodeToCode/{Source,Content,Resources,ThirdParty}` are junctions (symbolic
+  links on Mac and Linux) back into the checkout; `Binaries/` and `Intermediate/` stay per host.
+- Builds the host's editor target through `Engine/Build/BatchFiles/Build.bat` (UBT), then optionally runs
+  `Tests/smoke/smoke_check.py` (`-Smoke`) or the automation tests with an exported report (`-Test`).
+- Writes timestamped logs to `BuildLogs/` (`-LogRoot` to move them) and exits non-zero on any failure.
 
-**Configuration variables** (edit in script if paths differ):
-- `$ProjectDir` - Path to UE project
-- `$UEPath` - Path to UE installation
-
-### macOS/Linux: `build.sh`
-
-Located in the plugin root directory. Run from terminal:
-
-```bash
-./build.sh
-```
-
-**What it does:**
-- Invokes `Engine/Build/BatchFiles/Mac/Build.sh` via UBT
-- Builds target: `NodeToCodeHost_5_4Editor` (Development, Mac)
-- Creates timestamped logs in `BuildLogs/Build_YYYYMMDD_HHMMSS.log`
-- Uses `tee` to display output while logging
-- Shows warning count and error lines on failure
-
-**Configuration variables** (edit in script if paths differ):
-- `PROJECT_DIR` - Path to UE project
-- `UE_PATH` - Path to UE installation
+Machine-specific settings (engine paths, hosts root) go in `build.local.ps1` next to the script; it is gitignored and
+dot-sourced when present.
 
 ### BuildLogs Directory
 
-Build logs are stored in `Plugins/NodeToCode/BuildLogs/` with naming format:
-```
-Build_YYYYMMDD_HHMMSS.log
-```
-
-This directory is git-ignored and accumulates logs over time. Logs include full compiler output for debugging build failures.
+Logs are named `Build_<ver>_<stamp>.log`, `Smoke_<ver>_<stamp>.log`, `Tests_<ver>_<stamp>.log` (with the automation
+report in `Tests_<ver>_<stamp>/`) and `Package_<ver>_<stamp>.log`. The directory is git-ignored and accumulates logs
+over time.
 
 ---
 
@@ -221,20 +201,20 @@ The `.gitignore` defines which development files are tracked:
 - `AGENTS.md` - AI coding agent instructions (shared)
 - `Context/` - Documentation hub files
 - Source code and content assets
+- `build.ps1`, `Scripts/`, `Tests/` - Build, release and test tooling
 
 **Ignored (local-only):**
 - `CLAUDE.md` - Local AI agent instructions (personal)
 - `.claude/` - Claude Code conversation data
 - `Development/` - Local development planning/notes
 - `BuildLogs/` - Build output logs
-- `build.sh`, `*.ps1` - Build scripts (paths are machine-specific)
+- `build.local.ps1` - Machine-specific settings for `build.ps1` (engine paths, hosts root)
 - `.aider*` - Aider AI assistant files
 - `.mcp.json` - MCP server configuration
 - `.env` - Environment variables
-- `Config/` - Local UE configuration
 
 ### Rationale
 
-- **Build scripts ignored**: They contain machine-specific paths (`$UEPath`, `$ProjectDir`)
+- **build.ps1 tracked, build.local.ps1 ignored**: the script finds engines and creates hosts itself; only per-machine overrides stay local
 - **CLAUDE.md ignored**: Allows personal customization without polluting shared repo
 - **AGENTS.md tracked**: Shared AI agent instructions that should be consistent

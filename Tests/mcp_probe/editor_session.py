@@ -11,12 +11,16 @@ Launch form: UnrealEditor-Cmd.exe <project> -unattended -nullrhi -nosplash -noso
 Settings: the plugin's own config file does not take -ini: command-line overrides, so for the length of the session
 this writes the probe's port (and, when asked, Allow MCP Python Execution) into the host's Saved/Config layer
 (NodeToCode.ini and EditorPerProjectUserSettings.ini under Saved/Config/<Platform>Editor) and restores both files
-when the session stops. The project's shared Config/ folder is never touched. Using a non-default port means an
-editor already running on 27000 cannot answer the probe.
+when the session stops. Changing a NodeToCode setting through the editor (set_editor_property, the settings UI, a
+settings migration) saves it to the project's Config/DefaultNodeToCode.ini, so the session also snapshots that file
+when it starts and puts it back byte for byte when it stops (or deletes it if it did not exist); restore_ok says
+whether every file came back exactly. Using a non-default port means an editor already running on 27000 cannot
+answer the probe.
 
 Lifetime: on Windows the editor is put in a job object that kills it (and its crash reporter) when this Python
 process exits, so a probe that is killed or dies cannot leave an editor running. The Saved/Config patches are only
-restored by stop(); after a hard kill, check the host's Saved/Config/<Platform>Editor files.
+restored by stop(); after a hard kill, check the host's Saved/Config/<Platform>Editor files and
+Config/DefaultNodeToCode.ini.
 """
 import argparse
 import json
@@ -112,6 +116,7 @@ class EditorSession:
         self.proc = None
         self._job = None
         self._backups = {}
+        self.restore_ok = None
 
     def args(self):
         a = [self.exe, self.project, '-unattended', '-nullrhi', '-nosplash', '-nosound', '-NoLiveCoding',
@@ -146,16 +151,31 @@ class EditorSession:
             out.append('%s=%s' % (key, value))
         open(path, 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
 
+    def guard_file(self, path):
+        """Snapshot a file (or its absence) now; stop() puts it back byte for byte"""
+        path = os.path.abspath(path)
+        if path not in self._backups:
+            self._backups[path] = open(path, 'rb').read() if os.path.isfile(path) else None
+
+    def project_config_path(self, file_name='DefaultNodeToCode.ini'):
+        return os.path.join(os.path.dirname(os.path.abspath(self.project)), 'Config', file_name)
+
     def _restore(self):
+        ok = True
         for path, original in self._backups.items():
             if original is None:
                 if os.path.exists(path):
                     os.remove(path)
             else:
-                open(path, 'wb').write(original)
+                with open(path, 'wb') as f:
+                    f.write(original)
+            now = open(path, 'rb').read() if os.path.isfile(path) else None
+            ok = ok and now == original
         self._backups = {}
+        self.restore_ok = ok if self.restore_ok is None else (self.restore_ok and ok)
 
     def start(self, timeout=240):
+        self.guard_file(self.project_config_path())
         self._patch('NodeToCode.ini', '[/Script/NodeToCode.N2CSettings]', 'McpServerPort', str(self.port))
         self._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]',
                     'bAllowMcpPythonExecution', 'True' if self.allow_python else 'False')

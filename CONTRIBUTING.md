@@ -21,18 +21,19 @@ public issue.
 NodeToCode 2.0 supports Unreal Engine 5.6 (the floor), 5.7 and 5.8 (the ceiling), editor only, Win64. A change to
 C++ must compile on all three.
 
-1. Put the plugin in a host project's `Plugins/NodeToCode` folder (a clone, or a junction or symlink to one) and
-   build the host's editor target for each engine version you have. The maintainer keeps one host project per
-   engine, with each host's `Source`, `Content`, `Resources` and `ThirdParty` folders junctioned to a single
-   checkout, so every engine builds the same branch; switch branches only when no host editor is open.
+1. Build with `build.ps1` at the repo root (Windows PowerShell 5.1 or PowerShell 7). It finds each installed engine
+   (registry, Epic launcher, registered source builds, or the `N2C_UE_5_6` / `N2C_UE_5_7` / `N2C_UE_5_8` environment
+   variables and `-Engine '5.8=<path>'`), creates a small C++ host project per engine under `..\Hosts` (or
+   `-HostsRoot <dir>`) whose `Plugins/NodeToCode` folders link back to your checkout, and builds its editor target.
+   `.\build.ps1 -WhatIf` shows what it found; `.\build.ps1 -All -Smoke` builds 5.6, 5.7 and 5.8 and loads the plugin
+   headless. Machine-specific paths go in a gitignored `build.local.ps1` (see `AGENTS.md`). Switch branches only
+   when no host editor is open.
 2. Guard version-specific code with `ENGINE_MINOR_VERSION` (include `Runtime/Launch/Resources/Version.h`).
-3. Run the plugin's automation tests on each engine, in the editor's Session Frontend (Automation tab, filter
-   `NodeToCode`) or headless:
-   `UnrealEditor-Cmd.exe <Host>.uproject -ExecCmds="Automation RunTests NodeToCode,Quit" -unattended -nullrhi -TestExit="Automation Test Queue Empty"`.
-   Every test should pass. Tests live in `Source/Private/Tests/`; add one for a bug you fix where you can.
-4. The maintainer's loop wraps this in a local `build.ps1` (`.\build.ps1 -All -Smoke` builds 5.6, 5.7 and 5.8 and
-   loads the plugin headless). It is not committed yet because it holds machine-specific paths; see `AGENTS.md`.
-5. If you cannot build on every engine, say which ones you built and tested in the pull request. The maintainer
+3. Run the plugin's automation tests on each engine: `.\build.ps1 -All -Test` builds, runs
+   `Automation RunTests NodeToCode` in a headless editor and fails if any test fails. You can also run them in the
+   editor's Session Frontend (Automation tab, filter `NodeToCode`). Every test should pass. Tests live in
+   `Source/Private/Tests/`; add one for a bug you fix where you can.
+4. If you cannot build on every engine, say which ones you built and tested in the pull request. The maintainer
    runs the rest before merging.
 
 ## Code and headers

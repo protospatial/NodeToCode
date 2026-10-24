@@ -30,7 +30,12 @@ port with a plain socket instead of a second editor on a copy of the project; th
 commit as the fix, and runs the probe on 5.6, 5.7 and 5.8.
 
 The session temporarily writes the port and Allow MCP Python Execution into the host's `Saved/Config/<Platform>Editor`
-files and restores them when it stops; the host's shared `Config/` folder is never changed.
+files and restores them when it stops. A NodeToCode setting changed through the editor (a probe's
+`set_editor_property`, the settings UI, a settings migration) is saved to the host's `Config/DefaultNodeToCode.ini`,
+so `EditorSession` also snapshots that file at `start()` and, at `stop()`, writes it back byte for byte or deletes it if
+it did not exist; `session.restore_ok` says whether every file came back exactly, and the live probes that change
+settings (`live_provider_matrix.py`, `live_truncated.py`, `live_typed_errors.py`) report it as `config_restored` and
+fail without it.
 
 ## E05 regression probe
 
@@ -148,7 +153,7 @@ its environment when no key is saved, so a live check never types or saves a key
   (`max_tokens`, `MAX_TOKENS`, `length`) and a message naming the Max Output Tokens setting. Keys go into the
   editor's environment only and the logs, report and translation folders are scanned for them. Changing a setting
   in the editor saves the host's `Config/DefaultNodeToCode.ini` (with a settings version the migration specs then
-  see), so the probe puts that file back as it was. Refusals and safety
+  see); `EditorSession` puts that file back byte for byte. Refusals and safety
   blocks are not triggered live; `NodeToCode.LLM.Parse` covers them with documented bodies. Report:
   `logs/live_truncated_<label>.json`.
 - `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
@@ -168,7 +173,8 @@ its environment when no key is saved, so a live check never types or saves a key
     are skipped, since the editor still holds that request. Pass `--cases` in the order to run them and put slow
     models last.
   - `EditorSession` puts the editor in a Windows job object that kills it when the Python process exits, so a killed
-    or crashed run cannot leave an editor running; only `stop()` restores the `Saved/Config` patches.
+    or crashed run cannot leave an editor running; only `stop()` restores the `Saved/Config` patches and the host's
+    `Config/DefaultNodeToCode.ini`.
   - The editor runs with `-RenderOffScreen`: on UE 5.6 under `-nullrhi` the opened Blueprint editor's window
     otherwise reaches `FGenericWindow::GetRestoredDimensions`, which is Fatal.
   - Provider HTTP errors (429, 503, 402) surface in the response as "Failed to parse LLM response" with the raw body;

@@ -92,8 +92,6 @@ __pycache__/
 /.aider.tags.cache.v3
 .aider.chat.history.md
 .aider.input.history
-/Config/*
-!/Config/FilterPlugin.ini
 /Development
 .aider*
 # Agent instructions (CLAUDE.md is local-only, AGENTS.md is tracked)
@@ -102,9 +100,8 @@ __pycache__/
 /.idea
 .mcp.json
 /build.sh
-*.ps1
-# Committed release tooling (build.ps1 stays local: machine-specific paths)
-!/Scripts/*.ps1
+# Machine-specific build.ps1 settings (engine paths, hosts root); build.ps1 itself is tracked
+/build.local.ps1
 /BuildLogs
 /Documentation
 nul
