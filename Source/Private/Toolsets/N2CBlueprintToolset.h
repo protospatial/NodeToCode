@@ -21,6 +21,19 @@ struct FN2CBlueprintExportResult
 	FString Error;
 };
 
+USTRUCT(BlueprintType)
+struct FN2CBlueprintGraphTextResult
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bSuccess = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString GraphText;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString Error;
+};
+
 /** Exposes read-only NodeToCode Blueprint inspection tools to Unreal MCP clients. */
 UCLASS(BlueprintType, Hidden)
 class UN2CBlueprintToolset : public UToolsetDefinition
@@ -35,4 +48,9 @@ public:
 	 */
 	UFUNCTION(Category = "Node to Code", meta = (AICallable))
 	static FN2CBlueprintExportResult ExportBlueprintJson(const FString& BlueprintAssetPath);
+
+    /** Read-only fallback, exporting the selected graph in the Editor's clipboard format. */
+    UFUNCTION(Category = "Node to Code", meta = (AICallable))
+    static FN2CBlueprintGraphTextResult ExportBlueprintGraphText(
+        const FString& BlueprintAssetPath, const FString& GraphName);
 };
