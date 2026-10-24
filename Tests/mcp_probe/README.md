@@ -77,6 +77,14 @@ clean); P11 fixed (all five results parse, the errors quote `it's` and `Missing'
 `create-variable` and the compile succeed during PIE, with no NodeToCode error, ensure or crash, PIE ends, the editor
 answers, and `N2CProbePieVar` is on the fixture afterwards.
 
+## Injection fixture (threat model)
+
+`make_injection_fixture.py` builds `/Game/N2CSecurity/BP_InjectionFixture` in a host project for the prompt-injection
+test of `Context/mcp-server/threat-model.md` (gate 0383): planted payloads with canary markers in a variable
+tooltip, a string literal, the Blueprint description and a comment box, then a read-back through the read tools.
+The node-comment payload is one manual editor step (the threat model gives it). The asset stays in the host and is
+never committed. `--remove` deletes it, `--keep-existing` re-reads it.
+
 ## E05 regression probe
 
 `e05_regressions.py` proves the epic E05 fixes: every p0-6 input returns an error instead of crashing the editor,

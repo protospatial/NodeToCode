@@ -37,17 +37,24 @@ Blueprints. It is designed for a single developer's machine; it has no authentic
   loopback unless the project's `[HTTPServer.Listeners]` engine config overrides it. It is the only port the plugin
   opens.
 - **Origin and Host checks.** The server refuses a request whose `Origin` is not a loopback origin or whose
-  `Host` is not `localhost`, `127.0.0.1` or `[::1]`, so a web page or a DNS-rebinding attack cannot drive it.
-  POST requests to `/mcp` must be `application/json`.
+  `Host` is not `localhost`, `127.0.0.1` or `[::1]`, so a page from another site or a DNS-rebinding attack cannot
+  drive it. A page served from any port on localhost is a loopback origin and is allowed. POST requests to `/mcp`
+  must be `application/json`.
 - **Can be turned off.** **Enable MCP Server** (Project Settings, Plugins, Node to Code (User)) is a per-user
   setting. The server does not start in commandlets or unattended runs unless `-N2CMcp` is on the command line.
 - **Python execution off by default.** `run-python`, `save-python-script` and `delete-python-script` exist only when
   the per-user **Allow MCP Python Execution** setting is on. With it on, any connected MCP client can run arbitrary
-  Python in the editor.
+  Python in the editor, including reading your API keys. The setting is stored per user, but a project's committed
+  `Config/DefaultEditorPerProjectUserSettings.ini` can still switch it on; check that file in projects you did not
+  write.
 - **API keys.** Keys entered in Project Settings are kept outside the project in a per-user file,
   `<user settings folder>/NodeToCode/secrets.json`, as plain (unencrypted) JSON; they are not written to the
   project's config files. The MCP file tools refuse to read or list that folder, any `secrets.json*` file, `.env`
   files and the project's `.git` folder.
 
-Any process running as you on the same machine can reach the server, and text inside Blueprints (comments, names)
-reaches the agent that reads it. Treat a connected agent as having the access your enabled tools give it.
+Any process running as you on the same machine can reach the server, and text inside Blueprints (comments, names,
+tooltips, string literals) reaches the agent that reads it. Treat a connected agent as having the access your
+enabled tools give it.
+
+The threat model, with every control, its evidence and the open risks, is
+[Context/mcp-server/threat-model.md](Context/mcp-server/threat-model.md).
