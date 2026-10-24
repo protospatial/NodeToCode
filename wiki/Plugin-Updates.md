@@ -29,7 +29,7 @@ After any update:
 1. Verify plugin settings are preserved
 2. Re-check LLM provider configuration
 3. Test a simple translation to ensure functionality
-4. Review the changelog for any breaking changes
+4. Review the [changelog](https://github.com/protospatial/NodeToCode/blob/dev-2.0/CHANGELOG.md) for any breaking changes
 
 ## Updating from 1.2.x to 2.0
 

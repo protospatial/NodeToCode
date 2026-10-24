@@ -141,6 +141,7 @@ replaces models that providers have retired with the current defaults, and logs 
 - What changes for users: [Updating from 1.2.x to 2.0](wiki/Plugin-Updates.md#updating-from-12x-to-20).
 - Every setting, file and API, row by row: the
   [migration matrix](Context/release/migration-1.2-to-2.0.md).
+- Everything that changed in 2.0, with pull request numbers: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 
