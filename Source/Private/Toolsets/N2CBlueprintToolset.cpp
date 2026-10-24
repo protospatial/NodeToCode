@@ -37,6 +37,7 @@ FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FStrin
 {
     FN2CBlueprintExportResult Result;
     const FString AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
+    Result.AssetObjectPath = AssetObjectPath;
     auto Fail = [&Result](const FString& Message)
     {
         Result.Error = Message;
@@ -69,19 +70,34 @@ FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FStrin
     }
 
     const FN2CBlueprint& BlueprintData = Translator.GetN2CBlueprint();
-    if (!BlueprintData.IsValid())
-    {
-        return Fail(FString::Printf(TEXT("NodeToCode produced invalid data for Blueprint '%s'."), *AssetObjectPath));
-    }
-
-    Result.BlueprintJson = FN2CSerializer::ToJson(BlueprintData);
-    if (Result.BlueprintJson.IsEmpty())
-    {
-        return Fail(FString::Printf(TEXT("NodeToCode could not serialize Blueprint '%s' to JSON."), *AssetObjectPath));
-    }
-
     for (const FN2CGraph& Graph : BlueprintData.Graphs)
     {
+        if (Graph.SkippedNodeCount > 0)
+        {
+            bool bOnlyCommentsSkipped = !Graph.SkippedNodeClasses.IsEmpty();
+            for (const FString& NodeClass : Graph.SkippedNodeClasses)
+            {
+                bOnlyCommentsSkipped &= NodeClass.EndsWith(
+                    TEXT("EdGraphNode_Comment"), ESearchCase::CaseSensitive);
+            }
+
+            const FString GraphIdentity = Graph.GraphPath.IsEmpty() ? Graph.Name : Graph.GraphPath;
+            if (bOnlyCommentsSkipped)
+            {
+                Result.Warnings.Add(FString::Printf(
+                    TEXT("Graph '%s' has %d comment node(s) outside the normalized node list; use GraphText for their native text."),
+                    *GraphIdentity, Graph.SkippedNodeCount));
+            }
+            else
+            {
+                Result.Errors.Add(FString::Printf(
+                    TEXT("Graph '%s' has %d untranslated native node(s): %s."),
+                    *GraphIdentity,
+                    Graph.SkippedNodeCount,
+                    *FString::Join(Graph.SkippedNodeClasses, TEXT(", "))));
+            }
+        }
+
         for (const FString& GraphError : Graph.ConnectionErrors)
         {
             Result.Errors.Add(FString::Printf(TEXT("Graph '%s': %s"), *Graph.Name, *GraphError));
@@ -100,12 +116,23 @@ FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FStrin
         return Result;
     }
 
+    if (!BlueprintData.IsValid())
+    {
+        return Fail(FString::Printf(TEXT("NodeToCode produced invalid data for Blueprint '%s'."), *AssetObjectPath));
+    }
+
+    Result.BlueprintJson = FN2CSerializer::ToJson(BlueprintData);
+    if (Result.BlueprintJson.IsEmpty())
+    {
+        return Fail(FString::Printf(TEXT("NodeToCode could not serialize Blueprint '%s' to JSON."), *AssetObjectPath));
+    }
+
     Result.bSuccess = true;
     return Result;
 }
 
 FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
-    const FString& BlueprintAssetPath, const FString& GraphName)
+    const FString& BlueprintAssetPath, const FString& GraphName, const FString& GraphPath)
 {
     FN2CBlueprintGraphTextResult Result;
     if (!IsInGameThread())
@@ -116,9 +143,10 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
 
     const FString AssetPath = BlueprintAssetPath.TrimStartAndEnd();
     const FString RequestedName = GraphName.TrimStartAndEnd();
-    if (AssetPath.IsEmpty() || RequestedName.IsEmpty())
+    const FString RequestedPath = GraphPath.TrimStartAndEnd();
+    if (AssetPath.IsEmpty() || (RequestedName.IsEmpty() && RequestedPath.IsEmpty()))
     {
-        Result.Error = TEXT("BlueprintAssetPath and GraphName are required.");
+        Result.Error = TEXT("BlueprintAssetPath and a graph name or path are required.");
         return Result;
     }
 
@@ -129,40 +157,71 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
         return Result;
     }
 
-    TArray<UEdGraph*> Graphs;
-    Graphs.Append(Blueprint->UbergraphPages);
-    Graphs.Append(Blueprint->FunctionGraphs);
-    Graphs.Append(Blueprint->MacroGraphs);
-    for (UEdGraph* Graph : Graphs)
+    TArray<UEdGraph*> AllGraphs;
+    Blueprint->GetAllGraphs(AllGraphs);
+    TArray<UEdGraph*> Matches;
+    TSet<UEdGraph*> SeenGraphs;
+    for (UEdGraph* Graph : AllGraphs)
     {
-        if (Graph && Graph->GetName() == RequestedName)
+        if (!Graph || SeenGraphs.Contains(Graph))
         {
-            TSet<UObject*> Nodes;
-            for (UEdGraphNode* Node : Graph->Nodes)
-            {
-                if (Node)
-                {
-                    Nodes.Add(Node);
-                }
-            }
-            if (Nodes.Num() == 0)
-            {
-                Result.Error = TEXT("The requested graph contains no nodes.");
-                return Result;
-            }
-
-            FEdGraphUtilities::ExportNodesToText(Nodes, Result.GraphText);
-            Result.bSuccess = !Result.GraphText.IsEmpty();
-            if (!Result.bSuccess)
-            {
-                Result.Error = TEXT("UnrealEd returned empty graph text.");
-            }
-            return Result;
+            continue;
+        }
+        SeenGraphs.Add(Graph);
+        const bool bMatches = RequestedPath.IsEmpty()
+            ? Graph->GetName() == RequestedName
+            : Graph->GetPathName() == RequestedPath;
+        if (bMatches && (RequestedName.IsEmpty() || Graph->GetName() == RequestedName))
+        {
+            Matches.Add(Graph);
         }
     }
 
-    Result.Error = FString::Printf(
-        TEXT("Graph '%s' was not found in Blueprint '%s'."),
-        *RequestedName, *AssetPath);
+    if (Matches.IsEmpty())
+    {
+        Result.Error = FString::Printf(
+            TEXT("Graph '%s' at path '%s' was not found in Blueprint '%s'."),
+            *RequestedName, *RequestedPath, *AssetPath);
+        return Result;
+    }
+    if (Matches.Num() > 1)
+    {
+        TArray<FString> CandidatePaths;
+        for (const UEdGraph* Graph : Matches)
+        {
+            CandidatePaths.Add(Graph->GetPathName());
+        }
+        Result.Error = FString::Printf(
+            TEXT("Graph name '%s' is ambiguous in Blueprint '%s'; pass graphPath from NodeToCode JSON. Candidates: %s"),
+            *RequestedName, *AssetPath, *FString::Join(CandidatePaths, TEXT(", ")));
+        return Result;
+    }
+
+    UEdGraph* Graph = Matches[0];
+    Result.GraphName = Graph->GetName();
+    Result.GraphGuid = Graph->GraphGuid.IsValid() ? Graph->GraphGuid.ToString() : FString();
+    Result.GraphPath = Graph->GetPathName();
+    Result.NativeNodeCount = Graph->Nodes.Num();
+    if (Graph->Nodes.IsEmpty())
+    {
+        Result.bSuccess = true;
+        return Result;
+    }
+
+    TSet<UObject*> Nodes;
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (Node)
+        {
+            Nodes.Add(Node);
+        }
+    }
+
+    FEdGraphUtilities::ExportNodesToText(Nodes, Result.GraphText);
+    Result.bSuccess = !Result.GraphText.IsEmpty();
+    if (!Result.bSuccess)
+    {
+        Result.Error = TEXT("UnrealEd returned empty graph text for a graph containing native nodes.");
+    }
     return Result;
 }

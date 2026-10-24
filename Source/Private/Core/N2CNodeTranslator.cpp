@@ -3,6 +3,7 @@
 #include "Core/N2CNodeTranslator.h"
 
 #include "Core/N2CSettings.h"
+#include "EdGraphNode_Comment.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CNodeTypeRegistry.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
@@ -181,19 +182,37 @@ bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIn
         default:                      N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal; break;
     }
 
-    // Process graphs: event, functions, macros
+    // Keep the established primary graph ordering, then include every graph category
+    // exposed by UBlueprint (interface, delegate, extension, and nested graphs).
     TArray<UEdGraph*> Graphs;
-    if (InBlueprint->UbergraphPages.Num() > 0)
+    TSet<UEdGraph*> SeenGraphs;
+    auto AddGraph = [&Graphs, &SeenGraphs](UEdGraph* Graph)
     {
-        Graphs.Append(InBlueprint->UbergraphPages);
+        if (Graph && !SeenGraphs.Contains(Graph))
+        {
+            SeenGraphs.Add(Graph);
+            Graphs.Add(Graph);
+        }
+    };
+
+    for (UEdGraph* Graph : InBlueprint->UbergraphPages)
+    {
+        AddGraph(Graph);
     }
-    if (InBlueprint->FunctionGraphs.Num() > 0)
+    for (UEdGraph* Graph : InBlueprint->FunctionGraphs)
     {
-        Graphs.Append(InBlueprint->FunctionGraphs);
+        AddGraph(Graph);
     }
-    if (InBlueprint->MacroGraphs.Num() > 0)
+    for (UEdGraph* Graph : InBlueprint->MacroGraphs)
     {
-        Graphs.Append(InBlueprint->MacroGraphs);
+        AddGraph(Graph);
+    }
+
+    TArray<UEdGraph*> AllBlueprintGraphs;
+    InBlueprint->GetAllGraphs(AllBlueprintGraphs);
+    for (UEdGraph* Graph : AllBlueprintGraphs)
+    {
+        AddGraph(Graph);
     }
 
     for (UEdGraph* Graph : Graphs)
@@ -664,10 +683,13 @@ void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
         return;
     }
 
-    // Check if we've already processed this graph
+    // Graph names are not unique across implemented interfaces; use native identity.
+    const FString GraphPath = Graph->GetPathName();
+    const FString GraphGuid = Graph->GraphGuid.IsValid() ? Graph->GraphGuid.ToString() : FString();
     for (const FN2CGraph& ExistingGraph : N2CBlueprint.Graphs)
     {
-        if (ExistingGraph.Name == Graph->GetName())
+        if (ExistingGraph.GraphPath == GraphPath ||
+            (!GraphGuid.IsEmpty() && ExistingGraph.GraphGuid == GraphGuid))
         {
             return;
         }
@@ -759,10 +781,13 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
         return false;
     }
 
-    // Create new graph structure
+    // Create new graph structure with native identity and counts for coverage audits.
     FN2CGraph NewGraph;
     NewGraph.Name = Graph->GetName();
     NewGraph.GraphType = GraphType;
+    NewGraph.GraphGuid = Graph->GraphGuid.IsValid() ? Graph->GraphGuid.ToString() : FString();
+    NewGraph.GraphPath = Graph->GetPathName();
+    NewGraph.NativeNodeCount = Graph->Nodes.Num();
 
     // Collect function-local variables from the entry node (if any)
     for (UEdGraphNode* Node : Graph->Nodes)
@@ -776,10 +801,20 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
 
     CurrentGraph = &NewGraph;
 
-    // Collect and process nodes from this graph
-    TArray<UK2Node*> GraphNodes;
+    // Preserve the native node count while recording nodes that the normalized
+    // translator does not model. Comments are non-executable; unknown skipped node
+    // types are reported as export errors by the toolset.
+    bool bHasUntranslatedBehavior = false;
     for (UEdGraphNode* Node : Graph->Nodes)
     {
+        if (!Node)
+        {
+            ++NewGraph.SkippedNodeCount;
+            NewGraph.SkippedNodeClasses.AddUnique(TEXT("<null>"));
+            bHasUntranslatedBehavior = true;
+            continue;
+        }
+
         if (UK2Node* K2Node = Cast<UK2Node>(Node))
         {
             FN2CNodeDefinition NodeDef;
@@ -787,32 +822,43 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
             {
                 CurrentGraph->Nodes.Add(NodeDef);
             }
+            else
+            {
+                ++NewGraph.SkippedNodeCount;
+                NewGraph.SkippedNodeClasses.AddUnique(Node->GetClass()->GetPathName());
+                bHasUntranslatedBehavior = true;
+            }
+        }
+        else
+        {
+            ++NewGraph.SkippedNodeCount;
+            NewGraph.SkippedNodeClasses.AddUnique(Node->GetClass()->GetPathName());
+            if (!Node->IsA<UEdGraphNode_Comment>())
+            {
+                bHasUntranslatedBehavior = true;
+            }
         }
     }
+    NewGraph.bNoExecutableNodes = NewGraph.Nodes.IsEmpty() && !bHasUntranslatedBehavior;
 
     // Preserve the complete original topology independently of lossy legacy flows.
     CollectDirectConnections(Graph, NewGraph);
 
-    // Add the processed graph to the blueprint if it has nodes
-    if (CurrentGraph->Nodes.Num() > 0)
+    // Keep every native graph, including verified empty/comment-only graphs.
+    if (CurrentGraph->Nodes.Num() > 0 && !ValidateFlowReferences(NewGraph))
     {
-        // Validate all flow references
-        if (!ValidateFlowReferences(NewGraph))
-        {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Flow validation issues found in graph: %s"), *NewGraph.Name));
-        }
-
-        N2CBlueprint.Graphs.Add(NewGraph);
-        
-        FString Context = FString::Printf(TEXT("Processed graph: %s with %d nodes"), 
-            *NewGraph.Name, 
-            NewGraph.Nodes.Num());
-        FN2CLogger::Get().Log(TEXT("Graph processing complete"), EN2CLogSeverity::Info, Context);
-        
-        return true;
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Flow validation issues found in graph: %s"), *NewGraph.Name));
     }
 
-    return false;
+    N2CBlueprint.Graphs.Add(NewGraph);
+    FString Context = FString::Printf(
+        TEXT("Processed graph: %s (native nodes=%d, translated=%d, skipped=%d)"),
+        *NewGraph.Name,
+        NewGraph.NativeNodeCount,
+        NewGraph.Nodes.Num(),
+        NewGraph.SkippedNodeCount);
+    FN2CLogger::Get().Log(TEXT("Graph processing complete"), EN2CLogSeverity::Info, Context);
+    return true;
 }
 
 EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
@@ -825,7 +871,7 @@ EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
     // First check if this is a function graph by looking for function entry node
     for (UEdGraphNode* Node : Graph->Nodes)
     {
-        if (Node->IsA<UK2Node_FunctionEntry>())
+        if (Node && Node->IsA<UK2Node_FunctionEntry>())
         {
             return EN2CGraphType::Function;
         }

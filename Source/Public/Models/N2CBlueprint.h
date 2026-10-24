@@ -572,6 +572,24 @@ struct FN2CGraph
     /** Type of graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     EN2CGraphType GraphType;
+    /** Stable native graph identifier; empty only for the synthetic class marker. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString GraphGuid;
+    /** Native UObject path, used to distinguish same-named interface graphs. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString GraphPath;
+    /** Number of UEdGraphNode entries in the source graph. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int32 NativeNodeCount = 0;
+    /** Native nodes not represented in the normalized NodeToCode node list. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int32 SkippedNodeCount = 0;
+    /** Distinct native classes represented by SkippedNodeCount. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FString> SkippedNodeClasses;
+    /** True only when all native nodes are absent or non-executable comments. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bNoExecutableNodes = false;
 
     /** Array of all nodes in this graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")

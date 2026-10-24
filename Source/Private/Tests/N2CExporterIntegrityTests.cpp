@@ -39,6 +39,7 @@ UEdGraph* MakeBlueprintGraph(UBlueprint* Blueprint, const FName Name, const bool
 
     UEdGraph* Graph = NewObject<UEdGraph>(Blueprint, Name, RF_Transient);
     Graph->Schema = UEdGraphSchema_K2::StaticClass();
+    Graph->GraphGuid = FGuid::NewGuid();
     if (bEventGraph)
     {
         Blueprint->UbergraphPages.Add(Graph);
@@ -530,6 +531,109 @@ bool FNodeToCodeDirectLinkIntegrityTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNodeToCodeBlueprintGraphCoverageTest,
+    "NodeToCode.Exporter.BlueprintGraphCoverage",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNodeToCodeBlueprintGraphCoverageTest::RunTest(const FString& Parameters)
+{
+    UBlueprint* Blueprint = MakeTestBlueprint(TEXT("N2CGraphCoverageFixture"));
+    UEdGraph* EventGraph = MakeBlueprintGraph(Blueprint, TEXT("EventGraph"), true);
+    AddTestNode(EventGraph, TEXT("EventNode"));
+    MakeBlueprintGraph(Blueprint, TEXT("EmptyFunction"), false);
+
+    UBlueprint* FirstInterfaceOwner = MakeTestBlueprint(TEXT("N2CInterfaceOwnerA"));
+    UEdGraph* FirstInterfaceGraph = MakeBlueprintGraph(
+        FirstInterfaceOwner, TEXT("SharedInterfaceFunction"), false);
+    AddTestNode(FirstInterfaceGraph, TEXT("FirstInterfaceNode"));
+    FBPInterfaceDescription& FirstInterface = Blueprint->ImplementedInterfaces.AddDefaulted_GetRef();
+    FirstInterface.Interface = UInterface::StaticClass();
+    FirstInterface.Graphs.Add(FirstInterfaceGraph);
+
+    UBlueprint* SecondInterfaceOwner = MakeTestBlueprint(TEXT("N2CInterfaceOwnerB"));
+    UEdGraph* SecondInterfaceGraph = MakeBlueprintGraph(
+        SecondInterfaceOwner, TEXT("SharedInterfaceFunction"), false);
+    AddTestNode(SecondInterfaceGraph, TEXT("SecondInterfaceNode"));
+    FBPInterfaceDescription& SecondInterface = Blueprint->ImplementedInterfaces.AddDefaulted_GetRef();
+    SecondInterface.Interface = UInterface::StaticClass();
+    SecondInterface.Graphs.Add(SecondInterfaceGraph);
+
+    FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
+    if (!TestTrue(TEXT("Blueprint with implemented-interface graphs translates"),
+        Translator.GenerateFromBlueprint(Blueprint, false)))
+    {
+        return false;
+    }
+
+    FN2CBlueprint Serializable = Translator.GetN2CBlueprint();
+    Serializable.Metadata.BlueprintClass = TEXT("N2CGraphCoverageFixture_C");
+    TestTrue(TEXT("Graph coverage fixture validates"), Serializable.IsValid());
+
+    TSet<FString> GraphPaths;
+    TSet<FString> GraphGuids;
+    int32 SharedFunctionCount = 0;
+    const FN2CGraph* EmptyGraphData = nullptr;
+    for (const FN2CGraph& Graph : Serializable.Graphs)
+    {
+        if (Graph.GraphType == EN2CGraphType::ClassItSelf)
+        {
+            continue;
+        }
+        GraphPaths.Add(Graph.GraphPath);
+        GraphGuids.Add(Graph.GraphGuid);
+        if (Graph.Name == TEXT("SharedInterfaceFunction"))
+        {
+            ++SharedFunctionCount;
+        }
+        if (Graph.Name == TEXT("EmptyFunction"))
+        {
+            EmptyGraphData = &Graph;
+        }
+        TestEqual(
+            FString::Printf(TEXT("Native node accounting matches graph '%s'"), *Graph.Name),
+            Graph.NativeNodeCount,
+            Graph.Nodes.Num() + Graph.SkippedNodeCount);
+    }
+
+    TestTrue(TEXT("UE implemented-interface graphs are included"),
+        GraphPaths.Contains(FirstInterfaceGraph->GetPathName()) &&
+        GraphPaths.Contains(SecondInterfaceGraph->GetPathName()));
+    TestEqual(TEXT("Same-named interface graphs are both retained"), SharedFunctionCount, 2);
+    TestEqual(TEXT("Native graph paths remain distinct"), GraphPaths.Num(), 4);
+    TestEqual(TEXT("Native graph GUIDs remain distinct"), GraphGuids.Num(), 4);
+    TestNotNull(TEXT("Verified empty graph is retained"), EmptyGraphData);
+    if (EmptyGraphData)
+    {
+        TestEqual(TEXT("Empty graph has zero native nodes"), EmptyGraphData->NativeNodeCount, 0);
+        TestTrue(TEXT("Empty graph is explicitly marked non-executable"), EmptyGraphData->bNoExecutableNodes);
+        TestTrue(TEXT("Empty graph passes structural validation"), EmptyGraphData->IsValid());
+    }
+
+    const FString Json = FN2CSerializer::ToJson(Serializable);
+    FN2CBlueprint RoundTripped;
+    TestTrue(TEXT("Graph identity/count metadata round-trips"), FN2CSerializer::FromJson(Json, RoundTripped));
+    if (RoundTripped.Graphs.Num() != Serializable.Graphs.Num())
+    {
+        AddError(TEXT("Round-tripped graph count differs from source graph count."));
+        return false;
+    }
+    for (const FN2CGraph& Graph : Serializable.Graphs)
+    {
+        const FN2CGraph* Match = RoundTripped.Graphs.FindByPredicate([&Graph](const FN2CGraph& Candidate)
+        {
+            return Candidate.Name == Graph.Name && Candidate.GraphPath == Graph.GraphPath;
+        });
+        TestNotNull(FString::Printf(TEXT("Graph identity round-trips: %s"), *Graph.Name), Match);
+        if (Match)
+        {
+            TestEqual(TEXT("Native count round-trips"), Match->NativeNodeCount, Graph.NativeNodeCount);
+            TestEqual(TEXT("Skipped count round-trips"), Match->SkippedNodeCount, Graph.SkippedNodeCount);
+            TestEqual(TEXT("Empty graph proof round-trips"), Match->bNoExecutableNodes, Graph.bNoExecutableNodes);
+        }
+    }
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FNodeToCodeEmptyGraphIntegrityTest,
     "NodeToCode.Exporter.EmptyAndDanglingGraphs",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -632,6 +736,12 @@ bool FNodeToCodeLegacyExecPinRoundTripTest::RunTest(const FString& Parameters)
         GraphObject->RemoveField(TEXT("connections"));
         GraphObject->RemoveField(TEXT("connection_errors"));
         GraphObject->RemoveField(TEXT("unresolved_connection_count"));
+        GraphObject->RemoveField(TEXT("graph_guid"));
+        GraphObject->RemoveField(TEXT("graph_path"));
+        GraphObject->RemoveField(TEXT("native_node_count"));
+        GraphObject->RemoveField(TEXT("skipped_node_count"));
+        GraphObject->RemoveField(TEXT("skipped_node_classes"));
+        GraphObject->RemoveField(TEXT("no_executable_nodes"));
 
         const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
         if (!GraphObject->TryGetArrayField(TEXT("nodes"), Nodes))

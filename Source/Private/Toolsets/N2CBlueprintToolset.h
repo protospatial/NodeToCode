@@ -18,9 +18,14 @@ struct FN2CBlueprintExportResult
 	FString BlueprintJson;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+	FString AssetObjectPath;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
 	FString Error;
 	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
 	TArray<FString> Errors;
+	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+	TArray<FString> Warnings;
 };
 
 USTRUCT(BlueprintType)
@@ -32,6 +37,14 @@ struct FN2CBlueprintGraphTextResult
     bool bSuccess = false;
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
     FString GraphText;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString GraphName;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString GraphGuid;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString GraphPath;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    int32 NativeNodeCount = 0;
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
     FString Error;
 };
@@ -51,8 +64,8 @@ public:
 	UFUNCTION(Category = "Node to Code", meta = (AICallable))
 	static FN2CBlueprintExportResult ExportBlueprintJson(const FString& BlueprintAssetPath);
 
-    /** Read-only fallback, exporting the selected graph in the Editor's clipboard format. */
+    /** Read-only graph oracle; GraphPath disambiguates same-named interface graphs. */
     UFUNCTION(Category = "Node to Code", meta = (AICallable))
     static FN2CBlueprintGraphTextResult ExportBlueprintGraphText(
-        const FString& BlueprintAssetPath, const FString& GraphName);
+        const FString& BlueprintAssetPath, const FString& GraphName, const FString& GraphPath = FString());
 };

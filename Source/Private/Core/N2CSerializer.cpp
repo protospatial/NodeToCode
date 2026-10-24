@@ -238,6 +238,18 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
     JsonObject->SetStringField(TEXT("name"), Graph.Name);
     JsonObject->SetStringField(TEXT("graph_type"),
         StaticEnum<EN2CGraphType>()->GetNameStringByValue(static_cast<int64>(Graph.GraphType)));
+    JsonObject->SetStringField(TEXT("graph_guid"), Graph.GraphGuid);
+    JsonObject->SetStringField(TEXT("graph_path"), Graph.GraphPath);
+    JsonObject->SetNumberField(TEXT("native_node_count"), Graph.NativeNodeCount);
+    JsonObject->SetNumberField(TEXT("skipped_node_count"), Graph.SkippedNodeCount);
+    JsonObject->SetBoolField(TEXT("no_executable_nodes"), Graph.bNoExecutableNodes);
+
+    TArray<TSharedPtr<FJsonValue>> SkippedNodeClasses;
+    for (const FString& NodeClass : Graph.SkippedNodeClasses)
+    {
+        SkippedNodeClasses.Add(MakeShared<FJsonValueString>(NodeClass));
+    }
+    JsonObject->SetArrayField(TEXT("skipped_node_classes"), SkippedNodeClasses);
 
     TArray<TSharedPtr<FJsonValue>> NodesArray;
     for (const FN2CNodeDefinition& Node : Graph.Nodes)
@@ -915,6 +927,69 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
     OutGraph.Name = Name;
     OutGraph.GraphType = static_cast<EN2CGraphType>(TypeValue);
 
+    const TCHAR* CoverageFields[] = {
+        TEXT("graph_guid"), TEXT("graph_path"), TEXT("native_node_count"),
+        TEXT("skipped_node_count"), TEXT("skipped_node_classes"), TEXT("no_executable_nodes")
+    };
+    bool bHasCoverageMetadata = false;
+    for (const TCHAR* Field : CoverageFields)
+    {
+        bHasCoverageMetadata |= JsonObject->HasField(Field);
+    }
+    if (bHasCoverageMetadata)
+    {
+        FString GraphGuid;
+        FString GraphPath;
+        double NativeNodeCount = 0.0;
+        double SkippedNodeCount = 0.0;
+        bool bNoExecutableNodes = false;
+        const TArray<TSharedPtr<FJsonValue>>* SkippedClasses = nullptr;
+        if (!JsonObject->TryGetStringField(TEXT("graph_guid"), GraphGuid) ||
+            !JsonObject->TryGetStringField(TEXT("graph_path"), GraphPath) ||
+            !JsonObject->TryGetNumberField(TEXT("native_node_count"), NativeNodeCount) ||
+            !JsonObject->TryGetNumberField(TEXT("skipped_node_count"), SkippedNodeCount) ||
+            !JsonObject->TryGetArrayField(TEXT("skipped_node_classes"), SkippedClasses) ||
+            !JsonObject->TryGetBoolField(TEXT("no_executable_nodes"), bNoExecutableNodes) ||
+            NativeNodeCount < 0.0 || NativeNodeCount > static_cast<double>(MAX_int32) ||
+            SkippedNodeCount < 0.0 || SkippedNodeCount > NativeNodeCount ||
+            FMath::FloorToDouble(NativeNodeCount) != NativeNodeCount ||
+            FMath::FloorToDouble(SkippedNodeCount) != SkippedNodeCount)
+        {
+            FN2CLogger::Get().LogError(FString::Printf(
+                TEXT("Invalid graph coverage metadata in graph '%s'."), *Name));
+            return false;
+        }
+
+        OutGraph.GraphGuid = MoveTemp(GraphGuid);
+        OutGraph.GraphPath = MoveTemp(GraphPath);
+        OutGraph.NativeNodeCount = static_cast<int32>(NativeNodeCount);
+        OutGraph.SkippedNodeCount = static_cast<int32>(SkippedNodeCount);
+        OutGraph.bNoExecutableNodes = bNoExecutableNodes;
+        for (const TSharedPtr<FJsonValue>& ClassValue : *SkippedClasses)
+        {
+            FString NodeClass;
+            if (!ClassValue.IsValid() || !ClassValue->TryGetString(NodeClass) || NodeClass.IsEmpty())
+            {
+                FN2CLogger::Get().LogError(FString::Printf(
+                    TEXT("Invalid skipped node class in graph '%s'."), *Name));
+                return false;
+            }
+            OutGraph.SkippedNodeClasses.AddUnique(MoveTemp(NodeClass));
+        }
+        if (OutGraph.SkippedNodeCount > 0 && OutGraph.SkippedNodeClasses.IsEmpty())
+        {
+            FN2CLogger::Get().LogError(FString::Printf(
+                TEXT("Graph '%s' reports skipped nodes without their native classes."), *Name));
+            return false;
+        }
+        if (OutGraph.GraphType != EN2CGraphType::ClassItSelf && OutGraph.GraphPath.IsEmpty())
+        {
+            FN2CLogger::Get().LogError(FString::Printf(
+                TEXT("Graph '%s' is missing its native object path."), *Name));
+            return false;
+        }
+    }
+
     const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
     if (!JsonObject->TryGetArrayField(TEXT("nodes"), NodesArray))
     {
@@ -941,6 +1016,17 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
             return false;
         }
         OutGraph.Nodes.Add(MoveTemp(Node));
+    }
+
+    if (bHasCoverageMetadata)
+    {
+        if (OutGraph.NativeNodeCount != OutGraph.Nodes.Num() + OutGraph.SkippedNodeCount ||
+            (OutGraph.bNoExecutableNodes && OutGraph.Nodes.Num() > 0))
+        {
+            FN2CLogger::Get().LogError(FString::Printf(
+                TEXT("Graph '%s' native/translated/skipped node counts disagree."), *Name));
+            return false;
+        }
     }
 
     OutGraph.Pins.Empty();
