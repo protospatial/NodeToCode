@@ -45,6 +45,10 @@ to `xDescribe`) and put a comment above it naming the finding id and what enable
 xIt(TEXT("accepts ordinary names that start with a device name's letters"), ...
 ```
 
+A characterization spec (for example `NodeToCode.MCP.Protocol`) may also pin today's behaviour where it breaks a
+rule, in an `It` named "... today" whose comment names the finding, the rule and the card that changes it. That
+card deletes the "today" case and enables the `xIt` next to it.
+
 List every disabled case in the PR. A test card does not fix product code; the card that fixes the finding turns the
 case back on. Currently disabled:
 
@@ -54,6 +58,14 @@ case back on. Currently disabled:
 | `NodeToCode.Names` | create-folder refuses COM1-9 and LPT1-9 like rename-folder does | mcp-tools-contentbrowser-fs-11 |
 | `NodeToCode.Registry` | advertises the category of every tool through assess-needed-tools | mcp-tools-python-translation-resources-14 |
 | `NodeToCode.Registry` | gives every tool a category (find-nodes-in-graph has none) | mcp-tools-python-translation-resources-14 |
+| `NodeToCode.MCP.Protocol` | initialize echoes 2025-06-18 and 2025-11-25 and answers 2026-07-28 with 2025-11-25 | next-1 (card 0109) |
+| `NodeToCode.MCP.Protocol` | initialize does not advertise logging | mcp-transport-19 (card 0110) |
+| `NodeToCode.MCP.Protocol` | tools/call reports an unknown tool as an isError result or -32602 | mcp-transport-20 (card 0110) |
+| `NodeToCode.MCP.Protocol` | resources refuses an unknown uri with -32002 and the uri in data | mcp-transport-20 (card 0110) |
+| `NodeToCode.MCP.Protocol` | resources answers resources/templates/list with a resourceTemplates array | mcp-transport-19 (card 0110) |
+| `NodeToCode.MCP.Protocol` | prompts refuses an unknown prompt with -32602 | mcp-transport-20 (card 0110) |
+| `NodeToCode.MCP.Protocol` | prompts refuses a missing required argument with -32602 | mcp-tools-python-translation-resources-23 (card 0110) |
+| `NodeToCode.MCP.Protocol` | client responses accept a result or error response with 202 and no body | mcp-transport-19 (card 0109) |
 
 ## Running the tests
 
