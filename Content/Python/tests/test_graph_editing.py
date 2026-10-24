@@ -325,7 +325,7 @@ def run_all_tests():
         return
 
     print(f"\nTesting with Blueprint: {bp['data']['name']}")
-    print(f"Graph: {bp['data'].get('focused_graph_name', 'Unknown')}")
+    print(f"Graph: {bp['data']['graph_name']}")
 
     tests = [
         test_search_blueprint_nodes,

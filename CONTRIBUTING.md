@@ -34,7 +34,18 @@ C++ must compile on all three.
    editor's Session Frontend (Automation tab, filter `NodeToCode`). Every test should pass. Tests live in
    `Source/Private/Tests/` (its `README.md` covers naming, layout and helpers); add one for a bug you fix where
    you can.
-4. If you cannot build on every engine, say which ones you built and tested in the pull request. The maintainer
+4. A change to the Python package or the bundled scripts under `Content/Python` gets a test in `Tests/python`.
+   Those run on plain CPython with a stub `unreal` module, no editor needed, in about a second. With
+   [uv](https://docs.astral.sh/uv/) installed, from the repo root:
+
+   ```
+   uv run --no-project --python 3.11 --with-requirements Tests/python/requirements.txt -- python -m pytest Tests/python
+   ```
+
+   `.\build.ps1 -Test` also runs them on each engine's bundled Python. Python 3.11 is what UE 5.6 to 5.8 embed, so
+   do not use newer syntax in `Content/Python`. Known defects are `xfail(strict=True)` tests named after their
+   finding; fixing one means removing its marker.
+5. If you cannot build on every engine, say which ones you built and tested in the pull request. The maintainer
    runs the rest before merging.
 
 ## Code and headers
