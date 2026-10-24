@@ -17,12 +17,11 @@ Source/
 │   │   ├── N2CMcpJsonRpcTypes.h          # JSON-RPC types
 │   │   ├── N2CMcpSSEResponseManager.h    # SSE response management
 │   │   └── IN2CMcpNotificationChannel.h  # Notification interface
-│   ├── Async/                            # Async execution system
-│   │   ├── IN2CToolAsyncTask.h           # Async task interface
-│   │   ├── N2CToolAsyncTaskBase.h        # Base async task class
-│   │   └── N2CToolAsyncTaskManager.h     # Task lifecycle management
+│   ├── Async/                            # Long-running call system
+│   │   └── N2CToolAsyncTaskManager.h     # Runs long-running tool calls
 │   ├── Tools/                            # Tool framework
-│   │   ├── IN2CMcpTool.h                 # Tool interface
+│   │   ├── IN2CMcpTool.h                 # Tool interface (Execute, InvokeAsync)
+│   │   ├── N2CToolCallContext.h          # Progress and cancellation for one call
 │   │   ├── N2CMcpToolBase.h              # Tool base class
 │   │   ├── N2CMcpToolTypes.h             # Tool definitions
 │   │   ├── N2CMcpToolManager.h           # Tool execution
@@ -48,8 +47,7 @@ Source/
     │   ├── N2CMcpSSEResponseManager.cpp
     │   ├── N2CSseServer.h/.cpp           # SSE server (httplib-based)
     │   └── ...
-    ├── Async/                            # Async implementations
-    │   ├── N2CToolAsyncTaskBase.cpp
+    ├── Async/                            # Long-running call implementation
     │   └── N2CToolAsyncTaskManager.cpp
     ├── Tools/                            # Tool framework and implementations
     │   ├── N2CMcpToolBase.cpp
@@ -131,30 +129,30 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
     *   `FormatSseMessage()` for SSE event formatting
     *   `PushNotificationToAllClients()` for broadcast notifications
 
-## Async Execution System (`Source/Public/MCP/Async/`)
+## Long-Running Calls (`Source/Public/MCP/Tools/N2CToolCallContext.h`, `Source/Public/MCP/Async/`)
 
-Supports long-running tool operations with progress streaming:
+Supports long-running tool operations with progress and cancellation through one API:
 
-*   **`IN2CToolAsyncTask.h`**: Async task interface
-    *   `Execute()` - Main execution method
-    *   `Cancel()` - Request cancellation
-    *   `IsCancelled()` - Check cancellation state
-    *   `GetTaskId()`, `GetProgressToken()`, `GetToolName()`
+*   **`IN2CMcpTool::InvokeAsync(Context, Arguments)`**: returns `TFuture<FMcpToolCallResult>`. The default wraps
+    `Execute()`; a long-running tool (`bIsLongRunning`) overrides it, starts its work on the game thread without
+    blocking and sets the future exactly once (result or cancelled result). `Execute()` defaults to an error, and
+    the tool manager refuses a long-running tool inside a JSON-RPC batch.
 
-*   **`N2CToolAsyncTaskBase.h/.cpp`**: Base class for async tasks (derives `TSharedFromThis<FN2CToolAsyncTaskBase, ESPMode::ThreadSafe>`; reports queued to the game thread hold the task weakly, so derived tasks use `SharedThis(this)`)
-    *   `ReportProgress(float Progress, const FString& Message)` - Progress updates
-    *   `ReportComplete(const FMcpToolCallResult& Result)` - Task completion
-    *   `CheckCancellationAndReport()` - Cancellation check with auto-reporting
-    *   Progress and the result go to the task's `FN2CAsyncTaskResponder` (the call's HTTP response)
+*   **`FN2CToolCallContext`**: one call as the tool sees it
+    *   `ReportProgress(float, FString)` - any thread; delivered on the game thread to the caller's sink; dropped
+        once the call is completed
+    *   `IsCancelled()`, `OnCancelled(TFunction<void()>)` - cancel callbacks run once on the game thread
+    *   `Cancel(Reason)`, `MarkCompleted()` - caller side (the manager)
 
-*   **`N2CToolAsyncTaskManager.h/.cpp`**: Task lifecycle management
-    *   Singleton for managing all async tasks
-    *   `LaunchTask()` - Start async execution with an `FN2CAsyncTaskResponder` (where progress notifications and
-        the final JSON-RPC response are written) and the client's progressToken as sent; `LaunchTaskInstance()`
-        launches an already created task, `SetTaskFactoryForTesting()` swaps in test tasks
-    *   `CancelTask()`, `CancelTaskByProgressToken()` - Cancellation
-    *   `GetTaskContext()`, `IsTaskRunning()`, `GetRunningTaskIds()`
-    *   A task stops being tracked once it has delivered its result (`OnTaskCompleted`); its progress token is remembered for 10 min so `nodetocode/cancelTask` answers `task_already_completed` (`WasProgressTokenCompleted()`)
+*   **`N2CToolAsyncTaskManager.h/.cpp`**: runs long-running calls; no tool-specific code
+    *   `LaunchTask()` - finds the registered tool and calls `InvokeAsync` with a context whose progress goes to the
+        call's `FN2CAsyncTaskResponder` (as `notifications/progress` with the client's progressToken as sent) and
+        writes the one JSON-RPC response when the future is set; `LaunchToolCall()` runs a given tool instance,
+        `SetToolResolverForTesting()` swaps in test tools
+    *   `CancelTask()`, `CancelTaskByProgressToken()` - cancel through the context;
+        `FindTaskByRequestId(SessionId, RequestId)` - for `notifications/cancelled`
+    *   `GetTaskContext()` (an `FN2CToolCallRecord`), `IsTaskRunning()`, `GetRunningTaskIds()`
+    *   A call stops being tracked once it has delivered its result (`OnTaskCompleted`); its progress token is remembered for 10 min so `nodetocode/cancelTask` answers `task_already_completed` (`WasProgressTokenCompleted()`)
     *   `CleanupCompletedTasks()` (safety net), `CancelAllTasks()` - called from `FCoreDelegates::OnPreExit` (before UObjects are purged) and in `ShutdownModule` before the SSE server stops
     *   `GetTrackedTaskCount()`, `GetTrackedProgressTokenCount()`
     *   Thread-safe with FCriticalSection

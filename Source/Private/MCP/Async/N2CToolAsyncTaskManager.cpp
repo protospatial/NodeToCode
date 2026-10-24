@@ -1,15 +1,35 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
-#include "MCP/Tools/Implementations/Translation/N2CTranslateBlueprintAsyncTask.h"
-#include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "Utils/N2CLogger.h"
+#include "Async/Async.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "HAL/PlatformTime.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
+
+namespace N2CToolAsyncTaskManagerPrivate
+{
+	/** JSON-RPC ids match when they have the same type and value (the string "1" is not the number 1) */
+	static bool SameRequestId(const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJsonValue>& B)
+	{
+		if (!A.IsValid() || !B.IsValid() || A->Type != B->Type)
+		{
+			return false;
+		}
+		switch (A->Type)
+		{
+			case EJson::String:
+				return A->AsString() == B->AsString();
+			case EJson::Number:
+				return A->AsNumber() == B->AsNumber();
+			default:
+				return false;
+		}
+	}
+}
 
 FN2CToolAsyncTaskManager& FN2CToolAsyncTaskManager::Get()
 {
@@ -21,101 +41,117 @@ FGuid FN2CToolAsyncTaskManager::LaunchTask(const FGuid& InTaskId, const FString&
 	const FString& ProgressToken, const TSharedPtr<FJsonValue>& ClientProgressToken, const FString& SessionId,
 	const TSharedPtr<FJsonValue>& OriginalRequestId, const FN2CAsyncTaskResponder& Responder)
 {
-	// Create the async task under the caller's task ID
-	TSharedPtr<IN2CToolAsyncTask> AsyncTask = TaskFactoryForTesting
-		? TaskFactoryForTesting(ToolName, InTaskId, ProgressToken, Arguments)
-		: CreateAsyncTask(ToolName, InTaskId, ProgressToken, Arguments);
-	if (!AsyncTask.IsValid())
+	const TSharedPtr<IN2CMcpTool> Tool = ToolResolverForTesting
+		? ToolResolverForTesting(ToolName)
+		: FN2CMcpToolManager::Get().FindTool(ToolName);
+	if (!Tool.IsValid())
 	{
-		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to create async task for tool: %s"), *ToolName));
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("No registered tool to launch: %s"), *ToolName));
 		return FGuid();
 	}
 
-	return LaunchTaskInstance(AsyncTask.ToSharedRef(), ToolName, Arguments, SessionId, OriginalRequestId, Responder, ClientProgressToken);
+	return LaunchToolCall(Tool.ToSharedRef(), InTaskId, ToolName, Arguments, ProgressToken, SessionId, OriginalRequestId,
+		Responder, ClientProgressToken);
 }
 
-FGuid FN2CToolAsyncTaskManager::LaunchTaskInstance(const TSharedRef<IN2CToolAsyncTask, ESPMode::ThreadSafe>& AsyncTask,
-	const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId,
-	const FN2CAsyncTaskResponder& Responder, const TSharedPtr<FJsonValue>& ClientProgressToken)
+FGuid FN2CToolAsyncTaskManager::LaunchToolCall(const TSharedRef<IN2CMcpTool>& Tool, const FGuid& InTaskId, const FString& ToolName,
+	const TSharedPtr<FJsonObject>& Arguments, const FString& ProgressToken, const FString& SessionId,
+	const TSharedPtr<FJsonValue>& OriginalRequestId, const FN2CAsyncTaskResponder& Responder, const TSharedPtr<FJsonValue>& ClientProgressToken)
 {
-	const FGuid TaskId = AsyncTask->GetTaskId();
-	const FString ProgressToken = AsyncTask->GetProgressToken();
+	const FGuid TaskId = InTaskId.IsValid() ? InTaskId : FGuid::NewGuid();
+	const FString TokenKey = ProgressToken.IsEmpty() ? TaskId.ToString(EGuidFormats::DigitsWithHyphensLower) : ProgressToken;
 
-	// Create task context
-	auto TaskContext = MakeShared<FN2CAsyncTaskContext>();
-	TaskContext->TaskId = TaskId;
-	TaskContext->ProgressToken = ProgressToken;
-	TaskContext->SessionId = SessionId;
-	TaskContext->OriginalRequestId = OriginalRequestId;
-	TaskContext->ToolName = ToolName;
-	TaskContext->Arguments = Arguments;
-	TaskContext->Task = AsyncTask;
-	TaskContext->ClientProgressToken = ClientProgressToken;
-	TaskContext->Responder = Responder;
+	const TSharedRef<FN2CToolCallRecord> Record = MakeShared<FN2CToolCallRecord>();
+	Record->TaskId = TaskId;
+	Record->ProgressToken = TokenKey;
+	Record->SessionId = SessionId;
+	Record->OriginalRequestId = OriginalRequestId;
+	Record->ToolName = ToolName;
+	Record->Arguments = Arguments.IsValid() ? Arguments : MakeShared<FJsonObject>();
+	Record->ClientProgressToken = ClientProgressToken;
+	Record->Responder = Responder;
+	Record->CallContext = FN2CToolCallContext::Create([this, TaskId](float Progress, const FString& Message)
+	{
+		OnTaskProgress(TaskId, Progress, Message);
+	});
 
-	// Set up progress callback with lambda to capture TaskId
-	AsyncTask->SetProgressDelegate(FN2CAsyncTaskProgressDelegate::CreateLambda(
-		[this, TaskId](float Progress, const FString& Message)
-		{
-			this->OnTaskProgress(TaskId, Progress, Message);
-		}));
-
-	// Set up completion callback with lambda to capture TaskId
-	AsyncTask->SetCompleteDelegate(FN2CAsyncTaskCompleteDelegate::CreateLambda(
-		[this, TaskId](const FMcpToolCallResult& Result)
-		{
-			this->OnTaskCompleted(TaskId, Result);
-		}));
-
-	// Store the task context before starting, so progress and a result reported during Execute() find it
+	// Track the call before starting it, so progress and a result reported during InvokeAsync find it
 	{
 		FScopeLock Lock(&TaskMapLock);
-		RunningTasks.Add(TaskId, TaskContext);
-		ProgressTokenToTaskId.Add(ProgressToken, TaskId);
+		RunningTasks.Add(TaskId, Record);
+		ProgressTokenToTaskId.Add(TokenKey, TaskId);
 	}
 
-	// Start the task on the game thread. Execute() only starts the work (an async LLM request) and returns, so there
-	// is no worker thread: UObjects are created on the game thread and callbacks land there too.
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Launched async task %s for tool: %s (ProgressToken: %s)"),
+		*TaskId.ToString(), *ToolName, *TokenKey), EN2CLogSeverity::Info);
+
+	// The tool starts on the game thread. InvokeAsync only starts the work (an async LLM request) and returns, so
+	// there is no worker thread: UObjects are created on the game thread and callbacks land there too.
 	if (IsInGameThread())
 	{
-		AsyncTask->Execute();
+		InvokeTool(Tool, Record);
 	}
 	else
 	{
-		::AsyncTask(ENamedThreads::GameThread, [AsyncTask]()
+		AsyncTask(ENamedThreads::GameThread, [this, Tool, Record]()
 		{
-			AsyncTask->Execute();
+			InvokeTool(Tool, Record);
 		});
 	}
-
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Launched async task %s for tool: %s (ProgressToken: %s)"), 
-		*TaskId.ToString(), *ToolName, *ProgressToken), EN2CLogSeverity::Info);
 
 	return TaskId;
 }
 
-bool FN2CToolAsyncTaskManager::CancelTask(const FGuid& TaskId)
+void FN2CToolAsyncTaskManager::InvokeTool(const TSharedRef<IN2CMcpTool>& Tool, const TSharedRef<FN2CToolCallRecord>& Record)
 {
-	TSharedPtr<IN2CToolAsyncTask> Task;
+	check(IsInGameThread());
+	const FGuid TaskId = Record->TaskId;
+
+	if (Record->CallContext->IsCancelled())
 	{
-		FScopeLock Lock(&TaskMapLock);
-		const TSharedPtr<FN2CAsyncTaskContext>* TaskContext = RunningTasks.Find(TaskId);
-		if (!TaskContext || !TaskContext->IsValid())
-		{
-			return false;
-		}
-		Task = (*TaskContext)->Task;
+		// Cancelled while queued for the game thread
+		OnTaskCompleted(TaskId, FMcpToolCallResult::CreateErrorResult(Record->CallContext->GetCancelledMessage()));
+		return;
 	}
 
-	// Cancel outside the lock: the task reports its cancelled result, which looks the context up again
-	if (!Task.IsValid() || Task->IsComplete())
+	TFuture<FMcpToolCallResult> Future = Tool->InvokeAsync(Record->CallContext.ToSharedRef(), Record->Arguments);
+	if (!Future.IsValid())
+	{
+		OnTaskCompleted(TaskId, FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Tool '%s' returned no result"), *Record->ToolName)));
+		return;
+	}
+
+	// The continuation runs where the tool sets its result (at once when it already has): deliver on the game thread
+	Future.Next([this, TaskId](FMcpToolCallResult Result)
+	{
+		if (IsInGameThread())
+		{
+			OnTaskCompleted(TaskId, Result);
+			return;
+		}
+		AsyncTask(ENamedThreads::GameThread, [this, TaskId, Result = MoveTemp(Result)]()
+		{
+			OnTaskCompleted(TaskId, Result);
+		});
+	});
+}
+
+bool FN2CToolAsyncTaskManager::CancelTask(const FGuid& TaskId, const FString& Reason)
+{
+	TSharedPtr<FN2CToolCallRecord> Record = GetTaskContext(TaskId);
+	if (!Record.IsValid() || Record->bCompleted.load() || !Record->CallContext.IsValid())
 	{
 		return false;
 	}
 
-	Task->RequestCancel();
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Cancellation requested for task %s"), *TaskId.ToString()), EN2CLogSeverity::Info);
-	return true;
+	// Cancel outside the lock: the tool reports its cancelled result, which looks the record up again
+	const bool bCancelled = Record->CallContext->Cancel(Reason.IsEmpty() ? FString(FN2CToolCallContext::DefaultCancelledMessage()) : Reason);
+	if (bCancelled)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Cancellation requested for async task %s (Tool: %s)"), *TaskId.ToString(), *Record->ToolName),
+			EN2CLogSeverity::Info);
+	}
+	return bCancelled;
 }
 
 bool FN2CToolAsyncTaskManager::CancelTaskByProgressToken(const FString& ProgressToken)
@@ -140,65 +176,58 @@ bool FN2CToolAsyncTaskManager::CancelTaskByProgressToken(const FString& Progress
 	return bCancelled;
 }
 
-TSharedPtr<FN2CAsyncTaskContext> FN2CToolAsyncTaskManager::GetTaskContext(const FGuid& TaskId) const
+FGuid FN2CToolAsyncTaskManager::FindTaskByRequestId(const FString& SessionId, const TSharedPtr<FJsonValue>& RequestId) const
 {
 	FScopeLock Lock(&TaskMapLock);
-	
-	auto TaskContext = RunningTasks.Find(TaskId);
-	if (TaskContext && TaskContext->IsValid())
+	for (const TPair<FGuid, TSharedPtr<FN2CToolCallRecord>>& Pair : RunningTasks)
 	{
-		return *TaskContext;
+		const TSharedPtr<FN2CToolCallRecord>& Record = Pair.Value;
+		if (Record.IsValid() && !Record->bCompleted.load() && Record->SessionId == SessionId
+			&& N2CToolAsyncTaskManagerPrivate::SameRequestId(Record->OriginalRequestId, RequestId))
+		{
+			return Pair.Key;
+		}
 	}
-	
-	return nullptr;
+	return FGuid();
 }
 
-TSharedPtr<FN2CAsyncTaskContext> FN2CToolAsyncTaskManager::GetTaskContextByProgressToken(const FString& ProgressToken) const
+TSharedPtr<FN2CToolCallRecord> FN2CToolAsyncTaskManager::GetTaskContext(const FGuid& TaskId) const
 {
 	FScopeLock Lock(&TaskMapLock);
-	
+	const TSharedPtr<FN2CToolCallRecord>* Record = RunningTasks.Find(TaskId);
+	return Record ? *Record : nullptr;
+}
+
+TSharedPtr<FN2CToolCallRecord> FN2CToolAsyncTaskManager::GetTaskContextByProgressToken(const FString& ProgressToken) const
+{
+	FScopeLock Lock(&TaskMapLock);
 	const FGuid* TaskId = ProgressTokenToTaskId.Find(ProgressToken);
 	if (!TaskId)
 	{
 		return nullptr;
 	}
-
-	auto TaskContext = RunningTasks.Find(*TaskId);
-	if (TaskContext && TaskContext->IsValid())
-	{
-		return *TaskContext;
-	}
-	
-	return nullptr;
+	const TSharedPtr<FN2CToolCallRecord>* Record = RunningTasks.Find(*TaskId);
+	return Record ? *Record : nullptr;
 }
 
 bool FN2CToolAsyncTaskManager::IsTaskRunning(const FGuid& TaskId) const
 {
 	FScopeLock Lock(&TaskMapLock);
-
-	auto TaskContext = RunningTasks.Find(TaskId);
-	if (!TaskContext || !TaskContext->IsValid())
-	{
-		return false;
-	}
-
-	// Running until the task has reported its result
-	return (*TaskContext)->Task.IsValid() && !(*TaskContext)->Task->IsComplete();
+	const TSharedPtr<FN2CToolCallRecord>* Record = RunningTasks.Find(TaskId);
+	return Record && Record->IsValid() && !(*Record)->bCompleted.load();
 }
 
 TArray<FGuid> FN2CToolAsyncTaskManager::GetRunningTaskIds() const
 {
 	FScopeLock Lock(&TaskMapLock);
-
 	TArray<FGuid> RunningIds;
-	for (const auto& Pair : RunningTasks)
+	for (const TPair<FGuid, TSharedPtr<FN2CToolCallRecord>>& Pair : RunningTasks)
 	{
-		if (Pair.Value.IsValid() && Pair.Value->Task.IsValid() && !Pair.Value->Task->IsComplete())
+		if (Pair.Value.IsValid() && !Pair.Value->bCompleted.load())
 		{
 			RunningIds.Add(Pair.Key);
 		}
 	}
-
 	return RunningIds;
 }
 
@@ -248,19 +277,19 @@ void FN2CToolAsyncTaskManager::CleanupCompletedTasks()
 		const double Now = FPlatformTime::Seconds();
 		for (auto It = RunningTasks.CreateIterator(); It; ++It)
 		{
-			const TSharedPtr<FN2CAsyncTaskContext>& Context = It.Value();
-			if (Context.IsValid() && Context->Task.IsValid() && !Context->Task->IsComplete())
+			const TSharedPtr<FN2CToolCallRecord>& Record = It.Value();
+			if (Record.IsValid() && !Record->bCompleted.load())
 			{
 				continue;
 			}
-			if (Context.IsValid())
+			if (Record.IsValid())
 			{
-				const FGuid* MappedTaskId = ProgressTokenToTaskId.Find(Context->ProgressToken);
+				const FGuid* MappedTaskId = ProgressTokenToTaskId.Find(Record->ProgressToken);
 				if (MappedTaskId && *MappedTaskId == It.Key())
 				{
-					ProgressTokenToTaskId.Remove(Context->ProgressToken);
+					ProgressTokenToTaskId.Remove(Record->ProgressToken);
 				}
-				CompletedProgressTokens.Add(Context->ProgressToken, Now);
+				CompletedProgressTokens.Add(Record->ProgressToken, Now);
 			}
 			It.RemoveCurrent();
 			++NumRemoved;
@@ -276,31 +305,21 @@ void FN2CToolAsyncTaskManager::CleanupCompletedTasks()
 
 void FN2CToolAsyncTaskManager::CancelAllTasks()
 {
-	TArray<TSharedPtr<IN2CToolAsyncTask>> TasksToCancel;
+	TArray<FGuid> ToCancel = GetRunningTaskIds();
+
+	// Cancel outside the lock: each tool reports its cancelled result through OnTaskCompleted, which removes it
+	for (const FGuid& TaskId : ToCancel)
 	{
-		FScopeLock Lock(&TaskMapLock);
-		for (auto& Pair : RunningTasks)
-		{
-			if (Pair.Value.IsValid() && Pair.Value->Task.IsValid() && !Pair.Value->Task->IsComplete())
-			{
-				TasksToCancel.Add(Pair.Value->Task);
-			}
-		}
+		CancelTask(TaskId);
 	}
 
-	// Cancel outside the lock: each task reports its cancelled result through OnTaskCompleted, which removes it
-	for (const TSharedPtr<IN2CToolAsyncTask>& Task : TasksToCancel)
-	{
-		Task->RequestCancel();
-	}
-
-	// Drop whatever has reported but is still tracked (for example a task whose report was queued)
+	// Drop whatever has finished but is still tracked
 	CleanupCompletedTasks();
 
-	if (TasksToCancel.Num() > 0)
+	if (ToCancel.Num() > 0)
 	{
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Requested cancellation for all %d running tasks (%d still tracked)"),
-			TasksToCancel.Num(), GetTrackedTaskCount()), EN2CLogSeverity::Info);
+			ToCancel.Num(), GetTrackedTaskCount()), EN2CLogSeverity::Info);
 	}
 }
 
@@ -316,77 +335,75 @@ int32 FN2CToolAsyncTaskManager::GetTrackedProgressTokenCount() const
 	return ProgressTokenToTaskId.Num();
 }
 
-TSharedPtr<IN2CToolAsyncTask> FN2CToolAsyncTaskManager::CreateAsyncTask(const FString& ToolName, const FGuid& TaskId, 
-	const FString& ProgressToken, const TSharedPtr<FJsonObject>& Arguments)
-{
-	
-	if (ToolName == TEXT("translate-focused-blueprint"))
-	{
-		return MakeShared<FN2CTranslateBlueprintAsyncTask>(TaskId, ProgressToken, Arguments);
-	}
-	
-	FN2CLogger::Get().LogWarning(FString::Printf(TEXT("No async task implementation found for tool: %s. TaskId: %s"), *ToolName, *TaskId.ToString()));
-	return nullptr;
-}
-
 void FN2CToolAsyncTaskManager::OnTaskCompleted(const FGuid& TaskId, const FMcpToolCallResult& Result)
 {
-	TSharedPtr<FN2CAsyncTaskContext> TaskContext = GetTaskContext(TaskId);
-	if (!TaskContext.IsValid())
+	check(IsInGameThread());
+
+	TSharedPtr<FN2CToolCallRecord> Record = GetTaskContext(TaskId);
+	if (!Record.IsValid())
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Task completed but context not found: %s"), *TaskId.ToString()));
 		return;
 	}
 
-	// Write the final JSON-RPC response on the tools/call's own HTTP response
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Task %s completed, sending final response"), *TaskId.ToString()), EN2CLogSeverity::Info);
+	// Exactly one result per call
+	if (Record->bCompleted.exchange(true))
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Async task %s attempted to complete multiple times"), *TaskId.ToString()));
+		return;
+	}
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Async task %s completed (Tool: %s, IsError: %s)"),
+		*TaskId.ToString(), *Record->ToolName, Result.bIsError ? TEXT("Yes") : TEXT("No")), EN2CLogSeverity::Info);
+
+	// No progress after the result, and the tool's cancel callbacks are released
+	if (Record->CallContext.IsValid())
+	{
+		Record->CallContext->MarkCompleted();
+	}
 
 	// Create the JSON-RPC response
 	FJsonRpcResponse Response;
-	Response.Id = TaskContext->OriginalRequestId;
-	// Convert the tool result to JSON Value
+	Response.Id = Record->OriginalRequestId;
 	Response.Result = MakeShared<FJsonValueObject>(Result.ToJson());
 
-	// Serialize to JSON string
 	FString ResponseJson = FJsonRpcUtils::SerializeResponse(Response);
 	if (ResponseJson.IsEmpty())
 	{
 		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to serialize response for task %s"), *TaskId.ToString()));
-		ResponseJson = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(TaskContext->OriginalRequestId,
+		ResponseJson = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(Record->OriginalRequestId,
 			JsonRpcErrorCodes::InternalError, TEXT("Failed to serialize the tool result")));
 	}
 
 	// Exactly one response per call: the HTTP response is completed (or its stream closed) by this write
-	FN2CAsyncTaskResponder Responder = MoveTemp(TaskContext->Responder);
-	TaskContext->Responder = FN2CAsyncTaskResponder();
+	FN2CAsyncTaskResponder Responder = MoveTemp(Record->Responder);
+	Record->Responder = FN2CAsyncTaskResponder();
 	if (Responder.SendResponse)
 	{
 		Responder.SendResponse(ResponseJson);
 	}
 
-	// The result is delivered: stop tracking the task. The token is remembered so a late cancel answers
+	// The result is delivered: stop tracking the call. The token is remembered so a late cancel answers
 	// task_already_completed.
-	// TaskContext (and the task's own ReportComplete) keep the task alive until this call returns.
 	{
 		FScopeLock Lock(&TaskMapLock);
 		RunningTasks.Remove(TaskId);
-		const FGuid* MappedTaskId = ProgressTokenToTaskId.Find(TaskContext->ProgressToken);
+		const FGuid* MappedTaskId = ProgressTokenToTaskId.Find(Record->ProgressToken);
 		if (MappedTaskId && *MappedTaskId == TaskId)
 		{
-			ProgressTokenToTaskId.Remove(TaskContext->ProgressToken);
+			ProgressTokenToTaskId.Remove(Record->ProgressToken);
 		}
 		const double Now = FPlatformTime::Seconds();
 		PruneCompletedTokens(Now);
-		CompletedProgressTokens.Add(TaskContext->ProgressToken, Now);
+		CompletedProgressTokens.Add(Record->ProgressToken, Now);
 	}
 }
 
 void FN2CToolAsyncTaskManager::OnTaskProgress(const FGuid& TaskId, float Progress, const FString& Message)
 {
-	TSharedPtr<FN2CAsyncTaskContext> TaskContext = GetTaskContext(TaskId);
-	if (!TaskContext.IsValid())
+	TSharedPtr<FN2CToolCallRecord> Record = GetTaskContext(TaskId);
+	if (!Record.IsValid() || Record->bCompleted.load())
 	{
-		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Task progress reported but context not found: %s"), *TaskId.ToString()));
 		return;
 	}
 
@@ -394,34 +411,32 @@ void FN2CToolAsyncTaskManager::OnTaskProgress(const FGuid& TaskId, float Progres
 		*TaskId.ToString(), Progress * 100.0f, *Message), EN2CLogSeverity::Debug);
 
 	// Progress goes only to a client that asked for it (sent a progressToken) on a response that can carry it
-	if (!TaskContext->ClientProgressToken.IsValid() || !TaskContext->Responder.SendProgress)
+	if (!Record->ClientProgressToken.IsValid() || !Record->Responder.SendProgress)
 	{
 		return;
 	}
 
 	// MCP: the progress value must increase with every notification
-	const double Value = FMath::Max(static_cast<double>(Progress), TaskContext->LastProgressSent + 1e-6);
-	TaskContext->LastProgressSent = Value;
+	const double Value = FMath::Max(static_cast<double>(Progress), Record->LastProgressSent + 1e-6);
+	Record->LastProgressSent = Value;
 
-	// Create MCP progress notification. The token is echoed exactly as the client sent it (a number stays a number).
+	// The token is echoed exactly as the client sent it (a number stays a number)
 	FJsonRpcNotification ProgressNotification;
 	ProgressNotification.Method = TEXT("notifications/progress");
 
-	auto ParamsObject = MakeShared<FJsonObject>();
-	ParamsObject->SetField(TEXT("progressToken"), TaskContext->ClientProgressToken);
+	const TSharedRef<FJsonObject> ParamsObject = MakeShared<FJsonObject>();
+	ParamsObject->SetField(TEXT("progressToken"), Record->ClientProgressToken);
 	ParamsObject->SetNumberField(TEXT("progress"), Value);
 	if (!Message.IsEmpty())
 	{
 		ParamsObject->SetStringField(TEXT("message"), Message);
 	}
-	
 	ProgressNotification.Params = MakeShared<FJsonValueObject>(ParamsObject);
 
-	// Serialize the notification to JSON
-	FString NotificationJson = FJsonRpcUtils::SerializeNotification(ProgressNotification);
+	const FString NotificationJson = FJsonRpcUtils::SerializeNotification(ProgressNotification);
 	if (!NotificationJson.IsEmpty())
 	{
-		TaskContext->Responder.SendProgress(NotificationJson);
+		Record->Responder.SendProgress(NotificationJson);
 	}
 	else
 	{

@@ -13,7 +13,7 @@
 #include "LLM/N2CLLMModule.h"
 #include "LLM/N2CLLMRequestHandle.h"
 #include "LLM/N2CSystemPromptManager.h"
-#include "MCP/Tools/Implementations/Translation/N2CTranslateBlueprintAsyncTask.h"
+#include "MCP/Tools/Implementations/Translation/N2CTranslateBlueprintCall.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "UObject/UObjectGlobals.h"
@@ -49,31 +49,32 @@ namespace N2CTranslateTaskTests
         FString LastText;
     };
 
-    using FTaskRef = TSharedRef<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe>;
+    using FTaskRef = TSharedRef<FN2CTranslateBlueprintCall, ESPMode::ThreadSafe>;
 
     /**
-     * A translate task as the task manager creates it, except for the request: a focused Blueprint editor cannot exist
+     * A translate call as the translate tool creates it, except for the request: a focused Blueprint editor cannot exist
      * headless, so the request sends fixed N2C JSON through the same TranslateJsonAsync/ProcessN2CJsonWithOverrides
      * path, to Ollama at the unroutable endpoint.
      */
     static FTaskRef MakeTask(const TSharedRef<FTaskObserver>& Observer)
     {
-        TSharedPtr<FJsonObject> Arguments = MakeShared<FJsonObject>();
-        Arguments->SetStringField(TEXT("provider"), TEXT("Ollama"));
-        Arguments->SetStringField(TEXT("model"), TEXT("n2c-cancel-test"));
-        Arguments->SetStringField(TEXT("language"), TEXT("Cpp"));
-
-        FTaskRef Task = MakeShared<FN2CTranslateBlueprintAsyncTask>(FGuid::NewGuid(), FGuid::NewGuid().ToString(), Arguments);
+        const FN2CToolCallContextRef Context = FN2CToolCallContext::Create([Observer](float, const FString&)
+        {
+            ++Observer->ProgressReports;
+        });
+        FTaskRef Task = MakeShared<FN2CTranslateBlueprintCall, ESPMode::ThreadSafe>(Context, TEXT("Ollama"), TEXT("n2c-cancel-test"), TEXT("Cpp"));
         Task->SetRequestStarter([](const FString& ProviderId, const FString& ModelId, const FString& LanguageId,
             const FOnLLMResponseReceived& OnComplete)
         {
             return FN2CEditorIntegration::Get().TranslateJsonAsync(TEXT("{}"), ProviderId, ModelId, LanguageId, OnComplete);
         });
-        Task->SetProgressDelegate(FN2CAsyncTaskProgressDelegate::CreateLambda([Observer](float, const FString&)
-        {
-            ++Observer->ProgressReports;
-        }));
-        Task->SetCompleteDelegate(FN2CAsyncTaskCompleteDelegate::CreateLambda([Observer](const FMcpToolCallResult& Result)
+        return Task;
+    }
+
+    /** Starts the call and counts what its future delivers */
+    static void Start(const FTaskRef& Task, const TSharedRef<FTaskObserver>& Observer)
+    {
+        Task->Start().Next([Observer](FMcpToolCallResult Result)
         {
             ++Observer->Completions;
             Observer->bLastIsError = Result.bIsError;
@@ -83,8 +84,7 @@ namespace N2CTranslateTaskTests
                 Result.Content[0]->TryGetStringField(TEXT("text"), Text);
             }
             Observer->LastText = Text;
-        }));
-        return Task;
+        });
     }
 
     /**
@@ -105,7 +105,7 @@ namespace N2CTranslateTaskTests
             Last = Now;
             Manager.Tick(Delta);
             SinceTaskTick += Delta;
-            if (SinceTaskTick >= FN2CTranslateBlueprintAsyncTask::ProgressIntervalSeconds)
+            if (SinceTaskTick >= FN2CTranslateBlueprintCall::ProgressIntervalSeconds)
             {
                 for (const FTaskRef& Task : Tasks)
                 {
@@ -164,19 +164,19 @@ bool FN2CTranslateTaskCancelTest::RunTest(const FString& Parameters)
     {
         const TSharedRef<FTaskObserver> Observer = MakeShared<FTaskObserver>();
         FTaskRef Task = MakeTask(Observer);
-        Task->Execute();
+        Start(Task, Observer);
 
         FN2CLLMRequestHandlePtr Handle = Task->GetRequestHandle();
-        if (!TestTrue(TEXT("Execute() sent a request and kept its handle"), Handle.IsValid()))
+        if (!TestTrue(TEXT("Start() sent a request and kept its handle"), Handle.IsValid()))
         {
             return false;
         }
-        TestTrue(TEXT("Execute() returned while the request is in flight"), Handle->GetState() == FN2CLLMRequestHandle::EState::Pending);
-        TestFalse(TEXT("task is running after Execute()"), Task->IsComplete());
+        TestTrue(TEXT("Start() returned while the request is in flight"), Handle->GetState() == FN2CLLMRequestHandle::EState::Pending);
+        TestFalse(TEXT("task is running after Start()"), Task->IsComplete());
         TestEqual(TEXT("nothing completed yet"), Observer->Completions, 0);
-        TestTrue(TEXT("Execute() reported progress"), Observer->ProgressReports > 0);
+        TestTrue(TEXT("Start() reported progress"), Observer->ProgressReports > 0);
 
-        Task->RequestCancel();
+        Task->GetContext()->Cancel();
         TestEqual(TEXT("cancel reports the task once"), Observer->Completions, 1);
         TestTrue(TEXT("cancelled result is an error"), Observer->bLastIsError);
         TestTrue(TEXT("cancelled result says so"), Observer->LastText.Contains(TEXT("cancelled")));
@@ -189,7 +189,7 @@ bool FN2CTranslateTaskCancelTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("request stayed cancelled (its callback never ran)"), Handle->IsCancelled());
 
         // A second cancel is harmless
-        Task->RequestCancel();
+        Task->GetContext()->Cancel();
         TestEqual(TEXT("second cancel reports nothing"), Observer->Completions, 1);
     }
 
@@ -201,13 +201,13 @@ bool FN2CTranslateTaskCancelTest::RunTest(const FString& Parameters)
         AddExpectedError(TEXT("No response from the provider"), EAutomationExpectedErrorFlags::Contains, 0);
         const TSharedRef<FTaskObserver> Observer = MakeShared<FTaskObserver>();
         FTaskRef Task = MakeTask(Observer);
-        Task->Execute();
+        Start(Task, Observer);
         Pump(15.0, { Task }, [&Observer] { return Observer->Completions > 0; });
 
         TestEqual(TEXT("uncancelled request reports once"), Observer->Completions, 1);
         TestTrue(TEXT("the unroutable request reports an error"), Observer->bLastIsError);
         TestTrue(TEXT("its handle completed (the callback ran)"), Task->GetRequestHandle().IsValid() && Task->GetRequestHandle()->IsCompleted());
-        Task->RequestCancel();
+        Task->GetContext()->Cancel();
         TestEqual(TEXT("cancel after completion reports nothing"), Observer->Completions, 1);
     }
 
@@ -216,7 +216,7 @@ bool FN2CTranslateTaskCancelTest::RunTest(const FString& Parameters)
         const TSharedRef<FTaskObserver> Observer = MakeShared<FTaskObserver>();
         FTaskRef Task = MakeTask(Observer);
         Task->SetTimeoutSeconds(0.0);
-        Task->Execute();
+        Start(Task, Observer);
         FN2CLLMRequestHandlePtr Handle = Task->GetRequestHandle();
         TestFalse(TEXT("first tick after the timeout stops the ticker"), Task->Tick(0.5f));
         TestEqual(TEXT("timeout reports once"), Observer->Completions, 1);
@@ -237,8 +237,8 @@ bool FN2CTranslateTaskCancelTest::RunTest(const FString& Parameters)
         {
             const TSharedRef<FTaskObserver> Observer = MakeShared<FTaskObserver>();
             FTaskRef Task = MakeTask(Observer);
-            Task->Execute();
-            Task->RequestCancel();
+            Start(Task, Observer);
+            Task->GetContext()->Cancel();
             TestEqual(FString::Printf(TEXT("run %d reports once"), Run), Observer->Completions, 1);
             Tasks.Add(Task);
         }

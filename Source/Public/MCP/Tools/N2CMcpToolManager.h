@@ -55,6 +55,13 @@ public:
 	FMcpToolCallResult ExecuteTool(const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments);
 
 	/**
+	 * Find a registered tool by name
+	 * @param ToolName The name of the tool
+	 * @return The tool, or null when no tool of that name is registered
+	 */
+	TSharedPtr<IN2CMcpTool> FindTool(const FString& ToolName) const;
+
+	/**
 	 * Check if a tool is registered
 	 * @param ToolName The name of the tool
 	 * @return true if the tool is registered

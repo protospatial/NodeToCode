@@ -25,9 +25,11 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 ### translate-focused-blueprint
 - **Description**: Translates the currently focused Blueprint using an LLM provider
 - **Parameters** (all optional):
-  - `provider`: LLM provider ID
+  - `provider`: LLM provider ID as `get-available-llm-providers` lists it (case-insensitive)
   - `model`: Specific model ID
-  - `language`: Target language ID
+  - `language`: Target language ID as `get-available-translation-targets` lists it (case-insensitive)
+- **Errors**: an unknown `provider` or `language` returns `isError` naming the valid IDs, without translating. A
+  `model` the registry does not list for a cloud provider is still sent; the result JSON then has a `warnings` array.
 - **Long-Running**: Yes. Answered on the same POST: on UE 5.8 with `Accept: text/event-stream` and a
   `_meta.progressToken`, as a stream of `notifications/progress` then the result; otherwise as one JSON response when
   the translation finishes
@@ -123,15 +125,15 @@ ProjectSaved/NodeToCode/Translations/
     └── translation_metadata.json
 ```
 
-## Async Translation Task
+## Translation Call
 
-The `translate-focused-blueprint` tool uses the `FN2CTranslateBlueprintAsyncTask` for long-running operations:
+`translate-focused-blueprint` overrides `IN2CMcpTool::InvokeAsync`; each call is an `FN2CTranslateBlueprintCall`:
 
-- Handles Blueprint serialization on Game Thread
-- Performs LLM communication asynchronously
-- Reports progress (stages and elapsed seconds) on the call's own response when the client streams
-- Supports cancellation during execution
-- Saves results to configured output directory
+- Checks the overrides, then serializes the Blueprint and sends the LLM request on the game thread
+- Returns the call's `TFuture` at once; the HTTP completion sets it
+- Reports progress (stages and elapsed seconds) through its `FN2CToolCallContext`, which the server streams on the
+  call's own response when the client asked for progress
+- On cancel (the context's `OnCancelled`) or timeout, cancels the provider HTTP request and sets one cancelled result
 
 ## Configuration Notes
 

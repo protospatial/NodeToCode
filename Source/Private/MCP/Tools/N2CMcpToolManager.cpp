@@ -96,9 +96,18 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 		return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Tool '%s' not found"), *ToolName));
 	}
 
+	// A long-running tool is answered on its own tools/call request (FN2CMcpHttpServerManager); it reaches this
+	// synchronous path only inside a JSON-RPC batch, which is answered as a whole and cannot wait for it.
+	if ((*ToolPtr)->GetDefinition().bIsLongRunning)
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("%s was called inside a JSON-RPC batch; it only runs as a single request."), *ToolName));
+		return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+			TEXT("%s cannot run inside a JSON-RPC batch. Send it as a single tools/call request."), *ToolName));
+	}
+
 	// Execute the tool handler
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Executing MCP tool: %s"), *ToolName), EN2CLogSeverity::Debug);
-	
+
 	try
 	{
 		return (*ToolPtr)->Execute(Arguments);
@@ -108,6 +117,13 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 		FN2CLogger::Get().LogError(FString::Printf(TEXT("Exception thrown while executing tool '%s'"), *ToolName));
 		return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Internal error executing tool '%s'"), *ToolName));
 	}
+}
+
+TSharedPtr<IN2CMcpTool> FN2CMcpToolManager::FindTool(const FString& ToolName) const
+{
+	FScopeLock Lock(&ToolsLock);
+	const TSharedPtr<IN2CMcpTool>* ToolPtr = RegisteredTools.Find(ToolName);
+	return ToolPtr ? *ToolPtr : nullptr;
 }
 
 bool FN2CMcpToolManager::IsToolRegistered(const FString& ToolName) const

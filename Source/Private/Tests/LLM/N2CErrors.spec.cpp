@@ -33,7 +33,7 @@
 #include "LLM/Providers/N2CLMStudioResponseParser.h"
 #include "LLM/Providers/N2COllamaResponseParser.h"
 #include "LLM/Providers/N2COpenAIResponseParser.h"
-#include "MCP/Tools/Implementations/Translation/N2CTranslateBlueprintAsyncTask.h"
+#include "MCP/Tools/Implementations/Translation/N2CTranslateBlueprintCall.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
@@ -382,18 +382,14 @@ void FN2CErrorsSpec::Define()
 			auto RunTask = [this](const FString& What) -> FObserved
 			{
 				const TSharedRef<FObserved> Observed = MakeShared<FObserved>();
-				TSharedPtr<FJsonObject> Arguments = MakeShared<FJsonObject>();
-				Arguments->SetStringField(TEXT("provider"), TEXT("Ollama"));
-				Arguments->SetStringField(TEXT("model"), TEXT("n2c-errors-test"));
-				Arguments->SetStringField(TEXT("language"), TEXT("Cpp"));
-				TSharedRef<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe> Task =
-					MakeShared<FN2CTranslateBlueprintAsyncTask, ESPMode::ThreadSafe>(FGuid::NewGuid(), FGuid::NewGuid().ToString(), Arguments);
+				TSharedRef<FN2CTranslateBlueprintCall, ESPMode::ThreadSafe> Task = MakeShared<FN2CTranslateBlueprintCall, ESPMode::ThreadSafe>(
+					FN2CToolCallContext::Create(), TEXT("Ollama"), TEXT("n2c-errors-test"), TEXT("Cpp"));
 				Task->SetRequestStarter([](const FString& ProviderId, const FString& ModelId, const FString& LanguageId,
 					const FOnLLMResponseReceived& OnComplete)
 				{
 					return FN2CEditorIntegration::Get().TranslateJsonAsync(TEXT("{}"), ProviderId, ModelId, LanguageId, OnComplete);
 				});
-				Task->SetCompleteDelegate(FN2CAsyncTaskCompleteDelegate::CreateLambda([Observed](const FMcpToolCallResult& Result)
+				Task->Start().Next([Observed](FMcpToolCallResult Result)
 				{
 					++Observed->Completions;
 					Observed->bIsError = Result.bIsError;
@@ -401,8 +397,7 @@ void FN2CErrorsSpec::Define()
 					{
 						Result.Content[0]->TryGetStringField(TEXT("text"), Observed->Text);
 					}
-				}));
-				Task->Execute();
+				});
 				Pump(15.0, [Observed] { return Observed->Completions > 0; },
 					[Task](float Delta) { Task->Tick(Delta); });
 				TestEqual(What + TEXT(": the task reported once"), Observed->Completions, 1);
