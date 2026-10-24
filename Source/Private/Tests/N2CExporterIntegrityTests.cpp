@@ -309,6 +309,8 @@ bool FNodeToCodeDirectLinkIntegrityTest::RunTest(const FString& Parameters)
     UK2Node_IfThenElse* BranchC = AddNode<UK2Node_IfThenElse>(Graph, TEXT("BranchC"));
     UK2Node_ExecutionSequence* Sequence = AddNode<UK2Node_ExecutionSequence>(Graph, TEXT("Sequence"));
     UK2Node_Knot* Knot = AddNode<UK2Node_Knot>(Graph, TEXT("Reroute"));
+    UK2Node_Knot* CycleKnotA = AddNode<UK2Node_Knot>(Graph, TEXT("CycleRerouteA"));
+    UK2Node_Knot* CycleKnotB = AddNode<UK2Node_Knot>(Graph, TEXT("CycleRerouteB"));
     UK2Node_Composite* Composite = AddNode<UK2Node_Composite>(Graph, TEXT("CollapsedGraph"));
     UN2CTestGraphNode* ThenSink = AddTestNode(Graph, TEXT("ThenSink"));
     UN2CTestGraphNode* ElseSink = AddTestNode(Graph, TEXT("ElseSink"));
@@ -374,6 +376,12 @@ bool FNodeToCodeDirectLinkIntegrityTest::RunTest(const FString& Parameters)
 
     Knot->GetInputPin()->PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
     Knot->GetOutputPin()->PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+    CycleKnotA->GetInputPin()->PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+    CycleKnotA->GetOutputPin()->PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+    CycleKnotB->GetInputPin()->PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+    CycleKnotB->GetOutputPin()->PinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+    CycleKnotA->GetOutputPin()->MakeLinkTo(CycleKnotB->GetInputPin());
+    CycleKnotB->GetOutputPin()->MakeLinkTo(CycleKnotA->GetInputPin());
     UEdGraphPin* KnotSink0Exec = AddTestPin(KnotSink0, EGPD_Input, UEdGraphSchema_K2::PC_Exec, TEXT("execute"));
     UEdGraphPin* KnotSink1Exec = AddTestPin(KnotSink1, EGPD_Input, UEdGraphSchema_K2::PC_Exec, TEXT("execute"));
     BranchB->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output)->MakeLinkTo(Knot->GetInputPin());
@@ -469,6 +477,16 @@ bool FNodeToCodeDirectLinkIntegrityTest::RunTest(const FString& Parameters)
         }
     }
     TestEqual(TEXT("Reroute output fan-out preserves both consumers"), KnotOutputFanOut, 2);
+    int32 KnotCycleLinkCount = 0;
+    for (const FN2CDirectLink& Link : ExportedGraph->Connections)
+    {
+        if ((Link.SourceNodeGuid == CycleKnotA->NodeGuid.ToString() && Link.TargetNodeGuid == CycleKnotB->NodeGuid.ToString()) ||
+            (Link.SourceNodeGuid == CycleKnotB->NodeGuid.ToString() && Link.TargetNodeGuid == CycleKnotA->NodeGuid.ToString()))
+        {
+            ++KnotCycleLinkCount;
+        }
+    }
+    TestEqual(TEXT("Knot cycle preserves both physical edges"), KnotCycleLinkCount, 2);
     TestTrue(TEXT("Sequence output zero is named distinctly"),
         ExportedGraph->Connections.ContainsByPredicate([&](const FN2CDirectLink& Link)
         {
