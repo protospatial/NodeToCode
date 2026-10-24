@@ -332,6 +332,302 @@ def probe_p9(port):
     return {'ids': ids, 'status': 'fixed' if all(checks.values()) else 'reproduced', 'evidence': ev}
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Content probes (card 0097): P10-P12 on the committed fixture Tests/Fixtures/N2CProbe/BP_N2CProbe.uasset, an Actor
+# Blueprint whose Event BeginPlay is wired to a Print String ("N2CProbe BeginPlay"). main() copies it into the host's
+# Content/N2CProbe/ before the editor starts and removes it after (make_probe_fixture.py rebuilds it on UE 5.6).
+# ---------------------------------------------------------------------------------------------------------------------
+
+FIXTURE = os.path.join(os.path.dirname(HERE), 'Fixtures', 'N2CProbe', 'BP_N2CProbe.uasset')
+FIXTURE_ASSET = '/Game/N2CProbe/BP_N2CProbe'
+
+# Focus the fixture's EventGraph and describe it: N2C JSON node count, execution and data links, BeginPlay's state,
+# and whether the package is dirty
+FIXTURE_STATE_PY = r'''
+import json, unreal
+opened = json.loads(unreal.N2CPythonBridge.open_blueprint("%(asset)s", "EventGraph"))
+state = {"opened": bool(opened.get("success")), "open_error": opened.get("error")}
+if state["opened"]:
+    raw = json.loads(unreal.N2CPythonBridge.get_focused_blueprint_json())
+    graphs = ((raw.get("data") or {}).get("n2c_json") or {}).get("graphs") or []
+    graph = next((g for g in graphs if g.get("name") == "EventGraph"), None)
+    if graph:
+        flows = graph.get("flows") or {}
+        nodes = graph.get("nodes") or []
+        begin = [n for n in nodes if n.get("member_name") == "ReceiveBeginPlay"]
+        state.update({
+            "nodes": len(nodes),
+            "exec_links": sum(f.count("->") for f in flows.get("execution") or []),
+            "data_links": len(flows.get("data") or {}),
+            "execution": flows.get("execution"),
+            "begin_play": len(begin),
+            "begin_play_exec_linked": any(p.get("connected") for n in begin for p in n.get("output_pins") or []
+                                          if p.get("type") is None),
+            "node_names": [n.get("name") for n in nodes]})
+    else:
+        state["n2c_error"] = raw.get("error")
+dirty = [p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+state["dirty"] = "%(asset)s" in dirty
+result = state
+'''
+
+# The bridge calls of python-bridge-1 with an apostrophe in the text: each raw string goes through json.loads
+APOSTROPHE_PY = r'''
+import json, unreal
+B = unreal.N2CPythonBridge
+out = {}
+def attempt(name, fn):
+    try:
+        raw = fn()
+    except Exception as e:
+        out[name] = {"raised": str(e)[:200]}
+        return {}
+    try:
+        msg = json.loads(raw)
+        out[name] = {"parsed": True, "success": msg.get("success"), "error": msg.get("error"),
+                     "data_head": json.dumps(msg.get("data"))[:200]}
+        return msg
+    except ValueError as e:
+        out[name] = {"parsed": False, "json_error": str(e)[:200], "raw_head": raw[:200]}
+        return {}
+opened = json.loads(B.open_blueprint("%(asset)s", "EventGraph")).get("success")
+# Leftovers of an aborted run
+try:
+    for t in (json.loads(B.list_tags("", "it's")).get("data") or {}).get("tags") or []:
+        B.remove_tag(t.get("graph_guid", ""), "it's")
+except ValueError:
+    pass
+tagged = attempt("tag_focused_graph", lambda: B.tag_focused_graph("it's", "N2CProbe", "the probe's tag"))
+guid = (tagged.get("data") or {}).get("graph_guid", "")
+listed = attempt("list_tags", lambda: B.list_tags("", "it's"))
+out["list_tags"]["names"] = [t.get("tag") for t in (listed.get("data") or {}).get("tags") or []]
+attempt("remove_tag", lambda: B.remove_tag(guid, "it's"))
+attempt("remove_tag_missing", lambda: B.remove_tag(guid, "it's"))
+attempt("open_blueprint_function", lambda: B.open_blueprint_function("Missing'Func"))
+result = {"opened": opened, "graph_guid": guid, "calls": out}
+'''
+
+# Opens the fixture, places one fixture actor in the editor level (UE 5.8 only, see below) so PIE has a live instance
+# for the compile to reinstance (its BeginPlay prints "N2CProbe BeginPlay"), and requests PIE. On UE 5.6 and 5.7
+# headless (-nullrhi -RenderOffScreen), placing any Blueprint actor through EditorActorSubsystem.spawn_actor_from_class
+# (the viewport placement path) is a fatal EXCEPTION_INT_DIVIDE_BY_ZERO in the engine, with or without NodeToCode
+# involved (a plain AActor places fine), and stock Python has no game-world spawn (BeginDeferredActorSpawnFromClass
+# is internal), so there PIE runs without a fixture instance and the evidence says so
+PIE_START_PY = r'''
+import json, unreal
+opened = json.loads(unreal.N2CPythonBridge.open_blueprint("%(asset)s", "EventGraph")).get("success")
+version = unreal.SystemLibrary.get_engine_version()
+placed = None
+if not version.startswith(("5.6", "5.7")):
+    bp = unreal.load_asset("%(asset)s")
+    actor = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).spawn_actor_from_class(
+        bp.generated_class(), unreal.Vector(0, 0, 0)) if bp else None
+    placed = actor.get_name() if actor else None
+unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).editor_request_begin_play()
+result = {"opened": opened, "engine": version, "placed_in_level": placed,
+          "live_instance": "placed in the editor level" if placed else
+                           "none: placing a Blueprint actor headless is fatal on UE 5.6/5.7" if placed is None and
+                           version.startswith(("5.6", "5.7")) else "placement failed",
+          "editor_world": unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world().get_path_name()}
+'''
+
+# Removes the fixture actors P12 placed in the editor level
+PIE_CLEANUP_PY = r'''
+import unreal
+eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+removed = 0
+for a in eas.get_all_level_actors():
+    if "N2CProbe" in a.get_class().get_name():
+        removed += 1 if eas.destroy_actor(a) else 0
+result = {"removed_actors": removed}
+'''
+
+PIE_STATE_PY = r'''
+import json, unreal
+les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_game_world()
+probes = []
+if world:
+    for a in unreal.GameplayStatics.get_all_actors_of_class(world, unreal.Actor):
+        cls = a.get_class().get_name()
+        if "N2CProbe" in cls:
+            probes.append(cls)
+result = {"in_pie": les.is_in_play_in_editor(), "game_world": world.get_path_name() if world else None,
+          "pie_probe_actors": probes}
+'''
+
+PIE_REFOCUS_PY = r'''
+import json, unreal
+result = {"opened": json.loads(unreal.N2CPythonBridge.open_blueprint("%(asset)s", "EventGraph")).get("success")}
+'''
+
+PIE_END_PY = r'''
+import unreal
+unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).editor_request_end_play()
+result = {"requested": True}
+'''
+
+def _helpers():
+    import e05_regressions  # noqa: E402  (its MCP helpers: run_python, tool_json, graph_nodes)
+    return e05_regressions
+
+
+def install_fixture(project):
+    """Copy the fixture into the host's Content/N2CProbe/; returns the folder to remove afterwards (None when the
+    folder was already there, so only the file is put back)"""
+    import shutil
+    folder = os.path.join(os.path.dirname(os.path.abspath(project)), 'Content', 'N2CProbe')
+    created = not os.path.isdir(folder)
+    os.makedirs(folder, exist_ok=True)
+    shutil.copy2(FIXTURE, os.path.join(folder, os.path.basename(FIXTURE)))
+    return folder if created else None
+
+
+def remove_fixture(project, folder):
+    import shutil
+    if folder:
+        shutil.rmtree(folder, ignore_errors=True)
+    else:
+        path = os.path.join(os.path.dirname(os.path.abspath(project)), 'Content', 'N2CProbe', os.path.basename(FIXTURE))
+        if os.path.exists(path):
+            os.remove(path)
+
+
+def log_problems(text):
+    """NodeToCode error lines, ensures and crash lines in an editor log excerpt"""
+    keep = []
+    for line in text.splitlines():
+        low = line.lower()
+        if ('LogNodeToCode' in line and 'Error' in line) or 'ensure condition failed' in low \
+                or 'Fatal' in line or 'Unhandled Exception' in line or 'Assertion failed' in line \
+                or ('LogBlueprint' in line and 'Error' in line) or 'LogOutputDevice: Error' in line:
+            keep.append(line.strip()[:240])
+    return keep
+
+
+def probe_p10(url):
+    """search-blueprint-nodes {"searchTerm": "begin play"} on the fixture's focused EventGraph, whose Event BeginPlay
+    is wired to a Print String. Reproduced when the search changes the node count, the link count, BeginPlay or its
+    exec link, or dirties the package (mcp-tools-graph-functions-1/-2: the spawner returned the existing BeginPlay and
+    the tool removed it outside a transaction). Skipped when no graph can be focused."""
+    ids = ['gap-1', 'mcp-tools-graph-functions-1', 'mcp-tools-graph-functions-2', 'p0-7']
+    h = _helpers()
+    before, raw = h.run_python(url, FIXTURE_STATE_PY % {'asset': FIXTURE_ASSET})
+    if not before.get('opened') or 'nodes' not in before:
+        return {'ids': ids, 'status': 'skipped',
+                'evidence': {'reason': 'could not focus the fixture EventGraph', 'state': before, 'raw': raw}}
+    begin_before, _ = h.graph_nodes(url, 'BeginPlay')
+    data, error, text = h.tool_json(url, 'search-blueprint-nodes', {'searchTerm': 'begin play'})
+    after, _ = h.run_python(url, FIXTURE_STATE_PY % {'asset': FIXTURE_ASSET})
+    begin_after, _ = h.graph_nodes(url, 'BeginPlay')
+    keys = ('nodes', 'exec_links', 'data_links', 'begin_play', 'begin_play_exec_linked', 'dirty')
+    changed = {k: [before.get(k), after.get(k)] for k in keys if before.get(k) != after.get(k)}
+    begin_guid_kept = bool(begin_before) and set(begin_before) <= set(begin_after)
+    status = 'reproduced' if changed or not begin_guid_kept or not after.get('begin_play_exec_linked') else 'fixed'
+    return {'ids': ids, 'status': status, 'evidence': {
+        'search_error': error, 'search_results': len((data or {}).get('nodes', [])),
+        'search_names': [n.get('name') for n in (data or {}).get('nodes', [])][:10],
+        'before': {k: before.get(k) for k in keys + ('execution',)},
+        'after': {k: after.get(k) for k in keys + ('execution',)},
+        'begin_play_guids_before': sorted(begin_before), 'begin_play_guids_after': sorted(begin_after),
+        'changed': changed}}
+
+
+def probe_p11(url):
+    """The Python bridge's results with an apostrophe in the text go through json.loads: tag_focused_graph("it's"),
+    list_tags(tag="it's"), remove_tag(<guid>, "it's") (and again, for its "not found" error, which quotes the tag)
+    and open_blueprint_function("Missing'Func") (its error quotes the name). Reproduced when any fails to parse
+    (python-bridge-1: ReplaceCharWithEscapedChar wrote the escape \\', which JSON does not have)."""
+    ids = ['gap-1', 'python-bridge-1', 'qw-14']
+    h = _helpers()
+    data, raw = h.run_python(url, APOSTROPHE_PY % {'asset': FIXTURE_ASSET})
+    calls = data.get('calls') or {}
+    if not data.get('opened') or not calls:
+        return {'ids': ids, 'status': 'skipped', 'evidence': {'reason': 'could not focus the fixture', 'raw': raw}}
+    failed = sorted(k for k, v in calls.items() if not v.get('parsed'))
+    # Fixed also needs the calls to have done what they say: tag, list it by its name, remove it, then the two errors
+    # carry the apostrophe text
+    behaved = (calls.get('tag_focused_graph', {}).get('success') is True
+               and "it's" in calls.get('list_tags', {}).get('names', [])
+               and calls.get('remove_tag', {}).get('success') is True
+               and "it's" in (calls.get('remove_tag_missing', {}).get('error') or '')
+               and "Missing'Func" in (calls.get('open_blueprint_function', {}).get('error') or ''))
+    status = 'reproduced' if failed else ('fixed' if behaved else 'reproduced')
+    return {'ids': ids, 'status': status, 'evidence': {'failed_to_parse': failed, 'behaved': behaved, 'calls': calls}}
+
+
+def probe_p12(url, log_text):
+    """create-variable and compile-blueprint on the fixture while Play In Editor runs (gap-1 step 7). Starts PIE with
+    LevelEditorSubsystem.editor_request_begin_play() (on UE 5.8 after placing a fixture actor in the level, so the
+    compile has a live PIE instance to reinstance; see PIE_START_PY), waits for is_in_play_in_editor(), calls both tools, ends PIE and lists the fixture's
+    variables. Records the tool results, NodeToCode error, ensure and crash lines from the log, whether the editor
+    still answers, and the variables after PIE. Reproduced when create-variable succeeds during PIE (card 0170 makes
+    mutating tools refuse with PIE_ACTIVE); fixed when it is refused and nothing else went wrong. Skipped when PIE does
+    not start."""
+    ids = ['gap-1', 'next-10']
+    h = _helpers()
+    ev = {}
+    mark = len(log_text())
+    ev['start'], _ = h.run_python(url, PIE_START_PY % {'asset': FIXTURE_ASSET})
+    deadline = time.time() + 90
+    state = {}
+    while time.time() < deadline:
+        state, raw = h.run_python(url, PIE_STATE_PY)
+        if state.get('in_pie') and state.get('game_world'):
+            break
+        time.sleep(1)
+    ev['pie'] = state
+    if not state.get('in_pie'):
+        ev['cleanup'], _ = h.run_python(url, PIE_CLEANUP_PY)
+        return {'ids': ids, 'status': 'skipped', 'evidence': dict(ev, reason='PIE did not start within 90 s',
+                                                                 log=log_problems(log_text()[mark:]))}
+    time.sleep(2)  # let the placed instance's BeginPlay run and print
+    ev['refocus'], _ = h.run_python(url, PIE_REFOCUS_PY % {'asset': FIXTURE_ASSET})
+    data, error, text = h.tool_json(url, 'create-variable', {'variableName': 'N2CProbePieVar', 'typeIdentifier': 'bool'})
+    ev['create_variable'] = {'isError': error, 'text': text[:400]}
+    data, error, text = h.tool_json(url, 'compile-blueprint', {})
+    ev['compile'] = {'isError': error, 'text': text[:400], 'success': (data or {}).get('success'),
+                     'status': (data or {}).get('compilationStatus')}
+    ev['pie_after_tools'], _ = h.run_python(url, PIE_STATE_PY)
+    h.run_python(url, PIE_END_PY)
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        ended, _ = h.run_python(url, PIE_STATE_PY)
+        if ended.get('in_pie') is False:
+            break
+        time.sleep(1)
+    ev['pie_ended'] = ended.get('in_pie') is False
+    h.run_python(url, PIE_REFOCUS_PY % {'asset': FIXTURE_ASSET})
+    data, error, text = h.tool_json(url, 'get-blueprint-member-variables', {})
+    ev['variables_after'] = [v.get('name') for v in (data or {}).get('variables', [])] if not error else text[:200]
+    ev['cleanup'], _ = h.run_python(url, PIE_CLEANUP_PY)
+    ev['editor_answers'] = 'result' in h.rpc(url, 'ping')
+    excerpt = log_text()[mark:]
+    ev['begin_play_printed'] = 'N2CProbe BeginPlay' in excerpt
+    ev['log_problems'] = log_problems(excerpt)[:30]
+    ev['ensures'] = sum(1 for l in excerpt.splitlines() if 'ensure condition failed' in l.lower())
+    refused = ev['create_variable']['isError'] and 'PIE' in ev['create_variable']['text']
+    clean = ev['editor_answers'] and not ev['ensures'] and ev['pie_ended']
+    status = 'fixed' if refused and clean else 'reproduced'
+    return {'ids': ids, 'status': status, 'evidence': ev}
+
+
+def content_probes(url, log_text):
+    """P10-P12 against an editor that has the fixture under /Game/N2CProbe, run-python on and -RenderOffScreen. P12
+    starts and ends PIE, so it runs last."""
+    results = {}
+    for name, ids, run in (('P10', ['gap-1', 'mcp-tools-graph-functions-1', 'mcp-tools-graph-functions-2', 'p0-7'],
+                            lambda: probe_p10(url)),
+                           ('P11', ['gap-1', 'python-bridge-1', 'qw-14'], lambda: probe_p11(url)),
+                           ('P12', ['gap-1', 'next-10'], lambda: probe_p12(url, log_text))):
+        try:
+            results[name] = run()
+        except Exception as e:  # the editor died or stopped answering: a mismatch someone has to look at
+            results[name] = {'ids': ids, 'status': 'skipped', 'evidence': {
+                'reason': 'probe raised %s: %s' % (type(e).__name__, e), 'log': log_problems(log_text())[-20:]}}
+    return results
+
+
 def session_probes(port, pid, saved_dir):
     """The probes that run against an editor already answering on port (all but P4, which needs its own editor).
     Tests/smoke/smoke_check.py calls this inside its own session."""
@@ -354,6 +650,8 @@ def main():
     ap.add_argument('--port', type=int, default=27150)
     ap.add_argument('--report', default=None)
     ap.add_argument('--skip-p4', action='store_true', help='skip the port-conflict probe (it launches a second editor)')
+    ap.add_argument('--skip-content', action='store_true',
+                    help='skip the fixture probes P10-P12 (BeginPlay deletion, apostrophe JSON, PIE mutation)')
     args = ap.parse_args()
 
     log_dir = os.path.join(HERE, 'logs')
@@ -361,14 +659,32 @@ def main():
     port = free_port(args.port)
     saved_dir = os.path.join(os.path.dirname(os.path.abspath(args.project)), 'Saved')
     results = {}
-    session = EditorSession(args.engine, args.project, port, os.path.join(log_dir, 'editor_%s.log' % args.label))
+    fixture_dir = None if args.skip_content else install_fixture(args.project)
+    # -RenderOffScreen: P10-P12 open a Blueprint editor, and on UE 5.6 under -nullrhi its window otherwise reaches
+    # FGenericWindow::GetRestoredDimensions, which is Fatal
+    session = EditorSession(args.engine, args.project, port, os.path.join(log_dir, 'editor_%s.log' % args.label),
+                            extra_args=['-RenderOffScreen'])
     try:
         if not session.start():
             results['session'] = {'status': 'skipped', 'evidence': {'reason': 'editor did not answer /mcp/health'}}
         else:
             results.update(session_probes(port, session.proc.pid, saved_dir))
+            if not args.skip_content:
+                results.update(content_probes('http://127.0.0.1:%d/mcp' % port, session.log_text))
+            # Quit from inside: UnrealEditor-Cmd ignores the WM_CLOSE stop() sends first. Nothing is saved, so the
+            # fixture's in-memory changes (P12) are dropped
+            try:
+                _helpers().run_python('http://127.0.0.1:%d/mcp' % port,
+                                      'import unreal\nunreal.SystemLibrary.quit_editor()\nresult = {}')
+            except Exception:  # the editor may close the connection while it exits
+                pass
+            deadline = time.time() + 60
+            while time.time() < deadline and session.proc.poll() is None:
+                time.sleep(0.5)
     finally:
         session.stop()
+        if not args.skip_content:
+            remove_fixture(args.project, fixture_dir)
     if args.skip_p4:
         results['P4'] = {'ids': ['mcp-transport-10'], 'status': 'skipped', 'evidence': {'reason': '--skip-p4'}}
     else:

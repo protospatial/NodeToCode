@@ -11,8 +11,9 @@ python -I Tests/mcp_probe/mcp_probe.py --engine G:/UE/UE_5.8 \
 The run starts `UnrealEditor-Cmd` (see `editor_session.py` for the launch form), uses a free port pair from 27150 so
 an editor on 27000 cannot answer, probes, stops the editor (no UnrealEditor process is left), and writes
 `logs/report_<label>.json`. It exits 0 only when every status matches `expected.json` for the label. `--skip-p4`
-skips the probe that launches a second editor. `build.ps1 -Smoke` (`Tests/smoke/smoke_check.py`) runs the same
-probes inside its default-mode editor session (`mcp_probe.session_probes`) plus P4, and fails on any mismatch.
+skips the probe that launches a second editor, `--skip-content` the fixture probes P10-P12. `build.ps1 -Smoke`
+(`Tests/smoke/smoke_check.py`) runs P1-P3 and P5-P9 inside its default-mode editor session
+(`mcp_probe.session_probes`) plus P4, and fails on any mismatch; P10-P12 run only here.
 
 | Probe | Checks | Finding ids |
 |---|---|---|
@@ -25,6 +26,9 @@ probes inside its default-mode editor session (`mcp_probe.session_probes`) plus 
 | P7 | `translate-focused-blueprint` (numeric progressToken 7, no Blueprint focused) is not answered with a CallToolResult on its own POST: once with `Accept: application/json, text/event-stream` (UE 5.8 streams `notifications/progress` then the response; 5.6/5.7 send one JSON response) and once JSON-only. Fixed when each call gets exactly one JSON-RPC response with id 7 and a `content` array (here `isError`), no `accepted`/`sseUrl` result, the connection closes, and any progress echoes the token as a number | p0-10, mcp-transport-3, mcp-transport-21, dx-docs-release-8 |
 | P8 | Per-client sessions (card 0109): two initializes get different `Mcp-Session-Id`s and each answers in its own; no session gives 400, an unknown one 404, an unsupported `MCP-Protocol-Version` 400; GET is 405 with `Allow: POST, DELETE`; a client response is 202 with no body; DELETE ends a session (2xx), after which it gets 404 while the other session still answers. Fixed when every check holds | next-1, mcp-transport-16, mcp-transport-18, mcp-transport-19 |
 | P9 | Capabilities, error codes and cancellation (card 0110): `initialize` advertises no `logging` and returns `instructions`; `resources/templates/list` lists `nodetocode://blueprint/{name}` and `resources/list` has no `resourceTemplates`; an unknown tool, an unknown prompt and a missing required prompt argument are -32602; an unknown resource uri is -32002 with the uri in `data`; `notifications/cancelled` for an id with no running call is 202 with no body. Fixed when every check holds (the live cancel of a running call is `live_translate_cancel.py`) | next-1, mcp-transport-15, mcp-transport-19, mcp-transport-20, mcp-tools-python-translation-resources-16, mcp-tools-python-translation-resources-23, imp-mcp-transport-5 |
+| P10 | On the fixture's focused EventGraph (Event BeginPlay wired to Print String), `search-blueprint-nodes {"searchTerm": "begin play"}`: the N2C JSON node count, execution and data links, BeginPlay (its GUID from `find-nodes-in-graph`) and its exec link, and the package's dirty state before and after. Fixed when nothing changed (card 0050); skipped when no graph can be focused | gap-1, mcp-tools-graph-functions-1, mcp-tools-graph-functions-2, p0-7 |
+| P11 | The Python bridge with an apostrophe in the text, each raw result through `json.loads`: `tag_focused_graph("it's")`, `list_tags(tag="it's")`, `remove_tag(<guid>, "it's")`, `remove_tag` again (its "not found" error quotes the tag) and `open_blueprint_function("Missing'Func")`. Fixed when every result parses and says what happened (card 0120) | gap-1, python-bridge-1, qw-14 |
+| P12 | `create-variable` and `compile-blueprint` on the fixture during Play In Editor, started with `LevelEditorSubsystem.editor_request_begin_play()` and confirmed with `is_in_play_in_editor()`; then PIE is ended and `get-blueprint-member-variables` lists the fixture's variables. Records both tool results, NodeToCode error, ensure and crash lines, whether the editor still answers and PIE ended. Reproduced while `create-variable` succeeds during PIE; card 0170 owns the fix (mutating tools refuse with `PIE_ACTIVE`), fixed when it is refused and nothing else went wrong | gap-1, next-10 |
 
 Statuses are `reproduced` (the finding's defect is present), `fixed`, `skipped` (with a reason), or
 `not_applicable` (the code the probe tested was removed; the evidence says why). P4 holds the
@@ -44,6 +48,34 @@ so `EditorSession` also snapshots that file at `start()` and, at `stop()`, write
 it did not exist; `session.restore_ok` says whether every file came back exactly, and the live probes that change
 settings (`live_provider_matrix.py`, `live_truncated.py`, `live_typed_errors.py`) report it as `config_restored` and
 fail without it.
+
+## Fixture probes (P10-P12)
+
+Card 0097 named these P6-P8; those ids were already taken, so they are P10-P12. They run on the committed fixture
+`Tests/Fixtures/N2CProbe/BP_N2CProbe.uasset`, an Actor Blueprint whose Event BeginPlay is wired to a Print String
+(`In String` "N2CProbe BeginPlay"). A committed asset keeps the fixture independent of the tools under test.
+`mcp_probe.py` copies it into the host's `Content/N2CProbe/` before the editor starts and removes it after the
+editor exits (nothing is saved, so P12's changes stay in memory); `--skip-content` leaves P10-P12 out. The session
+runs with `-RenderOffScreen` because the probes open a Blueprint editor (on UE 5.6 under `-nullrhi` its window
+otherwise reaches `FGenericWindow::GetRestoredDimensions`, which is Fatal), and quits the editor with `quit_editor()`.
+P10-P12 are not part of `build.ps1 -Smoke`.
+
+The fixture was made on UE 5.6 so 5.7 and 5.8 load it: `python -I make_probe_fixture.py --engine G:/UE/UE_5.6
+--project <5.6 host>.uproject` creates `/Game/N2CProbe/BP_N2CProbe` (parent Actor) with run-python, adds Event
+BeginPlay (the new Blueprint's ghost BeginPlay, made real by the link) and Print String with
+`add-bp-node-to-active-graph`, links `then` to `execute` with `connect-pins`, sets `In String` with
+`set-input-pin-value`, compiles, saves, and copies the `.uasset` here. Run it again only to change the fixture.
+
+PIE starts headless (`-nullrhi -RenderOffScreen`) on all three engines. On UE 5.8, P12 first places a fixture actor
+in the editor level so PIE has a live instance for the compile to reinstance (the log shows its BeginPlay print). On
+UE 5.6 and 5.7 headless, placing any Blueprint actor through `EditorActorSubsystem.spawn_actor_from_class` is a fatal
+`EXCEPTION_INT_DIVIDE_BY_ZERO` in the engine's viewport placement (a plain `Actor` places fine), and stock Python has
+no game-world spawn, so there PIE runs without a fixture instance and the evidence's `live_instance` says so.
+
+Observed on 5.6, 5.7 and 5.8 (card 0097): P10 fixed (4 nodes, 1 exec link, BeginPlay's GUID and link kept, package
+clean); P11 fixed (all five results parse, the errors quote `it's` and `Missing'Func`); P12 reproduced:
+`create-variable` and the compile succeed during PIE, with no NodeToCode error, ensure or crash, PIE ends, the editor
+answers, and `N2CProbePieVar` is on the fixture afterwards.
 
 ## E05 regression probe
 

@@ -8,7 +8,10 @@
   "P6": "not_applicable",
   "P7": "fixed",
   "P8": "fixed",
-  "P9": "fixed"
+  "P9": "fixed",
+  "P10": "fixed",
+  "P11": "fixed",
+  "P12": "reproduced"
  },
  "5.7": {
   "P1": "fixed",
@@ -19,7 +22,10 @@
   "P6": "not_applicable",
   "P7": "fixed",
   "P8": "fixed",
-  "P9": "fixed"
+  "P9": "fixed",
+  "P10": "fixed",
+  "P11": "fixed",
+  "P12": "reproduced"
  },
  "5.8": {
   "P1": "fixed",
@@ -30,6 +36,9 @@
   "P6": "not_applicable",
   "P7": "fixed",
   "P8": "fixed",
-  "P9": "fixed"
+  "P9": "fixed",
+  "P10": "fixed",
+  "P11": "fixed",
+  "P12": "reproduced"
  }
 }
