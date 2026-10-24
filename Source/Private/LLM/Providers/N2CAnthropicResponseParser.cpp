@@ -15,17 +15,13 @@ bool UN2CAnthropicResponseParser::ParseLLMResponse(
     if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
     {
         FN2CLogger::Get().LogError(TEXT("Failed to parse Anthropic response JSON"), TEXT("AnthropicResponseParser"));
+        SetParseError(OutResponse, TEXT("The provider response is not valid JSON"));
         return false;
     }
 
-    // Check for Anthropic error response
-    FString ErrorMessage;
-    if (JsonObject->HasField(TEXT("error")))
+    // Check for a provider error (the HTTP handler adds the HTTP status to it)
+    if (HandleCommonErrorResponse(JsonObject, TEXT("error"), OutResponse))
     {
-        if (HandleCommonErrorResponse(JsonObject, TEXT("error"), ErrorMessage))
-        {
-            FN2CLogger::Get().LogError(ErrorMessage, TEXT("AnthropicResponseParser"));
-        }
         return false;
     }
 
@@ -35,6 +31,7 @@ bool UN2CAnthropicResponseParser::ParseLLMResponse(
     if (!ExtractAnthropicMessageContent(JsonObject, MessageContent))
     {
         FN2CLogger::Get().LogError(TEXT("Failed to extract message content from Anthropic response"), TEXT("AnthropicResponseParser"));
+        SetParseError(OutResponse, TEXT("The provider response has no message content"));
         return false;
     }
 

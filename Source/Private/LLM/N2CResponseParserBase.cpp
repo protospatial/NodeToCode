@@ -17,6 +17,7 @@ bool UN2CResponseParserBase::ParseLLMResponse(
     if (InJson.IsEmpty() || InJson.Len() < 10)
     {
         FN2CLogger::Get().LogError(TEXT("Empty or too short LLM response"), TEXT("ResponseParser"));
+        SetParseError(OutResponse, TEXT("The model's answer is empty or too short"));
         return false;
     }
 
@@ -36,6 +37,7 @@ bool UN2CResponseParserBase::ParseLLMResponse(
                 OpenBraces, CloseBraces),
             TEXT("ResponseParser")
         );
+        SetParseError(OutResponse, TEXT("The model's answer is incomplete or malformed JSON (unbalanced braces)"));
         return false;
     }
 
@@ -54,6 +56,7 @@ bool UN2CResponseParserBase::ParseLLMResponse(
     {
         FN2CLogger::Get().LogError(TEXT("Exception while parsing LLM JSON response"), 
             TEXT("ResponseParser"));
+        SetParseError(OutResponse, TEXT("The model's answer could not be parsed as JSON"));
         return false;
     }
 
@@ -64,6 +67,7 @@ bool UN2CResponseParserBase::ParseLLMResponse(
                 *Reader->GetErrorMessage()),
             TEXT("ResponseParser")
         );
+        SetParseError(OutResponse, FString::Printf(TEXT("The model's answer is not valid JSON: %s"), *Reader->GetErrorMessage()));
         return false;
     }
 
@@ -71,6 +75,7 @@ bool UN2CResponseParserBase::ParseLLMResponse(
     if (!ValidateResponseFormat(JsonObject))
     {
         FN2CLogger::Get().LogError(TEXT("Invalid response format"), TEXT("ResponseParser"));
+        SetParseError(OutResponse, TEXT("The model's answer has no 'graphs' field"));
         return false;
     }
 
@@ -79,6 +84,7 @@ bool UN2CResponseParserBase::ParseLLMResponse(
     if (!JsonObject->TryGetArrayField(TEXT("graphs"), GraphsArray))
     {
         FN2CLogger::Get().LogError(TEXT("Missing 'graphs' array in response"), TEXT("ResponseParser"));
+        SetParseError(OutResponse, TEXT("The model's answer has no 'graphs' array"));
         return false;
     }
 
@@ -98,7 +104,12 @@ bool UN2CResponseParserBase::ParseLLMResponse(
         OutResponse.Graphs.Add(Graph);
     }
 
-    return OutResponse.Graphs.Num() > 0;
+    if (OutResponse.Graphs.Num() == 0)
+    {
+        SetParseError(OutResponse, TEXT("The model's answer contains no translated graphs"));
+        return false;
+    }
+    return true;
 }
 
 FString UN2CResponseParserBase::RemoveNewlines(const FString& Input) const
@@ -153,37 +164,43 @@ void UN2CResponseParserBase::ExtractCodeData(
 bool UN2CResponseParserBase::HandleCommonErrorResponse(
     const TSharedPtr<FJsonObject>& JsonObject,
     const FString& ErrorFieldName,
-    FString& OutErrorMessage)
+    FN2CTranslationResponse& OutResponse)
 {
-    const TSharedPtr<FJsonObject> ErrorObject = JsonObject->GetObjectField(ErrorFieldName);
-    if (!ErrorObject.IsValid())
+    if (!JsonObject.IsValid())
     {
-        OutErrorMessage = FString::Printf(TEXT("Unknown error in %s field"), *ErrorFieldName);
-        return true;
+        return false;
     }
 
-    FString ErrorType, ErrorMessage;
-    ErrorObject->TryGetStringField(TEXT("type"), ErrorType);
-    ErrorObject->TryGetStringField(TEXT("message"), ErrorMessage);
-
-    if (ErrorType.Contains(TEXT("rate_limit")))
+    // The OpenAI Responses API sends "error": null on success; an empty string is no error either
+    const TSharedPtr<FJsonValue> ErrorField = JsonObject->TryGetField(ErrorFieldName);
+    if (!ErrorField.IsValid() || ErrorField->IsNull()
+        || (ErrorField->Type == EJson::String && ErrorField->AsString().IsEmpty()))
     {
-        OutErrorMessage = TEXT("API rate limit exceeded");
-    }
-    else if (ErrorType.Contains(TEXT("invalid_request")) || ErrorType.Contains(TEXT("invalid_request_error")))
-    {
-        OutErrorMessage = FString::Printf(TEXT("Invalid request: %s"), *ErrorMessage);
-    }
-    else if (ErrorType.Contains(TEXT("authentication")))
-    {
-        OutErrorMessage = TEXT("API authentication failed");
-    }
-    else
-    {
-        OutErrorMessage = FString::Printf(TEXT("API error: %s - %s"), *ErrorType, *ErrorMessage);
+        return false;
     }
 
+    TSharedPtr<FJsonObject> Root = JsonObject;
+    if (ErrorFieldName != TEXT("error"))
+    {
+        // FromErrorJson reads "error": present the custom field under that name
+        Root = MakeShared<FJsonObject>(*JsonObject);
+        Root->SetField(TEXT("error"), ErrorField);
+    }
+
+    OutResponse.Error = FN2CTranslationError::FromErrorJson(Root);
+    FN2CLogger::Get().LogError(OutResponse.Error.ToDisplayString(), TEXT("ResponseParser"));
     return true;
+}
+
+void UN2CResponseParserBase::SetParseError(FN2CTranslationResponse& OutResponse, const FString& Message)
+{
+    if (OutResponse.Error.IsError())
+    {
+        return;
+    }
+    OutResponse.Error.Kind = EN2CTranslationErrorKind::Parse;
+    OutResponse.Error.Message = Message;
+    OutResponse.Error.bRetryable = false;
 }
 
 bool UN2CResponseParserBase::ExtractStandardMessageContent(

@@ -48,6 +48,13 @@ public:
         const FOnLLMResponseReceived& OnComplete
     );
 
+    /**
+     * Completes the typed error of a failed translation: names the provider and model, and records a Parse error
+     * (with the start of RawResponse) when the parser found no more specific one.
+     */
+    static void FillTranslationError(FN2CTranslationResponse& Response, EN2CLLMProvider Provider, const FString& Model,
+        const FString& RawResponse);
+
     /** Get the current configuration */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
     const FN2CLLMConfig& GetConfig() const { return Config; }
@@ -107,6 +114,9 @@ private:
 
     /** Create appropriate service for provider */
     bool CreateServiceForProvider(EN2CLLMProvider Provider);
+
+    /** Broadcasts a failed OnTranslationResponseReceived carrying Error (for errors found before a request is sent) */
+    void BroadcastFailure(const FN2CTranslationError& Error);
 
     /** A handle already completed with Response (for errors found before a request is sent) */
     static FN2CLLMRequestHandleRef CompleteWithoutRequest(const FOnLLMResponseReceived& OnComplete, const FString& Response);

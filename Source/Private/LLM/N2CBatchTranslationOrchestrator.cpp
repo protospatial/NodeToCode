@@ -209,6 +209,7 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 	{
 		Item.Status = EN2CBatchItemStatus::Failed;
 		Item.ErrorMessage = TEXT("Failed to collect/serialize graph");
+		Item.TranslationResponse.Error = FN2CTranslationError::Make(Item.ErrorMessage);
 		CurrentResult.FailureCount++;
 		CurrentResult.FailedGraphNames.Add(Item.TagInfo.GraphName);
 
@@ -239,6 +240,7 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 	{
 		Item.Status = EN2CBatchItemStatus::Failed;
 		Item.ErrorMessage = TEXT("LLM module not available");
+		Item.TranslationResponse.Error = FN2CTranslationError::Make(Item.ErrorMessage);
 		CurrentResult.FailureCount++;
 		CurrentResult.FailedGraphNames.Add(Item.TagInfo.GraphName);
 
@@ -284,12 +286,13 @@ void UN2CBatchTranslationOrchestrator::HandleTranslationResponse(const FN2CTrans
 	else
 	{
 		Item.Status = EN2CBatchItemStatus::Failed;
-		Item.ErrorMessage = TEXT("Translation failed");
+		// The specific reason (kind, HTTP status, provider message) from the typed error
+		Item.ErrorMessage = Response.Error.IsError() ? Response.Error.ToDisplayString() : FString(TEXT("Translation failed"));
 		CurrentResult.FailureCount++;
 		CurrentResult.FailedGraphNames.Add(Item.TagInfo.GraphName);
 
 		FN2CLogger::Get().LogError(
-			FString::Printf(TEXT("Translation failed for: %s"), *Item.TagInfo.GraphName),
+			FString::Printf(TEXT("Translation failed for %s: %s"), *Item.TagInfo.GraphName, *Item.ErrorMessage),
 			TEXT("BatchOrchestrator"));
 	}
 
@@ -775,6 +778,19 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 		if (!Item.ErrorMessage.IsEmpty())
 		{
 			ItemJson->SetStringField(TEXT("error"), Item.ErrorMessage);
+		}
+
+		// The typed error of a failed LLM request, so a reader can tell a rate limit from a bad key or a parse failure
+		const FN2CTranslationError& ItemError = Item.TranslationResponse.Error;
+		if (Item.Status == EN2CBatchItemStatus::Failed && ItemError.IsError())
+		{
+			ItemJson->SetStringField(TEXT("errorKind"), FN2CTranslationError::KindToString(ItemError.Kind));
+			if (ItemError.HttpStatus > 0)
+			{
+				ItemJson->SetNumberField(TEXT("httpStatus"), ItemError.HttpStatus);
+			}
+			ItemJson->SetBoolField(TEXT("retryable"), ItemError.bRetryable);
+			ItemJson->SetStringField(TEXT("providerMessage"), ItemError.Message);
 		}
 
 		ItemsArray.Add(MakeShared<FJsonValueObject>(ItemJson));

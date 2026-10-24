@@ -16,24 +16,13 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
     if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
     {
         FN2CLogger::Get().LogError(TEXT("Failed to parse Ollama response JSON"), TEXT("OllamaResponseParser"));
+        SetParseError(OutResponse, TEXT("The provider response is not valid JSON"));
         return false;
     }
 
-    // Check for Ollama error response
-    FString ErrorMessage;
-    if (JsonObject->HasField(TEXT("error")))
+    // Check for a provider error (the HTTP handler adds the HTTP status to it)
+    if (HandleCommonErrorResponse(JsonObject, TEXT("error"), OutResponse))
     {
-        // Ollama uses a string for error, not an object
-        if (!JsonObject->TryGetStringField(TEXT("error"), ErrorMessage))
-        {
-            ErrorMessage = TEXT("Unknown Ollama error");
-        }
-        else
-        {
-            ErrorMessage = FString::Printf(TEXT("Ollama API error: %s"), *ErrorMessage);
-        }
-        
-        FN2CLogger::Get().LogError(ErrorMessage, TEXT("OllamaResponseParser"));
         return false;
     }
 
@@ -42,6 +31,7 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
     if (!ExtractOllamaMessageContent(JsonObject, MessageContent))
     {
         FN2CLogger::Get().LogError(TEXT("Failed to extract message content from Ollama response"), TEXT("OllamaResponseParser"));
+        SetParseError(OutResponse, TEXT("The provider response has no message content"));
         return false;
     }
     

@@ -24,7 +24,8 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     if (!ValidateRequest(Endpoint, Payload))
     {
         FN2CLogger::Get().LogError(TEXT("Invalid request parameters"), TEXT("HttpHandler"));
-        Handle->Complete(OnComplete, TEXT("{\"error\": \"Invalid request parameters\"}"));
+        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(TEXT("Invalid request parameters"),
+            EN2CTranslationErrorKind::InvalidRequest));
         return Handle;
     }
 
@@ -77,7 +78,7 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
             else
             {
                 // Handler was destroyed, just call completion callback with error
-                GatedOnComplete.ExecuteIfBound(TEXT("{\"error\": \"HTTP handler was destroyed\"}"));
+                GatedOnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(TEXT("HTTP handler was destroyed")));
             }
         }
     );
@@ -89,7 +90,8 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     {
         FN2CLogger::Get().LogError(TEXT("Failed to send HTTP request"), TEXT("HttpHandler"));
         // A failed ProcessRequest may also fire the completion delegate; the handle keeps OnComplete to one call
-        Handle->Complete(OnComplete, TEXT("{\"error\": \"Failed to send request\"}"));
+        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(TEXT("Failed to send request"),
+            EN2CTranslationErrorKind::Network));
         return Handle;
     }
 
@@ -122,49 +124,30 @@ void UN2CHttpHandlerBase::OnRequestComplete(
 {
     if (!bWasSuccessful || !Response.IsValid())
     {
-        FString ErrorMsg = TEXT("{\"error\": \"Request failed\"}");
-        FN2CLogger::Get().LogError(TEXT("HTTP request failed"), TEXT("HttpHandler"));
-        const bool bExecuted = OnComplete.ExecuteIfBound(ErrorMsg);
-        OnTranslationResponseReceived.Broadcast(FN2CTranslationResponse(), false);
+        // No HTTP response at all: connection refused, DNS, TLS or timeout
+        const FString Reason = Request.IsValid() ? FString(LexToString(Request->GetFailureReason())) : FString(TEXT("Unknown"));
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP request failed (%s)"), *Reason), TEXT("HttpHandler"));
+        OnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(
+            FString::Printf(TEXT("No response from the provider (%s)"), *Reason), EN2CTranslationErrorKind::Network));
         return;
     }
 
-    // Check response code
     const int32 ResponseCode = Response->GetResponseCode();
     const FString ResponseContent = Response->GetContentAsString();
 
-    // Handle successful responses (200-299)
+    // Successful responses (200-299) go to the parser as they are
     if (ResponseCode >= 200 && ResponseCode < 300)
     {
-        // Return successful response
-        const bool bExecuted = OnComplete.ExecuteIfBound(ResponseContent);
+        OnComplete.ExecuteIfBound(ResponseContent);
         return;
     }
 
-    // For 4xx and 5xx responses
-    FString ErrorMsg;
-    if (!ResponseContent.IsEmpty() && ResponseContent.StartsWith(TEXT("{")))
-    {
-        // Pass through JSON error response
-        ErrorMsg = ResponseContent;
-    }
-    else
-    {
-        // Wrap non-JSON error in our format
-        ErrorMsg = FString::Printf(
-            TEXT("{\"error\": \"HTTP %d - %s\"}"),
-            ResponseCode,
-            *ResponseContent
-        );
-    }
-
+    // 4xx and 5xx: the provider's JSON error gains the status; any other body (an HTML proxy page, plain text) is
+    // wrapped as escaped JSON, so the parser always gets valid JSON and can report the status and the real message
     FN2CLogger::Get().LogError(
-        FString::Printf(TEXT("HTTP %d error. Response: %s"), 
-            ResponseCode,
-            *ResponseContent),
+        FString::Printf(TEXT("HTTP %d error. Response: %s"), ResponseCode, *ResponseContent.Left(2000)),
         TEXT("HttpHandler")
     );
 
-    const bool bExecuted = OnComplete.ExecuteIfBound(ErrorMsg);
-    OnTranslationResponseReceived.Broadcast(FN2CTranslationResponse(), false);
+    OnComplete.ExecuteIfBound(FN2CTranslationError::WrapHttpErrorBody(ResponseCode, ResponseContent));
 }

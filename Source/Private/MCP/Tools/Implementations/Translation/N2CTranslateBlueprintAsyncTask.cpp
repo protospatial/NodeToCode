@@ -5,6 +5,9 @@
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
 #include "Async/Async.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "HAL/PlatformTime.h"
 
 FN2CTranslateBlueprintAsyncTask::FN2CTranslateBlueprintAsyncTask(const FGuid& TaskId, const FString& ProgressToken, const TSharedPtr<FJsonObject>& Arguments)
@@ -143,7 +146,13 @@ void FN2CTranslateBlueprintAsyncTask::HandleLLMResponse(const FString& LLMRespon
 {
     StopTicker();
 
-    const bool bIsError = LLMResponse.StartsWith(TEXT("{\"error\""));
+    // Errors arrive as NodeToCode error JSON (a top-level "error" with the kind, HTTP status and provider message);
+    // a translation is JSON with "graphs". Anything that is not a JSON object is an error too.
+    TSharedPtr<FJsonObject> ResponseJson;
+    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(LLMResponse);
+    const bool bIsJsonObject = FJsonSerializer::Deserialize(Reader, ResponseJson) && ResponseJson.IsValid();
+    const TSharedPtr<FJsonValue> ErrorField = bIsJsonObject ? ResponseJson->TryGetField(TEXT("error")) : nullptr;
+    const bool bIsError = !bIsJsonObject || (ErrorField.IsValid() && !ErrorField->IsNull());
     if (!bIsError)
     {
         ReportProgress(ProgressParsing, TEXT("LLM response received; parsing the translation"));

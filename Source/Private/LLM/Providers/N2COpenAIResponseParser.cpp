@@ -18,18 +18,13 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
             FString::Printf(TEXT("Failed to parse OpenAI response JSON: %s"), *InJson),
             TEXT("OpenAIResponseParser")
         );
+        SetParseError(OutResponse, TEXT("The provider response is not valid JSON"));
         return false;
     }
 
-    // Check for OpenAI error response
-    // Note: Responses API may include "error": null on success, so check if the field is actually an object
-    FString ErrorMessage;
-    if (JsonObject->HasTypedField<EJson::Object>(TEXT("error")))
+    // Check for a provider error (the HTTP handler adds the HTTP status to it)
+    if (HandleCommonErrorResponse(JsonObject, TEXT("error"), OutResponse))
     {
-        if (HandleCommonErrorResponse(JsonObject, TEXT("error"), ErrorMessage))
-        {
-            FN2CLogger::Get().LogError(ErrorMessage, TEXT("OpenAIResponseParser"));
-        }
         return false;
     }
 
@@ -43,6 +38,7 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
         if (!ExtractResponsesAPIContent(JsonObject, MessageContent))
         {
             FN2CLogger::Get().LogError(TEXT("Failed to extract message content from OpenAI Responses API response"), TEXT("OpenAIResponseParser"));
+            SetParseError(OutResponse, TEXT("The provider response has no message content"));
             return false;
         }
     }
@@ -52,6 +48,7 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
         if (!ExtractStandardMessageContent(JsonObject, TEXT("choices"), TEXT("message"), TEXT("content"), MessageContent))
         {
             FN2CLogger::Get().LogError(TEXT("Failed to extract message content from OpenAI response"), TEXT("OpenAIResponseParser"));
+            SetParseError(OutResponse, TEXT("The provider response has no message content"));
             return false;
         }
     }

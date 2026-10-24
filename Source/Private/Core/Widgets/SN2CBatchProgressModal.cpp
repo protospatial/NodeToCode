@@ -238,7 +238,7 @@ void SN2CBatchProgressModal::SetProgress(int32 CurrentIndex, int32 TotalCount, c
 	}
 }
 
-void SN2CBatchProgressModal::MarkItemComplete(const FString& GraphName, bool bSuccess)
+void SN2CBatchProgressModal::MarkItemComplete(const FString& GraphName, bool bSuccess, const FString& ErrorMessage)
 {
 	bool bFound = false;
 	for (TSharedPtr<FN2CBatchProgressItem>& Item : ProgressItems)
@@ -246,6 +246,7 @@ void SN2CBatchProgressModal::MarkItemComplete(const FString& GraphName, bool bSu
 		if (Item->GraphName == GraphName)
 		{
 			Item->Status = bSuccess ? EN2CBatchProgressItemStatus::Completed : EN2CBatchProgressItemStatus::Failed;
+			Item->ErrorMessage = bSuccess ? FString() : ErrorMessage;
 			bFound = true;
 			UE_LOG(LogNodeToCode, Log, TEXT("[SN2CBatchProgressModal] MarkItemComplete: Found '%s', set to %s"),
 				*GraphName, bSuccess ? TEXT("Completed") : TEXT("Failed"));
@@ -269,6 +270,18 @@ void SN2CBatchProgressModal::MarkItemComplete(const FString& GraphName, bool bSu
 	{
 		ProgressListView->RequestListRefresh();
 	}
+}
+
+FString SN2CBatchProgressModal::GetItemErrorMessage(const FString& GraphName) const
+{
+	for (const TSharedPtr<FN2CBatchProgressItem>& Item : ProgressItems)
+	{
+		if (Item.IsValid() && Item->GraphName == GraphName)
+		{
+			return Item->ErrorMessage;
+		}
+	}
+	return FString();
 }
 
 void SN2CBatchProgressModal::SetResult(const FN2CBatchTranslationResult& Result)
@@ -359,6 +372,7 @@ TSharedRef<ITableRow> SN2CBatchProgressModal::GenerateProgressRow(TSharedPtr<FN2
 
 	return SNew(STableRow<TSharedPtr<FN2CBatchProgressItem>>, OwnerTable)
 		.Padding(FMargin(FN2CSpacing::MD, FN2CSpacing::XS))
+		.ToolTipText_Lambda([ItemPtr]() { return FText::FromString(ItemPtr->ErrorMessage); })
 		[
 			SNew(SHorizontalBox)
 			// Status icon
@@ -377,16 +391,36 @@ TSharedRef<ITableRow> SN2CBatchProgressModal::GenerateProgressRow(TSharedPtr<FN2
 					.ColorAndOpacity_Lambda([this, ItemPtr]() { return GetStatusColor(ItemPtr->Status); })
 				]
 			]
-			// Graph name
+			// Graph name, and under it why the item failed
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
 			.VAlign(VAlign_Center)
 			[
-				SNew(STextBlock)
-				.Text(FText::FromString(Item->GraphName))
-				.Font(FN2CFonts::MonoSmall())
-				// Use attribute binding to dynamically query current status
-				.ColorAndOpacity_Lambda([this, ItemPtr]() { return GetItemTextColor(ItemPtr->Status); })
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Item->GraphName))
+					.Font(FN2CFonts::MonoSmall())
+					// Use attribute binding to dynamically query current status
+					.ColorAndOpacity_Lambda([this, ItemPtr]() { return GetItemTextColor(ItemPtr->Status); })
+				]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, FN2CSpacing::XS, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([ItemPtr]() { return FText::FromString(ItemPtr->ErrorMessage); })
+					.AutoWrapText(true)
+					.Font(FN2CFonts::MonoSmall())
+					.ColorAndOpacity_Lambda([this, ItemPtr]() { return GetStatusColor(ItemPtr->Status); })
+					.Visibility_Lambda([ItemPtr]()
+					{
+						return ItemPtr->Status == EN2CBatchProgressItemStatus::Failed && !ItemPtr->ErrorMessage.IsEmpty()
+							? EVisibility::Visible : EVisibility::Collapsed;
+					})
+				]
 			]
 		];
 }

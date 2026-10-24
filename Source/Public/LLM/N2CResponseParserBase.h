@@ -28,11 +28,18 @@ public:
     );
 
 public:
-    /** Common error handling for provider responses */
+    /**
+     * Error handling shared by the provider parsers. Returns true when the response root carries an error (a non-null
+     * object or a non-empty string in ErrorFieldName). It then fills OutResponse.Error (kind, HTTP status, the
+     * provider's message, retryable) from the error and the "http_status" the HTTP handler adds, and logs it.
+     */
     bool HandleCommonErrorResponse(
         const TSharedPtr<FJsonObject>& JsonObject,
         const FString& ErrorFieldName,
-        FString& OutErrorMessage);
+        FN2CTranslationResponse& OutResponse);
+
+    /** Records a parse failure on OutResponse (kind Parse) unless an error is already recorded, and logs it */
+    static void SetParseError(FN2CTranslationResponse& OutResponse, const FString& Message);
         
     /** Common content extraction from standard message formats */
     bool ExtractStandardMessageContent(

@@ -19,6 +19,27 @@ When using cloud-based LLM providers (Anthropic, OpenAI, DeepSeek), you may enco
 | 500 | api_error | Provider internal error | Wait and retry; check provider status |
 | 529 | overloaded_error | Service temporarily overloaded | Wait and retry later |
 
+## How a Failed Translation Is Reported
+
+NodeToCode keeps the provider's HTTP status and its own error message and sorts every failure into a kind:
+`RateLimited`, `Overloaded`, `Auth`, `InvalidRequest`, `Billing`, `Server`, `Network` (no response, a timeout, or a
+proxy or gateway error such as 502), `Parse` (the answer arrived but could not be read as a translation) or `Unknown`.
+`RateLimited`, `Overloaded`, `Server` and `Network` are marked retryable: the same request may work later.
+
+- **Output Log:** `Translation failed: Gemini request failed with HTTP 503 (Overloaded, retryable): <the provider's message>`.
+- **Progress dialog:** a failed graph shows the same line under its name and as its tooltip.
+- **Batch translation:** each failed item in `BatchSummary.json` has `error` (that line), `errorKind`, `httpStatus`,
+  `retryable` and `providerMessage`.
+- **MCP `translate-focused-blueprint`:** the result has `isError: true` and its text is JSON:
+
+```json
+{"error": "Gemini request failed with HTTP 400 (Auth): API key not valid. Please pass a valid API key.",
+ "error_kind": "Auth", "message": "API key not valid. Please pass a valid API key.", "http_status": 400,
+ "retryable": false, "provider": "Gemini", "model": "gemini-3.5-flash-lite", "provider_error_type": "INVALID_ARGUMENT"}
+```
+
+`http_status` is left out when there was no HTTP response (for example a connection failure or a missing API key).
+
 ## Translation Timeout Issues
 
 If your translation appears to hang indefinitely:

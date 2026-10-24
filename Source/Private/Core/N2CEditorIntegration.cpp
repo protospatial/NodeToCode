@@ -587,7 +587,8 @@ void FN2CEditorIntegration::TranslateBlueprintNodesForEditor(TWeakPtr<FBlueprint
                         }
                         else
                         {
-                            FN2CLogger::Get().LogError(TEXT("Failed to parse LLM response"));
+                            FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to parse LLM response: %s"),
+                                *TranslationResponse.Error.ToDisplayString()));
                         }
                     }
                     else
@@ -637,7 +638,7 @@ FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
     if (JsonInput.IsEmpty())
     {
         FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
-        Handle->Complete(OnComplete, FString::Printf(TEXT("{\"error\":\"Failed to get Blueprint JSON: %s\"}"), *ErrorMsg));
+        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(FString::Printf(TEXT("Failed to get Blueprint JSON: %s"), *ErrorMsg)));
         return Handle;
     }
 
@@ -660,7 +661,7 @@ FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateJsonAsync(
         if (!LLMModule || !LLMModule->Initialize())
         {
             FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
-            Handle->Complete(OnComplete, TEXT("{\"error\":\"LLMModule failed to initialize.\"}"));
+            Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(TEXT("LLMModule failed to initialize.")));
             return Handle;
         }
     }

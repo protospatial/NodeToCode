@@ -24,6 +24,8 @@ struct FN2CBatchProgressItem
 {
 	FString GraphName;
 	EN2CBatchProgressItemStatus Status;
+	/** Why a failed item failed (the typed translation error's display string); empty otherwise */
+	FString ErrorMessage;
 
 	FN2CBatchProgressItem()
 		: Status(EN2CBatchProgressItemStatus::Pending)
@@ -74,8 +76,12 @@ public:
 	 * Mark an item as completed
 	 * @param GraphName Name of the completed graph
 	 * @param bSuccess Whether the translation succeeded
+	 * @param ErrorMessage Why it failed (shown under the item and as its tooltip); ignored on success
 	 */
-	void MarkItemComplete(const FString& GraphName, bool bSuccess);
+	void MarkItemComplete(const FString& GraphName, bool bSuccess, const FString& ErrorMessage = FString());
+
+	/** The error message recorded for an item, empty if none (for tests and callers) */
+	FString GetItemErrorMessage(const FString& GraphName) const;
 
 	/**
 	 * Set the final result when batch is complete

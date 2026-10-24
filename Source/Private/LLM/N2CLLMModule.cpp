@@ -73,6 +73,40 @@ FN2CLLMRequestHandleRef UN2CLLMModule::CompleteWithoutRequest(const FOnLLMRespon
     return Handle;
 }
 
+void UN2CLLMModule::BroadcastFailure(const FN2CTranslationError& Error)
+{
+    FN2CTranslationResponse Failed;
+    Failed.Error = Error;
+    OnTranslationResponseReceived.Broadcast(Failed, false);
+}
+
+void UN2CLLMModule::FillTranslationError(FN2CTranslationResponse& Response, EN2CLLMProvider Provider, const FString& Model,
+    const FString& RawResponse)
+{
+    FN2CTranslationError& Error = Response.Error;
+    if (!Error.IsError())
+    {
+        FString Snippet = RawResponse.Left(300).Replace(TEXT("\r"), TEXT(" ")).Replace(TEXT("\n"), TEXT(" "));
+        if (RawResponse.Len() > 300)
+        {
+            Snippet += TEXT("...");
+        }
+        Error.Kind = EN2CTranslationErrorKind::Parse;
+        Error.Message = Snippet.IsEmpty()
+            ? FString(TEXT("The provider returned an empty response"))
+            : FString::Printf(TEXT("The response could not be read as a translation. It starts with: %s"), *Snippet);
+        Error.bRetryable = false;
+    }
+    if (Error.Provider.IsEmpty())
+    {
+        Error.Provider = StaticEnum<EN2CLLMProvider>()->GetNameStringByValue(static_cast<int64>(Provider));
+    }
+    if (Error.Model.IsEmpty())
+    {
+        Error.Model = Model;
+    }
+}
+
 void UN2CLLMModule::ResetStatusOnCancel(const FN2CLLMRequestHandleRef& Handle)
 {
     TWeakObjectPtr<UN2CLLMModule> WeakThis(this);
@@ -98,7 +132,9 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     {
         CurrentStatus = EN2CSystemStatus::Error;
         FN2CLogger::Get().LogError(TEXT("LLM Module not initialized"), TEXT("LLMModule"));
-        return CompleteWithoutRequest(OnComplete, TEXT("{\"error\": \"Module not initialized\"}"));
+        const FN2CTranslationError Error = FN2CTranslationError::Make(TEXT("LLM module not initialized"));
+        BroadcastFailure(Error);
+        return CompleteWithoutRequest(OnComplete, Error.ToJsonString());
     }
 
     CurrentStatus = EN2CSystemStatus::Processing;
@@ -106,18 +142,15 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     // Broadcast that request is being sent
     OnTranslationRequestSent.Broadcast();
 
-    if (!ActiveService.GetInterface())
-    {
-        FN2CLogger::Get().LogError(TEXT("No active LLM service"), TEXT("LLMModule"));
-        return CompleteWithoutRequest(OnComplete, TEXT("{\"error\": \"No active service\"}"));
-    }
-
     // Get active service
     TScriptInterface<IN2CLLMService> Service = GetActiveService();
     if (!Service.GetInterface())
     {
-        FN2CLogger::Get().LogError(TEXT("No active service"), TEXT("LLMModule"));
-        return CompleteWithoutRequest(OnComplete, TEXT("{\"error\": \"No active service\"}"));
+        CurrentStatus = EN2CSystemStatus::Error;
+        FN2CLogger::Get().LogError(TEXT("No active LLM service"), TEXT("LLMModule"));
+        const FN2CTranslationError Error = FN2CTranslationError::Make(TEXT("No active LLM service"));
+        BroadcastFailure(Error);
+        return CompleteWithoutRequest(OnComplete, Error.ToJsonString());
     }
 
     // Check if service supports system prompts
@@ -142,7 +175,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     // service's parser, even if the active provider changes or GC runs while the request is in flight.
     TStrongObjectPtr<UObject> RequestServiceObject(Service.GetObject());
     FN2CLLMRequestHandleRef Handle = ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, OnComplete, RequestServiceObject, RequestService = Service](const FString& Response)
+        [this, OnComplete, RequestServiceObject, RequestService = Service, RequestModel = Config.Model](const FString& Response)
         {
             // Create translation response struct
             FN2CTranslationResponse TranslationResponse;
@@ -170,8 +203,11 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
                     }
                     else
                     {
+                        // The typed error (HTTP status, provider message, kind) reaches the broadcast's listeners
                         CurrentStatus = EN2CSystemStatus::Error;
-                        FN2CLogger::Get().LogError(TEXT("Failed to parse LLM response"));
+                        FillTranslationError(TranslationResponse, ActiveServiceParser->GetProviderType(), RequestModel, Response);
+                        FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation failed: %s"),
+                            *TranslationResponse.Error.ToDisplayString()), TEXT("LLMModule"));
                         OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
                     }
                 }
@@ -179,6 +215,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
                 {
                     CurrentStatus = EN2CSystemStatus::Error;
                     FN2CLogger::Get().LogError(TEXT("No response parser available"));
+                    TranslationResponse.Error = FN2CTranslationError::Make(TEXT("No response parser available"));
                     OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
                 }
             }
@@ -186,6 +223,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
             {
                 CurrentStatus = EN2CSystemStatus::Error;
                 FN2CLogger::Get().LogError(TEXT("No active LLM service"));
+                TranslationResponse.Error = FN2CTranslationError::Make(TEXT("No active LLM service"));
                 OnTranslationResponseReceived.Broadcast(TranslationResponse, false);
             }
 
@@ -555,7 +593,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
         FString ErrorMsg = TEXT("Failed to create/initialize temporary service for override request.");
         FN2CLogger::Get().LogError(ErrorMsg, TEXT("LLMModule"));
         CurrentStatus = EN2CSystemStatus::Error;
-        return CompleteWithoutRequest(OnComplete, FString::Printf(TEXT("{\"error\":\"%s\"}"), *ErrorMsg));
+        return CompleteWithoutRequest(OnComplete, FN2CTranslationError::MakeErrorJson(ErrorMsg));
     }
     
     // The temporary service is referenced only by this request: hold it strongly so GC cannot free it mid-request
@@ -614,10 +652,16 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
             else
             {
                 CurrentStatus = EN2CSystemStatus::Error; // Set error status
-                FString ErrorDetail = FString::Printf(TEXT("{\"error\":\"Failed to parse LLM response from provider %s for model %s. Raw response snippet: %s\"}"),
-                    *UEnum::GetValueAsString(RequestConfigCopy.Provider), *RequestConfigCopy.Model, *RawResponse.Left(500));
-                FN2CLogger::Get().LogError(ErrorDetail, TEXT("LLMModule"));
-                OnComplete.ExecuteIfBound(ErrorDetail);
+
+                // The typed error as escaped JSON: the provider's HTTP status and message, not a parse failure
+                if (!Parser)
+                {
+                    TranslationResponse.Error = FN2CTranslationError::Make(TEXT("No response parser available"));
+                }
+                FillTranslationError(TranslationResponse, RequestConfigCopy.Provider, RequestConfigCopy.Model, RawResponse);
+                FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation failed: %s"),
+                    *TranslationResponse.Error.ToDisplayString()), TEXT("LLMModule"));
+                OnComplete.ExecuteIfBound(TranslationResponse.Error.ToJsonString());
             }
         }
     ));
