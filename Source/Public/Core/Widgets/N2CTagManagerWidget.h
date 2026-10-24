@@ -10,6 +10,9 @@
 /**
  * UMG widget wrapper for the N2C Tag Manager
  * Provides a complete UI for managing tagged Blueprint graphs
+ *
+ * Kept only so Editor Utility Widgets that embed it keep loading; unsupported and planned for removal.
+ * NodeToCode 2.0 no longer ships the EUW UI (Content/UI) that used it.
  */
 UCLASS(Meta=(DisplayName="Tag Manager"))
 class NODETOCODE_API UN2CTagManagerWidget : public UWidget

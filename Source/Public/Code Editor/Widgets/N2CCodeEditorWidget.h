@@ -10,6 +10,9 @@
 
 /**
  * UMG widget wrapper for the N2C code editor
+ *
+ * Kept only so Editor Utility Widgets that embed it keep loading; unsupported and planned for removal.
+ * NodeToCode 2.0 no longer ships the EUW UI (Content/UI) that used it.
  */
 UCLASS(Meta=(DisplayName="Code Editor"))
 class NODETOCODE_API UN2CCodeEditorWidget : public UWidget

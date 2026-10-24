@@ -38,7 +38,7 @@ Source/Private/Code Editor/
 
 *   **`SN2CCodeEditor` (`Source/Public/Code Editor/Widgets/SN2CCodeEditor.h`)**: Core Slate widget for code display/editing, using `SMultiLineEditableText` and `FN2CRichTextSyntaxHighlighter`. Supports language switching, theme switching, font size, word wrap, tab size, cursor positioning, and text selection.
 
-*   **`UN2CCodeEditorWidget` (`Source/Public/Code Editor/Widgets/N2CCodeEditorWidget.h`)**: UMG wrapper for `SN2CCodeEditor`, exposing Blueprint-callable functions and events (`OnTextChanged`, `OnCursorMoved`, `OnSelectionChanged`). Used in Editor Utility Widgets.
+*   **`UN2CCodeEditorWidget` (`Source/Public/Code Editor/Widgets/N2CCodeEditorWidget.h`)**: UMG wrapper for `SN2CCodeEditor`, exposing Blueprint-callable functions and events (`OnTextChanged`, `OnCursorMoved`, `OnSelectionChanged`). Kept so user Editor Utility Widgets that embed it keep loading; unsupported and planned for removal (the plugin's own EUW UI was removed in 2.0).
 
 *   **`FN2CCodeEditorWidgetFactory` (`Source/Public/Code Editor/Widgets/N2CCodeEditorWidgetFactory.h`)**: Factory class for registering the UMG widget with the editor. Handles `Register()` and `Unregister()` lifecycle.
 

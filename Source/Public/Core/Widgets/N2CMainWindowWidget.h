@@ -23,6 +23,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMainWindowTranslationComplete, c
  * UMG widget wrapper for the NodeToCode Main Window
  * Provides the complete NodeToCode UI with all functionality integrated in C++
  * This widget can be embedded in Editor Utility Widgets or other UMG contexts
+ *
+ * Kept only so Editor Utility Widgets that embed it keep loading; unsupported and planned for removal.
+ * NodeToCode 2.0 no longer ships the EUW UI (Content/UI) that used it.
  */
 UCLASS(Meta=(DisplayName="NodeToCode Main Window"))
 class NODETOCODE_API UN2CMainWindowWidget : public UWidget

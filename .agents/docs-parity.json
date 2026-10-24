@@ -29,7 +29,7 @@
     {
       "name": "code-editor",
       "code": ["Source/Private/Code Editor/**", "Source/Public/Code Editor/**", "Source/Public/Core/N2CDesignTokens.h",
-               "Source/Public/Models/N2CStyle.cpp", "Source/Public/Models/N2CStyle.h"],
+               "Source/Private/Models/N2CStyle.cpp", "Source/Public/Models/N2CStyle.h"],
       "pages": ["wiki/Code-Editor.md", "wiki/Theme-&-Syntax-Highlighting.md"]
     },
     {

@@ -73,24 +73,21 @@ Connects plugin logic to the Unreal Editor UI.
 Pure Slate widgets for the plugin UI:
 
 *   **`SN2CMainWindow`**: Main plugin window (pure Slate implementation)
-*   **`N2CMainWindowWidget`**: UMG wrapper for embedding in Editor Utility Widgets
+*   **`N2CMainWindowWidget`**: UMG wrapper for embedding in Editor Utility Widgets (kept for compatibility, unsupported, planned for removal; shows a placeholder in the UMG designer)
 *   **`SN2CGraphOverlay`**: Overlay widget for Blueprint graph tabs
 *   **`SN2CGraphEditorWrapper`**: Wrapper for graph editor with overlay injection
-*   **`SN2CTagManager`**, **`SN2CTagCategoryTree`**, **`N2CTagManagerWidget`**: Tag management UI
+*   **`SN2CTagManager`**, **`SN2CTagCategoryTree`**, **`N2CTagManagerWidget`**: Tag management UI (`N2CTagManagerWidget` is the UMG wrapper: kept, unsupported, planned for removal)
 *   **`SN2CTaggedGraphsList`**, **`SN2CGraphListRow`**: Tagged graphs list view
 *   **`SN2CBatchProgressModal`**: Progress modal for batch translations
 *   **`SN2CTranslationViewer`**: Translation result viewer
 
 ### Legacy UI Assets
 
-*   **`Content/UI/NodeToCodeUI.uasset`**: Main Editor Utility Widget Blueprint (legacy, for Blueprint-based UI customization).
-*   **`Content/UI/Components/`**: `.uasset` EUW components for building `NodeToCodeUI.uasset`.
-*   **`Content/UI/Textures/Icons/`**: UI icon textures.
-*   **`Content/UI/Theming/`**: General UI theming assets.
+The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is the Slate widgets above.
 
 ### Styling
 
-*   **`Source/Public/Models/N2CStyle.h` / `Source/Public/Models/N2CStyle.cpp` (`N2CStyle`)**: Manages plugin's global Slate style (toolbar icon). Provides `N2C_PLUGIN_BRUSH` macro for content paths.
+*   **`Source/Public/Models/N2CStyle.h` / `Source/Private/Models/N2CStyle.cpp` (`N2CStyle`)**: Manages plugin's global Slate style (toolbar icon). Provides `N2C_PLUGIN_BRUSH` macro for content paths.
 *   **`Source/Public/Core/N2CWidgetContainer.h` / `Source/Private/Core/N2CWidgetContainer.cpp` (`UN2CWidgetContainer`)**: Persistent UObject outer for widgets to maintain state.
 
 ## Plugin Settings
@@ -177,15 +174,10 @@ Content/
 │   ├── mcp_bridge/              # MCP bridge for external tools
 │   ├── nodetocode/              # NodeToCode Python module
 │   └── scripts/                 # User Python scripts
-├── Scripts/                     # Build/setup scripts
-│   ├── detect-ue-path.sh        # UE path detection (Mac/Linux)
-│   ├── detect-ue-path.bat       # UE path detection (Windows)
-│   └── update_agents_ue_path.py # AGENTS.md path updater
-└── UI/
-    ├── Components/              # EUW components for UI building
-    ├── NodeToCodeUI.uasset      # Main plugin EUW (legacy)
-    ├── Textures/Icons/          # UI icon textures
-    └── Theming/                 # UI theming assets
+└── Scripts/                     # Build/setup scripts
+    ├── detect-ue-path.sh        # UE path detection (Mac/Linux)
+    ├── detect-ue-path.bat       # UE path detection (Windows)
+    └── update_agents_ue_path.py # AGENTS.md path updater
 ```
 
 **Root Files:**

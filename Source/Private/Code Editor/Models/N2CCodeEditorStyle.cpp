@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "N2CCodeEditorStyle.h"
+#include "Code Editor/Models/N2CCodeEditorStyle.h"
 
-#include "N2CCodeLanguage.h"
+#include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CSettings.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/SlateTypes.h"
