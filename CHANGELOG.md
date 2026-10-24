@@ -66,7 +66,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   Execution** is on (7ae749d, 01aa7d3). <!-- PROVISIONAL 0019 -->
 - A stdio bridge, `Content/Python/mcp_bridge` (`launch_bridge.bat` / `launch_bridge.sh`), for MCP clients that
   only start stdio servers. It finds UE 5.6 to 5.8's Python and passes UTF-8 and streamed responses through
-  (8d94a08, e775d97, [#60]).
+  (8d94a08, e775d97, [#60]). It runs calls side by side and forwards the client's cancel while a call runs, finds
+  the editor through the MCP server's discovery file instead of scanning ports (`--project` or
+  `NODETOCODE_PROJECT` picks one of several editors), and can start before the editor (card 0114).
 
 **Editor**
 

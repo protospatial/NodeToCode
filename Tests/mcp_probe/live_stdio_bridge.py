@@ -8,7 +8,8 @@ Stdlib only; run with `python -I`:
 It starts a headless editor with only the provider's key (from the repo's .env) added to its environment and makes an
 in-memory probe Blueprint under /Game/N2CTest (as live_env_translation.py does). Then, with the bridge started through
 its launcher (launch_bridge.bat or launch_bridge.sh, which picks UE's Python through ue_python_finder.py) as a stdio
-child, and the provider key removed from the bridge's environment:
+child with --project <the project> (it finds the editor through its discovery entry; --by-port passes --port
+instead), and the provider key removed from the bridge's environment:
 
 1. A small stdio client sends raw UTF-8 JSON (as JSON.stringify writes it) and checks: run-python receives
    'café あ日本 🙂' as the same code points; create-variable makes a member variable whose name has é and 日本 and
@@ -127,8 +128,13 @@ def tool_json(response):
         return None
 
 
+def bridge_args(port, args):
+    """The bridge finds the editor through its discovery entry by project (--by-port: names the port instead)"""
+    return ['--port', str(port)] if args.by_port else ['--project', os.path.abspath(args.project)]
+
+
 def stdio_client_checks(port, args, report, checks, stderr_path):
-    client = StdioClient([LAUNCHER, '--port', str(port)], stderr_path)
+    client = StdioClient([LAUNCHER] + bridge_args(port, args), stderr_path)
     try:
         init, _, _, _ = client.request('initialize', {'protocolVersion': '2025-06-18', 'capabilities': {},
                                                       'clientInfo': {'name': 'n2c-stdio-probe', 'version': '1'}})
@@ -189,7 +195,7 @@ def claude_cli_checks(port, args, report, checks, log_dir):
     stream_path = os.path.join(log_dir, 'live_stdio_bridge_%s_cli.jsonl' % args.label)
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump({'mcpServers': {'nodetocode': {'type': 'stdio', 'command': LAUNCHER,
-                                                 'args': ['--port', str(port)]}}}, f)
+                                                 'args': bridge_args(port, args)}}}, f)
     prompt = PROMPT % (CLI_TOOL % 'run-python', ECHO_PY, CLI_TOOL % 'translate-focused-blueprint', args.provider,
                        args.model, args.language)
     cmd = [shutil.which('claude') or 'claude', '-p', prompt, '--mcp-config', config_path, '--strict-mcp-config',
@@ -268,6 +274,7 @@ def main():
     ap.add_argument('--timeout', type=int, default=600)
     ap.add_argument('--port', type=int, default=27210)
     ap.add_argument('--skip-cli', action='store_true', help='only the stdio client part')
+    ap.add_argument('--by-port', action='store_true', help='start the bridge with --port instead of --project')
     args = ap.parse_args()
     args.expect_stream = '5.8' in args.label or os.path.basename(os.path.normpath(args.engine)).endswith('5.8')
 

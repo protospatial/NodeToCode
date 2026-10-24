@@ -37,21 +37,39 @@ Stdio-to-HTTP bridge enabling MCP clients (Claude Desktop, etc.) to communicate 
 *   **Key Features**:
     *   stdin and stdout are reconfigured to UTF-8 (the launchers also set `PYTHONUTF8=1`), so non-ASCII text is
         not decoded with the Windows ANSI code page
-    *   Each stdin message is POSTed to `/mcp` with `Accept: application/json, text/event-stream`, on its own thread.
+    *   Each stdin message is POSTed to `/mcp` with `Accept: application/json, text/event-stream`.
         A `text/event-stream` response (UE 5.8's streamed `translate-focused-blueprint`) is parsed per the SSE spec
         and each message in it is written to stdout as it arrives; the response to the request ends the call
+    *   One thread reads stdin (`Bridge.submit`); every request except `initialize` runs on its own worker thread,
+        so `ping` and a quick tool answer while a translation runs. `initialize` and notifications go in order on
+        the reader thread; stdout writes are serialized under a lock
+    *   `notifications/cancelled` is forwarded at once (and once more a second later if the call still runs, in
+        case it overtook its request); from then on nothing is written for that request id (the editor sends no
+        response, and the bridge's own "stream ended" error is dropped). A request cancelled before it was sent is
+        never sent
     *   stdout carries only JSON-RPC messages, one per line: a transport failure or non-JSON body (an HTTP error
         page) becomes a JSON-RPC error with the request's id, and notifications never get a reply
-    *   Health check with server discovery (scans ports 27000-27010)
-    *   Session management with `Mcp-Session-Id` (and `MCP-Protocol-Version` after initialize)
+    *   Editor selection (`EditorLocator`): `--url` or `--port` names the editor. Otherwise it reads the discovery
+        entries the editor's MCP server writes (card 0112: `<UserSettingsDir>/NodeToCode/servers/<pid>.json`, that
+        is `%LOCALAPPDATA%` on Windows, `~/Library/Application Support/Epic` on macOS, `~/.config/Epic` on Linux;
+        plus `<Project>/Saved/NodeToCode/mcp-server.json` when `--project` is a path), skipping entries whose pid is
+        gone. One editor: that one. `--project` / `NODETOCODE_PROJECT` matches the project name, `.uproject` path or
+        folder; several editors and no selection is a JSON-RPC error listing them (`error.data.editors`).
+        `NODETOCODE_DISCOVERY_DIR` replaces the index folder (tests)
+    *   Lazy connect: the bridge starts without an editor and looks again on every request; until one answers, each
+        request gets a JSON-RPC error with its id. When a discovered editor refuses the connection, the bridge looks
+        again and, if the entries now name another editor, replays the client's `initialize` there and resends
+    *   Session management with `Mcp-Session-Id` (and `MCP-Protocol-Version` after initialize); a 404 replays
+        `initialize` and resends once; stdin EOF waits for calls in flight, then sends DELETE
     *   No read timeout by default (a held translation sends nothing until it finishes); `--timeout SECONDS` sets one
     *   Debug mode with `--debug` flag (logs go to stderr)
 *   **Usage**:
     ```bash
-    python nodetocode_bridge.py [--port PORT] [--host HOST] [--timeout SECONDS] [--debug]
+    python nodetocode_bridge.py [--project NAME_OR_PATH] [--port PORT [--host HOST]] [--url URL] [--timeout SECONDS] [--debug]
     ```
-*   **Tests**: `python -I -m unittest discover -s Content/Python/tests -p "test_mcp_bridge*.py"` (no editor);
-    live: `Tests/mcp_probe/live_stdio_bridge.py`
+*   **Tests**: `python -I -m unittest discover -s Content/Python/tests -p "test_mcp_bridge*.py"` (no editor; fake
+    editors on http.server and fake discovery folders); live: `Tests/mcp_probe/live_stdio_bridge.py` and
+    `Tests/mcp_probe/live_bridge_concurrency.py`
 
 ### launch_bridge.bat (Windows) and launch_bridge.sh (Mac/Linux)
 

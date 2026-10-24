@@ -115,8 +115,12 @@ claude mcp list
 **Claude Code over stdio**, through the bridge (use your plugin folder's path):
 
 ```
-claude mcp add nodetocode -- "<plugin folder>/Content/Python/mcp_bridge/launch_bridge.bat" --port 27000
+claude mcp add nodetocode -- "<plugin folder>/Content/Python/mcp_bridge/launch_bridge.bat"
 ```
+
+The bridge finds the running editor through the discovery file its MCP server writes, so it follows a port change
+and can start before the editor. With several editors open, add `--project <project name or .uproject path>` (or
+set `NODETOCODE_PROJECT`); `--port 27000` names a port instead.
 
 **Any client that reads a JSON config**, for example `claude -p --mcp-config nodetocode.json`:
 
