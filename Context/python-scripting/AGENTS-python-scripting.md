@@ -192,6 +192,10 @@ Writing and recovery (project registry; same pattern as `FN2CFileUtils`):
 *   A complete `.tmp` left by an interrupted save, with no registry beside it, is moved into place on the next load.
 *   The bundled plugin registry is read-only: if it does not parse, it is logged and treated as empty.
 *   Headless check: `Tests/mcp_probe/e05_registry_check.py` (run with `-ExecutePythonScript`).
+*   CPython tests, no editor: `Tests/python` (pytest with a stub `unreal` module; `build.ps1 -Test` runs them, and
+    AGENTS.md gives the `uv run` command). `test_scripts.py` covers this module and `test_registry_integrity.py`
+    checks that every bundled registry path exists and every bundled `.py` file is registered, so a script added
+    under `Content/Python/scripts` needs its registry entry in the same change.
 
 ### Bundled Scripts (10 scripts, 4 categories)
 

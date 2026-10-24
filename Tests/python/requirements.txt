@@ -1,0 +1,8 @@
+# Test-only dependencies for Tests/python (never shipped with the plugin). Exact pins for pytest and everything it
+# pulls in, from: uv pip compile --universal --python-version 3.11 (with pytest==9.1.1 as the only input).
+colorama==0.4.6 ; sys_platform == 'win32'
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pygments==2.21.0
+pytest==9.1.1

@@ -37,13 +37,15 @@ links on Mac and Linux) back into this checkout, and `NodeToCode.uplugin` is cop
 copy of the source while `Binaries/` and `Intermediate/` stay per host and every engine builds incrementally.
 
 Requirements: the UE 5.6, 5.7 and 5.8 engines, and for `-Smoke` Node.js 22.19 or newer with `npx` on `PATH` (it
-fetches the pinned MCP conformance suite and MCP Inspector from npm; checked with Node 24.11.1 and npm 11.6.2).
+fetches the pinned MCP conformance suite and MCP Inspector from npm; checked with Node 24.11.1 and npm 11.6.2). For
+the Python step of `-Test`, [uv](https://docs.astral.sh/uv/) on `PATH` (checked with uv 0.12.5); without it that
+step is reported as `pytest WARN (uv not found)` and skipped.
 
 ```powershell
 .\build.ps1 -UEVersion 5.7           # incremental editor build for one version (5.6, 5.7 or 5.8)
 .\build.ps1 -All                     # build every detected version in turn
 .\build.ps1 -All -Smoke              # build, then the headless smoke check and MCP probes (Tests/smoke/smoke_check.py)
-.\build.ps1 -All -Test               # build, then run Automation RunTests NodeToCode headless and report pass/fail
+.\build.ps1 -All -Test               # build, then Tests/python (pytest) and Automation RunTests NodeToCode headless
 .\build.ps1 -UEVersion 5.8 -Clean    # remove the host's plugin Binaries/Intermediate first
 .\build.ps1 -UEVersion 5.6 -Launch   # build, then open the host editor
 .\build.ps1 -All -Package            # RunUAT BuildPlugin into -PackagesRoot (a quick check, not a release)
@@ -66,6 +68,20 @@ fetches the pinned MCP conformance suite and MCP Inspector from npm; checked wit
   -culture=en`, reads the report's `index.json`, fails on any failed or unfinished test and warns when none ran.
   `-TestFilter` narrows the run and `-TestTimeoutMinutes` (default 60) stops a hung editor. If `-ExecCmds` ever holds
   more than one command, separate them with commas: a semicolon hangs the editor.
+- Before that, `-Test` runs the CPython tests in `Tests/python` on each engine's own Python (3.11.8 in UE 5.6, 5.7
+  and 5.8): `uv run --no-project --python <engine python> --with-requirements Tests/python/requirements.txt --
+  python -m pytest -q Tests/python`, in a throwaway environment, so the engine install is not changed. They test
+  `Content/Python/nodetocode` (the script library: name and category checks, registry load, merge and corruption
+  handling, search scoring, `run_script`, path containment, import resolution) and check that
+  `Content/Python/scripts/script_registry.json` and the `.py` files beside it match. `Tests/python/conftest.py`
+  puts a stub `unreal` module in `sys.modules` (`Paths.project_content_dir`/`project_plugins_dir`/`project_dir`
+  pointed at pytest tmp folders, and the log functions), so no editor or UE install is needed. The counts land in
+  the summary (`pytest PASS (109 passed, 10 xfailed)`), the output in `BuildLogs/PyTest_<ver>_<stamp>.log`. Without
+  an engine, from the repo root: `uv run --no-project --python 3.11 --with-requirements Tests/python/requirements.txt
+  -- python -m pytest Tests/python`. pytest and its dependencies are pinned in `requirements.txt` and are never
+  added to the plugin. A known defect is a test marked `pytest.mark.xfail(strict=True, reason='<finding id>')`:
+  the card that fixes it removes the marker, since a strict xfail that passes fails the run. A new stub attribute
+  goes in the conftest only when the code under test needs it; any other `unreal.X` raises `AttributeError`.
 - `-Smoke` runs `Tests/smoke/smoke_check.py` with the engine's own Python: one headless `-N2CMcp` editor per MCP
   tool-registration mode (default, dynamic discovery, Python script-only, set in the host's
   `Config/DefaultNodeToCode.ini` and put back), plus the `Tests/mcp_probe` probes in the default session. It fails on

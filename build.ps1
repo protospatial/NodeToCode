@@ -48,6 +48,11 @@
     logs: BuildLogs/Smoke_<ver>_<stamp>_<mode>.log; conformance and Inspector JSON:
     BuildLogs/Smoke_<ver>_<stamp>_conformance/.
 
+    -Test first runs Tests/python (pytest, Content/Python logic with a stub `unreal` module, no editor) on the engine's
+    own Python through `uv run` with the pinned Tests/python/requirements.txt (needs uv on PATH; without it the step is
+    a WARN), then Automation RunTests <TestFilter> in a headless editor. Logs: BuildLogs/PyTest_<ver>_<stamp>.log and
+    BuildLogs/Tests_<ver>_<stamp>.log plus its report folder.
+
 .EXAMPLE
     .\build.ps1 -UEVersion 5.7              # incremental editor build for 5.7
     .\build.ps1 -All -Smoke                 # build 5.6, 5.7, 5.8, then the headless smoke check (see -Smoke)
@@ -65,7 +70,7 @@ param(
     [switch]$WhatIf,      # list detected engines and hosts, change nothing
     [switch]$Clean,       # wipe the host's plugin Binaries/Intermediate first
     [switch]$Smoke,       # after build: headless smoke check per MCP mode plus the MCP probes (Tests/smoke/smoke_check.py)
-    [switch]$Test,        # after build: Automation RunTests <TestFilter>, report pass/fail from the exported report
+    [switch]$Test,        # after build: Tests/python (pytest, engine Python via uv), then Automation RunTests <TestFilter>
     [switch]$Launch,      # after build: open the editor on the host project
     [switch]$Package,     # RunUAT BuildPlugin instead of the incremental host build
     [string]$Config = 'Development',
@@ -404,6 +409,31 @@ function Invoke-Smoke($h, [string]$engine, [string]$ver, [string]$stamp) {
     return "smoke FAIL ($($failed.Count) failed: $(($failed | ForEach-Object { ($_ -replace '^FAIL ', '') -replace '\s{2}.*$', '' }) -join '; '))"
 }
 
+# Returns 'pytest PASS (<counts>)', 'pytest FAIL (<counts or reason>)' or 'pytest WARN (uv not found)'.
+# Tests/python runs on plain CPython with a stub `unreal` module (no editor): here on the engine's own Python, through
+# a throwaway uv environment that gets the pinned Tests/python/requirements.txt, so the engine install is not changed.
+function Invoke-PythonTests([string]$engine, [string]$ver, [string]$stamp) {
+    $log = Join-Path $LogRoot "PyTest_${ver}_$stamp.log"
+    $py = Get-EngineTool $engine 'Python'
+    Write-Step "Python tests UE $ver (Tests/python on the engine's Python, unreal stubbed)"
+    $uv = Get-Command uv -ErrorAction SilentlyContinue
+    if (-not $uv) { Write-Host "PYTEST WARN (UE $ver): uv is not on PATH, Tests/python not run (https://docs.astral.sh/uv/)" -ForegroundColor Yellow; return 'pytest WARN (uv not found)' }
+    if (-not (Test-Path $py)) { Write-Host "PYTEST FAIL (UE $ver): no engine Python at $py" -ForegroundColor Red; return 'pytest FAIL (no engine Python)' }
+    $code = Invoke-Logged $uv.Source @('run', '--no-project', '--python', $py,
+        '--with-requirements', (Join-Path $PluginRoot 'Tests/python/requirements.txt'), '--',
+        'python', '-m', 'pytest', '-q', (Join-Path $PluginRoot 'Tests/python')) $log
+    $text = if (Test-Path $log) { [IO.File]::ReadAllText($log) } else { '' }
+    # pytest -q ends with e.g. '109 passed, 10 xfailed in 1.21s' (or 'no tests ran in 0.01s')
+    $counts = [regex]::Matches($text, '(?m)^=*\s*(\d+ \w+.*?|no tests ran) in [\d.]+s\b')
+    $summary = if ($counts.Count -gt 0) { $counts[$counts.Count - 1].Groups[1].Value.Trim() } else { 'no summary' }
+    if ($code -eq 0) {
+        Write-Host "PYTEST PASS (UE $ver): $summary" -ForegroundColor Green
+        return "pytest PASS ($summary)"
+    }
+    Write-Host "PYTEST FAIL (UE $ver, exit $code): $summary - see $log" -ForegroundColor Red
+    return "pytest FAIL ($summary)"
+}
+
 # Returns a short result string: 'tests PASS (n)', 'tests WARN (0 run)' or 'tests FAIL (...)'
 function Invoke-Tests($h, [string]$engine, [string]$ver, [string]$stamp) {
     $reportDir = Join-Path $LogRoot "Tests_${ver}_$stamp"
@@ -526,6 +556,7 @@ foreach ($ver in $targets) {
         $results[$ver] += ', ' + (Invoke-Smoke $h $engine $ver $stamp) + " [$([int]$smokeWatch.Elapsed.TotalSeconds)s]"
     }
     if ($Test) {
+        $results[$ver] += ', ' + (Invoke-PythonTests $engine $ver $stamp)
         $results[$ver] += ', ' + (Invoke-Tests $h $engine $ver $stamp)
     }
     if ($Launch) {
@@ -537,8 +568,9 @@ foreach ($ver in $targets) {
 Write-Host "`n===== Summary =====" -ForegroundColor Cyan
 foreach ($k in $results.Keys) {
     $r = $results[$k]
-    $color = if ($r -notmatch '^OK|^PACKAGED' -or $r -match 'FAIL') { 'Red' } elseif ($r -match 'WARN') { 'Yellow' } else { 'Green' }
+    # Case-sensitive: results say FAIL/FAILED/WARN in capitals, while summaries may say '24 fail' or '10 xfailed'
+    $color = if ($r -notmatch '^OK|^PACKAGED' -or $r -cmatch 'FAIL') { 'Red' } elseif ($r -cmatch 'WARN') { 'Yellow' } else { 'Green' }
     Write-Host ("  UE {0}: {1}" -f $k, $r) -ForegroundColor $color
 }
-if (@($results.Values | Where-Object { $_ -notmatch '^OK|^PACKAGED' -or $_ -match 'FAIL' }).Count -gt 0) { exit 1 }
+if (@($results.Values | Where-Object { $_ -notmatch '^OK|^PACKAGED' -or $_ -cmatch 'FAIL' }).Count -gt 0) { exit 1 }
 exit 0
