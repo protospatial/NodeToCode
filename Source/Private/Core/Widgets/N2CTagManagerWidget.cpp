@@ -2,6 +2,8 @@
 
 #include "Core/Widgets/N2CTagManagerWidget.h"
 #include "Core/Widgets/SN2CTagManager.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "N2CTagManagerWidget"
 
@@ -14,6 +16,19 @@ UN2CTagManagerWidget::UN2CTagManagerWidget()
 
 TSharedRef<SWidget> UN2CTagManagerWidget::RebuildWidget()
 {
+	// SN2CTagManager subscribes to UN2CTagManager's tag delegates in Construct. In the UMG designer that
+	// would hook a preview widget into live editor state, so show a placeholder.
+	if (IsDesignTime())
+	{
+		return SNew(SBox)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("DesignTimePlaceholder", "NodeToCode Tag Manager (not shown in the designer)"))
+			];
+	}
+
 	TagManagerWidget = SNew(SN2CTagManager)
 		.ShowSearchBar(bShowSearchBar)
 		.ShowActionBar(bShowActionBar)

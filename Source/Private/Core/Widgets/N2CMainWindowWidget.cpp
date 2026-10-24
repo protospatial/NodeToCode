@@ -2,6 +2,8 @@
 
 #include "Core/Widgets/N2CMainWindowWidget.h"
 #include "Core/Widgets/SN2CMainWindow.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "N2CMainWindowWidget"
 
@@ -13,6 +15,19 @@ UN2CMainWindowWidget::UN2CMainWindowWidget()
 
 TSharedRef<SWidget> UN2CMainWindowWidget::RebuildWidget()
 {
+	// SN2CMainWindow subscribes to the batch orchestrator and editor integration delegates in Construct.
+	// In the UMG designer that would hook a preview widget into live editor state, so show a placeholder.
+	if (IsDesignTime())
+	{
+		return SNew(SBox)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("DesignTimePlaceholder", "NodeToCode Main Window (not shown in the designer)"))
+			];
+	}
+
 	MainWindowWidget = SNew(SN2CMainWindow)
 		.ShowSearchBar(bShowSearchBar)
 		.ShowActionBar(bShowActionBar)

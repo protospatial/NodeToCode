@@ -1,6 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "N2CStyle.h"
+#include "Models/N2CStyle.h"
 #include "Core/N2CSettings.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
