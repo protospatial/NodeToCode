@@ -198,14 +198,20 @@ class EditorSession:
         while time.time() < deadline:
             if self.proc.poll() is not None:
                 return False
-            if self.health():
+            # The listener opens in frame 0, but the HTTP server only reads and answers on game-thread ticks, and frame 0
+            # can block for several seconds (asset registry, startup scripts). A request that times out closes its
+            # socket, and the server later writes its reply to the closed socket, which logs
+            # LogHttpConnection: Error: socket_send_failure (card 0422). So each poll waits for the whole remaining
+            # deadline instead of a short timeout: before the listener exists the connect is refused at once, and if
+            # the editor dies the socket is reset, so the wait only lasts while the editor is alive and busy.
+            if self.health(timeout=max(1.0, deadline - time.time())):
                 return True
             time.sleep(1.0)
         return False
 
-    def health(self):
+    def health(self, timeout=2):
         try:
-            with urllib.request.urlopen('http://127.0.0.1:%d/mcp/health' % self.port, timeout=2) as r:
+            with urllib.request.urlopen('http://127.0.0.1:%d/mcp/health' % self.port, timeout=timeout) as r:
                 return r.status == 200
         except Exception:
             return False
