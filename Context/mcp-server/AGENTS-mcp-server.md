@@ -2,6 +2,11 @@
 
 Model Context Protocol server implementation for exposing Blueprint functionality to AI assistants.
 
+## Threat model
+
+Sources, sinks, controls, evidence and residual risks: [threat-model.md](threat-model.md). A new or changed tool
+names its untrusted inputs and its sinks there in the same change.
+
 ## MCP Tools Development Guide
 
 For creating new MCP tools, see: `@Source/Private/MCP/Tools/AGENTS.md`
@@ -518,8 +523,10 @@ curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
 
 ## Server switches (per-user)
 
-`UN2CUserSettings` (Project Settings > Plugins > Node to Code (User), stored in the user's
-EditorPerProjectUserSettings.ini, never the shared project config):
+`UN2CUserSettings` (Project Settings > Plugins > Node to Code (User), saved to the user's
+`Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`; Unreal also reads a committed
+`Config/DefaultEditorPerProjectUserSettings.ini` as the default layer, so a project file can still set them, card
+0423):
 
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 
