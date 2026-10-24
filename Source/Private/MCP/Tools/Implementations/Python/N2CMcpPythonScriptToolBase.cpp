@@ -11,14 +11,22 @@
 
 FMcpToolCallResult FN2CMcpPythonScriptToolBase::ExecuteNodeToCodeFunction(const FString& FunctionCall)
 {
-	// Build Python script that imports nodetocode and calls the function
+	// Build Python script that imports nodetocode and calls the function. The nodetocode script functions already
+	// return {success, data, error}: that dict is emitted as it is (not wrapped as the data of another success), so its
+	// success:false reaches the client. Anything else is wrapped as the data of a success.
 	FString Script = FString::Printf(TEXT(
 		"import json\n"
 		"import nodetocode as n2c\n"
 		"\n"
 		"try:\n"
 		"    result = n2c.%s\n"
-		"    print(json.dumps({\"__n2c_marker__\": True, \"success\": True, \"data\": result}))\n"
+		"    payload = {\"__n2c_marker__\": True}\n"
+		"    if isinstance(result, dict) and 'success' in result:\n"
+		"        payload.update(result)\n"
+		"        payload[\"__n2c_marker__\"] = True\n"
+		"    else:\n"
+		"        payload.update({\"success\": True, \"data\": result})\n"
+		"    print(json.dumps(payload))\n"
 		"except Exception as e:\n"
 		"    import traceback\n"
 		"    print(json.dumps({\"__n2c_marker__\": True, \"success\": False, \"error\": str(e), \"traceback\": traceback.format_exc()}))\n"
@@ -98,12 +106,17 @@ FMcpToolCallResult FN2CMcpPythonScriptToolBase::ExecuteNodeToCodeFunction(const 
 		// Remove the marker field and return clean JSON
 		ResultJson->RemoveField(TEXT("__n2c_marker__"));
 
+		// success:false (the function reported a failure, or it raised) is a tool execution failure: isError, with
+		// the same JSON body. A body without a boolean success counts as a failure.
+		bool bFunctionSuccess = false;
+		ResultJson->TryGetBoolField(TEXT("success"), bFunctionSuccess);
+
 		FString OutputString;
 		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
 			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutputString);
 		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 
-		return FMcpToolCallResult::CreateTextResult(OutputString);
+		return FMcpToolCallResult::CreateTextResult(OutputString, !bFunctionSuccess);
 	}, DefaultTimeoutSeconds);
 }
 

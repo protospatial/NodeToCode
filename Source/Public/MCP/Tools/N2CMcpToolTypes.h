@@ -75,8 +75,11 @@ struct NODETOCODE_API FMcpToolCallResult
 	{
 	}
 
-	/** Create a success result with text content */
-	static FMcpToolCallResult CreateTextResult(const FString& Text);
+	/**
+	 * Create a result with text content. bInIsError marks a tool execution failure whose body is still structured
+	 * (for example JSON with success:false and the error), so clients that branch on isError see the failure.
+	 */
+	static FMcpToolCallResult CreateTextResult(const FString& Text, bool bInIsError = false);
 
 	/** Create an error result with error message */
 	static FMcpToolCallResult CreateErrorResult(const FString& ErrorMessage);

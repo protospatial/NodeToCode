@@ -231,11 +231,13 @@ FMcpToolCallResult FN2CMcpRunPythonTool::Execute(const TSharedPtr<FJsonObject>& 
 
 		FN2CLogger::Get().Log(
 			FString::Printf(TEXT("run-python completed. Success: %s"),
-				bSuccess ? TEXT("true") : TEXT("false")),
+				bResponseSuccess ? TEXT("true") : TEXT("false")),
 			EN2CLogSeverity::Info
 		);
 
-		return FMcpToolCallResult::CreateTextResult(OutputString);
+		// A script that raised, failed to compile or did not run is a tool execution failure: report it with isError
+		// so clients that branch on it see the failure, and keep the JSON body (success:false, error, traceback, output).
+		return FMcpToolCallResult::CreateTextResult(OutputString, !bResponseSuccess);
 	}, TimeoutSeconds + 5.0f); // Add buffer to Game Thread timeout
 }
 

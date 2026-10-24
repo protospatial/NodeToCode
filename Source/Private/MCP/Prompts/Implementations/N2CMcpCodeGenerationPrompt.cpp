@@ -353,7 +353,7 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		"**Reusing Existing Scripts (IMPORTANT):**\n"
 		"- Saved scripts are in `Content/Python/scripts/<category>/` and are importable as modules\n"
 		"- Import saved scripts: `from scripts.<category>.<script_name> import function_name`\n"
-		"- Example: `from scripts.gameplay.asset_iterator import find_assets_by_type`\n"
+		"- Example: `from scripts.core.asset_iterator import find_assets_by_type`\n"
 		"- ALWAYS reuse existing functions instead of rewriting them\n"
 		"- Build on top of existing scripts when they solve part of your task\n\n"
 		"**Structuring Your Script for Reuse:**\n"
