@@ -139,6 +139,15 @@ its environment when no key is saved, so a live check never types or saves a key
   none on 5.6/5.7 (held), and stdout carrying only JSON-RPC lines. Then the headless Claude CLI, with the launcher as
   a stdio `--mcp-config` server, calls `run-python` with the same text and `translate-focused-blueprint` once.
   `--skip-cli` runs only the client part. Report: `logs/live_stdio_bridge_<label>.json`.
+- `live_bridge_concurrency.py --engine ... --project ... [--second-engine ... --second-project ...]` runs the stdio
+  bridge through its launcher with no `--port` (it finds the editors through their discovery entries). On a headless
+  editor with only the provider's key in its environment and an in-memory probe Blueprint focused, it starts
+  `translate-focused-blueprint` with a progress token, then a quick `tools/call` and a `ping`, which must answer
+  while the translation runs, then forwards `notifications/cancelled`: nothing more may arrive for that id, a later
+  request still answers, and the editor log shows the cancel reached the call, the provider request was cancelled
+  and the response suppressed. With a second editor (no key) it checks a bridge without `--project` answers
+  `initialize` with an error naming both projects, and that `--project` (path or name) and `NODETOCODE_PROJECT`
+  reach the right editor (run-python's engine version). Report: `logs/live_bridge_concurrency.json`.
 - `live_translate_exit.py --engine ... --project ... [--windowed] [--provider anthropic --model claude-haiku-5-5]`
   exits the editor mid-translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, and
   `--quit-after` seconds in (default 1) closes the Blueprint editor and calls `unreal.SystemLibrary.quit_editor()`.

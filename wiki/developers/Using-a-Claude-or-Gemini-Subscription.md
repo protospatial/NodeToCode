@@ -60,9 +60,12 @@ session, `/mcp` lists the nodetocode tools, such as `get-focused-blueprint` and 
 - For a client that only runs stdio servers, the plugin ships a bridge with no dependencies besides Python 3 in
   `Content/Python/mcp_bridge/`. Its launcher (`launch_bridge.bat`, or `launch_bridge.sh` on macOS and Linux) runs it
   under the Python of your newest Unreal Engine install (any version), or Python 3 from your PATH:
-  `claude mcp add nodetocode -- "<plugin folder>/Content/Python/mcp_bridge/launch_bridge.bat" --port 27000`
-  (or `-- python <plugin folder>/Content/Python/mcp_bridge/nodetocode_bridge.py --port 27000`). It keeps text such
-  as `café` or `日本` intact and, on UE 5.8, passes on translation progress as it arrives.
+  `claude mcp add nodetocode -- "<plugin folder>/Content/Python/mcp_bridge/launch_bridge.bat"`
+  (or `-- python <plugin folder>/Content/Python/mcp_bridge/nodetocode_bridge.py`). It keeps `café` or `日本` intact,
+  passes on UE 5.8's translation progress, runs calls side by side and forwards Stop at once. It finds the editor
+  through the file its MCP server writes in `%LOCALAPPDATA%\NodeToCode\servers\`, and can start before the editor.
+  With several editors open, add `--project <name or .uproject path>` (or set `NODETOCODE_PROJECT`), else it answers
+  with an error listing them; `--port 27000` or `--url http://127.0.0.1:27000/mcp` names the editor directly.
 
 Tested on Windows with Claude Code 2.1.300 and UE 5.8: the HTTP form and both bridge forms connected and listed 59
 tools. The launcher form also ran translations through `claude -p` on UE 5.6 and 5.8.

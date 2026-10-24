@@ -10,33 +10,50 @@ UE plugin's Streamable HTTP MCP server.
 - Each stdin message is POSTed to /mcp with Accept: application/json, text/event-stream. A JSON response is written
   to stdout as one line; a text/event-stream response is read as it arrives: every JSON-RPC message in it (progress
   notifications, then the response) is written to stdout at once, and the response to the request ends the call.
-- stdout carries only JSON-RPC messages, one per line. A transport failure or a non-JSON body (an HTTP error page)
-  becomes a JSON-RPC error carrying the request's id, and nothing is written in reply to a notification. Logs go
-  to stderr.
-- Requests run on their own threads, so a long tools/call (translate-focused-blueprint) does not hold up others.
+- stdout carries only JSON-RPC messages, one per line, written under a lock. A transport failure or a non-JSON body
+  (an HTTP error page) becomes a JSON-RPC error carrying the request's id, and nothing is written in reply to a
+  notification. Logs go to stderr.
+- One thread reads stdin. Every request except initialize runs on its own worker thread, so a long tools/call
+  (translate-focused-blueprint) does not hold up others, and ping or notifications/cancelled pass at once.
+  initialize and notifications are sent in order on the reader thread.
+- Cancellation: notifications/cancelled is forwarded while the call runs (the editor stops the call and sends no
+  response), and the bridge writes nothing more for that request id, as MCP asks. A request cancelled before it was
+  sent is never sent.
 - The editor keeps one MCP session per client (Mcp-Session-Id). The bridge sends the session its client's initialize
   opened on every request, with MCP-Protocol-Version. When the editor answers 404 (the session is gone: the editor
-  restarted, or the session was ended) the bridge replays the client's initialize and notifications/initialized to
-  open a new session and resends the message once. When stdin closes it ends the session with DELETE.
+  restarted, or the session was ended), or the bridge moves to another editor, it replays the client's initialize and
+  notifications/initialized to open a new session and resends the message once. When stdin closes it ends the
+  session with DELETE.
+- Which editor: --url or --port names one. Otherwise each running editor's MCP server writes a discovery entry
+  (<user settings dir>/NodeToCode/servers/<pid>.json, plus <Project>/Saved/NodeToCode/mcp-server.json); entries of
+  editors that are gone are skipped. One editor: that one. Several: --project (or the NODETOCODE_PROJECT environment
+  variable) picks by project name, .uproject path or project folder, and without it every request gets an error
+  listing the running editors. The bridge starts without an editor and looks again on every request until one
+  answers, so it survives an editor that is still loading or restarts.
 
 Zero external dependencies - uses only the Python standard library.
 
 Usage:
-    python nodetocode_bridge.py [--port PORT] [--host HOST] [--timeout SECONDS] [--debug]
+    python nodetocode_bridge.py [--project NAME_OR_PATH] [--port PORT [--host HOST]] [--url URL]
+                                [--timeout SECONDS] [--debug]
 """
 
 import argparse
 import json
+import os
 import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Configuration
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 27000
 ACCEPT = "application/json, text/event-stream"
+PROJECT_ENV = "NODETOCODE_PROJECT"
+DISCOVERY_DIR_ENV = "NODETOCODE_DISCOVERY_DIR"
+NOTIFICATION_TIMEOUT = 30.0  # seconds; notifications are sent on the stdin reader thread
+CANCEL_RESEND_DELAY = 1.0  # seconds; a cancel that overtook its request in the editor is sent once more
 
 # JSON-RPC error codes
 PARSE_ERROR = -32700
@@ -58,6 +75,10 @@ def log_debug(message: str) -> None:
         print(f"[NodeToCode-Bridge] {message}", file=sys.stderr, flush=True)
 
 
+def log_info(message: str) -> None:
+    print(f"[NodeToCode-Bridge] {message}", file=sys.stderr, flush=True)
+
+
 def log_error(message: str) -> None:
     """Log error message to stderr."""
     print(f"[NodeToCode-Bridge ERROR] {message}", file=sys.stderr, flush=True)
@@ -67,7 +88,7 @@ def configure_stdio() -> None:
     """Read and write UTF-8 on stdio whatever the locale. Without this, Python on Windows decodes piped stdin with
     the ANSI code page (cp1252), so 'é' sent by the client reaches the editor as 'Ã©'.
 
-    stdin keeps undecodable bytes as surrogates (handle_line answers such a line with a parse error instead of
+    stdin keeps undecodable bytes as surrogates (Bridge.submit answers such a line with a parse error instead of
     stopping the loop); stdout writes '\\n' line ends and escapes a lone surrogate as a JSON '\\udxxx' escape."""
     for stream, errors in ((sys.stdin, "surrogateescape"), (sys.stdout, "backslashreplace"),
                            (sys.stderr, "backslashreplace")):
@@ -104,6 +125,220 @@ def is_request(message: Any) -> bool:
 def batch_has_request(message: Any) -> bool:
     return isinstance(message, list) and any(is_request(m) for m in message)
 
+
+def id_key(request_id: Any) -> str:
+    """A hashable key for a JSON-RPC id that keeps 1 and "1" apart."""
+    return json.dumps(request_id, sort_keys=True)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Finding the editor
+# ---------------------------------------------------------------------------------------------------------------------
+
+def discovery_index_dir() -> str:
+    """The per-user folder of discovery entries: FPlatformProcess::UserSettingsDir()/NodeToCode/servers, that is
+    %LOCALAPPDATA% on Windows, ~/Library/Application Support/Epic on macOS and ~/.config/Epic on Linux.
+    NODETOCODE_DISCOVERY_DIR replaces the whole path."""
+    override = os.environ.get(DISCOVERY_DIR_ENV)
+    if override:
+        return override
+    home = os.path.expanduser("~")
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
+    elif sys.platform == "darwin":
+        base = os.path.join(home, "Library", "Application Support", "Epic")
+    else:
+        base = os.path.join(home, ".config", "Epic")
+    return os.path.join(base, "NodeToCode", "servers")
+
+
+def pid_alive(pid: int) -> bool:
+    """Whether a process with this id is running (best effort: a reused id counts as running)."""
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED: it exists, under another user
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _read_entry(path: str) -> Optional[dict]:
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            entry = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(entry, dict):
+        return None
+    pid = entry.get("pid")
+    if isinstance(pid, float) and pid.is_integer():
+        pid = int(pid)
+    url = entry.get("url")
+    if not isinstance(url, str) or not url:
+        port = entry.get("port")
+        if not isinstance(port, (int, float)) or not port:
+            return None
+        url = f"http://{DEFAULT_HOST}:{int(port)}/mcp"
+    entry["pid"] = pid
+    entry["url"] = url
+    entry["discoveryFile"] = path
+    return entry
+
+
+def _project_folder(selector: str) -> Optional[str]:
+    """The project folder a --project value names, when it is a path (a .uproject file or a folder)."""
+    if selector.lower().endswith(".uproject"):
+        return os.path.dirname(os.path.abspath(selector))
+    if os.path.isdir(selector):
+        return os.path.abspath(selector)
+    return None
+
+
+def _norm(path: str) -> str:
+    return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+
+def entry_matches(entry: dict, selector: str) -> bool:
+    """Whether a discovery entry is the project a --project value names: its name (with or without .uproject), its
+    .uproject path or its folder."""
+    selector = selector.strip()
+    name = str(entry.get("projectName") or "")
+    project_file = str(entry.get("projectFile") or "")
+    bare = selector[:-len(".uproject")] if selector.lower().endswith(".uproject") else selector
+    if name and bare.lower() == name.lower():
+        return True
+    if project_file:
+        if os.path.basename(project_file).lower() == os.path.basename(selector).lower() and (
+                os.path.basename(selector) == selector):
+            return True
+        target = _norm(selector)
+        if target in (_norm(project_file), _norm(os.path.dirname(project_file))):
+            return True
+    return False
+
+
+def describe_entry(entry: dict) -> str:
+    name = entry.get("projectName") or "?"
+    parts = [f"UE {entry.get('engineVersion') or '?'}", entry.get("url") or "?", f"pid {entry.get('pid')}"]
+    if entry.get("projectFile"):
+        parts.append(str(entry["projectFile"]))
+    return f"{name} ({', '.join(parts)})"
+
+
+def summarize_entry(entry: dict) -> dict:
+    return {k: entry.get(k) for k in ("projectName", "projectFile", "url", "port", "pid", "engineVersion",
+                                      "pluginVersion")}
+
+
+def discover_editors(project: Optional[str] = None, index_dir: Optional[str] = None,
+                     alive: Callable[[int], bool] = pid_alive) -> List[dict]:
+    """The running editors' discovery entries: the per-user index, plus the project's own file when project is a
+    path. Entries whose process is gone are skipped; one entry per process."""
+    index_dir = index_dir or discovery_index_dir()
+    paths: List[str] = []
+    try:
+        for name in sorted(os.listdir(index_dir)):
+            if name.lower().endswith(".json") and name[:-5].isdigit():
+                paths.append(os.path.join(index_dir, name))
+    except OSError:
+        pass
+    folder = _project_folder(project) if project else None
+    if folder:
+        paths.append(os.path.join(folder, "Saved", "NodeToCode", "mcp-server.json"))
+
+    entries: List[dict] = []
+    seen = set()
+    for path in paths:
+        if not os.path.isfile(path):
+            continue
+        entry = _read_entry(path)
+        if entry is None:
+            log_debug(f"Ignoring unreadable discovery entry {path}")
+            continue
+        pid = entry.get("pid")
+        if pid in seen:
+            continue
+        if not alive(pid):
+            log_debug(f"Ignoring the discovery entry of an editor that is gone: {path}")
+            continue
+        seen.add(pid)
+        entries.append(entry)
+    return entries
+
+
+class EditorNotFound(Exception):
+    """No editor to send to; the message is the JSON-RPC error's message."""
+
+    def __init__(self, message: str, editors: Optional[List[dict]] = None) -> None:
+        super().__init__(message)
+        self.editors = editors or []
+
+
+class EditorLocator:
+    """Picks the editor's /mcp URL: the explicit --url/--port, else the discovery entries filtered by --project."""
+
+    def __init__(self, url: Optional[str] = None, project: Optional[str] = None,
+                 index_dir: Optional[str] = None) -> None:
+        self.explicit_url = url
+        self.project = project or None
+        self.index_dir = index_dir
+
+    @property
+    def is_explicit(self) -> bool:
+        return bool(self.explicit_url)
+
+    def locate(self) -> Tuple[str, Optional[dict]]:
+        """(url, discovery entry or None). Raises EditorNotFound."""
+        if self.explicit_url:
+            return self.explicit_url, None
+        index_dir = self.index_dir or discovery_index_dir()
+        editors = discover_editors(self.project, index_dir)
+        hint = (f"choose one with --project <project name, .uproject path or folder> (or the {PROJECT_ENV} "
+                "environment variable), or --port/--url")
+        if self.project:
+            matches = [e for e in editors if entry_matches(e, self.project)]
+            if len(matches) == 1:
+                return matches[0]["url"], matches[0]
+            if not matches:
+                running = "; ".join(describe_entry(e) for e in editors) or "none"
+                raise EditorNotFound(f"No running NodeToCode editor has the project '{self.project}'. Running editors: "
+                                     f"{running}", editors)
+            raise EditorNotFound(f"{len(matches)} NodeToCode editors have the project '{self.project}'; pass --port or "
+                                 f"--url to choose: " + "; ".join(describe_entry(e) for e in matches), matches)
+        if len(editors) == 1:
+            return editors[0]["url"], editors[0]
+        if not editors:
+            raise EditorNotFound("No NodeToCode editor is running: no MCP server discovery entry in "
+                                 f"{index_dir}. Open the project in the Unreal Editor with NodeToCode's MCP server "
+                                 "enabled (Project Settings > Plugins > Node to Code (User)), or pass --port/--url.")
+        raise EditorNotFound(f"{len(editors)} NodeToCode editors are running; {hint}: "
+                             + "; ".join(describe_entry(e) for e in editors), editors)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Talking to the editor
+# ---------------------------------------------------------------------------------------------------------------------
 
 class SseParser:
     """Incremental text/event-stream parser (WHATWG HTML, 'Parsing an event stream').
@@ -147,59 +382,47 @@ class SseParser:
         return text.split("\r")
 
 
-def check_ue5_health(host: str, port: int) -> bool:
-    """Check if UE5 MCP server is running."""
-    url = f"http://{host}:{port}/mcp/health"
-    log_debug(f"Probing health at {url}")
-
-    try:
-        req = urllib.request.Request(url, method="GET")
-        with _opener.open(req, timeout=2) as resp:
-            if resp.status == 200:
-                log_debug(f"Health check passed: {resp.read().decode('utf-8', 'replace')}")
-                return True
-    except urllib.error.URLError as e:
-        log_debug(f"Health check failed: {e}")
-    except Exception as e:
-        log_debug(f"Health check exception: {e}")
-
-    return False
-
-
-def find_ue5_server(host: str, port: int) -> Optional[tuple]:
-    """Find running UE5 MCP server, trying multiple hosts/ports."""
-    # Try 127.0.0.1 first to avoid IPv6 issues
-    hosts_to_try = ["127.0.0.1", "localhost"] if host == "localhost" else [host]
-
-    for h in hosts_to_try:
-        if check_ue5_health(h, port):
-            return (h, port)
-
-    # Try port range
-    for h in hosts_to_try:
-        for p in range(27000, 27011):
-            if p == port and h == host:
-                continue  # Already tried
-            if check_ue5_health(h, p):
-                return (h, p)
-
-    return None
-
-
 class Upstream:
     """The editor's /mcp endpoint plus the session state shared by all requests."""
 
-    def __init__(self, host: str, port: int, timeout: Optional[float] = None) -> None:
-        self.url = f"http://{host}:{port}/mcp"
+    def __init__(self, locator: EditorLocator, timeout: Optional[float] = None) -> None:
+        self.locator = locator
         # None: wait as long as the editor takes. A held translate-focused-blueprint call (UE 5.6/5.7, or no
         # progress token) sends nothing until the translation is done.
         self.timeout = timeout
         self._lock = threading.Lock()
+        self._locate_lock = threading.Lock()
+        self.url: Optional[str] = None
         self.session_id: Optional[str] = None
         self.protocol_version: Optional[str] = None
-        # The client's initialize request, replayed to open a new session after a 404
+        # The client's initialize request, replayed to open a new session after a 404 or a move to another editor
         self._initialize_body: Optional[bytes] = None
         self._reinitialize_lock = threading.Lock()
+
+    def _target(self) -> str:
+        """The editor's URL, found again after a connection failure. Raises EditorNotFound."""
+        with self._locate_lock:
+            with self._lock:
+                if self.url:
+                    return self.url
+            url, entry = self.locator.locate()
+            with self._lock:
+                self.url = url
+            if entry is not None:
+                log_info(f"Using the NodeToCode editor {describe_entry(entry)}")
+            else:
+                log_debug(f"Using the NodeToCode editor at {url}")
+            return url
+
+    def _lost(self, url: str) -> None:
+        """The editor at url did not answer: look for an editor again on the next request (a restarted editor may
+        have another port), and open a new session there."""
+        if self.locator.is_explicit:
+            return
+        with self._lock:
+            if self.url == url:
+                self.url = None
+                self.session_id = None
 
     def _headers(self) -> dict:
         headers = {"Content-Type": "application/json", "Accept": ACCEPT}
@@ -224,21 +447,22 @@ class Upstream:
                 with self._lock:
                     self.protocol_version = version
 
-    def _reinitialize(self, stale_session: Optional[str]) -> bool:
-        """Opens a new session by replaying the client's initialize (and notifications/initialized) after the editor
-        answered 404 for stale_session. True when a session other than stale_session is now in use."""
+    def _reinitialize(self, url: str, stale_session: Optional[str]) -> bool:
+        """Opens a new session by replaying the client's initialize (and notifications/initialized), after the
+        editor answered 404 for stale_session or when there is no session at url yet. True when a session other
+        than stale_session is now in use."""
         with self._reinitialize_lock:
             with self._lock:
-                if self.session_id != stale_session:
+                if self.session_id and self.session_id != stale_session:
                     return True  # another thread already opened a new one
                 init_body = self._initialize_body
                 self.session_id = None
             if init_body is None:
                 return False
-            log_debug("Session not found (404); replaying initialize to open a new session")
+            log_debug("Replaying initialize to open a new session")
             headers = {"Content-Type": "application/json", "Accept": ACCEPT}
             try:
-                req = urllib.request.Request(self.url, data=init_body, headers=headers, method="POST")
+                req = urllib.request.Request(url, data=init_body, headers=headers, method="POST")
                 with _opener.open(req, timeout=30) as resp:
                     self._note_headers(resp.headers)
                     content_type = (resp.headers.get("Content-Type") or "").lower()
@@ -249,12 +473,12 @@ class Upstream:
                     self._note_message(json.loads(text), "initialize")
                 except ValueError:
                     pass
-                notify = urllib.request.Request(self.url, data=b'{"jsonrpc":"2.0","method":"notifications/initialized"}',
+                notify = urllib.request.Request(url, data=b'{"jsonrpc":"2.0","method":"notifications/initialized"}',
                                                 headers=self._headers(), method="POST")
                 with _opener.open(notify, timeout=30) as resp:
                     resp.read()
             except Exception as e:  # HTTPError, URLError, timeouts
-                log_error(f"Re-initializing the MCP session failed: {e}")
+                log_error(f"Opening an MCP session at {url} failed: {e}")
                 return False
             with self._lock:
                 return bool(self.session_id) and self.session_id != stale_session
@@ -262,10 +486,12 @@ class Upstream:
     def end_session(self) -> None:
         """Ends the session with DELETE (best effort), when the client is done."""
         headers = self._headers()
-        if "Mcp-Session-Id" not in headers:
+        with self._lock:
+            url = self.url
+        if "Mcp-Session-Id" not in headers or not url:
             return
         try:
-            req = urllib.request.Request(self.url, headers={k: v for k, v in headers.items() if k != "Content-Type"},
+            req = urllib.request.Request(url, headers={k: v for k, v in headers.items() if k != "Content-Type"},
                                          method="DELETE")
             with _opener.open(req, timeout=5) as resp:
                 resp.read()
@@ -273,21 +499,44 @@ class Upstream:
         except Exception as e:
             log_debug(f"Ending the MCP session failed: {e}")
 
-    def forward(self, body: bytes, message: Any, emit: Callable[[Any], None]) -> None:
-        """POST one client message and emit every JSON-RPC message meant for the client."""
+    def forward(self, body: bytes, message: Any, emit: Callable[[Any], None],
+                before_send: Optional[Callable[[], bool]] = None, timeout: Optional[float] = None,
+                _moved: bool = False) -> None:
+        """POST one client message and emit every JSON-RPC message meant for the client. before_send runs once,
+        just before the message is first sent; when it returns False the message is not sent."""
         wants_reply = is_request(message) or batch_has_request(message)
         request_id = message.get("id") if isinstance(message, dict) else None
         method = message.get("method") if isinstance(message, dict) else None
+
+        try:
+            url = self._target()
+        except EditorNotFound as e:
+            log_error(str(e))
+            if wants_reply:
+                data = {"editors": [summarize_entry(x) for x in e.editors]} if e.editors else None
+                emit(error_response(request_id, INTERNAL_ERROR, str(e), data))
+            return
+
         if method == "initialize" and is_request(message):
             with self._lock:
                 self._initialize_body = body
                 self.session_id = None  # an initialize opens a new session; it never carries an old one
+        else:
+            with self._lock:
+                needs_session = self.session_id is None and self._initialize_body is not None
+            if needs_session:
+                # A new editor (or this one restarted on another port): open the client's session there first
+                self._reinitialize(url, None)
+
+        if before_send is not None and not before_send():
+            log_debug(f"Not sending {method} {request_id!r}: cancelled before it was sent")
+            return
 
         for attempt in (0, 1):
             headers = self._headers()
-            req = urllib.request.Request(self.url, data=body, headers=headers, method="POST")
+            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
             try:
-                resp = _opener.open(req, timeout=self.timeout)
+                resp = _opener.open(req, timeout=timeout if timeout is not None else self.timeout)
                 break
             except urllib.error.HTTPError as e:
                 try:
@@ -296,15 +545,28 @@ class Upstream:
                 finally:
                     e.close()
                 stale = headers.get("Mcp-Session-Id")
-                if e.code == 404 and attempt == 0 and stale and method != "initialize" and self._reinitialize(stale):
+                if (e.code == 404 and attempt == 0 and stale and method != "initialize"
+                        and self._reinitialize(url, stale)):
                     continue
                 self._emit_body(error_body, e.code, request_id, wants_reply, method, emit)
                 return
             except Exception as e:  # URLError, timeouts, connection resets
                 reason = getattr(e, "reason", e)
-                log_error(f"Request to {self.url} failed: {reason}")
+                log_error(f"Request to {url} failed: {reason}")
+                if isinstance(e, urllib.error.URLError) and not isinstance(reason, TimeoutError):
+                    # Refused or unreachable, so the editor never saw the message: when the discovery entries now
+                    # name another editor (this one restarted on another port), send it there instead
+                    self._lost(url)
+                    if not self.locator.is_explicit and not _moved:
+                        try:
+                            moved_to = self._target()
+                        except EditorNotFound:
+                            moved_to = url
+                        if moved_to != url:
+                            self.forward(body, message, emit, None, timeout, _moved=True)
+                            return
                 if wants_reply:
-                    emit(error_response(request_id, INTERNAL_ERROR, f"NodeToCode editor not reachable at {self.url}: {reason}"))
+                    emit(error_response(request_id, INTERNAL_ERROR, f"NodeToCode editor not reachable at {url}: {reason}"))
                 return
 
         with resp:
@@ -393,31 +655,148 @@ class Upstream:
             emit(error_response(request_id, INTERNAL_ERROR, "The editor's event stream ended without a response"))
 
 
-def handle_line(upstream: Upstream, line: str, emit: Callable[[Any], None] = write_message) -> None:
-    """Forward one stdin line and emit what the client should see."""
-    try:
-        message = json.loads(line)
-    except ValueError as e:
-        log_error(f"JSON parse error: {e}")
-        emit(error_response(None, PARSE_ERROR, f"Parse error: {e}"))
-        return
+# ---------------------------------------------------------------------------------------------------------------------
+# The client side: one stdin reader, a worker per request
+# ---------------------------------------------------------------------------------------------------------------------
 
-    try:
-        body = line.encode("utf-8")
-    except UnicodeEncodeError:
-        # Bytes that were not UTF-8 survived stdin as surrogates
-        log_error("Message is not valid UTF-8")
-        if is_request(message) or batch_has_request(message):
-            request_id = message.get("id") if isinstance(message, dict) else None
-            emit(error_response(request_id, PARSE_ERROR, "Parse error: the message is not valid UTF-8"))
-        return
+class _Call:
+    """A request in flight on its worker thread."""
 
-    try:
-        upstream.forward(body, message, emit)
-    except Exception as e:
-        log_error(f"Error processing message: {e}")
+    def __init__(self, request_id: Any) -> None:
+        self.request_id = request_id
+        self.sent = False
+        self.cancelled = False
+        self.thread: Optional[threading.Thread] = None
+
+
+class Bridge:
+    """Dispatches stdin messages: requests to worker threads, initialize and notifications in order on the caller's
+    (reader) thread, and notifications/cancelled to the editor at once."""
+
+    def __init__(self, upstream: Upstream, emit: Callable[[Any], None] = write_message) -> None:
+        self.upstream = upstream
+        self._emit = emit
+        self._lock = threading.Lock()
+        self._calls: Dict[str, _Call] = {}
+        self._threads: List[threading.Thread] = []
+
+    def submit(self, line: str) -> None:
+        """Handle one stdin line."""
+        try:
+            message = json.loads(line)
+        except ValueError as e:
+            log_error(f"JSON parse error: {e}")
+            self._emit(error_response(None, PARSE_ERROR, f"Parse error: {e}"))
+            return
+
+        try:
+            body = line.encode("utf-8")
+        except UnicodeEncodeError:
+            # Bytes that were not UTF-8 survived stdin as surrogates
+            log_error("Message is not valid UTF-8")
+            if is_request(message) or batch_has_request(message):
+                request_id = message.get("id") if isinstance(message, dict) else None
+                self._emit(error_response(request_id, PARSE_ERROR, "Parse error: the message is not valid UTF-8"))
+            return
+
+        method = message.get("method") if isinstance(message, dict) else None
         if is_request(message):
-            emit(error_response(message.get("id"), INTERNAL_ERROR, str(e)))
+            if method == "initialize":
+                # In order: the session it opens must exist before the client's next message is sent
+                self._guarded(body, message, self._emit)
+                return
+            self._start_call(body, message)
+        elif isinstance(message, dict) and method == "notifications/cancelled":
+            self._cancel(body, message)
+        elif isinstance(message, dict):
+            # Other notifications (and responses) go in order, with a bound so a stuck editor cannot hold stdin
+            self._guarded(body, message, self._emit, timeout=NOTIFICATION_TIMEOUT)
+        else:
+            self._start_thread(lambda: self._guarded(body, message, self._emit))  # a batch
+
+    def _guarded(self, body: bytes, message: Any, emit: Callable[[Any], None],
+                 before_send: Optional[Callable[[], bool]] = None, timeout: Optional[float] = None) -> None:
+        try:
+            self.upstream.forward(body, message, emit, before_send, timeout)
+        except Exception as e:
+            log_error(f"Error processing message: {e}")
+            if is_request(message):
+                emit(error_response(message.get("id"), INTERNAL_ERROR, str(e)))
+
+    def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
+        thread = threading.Thread(target=target, daemon=True)
+        with self._lock:
+            self._threads = [t for t in self._threads if t.is_alive()] + [thread]
+        thread.start()
+        return thread
+
+    def _start_call(self, body: bytes, message: dict) -> None:
+        request_id = message.get("id")
+        key = id_key(request_id)
+        call = _Call(request_id)
+        with self._lock:
+            self._calls[key] = call
+
+        def emit(out: Any) -> None:
+            if call.cancelled:
+                log_debug(f"Dropping a message for cancelled request {request_id!r}")
+                return
+            self._emit(out)
+
+        def before_send() -> bool:
+            with self._lock:
+                if call.cancelled:
+                    return False
+                call.sent = True
+                return True
+
+        def run() -> None:
+            try:
+                self._guarded(body, message, emit, before_send)
+            finally:
+                with self._lock:
+                    if self._calls.get(key) is call:
+                        del self._calls[key]
+
+        call.thread = self._start_thread(run)
+
+    def _cancel(self, body: bytes, message: dict) -> None:
+        """notifications/cancelled: from now on nothing is written for that request. A request still waiting to be
+        sent is dropped; one already sent gets the cancel forwarded, and once more a moment later should it have
+        reached the editor before its request did."""
+        params = message.get("params") if isinstance(message.get("params"), dict) else {}
+        request_id = params.get("requestId")
+        with self._lock:
+            call = self._calls.get(id_key(request_id))
+            if call is not None:
+                call.cancelled = True
+            sent = call is not None and call.sent
+        if call is not None and not sent:
+            log_debug(f"Request {request_id!r} cancelled before it was sent")
+            return
+        log_debug(f"Forwarding the cancel of request {request_id!r}")
+        self._guarded(body, message, self._emit, timeout=NOTIFICATION_TIMEOUT)
+        if call is None:
+            return
+
+        def resend() -> None:
+            with self._lock:
+                running = self._calls.get(id_key(request_id)) is call
+            if running:
+                log_debug(f"Request {request_id!r} still running; sending its cancel again")
+                self._guarded(body, message, self._emit, timeout=NOTIFICATION_TIMEOUT)
+
+        timer = threading.Timer(CANCEL_RESEND_DELAY, resend)
+        timer.daemon = True
+        timer.start()
+
+    def drain(self) -> None:
+        """Wait for the requests in flight (a cancelled one only briefly: the editor sends nothing more for it)."""
+        with self._lock:
+            threads = list(self._threads)
+            cancelled = {c.thread for c in self._calls.values() if c.cancelled}
+        for thread in threads:
+            thread.join(5 if thread in cancelled else None)
 
 
 def main():
@@ -427,8 +806,13 @@ def main():
 
     # Parse arguments
     parser = argparse.ArgumentParser(description="NodeToCode MCP Bridge")
-    parser.add_argument("--host", default=DEFAULT_HOST, help="UE5 server host")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="UE5 server port")
+    parser.add_argument("--project", default=os.environ.get(PROJECT_ENV) or None,
+                        help="The editor's project: its name, .uproject path or folder (default: the "
+                             f"{PROJECT_ENV} environment variable; needed only when several editors run)")
+    parser.add_argument("--port", type=int, default=None,
+                        help="Connect to the editor on this port instead of finding it through its discovery entry")
+    parser.add_argument("--host", default=DEFAULT_HOST, help="Host for --port (default 127.0.0.1)")
+    parser.add_argument("--url", default=None, help="The editor's MCP endpoint, for example http://127.0.0.1:27000/mcp")
     parser.add_argument("--timeout", type=float, default=0,
                         help="Seconds to wait for the editor to send data (0, the default: no limit)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
@@ -436,36 +820,27 @@ def main():
 
     debug_mode = args.debug
 
+    url = args.url or (f"http://{args.host}:{args.port}/mcp" if args.port else None)
+    if url and args.project:
+        log_info(f"--project '{args.project}' is ignored: --port/--url names the editor")
+    locator = EditorLocator(url=url, project=None if url else args.project)
     log_debug("NodeToCode MCP Bridge starting...")
-    log_debug(f"Configuration: host={args.host}, port={args.port}")
+    log_debug(f"Editor: {url or 'from the discovery entries in ' + discovery_index_dir()}"
+              + (f", project {args.project}" if args.project and not url else ""))
 
-    # Find UE5 server
-    server = find_ue5_server(args.host, args.port)
+    upstream = Upstream(locator, args.timeout if args.timeout and args.timeout > 0 else None)
+    bridge = Bridge(upstream)
 
-    if not server:
-        log_error("Failed to connect to NodeToCode UE5 plugin. Is the Unreal Editor running with NodeToCode?")
-        sys.exit(1)
-
-    host, port = server
-    log_debug(f"Connected to UE5 MCP server at {host}:{port}")
-    upstream = Upstream(host, port, args.timeout if args.timeout and args.timeout > 0 else None)
-
-    # Process stdin: each message on its own thread so a long call does not block the others
-    workers: List[threading.Thread] = []
     try:
         for line in sys.stdin:
             line = line.strip()
             if not line:
                 continue
-
             log_debug(f"Received: {line[:200]}")
-            worker = threading.Thread(target=handle_line, args=(upstream, line), daemon=True)
-            worker.start()
-            workers = [w for w in workers if w.is_alive()] + [worker]
+            bridge.submit(line)
 
         # stdin closed: let the calls in flight answer before exiting, then end the session
-        for worker in workers:
-            worker.join()
+        bridge.drain()
         upstream.end_session()
 
     except KeyboardInterrupt:
