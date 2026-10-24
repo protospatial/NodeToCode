@@ -5,6 +5,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CPinConnectPolicy.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -17,44 +18,6 @@
 
 // Register this tool with the MCP tool manager
 REGISTER_MCP_TOOL(FN2CMcpConnectPinsTool)
-
-namespace N2CPinConnectPolicy
-{
-	/** Responses where the schema itself breaks links (replace) before connecting */
-	static bool BreaksOthers(ECanCreateConnectionResponse R)
-	{
-		return R == CONNECT_RESPONSE_BREAK_OTHERS_A || R == CONNECT_RESPONSE_BREAK_OTHERS_B || R == CONNECT_RESPONSE_BREAK_OTHERS_AB;
-	}
-
-	/**
-	 * Whether to go ahead with a connection, given the schema's answer. Exec inputs take many incoming links, so
-	 * nothing is broken by hand: the schema's TryCreateConnection breaks exactly what its response says, and only
-	 * when the caller allowed breaking links. Conversion-node responses are allowed.
-	 */
-	static bool Allow(const FPinConnectionResponse& Response, const UEdGraphPin* FromPin, const UEdGraphPin* ToPin, bool bBreakExistingLinks, FString& OutError)
-	{
-		if (Response.Response == CONNECT_RESPONSE_DISALLOW)
-		{
-			OutError = Response.Message.ToString();
-			return false;
-		}
-		if (BreaksOthers(Response.Response) && !bBreakExistingLinks)
-		{
-			const UEdGraphPin* Busy = (Response.Response == CONNECT_RESPONSE_BREAK_OTHERS_A) ? FromPin : ToPin;
-			FString Existing;
-			if (Busy && Busy->LinkedTo.Num() > 0 && Busy->LinkedTo[0] && Busy->LinkedTo[0]->GetOwningNode())
-			{
-				Existing = FString::Printf(TEXT(" (currently linked to %s.%s)"),
-					*Busy->LinkedTo[0]->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(),
-					*Busy->LinkedTo[0]->PinName.ToString());
-			}
-			OutError = FString::Printf(TEXT("Connecting would replace the existing link on %s%s. Pass breakExistingLinks=true to replace it."),
-				Busy ? *Busy->PinName.ToString() : TEXT("the pin"), *Existing);
-			return false;
-		}
-		return true;
-	}
-}
 
 #define LOCTEXT_NAMESPACE "NodeToCode"
 
@@ -183,7 +146,7 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	TSharedPtr<FJsonObject> BreakExistingLinksProp = MakeShareable(new FJsonObject);
 	BreakExistingLinksProp->SetStringField(TEXT("type"), TEXT("boolean"));
 	BreakExistingLinksProp->SetBoolField(TEXT("default"), false);
-	BreakExistingLinksProp->SetStringField(TEXT("description"), TEXT("Allow the connection to replace an existing link where the pin takes only one (data inputs, exec outputs). Exec inputs keep all their incoming links either way."));
+	BreakExistingLinksProp->SetStringField(TEXT("description"), TEXT("Allow the connection to replace an existing link where the pin takes only one (data inputs, exec outputs), including a link that needs a conversion node. Exec inputs keep all their incoming links either way."));
 	OptionsProperties->SetObjectField(TEXT("breakExistingLinks"), BreakExistingLinksProp);
 	
 	OptionsProp->SetObjectField(TEXT("properties"), OptionsProperties);
@@ -615,7 +578,7 @@ FN2CMcpConnectPinsTool::FConnectionResult FN2CMcpConnectPinsTool::ProcessConnect
 	if (!N2CPinConnectPolicy::Allow(Response, FromPin, ToPin, Options.bBreakExistingLinks, PolicyError))
 	{
 		Result.bSuccess = false;
-		Result.ErrorCode = N2CPinConnectPolicy::BreaksOthers(Response.Response) ? TEXT("WOULD_BREAK_EXISTING_LINK") : TEXT("SCHEMA_VALIDATION_FAILED");
+		Result.ErrorCode = N2CPinConnectPolicy::WouldReplaceExistingLink(Response, FromPin, ToPin) ? TEXT("WOULD_BREAK_EXISTING_LINK") : TEXT("SCHEMA_VALIDATION_FAILED");
 		Result.ErrorMessage = PolicyError;
 		return Result;
 	}

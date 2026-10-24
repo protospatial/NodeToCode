@@ -8,6 +8,7 @@
 #include "Core/N2CSerializer.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
+#include "MCP/Utils/N2CPinConnectPolicy.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
@@ -1155,44 +1156,6 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
 
 	return MakeSuccessJson(ResultJsonString);
-}
-
-namespace N2CPinConnectPolicy
-{
-	/** Responses where the schema itself breaks links (replace) before connecting */
-	static bool BreaksOthers(ECanCreateConnectionResponse R)
-	{
-		return R == CONNECT_RESPONSE_BREAK_OTHERS_A || R == CONNECT_RESPONSE_BREAK_OTHERS_B || R == CONNECT_RESPONSE_BREAK_OTHERS_AB;
-	}
-
-	/**
-	 * Whether to go ahead with a connection, given the schema's answer. Exec inputs take many incoming links, so
-	 * nothing is broken by hand: the schema's TryCreateConnection breaks exactly what its response says, and only
-	 * when the caller allowed breaking links. Conversion-node responses are allowed.
-	 */
-	static bool Allow(const FPinConnectionResponse& Response, const UEdGraphPin* FromPin, const UEdGraphPin* ToPin, bool bBreakExistingLinks, FString& OutError)
-	{
-		if (Response.Response == CONNECT_RESPONSE_DISALLOW)
-		{
-			OutError = Response.Message.ToString();
-			return false;
-		}
-		if (BreaksOthers(Response.Response) && !bBreakExistingLinks)
-		{
-			const UEdGraphPin* Busy = (Response.Response == CONNECT_RESPONSE_BREAK_OTHERS_A) ? FromPin : ToPin;
-			FString Existing;
-			if (Busy && Busy->LinkedTo.Num() > 0 && Busy->LinkedTo[0] && Busy->LinkedTo[0]->GetOwningNode())
-			{
-				Existing = FString::Printf(TEXT(" (currently linked to %s.%s)"),
-					*Busy->LinkedTo[0]->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(),
-					*Busy->LinkedTo[0]->PinName.ToString());
-			}
-			OutError = FString::Printf(TEXT("Connecting would replace the existing link on %s%s. Pass breakExistingLinks=true to replace it."),
-				Busy ? *Busy->PinName.ToString() : TEXT("the pin"), *Existing);
-			return false;
-		}
-		return true;
-	}
 }
 
 FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks)
