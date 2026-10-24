@@ -33,6 +33,10 @@
                     {
                         "Name":  "RigVM",
                         "Enabled":  true
+                    },
+                    {
+                        "Name":  "ControlRig",
+                        "Enabled":  true
                     }
                 ]
 }

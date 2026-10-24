@@ -57,7 +57,8 @@ class UN2CBlueprintToolset : public UToolsetDefinition
 
 public:
 	/**
-	 * Export a Blueprint's graphs, variables, components, and related structure as NodeToCode JSON.
+     * Export Blueprint graphs, variables, class defaults, SCS components, UMG widget trees,
+     * Control Rig hierarchies, and reflected native node data as NodeToCode JSON.
 	 * @param BlueprintAssetPath Blueprint object path, for example /Game/Blueprints/BP_Character.BP_Character.
 	 * @return Success state and the serialized Blueprint JSON, or an error describing why export failed.
 	 */

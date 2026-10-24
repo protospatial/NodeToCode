@@ -46,7 +46,7 @@
 
 ## 🔧 Under the Hood
 
-- **Blueprint Analysis:** Captures your entire Blueprint graph structure, including execution flows, data connections, variable references, and comments
+- **Blueprint Analysis:** Captures graphs and direct pin links together with class ancestry/defaults, SCS components, UMG widget/slot/animation data, Control Rig hierarchy data, and native graph nodes
 - **Complete Blueprint Translation:** Translate entire Blueprints with all graphs, variables, and components in a single operation
 - **Variable & Component Support:** Full support for Blueprint-level variables, local variables, and component property overrides
 - **Multiple LLM Options:** Use cloud providers (OpenAI, Anthropic Claude, Google Gemini, DeepSeek) or run 100% locally via Ollama for complete privacy

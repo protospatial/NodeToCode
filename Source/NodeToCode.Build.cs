@@ -43,7 +43,7 @@ public class NodeToCode : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"DeveloperSettings", "Blutility", "UMGEditor", "PropertyEditor", "DesktopPlatform", "ToolsetRegistry", "RigVM", "RigVMDeveloper"
+				"DeveloperSettings", "Blutility", "UMGEditor", "PropertyEditor", "DesktopPlatform", "ToolsetRegistry", "RigVM", "RigVMDeveloper", "ControlRig", "ControlRigDeveloper"
 			}
 		);
 	}

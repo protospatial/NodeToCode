@@ -108,6 +108,9 @@ private:
     /** Convert a UK2Node to FN2CNodeDefinition */
     bool ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
+    /** Preserve graph nodes whose source type is not a K2 node (for example AnimGraph nodes). */
+    bool ProcessNativeGraphNode(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef);
+
     /** Determine node type */
     void DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType);
 
@@ -127,10 +130,10 @@ private:
     void ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Process all pins on the node */
-    void ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs);
+    void ProcessNodePins(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs);
 
     /** Process execution and data flows for the node */
-    void ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs);
+    void ProcessNodeFlows(UEdGraphNode* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs);
 
     /** Check if a struct is Blueprint-defined */
     bool IsBlueprintStruct(UScriptStruct* Struct) const;

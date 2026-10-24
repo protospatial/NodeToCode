@@ -19,3 +19,20 @@ public:
         return FText::FromName(TestTitle.IsNone() ? GetFName() : TestTitle);
     }
 };
+
+UCLASS(Transient, NotBlueprintable)
+class UN2CTestNativeGraphNode : public UEdGraphNode
+{
+    GENERATED_BODY()
+
+public:
+    FName TestTitle;
+
+    UPROPERTY()
+    int32 TestValue = 0;
+
+    virtual FText GetNodeTitle(ENodeTitleType::Type TitleType) const override
+    {
+        return FText::FromName(TestTitle.IsNone() ? GetFName() : TestTitle);
+    }
+};

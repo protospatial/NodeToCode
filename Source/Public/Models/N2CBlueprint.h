@@ -309,6 +309,10 @@ struct FN2CStructMember
     /** Type name - required for structs, enums, objects, classes, etc. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString TypeName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TypePath;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
 
     /** Container flags */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
@@ -365,6 +369,9 @@ struct FN2CStruct
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Name;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TypePath;
+
     /** Struct comment */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
@@ -372,6 +379,8 @@ struct FN2CStruct
     /** List of struct members */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CStructMember> Members;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
 
     FN2CStruct()
         : Name(TEXT(""))
@@ -403,6 +412,12 @@ struct FN2CVariable
     /** Full type name for objects/structs/enums/classes */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString TypeName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TypePath;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString DisplayName;
 
     /** Container flags */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
@@ -483,6 +498,29 @@ struct FN2CComponentOverride
     }
 };
 
+/** A reflected native object or asset subobject that has no normalized Blueprint model. */
+USTRUCT(BlueprintType)
+struct FN2CNativeObject
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Kind;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ObjectPath;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString NativeClass;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ParentPath;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int32 Order = INDEX_NONE;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
+};
+
 /**
  * @struct FN2CEnumValue
  * @brief Represents a single value in an enum
@@ -495,10 +533,19 @@ struct FN2CEnumValue
     /** Enum value name */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Name;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString DisplayName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int64 Value = 0;
 	
     /** Enum value comment (if any) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
 
     FN2CEnumValue()
         : Name(TEXT(""))
@@ -520,6 +567,12 @@ struct FN2CEnum
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Name;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString TypePath;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnderlyingType;
+
     /** Enum comment */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
@@ -527,6 +580,8 @@ struct FN2CEnum
     /** List of enum values */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CEnumValue> Values;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
 
     FN2CEnum()
         : Name(TEXT(""))
@@ -661,6 +716,14 @@ struct FN2CBlueprint
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CMetadata Metadata;
 
+    /** Native class ancestry and interfaces required to reproduce the generated class contract. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ParentClassPath;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString GeneratedClassPath;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FString> ImplementedInterfacePaths;
+
     /** Array of all graphs in the Blueprint */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CGraph> Graphs;
@@ -680,6 +743,10 @@ struct FN2CBlueprint
     /** Array of Blueprint components and their overridden default properties */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CComponentOverride> Components;
+
+    /** Reflected snapshots for Blueprint-specific data such as widgets and rig hierarchies. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CNativeObject> NativeObjects;
 
     FN2CBlueprint()
     {
