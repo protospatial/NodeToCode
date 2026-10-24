@@ -4,15 +4,21 @@
 
 #include <Core/N2CWidgetContainer.h>
 
+#include "ToolsetRegistry/UToolsetRegistry.h"
+#include "Toolsets/N2CBlueprintToolset.h"
 #include "HttpModule.h"
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CSettingsCustomization.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidgetFactory.h"
 #include "Editor/EditorPerformanceSettings.h"
+#include "LLM/N2CLLMProviderRegistry.h"
+#include "LLM/Providers/N2CCustomOpenAIService.h"
 #include "Models/N2CStyle.h"
+#include "PropertyEditorModule.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #if WITH_EDITOR
@@ -25,6 +31,8 @@ DEFINE_LOG_CATEGORY(LogNodeToCode);
 
 void FNodeToCodeModule::StartupModule()
 {
+    UToolsetRegistry::RegisterToolsetClass(UN2CBlueprintToolset::StaticClass());
+
     // Initialize logging
     FN2CLogger::Get().Log(TEXT("NodeToCode plugin starting up"), EN2CLogSeverity::Info);
 
@@ -54,6 +62,17 @@ void FNodeToCodeModule::StartupModule()
         FN2CLogger::Get().SetMinSeverity(Settings->MinSeverity);
         FN2CLogger::Get().Log(TEXT("Applied log severity from settings"), EN2CLogSeverity::Debug);
     }
+
+    FPropertyEditorModule& PropertyEditorModule =
+        FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+    PropertyEditorModule.RegisterCustomClassLayout(
+        UN2CSettings::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FN2CSettingsCustomization::MakeInstance));
+    PropertyEditorModule.NotifyCustomizationModuleChanged();
+
+    UN2CLLMProviderRegistry::Get()->RegisterProvider(
+        EN2CLLMProvider::Custom,
+        UN2CCustomOpenAIService::StaticClass());
 
     
     // Initialize style system
@@ -92,6 +111,16 @@ void FNodeToCodeModule::StartupModule()
 
 void FNodeToCodeModule::ShutdownModule()
 {
+    UToolsetRegistry::UnregisterToolsetClass(UN2CBlueprintToolset::StaticClass());
+
+    if (FModuleManager::Get().IsModuleLoaded(TEXT("PropertyEditor")))
+    {
+        FPropertyEditorModule& PropertyEditorModule =
+            FModuleManager::GetModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+        PropertyEditorModule.UnregisterCustomClassLayout(UN2CSettings::StaticClass()->GetFName());
+        PropertyEditorModule.NotifyCustomizationModuleChanged();
+    }
+
     // Unregister menu extensions
     UToolMenus::UnRegisterStartupCallback(this);
     UToolMenus::UnregisterOwner(this);

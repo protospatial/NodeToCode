@@ -22,6 +22,35 @@
 UN2CSettings::UN2CSettings()
 {
     FN2CLogger::Get().Log(TEXT("N2CSettings constructor called"), EN2CLogSeverity::Info);
+
+#if WITH_EDITOR
+    // Built-in provider keys are transient UI mirrors of the dedicated user secrets store. Ensure
+    // every key field is rendered as a password field before the settings details panel is built.
+    const FName ApiKeyPropertyNames[] =
+    {
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI),
+        GET_MEMBER_NAME_CHECKED(UN2CSettings, MiniMax_API_Key_UI)
+    };
+
+    for (const FName PropertyName : ApiKeyPropertyNames)
+    {
+        if (FProperty* ApiKeyProperty = GetClass()->FindPropertyByName(PropertyName))
+        {
+            ApiKeyProperty->SetMetaData(TEXT("PasswordField"), TEXT("true"));
+        }
+    }
+
+    // Ollama already declares PasswordField metadata in FN2COllamaConfig, but set it here as well
+    // so all built-in provider API-key presentation is enforced from one initialization path.
+    if (FProperty* OllamaApiKeyProperty = FN2COllamaConfig::StaticStruct()->FindPropertyByName(
+            GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, ApiKey)))
+    {
+        OllamaApiKeyProperty->SetMetaData(TEXT("PasswordField"), TEXT("true"));
+    }
+#endif
     
     // Initialize pricing for each model
     InitializePricing();
@@ -44,6 +73,8 @@ UN2CSettings::UN2CSettings()
     Anthropic_API_Key_UI = UserSecrets->Anthropic_API_Key;
     Gemini_API_Key_UI = UserSecrets->Gemini_API_Key;
     DeepSeek_API_Key_UI = UserSecrets->DeepSeek_API_Key;
+    OllamaConfig.ApiKey = UserSecrets->Ollama_API_Key;
+    MiniMax_API_Key_UI = UserSecrets->MiniMax_API_Key;
     
     // Initialize token estimate
     EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
@@ -80,8 +111,12 @@ FString UN2CSettings::GetActiveApiKey() const
             return UserSecrets->Gemini_API_Key;
         case EN2CLLMProvider::DeepSeek:
             return UserSecrets->DeepSeek_API_Key;
+        case EN2CLLMProvider::Ollama:
+            return UserSecrets->Ollama_API_Key;
         case EN2CLLMProvider::LMStudio:
             return "lm-studio"; // LM Studio just requires a dummy API key for its OpenAI endpoint
+        case EN2CLLMProvider::MiniMax:
+            return UserSecrets->MiniMax_API_Key;
         default:
             return FString();
     }
@@ -103,6 +138,8 @@ FString UN2CSettings::GetActiveModel() const
             return OllamaModel;
         case EN2CLLMProvider::LMStudio:
             return LMStudioModel;
+        case EN2CLLMProvider::MiniMax:
+            return MiniMaxModel;
         default:
             return FString();
     }
@@ -266,6 +303,28 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
                 UserSecrets->LoadSecrets();
             }
             UserSecrets->DeepSeek_API_Key = DeepSeek_API_Key_UI;
+            UserSecrets->SaveSecrets();
+            return;
+        }
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, ApiKey))
+        {
+            if (!UserSecrets)
+            {
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
+            }
+            UserSecrets->Ollama_API_Key = OllamaConfig.ApiKey;
+            UserSecrets->SaveSecrets();
+            return;
+        }
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, MiniMax_API_Key_UI))
+        {
+            if (!UserSecrets)
+            {
+                UserSecrets = NewObject<UN2CUserSecrets>();
+                UserSecrets->LoadSecrets();
+            }
+            UserSecrets->MiniMax_API_Key = MiniMax_API_Key_UI;
             UserSecrets->SaveSecrets();
             return;
         }

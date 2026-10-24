@@ -66,7 +66,7 @@ bool FN2CNodeValidator::ValidateFlags(const FN2CNodeDefinition& Node, FString& O
     }
 
     // Pure nodes shouldn't have exec pins except for knot nodes
-    if (Node.bPure && HasExecPins(Node) && Node.NodeType != EN2CNodeType::Knot)
+    if (Node.NativeClass.IsEmpty() && Node.bPure && HasExecPins(Node) && Node.NodeType != EN2CNodeType::Knot)
     {
         OutError = FString::Printf(TEXT("Node validation failed: Pure node %s (%s) has exec pins"), *Node.ID, *Node.Name);
         FN2CLogger::Get().LogError(OutError);

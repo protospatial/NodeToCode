@@ -34,43 +34,48 @@ FString UN2CSystemPromptManager::MergePrompts(const FString& SystemPrompt, const
 
 bool UN2CSystemPromptManager::PrependSourceFilesToUserMessage(FString& UserMessage) const
 {
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();                                                                                                                                            
-     if (!Settings || Settings->ReferenceSourceFilePaths.Num() == 0)                                                                                                                                       
-     {                                                                                                                                                                                                     
-         return true; // No files to process is still considered successful                                                                                                                                
-     }                                                                                                                                                                                                     
-                                                                                                                                                                                                           
-     FString ReferenceFiles;                                                                                                                                                                               
-     bool bSuccess = true;                                                                                                                                                                                 
-                                                                                                                                                                                                           
-     for (const FFilePath& FilePath : Settings->ReferenceSourceFilePaths)                                                                                                                                  
-     {                                                                                                                                                                                                     
-         FString Content;                                                                                                                                                                                  
-         if (FFileHelper::LoadFileToString(Content, *FilePath.FilePath))                                                                                                                                   
-         {                                                                                                                                                                                                 
-             if (!ReferenceFiles.IsEmpty())                                                                                                                                                                
-             {                                                                                                                                                                                             
-                 ReferenceFiles += TEXT("\n\n");                                                                                                                                                           
-             }                                                                                                                                                                                             
-             ReferenceFiles += FormatSourceFileContent(FilePath.FilePath, Content);                                                                                                                        
-         }                                                                                                                                                                                                 
-         else                                                                                                                                                                                              
-         {                                                                                                                                                                                                 
-             FN2CLogger::Get().LogWarning(                                                                                                                                                                 
-                 FString::Printf(TEXT("Failed to load reference source file: %s"), *FilePath.FilePath),                                                                                                    
-                 TEXT("SystemPromptManager")                                                                                                                                                               
-             );                                                                                                                                                                                            
-             bSuccess = false;                                                                                                                                                                             
-         }                                                                                                                                                                                                 
-     }                                                                                                                                                                                                     
-                                                                                                                                                                                                           
-     if (!ReferenceFiles.IsEmpty())                                                                                                                                                                        
-     {                                                                                                                                                                                                     
-         UserMessage = FString::Printf(TEXT("<referenceSourceFiles>\n%s\n</referenceSourceFiles>\n\n%s"),                                                                                                  
-             *ReferenceFiles, *UserMessage);                                                                                                                                                               
-     }                                                                                                                                                                                                     
-                                                                                                                                                                                                           
-     return bSuccess;
+    if (bSkipReferenceSourceFiles)
+    {
+        return true;
+    }
+
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    if (!Settings || Settings->ReferenceSourceFilePaths.Num() == 0)
+    {
+        return true; // No files to process is still considered successful
+    }
+
+    FString ReferenceFiles;
+    bool bSuccess = true;
+
+    for (const FFilePath& FilePath : Settings->ReferenceSourceFilePaths)
+    {
+        FString Content;
+        if (FFileHelper::LoadFileToString(Content, *FilePath.FilePath))
+        {
+            if (!ReferenceFiles.IsEmpty())
+            {
+                ReferenceFiles += TEXT("\n\n");
+            }
+            ReferenceFiles += FormatSourceFileContent(FilePath.FilePath, Content);
+        }
+        else
+        {
+            FN2CLogger::Get().LogWarning(
+                FString::Printf(TEXT("Failed to load reference source file: %s"), *FilePath.FilePath),
+                TEXT("SystemPromptManager")
+            );
+            bSuccess = false;
+        }
+    }
+
+    if (!ReferenceFiles.IsEmpty())
+    {
+        UserMessage = FString::Printf(TEXT("<referenceSourceFiles>\n%s\n</referenceSourceFiles>\n\n%s"),
+            *ReferenceFiles, *UserMessage);
+    }
+
+    return bSuccess;
 }
 
 FString UN2CSystemPromptManager::GetLanguageSpecificPrompt(const FString& BasePromptKey, EN2CCodeLanguage Language) const

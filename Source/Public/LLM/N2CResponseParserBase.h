@@ -60,7 +60,16 @@ protected:
         const TSharedPtr<FJsonObject>& CodeObject,
         FN2CGeneratedCode& OutCode
     );
-    
+
     /** Process JSON content with code block markers */
     bool ProcessJsonContentWithMarkers(FString& Content);
+
+    /** Primary JSON parse attempt */
+    bool TryParseJson(const FString& InJson, FN2CTranslationResponse& OutResponse);
+
+    /** Recovery for truncated JSON responses */
+    bool TryRecoverTruncatedJson(const FString& InJson, FN2CTranslationResponse& OutResponse);
+
+    /** Find the best truncation point in potentially truncated JSON with unterminated strings */
+    int32 FindTruncationPointWithStrings(const FString& InJson) const;
 };

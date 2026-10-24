@@ -3,6 +3,7 @@
 #include "Core/N2CNodeTranslator.h"
 
 #include "Core/N2CSettings.h"
+#include "EdGraphNode_Comment.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CNodeTypeRegistry.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
@@ -10,6 +11,578 @@
 #include "UObject/UObjectBase.h"
 #include "UObject/Class.h"
 #include "UObject/UnrealTypePrivate.h"
+#include "UObject/MetaData.h"
+#include "StructUtils/UserDefinedStruct.h"
+#include "RigVMEditorAsset.h"
+#include "RigVMModel/RigVMGraph.h"
+#include "RigVMModel/RigVMNode.h"
+#include "RigVMModel/RigVMPin.h"
+#include "RigVMModel/RigVMLink.h"
+#include "RigVMModel/Nodes/RigVMCommentNode.h"
+#include "RigVMModel/Nodes/RigVMFunctionEntryNode.h"
+#include "RigVMModel/Nodes/RigVMFunctionReturnNode.h"
+#include "RigVMModel/Nodes/RigVMUnitNode.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_Knot.h"
+#include "ControlRigEditorAsset.h"
+#include "Rigs/RigHierarchy.h"
+#include "Rigs/RigHierarchyElements.h"
+#include "Rigs/RigHierarchyMetadata.h"
+#include "Blueprint/WidgetTree.h"
+#include "Animation/WidgetAnimation.h"
+#include "WidgetBlueprint.h"
+#include "Components/PanelWidget.h"
+#include "Components/PanelSlot.h"
+#include "Misc/Base64.h"
+#include "Misc/EngineVersion.h"
+#include "Serialization/MemoryWriter.h"
+#include "Serialization/CustomVersion.h"
+
+namespace
+{
+TMap<FString, FString> ExportRigVMNativeProperties(const UObject* Object)
+{
+    TMap<FString, FString> Properties;
+    if (!Object)
+    {
+        return Properties;
+    }
+
+    constexpr EPropertyFlags ExcludedFlags = CPF_Transient | CPF_DuplicateTransient |
+        CPF_NonPIEDuplicateTransient | CPF_Deprecated | CPF_EditorOnly;
+    for (TFieldIterator<FProperty> It(Object->GetClass()); It; ++It)
+    {
+        FProperty* Property = *It;
+        const FName PropertyName = Property->GetFName();
+        if (Property->HasAnyPropertyFlags(ExcludedFlags) ||
+            PropertyName == TEXT("Graph") || PropertyName == TEXT("Nodes") ||
+            PropertyName == TEXT("Pins") || PropertyName == TEXT("Links") ||
+            PropertyName == TEXT("ParentPin") || PropertyName == TEXT("SubPins"))
+        {
+            continue;
+        }
+
+        FString Value;
+        Property->ExportText_Direct(
+            Value,
+            Property->ContainerPtrToValuePtr<void>(Object),
+            nullptr,
+            const_cast<UObject*>(Object),
+            PPF_None);
+        Properties.Add(Property->GetName(), MoveTemp(Value));
+    }
+    return Properties;
+}
+
+FString RigVMPinDirectionToString(const ERigVMPinDirection Direction)
+{
+    switch (Direction)
+    {
+        case ERigVMPinDirection::Input: return TEXT("Input");
+        case ERigVMPinDirection::Output: return TEXT("Output");
+        case ERigVMPinDirection::IO: return TEXT("IO");
+        default: return TEXT("Invalid");
+    }
+}
+
+EN2CPinType DetermineRigVMPinType(const URigVMPin* Pin)
+{
+    if (!Pin)
+    {
+        return EN2CPinType::Custom;
+    }
+    if (Pin->IsExecuteContext())
+    {
+        return EN2CPinType::Exec;
+    }
+    if (Pin->IsArray())
+    {
+        return EN2CPinType::Array;
+    }
+    if (Pin->IsEnum())
+    {
+        return EN2CPinType::Enum;
+    }
+    if (Pin->IsStruct())
+    {
+        return EN2CPinType::Struct;
+    }
+    if (Pin->IsUObject())
+    {
+        return EN2CPinType::Object;
+    }
+
+    const FString Type = Pin->GetCPPType();
+    if (Type == TEXT("bool")) return EN2CPinType::Boolean;
+    if (Type == TEXT("int32") || Type == TEXT("int")) return EN2CPinType::Integer;
+    if (Type == TEXT("int64")) return EN2CPinType::Integer64;
+    if (Type == TEXT("float")) return EN2CPinType::Float;
+    if (Type == TEXT("double")) return EN2CPinType::Double;
+    if (Type == TEXT("FString")) return EN2CPinType::String;
+    if (Type == TEXT("FName")) return EN2CPinType::Name;
+    if (Type == TEXT("FText")) return EN2CPinType::Text;
+    if (Type == TEXT("FVector")) return EN2CPinType::Vector;
+    if (Type == TEXT("FVector2D")) return EN2CPinType::Vector2D;
+    if (Type == TEXT("FQuat")) return EN2CPinType::Quat;
+    if (Type == TEXT("FRotator")) return EN2CPinType::Rotator;
+    if (Type == TEXT("FTransform")) return EN2CPinType::Transform;
+    return EN2CPinType::Custom;
+}
+
+EN2CStructMemberType RigVMVariableType(const FString& CPPType)
+{
+    if (CPPType == TEXT("bool")) return EN2CStructMemberType::Bool;
+    if (CPPType == TEXT("int32") || CPPType == TEXT("int")) return EN2CStructMemberType::Int;
+    if (CPPType == TEXT("float") || CPPType == TEXT("double")) return EN2CStructMemberType::Float;
+    if (CPPType == TEXT("FName")) return EN2CStructMemberType::Name;
+    if (CPPType == TEXT("FString")) return EN2CStructMemberType::String;
+    if (CPPType == TEXT("FText")) return EN2CStructMemberType::Text;
+    if (CPPType.StartsWith(TEXT("TArray<"))) return EN2CStructMemberType::Array;
+    if (CPPType.StartsWith(TEXT("TSet<"))) return EN2CStructMemberType::Set;
+    if (CPPType.StartsWith(TEXT("TMap<"))) return EN2CStructMemberType::Map;
+    return EN2CStructMemberType::Custom;
+}
+
+FN2CVariable RigVMVariableToNodeToCode(const FRigVMGraphVariableDescription& Description)
+{
+    FN2CVariable Variable;
+    Variable.Name = Description.Name.ToString();
+    Variable.Type = RigVMVariableType(Description.CPPType);
+    Variable.TypeName = Description.CPPType;
+    Variable.DefaultValue = Description.DefaultValue;
+    Variable.Comment = Description.Tooltip.ToString();
+    Variable.bIsArray = Description.CPPType.StartsWith(TEXT("TArray<"));
+    Variable.bIsSet = Description.CPPType.StartsWith(TEXT("TSet<"));
+    Variable.bIsMap = Description.CPPType.StartsWith(TEXT("TMap<"));
+    Variable.NativeProperties.Add(TEXT("guid"), Description.Guid.ToString());
+    Variable.NativeProperties.Add(TEXT("cpp_type_object_path"), Description.CPPTypeObject
+        ? Description.CPPTypeObject->GetPathName() : Description.CPPTypeObjectPath.ToString());
+    Variable.NativeProperties.Add(TEXT("category"), Description.Category.ToString());
+    Variable.NativeProperties.Add(TEXT("tooltip"), Description.Tooltip.ToString());
+    Variable.NativeProperties.Add(TEXT("public"), Description.bPublic ? TEXT("true") : TEXT("false"));
+    Variable.NativeProperties.Add(TEXT("private"), Description.bPrivate ? TEXT("true") : TEXT("false"));
+    Variable.NativeProperties.Add(TEXT("exposed_on_spawn"), Description.bExposedOnSpawn ? TEXT("true") : TEXT("false"));
+    Variable.NativeProperties.Add(TEXT("expose_to_cinematics"), Description.bExposeToCinematics ? TEXT("true") : TEXT("false"));
+    return Variable;
+}
+
+TMap<FString, FString> ExportNativeProperties(const UObject* Object)
+{
+    TMap<FString, FString> Properties;
+    if (!Object)
+    {
+        return Properties;
+    }
+
+    constexpr EPropertyFlags ExcludedFlags = CPF_Transient | CPF_DuplicateTransient |
+        CPF_NonPIEDuplicateTransient | CPF_Deprecated;
+    for (TFieldIterator<FProperty> It(Object->GetClass()); It; ++It)
+    {
+        FProperty* Property = *It;
+        if (!Property || Property->HasAnyPropertyFlags(ExcludedFlags))
+        {
+            continue;
+        }
+
+        FString Value;
+        Property->ExportText_Direct(
+            Value,
+            Property->ContainerPtrToValuePtr<void>(Object),
+            nullptr,
+            const_cast<UObject*>(Object),
+            PPF_None);
+        Properties.Add(Property->GetName(), MoveTemp(Value));
+    }
+    return Properties;
+}
+
+TMap<FString, FString> ExportNativeProperties(const UStruct* Struct, const void* ValueContainer)
+{
+    TMap<FString, FString> Properties;
+    if (!Struct || !ValueContainer)
+    {
+        return Properties;
+    }
+
+    constexpr EPropertyFlags ExcludedFlags = CPF_Transient | CPF_DuplicateTransient |
+        CPF_NonPIEDuplicateTransient | CPF_Deprecated;
+    for (TFieldIterator<FProperty> It(Struct); It; ++It)
+    {
+        FProperty* Property = *It;
+        if (!Property || Property->HasAnyPropertyFlags(ExcludedFlags))
+        {
+            continue;
+        }
+
+        FString Value;
+        Property->ExportText_Direct(
+            Value,
+            Property->ContainerPtrToValuePtr<void>(ValueContainer),
+            nullptr,
+            nullptr,
+            PPF_None);
+        Properties.Add(Property->GetName(), MoveTemp(Value));
+    }
+    return Properties;
+}
+
+FString RigElementKeyToExportPath(const FRigElementKey& Key)
+{
+    if (!Key.IsValid())
+    {
+        return FString();
+    }
+    const FString TypeName = StaticEnum<ERigElementType>()->GetNameStringByValue(static_cast<int64>(Key.Type));
+    return TypeName + TEXT(":") + Key.Name.ToString();
+}
+
+FString ExportStructValue(const UScriptStruct* Struct, const void* Value)
+{
+    if (!Struct || !Value)
+    {
+        return FString();
+    }
+    FString Text;
+    Struct->ExportText(Text, Value, nullptr, nullptr, PPF_None, nullptr);
+    return Text;
+}
+
+void AddObjectMetadata(TMap<FString, FString>& OutProperties, const UObject* Object)
+{
+    if (const TMap<FName, FString>* Metadata = FMetaData::GetMapForObject(Object))
+    {
+        for (const TPair<FName, FString>& Entry : *Metadata)
+        {
+            OutProperties.Add(TEXT("metadata.") + Entry.Key.ToString(), Entry.Value);
+        }
+    }
+}
+
+const TCHAR* EnumUnderlyingTypeName(const UEnum::EUnderlyingType Type)
+{
+    switch (Type)
+    {
+        case UEnum::EUnderlyingType::int8: return TEXT("int8");
+        case UEnum::EUnderlyingType::int16: return TEXT("int16");
+        case UEnum::EUnderlyingType::int32: return TEXT("int32");
+        case UEnum::EUnderlyingType::int64: return TEXT("int64");
+        case UEnum::EUnderlyingType::uint8: return TEXT("uint8");
+        case UEnum::EUnderlyingType::uint16: return TEXT("uint16");
+        case UEnum::EUnderlyingType::uint32: return TEXT("uint32");
+        case UEnum::EUnderlyingType::uint64: return TEXT("uint64");
+        default: return TEXT("unknown");
+    }
+}
+
+void AddControlRigHierarchyExport(FN2CBlueprint& Blueprint, IControlRigEditorAssetInterface* RigAsset)
+{
+    if (!RigAsset)
+    {
+        return;
+    }
+
+    URigHierarchy* Hierarchy = RigAsset->GetHierarchy();
+    if (!Hierarchy)
+    {
+        return;
+    }
+
+    FN2CNativeObject Settings;
+    Settings.Kind = TEXT("control_rig_hierarchy_settings");
+    Settings.Name = TEXT("HierarchySettings");
+    Settings.ObjectPath = Blueprint.Metadata.Name + TEXT("#HierarchySettings");
+    Settings.NativeClass = FRigHierarchySettings::StaticStruct()->GetPathName();
+    Settings.NativeProperties = ExportNativeProperties(
+        FRigHierarchySettings::StaticStruct(), &RigAsset->GetHierarchySettings());
+    Blueprint.NativeObjects.Add(MoveTemp(Settings));
+
+    const TArray<FRigElementKey> Keys = Hierarchy->GetAllKeys(false);
+    for (int32 Order = 0; Order < Keys.Num(); ++Order)
+    {
+        const FRigElementKey& Key = Keys[Order];
+        const int32 ElementIndex = Hierarchy->GetIndex(Key);
+        const FRigBaseElement* Element = Hierarchy->Get(ElementIndex);
+        if (!Element)
+        {
+            continue;
+        }
+
+        const FString KeyPath = RigElementKeyToExportPath(Key);
+        const FRigElementKey ParentKey = Hierarchy->GetFirstParent(Key);
+
+        FN2CNativeObject ElementObject;
+        ElementObject.Kind = TEXT("control_rig_hierarchy_element");
+        ElementObject.Name = Key.Name.ToString();
+        ElementObject.ObjectPath = Blueprint.Metadata.Name + TEXT("#Hierarchy/") + KeyPath;
+        ElementObject.NativeClass = Element->GetScriptStruct()->GetPathName();
+        ElementObject.ParentPath = RigElementKeyToExportPath(ParentKey);
+        ElementObject.Order = Order;
+        ElementObject.NativeProperties = ExportNativeProperties(Element->GetScriptStruct(), Element);
+        ElementObject.NativeProperties.Add(TEXT("key_type"),
+            StaticEnum<ERigElementType>()->GetNameStringByValue(static_cast<int64>(Key.Type)));
+        ElementObject.NativeProperties.Add(TEXT("key_name"), Key.Name.ToString());
+        ElementObject.NativeProperties.Add(TEXT("local_index"), FString::FromInt(Hierarchy->GetLocalIndex(Key)));
+        ElementObject.NativeProperties.Add(TEXT("is_procedural"), Hierarchy->IsProcedural(Key) ? TEXT("true") : TEXT("false"));
+
+        if (Element->GetNumTransforms() > 0)
+        {
+            const FTransform InitialLocal = Hierarchy->GetInitialLocalTransform(ElementIndex);
+            const FTransform InitialGlobal = Hierarchy->GetInitialGlobalTransform(ElementIndex);
+            ElementObject.NativeProperties.Add(TEXT("initial_local_transform"),
+                ExportStructValue(TBaseStructure<FTransform>::Get(), &InitialLocal));
+            ElementObject.NativeProperties.Add(TEXT("initial_global_transform"),
+                ExportStructValue(TBaseStructure<FTransform>::Get(), &InitialGlobal));
+        }
+
+        if (Key.Type == ERigElementType::Control)
+        {
+            const FRigControlValue InitialValue = Hierarchy->GetInitialControlValue(ElementIndex);
+            if (const FRigControlElement* Control = Hierarchy->Find<FRigControlElement>(Key))
+            {
+                ElementObject.NativeProperties.Append(
+                    ExportNativeProperties(FRigControlSettings::StaticStruct(), &Control->Settings));
+            }
+            ElementObject.NativeProperties.Append(
+                ExportNativeProperties(FRigControlValue::StaticStruct(), &InitialValue));
+        }
+
+        for (const FName& MetadataName : Hierarchy->GetMetadataNames(Key))
+        {
+            const ERigMetadataType MetadataType = Hierarchy->GetMetadataType(Key, MetadataName);
+            const FRigBaseMetadata* Metadata = Element->GetMetadata(MetadataName, MetadataType);
+            if (!Metadata)
+            {
+                continue;
+            }
+
+            FN2CNativeObject MetadataObject;
+            MetadataObject.Kind = TEXT("control_rig_hierarchy_metadata");
+            MetadataObject.Name = MetadataName.ToString();
+            MetadataObject.ObjectPath = ElementObject.ObjectPath + TEXT("#Metadata/") + MetadataObject.Name;
+            MetadataObject.NativeClass = Metadata->GetMetadataStruct()->GetPathName();
+            MetadataObject.ParentPath = ElementObject.ObjectPath;
+            MetadataObject.NativeProperties = ExportNativeProperties(
+                Metadata->GetMetadataStruct(), Metadata);
+            Blueprint.NativeObjects.Add(MoveTemp(MetadataObject));
+        }
+
+        Blueprint.NativeObjects.Add(MoveTemp(ElementObject));
+
+        for (const FRigComponentKey& ComponentKey : Element->GetComponentKeys())
+        {
+            const FRigBaseComponent* Component = Hierarchy->FindComponent(ComponentKey);
+            if (!Component)
+            {
+                continue;
+            }
+
+            FN2CNativeObject ComponentObject;
+            ComponentObject.Kind = TEXT("control_rig_hierarchy_component");
+            ComponentObject.Name = ComponentKey.Name.ToString();
+            ComponentObject.ObjectPath = Blueprint.Metadata.Name + TEXT("#Hierarchy/") + KeyPath +
+                TEXT("/Components/") + ComponentObject.Name;
+            ComponentObject.NativeClass = Component->GetScriptStruct()->GetPathName();
+            ComponentObject.ParentPath = Blueprint.Metadata.Name + TEXT("#Hierarchy/") + KeyPath;
+            ComponentObject.NativeProperties = ExportNativeProperties(Component->GetScriptStruct(), Component);
+            Blueprint.NativeObjects.Add(MoveTemp(ComponentObject));
+        }
+    }
+
+    TArray<uint8> SerializedHierarchy;
+    FMemoryWriter Writer(SerializedHierarchy, true);
+    Hierarchy->Save(Writer);
+    if (!Writer.IsError())
+    {
+        FN2CNativeObject Snapshot;
+        Snapshot.Kind = TEXT("control_rig_hierarchy_snapshot");
+        Snapshot.Name = TEXT("SerializedHierarchy");
+        Snapshot.ObjectPath = Blueprint.Metadata.Name + TEXT("#HierarchySnapshot");
+        Snapshot.NativeClass = Hierarchy->GetClass()->GetPathName();
+        Snapshot.NativeProperties.Add(TEXT("serialization_api"), TEXT("URigHierarchy::Save/Load"));
+        Snapshot.NativeProperties.Add(TEXT("engine_version"), FEngineVersion::Current().ToString());
+        Snapshot.NativeProperties.Add(TEXT("byte_count"), FString::FromInt(SerializedHierarchy.Num()));
+        for (const FCustomVersion& Version : Writer.GetCustomVersions().GetAllVersions())
+        {
+            Snapshot.NativeProperties.Add(
+                TEXT("custom_version.") + Version.Key.ToString(), FString::FromInt(Version.Version));
+        }
+        Snapshot.NativeProperties.Add(TEXT("data_base64"), FBase64::Encode(SerializedHierarchy));
+        Blueprint.NativeObjects.Add(MoveTemp(Snapshot));
+    }
+}
+
+void AddWidgetTreeExport(FN2CBlueprint& Blueprint, UWidgetBlueprint* WidgetBlueprint)
+{
+    if (!WidgetBlueprint)
+    {
+        return;
+    }
+
+    FN2CNativeObject BlueprintData;
+    BlueprintData.Kind = TEXT("widget_blueprint_properties");
+    BlueprintData.Name = WidgetBlueprint->GetName();
+    BlueprintData.ObjectPath = WidgetBlueprint->GetPathName();
+    BlueprintData.NativeClass = WidgetBlueprint->GetClass()->GetPathName();
+    BlueprintData.NativeProperties = ExportNativeProperties(WidgetBlueprint);
+    Blueprint.NativeObjects.Add(MoveTemp(BlueprintData));
+
+    for (int32 AnimationIndex = 0; AnimationIndex < WidgetBlueprint->Animations.Num(); ++AnimationIndex)
+    {
+        UWidgetAnimation* Animation = WidgetBlueprint->Animations[AnimationIndex];
+        if (!Animation)
+        {
+            continue;
+        }
+
+        FN2CNativeObject AnimationObject;
+        AnimationObject.Kind = TEXT("widget_animation");
+        AnimationObject.Name = Animation->GetName();
+        AnimationObject.ObjectPath = Animation->GetPathName();
+        AnimationObject.NativeClass = Animation->GetClass()->GetPathName();
+        AnimationObject.ParentPath = WidgetBlueprint->GetPathName();
+        AnimationObject.Order = AnimationIndex;
+        AnimationObject.NativeProperties = ExportNativeProperties(Animation);
+        Blueprint.NativeObjects.Add(MoveTemp(AnimationObject));
+
+        TArray<UObject*> AnimationSubobjects;
+        GetObjectsWithOuter(Animation, AnimationSubobjects, EGetObjectsFlags::IncludeNestedObjects);
+        for (UObject* Subobject : AnimationSubobjects)
+        {
+            if (!Subobject)
+            {
+                continue;
+            }
+            const FString ClassPath = Subobject->GetClass()->GetPathName();
+            if (!ClassPath.Contains(TEXT("MovieScene")))
+            {
+                continue;
+            }
+
+            FN2CNativeObject AnimationData;
+            AnimationData.Kind = TEXT("widget_animation_data");
+            AnimationData.Name = Subobject->GetName();
+            AnimationData.ObjectPath = Subobject->GetPathName();
+            AnimationData.NativeClass = ClassPath;
+            AnimationData.ParentPath = Subobject->GetOuter() ? Subobject->GetOuter()->GetPathName() : FString();
+            AnimationData.NativeProperties = ExportNativeProperties(Subobject);
+            Blueprint.NativeObjects.Add(MoveTemp(AnimationData));
+        }
+    }
+
+    const TArray<UWidget*> Widgets = WidgetBlueprint->GetAllSourceWidgets();
+    for (int32 Order = 0; Order < Widgets.Num(); ++Order)
+    {
+        UWidget* Widget = Widgets[Order];
+        if (!Widget)
+        {
+            continue;
+        }
+
+        UPanelWidget* ParentWidget = Widget->GetParent();
+        FN2CNativeObject WidgetObject;
+        WidgetObject.Kind = TEXT("widget");
+        WidgetObject.Name = Widget->GetName();
+        WidgetObject.ObjectPath = Widget->GetPathName();
+        WidgetObject.NativeClass = Widget->GetClass()->GetPathName();
+        WidgetObject.ParentPath = ParentWidget ? ParentWidget->GetPathName() : FString();
+        WidgetObject.Order = ParentWidget ? ParentWidget->GetChildIndex(Widget) : Order;
+        WidgetObject.NativeProperties = ExportNativeProperties(Widget);
+        Blueprint.NativeObjects.Add(MoveTemp(WidgetObject));
+
+        if (UPanelSlot* Slot = Widget->Slot)
+        {
+            FN2CNativeObject SlotObject;
+            SlotObject.Kind = TEXT("widget_slot");
+            SlotObject.Name = Slot->GetName();
+            SlotObject.ObjectPath = Slot->GetPathName();
+            SlotObject.NativeClass = Slot->GetClass()->GetPathName();
+            SlotObject.ParentPath = Widget->GetPathName();
+            SlotObject.Order = ParentWidget ? ParentWidget->GetChildIndex(Widget) : Order;
+            SlotObject.NativeProperties = ExportNativeProperties(Slot);
+            Blueprint.NativeObjects.Add(MoveTemp(SlotObject));
+        }
+    }
+}
+
+void AddBlueprintAssetProperties(FN2CBlueprint& Blueprint, UBlueprint* SourceBlueprint)
+{
+    if (!SourceBlueprint)
+    {
+        return;
+    }
+    FN2CNativeObject AssetProperties;
+    AssetProperties.Kind = TEXT("blueprint_asset_properties");
+    AssetProperties.Name = SourceBlueprint->GetName();
+    AssetProperties.ObjectPath = SourceBlueprint->GetPathName();
+    AssetProperties.NativeClass = SourceBlueprint->GetClass()->GetPathName();
+    AssetProperties.NativeProperties = ExportNativeProperties(SourceBlueprint);
+    if (const TMap<FName, FString>* Metadata = FMetaData::GetMapForObject(SourceBlueprint))
+    {
+        for (const TPair<FName, FString>& Entry : *Metadata)
+        {
+            AssetProperties.NativeProperties.Add(TEXT("metadata.") + Entry.Key.ToString(), Entry.Value);
+        }
+    }
+    Blueprint.NativeObjects.Add(MoveTemp(AssetProperties));
+}
+
+void AddGeneratedClassDefaults(FN2CBlueprint& Blueprint, UBlueprint* SourceBlueprint)
+{
+    if (!SourceBlueprint || !SourceBlueprint->GeneratedClass)
+    {
+        return;
+    }
+
+    UObject* DefaultObject = SourceBlueprint->GeneratedClass->GetDefaultObject();
+    UObject* ParentDefaultObject = SourceBlueprint->ParentClass
+        ? SourceBlueprint->ParentClass->GetDefaultObject() : nullptr;
+    if (!DefaultObject)
+    {
+        return;
+    }
+
+    FN2CNativeObject Defaults;
+    Defaults.Kind = TEXT("class_default_overrides");
+    Defaults.Name = DefaultObject->GetName();
+    Defaults.ObjectPath = DefaultObject->GetPathName();
+    Defaults.NativeClass = DefaultObject->GetClass()->GetPathName();
+    for (TFieldIterator<FProperty> It(SourceBlueprint->GeneratedClass); It; ++It)
+    {
+        FProperty* Property = *It;
+        if (!Property || Property->HasAnyPropertyFlags(
+                CPF_Transient | CPF_DuplicateTransient | CPF_NonPIEDuplicateTransient | CPF_Deprecated))
+        {
+            continue;
+        }
+
+        FProperty* ParentProperty = ParentDefaultObject
+            ? ParentDefaultObject->GetClass()->FindPropertyByName(Property->GetFName()) : nullptr;
+        if (ParentProperty && ParentProperty->GetClass() == Property->GetClass() &&
+            ParentProperty->Identical_InContainer(DefaultObject, ParentDefaultObject))
+        {
+            continue;
+        }
+
+        FString Value;
+        const void* ParentValue = ParentProperty && ParentProperty->GetClass() == Property->GetClass()
+            ? ParentProperty->ContainerPtrToValuePtr<void>(ParentDefaultObject) : nullptr;
+        Property->ExportText_Direct(
+            Value,
+            Property->ContainerPtrToValuePtr<void>(DefaultObject),
+            ParentValue,
+            DefaultObject,
+            PPF_None);
+        Defaults.NativeProperties.Add(Property->GetName(), MoveTemp(Value));
+        Defaults.NativeProperties.Add(
+            TEXT("property_type.") + Property->GetName(), Property->GetClass()->GetName());
+    }
+    Blueprint.NativeObjects.Add(MoveTemp(Defaults));
+}
+}
 
 FN2CNodeTranslator& FN2CNodeTranslator::Get()
 {
@@ -139,6 +712,539 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
     return N2CBlueprint.Graphs.Num() > 0;
 }
 
+bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIncludeVariables)
+{
+    N2CBlueprint = FN2CBlueprint();
+    NodeIDMap.Empty();
+    PinIDMap.Empty();
+    ProcessedStructPaths.Empty();
+    ProcessedEnumPaths.Empty();
+    AdditionalGraphsToProcess.Empty();
+
+    if (!InBlueprint)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No Blueprint provided to GenerateFromBlueprint"));
+        return false;
+    }
+
+    // Metadata
+    N2CBlueprint.Metadata.Name = InBlueprint->GetName();
+    N2CBlueprint.ParentClassPath = InBlueprint->ParentClass
+        ? InBlueprint->ParentClass->GetPathName() : FString();
+    if (InBlueprint->GeneratedClass)
+    {
+        N2CBlueprint.GeneratedClassPath = InBlueprint->GeneratedClass->GetPathName();
+        N2CBlueprint.Metadata.BlueprintClass = GetCleanClassName(InBlueprint->GeneratedClass->GetName());
+    }
+    else if (InBlueprint->SkeletonGeneratedClass)
+    {
+        N2CBlueprint.GeneratedClassPath = InBlueprint->SkeletonGeneratedClass->GetPathName();
+        N2CBlueprint.Metadata.BlueprintClass = GetCleanClassName(InBlueprint->SkeletonGeneratedClass->GetName());
+    }
+    for (const FBPInterfaceDescription& InterfaceDescription : InBlueprint->ImplementedInterfaces)
+    {
+        if (InterfaceDescription.Interface)
+        {
+            N2CBlueprint.ImplementedInterfacePaths.AddUnique(
+                InterfaceDescription.Interface->GetPathName());
+        }
+    }
+    switch (InBlueprint->BlueprintType)
+    {
+        case BPTYPE_Const:            N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Const; break;
+        case BPTYPE_MacroLibrary:     N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::MacroLibrary; break;
+        case BPTYPE_Interface:        N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Interface; break;
+        case BPTYPE_LevelScript:      N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::LevelScript; break;
+        case BPTYPE_FunctionLibrary:  N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::FunctionLibrary; break;
+        default:                      N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal; break;
+    }
+
+    IRigVMEditorAssetInterface* RigVMAsset = Cast<IRigVMEditorAssetInterface>(InBlueprint);
+    TArray<URigVMGraph*> RigVMGraphs;
+    TSet<UEdGraph*> RigVMEditorGraphs;
+    if (RigVMAsset)
+    {
+        RigVMGraphs = RigVMAsset->GetAllModels();
+        for (URigVMGraph* RigVMGraph : RigVMGraphs)
+        {
+            if (RigVMGraph)
+            {
+                if (UEdGraph* EditorGraph = RigVMAsset->GetEdGraph(RigVMGraph))
+                {
+                    RigVMEditorGraphs.Add(EditorGraph);
+                }
+            }
+        }
+    }
+
+    // Keep the established primary graph ordering, then include every graph category
+    // exposed by UBlueprint (interface, delegate, extension, and nested graphs).
+    TArray<UEdGraph*> Graphs;
+    TSet<UEdGraph*> SeenGraphs;
+    auto AddGraph = [&Graphs, &SeenGraphs](UEdGraph* Graph)
+    {
+        if (Graph && !SeenGraphs.Contains(Graph))
+        {
+            SeenGraphs.Add(Graph);
+            Graphs.Add(Graph);
+        }
+    };
+
+    for (UEdGraph* Graph : InBlueprint->UbergraphPages)
+    {
+        AddGraph(Graph);
+    }
+    for (UEdGraph* Graph : InBlueprint->FunctionGraphs)
+    {
+        AddGraph(Graph);
+    }
+    for (UEdGraph* Graph : InBlueprint->MacroGraphs)
+    {
+        AddGraph(Graph);
+    }
+
+    TArray<UEdGraph*> AllBlueprintGraphs;
+    InBlueprint->GetAllGraphs(AllBlueprintGraphs);
+    for (UEdGraph* Graph : AllBlueprintGraphs)
+    {
+        AddGraph(Graph);
+    }
+
+    for (UEdGraph* Graph : Graphs)
+    {
+        if (!Graph || RigVMEditorGraphs.Contains(Graph) ||
+            (RigVMAsset && RigVMAsset->GetModel(Graph)))
+        {
+            continue;
+        }
+        CurrentDepth = 0;
+        ProcessGraph(Graph, DetermineGraphType(Graph));
+    }
+
+    // UBlueprint graph arrays do not contain every RigVM model graph. Read the
+    // model API directly, without creating or saving editor wrapper graphs.
+    for (URigVMGraph* RigVMGraph : RigVMGraphs)
+    {
+        ProcessRigVMGraph(RigVMGraph);
+    }
+
+    // Collect component overrides defined on this Blueprint (SimpleConstructionScript)
+    CollectComponentOverrides(InBlueprint);
+    AddBlueprintAssetProperties(N2CBlueprint, InBlueprint);
+    AddGeneratedClassDefaults(N2CBlueprint, InBlueprint);
+    AddControlRigHierarchyExport(N2CBlueprint, Cast<IControlRigEditorAssetInterface>(InBlueprint));
+    AddWidgetTreeExport(N2CBlueprint, Cast<UWidgetBlueprint>(InBlueprint));
+
+    // Variables
+    if (bIncludeVariables)
+    {
+        for (const FBPVariableDescription& Desc : InBlueprint->NewVariables)
+        {
+            FN2CVariable Var;
+            ConvertVariableDescription(Desc, Var);
+            N2CBlueprint.Variables.Add(Var);
+        }
+        if (RigVMAsset)
+        {
+            for (const FRigVMGraphVariableDescription& Description : RigVMAsset->GetAssetVariables())
+            {
+                FN2CVariable Var = RigVMVariableToNodeToCode(Description);
+                const bool bAlreadyPresent = N2CBlueprint.Variables.ContainsByPredicate(
+                    [&Var](const FN2CVariable& Existing)
+                    {
+                        return Existing.Name == Var.Name && Existing.TypeName == Var.TypeName;
+                    });
+                if (!bAlreadyPresent)
+                {
+                    N2CBlueprint.Variables.Add(MoveTemp(Var));
+                }
+            }
+        }
+    }
+
+    // Synthesize a dedicated ClassItSelf graph to carry only class-level structure
+    // (UCLASS, class declaration, UPROPERTY members, ctor/dtor) separate from EventGraph logic.
+    // 
+    // NOTE: ClassItSelf is a synthetic graph type that does not correspond to any actual Blueprint graph.
+    // It serves as a marker for the LLM to generate class-level C++ code (class declaration, constructor,
+    // destructor, member variables, and component declarations). The actual class-level data (variables
+    // and components) are stored at the Blueprint level (N2CBlueprint.Variables and N2CBlueprint.Components),
+    // not within this graph. The graph itself is intentionally empty (no nodes) because it represents
+    // class structure, not executable flow.
+    {
+        FN2CGraph ClassItSelfGraph;
+        ClassItSelfGraph.Name = TEXT("ClassItSelf");
+        ClassItSelfGraph.GraphType = EN2CGraphType::ClassItSelf;
+        // Intentionally leave this graph empty - it's a marker for class-level code generation
+        // The LLM will use this graph type along with Blueprint-level Variables[] and Components[]
+        // arrays to generate the class skeleton in C++
+        N2CBlueprint.Graphs.Add(ClassItSelfGraph);
+    }
+    FString Ctx = FString::Printf(
+        TEXT("Generated from Blueprint: %s (Graphs=%d, Vars=%d, Components=%d)"),
+        *N2CBlueprint.Metadata.Name,
+        N2CBlueprint.Graphs.Num(),
+        N2CBlueprint.Variables.Num(),
+        N2CBlueprint.Components.Num());
+    FN2CLogger::Get().Log(TEXT("Blueprint translation complete"), EN2CLogSeverity::Info, Ctx);
+    return N2CBlueprint.Graphs.Num() > 0;
+}
+
+void FN2CNodeTranslator::CollectComponentOverrides(UBlueprint* InBlueprint)
+{
+    if (!InBlueprint)
+    {
+        return;
+    }
+
+    USimpleConstructionScript* SCS = InBlueprint->SimpleConstructionScript;
+    if (!SCS)
+    {
+        return;
+    }
+
+    const TArray<USCS_Node*>& AllNodes = SCS->GetAllNodes();
+    if (AllNodes.Num() == 0)
+    {
+        return;
+    }
+
+    for (USCS_Node* Node : AllNodes)
+    {
+        if (!Node)
+        {
+            continue;
+        }
+
+        UActorComponent* Template = Node->ComponentTemplate;
+        FN2CNativeObject SCSNodeObject;
+        SCSNodeObject.Kind = TEXT("simple_construction_node");
+        SCSNodeObject.Name = Node->GetVariableName().ToString();
+        SCSNodeObject.ObjectPath = Node->GetPathName();
+        SCSNodeObject.NativeClass = Node->GetClass()->GetPathName();
+        SCSNodeObject.NativeProperties = ExportNativeProperties(Node);
+        SCSNodeObject.NativeProperties.Add(TEXT("variable_name"), Node->GetVariableName().ToString());
+        SCSNodeObject.NativeProperties.Add(TEXT("variable_guid"), Node->VariableGuid.ToString());
+        SCSNodeObject.NativeProperties.Add(TEXT("parent_component_or_variable_name"),
+            Node->ParentComponentOrVariableName.ToString());
+        SCSNodeObject.NativeProperties.Add(TEXT("parent_is_native"),
+            Node->bIsParentComponentNative ? TEXT("true") : TEXT("false"));
+        if (Node->bIsParentComponentNative)
+        {
+            SCSNodeObject.ParentPath = TEXT("native_component:") + Node->ParentComponentOrVariableName.ToString();
+            SCSNodeObject.Order = INDEX_NONE;
+        }
+        else if (Node->ParentComponentOrVariableName.IsNone())
+        {
+            SCSNodeObject.Order = SCS->GetRootNodes().IndexOfByKey(Node);
+        }
+        else
+        {
+            for (USCS_Node* ParentNode : AllNodes)
+            {
+                if (ParentNode && ParentNode->GetVariableName() == Node->ParentComponentOrVariableName)
+                {
+                    SCSNodeObject.ParentPath = ParentNode->GetPathName();
+                    SCSNodeObject.Order = ParentNode->GetChildNodes().IndexOfByKey(Node);
+                    break;
+                }
+            }
+        }
+        N2CBlueprint.NativeObjects.Add(MoveTemp(SCSNodeObject));
+        if (!Template)
+        {
+            continue;
+        }
+
+        FN2CNativeObject ComponentTemplateObject;
+        ComponentTemplateObject.Kind = TEXT("component_template");
+        ComponentTemplateObject.Name = Node->GetVariableName().ToString();
+        ComponentTemplateObject.ObjectPath = Template->GetPathName();
+        ComponentTemplateObject.NativeClass = Template->GetClass()->GetPathName();
+        ComponentTemplateObject.ParentPath = Node->GetPathName();
+        ComponentTemplateObject.NativeProperties = ExportNativeProperties(Template);
+        ComponentTemplateObject.NativeProperties.Add(TEXT("creation_method"),
+            StaticEnum<EComponentCreationMethod>()->GetNameStringByValue(static_cast<int64>(Template->CreationMethod)));
+        N2CBlueprint.NativeObjects.Add(MoveTemp(ComponentTemplateObject));
+
+        UClass* ComponentClass = Template->GetClass();
+        if (!ComponentClass)
+        {
+            continue;
+        }
+
+        UActorComponent* ClassDefaultObject = Cast<UActorComponent>(ComponentClass->GetDefaultObject());
+        if (!ClassDefaultObject)
+        {
+            continue;
+        }
+        FN2CComponentOverride ComponentOverride;
+        ComponentOverride.ComponentName = Node->GetVariableName().ToString();
+        ComponentOverride.ComponentClassName = GetCleanClassName(ComponentClass->GetName());
+
+        ComponentOverride.AttachParentName = Node->ParentComponentOrVariableName.ToString();
+        // Diff properties between the Blueprint component template and the class CDO
+        for (TFieldIterator<FProperty> PropIt(ComponentClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+        {
+            FProperty* Property = *PropIt;
+            if (!Property)
+            {
+                continue;
+            }
+
+            // Skip transient or non-config properties that are unlikely to be Blueprint-edited defaults
+            if (Property->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient | CPF_TextExportTransient))
+            {
+                continue;
+            }
+
+            // If values are identical, skip
+            if (Property->Identical_InContainer(Template, ClassDefaultObject))
+            {
+                continue;
+            }
+
+            FN2CVariable Var;
+            Var.Name = Property->GetName();
+
+            // Map property type to EN2CStructMemberType and TypeName when possible
+            Var.Type = ConvertPropertyToStructMemberType(Property);
+
+            if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
+            {
+                if (UScriptStruct* Struct = StructProp->Struct)
+                {
+                    Var.TypeName = Struct->GetName();
+                }
+            }
+            else if (FObjectProperty* ObjProp = CastField<FObjectProperty>(Property))
+            {
+                if (UClass* ObjClass = ObjProp->PropertyClass)
+                {
+                    Var.TypeName = ObjClass->GetName();
+                }
+            }
+            else if (FClassProperty* ClassProp = CastField<FClassProperty>(Property))
+            {
+                if (UClass* MetaClass = ClassProp->MetaClass)
+                {
+                    Var.TypeName = MetaClass->GetName();
+                }
+            }
+            else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
+            {
+                if (UEnum* Enum = EnumProp->GetEnum())
+                {
+                    Var.TypeName = Enum->GetName();
+                }
+            }
+
+            // Export the overridden value as text
+            FString ExportedValue;
+            void* TemplateValuePtr = Property->ContainerPtrToValuePtr<void>(Template);
+            void* DefaultValuePtr = Property->ContainerPtrToValuePtr<void>(ClassDefaultObject);
+            Property->ExportText_Direct(ExportedValue, TemplateValuePtr, DefaultValuePtr, nullptr, PPF_None);
+            Var.DefaultValue = ExportedValue;
+
+            ComponentOverride.OverriddenProperties.Add(Var);
+        }
+
+        const bool bHasOverrides = ComponentOverride.OverriddenProperties.Num() > 0;
+
+        // Treat components whose template was not created as Native as
+        // Blueprint-added (non-native) components. These should always be
+        // declared and constructed in the ClassItSelf graph, even if they
+        // have no property overrides. For native/inherited components we only
+        // include them when there are overridden properties to initialize.
+        const bool bIsBlueprintAddedComponent = (Template->CreationMethod != EComponentCreationMethod::Native);
+
+        if (bIsBlueprintAddedComponent || bHasOverrides)
+        {
+            N2CBlueprint.Components.Add(ComponentOverride);
+        }
+    }
+}
+
+void FN2CNodeTranslator::ConvertVariableDescription(const FBPVariableDescription& Desc, FN2CVariable& OutVar)
+{
+    OutVar = FN2CVariable();
+    OutVar.Name = Desc.VarName.ToString();
+    OutVar.DisplayName = Desc.FriendlyName;
+    
+    // Map type from FEdGraphPinType
+    const FEdGraphPinType& T = Desc.VarType;
+    const FString& Cat = T.PinCategory.ToString();
+    OutVar.TypePath = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetPathName() : FString();
+    OutVar.NativeProperties.Add(TEXT("guid"), Desc.VarGuid.ToString());
+    OutVar.NativeProperties.Add(TEXT("friendly_name"), Desc.FriendlyName);
+    OutVar.NativeProperties.Add(TEXT("category"), Desc.Category.ToString());
+    OutVar.NativeProperties.Add(TEXT("property_flags"), LexToString(Desc.PropertyFlags));
+    OutVar.NativeProperties.Add(TEXT("rep_notify_function"), Desc.RepNotifyFunc.ToString());
+    OutVar.NativeProperties.Add(TEXT("replication_condition"), FString::FromInt(Desc.ReplicationCondition.GetValue()));
+    OutVar.NativeProperties.Add(TEXT("pin_category"), T.PinCategory.ToString());
+    OutVar.NativeProperties.Add(TEXT("pin_sub_category"), T.PinSubCategory.ToString());
+    OutVar.NativeProperties.Add(TEXT("pin_container_type"), LexToString(static_cast<uint8>(T.ContainerType)));
+    OutVar.NativeProperties.Add(TEXT("pin_terminal_category"), T.PinValueType.TerminalCategory.ToString());
+    OutVar.NativeProperties.Add(TEXT("pin_terminal_sub_category"), T.PinValueType.TerminalSubCategory.ToString());
+    OutVar.NativeProperties.Add(TEXT("pin_terminal_object_path"), T.PinValueType.TerminalSubCategoryObject.IsValid()
+        ? T.PinValueType.TerminalSubCategoryObject->GetPathName() : FString());
+    OutVar.NativeProperties.Add(TEXT("pin_is_reference"), T.bIsReference ? TEXT("true") : TEXT("false"));
+    OutVar.NativeProperties.Add(TEXT("pin_is_const"), T.bIsConst ? TEXT("true") : TEXT("false"));
+    OutVar.NativeProperties.Add(TEXT("pin_is_weak_pointer"), T.bIsWeakPointer ? TEXT("true") : TEXT("false"));
+    OutVar.NativeProperties.Add(TEXT("pin_is_uobject_wrapper"), T.bIsUObjectWrapper ? TEXT("true") : TEXT("false"));
+    for (const FBPVariableMetaDataEntry& Metadata : Desc.MetaDataArray)
+    {
+        OutVar.NativeProperties.Add(TEXT("metadata.") + Metadata.DataKey.ToString(), Metadata.DataValue);
+    }
+    
+    // Map basic types
+    if (Cat == TEXT("bool")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Bool;
+    }
+    else if (Cat == TEXT("byte")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Byte;
+    }
+    else if (Cat == TEXT("int")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Int;
+    }
+    else if (Cat == TEXT("float")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Float;
+    }
+    else if (Cat == TEXT("string")) 
+    {
+        OutVar.Type = EN2CStructMemberType::String;
+    }
+    else if (Cat == TEXT("name")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Name;
+    }
+    else if (Cat == TEXT("text")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Text;
+    }
+    else if (Cat == TEXT("struct")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Struct;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else if (Cat == TEXT("class")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Class;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else if (Cat == TEXT("object")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Object;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else if (Cat == TEXT("enum")) 
+    {
+        OutVar.Type = EN2CStructMemberType::Enum;
+        OutVar.TypeName = T.PinSubCategoryObject.IsValid() ? T.PinSubCategoryObject->GetName() : FString();
+    }
+    else 
+    {
+        OutVar.Type = EN2CStructMemberType::Custom;
+    }
+
+    // Handle container types
+    OutVar.bIsArray = T.ContainerType == EPinContainerType::Array;
+    OutVar.bIsSet = T.ContainerType == EPinContainerType::Set;
+    OutVar.bIsMap = T.ContainerType == EPinContainerType::Map;
+
+    // Extract Map key type from PinValueType
+    if (OutVar.bIsMap)
+    {
+        // Try to extract key type from PinValueType (for Map containers)
+        if (T.PinValueType.TerminalCategory != NAME_None)
+        {
+            const FString KeyCategory = T.PinValueType.TerminalCategory.ToString();
+            
+            // Map key category to EN2CStructMemberType
+            if (KeyCategory == TEXT("bool"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Bool;
+            }
+            else if (KeyCategory == TEXT("byte"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Byte;
+            }
+            else if (KeyCategory == TEXT("int") || KeyCategory == TEXT("int64"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Int;
+            }
+            else if (KeyCategory == TEXT("float") || KeyCategory == TEXT("double"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Float;
+            }
+            else if (KeyCategory == TEXT("string"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::String;
+            }
+            else if (KeyCategory == TEXT("name"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Name;
+            }
+            else if (KeyCategory == TEXT("text"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Text;
+            }
+            else if (KeyCategory == TEXT("struct"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Struct;
+                if (T.PinValueType.TerminalSubCategoryObject.IsValid())
+                {
+                    OutVar.KeyTypeName = T.PinValueType.TerminalSubCategoryObject->GetName();
+                }
+            }
+            else if (KeyCategory == TEXT("enum"))
+            {
+                OutVar.KeyType = EN2CStructMemberType::Enum;
+                if (T.PinValueType.TerminalSubCategoryObject.IsValid())
+                {
+                    OutVar.KeyTypeName = T.PinValueType.TerminalSubCategoryObject->GetName();
+                }
+            }
+            else
+            {
+                OutVar.KeyType = EN2CStructMemberType::Custom;
+            }
+        }
+        else
+        {
+            // Fallback: if PinValueType is not available, use Custom
+            OutVar.KeyType = EN2CStructMemberType::Custom;
+            FN2CLogger::Get().LogWarning(FString::Printf(
+                TEXT("Map variable '%s' has no key type information in PinValueType, using Custom"), 
+                *OutVar.Name));
+        }
+    }
+
+    // Set default value if available
+    OutVar.DefaultValue = Desc.DefaultValue;
+}
+
+void FN2CNodeTranslator::CollectLocalVariables(UK2Node_FunctionEntry* EntryNode, TArray<FN2CVariable>& OutVariables)
+{
+    if (!EntryNode)
+    {
+        return;
+    }
+
+    OutVariables.Empty();
+    
+    for (const FBPVariableDescription& Desc : EntryNode->LocalVariables)
+    {
+        FN2CVariable Var;
+        ConvertVariableDescription(Desc, Var);
+        OutVariables.Add(Var);
+    }
+}
+
 FString FN2CNodeTranslator::GenerateNodeID()
 {
     return FString::Printf(TEXT("N%d"), NodeIDMap.Num() + 1);
@@ -154,13 +1260,6 @@ bool FN2CNodeTranslator::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinit
     if (!Node)
     {
         FN2CLogger::Get().LogWarning(TEXT("Attempted to process null node"));
-        return false;
-    }
-
-    // Skip knot nodes entirely - they're just pass-through connections
-    if (Node->IsA<UK2Node_Knot>())
-    {
-        FN2CLogger::Get().Log(TEXT("Skipping knot node"), EN2CLogSeverity::Debug);
         return false;
     }
 
@@ -186,6 +1285,9 @@ bool FN2CNodeTranslator::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinit
         FN2CLogger::Get().Log(Context, EN2CLogSeverity::Debug);
     }
 
+    OutNodeDef.NativeClass = Node->GetClass()->GetPathName();
+    OutNodeDef.NativePath = Node->GetPathName();
+    OutNodeDef.NativeProperties = ExportNativeProperties(Node);
     return true;
 }
 
@@ -208,6 +1310,37 @@ bool FN2CNodeTranslator::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeD
     return true;
 }
 
+bool FN2CNodeTranslator::ProcessNativeGraphNode(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef)
+{
+    if (!Node)
+    {
+        return false;
+    }
+
+    FString* ExistingID = NodeIDMap.Find(Node->NodeGuid);
+    OutNodeDef.ID = ExistingID ? *ExistingID : GenerateNodeID();
+    NodeIDMap.Add(Node->NodeGuid, OutNodeDef.ID);
+    OutNodeDef.NodeType = Node->IsA<UEdGraphNode_Comment>()
+        ? EN2CNodeType::Comment : EN2CNodeType::Custom;
+    OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+    OutNodeDef.MemberParent = Node->GetClass()->GetPathName();
+    OutNodeDef.MemberName = Node->GetClass()->GetName();
+    OutNodeDef.NativeClass = Node->GetClass()->GetPathName();
+    OutNodeDef.NativePath = Node->GetPathName();
+    OutNodeDef.NativeProperties = ExportNativeProperties(Node);
+    OutNodeDef.Comment = Node->NodeComment;
+    OutNodeDef.bPure = !Node->Pins.ContainsByPredicate([](const UEdGraphPin* Pin)
+    {
+        return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
+    });
+
+    TArray<UEdGraphPin*> ExecInputs;
+    TArray<UEdGraphPin*> ExecOutputs;
+    ProcessNodePins(Node, OutNodeDef, ExecInputs, ExecOutputs);
+    ProcessNodeFlows(Node, ExecInputs, ExecOutputs);
+    return true;
+}
+
 void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
 {
     if (!Graph)
@@ -215,10 +1348,13 @@ void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
         return;
     }
 
-    // Check if we've already processed this graph
+    // Graph names are not unique across implemented interfaces; use native identity.
+    const FString GraphPath = Graph->GetPathName();
+    const FString GraphGuid = Graph->GraphGuid.IsValid() ? Graph->GraphGuid.ToString() : FString();
     for (const FN2CGraph& ExistingGraph : N2CBlueprint.Graphs)
     {
-        if (ExistingGraph.Name == Graph->GetName())
+        if (ExistingGraph.GraphPath == GraphPath ||
+            (!GraphGuid.IsEmpty() && ExistingGraph.GraphGuid == GraphGuid))
         {
             return;
         }
@@ -310,48 +1446,402 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
         return false;
     }
 
-    // Create new graph structure
+    // Create new graph structure with native identity and counts for coverage audits.
     FN2CGraph NewGraph;
     NewGraph.Name = Graph->GetName();
     NewGraph.GraphType = GraphType;
-    CurrentGraph = &NewGraph;
+    NewGraph.GraphGuid = Graph->GraphGuid.IsValid() ? Graph->GraphGuid.ToString() : FString();
+    NewGraph.GraphPath = Graph->GetPathName();
+    NewGraph.NativeClass = Graph->GetClass()->GetPathName();
+    NewGraph.NativeProperties = ExportNativeProperties(Graph);
+    NewGraph.NativeNodeCount = Graph->Nodes.Num();
 
-    // Collect and process nodes from this graph
-    TArray<UK2Node*> GraphNodes;
+    // Collect function-local variables from the entry node (if any)
     for (UEdGraphNode* Node : Graph->Nodes)
     {
+        if (UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node))
+        {
+            CollectLocalVariables(EntryNode, NewGraph.LocalVariables);
+            break;
+        }
+    }
+
+    CurrentGraph = &NewGraph;
+
+    // Preserve every native node in the normalized list; comments and reroutes
+    // carry source annotations and physical topology even though they do not execute.
+    bool bHasUntranslatedBehavior = false;
+    bool bHasExecutableNodes = false;
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (!Node)
+        {
+            ++NewGraph.SkippedNodeCount;
+            NewGraph.SkippedNodeClasses.AddUnique(TEXT("<null>"));
+            bHasUntranslatedBehavior = true;
+            continue;
+        }
+
         if (UK2Node* K2Node = Cast<UK2Node>(Node))
         {
             FN2CNodeDefinition NodeDef;
             if (ProcessNode(K2Node, NodeDef))
             {
                 CurrentGraph->Nodes.Add(NodeDef);
+                bHasExecutableNodes |= !K2Node->IsA<UK2Node_Knot>();
+            }
+            else
+            {
+                ++NewGraph.SkippedNodeCount;
+                NewGraph.SkippedNodeClasses.AddUnique(Node->GetClass()->GetPathName());
+                bHasUntranslatedBehavior = true;
+            }
+        }
+        else
+        {
+            FN2CNodeDefinition NodeDef;
+            if (ProcessNativeGraphNode(Node, NodeDef))
+            {
+                CurrentGraph->Nodes.Add(NodeDef);
+                bHasExecutableNodes |= !Node->IsA<UEdGraphNode_Comment>();
+            }
+            else
+            {
+                ++NewGraph.SkippedNodeCount;
+                NewGraph.SkippedNodeClasses.AddUnique(Node->GetClass()->GetPathName());
+                if (!Node->IsA<UEdGraphNode_Comment>())
+                {
+                    bHasUntranslatedBehavior = true;
+                }
             }
         }
     }
+    NewGraph.bNoExecutableNodes = !bHasExecutableNodes && !bHasUntranslatedBehavior;
 
-    // Add the processed graph to the blueprint if it has nodes
-    if (CurrentGraph->Nodes.Num() > 0)
+    // Preserve the complete original topology independently of lossy legacy flows.
+    CollectDirectConnections(Graph, NewGraph);
+
+    // Keep every native graph, including verified empty/comment-only graphs.
+    if (CurrentGraph->Nodes.Num() > 0 && !ValidateFlowReferences(NewGraph))
     {
-        // Validate all flow references
-        if (!ValidateFlowReferences(NewGraph))
-        {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Flow validation issues found in graph: %s"), *NewGraph.Name));
-        }
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Flow validation issues found in graph: %s"), *NewGraph.Name));
+    }
 
-        N2CBlueprint.Graphs.Add(NewGraph);
-        
-        FString Context = FString::Printf(TEXT("Processed graph: %s with %d nodes"), 
-            *NewGraph.Name, 
-            NewGraph.Nodes.Num());
-        FN2CLogger::Get().Log(TEXT("Graph processing complete"), EN2CLogSeverity::Info, Context);
-        
+    N2CBlueprint.Graphs.Add(NewGraph);
+    FString Context = FString::Printf(
+        TEXT("Processed graph: %s (native nodes=%d, translated=%d, skipped=%d)"),
+        *NewGraph.Name,
+        NewGraph.NativeNodeCount,
+        NewGraph.Nodes.Num(),
+        NewGraph.SkippedNodeCount);
+    FN2CLogger::Get().Log(TEXT("Graph processing complete"), EN2CLogSeverity::Info, Context);
+    return true;
+}
+
+bool FN2CNodeTranslator::ProcessRigVMGraph(URigVMGraph* SourceGraph)
+{
+    if (!SourceGraph)
+    {
+        return false;
+    }
+
+    const FString GraphPath = SourceGraph->GetPathName();
+    if (N2CBlueprint.Graphs.ContainsByPredicate([&GraphPath](const FN2CGraph& Existing)
+        {
+            return Existing.GraphPath == GraphPath;
+        }))
+    {
         return true;
     }
 
-    return false;
-}
+    FN2CGraph Graph;
+    Graph.Name = SourceGraph->GetGraphName();
+    if (Graph.Name.IsEmpty())
+    {
+        Graph.Name = SourceGraph->GetName();
+    }
+    Graph.GraphType = EN2CGraphType::RigVM;
+    Graph.GraphGuid = FGuid::NewDeterministicGuid(GraphPath).ToString();
+    Graph.GraphPath = GraphPath;
+    Graph.NativeClass = SourceGraph->GetClass()->GetPathName();
+    Graph.NativeProperties = ExportRigVMNativeProperties(SourceGraph);
 
+    const TArray<URigVMNode*>& SourceNodes = SourceGraph->GetNodes();
+    Graph.NativeNodeCount = SourceNodes.Num();
+    Graph.bNoExecutableNodes = SourceNodes.IsEmpty();
+    for (const FRigVMGraphVariableDescription& Description : SourceGraph->GetLocalVariables())
+    {
+        Graph.LocalVariables.Add(RigVMVariableToNodeToCode(Description));
+    }
+
+    TMap<const URigVMNode*, FString> NodeIds;
+    TMap<const URigVMNode*, FString> NodeGuids;
+    TMap<const URigVMPin*, FString> PinIds;
+    TMap<const URigVMPin*, FString> PinGuids;
+    TMap<const URigVMNode*, TArray<URigVMPin*>> PinsByNode;
+    TSet<FString> SeenNodeGuids;
+    TSet<FString> SeenPinGuids;
+    int32 NodeIndex = 0;
+
+    for (URigVMNode* Node : SourceNodes)
+    {
+        if (!Node)
+        {
+            ++Graph.SkippedNodeCount;
+            Graph.SkippedNodeClasses.AddUnique(TEXT("<null>"));
+            Graph.ConnectionErrors.Add(TEXT("RigVM graph contains a null model node."));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+
+        const FString NodePath = Node->GetNodePath().IsEmpty() ? Node->GetPathName() : Node->GetNodePath();
+        const FString NodeGuid = FGuid::NewDeterministicGuid(GraphPath + TEXT("|") + NodePath).ToString();
+        if (SeenNodeGuids.Contains(NodeGuid))
+        {
+            Graph.ConnectionErrors.Add(FString::Printf(
+                TEXT("RigVM node path '%s' has a duplicate deterministic identity."), *NodePath));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+        SeenNodeGuids.Add(NodeGuid);
+        NodeGuids.Add(Node, NodeGuid);
+        NodeIds.Add(Node, FString::Printf(TEXT("N%d"), ++NodeIndex));
+
+        TArray<URigVMPin*> NodePins = Node->GetAllPinsRecursively();
+        PinsByNode.Add(Node, NodePins);
+        int32 PinIndex = 0;
+        for (URigVMPin* Pin : NodePins)
+        {
+            if (!Pin)
+            {
+                continue;
+            }
+            FString PinPath = Pin->GetPinPath();
+            if (PinPath.IsEmpty())
+            {
+                PinPath = NodePath + TEXT(".") + Pin->GetName();
+            }
+            const FString PinKey = GraphPath + TEXT("|") + PinPath;
+            const FString PinGuid = FGuid::NewDeterministicGuid(PinKey).ToString();
+            if (SeenPinGuids.Contains(PinGuid))
+            {
+                Graph.ConnectionErrors.Add(FString::Printf(
+                    TEXT("RigVM pin path '%s' has a duplicate deterministic identity."), *PinPath));
+                ++Graph.UnresolvedConnectionCount;
+                continue;
+            }
+            SeenPinGuids.Add(PinGuid);
+            PinGuids.Add(Pin, PinGuid);
+            PinIds.Add(Pin, FString::Printf(TEXT("P%d"), ++PinIndex));
+        }
+    }
+
+    for (URigVMNode* Node : SourceNodes)
+    {
+        if (!Node || !NodeIds.Contains(Node))
+        {
+            continue;
+        }
+
+        FN2CNodeDefinition NodeDefinition;
+        NodeDefinition.ID = NodeIds.FindRef(Node);
+        NodeDefinition.Name = Node->GetNodeTitle();
+        if (NodeDefinition.Name.IsEmpty())
+        {
+            NodeDefinition.Name = Node->GetName();
+        }
+        NodeDefinition.NativeClass = Node->GetClass()->GetPathName();
+        NodeDefinition.NativePath = Node->GetNodePath();
+        NodeDefinition.NativeProperties = ExportRigVMNativeProperties(Node);
+        NodeDefinition.bPure = Node->IsPure();
+        NodeDefinition.NodeType = EN2CNodeType::Custom;
+
+        if (Node->IsA<URigVMFunctionEntryNode>())
+        {
+            NodeDefinition.NodeType = EN2CNodeType::FunctionEntry;
+        }
+        else if (Node->IsA<URigVMFunctionReturnNode>())
+        {
+            NodeDefinition.NodeType = EN2CNodeType::FunctionResult;
+        }
+        else if (Node->IsA<URigVMCommentNode>())
+        {
+            NodeDefinition.NodeType = EN2CNodeType::Comment;
+            NodeDefinition.Comment = NodeDefinition.Name;
+        }
+        else if (URigVMUnitNode* UnitNode = Cast<URigVMUnitNode>(Node))
+        {
+            NodeDefinition.NodeType = EN2CNodeType::CallFunction;
+            if (UScriptStruct* ScriptStruct = UnitNode->GetScriptStruct())
+            {
+                NodeDefinition.MemberParent = ScriptStruct->GetPathName();
+            }
+            NodeDefinition.MemberName = UnitNode->GetMethodName().ToString();
+        }
+        else
+        {
+            NodeDefinition.MemberParent = NodeDefinition.NativeClass;
+            NodeDefinition.MemberName = NodeDefinition.NativePath;
+        }
+
+        for (URigVMPin* Pin : PinsByNode.FindRef(Node))
+        {
+            if (!Pin || !PinIds.Contains(Pin))
+            {
+                continue;
+            }
+
+            const FString CPPType = Pin->GetCPPType();
+            const FString PinName = Pin->GetDisplayName().IsNone()
+                ? Pin->GetName() : Pin->GetDisplayName().ToString();
+            const ERigVMPinDirection Direction = Pin->GetDirection();
+            FN2CPinDefinition PinDefinition;
+            PinDefinition.ID = PinIds.FindRef(Pin);
+            PinDefinition.Name = PinName;
+            PinDefinition.Type = DetermineRigVMPinType(Pin);
+            PinDefinition.SubType = CPPType;
+            PinDefinition.DefaultValue = Pin->GetDefaultValue();
+            PinDefinition.bConnected = Pin->IsLinked(true);
+            PinDefinition.bIsArray = Pin->IsArray();
+            PinDefinition.bIsSet = CPPType.StartsWith(TEXT("TSet<"));
+            PinDefinition.bIsMap = CPPType.StartsWith(TEXT("TMap<"));
+            PinDefinition.bIsReference = CPPType.Contains(TEXT("&"));
+            PinDefinition.bIsConst = CPPType.StartsWith(TEXT("const "));
+
+            if (Direction == ERigVMPinDirection::Output)
+            {
+                NodeDefinition.OutputPins.Add(MoveTemp(PinDefinition));
+            }
+            else
+            {
+                // RigVM IO pins retain their exact direction in Graph.Pins.
+                NodeDefinition.InputPins.Add(MoveTemp(PinDefinition));
+            }
+        }
+
+        Graph.Nodes.Add(MoveTemp(NodeDefinition));
+    }
+
+    TMap<const URigVMPin*, int32> GraphPinIndexByPin;
+    for (URigVMNode* Node : SourceNodes)
+    {
+        if (!Node || !NodeIds.Contains(Node))
+        {
+            continue;
+        }
+        for (URigVMPin* Pin : PinsByNode.FindRef(Node))
+        {
+            if (!Pin || !PinGuids.Contains(Pin))
+            {
+                continue;
+            }
+
+            FN2CGraphPin PinData;
+            PinData.NodeGuid = NodeGuids.FindRef(Node);
+            PinData.PinGuid = PinGuids.FindRef(Pin);
+            PinData.NodeId = NodeIds.FindRef(Node);
+            PinData.PinId = PinIds.FindRef(Pin);
+            PinData.NodeName = Node->GetNodeTitle();
+            PinData.NodeClass = Node->GetClass()->GetPathName();
+            PinData.NativePath = Pin->GetPinPath();
+            PinData.NativeProperties = ExportRigVMNativeProperties(Pin);
+            PinData.PinName = Pin->GetName();
+            PinData.DisplayName = Pin->GetDisplayName().ToString();
+            PinData.FriendlyName = PinData.DisplayName;
+            PinData.Direction = RigVMPinDirectionToString(Pin->GetDirection());
+            PinData.Category = Pin->GetCPPType();
+            PinData.SubCategoryObject = IsValid(Pin->GetCPPTypeObject())
+                ? Pin->GetCPPTypeObject()->GetPathName() : FString();
+            PinData.ContainerType = Pin->IsArray() ? TEXT("Array") :
+                PinData.Category.StartsWith(TEXT("TSet<")) ? TEXT("Set") :
+                PinData.Category.StartsWith(TEXT("TMap<")) ? TEXT("Map") : TEXT("None");
+            PinData.PinToolTip = Pin->GetToolTipText().ToString();
+            PinData.DefaultValue = Pin->GetDefaultValue();
+            if (UObject* DefaultObject = Pin->GetDefaultValueObject())
+            {
+                PinData.DefaultObjectPath = DefaultObject->GetPathName();
+            }
+            PinData.bIsExecution = Pin->IsExecuteContext();
+            PinData.bConnected = Pin->IsLinked(true);
+            PinData.bIsReference = PinData.Category.Contains(TEXT("&"));
+            PinData.bIsConst = PinData.Category.StartsWith(TEXT("const "));
+            PinData.bIsUObjectWrapper = IsValid(Pin->GetCPPTypeObject()) &&
+                Pin->GetCPPTypeObject()->IsA<UClass>();
+            if (URigVMPin* ParentPin = Pin->GetParentPin())
+            {
+                PinData.ParentPinGuid = PinGuids.FindRef(ParentPin);
+            }
+            for (URigVMPin* SubPin : Pin->GetSubPins())
+            {
+                if (SubPin && PinGuids.Contains(SubPin))
+                {
+                    PinData.SubPinGuids.Add(PinGuids.FindRef(SubPin));
+                }
+            }
+            GraphPinIndexByPin.Add(Pin, Graph.Pins.Add(MoveTemp(PinData)));
+        }
+    }
+
+    TSet<FString> SeenLinks;
+    for (URigVMLink* RigVMLink : SourceGraph->GetLinks())
+    {
+        URigVMPin* SourcePin = RigVMLink ? RigVMLink->GetSourcePin() : nullptr;
+        URigVMPin* TargetPin = RigVMLink ? RigVMLink->GetTargetPin() : nullptr;
+        URigVMNode* SourceNode = SourcePin ? SourcePin->GetNode() : nullptr;
+        URigVMNode* TargetNode = TargetPin ? TargetPin->GetNode() : nullptr;
+        if (!SourcePin || !TargetPin || !SourceNode || !TargetNode ||
+            !PinGuids.Contains(SourcePin) || !PinGuids.Contains(TargetPin) ||
+            !NodeGuids.Contains(SourceNode) || !NodeGuids.Contains(TargetNode))
+        {
+            Graph.ConnectionErrors.Add(FString::Printf(
+                TEXT("RigVM graph '%s' contains a link with an unresolved endpoint."), *Graph.Name));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+
+        const FString EdgeKey = NodeGuids.FindRef(SourceNode) + TEXT(":") + PinGuids.FindRef(SourcePin) +
+            TEXT("->") + NodeGuids.FindRef(TargetNode) + TEXT(":") + PinGuids.FindRef(TargetPin);
+        if (SeenLinks.Contains(EdgeKey))
+        {
+            Graph.ConnectionErrors.Add(FString::Printf(
+                TEXT("RigVM graph '%s' contains a duplicate direct link '%s'."), *Graph.Name, *EdgeKey));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+        SeenLinks.Add(EdgeKey);
+
+        const int32* SourcePinIndex = GraphPinIndexByPin.Find(SourcePin);
+        const int32* TargetPinIndex = GraphPinIndexByPin.Find(TargetPin);
+        FN2CDirectLink Link;
+        Link.SourceNodeGuid = NodeGuids.FindRef(SourceNode);
+        Link.SourcePinGuid = PinGuids.FindRef(SourcePin);
+        Link.TargetNodeGuid = NodeGuids.FindRef(TargetNode);
+        Link.TargetPinGuid = PinGuids.FindRef(TargetPin);
+        Link.SourceNodeId = NodeIds.FindRef(SourceNode);
+        Link.SourcePinId = PinIds.FindRef(SourcePin);
+        Link.TargetNodeId = NodeIds.FindRef(TargetNode);
+        Link.TargetPinId = PinIds.FindRef(TargetPin);
+        Link.SourceNodeName = SourceNode->GetNodeTitle();
+        Link.SourceNodeClass = SourceNode->GetClass()->GetPathName();
+        Link.SourcePinName = SourcePinIndex ? Graph.Pins[*SourcePinIndex].PinName : SourcePin->GetName();
+        Link.SourceDirection = TEXT("Output");
+        Link.TargetNodeName = TargetNode->GetNodeTitle();
+        Link.TargetNodeClass = TargetNode->GetClass()->GetPathName();
+        Link.TargetPinName = TargetPinIndex ? Graph.Pins[*TargetPinIndex].PinName : TargetPin->GetName();
+        Link.TargetDirection = TEXT("Input");
+        Link.bIsExecution = SourcePin->IsExecuteContext() || TargetPin->IsExecuteContext();
+        Link.bSourceHidden = SourcePinIndex ? Graph.Pins[*SourcePinIndex].bHidden : false;
+        Link.bTargetHidden = TargetPinIndex ? Graph.Pins[*TargetPinIndex].bHidden : false;
+        Graph.Connections.Add(MoveTemp(Link));
+    }
+
+    for (const FString& Error : Graph.ConnectionErrors)
+    {
+        FN2CLogger::Get().LogWarning(Error);
+    }
+    N2CBlueprint.Graphs.Add(MoveTemp(Graph));
+    return true;
+}
 EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
 {
     if (!Graph)
@@ -362,7 +1852,7 @@ EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
     // First check if this is a function graph by looking for function entry node
     for (UEdGraphNode* Node : Graph->Nodes)
     {
-        if (Node->IsA<UK2Node_FunctionEntry>())
+        if (Node && Node->IsA<UK2Node_FunctionEntry>())
         {
             return EN2CGraphType::Function;
         }
@@ -473,6 +1963,264 @@ EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
 
     // Default to wildcard for unknown types
     return EN2CPinType::Wildcard;
+}
+
+void FN2CNodeTranslator::CollectDirectConnections(UEdGraph* Graph, FN2CGraph& OutGraph)
+{
+    OutGraph.Pins.Empty();
+    OutGraph.Connections.Empty();
+    OutGraph.ConnectionErrors.Empty();
+    OutGraph.UnresolvedConnectionCount = 0;
+
+    auto RecordError = [&OutGraph](const FString& Message, bool bUnresolvedLink)
+    {
+        OutGraph.ConnectionErrors.AddUnique(Message);
+        if (bUnresolvedLink)
+        {
+            ++OutGraph.UnresolvedConnectionCount;
+        }
+    };
+
+    if (!Graph)
+    {
+        RecordError(TEXT("Cannot collect links from a null graph."), true);
+        return;
+    }
+
+    TSet<FGuid> SeenNodeGuids;
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (!Node)
+        {
+            RecordError(FString::Printf(TEXT("Graph '%s' contains a null node."), *Graph->GetName()), true);
+            continue;
+        }
+
+        if (!Node->NodeGuid.IsValid())
+        {
+            RecordError(FString::Printf(TEXT("Node '%s' in graph '%s' has no valid GUID."),
+                *Node->GetName(), *Graph->GetName()), true);
+        }
+        else if (SeenNodeGuids.Contains(Node->NodeGuid))
+        {
+            RecordError(FString::Printf(TEXT("Node GUID '%s' is duplicated in graph '%s'."),
+                *Node->NodeGuid.ToString(), *Graph->GetName()), true);
+        }
+        SeenNodeGuids.Add(Node->NodeGuid);
+
+        TSet<FGuid> SeenPinGuids;
+        for (UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!Pin)
+            {
+                RecordError(FString::Printf(TEXT("Node '%s' in graph '%s' contains a null pin."),
+                    *Node->GetName(), *Graph->GetName()), true);
+                continue;
+            }
+
+            if (!Pin->PinId.IsValid())
+            {
+                RecordError(FString::Printf(TEXT("Pin '%s' on node '%s' in graph '%s' has no valid GUID."),
+                    *Pin->PinName.ToString(), *Node->GetName(), *Graph->GetName()), true);
+            }
+            else if (SeenPinGuids.Contains(Pin->PinId))
+            {
+                RecordError(FString::Printf(TEXT("Pin GUID '%s' is duplicated on node '%s' in graph '%s'."),
+                    *Pin->PinId.ToString(), *Node->GetName(), *Graph->GetName()), true);
+            }
+            SeenPinGuids.Add(Pin->PinId);
+
+            FN2CGraphPin PinData;
+            PinData.NodeGuid = Node->NodeGuid.ToString();
+            PinData.PinGuid = Pin->PinId.ToString();
+            PinData.NodeId = NodeIDMap.FindRef(Node->NodeGuid);
+            PinData.PinId = PinIDMap.FindRef(Pin);
+            PinData.NodeName = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+            PinData.NodeClass = Node->GetClass()->GetPathName();
+            PinData.PinName = Pin->PinName.ToString();
+            PinData.DisplayName = Pin->GetDisplayName().ToString();
+            PinData.FriendlyName = Pin->PinFriendlyName.ToString();
+            PinData.Direction = Pin->Direction == EGPD_Input ? TEXT("Input") :
+                Pin->Direction == EGPD_Output ? TEXT("Output") : TEXT("Invalid");
+            PinData.Category = Pin->PinType.PinCategory.ToString();
+            PinData.SubCategory = Pin->PinType.PinSubCategory.ToString();
+            PinData.SubCategoryObject = Pin->PinType.PinSubCategoryObject.IsValid()
+                ? Pin->PinType.PinSubCategoryObject->GetPathName() : FString();
+            UObject* MemberParent = Pin->PinType.PinSubCategoryMemberReference.MemberParent.Get();
+            PinData.SubCategoryMemberParent = IsValid(MemberParent) ? MemberParent->GetPathName() : FString();
+            PinData.SubCategoryMemberName = Pin->PinType.PinSubCategoryMemberReference.MemberName.ToString();
+            PinData.ContainerType = StaticEnum<EPinContainerType>()->GetNameStringByValue(
+                static_cast<int64>(Pin->PinType.ContainerType));
+            PinData.ValueTerminalCategory = Pin->PinType.PinValueType.TerminalCategory.ToString();
+            PinData.ValueTerminalSubCategory = Pin->PinType.PinValueType.TerminalSubCategory.ToString();
+            PinData.ValueTerminalSubCategoryObject = Pin->PinType.PinValueType.TerminalSubCategoryObject.IsValid()
+                ? Pin->PinType.PinValueType.TerminalSubCategoryObject->GetPathName() : FString();
+            PinData.PinToolTip = Pin->PinToolTip;
+            PinData.DefaultValue = Pin->DefaultValue;
+            PinData.AutogeneratedDefaultValue = Pin->AutogeneratedDefaultValue;
+            PinData.DefaultObjectPath = IsValid(Pin->DefaultObject) ? Pin->DefaultObject->GetPathName() : FString();
+            PinData.DefaultTextValue = Pin->DefaultTextValue.ToString();
+            PinData.PersistentGuid = Pin->PersistentGuid.IsValid() ? Pin->PersistentGuid.ToString() : FString();
+            PinData.ParentPinGuid = Pin->ParentPin ? Pin->ParentPin->PinId.ToString() : FString();
+            if (Pin->ReferencePassThroughConnection && Pin->ReferencePassThroughConnection->GetOwningNode())
+            {
+                PinData.ReferencePassThroughNodeGuid = Pin->ReferencePassThroughConnection->GetOwningNode()->NodeGuid.ToString();
+                PinData.ReferencePassThroughPinGuid = Pin->ReferencePassThroughConnection->PinId.ToString();
+            }
+            for (const UEdGraphPin* SubPin : Pin->SubPins)
+            {
+                if (SubPin)
+                {
+                    PinData.SubPinGuids.Add(SubPin->PinId.ToString());
+                }
+            }
+            PinData.bIsExecution = Pin->PinType.PinCategory == TEXT("exec");
+            PinData.bDeprecated = Pin->bDeprecated;
+            PinData.bDisplayAsMutableRef = Pin->bDisplayAsMutableRef;
+            PinData.bAllowFriendlyName = Pin->bAllowFriendlyName;
+            PinData.bSavePinIfOrphaned = Pin->ShouldSavePinIfOrphaned();
+            PinData.bUseBackwardsCompatForEmptyAutogeneratedValue = Pin->bUseBackwardsCompatForEmptyAutogeneratedValue;
+            PinData.bConnected = Pin->LinkedTo.Num() > 0;
+            PinData.bHidden = Pin->bHidden;
+            PinData.bNotConnectable = Pin->bNotConnectable;
+            PinData.bOrphaned = Pin->bOrphanedPin;
+            PinData.bIsReference = Pin->PinType.bIsReference;
+            PinData.bIsConst = Pin->PinType.bIsConst;
+            PinData.bIsWeakPointer = Pin->PinType.bIsWeakPointer;
+            PinData.bIsUObjectWrapper = Pin->PinType.bIsUObjectWrapper;
+            PinData.bSerializeAsSinglePrecisionFloat = Pin->PinType.bSerializeAsSinglePrecisionFloat;
+            PinData.bAdvancedView = Pin->bAdvancedView;
+            PinData.bDefaultValueIsReadOnly = Pin->bDefaultValueIsReadOnly;
+            PinData.bDefaultValueIsIgnored = Pin->bDefaultValueIsIgnored;
+            OutGraph.Pins.Add(MoveTemp(PinData));
+        }
+    }
+
+    TSet<FString> SeenLinks;
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (!Node)
+        {
+            continue;
+        }
+
+        for (UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!Pin)
+            {
+                continue;
+            }
+
+            for (UEdGraphPin* Linked : Pin->LinkedTo)
+            {
+                if (!Linked)
+                {
+                    RecordError(FString::Printf(TEXT("Pin '%s' on node '%s' in graph '%s' has a null link."),
+                        *Pin->PinName.ToString(), *Node->GetName(), *Graph->GetName()), true);
+                    continue;
+                }
+
+                UEdGraphPin* Source = Pin;
+                UEdGraphPin* Target = Linked;
+                UEdGraphNode* SourceNode = Source->GetOwningNode();
+                UEdGraphNode* TargetNode = Target->GetOwningNode();
+
+                auto EndpointKey = [](const UEdGraphNode* EndpointNode, const UEdGraphPin* EndpointPin)
+                {
+                    const FString NodeKey = EndpointNode
+                        ? (EndpointNode->NodeGuid.IsValid()
+                            ? EndpointNode->NodeGuid.ToString()
+                            : EndpointNode->GetPathName())
+                        : TEXT("<null-node>");
+                    const FString PinKey = EndpointPin
+                        ? (EndpointPin->PinId.IsValid()
+                            ? EndpointPin->PinId.ToString()
+                            : EndpointPin->GetName())
+                        : TEXT("<null-pin>");
+                    return NodeKey + TEXT(":") + PinKey;
+                };
+
+                if (Linked->Direction == EGPD_Output && Pin->Direction != EGPD_Output)
+                {
+                    Swap(Source, Target);
+                    Swap(SourceNode, TargetNode);
+                }
+
+                const bool bValidDirections =
+                    Source->Direction == EGPD_Output && Target->Direction == EGPD_Input;
+                FString SourceKey = EndpointKey(SourceNode, Source);
+                FString TargetKey = EndpointKey(TargetNode, Target);
+                if (!bValidDirections && SourceKey > TargetKey)
+                {
+                    Swap(Source, Target);
+                    Swap(SourceNode, TargetNode);
+                    Swap(SourceKey, TargetKey);
+                }
+
+                // Pin GUIDs are scoped to a node. Include both node GUIDs so
+                // duplicated pin GUIDs on distinct nodes do not erase fan-out edges.
+                const FString LinkKey = SourceKey + TEXT("->") + TargetKey;
+                if (SeenLinks.Contains(LinkKey))
+                {
+                    continue;
+                }
+                SeenLinks.Add(LinkKey);
+
+                const bool bValidEndpoints =
+                    SourceNode && TargetNode &&
+                    SourceNode->GetGraph() == Graph && TargetNode->GetGraph() == Graph &&
+                    SourceNode->NodeGuid.IsValid() && TargetNode->NodeGuid.IsValid() &&
+                    Source->PinId.IsValid() && Target->PinId.IsValid();
+                if (!bValidEndpoints || !bValidDirections)
+                {
+                    RecordError(FString::Printf(
+                        TEXT("Malformed link in graph '%s': %s.%s -> %s.%s (directions %s -> %s)."),
+                        *Graph->GetName(),
+                        SourceNode ? *SourceNode->GetName() : TEXT("<null-node>"),
+                        Source ? *Source->PinName.ToString() : TEXT("<null-pin>"),
+                        TargetNode ? *TargetNode->GetName() : TEXT("<null-node>"),
+                        Target ? *Target->PinName.ToString() : TEXT("<null-pin>"),
+                        Source ? (Source->Direction == EGPD_Output ? TEXT("Output") : TEXT("Input")) : TEXT("Invalid"),
+                        Target ? (Target->Direction == EGPD_Input ? TEXT("Input") : TEXT("Output")) : TEXT("Invalid")),
+                        true);
+                    continue;
+                }
+
+                FN2CDirectLink Link;
+                Link.SourceNodeGuid = SourceNode->NodeGuid.ToString();
+                Link.SourcePinGuid = Source->PinId.ToString();
+                Link.TargetNodeGuid = TargetNode->NodeGuid.ToString();
+                Link.TargetPinGuid = Target->PinId.ToString();
+                Link.SourceNodeId = NodeIDMap.FindRef(SourceNode->NodeGuid);
+                Link.TargetNodeId = NodeIDMap.FindRef(TargetNode->NodeGuid);
+                Link.SourcePinId = PinIDMap.FindRef(Source);
+                Link.TargetPinId = PinIDMap.FindRef(Target);
+                Link.SourceNodeName = SourceNode->GetNodeTitle(ENodeTitleType::ListView).ToString();
+                Link.SourceNodeClass = SourceNode->GetClass()->GetPathName();
+                Link.SourcePinName = Source->PinName.ToString();
+                Link.SourceDirection = TEXT("Output");
+                Link.TargetNodeName = TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString();
+                Link.TargetNodeClass = TargetNode->GetClass()->GetPathName();
+                Link.TargetPinName = Target->PinName.ToString();
+                Link.TargetDirection = TEXT("Input");
+                Link.bIsExecution =
+                    Source->PinType.PinCategory == TEXT("exec") ||
+                    Target->PinType.PinCategory == TEXT("exec");
+                Link.bSourceHidden = Source->bHidden;
+                Link.bTargetHidden = Target->bHidden;
+                Link.bSourceIsKnot = SourceNode->IsA<UK2Node_Knot>();
+                Link.bTargetIsKnot = TargetNode->IsA<UK2Node_Knot>();
+                OutGraph.Connections.Add(MoveTemp(Link));
+            }
+        }
+    }
+
+    if (OutGraph.UnresolvedConnectionCount > 0)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Direct edge export for graph '%s' found %d unresolved issues."),
+            *OutGraph.Name, OutGraph.UnresolvedConnectionCount));
+    }
 }
 
 UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
@@ -671,7 +2419,7 @@ void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDe
     OutNodeDef.bPure = Node->IsNodePure();
 }
 
-void FN2CNodeTranslator::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)
+void FN2CNodeTranslator::ProcessNodePins(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)
 {
     // Process input pins
     for (UEdGraphPin* Pin : Node->Pins)
@@ -688,7 +2436,7 @@ void FN2CNodeTranslator::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
         
         // Generate and map pin ID (using local counter for this node)
         FString PinID = GeneratePinID(OutNodeDef.InputPins.Num() + OutNodeDef.OutputPins.Num());
-        PinIDMap.Add(Pin->PinId, PinID);
+        PinIDMap.Add(Pin, PinID);
         PinDef.ID = PinID;
         
         // Set pin name
@@ -773,7 +2521,7 @@ void FN2CNodeTranslator::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
     }
 }
 
-void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs)
+void FN2CNodeTranslator::ProcessNodeFlows(UEdGraphNode* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs)
 {
     // Record execution flows
     FString ExecDebug = FString::Printf(TEXT("Node %s has %d exec outputs"), 
@@ -859,9 +2607,9 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
                 {
                     // Get node and pin IDs
                     FString SourceNodeID = NodeIDMap.FindRef(ActualSourcePin->GetOwningNode()->NodeGuid);
-                    FString SourcePinID = PinIDMap.FindRef(ActualSourcePin->PinId);
+                    FString SourcePinID = PinIDMap.FindRef(ActualSourcePin);
                     FString TargetNodeID = NodeIDMap.FindRef(ActualTargetPin->GetOwningNode()->NodeGuid);
-                    FString TargetPinID = PinIDMap.FindRef(ActualTargetPin->PinId);
+                    FString TargetPinID = PinIDMap.FindRef(ActualTargetPin);
                     
                     if (!SourceNodeID.IsEmpty() && !SourcePinID.IsEmpty() && 
                         !TargetNodeID.IsEmpty() && !TargetPinID.IsEmpty())
@@ -919,27 +2667,48 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     // Get enum path
     FString EnumPath = Enum->GetPathName();
     FString EnumName = Enum->GetName();
-    
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("ProcessBlueprintEnum: Processing enum '%s' (Path: %s)"), 
-            *EnumName, *EnumPath),
-        EN2CLogSeverity::Info);
-    
-    // Check if we've already processed this enum
-    if (ProcessedEnumPaths.Contains(EnumPath))
+
+    // Fallback to FName if GetName returns something unexpected
+    if (EnumName.IsEmpty())
     {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Enum %s already processed - skipping"), *EnumPath),
-            EN2CLogSeverity::Debug);
+        EnumName = Enum->GetFName().ToString();
+    }
+
+    // Final fallback: use the path's last segment
+    if (EnumName.IsEmpty())
+    {
+        FString Isolated;
+        if (EnumPath.Split(TEXT("/"), nullptr, &Isolated, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+        {
+            EnumName = Isolated;
+        }
+    }
+
+    // If still empty, return invalid result early
+    if (EnumName.IsEmpty())
+    {
+        FN2CLogger::Get().LogError(TEXT("ProcessBlueprintEnum: Could not determine enum name (GetName, GetFName, and path fallback all failed)"));
         return Result;
     }
-    
-    // Mark as processed
-    ProcessedEnumPaths.Add(EnumPath);
-    FN2CLogger::Get().Log(TEXT("Added enum to processed paths"), EN2CLogSeverity::Debug);
-    
+
+    FN2CLogger::Get().Log(
+        FString::Printf(TEXT("ProcessBlueprintEnum: Processing enum '%s' (Path: %s)"),
+            *EnumName, *EnumPath),
+        EN2CLogSeverity::Info);
+
+    // Process each enum fresh every time - don't skip duplicates
+    // (ProcessedEnumPaths only prevents duplicate side-effects like struct nesting)
+
     // Set basic enum info
     Result.Name = EnumName;
+    Result.TypePath = EnumPath;
+    Result.UnderlyingType = EnumUnderlyingTypeName(Enum->GetUnderlyingType());
+    AddObjectMetadata(Result.NativeProperties, Enum);
+    Result.NativeProperties.Add(TEXT("cpp_form"), LexToString(static_cast<uint8>(Enum->GetCppForm())));
+    Result.NativeProperties.Add(TEXT("is_flags_enum"),
+        Enum->HasAnyEnumFlags(EEnumFlags::Flags) ? TEXT("true") : TEXT("false"));
+    Result.NativeProperties.Add(TEXT("newer_version_exists"),
+        Enum->HasAnyEnumFlags(EEnumFlags::NewerVersionExists) ? TEXT("true") : TEXT("false"));
     
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Enum details: Name=%s"), 
@@ -963,34 +2732,36 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
         FString::Printf(TEXT("Enum has %d values according to NumEnums()"), NumEnums),
         EN2CLogSeverity::Debug);
     
-    // Log all enum names and values for debugging
+    // Preserve every authored enumerator, including hidden and autogenerated sentinels.
     for (int32 i = 0; i < NumEnums; ++i)
     {
-        FString ValueName = Enum->GetDisplayNameTextByIndex(i).ToString();
+        FString ValueName = Enum->GetAuthoredNameStringByIndex(i);
+        if (ValueName.IsEmpty())
+        {
+            ValueName = Enum->GetNameStringByIndex(i);
+        }
+        const FString DisplayName = Enum->GetDisplayNameTextByIndex(i).ToString();
         
         FN2CLogger::Get().Log(
             FString::Printf(TEXT("Enum value #%d: Name='%s'"), 
                 i, *ValueName),
             EN2CLogSeverity::Debug);
-            
-        // Check if this is a hidden enum value (like _MAX or similar)
-        bool bIsHidden = ValueName.Contains(TEXT("_MAX")) || 
-                         ValueName.Contains(TEXT("MAX_")) ||
-                         ValueName.Contains(TEXT("E MAX")) ||
-                         ValueName.Contains(TEXT("MAX")) ||
-                         ValueName.StartsWith(TEXT("_")) ||
-                         ValueName.EndsWith(TEXT("_None"));
-                         
-        if (bIsHidden)
-        {
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("  -> Skipping hidden value '%s'"), *ValueName),
-                EN2CLogSeverity::Debug);
-            continue; // Skip adding this value
-        }
         
         FN2CEnumValue Value;
         Value.Name = ValueName;
+        Value.DisplayName = DisplayName;
+        Value.Value = Enum->GetValueByIndex(i);
+        Value.NativeProperties.Add(TEXT("index"), FString::FromInt(i));
+        Value.NativeProperties.Add(TEXT("hidden"), Enum->HasMetaData(TEXT("Hidden"), i) ? TEXT("true") : TEXT("false"));
+        for (const TCHAR* MetadataKey : { TEXT("ToolTip"), TEXT("DisplayName"), TEXT("ScriptName"),
+                 TEXT("Hidden"), TEXT("Deprecated"), TEXT("DeprecationMessage"), TEXT("Spacer") })
+        {
+            if (Enum->HasMetaData(MetadataKey, i))
+            {
+                Value.NativeProperties.Add(
+                    FString(TEXT("metadata.")) + MetadataKey, Enum->GetMetaData(MetadataKey, i));
+            }
+        }
         
         // Get value comment if available
         FString ValueComment;
@@ -1431,6 +3202,82 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
         *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))), 
         EN2CLogSeverity::Debug);
 
+    Member.NativeProperties.Add(TEXT("cpp_type"), Property->GetCPPType());
+    Member.NativeProperties.Add(TEXT("property_class"), Property->GetClass()->GetName());
+    Member.NativeProperties.Add(TEXT("owner_struct_path"), Property->GetOwnerStruct()->GetPathName());
+    Member.NativeProperties.Add(TEXT("property_flags"), LexToString(static_cast<uint64>(Property->GetPropertyFlags())));
+    Member.NativeProperties.Add(TEXT("array_dim"), FString::FromInt(Property->ArrayDim));
+
+    if (const TMap<FName, FString>* Metadata = Property->GetMetaDataMap())
+    {
+        for (const TPair<FName, FString>& Entry : *Metadata)
+        {
+            Member.NativeProperties.Add(TEXT("metadata.") + Entry.Key.ToString(), Entry.Value);
+        }
+    }
+
+    FProperty* ValueTypeProperty = Property;
+    if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
+    {
+        ValueTypeProperty = ArrayProp->Inner;
+    }
+    else if (FSetProperty* SetProp = CastField<FSetProperty>(Property))
+    {
+        ValueTypeProperty = SetProp->ElementProp;
+    }
+    else if (FMapProperty* MapProp = CastField<FMapProperty>(Property))
+    {
+        ValueTypeProperty = MapProp->ValueProp;
+        Member.NativeProperties.Add(TEXT("key_cpp_type"), MapProp->KeyProp->GetCPPType());
+        if (FStructProperty* KeyStruct = CastField<FStructProperty>(MapProp->KeyProp))
+        {
+            Member.NativeProperties.Add(TEXT("key_type_path"), KeyStruct->Struct->GetPathName());
+        }
+        else if (FEnumProperty* KeyEnum = CastField<FEnumProperty>(MapProp->KeyProp))
+        {
+            Member.NativeProperties.Add(TEXT("key_type_path"), KeyEnum->GetEnum()->GetPathName());
+        }
+    }
+
+    if (FStructProperty* StructProperty = CastField<FStructProperty>(ValueTypeProperty))
+    {
+        Member.TypeName = StructProperty->Struct->GetName();
+        Member.TypePath = StructProperty->Struct->GetPathName();
+    }
+    else if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(ValueTypeProperty))
+    {
+        Member.TypeName = EnumProperty->GetEnum()->GetName();
+        Member.TypePath = EnumProperty->GetEnum()->GetPathName();
+    }
+    else if (FByteProperty* ByteProperty = CastField<FByteProperty>(ValueTypeProperty); ByteProperty && ByteProperty->Enum)
+    {
+        Member.TypeName = ByteProperty->Enum->GetName();
+        Member.TypePath = ByteProperty->Enum->GetPathName();
+    }
+    else if (FClassProperty* ClassProperty = CastField<FClassProperty>(ValueTypeProperty))
+    {
+        Member.TypeName = ClassProperty->MetaClass->GetName();
+        Member.TypePath = ClassProperty->MetaClass->GetPathName();
+    }
+    else if (FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(ValueTypeProperty))
+    {
+        Member.TypeName = ObjectProperty->PropertyClass->GetName();
+        Member.TypePath = ObjectProperty->PropertyClass->GetPathName();
+    }
+
+    if (const UUserDefinedStruct* OwnerStruct = Cast<UUserDefinedStruct>(Property->GetOwnerStruct()))
+    {
+        if (const uint8* DefaultInstance = OwnerStruct->GetDefaultInstance())
+        {
+            Property->ExportText_Direct(
+                Member.DefaultValue,
+                Property->ContainerPtrToValuePtr<void>(DefaultInstance),
+                nullptr,
+                nullptr,
+                PPF_None);
+        }
+    }
+
     // Handle container types
     if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
     {
@@ -1679,6 +3526,15 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
     
     // Set basic struct info
     Result.Name = StructName;
+    Result.TypePath = StructPath;
+    Result.NativeProperties.Add(TEXT("cpp_struct_name"), Struct->GetStructCPPName());
+    Result.NativeProperties.Add(TEXT("struct_flags"), LexToString(static_cast<uint32>(Struct->StructFlags)));
+    if (const UUserDefinedStruct* UserStruct = Cast<UUserDefinedStruct>(Struct))
+    {
+        Result.NativeProperties.Add(TEXT("guid"), UserStruct->Guid.ToString());
+        Result.NativeProperties.Add(TEXT("status"), FString::FromInt(static_cast<int32>(UserStruct->Status.GetValue())));
+    }
+    AddObjectMetadata(Result.NativeProperties, Struct);
     
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Struct details: Name=%s"), 

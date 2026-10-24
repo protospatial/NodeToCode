@@ -59,7 +59,8 @@ enum class EN2CPinType : uint8
     Bitmask     UMETA(DisplayName = "Bitmask"),
     Self        UMETA(DisplayName = "Self"),
     Index       UMETA(DisplayName = "Index"),
-    Wildcard    UMETA(DisplayName = "Wildcard")
+    Wildcard    UMETA(DisplayName = "Wildcard"),
+    Custom      UMETA(DisplayName = "Custom")
 };
 
 /**

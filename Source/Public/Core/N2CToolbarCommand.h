@@ -17,15 +17,23 @@ public:
     TSharedPtr<FUICommandInfo> OpenWindowCommand;
     TSharedPtr<FUICommandInfo> CollectNodesCommand;
     TSharedPtr<FUICommandInfo> CopyJsonCommand;
+    TSharedPtr<FUICommandInfo> CopyEntireBlueprintJsonCommand;
+    TSharedPtr<FUICommandInfo> TranslateEntireBlueprintCommand;
 
     // Command names and labels
     static const FName CommandName_Open;
     static const FName CommandName_Collect;
     static const FName CommandName_CopyJson;
+    static const FName CommandName_CopyEntireBlueprintJson;
+    static const FName CommandName_TranslateEntire;
     static const FText CommandLabel_Open;
     static const FText CommandLabel_Collect;
     static const FText CommandLabel_CopyJson;
+    static const FText CommandLabel_CopyEntireBlueprintJson;
+    static const FText CommandLabel_TranslateEntire;
     static const FText CommandTooltip_Open;
     static const FText CommandTooltip_Collect;
     static const FText CommandTooltip_CopyJson;
+    static const FText CommandTooltip_CopyEntireBlueprintJson;
+    static const FText CommandTooltip_TranslateEntire;
 };

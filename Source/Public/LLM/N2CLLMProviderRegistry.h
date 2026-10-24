@@ -23,8 +23,16 @@ public:
     /** Register a provider class */
     void RegisterProvider(EN2CLLMProvider ProviderType, TSubclassOf<UN2CBaseLLMService> ProviderClass);
     
-    /** Create a provider instance */
+    /** Create a provider instance, resolving the normal per-request provider picker when appropriate. */
     TScriptInterface<IN2CLLMService> CreateProvider(
+        EN2CLLMProvider ProviderType,
+        UObject* Outer = nullptr);
+
+    /**
+     * Create the exact registered provider class without opening or consulting the request picker.
+     * Used for transient resend services after the user has already selected a provider/model.
+     */
+    TScriptInterface<IN2CLLMService> CreateProviderDirect(
         EN2CLLMProvider ProviderType,
         UObject* Outer = nullptr);
         

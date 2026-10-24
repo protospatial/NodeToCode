@@ -17,10 +17,10 @@ struct FN2CTranslationUsage
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    int32 OutputTokens;
+    int32 OutputTokens = 0;
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    int32 InputTokens;
+    int32 InputTokens = 0;
     
 };
 /**

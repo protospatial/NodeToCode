@@ -427,6 +427,23 @@ void UN2CLLMPayloadBuilder::ConfigureForLMStudio()
     RootObject->SetBoolField(TEXT("stream"), false);
 }
 
+void UN2CLLMPayloadBuilder::ConfigureForMiniMax()
+{
+    ProviderType = EN2CLLMProvider::MiniMax;
+
+    // Clear messages array and recreate it
+    MessagesArray.Empty();
+
+    // MiniMax uses OpenAI-compatible format
+    RootObject->SetBoolField(TEXT("stream"), false);
+
+    // Remove temperature if set - some OpenAI-compatible models don't support it
+    if (RootObject->HasField(TEXT("temperature")))
+    {
+        RootObject->RemoveField(TEXT("temperature"));
+    }
+}
+
 FString UN2CLLMPayloadBuilder::Build()
 {
     // Serialize JSON to string

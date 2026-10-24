@@ -9,6 +9,8 @@
 #include "Utils/Processors/N2CNodeProcessor.h"
 #include "Utils/Processors/N2CNodeProcessorFactory.h"
 
+class URigVMGraph;
+
 /**
  * @class FN2CNodeTranslator
  * @brief Converts collected Blueprint nodes into N2CStruct format
@@ -29,6 +31,9 @@ public:
      */
     bool GenerateN2CStruct(const TArray<UK2Node*>& CollectedNodes);
 
+    /** Generate N2CBlueprint from entire Blueprint (all graphs, optional variables) */
+    bool GenerateFromBlueprint(class UBlueprint* InBlueprint, bool bIncludeVariables = true);
+
     /**
      * @brief Get the generated Blueprint structure
      * @return The translated Blueprint structure
@@ -48,8 +53,8 @@ private:
     /** Maps node GUIDs to simplified IDs */
     TMap<FGuid, FString> NodeIDMap;
 
-    /** Maps pin GUIDs to simplified IDs */
-    TMap<FGuid, FString> PinIDMap;
+    /** Maps pin objects to simplified IDs; pin GUIDs are not graph-global. */
+    TMap<const UEdGraphPin*, FString> PinIDMap;
 
     /** Tracking sets to prevent duplicate processing */
     TSet<FString> ProcessedStructPaths;
@@ -79,6 +84,12 @@ private:
     /** Process a single graph */
     bool ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType);
 
+    /** Preserve a RigVM model graph and its native nodes, pins, and links. */
+    bool ProcessRigVMGraph(URigVMGraph* Graph);
+
+    /** Capture direct native connections after node and pin ID assignment. */
+    void CollectDirectConnections(UEdGraph* Graph, FN2CGraph& OutGraph);
+
     /** Validate all flow references after processing */
     bool ValidateFlowReferences(FN2CGraph& Graph);
 
@@ -96,6 +107,9 @@ private:
 
     /** Convert a UK2Node to FN2CNodeDefinition */
     bool ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
+
+    /** Preserve graph nodes whose source type is not a K2 node (for example AnimGraph nodes). */
+    bool ProcessNativeGraphNode(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Determine node type */
     void DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType);
@@ -116,10 +130,10 @@ private:
     void ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Process all pins on the node */
-    void ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs);
+    void ProcessNodePins(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs);
 
     /** Process execution and data flows for the node */
-    void ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs);
+    void ProcessNodeFlows(UEdGraphNode* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs);
 
     /** Check if a struct is Blueprint-defined */
     bool IsBlueprintStruct(UScriptStruct* Struct) const;
@@ -150,4 +164,13 @@ private:
 
     /** Log detailed debug information about the node */
     void LogNodeDetails(const FN2CNodeDefinition& NodeDef);
+
+    /** Collect Blueprint component instances and their overridden default properties */
+    void CollectComponentOverrides(class UBlueprint* InBlueprint);
+
+    /** Convert FBPVariableDescription to FN2CVariable */
+    void ConvertVariableDescription(const struct FBPVariableDescription& Desc, struct FN2CVariable& OutVar);
+
+    /** Collect local variables from a function entry node */
+    void CollectLocalVariables(class UK2Node_FunctionEntry* EntryNode, TArray<struct FN2CVariable>& OutVariables);
 };

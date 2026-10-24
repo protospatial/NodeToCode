@@ -44,6 +44,14 @@ public:
     /** DeepSeek API Key */
     UPROPERTY(EditAnywhere, Category = "Node to Code | API Keys")
     FString DeepSeek_API_Key;
+
+    /** Ollama API Key */
+    UPROPERTY(EditAnywhere, Category = "Node to Code | API Keys")
+    FString Ollama_API_Key;
+
+    /** MiniMax API Key */
+    UPROPERTY(EditAnywhere, Category = "Node to Code | API Keys")
+    FString MiniMax_API_Key;
     
 private:
     /** Ensure the secrets directory exists */

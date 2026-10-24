@@ -2,6 +2,39 @@
 
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
+namespace
+{
+bool IsCommentNodeClass(const FString& NodeClass)
+{
+    return NodeClass.EndsWith(TEXT("EdGraphNode_Comment"), ESearchCase::CaseSensitive);
+}
+
+bool IsProvenNonExecutableGraph(const FN2CGraph& Graph)
+{
+    if (!Graph.bNoExecutableNodes || Graph.Nodes.Num() > 0 ||
+        !Graph.Pins.IsEmpty() || !Graph.Connections.IsEmpty() ||
+        !Graph.ConnectionErrors.IsEmpty() || Graph.UnresolvedConnectionCount > 0 ||
+        !Graph.Flows.Execution.IsEmpty() || !Graph.Flows.Data.IsEmpty())
+    {
+        return false;
+    }
+
+    if (Graph.NativeNodeCount == 0 && Graph.SkippedNodeCount == 0)
+    {
+        return true;
+    }
+    if (Graph.NativeNodeCount <= 0 || Graph.SkippedNodeCount != Graph.NativeNodeCount ||
+        Graph.SkippedNodeClasses.IsEmpty())
+    {
+        return false;
+    }
+    return Graph.SkippedNodeClasses.ContainsByPredicate([](const FString& NodeClass)
+    {
+        return !IsCommentNodeClass(NodeClass);
+    }) == false;
+}
+}
+
 bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, FString& OutError)
 {
     // Validate required fields
@@ -69,20 +102,25 @@ bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, FS
 
 bool FN2CBlueprintValidator::ValidateGraphs(const FN2CBlueprint& Blueprint, FString& OutError)
 {
-    // Check that at least one graph has nodes
-    bool bHasNodes = false;
+    // Preserve legitimate empty/comment-only graphs, but never let an unknown
+    // untranslated graph stand in for executable Blueprint content.
+    bool bHasNonSkeletonGraph = false;
+    bool bHasUsableNonSkeletonGraph = false;
     for (const FN2CGraph& Graph : Blueprint.Graphs)
     {
-        if (Graph.Nodes.Num() > 0)
+        if (Graph.GraphType != EN2CGraphType::ClassItSelf)
         {
-            bHasNodes = true;
-            break;
+            bHasNonSkeletonGraph = true;
+            if (Graph.Nodes.Num() > 0 || IsProvenNonExecutableGraph(Graph))
+            {
+                bHasUsableNonSkeletonGraph = true;
+            }
         }
     }
 
-    if (!bHasNodes)
+    if (bHasNonSkeletonGraph && !bHasUsableNonSkeletonGraph)
     {
-        OutError = TEXT("No nodes found in any graph");
+        OutError = TEXT("No nodes found in any non-ClassItSelf graph");
         FN2CLogger::Get().LogError(OutError);
         return false;
     }
@@ -110,10 +148,40 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
         return false;
     }
 
-    // Check nodes array
+    // Special-case synthetic ClassItSelf graphs: they are allowed to have
+    // no nodes, because they only carry class-level structure (UCLASS,
+    // UPROPERTY members, ctor/dtor, components) and do not represent an
+    // executable flow graph. For these graphs we skip node/flow validation
+    // and treat them as structurally valid.
+    if (Graph.GraphType == EN2CGraphType::ClassItSelf)
+    {
+        if (Graph.Nodes.Num() == 0)
+        {
+            FN2CLogger::Get().Log(
+                FString::Printf(TEXT("ClassItSelf graph %s has no nodes (expected for synthetic class skeleton graphs)"), *Graph.Name),
+                EN2CLogSeverity::Debug
+            );
+            return true;
+        }
+    }
+
+    // A source graph with no executable nodes is valid only when the exporter
+    // retained enough native metadata to prove it is empty or comment-only.
     if (Graph.Nodes.Num() == 0)
     {
-        OutError = FString::Printf(TEXT("No nodes in graph %s"), *Graph.Name);
+        if (IsProvenNonExecutableGraph(Graph))
+        {
+            return true;
+        }
+        OutError = FString::Printf(TEXT("No nodes in graph %s and no proof that it is non-executable"), *Graph.Name);
+        FN2CLogger::Get().LogError(OutError);
+        return false;
+    }
+
+    if (!Graph.GraphPath.IsEmpty() &&
+        Graph.NativeNodeCount != Graph.Nodes.Num() + Graph.SkippedNodeCount)
+    {
+        OutError = FString::Printf(TEXT("Native, translated, and skipped node counts disagree in graph %s"), *Graph.Name);
         FN2CLogger::Get().LogError(OutError);
         return false;
     }

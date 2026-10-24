@@ -32,20 +32,26 @@ private:
     /** Internal JSON conversion helpers */
     static TSharedPtr<FJsonObject> BlueprintToJsonObject(const FN2CBlueprint& Blueprint);
     static TSharedPtr<FJsonObject> GraphToJsonObject(const FN2CGraph& Graph);
+    static TSharedPtr<FJsonObject> GraphPinToJsonObject(const FN2CGraphPin& Pin);
     static TSharedPtr<FJsonObject> NodeToJsonObject(const FN2CNodeDefinition& Node);
     static TSharedPtr<FJsonObject> PinToJsonObject(const FN2CPinDefinition& Pin);
     static TSharedPtr<FJsonObject> FlowsToJsonObject(const FN2CFlows& Flows);
     static TSharedPtr<FJsonObject> StructToJsonObject(const FN2CStruct& Struct);
     static TSharedPtr<FJsonObject> EnumToJsonObject(const FN2CEnum& Enum);
+    static TSharedPtr<FJsonObject> VariableToJsonObject(const FN2CVariable& Var);
+    static TSharedPtr<FJsonObject> NativeObjectToJsonObject(const FN2CNativeObject& Object);
 
     /** JSON parsing helpers */
     static bool ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CBlueprint& OutBlueprint);
+    static bool ParseGraphPinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraphPin& OutPin);
     static bool ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraph& OutGraph);
     static bool ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CNodeDefinition& OutNode);
     static bool ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CPinDefinition& OutPin);
     static bool ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CFlows& OutFlows);
     static bool ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CStruct& OutStruct);
     static bool ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CEnum& OutEnum);
+    static bool ParseVariableFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CVariable& OutVar);
+    static bool ParseNativeObjectFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CNativeObject& OutObject);
 
     /** Formatting configuration */
     static bool bPrettyPrint;

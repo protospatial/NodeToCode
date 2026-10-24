@@ -20,6 +20,12 @@ struct FN2COllamaConfig
 			  ToolTip="The base endpoint to use for the Ollama API. Defaults to http:localhost:11434"))
 	FString OllamaEndpoint = "http://localhost:11434";
 
+    /** Optional API key for authenticated Ollama endpoints such as Ollama Cloud. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Transient, Category = "Cloud",
+        meta=(DisplayName="API Key", PasswordField=true,
+              ToolTip="API key for authenticated Ollama endpoints such as Ollama Cloud. Leave empty for local Ollama servers."))
+    FString ApiKey;
+
     /** Whether to use system prompts with Ollama models */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General",
         meta=(DisplayName="Use System Prompts", 
