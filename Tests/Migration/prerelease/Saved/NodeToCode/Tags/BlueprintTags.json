@@ -1,0 +1,24 @@
+{
+	"tags": [
+		{
+			"tag": "Gameplay",
+			"category": "Default",
+			"description": "Door logic",
+			"graphGuid": "6B1C2E7A-3F4D-4E5A-9B8C-1D2E3F4A5B6C",
+			"graphName": "EventGraph",
+			"owningBlueprint": "/Game/Blueprints/BP_Door.BP_Door",
+			"timestamp": "2025-06-25T10:15:30.000Z"
+		},
+		{
+			"tag": "NeedsReview",
+			"category": "Status",
+			"description": "",
+			"graphGuid": "6B1C2E7A-3F4D-4E5A-9B8C-1D2E3F4A5B6C",
+			"graphName": "EventGraph",
+			"owningBlueprint": "/Game/Blueprints/BP_Door.BP_Door",
+			"timestamp": "2025-06-26T08:00:00.000Z"
+		}
+	],
+	"version": "1.0",
+	"lastSaved": "2025-06-26T08:00:00.000Z"
+}

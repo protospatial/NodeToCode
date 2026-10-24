@@ -1,0 +1,72 @@
+{
+	"version": "1.0.0",
+	"metadata":
+	{
+		"name": "BP_Door",
+		"blueprint_type": "Normal",
+		"blueprint_class": "BP_Door"
+	},
+	"graphs": [
+		{
+			"name": "EventGraph",
+			"graph_type": "EventGraph",
+			"nodes": [
+				{
+					"id": "N1",
+					"type": "Event",
+					"name": "Event BeginPlay",
+					"member_parent": "Actor",
+					"member_name": "ReceiveBeginPlay",
+					"input_pins": [],
+					"output_pins": [
+						{
+							"id": "P1",
+							"name": "",
+							"type": "Exec",
+							"connected": true
+						}
+					]
+				},
+				{
+					"id": "N2",
+					"type": "CallFunction",
+					"name": "Print String",
+					"member_parent": "KismetSystemLibrary",
+					"member_name": "PrintString",
+					"input_pins": [
+						{
+							"id": "P2",
+							"name": "",
+							"type": "Exec",
+							"connected": true
+						},
+						{
+							"id": "P3",
+							"name": "In String",
+							"type": "String",
+							"default_value": "Door ready"
+						}
+					],
+					"output_pins": [
+						{
+							"id": "P4",
+							"name": "",
+							"type": "Exec"
+						}
+					]
+				}
+			],
+			"flows":
+			{
+				"execution": [
+					"N1->N2"
+				],
+				"data":
+				{
+				}
+			}
+		}
+	],
+	"structs": [],
+	"enums": []
+}

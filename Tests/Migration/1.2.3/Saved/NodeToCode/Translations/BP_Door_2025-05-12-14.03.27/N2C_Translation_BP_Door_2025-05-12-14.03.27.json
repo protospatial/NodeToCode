@@ -1,0 +1,20 @@
+{
+	"graphs": [
+		{
+			"graph_name": "EventGraph",
+			"graph_type": "EventGraph",
+			"graph_class": "BP_Door",
+			"code":
+			{
+				"graphDeclaration": "virtual void BeginPlay() override;",
+				"graphImplementation": "void ABP_Door::BeginPlay()\n{\n    Super::BeginPlay();\n    UKismetSystemLibrary::PrintString(this, TEXT(\"Door ready\"));\n}",
+				"implementationNotes": "Include Kismet/KismetSystemLibrary.h for PrintString."
+			}
+		}
+	],
+	"usage":
+	{
+		"input_tokens": 1543,
+		"output_tokens": 212
+	}
+}

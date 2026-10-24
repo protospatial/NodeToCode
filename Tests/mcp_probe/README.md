@@ -163,3 +163,8 @@ its environment when no key is saved, so a live check never types or saves a key
     otherwise reaches `FGenericWindow::GetRestoredDimensions`, which is Fatal.
   - Provider HTTP errors (429, 503, 402) surface in the response as "Failed to parse LLM response" with the raw body;
     the case's `log_errors` hold the HTTP status.
+
+## Migration check
+
+The 1.2.x to 2.0 migration check (card 0079) lives in `Tests/Migration/` and reuses `editor_session.py`,
+`env_keys.py` and `live_env_translation.py` from here; see `Tests/Migration/README.md`.
