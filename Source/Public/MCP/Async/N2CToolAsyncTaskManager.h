@@ -9,6 +9,20 @@
 #include "Async/Async.h"
 
 /**
+ * Where a task's MCP messages go: the HTTP response of the tools/call that started it. The MCP server binds these to
+ * that response (a text/event-stream on the same POST, or one application/json response held until the end); tests
+ * bind their own. Both are called on the game thread.
+ */
+struct FN2CAsyncTaskResponder
+{
+	/** Writes one serialized notifications/progress message. Unbound when the client asked for no progress. */
+	TFunction<void(const FString& /*NotificationJson*/)> SendProgress;
+
+	/** Writes the serialized JSON-RPC response that carries the task's CallToolResult. Called once per task. */
+	TFunction<void(const FString& /*ResponseJson*/)> SendResponse;
+};
+
+/**
  * Task execution context containing all necessary information for async execution
  */
 struct FN2CAsyncTaskContext
@@ -16,8 +30,18 @@ struct FN2CAsyncTaskContext
 	/** Unique task ID */
 	FGuid TaskId;
 
-	/** Progress token from the connector */
+	/** Progress token as a lookup key (nodetocode/cancelTask): the client's token as a string, or a generated one */
 	FString ProgressToken;
+
+	/** The client's _meta.progressToken exactly as sent (string or number), echoed in progress notifications. Null
+	 *  when the client sent none: then no progress notifications are written. */
+	TSharedPtr<FJsonValue> ClientProgressToken;
+
+	/** Where progress and the final response are written */
+	FN2CAsyncTaskResponder Responder;
+
+	/** Last progress value written; each notification's value is larger, as MCP requires */
+	double LastProgressSent = -1.0;
 
 	/** MCP Session ID */
 	FString SessionId;
@@ -53,16 +77,20 @@ public:
 
 	/**
 	 * Launches an async task for a long-running tool. The task starts on the game thread (at once when called there)
-	 * and runs without a worker thread.
+	 * and runs without a worker thread. A task that fails inside Execute() has already written its response through
+	 * Responder when this returns.
 	 * @param ToolName The name of the tool to execute
 	 * @param Arguments The tool arguments
-	 * @param ProgressToken The progress token from the connector
+	 * @param ProgressToken The progress token as a lookup key (the client's token as a string, or a generated one)
+	 * @param ClientProgressToken The client's _meta.progressToken as sent, or null when it sent none
 	 * @param SessionId The MCP session ID
 	 * @param OriginalRequestId The original request ID from the connector
-	 * @return The unique task ID
+	 * @param Responder Where progress notifications and the final response are written
+	 * @return The task ID, or an invalid GUID when the tool has no async task (nothing was written)
 	 */
-	FGuid LaunchTask(const FGuid& InTaskId, const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments, 
-		const FString& ProgressToken, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId);
+	FGuid LaunchTask(const FGuid& InTaskId, const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments,
+		const FString& ProgressToken, const TSharedPtr<FJsonValue>& ClientProgressToken, const FString& SessionId,
+		const TSharedPtr<FJsonValue>& OriginalRequestId, const FN2CAsyncTaskResponder& Responder);
 
 	/**
 	 * Launches an already created task: tracks it under Task->GetTaskId() and its progress token, binds its delegates
@@ -71,7 +99,9 @@ public:
 	 * @return The task ID
 	 */
 	FGuid LaunchTaskInstance(const TSharedRef<IN2CToolAsyncTask, ESPMode::ThreadSafe>& Task, const FString& ToolName,
-		const TSharedPtr<FJsonObject>& Arguments, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId);
+		const TSharedPtr<FJsonObject>& Arguments, const FString& SessionId, const TSharedPtr<FJsonValue>& OriginalRequestId,
+		const FN2CAsyncTaskResponder& Responder = FN2CAsyncTaskResponder(),
+		const TSharedPtr<FJsonValue>& ClientProgressToken = nullptr);
 
 	/**
 	 * Attempts to cancel a running task
@@ -121,8 +151,8 @@ public:
 	bool WasProgressTokenCompleted(const FString& ProgressToken) const;
 
 	/**
-	 * Removes tracked tasks that have already reported, and drops SSE streams of finished tasks that no client read
-	 * within the SSE TTL. OnTaskCompleted already removes each task as it reports, so this is a safety net.
+	 * Removes tracked tasks that have already reported. OnTaskCompleted already removes each task as it reports, so
+	 * this is a safety net.
 	 */
 	void CleanupCompletedTasks();
 
@@ -138,6 +168,12 @@ public:
 
 	/** Number of tracked progress-token mappings */
 	int32 GetTrackedProgressTokenCount() const;
+
+	/** Creates the async task for a tool call (tool name, task ID, progress token key, arguments), or null */
+	using FTaskFactory = TFunction<TSharedPtr<IN2CToolAsyncTask>(const FString&, const FGuid&, const FString&, const TSharedPtr<FJsonObject>&)>;
+
+	/** Tests only: LaunchTask creates tasks with InFactory instead of the built-in tools; an unset function restores them */
+	void SetTaskFactoryForTesting(FTaskFactory InFactory) { TaskFactoryForTesting = MoveTemp(InFactory); }
 
 	/** How long a finished task's progress token is remembered for WasProgressTokenCompleted */
 	static constexpr double CompletedTokenTtlSeconds = 600.0;
@@ -193,4 +229,7 @@ private:
 
 	/** Thread safety for task map access */
 	mutable FCriticalSection TaskMapLock;
+
+	/** Set by tests to replace CreateAsyncTask */
+	FTaskFactory TaskFactoryForTesting;
 };

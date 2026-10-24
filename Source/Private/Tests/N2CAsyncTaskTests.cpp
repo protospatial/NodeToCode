@@ -6,7 +6,6 @@
 
 #include "MCP/Async/N2CToolAsyncTaskBase.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
-#include "MCP/Server/N2CSseServer.h"
 #include "Async/Async.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Dom/JsonObject.h"
@@ -80,12 +79,13 @@ namespace N2CAsyncTaskTestsPrivate
 		}));
 	}
 
-	/** Launches the task through the manager, the way the MCP server does (stream prepared first) */
-	static void Launch(const FStubRef& Task)
+	/** Launches the task through the manager, the way the MCP server does, counting the responses it writes */
+	static void Launch(const FStubRef& Task, const TSharedRef<int32>& Responses)
 	{
-		NodeToCodeSseServer::PrepareSseStreamForTask(Task->GetTaskId());
+		FN2CAsyncTaskResponder Responder;
+		Responder.SendResponse = [Responses](const FString&) { ++*Responses; };
 		FN2CToolAsyncTaskManager::Get().LaunchTaskInstance(Task, TEXT("n2c-test-stub"), MakeShared<FJsonObject>(),
-			TEXT("n2c-test-session"), MakeShared<FJsonValueNumber>(1));
+			TEXT("n2c-test-session"), MakeShared<FJsonValueNumber>(1), Responder);
 	}
 }
 
@@ -107,56 +107,46 @@ bool FN2CAsyncTaskCleanupTest::RunTest(const FString& Parameters)
 
 	// 1. Fifty tasks that complete: each is released by the manager once it has delivered its result
 	constexpr int32 NumCompleted = 50;
-	TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> CompletedTasks;
-	TArray<FGuid> CompletedTaskIds;
+	const TSharedRef<int32> CompletedResponses = MakeShared<int32>(0);
+TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> CompletedTasks;
 	TArray<FString> CompletedTokens;
 	for (int32 Index = 0; Index < NumCompleted; ++Index)
 	{
 		FStubRef Task = MakeShared<FStubAsyncTask, ESPMode::ThreadSafe>(true);
 		CompletedTasks.Add(Task);
-		CompletedTaskIds.Add(Task->GetTaskId());
 		CompletedTokens.Add(Task->GetProgressToken());
-		Launch(Task);
+		Launch(Task, CompletedResponses);
 	}
 
 	TestEqual(TEXT("no completed task is still tracked"), Manager.GetTrackedTaskCount(), BaseTasks);
 	TestEqual(TEXT("no completed task's progress token is still mapped"), Manager.GetTrackedProgressTokenCount(), BaseTokens);
 
+	TestEqual(TEXT("each completed task wrote exactly one response"), *CompletedResponses, NumCompleted);
+
 	int32 NumAlive = 0;
-	int32 NumStreamsKept = 0;
 	int32 NumRemembered = 0;
 	int32 NumCancelAccepted = 0;
 	for (int32 Index = 0; Index < NumCompleted; ++Index)
 	{
 		NumAlive += CompletedTasks[Index].IsValid() ? 1 : 0;
-		NumStreamsKept += NodeToCodeSseServer::HasStreamForTask(CompletedTaskIds[Index]) ? 1 : 0;
 		NumRemembered += Manager.WasProgressTokenCompleted(CompletedTokens[Index]) ? 1 : 0;
 		NumCancelAccepted += Manager.CancelTaskByProgressToken(CompletedTokens[Index]) ? 1 : 0;
 	}
 	TestEqual(TEXT("every completed task object was freed"), NumAlive, 0);
-	TestEqual(TEXT("each result waits on its SSE stream for a client that has not connected yet"), NumStreamsKept, NumCompleted);
 	TestEqual(TEXT("each finished progress token is remembered (cancel answers task_already_completed)"), NumRemembered, NumCompleted);
 	TestEqual(TEXT("cancel is refused for a finished task"), NumCancelAccepted, 0);
 
-	// Streams nobody connected to expire after the TTL (here: at once)
-	NodeToCodeSseServer::ExpireCompletedStreams(0.0);
-	int32 NumStreamsLeft = 0;
-	for (const FGuid& TaskId : CompletedTaskIds)
-	{
-		NumStreamsLeft += NodeToCodeSseServer::HasStreamForTask(TaskId) ? 1 : 0;
-	}
-	TestEqual(TEXT("expired streams are dropped"), NumStreamsLeft, 0);
-
 	// 2. Running tasks are tracked until CancelAllTasks (the shutdown path) cancels and removes them
 	constexpr int32 NumRunning = 5;
-	TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> RunningTasks;
+	const TSharedRef<int32> RunningResponses = MakeShared<int32>(0);
+TArray<TWeakPtr<FStubAsyncTask, ESPMode::ThreadSafe>> RunningTasks;
 	TArray<FGuid> RunningTaskIds;
 	for (int32 Index = 0; Index < NumRunning; ++Index)
 	{
 		FStubRef Task = MakeShared<FStubAsyncTask, ESPMode::ThreadSafe>(false);
 		RunningTasks.Add(Task);
 		RunningTaskIds.Add(Task->GetTaskId());
-		Launch(Task);
+		Launch(Task, RunningResponses);
 	}
 
 	TestEqual(TEXT("running tasks are tracked"), Manager.GetTrackedTaskCount(), BaseTasks + NumRunning);
@@ -167,6 +157,7 @@ bool FN2CAsyncTaskCleanupTest::RunTest(const FString& Parameters)
 		NumRunningNow += Manager.IsTaskRunning(TaskId) ? 1 : 0;
 	}
 	TestEqual(TEXT("running tasks report running"), NumRunningNow, NumRunning);
+	TestEqual(TEXT("no running task has written a response"), *RunningResponses, 0);
 
 	Manager.CancelAllTasks();
 
@@ -178,14 +169,7 @@ bool FN2CAsyncTaskCleanupTest::RunTest(const FString& Parameters)
 		NumRunningAlive += Task.IsValid() ? 1 : 0;
 	}
 	TestEqual(TEXT("every cancelled task object was freed"), NumRunningAlive, 0);
-
-	NodeToCodeSseServer::ExpireCompletedStreams(0.0);
-	int32 NumRunningStreamsLeft = 0;
-	for (const FGuid& TaskId : RunningTaskIds)
-	{
-		NumRunningStreamsLeft += NodeToCodeSseServer::HasStreamForTask(TaskId) ? 1 : 0;
-	}
-	TestEqual(TEXT("cancelled tasks' streams expire too"), NumRunningStreamsLeft, 0);
+	TestEqual(TEXT("each cancelled task wrote exactly one response (its cancelled result)"), *RunningResponses, NumRunning);
 
 	return true;
 }

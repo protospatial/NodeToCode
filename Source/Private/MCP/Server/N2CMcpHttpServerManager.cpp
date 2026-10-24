@@ -17,6 +17,10 @@
 #include "Core/N2CSettings.h"
 #include "MCP/Server/N2CMcpSSEResponseManager.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
+#include "Runtime/Launch/Resources/Version.h"
+
+/** UE 5.8's HTTPServer can stream one response body (FHttpServerResponse::StreamingBodyQueue); 5.6 and 5.7 cannot */
+#define N2C_MCP_HTTP_CAN_STREAM (ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8))
 
 namespace N2CMcpRequestPolicy
 {
@@ -53,6 +57,25 @@ namespace N2CMcpRequestPolicy
 			}
 		}
 		return nullptr;
+	}
+
+	/** True when an Accept header lists text/event-stream (the client can read an SSE response to its POST) */
+	static bool AcceptsEventStream(const FHttpServerRequest& Request)
+	{
+		for (const TPair<FString, TArray<FString>>& Pair : Request.Headers)
+		{
+			if (Pair.Key.Equals(TEXT("Accept"), ESearchCase::IgnoreCase))
+			{
+				for (const FString& Value : Pair.Value)
+				{
+					if (Value.Contains(TEXT("text/event-stream"), ESearchCase::IgnoreCase))
+					{
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	static void Reject(const FHttpResultCallback& OnComplete, EHttpServerResponseCodes Code, const FString& Reason)
@@ -233,173 +256,34 @@ bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Reques
 		JsonValue.IsValid() ? (JsonValue->Type == EJson::Array ? TEXT("batch") : TEXT("single message")) : TEXT("not valid JSON")),
 		EN2CLogSeverity::Debug);
 
-	// Process the MCP request
-	FString ResponseBody;
-	int32 StatusCode = 200;
-
-	// Variables to track if the method was 'initialize' and handle session management
-	bool bWasInitializeCall = false;
 	FString ClientSentSessionId;
-	const TArray<FString>* SessionIdHeaders = Request.Headers.Find(TEXT("Mcp-Session-Id"));
-	if (SessionIdHeaders && SessionIdHeaders->Num() > 0)
+	if (const FString* SessionIdHeader = N2CMcpRequestPolicy::FirstHeader(Request, TEXT("Mcp-Session-Id")))
 	{
-		ClientSentSessionId = (*SessionIdHeaders)[0];
+		ClientSentSessionId = *SessionIdHeader;
 	}
 
-	// Check if this is a tools/call request for a long-running tool
-	bool bIsLongRunningTool = false;
-	FString ToolName;
-	TSharedPtr<FJsonObject> ToolArguments;
-	TSharedPtr<FJsonValue> RequestId; // This is the JSON-RPC request ID
-	FString ProgressToken;           // This is the MCP progress token for SSE
-	
-	// Check whether this is a tools/call of a long-running tool, from the value parsed above
+	// A single tools/call of a long-running tool runs as an async task answered on this same request
 	if (JsonValue.IsValid() && JsonValue->Type == EJson::Object)
 	{
-		TSharedPtr<FJsonObject> RequestObject = JsonValue->AsObject();
+		const TSharedPtr<FJsonObject> RequestObject = JsonValue->AsObject();
 		FString Method;
-		if (RequestObject->TryGetStringField(TEXT("method"), Method) && Method == TEXT("tools/call"))
+		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+		FString ToolName;
+		if (RequestObject->TryGetStringField(TEXT("method"), Method) && Method == TEXT("tools/call")
+			&& RequestObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
+			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName) && IsLongRunningTool(ToolName))
 		{
-			// Extract the tool name and check if it's long-running
-			const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-			if (RequestObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj->IsValid())
-			{
-				(*ParamsObj)->TryGetStringField(TEXT("name"), ToolName);
-				
-				// Check if tool is long-running
-				if (!ToolName.IsEmpty())
-				{
-					// Since GetToolDefinition returns nullptr, we need to check all definitions
-					TArray<FMcpToolDefinition> AllDefs = FN2CMcpToolManager::Get().GetAllToolDefinitions();
-					for (const auto& Def : AllDefs)
-					{
-						if (Def.Name == ToolName && Def.bIsLongRunning)
-						{
-							bIsLongRunningTool = true;
-							break;
-						}
-					}
-					
-					
-					if (bIsLongRunningTool)
-					{
-						// Extract arguments
-						const TSharedPtr<FJsonObject>* ArgsObj = nullptr;
-						if ((*ParamsObj)->TryGetObjectField(TEXT("arguments"), ArgsObj) && ArgsObj->IsValid())
-						{
-							ToolArguments = *ArgsObj;
-						}
-						else
-						{
-							ToolArguments = MakeShareable(new FJsonObject);
-						}
-						
-						// Extract request ID
-						RequestId = RequestObject->TryGetField(TEXT("id"));
-						if (!RequestId.IsValid())
-						{
-							RequestId = MakeShareable(new FJsonValueNull());
-						}
-						
-						// Extract progress token from _meta
-						const TSharedPtr<FJsonObject>* MetaObj = nullptr;
-						if ((*ParamsObj)->TryGetObjectField(TEXT("_meta"), MetaObj) && MetaObj->IsValid())
-						{
-                            // PROGRESS TOKEN EXTRACTION
-                            FString ClientProvidedToken;
-							// Ensure _meta.progressToken is a string. If it's present but not a string, treat as invalid.
-							if ((*MetaObj)->TryGetStringField(TEXT("progressToken"), ClientProvidedToken) && !ClientProvidedToken.IsEmpty()) {
-                                ProgressToken = ClientProvidedToken;
-                            } else {
-                                if ((*MetaObj)->HasField(TEXT("progressToken"))) {
-                                    FN2CLogger::Get().LogWarning(TEXT("Client provided _meta.progressToken but it was not a valid string. Will generate a new one."), TEXT("MCP"));
-                                }
-                                // ProgressToken remains empty, will be generated below if needed.
-                            }
-						}
-					}
-				}
-			}
+			HandleLongRunningToolCall(Request, OnComplete, RequestObject, *ParamsObj, ToolName, ClientSentSessionId);
+			return true;
 		}
 	}
-	
-	// Handle long-running tools differently
-    if (bIsLongRunningTool)
-	{
-        if (ProgressToken.IsEmpty())
-        {
-            ProgressToken = FGuid::NewGuid().ToString();
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Generated progressToken %s for long-running tool %s"), *ProgressToken, *ToolName), EN2CLogSeverity::Info);
-        }
 
-        FGuid TaskId = FGuid::NewGuid(); // Generate TaskId for the SSE stream and async task.
+	// Everything else is answered at once
+	FString ResponseBody;
+	int32 StatusCode = 200;
+	bool bWasInitializeCall = false;
+	FN2CMcpHttpRequestHandler::ProcessMcpRequest(JsonValue, ResponseBody, StatusCode, bWasInitializeCall);
 
-        // The result is delivered over the SSE stream: check the SSE server before starting any work
-        const int32 SsePort = NodeToCodeSseServer::GetSseServerPort();
-        if (SsePort < 0)
-        {
-            FN2CLogger::Get().LogError(TEXT("SSE server is not running, cannot handle long-running tools"));
-            ResponseBody = FJsonRpcUtils::SerializeResponse(
-                FJsonRpcUtils::CreateErrorResponse(RequestId, JsonRpcErrorCodes::InternalError,
-                    TEXT("SSE server is not available for long-running operations")
-                )
-            );
-            StatusCode = 500;
-        }
-        else
-        {
-            // Prepare the stream first: a task that finishes while it starts pushes its result there
-            NodeToCodeSseServer::PrepareSseStreamForTask(TaskId);
-
-            // Launch the async task, passing the generated TaskId
-            const FGuid LaunchedTaskId = FN2CToolAsyncTaskManager::Get().LaunchTask(
-                TaskId, // Pass the pre-generated TaskId
-                ToolName,
-                ToolArguments,
-                ProgressToken,
-                CurrentSessionId,
-                RequestId);
-
-            if (LaunchedTaskId.IsValid() && LaunchedTaskId == TaskId) // Ensure the launched task used our ID
-            {
-                // Create the SSE URL for this task
-                FString SseUrl = FString::Printf(TEXT("http://localhost:%d/mcp/events/%s"), SsePort, *TaskId.ToString());
-
-                // Return a synchronous response with the SSE URL
-                TSharedPtr<FJsonObject> ResultObject = MakeShared<FJsonObject>();
-                ResultObject->SetStringField(TEXT("status"), TEXT("accepted"));
-                ResultObject->SetStringField(TEXT("taskId"), TaskId.ToString());
-                ResultObject->SetStringField(TEXT("progressToken"), ProgressToken);
-                ResultObject->SetStringField(TEXT("sseUrl"), SseUrl);
-
-                FJsonRpcResponse Response(RequestId, MakeShared<FJsonValueObject>(ResultObject));
-                ResponseBody = FJsonRpcUtils::SerializeResponse(Response);
-
-                FN2CLogger::Get().Log(FString::Printf(TEXT("Launched async task %s for tool %s. SSE URL: %s"),
-                    *TaskId.ToString(), *ToolName, *SseUrl), EN2CLogSeverity::Info);
-            }
-            else
-            {
-                // Nothing will ever complete this stream
-                NodeToCodeSseServer::DiscardStreamForTask(TaskId);
-
-                FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to launch async task for tool: %s"), *ToolName));
-                ResponseBody = FJsonRpcUtils::SerializeResponse(
-                    FJsonRpcUtils::CreateErrorResponse(RequestId, JsonRpcErrorCodes::InternalError,
-                        FString::Printf(TEXT("Failed to initiate asynchronous task execution for tool '%s'"), *ToolName)
-                    )
-                );
-                StatusCode = 500;
-            }
-        }
-	}
-	else
-	{
-		// Process the request normally (synchronous)
-		FN2CMcpHttpRequestHandler::ProcessMcpRequest(JsonValue, ResponseBody, StatusCode, bWasInitializeCall);
-	}
-
-	// Create response
 	TUniquePtr<FHttpServerResponse> Response = FHttpServerResponse::Create(ResponseBody, TEXT("application/json"));
 	if (!Response.IsValid())
 	{
@@ -408,40 +292,221 @@ bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Reques
 	}
 	Response->Code = static_cast<EHttpServerResponseCodes>(StatusCode);
 
-	// Session ID Handling for HTTP Transport (as per MCP Spec 2025-03-26)
-	if (bWasInitializeCall && StatusCode == 200)
+	const FString ResponseSessionId = ResolveResponseSessionId(bWasInitializeCall && StatusCode == 200, ClientSentSessionId);
+	if (!ResponseSessionId.IsEmpty())
+	{
+		Response->Headers.Add(TEXT("Mcp-Session-Id"), { ResponseSessionId });
+	}
+
+	OnComplete(MoveTemp(Response));
+	return true;
+}
+
+FString FN2CMcpHttpServerManager::ResolveResponseSessionId(bool bSuccessfulInitialize, const FString& ClientSentSessionId)
+{
+	// Session ID handling for the HTTP transport (MCP spec 2025-03-26)
+	if (bSuccessfulInitialize)
 	{
 		// Successful initialize - generate or reuse session ID
 		if (CurrentSessionId.IsEmpty())
 		{
 			CurrentSessionId = FGuid::NewGuid().ToString();
 		}
-		Response->Headers.Add(TEXT("Mcp-Session-Id"), { CurrentSessionId });
 		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP Initialize successful. Responding with Mcp-Session-Id: %s"), *CurrentSessionId), EN2CLogSeverity::Info);
+		return CurrentSessionId;
 	}
-	else if (!ClientSentSessionId.IsEmpty())
+	if (!ClientSentSessionId.IsEmpty())
 	{
 		// For non-initialize requests, if client sent a session ID, echo it back if it matches our current one
 		if (ClientSentSessionId == CurrentSessionId || CurrentSessionId.IsEmpty())
 		{
-			Response->Headers.Add(TEXT("Mcp-Session-Id"), { ClientSentSessionId });
+			return ClientSentSessionId;
 		}
-		else
-		{
-			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Mcp-Session-Id mismatch. Client: %s, Server: %s. Not adding Mcp-Session-Id to response."), *ClientSentSessionId, *CurrentSessionId));
-		}
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Mcp-Session-Id mismatch. Client: %s, Server: %s. Not adding Mcp-Session-Id to response."), *ClientSentSessionId, *CurrentSessionId));
+		return FString();
 	}
-	else if (!CurrentSessionId.IsEmpty() && !bWasInitializeCall)
+	if (!CurrentSessionId.IsEmpty())
 	{
 		// Client did not send session ID for an ongoing session
-		Response->Headers.Add(TEXT("Mcp-Session-Id"), { CurrentSessionId });
 		FN2CLogger::Get().LogWarning(TEXT("Client did not send Mcp-Session-Id for an ongoing session. Responded with current session ID."));
+		return CurrentSessionId;
+	}
+	return FString();
+}
+
+bool FN2CMcpHttpServerManager::IsLongRunningTool(const FString& ToolName)
+{
+	if (ToolName.IsEmpty())
+	{
+		return false;
+	}
+	for (const FMcpToolDefinition& Def : FN2CMcpToolManager::Get().GetAllToolDefinitions())
+	{
+		if (Def.Name == ToolName)
+		{
+			return Def.bIsLongRunning;
+		}
+	}
+	return false;
+}
+
+bool FN2CMcpHttpServerManager::CanStreamToolProgress()
+{
+	// Transport choice per engine (decision card 0085, still open; this follows the review's recommendation and the
+	// spec of card 0087). UE 5.8's HTTPServer can stream one response body (FHttpServerResponse::StreamingBodyQueue),
+	// so progress and the result go out as text/event-stream on the same POST. The 5.6 and 5.7 HTTPServer writes one
+	// framed body per request, so there the call holds one application/json response until the task finishes and
+	// sends no progress. Change this function (and the #if in HandleLongRunningToolCall) if 0085 decides otherwise.
+#if N2C_MCP_HTTP_CAN_STREAM
+	return true;
+#else
+	return false;
+#endif
+}
+
+void FN2CMcpHttpServerManager::HandleLongRunningToolCall(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete,
+	const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
+	const FString& ClientSentSessionId)
+{
+	const TSharedPtr<FJsonObject>* ArgsObj = nullptr;
+	const TSharedPtr<FJsonObject> ToolArguments = Params->TryGetObjectField(TEXT("arguments"), ArgsObj) && ArgsObj && ArgsObj->IsValid()
+		? *ArgsObj : MakeShared<FJsonObject>();
+
+	TSharedPtr<FJsonValue> RequestId = RequestObject->TryGetField(TEXT("id"));
+	if (!RequestId.IsValid())
+	{
+		RequestId = MakeShared<FJsonValueNull>();
 	}
 
-	// Send response
-	OnComplete(MoveTemp(Response));
+	// _meta.progressToken is a string or an integer (MCP). It is kept as sent, so notifications echo it with its
+	// type; its string form is the key nodetocode/cancelTask finds the task by.
+	TSharedPtr<FJsonValue> ClientProgressToken;
+	FString ProgressTokenKey;
+	const TSharedPtr<FJsonObject>* MetaObj = nullptr;
+	if (Params->TryGetObjectField(TEXT("_meta"), MetaObj) && MetaObj && MetaObj->IsValid())
+	{
+		const TSharedPtr<FJsonValue> Token = (*MetaObj)->TryGetField(TEXT("progressToken"));
+		if (Token.IsValid() && (Token->Type == EJson::String || Token->Type == EJson::Number)
+			&& Token->TryGetString(ProgressTokenKey) && !ProgressTokenKey.IsEmpty())
+		{
+			ClientProgressToken = Token;
+		}
+		else if (Token.IsValid())
+		{
+			ProgressTokenKey.Reset();
+			FN2CLogger::Get().LogWarning(TEXT("_meta.progressToken is neither a non-empty string nor a number; the call runs without progress notifications"), TEXT("MCP"));
+		}
+	}
+	if (ProgressTokenKey.IsEmpty())
+	{
+		// No client token: a generated key still lets the task be found (logs, nodetocode/cancelTask)
+		ProgressTokenKey = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
+	}
 
-	return true;
+	const FString ResponseSessionId = ResolveResponseSessionId(/*bSuccessfulInitialize=*/false, ClientSentSessionId);
+
+	// Stream when the client can read a stream (Accept lists text/event-stream), wants progress (sent a token) and the
+	// engine can stream; otherwise answer with one JSON response when the task finishes.
+	const bool bStream = CanStreamToolProgress() && ClientProgressToken.IsValid() && N2CMcpRequestPolicy::AcceptsEventStream(Request);
+
+	FN2CAsyncTaskResponder Responder;
+	TUniquePtr<FHttpServerResponse> StreamResponse;
+#if N2C_MCP_HTTP_CAN_STREAM
+	if (bStream)
+	{
+		// One response whose body the connection drains from a queue: its headers go out with the first event, and
+		// the connection closes once the queue is marked complete (the body has no Content-Length, so the close ends
+		// it). Everything is enqueued on the game thread, where the HTTP server also drains it.
+		using FBodyQueue = TQueue<TArray<uint8>, EQueueMode::Spsc>;
+		const TSharedRef<FBodyQueue> BodyQueue = MakeShared<FBodyQueue>();
+		const TSharedRef<TAtomic<bool>> BodyComplete = MakeShared<TAtomic<bool>>(false);
+
+		StreamResponse = FHttpServerResponse::Create(FString(), TEXT("text/event-stream"));
+		StreamResponse->Code = EHttpServerResponseCodes::Ok;
+		StreamResponse->Headers.Add(TEXT("Cache-Control"), { TEXT("no-cache") });
+		if (!ResponseSessionId.IsEmpty())
+		{
+			StreamResponse->Headers.Add(TEXT("Mcp-Session-Id"), { ResponseSessionId });
+		}
+		StreamResponse->StreamingBodyQueue = BodyQueue;
+		StreamResponse->StreamingBodyComplete = BodyComplete;
+		StreamResponse->Flags = EHttpServerResponseFlags::CloseAfterWrite;
+
+		auto Enqueue = [BodyQueue](const FString& Json)
+		{
+			const FString Event = FString::Printf(TEXT("event: message\r\ndata: %s\r\n\r\n"), *Json);
+			const FTCHARToUTF8 Utf8(*Event);
+			TArray<uint8> Bytes;
+			Bytes.Append(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
+			BodyQueue->Enqueue(MoveTemp(Bytes));
+		};
+		Responder.SendProgress = [Enqueue](const FString& NotificationJson)
+		{
+			check(IsInGameThread());
+			Enqueue(NotificationJson);
+		};
+		Responder.SendResponse = [Enqueue, BodyComplete](const FString& ResponseJson)
+		{
+			check(IsInGameThread());
+			Enqueue(ResponseJson);
+			BodyComplete->Store(true);
+		};
+	}
+	else
+#endif
+	{
+		// Hold this request open and answer it once, when the task reports. The HTTP server sets no timeout while a
+		// handler is pending, so the connection waits for as long as the task runs.
+		const TSharedRef<bool> bAnswered = MakeShared<bool>(false);
+		Responder.SendResponse = [OnComplete, ResponseSessionId, bAnswered](const FString& ResponseJson)
+		{
+			check(IsInGameThread());
+			if (*bAnswered)
+			{
+				return;
+			}
+			*bAnswered = true;
+			TUniquePtr<FHttpServerResponse> Response = FHttpServerResponse::Create(ResponseJson, TEXT("application/json"));
+			Response->Code = EHttpServerResponseCodes::Ok;
+			if (!ResponseSessionId.IsEmpty())
+			{
+				Response->Headers.Add(TEXT("Mcp-Session-Id"), { ResponseSessionId });
+			}
+			OnComplete(MoveTemp(Response));
+		};
+	}
+
+	// A task that fails inside Execute() (no Blueprint focused, no key) writes its response before LaunchTask returns:
+	// into the stream's queue, or straight to OnComplete.
+	const FGuid TaskId = FGuid::NewGuid();
+	const FGuid LaunchedTaskId = FN2CToolAsyncTaskManager::Get().LaunchTask(TaskId, ToolName, ToolArguments,
+		ProgressTokenKey, bStream ? ClientProgressToken : nullptr, CurrentSessionId, RequestId, Responder);
+
+	if (!LaunchedTaskId.IsValid())
+	{
+		// Nothing was started and nothing written: answer with a JSON-RPC error
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to launch async task for tool: %s"), *ToolName));
+		const FString ErrorBody = FJsonRpcUtils::SerializeResponse(FJsonRpcUtils::CreateErrorResponse(RequestId,
+			JsonRpcErrorCodes::InternalError, FString::Printf(TEXT("Failed to start tool '%s'"), *ToolName)));
+		TUniquePtr<FHttpServerResponse> Response = FHttpServerResponse::Create(ErrorBody, TEXT("application/json"));
+		Response->Code = EHttpServerResponseCodes::Ok;
+		if (!ResponseSessionId.IsEmpty())
+		{
+			Response->Headers.Add(TEXT("Mcp-Session-Id"), { ResponseSessionId });
+		}
+		OnComplete(MoveTemp(Response));
+		return;
+	}
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Started task %s for tool %s (progress token %s), answering %s"),
+		*TaskId.ToString(), *ToolName, *ProgressTokenKey,
+		bStream ? TEXT("as text/event-stream on the same request") : TEXT("with one JSON response when it finishes")),
+		EN2CLogSeverity::Info);
+
+	if (StreamResponse.IsValid())
+	{
+		OnComplete(MoveTemp(StreamResponse));
+	}
 }
 
 bool FN2CMcpHttpServerManager::HandleHealthRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete)

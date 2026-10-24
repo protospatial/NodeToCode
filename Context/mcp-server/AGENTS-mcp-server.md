@@ -79,7 +79,9 @@ Source/
 The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 
 *   **Transport Layer**: HTTP server on port 27000 (configurable via settings)
-*   **SSE Transport**: Separate SSE server for streaming responses (port 27001)
+*   **Long-running tools**: answered on the `tools/call` POST itself: `text/event-stream` with progress then the
+    result on UE 5.8 (when Accept lists it and a progressToken is sent), else one held `application/json` response
+*   **SSE side server**: separate httplib server on port 27001 (`/mcp/notifications`); no longer used for tool results
 *   **Protocol**: JSON-RPC 2.0 with proper error handling and batch support
 *   **Lifecycle**: Auto-starts with plugin, graceful shutdown on exit
 *   **Session Management**: Protocol version negotiation and session tracking
@@ -143,11 +145,13 @@ Supports long-running tool operations with progress streaming:
     *   `ReportProgress(float Progress, const FString& Message)` - Progress updates
     *   `ReportComplete(const FMcpToolCallResult& Result)` - Task completion
     *   `CheckCancellationAndReport()` - Cancellation check with auto-reporting
-    *   Automatic SSE event streaming via FN2CMcpSSEResponseManager
+    *   Progress and the result go to the task's `FN2CAsyncTaskResponder` (the call's HTTP response)
 
 *   **`N2CToolAsyncTaskManager.h/.cpp`**: Task lifecycle management
     *   Singleton for managing all async tasks
-    *   `LaunchTask()` - Start async execution; `LaunchTaskInstance()` launches an already created task (tests)
+    *   `LaunchTask()` - Start async execution with an `FN2CAsyncTaskResponder` (where progress notifications and
+        the final JSON-RPC response are written) and the client's progressToken as sent; `LaunchTaskInstance()`
+        launches an already created task, `SetTaskFactoryForTesting()` swaps in test tasks
     *   `CancelTask()`, `CancelTaskByProgressToken()` - Cancellation
     *   `GetTaskContext()`, `IsTaskRunning()`, `GetRunningTaskIds()`
     *   A task stops being tracked once it has delivered its result (`OnTaskCompleted`); its progress token is remembered for 10 min so `nodetocode/cancelTask` answers `task_already_completed` (`WasProgressTokenCompleted()`)
@@ -360,7 +364,7 @@ The server implements these MCP methods:
 
 ### Advanced Features
 *   Batch request processing
-*   Progress notifications via SSE
+*   Progress notifications on the tools/call's own text/event-stream response (UE 5.8)
 *   Protocol version negotiation
 *   Session management
 *   Task cancellation (`nodetocode/cancelTask`)
@@ -448,9 +452,9 @@ curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -d '[{"jsonrpc": "2.0", "method": "ping", "id": 1}, {"jsonrpc": "2.0", "method": "tools/list", "id": 2}]'
 
-# Long-running tool with progress (requires SSE)
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+# Long-running tool with progress (the same response streams on UE 5.8; -N shows events as they arrive)
+curl -N -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "translate-focused-blueprint", "arguments": {"language": "cpp"}, "_meta": {"progressToken": "unique-token-123"}}, "id": 7}'
 
 # Cancel a running task

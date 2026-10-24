@@ -28,8 +28,10 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   - `provider`: LLM provider ID
   - `model`: Specific model ID
   - `language`: Target language ID
-- **Long-Running**: Yes - requires progress token for SSE streaming
-- **Returns**: Translation results via SSE events
+- **Long-Running**: Yes. Answered on the same POST: on UE 5.8 with `Accept: text/event-stream` and a
+  `_meta.progressToken`, as a stream of `notifications/progress` then the result; otherwise as one JSON response when
+  the translation finishes
+- **Returns**: A CallToolResult whose text is the translation JSON (`isError` with the reason on failure)
 - **Use Case**: Performing actual Blueprint translation
 
 ## Translation Languages
@@ -127,7 +129,7 @@ The `translate-focused-blueprint` tool uses the `FN2CTranslateBlueprintAsyncTask
 
 - Handles Blueprint serialization on Game Thread
 - Performs LLM communication asynchronously
-- Reports progress via SSE streaming
+- Reports progress (stages and elapsed seconds) on the call's own response when the client streams
 - Supports cancellation during execution
 - Saves results to configured output directory
 

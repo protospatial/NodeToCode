@@ -102,6 +102,18 @@ public:
 	 */
 	void SetSessionProtocolVersion(const FString& SessionId, const FString& ProtocolVersion);
 
+	/**
+	 * Handles a POST to /mcp (the route handler; public so tests can drive it without a socket). Most requests are
+	 * answered before it returns. A single tools/call of a long-running tool (translate-focused-blueprint) is answered
+	 * on the same request when its task finishes: as text/event-stream with notifications/progress and then the
+	 * JSON-RPC response when CanStreamToolProgress(), the Accept header lists text/event-stream and
+	 * params._meta.progressToken is set; otherwise as one application/json response.
+	 */
+	bool HandleMcpRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
+
+	/** True on engines whose HTTPServer can stream a response (UE 5.8 and later); see the .cpp for 5.6 and 5.7 */
+	static bool CanStreamToolProgress();
+
 private:
 	// Private constructor for singleton
 	FN2CMcpHttpServerManager() = default;
@@ -110,10 +122,19 @@ private:
 	FN2CMcpHttpServerManager(const FN2CMcpHttpServerManager&) = delete;
 	FN2CMcpHttpServerManager& operator=(const FN2CMcpHttpServerManager&) = delete;
 
+	/** Starts a long-running tool's task and answers the request from it (see HandleMcpRequest) */
+	void HandleLongRunningToolCall(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete,
+		const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
+		const FString& ClientSentSessionId);
+
+	/** True when ToolName is a registered tool marked bIsLongRunning */
+	static bool IsLongRunningTool(const FString& ToolName);
+
 	/**
-	 * Handles incoming HTTP requests to the MCP endpoint.
+	 * The Mcp-Session-Id to put on a response (empty for none), per the HTTP transport's session rules. A successful
+	 * initialize creates the session when there is none.
 	 */
-	bool HandleMcpRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
+	FString ResolveResponseSessionId(bool bSuccessfulInitialize, const FString& ClientSentSessionId);
 
 	/**
 	 * Handles health check requests.

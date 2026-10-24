@@ -31,7 +31,7 @@ sys.path.insert(0, HERE)
 from editor_session import EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
 from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, call_tool,  # noqa: E402
-                                  read_task_stream, stored_key_present, tool_text)
+                                  run_tool_call, stored_key_present, tool_text)
 
 SETTINGS_SECTION = '[/Script/NodeToCode.N2CSettings]'
 
@@ -271,12 +271,10 @@ def run_case(port, c, rid, timeout, log_reader):
     rec['settings_applied'] = apply_settings(port, c['settings'], rid)
     offset = log_reader.size()
     started_at = time.time()
-    status, started = call_tool(port, 'translate-focused-blueprint',
-                                {'provider': c['provider'], 'model': c['model'], 'language': 'cpp'}, rid + 1,
-                                meta={'progressToken': 'matrix-%d' % rid})
-    task_id = (started.get('result') or {}).get('taskId')
-    if task_id:
-        events = read_task_stream(port, task_id, timeout)
+    events = run_tool_call(port, 'translate-focused-blueprint',
+                           {'provider': c['provider'], 'model': c['model'], 'language': 'cpp'}, rid + 1,
+                           meta={'progressToken': 'matrix-%d' % rid}, timeout=timeout)
+    if events:
         final = [d for e, d in events if e == 'response']
         # A response read in the grace after the bound still counts; only a missing response is a timeout
         rec['timed_out'] = not final and any(e == 'timeout' for e, _ in events)
@@ -303,7 +301,7 @@ def run_case(port, c, rid, timeout, log_reader):
             rec['response_head'] = (text or final[-1] if final else '')[:900]
     else:
         rec['is_error'] = True
-        rec['task_start'] = started
+        rec['task_start'] = 'no response'
     time.sleep(1.0)  # let the log flush
     if c['settings'] and isinstance(rec['settings_applied'], dict):
         rec['settings_restored'] = apply_settings(port, restore_spec(rec['settings_applied'].get('previous')), rid + 2)

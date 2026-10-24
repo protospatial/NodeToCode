@@ -100,14 +100,24 @@ Each category has its own README with detailed documentation.
 
 ## Long-Running Tools and Async Execution
 
-NodeToCode now supports asynchronous execution for long-running tools (e.g., LLM translation, complex analysis). This prevents the MCP server from timing out and provides progress feedback to clients.
+NodeToCode runs long-running tools (LLM translation) as async tasks on the game thread and answers the client's
+`tools/call` on that same POST, with an ordinary CallToolResult, once the task finishes.
 
 ### How Async Tools Work
 
 1. **Tool Declaration**: Mark a tool as long-running by setting `bIsLongRunning = true` in its definition
-2. **SSE Streaming**: Long-running tools use Server-Sent Events (SSE) to stream progress and results
-3. **Progress Reporting**: Tools can report progress incrementally during execution
-4. **Cancellation**: Clients can cancel running tasks using the `nodetocode/cancelTask` method
+2. **Same-POST response**: `FN2CMcpHttpServerManager::HandleMcpRequest` starts the task and does not answer at once.
+   On UE 5.8, when the request's `Accept` lists `text/event-stream` and `params._meta.progressToken` is set, the
+   response is a `text/event-stream`: `notifications/progress` events (the token echoed with its JSON type, a number
+   stays a number), then the JSON-RPC response with the CallToolResult, then the connection closes. Otherwise (no
+   token, JSON-only Accept, or UE 5.6/5.7) the request is held and answered with one `application/json` response
+   when the task finishes; no progress is sent. The 5.6/5.7 choice follows the open decision card 0085 and lives in
+   `FN2CMcpHttpServerManager::CanStreamToolProgress()`. A long-running tool inside a JSON-RPC batch is refused.
+3. **Progress Reporting**: Tools report progress from the game thread; the translation reports real stages
+   (collecting the Blueprint, request sent, waiting with elapsed seconds, parsing) at least once per second, and each
+   value sent is larger than the last, as MCP requires
+4. **Cancellation**: Clients can cancel running tasks using the `nodetocode/cancelTask` method with the call's
+   progress token; the call's own response then carries the cancelled error result
 
 ### Creating a Long-Running Tool
 
@@ -237,15 +247,15 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# The response will be streamed as SSE events:
-# event: notification
-# data: {"jsonrpc":"2.0","method":"nodetocode/taskStarted","params":{"taskId":"...","progressToken":"unique-progress-token-123"}}
+# With -H "Accept: application/json, text/event-stream" on UE 5.8, the same response is a stream:
+# event: message
+# data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"unique-progress-token-123","progress":0.1,"message":"Translation request sent to the LLM provider"}}
 #
-# event: progress
-# data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"unique-progress-token-123","progress":0.25,"message":"Processing step 25 of 100"}}
-#
-# event: response
+# event: message
 # data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Processing complete!"}]}}
+#
+# Without it (or on UE 5.6/5.7) the call waits and returns one JSON response:
+# {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Processing complete!"}]}}
 ```
 
 ### Cancelling a Task

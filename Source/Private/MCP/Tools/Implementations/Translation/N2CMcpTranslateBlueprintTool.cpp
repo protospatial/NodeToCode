@@ -10,7 +10,8 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("translate-focused-blueprint"),
-        TEXT("Translates the currently focused Blueprint graph using an LLM provider. This is a long-running task and requires a _meta.progressToken for SSE streaming."),
+        TEXT("Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. ")
+        TEXT("It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs."),
         TEXT("Translation")
     );
 
@@ -45,13 +46,11 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
 
 FMcpToolCallResult FN2CMcpTranslateBlueprintTool::Execute(const TSharedPtr<FJsonObject>& Arguments)
 {
-    // This tool is designed to be run asynchronously via SSE.
-    // If this Execute method is called directly, it means the async path in FN2CMcpHttpServerManager was not taken.
-    FN2CLogger::Get().LogWarning(TEXT("translate-focused-blueprint tool was called synchronously. This indicates an issue with async task setup or a client calling without SSE support."));
-    
-    // Provide an error indicating that this tool expects asynchronous handling.
+    // The MCP server runs this tool as an async task on the call's own HTTP response (FN2CMcpHttpServerManager). It
+    // reaches Execute() only when the call came inside a JSON-RPC batch, which is answered as a whole and cannot wait.
+    FN2CLogger::Get().LogWarning(TEXT("translate-focused-blueprint was called inside a JSON-RPC batch; it only runs as a single request."));
+
     return FMcpToolCallResult::CreateErrorResult(
-        TEXT("The 'translate-focused-blueprint' tool is a long-running task and expects to be handled asynchronously via SSE. ")
-        TEXT("This synchronous execution path should not typically be reached. Check server logs for async setup issues.")
+        TEXT("translate-focused-blueprint cannot run inside a JSON-RPC batch. Send it as a single tools/call request.")
     );
 }

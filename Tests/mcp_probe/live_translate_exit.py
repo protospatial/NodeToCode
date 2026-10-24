@@ -27,9 +27,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from editor_session import EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
-from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, call_tool,  # noqa: E402
-                                  stored_key_present, tool_text)
-from live_translate_cancel import TaskStream  # noqa: E402
+from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, ToolCallStream,  # noqa: E402
+                                  call_tool, stored_key_present, task_id_for_token, tool_text)
 
 # Closes the probe Blueprint's editor, then asks the editor to quit. The request is already in flight by then.
 QUIT_PY = ('import unreal\n'
@@ -89,27 +88,25 @@ def main():
 
             token = 'exit-probe-%d' % int(time.time())
             arguments = {'provider': args.provider, 'model': args.model, 'language': args.language}
-            status, started = call_tool(port, 'translate-focused-blueprint', arguments, 2, meta={'progressToken': token})
-            task_id = (started.get('result') or {}).get('taskId')
-            report['task_id'] = task_id
-            if task_id:
-                stream = TaskStream(port, task_id)
-                time.sleep(args.quit_after)
-                report['responses_before_quit'] = len([e for e in stream.events if e[1] == 'response'])
-                quit_at = time.time()
-                status, quit_result = call_tool(port, 'run-python', {'code': QUIT_PY % {'path': '%s/%s' % (ASSET_DIR, name)}}, 3)
-                report['quit_call'] = {'status': status, 'text': tool_text(quit_result)[:200]}
-                try:
-                    report['exit_code'] = s.proc.wait(args.exit_timeout)
-                    report['exit_seconds'] = round(time.time() - quit_at, 1)
-                except Exception:
-                    report['exit_code'] = None
-                stream.close()
-                report['stream'] = {'events': [(t, e) for t, e, _ in stream.events], 'closed_at': stream.closed_at}
+            stream = ToolCallStream(port, 'translate-focused-blueprint', arguments, 2, meta={'progressToken': token})
+            report['task_started'] = True
+            time.sleep(args.quit_after)
+            report['responses_before_quit'] = len([e for e in stream.events if e[1] == 'response'])
+            quit_at = time.time()
+            status, quit_result = call_tool(port, 'run-python', {'code': QUIT_PY % {'path': '%s/%s' % (ASSET_DIR, name)}}, 3)
+            report['quit_call'] = {'status': status, 'text': tool_text(quit_result)[:200]}
+            try:
+                report['exit_code'] = s.proc.wait(args.exit_timeout)
+                report['exit_seconds'] = round(time.time() - quit_at, 1)
+            except Exception:
+                report['exit_code'] = None
+            stream.close()
+            report['stream'] = {'events': [(t, e) for t, e, _ in stream.events], 'closed_at': stream.closed_at}
 
     log_text = s.log_text()
+    report['task_id'] = task_id_for_token(log_text, token) if report.get('task_started') else None
     if report.get('task_id'):
-        tid = report['task_id'].replace('-', '').upper()
+        tid = report['task_id']
         # The cancel runs on OnEnginePreExit (start of UEngine::PreExit), before the module shuts down ("SSE server
         # stopped") and the UObject subsystem closes
         cancel_pos = log_text.find('Requested cancellation for all 1 running tasks')
