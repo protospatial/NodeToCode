@@ -86,7 +86,7 @@ Manages interactions with LLMs.
     *   `SetJsonResponseFormat()` / `SetStructuredOutput()` - Schema-based output
     *   `ConfigureForOpenAI()`, `ConfigureForAnthropic()`, `ConfigureForGemini()`, `ConfigureForDeepSeek()`, `ConfigureForOllama()`, `ConfigureForLMStudio()`
     *   `GetN2CResponseSchema()` - Static method for N2C translation format schema
-*   **`N2CResponseParserBase.h/.cpp` (`UN2CResponseParserBase`)**: Abstract base for LLM response parsers. Handles common N2C JSON structure parsing, error handling (`HandleCommonErrorResponse()`), content extraction (`ExtractStandardMessageContent()`), graph/code data extraction, and JSON code block marker processing.
+*   **`N2CResponseParserBase.h/.cpp` (`UN2CResponseParserBase`)**: Abstract base for LLM response parsers. Handles common N2C JSON structure parsing, error handling (`HandleCommonErrorResponse()`), content extraction (`ExtractChatCompletionContent()` for OpenAI-compatible bodies), stop and finish reasons (`SetStopReasonError()`, `KindFromFinishReason()`: every provider parser checks its stop reason before the content and reports `Truncated`, `Refused` or `Blocked`), graph/code data extraction, and JSON code block marker processing. Reasoning fields are logged, never parsed as the answer.
 *   **Parser Implementations (`Source/Public/LLM/Providers/`)**:
     *   `UN2COpenAIResponseParser`, `UN2CAnthropicResponseParser`, `UN2CGeminiResponseParser`, `UN2CDeepSeekResponseParser`, `UN2COllamaResponseParser`, `UN2CLMStudioResponseParser`
     *   Handle provider-specific JSON response structures, error formats, extract core message content and token usage.

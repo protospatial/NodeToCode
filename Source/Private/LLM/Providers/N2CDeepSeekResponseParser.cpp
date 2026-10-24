@@ -28,28 +28,29 @@ bool UN2CDeepSeekResponseParser::ParseLLMResponse(
         return false;
     }
 
-    // Extract message content from DeepSeek format
-    FString MessageContent;
-    if (!ExtractStandardMessageContent(JsonObject, TEXT("choices"), TEXT("message"), TEXT("content"), MessageContent))
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to extract message content from DeepSeek response"), TEXT("DeepSeekResponseParser"));
-        SetParseError(OutResponse, TEXT("The provider response has no message content"));
-        return false;
-    }
-
-    // Extract usage information if available
-    const TSharedPtr<FJsonObject> UsageObject = JsonObject->GetObjectField(TEXT("usage"));
-    if (UsageObject.IsValid())
+    // Extract usage information if available (also on a truncated answer, which is billed)
+    const TSharedPtr<FJsonObject>* UsagePtr = nullptr;
+    if (JsonObject->TryGetObjectField(TEXT("usage"), UsagePtr) && UsagePtr && UsagePtr->IsValid())
     {
         int32 PromptTokens = 0;
         int32 CompletionTokens = 0;
-        UsageObject->TryGetNumberField(TEXT("prompt_tokens"), PromptTokens);
-        UsageObject->TryGetNumberField(TEXT("completion_tokens"), CompletionTokens);
+        (*UsagePtr)->TryGetNumberField(TEXT("prompt_tokens"), PromptTokens);
+        (*UsagePtr)->TryGetNumberField(TEXT("completion_tokens"), CompletionTokens);
         
         OutResponse.Usage.InputTokens = PromptTokens;
         OutResponse.Usage.OutputTokens = CompletionTokens;
 
         FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
+    }
+
+    // Extract message content from DeepSeek format: finish_reason first (length, content_filter,
+    // insufficient_system_resource), then the content; reasoning_content is never the answer
+    FString MessageContent;
+    if (!ExtractChatCompletionContent(JsonObject,
+        TEXT("Project Settings > Node to Code > LLM Services > DeepSeek > Max Output Tokens (0 = Auto)"), MessageContent, OutResponse))
+    {
+        FN2CLogger::Get().LogError(TEXT("Failed to extract message content from DeepSeek response"), TEXT("DeepSeekResponseParser"));
+        return false;
     }
 
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response Message Content: %s"), *MessageContent), EN2CLogSeverity::Debug);

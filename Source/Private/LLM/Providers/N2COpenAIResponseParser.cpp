@@ -4,6 +4,11 @@
 #include "Utils/N2CLogger.h"
 #include "Serialization/JsonSerializer.h"
 
+namespace N2COpenAIParserPrivate
+{
+    const TCHAR* SettingHint = TEXT("Project Settings > Node to Code > LLM Services > OpenAI > Max Output Tokens (0 = Auto)");
+}
+
 bool UN2COpenAIResponseParser::ParseLLMResponse(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
@@ -28,35 +33,11 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
         return false;
     }
 
-    // Extract message content - handle both Chat Completions and Responses API formats
-    FString MessageContent;
-
-    // Check if this is a Responses API response (has "output" array instead of "choices")
-    if (JsonObject->HasField(TEXT("output")))
+    // Extract usage information if available (also on a truncated answer, which is billed)
+    const TSharedPtr<FJsonObject>* UsagePtr = nullptr;
+    if (JsonObject->TryGetObjectField(TEXT("usage"), UsagePtr) && UsagePtr && UsagePtr->IsValid())
     {
-        // Responses API format
-        if (!ExtractResponsesAPIContent(JsonObject, MessageContent))
-        {
-            FN2CLogger::Get().LogError(TEXT("Failed to extract message content from OpenAI Responses API response"), TEXT("OpenAIResponseParser"));
-            SetParseError(OutResponse, TEXT("The provider response has no message content"));
-            return false;
-        }
-    }
-    else
-    {
-        // Chat Completions API format
-        if (!ExtractStandardMessageContent(JsonObject, TEXT("choices"), TEXT("message"), TEXT("content"), MessageContent))
-        {
-            FN2CLogger::Get().LogError(TEXT("Failed to extract message content from OpenAI response"), TEXT("OpenAIResponseParser"));
-            SetParseError(OutResponse, TEXT("The provider response has no message content"));
-            return false;
-        }
-    }
-
-    // Extract usage information if available
-    const TSharedPtr<FJsonObject> UsageObject = JsonObject->GetObjectField(TEXT("usage"));
-    if (UsageObject.IsValid())
-    {
+        const TSharedPtr<FJsonObject>& UsageObject = *UsagePtr;
         int32 PromptTokens = 0;
         int32 CompletionTokens = 0;
         UsageObject->TryGetNumberField(TEXT("prompt_tokens"), PromptTokens);
@@ -78,26 +59,79 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
         FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
     }
 
+    // Extract message content - handle both Chat Completions and Responses API formats
+    FString MessageContent;
+
+    // Check if this is a Responses API response (has "output" array instead of "choices")
+    if (JsonObject->HasField(TEXT("output")))
+    {
+        // Responses API format: status and incomplete_details first, then a refusal, then the text
+        if (!ExtractResponsesAPIContent(JsonObject, MessageContent, OutResponse))
+        {
+            FN2CLogger::Get().LogError(TEXT("Failed to extract message content from OpenAI Responses API response"), TEXT("OpenAIResponseParser"));
+            SetParseError(OutResponse, TEXT("The provider response has no message content"));
+            return false;
+        }
+    }
+    else
+    {
+        // Chat Completions API format: finish_reason and refusal first, then the content
+        if (!ExtractChatCompletionContent(JsonObject, N2COpenAIParserPrivate::SettingHint, MessageContent, OutResponse))
+        {
+            FN2CLogger::Get().LogError(TEXT("Failed to extract message content from OpenAI response"), TEXT("OpenAIResponseParser"));
+            return false;
+        }
+    }
+
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response Message Content: %s"), *MessageContent), EN2CLogSeverity::Debug);
 
     // Parse the extracted content as our expected JSON format
     return Super::ParseLLMResponse(MessageContent, OutResponse);
 }
 
-bool UN2COpenAIResponseParser::ExtractResponsesAPIContent(const TSharedPtr<FJsonObject>& JsonObject, FString& OutContent) const
+bool UN2COpenAIResponseParser::ExtractResponsesAPIContent(const TSharedPtr<FJsonObject>& JsonObject, FString& OutContent,
+    FN2CTranslationResponse& OutResponse) const
 {
     // Responses API format:
     // {
+    //   "status": "completed" | "incomplete" | ...,
+    //   "incomplete_details": null | { "reason": "max_output_tokens" | "content_filter" },
     //   "output": [
+    //     { "type": "reasoning", ... },
     //     {
     //       "type": "message",
     //       "role": "assistant",
     //       "content": [
-    //         { "type": "output_text", "text": "..." }
+    //         { "type": "output_text", "text": "..." } | { "type": "refusal", "refusal": "..." }
     //       ]
     //     }
     //   ]
     // }
+
+    FString Status;
+    JsonObject->TryGetStringField(TEXT("status"), Status);
+    if (Status == TEXT("incomplete"))
+    {
+        FString Reason;
+        const TSharedPtr<FJsonObject>* Details = nullptr;
+        if (JsonObject->TryGetObjectField(TEXT("incomplete_details"), Details) && Details && Details->IsValid())
+        {
+            (*Details)->TryGetStringField(TEXT("reason"), Reason);
+        }
+        if (Reason == TEXT("content_filter"))
+        {
+            SetStopReasonError(OutResponse, EN2CTranslationErrorKind::Blocked, Reason,
+                TEXT("The provider's content filter stopped the answer (status \"incomplete\", reason \"content_filter\")"));
+        }
+        else
+        {
+            // max_output_tokens, or a reason this parser does not know: the answer is incomplete either way
+            SetStopReasonError(OutResponse, EN2CTranslationErrorKind::Truncated, Reason.IsEmpty() ? Status : Reason,
+                MakeTruncatedMessage(FString::Printf(TEXT("status \"incomplete\", reason \"%s\""), Reason.IsEmpty() ? TEXT("none") : *Reason),
+                    N2COpenAIParserPrivate::SettingHint));
+        }
+        return false;
+    }
 
     const TArray<TSharedPtr<FJsonValue>>* OutputArray;
     if (!JsonObject->TryGetArrayField(TEXT("output"), OutputArray) || OutputArray->Num() == 0)
@@ -105,7 +139,9 @@ bool UN2COpenAIResponseParser::ExtractResponsesAPIContent(const TSharedPtr<FJson
         return false;
     }
 
-    // Find the message output item
+    // Find the message output item; join its text parts
+    FString Joined;
+    bool bFoundText = false;
     for (const TSharedPtr<FJsonValue>& OutputValue : *OutputArray)
     {
         const TSharedPtr<FJsonObject>* OutputItem;
@@ -127,7 +163,6 @@ bool UN2COpenAIResponseParser::ExtractResponsesAPIContent(const TSharedPtr<FJson
             continue;
         }
 
-        // Find text content
         for (const TSharedPtr<FJsonValue>& ContentValue : *ContentArray)
         {
             const TSharedPtr<FJsonObject>* ContentItem;
@@ -139,16 +174,30 @@ bool UN2COpenAIResponseParser::ExtractResponsesAPIContent(const TSharedPtr<FJson
             FString ContentType;
             (*ContentItem)->TryGetStringField(TEXT("type"), ContentType);
 
-            // Handle both "output_text" and "text" types
-            if (ContentType == TEXT("output_text") || ContentType == TEXT("text"))
+            if (ContentType == TEXT("refusal"))
             {
-                if ((*ContentItem)->TryGetStringField(TEXT("text"), OutContent))
-                {
-                    return true;
-                }
+                FString Refusal;
+                (*ContentItem)->TryGetStringField(TEXT("refusal"), Refusal);
+                SetStopReasonError(OutResponse, EN2CTranslationErrorKind::Refused, TEXT("refusal"),
+                    FString::Printf(TEXT("The model refused the request: %s"), *Refusal.TrimStartAndEnd()));
+                return false;
+            }
+
+            // Handle both "output_text" and "text" types
+            FString Text;
+            if ((ContentType == TEXT("output_text") || ContentType == TEXT("text"))
+                && (*ContentItem)->TryGetStringField(TEXT("text"), Text))
+            {
+                Joined += Text;
+                bFoundText = true;
             }
         }
     }
 
-    return false;
+    if (!bFoundText)
+    {
+        return false;
+    }
+    OutContent = Joined;
+    return true;
 }

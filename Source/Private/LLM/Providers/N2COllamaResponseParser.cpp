@@ -26,17 +26,7 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
         return false;
     }
 
-    // Extract message content from Ollama format
-    FString MessageContent;
-    if (!ExtractOllamaMessageContent(JsonObject, MessageContent))
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to extract message content from Ollama response"), TEXT("OllamaResponseParser"));
-        SetParseError(OutResponse, TEXT("The provider response has no message content"));
-        return false;
-    }
-    
-    // Extract usage information
-    if (JsonObject.IsValid())
+    // Extract usage information (also on a truncated answer)
     {
         int32 PromptTokens = 0;
         int32 CompletionTokens = 0;
@@ -49,6 +39,28 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
         FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
     }
     
+    // done_reason "length": generation stopped at num_predict or the context window (Ollama llm/server.go DoneReason)
+    FString DoneReason;
+    JsonObject->TryGetStringField(TEXT("done_reason"), DoneReason);
+    if (DoneReason == TEXT("length"))
+    {
+        SetStopReasonError(OutResponse, EN2CTranslationErrorKind::Truncated, DoneReason, MakeTruncatedMessage(
+            TEXT("done_reason \"length\""),
+            TEXT("Project Settings > Node to Code > LLM Services > Ollama > Ollama Config > Max Tokens (num_predict, 0 = no limit) ")
+            TEXT("or Context Window (num_ctx)")));
+        return false;
+    }
+
+    // Extract message content from Ollama format
+    FString MessageContent;
+    if (!ExtractOllamaMessageContent(JsonObject, MessageContent))
+    {
+        FN2CLogger::Get().LogError(TEXT("Failed to extract message content from Ollama response"), TEXT("OllamaResponseParser"));
+        SetParseError(OutResponse, FString::Printf(TEXT("The provider response has no answer text (done_reason \"%s\")"),
+            DoneReason.IsEmpty() ? TEXT("none") : *DoneReason));
+        return false;
+    }
+
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response Message Content: %s"), *MessageContent), EN2CLogSeverity::Debug);
 
     // Parse the extracted content as our expected JSON format
@@ -60,11 +72,13 @@ bool UN2COllamaResponseParser::ExtractOllamaMessageContent(
     FString& OutContent)
 {
     // Get message object from response
-    const TSharedPtr<FJsonObject> MessageObject = JsonObject->GetObjectField(TEXT("message"));
-    if (!MessageObject.IsValid())
+    const TSharedPtr<FJsonObject>* MessagePtr = nullptr;
+    if (!JsonObject->TryGetObjectField(TEXT("message"), MessagePtr) || !MessagePtr || !MessagePtr->IsValid())
     {
         return false;
     }
+    const TSharedPtr<FJsonObject>& MessageObject = *MessagePtr;
+    LogReasoningFields(MessageObject, TEXT("OllamaResponseParser"));
 
     // Get content from message
     if (!MessageObject->TryGetStringField(TEXT("content"), OutContent))
@@ -95,5 +109,5 @@ bool UN2COllamaResponseParser::ExtractOllamaMessageContent(
     // Process JSON markers
     ProcessJsonContentWithMarkers(OutContent);
     
-    return true;
+    return !OutContent.IsEmpty();
 }

@@ -23,8 +23,21 @@ When using cloud-based LLM providers (Anthropic, OpenAI, DeepSeek), you may enco
 
 NodeToCode keeps the provider's HTTP status and its own error message and sorts every failure into a kind:
 `RateLimited`, `Overloaded`, `Auth`, `InvalidRequest`, `Billing`, `Server`, `Network` (no response, a timeout, or a
-proxy or gateway error such as 502), `Parse` (the answer arrived but could not be read as a translation) or `Unknown`.
-`RateLimited`, `Overloaded`, `Server` and `Network` are marked retryable: the same request may work later.
+proxy or gateway error such as 502), `Truncated`, `Refused`, `Blocked`, `Parse` (the answer arrived but could not be
+read as a translation) or `Unknown`. `RateLimited`, `Overloaded`, `Server` and `Network` are marked retryable: the same
+request may work later.
+
+A successful (HTTP 200) answer can still stop early. NodeToCode reads the provider's stop or finish reason before the
+answer and reports it by name, with the provider's reason in `provider_error_type`:
+
+| Kind | Provider reason | What to do |
+|------|-----------------|------------|
+| `Truncated` | Anthropic `stop_reason` `max_tokens` or `model_context_window_exceeded`; OpenAI, DeepSeek and LM Studio `finish_reason` `length`; OpenAI Responses `status` `incomplete` (`max_output_tokens`); Gemini `finishReason` `MAX_TOKENS`; Ollama `done_reason` `length` | The answer hit the output token limit. Raise that provider's **Max Output Tokens** (0 = Auto; for Ollama, **Max Tokens** or **Context Window**), see [Output Token Budget](Provider-Configuration#output-token-budget). Thinking tokens count against it on reasoning models. |
+| `Refused` | Anthropic `stop_reason` `refusal` (with `stop_details` category and explanation); an OpenAI `refusal` message | The model declined the request. The message carries the provider's explanation. |
+| `Blocked` | `finish_reason` `content_filter`; Gemini `finishReason` `SAFETY`, `RECITATION`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII` and other filter reasons; Gemini `promptFeedback.blockReason` | A provider safety filter stopped the prompt or the answer. |
+
+Reasoning text (`reasoning_content`, `reasoning`, `thinking`) is logged but never used as the answer: an answer that is
+only reasoning is a `Parse` error that names the stop reason.
 
 - **Output Log:** `Translation failed: Gemini request failed with HTTP 503 (Overloaded, retryable): <the provider's message>`.
 - **Progress dialog:** a failed graph shows the same line under its name and as its tooltip.
@@ -36,6 +49,14 @@ proxy or gateway error such as 502), `Parse` (the answer arrived but could not b
 {"error": "Gemini request failed with HTTP 400 (Auth): API key not valid. Please pass a valid API key.",
  "error_kind": "Auth", "message": "API key not valid. Please pass a valid API key.", "http_status": 400,
  "retryable": false, "provider": "Gemini", "model": "gemini-3.5-flash-lite", "provider_error_type": "INVALID_ARGUMENT"}
+```
+
+A translation cut at the output limit looks like this (no `http_status`, since the provider answered 200):
+
+```json
+{"error": "Anthropic request failed (Truncated): The answer stopped at the output token limit (stop_reason \"max_tokens\") ...",
+ "error_kind": "Truncated", "message": "The answer stopped at the output token limit (stop_reason \"max_tokens\") before the translation was complete. Raise Project Settings > Node to Code > LLM Services > Anthropic > Max Output Tokens (0 = Auto); thinking tokens count against it on reasoning models.",
+ "retryable": false, "provider": "Anthropic", "model": "claude-haiku-5-5", "provider_error_type": "max_tokens"}
 ```
 
 `http_status` is left out when there was no HTTP response (for example a connection failure or a missing API key).

@@ -21,26 +21,6 @@ bool UN2CResponseParserBase::ParseLLMResponse(
         return false;
     }
 
-    // Check for truncated JSON by looking for unbalanced braces
-    int32 OpenBraces = 0;
-    int32 CloseBraces = 0;
-    for (const TCHAR& Char : InJson)
-    {
-        if (Char == '{') OpenBraces++;
-        else if (Char == '}') CloseBraces++;
-    }
-    
-    if (OpenBraces != CloseBraces)
-    {
-        FN2CLogger::Get().LogError(
-            FString::Printf(TEXT("Potentially truncated or malformed JSON response. Open braces: %d, Close braces: %d"), 
-                OpenBraces, CloseBraces),
-            TEXT("ResponseParser")
-        );
-        SetParseError(OutResponse, TEXT("The model's answer is incomplete or malformed JSON (unbalanced braces)"));
-        return false;
-    }
-
     // Parse JSON string with additional safety
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InJson);
@@ -67,7 +47,11 @@ bool UN2CResponseParserBase::ParseLLMResponse(
                 *Reader->GetErrorMessage()),
             TEXT("ResponseParser")
         );
-        SetParseError(OutResponse, FString::Printf(TEXT("The model's answer is not valid JSON: %s"), *Reader->GetErrorMessage()));
+        // The provider said it finished (stop reasons are checked before this), so an answer that ends inside an
+        // open object or string was cut off some other way, for example by a proxy or a local server's context limit
+        SetParseError(OutResponse, LooksCutOff(InJson)
+            ? FString::Printf(TEXT("The model's answer is not valid JSON and looks cut off (it ends inside an open object or string): %s"), *Reader->GetErrorMessage())
+            : FString::Printf(TEXT("The model's answer is not valid JSON: %s"), *Reader->GetErrorMessage()));
         return false;
     }
 
@@ -242,7 +226,11 @@ bool UN2CResponseParserBase::ExtractStandardMessageContent(
     else
     {
         // Get the message object from the item
-        MessageObject = ItemObject->GetObjectField(MessageObjName);
+        const TSharedPtr<FJsonObject>* MessagePtr = nullptr;
+        if (ItemObject->TryGetObjectField(MessageObjName, MessagePtr) && MessagePtr)
+        {
+            MessageObject = *MessagePtr;
+        }
         if (!MessageObject.IsValid())
         {
             FN2CLogger::Get().LogError(
@@ -286,4 +274,188 @@ bool UN2CResponseParserBase::ProcessJsonContentWithMarkers(FString& Content)
         return true;
     }
     return false;
+}
+
+void UN2CResponseParserBase::SetStopReasonError(FN2CTranslationResponse& OutResponse, EN2CTranslationErrorKind Kind,
+    const FString& ProviderReason, const FString& Message)
+{
+    if (OutResponse.Error.IsError())
+    {
+        return;
+    }
+    OutResponse.Error.Kind = Kind == EN2CTranslationErrorKind::None ? EN2CTranslationErrorKind::Unknown : Kind;
+    OutResponse.Error.Message = Message;
+    OutResponse.Error.ProviderErrorType = ProviderReason;
+    OutResponse.Error.bRetryable = FN2CTranslationError::IsRetryableKind(OutResponse.Error.Kind);
+    FN2CLogger::Get().LogError(OutResponse.Error.ToDisplayString(), TEXT("ResponseParser"));
+}
+
+FString UN2CResponseParserBase::MakeTruncatedMessage(const FString& ReasonText, const FString& SettingHint)
+{
+    return FString::Printf(
+        TEXT("The answer stopped at the output token limit (%s) before the translation was complete. Raise %s; ")
+        TEXT("thinking tokens count against it on reasoning models."),
+        *ReasonText, *SettingHint);
+}
+
+EN2CTranslationErrorKind UN2CResponseParserBase::KindFromFinishReason(const FString& FinishReason)
+{
+    if (FinishReason == TEXT("length"))
+    {
+        return EN2CTranslationErrorKind::Truncated;
+    }
+    if (FinishReason == TEXT("content_filter"))
+    {
+        return EN2CTranslationErrorKind::Blocked;
+    }
+    // DeepSeek (api-docs.deepseek.com/api/create-chat-completion)
+    if (FinishReason == TEXT("insufficient_system_resource"))
+    {
+        return EN2CTranslationErrorKind::Overloaded;
+    }
+    if (FinishReason == TEXT("aborted"))
+    {
+        return EN2CTranslationErrorKind::Server;
+    }
+    return EN2CTranslationErrorKind::None;
+}
+
+void UN2CResponseParserBase::LogReasoningFields(const TSharedPtr<FJsonObject>& MessageObject, const FString& Category)
+{
+    if (!MessageObject.IsValid())
+    {
+        return;
+    }
+    // reasoning_content: DeepSeek, llama.cpp, LM Studio; reasoning: vLLM, LM Studio gpt-oss, OpenRouter; thinking: Ollama
+    for (const TCHAR* Field : { TEXT("reasoning_content"), TEXT("reasoning"), TEXT("thinking") })
+    {
+        FString Reasoning;
+        if (MessageObject->TryGetStringField(Field, Reasoning) && !Reasoning.IsEmpty())
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("The model returned %d characters of %s (logged only, not used as the answer)"),
+                Reasoning.Len(), Field), EN2CLogSeverity::Debug, Category);
+        }
+    }
+}
+
+bool UN2CResponseParserBase::ExtractChatCompletionContent(
+    const TSharedPtr<FJsonObject>& JsonObject,
+    const FString& SettingHint,
+    FString& OutContent,
+    FN2CTranslationResponse& OutResponse)
+{
+    const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
+    if (!JsonObject.IsValid() || !JsonObject->TryGetArrayField(TEXT("choices"), Choices) || Choices->Num() == 0)
+    {
+        SetParseError(OutResponse, TEXT("The provider response has no choices"));
+        return false;
+    }
+    const TSharedPtr<FJsonObject>* ChoicePtr = nullptr;
+    if (!(*Choices)[0].IsValid() || !(*Choices)[0]->TryGetObject(ChoicePtr) || !ChoicePtr || !ChoicePtr->IsValid())
+    {
+        SetParseError(OutResponse, TEXT("The provider response's first choice is not an object"));
+        return false;
+    }
+    const TSharedPtr<FJsonObject>& Choice = *ChoicePtr;
+
+    // finish_reason is null while streaming and on some servers; a missing one is not an error
+    FString FinishReason;
+    Choice->TryGetStringField(TEXT("finish_reason"), FinishReason);
+
+    TSharedPtr<FJsonObject> Message;
+    const TSharedPtr<FJsonObject>* MessagePtr = nullptr;
+    if (Choice->TryGetObjectField(TEXT("message"), MessagePtr) && MessagePtr)
+    {
+        Message = *MessagePtr;
+    }
+    LogReasoningFields(Message, TEXT("ResponseParser"));
+
+    // Stop reason first: an answer cut at the limit or filtered is reported as such, not as a parse failure
+    const EN2CTranslationErrorKind FinishKind = KindFromFinishReason(FinishReason);
+    if (FinishKind == EN2CTranslationErrorKind::Truncated)
+    {
+        SetStopReasonError(OutResponse, FinishKind, FinishReason,
+            MakeTruncatedMessage(FString::Printf(TEXT("finish_reason \"%s\""), *FinishReason), SettingHint));
+        return false;
+    }
+    if (FinishKind == EN2CTranslationErrorKind::Blocked)
+    {
+        SetStopReasonError(OutResponse, FinishKind, FinishReason, FString::Printf(
+            TEXT("The provider's content filter removed the answer (finish_reason \"%s\")"), *FinishReason));
+        return false;
+    }
+    if (FinishKind != EN2CTranslationErrorKind::None)
+    {
+        SetStopReasonError(OutResponse, FinishKind, FinishReason, FString::Printf(
+            TEXT("The provider stopped generating before the answer was complete (finish_reason \"%s\")"), *FinishReason));
+        return false;
+    }
+
+    // OpenAI puts a model refusal in message.refusal (a string, null otherwise) with no content
+    FString Refusal;
+    if (Message.IsValid() && Message->TryGetStringField(TEXT("refusal"), Refusal) && !Refusal.TrimStartAndEnd().IsEmpty())
+    {
+        SetStopReasonError(OutResponse, EN2CTranslationErrorKind::Refused, TEXT("refusal"),
+            FString::Printf(TEXT("The model refused the request: %s"), *Refusal.TrimStartAndEnd()));
+        return false;
+    }
+
+    // content is a string, or null (tool calls, refusals, some reasoning servers), or missing
+    FString RawContent;
+    if (!Message.IsValid() || !Message->TryGetStringField(TEXT("content"), RawContent) || RawContent.TrimStartAndEnd().IsEmpty())
+    {
+        const bool bHasReasoning = Message.IsValid()
+            && (Message->HasTypedField<EJson::String>(TEXT("reasoning_content")) || Message->HasTypedField<EJson::String>(TEXT("reasoning")));
+        SetParseError(OutResponse, FString::Printf(TEXT("The model returned no answer text (finish_reason \"%s\")%s"),
+            FinishReason.IsEmpty() ? TEXT("none") : *FinishReason,
+            bHasReasoning ? TEXT("; it returned only reasoning text, which is not used as the answer") : TEXT("")));
+        FN2CLogger::Get().LogError(OutResponse.Error.Message, TEXT("ResponseParser"));
+        return false;
+    }
+
+    if (ProcessJsonContentWithMarkers(RawContent))
+    {
+        FN2CLogger::Get().Log(TEXT("Stripped JSON markers from response"), EN2CLogSeverity::Debug);
+    }
+    OutContent = RawContent;
+    return true;
+}
+
+bool UN2CResponseParserBase::LooksCutOff(const FString& Json)
+{
+    int32 Depth = 0;
+    bool bInString = false;
+    bool bEscaped = false;
+    for (const TCHAR Char : Json)
+    {
+        if (bInString)
+        {
+            if (bEscaped)
+            {
+                bEscaped = false;
+            }
+            else if (Char == TEXT('\\'))
+            {
+                bEscaped = true;
+            }
+            else if (Char == TEXT('"'))
+            {
+                bInString = false;
+            }
+            continue;
+        }
+        if (Char == TEXT('"'))
+        {
+            bInString = true;
+        }
+        else if (Char == TEXT('{') || Char == TEXT('['))
+        {
+            ++Depth;
+        }
+        else if (Char == TEXT('}') || Char == TEXT(']'))
+        {
+            --Depth;
+        }
+    }
+    return bInString || Depth > 0;
 }
