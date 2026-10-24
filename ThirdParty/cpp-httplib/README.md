@@ -1,7 +1,11 @@
 # cpp-httplib (vendored)
 
-Single-header HTTP library used only by the MCP SSE side server
-(`Source/Private/MCP/Server/N2CSseServer.cpp`, port `McpServerPort + 1`, bound to 127.0.0.1).
+Single-header HTTP library. **No source file includes it today**: its only user, the MCP notification side server on
+`McpServerPort + 1` (`N2CSseServer.cpp`), was removed in card 0113, so nothing of it is compiled into any build. It
+stays vendored (with `Source/NodeToCode.Build.cs`'s include path, the `NOTICE` section, `Config/FilterPlugin.ini` and
+`Scripts/package-release.ps1`'s required files) for the UE 5.6/5.7 `/mcp` transport that card 0111 adds if decision
+card 0085 picks httplib streaming for those engines. If 0085 keeps the held JSON response instead, delete this folder
+and those four references together.
 
 | | |
 |---|---|
@@ -25,5 +29,6 @@ blob ids match upstream either way).
    https://osv.dev (query the tag's commit hash).
 3. Copy both files here, update the table above, and rebuild on every supported engine version.
 
-The request limits the plugin sets (header count, header and URI length, payload size, timeouts) are in
-`N2CSseServer.cpp`, before and after the `#include "httplib.h"`.
+The removed side server set request limits (header count, header and URI length, payload size, timeouts) before and
+after its `#include "httplib.h"`; see `Source/Private/MCP/Server/N2CSseServer.cpp` at commit `99ee053` for a server
+that uses this header again.

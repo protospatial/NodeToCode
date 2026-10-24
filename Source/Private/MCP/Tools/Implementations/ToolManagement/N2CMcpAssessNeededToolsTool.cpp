@@ -29,7 +29,7 @@ TMap<FString, FString> FN2CMcpAssessNeededToolsTool::GetCategoryDescriptions()
 
 FMcpToolDefinition FN2CMcpAssessNeededToolsTool::GetDefinition() const
 {
-    FString Description = TEXT("Assesses and enables the required tool categories for a task. Provide a list of categories needed. The tool list will be updated, and the client will be notified to refresh. Available categories are:\n");
+    FString Description = TEXT("Assesses and enables the required tool categories for a task. Provide a list of categories needed. The tool list is updated, but the client is not notified: call tools/list again to see the new tools. Available categories are:\n");
     for (const auto& Pair : GetCategoryDescriptions())
     {
         Description += FString::Printf(TEXT("- **%s**: %s\n"), *Pair.Key, *Pair.Value);
@@ -93,7 +93,7 @@ FMcpToolCallResult FN2CMcpAssessNeededToolsTool::Execute(const TSharedPtr<FJsonO
         FN2CMcpToolManager::Get().UpdateActiveTools(Categories);
 
         FString EnabledCategories = FString::Join(Categories, TEXT(", "));
-        FString Message = FString::Printf(TEXT("Successfully enabled tools for categories: %s. The tool list has been updated."), *EnabledCategories);
+        FString Message = FString::Printf(TEXT("Successfully enabled tools for categories: %s. The tool list has been updated; call tools/list again to see the new tools."), *EnabledCategories);
         
         if (Categories.Num() == 0)
         {

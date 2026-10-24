@@ -12,7 +12,6 @@
 #include "MCP/Prompts/N2CMcpPromptManager.h"
 #include "MCP/Validation/N2CMcpRequestValidator.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
-#include "MCP/Server/N2CSseServer.h"
 #include "Misc/ScopeExit.h"
 
 // ----------------------------------------------------------------------------------------------------------------
@@ -124,7 +123,8 @@ FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
 {
 	check(Catalogs.Tools && Catalogs.Resources && Catalogs.Prompts && Catalogs.Tasks);
 
-	// The tool list changes when assess-needed-tools activates categories: tell clients through the broadcast sink
+	// The tool list changes when assess-needed-tools activates categories: tell clients through the broadcast sink,
+	// when a transport set one (none does today; see SetBroadcastSink)
 	ToolListChangedHandle = Catalogs.Tools->OnToolListChanged().AddLambda([this]()
 	{
 		FJsonRpcNotification Notification;
@@ -875,7 +875,9 @@ bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, con
 	
 	// Tools capability
 	TSharedPtr<FJsonObject> ToolsCapability = MakeShareable(new FJsonObject);
-	ToolsCapability->SetBoolField(TEXT("listChanged"), true); // We support the tools/list_changed notification
+	// false: the server has no channel for unsolicited notifications, so it never sends tools/list_changed (Dynamic Tool
+	// Discovery logs a warning about it; card 0165 replaces that mode)
+	ToolsCapability->SetBoolField(TEXT("listChanged"), false);
 	ServerCapabilities->SetObjectField(TEXT("tools"), ToolsCapability);
 	
 	// Resources capability
@@ -909,17 +911,6 @@ bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, con
 	}
 	ServerInfo->SetStringField(TEXT("version"), PluginVersion);
 	Result->SetObjectField(TEXT("serverInfo"), ServerInfo);
-
-	// Add _meta field with notificationUrl
-	int32 SsePort = NodeToCodeSseServer::GetSseServerPort();
-	if (SsePort > 0)
-	{
-		TSharedPtr<FJsonObject> MetaObject = MakeShareable(new FJsonObject);
-		FString NotificationUrl = FString::Printf(TEXT("http://localhost:%d/mcp/notifications"), SsePort);
-		MetaObject->SetStringField(TEXT("notificationUrl"), NotificationUrl);
-		Result->SetObjectField(TEXT("_meta"), MetaObject);
-		FN2CLogger::Get().Log(FString::Printf(TEXT("Providing notificationUrl in initialize response: %s"), *NotificationUrl), EN2CLogSeverity::Info);
-	}
 
 	// Create success response
 	OutResponse = FJsonRpcUtils::CreateSuccessResponse(Id, MakeShareable(new FJsonValueObject(Result)));

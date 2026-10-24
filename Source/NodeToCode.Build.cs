@@ -9,9 +9,12 @@ public class NodeToCode : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// Get the absolute path to the ThirdParty directory
-		// Using ModuleDirectory (Source folder) and navigating up to plugin root
-		// This is more robust than PluginDirectory when using symlinks/junctions
+		// cpp-httplib (ThirdParty/cpp-httplib). No source file includes httplib.h since the port+1 notification server
+		// was removed (card 0113), so nothing of it is compiled. The vendored copy and this include path stay for the
+		// UE 5.6/5.7 /mcp transport that card 0111 adds if decision 0085 picks httplib streaming; if 0085 keeps the held
+		// JSON response, delete ThirdParty/cpp-httplib with this path, its NOTICE section and its FilterPlugin.ini and
+		// Scripts/package-release.ps1 entries.
+		// ModuleDirectory (Source folder) up to the plugin root is more robust than PluginDirectory with symlinks/junctions.
 		string ThirdPartyPath = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "ThirdParty", "cpp-httplib"));
         
 		PrivateIncludePaths.AddRange(
@@ -62,9 +65,8 @@ public class NodeToCode : ModuleRules
 			}
 		);
 
-		// --- httplib.h Integration ---
+		// --- httplib.h Integration (unused today, see the include path above) ---
 		// httplib.h (cpp-httplib, version and hash in ThirdParty/cpp-httplib/README.md) is header-only and requires C++11 at a minimum.
-		// Modern UE (5.x) uses C++17 or C++20 by default, so this should be fine.
 		// httplib.h handles its own Windows socket library linking via #pragma comment(lib, "ws2_32.lib").
 	}
 }

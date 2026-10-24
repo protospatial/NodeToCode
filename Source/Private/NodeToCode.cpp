@@ -27,7 +27,6 @@
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "MCP/Server/N2CMcpHttpServerManager.h"
-#include "MCP/Server/N2CSseServer.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #if WITH_EDITOR
@@ -126,7 +125,7 @@ void FNodeToCodeModule::StartupModule()
         FN2CLogger::Get().Log(TEXT("Syntax definitions initialized successfully"), EN2CLogSeverity::Debug);
     }
 
-    // Start the MCP HTTP server (and its port+1 notification server) on McpServerPort or the next free port
+    // Start the MCP HTTP server on McpServerPort or the next free port
     const UN2CSettings* McpSettings = GetDefault<UN2CSettings>();
 
     // Not in commandlets or unattended runs (build agents, smoke tests) unless -N2CMcp is on the command
@@ -200,11 +199,11 @@ void FNodeToCodeModule::ShutdownModule()
         DisableThrottleHandle.Reset();
     }
 
-    // Cancel running MCP async tasks while the SSE server can still deliver their cancelled results (on exit,
-    // HandlePreExit already did this and there is nothing left to cancel)
+    // Cancel running MCP async tasks while their requests can still be answered (on exit, HandlePreExit already did
+    // this and there is nothing left to cancel)
     FN2CToolAsyncTaskManager::Get().CancelAllTasks();
 
-    // Stop the SSE server, then unbind the MCP routes (other plugins' HTTPServer listeners keep running)
+    // Unbind the MCP routes (other plugins' HTTPServer listeners keep running)
     FN2CMcpHttpServerManager::Get().StopConfiguredServers();
 
     // Unregister menu extensions

@@ -448,9 +448,9 @@ public:
 
     /** MCP server port (Model Context Protocol HTTP server, http://127.0.0.1:<port>/mcp). When another program
      * already uses it, the server takes the next free port in Port Fallback Range and says so in a notification.
-     * Changing it restarts the server on the new port. At most 65534: the notification server uses the port after. */
+     * Changing it restarts the server on the new port. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
-        meta=(DisplayName="Server Port", ClampMin="1024", ClampMax="65534", UIMin="1024", UIMax="65534",
+        meta=(DisplayName="Server Port", ClampMin="1024", ClampMax="65535", UIMin="1024", UIMax="65535",
               ToolTip="Port of the MCP server (http://127.0.0.1:<port>/mcp). If another program already uses it, the server takes the next free port in Port Fallback Range and shows a notification. Changing it restarts the server on the new port."))
     int32 McpServerPort = 27000;
 

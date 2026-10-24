@@ -236,10 +236,12 @@ void FN2CMcpProtocolSpec::Define()
 				const TSharedPtr<FJsonObject>* Tools = nullptr;
 				bool bListChanged = false;
 				TestTrue(TEXT("tools capability"), (*Capabilities)->TryGetObjectField(TEXT("tools"), Tools));
-				TestTrue(TEXT("tools.listChanged is true"), Tools && (*Tools)->TryGetBoolField(TEXT("listChanged"), bListChanged) && bListChanged);
+				TestTrue(TEXT("tools.listChanged is false (no notification channel)"), Tools && (*Tools)->TryGetBoolField(TEXT("listChanged"), bListChanged) && !bListChanged);
 				TestTrue(TEXT("resources capability"), (*Capabilities)->HasTypedField<EJson::Object>(TEXT("resources")));
 				TestTrue(TEXT("prompts capability"), (*Capabilities)->HasTypedField<EJson::Object>(TEXT("prompts")));
 			}
+			// Card 0113: the non-standard _meta that pointed clients at the port+1 notification server is gone
+			TestFalse(TEXT("no _meta in the initialize result"), Result->HasField(TEXT("_meta")));
 			const TSharedPtr<FJsonObject>* ServerInfo = nullptr;
 			if (TestTrue(TEXT("serverInfo object"), Result->TryGetObjectField(TEXT("serverInfo"), ServerInfo)))
 			{

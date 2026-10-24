@@ -245,7 +245,7 @@ def check_fixture(fixture, ctx, rows, state):
     fixture_keys = json.load(open(project_secrets))
     translation_dir = os.path.join(saved, 'Translations', TRANSLATION)
     before_translation = tree_hashes(translation_dir) if os.path.isdir(translation_dir) else {}
-    mcp = ports_free(27000, 27001)
+    mcp = ports_free(27000)
     logs = ctx['logs']
     label = '%s_%s' % (re.sub(r'[^A-Za-z0-9]', '_', fixture), ctx['label'])
 
@@ -472,14 +472,14 @@ def check_fixture(fixture, ctx, rows, state):
              'start-1 warning: %s, start 2 none: %s, engine EditorSettings.ini bThrottleCPUWhenNotForeground=%s after '
              'two starts (1.2.x left False)' % (bool(cpu1), not cpu2, throttle))
     user_settings = s1['dump']['user']
-    mcp_lines = ('MCP endpoint available at: http://localhost:27000/mcp' in s1['log'],
-                 'SSE server started on port 27001' in s1['log'])
+    # One server since card 0113 (the port+1 notification server is gone)
+    mcp_lines = ('MCP endpoint available at: http://localhost:27000/mcp' in s1['log'],)
     if not mcp:
-        rows.add('F9', None, 'ports 27000/27001 in use on this machine; defaults %s' % user_settings)
+        rows.add('F9', None, 'port 27000 in use on this machine; defaults %s' % user_settings)
     else:
         rows.add('F9', user_settings == {'enable_mcp_server': True, 'allow_mcp_python_execution': False} and
                  (all(mcp_lines) or not mcp_logged),
-                 'defaults %s; server log lines (27000, 27001): %s' % (
+                 'defaults %s; server log line (27000): %s' % (
                      user_settings, mcp_lines if mcp_logged else 'not logged at Min Severity %s' % exp['severity']))
     state['last'] = (project_dir, uproject, exp)
     return project_dir

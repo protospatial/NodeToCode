@@ -34,10 +34,10 @@ NodeToCode 2.0 runs an MCP server inside the Unreal Editor so that agents on the
 Blueprints. It is designed for a single developer's machine; it has no authentication of its own.
 
 - **Local only.** The MCP endpoint (`/mcp`, port 27000 by default) uses Unreal's HTTP server, which listens on
-  loopback unless the project's `[HTTPServer.Listeners]` engine config overrides it. The notification server on the
-  next port listens on 127.0.0.1.
-- **Origin and Host checks.** Both servers refuse a request whose `Origin` is not a loopback origin or whose
-  `Host` is not `localhost`, `127.0.0.1` or `[::1]`, so a web page or a DNS-rebinding attack cannot drive them.
+  loopback unless the project's `[HTTPServer.Listeners]` engine config overrides it. It is the only port the plugin
+  opens.
+- **Origin and Host checks.** The server refuses a request whose `Origin` is not a loopback origin or whose
+  `Host` is not `localhost`, `127.0.0.1` or `[::1]`, so a web page or a DNS-rebinding attack cannot drive it.
   POST requests to `/mcp` must be `application/json`.
 - **Can be turned off.** **Enable MCP Server** (Project Settings, Plugins, Node to Code (User)) is a per-user
   setting. The server does not start in commandlets or unattended runs unless `-N2CMcp` is on the command line.

@@ -46,7 +46,7 @@ MCP/Tools/
 4. **`FN2CMcpToolManager`** - Runtime tool management
    - Handles tool execution lifecycle
    - Manages Game Thread dispatch
-   - Supports progress tracking for long-running tools
+   - Runs long-running tools through `FN2CToolAsyncTaskManager` (progress via `FN2CToolCallContext`)
 
 ### Registration System
 
@@ -263,9 +263,12 @@ The NodeToCode MCP server can be configured to use dynamic tool management to pr
 
 3. **Dynamic Registration**: The server activates only the tools in the requested categories.
 
-4. **Notification**: The server sends a `notifications/tools/list_changed` notification to inform the client that the tool list has changed.
+4. **No notification**: the server cannot tell the client the list changed. It has no server-to-client channel
+   (GET `/mcp` is 405, and the port+1 notification server was removed in card 0113), so `initialize` advertises
+   `tools.listChanged: false` and no `notifications/tools/list_changed` is sent. With this mode on, the editor logs
+   a warning saying so at server start. Card 0165 replaces the mode with toolsets that never change mid-session.
 
-5. **Client Refresh**: The client should call `tools/list` again to get the updated tool set.
+5. **Client Refresh**: The client must call `tools/list` again to get the updated tool set.
 
 ### Configuration
 
@@ -319,8 +322,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 2
   }'
 
-# 3. Server sends notification about tool list change
-# Client receives: {"jsonrpc":"2.0","method":"notifications/tools/list_changed","params":{}}
+# 3. No notification arrives (tools.listChanged is false): list the tools again
 
 # 4. Get updated tool list
 curl -X POST http://localhost:27000/mcp \

@@ -137,7 +137,7 @@ struct FN2CMcpCatalogs
  * JSON-RPC batches are accepted only on sessions negotiated at 2025-03-26 (batching was added there and removed in
  * 2025-06-18) and get 400 with -32600 otherwise.
  *
- * Capabilities and errors (card 0110): initialize advertises tools (listChanged), resources and prompts, not logging,
+ * Capabilities and errors (card 0110): initialize advertises tools, resources and prompts (listChanged false), not logging,
  * and returns instructions for the agent. resources/templates/list lists the resource templates. An unknown tool or
  * prompt, or a missing required prompt argument, is -32602; an unknown resource uri is -32002 with the uri in data; a
  * resource or prompt handler that timed out is -32603; -32601 is only for an unknown method.
@@ -149,7 +149,8 @@ struct FN2CMcpCatalogs
  * result.
  *
  * Server-initiated notifications (notifications/tools/list_changed) flow from the core to the sink a transport sets
- * with SetBroadcastSink; tools never call a transport.
+ * with SetBroadcastSink; tools never call a transport. The HTTP transport sets none since the port+1 notification
+ * server was removed (card 0113), so they are logged and dropped and initialize advertises tools.listChanged false.
  *
  * Game thread only.
  */

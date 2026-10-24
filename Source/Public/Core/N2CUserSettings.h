@@ -19,7 +19,7 @@ class NODETOCODE_API UN2CUserSettings : public UDeveloperSettings
 public:
 	virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
 
-	/** Start the MCP server (and its notification server) when the editor starts. Requires an editor restart. */
+	/** Start the MCP server when the editor starts. Requires an editor restart. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MCP Server",
 		meta = (DisplayName = "Enable MCP Server", ConfigRestartRequired = true))
 	bool bEnableMcpServer = true;

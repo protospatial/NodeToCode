@@ -61,13 +61,6 @@ bool FN2CMcpToolManager::UnregisterTool(const FString& ToolName)
 	return false;
 }
 
-const FMcpToolDefinition* FN2CMcpToolManager::GetToolDefinition(const FString& ToolName) const
-{
-	// This method can't return a pointer to a temporary, so we need to find a different approach
-	// For now, return nullptr - callers should use GetAllToolDefinitions instead
-	return nullptr;
-}
-
 TArray<FMcpToolDefinition> FN2CMcpToolManager::GetAllToolDefinitions() const
 {
 	FScopeLock Lock(&ToolsLock);

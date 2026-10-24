@@ -2,7 +2,6 @@
 
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "MCP/Server/N2CMcpProtocol.h"
-#include "MCP/Server/N2CSseServer.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "Utils/N2CLogger.h"
 #include "HttpServerModule.h"
@@ -403,17 +402,6 @@ bool FN2CMcpHttpServerManager::StartConfiguredServers()
 	if (bStarted)
 	{
 		FN2CLogger::Get().Log(TEXT("MCP HTTP server initialized successfully"), EN2CLogSeverity::Info);
-
-		// Notification stream for long-running operations, on the port after the one the HTTP server got
-		const int32 SsePort = ServerPort + 1;
-		if (NodeToCodeSseServer::StartSseServer(SsePort))
-		{
-			FN2CLogger::Get().Log(FString::Printf(TEXT("SSE server started on port %d"), SsePort), EN2CLogSeverity::Info);
-		}
-		else
-		{
-			FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to start SSE server on port %d"), SsePort));
-		}
 	}
 	else
 	{
@@ -431,8 +419,6 @@ void FN2CMcpHttpServerManager::StopConfiguredServers()
 		RestartTickerHandle.Reset();
 	}
 	bRestartPending = false;
-	NodeToCodeSseServer::StopSseServer();
-	FN2CLogger::Get().Log(TEXT("SSE server stopped"), EN2CLogSeverity::Info);
 	StopServer();
 	bConfiguredServersStarted = false;
 }
@@ -744,11 +730,9 @@ namespace N2CMcpHttpTransport
 FN2CMcpHttpServerManager::FN2CMcpHttpServerManager()
 	: Protocol(MakeShared<FN2CMcpProtocol>())
 {
-	// Server notifications (tools/list_changed) go to the clients of the port+1 notification stream
-	Protocol->SetBroadcastSink([](const FString& NotificationJson)
-	{
-		NodeToCodeSseServer::PushNotificationToAllClients(NodeToCodeSseServer::FormatSseMessage(TEXT("notification"), NotificationJson));
-	});
+	// No broadcast sink: the server has no channel for unsolicited notifications (the port+1 notification server is
+	// gone, card 0113), so the core logs and drops notifications/tools/list_changed and initialize advertises
+	// tools.listChanged false
 }
 
 FN2CMcpHttpServerManager::~FN2CMcpHttpServerManager() = default;
@@ -832,6 +816,11 @@ void FN2CMcpHttpServerManager::RegisterMcpTools()
 		// Set the default toolset (only assess-needed-tools)
 		FN2CMcpToolManager::Get().SetDefaultToolSet();
 		FN2CLogger::Get().Log(TEXT("Dynamic tool discovery enabled - registered assess-needed-tools only"), EN2CLogSeverity::Info);
+		// The server cannot tell clients the tool list changed (no notifications/tools/list_changed channel since the
+		// port+1 notification server was removed, card 0113; tools.listChanged is false). Card 0165 replaces this mode
+		// with toolsets that never change tools/list mid-session.
+		FN2CLogger::Get().LogWarning(TEXT("Dynamic Tool Discovery: tools that assess-needed-tools enables appear only when the client lists tools again; "
+			"the server cannot notify clients that the tool list changed"), TEXT("MCP"));
 	}
 	else
 	{
@@ -964,9 +953,4 @@ void FN2CMcpHttpServerManager::RegisterMcpPrompts()
 	}
 
 	FN2CLogger::Get().Log(TEXT("MCP prompts registered successfully"), EN2CLogSeverity::Info);
-}
-
-void FN2CMcpHttpServerManager::BroadcastNotification(const FJsonRpcNotification& Notification)
-{
-	Protocol->BroadcastNotification(Notification);
 }
