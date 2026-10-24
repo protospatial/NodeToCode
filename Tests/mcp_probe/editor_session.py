@@ -102,6 +102,30 @@ def free_port(preferred):
     raise SystemExit('no free port pair near %d' % preferred)
 
 
+def patch_ini(path, section, key, value):
+    """Set key=value in section (for example '[/Script/NodeToCode.N2CSettings]') of an ini file, creating the file or
+    the section when missing and keeping every other line"""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    original = open(path, 'rb').read() if os.path.exists(path) else None
+    lines = (original or b'').decode('utf-8-sig', 'replace').splitlines()
+    out, in_section, written = [], False, False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('['):
+            if in_section and not written:
+                out.append('%s=%s' % (key, value))
+                written = True
+            in_section = stripped == section
+        elif in_section and stripped.split('=', 1)[0].strip() == key:
+            continue
+        out.append(line)
+    if not written:
+        if not in_section:
+            out += ['', section]
+        out.append('%s=%s' % (key, value))
+    open(path, 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
+
+
 class EditorSession:
     def __init__(self, engine_root, project, port, log_path, allow_python=True, extra_args=(), extra_env=None):
         """extra_env: variables added to the editor's environment only (for example provider keys from
@@ -128,28 +152,12 @@ class EditorSession:
         return os.path.join(os.path.dirname(os.path.abspath(self.project)), 'Saved', 'Config', platform)
 
     def _patch(self, file_name, section, key, value):
-        path = os.path.join(self._saved_config_dir(), file_name)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        original = open(path, 'rb').read() if os.path.exists(path) else None
-        self._backups.setdefault(path, original)
-        text = (original or b'').decode('utf-8-sig', 'replace')
-        lines = text.splitlines()
-        out, in_section, written = [], False, False
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('['):
-                if in_section and not written:
-                    out.append('%s=%s' % (key, value))
-                    written = True
-                in_section = stripped == section
-            elif in_section and stripped.split('=', 1)[0].strip() == key:
-                continue
-            out.append(line)
-        if not written:
-            if not in_section:
-                out += ['', section]
-            out.append('%s=%s' % (key, value))
-        open(path, 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
+        self.patch_file(os.path.join(self._saved_config_dir(), file_name), section, key, value)
+
+    def patch_file(self, path, section, key, value):
+        """Set key=value in section of an ini file; stop() puts the file back as it was before the first change"""
+        self.guard_file(path)
+        patch_ini(path, section, key, value)
 
     def guard_file(self, path):
         """Snapshot a file (or its absence) now; stop() puts it back byte for byte"""
@@ -202,9 +210,16 @@ class EditorSession:
         except Exception:
             return False
 
-    def stop(self, timeout=60):
-        """Ask the editor to close (taskkill without /F sends WM_CLOSE), then force it after the timeout."""
+    def stop(self, timeout=60, before_restore=None):
+        """Ask the editor to close (taskkill without /F sends WM_CLOSE), then force it after the timeout.
+
+        before_restore: called once the editor has exited and before the guarded files are put back, so a caller can
+        see what the session itself did to them (smoke_check.py hashes the host's Config/*.ini there)."""
         if not self.proc or self.proc.poll() is not None:
+            if getattr(self, 'log', None):
+                self.log.close()
+            if before_restore:
+                before_restore()
             self._restore()
             return
         if os.name == 'nt':
@@ -220,6 +235,8 @@ class EditorSession:
                 self.proc.kill()
             self.proc.wait(30)
         self.log.close()
+        if before_restore:
+            before_restore()
         self._restore()
 
     def log_text(self):

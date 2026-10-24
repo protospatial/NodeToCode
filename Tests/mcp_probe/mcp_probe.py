@@ -115,9 +115,15 @@ def probe_p4(args, port, log_dir):
     holder.listen(1)
     log_path = os.path.join(log_dir, 'p4_editor.log')
     try:
-        s = EditorSession(args.engine, args.project, port, log_path, allow_python=False)
-        s.start(timeout=90)  # health may answer from nobody; we read the log either way
-        time.sleep(5)
+        # -ExecCmds=QUIT_EDITOR runs on the first tick, after StartupModule has tried the bind and logged the
+        # outcome, so the editor closes itself cleanly; /mcp/health is not polled (the holder never answers)
+        s = EditorSession(args.engine, args.project, port, log_path, allow_python=False,
+                          extra_args=['-ExecCmds=QUIT_EDITOR'])
+        s.start(timeout=0)
+        try:
+            s.proc.wait(240)
+        except subprocess.TimeoutExpired:
+            pass
         s.stop()
         text = s.log_text()
     finally:
@@ -250,6 +256,20 @@ def probe_p7(port):
             'status': 'fixed' if ok else 'reproduced', 'evidence': calls}
 
 
+def session_probes(port, pid, saved_dir):
+    """The probes that run against an editor already answering on port (all but P4, which needs its own editor).
+    Tests/smoke/smoke_check.py calls this inside its own session."""
+    return {'P1': probe_p1(port, saved_dir), 'P2': probe_p2(port), 'P3': probe_p3(port), 'P5': probe_p5(port),
+            'P6': probe_p6(port, pid), 'P7': probe_p7(port)}
+
+
+def mismatches(results, label):
+    """{probe: {expected, actual}} for every status that differs from expected.json for the label"""
+    expected = json.load(open(os.path.join(HERE, 'expected.json'), encoding='utf-8')).get(label, {})
+    return {k: {'expected': expected.get(k), 'actual': v['status']} for k, v in results.items()
+            if expected.get(k) != v['status']}
+
+
 def main():
     ap = argparse.ArgumentParser(description='NodeToCode MCP transport probes')
     ap.add_argument('--engine', required=True)
@@ -270,12 +290,7 @@ def main():
         if not session.start():
             results['session'] = {'status': 'skipped', 'evidence': {'reason': 'editor did not answer /mcp/health'}}
         else:
-            results['P1'] = probe_p1(port, saved_dir)
-            results['P2'] = probe_p2(port)
-            results['P3'] = probe_p3(port)
-            results['P5'] = probe_p5(port)
-            results['P6'] = probe_p6(port, session.proc.pid)
-            results['P7'] = probe_p7(port)
+            results.update(session_probes(port, session.proc.pid, saved_dir))
     finally:
         session.stop()
     if args.skip_p4:
@@ -283,15 +298,13 @@ def main():
     else:
         results['P4'] = probe_p4(args, free_port(port + 2), log_dir)
 
-    expected = json.load(open(os.path.join(HERE, 'expected.json'), encoding='utf-8')).get(args.label, {})
-    mismatches = {k: {'expected': expected.get(k), 'actual': v['status']} for k, v in results.items()
-                  if expected.get(k) != v['status']}
-    report = {'label': args.label, 'port': port, 'results': results, 'mismatches': mismatches}
+    diff = mismatches(results, args.label)
+    report = {'label': args.label, 'port': port, 'results': results, 'mismatches': diff}
     out = args.report or os.path.join(log_dir, 'report_%s.json' % args.label)
     with open(out, 'w', encoding='utf-8') as fh:
         json.dump(report, fh, indent=1)
-    print(json.dumps({k: v['status'] for k, v in results.items()}), 'mismatches:', json.dumps(mismatches))
-    return 0 if not mismatches else 1
+    print(json.dumps({k: v['status'] for k, v in results.items()}), 'mismatches:', json.dumps(diff))
+    return 0 if not diff else 1
 
 
 if __name__ == '__main__':
