@@ -30,24 +30,46 @@ This is where source files for Unreal Engine 5 can be found and searched through
 NodeToCode 2.0 supports UE 5.6 (the floor) through UE 5.8 (the ceiling). Any C++ change must build on 5.6, 5.7
 and 5.8. Guard version-specific code with `ENGINE_MINOR_VERSION` (include `Runtime/Launch/Resources/Version.h`).
 
-`build.ps1` is local-only for now: it is not in the repository (`.gitignore` ignores `*.ps1`) because it holds
-machine-specific paths, so a fresh clone has no build script. Where a local copy exists, it takes these switches:
+`build.ps1` at the repo root (tracked) builds, smoke-tests and runs the automation tests. Each engine gets a small
+C++ host project, `<HostsRoot>/NodeToCodeHost_5_X` (default `..\Hosts`, next to the checkout), which the script
+creates on first use. The host's `Plugins/NodeToCode/{Source,Content,Resources,ThirdParty}` are junctions (symbolic
+links on Mac and Linux) back into this checkout, and `NodeToCode.uplugin` is copied in on every run, so there is one
+copy of the source while `Binaries/` and `Intermediate/` stay per host and every engine builds incrementally.
 
 ```powershell
 .\build.ps1 -UEVersion 5.7           # incremental editor build for one version (5.6, 5.7 or 5.8)
 .\build.ps1 -All                     # build every detected version in turn
-.\build.ps1 -All -Smoke              # build, then load the plugin in a headless editor
+.\build.ps1 -All -Smoke              # build, then load the plugin in a headless editor (Tests/smoke/smoke_check.py)
+.\build.ps1 -All -Test               # build, then run Automation RunTests NodeToCode headless and report pass/fail
 .\build.ps1 -UEVersion 5.8 -Clean    # remove the host's plugin Binaries/Intermediate first
 .\build.ps1 -UEVersion 5.6 -Launch   # build, then open the host editor
-.\build.ps1 -All -Package            # RunUAT BuildPlugin instead of the incremental host build
-.\build.ps1 -WhatIf                  # list detected engines and host projects
+.\build.ps1 -All -Package            # RunUAT BuildPlugin into -PackagesRoot (a quick check, not a release)
+.\build.ps1 -WhatIf                  # list detected engines and host projects; change nothing
+.\build.ps1 -WhatIf -HostsRoot D:\Scratch\Hosts   # the same, with the hosts in another folder
 ```
 
-`-Config` picks the build configuration (default `Development`). Logs go to
-`BuildLogs/Build_<version>_<timestamp>.log` (and `Smoke_*` / `Package_*` for those runs). Running it with no
-arguments prints the examples and the detected engines.
+- Engines are found per version from `-Engine '5.8=<path>'`, then the `N2C_UE_5_6`, `N2C_UE_5_7` and `N2C_UE_5_8`
+  environment variables, then `$Engines` in `build.local.ps1`, then the registry, the Epic launcher's
+  `LauncherInstalled.dat`, registered source builds and `%ProgramFiles%\Epic Games\UE_5.X`. Each candidate is
+  checked against its `Engine/Build/Build.version`; an explicit setting that points at the wrong engine is reported,
+  not skipped.
+- Machine-specific settings go in `build.local.ps1` next to `build.ps1` (gitignored, dot-sourced when present). It
+  may set `$Engines = @{ '5.8' = '<path>' }`, `$HostsRoot`, `$PackagesRoot` and `$LogRoot`; parameters given on the
+  command line win.
+- `-HostsRoot`, `-PackagesRoot` and `-LogRoot` move the hosts, the `-Package` output and the logs (default
+  `BuildLogs/`). `-Config` picks the build configuration (default `Development`).
+- `-Test` runs `UnrealEditor-Cmd <host> -ExecCmds="Automation RunTests NodeToCode"
+  -TestExit="Automation Test Queue Empty" -ReportExportPath=<dir>` with `-unattended -nullrhi -NoLiveCoding
+  -culture=en`, reads the report's `index.json`, fails on any failed or unfinished test and warns when none ran.
+  `-TestFilter` narrows the run and `-TestTimeoutMinutes` (default 60) stops a hung editor. If `-ExecCmds` ever holds
+  more than one command, separate them with commas: a semicolon hangs the editor.
+- Logs: `BuildLogs/Build_<version>_<timestamp>.log`, `Smoke_*.log`, `Tests_*.log` (report in `Tests_*/`) and
+  `Package_*.log`. The script exits non-zero when any build, smoke check or test run fails.
+- If a host editor is open, that version is skipped (Live Coding blocks UBT): use Ctrl+Alt+F11 in the editor, or
+  close it.
 
-Automation tests live in `Source/Private/Tests/` and run in the editor with `Automation RunTests NodeToCode`.
+Automation tests live in `Source/Private/Tests/`. Live MCP probes and the headless editor helper live in
+`Tests/mcp_probe/`.
 
 Release packages come from `Scripts/package-release.ps1` (tracked), never from `build.ps1 -Package`. It exports a
 commit with `git archive` (so nothing uncommitted or ignored can ship), runs RunUAT BuildPlugin for UE 5.6, 5.7 and

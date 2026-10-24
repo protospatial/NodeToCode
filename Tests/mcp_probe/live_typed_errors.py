@@ -196,6 +196,8 @@ def main():
                                                          rec.get('http_status'), (rec.get('provider_message') or '')[:120]),
                       flush=True)
 
+    # Setting the provider saves it to the host's Config/DefaultNodeToCode.ini; EditorSession puts the file back
+    report['config_restored'] = session.restore_ok
     log_text = session.log_text()
     report['log'] = {
         'failed_to_parse_from_provider': log_text.count('Failed to parse LLM response from provider'),
@@ -210,7 +212,8 @@ def main():
     report['leaks'] = [{'path': p, 'variable': n} for p, n in find_leaks(real, scan)]
     report['ok'] = bool(report.get('started') and report.get('batch', {}).get('ok')
                         and report['cases'] and all(c['ok'] for c in report['cases'])
-                        and report['log']['failed_to_parse_from_provider'] == 0 and not report['leaks'])
+                        and report['log']['failed_to_parse_from_provider'] == 0 and not report['leaks']
+                        and report['config_restored'])
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=1)
     print(json.dumps({'ok': report['ok'], 'leaks': report['leaks'], 'log': report['log']}, indent=1))

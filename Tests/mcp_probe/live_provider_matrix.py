@@ -10,6 +10,8 @@ Stdlib only; run with `python -I`:
 It reads the keys from the repo's .env (env_keys.py) and refuses to run if a key for a selected provider is saved in
 the per-user secrets file (the saved key would be used, not the variable). For the session it sets Min Severity to
 Debug in the host's Saved/Config layer (restored afterwards), so UN2CLLMPayloadBuilder::Build logs each payload.
+Applying a case's settings saves them to the host's Config/DefaultNodeToCode.ini; EditorSession restores that file
+byte for byte when the editor stops (or deletes it if it did not exist), and the report's config_restored says so.
 It makes one in-memory probe Blueprint (live_env_translation.SETUP_PY: an Actor with a Print String node, never
 saved), then per case: applies the case's settings (model enum, Max Output Tokens) on the settings object, runs
 translate-focused-blueprint over MCP, reads the task stream, restores the settings, and takes that case's slice of
@@ -412,6 +414,7 @@ def main():
                 print('%-40s %s  %ss  usage=%s' % (c['id'], 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
                                                    rec.get('usage')), flush=True)
 
+    report['config_restored'] = session.restore_ok
     log_text = session.log_text()
     report['log_names_variables'] = {v: ('the %s environment variable is used' % v) in log_text for v in sorted(keys)}
     new_dirs = [os.path.join(translations_dir, d) for d in sorted((set(os.listdir(translations_dir)) if os.path.isdir(translations_dir) else set()) - before)]
@@ -439,7 +442,7 @@ def main():
     leaks = find_leaks(keys, [log_path, report_path, saved_logs, plugin_log] + new_dirs)
     report['leaks'] = [{'path': p, 'variable': n} for p, n in leaks]
     report['ok'] = bool(report['started'] and report['cases'] and all(c['ok'] for c in report['cases'])
-                        and not leaks and not key_eq)
+                        and not leaks and not key_eq and report['config_restored'])
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=1)
     print(json.dumps({'ok': report['ok'], 'report': report_path, 'leaks': report['leaks'], 'key_eq_in_logs': key_eq,
