@@ -14,13 +14,15 @@ back afterwards) it starts UnrealEditor-Cmd with -N2CMcp through Tests/mcp_probe
     errors and LogPluginManager among them), an ensure, an assertion or a crash, unless ALLOWLIST below names it;
   * a missing 'MCP HTTP server started on port <port>' line, no /mcp/health answer, or a /mcp/health answer from a
     process that is not this editor (mcp-transport-10: a failed bind still logs that the server started);
+  * the editor listening on port+1 (netstat; the port+1 notification server was removed in card 0113);
+  * in the dynamic mode, no 'Dynamic Tool Discovery:' warning (the server cannot send tools/list_changed);
   * a tools/list count that differs from Tests/smoke/expected.json for the engine and mode;
   * any change to the content of the host's Config/*.ini files while the editor ran (hashes before and after;
     imp-auth-settings-module-10, auth-settings-module-14/15);
 In the default mode, with the editor still up, it also fails on:
   * the in-editor check: run-python lists the plugin's N2C* types, opens an engine Blueprint that exists in UE 5.6-5.8,
     and json.loads get_focused_blueprint_json with node_count > 0;
-  * any Tests/mcp_probe probe status (P1-P3, P5-P7 in this session, P4 in its own editor) that differs from
+  * any Tests/mcp_probe probe status (P1-P3, P5-P9 in this session, P4 in its own editor) that differs from
     Tests/mcp_probe/expected.json;
   * the official MCP conformance suite and the MCP Inspector CLI (`--method tools/list`), both pinned, through
     Tests/conformance/run_conformance.py: a scenario listed as passing in Tests/conformance/baseline.json that fails,
@@ -223,6 +225,11 @@ class Smoke:
                 if pids is not None:
                     self.check(pids == {session.proc.pid}, '%s: listener is this editor' % mode,
                                'port %d held by pid(s) %s, editor pid %d' % (port, sorted(pids), session.proc.pid))
+                # Card 0113: no port+1 notification server (free_port picked a port whose port+1 was free)
+                side = listener_pids(port + 1)
+                if side is not None:
+                    self.check(session.proc.pid not in side, '%s: nothing of this editor on port+1' % mode,
+                               'port %d: listeners %s' % (port + 1, sorted(side) or 'none'))
                 count = tools_count(url)
                 self.summary['tools'][mode] = count
                 want = self.expected_tools.get(mode)
@@ -235,7 +242,14 @@ class Smoke:
                 self.quit(url, session, mode)
         finally:
             session.stop(before_restore=lambda: after.update(config_hashes(self.args.project)))
-        self.after_session(mode, session.log_text(), port, before, after)
+        log_text = session.log_text()
+        self.after_session(mode, log_text, port, before, after)
+        if mode == 'dynamic':
+            # tools.listChanged is false and nothing sends tools/list_changed, so the mode warns (card 0113; card 0165
+            # replaces the mode)
+            warned = [l.strip()[:200] for l in log_text.splitlines() if 'Warning' in l and 'Dynamic Tool Discovery:' in l]
+            self.check(bool(warned), 'dynamic: warns that clients are not notified of tool list changes',
+                       warned[0] if warned else 'no "Dynamic Tool Discovery:" warning in the log')
         self.check(session.restore_ok is not False, '%s: host config restored' % mode,
                    'put back' if session.restore_ok is not False else
                    'EditorSession could not put the guarded ini files back')

@@ -31,7 +31,7 @@ Source/
 *   **`Source/NodeToCode.Build.cs`**: Build script defining dependencies:
     *   **Public**: Core, CoreUObject, Engine, InputCore, Json, UnrealEd, BlueprintGraph, Slate, SlateCore, Kismet, GraphEditor, HTTP, UMG, ToolMenus, ApplicationCore, Projects, HTTPServer
     *   **Private**: DeveloperSettings, Blutility, UMGEditor, KismetWidgets, EditorSubsystem, EditorWidgets, AssetRegistry, ContentBrowserData, DesktopPlatform, PythonScriptPlugin, EditorScriptingUtilities
-    *   **Third-Party**: cpp-httplib (header-only HTTP library in `ThirdParty/cpp-httplib/`)
+    *   **Third-Party**: cpp-httplib (header-only HTTP library in `ThirdParty/cpp-httplib/`; vendored but included by no source file since card 0113, see its README)
 *   **`Source/Public/NodeToCode.h` & `Source/Private/NodeToCode.cpp`**:
     *   `FNodeToCodeModule`: Main plugin class.
         *   `StartupModule`: Initializes:
@@ -43,8 +43,7 @@ Source/
             *   Editor integration (`FN2CEditorIntegration`)
             *   Widget factories (`FN2CCodeEditorWidgetFactory`)
             *   Syntax definitions (`FN2CSyntaxDefinitionFactory`)
-            *   MCP HTTP server (`FN2CMcpHttpServerManager`)
-            *   SSE server (`NodeToCodeSseServer`) for long-running operations
+            *   MCP HTTP server (`FN2CMcpHttpServerManager`), the only listener the plugin opens
             *   `ShutdownModule`: Cleans up all resources in reverse order.
 
 ## Editor Integration & UI

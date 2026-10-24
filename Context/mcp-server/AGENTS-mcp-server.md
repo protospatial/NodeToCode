@@ -11,11 +11,9 @@ For creating new MCP tools, see: `@Source/Private/MCP/Tools/AGENTS.md`
 ```
 Source/
 ├── Public/MCP/                           # Public headers
-│   ├── Server/                           # HTTP/SSE server components
+│   ├── Server/                           # HTTP server components
 │   │   ├── N2CMcpHttpServerManager.h     # HTTP transport (HTTPServer routes, responder)
-│   │   ├── N2CMcpJsonRpcTypes.h          # JSON-RPC types
-│   │   ├── N2CMcpSSEResponseManager.h    # SSE response management
-│   │   └── IN2CMcpNotificationChannel.h  # Notification interface
+│   │   └── N2CMcpJsonRpcTypes.h          # JSON-RPC types
 │   ├── Async/                            # Long-running call system
 │   │   └── N2CToolAsyncTaskManager.h     # Runs long-running tool calls
 │   ├── Tools/                            # Tool framework
@@ -33,19 +31,14 @@ Source/
 │   │   ├── N2CMcpPromptTypes.h           # Prompt definitions
 │   │   ├── N2CMcpPromptManager.h         # Prompt registry
 │   │   └── Implementations/              # Prompt implementations
-│   ├── Validation/                       # Request validation
-│   │   └── N2CMcpRequestValidator.h      # Validators
-│   └── Progress/                         # Progress tracking
-│       └── N2CMcpProgressTracker.h       # Progress notifications
+│   └── Validation/                       # Request validation
+│       └── N2CMcpRequestValidator.h      # Validators
 │
 └── Private/MCP/                          # Private implementations
     ├── Server/                           # Server implementations
     │   ├── N2CMcpHttpServerManager.cpp
-    │   ├── N2CMcpHttpRequestHandler.cpp
-    │   ├── N2CMcpJsonRpcTypes.cpp
-    │   ├── N2CMcpSSEResponseManager.cpp
-    │   ├── N2CSseServer.h/.cpp           # SSE server (httplib-based)
-    │   └── ...
+    │   ├── N2CMcpProtocol.h/.cpp         # Transport-neutral protocol core
+    │   └── N2CMcpJsonRpcTypes.cpp
     ├── Async/                            # Long-running call implementation
     │   └── N2CToolAsyncTaskManager.cpp
     ├── Tools/                            # Tool framework and implementations
@@ -78,7 +71,9 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   **Transport Layer**: HTTP server on port 27000 (configurable via settings)
 *   **Long-running tools**: answered on the `tools/call` POST itself: `text/event-stream` with progress then the
     result on UE 5.8 (when Accept lists it and a progressToken is sent), else one held `application/json` response
-*   **SSE side server**: separate httplib server on port 27001 (`/mcp/notifications`); no longer used for tool results
+*   **One listener**: only the engine HTTPServer on the MCP port. The port+1 notification server (cpp-httplib,
+    `/mcp/events` and `/mcp/notifications`) was removed in card 0113, so the server sends no unsolicited
+    notifications (`tools.listChanged` is false)
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: Auto-starts with plugin, graceful shutdown on exit
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
@@ -111,12 +106,16 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   Tests: `NodeToCode.MCP.Core` (sessions, verbs, batches), `NodeToCode.MCP.Transport.LongRunningCall` (the same
     through `HandleMcpRequest`), probes P3 and P8 in `Tests/mcp_probe`, and the conformance suite's
     `server-session-lifecycle` scenario. Probe scripts get their session from `Tests/mcp_probe/mcp_session.py`.
-*   Not yet per session: the dynamic tool set (`assess-needed-tools`) is still one global list, and
-    `notifications/tools/list_changed` still goes to every client of the port+1 notification stream.
+*   Not yet per session: the dynamic tool set (`assess-needed-tools`) is still one global list, and no client is
+    told when it changes (no `notifications/tools/list_changed`; see Capabilities).
 
 ### Capabilities, errors and cancellation (card 0110)
 
-*   **Capabilities**: `initialize` advertises `tools` (`listChanged: true`), `resources` and `prompts`. It does not
+*   **Capabilities**: `initialize` advertises `tools`, `resources` and `prompts`, each with `listChanged: false`:
+    with no server-to-client channel (GET is 405, and the port+1 notification server is gone since card 0113) the
+    server never sends `notifications/tools/list_changed`. With Enable Dynamic Tool Discovery on, the server logs a
+    warning that clients see the tools `assess-needed-tools` enables only when they list tools again; card 0165
+    replaces that mode. The initialize result has no `_meta`. It does not
     advertise `logging` (the server sends no `notifications/message`, and logging is deprecated in 2026-07-28), so
     `logging/setLevel` is an unknown method (-32601). `InitializeResult.instructions` tells the agent which tools to
     start with (`FN2CMcpProtocol::GetServerInstructions()`).
@@ -146,11 +145,11 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   **`N2CMcpHttpServerManager.h/.cpp`**: the HTTP transport
     *   Singleton pattern for server lifecycle control
     *   HTTP routing: `/mcp` (POST, DELETE; GET, PUT and PATCH answered 405 by the core), `/mcp/health` (health check)
-    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; the httplib SSE server binds 127.0.0.1
+    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers
     *   `HandleMcpRequest` copies the request into an `FN2CMcpInbound` and calls the protocol core with an
         HTTPServer responder: one `application/json` response, or on UE 5.8 a `text/event-stream` response drained
         from a queue (`CanStreamToolProgress()`)
-    *   Sets the core's broadcast sink to the port+1 notification stream
+    *   Sets no broadcast sink (there is no notification channel), so the core logs and drops server notifications
 
 *   **`N2CMcpProtocol.h/.cpp`** (Private): the transport-neutral protocol core, `FN2CMcpProtocol`
     *   `Handle(const FN2CMcpInbound&, TSharedRef<IN2CMcpResponder>)`: the inbound message is the verb, the headers
@@ -162,39 +161,16 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
         `text/event-stream` and sent a progressToken; else one reply when the call finishes) and the per-client
         session table (`FN2CMcpSession`, see Sessions and versions)
     *   Server notifications (`notifications/tools/list_changed`, from `FN2CMcpToolManager::OnToolListChanged`) go
-        to the sink set with `SetBroadcastSink`; tools never call the transport
+        to the sink set with `SetBroadcastSink`; tools never call the transport. No transport sets one today
     *   Protocol version negotiation (supports "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
     *   Tests drive it without a listener: `NodeToCode.MCP.Core` (in-memory responder in
         `Source/Private/Tests/MCP/N2CMcpMemoryResponder.h`) and `NodeToCode.MCP.Protocol`
 
 *   **`N2CMcpJsonRpcTypes.h/.cpp`**: JSON-RPC type system
     *   `FJsonRpcRequest/Response/Error/Notification` structures
-    *   `FJsonRpcUtils` for serialization/deserialization
+    *   `FJsonRpcUtils` for serialization (the core parses bodies itself, `FN2CMcpProtocol::ParseBody`)
     *   Standard error codes (-32700 to -32603)
     *   Message type detection and validation
-
-*   **`IN2CMcpNotificationChannel.h`**: Notification transport abstraction
-    *   Interface for WebSocket/SSE support
-    *   Enables server-initiated notifications
-    *   Session-based channel management
-
-*   **`N2CMcpSSEResponseManager.h/.cpp`**: SSE connection management
-    *   Manages Server-Sent Events responses for long-running tools
-    *   `FSSEConnection` struct with Request, Response, SessionId, ProgressToken, TaskId
-    *   `CreateSSEConnectionAndGetResponse()` for initiating SSE streams
-    *   `SendProgressNotification()`, `SendFinalResponse()` for streaming
-    *   Connection lookup by TaskId or ProgressToken
-    *   5-minute connection timeout with cleanup
-
-*   **`N2CSseServer.h/.cpp`** (Private): SSE server implementation
-    *   Uses httplib for standalone SSE HTTP server (vendored cpp-httplib, version and hash in `ThirdParty/cpp-httplib/README.md`)
-    *   Request limits: at most 64 header fields, 8 KB per header line, a 2 KB request target and a 64 KB body (400, 414 or 413 above these), 5 s read and write timeouts; checked by `Tests/mcp_probe` P6
-    *   `StartSseServer()`, `StopSseServer()`, `IsSseServerRunning()`
-    *   `PrepareSseStreamForTask()`, `DiscardStreamForTask()`, `HasStreamForTask()`
-    *   `ExpireCompletedStreams()` - a finished task's result waits on its stream for a late client for `CompletedStreamTtlSeconds` (10 min), then is dropped; runs on every `PrepareSseStreamForTask()`
-    *   `PushFormattedSseEventToClient()`, `SignalSseClientCompletion()`
-    *   `FormatSseMessage()` for SSE event formatting
-    *   `PushNotificationToAllClients()` for broadcast notifications
 
 ## Long-Running Calls (`Source/Public/MCP/Tools/N2CToolCallContext.h`, `Source/Public/MCP/Async/`)
 
@@ -222,25 +198,17 @@ Supports long-running tool operations with progress and cancellation through one
         `EndWithoutResponse` ends the request instead)
     *   `GetTaskContext()` (an `FN2CToolCallRecord`), `IsTaskRunning()`, `GetRunningTaskIds()`
     *   A call stops being tracked once it has delivered its result (`OnTaskCompleted`); its progress token is remembered for 10 min so `nodetocode/cancelTask` answers `task_already_completed` (`WasProgressTokenCompleted()`)
-    *   `CleanupCompletedTasks()` (safety net), `CancelAllTasks()` - called from `FCoreDelegates::OnPreExit` (before UObjects are purged) and in `ShutdownModule` before the SSE server stops
+    *   `CleanupCompletedTasks()` (safety net), `CancelAllTasks()` - called from `FCoreDelegates::OnPreExit` (before UObjects are purged) and in `ShutdownModule` before the MCP routes are unbound
     *   `GetTrackedTaskCount()`, `GetTrackedProgressTokenCount()`
     *   Thread-safe with FCriticalSection
 
 ## Validation Framework (`Source/Public/MCP/Validation/`)
 
-*   **`N2CMcpRequestValidator.h/.cpp`**: Centralized request validation
-    *   Method-specific validators (tools/call, resources/read, etc.)
-    *   Generic validation helpers for common patterns
-    *   Required/optional field validation
-    *   Type checking with detailed error messages
-
-## Progress Tracking System (`Source/Public/MCP/Progress/`)
-
-*   **`N2CMcpProgressTracker.h/.cpp`**: Real-time operation tracking
-    *   Thread-safe progress management
-    *   Progress notifications via MCP protocol
-    *   Percentage-based progress reporting
-    *   Integration with notification broadcasting
+*   **`N2CMcpRequestValidator.h/.cpp`**: request validation used by the protocol core
+    *   `ValidateToolsCallRequest`, `ValidateResourcesReadRequest`, `ValidatePromptsGetRequest`
+    *   `ValidateParamsIsObject` (params present and an object) and the helpers they use
+        (`ValidateRequiredString`, `ValidateOptionalObject`, `ValidateParamsNotNull`)
+    *   Progress for long-running calls goes through `FN2CToolCallContext` (below); there is no separate tracker
 
 ## Tool Subsystem (`Source/Private/MCP/Tools/`)
 
@@ -444,7 +412,8 @@ The MCP server supports dynamic tool discovery (configurable in plugin settings)
 *   **Disabled (Default)**: All tools registered at startup
 *   **Enabled**: Only `assess-needed-tools` initially available
 *   Use `assess-needed-tools` with category names to activate tool sets
-*   Server sends `notifications/tools/list_changed` after activation
+*   No `notifications/tools/list_changed` is sent (no notification channel, `tools.listChanged` false): the client
+    must call `tools/list` again; the server logs a warning at start when this mode is on (card 0165 replaces it)
 
 Available tool categories for `assess-needed-tools`:
 *   Tool Management
@@ -472,12 +441,12 @@ Available tool categories for `assess-needed-tools`:
         *   `SerializeN2CBlueprintToJson()`: Serialization
 
 *   **Plugin Settings** (`N2CSettings.h/.cpp`):
-    *   `McpServerPort`: Configurable server port (default 27000, at most 65534 while the port+1 server exists);
+    *   `McpServerPort`: Configurable server port (default 27000, 1024-65535);
         `McpServerPortRange` (default 10): ports tried from there when one is taken; `McpServerStatus` (transient,
-        read-only): where the server listens now. A port change restarts both servers on the next tick
+        read-only): where the server listens now. A port change restarts the server on the next tick
         (`FN2CMcpHttpServerManager::HandlePortSettingsChanged`), no editor restart
-    *   The notification (SSE) server takes the port after the one the HTTP server got
-    *   `bEnableDynamicToolDiscovery`: Toggle dynamic tool management
+    *   `bEnableDynamicToolDiscovery`: Toggle dynamic tool management (logs a warning: no `tools/list_changed` is
+        sent, clients see newly enabled tools when they list again)
     *   Exposed in Editor UI for runtime configuration
 
 ## Testing and Development
@@ -552,7 +521,7 @@ curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
 `UN2CUserSettings` (Project Settings > Plugins > Node to Code (User), stored in the user's
 EditorPerProjectUserSettings.ini, never the shared project config):
 
-- **Enable MCP Server** (default on): starts the MCP server on `McpServerPort` and the notification server on port+1.
+- **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 
 Ports and shutdown (card 0112): `FN2CMcpHttpServerManager::StartServer(Port, Range)` checks each port with a bind of
 its own before handing it to HTTPServer (`GetHttpRouter(Port, true)`), so a port another process or plugin holds is
@@ -568,5 +537,5 @@ engineVersion, pluginVersion, protocolVersions, startedAt), removed on stop; ind
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
   `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so dynamic discovery cannot add them either.
 
-The servers do not start in commandlets or `-unattended` runs (build agents, the smoke test) unless the command
+The server does not start in commandlets or `-unattended` runs (build agents, the smoke test) unless the command
 line has `-N2CMcp`. `bEnablePythonScriptOnlyMode` now defaults to false.

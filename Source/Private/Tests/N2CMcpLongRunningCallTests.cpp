@@ -212,8 +212,8 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 	/** Checks a JSON-RPC response body: id 7 and a CallToolResult (content array) with the expected text */
 	auto CheckCallToolResult = [this](const FString& What, const FString& Json, const FString& ExpectedText, bool bExpectError)
 	{
+		// The old {status: "accepted", ...} answer (result sent later on the removed port+1 server)
 		TestFalse(What + TEXT(": no 'accepted' status"), Json.Contains(TEXT("\"accepted\"")));
-		TestFalse(What + TEXT(": no sseUrl"), Json.Contains(TEXT("sseUrl")));
 		const TSharedPtr<FJsonObject> Message = ParseObject(Json);
 		if (!TestTrue(What + TEXT(": response is JSON"), Message.IsValid()))
 		{

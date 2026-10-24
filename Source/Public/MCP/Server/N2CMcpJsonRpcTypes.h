@@ -154,15 +154,6 @@ struct NODETOCODE_API FJsonRpcError
 class NODETOCODE_API FJsonRpcUtils
 {
 public:
-	/** Parse a JSON string into a JSON-RPC request */
-	static bool ParseRequest(const FString& JsonString, FJsonRpcRequest& OutRequest);
-
-	/** Parse a JSON string into a JSON-RPC response */
-	static bool ParseResponse(const FString& JsonString, FJsonRpcResponse& OutResponse);
-
-	/** Parse a JSON string into a JSON-RPC notification */
-	static bool ParseNotification(const FString& JsonString, FJsonRpcNotification& OutNotification);
-
 	/** Serialize a JSON-RPC request to string */
 	static FString SerializeRequest(const FJsonRpcRequest& Request);
 

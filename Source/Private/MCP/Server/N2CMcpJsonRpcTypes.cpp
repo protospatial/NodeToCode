@@ -162,48 +162,6 @@ TSharedPtr<FJsonObject> FJsonRpcError::ToJson() const
 
 // FJsonRpcUtils Implementation
 
-bool FJsonRpcUtils::ParseRequest(const FString& JsonString, FJsonRpcRequest& OutRequest)
-{
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-	TSharedPtr<FJsonValue> JsonValue;
-
-	if (FJsonSerializer::Deserialize(Reader, JsonValue) && JsonValue.IsValid() && JsonValue->Type == EJson::Object)
-	{
-		OutRequest = FJsonRpcRequest(JsonValue->AsObject());
-		return true;
-	}
-
-	return false;
-}
-
-bool FJsonRpcUtils::ParseResponse(const FString& JsonString, FJsonRpcResponse& OutResponse)
-{
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-	TSharedPtr<FJsonValue> JsonValue;
-
-	if (FJsonSerializer::Deserialize(Reader, JsonValue) && JsonValue.IsValid() && JsonValue->Type == EJson::Object)
-	{
-		OutResponse = FJsonRpcResponse(JsonValue->AsObject());
-		return true;
-	}
-
-	return false;
-}
-
-bool FJsonRpcUtils::ParseNotification(const FString& JsonString, FJsonRpcNotification& OutNotification)
-{
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-	TSharedPtr<FJsonValue> JsonValue;
-
-	if (FJsonSerializer::Deserialize(Reader, JsonValue) && JsonValue.IsValid() && JsonValue->Type == EJson::Object)
-	{
-		OutNotification = FJsonRpcNotification(JsonValue->AsObject());
-		return true;
-	}
-
-	return false;
-}
-
 FString FJsonRpcUtils::SerializeRequest(const FJsonRpcRequest& Request)
 {
 	FString OutputString;

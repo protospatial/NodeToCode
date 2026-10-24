@@ -33,8 +33,8 @@ public:
 	/** Default number of ports StartServer tries (Server Port and the next 9) */
 	static constexpr int32 DefaultPortRange = 10;
 
-	/** Highest port the server takes: the port+1 notification server needs the next one */
-	static constexpr int32 MaxServerPort = 65534;
+	/** Highest port the server takes */
+	static constexpr int32 MaxServerPort = 65535;
 
 	/**
 	 * Gets the singleton instance of the MCP HTTP server manager.
@@ -58,17 +58,17 @@ public:
 	void StopServer();
 
 	/**
-	 * Starts the HTTP server and the port+1 notification server from the settings (McpServerPort,
-	 * McpServerPortRange). Called once by the module; later port changes restart through HandlePortSettingsChanged.
+	 * Starts the HTTP server from the settings (McpServerPort, McpServerPortRange). Called once by the module; later
+	 * port changes restart it through HandlePortSettingsChanged.
 	 * @return true if the HTTP server is running
 	 */
 	bool StartConfiguredServers();
 
-	/** Stops the notification server and the HTTP server (module shutdown) */
+	/** Stops the HTTP server (module shutdown) */
 	void StopConfiguredServers();
 
 	/**
-	 * Restarts both servers on the current McpServerPort and McpServerPortRange, on the next tick, when the module
+	 * Restarts the server on the current McpServerPort and McpServerPortRange, on the next tick, when the module
 	 * started them (not when the server is off or skipped in a commandlet). On failure StartServer's error
 	 * notification says what to change.
 	 */
@@ -103,13 +103,6 @@ public:
 
 	/** Tests: receive (message, bIsError) instead of showing editor notifications (nullptr restores them) */
 	void SetNotificationHandlerForTesting(TFunction<void(const FString&, bool)> Handler);
-
-	/**
-	 * Broadcasts a server notification through the protocol core to the connected notification clients (the
-	 * port+1 notification stream).
-	 * @param Notification The notification to broadcast
-	 */
-	void BroadcastNotification(const FJsonRpcNotification& Notification);
 
 	/**
 	 * Handles a request to /mcp (the route handler; public so tests can drive it without a socket): copies the request
@@ -178,7 +171,7 @@ private:
 	/** Whether the server is currently running */
 	bool bIsServerRunning = false;
 
-	/** Whether the module started the servers from the settings (a port change then restarts them) */
+	/** Whether the module started the server from the settings (a port change then restarts it) */
 	bool bConfiguredServersStarted = false;
 
 	/** A restart from HandlePortSettingsChanged is queued for the next tick */

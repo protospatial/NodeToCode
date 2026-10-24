@@ -88,7 +88,8 @@ def kill_with_parent(proc):
 
 
 def free_port(preferred):
-    """The preferred port if both it and port+1 are free, else the first such pair above it."""
+    """The preferred port if both it and port+1 are free, else the first such pair above it. Nothing listens on port+1
+    since card 0113; probe P5 and the smoke check need it free at start to show the editor does not take it."""
     port = preferred
     while port < preferred + 200:
         ok = True

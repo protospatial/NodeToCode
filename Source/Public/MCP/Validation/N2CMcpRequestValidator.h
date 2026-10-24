@@ -37,30 +37,6 @@ public:
 	 */
 	static bool ValidatePromptsGetRequest(const TSharedPtr<FJsonObject>& Params, FString& OutError);
 
-	/**
-	 * Validates a resources/list request.
-	 * @param Params The request parameters to validate
-	 * @param OutError Error message if validation fails
-	 * @return true if the request is valid
-	 */
-	static bool ValidateResourcesListRequest(const TSharedPtr<FJsonObject>& Params, FString& OutError);
-
-	/**
-	 * Validates a prompts/list request.
-	 * @param Params The request parameters to validate
-	 * @param OutError Error message if validation fails
-	 * @return true if the request is valid
-	 */
-	static bool ValidatePromptsListRequest(const TSharedPtr<FJsonObject>& Params, FString& OutError);
-
-	/**
-	 * Validates a tools/list request.
-	 * @param Params The request parameters to validate
-	 * @param OutError Error message if validation fails
-	 * @return true if the request is valid
-	 */
-	static bool ValidateToolsListRequest(const TSharedPtr<FJsonObject>& Params, FString& OutError);
-
 	// Generic validation helpers
 
 	/**
@@ -77,30 +53,6 @@ public:
 	                                  FString& OutError);
 
 	/**
-	 * Validates an optional string field and extracts its value if present.
-	 * @param Object The JSON object to validate
-	 * @param FieldName The name of the field to check
-	 * @param OutValue The extracted string value (empty if not present)
-	 * @return true if the field is not present or is a valid string
-	 */
-	static bool ValidateOptionalString(const TSharedPtr<FJsonObject>& Object,
-	                                  const FString& FieldName,
-	                                  FString& OutValue);
-
-	/**
-	 * Validates that a required object field exists and extracts its value.
-	 * @param Object The JSON object to validate
-	 * @param FieldName The name of the field to check
-	 * @param OutValue The extracted object value
-	 * @param OutError Error message if validation fails
-	 * @return true if the field exists and is a valid object
-	 */
-	static bool ValidateRequiredObject(const TSharedPtr<FJsonObject>& Object,
-	                                  const FString& FieldName,
-	                                  TSharedPtr<FJsonObject>& OutValue,
-	                                  FString& OutError);
-
-	/**
 	 * Validates an optional object field and extracts its value if present.
 	 * @param Object The JSON object to validate
 	 * @param FieldName The name of the field to check
@@ -110,30 +62,6 @@ public:
 	static bool ValidateOptionalObject(const TSharedPtr<FJsonObject>& Object,
 	                                  const FString& FieldName,
 	                                  TSharedPtr<FJsonObject>& OutValue);
-
-	/**
-	 * Validates that a required array field exists and extracts its value.
-	 * @param Object The JSON object to validate
-	 * @param FieldName The name of the field to check
-	 * @param OutValue The extracted array value
-	 * @param OutError Error message if validation fails
-	 * @return true if the field exists and is a valid array
-	 */
-	static bool ValidateRequiredArray(const TSharedPtr<FJsonObject>& Object,
-	                                 const FString& FieldName,
-	                                 const TArray<TSharedPtr<FJsonValue>>*& OutValue,
-	                                 FString& OutError);
-
-	/**
-	 * Validates an optional array field and extracts its value if present.
-	 * @param Object The JSON object to validate
-	 * @param FieldName The name of the field to check
-	 * @param OutValue The extracted array value (null if not present)
-	 * @return true if the field is not present or is a valid array
-	 */
-	static bool ValidateOptionalArray(const TSharedPtr<FJsonObject>& Object,
-	                                 const FString& FieldName,
-	                                 const TArray<TSharedPtr<FJsonValue>>*& OutValue);
 
 	/**
 	 * Validates that request parameters are not null.

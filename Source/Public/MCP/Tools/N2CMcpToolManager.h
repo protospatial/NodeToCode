@@ -34,13 +34,6 @@ public:
 	bool UnregisterTool(const FString& ToolName);
 
 	/**
-	 * Get a tool definition by name
-	 * @param ToolName The name of the tool
-	 * @return The tool definition, or nullptr if not found
-	 */
-	const FMcpToolDefinition* GetToolDefinition(const FString& ToolName) const;
-
-	/**
 	 * Get all registered tool definitions
 	 * @return Array of all tool definitions
 	 */

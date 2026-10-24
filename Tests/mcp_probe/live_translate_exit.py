@@ -107,11 +107,11 @@ def main():
     report['task_id'] = task_id_for_token(log_text, token) if report.get('task_started') else None
     if report.get('task_id'):
         tid = report['task_id']
-        # The cancel runs on OnEnginePreExit (start of UEngine::PreExit), before the module shuts down ("SSE server
-        # stopped") and the UObject subsystem closes
+        # The cancel runs on OnEnginePreExit (start of UEngine::PreExit), before the module shuts down ("MCP HTTP
+        # server stopped") and the UObject subsystem closes
         cancel_pos = log_text.find('Requested cancellation for all 1 running tasks')
         quit_pos = log_text.find('Cmd: QUIT_EDITOR')
-        shutdown_pos = log_text.find('SSE server stopped')
+        shutdown_pos = log_text.find('MCP HTTP server stopped')
         purge_pos = log_text.find('Object subsystem successfully closed')
         after_cancel = log_text[cancel_pos:] if cancel_pos >= 0 else ''
         report['log'] = {

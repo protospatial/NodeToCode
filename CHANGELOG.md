@@ -120,7 +120,8 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   unchanged, so custom key bindings still work (a86d97f).
 - Startup no longer writes HTTP timeouts to `Config/DefaultEngine.ini` or turns off **Use Less CPU when in
   Background**. Timeouts are set per request, and CPU throttling is off only while a translation runs (4fea3e5).
-- The vendored cpp-httplib is v0.63.0, with request-size limits on the notification server ([#40]).
+- The vendored cpp-httplib is v0.63.0 ([#40]). Since the notification server was removed (card 0113) no source
+  file includes it; it stays for a possible UE 5.6/5.7 streaming transport. <!-- PROVISIONAL 0085 -->
 - MCP request bodies are parsed exactly once, so JSON-RPC batches work and trailing bytes are refused; responses
   are condensed JSON ([#56]).
 - `UN2CCodeEditorWidget::GetSelection` outputs are renamed `OutStartLine` and `OutEndLine`, and a line-and-column
@@ -231,8 +232,15 @@ Only for people who ran a `dev-2.0` build before this beta.
 - `datatable_populator.populate_from_json` / `populate_from_csv` merge rows by name by default and save only
   with `save=True`. Pass `clear_existing=True, save=True` for the old replace-and-save behaviour ([#47]).
 - The stdio bridge reads streamed responses and no longer follows `sseUrl` ([#60]).
+- The second server on the MCP port + 1 (`/mcp/events`, `/mcp/notifications`) is gone, and so are
+  `initialize`'s `_meta.notificationUrl` and the `nodetocode/taskStarted` notification. Only the MCP port is
+  opened. `initialize` advertises `tools.listChanged: false`: the server has no channel for
+  `notifications/tools/list_changed` (card 0113).
 
 ### Known issues
+
+- With **Enable Dynamic Tool Discovery** on, clients are not told when `assess-needed-tools` changes the tool list;
+  they see the new tools when they list tools again, and the editor logs a warning saying so (card 0113).
 
 - On UE 5.6 and 5.7, `translate-focused-blueprint` sends no progress, so a client that gives up on silent calls
   (Claude Code does after five minutes) can abort a long translation ([#59]). <!-- PROVISIONAL 0085 -->
