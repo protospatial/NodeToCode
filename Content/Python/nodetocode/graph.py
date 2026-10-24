@@ -256,7 +256,8 @@ def connect_pins(
                     "pinName": str     # Optional fallback name
                 }
             }
-        break_existing_links: If True, breaks existing connections before making new ones
+        break_existing_links: If True, a connection may replace an existing link (a linked data input, also
+            through a conversion node, or a linked exec output); if False such a connection fails and names the link
 
     Returns:
         {

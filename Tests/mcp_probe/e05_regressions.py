@@ -359,6 +359,98 @@ def bridge_connect_pins_fan_in_keeps_both_links(url, ctx):
     return all(results) and all(state), 'connected=%s true/false/execute linked=%s' % (results, state)
 
 
+BRIDGE_CONNECT_BREAK_PY = r'''
+import json, unreal
+result = json.loads(unreal.N2CPythonBridge.connect_pins(%r, %r))
+'''
+
+
+def tool_connect(url, conn, break_links):
+    """connect-pins with one connection: (succeeded, failure text)"""
+    args = {'connections': [conn]}
+    if break_links is not None:
+        args['options'] = {'breakExistingLinks': break_links}
+    data, error, raw = tool_json(url, 'connect-pins', args)
+    failed = (data or {}).get('failed') or []
+    ok = not error and (data or {}).get('summary', {}).get('succeeded') == 1
+    return ok, ('%s %s' % (failed[0].get('errorCode'), failed[0].get('reason'))) if failed else raw[:160]
+
+
+def bridge_connect(url, conn, break_links):
+    """The Python bridge's ConnectPins with one connection (its default breakExistingLinks when break_links is None)"""
+    if break_links is None:
+        data, raw = run_python(url, BRIDGE_CONNECT_PY % json.dumps([conn]))
+    else:
+        data, raw = run_python(url, BRIDGE_CONNECT_BREAK_PY % (json.dumps([conn]), break_links))
+    body = data.get('data') or {}
+    failed = body.get('failed') or []
+    ok = bool(data.get('success')) and body.get('summary', {}).get('succeeded') == 1
+    return ok, failed[0].get('error', '') if failed else raw[:160]
+
+
+def conversion_nodes(url):
+    """{guid: output linked} of the To String conversion nodes in the focused graph, and the graph's node count"""
+    nodes, total = graph_nodes(url, 'To String')
+    return {g: connected(n, 'out', 0) for g, n in nodes.items()}, total
+
+
+def pin_linked(url, term, node, direction, pin_name):
+    nodes, _ = graph_nodes(url, term)
+    pins = nodes.get(node['guid'].upper(), {}).get('output_pins' if direction == 'out' else 'input_pins', [])
+    return any(p.get('name') == pin_name and p.get('connected') is True for p in pins)
+
+
+def conversion_link_case(url, connect, x):
+    """p0-7 (card 0415): a Float into an In String that is already linked needs a conversion node. Without
+    breakExistingLinks it fails, names the existing link and leaves the graph as it was; with it, it replaces the link"""
+    time_term, time_fn = 'Get Game Time in Seconds', 'GetGameTimeInSeconds'
+    first = add_node(url, time_term, 'CallFunction', time_fn, x)
+    second = add_node(url, time_term, 'CallFunction', time_fn, x + 200)
+    printer = add_node(url, 'Print String', 'CallFunction', 'PrintString', x + 600)
+    steps = {}
+    before, _ = conversion_nodes(url)
+    steps['first'], text = connect(url, link(first, 'ReturnValue', printer, 'InString'), None)
+    linked, total = conversion_nodes(url)
+    made = [g for g in linked if g not in before]
+    if not steps['first'] or len(made) != 1 or not linked[made[0]]:
+        return False, 'setup: first conversion link %s new conversion nodes %s (%s)' % (steps['first'], made, text)
+    old = made[0]
+
+    ok, text = connect(url, link(second, 'ReturnValue', printer, 'InString'), None)
+    after, total_after = conversion_nodes(url)
+    steps['refused'] = not ok and 'existing link' in text and 'currently linked to' in text
+    steps['unchanged'] = (total_after == total and set(after) == set(linked) and after[old] is True
+                          and not pin_linked(url, 'Get Game Time', second, 'out', 'Return Value')
+                          and pin_linked(url, 'Print', printer, 'in', 'In String'))
+    refusal = text
+
+    ok, text = connect(url, link(second, 'ReturnValue', printer, 'InString'), True)
+    replaced, _ = conversion_nodes(url)
+    made = [g for g in replaced if g not in after]
+    steps['replaced'] = (ok and len(made) == 1 and replaced[made[0]] is True and replaced[old] is False
+                         and pin_linked(url, 'Get Game Time', second, 'out', 'Return Value')
+                         and pin_linked(url, 'Print', printer, 'in', 'In String'))
+    return all(steps.values()), '%s refusal=%r%s' % (steps, refusal[:140], '' if steps['replaced'] else ' replace: ' + text[:100])
+
+
+@case
+def connect_pins_refuses_conversion_replace(url, ctx):
+    """p0-7: connect-pins refuses a conversion-node link into an already linked data input unless breakExistingLinks
+    is set, and replaces the link when it is (card 0415)"""
+    if 'connect_nodes' not in ctx:
+        return None, 'needs connect_pins_fan_in_keeps_both_links'
+    return conversion_link_case(url, tool_connect, 0)
+
+
+@case
+def bridge_connect_pins_refuses_conversion_replace(url, ctx):
+    """p0-7: the Python bridge's ConnectPins refuses a conversion-node link into an already linked data input with its
+    default breakExistingLinks, and replaces the link with break_existing_links=True (card 0415)"""
+    if 'connect_nodes' not in ctx:
+        return None, 'needs connect_pins_fan_in_keeps_both_links'
+    return conversion_link_case(url, bridge_connect, 1200)
+
+
 # Open a Control Rig with RigVM.UseNewEditor=1: its toolkit is not an FBlueprintEditor, so N2C's overlay poll, the
 # editor-opened handler and the tab lambda must skip it (card 0044). Restores the cvar afterwards.
 CONTROL_RIG_OPEN_PY = r'''

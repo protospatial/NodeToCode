@@ -159,7 +159,8 @@ public:
 	 * Connect pins between Blueprint nodes.
 	 *
 	 * @param ConnectionsJson JSON array of connection specs: [{"from":{"nodeGuid":"...","pinGuid":"..."},"to":{...}},...]
-	 * @param bBreakExistingLinks If true, breaks existing connections before making new ones
+	 * @param bBreakExistingLinks If true, a connection may replace an existing link (a linked data input, also through a
+	 *        conversion node, or a linked exec output); if false such a connection fails and names the existing link
 	 * @return JSON with succeeded/failed connections
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
