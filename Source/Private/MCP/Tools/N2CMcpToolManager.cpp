@@ -2,8 +2,6 @@
 
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
-#include "MCP/Server/N2CMcpHttpServerManager.h"
-#include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "Utils/N2CLogger.h"
 #include "Core/N2CUserSettings.h"
 
@@ -96,7 +94,7 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 		return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Tool '%s' not found"), *ToolName));
 	}
 
-	// A long-running tool is answered on its own tools/call request (FN2CMcpHttpServerManager); it reaches this
+	// A long-running tool is answered on its own tools/call request (FN2CMcpProtocol); it reaches this
 	// synchronous path only inside a JSON-RPC batch, which is answered as a whole and cannot wait for it.
 	if ((*ToolPtr)->GetDefinition().bIsLongRunning)
 	{
@@ -151,11 +149,8 @@ void FN2CMcpToolManager::UpdateActiveTools(const TArray<FString>& Categories)
 		}
 	}
 
-	// Send notification that the tool list has changed
-	FJsonRpcNotification Notification;
-	Notification.Method = TEXT("notifications/tools/list_changed");
-	Notification.Params = MakeShared<FJsonValueObject>(MakeShared<FJsonObject>()); // Empty params
-	FN2CMcpHttpServerManager::Get().BroadcastNotification(Notification);
+	// The protocol core sends notifications/tools/list_changed to its clients
+	ToolListChanged.Broadcast();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Updated active toolset. Now have %d tools."), RegisteredTools.Num()), EN2CLogSeverity::Info);
 }

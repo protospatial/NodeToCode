@@ -6,7 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
-#include "MCP/Server/N2CMcpHttpRequestHandler.h"
+#include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "Dom/JsonValue.h"
 #include "MCP/Prompts/N2CMcpPromptManager.h"
@@ -15,7 +15,7 @@
 #include "MCP/Tools/N2CMcpToolManager.h"
 
 /**
- * Characterization specs for the MCP protocol layer: FN2CMcpHttpRequestHandler::ProcessMcpRequest driven with
+ * Characterization specs for the MCP protocol layer: FN2CMcpProtocol::ProcessMessage (the protocol core) driven with
  * parsed JSON-RPC bodies, no socket. They pin what the server answers today for initialize, ping, tools, resources,
  * prompts, notifications, client responses, errors, ids and batches, so the E08 rewrite (cards 0108-0110) changes
  * behaviour on purpose and not by accident. Transport checks (Origin, Host, sessions, headers, streaming) are not
@@ -27,7 +27,7 @@
  */
 BEGIN_DEFINE_SPEC(FN2CMcpProtocolSpec, "NodeToCode.MCP.Protocol", N2C_TEST_FLAGS)
 
-	/** What ProcessMcpRequest gave back for one body */
+	/** What ProcessMessage gave back for one body */
 	struct FReply
 	{
 		bool bProcessed = false;
@@ -48,14 +48,15 @@ BEGIN_DEFINE_SPEC(FN2CMcpProtocolSpec, "NodeToCode.MCP.Protocol", N2C_TEST_FLAGS
 		const FTCHARToUTF8 Utf8(*Text);
 		const TArray<uint8> Bytes(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
 		TSharedPtr<FJsonValue> Value;
-		FN2CMcpHttpRequestHandler::ParseRequestBody(Bytes, Value);
+		FN2CMcpProtocol::ParseBody(Bytes, Value);
 		return Value;
 	}
 
 	static FReply SendValue(const TSharedPtr<FJsonValue>& Value)
 	{
 		FReply Reply;
-		Reply.bProcessed = FN2CMcpHttpRequestHandler::ProcessMcpRequest(Value, Reply.Body, Reply.Status, Reply.bWasInitialize);
+		FN2CMcpProtocol Protocol;
+		Reply.bProcessed = Protocol.ProcessMessage(Value, Reply.Body, Reply.Status, Reply.bWasInitialize);
 		if (!Reply.Body.IsEmpty())
 		{
 			const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Reply.Body);
@@ -676,14 +677,17 @@ void FN2CMcpProtocolSpec::Define()
 			TestError(TEXT("no method"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":83}")), JsonRpcErrorCodes::InvalidRequest, -1, 400);
 		});
 
-		// Today: FJsonObject::TryGetStringField turns the number 5 into the string "5", so a numeric method is
-		// dispatched as method "5" and gets -32601 with the request id. JSON-RPC 2.0, request object: "method - A String
-		// containing the name of the method"; anything else is an Invalid Request (-32600). Not in the 2026-10-22 review
-		// (no finding id yet); the E08 protocol core (card 0108) should check the type and change this case on purpose.
-		It(TEXT("answer a request whose method is a number as an unknown method today"), [this]()
+		// JSON-RPC 2.0, request object: "method - A String containing the name of the method"; anything else is an
+		// Invalid Request. FJsonObject::TryGetStringField would turn the number 5 into "5" (dispatched as an unknown
+		// method before card 0108), so the core checks the member's type.
+		It(TEXT("answer a message whose method is not a string with -32600, a null id and 400"), [this]()
 		{
 			TestError(TEXT("numeric method"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":82,\"method\":5}")),
-				JsonRpcErrorCodes::MethodNotFound, 82, 200);
+				JsonRpcErrorCodes::InvalidRequest, -1, 400);
+			TestError(TEXT("boolean method"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":85,\"method\":true}")),
+				JsonRpcErrorCodes::InvalidRequest, -1, 400);
+			TestError(TEXT("numeric method without id"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"method\":5}")),
+				JsonRpcErrorCodes::InvalidRequest, -1, 400);
 		});
 
 		It(TEXT("answer an unknown method with -32601, the request id and 200"), [this]()
@@ -716,15 +720,33 @@ void FN2CMcpProtocolSpec::Define()
 			TestTrue(TEXT("string id on the error"), Reply.IsValid() && Reply->TryGetStringField(TEXT("id"), Id) && Id == TEXT("err-1"));
 		});
 
-		// Today: "id": null is treated as a request and answered with a null id. Basic, requests: "Unlike base
-		// JSON-RPC, the ID MUST NOT be null"; such a message is an Invalid Request. Not in the 2026-10-22 review (no
-		// finding id yet); the E08 protocol core (card 0108) should refuse it and change this case on purpose.
-		It(TEXT("answer a request with a null id like any request today"), [this]()
+		// Basic, requests: "Unlike base JSON-RPC, the ID MUST NOT be null", and JSON-RPC 2.0 allows only a string,
+		// a number or null. A null, boolean or object id is an Invalid Request (before card 0108 a null id was answered
+		// like any request).
+		It(TEXT("refuse a request with a null, boolean or object id with -32600, a null id and 400"), [this]()
 		{
 			const FReply Reply = Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"ping\"}"));
+			TestError(TEXT("null id"), Reply, JsonRpcErrorCodes::InvalidRequest, -1, 400);
+			TestFalse(TEXT("null id: not processed"), Reply.bProcessed);
+			TestError(TEXT("boolean id"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"ping\"}")),
+				JsonRpcErrorCodes::InvalidRequest, -1, 400);
+			TestError(TEXT("object id"), Send(TEXT("{\"jsonrpc\":\"2.0\",\"id\":{\"a\":1},\"method\":\"ping\"}")),
+				JsonRpcErrorCodes::InvalidRequest, -1, 400);
+		});
+
+		It(TEXT("answer a null id inside a batch with -32600 in its place"), [this]()
+		{
+			const FReply Reply = Send(FString::Printf(TEXT("[{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"ping\"},%s]"), *Request(91, TEXT("ping"))));
 			TestEqual(TEXT("HTTP status"), Reply.Status, 200);
-			TestNotNull(TEXT("a result"), ResultOf(Reply).Get());
-			TestId(TEXT("null id"), Reply, -1);
+			if (TestTrue(TEXT("body is an array"), Reply.Json.IsValid() && Reply.Json->Type == EJson::Array)
+				&& TestEqual(TEXT("two responses"), Reply.Json->AsArray().Num(), 2))
+			{
+				const TSharedPtr<FJsonObject> First = Reply.Json->AsArray()[0]->AsObject();
+				const TSharedPtr<FJsonObject>* Error = nullptr;
+				TestTrue(TEXT("null-id item is -32600"), First->TryGetObjectField(TEXT("error"), Error)
+					&& static_cast<int32>((*Error)->GetNumberField(TEXT("code"))) == JsonRpcErrorCodes::InvalidRequest);
+				TestEqual(TEXT("ping answered"), Reply.Json->AsArray()[1]->AsObject()->GetNumberField(TEXT("id")), 91.0);
+			}
 		});
 	});
 

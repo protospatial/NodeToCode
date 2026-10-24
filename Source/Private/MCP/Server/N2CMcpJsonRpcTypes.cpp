@@ -262,19 +262,27 @@ FJsonRpcUtils::EJsonRpcMessageType FJsonRpcUtils::GetMessageType(const TSharedPt
 		return EJsonRpcMessageType::Unknown;
 	}
 
-	// Check if it has a method field (request or notification)
-	FString Method;
-	if (JsonObject->TryGetStringField(TEXT("method"), Method))
+	// A method member makes a request or a notification. It must be a string: TryGetStringField would turn the
+	// number 5 into "5", and JSON-RPC 2.0 calls any other type an Invalid Request.
+	if (JsonObject->HasField(TEXT("method")))
 	{
-		// Check if it has an id field (request vs notification)
-		if (JsonObject->HasField(TEXT("id")))
+		if (!JsonObject->HasTypedField<EJson::String>(TEXT("method")))
 		{
-			return EJsonRpcMessageType::Request;
+			return EJsonRpcMessageType::Unknown;
 		}
-		else
+
+		// No id member: a notification. An id must be a string or a number; MCP forbids a null id ("Unlike base
+		// JSON-RPC, the ID MUST NOT be null"), so "id": null, like an object or boolean id, is an Invalid Request.
+		const TSharedPtr<FJsonValue> Id = JsonObject->TryGetField(TEXT("id"));
+		if (!Id.IsValid())
 		{
 			return EJsonRpcMessageType::Notification;
 		}
+		if (Id->Type == EJson::String || Id->Type == EJson::Number)
+		{
+			return EJsonRpcMessageType::Request;
+		}
+		return EJsonRpcMessageType::Unknown;
 	}
 	
 	// Check if it has result or error field (response)

@@ -110,7 +110,8 @@ result as a `TFuture`; `FN2CToolAsyncTaskManager` runs the call and knows nothin
 
 1. **Tool Declaration**: Mark a tool as long-running by setting `bIsLongRunning = true` in its definition, and
    override `InvokeAsync` instead of `Execute`
-2. **Same-POST response**: `FN2CMcpHttpServerManager::HandleMcpRequest` starts the call and does not answer at once.
+2. **Same-POST response**: the protocol core (`FN2CMcpProtocol::Handle`, which the HTTP transport's
+   `FN2CMcpHttpServerManager::HandleMcpRequest` calls) starts the call and does not answer at once.
    On UE 5.8, when the request's `Accept` lists `text/event-stream` and `params._meta.progressToken` is set, the
    response is a `text/event-stream`: `notifications/progress` events (the token echoed with its JSON type, a number
    stays a number), then the JSON-RPC response with the CallToolResult, then the connection closes. Otherwise (no
