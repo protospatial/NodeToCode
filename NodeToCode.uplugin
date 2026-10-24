@@ -29,6 +29,10 @@
                     {
                         "Name":  "ToolsetRegistry",
                         "Enabled":  true
+                    },
+                    {
+                        "Name":  "RigVM",
+                        "Enabled":  true
                     }
                 ]
 }

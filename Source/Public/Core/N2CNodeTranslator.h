@@ -9,6 +9,8 @@
 #include "Utils/Processors/N2CNodeProcessor.h"
 #include "Utils/Processors/N2CNodeProcessorFactory.h"
 
+class URigVMGraph;
+
 /**
  * @class FN2CNodeTranslator
  * @brief Converts collected Blueprint nodes into N2CStruct format
@@ -81,6 +83,9 @@ private:
 
     /** Process a single graph */
     bool ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType);
+
+    /** Preserve a RigVM model graph and its native nodes, pins, and links. */
+    bool ProcessRigVMGraph(URigVMGraph* Graph);
 
     /** Capture direct native connections after node and pin ID assignment. */
     void CollectDirectConnections(UEdGraph* Graph, FN2CGraph& OutGraph);

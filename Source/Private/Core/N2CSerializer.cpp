@@ -3,6 +3,48 @@
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
 
+namespace
+{
+TSharedPtr<FJsonObject> StringMapToJsonObject(const TMap<FString, FString>& Values)
+{
+    TSharedPtr<FJsonObject> Object = MakeShared<FJsonObject>();
+    for (const TPair<FString, FString>& Pair : Values)
+    {
+        Object->SetStringField(Pair.Key, Pair.Value);
+    }
+    return Object;
+}
+
+bool ParseStringMapField(
+    const TSharedPtr<FJsonObject>& Owner,
+    const TCHAR* FieldName,
+    TMap<FString, FString>& OutValues)
+{
+    if (!Owner->HasField(FieldName))
+    {
+        return true;
+    }
+
+    const TSharedPtr<FJsonObject>* ValuesObject = nullptr;
+    if (!Owner->TryGetObjectField(FieldName, ValuesObject) || !ValuesObject || !ValuesObject->IsValid())
+    {
+        return false;
+    }
+
+    OutValues.Empty();
+    for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*ValuesObject)->Values)
+    {
+        FString Value;
+        if (!Pair.Value.IsValid() || !Pair.Value->TryGetString(Value))
+        {
+            return false;
+        }
+        OutValues.Add(Pair.Key, MoveTemp(Value));
+    }
+    return true;
+}
+}
+
 // Initialize static members
 bool FN2CSerializer::bPrettyPrint = true;
 int32 FN2CSerializer::IndentLevel = 1;
@@ -200,6 +242,14 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphPinToJsonObject(const FN2CGraphPin&
     JsonObject->SetStringField(TEXT("default_object_path"), Pin.DefaultObjectPath);
     JsonObject->SetStringField(TEXT("default_text_value"), Pin.DefaultTextValue);
     JsonObject->SetStringField(TEXT("persistent_guid"), Pin.PersistentGuid);
+    if (!Pin.NativePath.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("native_path"), Pin.NativePath);
+    }
+    if (!Pin.NativeProperties.IsEmpty())
+    {
+        JsonObject->SetObjectField(TEXT("native_properties"), StringMapToJsonObject(Pin.NativeProperties));
+    }
     JsonObject->SetStringField(TEXT("parent_pin_guid"), Pin.ParentPinGuid);
     JsonObject->SetStringField(TEXT("reference_pass_through_node_guid"), Pin.ReferencePassThroughNodeGuid);
     JsonObject->SetStringField(TEXT("reference_pass_through_pin_guid"), Pin.ReferencePassThroughPinGuid);
@@ -238,6 +288,14 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
     JsonObject->SetStringField(TEXT("name"), Graph.Name);
     JsonObject->SetStringField(TEXT("graph_type"),
         StaticEnum<EN2CGraphType>()->GetNameStringByValue(static_cast<int64>(Graph.GraphType)));
+    if (!Graph.NativeClass.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("native_class"), Graph.NativeClass);
+    }
+    if (!Graph.NativeProperties.IsEmpty())
+    {
+        JsonObject->SetObjectField(TEXT("native_properties"), StringMapToJsonObject(Graph.NativeProperties));
+    }
     JsonObject->SetStringField(TEXT("graph_guid"), Graph.GraphGuid);
     JsonObject->SetStringField(TEXT("graph_path"), Graph.GraphPath);
     JsonObject->SetNumberField(TEXT("native_node_count"), Graph.NativeNodeCount);
@@ -322,6 +380,18 @@ TSharedPtr<FJsonObject> FN2CSerializer::NodeToJsonObject(const FN2CNodeDefinitio
     JsonObject->SetStringField(TEXT("name"), Node.Name);
     
     // Optional fields - only add if non-empty
+    if (!Node.NativeClass.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("native_class"), Node.NativeClass);
+    }
+    if (!Node.NativePath.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("native_path"), Node.NativePath);
+    }
+    if (!Node.NativeProperties.IsEmpty())
+    {
+        JsonObject->SetObjectField(TEXT("native_properties"), StringMapToJsonObject(Node.NativeProperties));
+    }
     if (!Node.GetCleanMemberParent().IsEmpty())
     {
         JsonObject->SetStringField(TEXT("member_parent"), Node.GetCleanMemberParent());
@@ -555,6 +625,10 @@ TSharedPtr<FJsonObject> FN2CSerializer::VariableToJsonObject(const FN2CVariable&
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
 
     JsonObject->SetStringField(TEXT("name"), Var.Name);
+    if (!Var.NativeProperties.IsEmpty())
+    {
+        JsonObject->SetObjectField(TEXT("native_properties"), StringMapToJsonObject(Var.NativeProperties));
+    }
     JsonObject->SetStringField(TEXT("type"),
         StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Var.Type)));
 
@@ -772,6 +846,10 @@ bool FN2CSerializer::ParseVariableFromJson(const TSharedPtr<FJsonObject>& JsonOb
 
     JsonObject->TryGetStringField(TEXT("default_value"), OutVar.DefaultValue);
     JsonObject->TryGetStringField(TEXT("comment"), OutVar.Comment);
+    if (!ParseStringMapField(JsonObject, TEXT("native_properties"), OutVar.NativeProperties))
+    {
+        return false;
+    }
 
     return true;
 }
@@ -829,6 +907,12 @@ bool FN2CSerializer::ParseGraphPinFromJson(const TSharedPtr<FJsonObject>& JsonOb
         !JsonObject->TryGetBoolField(TEXT("advanced_view"), OutPin.bAdvancedView) ||
         !JsonObject->TryGetBoolField(TEXT("default_value_is_read_only"), OutPin.bDefaultValueIsReadOnly) ||
         !JsonObject->TryGetBoolField(TEXT("default_value_is_ignored"), OutPin.bDefaultValueIsIgnored))
+    {
+        return false;
+    }
+
+    JsonObject->TryGetStringField(TEXT("native_path"), OutPin.NativePath);
+    if (!ParseStringMapField(JsonObject, TEXT("native_properties"), OutPin.NativeProperties))
     {
         return false;
     }
@@ -926,6 +1010,11 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
     }
     OutGraph.Name = Name;
     OutGraph.GraphType = static_cast<EN2CGraphType>(TypeValue);
+    JsonObject->TryGetStringField(TEXT("native_class"), OutGraph.NativeClass);
+    if (!ParseStringMapField(JsonObject, TEXT("native_properties"), OutGraph.NativeProperties))
+    {
+        return false;
+    }
 
     const TCHAR* CoverageFields[] = {
         TEXT("graph_guid"), TEXT("graph_path"), TEXT("native_node_count"),
@@ -1228,8 +1317,12 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
 
                 const FN2CGraphPin& SourcePin = OutGraph.Pins[*SourceIndex];
                 const FN2CGraphPin& TargetPin = OutGraph.Pins[*TargetIndex];
-                if ((!Link.SourceDirection.IsEmpty() && Link.SourceDirection != SourcePin.Direction) ||
-                    (!Link.TargetDirection.IsEmpty() && Link.TargetDirection != TargetPin.Direction) ||
+                const bool bSourceDirectionMatches = Link.SourceDirection == SourcePin.Direction ||
+                    (SourcePin.Direction == TEXT("IO") && Link.SourceDirection == TEXT("Output"));
+                const bool bTargetDirectionMatches = Link.TargetDirection == TargetPin.Direction ||
+                    (TargetPin.Direction == TEXT("IO") && Link.TargetDirection == TEXT("Input"));
+                if ((!Link.SourceDirection.IsEmpty() && !bSourceDirectionMatches) ||
+                    (!Link.TargetDirection.IsEmpty() && !bTargetDirectionMatches) ||
                     (!Link.SourcePinName.IsEmpty() && Link.SourcePinName != SourcePin.PinName) ||
                     (!Link.TargetPinName.IsEmpty() && Link.TargetPinName != TargetPin.PinName) ||
                     (!Link.SourceNodeId.IsEmpty() && Link.SourceNodeId != SourcePin.NodeId) ||
@@ -1249,8 +1342,6 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
                         *Name, *EdgeKey));
                     return false;
                 }
-                Link.SourceDirection = SourcePin.Direction;
-                Link.TargetDirection = TargetPin.Direction;
                 if (Link.SourceDirection != TEXT("Output") || Link.TargetDirection != TEXT("Input"))
                 {
                     FN2CLogger::Get().LogError(FString::Printf(
@@ -1338,6 +1429,12 @@ bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject
     OutNode.MemberParent = MemberParent;
     OutNode.MemberName = MemberName;
     OutNode.Comment = Comment;
+    JsonObject->TryGetStringField(TEXT("native_class"), OutNode.NativeClass);
+    JsonObject->TryGetStringField(TEXT("native_path"), OutNode.NativePath);
+    if (!ParseStringMapField(JsonObject, TEXT("native_properties"), OutNode.NativeProperties))
+    {
+        return false;
+    }
 
     // Convert type string to enum
     int64 TypeValue = StaticEnum<EN2CNodeType>()->GetValueByNameString(TypeString, EGetByNameFlags::None);

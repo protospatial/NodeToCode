@@ -10,6 +10,11 @@
 #include "Engine/World.h"
 #include "Engine/Level.h"
 #include "Engine/LevelScriptBlueprint.h"
+#include "RigVMEditorAsset.h"
+#include "RigVMModel/RigVMGraph.h"
+#include "RigVMModel/RigVMNode.h"
+#include "RigVMModel/RigVMPin.h"
+#include "RigVMModel/RigVMLink.h"
 
 namespace
 {
@@ -29,6 +34,54 @@ UBlueprint* LoadBlueprintOrLevelScriptReadOnly(const FString& AssetPath)
         }
     }
     return nullptr;
+}
+
+FString RigVMPinDirectionToString(const ERigVMPinDirection Direction)
+{
+    switch (Direction)
+    {
+        case ERigVMPinDirection::Input: return TEXT("Input");
+        case ERigVMPinDirection::Output: return TEXT("Output");
+        case ERigVMPinDirection::IO: return TEXT("IO");
+        default: return TEXT("Invalid");
+    }
+}
+
+FString ExportRigVMGraphModelText(const URigVMGraph* Graph)
+{
+    FString Text = FString::Printf(TEXT("RigVM graph %s [%s]\n"),
+        *Graph->GetGraphName(), *Graph->GetPathName());
+    for (const FRigVMGraphVariableDescription& Variable : Graph->GetLocalVariables())
+    {
+        Text += FString::Printf(TEXT("Variable %s : %s = %s\n"),
+            *Variable.Name.ToString(), *Variable.CPPType, *Variable.DefaultValue);
+    }
+    for (const URigVMNode* Node : Graph->GetNodes())
+    {
+        if (!Node)
+        {
+            Text += TEXT("Node <null>\n");
+            continue;
+        }
+        Text += FString::Printf(TEXT("Node %s [%s] %s\n"),
+            *Node->GetNodePath(), *Node->GetClass()->GetPathName(), *Node->GetNodeTitle());
+        for (const URigVMPin* Pin : Node->GetAllPinsRecursively())
+        {
+            if (Pin)
+            {
+                Text += FString::Printf(TEXT("  Pin %s %s %s = %s\n"),
+                    *Pin->GetPinPath(), *RigVMPinDirectionToString(Pin->GetDirection()),
+                    *Pin->GetCPPType(), *Pin->GetDefaultValue());
+            }
+        }
+    }
+    for (const URigVMLink* Link : Graph->GetLinks())
+    {
+        Text += Link
+            ? FString::Printf(TEXT("Link %s -> %s\n"), *Link->GetSourcePinPath(), *Link->GetTargetPinPath())
+            : TEXT("Link <null>\n");
+    }
+    return Text;
 }
 }
 
@@ -157,13 +210,15 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
         return Result;
     }
 
+    IRigVMEditorAssetInterface* RigVMAsset = Cast<IRigVMEditorAssetInterface>(Blueprint);
+    TArray<UEdGraph*> Matches;
+    TArray<URigVMGraph*> RigVMMatches;
+    TSet<UEdGraph*> SeenGraphs;
     TArray<UEdGraph*> AllGraphs;
     Blueprint->GetAllGraphs(AllGraphs);
-    TArray<UEdGraph*> Matches;
-    TSet<UEdGraph*> SeenGraphs;
     for (UEdGraph* Graph : AllGraphs)
     {
-        if (!Graph || SeenGraphs.Contains(Graph))
+        if (!Graph || SeenGraphs.Contains(Graph) || (RigVMAsset && RigVMAsset->GetModel(Graph)))
         {
             continue;
         }
@@ -176,24 +231,58 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
             Matches.Add(Graph);
         }
     }
+    if (RigVMAsset)
+    {
+        for (URigVMGraph* Model : RigVMAsset->GetAllModels())
+        {
+            if (!Model)
+            {
+                continue;
+            }
+            const FString ModelName = Model->GetGraphName().IsEmpty() ? Model->GetName() : Model->GetGraphName();
+            const bool bMatches = RequestedPath.IsEmpty()
+                ? ModelName == RequestedName
+                : Model->GetPathName() == RequestedPath;
+            if (bMatches && (RequestedName.IsEmpty() || ModelName == RequestedName))
+            {
+                RigVMMatches.Add(Model);
+            }
+        }
+    }
 
-    if (Matches.IsEmpty())
+    if (Matches.IsEmpty() && RigVMMatches.IsEmpty())
     {
         Result.Error = FString::Printf(
             TEXT("Graph '%s' at path '%s' was not found in Blueprint '%s'."),
             *RequestedName, *RequestedPath, *AssetPath);
         return Result;
     }
-    if (Matches.Num() > 1)
+    if (Matches.Num() + RigVMMatches.Num() > 1)
     {
         TArray<FString> CandidatePaths;
         for (const UEdGraph* Graph : Matches)
         {
             CandidatePaths.Add(Graph->GetPathName());
         }
+        for (const URigVMGraph* Model : RigVMMatches)
+        {
+            CandidatePaths.Add(Model->GetPathName());
+        }
         Result.Error = FString::Printf(
             TEXT("Graph name '%s' is ambiguous in Blueprint '%s'; pass graphPath from NodeToCode JSON. Candidates: %s"),
             *RequestedName, *AssetPath, *FString::Join(CandidatePaths, TEXT(", ")));
+        return Result;
+    }
+
+    if (!RigVMMatches.IsEmpty())
+    {
+        const URigVMGraph* Model = RigVMMatches[0];
+        Result.GraphName = Model->GetGraphName().IsEmpty() ? Model->GetName() : Model->GetGraphName();
+        Result.GraphGuid = FGuid::NewDeterministicGuid(Model->GetPathName()).ToString();
+        Result.GraphPath = Model->GetPathName();
+        Result.NativeNodeCount = Model->GetNodes().Num();
+        Result.GraphText = ExportRigVMGraphModelText(Model);
+        Result.bSuccess = true;
         return Result;
     }
 

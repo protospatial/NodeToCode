@@ -4,6 +4,12 @@
 
 #include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
+#include "Toolsets/N2CBlueprintToolset.h"
+#include "RigVMEditorAsset.h"
+#include "RigVMModel/RigVMGraph.h"
+#include "RigVMModel/RigVMNode.h"
+#include "RigVMModel/RigVMPin.h"
+#include "RigVMModel/RigVMLink.h"
 #include "Tests/N2CTestGraphNode.h"
 
 #include "K2Node_Composite.h"
@@ -16,6 +22,7 @@
 #include "K2Node_Knot.h"
 #include "Math/Vector.h"
 #include "Misc/AutomationTest.h"
+#include "RigVMModel/RigVMController.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -807,6 +814,217 @@ bool FNodeToCodeLegacyExecPinRoundTripTest::RunTest(const FString& Parameters)
         }
     }
     TestTrue(TEXT("Legacy Exec pins default to the Exec type"), bFoundExecPin);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNodeToCodeRigVMGraphExportTest,
+    "NodeToCode.Exporter.RigVMGraphExport",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNodeToCodeRigVMGraphExportTest::RunTest(const FString& Parameters)
+{
+    const FString AssetPath = TEXT("/Game/Characters/Mannequins/Rigs/CR_Mannequin_Body.CR_Mannequin_Body");
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+    if (!TestNotNull(TEXT("FactoryGame Control Rig fixture loads read-only"), Blueprint))
+    {
+        return false;
+    }
+
+    IRigVMEditorAssetInterface* RigVMAsset = Cast<IRigVMEditorAssetInterface>(Blueprint);
+    if (!TestNotNull(TEXT("Control Rig implements the RigVM editor asset interface"), RigVMAsset))
+    {
+        return false;
+    }
+    const TArray<URigVMGraph*> SourceGraphs = RigVMAsset->GetAllModels();
+    if (!TestTrue(TEXT("Control Rig exposes RigVM models"), !SourceGraphs.IsEmpty()))
+    {
+        return false;
+    }
+    const auto RigVMPinPath = [](const URigVMPin* Pin)
+    {
+        FString PinPath = Pin->GetPinPath();
+        if (PinPath.IsEmpty())
+        {
+            const URigVMNode* Node = Pin->GetNode();
+            const FString NodePath = Node->GetNodePath().IsEmpty() ? Node->GetPathName() : Node->GetNodePath();
+            PinPath = NodePath + TEXT(".") + Pin->GetName();
+        }
+        return PinPath;
+    };
+
+    FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
+    if (!TestTrue(TEXT("Control Rig Blueprint translates"), Translator.GenerateFromBlueprint(Blueprint, true)))
+    {
+        return false;
+    }
+    FN2CBlueprint Serializable = Translator.GetN2CBlueprint();
+
+    for (const URigVMGraph* SourceGraph : SourceGraphs)
+    {
+        if (!SourceGraph)
+        {
+            AddError(TEXT("RigVM asset returned a null model graph."));
+            continue;
+        }
+        const FString GraphPath = SourceGraph->GetPathName();
+        const FN2CGraph* ExportedGraph = Serializable.Graphs.FindByPredicate([&GraphPath](const FN2CGraph& Graph)
+        {
+            return Graph.GraphPath == GraphPath;
+        });
+        if (!TestNotNull(FString::Printf(TEXT("RigVM model graph exports: %s"), *GraphPath), ExportedGraph))
+        {
+            continue;
+        }
+
+        TestTrue(TEXT("Model graph is marked RigVM"), ExportedGraph->GraphType == EN2CGraphType::RigVM);
+        TestEqual(TEXT("Every model node is exported"), ExportedGraph->NativeNodeCount, SourceGraph->GetNodes().Num());
+        TestEqual(TEXT("Every model link is exported"), ExportedGraph->Connections.Num(), SourceGraph->GetLinks().Num());
+        TestEqual(TEXT("Model graph has no unresolved links"), ExportedGraph->UnresolvedConnectionCount, 0);
+        TestTrue(TEXT("RigVM graph native class is recorded"), !ExportedGraph->NativeClass.IsEmpty());
+
+        int32 NativePinCount = 0;
+        TMap<FString, FString> NodeGuids;
+        TMap<FString, FString> PinGuids;
+        for (const URigVMNode* Node : SourceGraph->GetNodes())
+        {
+            if (!Node) continue;
+            const FString NodePath = Node->GetNodePath().IsEmpty() ? Node->GetPathName() : Node->GetNodePath();
+            NodeGuids.Add(NodePath, FGuid::NewDeterministicGuid(GraphPath + TEXT("|") + NodePath).ToString());
+            for (const URigVMPin* Pin : Node->GetAllPinsRecursively())
+            {
+                if (!Pin) continue;
+                ++NativePinCount;
+                FString PinPath = RigVMPinPath(Pin);
+                PinGuids.Add(PinPath, FGuid::NewDeterministicGuid(GraphPath + TEXT("|") + PinPath).ToString());
+            }
+        }
+        TestEqual(TEXT("Every model pin is exported"), ExportedGraph->Pins.Num(), NativePinCount);
+
+        TSet<FString> ExpectedEdges;
+        for (const URigVMLink* Link : SourceGraph->GetLinks())
+        {
+            if (!Link || !Link->GetSourcePin() || !Link->GetTargetPin())
+            {
+                AddError(TEXT("RigVM fixture contains a link with an invalid endpoint."));
+                continue;
+            }
+            const URigVMNode* SourceNode = Link->GetSourcePin()->GetNode();
+            const URigVMNode* TargetNode = Link->GetTargetPin()->GetNode();
+            const FString SourceNodePath = SourceNode->GetNodePath().IsEmpty() ? SourceNode->GetPathName() : SourceNode->GetNodePath();
+            const FString TargetNodePath = TargetNode->GetNodePath().IsEmpty() ? TargetNode->GetPathName() : TargetNode->GetNodePath();
+            ExpectedEdges.Add(NodeGuids.FindRef(SourceNodePath) + TEXT(":") +
+                PinGuids.FindRef(RigVMPinPath(Link->GetSourcePin())) + TEXT("->") +
+                NodeGuids.FindRef(TargetNodePath) + TEXT(":") +
+                PinGuids.FindRef(RigVMPinPath(Link->GetTargetPin())));
+        }
+        TSet<FString> ExportedEdges;
+        for (const FN2CDirectLink& Link : ExportedGraph->Connections)
+        {
+            ExportedEdges.Add(Link.SourceNodeGuid + TEXT(":") + Link.SourcePinGuid + TEXT("->") +
+                Link.TargetNodeGuid + TEXT(":") + Link.TargetPinGuid);
+        }
+        TestEqual(TEXT("RigVM physical link endpoint set matches"), ExportedEdges.Num(), ExpectedEdges.Num());
+        for (const FString& Edge : ExpectedEdges)
+        {
+            TestTrue(FString::Printf(TEXT("RigVM link is preserved: %s"), *Edge), ExportedEdges.Contains(Edge));
+        }
+    }
+
+    for (const FRigVMGraphVariableDescription& Description : RigVMAsset->GetAssetVariables())
+    {
+        TestTrue(FString::Printf(TEXT("RigVM asset variable is exported: %s"), *Description.Name.ToString()),
+            Serializable.Variables.ContainsByPredicate([&Description](const FN2CVariable& Variable)
+            {
+                return Variable.Name == Description.Name.ToString() && Variable.TypeName == Description.CPPType;
+            }));
+    }
+
+    TestTrue(TEXT("Control Rig graph data validates"), Serializable.IsValid());
+
+    const FN2CBlueprintExportResult ToolExport = UN2CBlueprintToolset::ExportBlueprintJson(AssetPath);
+    TestTrue(TEXT("Live JSON tool exports the Control Rig asset"), ToolExport.bSuccess);
+    TestEqual(TEXT("Tool reports the requested Control Rig path"), ToolExport.AssetObjectPath, AssetPath);
+
+    const URigVMGraph* GraphForText = nullptr;
+    for (const URigVMGraph* Model : SourceGraphs)
+    {
+        if (Model && !Model->GetNodes().IsEmpty())
+        {
+            GraphForText = Model;
+            break;
+        }
+    }
+    if (!TestNotNull(TEXT("A non-empty RigVM graph is available for the raw-text comparison"), GraphForText))
+    {
+        return false;
+    }
+
+    const FString GraphName = GraphForText->GetGraphName().IsEmpty()
+        ? GraphForText->GetName() : GraphForText->GetGraphName();
+    const FN2CBlueprintGraphTextResult GraphText = UN2CBlueprintToolset::ExportBlueprintGraphText(
+        AssetPath, GraphName, GraphForText->GetPathName());
+    TestTrue(TEXT("RigVM graph text oracle exports its model"), GraphText.bSuccess);
+    TestEqual(TEXT("Graph text reports native model node count"),
+        GraphText.NativeNodeCount, GraphForText->GetNodes().Num());
+    TestEqual(TEXT("Graph text preserves model path"), GraphText.GraphPath, GraphForText->GetPathName());
+
+    const FN2CGraph* GraphForTextData = Serializable.Graphs.FindByPredicate([GraphForText](const FN2CGraph& Graph)
+    {
+        return Graph.GraphPath == GraphForText->GetPathName();
+    });
+    if (!TestNotNull(TEXT("Raw-text model has a NodeToCode graph"), GraphForTextData))
+    {
+        return false;
+    }
+
+    TMap<FString, FString> NativePathByEndpoint;
+    for (const FN2CGraphPin& Pin : GraphForTextData->Pins)
+    {
+        NativePathByEndpoint.Add(Pin.NodeGuid + TEXT(":") + Pin.PinGuid, Pin.NativePath);
+    }
+    TSet<FString> ExportedModelEdges;
+    for (const FN2CDirectLink& Link : GraphForTextData->Connections)
+    {
+        const FString SourcePath = NativePathByEndpoint.FindRef(Link.SourceNodeGuid + TEXT(":") + Link.SourcePinGuid);
+        const FString TargetPath = NativePathByEndpoint.FindRef(Link.TargetNodeGuid + TEXT(":") + Link.TargetPinGuid);
+        ExportedModelEdges.Add(SourcePath + TEXT(" -> ") + TargetPath);
+    }
+
+    TSet<FString> RawModelEdges;
+    TArray<FString> TextLines;
+    GraphText.GraphText.ParseIntoArrayLines(TextLines, false);
+    int32 RawNodeCount = 0;
+    int32 RawPinCount = 0;
+    for (const FString& Line : TextLines)
+    {
+        if (Line.StartsWith(TEXT("Node ")))
+        {
+            ++RawNodeCount;
+        }
+        else if (Line.StartsWith(TEXT("  Pin ")))
+        {
+            ++RawPinCount;
+        }
+        else if (Line.StartsWith(TEXT("Link ")))
+        {
+            const FString LinkText = Line.RightChop(5);
+            const int32 SeparatorIndex = LinkText.Find(TEXT(" -> "));
+            if (SeparatorIndex != INDEX_NONE)
+            {
+                RawModelEdges.Add(LinkText.Left(SeparatorIndex) + TEXT(" -> ") +
+                    LinkText.Mid(SeparatorIndex + 4));
+            }
+        }
+    }
+    TestEqual(TEXT("RigVM raw node count matches model JSON"), RawNodeCount, GraphForTextData->NativeNodeCount);
+    TestEqual(TEXT("RigVM raw pin count matches model JSON"), RawPinCount, GraphForTextData->Pins.Num());
+    TestEqual(TEXT("RigVM raw link count matches model JSON"), RawModelEdges.Num(), ExportedModelEdges.Num());
+    for (const FString& Edge : RawModelEdges)
+    {
+        TestTrue(FString::Printf(TEXT("RigVM raw link endpoint is preserved: %s"), *Edge),
+            ExportedModelEdges.Contains(Edge));
+    }
     return true;
 }
 

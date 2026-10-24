@@ -167,6 +167,7 @@ enum class EN2CNodeType : uint8
     PromotableOperator  UMETA(DisplayName = "promotable_operator"),
     MacroInstance       UMETA(DisplayName = "macro_instance"),
     BaseMCDelegate      UMETA(DisplayName = "base_mc_delegate"),
+    Custom              UMETA(DisplayName = "custom"),
 };
 
 /**
@@ -218,6 +219,14 @@ struct FN2CNodeDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString MemberName;
 
+    /** Native source identity for graph systems outside K2, such as RigVM. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString NativeClass;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString NativePath;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
+
     /** Comment that was added to the node */
     FString Comment;
 
@@ -241,6 +250,8 @@ struct FN2CNodeDefinition
         , Name(TEXT(""))
         , MemberParent(TEXT(""))
         , MemberName(TEXT(""))
+        , NativeClass(TEXT(""))
+        , NativePath(TEXT(""))
         , Comment(TEXT(""))
         , bPure(false)
         , bLatent(false)

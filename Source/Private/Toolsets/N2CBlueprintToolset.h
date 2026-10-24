@@ -64,7 +64,7 @@ public:
 	UFUNCTION(Category = "Node to Code", meta = (AICallable))
 	static FN2CBlueprintExportResult ExportBlueprintJson(const FString& BlueprintAssetPath);
 
-    /** Read-only graph oracle; GraphPath disambiguates same-named interface graphs. */
+    /** Read-only graph oracle; uses clipboard text for UEdGraph and model data for RigVM. */
     UFUNCTION(Category = "Node to Code", meta = (AICallable))
     static FN2CBlueprintGraphTextResult ExportBlueprintGraphText(
         const FString& BlueprintAssetPath, const FString& GraphName, const FString& GraphPath = FString());

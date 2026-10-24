@@ -164,6 +164,11 @@ struct FN2CGraphPin
     FString NodeGuid;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString PinGuid;
+    /** Native RigVM pin path; GUIDs are deterministically derived from it. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString NativePath;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString NodeId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
@@ -429,6 +434,10 @@ struct FN2CVariable
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
 
+    /** Native RigVM variable identity and flags not covered by the normalized fields. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
+
     FN2CVariable()
         : Name(TEXT(""))
         , Type(EN2CStructMemberType::Int)
@@ -553,7 +562,9 @@ enum class EN2CGraphType : uint8
     /** A struct definition */
     Struct         UMETA(DisplayName = "Struct"),
     /** An enum definition */
-    Enum           UMETA(DisplayName = "Enum")
+    Enum           UMETA(DisplayName = "Enum"),
+    /** A RigVM model graph, including Control Rig graphs. */
+    RigVM          UMETA(DisplayName = "RigVM")
 };
 
 /**
@@ -572,13 +583,18 @@ struct FN2CGraph
     /** Type of graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     EN2CGraphType GraphType;
-    /** Stable native graph identifier; empty only for the synthetic class marker. */
+    /** Stable UEdGraph GUID or deterministic path-derived RigVM graph identity. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString GraphGuid;
-    /** Native UObject path, used to distinguish same-named interface graphs. */
+    /** Native UObject path or RigVM model object path, distinguishing same-named graphs. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString GraphPath;
-    /** Number of UEdGraphNode entries in the source graph. */
+    /** Native graph UObject class (for example URigVMGraph). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString NativeClass;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> NativeProperties;
+    /** Number of UEdGraphNode or RigVM node entries in the source graph. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     int32 NativeNodeCount = 0;
     /** Native nodes not represented in the normalized NodeToCode node list. */

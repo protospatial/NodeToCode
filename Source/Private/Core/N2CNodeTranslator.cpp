@@ -11,13 +11,150 @@
 #include "UObject/UObjectBase.h"
 #include "UObject/Class.h"
 #include "UObject/UnrealTypePrivate.h"
+#include "RigVMEditorAsset.h"
+#include "RigVMModel/RigVMGraph.h"
+#include "RigVMModel/RigVMNode.h"
+#include "RigVMModel/RigVMPin.h"
+#include "RigVMModel/RigVMLink.h"
+#include "RigVMModel/Nodes/RigVMCommentNode.h"
+#include "RigVMModel/Nodes/RigVMFunctionEntryNode.h"
+#include "RigVMModel/Nodes/RigVMFunctionReturnNode.h"
+#include "RigVMModel/Nodes/RigVMUnitNode.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "Components/ActorComponent.h"
 #include "Components/SceneComponent.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_Knot.h"
-#include "UObject/UnrealType.h"
+
+namespace
+{
+TMap<FString, FString> ExportRigVMNativeProperties(const UObject* Object)
+{
+    TMap<FString, FString> Properties;
+    if (!Object)
+    {
+        return Properties;
+    }
+
+    constexpr EPropertyFlags ExcludedFlags = CPF_Transient | CPF_DuplicateTransient |
+        CPF_NonPIEDuplicateTransient | CPF_Deprecated | CPF_EditorOnly;
+    for (TFieldIterator<FProperty> It(Object->GetClass()); It; ++It)
+    {
+        FProperty* Property = *It;
+        const FName PropertyName = Property->GetFName();
+        if (Property->HasAnyPropertyFlags(ExcludedFlags) ||
+            PropertyName == TEXT("Graph") || PropertyName == TEXT("Nodes") ||
+            PropertyName == TEXT("Pins") || PropertyName == TEXT("Links") ||
+            PropertyName == TEXT("ParentPin") || PropertyName == TEXT("SubPins"))
+        {
+            continue;
+        }
+
+        FString Value;
+        Property->ExportText_Direct(
+            Value,
+            Property->ContainerPtrToValuePtr<void>(Object),
+            nullptr,
+            const_cast<UObject*>(Object),
+            PPF_None);
+        Properties.Add(Property->GetName(), MoveTemp(Value));
+    }
+    return Properties;
+}
+
+FString RigVMPinDirectionToString(const ERigVMPinDirection Direction)
+{
+    switch (Direction)
+    {
+        case ERigVMPinDirection::Input: return TEXT("Input");
+        case ERigVMPinDirection::Output: return TEXT("Output");
+        case ERigVMPinDirection::IO: return TEXT("IO");
+        default: return TEXT("Invalid");
+    }
+}
+
+EN2CPinType DetermineRigVMPinType(const URigVMPin* Pin)
+{
+    if (!Pin)
+    {
+        return EN2CPinType::Custom;
+    }
+    if (Pin->IsExecuteContext())
+    {
+        return EN2CPinType::Exec;
+    }
+    if (Pin->IsArray())
+    {
+        return EN2CPinType::Array;
+    }
+    if (Pin->IsEnum())
+    {
+        return EN2CPinType::Enum;
+    }
+    if (Pin->IsStruct())
+    {
+        return EN2CPinType::Struct;
+    }
+    if (Pin->IsUObject())
+    {
+        return EN2CPinType::Object;
+    }
+
+    const FString Type = Pin->GetCPPType();
+    if (Type == TEXT("bool")) return EN2CPinType::Boolean;
+    if (Type == TEXT("int32") || Type == TEXT("int")) return EN2CPinType::Integer;
+    if (Type == TEXT("int64")) return EN2CPinType::Integer64;
+    if (Type == TEXT("float")) return EN2CPinType::Float;
+    if (Type == TEXT("double")) return EN2CPinType::Double;
+    if (Type == TEXT("FString")) return EN2CPinType::String;
+    if (Type == TEXT("FName")) return EN2CPinType::Name;
+    if (Type == TEXT("FText")) return EN2CPinType::Text;
+    if (Type == TEXT("FVector")) return EN2CPinType::Vector;
+    if (Type == TEXT("FVector2D")) return EN2CPinType::Vector2D;
+    if (Type == TEXT("FQuat")) return EN2CPinType::Quat;
+    if (Type == TEXT("FRotator")) return EN2CPinType::Rotator;
+    if (Type == TEXT("FTransform")) return EN2CPinType::Transform;
+    return EN2CPinType::Custom;
+}
+
+EN2CStructMemberType RigVMVariableType(const FString& CPPType)
+{
+    if (CPPType == TEXT("bool")) return EN2CStructMemberType::Bool;
+    if (CPPType == TEXT("int32") || CPPType == TEXT("int")) return EN2CStructMemberType::Int;
+    if (CPPType == TEXT("float") || CPPType == TEXT("double")) return EN2CStructMemberType::Float;
+    if (CPPType == TEXT("FName")) return EN2CStructMemberType::Name;
+    if (CPPType == TEXT("FString")) return EN2CStructMemberType::String;
+    if (CPPType == TEXT("FText")) return EN2CStructMemberType::Text;
+    if (CPPType.StartsWith(TEXT("TArray<"))) return EN2CStructMemberType::Array;
+    if (CPPType.StartsWith(TEXT("TSet<"))) return EN2CStructMemberType::Set;
+    if (CPPType.StartsWith(TEXT("TMap<"))) return EN2CStructMemberType::Map;
+    return EN2CStructMemberType::Custom;
+}
+
+FN2CVariable RigVMVariableToNodeToCode(const FRigVMGraphVariableDescription& Description)
+{
+    FN2CVariable Variable;
+    Variable.Name = Description.Name.ToString();
+    Variable.Type = RigVMVariableType(Description.CPPType);
+    Variable.TypeName = Description.CPPType;
+    Variable.DefaultValue = Description.DefaultValue;
+    Variable.Comment = Description.Tooltip.ToString();
+    Variable.bIsArray = Description.CPPType.StartsWith(TEXT("TArray<"));
+    Variable.bIsSet = Description.CPPType.StartsWith(TEXT("TSet<"));
+    Variable.bIsMap = Description.CPPType.StartsWith(TEXT("TMap<"));
+    Variable.NativeProperties.Add(TEXT("guid"), Description.Guid.ToString());
+    Variable.NativeProperties.Add(TEXT("cpp_type_object_path"), Description.CPPTypeObject
+        ? Description.CPPTypeObject->GetPathName() : Description.CPPTypeObjectPath.ToString());
+    Variable.NativeProperties.Add(TEXT("category"), Description.Category.ToString());
+    Variable.NativeProperties.Add(TEXT("tooltip"), Description.Tooltip.ToString());
+    Variable.NativeProperties.Add(TEXT("public"), Description.bPublic ? TEXT("true") : TEXT("false"));
+    Variable.NativeProperties.Add(TEXT("private"), Description.bPrivate ? TEXT("true") : TEXT("false"));
+    Variable.NativeProperties.Add(TEXT("exposed_on_spawn"), Description.bExposedOnSpawn ? TEXT("true") : TEXT("false"));
+    Variable.NativeProperties.Add(TEXT("expose_to_cinematics"), Description.bExposeToCinematics ? TEXT("true") : TEXT("false"));
+    return Variable;
+}
+}
 
 FN2CNodeTranslator& FN2CNodeTranslator::Get()
 {
@@ -182,6 +319,24 @@ bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIn
         default:                      N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal; break;
     }
 
+    IRigVMEditorAssetInterface* RigVMAsset = Cast<IRigVMEditorAssetInterface>(InBlueprint);
+    TArray<URigVMGraph*> RigVMGraphs;
+    TSet<UEdGraph*> RigVMEditorGraphs;
+    if (RigVMAsset)
+    {
+        RigVMGraphs = RigVMAsset->GetAllModels();
+        for (URigVMGraph* RigVMGraph : RigVMGraphs)
+        {
+            if (RigVMGraph)
+            {
+                if (UEdGraph* EditorGraph = RigVMAsset->GetEdGraph(RigVMGraph))
+                {
+                    RigVMEditorGraphs.Add(EditorGraph);
+                }
+            }
+        }
+    }
+
     // Keep the established primary graph ordering, then include every graph category
     // exposed by UBlueprint (interface, delegate, extension, and nested graphs).
     TArray<UEdGraph*> Graphs;
@@ -217,12 +372,20 @@ bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIn
 
     for (UEdGraph* Graph : Graphs)
     {
-        if (!Graph)
+        if (!Graph || RigVMEditorGraphs.Contains(Graph) ||
+            (RigVMAsset && RigVMAsset->GetModel(Graph)))
         {
             continue;
         }
         CurrentDepth = 0;
         ProcessGraph(Graph, DetermineGraphType(Graph));
+    }
+
+    // UBlueprint graph arrays do not contain every RigVM model graph. Read the
+    // model API directly, without creating or saving editor wrapper graphs.
+    for (URigVMGraph* RigVMGraph : RigVMGraphs)
+    {
+        ProcessRigVMGraph(RigVMGraph);
     }
 
     // Collect component overrides defined on this Blueprint (SimpleConstructionScript)
@@ -236,6 +399,22 @@ bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIn
             FN2CVariable Var;
             ConvertVariableDescription(Desc, Var);
             N2CBlueprint.Variables.Add(Var);
+        }
+        if (RigVMAsset)
+        {
+            for (const FRigVMGraphVariableDescription& Description : RigVMAsset->GetAssetVariables())
+            {
+                FN2CVariable Var = RigVMVariableToNodeToCode(Description);
+                const bool bAlreadyPresent = N2CBlueprint.Variables.ContainsByPredicate(
+                    [&Var](const FN2CVariable& Existing)
+                    {
+                        return Existing.Name == Var.Name && Existing.TypeName == Var.TypeName;
+                    });
+                if (!bAlreadyPresent)
+                {
+                    N2CBlueprint.Variables.Add(MoveTemp(Var));
+                }
+            }
         }
     }
 
@@ -861,6 +1040,310 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     return true;
 }
 
+bool FN2CNodeTranslator::ProcessRigVMGraph(URigVMGraph* SourceGraph)
+{
+    if (!SourceGraph)
+    {
+        return false;
+    }
+
+    const FString GraphPath = SourceGraph->GetPathName();
+    if (N2CBlueprint.Graphs.ContainsByPredicate([&GraphPath](const FN2CGraph& Existing)
+        {
+            return Existing.GraphPath == GraphPath;
+        }))
+    {
+        return true;
+    }
+
+    FN2CGraph Graph;
+    Graph.Name = SourceGraph->GetGraphName();
+    if (Graph.Name.IsEmpty())
+    {
+        Graph.Name = SourceGraph->GetName();
+    }
+    Graph.GraphType = EN2CGraphType::RigVM;
+    Graph.GraphGuid = FGuid::NewDeterministicGuid(GraphPath).ToString();
+    Graph.GraphPath = GraphPath;
+    Graph.NativeClass = SourceGraph->GetClass()->GetPathName();
+    Graph.NativeProperties = ExportRigVMNativeProperties(SourceGraph);
+
+    const TArray<URigVMNode*>& SourceNodes = SourceGraph->GetNodes();
+    Graph.NativeNodeCount = SourceNodes.Num();
+    Graph.bNoExecutableNodes = SourceNodes.IsEmpty();
+    for (const FRigVMGraphVariableDescription& Description : SourceGraph->GetLocalVariables())
+    {
+        Graph.LocalVariables.Add(RigVMVariableToNodeToCode(Description));
+    }
+
+    TMap<const URigVMNode*, FString> NodeIds;
+    TMap<const URigVMNode*, FString> NodeGuids;
+    TMap<const URigVMPin*, FString> PinIds;
+    TMap<const URigVMPin*, FString> PinGuids;
+    TMap<const URigVMNode*, TArray<URigVMPin*>> PinsByNode;
+    TSet<FString> SeenNodeGuids;
+    TSet<FString> SeenPinGuids;
+    int32 NodeIndex = 0;
+
+    for (URigVMNode* Node : SourceNodes)
+    {
+        if (!Node)
+        {
+            ++Graph.SkippedNodeCount;
+            Graph.SkippedNodeClasses.AddUnique(TEXT("<null>"));
+            Graph.ConnectionErrors.Add(TEXT("RigVM graph contains a null model node."));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+
+        const FString NodePath = Node->GetNodePath().IsEmpty() ? Node->GetPathName() : Node->GetNodePath();
+        const FString NodeGuid = FGuid::NewDeterministicGuid(GraphPath + TEXT("|") + NodePath).ToString();
+        if (SeenNodeGuids.Contains(NodeGuid))
+        {
+            Graph.ConnectionErrors.Add(FString::Printf(
+                TEXT("RigVM node path '%s' has a duplicate deterministic identity."), *NodePath));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+        SeenNodeGuids.Add(NodeGuid);
+        NodeGuids.Add(Node, NodeGuid);
+        NodeIds.Add(Node, FString::Printf(TEXT("N%d"), ++NodeIndex));
+
+        TArray<URigVMPin*> NodePins = Node->GetAllPinsRecursively();
+        PinsByNode.Add(Node, NodePins);
+        int32 PinIndex = 0;
+        for (URigVMPin* Pin : NodePins)
+        {
+            if (!Pin)
+            {
+                continue;
+            }
+            FString PinPath = Pin->GetPinPath();
+            if (PinPath.IsEmpty())
+            {
+                PinPath = NodePath + TEXT(".") + Pin->GetName();
+            }
+            const FString PinKey = GraphPath + TEXT("|") + PinPath;
+            const FString PinGuid = FGuid::NewDeterministicGuid(PinKey).ToString();
+            if (SeenPinGuids.Contains(PinGuid))
+            {
+                Graph.ConnectionErrors.Add(FString::Printf(
+                    TEXT("RigVM pin path '%s' has a duplicate deterministic identity."), *PinPath));
+                ++Graph.UnresolvedConnectionCount;
+                continue;
+            }
+            SeenPinGuids.Add(PinGuid);
+            PinGuids.Add(Pin, PinGuid);
+            PinIds.Add(Pin, FString::Printf(TEXT("P%d"), ++PinIndex));
+        }
+    }
+
+    for (URigVMNode* Node : SourceNodes)
+    {
+        if (!Node || !NodeIds.Contains(Node))
+        {
+            continue;
+        }
+
+        FN2CNodeDefinition NodeDefinition;
+        NodeDefinition.ID = NodeIds.FindRef(Node);
+        NodeDefinition.Name = Node->GetNodeTitle();
+        if (NodeDefinition.Name.IsEmpty())
+        {
+            NodeDefinition.Name = Node->GetName();
+        }
+        NodeDefinition.NativeClass = Node->GetClass()->GetPathName();
+        NodeDefinition.NativePath = Node->GetNodePath();
+        NodeDefinition.NativeProperties = ExportRigVMNativeProperties(Node);
+        NodeDefinition.bPure = Node->IsPure();
+        NodeDefinition.NodeType = EN2CNodeType::Custom;
+
+        if (Node->IsA<URigVMFunctionEntryNode>())
+        {
+            NodeDefinition.NodeType = EN2CNodeType::FunctionEntry;
+        }
+        else if (Node->IsA<URigVMFunctionReturnNode>())
+        {
+            NodeDefinition.NodeType = EN2CNodeType::FunctionResult;
+        }
+        else if (Node->IsA<URigVMCommentNode>())
+        {
+            NodeDefinition.NodeType = EN2CNodeType::Comment;
+            NodeDefinition.Comment = NodeDefinition.Name;
+        }
+        else if (URigVMUnitNode* UnitNode = Cast<URigVMUnitNode>(Node))
+        {
+            NodeDefinition.NodeType = EN2CNodeType::CallFunction;
+            if (UScriptStruct* ScriptStruct = UnitNode->GetScriptStruct())
+            {
+                NodeDefinition.MemberParent = ScriptStruct->GetPathName();
+            }
+            NodeDefinition.MemberName = UnitNode->GetMethodName().ToString();
+        }
+        else
+        {
+            NodeDefinition.MemberParent = NodeDefinition.NativeClass;
+            NodeDefinition.MemberName = NodeDefinition.NativePath;
+        }
+
+        for (URigVMPin* Pin : PinsByNode.FindRef(Node))
+        {
+            if (!Pin || !PinIds.Contains(Pin))
+            {
+                continue;
+            }
+
+            const FString CPPType = Pin->GetCPPType();
+            const FString PinName = Pin->GetDisplayName().IsNone()
+                ? Pin->GetName() : Pin->GetDisplayName().ToString();
+            const ERigVMPinDirection Direction = Pin->GetDirection();
+            FN2CPinDefinition PinDefinition;
+            PinDefinition.ID = PinIds.FindRef(Pin);
+            PinDefinition.Name = PinName;
+            PinDefinition.Type = DetermineRigVMPinType(Pin);
+            PinDefinition.SubType = CPPType;
+            PinDefinition.DefaultValue = Pin->GetDefaultValue();
+            PinDefinition.bConnected = Pin->IsLinked(true);
+            PinDefinition.bIsArray = Pin->IsArray();
+            PinDefinition.bIsSet = CPPType.StartsWith(TEXT("TSet<"));
+            PinDefinition.bIsMap = CPPType.StartsWith(TEXT("TMap<"));
+            PinDefinition.bIsReference = CPPType.Contains(TEXT("&"));
+            PinDefinition.bIsConst = CPPType.StartsWith(TEXT("const "));
+
+            if (Direction == ERigVMPinDirection::Output)
+            {
+                NodeDefinition.OutputPins.Add(MoveTemp(PinDefinition));
+            }
+            else
+            {
+                // RigVM IO pins retain their exact direction in Graph.Pins.
+                NodeDefinition.InputPins.Add(MoveTemp(PinDefinition));
+            }
+        }
+
+        Graph.Nodes.Add(MoveTemp(NodeDefinition));
+    }
+
+    TMap<const URigVMPin*, int32> GraphPinIndexByPin;
+    for (URigVMNode* Node : SourceNodes)
+    {
+        if (!Node || !NodeIds.Contains(Node))
+        {
+            continue;
+        }
+        for (URigVMPin* Pin : PinsByNode.FindRef(Node))
+        {
+            if (!Pin || !PinGuids.Contains(Pin))
+            {
+                continue;
+            }
+
+            FN2CGraphPin PinData;
+            PinData.NodeGuid = NodeGuids.FindRef(Node);
+            PinData.PinGuid = PinGuids.FindRef(Pin);
+            PinData.NodeId = NodeIds.FindRef(Node);
+            PinData.PinId = PinIds.FindRef(Pin);
+            PinData.NodeName = Node->GetNodeTitle();
+            PinData.NodeClass = Node->GetClass()->GetPathName();
+            PinData.NativePath = Pin->GetPinPath();
+            PinData.NativeProperties = ExportRigVMNativeProperties(Pin);
+            PinData.PinName = Pin->GetName();
+            PinData.DisplayName = Pin->GetDisplayName().ToString();
+            PinData.FriendlyName = PinData.DisplayName;
+            PinData.Direction = RigVMPinDirectionToString(Pin->GetDirection());
+            PinData.Category = Pin->GetCPPType();
+            PinData.SubCategoryObject = IsValid(Pin->GetCPPTypeObject())
+                ? Pin->GetCPPTypeObject()->GetPathName() : FString();
+            PinData.ContainerType = Pin->IsArray() ? TEXT("Array") :
+                PinData.Category.StartsWith(TEXT("TSet<")) ? TEXT("Set") :
+                PinData.Category.StartsWith(TEXT("TMap<")) ? TEXT("Map") : TEXT("None");
+            PinData.PinToolTip = Pin->GetToolTipText().ToString();
+            PinData.DefaultValue = Pin->GetDefaultValue();
+            if (UObject* DefaultObject = Pin->GetDefaultValueObject())
+            {
+                PinData.DefaultObjectPath = DefaultObject->GetPathName();
+            }
+            PinData.bIsExecution = Pin->IsExecuteContext();
+            PinData.bConnected = Pin->IsLinked(true);
+            PinData.bIsReference = PinData.Category.Contains(TEXT("&"));
+            PinData.bIsConst = PinData.Category.StartsWith(TEXT("const "));
+            PinData.bIsUObjectWrapper = IsValid(Pin->GetCPPTypeObject()) &&
+                Pin->GetCPPTypeObject()->IsA<UClass>();
+            if (URigVMPin* ParentPin = Pin->GetParentPin())
+            {
+                PinData.ParentPinGuid = PinGuids.FindRef(ParentPin);
+            }
+            for (URigVMPin* SubPin : Pin->GetSubPins())
+            {
+                if (SubPin && PinGuids.Contains(SubPin))
+                {
+                    PinData.SubPinGuids.Add(PinGuids.FindRef(SubPin));
+                }
+            }
+            GraphPinIndexByPin.Add(Pin, Graph.Pins.Add(MoveTemp(PinData)));
+        }
+    }
+
+    TSet<FString> SeenLinks;
+    for (URigVMLink* RigVMLink : SourceGraph->GetLinks())
+    {
+        URigVMPin* SourcePin = RigVMLink ? RigVMLink->GetSourcePin() : nullptr;
+        URigVMPin* TargetPin = RigVMLink ? RigVMLink->GetTargetPin() : nullptr;
+        URigVMNode* SourceNode = SourcePin ? SourcePin->GetNode() : nullptr;
+        URigVMNode* TargetNode = TargetPin ? TargetPin->GetNode() : nullptr;
+        if (!SourcePin || !TargetPin || !SourceNode || !TargetNode ||
+            !PinGuids.Contains(SourcePin) || !PinGuids.Contains(TargetPin) ||
+            !NodeGuids.Contains(SourceNode) || !NodeGuids.Contains(TargetNode))
+        {
+            Graph.ConnectionErrors.Add(FString::Printf(
+                TEXT("RigVM graph '%s' contains a link with an unresolved endpoint."), *Graph.Name));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+
+        const FString EdgeKey = NodeGuids.FindRef(SourceNode) + TEXT(":") + PinGuids.FindRef(SourcePin) +
+            TEXT("->") + NodeGuids.FindRef(TargetNode) + TEXT(":") + PinGuids.FindRef(TargetPin);
+        if (SeenLinks.Contains(EdgeKey))
+        {
+            Graph.ConnectionErrors.Add(FString::Printf(
+                TEXT("RigVM graph '%s' contains a duplicate direct link '%s'."), *Graph.Name, *EdgeKey));
+            ++Graph.UnresolvedConnectionCount;
+            continue;
+        }
+        SeenLinks.Add(EdgeKey);
+
+        const int32* SourcePinIndex = GraphPinIndexByPin.Find(SourcePin);
+        const int32* TargetPinIndex = GraphPinIndexByPin.Find(TargetPin);
+        FN2CDirectLink Link;
+        Link.SourceNodeGuid = NodeGuids.FindRef(SourceNode);
+        Link.SourcePinGuid = PinGuids.FindRef(SourcePin);
+        Link.TargetNodeGuid = NodeGuids.FindRef(TargetNode);
+        Link.TargetPinGuid = PinGuids.FindRef(TargetPin);
+        Link.SourceNodeId = NodeIds.FindRef(SourceNode);
+        Link.SourcePinId = PinIds.FindRef(SourcePin);
+        Link.TargetNodeId = NodeIds.FindRef(TargetNode);
+        Link.TargetPinId = PinIds.FindRef(TargetPin);
+        Link.SourceNodeName = SourceNode->GetNodeTitle();
+        Link.SourceNodeClass = SourceNode->GetClass()->GetPathName();
+        Link.SourcePinName = SourcePinIndex ? Graph.Pins[*SourcePinIndex].PinName : SourcePin->GetName();
+        Link.SourceDirection = TEXT("Output");
+        Link.TargetNodeName = TargetNode->GetNodeTitle();
+        Link.TargetNodeClass = TargetNode->GetClass()->GetPathName();
+        Link.TargetPinName = TargetPinIndex ? Graph.Pins[*TargetPinIndex].PinName : TargetPin->GetName();
+        Link.TargetDirection = TEXT("Input");
+        Link.bIsExecution = SourcePin->IsExecuteContext() || TargetPin->IsExecuteContext();
+        Link.bSourceHidden = SourcePinIndex ? Graph.Pins[*SourcePinIndex].bHidden : false;
+        Link.bTargetHidden = TargetPinIndex ? Graph.Pins[*TargetPinIndex].bHidden : false;
+        Graph.Connections.Add(MoveTemp(Link));
+    }
+
+    for (const FString& Error : Graph.ConnectionErrors)
+    {
+        FN2CLogger::Get().LogWarning(Error);
+    }
+    N2CBlueprint.Graphs.Add(MoveTemp(Graph));
+    return true;
+}
 EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
 {
     if (!Graph)
