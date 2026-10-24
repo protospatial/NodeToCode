@@ -281,6 +281,32 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
         Result.GraphGuid = FGuid::NewDeterministicGuid(Model->GetPathName()).ToString();
         Result.GraphPath = Model->GetPathName();
         Result.NativeNodeCount = Model->GetNodes().Num();
+        Result.LinkIdentity = TEXT("rigvm_pin_path");
+        TSet<FString> SeenLinks;
+        for (const URigVMNode* Node : Model->GetNodes())
+        {
+            if (!Node)
+            {
+                continue;
+            }
+            Result.NativePinCount += Node->GetAllPinsRecursively().Num();
+        }
+        for (const URigVMLink* Link : Model->GetLinks())
+        {
+            if (!Link || !Link->GetSourcePin() || !Link->GetTargetPin())
+            {
+                Result.ConnectionErrors.Add(TEXT("RigVM link has a missing endpoint."));
+                continue;
+            }
+            const FString Edge = Link->GetSourcePin()->GetPinPath() + TEXT(" -> ") +
+                Link->GetTargetPin()->GetPinPath();
+            if (!SeenLinks.Contains(Edge))
+            {
+                SeenLinks.Add(Edge);
+                Result.DirectLinks.Add(Edge);
+            }
+        }
+        Result.NativeLinkCount = Result.DirectLinks.Num();
         Result.GraphText = ExportRigVMGraphModelText(Model);
         Result.bSuccess = true;
         return Result;
@@ -291,6 +317,75 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
     Result.GraphGuid = Graph->GraphGuid.IsValid() ? Graph->GraphGuid.ToString() : FString();
     Result.GraphPath = Graph->GetPathName();
     Result.NativeNodeCount = Graph->Nodes.Num();
+    Result.LinkIdentity = TEXT("node_pin_guid");
+    TSet<FString> SeenDirectLinks;
+    auto Endpoint = [](const UEdGraphNode* Node, const UEdGraphPin* Pin)
+    {
+        const FString NodeGuid = Node && Node->NodeGuid.IsValid()
+            ? Node->NodeGuid.ToString() : (Node ? Node->GetPathName() : TEXT("<null-node>"));
+        const FString PinGuid = Pin && Pin->PinId.IsValid()
+            ? Pin->PinId.ToString() : (Pin ? Pin->GetName() : TEXT("<null-pin>"));
+        return NodeGuid + TEXT(":") + PinGuid;
+    };
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (!Node)
+        {
+            Result.ConnectionErrors.Add(TEXT("UEdGraph contains a null node."));
+            continue;
+        }
+        for (UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!Pin)
+            {
+                Result.ConnectionErrors.Add(FString::Printf(TEXT("Node '%s' contains a null pin."), *Node->GetName()));
+                continue;
+            }
+            ++Result.NativePinCount;
+            for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+            {
+                if (!LinkedPin || !LinkedPin->GetOwningNode())
+                {
+                    Result.ConnectionErrors.Add(FString::Printf(
+                        TEXT("Pin '%s' on node '%s' has an invalid linked endpoint."),
+                        *Pin->GetName(), *Node->GetName()));
+                    continue;
+                }
+
+                UEdGraphPin* SourcePin = Pin;
+                UEdGraphPin* TargetPin = LinkedPin;
+                UEdGraphNode* SourceNode = Node;
+                UEdGraphNode* TargetNode = LinkedPin->GetOwningNode();
+                if (TargetPin->Direction == EGPD_Output && SourcePin->Direction != EGPD_Output)
+                {
+                    Swap(SourcePin, TargetPin);
+                    Swap(SourceNode, TargetNode);
+                }
+
+                if (SourcePin->Direction != EGPD_Output || TargetPin->Direction != EGPD_Input)
+                {
+                    Result.ConnectionErrors.Add(FString::Printf(
+                        TEXT("Linked pins have invalid directions in graph '%s'."), *Graph->GetName()));
+                    const FString A = Endpoint(SourceNode, SourcePin);
+                    const FString B = Endpoint(TargetNode, TargetPin);
+                    if (A.Compare(B, ESearchCase::CaseSensitive) > 0)
+                    {
+                        Swap(SourceNode, TargetNode);
+                        Swap(SourcePin, TargetPin);
+                    }
+                }
+
+                const FString Edge = Endpoint(SourceNode, SourcePin) + TEXT(" -> ") +
+                    Endpoint(TargetNode, TargetPin);
+                if (!SeenDirectLinks.Contains(Edge))
+                {
+                    SeenDirectLinks.Add(Edge);
+                    Result.DirectLinks.Add(Edge);
+                }
+            }
+        }
+    }
+    Result.NativeLinkCount = Result.DirectLinks.Num();
     if (Graph->Nodes.IsEmpty())
     {
         Result.bSuccess = true;

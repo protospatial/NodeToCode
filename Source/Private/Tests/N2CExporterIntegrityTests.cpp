@@ -1085,6 +1085,32 @@ bool FNodeToCodeAnimBlueprintNodeExportTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("AnimGraph direct connections resolve"), ExportedGraph->UnresolvedConnectionCount, 0);
         NativeNodeCount += SourceGraph->Nodes.Num();
 
+        const FN2CBlueprintGraphTextResult GraphText = UN2CBlueprintToolset::ExportBlueprintGraphText(
+            AssetPath, ExportedGraph->Name, ExportedGraph->GraphPath);
+        TestTrue(TEXT("AnimGraph GraphText oracle succeeds"), GraphText.bSuccess);
+        TestEqual(TEXT("AnimGraph GraphText node count matches"),
+            GraphText.NativeNodeCount, ExportedGraph->NativeNodeCount);
+        TestEqual(TEXT("AnimGraph GraphText pin count matches"),
+            GraphText.NativePinCount, ExportedGraph->Pins.Num());
+        TestEqual(TEXT("AnimGraph GraphText link count matches"),
+            GraphText.NativeLinkCount, ExportedGraph->Connections.Num());
+        TestEqual(TEXT("AnimGraph GraphText uses node/pin GUID identities"),
+            GraphText.LinkIdentity, FString(TEXT("node_pin_guid")));
+        TestEqual(TEXT("AnimGraph GraphText has no connection errors"), GraphText.ConnectionErrors.Num(), 0);
+        TSet<FString> ExpectedDirectLinks;
+        for (const FN2CDirectLink& Link : ExportedGraph->Connections)
+        {
+            ExpectedDirectLinks.Add(Link.SourceNodeGuid + TEXT(":") + Link.SourcePinGuid + TEXT(" -> ") +
+                Link.TargetNodeGuid + TEXT(":") + Link.TargetPinGuid);
+        }
+        TestEqual(TEXT("AnimGraph GraphText direct endpoints match JSON"),
+            GraphText.DirectLinks.Num(), ExpectedDirectLinks.Num());
+        for (const FString& Link : ExpectedDirectLinks)
+        {
+            TestTrue(FString::Printf(TEXT("AnimGraph native endpoint is preserved: %s"), *Link),
+                GraphText.DirectLinks.Contains(Link));
+        }
+
         for (UEdGraphNode* SourceNode : SourceGraph->Nodes)
         {
             if (!SourceNode)
@@ -1448,6 +1474,17 @@ bool FNodeToCodeRigVMGraphExportTest::RunTest(const FString& Parameters)
         const FString SourcePath = NativePathByEndpoint.FindRef(Link.SourceNodeGuid + TEXT(":") + Link.SourcePinGuid);
         const FString TargetPath = NativePathByEndpoint.FindRef(Link.TargetNodeGuid + TEXT(":") + Link.TargetPinGuid);
         ExportedModelEdges.Add(SourcePath + TEXT(" -> ") + TargetPath);
+    }
+    TestEqual(TEXT("RigVM GraphText pin count matches JSON"), GraphText.NativePinCount, GraphForTextData->Pins.Num());
+    TestEqual(TEXT("RigVM GraphText link count matches JSON"), GraphText.NativeLinkCount, ExportedModelEdges.Num());
+    TestEqual(TEXT("RigVM GraphText declares native pin-path identity"),
+        GraphText.LinkIdentity, FString(TEXT("rigvm_pin_path")));
+    TestEqual(TEXT("RigVM GraphText has no connection errors"), GraphText.ConnectionErrors.Num(), 0);
+    TestEqual(TEXT("RigVM GraphText direct link set matches JSON"), GraphText.DirectLinks.Num(), ExportedModelEdges.Num());
+    for (const FString& Edge : ExportedModelEdges)
+    {
+        TestTrue(FString::Printf(TEXT("RigVM structured oracle preserves link endpoint: %s"), *Edge),
+            GraphText.DirectLinks.Contains(Edge));
     }
 
     TSet<FString> RawModelEdges;

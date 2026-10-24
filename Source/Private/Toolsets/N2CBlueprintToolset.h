@@ -46,6 +46,16 @@ struct FN2CBlueprintGraphTextResult
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
     int32 NativeNodeCount = 0;
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    int32 NativePinCount = 0;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    int32 NativeLinkCount = 0;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString LinkIdentity;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    TArray<FString> DirectLinks;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    TArray<FString> ConnectionErrors;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
     FString Error;
 };
 
@@ -65,7 +75,7 @@ public:
 	UFUNCTION(Category = "Node to Code", meta = (AICallable))
 	static FN2CBlueprintExportResult ExportBlueprintJson(const FString& BlueprintAssetPath);
 
-    /** Read-only graph oracle; uses clipboard text for UEdGraph and model data for RigVM. */
+    /** Read-only graph oracle with native counts and endpoint sets for UEdGraph and RigVM. */
     UFUNCTION(Category = "Node to Code", meta = (AICallable))
     static FN2CBlueprintGraphTextResult ExportBlueprintGraphText(
         const FString& BlueprintAssetPath, const FString& GraphName, const FString& GraphPath = FString());
