@@ -36,9 +36,9 @@ Source/
     *   `FNodeToCodeModule`: Main plugin class.
         *   `StartupModule`: Initializes:
             *   Logging system (`FN2CLogger`)
-            *   No project or editor config is written at startup: HTTP timeouts are set per request (`UN2CHttpHandlerBase`), and CPU throttling is suspended only while a translation runs (a `ShouldDisableCPUThrottlingDelegates` entry). The MCP servers are skipped in commandlets and unattended runs unless `-N2CMcp` is passed
-            *   Editor performance settings (disables "Use Less CPU when in Background")
+            *   No editor preference is written at startup: HTTP timeouts are set per request (`UN2CHttpHandlerBase`), and CPU throttling is suspended only while a translation runs (a `ShouldDisableCPUThrottlingDelegates` entry). The MCP servers are skipped in commandlets and unattended runs unless `-N2CMcp` is passed
             *   API keys (`FN2CSecretStore::Get()`, which also moves a project's old secrets file to the per-user one)
+            *   Settings carried over from NodeToCode 1.2.x (`UN2CSettings::MigrateLegacy12Settings`, not in commandlets): writes back model selections and other values that did not load as saved, and, once (`SettingsVersion` < 3), drops stale prices, reports the per-language theme keys, removes the 1.2.x HTTP timeouts from `Config/DefaultEngine.ini` and reports the CPU-throttle preference. The only startup write to project config; nothing is written when there is nothing to migrate. See `Context/release/migration-1.2-to-2.0.md`
             *   Styles (`N2CStyle`, `FN2CCodeEditorStyle`)
             *   Editor integration (`FN2CEditorIntegration`)
             *   Widget factories (`FN2CCodeEditorWidgetFactory`)
@@ -116,7 +116,8 @@ The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is
     *   `bEnablePythonScriptOnlyMode` - Python-only MCP mode
 
     **Theming:**
-    *   `CPPThemes`, `PythonThemes`, `JavaScriptThemes`, `CSharpThemes`, `SwiftThemes`, `PseudocodeThemes` - `FN2CCodeEditorThemes` per language
+    *   `UIColors` (`FN2CUIColors`) - the window's colors
+    *   `CodeEditorTheme` (`FN2CCodeEditorThemes`) - one theme for every language; the code editor draws its "Unreal Engine" entry. 1.2.x's per-language `CPPThemes` ... `PseudocodeThemes` keys are no longer read
     *   `FN2CCodeEditorColors` struct with: NormalText, Operators, Keywords, Strings, Numbers, Comments, Preprocessor, Parentheses, CurlyBraces, SquareBrackets, Background
 
     **Logging:**

@@ -67,6 +67,18 @@ void FNodeToCodeModule::StartupModule()
 
     // Load the API keys once, moving a project's Saved/NodeToCode/User/secrets.json to the per-user file
     FN2CSecretStore::Get();
+
+    // Save what loading a NodeToCode 1.2.x config changed (retired models, unknown values) and clean up, once, what
+    // 1.2.x left in the project. Not in commandlets, so builds and cooks never rewrite config.
+    if (!IsRunningCommandlet())
+    {
+        FN2CLegacyMigrationTargets Targets = FN2CLegacyMigrationTargets::ForProject();
+        if (const UEditorPerformanceSettings* Performance = GetDefault<UEditorPerformanceSettings>())
+        {
+            Targets.bThrottleCPUWhenNotForeground = Performance->bThrottleCPUWhenNotForeground;
+        }
+        GetMutableDefault<UN2CSettings>()->MigrateLegacy12Settings(Targets);
+    }
     
     // Apply configured log severity from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();

@@ -198,6 +198,62 @@ struct FN2CCodeEditorThemes
     }
 };
 
+/** Where UN2CSettings::MigrateLegacy12Settings reads and writes; the editor uses ForProject(), tests temp files */
+struct NODETOCODE_API FN2CLegacyMigrationTargets
+{
+    /** Config file name in GConfig that the saved settings are read from (the class config in the editor) */
+    FString ReadConfig;
+
+    /** Ini file on disk that migrated values and SettingsVersion are written to (Config/DefaultNodeToCode.ini) */
+    FString WriteIni;
+
+    /** True when WriteIni is the class's default config, so GConfig is reloaded after writing as the engine does */
+    bool bReloadGConfigAfterWrite = false;
+
+    /** The project's Config/DefaultEngine.ini on disk, where 1.2.x wrote its HTTP timeouts */
+    FString EngineIni;
+
+    /** Editor Preferences > Performance > Use Less CPU when in Background, which 1.2.x turned off on every start */
+    bool bThrottleCPUWhenNotForeground = true;
+
+    /** The current project's files; bThrottleCPUWhenNotForeground stays true (the caller reads the preference) */
+    static FN2CLegacyMigrationTargets ForProject();
+};
+
+/** What UN2CSettings::MigrateLegacy12Settings found and did; every list holds one readable entry per item */
+struct NODETOCODE_API FN2CLegacyMigrationReport
+{
+    /** Properties written to WriteIni (SettingsVersion included when it was stamped) */
+    TArray<FString> PersistedProperties;
+
+    /**
+     * Saved values 2.0 cannot load, which kept the 2.0 value instead: enums as "Key=Old -> New", other properties
+     * (a pricing map keyed by a removed model) by name
+     */
+    TArray<FString> ResetEnumValues;
+
+    /** Pricing entries dropped so the model registry's prices apply */
+    TArray<FString> DroppedPrices;
+
+    /** 1.2.x per-language theme keys still in the config (CPPThemes, ...); 2.0 does not read them */
+    TArray<FString> LegacyThemeKeys;
+
+    /** "[HTTP] Key=Value" entries removed from EngineIni */
+    TArray<FString> RemovedEngineKeys;
+
+    /** True when the one-time 1.2.x steps ran (SettingsVersion was below 3) */
+    bool bRanLegacySteps = false;
+
+    /** True when the CPU-throttle notice was logged */
+    bool bReportedThrottle = false;
+
+    /** True when SettingsVersion was written as CurrentSettingsVersion */
+    bool bStampedVersion = false;
+
+    /** True when WriteIni could not be written (read-only or missing folder) */
+    bool bWriteFailed = false;
+};
+
 
 // Questions? Check out the Docs: github.com/protospatial/NodeToCode/wiki
 UCLASS(Config = NodeToCode, DefaultConfig, meta = (Category = "Node to Code", DisplayName = "Node to Code"))
@@ -328,8 +384,10 @@ public:
     /**
      * 1: Ollama options are sent only when set (override toggles, num_ctx and num_predict 0 = omitted).
      * 2: per-provider Max Output Tokens (0 = Auto); a LMStudioMaxTokens value saved by the PR #20 build carries over.
+     * 3: settings left by NodeToCode 1.2.x cleaned up once at editor start (MigrateLegacy12Settings), and this
+     *    version written to the config so it does not run again.
      */
-    static constexpr int32 CurrentSettingsVersion = 2;
+    static constexpr int32 CurrentSettingsVersion = 3;
     
     /** Ollama Model Selection */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama",
@@ -484,7 +542,7 @@ public:
      * change. Called after the config is loaded (PostInitProperties) and after it is reloaded (PostReloadConfig,
      * which is how a plugin's config branch reaches the settings object at startup), so a project that saved
      * AnthropicModel=Claude3_7_Sonnet loads with the current default instead of failing every request.
-     * The config file is not rewritten; choosing a model in Project Settings persists the new value.
+     * The config file is not rewritten here; MigrateLegacy12Settings saves the new value once at editor start.
      * @return the number of selections changed
      */
     int32 MigrateRetiredModelSelections();
@@ -497,6 +555,45 @@ public:
      * @return the number of values changed
      */
     int32 MigrateSavedSettings();
+
+    /**
+     * Saves what loading a NodeToCode 1.2.x config changed and cleans up what 1.2.x left behind. The editor calls it
+     * once at startup on the class default object (FNodeToCodeModule::StartupModule, not in commandlets).
+     * Every start: a saved enum value that loaded as something else (a retired model moved to the default by
+     *   MigrateRetiredModelSelections, or a name 2.0 does not know, which the engine resets) is written back, so its
+     *   warning is logged once; unknown names get their own warning.
+     * Once, while SettingsVersion is below 3:
+     * - the version 1 and 2 results (Ollama options, LM Studio max tokens) are written, since they stop running once
+     *   the version is stamped;
+     * - pricing entries for retired or unknown models, and entries still at 1.2.x's built-in price (a Project Settings
+     *   save of any map wrote every price), are dropped so the registry's prices apply; other prices are kept;
+     * - the 1.2.x per-language theme keys (CPPThemes ... PseudocodeThemes) are reported in one warning: 2.0 draws
+     *   every language with CodeEditorTheme and 1.2.x kept the selected theme name in its UI asset, not in the config,
+     *   so they cannot be converted; the keys are left in the ini for the user to copy colours from;
+     * - [HTTP] HttpConnectionTimeout=300 and HttpActivityTimeout=3600 are removed from EngineIni (only those values,
+     *   which are the ones 1.2.x wrote; other values are the user's and stay);
+     * - when the project showed any 1.2.x trace and Use Less CPU when in Background is off, one warning says it is
+     *   left off because 1.2.x and a user choice cannot be told apart.
+     * When the one-time steps found anything, SettingsVersion is stamped and written, so they do not run again.
+     * A config with nothing to migrate is not written. Safe to run again: a second run finds nothing.
+     */
+    FN2CLegacyMigrationReport MigrateLegacy12Settings(const FN2CLegacyMigrationTargets& Targets);
+
+    /**
+     * Drops pricing entries for retired or unknown models and entries equal to 1.2.x's built-in price for that model
+     * (NodeToCode 1.2.x filled every map with its prices and saved them all), so the model registry's prices apply.
+     * @param OutDropped one entry per dropped price
+     * @return the names of the pricing properties that changed
+     */
+    TArray<FName> DropLegacyPricing(TArray<FString>& OutDropped);
+
+    /**
+     * Removes the HTTP timeouts NodeToCode 1.2.x wrote to the project's DefaultEngine.ini ([HTTP]
+     * HttpConnectionTimeout=300, HttpActivityTimeout=3600). A key holding any other value is left alone.
+     * @param OutRemoved one "[HTTP] Key=Value" entry per removed key
+     * @return false when a key should have been removed but the file could not be written
+     */
+    static bool RemoveLegacyHttpTimeouts(const FString& EngineIniPath, TArray<FString>& OutRemoved);
 
     /**
      * Logs, once per editor session, when the config still selects the Claude Pro/Max or Google account sign-in
@@ -677,6 +774,13 @@ private:
     FProperty* LastEditedProperty;
 
     void InitializePricing();
+
+    /**
+     * Writes these config properties' current values into IniPath, leaving the file's other lines as they are (the
+     * same per-key update Project Settings makes), then reloads this class's config into GConfig when asked.
+     * @return false when IniPath could not be written
+     */
+    bool WriteConfigProperties(const TArray<FName>& PropertyNames, const FString& IniPath, bool bReloadGConfig);
     
 #if WITH_EDITOR
     /** Show a notification that the editor needs to restart */
