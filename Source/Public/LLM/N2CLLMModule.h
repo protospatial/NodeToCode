@@ -34,6 +34,20 @@ public:
     /**
      * Process N2C JSON through LLM. Returns the request's handle: Cancel() stops the HTTP request, OnComplete and the
      * OnTranslationResponseReceived broadcast, and returns the module to Idle. Callers may ignore it.
+     *
+     * A successful translation is saved with CapturedBlueprint (the Blueprint JsonInput was serialized from), copied
+     * when the request is sent: whatever is captured while the request is in flight cannot change where or with
+     * which Blueprint JSON it is saved.
+     */
+    FN2CLLMRequestHandleRef ProcessN2CJson(
+        const FString& JsonInput,
+        const FN2CBlueprint& CapturedBlueprint,
+        const FOnLLMResponseReceived& OnComplete
+    );
+
+    /**
+     * ProcessN2CJson for callers that serialized JsonInput through FN2CNodeTranslator::Get() just before this call:
+     * the translator's Blueprint is snapshotted here, when the request is sent, and the translation is saved with it.
      */
     FN2CLLMRequestHandleRef ProcessN2CJson(
         const FString& JsonInput,

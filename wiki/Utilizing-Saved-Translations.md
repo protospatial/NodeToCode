@@ -27,6 +27,7 @@ ProjectRoot/
 
 1. **Root Location**: Files are saved in the project's `Saved/NodeToCode/Translations` directory
 2. **Folder Naming**: Each translation gets a timestamped folder (`BlueprintName_YYYY-MM-DD-HH.MM.SS`)
+    - `BlueprintName` and the Blueprint JSON files are the Blueprint you translated, as captured when the request was sent: opening other graphs, compiling or copying another Blueprint's JSON while you wait for the reply does not change them
 3. **Blueprint JSON files**: A **Prettified** version for human readability and a **Minified** version for sharing with other LLMs or applications
     - This is the efficient JSON representation of your Blueprint that's sent to the LLM for translation
     - Can be really helpful if using nested translation on a Blueprint system and you want to discuss the entire system with a peer or another LLM

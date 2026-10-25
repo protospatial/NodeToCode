@@ -664,7 +664,8 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
 	if (LLMModule && LLMModule->Initialize())
 	{
-		LLMModule->ProcessN2CJson(JsonContent, FOnLLMResponseReceived::CreateLambda(
+		// Saved with this graph's capture, whatever is captured while the request is in flight
+		LLMModule->ProcessN2CJson(JsonContent, N2CBlueprint, FOnLLMResponseReceived::CreateLambda(
 			[WeakSelf, CapturedGraphName](const FString& Response)
 			{
 				// Parse response (can be done on any thread)
