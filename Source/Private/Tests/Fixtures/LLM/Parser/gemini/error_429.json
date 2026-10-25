@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details.",
+    "status": "RESOURCE_EXHAUSTED"
+  }
+}

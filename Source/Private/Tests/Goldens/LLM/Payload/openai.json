@@ -1,0 +1,1390 @@
+{
+	"gpt-5.2":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-5.2",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-5.2-pro":
+	{
+		"endpoint": "https://api.openai.com/v1/responses",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-5.2-pro",
+			"input": [
+				{
+					"role": "developer",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"text":
+			{
+				"format":
+				{
+					"type": "json_schema",
+					"name": "n2c_response",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_output_tokens": 32000
+		}
+	},
+	"gpt-5":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-5",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-5-mini":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-5-mini",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-5-nano":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-5-nano",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"o3":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "o3",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-4.1":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-4.1",
+			"temperature": 0,
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-4o-2024-08-06":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-4o-2024-08-06",
+			"temperature": 0,
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_tokens": 16384,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-4o-mini-2024-07-18":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-4o-mini-2024-07-18",
+			"temperature": 0,
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_tokens": 16384,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-6.1-sol":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-6.1-sol",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-6-astra":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-6-astra",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-6-luna":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-6-luna",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 32000,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"gpt-6.1-sol:max4096":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "gpt-6.1-sol",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"max_completion_tokens": 4096,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	},
+	"unregistered:openai-n2c-unregistered":
+	{
+		"endpoint": "https://api.openai.com/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "openai-n2c-unregistered",
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			},
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	}
+}

@@ -1,0 +1,34 @@
+{
+  "candidates": [
+    {
+      "index": 0,
+      "finishReason": "STOP",
+      "content": {
+        "parts": [
+          {
+            "text": "Planning the translation {",
+            "thought": true
+          },
+          {
+            "text": "{\"graphs\":[{\"graph_name\":\"EventGraph\",\"graph_type\":\"EventGra"
+          },
+          {
+            "text": "ph\",\"graph_class\":\"BP_N2CProviderMatrix_111346\",\"code\":{\"graphDeclaration\":\"\",\"graphImplementation\":\"// No executable Blueprint flow is conn"
+          },
+          {
+            "text": "ected in this graph.\\n// Event BeginPlay, Event ActorBeginOverlap, and Event Tick are marked disabled.\\n// The PrintString node is not connected to an execution flow and therefore is not called.\",\"implementationNotes\":\"No event overrides or calls are generated because the three event nodes are explicitly marked disabled and flows.execution is empty. The PrintString node has no connected execution input, so its default values (\\\"Hello\\\", print to screen/log enabled, color (0.0, 0.66, 1.0, 1.0), duration 2.0, key None) do not produce behavior.\"}}]}"
+          }
+        ],
+        "role": "model"
+      }
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 5120,
+    "candidatesTokenCount": 412,
+    "thoughtsTokenCount": 256,
+    "totalTokenCount": 5788
+  },
+  "modelVersion": "gemini-3.5-flash-lite",
+  "responseId": "N2CFixtureResponse"
+}

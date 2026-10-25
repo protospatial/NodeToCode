@@ -1,0 +1,8 @@
+{
+  "error": {
+    "message": "Authentication Fails, Your api key: ****0125 is invalid",
+    "type": "authentication_error",
+    "param": null,
+    "code": "invalid_request_error"
+  }
+}

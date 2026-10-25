@@ -58,6 +58,27 @@ case back on. Currently disabled:
 | `NodeToCode.Names` | create-folder refuses COM1-9 and LPT1-9 like rename-folder does | mcp-tools-contentbrowser-fs-11 |
 | `NodeToCode.Registry` | advertises the category of every tool through assess-needed-tools | mcp-tools-python-translation-resources-14 |
 | `NodeToCode.Registry` | gives every tool a category (find-nodes-in-graph has none) | mcp-tools-python-translation-resources-14 |
+| `NodeToCode.LLM.Parse.Fixtures` | Anthropic: a sentence before the fenced answer is skipped | llm-layer-12 (card 0185) |
+| `NodeToCode.LLM.Parse.Fixtures` | OpenAI: an answer in a bare fence parses | llm-layer-12 (card 0185) |
+| `NodeToCode.LLM.Parse.Fixtures` | Gemini: output tokens include thoughtsTokenCount | llm-layer-27 (card 0185) |
+
+`NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
+a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
+`N2C_RUN_KNOWN_DEFECTS=1` in the editor's environment to run the disabled cases too and see which still fail.
+
+## LLM payload goldens and parser fixtures
+
+- `NodeToCode.LLM.Payload.Golden` builds every provider's request (body, endpoint and headers, with a placeholder
+  key) for every registry model that is not retired, plus an explicit Max Output Tokens case and an unregistered
+  model ID, and compares it with `Goldens/LLM/Payload/<provider>.json`. It also checks the payload rules from the
+  registry flags (the same rules `Tests/mcp_probe/live_provider_matrix.py` checks on live requests). A new registry
+  model fails until it has a golden. After an intended wire-format change, run
+  `.\build.ps1 -UEVersion 5.8 -Test -TestFilter NodeToCode.LLM.Payload.Golden` with `N2C_UPDATE_GOLDENS=1` in the
+  environment, then review the golden diff: every change there is a change to what goes on the wire.
+- `NodeToCode.LLM.Parse.Fixtures` runs each provider's parser on the bodies in `Fixtures/LLM/Parser/<provider>/`
+  (success, fenced output, truncation, refusal, 400/401/429/503/529 errors, string-typed errors, malformed
+  `graph_name`). Error bodies go through `FN2CTranslationError::WrapHttpErrorBody` first, as the HTTP handler sends
+  them. No fixture may hold a real key; the spec fails on `sk-` or `AIza` in a fixture.
 
 ## Running the tests
 

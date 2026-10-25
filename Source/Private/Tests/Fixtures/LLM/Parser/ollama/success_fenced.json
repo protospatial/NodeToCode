@@ -1,0 +1,13 @@
+{
+  "model": "qwen3:32b",
+  "created_at": "2026-10-24T00:00:00Z",
+  "message": {
+    "role": "assistant",
+    "content": "```json\n{\n  \"graphs\": [\n    {\n      \"graph_name\": \"EventGraph\",\n      \"graph_type\": \"EventGraph\",\n      \"graph_class\": \"BP_N2CProviderMatrix_111346\",\n      \"code\": {\n        \"graphDeclaration\": \"\",\n        \"graphImplementation\": \"// No executable Blueprint flow is connected in this graph.\\n// Event BeginPlay, Event ActorBeginOverlap, and Event Tick are marked disabled.\\n// The PrintString node is not connected to an execution flow and therefore is not called.\",\n        \"implementationNotes\": \"No event overrides or calls are generated because the three event nodes are explicitly marked disabled and flows.execution is empty. The PrintString node has no connected execution input, so its default values (\\\"Hello\\\", print to screen/log enabled, color (0.0, 0.66, 1.0, 1.0), duration 2.0, key None) do not produce behavior.\"\n      }\n    }\n  ]\n}\n```"
+  },
+  "done_reason": "stop",
+  "done": true,
+  "total_duration": 1000,
+  "prompt_eval_count": 5120,
+  "eval_count": 412
+}

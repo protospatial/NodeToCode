@@ -1,0 +1,24 @@
+{
+  "candidates": [
+    {
+      "index": 0,
+      "finishReason": "MAX_TOKENS",
+      "content": {
+        "parts": [
+          {
+            "text": "{\"graphs\":[{\"graph_name\":\"EventGraph\",\"graph_type\":\"EventGraph\",\"graph_class\":\"BP_N2CProvi"
+          }
+        ],
+        "role": "model"
+      }
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 5120,
+    "candidatesTokenCount": 412,
+    "thoughtsTokenCount": 256,
+    "totalTokenCount": 5788
+  },
+  "modelVersion": "gemini-3.5-flash-lite",
+  "responseId": "N2CFixtureResponse"
+}

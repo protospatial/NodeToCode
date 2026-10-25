@@ -1,0 +1,8 @@
+{
+  "error": {
+    "message": "Invalid max_tokens value, the valid range of max_tokens is [1, 393216]",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "invalid_request_error"
+  }
+}
