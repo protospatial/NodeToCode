@@ -75,11 +75,16 @@ Source/
 
 ## MCP Server Architecture
 
-The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
+The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one endpoint:
 
-*   **Transport Layer**: HTTP server on port 27000 (configurable via settings)
+*   **Transport Layer**: `POST`/`DELETE` `http://127.0.0.1:27000/mcp` on Unreal's HTTPServer (loopback unless
+    `[HTTPServer.Listeners]` in the project's engine config says otherwise). Server Port defaults to 27000; when it
+    is taken the server takes the next free port in Port Fallback Range and writes the URL to the discovery files
+    (see "Ports and shutdown" below). `GET /mcp/health` is a plain health check, not an MCP route
 *   **Long-running tools**: answered on the `tools/call` POST itself: `text/event-stream` with progress then the
     result on UE 5.8 (when Accept lists it and a progressToken is sent), else one held `application/json` response
+    (always on UE 5.6/5.7, which cannot stream a response body; decision 0085, still open, in
+    `FN2CMcpHttpServerManager::CanStreamToolProgress()`)
 *   **One listener**: only the engine HTTPServer on the MCP port. The port+1 notification server (cpp-httplib,
     `/mcp/events` and `/mcp/notifications`) was removed in card 0113, so the server sends no unsolicited
     notifications (`tools.listChanged` is false)
@@ -551,58 +556,72 @@ Example test commands for the MCP server:
 
 ```bash
 # Basic connectivity
-curl -X GET http://localhost:27000/mcp/health
+curl -X GET http://127.0.0.1:27000/mcp/health
 
 # Protocol initialization: keep the Mcp-Session-Id response header; every later request sends it
-SID=$(curl -s -D - -o /dev/null -X POST http://localhost:27000/mcp \
+SID=$(curl -s -D - -o /dev/null -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0"}}, "id": 1}' \
   | tr -d '\r' | sed -n 's/^[Mm]cp-[Ss]ession-[Ii]d: //p')
-curl -X POST http://localhost:27000/mcp -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+curl -X POST http://127.0.0.1:27000/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
 
 # List tools with schemas
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+curl -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 2}'
 
 # Execute get-focused-blueprint tool
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+curl -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get-focused-blueprint", "arguments": {}}, "id": 3}'
 
 # List resources
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+curl -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "resources/list", "id": 4}'
 
 # Read current blueprint resource
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+curl -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "resources/read", "params": {"uri": "nodetocode://blueprint/current"}, "id": 5}'
 
 # Get code generation prompt
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+curl -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "prompts/get", "params": {"name": "generate-code", "arguments": {"language": "python", "style": "concise"}}, "id": 6}'
 
-# Batch request example (only in a session initialized with protocolVersion 2025-03-26; others get 400)
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID_2025_03_26" \
+# Batch request example (only in a session initialized with protocolVersion 2025-03-26; others get 400).
+# SID_2025_03_26: the Mcp-Session-Id of an initialize like the one above with "protocolVersion": "2025-03-26"
+curl -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "Mcp-Session-Id: $SID_2025_03_26" \
   -d '[{"jsonrpc": "2.0", "method": "ping", "id": 1}, {"jsonrpc": "2.0", "method": "tools/list", "id": 2}]'
 
-# Long-running tool with progress (the same response streams on UE 5.8; -N shows events as they arrive)
-curl -N -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" -H "Accept: application/json, text/event-stream" \
+# Long-running tool with progress. UE 5.8: 200 text/event-stream, "event: message" / "data: <notifications/progress>"
+# events, then the tools/call response, then the connection closes (-N shows events as they arrive). UE 5.6/5.7, or
+# Accept without text/event-stream, or no progressToken: one held application/json response when the call ends.
+curl -N -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "translate-focused-blueprint", "arguments": {"language": "cpp"}, "_meta": {"progressToken": "unique-token-123"}}, "id": 7}'
 
 # Cancel the running call (id 7): answered 202; the call's own response then ends without a JSON-RPC response
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+curl -X POST http://127.0.0.1:27000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 7, "reason": "user pressed Stop"}}'
 
-# End the session
-curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
+# Server-to-client stream: none (405, Allow: POST, DELETE)
+curl -i -X GET http://127.0.0.1:27000/mcp -H "Accept: text/event-stream" -H "Mcp-Session-Id: $SID"
+
+# End the session (204; later requests with that id get 404)
+curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 ```
 
 ## Related Projects
