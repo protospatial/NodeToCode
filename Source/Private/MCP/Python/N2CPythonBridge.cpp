@@ -1883,10 +1883,7 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 
 	if (!FN2CMcpTypeResolver::ResolvePinType(TypeIdentifier, TEXT(""), TEXT("none"), TEXT(""), bIsPassByReference, false, PinType, ResolveError))
 	{
-		if (!FN2CMcpTypeResolver::ResolvePinType(TEXT("object"), TypeIdentifier, TEXT("none"), TEXT(""), bIsPassByReference, false, PinType, ResolveError))
-		{
-			return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
-		}
+		return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
 	}
 
 	// Create the pin
@@ -1972,10 +1969,7 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 
 	if (!FN2CMcpTypeResolver::ResolvePinType(TypeIdentifier, TEXT(""), TEXT("none"), TEXT(""), false, false, PinType, ResolveError))
 	{
-		if (!FN2CMcpTypeResolver::ResolvePinType(TEXT("object"), TypeIdentifier, TEXT("none"), TEXT(""), false, false, PinType, ResolveError))
-		{
-			return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
-		}
+		return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
 	}
 
 	// Create the pin

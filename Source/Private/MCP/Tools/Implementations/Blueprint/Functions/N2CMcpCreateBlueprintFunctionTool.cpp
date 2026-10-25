@@ -187,6 +187,18 @@ FMcpToolCallResult FN2CMcpCreateBlueprintFunctionTool::Execute(const TSharedPtr<
 		{
 			return FMcpToolCallResult::CreateErrorResult(Error);
 		}
+
+		// Resolve every parameter type before the Blueprint is touched, so a bad type is an error, not a function
+		// created without that parameter
+		for (const FParameterDefinition& Param : Parameters)
+		{
+			FEdGraphPinType ParamPinType;
+			FString ParamTypeError;
+			if (!FN2CMcpTypeResolver::ResolvePinType(Param.Type, Param.SubType, Param.Container, Param.KeyType, Param.bIsReference, Param.bIsConst, ParamPinType, ParamTypeError))
+			{
+				return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("INVALID_PARAMETER_TYPE: parameter '%s': %s"), *Param.Name, *ParamTypeError));
+			}
+		}
 		
 		// Begin transaction for undo/redo support
 		FScopedTransaction Transaction(NSLOCTEXT("NodeToCode", "CreateFunction", "Create Blueprint Function"));

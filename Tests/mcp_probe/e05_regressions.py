@@ -274,6 +274,57 @@ def get_local_variable_node_long_name(url, ctx):
     return is_tool_error(tool(url, 'create-get-local-function-variable-node', {'variableName': 'v' * 1100}), 'limited to')
 
 
+# create-variable inputs that UE 5.8 asserted on (ClassObject != nullptr in AddMemberVariable) when a bare struct or
+# enum name resolved to an object pin (card 0153): (typeIdentifier, expected category, typeObject)
+BARE_TYPE_NAMES = [('HitResult', 'struct', '/Script/Engine.HitResult'),
+                   ('FHitResult', 'struct', '/Script/Engine.HitResult'),
+                   ('Guid', 'struct', '/Script/CoreUObject.Guid'),
+                   ('ECollisionChannel', 'byte', '/Script/Engine.ECollisionChannel'),
+                   ('AActor', 'object', '/Script/Engine.Actor')]
+# Inputs that must be refused before the Blueprint is touched: (arguments beyond the variable name, error text)
+REFUSED_TYPES = [({'typeIdentifier': 'multicastdelegate'}, 'INVALID_TYPE'),
+                 ({'typeIdentifier': 'wildcard'}, 'INVALID_TYPE'),
+                 ({'typeIdentifier': 'bool', 'containerType': 'set'}, 'INVALID_SET_ELEMENT_TYPE'),
+                 ({'typeIdentifier': 'TSubclassOf<AActor>'}, 'INVALID_TYPE')]
+
+
+@case
+def create_variable_bare_type_names(url, ctx):
+    """p0-6: create-variable with bare struct, enum and prefixed class names (HitResult crashed UE 5.8) makes variables
+    of the right type that compile; delegate, wildcard, bool-set and template inputs are refused and add nothing
+    (card 0153)"""
+    if not ctx['python']:
+        return None, 'run-python is off'
+    _, steps, text = scratch_blueprint(url, 'BP_E05Types_%d' % os.getpid())
+    if not setup_ok(steps):
+        return False, 'setup %s %s' % (steps, text if not steps else '')
+    problems = []
+    for index, (type_id, _, _) in enumerate(BARE_TYPE_NAMES):
+        data, error, raw = tool_json(url, 'create-variable', {'variableName': 'N2CType%d' % index, 'typeIdentifier': type_id})
+        if error or not (data or {}).get('success'):
+            problems.append('%s: %s' % (type_id, raw[:120]))
+    for index, (args, needle) in enumerate(REFUSED_TYPES):
+        refused, raw = is_tool_error(tool(url, 'create-variable', dict(args, variableName='N2CRefused%d' % index)), needle)
+        if not refused:
+            problems.append('%s not refused with %s: %s' % (args, needle, raw[:100]))
+    data, _, raw = tool_json(url, 'get-blueprint-member-variables', {})
+    variables = {v.get('name'): v.get('type', {}) for v in (data or {}).get('variables', [])}
+    for index, (type_id, category, type_object) in enumerate(BARE_TYPE_NAMES):
+        got = variables.get('N2CType%d' % index, {})
+        if got.get('category') != category or got.get('typeObject') != type_object:
+            problems.append('%s is %s %s, expected %s %s' % (type_id, got.get('category'), got.get('typeObject'),
+                                                             category, type_object))
+    added = [name for name in variables if name and name.startswith('N2CRefused')]
+    if added:
+        problems.append('refused inputs added %s' % added)
+    data, _, raw = tool_json(url, 'compile-blueprint', {})
+    errors = ((data or {}).get('results') or {}).get('errorCount')
+    if errors != 0:
+        problems.append('compile errorCount=%s %s' % (errors, raw[:120]))
+    return not problems, '; '.join(problems) or '%d types made with the right pin type, %d refused, 0 compile errors' % (
+        len(BARE_TYPE_NAMES), len(REFUSED_TYPES))
+
+
 @case
 def read_content_browser_huge_page(url, ctx):
     """p0-6: page 2147483647 (card 0043)"""

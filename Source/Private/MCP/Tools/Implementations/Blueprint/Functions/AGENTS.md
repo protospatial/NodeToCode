@@ -44,15 +44,18 @@ tools return and the hyphenated form are accepted (`FGuid::Parse`).
   - `parameters` (optional): Array of objects with `name` and `type` (required), `direction` (`input`, the default,
     or `output`, compared case-insensitively), `subType`, `container` (`none`, `array`, `set`, `map`), `keyType` (map
     key), `isReference`, `isConst`, and `defaultValue` (inputs only). `type` and `subType` are resolved like a
-    variable's type (see "Type Identifiers" in `../Variables/AGENTS.md`); use `type` `object`, `class`, `struct`,
-    `enum` or `interface` with `subType` naming the class, struct or enum
+    variable's type (see "Type Identifiers" in `../Variables/AGENTS.md`): `type` alone takes a primitive, a type
+    name (`HitResult`, `AActor`) or a path; `type` `object`, `class`, `softobject`, `softclass`, `struct`, `enum` or
+    `interface` takes `subType` naming the class, struct or enum. Every parameter type is resolved before the function
+    is created: one that does not resolve fails the call with
+    `INVALID_PARAMETER_TYPE: parameter '<name>': <reason>` and nothing is added
   - `functionFlags` (optional): Object with `isPure`, `isCallInEditor`, `isStatic`, `isConst`,
     `isReliableReplication`, `isMulticast` (booleans), `category` (default `Default`), `keywords`, `tooltip`, and
     `accessSpecifier` (`public`, the default, `protected` or `private`). `isOverride` is read but has no effect
 - **Returns**: `success`, `functionName`, `functionGuid` (32 hex digits), `blueprintName`, `blueprintPath`,
   `graphInfo` (`graphName`, `nodeCount`), `message`
-- **Known issue (card 0280):** a parameter whose type does not resolve, or whose direction is neither `input` nor
-  `output`, is left out and only logged (`CreateFunctionParameters`); the call still reports success. Check the
+- **Known issue (card 0280):** a parameter whose direction is neither `input` nor `output` is left out and only
+  logged (`CreateFunctionParameters`); the call still reports success. Check the
   signature with list-blueprint-functions afterwards. `CreateNewGraph` also renames any other graph that already has
   the name (an event dispatcher, the event graph)
 
@@ -88,8 +91,9 @@ tools return and the hyphenated form are accepted (`FGuid::Parse`).
 - **Parameters**:
   - `pinName` (required): Name for the new input. A taken name is made unique by `CreateUserDefinedPin`: a second
     `Tag` becomes `Tag1`
-  - `typeIdentifier` (required): A single type (no containers); if it does not resolve, it is tried again as an
-    object class name
+  - `typeIdentifier` (required): A single type (no containers), resolved as in "Type Identifiers" in
+    `../Variables/AGENTS.md`. A type that does not resolve fails the call with
+    `Failed to resolve type '<type>': <reason>` before the function is touched
   - `defaultValue` (optional), `isPassByReference` (optional, default false), `tooltip` (optional)
 - **Returns**: `success`, `pinName` (as requested), `actualName`, `displayName` (as the editor shows it, for example
   `Target Actor`), `pinId` (the pin GUID), `typeInfo` (`category`, `className`, `path`, `typeName`), `functionName`,

@@ -4,55 +4,25 @@
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "EdGraphSchema_K2.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Serialization/JsonSerializer.h"
 
 bool FN2CMcpVariableUtils::ValidateMapKeyType(const FString& KeyType, FString& OutError)
 {
-	// First resolve the key type to validate it properly
+	// The key resolves like any type, and must then be hashable, as the editor's type picker requires
+	// (FBlueprintEditorUtils::HasGetTypeHash: no bool or text, structs only with a hash function such as FGuid)
 	FEdGraphPinType KeyPinType;
 	FString ResolveError;
 	if (!FN2CMcpTypeResolver::ResolvePinType(KeyType, TEXT(""), TEXT("none"), TEXT(""), false, false, KeyPinType, ResolveError))
 	{
-		OutError = FString::Printf(TEXT("Invalid map key type: %s"), *ResolveError);
+		OutError = FString::Printf(TEXT("INVALID_MAP_KEY_TYPE: Invalid map key type '%s': %s"), *KeyType, *ResolveError);
 		return false;
 	}
-	
-	// Check if the resolved type is valid for map keys
-	const FName& KeyCategory = KeyPinType.PinCategory;
-	const bool bIsValidKeyType = 
-		KeyCategory == UEdGraphSchema_K2::PC_Byte ||
-		KeyCategory == UEdGraphSchema_K2::PC_Int ||
-		KeyCategory == UEdGraphSchema_K2::PC_Int64 ||
-		KeyCategory == UEdGraphSchema_K2::PC_Real ||  // Float/Double - Note: Can have precision issues
-		KeyCategory == UEdGraphSchema_K2::PC_Name ||
-		KeyCategory == UEdGraphSchema_K2::PC_String ||
-		KeyCategory == UEdGraphSchema_K2::PC_Object ||   // Object pointers
-		KeyCategory == UEdGraphSchema_K2::PC_Class ||    // Class pointers
-		KeyCategory == UEdGraphSchema_K2::PC_SoftObject ||
-		KeyCategory == UEdGraphSchema_K2::PC_SoftClass ||
-		KeyCategory == UEdGraphSchema_K2::PC_Enum;       // Enums
-	
-	// Explicitly check for invalid types
-	if (KeyCategory == UEdGraphSchema_K2::PC_Boolean)
+	if (!FBlueprintEditorUtils::HasGetTypeHash(KeyPinType))
 	{
-		OutError = TEXT("Boolean types cannot be used as map keys in Blueprints");
+		OutError = FString::Printf(TEXT("INVALID_MAP_KEY_TYPE: '%s' cannot be a map key in Blueprints (it has no hash function)."), *KeyType);
 		return false;
 	}
-	
-	if (KeyCategory == UEdGraphSchema_K2::PC_Struct)
-	{
-		// Most structs cannot be used as keys (no hash function)
-		OutError = FString::Printf(TEXT("Struct types like '%s' cannot be used as map keys in Blueprints"), *KeyType);
-		return false;
-	}
-	
-	if (!bIsValidKeyType)
-	{
-		OutError = FString::Printf(TEXT("Type '%s' (category: %s) is not a valid map key type in Blueprints"), 
-			*KeyType, *KeyCategory.ToString());
-		return false;
-	}
-	
 	return true;
 }
 
@@ -97,7 +67,7 @@ void FN2CMcpVariableUtils::AddContainerTypeSchemaProperties(TSharedPtr<FJsonObje
 	// mapKeyTypeIdentifier property (for map key type)
 	TSharedPtr<FJsonObject> MapKeyTypeProp = MakeShareable(new FJsonObject);
 	MapKeyTypeProp->SetStringField(TEXT("type"), TEXT("string"));
-	MapKeyTypeProp->SetStringField(TEXT("description"), TEXT("For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor'; bool, text and struct keys are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'."));
+	MapKeyTypeProp->SetStringField(TEXT("description"), TEXT("For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor', 'Guid'; the key must be hashable: bool, text and structs without a hash function are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'."));
 	MapKeyTypeProp->SetStringField(TEXT("default"), TEXT("")); // No default, conditionally required
 	Properties->SetObjectField(TEXT("mapKeyTypeIdentifier"), MapKeyTypeProp);
 }
@@ -145,7 +115,8 @@ TSharedPtr<FJsonObject> FN2CMcpVariableUtils::BuildTypeInfo(const FEdGraphPinTyp
 		TypeInfo->SetStringField(TEXT("structName"), PinType.PinSubCategoryObject->GetName());
 		TypeInfo->SetStringField(TEXT("path"), PinType.PinSubCategoryObject->GetPathName());
 	}
-	else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Enum && PinType.PinSubCategoryObject.IsValid())
+	else if ((PinType.PinCategory == UEdGraphSchema_K2::PC_Byte || PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
+		&& Cast<UEnum>(PinType.PinSubCategoryObject.Get()))
 	{
 		TypeInfo->SetStringField(TEXT("category"), TEXT("enum"));
 		TypeInfo->SetStringField(TEXT("enumName"), PinType.PinSubCategoryObject->GetName());
