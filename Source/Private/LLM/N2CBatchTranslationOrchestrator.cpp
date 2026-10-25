@@ -6,6 +6,7 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Models/N2CJsonContract.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -1103,14 +1104,14 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("Each graph contains **nodes** (representing operations like function calls, variable access, or flow control) ");
 	MarkdownContent += TEXT("connected by **pins** (typed input/output connectors). The N2C JSON preserves this structure:\n\n");
 	MarkdownContent += TEXT("- **Execution Flow**: Nodes connected via `Exec` pins run sequentially. The `flows.execution` array shows this order (e.g., `N1->N2->N3`).\n");
-	MarkdownContent += TEXT("- **Data Flow**: Data passes between nodes via typed pins. The `flows.data` map shows these connections (e.g., `N1.P2` connects to `N2.P1`).\n");
+	MarkdownContent += TEXT("- **Data Flow**: Data passes between nodes via typed pins. The `flows.data` object maps each output pin to the input pin it feeds (e.g., `N1.P2` connects to `N2.P1`), or to an array of input pins when one output feeds several (e.g., `N3.P4` feeds `[\"N4.P2\", \"N5.P3\"]`). Every connected data input appears once as a target.\n");
 	MarkdownContent += TEXT("- **Node Types**: Each node has a `type` indicating its purpose (CallFunction, VariableGet, VariableSet, Event, Branch, ForLoop, etc.).\n");
 	MarkdownContent += TEXT("- **Pin Types**: Pins have types like Exec, Boolean, Integer, Float, String, Object, Struct, etc.\n\n");
 
 	MarkdownContent += TEXT("### JSON Structure Reference\n\n");
 	MarkdownContent += TEXT("```json\n");
 	MarkdownContent += TEXT("{\n");
-	MarkdownContent += TEXT("  \"version\": \"1.0.0\",\n");
+	MarkdownContent += FString::Printf(TEXT("  \"version\": \"%s\",\n"), N2CJsonContract::Version);
 	MarkdownContent += TEXT("  \"metadata\": {\n");
 	MarkdownContent += TEXT("    \"Name\": \"BlueprintName\",\n");
 	MarkdownContent += TEXT("    \"BlueprintType\": \"Normal | Const | MacroLibrary | Interface | LevelScript | FunctionLibrary\",\n");
@@ -1136,7 +1137,7 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("      ],\n");
 	MarkdownContent += TEXT("      \"flows\": {\n");
 	MarkdownContent += TEXT("        \"execution\": [\"N1->N2->N3\"],\n");
-	MarkdownContent += TEXT("        \"data\": { \"N1.P2\": \"N2.P1\" }\n");
+	MarkdownContent += TEXT("        \"data\": { \"N1.P2\": \"N2.P1\", \"N3.P4\": [\"N4.P2\", \"N5.P3\"] }\n");
 	MarkdownContent += TEXT("      }\n");
 	MarkdownContent += TEXT("    }\n");
 	MarkdownContent += TEXT("  ],\n");

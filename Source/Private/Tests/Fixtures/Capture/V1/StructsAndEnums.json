@@ -1,0 +1,110 @@
+{
+	"version": "1.0.0",
+	"metadata": {
+		"name": "BP_N2CV1Types",
+		"blueprint_type": "Normal",
+		"blueprint_class": "BP_N2CV1Types"
+	},
+	"graphs": [
+		{
+			"name": "UseTypes",
+			"graph_type": "Function",
+			"nodes": [
+				{
+					"id": "N1",
+					"type": "FunctionEntry",
+					"name": "Use Types",
+					"input_pins": [],
+					"output_pins": [
+						{
+							"id": "P1",
+							"name": "",
+							"connected": true
+						},
+						{
+							"id": "P2",
+							"name": "Item",
+							"type": "Struct",
+							"sub_type": "S_V1Item",
+							"connected": true
+						}
+					]
+				},
+				{
+					"id": "N2",
+					"type": "FunctionResult",
+					"name": "Return Node",
+					"input_pins": [
+						{
+							"id": "P3",
+							"name": "",
+							"connected": true
+						},
+						{
+							"id": "P4",
+							"name": "Copy",
+							"type": "Struct",
+							"sub_type": "S_V1Item",
+							"connected": true
+						}
+					],
+					"output_pins": []
+				}
+			],
+			"flows": {
+				"execution": [
+					"N1->N2"
+				],
+				"data": {
+					"N1.P2": "N2.P4"
+				}
+			}
+		}
+	],
+	"structs": [
+		{
+			"name": "S_V1Item",
+			"comment": "A struct as 1.2.x and earlier 2.0 builds wrote it",
+			"members": [
+				{
+					"name": "Count",
+					"type": "Int",
+					"default_value": "1"
+				},
+				{
+					"name": "Level",
+					"type": "Enum",
+					"type_name": "E_V1Level"
+				},
+				{
+					"name": "Tags",
+					"type": "Map",
+					"type_name": "Int",
+					"is_map": true,
+					"key_type": "Name",
+					"comment": "Name -> count"
+				},
+				{
+					"name": "Names",
+					"type": "String",
+					"is_array": true
+				}
+			]
+		}
+	],
+	"enums": [
+		{
+			"name": "E_V1Level",
+			"comment": "No numeric values: ToJson never wrote them",
+			"values": [
+				{
+					"name": "Low"
+				},
+				{
+					"name": "High",
+					"comment": "The top level"
+				}
+			]
+		}
+	]
+}

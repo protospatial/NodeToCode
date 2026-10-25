@@ -14,6 +14,7 @@ Source/
 │   │
 │   ├── Models/
 │   │   ├── N2CBlueprint.h            → FN2CBlueprint, FN2CGraph, FN2CFlows, etc.
+│   │   ├── N2CJsonContract.h         → N2C JSON version ("2.0.0"), readable majors and the flows field names
 │   │   ├── N2CNode.h                 → FN2CNodeDefinition, EN2CNodeType
 │   │   ├── N2CPin.h                  → FN2CPinDefinition, EN2CPinType
 │   │   ├── N2CTranslation.h          → LLM response structures
@@ -103,6 +104,13 @@ captured one included, is marked visited when it starts (by pointer), so a funct
 reached twice are captured once, and same-named functions of different Blueprints are both captured; a nested graph
 from another Blueprint sets `FN2CGraph::OwnerBlueprint` (JSON `owner_blueprint`, optional).
 
+Data edges (card 0135, from PR #7 by Yury Rakhuba): each edge is recorded once, from its output pin, after the ID
+pass. `TraceTargetsThroughKnots` follows the output's links depth first in link order, through knots and every branch
+of a knot's fan-out, and returns every non-knot input it reaches; each with an ID is added with `AddUnique` to
+`Flows.Data[<output ref>].Targets`. So an output feeding several inputs keeps all of them, and every connected data
+input of the capture is the target of exactly one edge (`NodeToCode.Capture.Golden.DataFlows` checks this on every
+golden). Exec flows still use `TraceConnectionThroughKnots` (first link only; exec outputs have one link).
+
 Key responsibilities:
 - Manages ID generation (N1, N2, etc. for nodes; P1, P2, etc. for pins)
 - Uses `FN2CNodeProcessorFactory` for node-specific property extraction
@@ -121,7 +129,7 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 |--------|-------------|
 | `ToJson(Blueprint, Style)` | Convert FN2CBlueprint to JSON string; `EN2CJsonStyle::Pretty` or `Condensed` per call (no static state) |
 | `ToJson(Capture, Style, Guids)` | A capture's Blueprint; `EN2CJsonGuids::Table` adds the top-level `guids` table for agents (get-focused-blueprint), never for LLM prompts |
-| `FromJson()` | Parse JSON string to FN2CBlueprint |
+| `FromJson()` | Parse N2C JSON into `FN2CBlueprint`: 1.x (1.2.x and earlier 2.0 builds) and 2.x are read into the v2 model, whose version is then `N2CJsonContract::Version`; a pin without `type` is Exec, `structs` and `enums` are read, an enum value needs only `name`; `FromJson(ToJson(x))` equals x for every capture golden |
 | `NodeToJsonObject()` | Convert single node to JSON (for MCP tools) |
 
 ## Data Models
@@ -135,8 +143,23 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 | `FN2CBlueprint` | Top-level container (version, metadata, graphs, structs, enums) |
 | `FN2CMetadata` | Blueprint name, type (`EN2CBlueprintType`), class |
 | `FN2CGraph` | Single graph with nodes and `FN2CFlows` |
-| `FN2CFlows` | Execution chains and data pin connections |
-| `FN2CVersion` | Version info (always "1.0.0") |
+| `FN2CFlows` | `Execution` (node pairs "N1->N2") and `Data`: output pin ref -> `FN2CDataFlowTargets` (`Targets`, every input pin it feeds, in link order) |
+| `FN2CDataFlowTargets` | The input pin refs one output feeds (PR #7's `FN2CInputConnectors`, as an ordered array) |
+| `FN2CVersion` | Version string, default `N2CJsonContract::Version` ("2.0.0") |
+
+### N2C JSON versions
+
+`Source/Public/Models/N2CJsonContract.h` holds the version and the field names the v2 contract reshaped, as
+[decision 0003](../../.agents/decisions/0003-n2c-json-v2-contract.md) (provisional, card 0117) records them.
+
+- **2.0.0** (card 0135): `flows.data` is an object keyed by the output pin ref. Its value is the input pin ref it
+  feeds, or an array of them when it feeds several, so a graph without fan-out gets the same object as 1.0.0. Every
+  data edge appears once. Additive optional fields bump the minor; a breaking change bumps the major.
+- **1.0.0** (1.2.x and earlier 2.0 builds): the same fields, one string per output, so a fan-out kept one edge.
+  `FromJson`, `UN2CPythonBridge::ReadN2CJson` (Python `nodetocode.read_n2c_json`) and the validator read it through
+  the 2.x line. `NodeToCode.Capture.Golden.V1Reader` reads the 1.0.0 documents in
+  `Source/Private/Tests/Fixtures/Capture/V1` (earlier goldens and a 1.2.3 save); `Tests/Migration` reads the 1.2.3
+  fixture's saved translation (row F2).
 
 **User-Defined Types:**
 

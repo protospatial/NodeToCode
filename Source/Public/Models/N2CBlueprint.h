@@ -9,6 +9,7 @@
 
 #include "CoreMinimal.h"
 #include "N2CNode.h"
+#include "N2CJsonContract.h"
 #include "Utils/N2CLogger.h"
 #include "N2CBlueprint.generated.h"
 
@@ -21,11 +22,11 @@ struct FN2CVersion
 {
     GENERATED_BODY()
 
-    /** Version string, always "1.0.0" in current spec */
+    /** Version string: N2CJsonContract::Version ("2.0.0") for a capture; FromJson maps 1.x documents to it */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Value;
 
-    FN2CVersion() : Value(TEXT("1.0.0")) {}
+    FN2CVersion() : Value(N2CJsonContract::Version) {}
 };
 
 /**
@@ -73,6 +74,24 @@ struct FN2CMetadata
 };
 
 /**
+ * @struct FN2CDataFlowTargets
+ * @brief The input pins one output pin feeds ("N2.P1", ...), in link order, each once
+ *
+ * From PR #7 by Yury Rakhuba (FN2CInputConnectors), as an ordered array so the JSON is stable.
+ */
+USTRUCT(BlueprintType)
+struct FN2CDataFlowTargets
+{
+    GENERATED_BODY()
+
+    /** Input pin refs ("N2.P1"); written as one string when there is one, else as an array */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FString> Targets;
+
+    bool operator==(const FN2CDataFlowTargets& Other) const { return Targets == Other.Targets; }
+};
+
+/**
  * @struct FN2CFlows 
  * @brief Contains all execution and data flow connections between nodes
  */
@@ -85,9 +104,9 @@ struct FN2CFlows
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FString> Execution;
 
-    /** Data connections: a mapping from "N1.P4" to "N2.P3" */
+    /** Data connections: output pin ref ("N1.P4") -> every input pin it feeds ("N2.P3", "N5.P1"); each edge once */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    TMap<FString, FString> Data;
+    TMap<FString, FN2CDataFlowTargets> Data;
 
     FN2CFlows()
     {
@@ -342,7 +361,7 @@ struct FN2CBlueprint
 {
     GENERATED_BODY()
 
-    /** Version information (always "1.0.0" in current spec) */
+    /** Version information (N2CJsonContract::Version) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CVersion Version;
 
@@ -364,7 +383,7 @@ struct FN2CBlueprint
 
     FN2CBlueprint()
     {
-        // Version is automatically initialized to "1.0.0" by FN2CVersion constructor
+        // Version is initialized to N2CJsonContract::Version by the FN2CVersion constructor
     }
 
     /** Validates the Blueprint structure and its enums */

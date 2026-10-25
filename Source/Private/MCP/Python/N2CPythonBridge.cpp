@@ -11,6 +11,7 @@
 #include "MCP/Utils/N2CPinConnectPolicy.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "Models/N2CBlueprint.h"
+#include "Models/N2CJsonContract.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -96,6 +97,53 @@ FString UN2CPythonBridge::GetFocusedBlueprintJson()
 	Data->SetObjectField(TEXT("n2c_json"), N2CJsonObject);
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("GetFocusedBlueprintJson: Retrieved %s with %d nodes"), *BlueprintName, CollectedNodes.Num()), EN2CLogSeverity::Info);
+	return MakeSuccessJson(Data);
+}
+
+FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
+{
+	TSharedPtr<FJsonObject> Source;
+	const TSharedRef<TJsonReader<>> SourceReader = TJsonReaderFactory<>::Create(N2CJson);
+	if (!FJsonSerializer::Deserialize(SourceReader, Source) || !Source.IsValid())
+	{
+		return MakeErrorJson(TEXT("The text is not a JSON object."));
+	}
+	FString SourceVersion;
+	Source->TryGetStringField(N2CJsonContract::VersionField, SourceVersion);
+
+	FN2CBlueprint Blueprint;
+	if (!FN2CSerializer::FromJson(N2CJson, Blueprint))
+	{
+		return MakeErrorJson(FString::Printf(TEXT("The text is not N2C JSON that this version reads (version '%s'; NodeToCode reads %d.x to %d.x)."),
+			*SourceVersion, N2CJsonContract::OldestReadableMajor, N2CJsonContract::Major));
+	}
+
+	int32 NodeCount = 0;
+	int32 DataEdgeCount = 0;
+	for (const FN2CGraph& Graph : Blueprint.Graphs)
+	{
+		NodeCount += Graph.Nodes.Num();
+		for (const TPair<FString, FN2CDataFlowTargets>& Flow : Graph.Flows.Data)
+		{
+			DataEdgeCount += Flow.Value.Targets.Num();
+		}
+	}
+
+	TSharedPtr<FJsonObject> Rewritten;
+	const TSharedRef<TJsonReader<>> RewrittenReader = TJsonReaderFactory<>::Create(FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed));
+	if (!FJsonSerializer::Deserialize(RewrittenReader, Rewritten) || !Rewritten.IsValid())
+	{
+		return MakeErrorJson(TEXT("The N2C JSON was read but could not be written again."));
+	}
+
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("source_version"), SourceVersion);
+	Data->SetStringField(TEXT("version"), Blueprint.Version.Value);
+	Data->SetBoolField(TEXT("valid"), Blueprint.IsValid());
+	Data->SetNumberField(TEXT("graphs"), Blueprint.Graphs.Num());
+	Data->SetNumberField(TEXT("nodes"), NodeCount);
+	Data->SetNumberField(TEXT("data_edges"), DataEdgeCount);
+	Data->SetObjectField(TEXT("n2c_json"), Rewritten);
 	return MakeSuccessJson(Data);
 }
 

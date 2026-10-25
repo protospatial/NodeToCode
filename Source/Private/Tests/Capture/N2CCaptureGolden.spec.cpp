@@ -35,6 +35,7 @@
 #include "K2Node_Timeline.h"
 #include "K2Node_Tunnel.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/StructureEditorUtils.h"
 #include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpGetFocusedBlueprintTool.h"
@@ -43,6 +44,7 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
+#include "Models/N2CJsonContract.h"
 #include "Policies/PrettyJsonPrintPolicy.h"
 #include "Runtime/Launch/Resources/Version.h"
 #include "Serialization/JsonReader.h"
@@ -60,8 +62,8 @@
  * Actor Blueprint in a /Game/N2CTest_<guid> package that is never saved, so capture treats it and its functions,
  * macros, structs and enums as user content, as it would a project's), runs the capture the editor runs
  * (FN2CNodeCollector::CollectNodesFromGraph, N2C::CaptureNodes, FN2CSerializer::ToJson) and
- * compares the N2C JSON v1 output with Goldens/Capture/<case>.json. The transient package path and any GUID are
- * replaced with <PACKAGE> and <GUID> first.
+ * compares the N2C JSON (version N2CJsonContract::Version) with Goldens/Capture/<case>.json. The transient package path
+ * and any GUID are replaced with <PACKAGE> and <GUID> first. Every case also survives FromJson -> ToJson unchanged.
  *
  * The goldens record today's output, known defects included: each golden lists the defects it shows under
  * "known_defects" with the finding and the E10 card that changes it, so those cards show their output changes
@@ -80,6 +82,10 @@
  * a function that calls itself is captured once, same-named functions of two Blueprints are both captured with their
  * owner, an unchanged graph captured twice gets the same IDs, and the ID-to-GUID maps (and get-focused-blueprint's
  * result) have one entry per node and per pin.
+ *
+ * "DataFlows" checks the lossless data edges (card 0135, PR #7): in every case each connected data input is the target of
+ * exactly one flows.data entry, and a fan-out (directly or through a knot) lists every target. "V1Reader" checks that
+ * the N2C JSON 1.x documents in Fixtures/Capture/V1 (earlier 2.0 goldens and a 1.2.3 save) read into the v2 model.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -357,7 +363,6 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		{
 			return;
 		}
-		AddExpectedError(TEXT("Missing required pin fields in JSON"), EAutomationExpectedErrorFlags::Contains, 0);
 		const FString Again = RoundTrip(Case, Captured);
 		if (Again != Captured.Json)
 		{
@@ -365,60 +370,148 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		}
 	}
 
-	/** Removes every pin without a "type" (exec pins), as FromJson does today */
-	static void DropUntypedPins(const TSharedPtr<FJsonObject>& Capture)
+	/**
+	 * flows.data is lossless: every target is a connected input pin of the graph and appears once, every connected data
+	 * input (a pin with a "type") is a target, and every key is an output pin
+	 */
+	void ExpectLosslessDataFlows(const FString& What, const TSharedPtr<FJsonObject>& Capture)
 	{
-		const TArray<TSharedPtr<FJsonValue>>* Graphs = nullptr;
-		if (!Capture->TryGetArrayField(TEXT("graphs"), Graphs))
+		for (const TSharedPtr<FJsonValue>& GraphValue : Capture->GetArrayField(TEXT("graphs")))
 		{
-			return;
+			const TSharedPtr<FJsonObject> Graph = GraphValue->AsObject();
+			const FString GraphWhat = What + TEXT(" ") + Graph->GetStringField(TEXT("name"));
+			TSet<FString> ConnectedInputs;
+			TSet<FString> Outputs;
+			for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
+			{
+				const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+				const FString NodeID = Node->GetStringField(TEXT("id"));
+				for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(TEXT("input_pins")))
+				{
+					const TSharedPtr<FJsonObject> Pin = PinValue->AsObject();
+					bool bConnected = false;
+					if (Pin->HasField(TEXT("type")) && Pin->TryGetBoolField(TEXT("connected"), bConnected) && bConnected)
+					{
+						ConnectedInputs.Add(NodeID + TEXT(".") + Pin->GetStringField(TEXT("id")));
+					}
+				}
+				for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(TEXT("output_pins")))
+				{
+					Outputs.Add(NodeID + TEXT(".") + PinValue->AsObject()->GetStringField(TEXT("id")));
+				}
+			}
+
+			TSet<FString> Targets;
+			const TSharedPtr<FJsonObject> Data = Graph->GetObjectField(TEXT("flows"))->GetObjectField(N2CJsonContract::DataField);
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Data->Values)
+			{
+				TestTrue(GraphWhat + TEXT(": data key ") + Entry.Key + TEXT(" is an output pin"), Outputs.Contains(Entry.Key));
+				TArray<FString> EntryTargets;
+				if (Entry.Value->Type == EJson::String)
+				{
+					EntryTargets.Add(Entry.Value->AsString());
+				}
+				else if (TestTrue(GraphWhat + TEXT(": data ") + Entry.Key + TEXT(" is a string or an array"), Entry.Value->Type == EJson::Array))
+				{
+					TestTrue(GraphWhat + TEXT(": an array value has several targets ") + Entry.Key, Entry.Value->AsArray().Num() > 1);
+					for (const TSharedPtr<FJsonValue>& Target : Entry.Value->AsArray())
+					{
+						EntryTargets.Add(Target->AsString());
+					}
+				}
+				for (const FString& Target : EntryTargets)
+				{
+					bool bSeen = false;
+					Targets.Add(Target, &bSeen);
+					TestFalse(GraphWhat + TEXT(": ") + Target + TEXT(" is the target of one edge"), bSeen);
+					TestTrue(GraphWhat + TEXT(": ") + Target + TEXT(" is a connected data input"), ConnectedInputs.Contains(Target));
+				}
+			}
+			for (const FString& Input : ConnectedInputs)
+			{
+				TestTrue(GraphWhat + TEXT(": connected input ") + Input + TEXT(" has its source in flows.data"), Targets.Contains(Input));
+			}
 		}
-		for (const TSharedPtr<FJsonValue>& GraphValue : *Graphs)
+	}
+
+	/** The data targets of the output pin named OutputPin on the node named NodeName in the capture's first graph */
+	TArray<FString> DataTargetsOf(const TSharedPtr<FJsonObject>& Capture, const FString& NodeName, const FString& OutputPin)
+	{
+		TArray<FString> Result;
+		const TSharedPtr<FJsonObject> Graph = Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
+		FString SourceRef;
+		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
 		{
-			const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
-			if (!GraphValue->AsObject()->TryGetArrayField(TEXT("nodes"), NodesArray))
+			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+			if (Node->GetStringField(TEXT("name")) != NodeName)
 			{
 				continue;
 			}
-			for (const TSharedPtr<FJsonValue>& NodeValue : *NodesArray)
+			for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(TEXT("output_pins")))
 			{
-				const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
-				for (const TCHAR* Field : { TEXT("input_pins"), TEXT("output_pins") })
+				if (PinValue->AsObject()->GetStringField(TEXT("name")) == OutputPin)
 				{
-					TArray<TSharedPtr<FJsonValue>> Kept;
-					for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(Field))
-					{
-						if (PinValue->AsObject()->HasField(TEXT("type")))
-						{
-							Kept.Add(PinValue);
-						}
-					}
-					Node->SetArrayField(Field, Kept);
+					SourceRef = Node->GetStringField(TEXT("id")) + TEXT(".") + PinValue->AsObject()->GetStringField(TEXT("id"));
 				}
 			}
 		}
-		// ParseBlueprintFromJson never reads structs or enums
-		Capture->SetArrayField(TEXT("structs"), TArray<TSharedPtr<FJsonValue>>());
-		Capture->SetArrayField(TEXT("enums"), TArray<TSharedPtr<FJsonValue>>());
+		if (!TestFalse(FString::Printf(TEXT("%s.%s is captured"), *NodeName, *OutputPin), SourceRef.IsEmpty()))
+		{
+			return Result;
+		}
+		const TSharedPtr<FJsonValue> Value = Graph->GetObjectField(TEXT("flows"))->GetObjectField(N2CJsonContract::DataField)->TryGetField(SourceRef);
+		if (Value.IsValid() && Value->Type == EJson::String)
+		{
+			Result.Add(Value->AsString());
+		}
+		else if (Value.IsValid() && Value->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Target : Value->AsArray())
+			{
+				Result.Add(Target->AsString());
+			}
+		}
+		return Result;
 	}
 
-	void RunRoundTripToday(const FCaptureCase& Case)
+	/** The pin ref ("N3.P7") of the input pin named InputPin on the node named NodeName in the capture's first graph */
+	FString InputRef(const TSharedPtr<FJsonObject>& Capture, const FString& NodeName, const FString& InputPin)
 	{
-		const FCaptured Captured = Capture(Case);
-		if (!Captured.Capture.IsValid())
+		const TSharedPtr<FJsonObject> Graph = Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
+		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
 		{
-			return;
+			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+			if (Node->GetStringField(TEXT("name")) != NodeName)
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(TEXT("input_pins")))
+			{
+				if (PinValue->AsObject()->GetStringField(TEXT("name")) == InputPin)
+				{
+					return Node->GetStringField(TEXT("id")) + TEXT(".") + PinValue->AsObject()->GetStringField(TEXT("id"));
+				}
+			}
 		}
-		AddExpectedError(TEXT("Missing required pin fields in JSON"), EAutomationExpectedErrorFlags::Contains, 0);
-		const FString Again = RoundTrip(Case, Captured);
-		const TSharedPtr<FJsonObject> Expected = N2CTest::ParseJsonObject(Captured.Json);
-		DropUntypedPins(Expected);
-		const FString ExpectedText = PrettyJson(Expected);
-		if (Again != ExpectedText)
+		AddError(FString::Printf(TEXT("%s.%s is not captured"), *NodeName, *InputPin));
+		return FString();
+	}
+
+	static FString V1Dir()
+	{
+		return N2CTest::FixturesDir(TEXT("Capture/V1"));
+	}
+
+	/** A document with its version replaced, pretty printed: a v1 document as ToJson writes it after FromJson */
+	static FString WithVersion(const FString& Text, const FString& Version)
+	{
+		const TSharedPtr<FJsonObject> Object = N2CTest::ParseJsonObject(Text);
+		if (!Object.IsValid())
 		{
-			ReportDifference(Case.Name + TEXT(" ToJson -> FromJson -> ToJson (today: exec pins, structs and enums dropped)"),
-				ExpectedText, Again);
+			return FString();
 		}
+		Object->SetStringField(N2CJsonContract::VersionField, Version);
+		return PrettyJson(Object);
 	}
 
 	void AddCases();
@@ -663,10 +756,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	const FKnownDefect ExecNodeOnly{ TEXT("translation-core-2"), TEXT("0136"),
 		TEXT("Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and "
 			"two outputs into one node collapse to one entry") };
-	const FKnownDefect DataLossy{ TEXT("translation-core-1 (PR #7, issue #13)"), TEXT("0135"),
-		TEXT("flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge "
-			"recorded; the other inputs say connected with no source") };
-const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
+	const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 		TEXT("Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable "
 			"identifiers, so they change with editor language and settings") };
 	const FKnownDefect CustomEventNone{ TEXT("translation-core-16"), TEXT("0239"),
@@ -683,7 +773,7 @@ const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 
 	Cases.Add({ TEXT("FanOutData"),
 		TEXT("Function FanOut(Value): Value feeds Add.A, Add.B and Multiply.A; Add feeds Multiply.B; Multiply is the result."),
-		{ DataLossy, DisplayNames },
+		{ DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("FanOut"));
@@ -704,10 +794,7 @@ const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 	Cases.Add({ TEXT("Knots"),
 		TEXT("Function Knots(Value): the exec line runs through a knot; Value runs through two knots and the second fans "
 			"out to Add.A and Add.B; Add is the result."),
-		{ { TEXT("translation-core-1 (knot fan-out)"), TEXT("0135"),
-			TEXT("A knot's fan-out is followed through LinkedTo[0] only, and a knot traced from the input side records "
-				"the edge backwards, so one of Add's inputs loses its source") },
-		  DataLossy, DisplayNames },
+		{ DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("Knots"));
@@ -725,6 +812,28 @@ const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 			BP.Link(Second, TEXT("OutputPin"), Add, TEXT("A"));
 			BP.Link(Second, TEXT("OutputPin"), Add, TEXT("B"));
 			BP.Link(Add, UEdGraphSchema_K2::PN_ReturnValue, Result, TEXT("Result"));
+			return Graph;
+		} });
+
+	// Card 0135: the fan-out of the card's "Done looks like" (PR #7, issue #13)
+	Cases.Add({ TEXT("FanOutActorLocation"),
+		TEXT("Function ReportLocation(): the entry runs Print String, then SetActorLocation. GetActorLocation's Return "
+			"Value feeds both To String (Vector), whose result is Print String's In String, and SetActorLocation's New "
+			"Location."),
+		{ DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.AddFunction(TEXT("ReportLocation"));
+			UK2Node_CallFunction* GetLocation = BP.AddCall(Graph, AActor::StaticClass(), GET_FUNCTION_NAME_CHECKED(AActor, K2_GetActorLocation));
+			UK2Node_CallFunction* ToText = BP.AddCall(Graph, UKismetStringLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetStringLibrary, Conv_VectorToString));
+			UK2Node_CallFunction* Print = BP.AddCall(Graph, UKismetSystemLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString));
+			UK2Node_CallFunction* SetLocation = BP.AddCall(Graph, AActor::StaticClass(), GET_FUNCTION_NAME_CHECKED(AActor, K2_SetActorLocation));
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Print, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Print, UEdGraphSchema_K2::PN_Then, SetLocation, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(GetLocation, UEdGraphSchema_K2::PN_ReturnValue, ToText, TEXT("InVec"));
+			BP.Link(ToText, UEdGraphSchema_K2::PN_ReturnValue, Print, TEXT("InString"));
+			BP.Link(GetLocation, UEdGraphSchema_K2::PN_ReturnValue, SetLocation, TEXT("NewLocation"));
 			return Graph;
 		} });
 
@@ -864,7 +973,7 @@ const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 		  { TEXT("translation-core-4"), TEXT("0234"),
 			TEXT("Break S_GoldenItem is captured as a Variable named 'None' with member_parent object/Actor (the first "
 				"member's type) and member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)") },
-		  DataLossy, DisplayNames },
+		  DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Level = BP.AddUserEnum(TEXT("E_GoldenLevel"), { TEXT("Low"), TEXT("High") });
@@ -958,7 +1067,7 @@ const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 		TEXT("Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which "
 			"runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed "
 			"from Enabled."),
-		{ DataLossy, ExecNodeOnly, DisplayNames },
+		{ ExecNodeOnly, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("CopyPaste"));
@@ -1033,32 +1142,220 @@ void FN2CCaptureGoldenSpec::Define()
 {
 	Cases.Reset();
 	AddCases();
-	const bool bRunKnownDefects = FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_RUN_KNOWN_DEFECTS")) == TEXT("1");
-
+	
 	for (const FCaptureCase& Case : Cases)
 	{
-		Describe(Case.Name, [this, Case, bRunKnownDefects]()
+		Describe(Case.Name, [this, Case]()
 		{
 			It(TEXT("captures the golden N2C JSON"), [this, Case]() { RunGolden(Case); });
 
-			// Pins today's lossy reader; card 0135 deletes this case and enables the next one
-			It(TEXT("drops exec pins, structs and enums in ToJson -> FromJson -> ToJson today"), [this, Case]()
-			{
-				RunRoundTripToday(Case);
-			});
-
-			// Known defect translation-core-25: FromJson requires a pin "type" that ToJson never
-			// writes for exec pins, and never reads structs or enums. Enable (xIt -> It) with card 0135.
-			if (bRunKnownDefects)
-			{
-				It(TEXT("survives ToJson -> FromJson -> ToJson unchanged"), [this, Case]() { RunRoundTrip(Case); });
-			}
-			else
-			{
-				xIt(TEXT("survives ToJson -> FromJson -> ToJson unchanged"), [this, Case]() { RunRoundTrip(Case); });
-			}
+			// translation-core-25 (card 0135): FromJson reads every pin, struct and enum ToJson writes
+			It(TEXT("survives ToJson -> FromJson -> ToJson unchanged"), [this, Case]() { RunRoundTrip(Case); });
 		});
 	}
+
+	// Card 0135: data edges are lossless (translation-core-1, PR #7, issue #13)
+	Describe(TEXT("DataFlows"), [this]()
+	{
+		It(TEXT("lists every connected data input as the target of exactly one edge in every case"), [this]()
+		{
+			for (const FCaptureCase& Case : Cases)
+			{
+				const FCaptured Captured = Capture(Case);
+				if (Captured.Capture.IsValid())
+				{
+					ExpectLosslessDataFlows(Case.Name, Captured.Capture);
+				}
+			}
+		});
+
+		It(TEXT("gives an output feeding two inputs one entry listing both"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("FanOutActorLocation"));
+			if (!TestNotNull(TEXT("FanOutActorLocation case"), Case))
+			{
+				return;
+			}
+			const FCaptured Captured = Capture(*Case);
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Graph = Captured.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>& Nodes = Graph->GetArrayField(TEXT("nodes"));
+			auto NodeNamed = [&Nodes](const FString& MemberName) -> FString
+			{
+				for (const TSharedPtr<FJsonValue>& Node : Nodes)
+				{
+					FString Member;
+					if (Node->AsObject()->TryGetStringField(TEXT("member_name"), Member) && Member == MemberName)
+					{
+						return Node->AsObject()->GetStringField(TEXT("name"));
+					}
+				}
+				return FString();
+			};
+			const FString GetLocation = NodeNamed(TEXT("K2_GetActorLocation"));
+			const FString ToText = NodeNamed(TEXT("Conv_VectorToString"));
+			const FString SetLocation = NodeNamed(TEXT("K2_SetActorLocation"));
+			const TArray<FString> Targets = DataTargetsOf(Captured.Capture, GetLocation, TEXT("Return Value"));
+			TestEqual(TEXT("GetActorLocation.ReturnValue targets"), FString::Join(Targets, TEXT(",")),
+				FString::Join(TArray<FString>{ InputRef(Captured.Capture, ToText, TEXT("In Vec")),
+					InputRef(Captured.Capture, SetLocation, TEXT("New Location")) }, TEXT(",")));
+			TestEqual(TEXT("the N2C JSON version"), Captured.Capture->GetStringField(N2CJsonContract::VersionField),
+				FString(N2CJsonContract::Version));
+		});
+
+		It(TEXT("follows every branch of a knot's fan-out"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("Knots"));
+			if (!TestNotNull(TEXT("Knots case"), Case))
+			{
+				return;
+			}
+			const FCaptured Captured = Capture(*Case);
+			if (Captured.Capture.IsValid())
+			{
+				// Value runs through two knots into Add.A and Add.B
+				const TSharedPtr<FJsonObject> Graph = Captured.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
+				const TArray<TSharedPtr<FJsonValue>>& Nodes = Graph->GetArrayField(TEXT("nodes"));
+				const FString Entry = Nodes[0]->AsObject()->GetStringField(TEXT("name"));
+				FString AddName;
+				for (const TSharedPtr<FJsonValue>& Node : Nodes)
+				{
+					FString Member;
+					if (Node->AsObject()->TryGetStringField(TEXT("member_name"), Member) && Member == TEXT("Add_IntInt"))
+					{
+						AddName = Node->AsObject()->GetStringField(TEXT("name"));
+					}
+				}
+				TestEqual(TEXT("Value's targets"), FString::Join(DataTargetsOf(Captured.Capture, Entry, TEXT("Value")), TEXT(",")),
+					InputRef(Captured.Capture, AddName, TEXT("A")) + TEXT(",") + InputRef(Captured.Capture, AddName, TEXT("B")));
+			}
+		});
+	});
+
+	// Card 0135: N2C JSON 1.x (1.2.x and earlier 2.0 builds) reads into the v2 model
+	Describe(TEXT("V1Reader"), [this]()
+	{
+		// Written by ToJson before card 0135 (the goldens of FanOutData, Knots and UserEnum, and a struct and enum
+		// document): FromJson then ToJson gives the same document with the current version
+		for (const TCHAR* Name : { TEXT("FanOutData"), TEXT("Knots"), TEXT("UserEnum"), TEXT("StructsAndEnums") })
+		{
+			const FString FixtureName = Name;
+			It(FString::Printf(TEXT("reads the v1 document %s into the v2 model unchanged"), Name), [this, FixtureName]()
+			{
+				FString Text;
+				if (!TestTrue(TEXT("the v1 fixture loads"), FFileHelper::LoadFileToString(Text, *(V1Dir() / FixtureName + TEXT(".json")))))
+				{
+					return;
+				}
+				const TSharedPtr<FJsonObject> Original = N2CTest::ParseJsonObject(Text);
+				if (!TestTrue(TEXT("the v1 fixture parses"), Original.IsValid()))
+				{
+					return;
+				}
+				TestEqual(TEXT("the fixture's version"), Original->GetStringField(N2CJsonContract::VersionField), FString(TEXT("1.0.0")));
+
+				FN2CBlueprint Blueprint;
+				if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint)))
+				{
+					return;
+				}
+				TestEqual(TEXT("the model's version"), Blueprint.Version.Value, FString(N2CJsonContract::Version));
+				TestTrue(TEXT("the model validates"), Blueprint.IsValid());
+				int32 ExecPins = 0;
+				for (const FN2CGraph& Graph : Blueprint.Graphs)
+				{
+					for (const FN2CNodeDefinition& Node : Graph.Nodes)
+					{
+						for (const TArray<FN2CPinDefinition>* Pins : { &Node.InputPins, &Node.OutputPins })
+						{
+							for (const FN2CPinDefinition& Pin : *Pins)
+							{
+								ExecPins += Pin.Type == EN2CPinType::Exec ? 1 : 0;
+							}
+						}
+					}
+					for (const TPair<FString, FN2CDataFlowTargets>& Flow : Graph.Flows.Data)
+					{
+						TestEqual(Flow.Key + TEXT(": a v1 data entry has one target"), Flow.Value.Targets.Num(), 1);
+					}
+				}
+				TestTrue(TEXT("exec pins (no \"type\") are read as Exec"), ExecPins > 0);
+
+				const FString Again = PrettyJson(N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Pretty)));
+				const FString Expected = WithVersion(Text, N2CJsonContract::Version);
+				if (Again != Expected)
+				{
+					ReportDifference(FixtureName + TEXT(" v1 -> FromJson -> ToJson"), Expected, Again);
+				}
+			});
+		}
+
+		It(TEXT("reads a 1.2.3 translation's N2C_BP json"), [this]()
+		{
+			FString Text;
+			if (!TestTrue(TEXT("the 1.2.3 fixture loads"), FFileHelper::LoadFileToString(Text, *(V1Dir() / TEXT("BP_Door_1.2.3.json")))))
+			{
+				return;
+			}
+			FN2CBlueprint Blueprint;
+			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint)))
+			{
+				return;
+			}
+			TestEqual(TEXT("the model's version"), Blueprint.Version.Value, FString(N2CJsonContract::Version));
+			TestTrue(TEXT("the model validates"), Blueprint.IsValid());
+			TestEqual(TEXT("Blueprint name"), Blueprint.Metadata.Name, FString(TEXT("BP_Door")));
+			if (TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1) && TestEqual(TEXT("nodes"), Blueprint.Graphs[0].Nodes.Num(), 2))
+			{
+				const FN2CNodeDefinition& Print = Blueprint.Graphs[0].Nodes[1];
+				TestEqual(TEXT("Print String input pins"), Print.InputPins.Num(), 2);
+				TestTrue(TEXT("Print String's first input is Exec"), Print.InputPins[0].Type == EN2CPinType::Exec);
+				TestEqual(TEXT("In String's default"), Print.InputPins[1].DefaultValue, FString(TEXT("Door ready")));
+				TestEqual(TEXT("execution flows"), FString::Join(Blueprint.Graphs[0].Flows.Execution, TEXT(",")), FString(TEXT("N1->N2")));
+			}
+		});
+
+		It(TEXT("reads a fan-out written as an array and writes it back the same"), [this]()
+		{
+			const FString Text = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",")
+				TEXT("\"blueprint_class\":\"BP\"},\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[")
+				TEXT("{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"name\":\"Entry\",\"input_pins\":[],\"output_pins\":[")
+				TEXT("{\"id\":\"P1\",\"name\":\"Value\",\"type\":\"Integer\",\"connected\":true}]},")
+				TEXT("{\"id\":\"N2\",\"type\":\"CallFunction\",\"name\":\"Add\",\"pure\":true,\"input_pins\":[")
+				TEXT("{\"id\":\"P2\",\"name\":\"A\",\"type\":\"Integer\",\"connected\":true},")
+				TEXT("{\"id\":\"P3\",\"name\":\"B\",\"type\":\"Integer\",\"connected\":true}],\"output_pins\":[]}],")
+				TEXT("\"flows\":{\"execution\":[],\"data\":{\"N1.P1\":[\"N2.P2\",\"N2.P3\"]}}}],\"structs\":[],\"enums\":[]}");
+			FN2CBlueprint Blueprint;
+			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint)) || !TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1))
+			{
+				return;
+			}
+			const FN2CDataFlowTargets* Targets = Blueprint.Graphs[0].Flows.Data.Find(TEXT("N1.P1"));
+			if (TestNotNull(TEXT("N1.P1's targets"), Targets))
+			{
+				TestEqual(TEXT("N1.P1's targets"), FString::Join(Targets->Targets, TEXT(",")), FString(TEXT("N2.P2,N2.P3")));
+			}
+			TestTrue(TEXT("the model validates"), Blueprint.IsValid());
+			TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
+		});
+
+		It(TEXT("reads 1.x and 2.x and flags any other version"), [this]()
+		{
+			TestTrue(TEXT("1.0.0"), N2CJsonContract::IsReadable(TEXT("1.0.0")));
+			TestTrue(TEXT("1.2"), N2CJsonContract::IsReadable(TEXT("1.2")));
+			TestTrue(TEXT("2.0.0"), N2CJsonContract::IsReadable(TEXT("2.0.0")));
+			TestTrue(TEXT("2.3.1"), N2CJsonContract::IsReadable(TEXT("2.3.1")));
+			TestFalse(TEXT("3.0.0"), N2CJsonContract::IsReadable(TEXT("3.0.0")));
+			TestFalse(TEXT("0.9"), N2CJsonContract::IsReadable(TEXT("0.9")));
+			TestFalse(TEXT("empty"), N2CJsonContract::IsReadable(TEXT("")));
+			TestFalse(TEXT("v2"), N2CJsonContract::IsReadable(TEXT("v2")));
+			FN2CBlueprint Fresh;
+			TestEqual(TEXT("a new model's version"), Fresh.Version.Value, FString(TEXT("2.0.0")));
+		});
+	});
 
 	Describe(TEXT("Isolation"), [this]()
 	{

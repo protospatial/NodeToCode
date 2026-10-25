@@ -240,6 +240,10 @@ its environment when no key is saved, so a live check never types or saves a key
   `additionalProperties`, DeepSeek `thinking` and `reasoning_effort`. A case passes when the translation returns
   code and every rule holds. It also scans the editor log, `Saved/Logs`, the plugin log and new translation folders
   for key values and `Saved/Logs` for `key=`. Report: `logs/live_provider_matrix_<label>.json`.
+  - `--fanout` (card 0135) also adds a data fan-out before the cases: Get Actor Location's Return Value into Print
+    String's In String (through the To String (Vector) node the schema inserts) and into a Set Actor Location run
+    after the Print String. The report's `fanout` lists the N2C JSON's array-valued `flows.data` entries, and each
+    case keeps its `code` so the translation of the fan-out can be read.
   - The case list holds current models only (the live entries of `N2CLLMModelRegistry.cpp`): no retired, deprecated
     or "shuts down" IDs are tested. Update it when the registry's lineup changes.
   - Each translation is bounded by `--timeout` (wall clock; the streamed response's half-second progress events keep

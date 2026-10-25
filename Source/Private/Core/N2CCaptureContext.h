@@ -80,9 +80,6 @@ private:
     /** The Blueprint the captured graph belongs to; a nested graph of any other Blueprint names its owner */
     TWeakObjectPtr<UBlueprint> CapturedBlueprint;
 
-    /** Nodes of the current graph whose flows are recorded (a data link is recorded once both ends are) */
-    TSet<const UEdGraphNode*> FlowsRecorded;
-
     /** Tracking sets to prevent duplicate processing */
     TSet<FString> ProcessedStructPaths;
     TSet<FString> ProcessedEnumPaths;
@@ -145,6 +142,9 @@ private:
 
     /** Follow pin connections through knot nodes to find the first non-knot target */
     UEdGraphPin* TraceConnectionThroughKnots(UEdGraphPin* StartPin) const;
+
+    /** Every non-knot pin an output pin reaches, through knots and every branch of their fan-out, in link order */
+    TArray<UEdGraphPin*> TraceTargetsThroughKnots(UEdGraphPin* OutputPin) const;
 
     /** Process node type and core properties */
     void ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);

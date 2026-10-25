@@ -10,7 +10,7 @@
         A valid Node to Code JSON object (FN2CBlueprint serialized) typically looks like this:
 
         {
-          "version": "1.0.0",
+          "version": "2.0.0",
           "metadata": {
             "Name": "MyBlueprint",
             "BlueprintType": "Normal",
@@ -81,7 +81,8 @@
                   "N1->N2->N3"
                 ],
                 "data": {
-                  "N1.P2": "N2.P1"
+                  "N1.P2": "N2.P1",
+                  "N3.P4": ["N4.P2", "N5.P3"]
                 }
               }
             },
@@ -116,7 +117,7 @@
     
         **Key Fields**:
     
-        - `"version"`: Always `"1.0.0"` or higher.
+        - `"version"`: `"2.0.0"` (N2C JSON v2). Earlier documents say `"1.0.0"`; they have the same fields, and every `"data"` value is a single pin.
         - `"metadata"`: Contains:
           - `"Name"`: The name of the Blueprint.
           - `"BlueprintType"`: e.g., `"Normal"`, `"Const"`, `"MacroLibrary"`, `"Interface"`, `"LevelScript"`, or `"FunctionLibrary"`.
@@ -151,7 +152,7 @@
     
         - `"flows"`: Within each graph:
           - `"execution"`: An array of execution flow strings, e.g., `"N1->N2->N3"`.
-          - `"data"`: A map from `"N1.P2"` to `"N2.P1"`, denoting data-flow connections.
+          - `"data"`: The data-flow connections: an object keyed by an output pin (`"N1.P2"`). Its value is the input pin that output feeds (`"N2.P1"`), or an array of input pins when one output feeds several inputs (`["N4.P2", "N5.P3"]`): the same value goes to every listed input. Each connected data input appears exactly once as a target, so a pin with `"connected": true` always has its source here.
     
         - `"structs"` (optional): Array of struct objects. Each struct object includes:
           - `"name"`: The name of the struct.

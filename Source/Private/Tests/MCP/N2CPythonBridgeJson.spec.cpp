@@ -12,7 +12,9 @@
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTagManager.h"
+#include "Models/N2CJsonContract.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
+#include "Misc/FileHelper.h"
 #include "BlueprintEditor.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -260,6 +262,34 @@ void FN2CPythonBridgeJsonSpec::Define()
 			FScopedStateFolder StateFolder;
 			const FString Error = FailureError(TEXT("RemoveTag"), UN2CPythonBridge::RemoveTag(GraphGuidText, Awkward));
 			TestEqual(TEXT("error"), Error, FString::Printf(TEXT("Tag '%s' not found on graph %s"), Awkward, GraphGuidText));
+		});
+
+		// Card 0135: the v1 reader is reachable from Python (Tests/Migration reads a 1.2.3 save with it)
+		It(TEXT("ReadN2CJson reads a v1 document into the current version and refuses text that is not N2C JSON"), [this]()
+		{
+			FString V1;
+			if (TestTrue(TEXT("the v1 fixture loads"), FFileHelper::LoadFileToString(V1, *(N2CTest::FixturesDir(TEXT("Capture/V1")) / TEXT("FanOutData.json")))))
+			{
+				const TSharedPtr<FJsonObject> Data = SuccessData(TEXT("ReadN2CJson"), UN2CPythonBridge::ReadN2CJson(V1));
+				ExpectString(TEXT("ReadN2CJson"), Data, TEXT("source_version"), TEXT("1.0.0"));
+				ExpectString(TEXT("ReadN2CJson"), Data, TEXT("version"), N2CJsonContract::Version);
+				if (Data.IsValid())
+				{
+					TestTrue(TEXT("valid"), Data->GetBoolField(TEXT("valid")));
+					TestEqual(TEXT("graphs"), static_cast<int32>(Data->GetNumberField(TEXT("graphs"))), 1);
+					TestEqual(TEXT("nodes"), static_cast<int32>(Data->GetNumberField(TEXT("nodes"))), 4);
+					// The v1 document kept one edge per output: three
+					TestEqual(TEXT("data_edges"), static_cast<int32>(Data->GetNumberField(TEXT("data_edges"))), 3);
+					const TSharedPtr<FJsonObject>* N2CJson = nullptr;
+					if (TestTrue(TEXT("n2c_json is an object"), Data->TryGetObjectField(TEXT("n2c_json"), N2CJson)))
+					{
+						TestEqual(TEXT("n2c_json version"), (*N2CJson)->GetStringField(TEXT("version")), FString(N2CJsonContract::Version));
+					}
+				}
+			}
+			TestFalse(TEXT("ReadN2CJson of text that is not JSON"), FailureError(TEXT("ReadN2CJson"), UN2CPythonBridge::ReadN2CJson(Awkward)).IsEmpty());
+			AddExpectedError(TEXT("Missing version field in JSON"), EAutomationExpectedErrorFlags::Contains, 1);
+			TestFalse(TEXT("ReadN2CJson of JSON that is not N2C JSON"), FailureError(TEXT("ReadN2CJson"), UN2CPythonBridge::ReadN2CJson(TEXT("{\"name\":\"x\"}"))).IsEmpty());
 		});
 
 		It(TEXT("RemoveTag reports an awkward invalid GUID"), [this]()

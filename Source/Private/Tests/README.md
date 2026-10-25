@@ -62,7 +62,6 @@ case back on. Currently disabled:
 | `NodeToCode.LLM.Parse.Fixtures` | Anthropic: a sentence before the fenced answer is skipped | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | OpenAI: an answer in a bare fence parses | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | Gemini: output tokens include thoughtsTokenCount | llm-layer-27 (card 0185) |
-| `NodeToCode.Capture.Golden` | <every case> survives ToJson -> FromJson -> ToJson unchanged (8 cases) | translation-core-25 (card 0135) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -84,21 +83,23 @@ a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing ca
 
 ## Capture goldens
 
-`NodeToCode.Capture.Golden` (`Capture/N2CCaptureGolden.spec.cpp`) pins today's N2C JSON v1 capture of the graph
-shapes below, so the E10 capture rewrite (cards 0133-0138) and the capture fixes (0130, 0234-0236) show every output
-change they make. Each case builds a graph in code with `N2CTest::FTestBlueprint` (`N2CTestBlueprintFactory.h`: a
-transient Actor Blueprint named `BP_N2CGolden_<case>` in its own `/Game/N2CTest_<guid>` package, never saved or
-registered; under `/Game` because capture only follows functions, macros, structs and enums whose path contains
-`/Game/` or `/Content/`, translation-core-21, card 0235), runs what the editor runs
-(`FN2CNodeCollector::CollectNodesFromGraph`, `N2C::CaptureNodes`, `FN2CSerializer::ToJson`),
-replaces the package path, GUIDs and the session-dependent `Var_<graph>_<index>` member name with `<PACKAGE>`,
-`<GUID>` and `<OBJECT_INDEX>`, and compares the result with `Goldens/Capture/<case>.json`. On a mismatch it reports
-the first differing line and writes the whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`.
+`NodeToCode.Capture.Golden` (`Capture/N2CCaptureGolden.spec.cpp`) pins today's N2C JSON (2.0.0 since card 0135) capture
+of the graph shapes below, so the E10 capture rewrite (cards 0133-0138) and the capture fixes (0130, 0234-0236) show
+every output change they make. Each case builds a graph in code with `N2CTest::FTestBlueprint`
+(`N2CTestBlueprintFactory.h`: a transient Actor Blueprint named `BP_N2CGolden_<case>` in its own `/Game/N2CTest_<guid>`
+package, never saved or registered; under `/Game` because capture only follows functions, macros, structs and enums
+whose path contains `/Game/` or `/Content/`, translation-core-21, card 0235), runs what the editor runs
+(`FN2CNodeCollector::CollectNodesFromGraph`, `N2C::CaptureNodes`, `FN2CSerializer::ToJson`), replaces the package path,
+GUIDs and the session-dependent `Var_<graph>_<index>` member name with `<PACKAGE>`, `<GUID>` and `<OBJECT_INDEX>`, and
+compares the result with `Goldens/Capture/<case>.json`. On a mismatch it reports the first differing line and writes the
+whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`.
 
 - **Core shapes (card 0126):** `FanOutData` (one output into three inputs), `Knots` (an exec knot and a two-knot data
-  chain that fans out), `Branch`, `SwitchOnInt` (cases 0, 1 and Default, two of them into one node), `SwitchOnEnum`
-  (`EComponentMobility`), `MakeBreakStruct` (Make and Break Vector), `GateMultiExec` (three events into Enter, Open
-  and Close of the StandardMacros Gate) and `TimelineMultiExec` (Play and Reverse of an empty timeline).
+  chain that fans out), `FanOutActorLocation` (card 0135: GetActorLocation's Return Value into To String (Vector) and
+  SetActorLocation's New Location, the fan-out of the card's "Done looks like"), `Branch`, `SwitchOnInt` (cases 0, 1 and
+  Default, two of them into one node), `SwitchOnEnum` (`EComponentMobility`), `MakeBreakStruct` (Make and Break Vector),
+  `GateMultiExec` (three events into Enter, Open and Close of the StandardMacros Gate) and `TimelineMultiExec` (Play and
+  Reverse of an empty timeline).
 - **Harder shapes (card 0127):** `UserStruct` (a user struct with an Actor object member, an int and a user enum
   member, through Break and Make), `UserEnum` (Switch on a user enum with the entries Min, Max and MaxHealth),
   `Recursion_Depth1` and `Recursion_Depth2` (Root calls Child and itself, Child calls Grandchild, Grandchild calls
@@ -130,33 +131,40 @@ the first differing line and writes the whole output to `<Project>/Saved/Automat
   makes user types outside the editor's undo history and clears the flags of the `STRUCT_REINST_` copies the struct
   compiler leaves behind; either would keep the package alive).
 - **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
-  card that changes them: lossy data edges and knot fan-out (translation-core-1, card 0135), node-pair exec flows
-  (translation-core-2, 0136), ghost default events (translation-core-18/19, 0137), display-text names (gap-5, 0138),
-  Break Struct captured as a Variable named `None` (translation-core-4, 0234), custom events with member_name `None`
-  and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134 fixed and removed the ID defects
-  (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one ID, and node IDs that depended on
-  traversal order; translation-core-9: a function that calls itself was captured twice). From card 0127: a user struct
-  with an object member is dropped from `structs` (translation-core-8, 0236); enum values whose display name contains
-  `max` are dropped (translation-core-11, 0236); a struct or enum met twice logs `Missing name` (translation-core-24,
-  0236); collapsed graphs and user macros are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not
-  name the captured graph (imp-translation-core-4, 0235) and a macro without `macro` in its name is an EventGraph
-  (translation-core-20, 0235); the Enhanced Input event is typed `CallFunction` (translation-core-15, 0234). The list
-  lives in the case table in the spec and is written into the golden. Error log lines that a known defect writes
-  (`Missing name`, `Member Owner requires a type name`) are the case's `ExpectedErrors`: the case fails if they stop
-  appearing, so the fixing card updates the case.
-- **Round trip:** `drops exec pins, structs and enums in ToJson -> FromJson -> ToJson today` pins the lossy reader
-  (translation-core-25): `FromJson` needs a pin `type` that `ToJson` never writes for exec pins and never reads
-  structs or enums. Card 0135 deletes that case and enables `survives ToJson -> FromJson -> ToJson unchanged`.
+  card that changes them: node-pair exec flows (translation-core-2, 0136), ghost default events (translation-core-18/19,
+  0137), display-text names (gap-5, 0138), Break Struct captured as a Variable named `None` (translation-core-4, 0234),
+  custom events with member_name `None` and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134
+  fixed and removed the ID defects (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one
+  ID, and node IDs that depended on traversal order; translation-core-9: a function that calls itself was captured
+  twice). Card 0135 fixed and removed the lossy data edges (translation-core-1: `flows.data` kept one edge per output,
+  and a knot's fan-out only its first link). From card 0127: a user struct with an object member is dropped from
+  `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped (translation-core-11,
+  0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236); collapsed graphs and user macros
+  are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not name the captured graph
+  (imp-translation-core-4, 0235) and a macro without `macro` in its name is an EventGraph (translation-core-20, 0235);
+  the Enhanced Input event is typed `CallFunction` (translation-core-15, 0234). The list lives in the case table in the
+  spec and is written into the golden. Error log lines that a known defect writes (`Missing name`, `Member Owner
+  requires a type name`) are the case's `ExpectedErrors`: the case fails if they stop appearing, so the fixing card
+  updates the case.
+- **Round trip:** every case `survives ToJson -> FromJson -> ToJson unchanged` (card 0135, translation-core-25:
+  `FromJson` reads a pin without `type` as Exec, reads `structs` and `enums`, and a fan-out's array).
+- **Data flows (card 0135):** `DataFlows` checks on every case that each connected data input is the target of
+  exactly one `flows.data` edge, every key is an output pin and an array value has several targets, and that
+  `FanOutActorLocation` and `Knots` list both targets of their fan-out.
+- **v1 reader (card 0135):** `V1Reader` reads the N2C JSON 1.0.0 documents in `Fixtures/Capture/V1`: the goldens of
+  `FanOutData`, `Knots` and `UserEnum` from before card 0135 and `StructsAndEnums` (FromJson then ToJson gives the
+  same document with version 2.0.0), and `BP_Door_1.2.3.json` (the 1.2.3 save of `Tests/Migration`); plus an array
+  fan-out written back unchanged and the readable versions (1.x and 2.x).
 - **Updating:** a change to capture output regenerates the goldens in the same commit and its message explains the
   golden diff: `.\build.ps1 -All -Test -TestFilter NodeToCode.Capture -UpdateGoldens` (the editor gets
   `-N2CUpdateGoldens`; `N2C_UPDATE_GOLDENS=1` in its environment does the same), then the same command without
   `-UpdateGoldens` to check every engine agrees. Engines run 5.6, 5.7, 5.8 in that order and each writes
   `<case>.<engine>.json` when that file exists, else `<case>.json`.
 - **Per-engine goldens:** `<case>.<engine>.json` replaces `<case>.json` on that engine only where the engine really
-  differs. Today: `Branch`, `CopyPaste`, `EnhancedInputEvent`, `GateMultiExec`, `NestedGraphs_Depth1`,
-  `SameNameOwners`, `SwitchOnEnum`, `SwitchOnInt`, `TimelineMultiExec` and `UserEnum` have a `.5.8.json`, because UE
-  5.8's `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's own name
-  (`CollectGarbage`) where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Calls to the Blueprint's own
+  differs. Today: `Branch`, `CopyPaste`, `EnhancedInputEvent`, `FanOutActorLocation`, `GateMultiExec`,
+  `NestedGraphs_Depth1`, `SameNameOwners`, `SwitchOnEnum`, `SwitchOnInt`, `TimelineMultiExec` and `UserEnum` have a
+  `.5.8.json`, because UE 5.8's `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's
+  own name (`CollectGarbage`) where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Calls to the Blueprint's own
   functions are the same on every engine. Card 0138's stable identifiers remove the difference. To add one, copy
   `<case>.json` to `<case>.<engine>.json` and regenerate on that engine.
 - **Locale:** `build.ps1 -Test` runs the editor with `-culture=en`; the goldens are recorded that way. `-TestCulture

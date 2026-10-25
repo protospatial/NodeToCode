@@ -1,0 +1,70 @@
+# 0003. N2C JSON v2 contract: version 2.0.0, lossless data edges and a kept v1 reader
+
+## Status
+
+proposed (2026-10-24), provisional pending the owner's confirmation on card 0117
+
+**Provisional:** the owner has not decided card 0117 (review decision dec-7). Card 0135 applies the review's
+recommendation so the lossless data edges can land; cards 0136-0138 and 0132 follow it. The parts the owner is most
+likely to change, the version string and the field names, live in one header,
+`Source/Public/Models/N2CJsonContract.h`, and in prose in the prompts; changing them there and regenerating the
+capture goldens (`build.ps1 -Test -UpdateGoldens`) is all a different choice needs.
+
+## Sources
+
+- Kanban card 0117 "Decide and record the N2C JSON v2 contract" (owner decision, open) and card 0135, which applies
+  it first.
+- NodeToCode 2.0 review, 2026-10-22: dec-7 (options and recommendation), next-2 (scope of v2), pr-7 (fan-out model),
+  issue-13 (liveness), gap-5 (stable keys), gap-9 (version and migration). Evidence:
+  `python -I Reviews/2026-10-22/kanban/lookup.py dec-7 next-2 pr-7 issue-13 gap-5 gap-9` in the workspace.
+- PR #7 "Support for situation when one output pin connected with few input" (Yury Rakhuba), against main.
+
+## Context
+
+N2C JSON is what every prompt, MCP client (get-focused-blueprint), Python caller and saved translation
+(`N2C_BP_*.json`) reads. Version 1.0.0 was lossy: `flows.data` kept one edge per output pin, so an output feeding
+several inputs lost all but one (translation-core-1, the main cause of issue #13); exec flows are node pairs that
+lose which pin a link uses; names are display text that change with editor language. `FN2CVersion` was hard-wired to
+"1.0.0" and the validator rejected any other value, so no consumer could tell a fixed document from an old one.
+
+Options (dec-7):
+
+1. N2C JSON v2: stable identifiers, lossless edges, pin-qualified exec, a version bump, the v1 reader kept.
+2. Incremental 1.x patches, for example merging PR #7's shape (an array of "N1.P2 -> N2.P1" strings for every graph).
+3. Replace N2C JSON with Epic's graph DSL.
+
+The review recommends option 1, as a versioned contract with one spec shared by all prompts, and a benchmark against
+Epic's DSL in Phase 2 (E18) before any switch.
+
+## Decision
+
+Option 1, provisionally. The sub-choices of card 0117:
+
+1. **Version string:** `"version": "2.0.0"` (`N2CJsonContract::Version`). After the 2.0.0 plugin release an additive
+   optional field bumps the minor (2.1.0) and a breaking change the major (3.0.0). Until that release the remaining
+   v2 cards (0136-0138) land under 2.0.0, since no released build has written it.
+2. **Data edges:** `flows.data` stays an object keyed by the output pin ref ("N1.P2"). The value is the one input pin
+   ref it feeds, or an array of input pin refs when it feeds several (PR #7's model, `FN2CDataFlowTargets`). A graph
+   without fan-out gets exactly the 1.0.0 object. Every edge appears once, recorded from its output side through
+   every branch of a knot. Not a `{from, to}` list: that would change every graph's JSON.
+3. **Exec edges (card 0136):** pin-qualified pairs such as `"N1.P2->N3.P1"`, one per link, no chain compression.
+4. **Stable keys (card 0138):** pin `name` = `UEdGraphPin::PinName`, a node `class` field, `member_parent` and
+   `member_name` from `FMemberReference`; display text only in named hint fields (node `title`, pin `label`).
+5. **Liveness (card 0137):** `"unused": true` on pure nodes whose outputs are never consumed, `"unreachable": true`
+   on impure nodes no entry reaches, `"disabled": true` on disabled nodes; ghost (default, unconnected) events
+   dropped. Each flag is written only when true.
+6. **v1 reader:** `FN2CSerializer::FromJson` (and `UN2CPythonBridge::ReadN2CJson`, Python
+   `nodetocode.read_n2c_json`) reads 1.x and 2.x into the v2 model, whose version is then 2.0.0; the validator accepts
+   both majors. It is kept for the whole 2.x line and may go with 3.0.0. Saved translations are never rewritten.
+7. **Shared spec fragment (card 0132):** `Content/Prompting/Shared/N2CJsonSpec.md`, included by the six CodeGen
+   prompts and the batch spec. Until it exists, each prompt states the version and the `data` shape in the same words.
+
+## Consequences
+
+- Consumers tell old from new by `version`. A 1.x consumer reading 2.0.0 sees an array only where an output fans
+  out; the prompts, the batch spec and the MCP tool docs describe both value forms.
+- `FN2CFlows::Data` is `TMap<FString, FN2CDataFlowTargets>`; Blueprint or Python code that read the old
+  `TMap<FString, FString>` must read `Targets` (none in the plugin did).
+- The capture goldens record 2.0.0, and `NodeToCode.Capture.Golden.V1Reader` keeps 1.0.0 documents readable.
+- If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
+  adds an array where 1.0.0 dropped edges.

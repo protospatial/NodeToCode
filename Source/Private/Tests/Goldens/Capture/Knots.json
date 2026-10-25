@@ -3,16 +3,6 @@
 	"description": "Function Knots(Value): the exec line runs through a knot; Value runs through two knots and the second fans out to Add.A and Add.B; Add is the result.",
 	"known_defects": [
 		{
-			"finding": "translation-core-1 (knot fan-out)",
-			"card": "0135",
-			"effect": "A knot's fan-out is followed through LinkedTo[0] only, and a knot traced from the input side records the edge backwards, so one of Add's inputs loses its source"
-		},
-		{
-			"finding": "translation-core-1 (PR #7, issue #13)",
-			"card": "0135",
-			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -20,7 +10,7 @@
 	],
 	"capture":
 	{
-		"version": "1.0.0",
+		"version": "2.0.0",
 		"metadata":
 		{
 			"name": "BP_N2CGolden_Knots",
@@ -114,7 +104,10 @@
 					],
 					"data":
 					{
-						"N1.P2": "N2.P4",
+						"N1.P2": [
+							"N2.P3",
+							"N2.P4"
+						],
 						"N2.P5": "N3.P7"
 					}
 				}

@@ -1,0 +1,142 @@
+{
+	"version": "1.0.0",
+	"metadata": {
+		"name": "BP_N2CGolden_UserEnum",
+		"blueprint_type": "Normal",
+		"blueprint_class": "BP_N2CGolden_UserEnum"
+	},
+	"graphs": [
+		{
+			"name": "SwitchLimit",
+			"graph_type": "Function",
+			"nodes": [
+				{
+					"id": "N1",
+					"type": "FunctionEntry",
+					"name": "SwitchLimit",
+					"member_parent": "BP_N2CGolden_UserEnum",
+					"member_name": "None",
+					"input_pins": [],
+					"output_pins": [
+						{
+							"id": "P1",
+							"name": "",
+							"connected": true
+						},
+						{
+							"id": "P2",
+							"name": "Limit",
+							"type": "Byte",
+							"sub_type": "E_GoldenLimit",
+							"default_value": "NewEnumerator0",
+							"connected": true
+						}
+					]
+				},
+				{
+					"id": "N2",
+					"type": "SwitchEnum",
+					"name": "Switch",
+					"input_pins": [
+						{
+							"id": "P3",
+							"name": "",
+							"connected": true
+						},
+						{
+							"id": "P4",
+							"name": "Selection",
+							"type": "Byte",
+							"sub_type": "E_GoldenLimit",
+							"default_value": "NewEnumerator0",
+							"connected": true
+						}
+					],
+					"output_pins": [
+						{
+							"id": "P5",
+							"name": "Min",
+							"connected": true
+						},
+						{
+							"id": "P6",
+							"name": "Max",
+							"connected": true
+						},
+						{
+							"id": "P7",
+							"name": "Max Health"
+						}
+					]
+				},
+				{
+					"id": "N3",
+					"type": "CallFunction",
+					"name": "Collect Garbage",
+					"member_parent": "KismetSystemLibrary",
+					"member_name": "CollectGarbage",
+					"input_pins": [
+						{
+							"id": "P8",
+							"name": "",
+							"connected": true
+						}
+					],
+					"output_pins": [
+						{
+							"id": "P9",
+							"name": ""
+						}
+					]
+				},
+				{
+					"id": "N4",
+					"type": "CallFunction",
+					"name": "Control Screensaver",
+					"member_parent": "KismetSystemLibrary",
+					"member_name": "ControlScreensaver",
+					"input_pins": [
+						{
+							"id": "P10",
+							"name": "",
+							"connected": true
+						},
+						{
+							"id": "P12",
+							"name": "Allow Screen Saver",
+							"type": "Boolean",
+							"default_value": "false"
+						}
+					],
+					"output_pins": [
+						{
+							"id": "P11",
+							"name": ""
+						}
+					]
+				}
+			],
+			"flows": {
+				"execution": [
+					"N1->N2",
+					"N2->N3",
+					"N2->N4"
+				],
+				"data": {
+					"N1.P2": "N2.P4"
+				}
+			}
+		}
+	],
+	"structs": [],
+	"enums": [
+		{
+			"name": "E_GoldenLimit",
+			"values": [
+				{
+					"name": "Min"
+				}
+			]
+		}
+	]
+}

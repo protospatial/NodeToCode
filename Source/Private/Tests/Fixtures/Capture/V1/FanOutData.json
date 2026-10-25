@@ -1,0 +1,135 @@
+{
+	"version": "1.0.0",
+	"metadata": {
+		"name": "BP_N2CGolden_FanOutData",
+		"blueprint_type": "Normal",
+		"blueprint_class": "BP_N2CGolden_FanOutData"
+	},
+	"graphs": [
+		{
+			"name": "FanOut",
+			"graph_type": "Function",
+			"nodes": [
+				{
+					"id": "N1",
+					"type": "FunctionEntry",
+					"name": "FanOut",
+					"member_parent": "BP_N2CGolden_FanOutData",
+					"member_name": "None",
+					"input_pins": [],
+					"output_pins": [
+						{
+							"id": "P1",
+							"name": "",
+							"connected": true
+						},
+						{
+							"id": "P2",
+							"name": "Value",
+							"type": "Integer",
+							"connected": true
+						}
+					]
+				},
+				{
+					"id": "N2",
+					"type": "CallFunction",
+					"name": "int + int",
+					"member_parent": "KismetMathLibrary",
+					"member_name": "Add_IntInt",
+					"pure": true,
+					"input_pins": [
+						{
+							"id": "P3",
+							"name": "A",
+							"type": "Integer",
+							"default_value": "0",
+							"connected": true
+						},
+						{
+							"id": "P4",
+							"name": "B",
+							"type": "Integer",
+							"default_value": "1",
+							"connected": true
+						}
+					],
+					"output_pins": [
+						{
+							"id": "P5",
+							"name": "Return Value",
+							"type": "Integer",
+							"default_value": "0",
+							"connected": true
+						}
+					]
+				},
+				{
+					"id": "N3",
+					"type": "CallFunction",
+					"name": "int * int",
+					"member_parent": "KismetMathLibrary",
+					"member_name": "Multiply_IntInt",
+					"pure": true,
+					"input_pins": [
+						{
+							"id": "P6",
+							"name": "A",
+							"type": "Integer",
+							"default_value": "0",
+							"connected": true
+						},
+						{
+							"id": "P7",
+							"name": "B",
+							"type": "Integer",
+							"default_value": "0",
+							"connected": true
+						}
+					],
+					"output_pins": [
+						{
+							"id": "P8",
+							"name": "Return Value",
+							"type": "Integer",
+							"default_value": "0",
+							"connected": true
+						}
+					]
+				},
+				{
+					"id": "N4",
+					"type": "FunctionResult",
+					"name": "Add Return Node...",
+					"member_parent": "BP_N2CGolden_FanOutData",
+					"input_pins": [
+						{
+							"id": "P9",
+							"name": "",
+							"connected": true
+						},
+						{
+							"id": "P10",
+							"name": "Result",
+							"type": "Integer",
+							"connected": true
+						}
+					],
+					"output_pins": []
+				}
+			],
+			"flows": {
+				"execution": [
+					"N1->N4"
+				],
+				"data": {
+					"N1.P2": "N3.P6",
+					"N2.P5": "N3.P7",
+					"N3.P8": "N4.P10"
+				}
+			}
+		}
+	],
+	"structs": [],
+	"enums": []
+}

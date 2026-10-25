@@ -389,7 +389,8 @@ if state["opened"]:
         state.update({
             "nodes": len(nodes),
             "exec_links": sum(f.count("->") for f in flows.get("execution") or []),
-            "data_links": len(flows.get("data") or {}),
+            # N2C JSON 2.0.0: a data value is one input pin or a list of them (fan-out)
+            "data_links": sum(len(v) if isinstance(v, list) else 1 for v in (flows.get("data") or {}).values()),
             "execution": flows.get("execution"),
             "begin_play": len(begin),
             "begin_play_exec_linked": any(p.get("connected") for n in begin for p in n.get("output_pins") or []
