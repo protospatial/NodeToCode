@@ -13,7 +13,8 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("translate-focused-blueprint"),
         TEXT("Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. ")
-        TEXT("It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs."),
+        TEXT("It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. ")
+        TEXT("Nothing is saved to the translation output directory."),
         TEXT("Translation")
     );
 

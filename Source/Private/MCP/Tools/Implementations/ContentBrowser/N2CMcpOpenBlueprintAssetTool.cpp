@@ -40,7 +40,7 @@ FMcpToolDefinition FN2CMcpOpenBlueprintAssetTool::GetDefinition() const
 	// asset_path property (required)
 	TSharedPtr<FJsonObject> AssetPathProp = MakeShareable(new FJsonObject);
 	AssetPathProp->SetStringField(TEXT("type"), TEXT("string"));
-	AssetPathProp->SetStringField(TEXT("description"), TEXT("Full path to the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor')"));
+	AssetPathProp->SetStringField(TEXT("description"), TEXT("Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). Must start with /Game/ or /Engine/: other mount points, such as a plugin's /<PluginName>/, are refused."));
 	Properties->SetObjectField(TEXT("asset_path"), AssetPathProp);
 	
 	// bring_to_front property (optional)
@@ -53,7 +53,7 @@ FMcpToolDefinition FN2CMcpOpenBlueprintAssetTool::GetDefinition() const
 	// focus_graph property (optional)
 	TSharedPtr<FJsonObject> FocusGraphProp = MakeShareable(new FJsonObject);
 	FocusGraphProp->SetStringField(TEXT("type"), TEXT("string"));
-	FocusGraphProp->SetStringField(TEXT("description"), TEXT("Optional: Specific graph to focus on (e.g., 'EventGraph', 'ConstructionScript')"));
+	FocusGraphProp->SetStringField(TEXT("description"), TEXT("Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'UserConstructionScript' for an Actor's construction script). An unknown name is not an error: the Blueprint opens and focused_graph comes back empty."));
 	FocusGraphProp->SetStringField(TEXT("default"), TEXT(""));
 	Properties->SetObjectField(TEXT("focus_graph"), FocusGraphProp);
 	

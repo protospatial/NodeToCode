@@ -2,7 +2,7 @@
 ***
 
 ## Automatic Translation Saving
-Translations are automatically saved locally to your project's Saved path when a translation successfully completes. This allows you to easily revisit previous translations or share translation files with other people, LLMs, and applications.
+Translations run from the editor are automatically saved locally to your project's Saved path (or the custom output directory in settings) when a translation successfully completes. A translation an MCP client requests with `translate-focused-blueprint` is not saved: the client receives it as the tool's result. This allows you to easily revisit previous translations or share translation files with other people, LLMs, and applications.
 
 ### Translation File Structure Visualization
 
@@ -14,9 +14,9 @@ ProjectRoot/
     └── NodeToCode/
         └── Translations/
             └── BlueprintName_YYYY-MM-DD-HH.MM.SS/  (Timestamp format)
-                ├── N2C_BP_BlueprintName.json       (Pretty-printed Blueprint JSON)
-                ├── N2C_BP_Minified_BlueprintName.json  (Minified Blueprint JSON)
-                ├── N2C_Translation_BlueprintName.json  (LLM translation response)
+                ├── N2C_BP_BlueprintName_YYYY-MM-DD-HH.MM.SS.json  (Pretty-printed Blueprint JSON)
+                ├── N2C_BP_Minified_BlueprintName_YYYY-MM-DD-HH.MM.SS.json  (Minified Blueprint JSON)
+                ├── N2C_Translation_BlueprintName_YYYY-MM-DD-HH.MM.SS.json  (LLM translation response)
                 └── GraphName/                      (Directory for each graph)
                     ├── GraphName.h                 (C++ header - only for C++ target)
                     ├── GraphName.ext               (Implementation file with language-specific extension)
@@ -32,7 +32,7 @@ ProjectRoot/
     - This is the efficient JSON representation of your Blueprint that's sent to the LLM for translation
     - Can be really helpful if using nested translation on a Blueprint system and you want to discuss the entire system with a peer or another LLM
     - Since 2.0 these files say `"version": "2.0.0"`. When one output pin feeds several inputs, its entry under `flows` > `data` lists all of them (`"N1.P2": ["N2.P1", "N3.P4"]`); 1.x files kept only one, so the LLM had to guess the other inputs. Each entry under `flows` > `execution` is one exec wire from the output pin to the input pin it runs (`"N3.P5->N4.P1"`), so a Branch's True and False, a Switch's cases or a Gate's Enter, Open and Close stay apart; 1.x files listed only node pairs (`"N3->N4"`). Nodes Blueprint never runs are marked, each flag present only when true: `"unused": true` on a pure node whose result nothing that runs reads, `"unreachable": true` on a node with exec pins that no event or entry reaches, and `"disabled": true` on a node disabled in the editor (exec runs past a disabled node with one exec input and one exec output). A new Blueprint's greyed-out default events that nothing is wired to are left out. Names do not depend on the editor language or on **Show Friendly Names**: each node has a `class`, functions and variables keep their declared names, and a pin's `name` is its internal name (`execute`, `then`, `ReturnValue`); the English title or pin label you see in the editor appears as `title` or `label` only when it says more than that name (1.x files had display text, in the editor's language, under `name`). Files saved by 1.2.x (`"version": "1.0.0"`) are left as they are and still read: from Python, `nodetocode.read_n2c_json(text)` reads either version
-4. **Translation Response**: The raw LLM translation response saved as JSON, including input/output token usage details
+4. **Translation Response**: The graphs and code parsed from the LLM's reply, saved as JSON with the input/output token usage
 5. **Per-Graph Folders**: Each graph in the Blueprint gets its own subfolder
 6. **Language-Specific Files**: The file extension for implementation files depends on the target language:
    - C++: `.cpp`

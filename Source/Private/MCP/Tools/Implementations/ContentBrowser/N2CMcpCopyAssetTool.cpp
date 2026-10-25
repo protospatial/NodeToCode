@@ -17,11 +17,10 @@ FMcpToolDefinition FN2CMcpCopyAssetTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("copy-asset"),
-        TEXT("Copy an asset to a new location in the content browser")
-    ,
-
-    	TEXT("Content Browser")
-
+        TEXT("Copy an asset to a new asset path in the content browser. The source may be under /Game/ or /Engine/; ")
+        TEXT("the destination must be under /Game/. Missing destination folders are created. ")
+        TEXT("An existing asset at the destination is never replaced: the copy fails."),
+        TEXT("Content Browser")
     );
 
     // Build input schema
@@ -35,6 +34,23 @@ FMcpToolDefinition FN2CMcpCopyAssetTool::GetDefinition() const
     Required.Add(TEXT("destinationPath"));
 
     Definition.InputSchema = BuildInputSchema(Properties, Required);
+
+    // What Execute does with each argument (BuildInputSchema writes only the types)
+    const TSharedPtr<FJsonObject>* SchemaProperties = nullptr;
+    if (Definition.InputSchema->TryGetObjectField(TEXT("properties"), SchemaProperties))
+    {
+        auto Describe = [SchemaProperties](const TCHAR* Name, const TCHAR* Description)
+        {
+            const TSharedPtr<FJsonObject>* Prop = nullptr;
+            if ((*SchemaProperties)->TryGetObjectField(Name, Prop))
+            {
+                (*Prop)->SetStringField(TEXT("description"), Description);
+            }
+        };
+        Describe(TEXT("sourcePath"), TEXT("Asset to copy: package path '/Game/Folder/Asset' or object path '/Game/Folder/Asset.Asset'"));
+        Describe(TEXT("destinationPath"), TEXT("Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain spaces or dots"));
+        Describe(TEXT("overwriteExisting"), TEXT("Default false: an existing destination asset is reported before copying. true skips that check, but the copy still fails, because it never replaces an existing asset"));
+    }
 
     return Definition;
 }
@@ -92,7 +108,7 @@ FMcpToolCallResult FN2CMcpCopyAssetTool::Execute(const TSharedPtr<FJsonObject>& 
             if (ExistingAsset.IsValid())
             {
                 return FMcpToolCallResult::CreateErrorResult(
-                    FString::Printf(TEXT("Destination asset already exists: %s. Set overwriteExisting=true to replace it."), 
+                    FString::Printf(TEXT("Destination asset already exists: %s. Copy to another name, or rename or delete the existing asset first."), 
                         *NormalizedDestPath)
                 );
             }
@@ -136,8 +152,7 @@ FMcpToolCallResult FN2CMcpCopyAssetTool::Execute(const TSharedPtr<FJsonObject>& 
         // Add tips
         TArray<TSharedPtr<FJsonValue>> Tips;
         Tips.Add(MakeShareable(new FJsonValueString(TEXT("Use 'move-asset' to move the original asset instead of copying"))));
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("Use 'open-blueprint' to open the copied Blueprint"))));
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("Set overwriteExisting=true to replace existing assets"))));
+        Tips.Add(MakeShareable(new FJsonValueString(TEXT("Use 'open-blueprint-asset' to open the copied Blueprint"))));
         Result->SetArrayField(TEXT("tips"), Tips);
 
         FString ResultString;
