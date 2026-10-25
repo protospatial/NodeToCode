@@ -9,15 +9,15 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
     {
         if (UScriptStruct* Struct = MakeStructNode->StructType)
         {
-            OutNodeDef.Name = FString::Printf(TEXT("Make %s"), *Struct->GetName());
-            OutNodeDef.MemberName = GetCleanClassName(Struct->GetName());
+            OutNodeDef.Title = FString::Printf(TEXT("Make %s"), *Struct->GetName());
+            OutNodeDef.MemberName = Struct->GetName();
 
             // Get the path name and extract just the base name before the period
             const FString FullPath = Struct->GetStructPathName().ToString();
             int32 DotIndex;                                                                                                                                                                                                                
             if (FullPath.FindChar('.', DotIndex))                                                                                                                                                                                          
             {                                                                                                                                                                                                                              
-                OutNodeDef.MemberParent = GetCleanClassName(FullPath.Left(DotIndex));                                                                                                                                                                         
+                OutNodeDef.MemberParent = FullPath.Left(DotIndex);                                                                                                                                                                         
             }                                                                                                                                                                                                                              
             else                                                                                                                                                                                                                           
             {                                                                                                                                                                                                                              
@@ -26,7 +26,7 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
             
             // Log make struct details
             FString StructInfo = FString::Printf(TEXT("Make Struct: %s, Type: %s"),
-                *OutNodeDef.Name,
+                *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
             FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
             return;
@@ -38,15 +38,15 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
     {
         if (UScriptStruct* Struct = BreakStructNode->StructType)
         {
-            OutNodeDef.Name = FString::Printf(TEXT("Break %s"), *Struct->GetName());
-            OutNodeDef.MemberName = GetCleanClassName(Struct->GetName());
+            OutNodeDef.Title = FString::Printf(TEXT("Break %s"), *Struct->GetName());
+            OutNodeDef.MemberName = Struct->GetName();
 
             // Get the path name and extract just the base name before the period
             const FString FullPath = Struct->GetStructPathName().ToString();
             int32 DotIndex;
             if (FullPath.FindChar('.', DotIndex))
             {
-                OutNodeDef.MemberParent = GetCleanClassName(FullPath.Left(DotIndex));
+                OutNodeDef.MemberParent = FullPath.Left(DotIndex);
             }
             else
             {
@@ -55,7 +55,7 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
             
             // Log break struct details
             FString StructInfo = FString::Printf(TEXT("Break Struct: %s, Type: %s"),
-                *OutNodeDef.Name,
+                *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
             FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
             return;
@@ -67,11 +67,11 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
     {
         if (UScriptStruct* Struct = StructNode->StructType)
         {
-            OutNodeDef.MemberParent = GetCleanClassName(Struct->GetName());
+            OutNodeDef.MemberParent = Struct->GetName();
             
             // Log struct operation details
             FString StructInfo = FString::Printf(TEXT("Struct Operation: %s, Type: %s"),
-                *OutNodeDef.Name,
+                *OutNodeDef.Title,
                 *OutNodeDef.MemberParent);
             FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
             return;
@@ -83,15 +83,15 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
     {
         if (UScriptStruct* Struct = SetFieldsNode->StructType)
         {
-            OutNodeDef.Name = FString::Printf(TEXT("Set Fields In %s"), *Struct->GetName());
-            OutNodeDef.MemberName = GetCleanClassName(Struct->GetName());
+            OutNodeDef.Title = FString::Printf(TEXT("Set Fields In %s"), *Struct->GetName());
+            OutNodeDef.MemberName = Struct->GetName();
 
             // Get the path name and extract just the base name before the period
             const FString FullPath = Struct->GetStructPathName().ToString();
             int32 DotIndex;
             if (FullPath.FindChar('.', DotIndex))
             {
-                OutNodeDef.MemberParent = GetCleanClassName(FullPath.Left(DotIndex));
+                OutNodeDef.MemberParent = FullPath.Left(DotIndex);
             }
             else
             {
@@ -100,7 +100,7 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
             
             // Log set fields details
             FString StructInfo = FString::Printf(TEXT("Set Fields In Struct: %s, Type: %s"),
-                *OutNodeDef.Name,
+                *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
             FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
             return;

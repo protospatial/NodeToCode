@@ -1,13 +1,7 @@
 {
 	"case": "ForEachLoop",
 	"description": "Function Loop(Values: int array): ForEachLoop (StandardMacros) over Values; Loop Body runs CollectGarbage, Completed runs ControlScreensaver.",
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -25,14 +19,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "Loop",
+						"class": "K2Node_FunctionEntry",
+						"title": "Loop",
 						"member_parent": "BP_N2CGolden_ForEachLoop",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -47,7 +42,7 @@
 					{
 						"id": "N2",
 						"type": "MacroInstance",
-						"name": "For Each Loop",
+						"class": "K2Node_MacroInstance",
 						"member_parent": "StandardMacros",
 						"member_name": "ForEachLoop",
 						"input_pins": [
@@ -67,7 +62,7 @@
 						"output_pins": [
 							{
 								"id": "P5",
-								"name": "Loop Body",
+								"name": "LoopBody",
 								"connected": true
 							},
 							{
@@ -90,38 +85,38 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P9",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P10",
-								"name": ""
+								"name": "then"
 							}
 						]
 					},
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "Control Screensaver",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
 								"id": "P11",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P13",
-								"name": "Allow Screen Saver",
+								"name": "bAllowScreenSaver",
 								"type": "Boolean",
 								"default_value": "false"
 							}
@@ -129,7 +124,7 @@
 						"output_pins": [
 							{
 								"id": "P12",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

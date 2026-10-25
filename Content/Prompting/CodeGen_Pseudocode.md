@@ -24,7 +24,7 @@
                 {
                   "id": "N1",
                   "type": "CallFunction",
-                  "name": "Print String",
+                  "class": "K2Node_CallFunction",
                   "member_parent": "KismetSystemLibrary",
                   "member_name": "PrintString",
                   "comment": "Optional node comment",
@@ -33,7 +33,7 @@
                   "input_pins": [
                     {
                       "id": "P1",
-                      "name": "Exec",
+                      "name": "execute",
                       "type": "Exec",
                       "sub_type": "",
                       "default_value": "",
@@ -61,7 +61,7 @@
                   "output_pins": [
                     {
                       "id": "P3",
-                      "name": "Then",
+                      "name": "then",
                       "type": "Exec",
                       "sub_type": "",
                       "default_value": "",
@@ -118,7 +118,7 @@
     
         **Key Fields**:
     
-        - `"version"`: `"2.0.0"` (N2C JSON v2). Earlier documents say `"1.0.0"`; they have the same fields, and every `"data"` value is a single pin.
+        - `"version"`: `"2.0.0"` (N2C JSON v2). Earlier documents say `"1.0.0"`: in them a node's display title is `"name"` (there is no `"class"` or `"title"`), pin names are display names (an exec pin's is often empty), and every `"data"` value is a single pin.
         - `"metadata"`: Contains:
           - `"Name"`: The name of the Blueprint.
           - `"BlueprintType"`: e.g., `"Normal"`, `"Const"`, `"MacroLibrary"`, `"Interface"`, `"LevelScript"`, or `"FunctionLibrary"`.
@@ -131,9 +131,10 @@
           - `"nodes"`: Array of node objects. Each node object includes:
             - `"id"`: Short ID (e.g., `"N1"`).
             - `"type"`: Matches the EN2CNodeType enum (e.g., `"CallFunction"`, `"VariableSet"`, `"VariableGet"`, `"Event"`, etc.).
-            - `"name"`: Display name of the node.
-            - `"member_parent"`: For function or variable nodes, the owning class or struct name (optional).
-            - `"member_name"`: The specific function or variable name (optional).
+            - `"class"`: The Unreal node class (e.g., `"K2Node_CallFunction"`, `"K2Node_IfThenElse"`, `"K2Node_VariableGet"`).
+            - `"title"`: The node's title as the editor shows it, in English (optional). A hint only: it is left out when it says no more than `"member_name"` (for example the title of a call to PrintString), so identify nodes by `"type"`, `"class"` and `"member_name"`.
+            - `"member_parent"`: For function, variable and event nodes, the class or struct that declares the member (optional). A Blueprint class is given by its Blueprint's name (e.g., `"BP_Enemy"`); the variable's type is on its pins.
+            - `"member_name"`: The function, variable, event or macro name exactly as declared, to use in code as it is (optional). A trailing "_C" is part of the name.
             - `"comment"`: Any user comment on the node (optional).
             - `"pure"`: (bool) True if the node is “pure” (no exec pins).
             - `"latent"`: (bool) True if the node is an async/latent operation.
@@ -145,7 +146,8 @@
     
         - Each pin object has:
           - `"id"`: Pin ID, e.g. `"P1"`.
-          - `"name"`: Pin display name.
+          - `"name"`: The pin's internal name, the same in every editor language (e.g., `"execute"` and `"then"` for exec pins, `"self"` for the target, `"ReturnValue"`, a parameter's name).
+          - `"label"`: The pin's display label in English, a hint present only when it says more than `"name"` (e.g., `"Target"` for `"self"`, `"true"` for a Branch's `"then"`) (optional).
           - `"type"`: Pin type from EN2CPinType (e.g., `"Exec"`, `"Boolean"`, `"Integer"`, `"Float"`, `"String"`, `"Object"`, etc.).
           - `"sub_type"`: Additional type info (e.g., struct name).
           - `"default_value"`: The pin’s default literal value (if any).
@@ -155,7 +157,7 @@
           - `"is_array"`, `"is_map"`, `"is_set"`: True if the pin is a container type.
     
         - `"flows"`: Within each graph:
-          - `"execution"`: An array of exec links, one entry per wire, written `"N1.P3->N2.P5"`: from an exec output pin (`N1.P3`) to the exec input pin it runs (`N2.P5`). The source pin tells which output fired (a Branch's True or False, a Sequence's then_0 or then_1, a ForEachLoop's Loop Body or Completed, a Switch case) and the target pin which input runs (a Gate's Enter, Open or Close, a Timeline's Play or Reverse). Two wires into one node are two entries. Documents with `"version": "1.0.0"` list node pairs instead (`"N1->N2"`), which do not say which pins a wire uses.
+          - `"execution"`: An array of exec links, one entry per wire, written `"N1.P3->N2.P5"`: from an exec output pin (`N1.P3`) to the exec input pin it runs (`N2.P5`). The source pin tells which output fired (a Branch's True or False, pins then and else, a Sequence's then_0 or then_1, a ForEachLoop's Loop Body or Completed, a Switch case) and the target pin which input runs (a Gate's Enter, Open or Close, a Timeline's Play or Reverse). Two wires into one node are two entries. Documents with `"version": "1.0.0"` list node pairs instead (`"N1->N2"`), which do not say which pins a wire uses.
           - `"data"`: The data-flow connections: an object keyed by an output pin (`"N1.P2"`). Its value is the input pin that output feeds (`"N2.P1"`), or an array of input pins when one output feeds several inputs (`["N4.P2", "N5.P3"]`): the same value goes to every listed input. Each connected data input appears exactly once as a target, so a pin with `"connected": true` always has its source here.
     
         - `"structs"` (optional): Array of struct objects. Each struct object includes:
@@ -211,7 +213,7 @@
            - Follow each exec link from its source pin. Links from a Branch's True pin go in the if block and links from its False pin in the else block; each Switch case pin's links go in that case; a Sequence runs the chain from then_0 before the chain from then_1; a ForEachLoop's Loop Body chain is the loop body and its Completed chain runs after the loop. The target pin says which input of a node with several exec inputs runs: a Gate's Enter runs through the gate only while it is open, Open and Close change its state; a Timeline's Play and Reverse are different calls.
     
         4. **Data Pins for Values**:
-           - **Nodes that never run:** Blueprint never runs a node marked `"unused"`, `"unreachable"` or `"disabled"`. Do not translate these nodes or any value they compute; list each one (id and name) in `"implementationNotes"` instead. A data input fed only by a disabled node gets its `"default_value"`. This overrides any instruction to include every node. The editor's greyed-out placeholder events (a new Blueprint's default BeginPlay, ActorBeginOverlap and Tick that nothing is wired to) are left out of the JSON, so never add them.
+           - **Nodes that never run:** Blueprint never runs a node marked `"unused"`, `"unreachable"` or `"disabled"`. Do not translate these nodes or any value they compute; list each one (id and member_name or title) in `"implementationNotes"` instead. A data input fed only by a disabled node gets its `"default_value"`. This overrides any instruction to include every node. The editor's greyed-out placeholder events (a new Blueprint's default BeginPlay, ActorBeginOverlap and Tick that nothing is wired to) are left out of the JSON, so never add them.
            - **Return values:** A function's return value(s) come only from the input pins of its `"FunctionResult"` node(s) (the Return Node): the data flow into that pin, or the pin's `"default_value"` when nothing feeds it. Never return a value that is not wired into a `"FunctionResult"` input pin, even when the graph computes it somewhere else.
            - If there is a data connection `"N1.P5" -> "N2.P2"`, pass the value produced by `N1` into `N2`. This might be represented by an assignment or direct usage of that value in the next node’s pseudocode.
     

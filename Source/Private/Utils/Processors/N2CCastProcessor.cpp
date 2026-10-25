@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/Processors/N2CCastProcessor.h"
+#include "Utils/N2CStableNames.h"
 
 void FN2CCastProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
@@ -9,11 +10,11 @@ void FN2CCastProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition&
     {
         if (UClass* TargetType = CastNode->TargetType)
         {
-            OutNodeDef.MemberName = GetCleanClassName(TargetType->GetName());
+            OutNodeDef.MemberName = N2CStableNames::ClassName(TargetType);
             
             // Log cast details
             FString CastInfo = FString::Printf(TEXT("Dynamic Cast: %s, Target Type: %s"),
-                *OutNodeDef.Name,
+                *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
             FN2CLogger::Get().Log(CastInfo, EN2CLogSeverity::Debug);
         }
@@ -25,11 +26,11 @@ void FN2CCastProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition&
     {
         if (UClass* TargetType = ClassCastNode->TargetType)
         {
-            OutNodeDef.MemberName = GetCleanClassName(TargetType->GetName());
+            OutNodeDef.MemberName = N2CStableNames::ClassName(TargetType);
             
             // Log class cast details
             FString CastInfo = FString::Printf(TEXT("Class Dynamic Cast: %s, Target Type: %s"),
-                *OutNodeDef.Name,
+                *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
             FN2CLogger::Get().Log(CastInfo, EN2CLogSeverity::Debug);
         }
@@ -41,11 +42,11 @@ void FN2CCastProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition&
     {
         if (UEnum* Enum = ByteToEnumNode->Enum)
         {
-            OutNodeDef.MemberName = GetCleanClassName(Enum->GetName());
+            OutNodeDef.MemberName = Enum->GetName();
             
             // Log byte to enum cast details
             FString CastInfo = FString::Printf(TEXT("Byte To Enum Cast: %s, Enum Type: %s"),
-                *OutNodeDef.Name,
+                *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
             FN2CLogger::Get().Log(CastInfo, EN2CLogSeverity::Debug);
         }

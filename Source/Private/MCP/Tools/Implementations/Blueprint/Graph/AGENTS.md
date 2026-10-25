@@ -69,7 +69,12 @@ This directory contains MCP tools for manipulating nodes and connections within 
   - `searchType` (optional): "keyword" or "guid" (default: "keyword")
   - `caseSensitive` (optional): Whether keyword search is case-sensitive (default: false)
   - `maxResults` (optional): Maximum nodes to return 1-200 (default: 50)
-- **Returns**: Matching nodes in N2C JSON format with full GUID information
+- **Returns**: Matching nodes in N2C JSON format with full GUID information (the same node JSON as
+  get-focused-blueprint: `class`, `member_parent`, `member_name`, pin `name` = `PinName`, and the `title` and `label`
+  hints)
+- **Matching**: a keyword matches the node's title as the editor shows it and in English, its UK2Node class, its menu
+  category and its function or variable name, so `PrintString`, `print string` and `K2Node_CallFunction` all find a
+  Print String node in any editor language (card 0138)
 - **Use Case**: Quickly locate specific nodes in large graphs without fetching entire blueprint
 
 ## Node Search and Add Workflow

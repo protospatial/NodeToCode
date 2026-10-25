@@ -1,13 +1,7 @@
 {
 	"case": "FanOutData",
 	"description": "Function FanOut(Value): Value feeds Add.A, Add.B and Multiply.A; Add feeds Multiply.B; Multiply is the result.",
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -25,14 +19,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "FanOut",
+						"class": "K2Node_FunctionEntry",
+						"title": "FanOut",
 						"member_parent": "BP_N2CGolden_FanOutData",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -46,7 +41,8 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "int + int",
+						"class": "K2Node_CallFunction",
+						"title": "int + int",
 						"member_parent": "KismetMathLibrary",
 						"member_name": "Add_IntInt",
 						"pure": true,
@@ -69,7 +65,7 @@
 						"output_pins": [
 							{
 								"id": "P5",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "Integer",
 								"default_value": "0",
 								"connected": true
@@ -79,7 +75,8 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "int * int",
+						"class": "K2Node_CallFunction",
+						"title": "int * int",
 						"member_parent": "KismetMathLibrary",
 						"member_name": "Multiply_IntInt",
 						"pure": true,
@@ -102,7 +99,7 @@
 						"output_pins": [
 							{
 								"id": "P8",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "Integer",
 								"default_value": "0",
 								"connected": true
@@ -112,12 +109,13 @@
 					{
 						"id": "N4",
 						"type": "FunctionResult",
-						"name": "Add Return Node...",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
 						"member_parent": "BP_N2CGolden_FanOutData",
 						"input_pins": [
 							{
 								"id": "P9",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{

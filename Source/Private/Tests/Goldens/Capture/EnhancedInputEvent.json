@@ -6,11 +6,6 @@
 			"finding": "translation-core-15",
 			"card": "0234",
 			"effect": "The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead of an event"
-		},
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
 		}
 	],
 	"capture":
@@ -30,7 +25,8 @@
 					{
 						"id": "N1",
 						"type": "CallFunction",
-						"name": "IA_GoldenJump",
+						"class": "K2Node_EnhancedInputAction",
+						"title": "IA_GoldenJump",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -57,25 +53,25 @@
 							},
 							{
 								"id": "P6",
-								"name": "Action Value",
+								"name": "ActionValue",
 								"type": "Boolean",
 								"default_value": "false"
 							},
 							{
 								"id": "P7",
-								"name": "Elapsed Seconds",
+								"name": "ElapsedSeconds",
 								"type": "Real",
 								"sub_type": "double"
 							},
 							{
 								"id": "P8",
-								"name": "Triggered Seconds",
+								"name": "TriggeredSeconds",
 								"type": "Real",
 								"sub_type": "double"
 							},
 							{
 								"id": "P9",
-								"name": "Input Action",
+								"name": "InputAction",
 								"type": "Object",
 								"sub_type": "InputAction",
 								"default_value": "IA_GoldenJump"
@@ -85,38 +81,38 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P10",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P11",
-								"name": ""
+								"name": "then"
 							}
 						]
 					},
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "Control Screensaver",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
 								"id": "P12",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P14",
-								"name": "Allow Screen Saver",
+								"name": "bAllowScreenSaver",
 								"type": "Boolean",
 								"default_value": "false"
 							}
@@ -124,7 +120,7 @@
 						"output_pins": [
 							{
 								"id": "P13",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

@@ -2,13 +2,7 @@
 	"case": "SameNameOwners",
 	"description": "Max Translation Depth 2. Function Run calls Helper, then Init (both its own). Helper calls Init of a second Blueprint in the same package, BP_N2CGolden_SameNameOwners_Other. Captured from Run: both Init graphs appear, the other Blueprint's with owner_blueprint.",
 	"translation_depth": 2,
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,14 +20,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "Run",
+						"class": "K2Node_FunctionEntry",
+						"title": "Run",
 						"member_parent": "BP_N2CGolden_SameNameOwners",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -41,18 +36,19 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "Helper",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_SameNameOwners",
 						"member_name": "Helper",
 						"input_pins": [
 							{
 								"id": "P2",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P4",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -60,7 +56,7 @@
 						"output_pins": [
 							{
 								"id": "P3",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -68,18 +64,19 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "Init",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_SameNameOwners",
 						"member_name": "Init",
 						"input_pins": [
 							{
 								"id": "P5",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P7",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -87,7 +84,7 @@
 						"output_pins": [
 							{
 								"id": "P6",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -110,14 +107,15 @@
 					{
 						"id": "N4",
 						"type": "FunctionEntry",
-						"name": "Init",
+						"class": "K2Node_FunctionEntry",
+						"title": "Init",
 						"member_parent": "BP_N2CGolden_SameNameOwners",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P8",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -125,18 +123,18 @@
 					{
 						"id": "N5",
 						"type": "CallFunction",
-						"name": "Control Screensaver",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
 								"id": "P9",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P11",
-								"name": "Allow Screen Saver",
+								"name": "bAllowScreenSaver",
 								"type": "Boolean",
 								"default_value": "false"
 							}
@@ -144,7 +142,7 @@
 						"output_pins": [
 							{
 								"id": "P10",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -166,14 +164,15 @@
 					{
 						"id": "N6",
 						"type": "FunctionEntry",
-						"name": "Helper",
+						"class": "K2Node_FunctionEntry",
+						"title": "Helper",
 						"member_parent": "BP_N2CGolden_SameNameOwners",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P12",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -181,18 +180,19 @@
 					{
 						"id": "N7",
 						"type": "CallFunction",
-						"name": "Init",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_SameNameOwners_Other",
 						"member_name": "Init",
 						"input_pins": [
 							{
 								"id": "P13",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P15",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "BP_N2CGolden_SameNameOwners_Other"
 							}
@@ -200,7 +200,7 @@
 						"output_pins": [
 							{
 								"id": "P14",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -223,14 +223,15 @@
 					{
 						"id": "N8",
 						"type": "FunctionEntry",
-						"name": "Init",
+						"class": "K2Node_FunctionEntry",
+						"title": "Init",
 						"member_parent": "BP_N2CGolden_SameNameOwners_Other",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P16",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -238,20 +239,20 @@
 					{
 						"id": "N9",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P17",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P18",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

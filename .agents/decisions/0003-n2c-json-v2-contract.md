@@ -57,6 +57,14 @@ Option 1, provisionally. The sub-choices of card 0117:
    checks that a pin-qualified entry runs from an exec output pin to an exec input pin of the named nodes.
 4. **Stable keys (card 0138):** pin `name` = `UEdGraphPin::PinName`, a node `class` field, `member_parent` and
    `member_name` from `FMemberReference`; display text only in named hint fields (node `title`, pin `label`).
+   Card 0138 applied it: `class` is the UK2Node class; `member_parent` is the declaring class (for a variable the
+   property's owner class, not its type; a Blueprint class by its Blueprint's name; "self" only when nothing
+   resolves) and `member_name` the name as declared (no `_C` stripping). The node `name` field is gone: `title` (the
+   menu title) replaces it. Hints are written in source (English) text (`FText::BuildSourceString`), so the whole
+   document, hints included, is the same in every editor language, and each hint only when it says more than its
+   identifier (`N2CJsonContract::IsRedundantHint`: not the identifier or its `FName::NameToDisplayString` spelling),
+   which also makes UE 5.8's function-call titles (`CollectGarbage`, not `Collect Garbage`) irrelevant. The reader
+   takes a 1.x node `name` as the title and keeps 1.x display pin names as they are.
 5. **Liveness (card 0137):** `"unused": true` on pure nodes whose outputs are never consumed, `"unreachable": true`
    on impure nodes no entry reaches, `"disabled": true` on disabled nodes; ghost (default, unconnected) events
    dropped. Each flag is written only when true. Card 0137 applied it: "disabled" means

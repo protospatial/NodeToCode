@@ -136,7 +136,8 @@ tags = n2c.list_tags()
 *   `get_focused_blueprint()` - Get N2CJSON for focused Blueprint
 *   `read_n2c_json(text)` - Read N2C JSON 1.x or 2.x (for example a saved `N2C_BP_*.json`) with the plugin's reader
     (`UN2CPythonBridge::ReadN2CJson`); returns its source version, counts (`data_edges`, `exec_edges`) and the document
-    as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs
+    as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
+    a 1.x node's display `name` comes back as `title` (no `class`), its pin names stay the display names it has
 *   `compile_blueprint(path=None)` - Compile Blueprint (focused if no path)
 *   `save_blueprint(path=None, only_if_dirty=True)` - Save to disk
 *   `load_blueprint(path)` - Load Blueprint by asset path

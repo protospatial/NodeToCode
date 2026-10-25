@@ -2,13 +2,7 @@
 	"case": "CallChain_Depth1",
 	"description": "Max Translation Depth 1. Function A calls B, B calls C, C calls D. Captured from A, so depth 1 adds B and depth 2 adds B and C; D is never captured.",
 	"translation_depth": 1,
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,14 +20,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "A",
+						"class": "K2Node_FunctionEntry",
+						"title": "A",
 						"member_parent": "BP_N2CGolden_CallChain_Depth1",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -41,18 +36,19 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "B",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_CallChain_Depth1",
 						"member_name": "B",
 						"input_pins": [
 							{
 								"id": "P2",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P4",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -60,7 +56,7 @@
 						"output_pins": [
 							{
 								"id": "P3",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -82,14 +78,15 @@
 					{
 						"id": "N3",
 						"type": "FunctionEntry",
-						"name": "B",
+						"class": "K2Node_FunctionEntry",
+						"title": "B",
 						"member_parent": "BP_N2CGolden_CallChain_Depth1",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P5",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -97,18 +94,19 @@
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "C",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_CallChain_Depth1",
 						"member_name": "C",
 						"input_pins": [
 							{
 								"id": "P6",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P8",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -116,7 +114,7 @@
 						"output_pins": [
 							{
 								"id": "P7",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

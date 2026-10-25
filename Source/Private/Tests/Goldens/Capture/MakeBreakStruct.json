@@ -5,12 +5,7 @@
 		{
 			"finding": "translation-core-4",
 			"card": "0234",
-			"effect": "Break Vector (a K2Node_BreakStruct) is captured as a Variable named 'None', with the first member's type as member_parent and member_name Var_<graph>_<UObject index>, which changes every session (normalised to <OBJECT_INDEX> here)"
-		},
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+			"effect": "Break Vector (a K2Node_BreakStruct) is captured as a Variable titled 'None', with member_name Var_<graph>_<UObject index>, which changes every session (normalised to <OBJECT_INDEX> here)"
 		}
 	],
 	"capture":
@@ -30,14 +25,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "Structs",
+						"class": "K2Node_FunctionEntry",
+						"title": "Structs",
 						"member_parent": "BP_N2CGolden_MakeBreakStruct",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -52,7 +48,8 @@
 					{
 						"id": "N2",
 						"type": "MakeStruct",
-						"name": "Make Vector",
+						"class": "K2Node_MakeStruct",
+						"title": "Make Vector",
 						"member_parent": "/Script/CoreUObject",
 						"member_name": "Vector",
 						"pure": true,
@@ -93,8 +90,8 @@
 					{
 						"id": "N3",
 						"type": "Variable",
-						"name": "None",
-						"member_parent": "real/double",
+						"class": "K2Node_BreakStruct",
+						"title": "None",
 						"member_name": "Var_Structs_<OBJECT_INDEX>",
 						"pure": true,
 						"input_pins": [
@@ -134,7 +131,8 @@
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "float + float",
+						"class": "K2Node_CallFunction",
+						"title": "float + float",
 						"member_parent": "KismetMathLibrary",
 						"member_name": "Add_DoubleDouble",
 						"pure": true,
@@ -159,7 +157,7 @@
 						"output_pins": [
 							{
 								"id": "P13",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "Real",
 								"sub_type": "double",
 								"default_value": "0.0",
@@ -170,12 +168,13 @@
 					{
 						"id": "N5",
 						"type": "FunctionResult",
-						"name": "Add Return Node...",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
 						"member_parent": "BP_N2CGolden_MakeBreakStruct",
 						"input_pins": [
 							{
 								"id": "P14",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{

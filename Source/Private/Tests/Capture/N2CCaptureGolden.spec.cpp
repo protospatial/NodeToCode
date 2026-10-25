@@ -19,6 +19,8 @@
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "Internationalization/Culture.h"
+#include "Internationalization/Internationalization.h"
 #include "Internationalization/Regex.h"
 #include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
@@ -37,6 +39,7 @@
 #include "K2Node_SwitchInteger.h"
 #include "K2Node_Timeline.h"
 #include "K2Node_Tunnel.h"
+#include "K2Node_VariableGet.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetStringLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -54,12 +57,14 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Settings/EditorStyleSettings.h"
 #include "StructUtils/UserDefinedStruct.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/GarbageCollection.h"
 #include "UObject/Package.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
+#include "Utils/N2CStableNames.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
 /**
@@ -99,6 +104,11 @@
  * "Liveness" checks the nodes Blueprint never runs (card 0137, issue #13): ghost default events are not captured,
  * disabled nodes are marked and exec passes through them as the compiler does, pure nodes nothing live reads are
  * "unused" and impure nodes no entry reaches are "unreachable"; no other case marks a node.
+ *
+ * "StableNames" checks the identifiers (card 0138, gap-5): every node has its K2Node "class" and no "name", a title or
+ * label only when it says more than the identifier, member names as declared (Temperature_C, Convert_C), member_parent
+ * the declaring Blueprint, exec pins named execute and then; and every case captures the same JSON with the editor in
+ * Japanese, and the same identifiers with the friendly-names preference flipped (only the hints may change).
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -447,7 +457,21 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		}
 	}
 
-	/** The data targets of the output pin named OutputPin on the node named NodeName in the capture's first graph */
+	/** True when NodeKey is the node's id, member_name, class or title (card 0138: nodes have no "name") */
+	static bool NodeMatches(const TSharedPtr<FJsonObject>& Node, const FString& NodeKey)
+	{
+		for (const TCHAR* Field : { TEXT("id"), TEXT("member_name"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField })
+		{
+			FString Value;
+			if (Node->TryGetStringField(Field, Value) && Value == NodeKey)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The data targets of the output pin named OutputPin on the node NodeName (NodeMatches) in the capture's first graph */
 	TArray<FString> DataTargetsOf(const TSharedPtr<FJsonObject>& Capture, const FString& NodeName, const FString& OutputPin)
 	{
 		TArray<FString> Result;
@@ -456,7 +480,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
 		{
 			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
-			if (Node->GetStringField(TEXT("name")) != NodeName)
+			if (!NodeMatches(Node, NodeName))
 			{
 				continue;
 			}
@@ -494,7 +518,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
 		{
 			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
-			if (Node->GetStringField(TEXT("name")) != NodeName)
+			if (!NodeMatches(Node, NodeName))
 			{
 				continue;
 			}
@@ -515,19 +539,40 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		return N2CTest::FixturesDir(TEXT("Capture/V1"));
 	}
 
-	/** A document with its version replaced, pretty printed: a v1 document as ToJson writes it after FromJson */
-	static FString WithVersion(const FString& Text, const FString& Version)
+	/**
+	 * A v1 document as ToJson writes it after FromJson: the current version, and each node's "name" (its display
+	 * title in 1.x) written as "title" in the same place (card 0138); pin names stay as the document has them
+	 */
+	static FString AsCurrentVersion(const FString& Text)
 	{
 		const TSharedPtr<FJsonObject> Object = N2CTest::ParseJsonObject(Text);
 		if (!Object.IsValid())
 		{
 			return FString();
 		}
-		Object->SetStringField(N2CJsonContract::VersionField, Version);
+		Object->SetStringField(N2CJsonContract::VersionField, N2CJsonContract::Version);
+		const TArray<TSharedPtr<FJsonValue>>* Graphs = nullptr;
+		if (Object->TryGetArrayField(TEXT("graphs"), Graphs))
+		{
+			for (const TSharedPtr<FJsonValue>& Graph : *Graphs)
+			{
+				TArray<TSharedPtr<FJsonValue>> Nodes;
+				for (const TSharedPtr<FJsonValue>& NodeValue : Graph->AsObject()->GetArrayField(TEXT("nodes")))
+				{
+					TSharedPtr<FJsonObject> Node = MakeShared<FJsonObject>();
+					for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : NodeValue->AsObject()->Values)
+					{
+						Node->SetField(Field.Key == N2CJsonContract::NodeNameFieldV1 ? FString(N2CJsonContract::NodeTitleField) : Field.Key, Field.Value);
+					}
+					Nodes.Add(MakeShared<FJsonValueObject>(Node));
+				}
+				Graph->AsObject()->SetArrayField(TEXT("nodes"), Nodes);
+			}
+		}
 		return PrettyJson(Object);
 	}
 
-	/** A pin display name compared loosely: no spaces or underscores, lower case ("then_0" and "Then 0" are "then0") */
+	/** A pin name compared loosely: no spaces or underscores, lower case ("then_0" and "Then 0" are "then0") */
 	static FString LoosePinName(const FString& Name)
 	{
 		return Name.Replace(TEXT(" "), TEXT("")).Replace(TEXT("_"), TEXT("")).ToLower();
@@ -544,9 +589,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
 		{
 			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
-			FString Member;
-			Node->TryGetStringField(TEXT("member_name"), Member);
-			if (Member != NodeKey && Node->GetStringField(TEXT("name")) != NodeKey)
+			if (!NodeMatches(Node, NodeKey))
 			{
 				continue;
 			}
@@ -702,11 +745,12 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 	{
 		return FString::Printf(TEXT("{\"version\":\"%s\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",")
 			TEXT("\"blueprint_class\":\"BP\"},\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[")
-			TEXT("{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"name\":\"G\",\"input_pins\":[],\"output_pins\":[")
-			TEXT("{\"id\":\"P1\",\"name\":\"\",\"connected\":true},{\"id\":\"P2\",\"name\":\"Value\",\"type\":\"Integer\"}]},")
-			TEXT("{\"id\":\"N2\",\"type\":\"CallFunction\",\"name\":\"Collect Garbage\",\"input_pins\":[")
-			TEXT("{\"id\":\"P3\",\"name\":\"\",\"connected\":true},{\"id\":\"P4\",\"name\":\"Count\",\"type\":\"Integer\"}],")
-			TEXT("\"output_pins\":[{\"id\":\"P5\",\"name\":\"\"}]}],")
+			TEXT("{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"class\":\"K2Node_FunctionEntry\",\"title\":\"G\",\"input_pins\":[],\"output_pins\":[")
+			TEXT("{\"id\":\"P1\",\"name\":\"then\",\"connected\":true},{\"id\":\"P2\",\"name\":\"Value\",\"type\":\"Integer\"}]},")
+			TEXT("{\"id\":\"N2\",\"type\":\"CallFunction\",\"class\":\"K2Node_CallFunction\",\"member_parent\":\"KismetSystemLibrary\",")
+			TEXT("\"member_name\":\"CollectGarbage\",\"input_pins\":[")
+			TEXT("{\"id\":\"P3\",\"name\":\"execute\",\"connected\":true},{\"id\":\"P4\",\"name\":\"Count\",\"type\":\"Integer\"}],")
+			TEXT("\"output_pins\":[{\"id\":\"P5\",\"name\":\"then\"}]}],")
 			TEXT("\"flows\":{\"execution\":[\"%s\"],\"data\":{}}}],\"structs\":[],\"enums\":[]}"), *Version, *ExecEntry);
 	}
 
@@ -724,9 +768,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
 		{
 			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
-			FString Member;
-			Node->TryGetStringField(TEXT("member_name"), Member);
-			if (Member == Key || Node->GetStringField(TEXT("name")) == Key)
+			if (NodeMatches(Node, Key))
 			{
 				return Node;
 			}
@@ -756,6 +798,31 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		{
 			TestEqual(What + TEXT(": liveness of ") + Entry.Key, LivenessOf(FindNode(Capture, Entry.Key)), Entry.Value);
 		}
+	}
+
+	/** A capture's JSON without the display hints (node "title", pin "label"), pretty printed */
+	static FString WithoutHints(const FString& Json)
+	{
+		const TSharedPtr<FJsonObject> Object = N2CTest::ParseJsonObject(Json);
+		if (!Object.IsValid())
+		{
+			return Json;
+		}
+		for (const TSharedPtr<FJsonValue>& Graph : Object->GetArrayField(TEXT("graphs")))
+		{
+			for (const TSharedPtr<FJsonValue>& Node : Graph->AsObject()->GetArrayField(TEXT("nodes")))
+			{
+				Node->AsObject()->RemoveField(N2CJsonContract::NodeTitleField);
+				for (const TCHAR* Pins : { TEXT("input_pins"), TEXT("output_pins") })
+				{
+					for (const TSharedPtr<FJsonValue>& Pin : Node->AsObject()->GetArrayField(Pins))
+					{
+						Pin->AsObject()->RemoveField(N2CJsonContract::PinLabelField);
+					}
+				}
+			}
+		}
+		return PrettyJson(Object);
 	}
 
 	/** Captures a case by name; an invalid capture (with an error) when the case or the capture fails */
@@ -1005,24 +1072,20 @@ void FN2CCaptureGoldenSpec::AddCases()
 {
 	using namespace N2CCaptureGolden;
 
-	const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
-		TEXT("Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable "
-			"identifiers, so they change with editor language and settings") };
 	const FKnownDefect CustomEventNone{ TEXT("translation-core-16"), TEXT("0239"),
 		TEXT("Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)") };
 	const FKnownDefect SwitchName{ TEXT("translation-core-32"), TEXT("0239"),
 		TEXT("Switch nodes are named 'Switch', losing the switched type") };
 	const FKnownDefect BreakAsVariable{ TEXT("translation-core-4"), TEXT("0234"),
-		TEXT("Break Vector (a K2Node_BreakStruct) is captured as a Variable named 'None', with the first member's type "
-			"as member_parent and member_name Var_<graph>_<UObject index>, which changes every session (normalised "
-			"to <OBJECT_INDEX> here)") };
+		TEXT("Break Vector (a K2Node_BreakStruct) is captured as a Variable titled 'None', with member_name "
+			"Var_<graph>_<UObject index>, which changes every session (normalised to <OBJECT_INDEX> here)") };
 	const FKnownDefect RepeatMissingName{ TEXT("translation-core-24"), TEXT("0236"),
 		TEXT("A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' "
 			"(expected errors in this case)") };
 
 	Cases.Add({ TEXT("FanOutData"),
 		TEXT("Function FanOut(Value): Value feeds Add.A, Add.B and Multiply.A; Add feeds Multiply.B; Multiply is the result."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("FanOut"));
@@ -1043,7 +1106,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("Knots"),
 		TEXT("Function Knots(Value): the exec line runs through a knot; Value runs through two knots and the second fans "
 			"out to Add.A and Add.B; Add is the result."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("Knots"));
@@ -1069,7 +1132,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Function ReportLocation(): the entry runs Print String, then SetActorLocation. GetActorLocation's Return "
 			"Value feeds both To String (Vector), whose result is Print String's In String, and SetActorLocation's New "
 			"Location."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("ReportLocation"));
@@ -1089,7 +1152,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("Branch"),
 		TEXT("Event graph: custom event OnBranch runs a Branch on Less(A, B); True runs CollectGarbage, False runs "
 			"ControlScreensaver."),
-		{ DisplayNames, CustomEventNone },
+		{ CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1108,7 +1171,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnInt"),
 		TEXT("Function SwitchInt(Selection): Switch on Int with cases 0 and 1 and Default; 0 and Default both run "
 			"CollectGarbage, 1 runs ControlScreensaver."),
-		{ DisplayNames, SwitchName },
+		{ SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("SwitchInt"));
@@ -1128,7 +1191,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnEnum"),
 		TEXT("Function SwitchEnum(Mobility: EComponentMobility): Switch on the engine enum; Static runs CollectGarbage, "
 			"Movable runs ControlScreensaver, Stationary is unconnected."),
-		{ DisplayNames, SwitchName },
+		{ SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEnum* Mobility = StaticEnum<EComponentMobility::Type>();
@@ -1148,7 +1211,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("MakeBreakStruct"),
 		TEXT("Function Structs(Value): Make Vector (X from Value) feeds Break Vector; Break X and Y feed Add (int to "
 			"double through the Make); Add is the result."),
-		{ BreakAsVariable, DisplayNames },
+		{ BreakAsVariable },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UScriptStruct* Vector = TBaseStructure<FVector>::Get();
@@ -1174,7 +1237,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("GateMultiExec"),
 		TEXT("Event graph: custom events OnEnter, OnOpen and OnClose run a Gate (StandardMacros) through its Enter, "
 			"Open and Close inputs; Exit runs CollectGarbage."),
-		{ DisplayNames, CustomEventNone },
+		{ CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1193,7 +1256,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("TimelineMultiExec"),
 		TEXT("Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through "
 			"Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver."),
-		{ DisplayNames, CustomEventNone },
+		{ CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1212,7 +1275,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	// Card 0136: exec flows name the pin on each end, so outputs into one node and inputs of one node stay apart
 	Cases.Add({ TEXT("BranchSameTarget"),
 		TEXT("Function BranchSame(Condition): Branch on Condition; True and False both run CollectGarbage."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("BranchSame"));
@@ -1229,7 +1292,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 
 	Cases.Add({ TEXT("Sequence"),
 		TEXT("Function RunSequence(): a Sequence; then_0 runs CollectGarbage, then_1 runs ControlScreensaver."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("RunSequence"));
@@ -1245,7 +1308,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("ForEachLoop"),
 		TEXT("Function Loop(Values: int array): ForEachLoop (StandardMacros) over Values; Loop Body runs CollectGarbage, "
 			"Completed runs ControlScreensaver."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			FEdGraphPinType IntArray = FTestBlueprint::IntPinType();
@@ -1274,9 +1337,8 @@ void FN2CCaptureGoldenSpec::AddCases()
 				"the struct (ERROR 'Member Owner requires a type name') and it is dropped without a warning") },
 		  RepeatMissingName,
 		  { TEXT("translation-core-4"), TEXT("0234"),
-			TEXT("Break S_GoldenItem is captured as a Variable named 'None' with member_parent object/Actor (the first "
-				"member's type) and member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)") },
-		  DisplayNames },
+			TEXT("Break S_GoldenItem is captured as a Variable titled 'None' with member_name Var_<graph>_<UObject "
+				"index> (normalised to <OBJECT_INDEX>)") } },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Level = BP.AddUserEnum(TEXT("E_GoldenLevel"), { TEXT("Low"), TEXT("High") });
@@ -1315,7 +1377,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-11"), TEXT("0236"),
 			TEXT("Enum values whose display name contains 'max' in any case are dropped: E_GoldenLimit lists Min only, "
 				"while the Switch still has Max and Max Health outputs") },
-		  RepeatMissingName, DisplayNames, SwitchName },
+		  RepeatMissingName, SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Limit = BP.AddUserEnum(TEXT("E_GoldenLimit"), { TEXT("Min"), TEXT("Max"), TEXT("MaxHealth") });
@@ -1342,7 +1404,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		FCaptureCase& Recursion = Cases.Add_GetRef({ FString::Printf(TEXT("Recursion_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function Root(Count) calls Child, then itself with Count; Child "
 				"calls Grandchild; Grandchild calls Root. Captured from Root."), Depth),
-			{ DisplayNames },
+			{},
 			&BuildRecursion });
 		Recursion.TranslationDepth = Depth;
 	}
@@ -1353,7 +1415,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		FCaptureCase& Chain = Cases.Add_GetRef({ FString::Printf(TEXT("CallChain_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function A calls B, B calls C, C calls D. Captured from A, so "
 				"depth 1 adds B and depth 2 adds B and C; D is never captured."), Depth),
-			{ DisplayNames },
+			{},
 			&BuildChain });
 		Chain.TranslationDepth = Depth;
 	}
@@ -1362,7 +1424,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Max Translation Depth 3. Root calls Near, then Far. Near calls Shared; Far calls Mid, Mid calls Shared; "
 			"Shared calls Leaf, Leaf calls Beyond. Captured from Root. Shared is 2 calls away through Near (3 through "
 			"Far), so Leaf (3) is captured and Beyond (4) is not."),
-		{ DisplayNames },
+		{},
 		&BuildShortestPath });
 	Cases.Last().TranslationDepth = 3;
 
@@ -1370,7 +1432,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which "
 			"runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed "
 			"from Enabled."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("CopyPaste"));
@@ -1394,7 +1456,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Max Translation Depth 2. Function Run calls Helper, then Init (both its own). Helper calls Init of a second "
 			"Blueprint in the same package, BP_N2CGolden_SameNameOwners_Other. Captured from Run: both Init graphs "
 			"appear, the other Blueprint's with owner_blueprint."),
-		{ DisplayNames },
+		{},
 		&BuildSameNameOwners });
 	Cases.Last().TranslationDepth = 2;
 
@@ -1410,8 +1472,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 					"Composite and MacroInstance nodes remain") },
 			  { TEXT("imp-translation-core-4"), TEXT("0235"),
 				TEXT("The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no "
-					"member_parent or member_name)") },
-			  DisplayNames },
+					"member_parent or member_name)") } },
 			&BuildNested });
 		Nested.TranslationDepth = Depth;
 		if (Depth > 0)
@@ -1427,8 +1488,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 			"Triggered runs CollectGarbage, Completed runs ControlScreensaver."),
 		{ { TEXT("translation-core-15"), TEXT("0234"),
 			TEXT("The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead "
-				"of an event") },
-		  DisplayNames },
+				"of an event") } },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1445,7 +1505,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Function Issue13Label(Value), the graph of issue #13: To String (Integer) stands in for its Number Format. "
 			"Its Return Value feeds both To Text (String), whose result is the Return node's Result, and the {effect} "
 			"argument of a Format Text whose Result nothing reads, so Format Text is unused."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("Issue13Label"));
@@ -1466,7 +1526,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("GhostEvents"),
 		TEXT("Event graph of a new Actor Blueprint: its default BeginPlay is wired to CollectGarbage, which makes it a "
 			"real event; the untouched default ActorBeginOverlap and Tick stay ghost nodes and are not captured."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1482,7 +1542,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 			"Branch whose True runs ResetGamepadAssignments. Exec passes through the disabled Print String (one exec "
 			"input, one exec output) to ControlScreensaver; the disabled Branch ends the chain, so "
 			"ResetGamepadAssignments is unreachable and To String, read only by the disabled Print String, is unused."),
-		{ DisplayNames },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("Disabled"));
@@ -1515,7 +1575,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Event graph: custom event OnRun runs CollectGarbage. Apart from it, ControlScreensaver (its Allow Screen "
 			"Saver from Not of a literal) runs ResetGamepadAssignments with no event before them: both are unreachable "
 			"and Not, read only by them, is unused. The default ghost events are not captured."),
-		{ DisplayNames, CustomEventNone },
+		{ CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1527,6 +1587,39 @@ void FN2CCaptureGoldenSpec::AddCases()
 			BP.Link(Event, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
 			BP.Link(Not, UEdGraphSchema_K2::PN_ReturnValue, Screensaver, TEXT("bAllowScreenSaver"));
 			BP.Link(Screensaver, UEdGraphSchema_K2::PN_Then, Reset, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	// Card 0138: stable identifiers (gap-5, translation-core-22, translation-core-28)
+	Cases.Add({ TEXT("StableNames"),
+		TEXT("Function UseNames(): the entry runs Convert_C (a function of this Blueprint), then the result, which "
+			"returns Health + Temperature_C. Health is a variable of BP_N2CGolden_Enemy read through this Blueprint's "
+			"Enemy reference, Temperature_C a variable of this Blueprint. Names ending in _C keep it, member_parent is "
+			"the declaring Blueprint (no type string), exec pins are named execute and then."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			FTestBlueprint* Enemy = BP.AddSiblingBlueprint(TEXT("BP_N2CGolden_Enemy"));
+			if (!Enemy || !Enemy->AddMemberVariable(TEXT("Health"), FTestBlueprint::DoublePinType()))
+			{
+				return nullptr;
+			}
+			BP.AddMemberVariable(TEXT("Enemy"), FTestBlueprint::ObjectPinType(Enemy->GetBlueprint()->GeneratedClass));
+			BP.AddMemberVariable(TEXT("Temperature_C"), FTestBlueprint::DoublePinType());
+			BP.AddFunction(TEXT("Convert_C"));
+			UEdGraph* Graph = BP.AddFunction(TEXT("UseNames"));
+			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Result"), FTestBlueprint::DoublePinType());
+			UK2Node_CallFunction* Convert = BP.AddSelfCall(Graph, TEXT("Convert_C"));
+			UK2Node_VariableGet* GetEnemy = BP.AddVariableGet(Graph, TEXT("Enemy"));
+			UK2Node_VariableGet* GetHealth = BP.AddVariableGet(Graph, TEXT("Health"), Enemy);
+			UK2Node_VariableGet* GetTemperature = BP.AddVariableGet(Graph, TEXT("Temperature_C"));
+			UK2Node_CallFunction* Add = AddMath(BP, Graph, GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Add_DoubleDouble));
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Convert, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Convert, UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(GetEnemy, TEXT("Enemy"), GetHealth, UEdGraphSchema_K2::PN_Self);
+			BP.Link(GetHealth, TEXT("Health"), Add, TEXT("A"));
+			BP.Link(GetTemperature, TEXT("Temperature_C"), Add, TEXT("B"));
+			BP.Link(Add, UEdGraphSchema_K2::PN_ReturnValue, Result, TEXT("Result"));
 			return Graph;
 		} });
 }
@@ -1574,27 +1667,10 @@ void FN2CCaptureGoldenSpec::Define()
 			{
 				return;
 			}
-			const TSharedPtr<FJsonObject> Graph = Captured.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
-			const TArray<TSharedPtr<FJsonValue>>& Nodes = Graph->GetArrayField(TEXT("nodes"));
-			auto NodeNamed = [&Nodes](const FString& MemberName) -> FString
-			{
-				for (const TSharedPtr<FJsonValue>& Node : Nodes)
-				{
-					FString Member;
-					if (Node->AsObject()->TryGetStringField(TEXT("member_name"), Member) && Member == MemberName)
-					{
-						return Node->AsObject()->GetStringField(TEXT("name"));
-					}
-				}
-				return FString();
-			};
-			const FString GetLocation = NodeNamed(TEXT("K2_GetActorLocation"));
-			const FString ToText = NodeNamed(TEXT("Conv_VectorToString"));
-			const FString SetLocation = NodeNamed(TEXT("K2_SetActorLocation"));
-			const TArray<FString> Targets = DataTargetsOf(Captured.Capture, GetLocation, TEXT("Return Value"));
+			const TArray<FString> Targets = DataTargetsOf(Captured.Capture, TEXT("K2_GetActorLocation"), TEXT("ReturnValue"));
 			TestEqual(TEXT("GetActorLocation.ReturnValue targets"), FString::Join(Targets, TEXT(",")),
-				FString::Join(TArray<FString>{ InputRef(Captured.Capture, ToText, TEXT("In Vec")),
-					InputRef(Captured.Capture, SetLocation, TEXT("New Location")) }, TEXT(",")));
+				FString::Join(TArray<FString>{ InputRef(Captured.Capture, TEXT("Conv_VectorToString"), TEXT("InVec")),
+					InputRef(Captured.Capture, TEXT("K2_SetActorLocation"), TEXT("NewLocation")) }, TEXT(",")));
 			TestEqual(TEXT("the N2C JSON version"), Captured.Capture->GetStringField(N2CJsonContract::VersionField),
 				FString(N2CJsonContract::Version));
 		});
@@ -1612,16 +1688,8 @@ void FN2CCaptureGoldenSpec::Define()
 				// Value runs through two knots into Add.A and Add.B
 				const TSharedPtr<FJsonObject> Graph = Captured.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
 				const TArray<TSharedPtr<FJsonValue>>& Nodes = Graph->GetArrayField(TEXT("nodes"));
-				const FString Entry = Nodes[0]->AsObject()->GetStringField(TEXT("name"));
-				FString AddName;
-				for (const TSharedPtr<FJsonValue>& Node : Nodes)
-				{
-					FString Member;
-					if (Node->AsObject()->TryGetStringField(TEXT("member_name"), Member) && Member == TEXT("Add_IntInt"))
-					{
-						AddName = Node->AsObject()->GetStringField(TEXT("name"));
-					}
-				}
+				const FString Entry = Nodes[0]->AsObject()->GetStringField(TEXT("id"));
+				const FString AddName = TEXT("Add_IntInt");
 				TestEqual(TEXT("Value's targets"), FString::Join(DataTargetsOf(Captured.Capture, Entry, TEXT("Value")), TEXT(",")),
 					InputRef(Captured.Capture, AddName, TEXT("A")) + TEXT(",") + InputRef(Captured.Capture, AddName, TEXT("B")));
 			}
@@ -1647,60 +1715,60 @@ void FN2CCaptureGoldenSpec::Define()
 		It(TEXT("tells a Branch's True and False apart"), [this]()
 		{
 			ExpectExecLinks(TEXT("Branch"), {
-				{ TEXT("OnBranch"), TEXT(""), TEXT("Branch"), TEXT("") },
-				{ TEXT("Branch"), TEXT("True"), TEXT("CollectGarbage"), TEXT("") },
-				{ TEXT("Branch"), TEXT("False"), TEXT("ControlScreensaver"), TEXT("") } });
+				{ TEXT("OnBranch"), TEXT("then"), TEXT("Branch"), TEXT("execute") },
+				{ TEXT("Branch"), TEXT("then"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("Branch"), TEXT("else"), TEXT("ControlScreensaver"), TEXT("execute") } });
 		});
 
 		It(TEXT("records True and False into one node as two entries"), [this]()
 		{
 			ExpectExecLinks(TEXT("BranchSameTarget"), {
-				{ TEXT("BranchSame"), TEXT(""), TEXT("Branch"), TEXT("") },
-				{ TEXT("Branch"), TEXT("True"), TEXT("CollectGarbage"), TEXT("") },
-				{ TEXT("Branch"), TEXT("False"), TEXT("CollectGarbage"), TEXT("") } });
+				{ TEXT("BranchSame"), TEXT("then"), TEXT("Branch"), TEXT("execute") },
+				{ TEXT("Branch"), TEXT("then"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("Branch"), TEXT("else"), TEXT("CollectGarbage"), TEXT("execute") } });
 		});
 
 		It(TEXT("tells a Gate's Enter, Open and Close inputs apart"), [this]()
 		{
 			ExpectExecLinks(TEXT("GateMultiExec"), {
-				{ TEXT("OnEnter"), TEXT(""), TEXT("Gate"), TEXT("Enter") },
-				{ TEXT("OnOpen"), TEXT(""), TEXT("Gate"), TEXT("Open") },
-				{ TEXT("OnClose"), TEXT(""), TEXT("Gate"), TEXT("Close") },
-				{ TEXT("Gate"), TEXT("Exit"), TEXT("CollectGarbage"), TEXT("") } });
+				{ TEXT("OnEnter"), TEXT("then"), TEXT("Gate"), TEXT("Enter") },
+				{ TEXT("OnOpen"), TEXT("then"), TEXT("Gate"), TEXT("Open") },
+				{ TEXT("OnClose"), TEXT("then"), TEXT("Gate"), TEXT("Close") },
+				{ TEXT("Gate"), TEXT("Exit"), TEXT("CollectGarbage"), TEXT("execute") } });
 		});
 
 		It(TEXT("tells a Sequence's then_0 and then_1 apart"), [this]()
 		{
 			ExpectExecLinks(TEXT("Sequence"), {
-				{ TEXT("RunSequence"), TEXT(""), TEXT("Sequence"), TEXT("") },
-				{ TEXT("Sequence"), TEXT("then_0"), TEXT("CollectGarbage"), TEXT("") },
-				{ TEXT("Sequence"), TEXT("then_1"), TEXT("ControlScreensaver"), TEXT("") } });
+				{ TEXT("RunSequence"), TEXT("then"), TEXT("Sequence"), TEXT("execute") },
+				{ TEXT("Sequence"), TEXT("then_0"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("Sequence"), TEXT("then_1"), TEXT("ControlScreensaver"), TEXT("execute") } });
 		});
 
 		It(TEXT("tells a ForEachLoop's Loop Body and Completed apart"), [this]()
 		{
 			ExpectExecLinks(TEXT("ForEachLoop"), {
-				{ TEXT("Loop"), TEXT(""), TEXT("ForEachLoop"), TEXT("Exec") },
-				{ TEXT("ForEachLoop"), TEXT("LoopBody"), TEXT("CollectGarbage"), TEXT("") },
-				{ TEXT("ForEachLoop"), TEXT("Completed"), TEXT("ControlScreensaver"), TEXT("") } });
+				{ TEXT("Loop"), TEXT("then"), TEXT("ForEachLoop"), TEXT("Exec") },
+				{ TEXT("ForEachLoop"), TEXT("LoopBody"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("ForEachLoop"), TEXT("Completed"), TEXT("ControlScreensaver"), TEXT("execute") } });
 		});
 
 		It(TEXT("records each wired case of a Switch on Int, two of them into one node"), [this]()
 		{
 			ExpectExecLinks(TEXT("SwitchOnInt"), {
-				{ TEXT("SwitchInt"), TEXT(""), TEXT("Switch"), TEXT("") },
-				{ TEXT("Switch"), TEXT("0"), TEXT("CollectGarbage"), TEXT("") },
-				{ TEXT("Switch"), TEXT("1"), TEXT("ControlScreensaver"), TEXT("") },
-				{ TEXT("Switch"), TEXT("Default"), TEXT("CollectGarbage"), TEXT("") } });
+				{ TEXT("SwitchInt"), TEXT("then"), TEXT("Switch"), TEXT("execute") },
+				{ TEXT("Switch"), TEXT("0"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("Switch"), TEXT("1"), TEXT("ControlScreensaver"), TEXT("execute") },
+				{ TEXT("Switch"), TEXT("Default"), TEXT("CollectGarbage"), TEXT("execute") } });
 		});
 
 		It(TEXT("tells a Timeline's Play and Reverse inputs apart"), [this]()
 		{
 			ExpectExecLinks(TEXT("TimelineMultiExec"), {
-				{ TEXT("OnPlay"), TEXT(""), TEXT("GoldenTimeline"), TEXT("Play") },
-				{ TEXT("OnReverse"), TEXT(""), TEXT("GoldenTimeline"), TEXT("Reverse") },
-				{ TEXT("GoldenTimeline"), TEXT("Update"), TEXT("CollectGarbage"), TEXT("") },
-				{ TEXT("GoldenTimeline"), TEXT("Finished"), TEXT("ControlScreensaver"), TEXT("") } });
+				{ TEXT("OnPlay"), TEXT("then"), TEXT("GoldenTimeline"), TEXT("Play") },
+				{ TEXT("OnReverse"), TEXT("then"), TEXT("GoldenTimeline"), TEXT("Reverse") },
+				{ TEXT("GoldenTimeline"), TEXT("Update"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("GoldenTimeline"), TEXT("Finished"), TEXT("ControlScreensaver"), TEXT("execute") } });
 		});
 
 		It(TEXT("validates an exec entry's pins: an exec output to an exec input of the named nodes"), [this]()
@@ -1759,8 +1827,8 @@ void FN2CCaptureGoldenSpec::Define()
 				return;
 			}
 			TestEqual(TEXT("Number Format's Return Value feeds To Text and Format Text"),
-				FString::Join(DataTargetsOf(Captured.Capture, NumberFormat->GetStringField(TEXT("name")), TEXT("Return Value")), TEXT(",")),
-				InputRef(Captured.Capture, ToText->GetStringField(TEXT("name")), TEXT("In String")) + TEXT(",")
+				FString::Join(DataTargetsOf(Captured.Capture, TEXT("Conv_IntToString"), TEXT("ReturnValue")), TEXT(",")),
+				InputRef(Captured.Capture, TEXT("Conv_StringToText"), TEXT("InString")) + TEXT(",")
 					+ InputRef(Captured.Capture, TEXT("Format Text"), TEXT("effect")));
 			ExpectLiveness(TEXT("Issue13"), Captured.Capture, {
 				{ TEXT("Conv_IntToString"), TEXT("") },
@@ -1836,8 +1904,8 @@ void FN2CCaptureGoldenSpec::Define()
 		It(TEXT("marks disabled nodes, passes exec through a disabled Print String and stops at a disabled Branch"), [this]()
 		{
 			ExpectExecLinks(TEXT("DisabledNodes"), {
-				{ TEXT("Disabled"), TEXT(""), TEXT("CollectGarbage"), TEXT("") },
-				{ TEXT("CollectGarbage"), TEXT(""), TEXT("ControlScreensaver"), TEXT("") } });
+				{ TEXT("Disabled"), TEXT("then"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("CollectGarbage"), TEXT("then"), TEXT("ControlScreensaver"), TEXT("execute") } });
 			const FCaptured Captured = CaptureNamed(TEXT("DisabledNodes"));
 			if (Captured.Capture.IsValid())
 			{
@@ -1910,7 +1978,7 @@ void FN2CCaptureGoldenSpec::Define()
 		{
 			FN2CBlueprint Read;
 			const FString Document = ExecFlowDocument(TEXT("2.0.0"), TEXT("N1.P1->N2.P3"))
-				.Replace(TEXT("\"name\":\"Collect Garbage\","), TEXT("\"name\":\"Collect Garbage\",\"disabled\":true,\"unreachable\":true,\"unused\":true,"));
+				.Replace(TEXT("\"member_name\":\"CollectGarbage\","), TEXT("\"member_name\":\"CollectGarbage\",\"disabled\":true,\"unreachable\":true,\"unused\":true,"));
 			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Document, Read)) || !TestEqual(TEXT("graphs"), Read.Graphs.Num(), 1)
 				|| !TestEqual(TEXT("nodes"), Read.Graphs[0].Nodes.Num(), 2))
 			{
@@ -1980,7 +2048,7 @@ void FN2CCaptureGoldenSpec::Define()
 				TestTrue(TEXT("exec pins (no \"type\") are read as Exec"), ExecPins > 0);
 
 				const FString Again = PrettyJson(N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Pretty)));
-				const FString Expected = WithVersion(Text, N2CJsonContract::Version);
+				const FString Expected = AsCurrentVersion(Text);
 				if (Again != Expected)
 				{
 					ReportDifference(FixtureName + TEXT(" v1 -> FromJson -> ToJson"), Expected, Again);
@@ -2017,9 +2085,9 @@ void FN2CCaptureGoldenSpec::Define()
 		{
 			const FString Text = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",")
 				TEXT("\"blueprint_class\":\"BP\"},\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[")
-				TEXT("{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"name\":\"Entry\",\"input_pins\":[],\"output_pins\":[")
+				TEXT("{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"title\":\"Entry\",\"input_pins\":[],\"output_pins\":[")
 				TEXT("{\"id\":\"P1\",\"name\":\"Value\",\"type\":\"Integer\",\"connected\":true}]},")
-				TEXT("{\"id\":\"N2\",\"type\":\"CallFunction\",\"name\":\"Add\",\"pure\":true,\"input_pins\":[")
+				TEXT("{\"id\":\"N2\",\"type\":\"CallFunction\",\"title\":\"Add\",\"pure\":true,\"input_pins\":[")
 				TEXT("{\"id\":\"P2\",\"name\":\"A\",\"type\":\"Integer\",\"connected\":true},")
 				TEXT("{\"id\":\"P3\",\"name\":\"B\",\"type\":\"Integer\",\"connected\":true}],\"output_pins\":[]}],")
 				TEXT("\"flows\":{\"execution\":[],\"data\":{\"N1.P1\":[\"N2.P2\",\"N2.P3\"]}}}],\"structs\":[],\"enums\":[]}");
@@ -2260,6 +2328,166 @@ void FN2CCaptureGoldenSpec::Define()
 				}
 			}
 			TestEqual(TEXT("pins checked"), PinsChecked, Result.Pins.Num());
+		});
+	});
+
+	// Card 0138: names are stable identifiers; display text is a hint (gap-5, translation-core-22, translation-core-28)
+	Describe(TEXT("StableNames"), [this]()
+	{
+		It(TEXT("keeps member names as declared and names the declaring Blueprint as member_parent"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("StableNames"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Health = FindNode(Captured.Capture, TEXT("Health"));
+			const TSharedPtr<FJsonObject> Temperature = FindNode(Captured.Capture, TEXT("Temperature_C"));
+			const TSharedPtr<FJsonObject> Convert = FindNode(Captured.Capture, TEXT("Convert_C"));
+			if (!Health.IsValid() || !Temperature.IsValid() || !Convert.IsValid())
+			{
+				return;
+			}
+			TestEqual(TEXT("Health's member_parent (the Blueprint that declares it, not its type)"),
+				Health->GetStringField(TEXT("member_parent")), FString(TEXT("BP_N2CGolden_Enemy")));
+			TestEqual(TEXT("Temperature_C's member_parent"), Temperature->GetStringField(TEXT("member_parent")),
+				FString(TEXT("BP_N2CGolden_StableNames")));
+			TestEqual(TEXT("Convert_C's member_parent"), Convert->GetStringField(TEXT("member_parent")),
+				FString(TEXT("BP_N2CGolden_StableNames")));
+			TestEqual(TEXT("Convert_C's class"), Convert->GetStringField(N2CJsonContract::NodeClassField), FString(TEXT("K2Node_CallFunction")));
+			TestEqual(TEXT("Health's class"), Health->GetStringField(N2CJsonContract::NodeClassField), FString(TEXT("K2Node_VariableGet")));
+			for (const TCHAR* Exec : { TEXT("execute"), TEXT("then") })
+			{
+				TestFalse(FString(TEXT("Convert_C's exec pin ")) + Exec, ExecPinRef(Captured.Capture, TEXT("Convert_C"), Exec,
+					FCString::Strcmp(Exec, TEXT("then")) == 0).IsEmpty());
+			}
+		});
+
+		It(TEXT("gives every node a class and every pin its PinName in every case"), [this]()
+		{
+			for (const FCaptureCase& Case : Cases)
+			{
+				const FCaptured Captured = Capture(Case);
+				if (!Captured.Capture.IsValid())
+				{
+					continue;
+				}
+				for (const TSharedPtr<FJsonValue>& Graph : Captured.Capture->GetArrayField(TEXT("graphs")))
+				{
+					for (const TSharedPtr<FJsonValue>& NodeValue : Graph->AsObject()->GetArrayField(TEXT("nodes")))
+					{
+						const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+						const FString What = Case.Name + TEXT(" ") + Node->GetStringField(TEXT("id"));
+						FString Class;
+						TestTrue(What + TEXT(" has a K2Node class"), Node->TryGetStringField(N2CJsonContract::NodeClassField, Class) && Class.StartsWith(TEXT("K2Node_")));
+						TestFalse(What + TEXT(" has no \"name\" (its title is a hint)"), Node->HasField(N2CJsonContract::NodeNameFieldV1));
+						FString Title;
+						FString Member;
+						if (Node->TryGetStringField(N2CJsonContract::NodeTitleField, Title) && Node->TryGetStringField(TEXT("member_name"), Member))
+						{
+							TestFalse(What + TEXT("'s title says more than its member_name"), N2CJsonContract::IsRedundantHint(Title, Member));
+						}
+						for (const TCHAR* Pins : { TEXT("input_pins"), TEXT("output_pins") })
+						{
+							for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(Pins))
+							{
+								const TSharedPtr<FJsonObject> Pin = PinValue->AsObject();
+								const FString Name = Pin->GetStringField(TEXT("name"));
+								TestFalse(What + TEXT(".") + Pin->GetStringField(TEXT("id")) + TEXT(" has a name"), Name.IsEmpty());
+								FString Label;
+								if (Pin->TryGetStringField(N2CJsonContract::PinLabelField, Label))
+								{
+									TestFalse(What + TEXT(".") + Name + TEXT("'s label says more than its name"), N2CJsonContract::IsRedundantHint(Label, Name));
+								}
+							}
+						}
+					}
+				}
+			}
+		});
+
+		It(TEXT("captures the same JSON in English and Japanese, and the same identifiers with friendly names on and off"), [this]()
+		{
+			TMap<FString, FString> English;
+			for (const FCaptureCase& Case : Cases)
+			{
+				const FCaptured Captured = Capture(Case);
+				if (Captured.Capture.IsValid())
+				{
+					English.Add(Case.Name, Captured.Json);
+				}
+			}
+
+			FInternationalization& I18N = FInternationalization::Get();
+			const FString SavedLanguage = I18N.GetCurrentLanguage()->GetName();
+			const FString SavedLocale = I18N.GetCurrentLocale()->GetName();
+			UEditorStyleSettings* Style = GetMutableDefault<UEditorStyleSettings>();
+			const bool bSavedFriendlyNames = Style->bShowFriendlyNames;
+			ON_SCOPE_EXIT
+			{
+				I18N.SetCurrentLanguage(SavedLanguage);
+				I18N.SetCurrentLocale(SavedLocale);
+				Style->bShowFriendlyNames = bSavedFriendlyNames;
+			};
+
+			// Japanese: the editor's own localization must really apply, or this check would prove nothing
+			if (!TestTrue(TEXT("the editor switches to Japanese"), I18N.SetCurrentCulture(TEXT("ja")))
+				|| !TestEqual(TEXT("the current language"), I18N.GetCurrentLanguage()->GetName(), FString(TEXT("ja"))))
+			{
+				return;
+			}
+			{
+				N2CTest::FTestBlueprint Probe(TEXT("BP_N2CGolden_LocaleProbe"), TEXT("/Game"));
+				UEdGraph* ProbeGraph = Probe.AddFunction(TEXT("Probe"));
+				UK2Node_FunctionResult* ProbeResult = Probe.AddFunctionOutput(ProbeGraph, TEXT("Out"), N2CTest::FTestBlueprint::IntPinType());
+				UK2Node_IfThenElse* ProbeBranch = Probe.AddBranch(ProbeGraph);
+				bool bLocalized = false;
+				for (const UEdGraphNode* Node : { static_cast<const UEdGraphNode*>(ProbeResult), static_cast<const UEdGraphNode*>(ProbeBranch) })
+				{
+					const FText Title = Node ? Node->GetNodeTitle(ENodeTitleType::MenuTitle) : FText::GetEmpty();
+					bLocalized |= Title.ToString() != Title.BuildSourceString();
+				}
+				if (!TestTrue(TEXT("node titles are shown in Japanese (the engine's Editor/ja localization is loaded)"), bLocalized))
+				{
+					return;
+				}
+
+				// find-nodes-in-graph and the Python bridge match the English title, the class and the member name
+				const UK2Node_CallFunction* ProbeCall = Probe.AddCall(ProbeGraph, UKismetSystemLibrary::StaticClass(),
+					GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, CollectGarbage));
+				const FString SearchText = N2CStableNames::NodeSearchText(ProbeCall);
+				for (const TCHAR* Term : { TEXT("Collect Garbage"), TEXT("CollectGarbage"), TEXT("K2Node_CallFunction") })
+				{
+					TestTrue(FString::Printf(TEXT("a keyword search finds Collect Garbage by '%s' in Japanese (%s)"), Term, *SearchText),
+						SearchText.Contains(Term, ESearchCase::IgnoreCase));
+				}
+			}
+			for (const FCaptureCase& Case : Cases)
+			{
+				const FCaptured Captured = Capture(Case);
+				if (Captured.Capture.IsValid() && English.Contains(Case.Name) && Captured.Json != English[Case.Name])
+				{
+					ReportDifference(Case.Name + TEXT(" in Japanese"), English[Case.Name], Captured.Json);
+				}
+			}
+			I18N.SetCurrentLanguage(SavedLanguage);
+			I18N.SetCurrentLocale(SavedLocale);
+
+			// Friendly names flipped: identifiers are the same; only the title and label hints may differ
+			Style->bShowFriendlyNames = !bSavedFriendlyNames;
+			for (const FCaptureCase& Case : Cases)
+			{
+				const FCaptured Captured = Capture(Case);
+				if (Captured.Capture.IsValid() && English.Contains(Case.Name))
+				{
+					const FString Expected = WithoutHints(English[Case.Name]);
+					const FString Actual = WithoutHints(Captured.Json);
+					if (Actual != Expected)
+					{
+						ReportDifference(Case.Name + (bSavedFriendlyNames ? TEXT(" with friendly names off") : TEXT(" with friendly names on")), Expected, Actual);
+					}
+				}
+			}
 		});
 	});
 

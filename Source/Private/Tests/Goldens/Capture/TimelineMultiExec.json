@@ -3,11 +3,6 @@
 	"description": "Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver.",
 	"known_defects": [
 		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		},
-		{
 			"finding": "translation-core-16",
 			"card": "0239",
 			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
@@ -30,18 +25,19 @@
 					{
 						"id": "N1",
 						"type": "CustomEvent",
-						"name": "OnPlay",
+						"class": "K2Node_CustomEvent",
+						"title": "OnPlay",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "Output Delegate",
+								"name": "OutputDelegate",
 								"type": "Delegate"
 							},
 							{
 								"id": "P2",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -49,18 +45,19 @@
 					{
 						"id": "N2",
 						"type": "CustomEvent",
-						"name": "OnReverse",
+						"class": "K2Node_CustomEvent",
+						"title": "OnReverse",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P3",
-								"name": "Output Delegate",
+								"name": "OutputDelegate",
 								"type": "Delegate"
 							},
 							{
 								"id": "P4",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -68,7 +65,8 @@
 					{
 						"id": "N3",
 						"type": "Timeline",
-						"name": "GoldenTimeline",
+						"class": "K2Node_Timeline",
+						"title": "GoldenTimeline",
 						"input_pins": [
 							{
 								"id": "P5",
@@ -77,7 +75,7 @@
 							},
 							{
 								"id": "P6",
-								"name": "Play from Start"
+								"name": "PlayFromStart"
 							},
 							{
 								"id": "P7",
@@ -90,15 +88,15 @@
 							},
 							{
 								"id": "P9",
-								"name": "Reverse from End"
+								"name": "ReverseFromEnd"
 							},
 							{
 								"id": "P12",
-								"name": "Set New Time"
+								"name": "SetNewTime"
 							},
 							{
 								"id": "P13",
-								"name": "New Time",
+								"name": "NewTime",
 								"type": "Real",
 								"sub_type": "float",
 								"default_value": "0.0"
@@ -126,38 +124,38 @@
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P15",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P16",
-								"name": ""
+								"name": "then"
 							}
 						]
 					},
 					{
 						"id": "N5",
 						"type": "CallFunction",
-						"name": "Control Screensaver",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
 								"id": "P17",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P19",
-								"name": "Allow Screen Saver",
+								"name": "bAllowScreenSaver",
 								"type": "Boolean",
 								"default_value": "false"
 							}
@@ -165,7 +163,7 @@
 						"output_pins": [
 							{
 								"id": "P18",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

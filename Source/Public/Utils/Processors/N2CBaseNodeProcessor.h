@@ -38,12 +38,4 @@ protected:
      * @param OutNodeDef The node definition to populate
      */
     virtual void ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
-    
-    /**
-     * Remove SKEL_ prefix and _C suffix from class names
-     * 
-     * @param InName The class name to clean
-     * @return The cleaned class name
-     */
-    FString GetCleanClassName(const FString& InName);
 };

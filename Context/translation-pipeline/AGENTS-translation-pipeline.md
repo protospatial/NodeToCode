@@ -128,6 +128,19 @@ an exec input pin of the named nodes; a node-only entry ("N1->N2", or a 1.x chai
 `NodeToCode.Capture.Golden.ExecFlows` checks every golden and the Branch, Sequence, ForEachLoop, Switch, Gate and
 Timeline cases by pin name.
 
+Names (card 0138, gap-5, translation-core-22 and -28): capture writes identifiers that never change with the editor
+language or preferences, and display text only as hints (`Source/Public/Utils/N2CStableNames.h`). A node gets
+`NodeClass` (JSON `class`, the UK2Node class), `MemberParent` (the class that declares the member,
+`N2CStableNames::ClassName`: a Blueprint class by its Blueprint's name, any other class by its own; for a variable the
+property's owner class, not its type) and `MemberName` (as declared; only Blueprint class names lose `_C`). A pin's
+`Name` is `UEdGraphPin::PinName`. `Title` (JSON `title`) is the node's menu title and `Label` (JSON `label`) the pin's
+friendly name or the node's pin-name override, both in source text (`FText::BuildSourceString`), and each is dropped
+when `N2CJsonContract::IsRedundantHint` says it is only the identifier spelled for display (so UE 5.8, which titles a
+call `CollectGarbage` where 5.6 and 5.7 say `Collect Garbage`, writes the same JSON). Text pin defaults and enum value
+names are also written in source text. `NodeToCode.Capture.Golden.StableNames` checks this on every golden and
+captures every case again with the editor in Japanese (it must match exactly) and with friendly names flipped (only
+the hints may change).
+
 Key responsibilities:
 - Manages ID generation (N1, N2, etc. for nodes; P1, P2, etc. for pins)
 - Uses `FN2CNodeProcessorFactory` for node-specific property extraction
@@ -172,9 +185,12 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 - **2.0.0** (card 0135): `flows.data` is an object keyed by the output pin ref. Its value is the input pin ref it
   feeds, or an array of them when it feeds several, so a graph without fan-out gets the same object as 1.0.0. Every
   data edge appears once. `flows.execution` has one "N3.P5->N4.P1" entry per exec link, exec output pin to exec
-  input pin (card 0136). Additive optional fields bump the minor; a breaking change bumps the major.
-- **1.0.0** (1.2.x and earlier 2.0 builds): the same fields, one string per output, so a fan-out kept one edge,
-  and node-only exec entries ("N1->N2"). 2.0.0 documents saved by development builds between cards 0135 and 0136
+  input pin (card 0136). Names are stable identifiers: node `class`, `member_parent`, `member_name`, pin `name` =
+  `PinName`, with the display hints `title` (nodes; 1.x calls it `name`) and `label` (pins) (card 0138). Additive
+  optional fields bump the minor; a breaking change bumps the major.
+- **1.0.0** (1.2.x and earlier 2.0 builds): one string per output, so a fan-out kept one edge, node-only exec
+  entries ("N1->N2"), and display text for names: a node `name` (read as the title) and display pin names (read as
+  they are), so a 1.x document reads into the v2 model with no `class` and is written back with `title`. 2.0.0 documents saved by development builds between cards 0135 and 0136
   also have node-only exec entries: readers accept both forms in any readable version and keep them as they are.
   `FromJson`, `UN2CPythonBridge::ReadN2CJson` (Python `nodetocode.read_n2c_json`) and the validator read it through
   the 2.x line. `NodeToCode.Capture.Golden.V1Reader` reads the 1.0.0 documents in
@@ -205,9 +221,11 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 `FN2CNodeDefinition` contains:
 - `ID` - Short identifier (e.g., "N1")
 - `NodeType` - `EN2CNodeType` enum value
-- `Name` - Display name or function name
-- `MemberParent` - Class/scope containing the function/variable
-- `MemberName` - Function/variable name being accessed
+- `NodeClass` - The UK2Node class (JSON `class`), a stable identifier
+- `Title` - Hint only: the menu title in source text, empty when it says no more than `MemberName` (JSON `title`;
+  1.x documents call it `name`)
+- `MemberParent` - The class or struct that declares the function/variable (a Blueprint by its name)
+- `MemberName` - Function/variable/event/macro name as declared
 - `Comment` - Node comment if any
 - `bPure`, `bLatent` - Node behavior flags
 - `InputPins`, `OutputPins` - Arrays of `FN2CPinDefinition`
@@ -237,7 +255,8 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 
 `FN2CPinDefinition` contains:
 - `ID` - Short local ID (e.g., "P1")
-- `Name` - Display name
+- `Name` - `UEdGraphPin::PinName` (`execute`, `then`, `ReturnValue`); a pin read from 1.x keeps its display name
+- `Label` - Hint only: the display label in source text, when it says more than `Name` (JSON `label`)
 - `Type` - `EN2CPinType` enum value
 - `SubType` - Optional subtype (e.g., struct name)
 - `DefaultValue` - Default value if any

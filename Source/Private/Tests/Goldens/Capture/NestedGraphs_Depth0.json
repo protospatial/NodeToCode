@@ -12,11 +12,6 @@
 			"finding": "imp-translation-core-4",
 			"card": "0235",
 			"effect": "The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no member_parent or member_name)"
-		},
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
 		}
 	],
 	"capture":
@@ -36,14 +31,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "Nested",
+						"class": "K2Node_FunctionEntry",
+						"title": "Nested",
 						"member_parent": "BP_N2CGolden_NestedGraphs_Depth0",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -51,7 +47,8 @@
 					{
 						"id": "N2",
 						"type": "Composite",
-						"name": "GoldenCollapsed",
+						"class": "K2Node_Composite",
+						"title": "GoldenCollapsed",
 						"input_pins": [
 							{
 								"id": "P2",
@@ -70,7 +67,7 @@
 					{
 						"id": "N3",
 						"type": "MacroInstance",
-						"name": "Local Steps",
+						"class": "K2Node_MacroInstance",
 						"member_parent": "BP_N2CGolden_NestedGraphs_Depth0",
 						"member_name": "LocalSteps",
 						"input_pins": [

@@ -95,6 +95,15 @@ contains an empty `Tick`, a disabled call or a value returned from a node that i
 check the [Implementation Notes](Implementation-Notes) for the nodes it skipped, and delete or wire the node in the
 Blueprint if it should run. A **Development Only** node counts as live, as it does in the editor.
 
+### 6. Names in Another Editor Language
+
+The LLM gets the same Blueprint description whatever language the editor is set to, and whether **Show Friendly
+Names** (Editor Preferences) is on or off: functions, variables and pins go by the names they are declared with
+(`PrintString`, `ReturnValue`, `Temperature_C`), and the titles you see on nodes are sent in English, only where
+they add something. A variable read from another Blueprint is sent as that Blueprint's variable, so the generated
+code reads it from the right class. If code from a translation names a member that does not exist, compare it with
+the function or variable as it is named in the **My Blueprint** panel (or its C++ declaration), not with the node's title.
+
 ## Understanding the Translation Structure
 
 ### Blueprint to C++ Mapping

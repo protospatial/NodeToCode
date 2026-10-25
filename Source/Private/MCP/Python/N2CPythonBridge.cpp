@@ -12,6 +12,7 @@
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CJsonContract.h"
+#include "Utils/N2CStableNames.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -1604,9 +1605,8 @@ FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const
 		}
 		else // keyword search
 		{
-			FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
-			FString NodeClass = Node->GetClass()->GetName();
-			FString SearchableText = FString::Printf(TEXT("%s %s"), *NodeTitle, *NodeClass);
+			// The title as shown and in source text, the class and the member name (card 0138)
+			FString SearchableText = N2CStableNames::NodeSearchText(Node);
 
 			if (!bCaseSensitive)
 			{

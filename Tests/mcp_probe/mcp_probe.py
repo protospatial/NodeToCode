@@ -396,7 +396,7 @@ if state["opened"]:
             "begin_play": len(begin),
             "begin_play_exec_linked": any(p.get("connected") for n in begin for p in n.get("output_pins") or []
                                           if p.get("type") is None),
-            "node_names": [n.get("name") for n in nodes]})
+            "node_names": [n.get("member_name") or n.get("title") or n.get("class") for n in nodes]})
     else:
         state["n2c_error"] = raw.get("error")
 dirty = [p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
@@ -559,7 +559,7 @@ def probe_p10(url):
     status = 'reproduced' if changed or not begin_guid_kept or not after.get('begin_play_exec_linked') else 'fixed'
     return {'ids': ids, 'status': status, 'evidence': {
         'search_error': error, 'search_results': len((data or {}).get('nodes', [])),
-        'search_names': [n.get('name') for n in (data or {}).get('nodes', [])][:10],
+        'search_names': [n.get('title') or n.get('member_name') for n in (data or {}).get('nodes', [])][:10],
         'before': {k: before.get(k) for k in keys + ('execution',)},
         'after': {k: after.get(k) for k in keys + ('execution',)},
         'begin_play_guids_before': sorted(begin_before), 'begin_play_guids_after': sorted(begin_after),

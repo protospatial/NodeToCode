@@ -59,6 +59,36 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* UnreachableField = TEXT("unreachable");
 	inline constexpr const TCHAR* DisabledField = TEXT("disabled");
 
+	/**
+	 * Stable identifiers and hints (card 0138, gap-5). A node's identity is its "type", its "class" (the UK2Node class,
+	 * "K2Node_CallFunction") and, for a member, "member_parent" (the owning class or struct, a Blueprint class by its
+	 * Blueprint's name) and "member_name" (the function, variable, event or macro as declared, "_C" and all). A pin's
+	 * "name" is UEdGraphPin::PinName ("execute", "then", "ReturnValue"). None of these change with the editor language
+	 * or preferences. Display text is only a hint: the node's "title" and the pin's "label", in the source (English)
+	 * text whatever the editor language, and each written only when it says more than the identifier it labels (not
+	 * when it is the identifier or the identifier spelled as a display name, see IsRedundantHint). v1 documents call
+	 * the node title "name" (NodeNameFieldV1) and their pin "name" is display text; the reader keeps both as they are.
+	 */
+	inline constexpr const TCHAR* NodeClassField = TEXT("class");
+	inline constexpr const TCHAR* NodeTitleField = TEXT("title");
+	inline constexpr const TCHAR* NodeNameFieldV1 = TEXT("name");
+	inline constexpr const TCHAR* PinNameField = TEXT("name");
+	inline constexpr const TCHAR* PinLabelField = TEXT("label");
+
+	/**
+	 * True when a hint adds nothing to Identifier: it is empty, the identifier itself, or the identifier as the editor
+	 * spells it for display (FName::NameToDisplayString, "ReturnValue" -> "Return Value", "bEnabled" -> "Enabled").
+	 * UE 5.8 titles a function call by its name where 5.6 and 5.7 use that display spelling, and the friendly-names
+	 * preference switches pin labels between the two, so neither is ever written as a hint.
+	 */
+	inline bool IsRedundantHint(const FString& Hint, const FString& Identifier)
+	{
+		return Hint.IsEmpty()
+			|| Hint.Equals(Identifier, ESearchCase::CaseSensitive)
+			|| Hint.Equals(FName::NameToDisplayString(Identifier, false), ESearchCase::CaseSensitive)
+			|| Hint.Equals(FName::NameToDisplayString(Identifier, true), ESearchCase::CaseSensitive);
+	}
+
 	/** Separates a node ID from a pin ID in a pin ref ("N3.P5") */
 	inline constexpr const TCHAR* PinRefSeparator = TEXT(".");
 

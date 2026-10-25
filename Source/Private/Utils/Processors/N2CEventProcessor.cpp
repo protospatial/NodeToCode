@@ -1,16 +1,17 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/Processors/N2CEventProcessor.h"
+#include "Utils/N2CStableNames.h"
 
 void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     // Handle standard event nodes
     if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
     {
-        OutNodeDef.MemberName = GetCleanClassName(EventNode->EventReference.GetMemberName().ToString());
+        OutNodeDef.MemberName = EventNode->EventReference.GetMemberName().ToString();
         if (UClass* EventClass = EventNode->EventReference.GetMemberParentClass())
         {
-            OutNodeDef.MemberParent = GetCleanClassName(EventClass->GetPathName());
+            OutNodeDef.MemberParent = N2CStableNames::ClassName(EventClass);
         }
         
         // Log event details
@@ -27,7 +28,7 @@ void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         OutNodeDef.MemberName = CustomEventNode->CustomFunctionName.ToString();
         if (UBlueprint* BP = CustomEventNode->GetBlueprint())
         {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
+            OutNodeDef.MemberParent = BP->GetName();
         }
         
         // Log custom event details
@@ -44,7 +45,7 @@ void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         OutNodeDef.MemberName = ActorEventNode->DelegatePropertyName.ToString();
         if (UClass* DelegateClass = ActorEventNode->DelegateOwnerClass)
         {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
+            OutNodeDef.MemberParent = N2CStableNames::ClassName(DelegateClass);
         }
         
         // Log actor bound event details
@@ -61,7 +62,7 @@ void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         OutNodeDef.MemberName = CompEventNode->DelegatePropertyName.ToString();
         if (UClass* DelegateClass = CompEventNode->DelegateOwnerClass)
         {
-            OutNodeDef.MemberParent = GetCleanClassName(DelegateClass->GetName());
+            OutNodeDef.MemberParent = N2CStableNames::ClassName(DelegateClass);
         }
         
         // Log component bound event details

@@ -31,6 +31,7 @@
 #include "K2Node_SwitchInteger.h"
 #include "K2Node_Timeline.h"
 #include "K2Node_Tunnel.h"
+#include "K2Node_VariableGet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/EnumEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -464,6 +465,45 @@ namespace N2CTest
 		return AddCall(Graph, Blueprint->SkeletonGeneratedClass, FunctionName);
 	}
 
+	bool FTestBlueprint::AddMemberVariable(const FName Name, const FEdGraphPinType& Type)
+	{
+		if (!Blueprint || !FBlueprintEditorUtils::AddMemberVariable(Blueprint, Name, Type))
+		{
+			AddError(TEXT("could not add member variable ") + Name.ToString());
+			return false;
+		}
+		// Regenerates the skeleton class, so the variable's property exists on it
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		return true;
+	}
+
+	UK2Node_VariableGet* FTestBlueprint::AddVariableGet(UEdGraph* Graph, const FName Name, FTestBlueprint* Owner)
+	{
+		UBlueprint* OwnerBlueprint = Owner ? Owner->GetBlueprint() : Blueprint;
+		if (!Graph || !OwnerBlueprint)
+		{
+			return nullptr;
+		}
+		const FGuid VariableGuid = FBlueprintEditorUtils::FindMemberVariableGuidByName(OwnerBlueprint, Name);
+		if (!VariableGuid.IsValid())
+		{
+			AddError(TEXT("no member variable ") + Name.ToString());
+			return nullptr;
+		}
+		FGraphNodeCreator<UK2Node_VariableGet> Creator(*Graph);
+		UK2Node_VariableGet* Node = Creator.CreateNode();
+		if (Owner)
+		{
+			Node->VariableReference.SetExternalMember(Name, OwnerBlueprint->GeneratedClass, VariableGuid);
+		}
+		else
+		{
+			Node->VariableReference.SetSelfMember(Name, VariableGuid);
+		}
+		Creator.Finalize();
+		return Node;
+	}
+
 	UEdGraph* FTestBlueprint::AddMacro(const FName Name)
 	{
 		if (!Blueprint)
@@ -727,6 +767,14 @@ namespace N2CTest
 	{
 		FEdGraphPinType Type;
 		Type.PinCategory = UEdGraphSchema_K2::PC_Int;
+		return Type;
+	}
+
+	FEdGraphPinType FTestBlueprint::DoublePinType()
+	{
+		FEdGraphPinType Type;
+		Type.PinCategory = UEdGraphSchema_K2::PC_Real;
+		Type.PinSubCategory = UEdGraphSchema_K2::PC_Double;
 		return Type;
 	}
 

@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/Processors/N2CArrayProcessor.h"
+#include "Utils/N2CStableNames.h"
 
 void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
@@ -14,16 +15,16 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
             {
                 if (Pin->PinType.PinSubCategory != NAME_None)
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategory.ToString());
+                    OutNodeDef.MemberName = Pin->PinType.PinSubCategory.ToString();
                 }
                 else if (Pin->PinType.PinSubCategoryObject.IsValid())
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName());
+                    OutNodeDef.MemberName = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
                 }
                 
                 // Log array element type
                 FString ArrayInfo = FString::Printf(TEXT("Make Array: %s, Element Type: %s"),
-                    *OutNodeDef.Name,
+                    *OutNodeDef.Title,
                     *OutNodeDef.MemberName);
                 FN2CLogger::Get().Log(ArrayInfo, EN2CLogSeverity::Debug);
                 break;
@@ -45,23 +46,23 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
                 // Try to get key and value types
                 if (Pin->PinType.PinValueType.TerminalCategory != NAME_None)
                 {
-                    KeyType = GetCleanClassName(Pin->PinType.PinValueType.TerminalCategory.ToString());
+                    KeyType = Pin->PinType.PinValueType.TerminalCategory.ToString();
                 }
                 
                 if (Pin->PinType.PinSubCategory != NAME_None)
                 {
-                    ValueType = GetCleanClassName(Pin->PinType.PinSubCategory.ToString());
+                    ValueType = Pin->PinType.PinSubCategory.ToString();
                 }
                 else if (Pin->PinType.PinSubCategoryObject.IsValid())
                 {
-                    ValueType = GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName());
+                    ValueType = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
                 }
                 
                 OutNodeDef.MemberName = FString::Printf(TEXT("%s to %s"), *KeyType, *ValueType);
                 
                 // Log map key/value types
                 FString MapInfo = FString::Printf(TEXT("Make Map: %s, Key Type: %s, Value Type: %s"),
-                    *OutNodeDef.Name,
+                    *OutNodeDef.Title,
                     *KeyType,
                     *ValueType);
                 FN2CLogger::Get().Log(MapInfo, EN2CLogSeverity::Debug);
@@ -81,16 +82,16 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
             {
                 if (Pin->PinType.PinSubCategory != NAME_None)
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategory.ToString());
+                    OutNodeDef.MemberName = Pin->PinType.PinSubCategory.ToString();
                 }
                 else if (Pin->PinType.PinSubCategoryObject.IsValid())
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName());
+                    OutNodeDef.MemberName = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
                 }
                 
                 // Log set element type
                 FString SetInfo = FString::Printf(TEXT("Make Set: %s, Element Type: %s"),
-                    *OutNodeDef.Name,
+                    *OutNodeDef.Title,
                     *OutNodeDef.MemberName);
                 FN2CLogger::Get().Log(SetInfo, EN2CLogSeverity::Debug);
                 break;
@@ -109,16 +110,16 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
             {
                 if (Pin->PinType.PinSubCategory != NAME_None)
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategory.ToString());
+                    OutNodeDef.MemberName = Pin->PinType.PinSubCategory.ToString();
                 }
                 else if (Pin->PinType.PinSubCategoryObject.IsValid())
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName());
+                    OutNodeDef.MemberName = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
                 }
                 
                 // Log array element type
                 FString ArrayInfo = FString::Printf(TEXT("Get Array Item: %s, Element Type: %s"),
-                    *OutNodeDef.Name,
+                    *OutNodeDef.Title,
                     *OutNodeDef.MemberName);
                 FN2CLogger::Get().Log(ArrayInfo, EN2CLogSeverity::Debug);
                 break;
@@ -152,16 +153,16 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
             {
                 if (Pin->PinType.PinSubCategory != NAME_None)
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategory.ToString());
+                    OutNodeDef.MemberName = Pin->PinType.PinSubCategory.ToString();
                 }
                 else if (Pin->PinType.PinSubCategoryObject.IsValid())
                 {
-                    OutNodeDef.MemberName = GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName());
+                    OutNodeDef.MemberName = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
                 }
                 
                 // Log container type
                 FString ContainerInfo = FString::Printf(TEXT("Make Container: %s, Type: %s, Element Type: %s"),
-                    *OutNodeDef.Name,
+                    *OutNodeDef.Title,
                     *ContainerType,
                     *OutNodeDef.MemberName);
                 FN2CLogger::Get().Log(ContainerInfo, EN2CLogSeverity::Debug);

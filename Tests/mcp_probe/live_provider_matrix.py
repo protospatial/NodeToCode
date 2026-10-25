@@ -204,7 +204,12 @@ def add(title, x, y):
     for d in walk(found):
         ident = d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier")
         if ident:
-            actions.append((str(d.get("name", d.get("displayName", ""))).replace(" ", "").lower(), ident))
+            # N2C JSON 2.0.0 (card 0138): a node's display title is the optional "title" hint (left out when it is
+            # only the function name spelled out), its identity "member_name"; the action identifier starts with the
+            # menu title
+            for label in (d.get("title"), d.get("member_name"), d.get("name"), d.get("displayName"), ident.split(">")[0]):
+                if label:
+                    actions.append((str(label).replace(" ", "").lower(), ident))
     exact = [i for n, i in actions if (n.splitlines() or [""])[0] == want]
     prefix = [i for n, i in actions if n.startswith(want)]
     for ident in exact + prefix:
@@ -241,7 +246,7 @@ raw = json.loads(bridge.get_focused_blueprint_json())
 n2c = (raw.get("data") or {}).get("n2c_json") or {}
 steps["version"] = n2c.get("version")
 steps["fanout_entries"] = {k: v for g in n2c.get("graphs") or [] for k, v in ((g.get("flows") or {}).get("data") or {}).items() if isinstance(v, list)}
-steps["node_names"] = [n.get("name") for g in n2c.get("graphs") or [] for n in g.get("nodes") or []]
+steps["node_names"] = [n.get("member_name") or n.get("title") or n.get("class") for g in n2c.get("graphs") or [] for n in g.get("nodes") or []]
 result = steps
 """
 
@@ -269,7 +274,12 @@ def add(title, x, y):
     for d in walk(found):
         ident = d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier")
         if ident:
-            actions.append((str(d.get("name", d.get("displayName", ""))).replace(" ", "").lower(), ident))
+            # N2C JSON 2.0.0 (card 0138): a node's display title is the optional "title" hint (left out when it is
+            # only the function name spelled out), its identity "member_name"; the action identifier starts with the
+            # menu title
+            for label in (d.get("title"), d.get("member_name"), d.get("name"), d.get("displayName"), ident.split(">")[0]):
+                if label:
+                    actions.append((str(label).replace(" ", "").lower(), ident))
     exact = [i for n, i in actions if (n.splitlines() or [""])[0] == want]
     prefix = [i for n, i in actions if n.startswith(want)]
     for ident in exact + prefix:
@@ -313,7 +323,8 @@ for g in n2c.get("graphs") or []:
         nid = ids.get("short") or n.get("id")
         for p in (n.get("input_pins") or []) + (n.get("output_pins") or []):
             pids = p.get("ids") or {}
-            names["%s.%s" % (nid, pids.get("short") or p.get("id"))] = "%s.%s" % (n.get("name"), p.get("name") or "exec")
+            names["%s.%s" % (nid, pids.get("short") or p.get("id"))] = "%s.%s" % (
+                n.get("member_name") or n.get("title") or n.get("class"), p.get("name") or "exec")
 def named(entry):
     return " -> ".join(names.get(e.strip(), e.strip()) for e in entry.split("->"))
 steps["execution"] = [[e, named(e)] for g in n2c.get("graphs") or [] for e in (g.get("flows") or {}).get("execution") or []]
@@ -345,7 +356,12 @@ def add(title, x, y):
     for d in walk(found):
         ident = d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier")
         if ident:
-            actions.append((str(d.get("name", d.get("displayName", ""))).replace(" ", "").lower(), ident))
+            # N2C JSON 2.0.0 (card 0138): a node's display title is the optional "title" hint (left out when it is
+            # only the function name spelled out), its identity "member_name"; the action identifier starts with the
+            # menu title
+            for label in (d.get("title"), d.get("member_name"), d.get("name"), d.get("displayName"), ident.split(">")[0]):
+                if label:
+                    actions.append((str(label).replace(" ", "").lower(), ident))
     exact = [i for n, i in actions if (n.splitlines() or [""])[0] == want]
     prefix = [i for n, i in actions if n.startswith(want)]
     for ident in exact + prefix:
@@ -389,7 +405,7 @@ steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success"
 raw = json.loads(bridge.get_focused_blueprint_json())
 n2c = (raw.get("data") or {}).get("n2c_json") or {}
 steps["version"] = n2c.get("version")
-steps["nodes"] = [[n.get("id"), n.get("member_name") or n.get("name"),
+steps["nodes"] = [[n.get("id"), n.get("member_name") or n.get("title"),
                    [f for f in ("unused", "unreachable", "disabled") if n.get(f)]]
                   for g in n2c.get("graphs") or [] for n in g.get("nodes") or []]
 steps["execution"] = [e for g in n2c.get("graphs") or [] for e in (g.get("flows") or {}).get("execution") or []]
