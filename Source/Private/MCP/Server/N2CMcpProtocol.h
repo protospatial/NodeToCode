@@ -43,7 +43,7 @@ struct FN2CMcpReply
 	/**
 	 * Transport status (HTTP status code): 200; 202 for a message that needs no response; 204 for an ended session;
 	 * 400 for a bad message, a missing Mcp-Session-Id or an unsupported MCP-Protocol-Version; 404 for an unknown or
-	 * ended session; 405 for a verb the endpoint does not take
+	 * ended session; 405 for a verb the endpoint does not take; 413 for a body over FN2CMcpProtocol::MaxRequestBodyBytes
 	 */
 	int32 Status = 200;
 
@@ -221,6 +221,16 @@ public:
 
 	/** The most sessions kept at once; initialize beyond it drops the least recently used one */
 	static constexpr int32 MaxSessions = 64;
+
+	/**
+	 * The largest request body the endpoint takes, in bytes (8 MiB). A larger body is answered with 413 and a
+	 * JSON-RPC -32600 error before it is copied or parsed (card 0425). No tool takes anything near this: the largest
+	 * inputs are run-python code and save-python-script source, typically a few KB.
+	 */
+	static constexpr int32 MaxRequestBodyBytes = 8 * 1024 * 1024;
+
+	/** The 413 reply for a body of BodyBytes bytes, over MaxRequestBodyBytes */
+	static FN2CMcpReply BodyTooLargeReply(int64 BodyBytes);
 
 private:
 	/** Answers DELETE: ends the named session (204), or 400 without Mcp-Session-Id and 404 for an unknown one */

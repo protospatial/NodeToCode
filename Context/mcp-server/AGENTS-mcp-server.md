@@ -104,7 +104,9 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   **Batches** (a JSON array body) are accepted only on sessions negotiated at `2025-03-26` (batching was added in
     2025-03-26 and removed in 2025-06-18); on any other session they get **400** with -32600.
 *   Order of checks: the transport's Origin and Host checks (403) and, for POST, Content-Type (415) run first; then
-    the core's verb, `MCP-Protocol-Version`, session and batch checks; then dispatch. The version check comes before
+    the body cap (more than `FN2CMcpProtocol::MaxRequestBodyBytes`, 8 MiB: **413** with -32600 and a null id,
+    checked in `HandleMcpRequest` before the body is copied and again at the top of `FN2CMcpProtocol::Handle`;
+    HTTPServer has already read the whole body by then, see the threat model); then the core's verb, `MCP-Protocol-Version`, session and batch checks; then dispatch. The version check comes before
     the session check so that a stateless 2026-07-28 probe (Claude Code first sends `server/discover` with
     `MCP-Protocol-Version: 2026-07-28` and no session) gets 400 for the version; the client then falls back to
     `initialize`.
@@ -150,7 +152,7 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
 *   **`N2CMcpHttpServerManager.h/.cpp`**: the HTTP transport
     *   Singleton pattern for server lifecycle control
     *   HTTP routing: `/mcp` (POST, DELETE; GET, PUT and PATCH answered 405 by the core), `/mcp/health` (health check)
-    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers
+    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; a body over 8 MiB gets 413 (card 0425)
     *   `HandleMcpRequest` copies the request into an `FN2CMcpInbound` and calls the protocol core with an
         HTTPServer responder: one `application/json` response, or on UE 5.8 a `text/event-stream` response drained
         from a queue (`CanStreamToolProgress()`)

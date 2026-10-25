@@ -224,12 +224,43 @@ def probe_p4(args, port, log_dir):
             'evidence': {'held_port': port, 'claimed_ports': claimed_ports, 'success_lines': claims, 'failure_lines': failures}}
 
 
+MAX_BODY = 8 * 1024 * 1024  # FN2CMcpProtocol::MaxRequestBodyBytes (card 0425)
+
+
+def sized_ping(size):
+    """A JSON-RPC ping whose UTF-8 body is exactly size bytes (padded with a params string)"""
+    head, tail = '{"jsonrpc":"2.0","id":6,"method":"ping","params":{"pad":"', '"}}'
+    return head + 'x' * (size - len(head) - len(tail)) + tail
+
+
 def probe_p6(port, pid):
-    """Request-size caps on the notification server (port+1). That server was removed in card 0113, so there is
-    nothing to send oversized requests to; P5 checks that port+1 is closed. The /mcp server is the engine's HTTPServer,
-    whose limits are the engine's."""
-    return {'ids': ['auth-settings-module-17', 'dx-docs-release-4', 'p0-9'], 'status': 'not_applicable',
-            'evidence': {'reason': 'the port+1 notification server was removed (card 0113); P5 checks port+1 is closed'}}
+    """/mcp request body cap (card 0425). Until then a body of any size was read and parsed (live 0090: a 32 MB ping
+    was answered 200). In this probe's session: a ping one byte over 8 MiB, and a 1 MiB ping as a control. Fixed when
+    the oversized one is answered 413 with a JSON-RPC -32600 error (null id) and the control 200 with a result;
+    reproduced when the oversized one is answered 200. The engine's HTTPServer still reads the whole body before
+    NodeToCode sees it (no pre-body hook on 5.6-5.8); the evidence records how long that took."""
+    headers = {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}
+    start = time.time()
+    over = post(port, sized_ping(MAX_BODY + 1), headers)
+    over_seconds = round(time.time() - start, 2)
+    control = post(port, sized_ping(1024 * 1024), headers)
+    try:
+        over_msg = json.loads(over.get('body') or '')
+    except ValueError:
+        over_msg = {}
+    try:
+        control_msg = json.loads(control.get('body') or '')
+    except ValueError:
+        control_msg = {}
+    over_ok = (over.get('status') == 413 and over_msg.get('id', 'missing') is None
+               and (over_msg.get('error') or {}).get('code') == -32600)
+    control_ok = control.get('status') == 200 and 'result' in control_msg
+    status = 'fixed' if over_ok and control_ok else 'reproduced' if over.get('status') == 200 else 'skipped'
+    return {'ids': ['auth-settings-module-17', 'dx-docs-release-4', 'p0-9'], 'status': status, 'evidence': {
+        'limit_bytes': MAX_BODY, 'over': {'bytes': MAX_BODY + 1, 'status': over.get('status'),
+                                          'body': over.get('body'), 'error': over.get('error'), 'seconds': over_seconds},
+        'control_1MiB': {'status': control.get('status'), 'body': (control.get('body') or '')[:200],
+                         'error': control.get('error')}}}
 
 
 def probe_p7(port):
