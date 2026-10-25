@@ -137,6 +137,9 @@
             - "comment": Any user comment on the node (optional).
             - "pure": (bool) True if the node is “pure” (no exec pins).
             - "latent": (bool) True if the node is an async/latent operation.
+            - "unused": (bool) Present only when true: a pure node whose outputs nothing that runs reads. Blueprint never evaluates it.
+            - "unreachable": (bool) Present only when true: a node with exec pins that no event, function entry or other entry reaches through exec links. It never runs.
+            - "disabled": (bool) Present only when true: the node is disabled in the editor and is not compiled. When it has one exec input and one exec output, "flows".execution already links its predecessor straight to its successor; otherwise the exec chain stops at it.
             - "input_pins": Array of pins representing the node’s inputs.
             - "output_pins": Array of pins for the node’s outputs.
 
@@ -206,7 +209,7 @@
            - **ForEachLoop**: Represent as a range-based for(...) or standard for loop iterating over the specified container.
            - **Gate**: Emulate open/close logic (likely via a boolean variable or state machine that toggles whether code runs).
 
-           **All** node-level properties and pin connections described in the N2C JSON must appear in the final code, ensuring you don’t skip or simplify them. If a macro node has exec outputs that branch to multiple subsequent nodes, reflect that branching logic in C++. If a pin has a default value or data link, include it in the resulting code.
+           **All** node-level properties and pin connections described in the N2C JSON must appear in the final code, ensuring you don’t skip or simplify them, except the nodes that never run (marked "unused", "unreachable" or "disabled"; see step 4). If a macro node has exec outputs that branch to multiple subsequent nodes, reflect that branching logic in C++. If a pin has a default value or data link, include it in the resulting code.
 
         3. **Exec Pins for Flow**:
            - The pins of "type": "Exec" define the flow order. Mirror these as sequential statements or conditionals/loops in your final function. If you see "N1.P3->N2.P5" and "N2.P7->N3.P9" in "flows".execution, that means node N1 executes first, then node N2, then node N3. Convert to something like:
@@ -219,6 +222,8 @@
            - Follow each exec link from its source pin. Links from a Branch's True pin go in the if block and links from its False pin in the else block; each Switch case pin's links go in that case; a Sequence runs the chain from then_0 before the chain from then_1; a ForEachLoop's Loop Body chain is the loop body and its Completed chain runs after the loop. The target pin says which input of a node with several exec inputs runs: a Gate's Enter runs through the gate only while it is open, Open and Close change its state; a Timeline's Play and Reverse are different calls.
 
         4. **Data Pins for Values**:
+           - **Nodes that never run:** Blueprint never runs a node marked "unused", "unreachable" or "disabled". Do not translate these nodes or any value they compute; list each one (id and name) in "implementationNotes" instead. A data input fed only by a disabled node gets its "default_value". This overrides any instruction to include every node. The editor's greyed-out placeholder events (a new Blueprint's default BeginPlay, ActorBeginOverlap and Tick that nothing is wired to) are left out of the JSON, so never add them.
+           - **Return values:** A function's return value(s) come only from the input pins of its "FunctionResult" node(s) (the Return Node): the data flow into that pin, or the pin's "default_value" when nothing feeds it. Never return a value that is not wired into a "FunctionResult" input pin, even when the graph computes it somewhere else.
            - If a pin is data (not "Exec") and has a connection "N1.P5" -> "N2.P2", pass the value from node N1’s pin to the input parameter for node N2. If that value is a literal "default_value", pass it directly. If it’s an object reference, pass the relevant object variable in your code.
 
         5. **Handling Different Cases**:

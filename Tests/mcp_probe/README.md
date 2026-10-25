@@ -250,6 +250,13 @@ its environment when no key is saved, so a live check never types or saves a key
     case keeps its `code` and gets `branch_check`: whether the generated if/else runs CollectGarbage when
     `HasAuthority()` is true and PrintString when it is false (`ok: null` when the heuristic cannot tell; read the
     code). With `--branch` a case passes only when `branch_check` is ok.
+  - `--liveness` (card 0137, issue #13) translates a graph of nodes Blueprint never runs instead of the wired
+    BeginPlay: a custom event runs the Print String, then Collect Garbage; Compile Mode Final Release disables the
+    Development Only Print String (exec passes through it); an unwired Get Actor Location is unused; the default
+    BeginPlay, ActorBeginOverlap and Tick stay ghosts. The report's `liveness` lists the focused graph's nodes with
+    their flags and its exec flows, and each case gets `liveness_check`: the code calls CollectGarbage and implements
+    no BeginPlay, Tick, ActorBeginOverlap, PrintString or GetActorLocation (comments ignored). A user-disabled node
+    cannot be made from Python (EnabledState is not editable there); the capture golden `DisabledNodes` covers it.
   - The case list holds current models only (the live entries of `N2CLLMModelRegistry.cpp`): no retired, deprecated
     or "shuts down" IDs are tested. Update it when the registry's lineup changes.
   - Each translation is bounded by `--timeout` (wall clock; the streamed response's half-second progress events keep

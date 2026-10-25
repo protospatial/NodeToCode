@@ -133,15 +133,16 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   makes user types outside the editor's undo history and clears the flags of the `STRUCT_REINST_` copies the struct
   compiler leaves behind; either would keep the package alive).
 - **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
-  card that changes them: ghost default events (translation-core-18/19,
-  0137), display-text names (gap-5, 0138), Break Struct captured as a Variable named `None` (translation-core-4, 0234),
+  card that changes them: display-text names (gap-5, 0138), Break Struct captured as a Variable named `None` (translation-core-4, 0234),
   custom events with member_name `None` and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134
   fixed and removed the ID defects (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one
   ID, and node IDs that depended on traversal order; translation-core-9: a function that calls itself was captured
   twice). Card 0135 fixed and removed the lossy data edges (translation-core-1: `flows.data` kept one edge per output,
   and a knot's fan-out only its first link). Card 0136 fixed and removed the node-pair exec flows (translation-core-2:
   `flows.execution` held "N1->N2" node pairs, so which pin a link used was lost and two outputs into one node were one
-  entry). From card 0127: a user struct with an object member is dropped from
+  entry). Card 0137 fixed and removed the ghost default events (translation-core-18/19: the greyed-out BeginPlay,
+  ActorBeginOverlap and Tick of every Actor Blueprint's event graph were captured as live events N1-N3, so every
+  event-graph golden lost those three nodes and its IDs moved down by three). From card 0127: a user struct with an object member is dropped from
   `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped (translation-core-11,
   0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236); collapsed graphs and user macros
   are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not name the captured graph
@@ -150,6 +151,15 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   spec and is written into the golden. Error log lines that a known defect writes (`Missing name`, `Member Owner
   requires a type name`) are the case's `ExpectedErrors`: the case fails if they stop appearing, so the fixing card
   updates the case.
+- **Liveness (card 0137, issue #13):** `Issue13` (the issue's graph: one output into To Text (String) and a Format
+  Text whose result nothing reads), `GhostEvents` (the default BeginPlay wired, Overlap and Tick left as ghosts),
+  `DisabledNodes` (a disabled Print String between two calls, a Development Only call, a disabled Branch and the call
+  after it) and `UnreachableChain` (an impure chain with no event and the pure node only it reads). The `Liveness`
+  tests check that ghost nodes are not captured (an untouched event graph captures nothing), disabled nodes carry
+  `"disabled": true` and exec passes through one with one exec input and one exec output (and stops at any other),
+  pure nodes nothing live reads carry `"unused": true`, impure nodes no entry reaches `"unreachable": true`, that no
+  other case marks a node, that the flags round-trip, and that the validator warns about a connected data input with
+  no data flow into it.
 - **Round trip:** every case `survives ToJson -> FromJson -> ToJson unchanged` (card 0135, translation-core-25:
   `FromJson` reads a pin without `type` as Exec, reads `structs` and `enums`, and a fan-out's array).
 - **Data flows (card 0135):** `DataFlows` checks on every case that each connected data input is the target of
@@ -174,8 +184,8 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   `<case>.<engine>.json` when that file exists, else `<case>.json`.
 - **Per-engine goldens:** `<case>.<engine>.json` replaces `<case>.json` on that engine only where the engine really
   differs. Today: `Branch`, `BranchSameTarget`, `CopyPaste`, `EnhancedInputEvent`, `FanOutActorLocation`,
-  `ForEachLoop`, `GateMultiExec`, `NestedGraphs_Depth1`, `SameNameOwners`, `Sequence`, `SwitchOnEnum`, `SwitchOnInt`,
-  `TimelineMultiExec` and `UserEnum` have a
+  `DisabledNodes`, `ForEachLoop`, `GateMultiExec`, `GhostEvents`, `NestedGraphs_Depth1`, `SameNameOwners`, `Sequence`, `SwitchOnEnum`, `SwitchOnInt`,
+  `TimelineMultiExec`, `UnreachableChain` and `UserEnum` have a
   `.5.8.json`, because UE 5.8's `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's
   own name (`CollectGarbage`) where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Calls to the Blueprint's own
   functions are the same on every engine. Card 0138's stable identifiers remove the difference. To add one, copy
@@ -183,7 +193,7 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
 - **Locale:** `build.ps1 -Test` runs the editor with `-culture=en`; the goldens are recorded that way. `-TestCulture
   de` runs once in another culture. With `de` (checked on 5.6, 5.7 and 5.8, the same on each, before card 0134 added
   `SameNameOwners`) 9 of the 16 cases differ, only in display text: the function return node's name (`Add Return
-  Node...`), the ghost events' comment (`This node is disabled ...`) and the entry tunnel's name (`Inputs`); node
+  Node...`), the ghost events' comment (`This node is disabled ...`; no longer captured since card 0137) and the entry tunnel's name (`Inputs`); node
   titles such as Branch and Switch and all pin names stay English. All of it is card 0138's.
 
 ## Running the tests

@@ -6,7 +6,7 @@ Stdlib only; run with `python -I`:
     python -I live_provider_matrix.py --engine G:/UE/UE_5.8 \
         --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 \
         [--cases anthropic/claude-haiku-5-5 deepseek/deepseek-flash:off ...] [--providers gemini openai] [--fanout]
-        [--branch]
+        [--branch] [--liveness]
 
 It reads the keys from the repo's .env (env_keys.py) and refuses to run if a key for a selected provider is saved in
 the per-user secrets file (the saved key would be used, not the variable). For the session it sets Min Severity to
@@ -35,6 +35,16 @@ flows.execution, which names the True and False pins) and each case's 'code' plu
 generated implementation runs CollectGarbage when HasAuthority() is true and the Print String when it is false
 (a heuristic over the if/else blocks; read the kept code when it says unclear). A case with --branch passes only when
 branch_check is ok.
+
+--liveness (card 0137, issue #13) builds a graph with nodes Blueprint never runs instead of wiring BeginPlay: a custom
+event runs the Print String, then Collect Garbage; the Blueprint's Compile Mode is set to Final Release, so the
+Development Only Print String is disabled (exec passes through it); a Get Actor Location is left unwired (unused); the
+default BeginPlay, ActorBeginOverlap and Tick stay ghost nodes. (A node the user disabled cannot be made from Python:
+EnabledState is not editable there. NodeToCode.Capture.Golden "DisabledNodes" covers that case.) The report then has
+'liveness' (the focused graph's nodes with their flags and its exec flows) and each case's 'code' plus
+'liveness_check': the generated code must call CollectGarbage and must not implement BeginPlay, Tick or
+ActorBeginOverlap, call PrintString or call GetActorLocation (comments are ignored). A case with --liveness passes
+only when liveness_check is ok.
 """
 import argparse
 import json
@@ -311,6 +321,98 @@ result = steps
 """
 
 
+# Runs in the editor after SETUP_PY (--liveness, instead of CONNECT_PY): a custom event runs the Print String, then
+# Collect Garbage; Compile Mode Final Release disables the Development Only Print String; Get Actor Location stays
+# unwired; BeginPlay, ActorBeginOverlap and Tick stay ghosts. Reports the focused graph's nodes, flags and exec flows.
+LIVENESS_PY = r"""
+import json, unreal
+bridge = unreal.N2CPythonBridge
+steps = {}
+def walk(v):
+    if isinstance(v, dict):
+        yield v
+        for x in v.values():
+            yield from walk(x)
+    elif isinstance(v, list):
+        for x in v:
+            yield from walk(x)
+def norm(s):
+    return str(s).replace(" ", "").lower()
+def add(title, x, y):
+    found = json.loads(bridge.search_blueprint_nodes(title, True, 20, "", True))
+    want = norm(title)
+    actions = []
+    for d in walk(found):
+        ident = d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier")
+        if ident:
+            actions.append((str(d.get("name", d.get("displayName", ""))).replace(" ", "").lower(), ident))
+    exact = [i for n, i in actions if (n.splitlines() or [""])[0] == want]
+    prefix = [i for n, i in actions if n.startswith(want)]
+    for ident in exact + prefix:
+        added = json.loads(bridge.add_node_to_graph(title, ident, x, y))
+        return added.get("success") or added.get("error")
+    return "not found in %s" % [n for n, _ in actions][:12]
+steps["added_event"] = add("Add Custom Event", -300.0, 0.0)
+steps["added_collect"] = add("Collect Garbage", 700.0, 0.0)
+steps["added_location"] = add("Get Actor Location", 0.0, 300.0)
+found = json.loads(bridge.find_nodes_in_graph(json.dumps(["CustomEvent", "Custom Event", "Print String", "Collect Garbage"]), "keyword", False, 20))
+nodes = (found.get("data") or {}).get("nodes") or []
+def node(*words):
+    return next((n for n in nodes if any(w in norm(n.get("nodeName", "")) for w in words)), None)
+def pin(n, side, names=None, want_exec=False):
+    for p in n.get(side) or []:
+        is_exec = str(p.get("type", "")).lower() == "exec"
+        if is_exec == want_exec and (names is None or norm(p.get("pinName", "")) in names or norm(p.get("displayName", "")) in names):
+            return p
+    return None
+event, prints, collect = node("customevent"), node("printstring"), node("collectgarbage")
+steps["found"] = [n.get("nodeName") for n in nodes]
+if event and prints and collect:
+    def link(a, ap, b, bp):
+        return {"from": {"nodeGuid": a["nodeGuid"], "pinGuid": ap["pinGuid"]}, "to": {"nodeGuid": b["nodeGuid"], "pinGuid": bp["pinGuid"]}}
+    conns = [link(event, pin(event, "outputPins", None, True), prints, pin(prints, "inputPins", None, True)),
+             link(prints, pin(prints, "outputPins", None, True), collect, pin(collect, "inputPins", None, True))]
+    res = json.loads(bridge.connect_pins(json.dumps(conns), True))
+    steps["connected"] = res.get("success")
+    steps["connect_result"] = json.dumps(res.get("data") or res.get("error"))[:600]
+    text_pin = pin(prints, "inputPins", ["instring"])
+    if text_pin:
+        steps["text_set"] = json.loads(bridge.set_pin_value(prints["nodeGuid"], text_pin["pinGuid"],
+                                                           "Hello from the provider matrix", "InString")).get("success")
+asset = unreal.load_asset("%(path)s")
+try:
+    asset.set_editor_property("compile_mode", unreal.BlueprintCompileMode.FINAL_RELEASE)
+    steps["compile_mode"] = str(asset.get_editor_property("compile_mode"))
+except Exception as error:
+    steps["compile_mode_error"] = str(error)[:300]
+steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success")
+raw = json.loads(bridge.get_focused_blueprint_json())
+n2c = (raw.get("data") or {}).get("n2c_json") or {}
+steps["version"] = n2c.get("version")
+steps["nodes"] = [[n.get("id"), n.get("member_name") or n.get("name"),
+                   [f for f in ("unused", "unreachable", "disabled") if n.get(f)]]
+                  for g in n2c.get("graphs") or [] for n in g.get("nodes") or []]
+steps["execution"] = [e for g in n2c.get("graphs") or [] for e in (g.get("flows") or {}).get("execution") or []]
+result = steps
+"""
+
+
+def check_liveness(code):
+    """Whether the translation leaves out what Blueprint never runs (LIVENESS_PY's graph): calls CollectGarbage, and
+    implements no BeginPlay, Tick or ActorBeginOverlap, no PrintString and no GetActorLocation (comments ignored)"""
+    text = '\n'.join((c.get('declaration') or '') + '\n' + (c.get('implementation') or '') for c in code or [])
+    text = re.sub(r'/\*.*?\*/', '', re.sub(r'//[^\n]*', '', text), flags=re.S)
+    text = re.sub(r'#[^\n]*', '', text)  # Python comments, preprocessor lines
+    found = {name: bool(re.search(pattern, text)) for name, pattern in (
+        ('BeginPlay', r'BeginPlay'), ('Tick', r'\bTick\s*\(|ReceiveTick'), ('ActorBeginOverlap', r'ActorBeginOverlap'),
+        ('PrintString', r'PrintString|Print String|AddOnScreenDebugMessage|UE_LOG'), ('GetActorLocation', r'GetActorLocation'),
+        ('CollectGarbage', r'CollectGarbage'))}
+    bad = [name for name in ('BeginPlay', 'Tick', 'ActorBeginOverlap', 'PrintString', 'GetActorLocation') if found[name]]
+    ok = found['CollectGarbage'] and not bad
+    return {'ok': ok, 'found': found, 'implemented_but_never_runs': bad,
+            'notes': [(c.get('notes') or '')[:600] for c in code or []]}
+
+
 def _block(text, start):
     """The text of the brace block opening at text[start] ('{'), without the braces, and the index after it"""
     depth = 0
@@ -505,7 +607,8 @@ def run_case(port, c, rid, timeout, log_reader, keep_code=False):
             if keep_code:
                 rec['code'] = [{'graph': g.get('graph_name'),
                                 'declaration': ((g.get('code') or {}).get('graphDeclaration') or '')[:3000],
-                                'implementation': ((g.get('code') or {}).get('graphImplementation') or '')[:6000]}
+                                'implementation': ((g.get('code') or {}).get('graphImplementation') or '')[:6000],
+                                'notes': ((g.get('code') or {}).get('implementationNotes') or '')[:2000]}
                                for g in graphs if isinstance(g, dict)]
         else:
             rec['response_head'] = (text or final[-1] if final else '')[:900]
@@ -563,6 +666,9 @@ def main():
     ap.add_argument('--branch', action='store_true',
                     help='put a Branch (Has Authority: True -> Collect Garbage, False -> Print String) on the probe '
                          'graph, keep each code and check the generated if/else takes the right branch')
+    ap.add_argument('--liveness', action='store_true',
+                    help='translate a graph with ghost default events, a disabled Print String and an unused node '
+                         '(instead of the wired BeginPlay), keep each code and check none of them is implemented')
     ap.add_argument('--timeout', type=int, default=300,
                     help='seconds per translation; a case that hits it fails as timed out and the rest are skipped, '
                          'since the editor still holds that request')
@@ -614,25 +720,34 @@ def main():
         if report['started']:
             name = 'BP_N2CProviderMatrix_%s' % time.strftime('%H%M%S')
             report['setup'] = run_py(port, SETUP_PY % {'dir': ASSET_DIR, 'name': name}, 1)
-            report['wiring'] = run_py(port, CONNECT_PY, 2)
+            if args.liveness:
+                report['liveness'] = run_py(port, LIVENESS_PY.replace('%(path)s', '%s/%s' % (ASSET_DIR, name)), 2)
+                print('liveness', json.dumps(report['liveness'])[:1600], flush=True)
+            else:
+                report['wiring'] = run_py(port, CONNECT_PY, 2)
             if args.fanout:
                 report['fanout'] = run_py(port, FANOUT_PY, 3)
                 print('fanout', json.dumps(report['fanout'])[:800], flush=True)
             if args.branch:
                 report['branch'] = run_py(port, BRANCH_PY, 4)
                 print('branch', json.dumps(report['branch'])[:1200], flush=True)
-            print('setup', json.dumps(report['setup']), 'wiring', json.dumps(report['wiring'])[:400], flush=True)
+            print('setup', json.dumps(report['setup']), 'wiring', json.dumps(report.get('wiring'))[:400], flush=True)
             reader = LogReader(log_path)
             for i, c in enumerate(cases):
                 if any(r.get('timed_out') for r in report['cases']):
                     report['cases'].append({'id': c['id'], 'provider': c['provider'], 'model': c['model'],
                                             'role': c['role'], 'ok': False, 'skipped': 'an earlier case timed out'})
                     continue
-                rec = run_case(port, c, 100 + 10 * i, args.timeout, reader, keep_code=args.fanout or args.branch)
+                rec = run_case(port, c, 100 + 10 * i, args.timeout, reader,
+                               keep_code=args.fanout or args.branch or args.liveness)
                 if args.branch:
                     rec['branch_check'] = check_branch(rec.get('code'))
                     rec['ok'] = bool(rec['ok'] and rec['branch_check'].get('ok'))
                     print('  branch_check', json.dumps(rec['branch_check']), flush=True)
+                if args.liveness:
+                    rec['liveness_check'] = check_liveness(rec.get('code'))
+                    rec['ok'] = bool(rec['ok'] and rec['liveness_check'].get('ok'))
+                    print('  liveness_check', json.dumps(rec['liveness_check'])[:1500], flush=True)
                 report['cases'].append(rec)
                 print('%-40s %s  %ss  usage=%s' % (c['id'], 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
                                                    rec.get('usage')), flush=True)

@@ -19,7 +19,9 @@ class UK2Node_BreakStruct;
 class UK2Node_CallFunction;
 class UK2Node_Composite;
 class UK2Node_CustomEvent;
+class UK2Node_Event;
 class UK2Node_ExecutionSequence;
+class UK2Node_FormatText;
 class UK2Node_FunctionEntry;
 class UK2Node_FunctionResult;
 class UK2Node_IfThenElse;
@@ -95,6 +97,13 @@ namespace N2CTest
 		UK2Node_BreakStruct* AddBreakStruct(UEdGraph* Graph, UScriptStruct* Struct);
 		/** An instance of a macro from /Engine/EditorBlueprintResources/StandardMacros (Gate, DoOnce, ForEachLoop...) */
 		UK2Node_MacroInstance* AddStandardMacro(UEdGraph* Graph, const FName MacroName);
+		/**
+		 * A Format Text node whose Format is FormatPattern, with one wildcard argument input per {name} in it, as the
+		 * editor makes them when the Format text is typed in
+		 */
+		UK2Node_FormatText* AddFormatText(UEdGraph* Graph, const FString& FormatPattern);
+		/** The event node in Graph that implements the event function EventName (for example ReceiveBeginPlay) */
+		UK2Node_Event* FindEvent(UEdGraph* Graph, const FName EventName);
 		/** A Timeline node with a new, empty timeline template of that name (no tracks) */
 		UK2Node_Timeline* AddTimeline(UEdGraph* Graph, const FName TimelineName);
 
@@ -139,6 +148,7 @@ namespace N2CTest
 
 		static FEdGraphPinType IntPinType();
 		static FEdGraphPinType BoolPinType();
+		static FEdGraphPinType TextPinType();
 		static FEdGraphPinType EnumPinType(UEnum* Enum);
 		static FEdGraphPinType ExecPinType();
 		static FEdGraphPinType ObjectPinType(UClass* Class);

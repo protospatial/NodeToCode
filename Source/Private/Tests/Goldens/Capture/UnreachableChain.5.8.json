@@ -1,0 +1,161 @@
+{
+	"case": "UnreachableChain",
+	"description": "Event graph: custom event OnRun runs CollectGarbage. Apart from it, ControlScreensaver (its Allow Screen Saver from Not of a literal) runs ResetGamepadAssignments with no event before them: both are unreachable and Not, read only by them, is unused. The default ghost events are not captured.",
+	"known_defects": [
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		},
+		{
+			"finding": "translation-core-16",
+			"card": "0239",
+			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
+		}
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_UnreachableChain",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_UnreachableChain"
+		},
+		"graphs": [
+			{
+				"name": "EventGraph",
+				"graph_type": "EventGraph",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "CustomEvent",
+						"name": "OnRun",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P2",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "CollectGarbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": ""
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "NOT Boolean",
+						"member_parent": "KismetMathLibrary",
+						"member_name": "Not_PreBool",
+						"pure": true,
+						"unused": true,
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "A",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Return Value",
+								"type": "Boolean",
+								"default_value": "false",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CallFunction",
+						"name": "ControlScreensaver",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"unreachable": true,
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": ""
+							},
+							{
+								"id": "P9",
+								"name": "Allow Screen Saver",
+								"type": "Boolean",
+								"default_value": "false",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"name": "ResetGamepadAssignments",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ResetGamepadAssignments",
+						"unreachable": true,
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P2->N2.P3",
+						"N4.P8->N5.P10"
+					],
+					"data":
+					{
+						"N3.P6": "N4.P9"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

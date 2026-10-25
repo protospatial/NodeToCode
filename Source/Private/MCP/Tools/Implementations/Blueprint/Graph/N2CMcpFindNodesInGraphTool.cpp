@@ -128,7 +128,11 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         
         // Capture ALL nodes so the IDs are the ones get-focused-blueprint gives, but return only the matching ones
         FN2CCapture Capture;
-        if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(AllNodes, Capture))
+        // The default events the editor placed stay visible (marked disabled), so an agent wires them
+        // instead of adding a duplicate event (card 0137)
+        FN2CCaptureOptions Options;
+        Options.bIncludeGhostNodes = true;
+        if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(AllNodes, Capture, Options))
         {
             return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to translate nodes for ID mapping."));
         }

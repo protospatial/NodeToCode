@@ -18,7 +18,9 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
 #include "K2Node_ExecutionSequence.h"
+#include "K2Node_FormatText.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
@@ -394,6 +396,44 @@ namespace N2CTest
 		return Node;
 	}
 
+	UK2Node_FormatText* FTestBlueprint::AddFormatText(UEdGraph* Graph, const FString& FormatPattern)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+		FGraphNodeCreator<UK2Node_FormatText> Creator(*Graph);
+		UK2Node_FormatText* Node = Creator.CreateNode();
+		Creator.Finalize();
+		UEdGraphPin* FormatPin = Node->GetFormatPin();
+		if (!FormatPin)
+		{
+			AddError(TEXT("Format Text has no Format pin"));
+			return nullptr;
+		}
+		// What typing into the Format pin does: the node adds an argument pin per {name}
+		FormatPin->DefaultTextValue = FText::FromString(FormatPattern);
+		Node->PinDefaultValueChanged(FormatPin);
+		return Node;
+	}
+
+	UK2Node_Event* FTestBlueprint::FindEvent(UEdGraph* Graph, const FName EventName)
+	{
+		if (Graph)
+		{
+			for (UEdGraphNode* Node : Graph->Nodes)
+			{
+				UK2Node_Event* Event = Cast<UK2Node_Event>(Node);
+				if (Event && Event->EventReference.GetMemberName() == EventName)
+				{
+					return Event;
+				}
+			}
+		}
+		AddError(TEXT("no event ") + EventName.ToString());
+		return nullptr;
+	}
+
 	UK2Node_Timeline* FTestBlueprint::AddTimeline(UEdGraph* Graph, const FName TimelineName)
 	{
 		if (!Graph || !Blueprint)
@@ -694,6 +734,13 @@ namespace N2CTest
 	{
 		FEdGraphPinType Type;
 		Type.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+		return Type;
+	}
+
+	FEdGraphPinType FTestBlueprint::TextPinType()
+	{
+		FEdGraphPinType Type;
+		Type.PinCategory = UEdGraphSchema_K2::PC_Text;
 		return Type;
 	}
 

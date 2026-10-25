@@ -128,9 +128,10 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>&
     return false;
 }
 
-bool FN2CEditorIntegration::TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CCapture& OutCapture) const
+bool FN2CEditorIntegration::TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CCapture& OutCapture,
+    const FN2CCaptureOptions& Options) const
 {
-    TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
+    TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes, Options);
     if (Capture.HasValue())
     {
         // The blueprint and its ID maps come from the same capture, which nothing else can change

@@ -24,6 +24,14 @@ struct NODETOCODE_API FN2CCaptureOptions
 
 	/** Queue and capture nested graphs at all (DescribeNode turns this off) */
 	bool bDiscoverNestedGraphs = true;
+
+	/**
+	 * Keep the editor's automatically placed ghost nodes (a new Blueprint's greyed-out BeginPlay, ActorBeginOverlap
+	 * and Tick), marked "disabled". Off for translation, which never sees them (card 0137); the graph-editing MCP tools
+	 * (get-focused-blueprint, find-nodes-in-graph) turn it on, so an agent can find a default event and wire it instead
+	 * of adding a second one.
+	 */
+	bool bIncludeGhostNodes = false;
 };
 
 /** Where one captured pin is in the editor. A pin's PinId is only unique on its node (a paste keeps it), so a pin is

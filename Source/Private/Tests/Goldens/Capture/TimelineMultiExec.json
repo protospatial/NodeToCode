@@ -3,11 +3,6 @@
 	"description": "Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver.",
 	"known_defects": [
 		{
-			"finding": "translation-core-18, translation-core-19 (issue #13)",
-			"card": "0137",
-			"effect": "The grayed-out default events CreateBlueprint places (BeginPlay, ActorBeginOverlap, Tick) are captured as live events (N1-N3), and unreachable nodes are not marked"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -34,11 +29,9 @@
 				"nodes": [
 					{
 						"id": "N1",
-						"type": "Event",
-						"name": "Event BeginPlay",
-						"member_parent": "/Script/Engine.Actor",
-						"member_name": "ReceiveBeginPlay",
-						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"type": "CustomEvent",
+						"name": "OnPlay",
+						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -48,17 +41,16 @@
 							},
 							{
 								"id": "P2",
-								"name": ""
+								"name": "",
+								"connected": true
 							}
 						]
 					},
 					{
 						"id": "N2",
-						"type": "Event",
-						"name": "Event ActorBeginOverlap",
-						"member_parent": "/Script/Engine.Actor",
-						"member_name": "ReceiveActorBeginOverlap",
-						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"type": "CustomEvent",
+						"name": "OnReverse",
+						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -68,114 +60,44 @@
 							},
 							{
 								"id": "P4",
-								"name": ""
-							},
-							{
-								"id": "P5",
-								"name": "Other Actor",
-								"type": "Object",
-								"sub_type": "Actor"
+								"name": "",
+								"connected": true
 							}
 						]
 					},
 					{
 						"id": "N3",
-						"type": "Event",
-						"name": "Event Tick",
-						"member_parent": "/Script/Engine.Actor",
-						"member_name": "ReceiveTick",
-						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P6",
-								"name": "Output Delegate",
-								"type": "Delegate"
-							},
-							{
-								"id": "P7",
-								"name": ""
-							},
-							{
-								"id": "P8",
-								"name": "Delta Seconds",
-								"type": "Real",
-								"sub_type": "float",
-								"default_value": "0.0"
-							}
-						]
-					},
-					{
-						"id": "N4",
-						"type": "CustomEvent",
-						"name": "OnPlay",
-						"member_name": "None",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P9",
-								"name": "Output Delegate",
-								"type": "Delegate"
-							},
-							{
-								"id": "P10",
-								"name": "",
-								"connected": true
-							}
-						]
-					},
-					{
-						"id": "N5",
-						"type": "CustomEvent",
-						"name": "OnReverse",
-						"member_name": "None",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P11",
-								"name": "Output Delegate",
-								"type": "Delegate"
-							},
-							{
-								"id": "P12",
-								"name": "",
-								"connected": true
-							}
-						]
-					},
-					{
-						"id": "N6",
 						"type": "Timeline",
 						"name": "GoldenTimeline",
 						"input_pins": [
 							{
-								"id": "P13",
+								"id": "P5",
 								"name": "Play",
 								"connected": true
 							},
 							{
-								"id": "P14",
+								"id": "P6",
 								"name": "Play from Start"
 							},
 							{
-								"id": "P15",
+								"id": "P7",
 								"name": "Stop"
 							},
 							{
-								"id": "P16",
+								"id": "P8",
 								"name": "Reverse",
 								"connected": true
 							},
 							{
-								"id": "P17",
+								"id": "P9",
 								"name": "Reverse from End"
 							},
 							{
-								"id": "P20",
+								"id": "P12",
 								"name": "Set New Time"
 							},
 							{
-								"id": "P21",
+								"id": "P13",
 								"name": "New Time",
 								"type": "Real",
 								"sub_type": "float",
@@ -184,17 +106,17 @@
 						],
 						"output_pins": [
 							{
-								"id": "P18",
+								"id": "P10",
 								"name": "Update",
 								"connected": true
 							},
 							{
-								"id": "P19",
+								"id": "P11",
 								"name": "Finished",
 								"connected": true
 							},
 							{
-								"id": "P22",
+								"id": "P14",
 								"name": "Direction",
 								"type": "Byte",
 								"sub_type": "ETimelineDirection"
@@ -202,39 +124,39 @@
 						]
 					},
 					{
-						"id": "N7",
+						"id": "N4",
 						"type": "CallFunction",
 						"name": "Collect Garbage",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
-								"id": "P23",
+								"id": "P15",
 								"name": "",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
-								"id": "P24",
+								"id": "P16",
 								"name": ""
 							}
 						]
 					},
 					{
-						"id": "N8",
+						"id": "N5",
 						"type": "CallFunction",
 						"name": "Control Screensaver",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
-								"id": "P25",
+								"id": "P17",
 								"name": "",
 								"connected": true
 							},
 							{
-								"id": "P27",
+								"id": "P19",
 								"name": "Allow Screen Saver",
 								"type": "Boolean",
 								"default_value": "false"
@@ -242,7 +164,7 @@
 						],
 						"output_pins": [
 							{
-								"id": "P26",
+								"id": "P18",
 								"name": ""
 							}
 						]
@@ -251,10 +173,10 @@
 				"flows":
 				{
 					"execution": [
-						"N4.P10->N6.P13",
-						"N5.P12->N6.P16",
-						"N6.P18->N7.P23",
-						"N6.P19->N8.P25"
+						"N1.P2->N3.P5",
+						"N2.P4->N3.P8",
+						"N3.P10->N4.P15",
+						"N3.P11->N5.P17"
 					],
 					"data":
 					{

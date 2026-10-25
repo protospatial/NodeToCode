@@ -18,6 +18,11 @@
     <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_Consolidate.png" alt="Node to Code header" width="1250">
 </p>
 
+> [!NOTE]
+> The greyed-out default events of a new Blueprint (BeginPlay, ActorBeginOverlap and Tick with nothing wired to
+> them) are not sent to the LLM, so they cost no tokens. Disabled, unused and unreachable nodes are still sent,
+> marked so the LLM skips them; delete them from the graph to save their tokens.
+
 ## Translation Approaches
 
 1. **Incremental Translation**

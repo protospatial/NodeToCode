@@ -2,6 +2,7 @@
 
 #include "Core/N2CCapture.h"
 
+#include "Algo/AllOf.h"
 #include "Core/N2CCaptureContext.h"
 #include "Core/N2CNodeCollector.h"
 #include "EdGraph/EdGraph.h"
@@ -26,7 +27,14 @@ namespace N2C
 		FN2CCaptureContext Context(Options);
 		if (!Context.CaptureNodes(Nodes))
 		{
-			return MakeError(Nodes.Num() == 0 ? FString(TEXT("No nodes to capture")) : FString(TEXT("No graph was captured")));
+			if (Nodes.Num() == 0)
+			{
+				return MakeError(FString(TEXT("No nodes to capture")));
+			}
+			const bool bOnlyGhosts = Algo::AllOf(Nodes, [](const UK2Node* Node) { return Node && Node->IsAutomaticallyPlacedGhostNode(); });
+			return MakeError(bOnlyGhosts
+				? FString(TEXT("Nothing to capture: the graph holds only unwired default events (ghost nodes)"))
+				: FString(TEXT("No graph was captured")));
 		}
 		return MakeValue(Context.TakeCapture());
 	}

@@ -58,7 +58,11 @@ FMcpToolCallResult FN2CMcpGetFocusedBlueprintTool::Execute(const TSharedPtr<FJso
 		
 		// Capture the nodes: the Blueprint and its ID-to-GUID maps come from this one capture
 		FN2CCapture Capture;
-		if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(CollectedNodes, Capture))
+		// The default events the editor placed stay visible (marked disabled), so an agent wires them
+		// instead of adding a duplicate event (card 0137)
+		FN2CCaptureOptions Options;
+		Options.bIncludeGhostNodes = true;
+		if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(CollectedNodes, Capture, Options))
 		{
 			FN2CLogger::Get().LogWarning(TEXT("get-focused-blueprint tool failed: Translation failed"));
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to translate collected nodes into N2CBlueprint structure."));
