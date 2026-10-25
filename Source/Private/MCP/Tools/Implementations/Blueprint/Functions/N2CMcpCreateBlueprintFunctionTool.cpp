@@ -250,8 +250,8 @@ FMcpToolCallResult FN2CMcpCreateBlueprintFunctionTool::Execute(const TSharedPtr<
 		// Get or create function GUID
 		FGuid FunctionGuid = GetOrCreateFunctionGuid(FunctionGraph);
 		
-		// Compile Blueprint synchronously to ensure preview actors are properly updated
-		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(TargetBlueprint);
+		// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
+		FN2CMcpBlueprintUtils::MarkModified(TargetBlueprint, /*bStructural*/ true);
 		
 		// Open the function in the editor
 		OpenFunctionInEditor(TargetBlueprint, FunctionGraph);
@@ -272,9 +272,6 @@ FMcpToolCallResult FN2CMcpCreateBlueprintFunctionTool::Execute(const TSharedPtr<
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
 		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer); // Use ResultJsonObj
 
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-        
 		return FMcpToolCallResult::CreateTextResult(ResultString);
 	});
 }

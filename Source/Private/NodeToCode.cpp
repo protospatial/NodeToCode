@@ -31,6 +31,7 @@
 #include "Core/Services/N2CTokenEstimationService.h"
 #if WITH_EDITOR
 #include "UnrealEdMisc.h"
+#include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #endif
 
 DEFINE_LOG_CATEGORY(LogNodeToCode);
@@ -205,6 +206,9 @@ void FNodeToCodeModule::ShutdownModule()
 
     // Unbind the MCP routes (other plugins' HTTPServer listeners keep running)
     FN2CMcpHttpServerManager::Get().StopConfiguredServers();
+
+    // Drop a queued action-database refresh: its ticker calls into this module
+    FN2CMcpBlueprintUtils::CancelPendingActionDatabaseRefresh();
 
     // Unregister menu extensions
     UToolMenus::UnRegisterStartupCallback(this);

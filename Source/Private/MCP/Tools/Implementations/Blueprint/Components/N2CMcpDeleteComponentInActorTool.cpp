@@ -186,14 +186,15 @@ FMcpToolCallResult FN2CMcpDeleteComponentInActorTool::Execute(const TSharedPtr<F
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
 
-        // Compile Blueprint synchronously to ensure preview actors are properly updated
-        FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
-
-        // Check compilation status
-        int32 ErrorCount = Blueprint->Status == BS_Error ? 1 : 0;
-        int32 WarningCount = 0;
-        float CompilationTime = 0.0f;
-        bool bCompileSuccess = (ErrorCount == 0);
+        // Structural change: mark it, then compile once now (no transaction is open here) so the result reports what
+        // the compiler said (card 0151)
+        FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
+        FN2CCompileDiagnostics Diagnostics;
+        FN2CMcpBlueprintUtils::Compile(Blueprint, Diagnostics);
+        const int32 ErrorCount = Diagnostics.ErrorCount;
+        const int32 WarningCount = Diagnostics.WarningCount;
+        const float CompilationTime = Diagnostics.CompileSeconds;
+        const bool bCompileSuccess = Diagnostics.bSuccess;
 
         // Add compilation status
         TSharedPtr<FJsonObject> CompilationStatus = MakeShareable(new FJsonObject);

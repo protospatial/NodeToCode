@@ -14,7 +14,8 @@ class NODETOCODE_API FN2CMcpToolBase : public IN2CMcpTool
 protected:
 	/**
 	 * Helper to execute logic on Game Thread if needed
-	 * Handles thread synchronization and timeout logic
+	 * Handles thread synchronization and timeout logic. The logic runs as one tool call (FN2CMcpToolCallScope): the
+	 * Blueprints it marks modified compile once when it returns, and their diagnostics are added to the result.
 	 * @param Logic The function to execute that returns an FMcpToolCallResult
 	 * @param TimeoutSeconds The timeout in seconds (default: 10)
 	 * @return The result from the logic function or a timeout error

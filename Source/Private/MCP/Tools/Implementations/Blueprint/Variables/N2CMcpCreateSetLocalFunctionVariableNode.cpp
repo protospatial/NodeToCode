@@ -116,8 +116,8 @@ FMcpToolCallResult FN2CMcpCreateSetLocalFunctionVariableNode::Execute(const TSha
             }
         }
         
-        // Compile Blueprint synchronously to ensure preview actors are properly updated
-        FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(FocusedBlueprint);
+        // Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
+        FN2CMcpBlueprintUtils::MarkModified(FocusedBlueprint, /*bStructural*/ false);
         
         // Build the result JSON
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);

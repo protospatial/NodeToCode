@@ -593,6 +593,14 @@ return ExecuteOnGameThread([this]() -> FMcpToolCallResult
 }, 30.0f); // 30 second timeout
 ```
 
+The logic runs as one tool call (`FN2CMcpToolCallScope`, card 0151): a Blueprint edit calls
+`FN2CMcpBlueprintUtils::MarkModified(Blueprint, bStructural)` (or `MarkCosmeticChange` for comments and positions)
+instead of compiling, and when the logic returns, after its `FScopedTransaction`s have closed, each Blueprint it
+marked is compiled once and the compiler's diagnostics are added to the result as a `compile` object (or as an extra
+text item when the result text is not a JSON object). Call `FN2CMcpBlueprintUtils::Compile` yourself only when the
+result needs the compile's outcome in its own fields. Scopes nest, so a run-python script whose bridge calls edit
+a Blueprint compiles it once, at the end of the run-python call.
+
 ## Calling the Server with curl
 
 The server speaks MCP Streamable HTTP (2025-11-25) on one endpoint, `http://127.0.0.1:27000/mcp`, on Unreal's

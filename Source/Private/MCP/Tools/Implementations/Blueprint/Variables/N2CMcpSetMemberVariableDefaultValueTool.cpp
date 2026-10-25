@@ -106,12 +106,12 @@ FMcpToolCallResult FN2CMcpSetMemberVariableDefaultValueTool::Execute(const TShar
             );
         }
         
-        // Compile the Blueprint to validate the new default value
-        int32 ErrorCount = 0;
-        int32 WarningCount = 0;
-        float CompilationTime = 0.0f;
-        bool bCompileSuccess = FN2CMcpBlueprintUtils::CompileBlueprint(
-            FocusedBlueprint, true, ErrorCount, WarningCount, CompilationTime);
+        // Compile once, after ApplyDefaultValue's transaction has closed, to validate the new default value (card 0151)
+        FN2CCompileDiagnostics Diagnostics;
+        const bool bCompileSuccess = FN2CMcpBlueprintUtils::Compile(FocusedBlueprint, Diagnostics);
+        const int32 ErrorCount = Diagnostics.ErrorCount;
+        const int32 WarningCount = Diagnostics.WarningCount;
+        const float CompilationTime = Diagnostics.CompileSeconds;
         
         // Show notification
         FNotificationInfo Info(FText::Format(
@@ -142,9 +142,6 @@ FMcpToolCallResult FN2CMcpSetMemberVariableDefaultValueTool::Execute(const TShar
             EN2CLogSeverity::Info
         );
 
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-        
         return FMcpToolCallResult::CreateTextResult(ResultString);
     });
 }
@@ -264,8 +261,8 @@ bool FN2CMcpSetMemberVariableDefaultValueTool::ApplyDefaultValue(
     // Set the new default value
     VarDesc.DefaultValue = DefaultValue;
     
-    // Compile Blueprint synchronously to ensure preview actors are properly updated
-    FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+    // Marked modified; Execute compiles it once after this transaction closes (card 0151)
+    FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
     
     // Refresh variables to ensure the change is applied
     FBlueprintEditorUtils::RefreshVariables(Blueprint);

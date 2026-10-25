@@ -17,8 +17,10 @@ added in the Blueprint editor's Components panel.
   `NO_ACTIVE_BLUEPRINT: ...`; a Blueprint whose parent is not an Actor (a component or widget Blueprint):
   `NOT_ACTOR_BLUEPRINT|Blueprint must derive from Actor to have components`.
 - **Errors** are text results with `isError` true, in the form `CODE|message`.
-- **No undo.** None of the tools opens an `FScopedTransaction`; add and delete compile the Blueprint at once
-  (`FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile`) and leave the package dirty, unsaved.
+- **No undo.** None of the tools opens an `FScopedTransaction`; add and delete mark the Blueprint structurally
+  modified, compile it once (`FN2CMcpBlueprintUtils::MarkModified` and `Compile`, card 0151) and leave the package
+  dirty, unsaved. `compilationStatus` and the result's `compile` object carry the compiler's real counts and
+  messages (see the Graph folder's AGENTS.md for the `compile` fields).
 - **Known issue (card 0274):** there is no target besides `blueprintPath` and the active editor.
 - **Known issue (card 0167):** the tools edit SCS nodes directly instead of through the engine's
   `USubobjectDataSubsystem`, which causes the attachment and deletion behaviour described below.
@@ -64,15 +66,15 @@ added in the Blueprint editor's Components panel.
 - **Returns**: `componentName`, `componentClass` (short name), `componentClassPath`, `nodeGuid` (the SCS node's
   `VariableGuid`, 32 hex digits), `isSceneComponent`, `attachedTo` and `attachSocketName` (echo the arguments
   whenever `parentComponent` was given, also for a non-scene component that was not attached),
-  `compilationStatus` (`success` from the Blueprint's status; `errorCount` is 0 or 1, `warningCount` and
-  `compilationTime` are always 0), `nextSteps`
+  `compilationStatus` (`success`, `errorCount`, `warningCount`, `compilationTime` from the compile), `compile`,
+  `nextSteps`
 - **Errors**: `CLASS_NOT_FOUND|Component class '<path>' not found`, `NOT_COMPONENT|Class 'Actor' is not an
   ActorComponent`, `CANNOT_INSTANTIATE|Class 'MovementComponent' cannot be instantiated (abstract, deprecated, or has
   newer version)`, `NAME_EXISTS|Component with name 'CameraBoom' already exists`, `PARENT_NOT_FOUND|Parent component
   'Mesh' not found`, `EMPTY_CLASS_PATH|...`, plus the target errors above
 - **Known issue (card 0167):** the node is created before `parentComponent` is looked up, so a `PARENT_NOT_FOUND`
   error leaves the new component in the Blueprint (as a root, uncompiled); a parent other than the root is not kept
-  (above); `compilationStatus` counts are hard-coded
+  (above)
 
 ### delete-component-in-actor
 - **Description**: Removes an SCS node of this Blueprint (`FN2CMcpComponentUtils::DeleteSCSNode`) and compiles
@@ -82,7 +84,7 @@ added in the Blueprint editor's Components panel.
   - `blueprintPath` (optional): See "What the Tools See"
 - **Returns**: `deletedComponentName`, `deletedComponentClass`, `deletedComponentGuid`, `affectedChildren` (one
   entry per direct child with `action` `reparented` and `newParent` `root`; with `deleteChildren` true, one entry per
-  descendant with `action` `deleted`), `childrenDeleted`, `compilationStatus` (as above), `nextSteps`
+  descendant with `action` `deleted`), `childrenDeleted`, `compilationStatus` (as above), `compile`, `nextSteps`
 - **Errors**: `COMPONENT_NOT_FOUND|Component 'X' not found in Blueprint`,
   `INHERITED_COMPONENT|Cannot delete components inherited from parent Blueprint` (a parent Blueprint's component),
   `NO_COMPONENTS|...` (no SCS), plus the target errors above. A native component's name gives `COMPONENT_NOT_FOUND`

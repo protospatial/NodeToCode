@@ -125,6 +125,13 @@ def compile_blueprint(blueprint_path: Optional[str] = None) -> Dict[str, Any]:
                 'status': str,       # Post-compilation status
                 'had_errors': bool,
                 'had_warnings': bool,
+                'error_count': int,
+                'warning_count': int,
+                'messages': [         # The compiler's messages
+                    {'severity': str, 'message': str,
+                     # when the message names a node:
+                     'nodeGuid': str, 'nodeTitle': str, 'graph': str, 'pin': str},
+                ],
             } or None,
             'error': str or None
         }

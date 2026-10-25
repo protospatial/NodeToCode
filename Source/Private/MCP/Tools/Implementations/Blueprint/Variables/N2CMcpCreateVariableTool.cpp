@@ -215,11 +215,6 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
 		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer); // Use ResultJsonObj
 
-        // Schedule deferred refresh of BlueprintActionDatabase
-        // This prevents crashes when preview actors exist in transient worlds
-        // by allowing the engine to complete internal updates first
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-
 		return FMcpToolCallResult::CreateTextResult(ResultString);
 	});
 }
@@ -242,8 +237,8 @@ FName FN2CMcpCreateVariableTool::CreateVariable(UBlueprint* Blueprint, const FSt
 				Blueprint, UniqueName, nullptr, FText::FromString(Category), true);
 		}
 
-		// Compile Blueprint synchronously to ensure preview actors are properly updated
-		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+		// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
+		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 
 		FN2CLogger::Get().Log(FString::Printf(
 			TEXT("Created variable '%s' in Blueprint '%s'"),

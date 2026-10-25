@@ -277,9 +277,11 @@ curl -X POST http://localhost:27000/mcp \
   `CreateUserDefinedPin`, so undo leaves the parameter in `UserDefinedPins`; `EnsureFunctionResultNode` runs before
   the transaction opens; and call sites are rebuilt before the skeleton class is, so a function's callers can fail to
   compile after a signature change (`FN2CMcpFunctionPinUtils::UpdateFunctionCallSites`).
-- Every successful edit compiles the Blueprint synchronously and marks its package dirty
-  (`FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile`); add-function-return-pin included (card 0064).
-  Nothing is saved: use `save-blueprint`.
+- Every successful edit marks the Blueprint structurally modified and its package dirty
+  (`FN2CMcpBlueprintUtils::MarkModified`); the tool call then compiles it once, after the edit's transaction has
+  closed, and adds the compiler's diagnostics to the result as `compile` (card 0151; fields in the Graph folder's
+  AGENTS.md). One deferred `FBlueprintActionDatabase::RefreshAssetActions` per changed Blueprint follows a couple of
+  frames later, shared by every edit made before it runs. Nothing is saved: use `save-blueprint`.
 
 ## Implementation Notes
 

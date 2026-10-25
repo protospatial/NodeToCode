@@ -16,6 +16,18 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/CompilerResultsLog.h"
 #include "Containers/Ticker.h" // For FTSTicker
+#include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphToken.h"
+#include "Logging/TokenizedMessage.h"
+#include "Misc/UObjectToken.h"
+#include "MCP/Tools/N2CMcpToolTypes.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+#include "UObject/Package.h"
 
 UBlueprint* FN2CMcpBlueprintUtils::ResolveBlueprint(const FString& OptionalBlueprintPath, FString& OutErrorMsg)
 {
@@ -145,201 +157,498 @@ bool FN2CMcpBlueprintUtils::OpenBlueprintEditor(UBlueprint* Blueprint, TSharedPt
     return true;
 }
 
-void FN2CMcpBlueprintUtils::RefreshBlueprintActionDatabase()
+namespace N2CMcpBlueprintUtilsPrivate
 {
-    if (FBlueprintActionDatabase* ActionDB = FBlueprintActionDatabase::TryGet())
+    /** Open FN2CMcpToolCallScope count (game thread) */
+    int32 ScopeDepth = 0;
+    /** Blueprints marked modified in the open tool call, in the order they were first marked */
+    TArray<TWeakObjectPtr<UBlueprint>> PendingCompiles;
+    /** Compiles of the open tool call that report to its result */
+    TArray<FN2CCompileDiagnostics> CallCompiles;
+
+    int32 CompileCount = 0;
+    int32 RefreshRequestCount = 0;
+    int32 RefreshRunCount = 0;
+    TArray<TWeakObjectPtr<UBlueprint>> PendingRefreshes;
+    FTSTicker::FDelegateHandle RefreshTicker;
+    int32 RefreshFramesLeft = 0;
+
+    void RunActionDatabaseRefresh()
     {
-        FN2CLogger::Get().Log(TEXT("Refreshing BlueprintActionDatabase via utility function."), EN2CLogSeverity::Debug);
-        ActionDB->RefreshAll();
-        FN2CLogger::Get().Log(TEXT("BlueprintActionDatabase refreshed successfully via utility."), EN2CLogSeverity::Debug);
+        TArray<TWeakObjectPtr<UBlueprint>> ToRefresh = MoveTemp(PendingRefreshes);
+        PendingRefreshes.Reset();
+        ++RefreshRunCount;
+
+        FBlueprintActionDatabase* ActionDB = FBlueprintActionDatabase::TryGet();
+        if (!ActionDB)
+        {
+            return;
+        }
+        int32 Refreshed = 0;
+        for (const TWeakObjectPtr<UBlueprint>& Weak : ToRefresh)
+        {
+            if (UBlueprint* Blueprint = Weak.Get())
+            {
+                ActionDB->RefreshAssetActions(Blueprint);
+                ++Refreshed;
+            }
+        }
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Deferred BlueprintActionDatabase refresh completed (%d Blueprint(s))."), Refreshed),
+            EN2CLogSeverity::Debug);
     }
-    else
+
+    bool TickActionDatabaseRefresh(float /*DeltaTime*/)
     {
-        FN2CLogger::Get().LogWarning(TEXT("FBlueprintActionDatabase not available for refresh via utility. Context menu issues might persist."));
+        if (--RefreshFramesLeft > 0)
+        {
+            return true;
+        }
+        RefreshTicker.Reset();
+        RunActionDatabaseRefresh();
+        return false;
+    }
+
+    FString SeverityToString(EMessageSeverity::Type Severity)
+    {
+        switch (Severity)
+        {
+        case EMessageSeverity::Error:
+            return TEXT("Error");
+        case EMessageSeverity::Warning:
+        case EMessageSeverity::PerformanceWarning:
+            return TEXT("Warning");
+        default:
+            return TEXT("Note");
+        }
+    }
+
+    /** The message with the first node (or pin) it links to, as the Compiler Results log links it */
+    FN2CCompilerMessage ToCompilerMessage(const TSharedRef<FTokenizedMessage>& Message)
+    {
+        FN2CCompilerMessage Out(SeverityToString(Message->GetSeverity()), Message->ToText().ToString());
+        for (const TSharedRef<IMessageToken>& Token : Message->GetMessageTokens())
+        {
+            const UObject* Object = nullptr;
+            const UEdGraphPin* Pin = nullptr;
+            if (Token->GetType() == EMessageToken::EdGraph)
+            {
+                const TSharedRef<FEdGraphToken> GraphToken = StaticCastSharedRef<FEdGraphToken>(Token);
+                Object = GraphToken->GetGraphObject();
+                Pin = GraphToken->GetPin();
+            }
+            else if (Token->GetType() == EMessageToken::Object)
+            {
+                Object = StaticCastSharedRef<FUObjectToken>(Token)->GetObject().Get();
+            }
+            else
+            {
+                continue;
+            }
+
+            const UEdGraphNode* Node = Cast<const UEdGraphNode>(Object);
+            if (!Node && Pin)
+            {
+                Node = Pin->GetOwningNodeUnchecked();
+            }
+            if (!Node)
+            {
+                if (const UEdGraph* Graph = Cast<const UEdGraph>(Object))
+                {
+                    if (Out.GraphName.IsEmpty())
+                    {
+                        Out.GraphName = Graph->GetName();
+                    }
+                }
+                continue;
+            }
+
+            Out.NodeGuid = Node->NodeGuid.ToString();
+            Out.NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+            if (const UEdGraph* Graph = Node->GetGraph())
+            {
+                Out.GraphName = Graph->GetName();
+            }
+            if (Pin)
+            {
+                Out.PinName = Pin->PinName.ToString();
+            }
+            break;
+        }
+        return Out;
+    }
+
+    FString SerializeJson(const TSharedRef<FJsonObject>& Object)
+    {
+        FString Text;
+        const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Text);
+        FJsonSerializer::Serialize(Object, Writer);
+        return Text;
     }
 }
 
-void FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(UBlueprint* Blueprint, bool bSkipGarbageCollection)
+TSharedRef<FJsonObject> FN2CCompileDiagnostics::MessageToJson(const FN2CCompilerMessage& Message)
 {
+    const TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+    Json->SetStringField(TEXT("severity"), Message.Severity);
+    Json->SetStringField(TEXT("message"), Message.Message);
+    if (!Message.NodeGuid.IsEmpty())
+    {
+        Json->SetStringField(TEXT("nodeGuid"), Message.NodeGuid);
+        Json->SetStringField(TEXT("nodeTitle"), Message.NodeTitle);
+    }
+    if (!Message.GraphName.IsEmpty())
+    {
+        Json->SetStringField(TEXT("graph"), Message.GraphName);
+    }
+    if (!Message.PinName.IsEmpty())
+    {
+        Json->SetStringField(TEXT("pin"), Message.PinName);
+    }
+    return Json;
+}
+
+TSharedRef<FJsonObject> FN2CCompileDiagnostics::ToJson() const
+{
+    const TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+    Json->SetStringField(TEXT("blueprint"), BlueprintName);
+    Json->SetStringField(TEXT("blueprintPath"), BlueprintPath);
+    Json->SetStringField(TEXT("status"), Status);
+    Json->SetBoolField(TEXT("success"), bSuccess);
+    Json->SetNumberField(TEXT("errorCount"), ErrorCount);
+    Json->SetNumberField(TEXT("warningCount"), WarningCount);
+    Json->SetNumberField(TEXT("noteCount"), NoteCount);
+    Json->SetNumberField(TEXT("compileSeconds"), CompileSeconds);
+    TArray<TSharedPtr<FJsonValue>> MessageValues;
+    for (const FN2CCompilerMessage& Message : Messages)
+    {
+        MessageValues.Add(MakeShared<FJsonValueObject>(MessageToJson(Message)));
+    }
+    Json->SetArrayField(TEXT("messages"), MessageValues);
+    return Json;
+}
+
+FN2CMcpToolCallScope::FN2CMcpToolCallScope()
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    check(IsInGameThread());
+    bOutermost = (ScopeDepth == 0);
+    if (bOutermost)
+    {
+        PendingCompiles.Reset();
+        CallCompiles.Reset();
+    }
+    ++ScopeDepth;
+}
+
+FN2CMcpToolCallScope::~FN2CMcpToolCallScope()
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    if (bOutermost)
+    {
+        // Edits after Flush, or a call that returned without flushing (an error path), still leave the Blueprint
+        // compiled, as the old compile-per-edit did
+        Flush();
+        CallCompiles.Reset();
+    }
+    --ScopeDepth;
+}
+
+TArray<FN2CCompileDiagnostics> FN2CMcpToolCallScope::Flush()
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    bFlushed = true;
+    if (!bOutermost)
+    {
+        return {};
+    }
+    // Compile removes each Blueprint from PendingCompiles; a compile that marks another modified adds it at the end
+    while (PendingCompiles.Num() > 0)
+    {
+        const TWeakObjectPtr<UBlueprint> Next = PendingCompiles[0];
+        PendingCompiles.RemoveAt(0);
+        if (UBlueprint* Blueprint = Next.Get())
+        {
+            FN2CCompileDiagnostics Diagnostics;
+            FN2CMcpBlueprintUtils::Compile(Blueprint, Diagnostics);
+        }
+    }
+    TArray<FN2CCompileDiagnostics> Result = MoveTemp(CallCompiles);
+    CallCompiles.Reset();
+    return Result;
+}
+
+bool FN2CMcpToolCallScope::IsActive()
+{
+    return IsInGameThread() && N2CMcpBlueprintUtilsPrivate::ScopeDepth > 0;
+}
+
+void FN2CMcpBlueprintUtils::QueueActionDatabaseRefresh(UBlueprint* Blueprint, int32 DelayFrames)
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    if (!Blueprint || !IsInGameThread())
+    {
+        return;
+    }
+    ++RefreshRequestCount;
+    PendingRefreshes.AddUnique(Blueprint);
+    if (RefreshTicker.IsValid())
+    {
+        // One refresh is already queued; it refreshes this Blueprint too
+        return;
+    }
+    RefreshFramesLeft = FMath::Max(1, DelayFrames);
+    RefreshTicker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateStatic(&TickActionDatabaseRefresh), 0.0f);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Scheduled deferred BlueprintActionDatabase refresh in %d frame(s)."), RefreshFramesLeft),
+        EN2CLogSeverity::Debug);
+}
+
+void FN2CMcpBlueprintUtils::CancelPendingActionDatabaseRefresh()
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    if (RefreshTicker.IsValid())
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(RefreshTicker);
+        RefreshTicker.Reset();
+    }
+    PendingRefreshes.Reset();
+}
+
+bool FN2CMcpBlueprintUtils::FlushActionDatabaseRefreshForTest()
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    if (!RefreshTicker.IsValid())
+    {
+        return false;
+    }
+    FTSTicker::GetCoreTicker().RemoveTicker(RefreshTicker);
+    RefreshTicker.Reset();
+    RunActionDatabaseRefresh();
+    return true;
+}
+
+int32 FN2CMcpBlueprintUtils::GetCompileCount()
+{
+    return N2CMcpBlueprintUtilsPrivate::CompileCount;
+}
+
+int32 FN2CMcpBlueprintUtils::GetActionDatabaseRefreshRequestCount()
+{
+    return N2CMcpBlueprintUtilsPrivate::RefreshRequestCount;
+}
+
+int32 FN2CMcpBlueprintUtils::GetActionDatabaseRefreshRunCount()
+{
+    return N2CMcpBlueprintUtilsPrivate::RefreshRunCount;
+}
+
+bool FN2CMcpBlueprintUtils::IsActionDatabaseRefreshPending()
+{
+    return N2CMcpBlueprintUtilsPrivate::RefreshTicker.IsValid();
+}
+
+TArray<TWeakObjectPtr<UBlueprint>> FN2CMcpBlueprintUtils::GetPendingActionDatabaseRefreshes()
+{
+    return N2CMcpBlueprintUtilsPrivate::PendingRefreshes;
+}
+
+void FN2CMcpBlueprintUtils::MarkModified(UBlueprint* Blueprint, bool bStructural)
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
     if (!Blueprint)
     {
-        FN2CLogger::Get().LogError(TEXT("FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile"),
-            TEXT("Cannot mark null Blueprint as modified"));
+        FN2CLogger::Get().LogError(TEXT("FN2CMcpBlueprintUtils::MarkModified"), TEXT("Cannot mark null Blueprint as modified"));
         return;
     }
 
-    // Compile Blueprint synchronously to ensure preview actors are properly updated
-    // Using FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified causes crashes because
-    // it queues deferred compilation, but Slate UI updates on the next frame try to access
-    // preview actors that are in an invalid "DEADCLASS" state
-    EBlueprintCompileOptions CompileOptions = bSkipGarbageCollection
-        ? EBlueprintCompileOptions::SkipGarbageCollection
-        : EBlueprintCompileOptions::None;
-
-    FKismetEditorUtilities::CompileBlueprint(Blueprint, CompileOptions);
-
-    // The compile manager restores the package's pre-compile dirty flag, and the Modify(false) calls on the pin
-    // and node paths (CreatePin, ReconstructNode) never set it, so mark the package dirty here, after the compile,
-    // or an edit to a saved Blueprint is skipped by Save All and gets no save prompt on exit. MarkPackageDirty
-    // queues no compile, unlike MarkBlueprintAsStructurallyModified above.
-    Blueprint->MarkPackageDirty();
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Blueprint '%s' marked as modified and compiled synchronously"), *Blueprint->GetName()),
-        EN2CLogSeverity::Debug
-    );
-}
-
-void FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase(int32 DelayFrames)
-{
-    // Use a shared counter to track remaining frames
-    TSharedRef<int32> RemainingFrames = MakeShared<int32>(FMath::Max(1, DelayFrames));
-
-    // Schedule the deferred refresh using a ticker
-    FTSTicker::GetCoreTicker().AddTicker(
-        FTickerDelegate::CreateLambda([RemainingFrames](float DeltaTime) -> bool
-        {
-            (*RemainingFrames)--;
-
-            if (*RemainingFrames <= 0)
-            {
-                // Time to refresh - ensure we're on the game thread
-                if (IsInGameThread())
-                {
-                    if (FBlueprintActionDatabase* ActionDB = FBlueprintActionDatabase::TryGet())
-                    {
-                        FN2CLogger::Get().Log(TEXT("Executing deferred BlueprintActionDatabase refresh."), EN2CLogSeverity::Debug);
-                        ActionDB->RefreshAll();
-                        FN2CLogger::Get().Log(TEXT("Deferred BlueprintActionDatabase refresh completed."), EN2CLogSeverity::Debug);
-                    }
-                }
-                return false; // Remove the ticker
-            }
-            return true; // Continue ticking
-        }),
-        0.0f // Tick every frame
-    );
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Scheduled deferred BlueprintActionDatabase refresh in %d frame(s)."), DelayFrames),
-        EN2CLogSeverity::Debug
-    );
-}
-
-bool FN2CMcpBlueprintUtils::CompileBlueprint(UBlueprint* Blueprint, bool bSkipGarbageCollection, 
-    int32& OutErrorCount, int32& OutWarningCount, float& OutCompilationTime,
-    TArray<TSharedPtr<FN2CCompilerMessage>>* OutMessages)
-{
-    OutErrorCount = 0;
-    OutWarningCount = 0;
-    OutCompilationTime = 0.0f;
-    
-    if (!Blueprint)
+    if (bStructural)
     {
-        FN2CLogger::Get().LogError(TEXT("FN2CMcpBlueprintUtils::CompileBlueprint"), 
-            TEXT("Cannot compile null Blueprint"));
-        return false;
-    }
-    
-    // Record start time
-    double StartTime = FPlatformTime::Seconds();
-    
-    // Create compiler results log
-    FCompilerResultsLog CompilerResults;
-    CompilerResults.bSilentMode = true; // We'll handle output ourselves
-    CompilerResults.bAnnotateMentionedNodes = true;
-    CompilerResults.SetSourcePath(Blueprint->GetPathName());
-    
-    // Begin compilation event
-    CompilerResults.BeginEvent(TEXT("MCP Compile"));
-    
-    // Set compilation flags
-    EBlueprintCompileOptions CompileFlags = bSkipGarbageCollection 
-        ? EBlueprintCompileOptions::SkipGarbageCollection 
-        : EBlueprintCompileOptions::None;
-    
-    bool bSuccess = false;
-    
-    try
-    {
-        // Compile the Blueprint
-        FKismetEditorUtilities::CompileBlueprint(Blueprint, CompileFlags, &CompilerResults);
-        bSuccess = true;
-    }
-    catch (...)
-    {
-        FN2CLogger::Get().LogError(TEXT("FN2CMcpBlueprintUtils::CompileBlueprint"), 
-            TEXT("Exception during Blueprint compilation"));
-        bSuccess = false;
-    }
-    
-    // End compilation event
-    CompilerResults.EndEvent();
-    
-    // Calculate compilation time
-    OutCompilationTime = static_cast<float>(FPlatformTime::Seconds() - StartTime);
-    
-    // Extract error and warning counts
-    OutErrorCount = CompilerResults.NumErrors;
-    OutWarningCount = CompilerResults.NumWarnings;
-    
-    // Extract detailed messages if requested
-    if (OutMessages)
-    {
-        OutMessages->Empty();
-        
-        for (const TSharedRef<FTokenizedMessage>& Message : CompilerResults.Messages)
-        {
-            FString Severity;
-            switch (Message->GetSeverity())
-            {
-                case EMessageSeverity::Error:
-                    Severity = TEXT("Error");
-                    break;
-                case EMessageSeverity::Warning:
-                    Severity = TEXT("Warning");
-                    break;
-                case EMessageSeverity::Info:
-                    Severity = TEXT("Note");
-                    break;
-                default:
-                    Severity = TEXT("Unknown");
-                    break;
-            }
-            
-            OutMessages->Add(MakeShareable(new FN2CCompilerMessage(Severity, Message->ToText().ToString())));
-        }
-    }
-    
-    // Log compilation result
-    if (OutErrorCount > 0)
-    {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Blueprint '%s' compilation failed with %d error(s) and %d warning(s)"), 
-                *Blueprint->GetName(), OutErrorCount, OutWarningCount),
-            EN2CLogSeverity::Warning
-        );
-    }
-    else if (OutWarningCount > 0)
-    {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Blueprint '%s' compiled successfully with %d warning(s)"), 
-                *Blueprint->GetName(), OutWarningCount),
-            EN2CLogSeverity::Info
-        );
+        // Regenerates the skeleton class now (FBlueprintCompilationManager::CompileSynchronously with
+        // RegenerateSkeletonOnly); the full compile with its reinstancing runs below or when the tool call ends,
+        // before the next frame, so Slate never sees half-compiled preview actors
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
     }
     else
     {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Blueprint '%s' compiled successfully"), 
-                *Blueprint->GetName()),
-            EN2CLogSeverity::Info
-        );
+        FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
     }
-    
-    // Schedule deferred refresh of Blueprint action database after compilation
-    DeferredRefreshBlueprintActionDatabase();
-    
-    // Return true if compilation succeeded (no errors), false if there were errors
-    return bSuccess && (OutErrorCount == 0);
+    // MarkBlueprintAsModified dirties the package, but the structural path returns early while the Blueprint is
+    // queued for compilation; make sure Save All and the exit prompt see the edit
+    Blueprint->MarkPackageDirty();
+
+    if (bStructural)
+    {
+        QueueActionDatabaseRefresh(Blueprint);
+    }
+
+    if (FN2CMcpToolCallScope::IsActive())
+    {
+        PendingCompiles.AddUnique(Blueprint);
+    }
+    else
+    {
+        FN2CCompileDiagnostics Diagnostics;
+        Compile(Blueprint, Diagnostics);
+    }
+}
+
+void FN2CMcpBlueprintUtils::MarkCosmeticChange(UBlueprint* Blueprint)
+{
+    if (Blueprint)
+    {
+        Blueprint->MarkPackageDirty();
+    }
+}
+
+bool FN2CMcpBlueprintUtils::Compile(UBlueprint* Blueprint, FN2CCompileDiagnostics& OutDiagnostics, bool bSkipGarbageCollection,
+    bool bReportInToolResult)
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    OutDiagnostics = FN2CCompileDiagnostics();
+    if (!Blueprint)
+    {
+        FN2CLogger::Get().LogError(TEXT("FN2CMcpBlueprintUtils::Compile"), TEXT("Cannot compile null Blueprint"));
+        return false;
+    }
+
+    OutDiagnostics.BlueprintName = Blueprint->GetName();
+    OutDiagnostics.BlueprintPath = Blueprint->GetPathName();
+    UPackage* const Package = Blueprint->GetOutermost();
+    const bool bWasDirty = Package && Package->IsDirty();
+
+    FCompilerResultsLog CompilerResults;
+    CompilerResults.bSilentMode = true;
+    CompilerResults.bAnnotateMentionedNodes = true;
+    CompilerResults.SetSourcePath(Blueprint->GetPathName());
+    CompilerResults.BeginEvent(TEXT("NodeToCode Compile"));
+
+    const EBlueprintCompileOptions CompileFlags = bSkipGarbageCollection
+        ? EBlueprintCompileOptions::SkipGarbageCollection
+        : EBlueprintCompileOptions::None;
+    const double StartTime = FPlatformTime::Seconds();
+    FKismetEditorUtilities::CompileBlueprint(Blueprint, CompileFlags, &CompilerResults);
+    OutDiagnostics.CompileSeconds = static_cast<float>(FPlatformTime::Seconds() - StartTime);
+    CompilerResults.EndEvent();
+    ++CompileCount;
+
+    OutDiagnostics.bCompiled = true;
+    OutDiagnostics.ErrorCount = CompilerResults.NumErrors;
+    OutDiagnostics.WarningCount = CompilerResults.NumWarnings;
+    for (const TSharedRef<FTokenizedMessage>& Message : CompilerResults.Messages)
+    {
+        FN2CCompilerMessage Converted = ToCompilerMessage(Message);
+        if (Converted.Severity == TEXT("Note"))
+        {
+            ++OutDiagnostics.NoteCount;
+        }
+        OutDiagnostics.Messages.Add(MoveTemp(Converted));
+    }
+    OutDiagnostics.Status = StatusToString(static_cast<uint8>(Blueprint->Status));
+    OutDiagnostics.bSuccess = OutDiagnostics.ErrorCount == 0 && Blueprint->Status != BS_Error;
+
+    // The compile manager restores the package's pre-compile dirty flag; an edited Blueprint stays dirty
+    if (bWasDirty && Package && !Package->IsDirty())
+    {
+        Blueprint->MarkPackageDirty();
+    }
+
+    PendingCompiles.Remove(Blueprint);
+    if (bReportInToolResult && FN2CMcpToolCallScope::IsActive())
+    {
+        CallCompiles.Add(OutDiagnostics);
+    }
+
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Blueprint '%s' compiled: %s, %d error(s), %d warning(s), %.3f s"),
+        *Blueprint->GetName(), *OutDiagnostics.Status, OutDiagnostics.ErrorCount, OutDiagnostics.WarningCount,
+        OutDiagnostics.CompileSeconds), OutDiagnostics.bSuccess ? EN2CLogSeverity::Info : EN2CLogSeverity::Warning);
+
+    return OutDiagnostics.bSuccess;
+}
+
+TSharedPtr<FJsonObject> FN2CMcpBlueprintUtils::CompileDiagnosticsToJson(const TArray<FN2CCompileDiagnostics>& Compiles)
+{
+    if (Compiles.Num() == 0)
+    {
+        return nullptr;
+    }
+    if (Compiles.Num() == 1)
+    {
+        return Compiles[0].ToJson();
+    }
+
+    // More than one Blueprint compiled in the call: totals, then each one
+    const TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+    bool bSuccess = true;
+    int32 Errors = 0;
+    int32 Warnings = 0;
+    TArray<TSharedPtr<FJsonValue>> Each;
+    for (const FN2CCompileDiagnostics& Diagnostics : Compiles)
+    {
+        bSuccess &= Diagnostics.bSuccess;
+        Errors += Diagnostics.ErrorCount;
+        Warnings += Diagnostics.WarningCount;
+        Each.Add(MakeShared<FJsonValueObject>(Diagnostics.ToJson()));
+    }
+    Json->SetBoolField(TEXT("success"), bSuccess);
+    Json->SetNumberField(TEXT("errorCount"), Errors);
+    Json->SetNumberField(TEXT("warningCount"), Warnings);
+    Json->SetArrayField(TEXT("blueprints"), Each);
+    return Json;
+}
+
+void FN2CMcpBlueprintUtils::AttachCompileDiagnostics(FMcpToolCallResult& Result, const TArray<FN2CCompileDiagnostics>& Compiles)
+{
+    using namespace N2CMcpBlueprintUtilsPrivate;
+    const TSharedPtr<FJsonObject> CompileJson = CompileDiagnosticsToJson(Compiles);
+    if (!CompileJson.IsValid())
+    {
+        return;
+    }
+
+    // Into the result's JSON text when it is an object without a "compile" field of its own
+    for (const TSharedPtr<FJsonObject>& Item : Result.Content)
+    {
+        FString Type;
+        FString Text;
+        if (!Item.IsValid() || !Item->TryGetStringField(TEXT("type"), Type) || Type != TEXT("text")
+            || !Item->TryGetStringField(TEXT("text"), Text))
+        {
+            continue;
+        }
+        TSharedPtr<FJsonObject> Parsed;
+        const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Text);
+        if (FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid() && !Parsed->HasField(TEXT("compile")))
+        {
+            Parsed->SetObjectField(TEXT("compile"), CompileJson);
+            Item->SetStringField(TEXT("text"), SerializeJson(Parsed.ToSharedRef()));
+            return;
+        }
+        break;
+    }
+
+    // Otherwise (an error text, a non-JSON result) as its own text item
+    const TSharedRef<FJsonObject> Wrapper = MakeShared<FJsonObject>();
+    Wrapper->SetObjectField(TEXT("compile"), CompileJson);
+    const TSharedPtr<FJsonObject> TextContent = MakeShared<FJsonObject>();
+    TextContent->SetStringField(TEXT("type"), TEXT("text"));
+    TextContent->SetStringField(TEXT("text"), SerializeJson(Wrapper));
+    Result.Content.Add(TextContent);
+}
+
+FString FN2CMcpBlueprintUtils::StatusToString(uint8 Status)
+{
+    switch (static_cast<EBlueprintStatus>(Status))
+    {
+    case BS_Dirty:
+        return TEXT("Dirty");
+    case BS_Error:
+        return TEXT("Error");
+    case BS_UpToDate:
+        return TEXT("UpToDate");
+    case BS_BeingCreated:
+        return TEXT("BeingCreated");
+    case BS_UpToDateWithWarnings:
+        return TEXT("UpToDateWithWarnings");
+    default:
+        return TEXT("Unknown");
+    }
 }

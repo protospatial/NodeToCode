@@ -186,8 +186,8 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
             Schema->TrySetDefaultValue(*TargetPin, FormattedValue);
         }
 
-        // Compile Blueprint synchronously to ensure preview actors are properly updated
-        FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+        // Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
+        FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 
         // Show notification
         FNotificationInfo Info(FText::Format(
@@ -223,9 +223,6 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         FString ResultString;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
-
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
 
         return FMcpToolCallResult::CreateTextResult(ResultString);
     });

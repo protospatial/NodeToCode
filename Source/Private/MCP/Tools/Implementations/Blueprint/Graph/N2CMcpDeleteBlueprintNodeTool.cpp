@@ -139,9 +139,6 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintNodeTool::Execute(const TSharedPtr<FJso
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
         
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-        
         return FMcpToolCallResult::CreateTextResult(ResultJson);
     });
 }
@@ -404,8 +401,8 @@ bool FN2CMcpDeleteBlueprintNodeTool::DeleteNodes(
         FN2CLogger::Get().Log(FString::Printf(TEXT("Deleted node: %s"), *NodeInfo.NodeTitle), EN2CLogSeverity::Debug);
     }
     
-    // Compile Blueprint synchronously to ensure preview actors are properly updated
-    FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+    // Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
+    FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
     
     return true;
 }
