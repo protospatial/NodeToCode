@@ -43,6 +43,9 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
     
     Definition.InputSchema = Schema;
 
+    // Results carry Blueprint text (code an LLM wrote from the Blueprint's text; FN2CTranslateBlueprintCall marks it): marked as untrusted data (card 0124)
+    Definition.bReturnsUntrustedContent = true;
+
     return Definition;
 }
 

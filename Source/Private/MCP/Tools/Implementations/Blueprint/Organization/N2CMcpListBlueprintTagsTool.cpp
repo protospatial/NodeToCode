@@ -32,6 +32,9 @@ FMcpToolDefinition FN2CMcpListBlueprintTagsTool::GetDefinition() const
 	// Add read-only annotation
 	AddReadOnlyAnnotation(Definition);
 	
+	// Results carry Blueprint text (tag names and categories users typed): marked as untrusted data (card 0124)
+	Definition.bReturnsUntrustedContent = true;
+
 	return Definition;
 }
 

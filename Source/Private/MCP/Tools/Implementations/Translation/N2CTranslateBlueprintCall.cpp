@@ -2,6 +2,7 @@
 
 #include "N2CTranslateBlueprintCall.h"
 #include "Core/N2CEditorIntegration.h"
+#include "MCP/Utils/N2CMcpUntrustedContent.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -145,7 +146,8 @@ void FN2CTranslateBlueprintCall::HandleLLMResponse(const FString& LLMResponse)
     const FString Text = WithWarnings(LLMResponse);
     const FMcpToolCallResult Result = bIsError
         ? FMcpToolCallResult::CreateErrorResult(Text)
-        : FMcpToolCallResult::CreateTextResult(Text);
+        // The translation was written from the Blueprint's own text, so it is untrusted data too (card 0124)
+        : FMcpToolCallResult::CreateTextResult(FN2CMcpUntrustedContent::MarkJson(Text));
 
     Context->ReportProgress(1.0f, Result.bIsError ? TEXT("Translation failed") : TEXT("Translation complete"));
     Finish(Result);

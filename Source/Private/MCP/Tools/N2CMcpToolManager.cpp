@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Utils/N2CLogger.h"
 #include "Core/N2CUserSettings.h"
+#include "MCP/Utils/N2CMcpUntrustedContent.h"
 
 FN2CMcpToolManager& FN2CMcpToolManager::Get()
 {
@@ -90,7 +91,8 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 
 	// A long-running tool is answered on its own tools/call request (FN2CMcpProtocol); it reaches this
 	// synchronous path only inside a JSON-RPC batch, which is answered as a whole and cannot wait for it.
-	if ((*ToolPtr)->GetDefinition().bIsLongRunning)
+	const FMcpToolDefinition Definition = (*ToolPtr)->GetDefinition();
+	if (Definition.bIsLongRunning)
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("%s was called inside a JSON-RPC batch; it only runs as a single request."), *ToolName));
 		return FMcpToolCallResult::CreateErrorResult(FString::Printf(
@@ -102,7 +104,13 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 
 	try
 	{
-		return (*ToolPtr)->Execute(Arguments);
+		FMcpToolCallResult Result = (*ToolPtr)->Execute(Arguments);
+		if (Definition.bReturnsUntrustedContent)
+		{
+			// Blueprint text (comments, tooltips, string literals) is data for the agent, never instructions (card 0124)
+			FN2CMcpUntrustedContent::MarkToolResult(Result);
+		}
+		return Result;
 	}
 	catch (...)
 	{

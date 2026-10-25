@@ -40,6 +40,12 @@ Pro/Max** or **Google Account** selected:
   per user: a project's config files cannot change it. Changing it needs an editor restart.
 - **Server Port** (**Project Settings → Plugins → Node to Code → MCP Server**) is 27000; a change applies at once.
 - The server answers only on this machine (`localhost`, `127.0.0.1`), so run the agent on the same computer.
+- Blueprint text is data, not instructions. Node comments, tooltips, string literals and names can come from a Fab
+  asset, a third-party pack or a teammate, and someone can write instructions aimed at your agent into them.
+  NodeToCode marks that text as untrusted when it hands it to the agent (an `untrusted_content` notice at the top of
+  each result, and a notice before the Blueprint in its prompts), but the agent can still be fooled: review what it
+  wants to do before you allow a tool call that writes, deletes or runs code, and keep **Allow MCP Python Execution**
+  off unless you need it.
 
 ## Claude Code
 

@@ -37,6 +37,13 @@ struct NODETOCODE_API FMcpToolDefinition
 	UPROPERTY()
 	bool bIsLongRunning = false;
 
+	/**
+	 * Whether the tool's results carry text taken from the project's Blueprints (comments, titles, names, tooltips,
+	 * descriptions, string literals). FN2CMcpToolManager::ExecuteTool marks such a successful result as untrusted
+	 * data (FN2CMcpUntrustedContent, card 0124); a long-running tool marks its own result. Not sent to clients.
+	 */
+	bool bReturnsUntrustedContent = false;
+
 	FMcpToolDefinition()
 	{
 	}

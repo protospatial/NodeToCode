@@ -69,6 +69,9 @@ FMcpToolDefinition FN2CMcpFindNodesInGraphTool::GetDefinition() const
     // Add read-only annotation
     AddReadOnlyAnnotation(Definition);
     
+    // Results carry Blueprint text (node titles and pin default values): marked as untrusted data (card 0124)
+    Definition.bReturnsUntrustedContent = true;
+
     return Definition;
 }
 

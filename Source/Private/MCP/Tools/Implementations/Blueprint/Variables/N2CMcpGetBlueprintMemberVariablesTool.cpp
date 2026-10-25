@@ -33,6 +33,9 @@ FMcpToolDefinition FN2CMcpGetBlueprintMemberVariablesTool::GetDefinition() const
     // Add read-only annotation
     AddReadOnlyAnnotation(Definition);
     
+    // Results carry Blueprint text (variable tooltips, categories and default values): marked as untrusted data (card 0124)
+    Definition.bReturnsUntrustedContent = true;
+
     return Definition;
 }
 
