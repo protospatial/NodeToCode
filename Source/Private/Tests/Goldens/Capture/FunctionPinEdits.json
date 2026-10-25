@@ -1,0 +1,214 @@
+{
+	"case": "FunctionPinEdits",
+	"description": "Max Translation Depth 1. Function Caller(In) calls MyFunc(Value) -> Result with In as Value; MyFunc then gets input Speed (real) and return value bOk through the MCP signature path (card 0156, FN2CMcpFunctionPinUtils::AddFunctionPin), and Caller wires the call's new bOk into ControlScreensaver run after it. Captured from Caller.",
+	"translation_depth": 1,
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_FunctionPinEdits",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_FunctionPinEdits"
+		},
+		"graphs": [
+			{
+				"name": "Caller",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Caller",
+						"member_parent": "BP_N2CGolden_FunctionPinEdits",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "In",
+								"type": "Integer",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "BP_N2CGolden_FunctionPinEdits",
+						"member_name": "MyFunc",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "self",
+								"label": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							},
+							{
+								"id": "P6",
+								"name": "Value",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							},
+							{
+								"id": "P7",
+								"name": "Speed",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.0"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P8",
+								"name": "Result",
+								"type": "Integer",
+								"default_value": "0"
+							},
+							{
+								"id": "P9",
+								"name": "bOk",
+								"type": "Boolean",
+								"default_value": "false",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P12",
+								"name": "bAllowScreenSaver",
+								"type": "Boolean",
+								"default_value": "false",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P3",
+						"N2.P4->N3.P10"
+					],
+					"data":
+					{
+						"N1.P2": "N2.P6",
+						"N2.P9": "N3.P12"
+					}
+				}
+			},
+			{
+				"name": "MyFunc",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "MyFunc",
+						"member_parent": "BP_N2CGolden_FunctionPinEdits",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P13",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P14",
+								"name": "Value",
+								"type": "Integer",
+								"connected": true
+							},
+							{
+								"id": "P15",
+								"name": "Speed",
+								"type": "Real",
+								"sub_type": "double"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "FunctionResult",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_FunctionPinEdits",
+						"input_pins": [
+							{
+								"id": "P16",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P17",
+								"name": "Result",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							},
+							{
+								"id": "P18",
+								"name": "bOk",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4.P13->N5.P16"
+					],
+					"data":
+					{
+						"N4.P14": "N5.P17"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

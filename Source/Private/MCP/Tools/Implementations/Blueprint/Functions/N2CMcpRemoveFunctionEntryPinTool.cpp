@@ -160,29 +160,17 @@ FMcpToolCallResult FN2CMcpRemoveFunctionEntryPinTool::Execute(const TSharedPtr<F
 		FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveFunctionEntryPin: Attempting to remove pin named '%s'"), 
 			*PinName), EN2CLogSeverity::Debug);
 
-		// Start a transaction for undo/redo
-		const FScopedTransaction Transaction(
-			FText::Format(NSLOCTEXT("NodeToCode", "RemoveFunctionEntryPin", "Remove Entry Pin '{0}'"), 
-			FText::FromString(PinName))
-		);
-
-		FunctionEntry->Modify();
-
-		// Remove the pin using our utility
-		FString RemovalError;
-		if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(FunctionEntry, PinName, RemovalError))
+		// Validates first (a misspelled name opens no transaction and leaves the package clean), then in one transaction
+		// removes the pin, regenerates the skeleton and rebuilds the call sites (card 0156)
+		FN2CFunctionPinEdit Edit;
+		if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(Blueprint, FocusedGraph, /*bReturnValue*/ false, PinName,
+			FText::Format(NSLOCTEXT("NodeToCode", "RemoveFunctionEntryPin", "Remove Entry Pin '{0}'"), FText::FromString(PinName)), Edit))
 		{
 			FN2CLogger::Get().LogError(FString::Printf(
 				TEXT("RemoveFunctionEntryPin: Failed to remove pin '%s' - %s"), 
-				*PinName, *RemovalError));
-			return Target.Finish(FMcpToolCallResult::CreateErrorResult(RemovalError));
+				*PinName, *Edit.Error));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(Edit.Error));
 		}
-
-		// Update all function call sites
-		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-
-		// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
-		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveFunctionEntryPin: Successfully removed pin '%s' from function '%s'"), 
 			*PinName, *FocusedGraph->GetName()), EN2CLogSeverity::Debug);

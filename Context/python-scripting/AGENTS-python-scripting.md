@@ -200,6 +200,10 @@ script ends and reports it as `compile` in its own result, so a script that adds
 *   `add_function_input_pin(name, type, default_value="", is_pass_by_reference=False, tooltip="")`,
     `add_function_return_pin(name, type, tooltip="")`, `remove_function_entry_pin(name)`,
     `remove_function_return_pin(name)`
+    They run the MCP pin tools' own path (card 0156): return values go on every Return node, the function's call nodes
+    are rebuilt after the skeleton class is regenerated, a refused edit leaves the Blueprint untouched, and the tooltip
+    is kept as an `@param` line of the function's tooltip. See "Signature Edits and Call Sites" in
+    `Source/Private/MCP/Tools/Implementations/Blueprint/Functions/AGENTS.md`
 
 **Script Management:**
 *   `list_scripts(category=None, limit=20)` - List scripts with metadata

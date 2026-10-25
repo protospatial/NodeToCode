@@ -1741,13 +1741,6 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
 	}
 
-	// Find the function entry node
-	UK2Node_FunctionEntry* FunctionEntry = FN2CMcpFunctionPinUtils::FindFunctionEntryNode(FocusedGraph);
-	if (!FunctionEntry)
-	{
-		return MakeErrorJson(TEXT("Not in a function graph. Please focus on a Blueprint function."));
-	}
-
 	// Resolve type identifier
 	FEdGraphPinType PinType;
 	FString ResolveError;
@@ -1757,54 +1750,22 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 		return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
 	}
 
-	// Create the pin
-	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonAddInputPin", "Python: Add Input Pin '{0}'"), FText::FromString(PinName)));
-
-	FText ErrorMessage;
-	if (!FunctionEntry->CanCreateUserDefinedPin(PinType, EGPD_Output, ErrorMessage))
+	// The add-function-input-pin path (card 0156): validate, then one transaction that adds the pin, regenerates the
+	// skeleton and rebuilds the call sites; it has closed when this returns, so the compile below is not recorded
+	FN2CFunctionPinEdit Edit;
+	if (!FN2CMcpFunctionPinUtils::AddFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ false, PinName, PinType, DefaultValue,
+		Tooltip, FText::Format(LOCTEXT("PythonAddInputPin", "Python: Add Input Pin '{0}'"), FText::FromString(PinName)), Edit))
 	{
-		return MakeErrorJson(FString::Printf(TEXT("Cannot create pin: %s"), *ErrorMessage.ToString()));
-	}
-
-	UEdGraphPin* NewPin = FunctionEntry->CreateUserDefinedPin(FName(*PinName), PinType, EGPD_Output, true);
-	if (!NewPin)
-	{
-		return MakeErrorJson(TEXT("Failed to create input pin"));
-	}
-
-	// Set default value if provided
-	if (!DefaultValue.IsEmpty())
-	{
-		TSharedPtr<FUserPinInfo>* PinInfoPtr = FunctionEntry->UserDefinedPins.FindByPredicate(
-			[NewPin](const TSharedPtr<FUserPinInfo>& Info) { return Info->PinName == NewPin->PinName; });
-		if (PinInfoPtr && PinInfoPtr->IsValid())
-		{
-			FunctionEntry->ModifyUserDefinedPinDefaultValue(*PinInfoPtr, DefaultValue);
-		}
-	}
-
-	// Set tooltip
-	if (!Tooltip.IsEmpty())
-	{
-		FN2CMcpFunctionPinUtils::SetPinTooltip(FunctionEntry, NewPin, Tooltip);
-	}
-
-	// Update function call sites
-	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionEntry);
-	if (Blueprint)
-	{
-		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
+		return MakeErrorJson(Edit.Error);
 	}
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("pinName"), PinName);
-	Data->SetStringField(TEXT("actualName"), NewPin->PinName.ToString());
-	Data->SetStringField(TEXT("pinGuid"), NewPin->PinId.ToString());
+	Data->SetStringField(TEXT("actualName"), Edit.PinName.ToString());
+	Data->SetStringField(TEXT("pinGuid"), Edit.Pin ? Edit.Pin->PinId.ToString() : FString());
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
 
-	Transaction.Reset(); // close the undo transaction before compiling
 	AddCompileResult(Data, CallScope.Flush());
 
 	return MakeSuccessJson(Data);
@@ -1840,13 +1801,6 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
 	}
 
-	// Find or create the function result node
-	UK2Node_FunctionResult* FunctionResult = FN2CMcpFunctionPinUtils::EnsureFunctionResultNode(FocusedGraph);
-	if (!FunctionResult)
-	{
-		return MakeErrorJson(TEXT("Failed to find or create function result node"));
-	}
-
 	// Resolve type identifier
 	FEdGraphPinType PinType;
 	FString ResolveError;
@@ -1856,43 +1810,23 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 		return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
 	}
 
-	// Create the pin
-	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonAddReturnPin", "Python: Add Return Pin '{0}'"), FText::FromString(PinName)));
-
-	FText ErrorMessage;
-	if (!FunctionResult->CanCreateUserDefinedPin(PinType, EGPD_Input, ErrorMessage))
+	// The add-function-return-pin path (card 0156): validate, then one transaction that adds the pin to every Return node
+	// (creating one, with a GUID and wired from the entry, when there is none), regenerates the skeleton and rebuilds the
+	// call sites
+	FN2CFunctionPinEdit Edit;
+	if (!FN2CMcpFunctionPinUtils::AddFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ true, PinName, PinType, FString(),
+		Tooltip, FText::Format(LOCTEXT("PythonAddReturnPin", "Python: Add Return Pin '{0}'"), FText::FromString(PinName)), Edit))
 	{
-		return MakeErrorJson(FString::Printf(TEXT("Cannot create return pin: %s"), *ErrorMessage.ToString()));
-	}
-
-	UEdGraphPin* NewPin = FunctionResult->CreateUserDefinedPin(FName(*PinName), PinType, EGPD_Input, true);
-	if (!NewPin)
-	{
-		return MakeErrorJson(TEXT("Failed to create return pin"));
-	}
-
-	// Set tooltip
-	if (!Tooltip.IsEmpty())
-	{
-		FN2CMcpFunctionPinUtils::SetPinTooltip(FunctionResult, NewPin, Tooltip);
-	}
-
-	// Update function call sites
-	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionResult);
-	if (Blueprint)
-	{
-		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
+		return MakeErrorJson(Edit.Error);
 	}
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("pinName"), PinName);
-	Data->SetStringField(TEXT("actualName"), NewPin->PinName.ToString());
-	Data->SetStringField(TEXT("pinGuid"), NewPin->PinId.ToString());
+	Data->SetStringField(TEXT("actualName"), Edit.PinName.ToString());
+	Data->SetStringField(TEXT("pinGuid"), Edit.Pin ? Edit.Pin->PinId.ToString() : FString());
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
 
-	Transaction.Reset(); // close the undo transaction before compiling
 	AddCompileResult(Data, CallScope.Flush());
 
 	return MakeSuccessJson(Data);
@@ -1928,36 +1862,19 @@ FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
 	}
 
-	// Find the function entry node
-	UK2Node_FunctionEntry* FunctionEntry = FN2CMcpFunctionPinUtils::FindFunctionEntryNode(FocusedGraph);
-	if (!FunctionEntry)
+	// Validates first (a misspelled name opens no transaction and leaves the package clean), then one transaction that
+	// removes the pin, regenerates the skeleton and rebuilds the call sites (card 0156)
+	FN2CFunctionPinEdit Edit;
+	if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ false, PinName,
+		FText::Format(LOCTEXT("PythonRemoveEntryPin", "Python: Remove Entry Pin '{0}'"), FText::FromString(PinName)), Edit))
 	{
-		return MakeErrorJson(TEXT("No function entry node found in the graph"));
+		return MakeErrorJson(Edit.Error);
 	}
-
-	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionEntry);
-	if (!Blueprint)
-	{
-		return MakeErrorJson(TEXT("Cannot find Blueprint for function"));
-	}
-
-	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonRemoveEntryPin", "Python: Remove Entry Pin '{0}'"), FText::FromString(PinName)));
-	FunctionEntry->Modify();
-
-	FString RemovalError;
-	if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(FunctionEntry, PinName, RemovalError))
-	{
-		return MakeErrorJson(RemovalError);
-	}
-
-	FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("removedPin"), PinName);
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 
-	Transaction.Reset(); // close the undo transaction before compiling
 	AddCompileResult(Data, CallScope.Flush());
 
 	return MakeSuccessJson(Data);
@@ -1993,36 +1910,19 @@ FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
 		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
 	}
 
-	// Find the function result node
-	UK2Node_FunctionResult* FunctionResult = FN2CMcpFunctionPinUtils::FindFunctionResultNode(FocusedGraph);
-	if (!FunctionResult)
+	// Validates first (a misspelled name opens no transaction and leaves the package clean), then one transaction that
+	// removes the pin from every Return node, regenerates the skeleton and rebuilds the call sites (card 0156)
+	FN2CFunctionPinEdit Edit;
+	if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ true, PinName,
+		FText::Format(LOCTEXT("PythonRemoveReturnPin", "Python: Remove Return Pin '{0}'"), FText::FromString(PinName)), Edit))
 	{
-		return MakeErrorJson(TEXT("No function result node found. This function has no return values."));
+		return MakeErrorJson(Edit.Error);
 	}
-
-	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionResult);
-	if (!Blueprint)
-	{
-		return MakeErrorJson(TEXT("Cannot find Blueprint for function"));
-	}
-
-	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonRemoveReturnPin", "Python: Remove Return Pin '{0}'"), FText::FromString(PinName)));
-	FunctionResult->Modify();
-
-	FString RemovalError;
-	if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(FunctionResult, PinName, RemovalError))
-	{
-		return MakeErrorJson(RemovalError);
-	}
-
-	FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("removedPin"), PinName);
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 
-	Transaction.Reset(); // close the undo transaction before compiling
 	AddCompileResult(Data, CallScope.Flush());
 
 	return MakeSuccessJson(Data);

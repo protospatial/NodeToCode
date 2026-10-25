@@ -12,6 +12,7 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -53,7 +54,8 @@ bool FN2CMarkModifiedDirtiesTest::RunTest(const FString& Parameters)
 	UEdGraph* FunctionGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(TEXT("N2CProbeFunction")),
 		UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
 	FBlueprintEditorUtils::AddFunctionGraph<UClass>(Blueprint, FunctionGraph, /*bIsUserCreated*/ true, nullptr);
-	UK2Node_FunctionResult* FunctionResult = FN2CMcpFunctionPinUtils::EnsureFunctionResultNode(FunctionGraph);
+	UK2Node_FunctionResult* FunctionResult = FBlueprintEditorUtils::FindOrCreateFunctionResultNode(
+		FN2CMcpFunctionPinUtils::FindFunctionEntryNode(FunctionGraph));
 	if (!TestNotNull(TEXT("function result node"), FunctionResult))
 	{
 		return false;
@@ -62,20 +64,19 @@ bool FN2CMarkModifiedDirtiesTest::RunTest(const FString& Parameters)
 	Package->SetDirtyFlag(false);
 	TestFalse(TEXT("baseline: package clean"), Package->IsDirty());
 
-	// The add-function-return-pin path: one tool call (card 0151) holding a transaction, CreateUserDefinedPin,
-	// UpdateFunctionCallSites and MarkModified; the call compiles once after the transaction closes
+	// The add-function-return-pin path: one tool call (card 0151) running FN2CMcpFunctionPinUtils::AddFunctionPin (its
+	// own transaction, card 0156); the call compiles once after the transaction closes
 	FN2CMcpToolCallScope CallScope;
 	{
-		const FScopedTransaction Transaction(NSLOCTEXT("NodeToCode", "N2CMarkDirtyTest", "Add Return Pin (test)"));
 		FEdGraphPinType BoolType;
 		BoolType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
-		UEdGraphPin* NewPin = FunctionResult->CreateUserDefinedPin(FName(TEXT("bOk")), BoolType, EGPD_Input, /*bUseUniqueName*/ true);
-		if (!TestNotNull(TEXT("return pin created"), NewPin))
+		FN2CFunctionPinEdit Edit;
+		if (!TestTrue(TEXT("return pin added: ") + Edit.Error, FN2CMcpFunctionPinUtils::AddFunctionPin(Blueprint, FunctionGraph,
+			/*bReturnValue*/ true, TEXT("bOk"), BoolType, FString(), FString(),
+			NSLOCTEXT("NodeToCode", "N2CMarkDirtyTest", "Add Return Pin (test)"), Edit)))
 		{
 			return false;
 		}
-		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FunctionGraph, Blueprint);
-		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 	}
 	const TArray<FN2CCompileDiagnostics> Compiles = CallScope.Flush();
 	TestEqual(TEXT("the call compiled the Blueprint once"), Compiles.Num(), 1);

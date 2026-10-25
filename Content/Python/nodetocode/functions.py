@@ -57,7 +57,8 @@ def add_function_input_pin(
             - Objects: "/Script/Engine.Actor", "/Script/Engine.StaticMeshComponent"
         default_value: Optional default value for the parameter
         is_pass_by_reference: Whether the parameter is passed by reference
-        tooltip: Optional tooltip description for the parameter
+        tooltip: Optional tooltip description for the parameter, kept as an "@param <name> <text>" line of the
+            function's tooltip (shown on the pin of every call node)
 
     Returns:
         {
@@ -148,6 +149,8 @@ def add_function_return_pin(
     Add a return value to the currently focused Blueprint function.
 
     Blueprint functions can have multiple return values (unlike C++).
+    The value is added to every Return node of the function (a Return node wired from the entry is created when
+    there is none), and the function's call nodes are rebuilt against the new signature.
     The function graph must be focused in the Blueprint editor.
 
     Args:
@@ -156,7 +159,7 @@ def add_function_return_pin(
             - Primitives: "bool", "int32", "float", "FString"
             - Vectors: "FVector", "FRotator", "FTransform"
             - Objects: "/Script/Engine.Actor"
-        tooltip: Optional tooltip description for the return value
+        tooltip: Optional tooltip description for the return value, kept as for add_function_input_pin
 
     Returns:
         {

@@ -233,6 +233,13 @@ its environment when no key is saved, so a live check never types or saves a key
   set in the capture, translates once with the model (the Anthropic key in the editor's environment only), checks
   the package is dirty and that three undos remove the comment, the links and the Set node in turn. Report:
   `logs/live_spawned_nodes_0155_<label>.json`.
+- `live_function_pins_0156.py --engine ... --project ... --label 5.8` (no provider key) checks that adding a parameter
+  to a function that is already called rebuilds the call site (card 0156): on an in-memory Actor Blueprint under a
+  fresh `/Game/N2CTest/Pins0156_<time>` folder it makes MyFunc(Value) -> Result and a call to it wired from BeginPlay,
+  then `claude -p` with only `mcp__nodetocode__*` adds a float input Speed with add-function-input-pin (by
+  `blueprintPath` and `graphGuid`). The probe checks the tool result (actualName Speed, compile success with 0
+  errors), that the call node in the capture has inputs Value and Speed (a real), outputs Result and is still run from
+  BeginPlay, and that compile-blueprint reports no error. Report: `logs/live_function_pins_0156_<label>.json`.
 - `live_user_settings_0423.py --engine ... --project ...` (no provider key) checks that a committed project config
   cannot switch on MCP Python execution (card 0423), in three headless sessions: `committed` (no
   `bAllowMcpPythonExecution` in the user's Saved/Config layer, `EditorSession(allow_python=None)`, and the host's

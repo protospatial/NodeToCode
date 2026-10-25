@@ -46,6 +46,7 @@
 #include "Kismet/KismetTextLibrary.h"
 #include "Kismet2/StructureEditorUtils.h"
 #include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpGetFocusedBlueprintTool.h"
+#include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
 #include "EdGraphNode_Comment.h"
@@ -1207,6 +1208,46 @@ void FN2CCaptureGoldenSpec::AddCases()
 				{ SetScore, GetCounter, SetCounter, GetScore });
 			return Graph;
 		} });
+
+	Cases.Add({ TEXT("FunctionPinEdits"),
+		TEXT("Max Translation Depth 1. Function Caller(In) calls MyFunc(Value) -> Result with In as Value; MyFunc then gets "
+			"input Speed (real) and return value bOk through the MCP signature path (card 0156, "
+			"FN2CMcpFunctionPinUtils::AddFunctionPin), and Caller wires the call's new bOk into ControlScreensaver run "
+			"after it. Captured from Caller."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UBlueprint* Blueprint = BP.GetBlueprint();
+			UEdGraph* MyFunc = BP.AddFunction(TEXT("MyFunc"));
+			BP.AddFunctionInput(MyFunc, TEXT("Value"), FTestBlueprint::IntPinType());
+			UK2Node_FunctionResult* Return = FBlueprintEditorUtils::FindOrCreateFunctionResultNode(BP.FunctionEntry(MyFunc));
+			if (!Return)
+			{
+				return nullptr;
+			}
+			Return->CreateUserDefinedPin(TEXT("Result"), FTestBlueprint::IntPinType(), EGPD_Input, /*bUseUniqueName*/ false);
+			BP.Link(BP.FunctionEntry(MyFunc), TEXT("Value"), Return, TEXT("Result"));
+
+			UEdGraph* Caller = BP.AddFunction(TEXT("Caller"));
+			BP.AddFunctionInput(Caller, TEXT("In"), FTestBlueprint::IntPinType());
+			UK2Node_CallFunction* Call = BP.AddSelfCall(Caller, TEXT("MyFunc"));
+			BP.Link(BP.FunctionEntry(Caller), UEdGraphSchema_K2::PN_Then, Call, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(BP.FunctionEntry(Caller), TEXT("In"), Call, TEXT("Value"));
+
+			FN2CFunctionPinEdit Edit;
+			if (!FN2CMcpFunctionPinUtils::AddFunctionPin(Blueprint, MyFunc, /*bReturnValue*/ false, TEXT("Speed"),
+					FTestBlueprint::DoublePinType(), FString(), FString(), FText::FromString(TEXT("Add Speed (test)")), Edit)
+				|| !FN2CMcpFunctionPinUtils::AddFunctionPin(Blueprint, MyFunc, /*bReturnValue*/ true, TEXT("bOk"),
+					FTestBlueprint::BoolPinType(), FString(), FString(), FText::FromString(TEXT("Add bOk (test)")), Edit))
+			{
+				return nullptr;
+			}
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Caller);
+			BP.Link(Call, UEdGraphSchema_K2::PN_Then, Screensaver, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Call, TEXT("bOk"), Screensaver, TEXT("bAllowScreenSaver"));
+			return Caller;
+		} });
+	Cases.Last().TranslationDepth = 1;
 
 	Cases.Add({ TEXT("SwitchOnInt"),
 		TEXT("Function SwitchInt(Selection): Switch on Int with cases 0 and 1 and Default; 0 and Default both run "

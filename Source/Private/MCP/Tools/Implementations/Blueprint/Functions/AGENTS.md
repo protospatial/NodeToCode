@@ -111,23 +111,31 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
   - `typeIdentifier` (required): A single type (no containers), resolved as in "Type Identifiers" in
     `../Variables/AGENTS.md`. A type that does not resolve fails the call with
     `Failed to resolve type '<type>': <reason>` before the function is touched
-  - `defaultValue` (optional), `isPassByReference` (optional, default false), `tooltip` (optional)
+  - `defaultValue` (optional), `isPassByReference` (optional, default false)
+  - `tooltip` (optional): Kept in the function's tooltip metadata as an `@param <actualName> <text>` line
+    (`FN2CMcpFunctionPinUtils::SetParameterTooltip`), which the engine shows as the pin's tooltip on call nodes and
+    leaves out of the function's own tooltip. Before card 0156 it went to the pin itself and was lost on the next
+    node rebuild. Removing the pin drops its line
 - **Returns**: `success`, `pinName` (as requested), `actualName`, `displayName` (as the editor shows it, for example
   `Target Actor`), `pinId` (the pin GUID), `typeInfo` (`category`, `className`, `path`, `typeName`), `functionName`,
   `blueprintName`, `message`
 - **Errors**: An event graph (focused or named): `NOT_A_FUNCTION_GRAPH: EventGraph (event graph) of BP_Door is not a
   function. ...`
+- Every call node of the function, in this Blueprint and in other loaded Blueprints, gets the new input with its links
+  kept; see "Signature Edits and Call Sites"
 
 ### add-function-return-pin
-- **Description**: Adds a return value to the target function (a pin on its result node; a result node is created
-  when the function has none, `FN2CMcpFunctionPinUtils::EnsureFunctionResultNode`)
-- **Parameters**: `pinName` (required), `typeIdentifier` (required, a single type), `tooltip` (optional). Return
-  values take no default value and are never by reference
-- **Returns**: As for add-function-input-pin (`bSuccess` is displayed as `Success`)
-- **Known issue (card 0156):** only the first result node gets the pin, and the tooltip is stored on the pin
-  (`SetPinTooltip`), so it is lost when the node is rebuilt
-- An event graph is refused with `NOT_A_FUNCTION_GRAPH` before anything changes; before card 0152 the call failed
-  only after `EnsureFunctionResultNode` had added a Return node to the event graph
+- **Description**: Adds a return value to the target function: the same pin on every result (Return) node of the
+  function, so a function with an early-out Return keeps matching Return nodes. A function with no result node gets
+  one from `FBlueprintEditorUtils::FindOrCreateFunctionResultNode` (as My Blueprint > Outputs does): it has a node
+  GUID, is transactional, sits right of the entry and is wired from the entry's exec output when that is free
+- **Parameters**: `pinName` (required), `typeIdentifier` (required, a single type), `tooltip` (optional, kept as for
+  add-function-input-pin). Return values take no default value and are never by reference
+- **Returns**: As for add-function-input-pin (`bSuccess` is displayed as `Success`); `pinId` is the pin on the first
+  Return node
+- An event graph is refused with `NOT_A_FUNCTION_GRAPH` before anything changes. Before card 0156 only the first
+  result node got the pin (removing it then failed the compile with "Return nodes don't match each other"), and a
+  created result node had no GUID and no exec wire and was made outside the undo transaction
 
 ### remove-function-entry-pin
 - **Description**: Removes an input parameter (a user-defined pin on the entry node)
@@ -140,10 +148,13 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
   non-user-defined pin. ...`
 
 ### remove-function-return-pin
-- **Description**: Removes a return value (a user-defined pin on the result node)
-- **Parameters**: `pinName` (required), matched as for remove-function-entry-pin
+- **Description**: Removes a return value from every result node of the function
+- **Parameters**: `pinName` (required), matched as for remove-function-entry-pin (against the first result node)
 - **Returns**: As for remove-function-entry-pin
 - **Errors**: A function without a result node: `No function result node found. This function has no return values.`
+- A refused removal on either remove tool (no such pin, the exec pin, a pin that is not user-defined, no result node)
+  is checked before anything changes: no undo transaction, and the package stays clean. Before card 0156 it dirtied
+  the package
 
 ## Example: Complex Function Creation
 The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in
@@ -294,21 +305,46 @@ curl -X POST http://localhost:27000/mcp \
 
 - Every tool here except `open-blueprint-function` opens an `FScopedTransaction`, so each edit is one editor undo
   step.
-- **Known issue (card 0156):** the add-pin tools never call `Modify()` on the entry or result node before
-  `CreateUserDefinedPin`, so undo leaves the parameter in `UserDefinedPins`; `EnsureFunctionResultNode` runs before
-  the transaction opens; and call sites are rebuilt before the skeleton class is, so a function's callers can fail to
-  compile after a signature change (`FN2CMcpFunctionPinUtils::UpdateFunctionCallSites`).
+- The four pin tools call `Modify()` on the Blueprint, the function graph, the entry node and every result node they
+  edit before changing them, so one undo restores the pins, `UserDefinedPins`, a result node the call created, the
+  tooltip metadata and every call site the edit rebuilt (card 0156).
 - Every successful edit marks the Blueprint structurally modified and its package dirty
   (`FN2CMcpBlueprintUtils::MarkModified`); the tool call then compiles it once, after the edit's transaction has
   closed, and adds the compiler's diagnostics to the result as `compile` (card 0151; fields in the Graph folder's
   AGENTS.md). One deferred `FBlueprintActionDatabase::RefreshAssetActions` per changed Blueprint follows a couple of
   frames later, shared by every edit made before it runs. Nothing is saved: use `save-blueprint`.
 
+## Signature Edits and Call Sites
+
+The four pin tools and the Python bridge's `add_function_input_pin`, `add_function_return_pin`,
+`remove_function_entry_pin` and `remove_function_return_pin` share one path, `FN2CMcpFunctionPinUtils::AddFunctionPin`
+and `RemoveFunctionPin` (card 0156), the same steps as the Blueprint editor's My Blueprint > Inputs / Outputs
+(`FBlueprintGraphActionDetails::OnAddNewOutputClicked`, `OnParamsChanged`):
+
+1. Validate (type, name, the pin to remove, `CanCreateUserDefinedPin` on each node) before anything changes. A refused
+   edit opens no transaction and leaves the package clean
+2. Open the transaction; `Modify()` the Blueprint, the graph, the entry and every edited result node
+3. Add or remove the pin on the entry node, or on every result node under one name
+4. `ReconstructNode` each edited node, then `UEdGraphSchema_K2::HandleParameterDefaultValueChanged`: it regenerates the
+   skeleton class first and only then rebuilds the function's call nodes (and delegate and macro nodes) in every
+   loaded Blueprint (`FParamsChangedHelper`, which `Modify()`s each one), so they get the new signature and keep the
+   links of the pins that did not change. Before card 0156 the call nodes were rebuilt by name before the skeleton
+   was regenerated (`UpdateFunctionCallSites`), so they kept the old pins and the Blueprint failed to compile with
+   "Could not find a pin for the parameter"
+5. `FN2CMcpBlueprintUtils::MarkModified`: the package is dirty and the tool call compiles the Blueprint once after the
+   transaction closes, returning the diagnostics as `compile`
+
+A removed parameter that is still wired at a call site leaves an orphaned pin on that call node, as in the editor, and
+the compile reports it. No tool changes a parameter's type (owner decision 0140, provisional: no new tool arguments);
+remove the pin and add it again.
+
+Checked by `NodeToCode.MCP.FunctionPinEdits` (the tools on every engine, the bridge on a focused editor on UE 5.8),
+`NodeToCode.Robustness.MarkModifiedDirties` and the `FunctionPinEdits` case of `NodeToCode.Capture.Golden`.
+
 ## Implementation Notes
 
 - New graphs come from `FBlueprintEditorUtils::CreateNewGraph` and `AddFunctionGraph`; result nodes from
-  `FBlueprintEditorUtils::FindOrCreateFunctionResultNode` (create-blueprint-function) or `EnsureFunctionResultNode`
-  (add-function-return-pin)
+  `FBlueprintEditorUtils::FindOrCreateFunctionResultNode` (create-blueprint-function and add-function-return-pin)
 - Blueprint functions can return several values
 - Pin removal breaks the pin's links before the pin is removed
 - Execution pins and pins that are not user-defined cannot be removed (`ValidatePinForRemoval`)
