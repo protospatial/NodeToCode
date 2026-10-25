@@ -105,3 +105,6 @@ __pycache__/
 /BuildLogs
 /Documentation
 nul
+
+# Agent briefs live in the workspace (G:/Personal Projects/n2c/.agents/briefs), not in the repository
+/.agents/briefs/
