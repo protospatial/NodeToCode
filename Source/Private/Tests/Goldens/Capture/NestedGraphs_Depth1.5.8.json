@@ -1,0 +1,253 @@
+{
+	"case": "NestedGraphs_Depth1",
+	"description": "Max Translation Depth 1. Function Nested(): the entry runs a collapsed graph GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs the Blueprint's own macro LocalSteps (In -> ControlScreensaver -> Out).",
+	"translation_depth": 1,
+	"known_defects": [
+		{
+			"finding": "imp-translation-core-5",
+			"card": "0235",
+			"effect": "Collapsed graphs and the Blueprint's own macros only count as nested graphs within the depth limit: at depth 0 (the default) GoldenCollapsed and LocalSteps are not captured and only the opaque Composite and MacroInstance nodes remain"
+		},
+		{
+			"finding": "imp-translation-core-4",
+			"card": "0235",
+			"effect": "The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no member_parent or member_name)"
+		},
+		{
+			"finding": "translation-core-20",
+			"card": "0235",
+			"effect": "A user macro is classed as a Macro graph only when its name contains 'macro': LocalSteps comes out as an EventGraph"
+		},
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_NestedGraphs_Depth1",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_NestedGraphs_Depth1"
+		},
+		"graphs": [
+			{
+				"name": "Nested",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Nested",
+						"member_parent": "BP_N2CGolden_NestedGraphs_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "Composite",
+						"name": "GoldenCollapsed",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "In",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Out",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MacroInstance",
+						"name": "Local Steps",
+						"member_parent": "BP_N2CGolden_NestedGraphs_Depth1",
+						"member_name": "LocalSteps",
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "In",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Out"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2",
+						"N2->N3"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "LocalSteps",
+				"graph_type": "EventGraph",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "Tunnel",
+						"name": "Inputs",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "In",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "Tunnel",
+						"name": "Outputs",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Out",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"name": "ControlScreensaver",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P8",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Allow Screen Saver",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": "",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4->N5",
+						"N5->N6"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "GoldenCollapsed",
+				"graph_type": "Composite",
+				"nodes": [
+					{
+						"id": "N7",
+						"type": "Tunnel",
+						"name": "Inputs",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": "In",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N9",
+						"type": "Tunnel",
+						"name": "Outputs",
+						"input_pins": [
+							{
+								"id": "P12",
+								"name": "Out",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					},
+					{
+						"id": "N8",
+						"type": "CallFunction",
+						"name": "CollectGarbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P13",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P14",
+								"name": "",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N7->N8",
+						"N8->N9"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

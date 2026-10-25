@@ -8,16 +8,20 @@
 #include "Core/N2CNodeCollector.h"
 #include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
+#include "Core/N2CSettings.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/UserDefinedEnum.h"
+#include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "Internationalization/Regex.h"
 #include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
@@ -28,32 +32,44 @@
 #include "K2Node_SwitchEnum.h"
 #include "K2Node_SwitchInteger.h"
 #include "K2Node_Timeline.h"
+#include "K2Node_Tunnel.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet2/StructureEditorUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Misc/ScopeExit.h"
 #include "Policies/PrettyJsonPrintPolicy.h"
 #include "Runtime/Launch/Resources/Version.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Tests/N2CTestHelpers.h"
+#include "UObject/GarbageCollection.h"
+#include "UObject/Package.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
 
 /**
- * Golden captures of the core graph shapes: each case builds a Blueprint graph in code (N2CTest::FTestBlueprint, a
- * transient Actor Blueprint, no assets), runs the capture the editor runs (FN2CNodeCollector::CollectNodesFromGraph,
- * FN2CNodeTranslator::GenerateN2CStruct, FN2CSerializer::ToJson) and compares the N2C JSON v1 output with
- * Goldens/Capture/<case>.json. The transient package path and any GUID are replaced with <PACKAGE> and <GUID> first.
+ * Golden captures of graph shapes: each case builds a Blueprint graph in code (N2CTest::FTestBlueprint, a transient
+ * Actor Blueprint in a /Game/N2CTest_<guid> package that is never saved, so capture treats it and its functions,
+ * macros, structs and enums as user content, as it would a project's), runs the capture the editor runs
+ * (FN2CNodeCollector::CollectNodesFromGraph, FN2CNodeTranslator::GenerateN2CStruct, FN2CSerializer::ToJson) and
+ * compares the N2C JSON v1 output with Goldens/Capture/<case>.json. The transient package path and any GUID are
+ * replaced with <PACKAGE> and <GUID> first.
  *
  * The goldens record today's output, known defects included: each golden lists the defects it shows under
  * "known_defects" with the finding and the E10 card that changes it, so those cards show their output changes
  * deliberately. A card that changes capture output regenerates the goldens in the same commit (N2C_UPDATE_GOLDENS=1
  * in the editor's environment, -N2CUpdateGoldens on its command line, or .\build.ps1 -Test -UpdateGoldens) and its
  * commit message explains the golden diff. <case>.<engine>.json (for example Branch.5.8.json), when present, is used
- * on that engine instead of <case>.json; none is needed today (README "Capture goldens").
+ * on that engine instead of <case>.json where the engine really differs (README "Capture goldens").
+ *
+ * A case may set Max Translation Depth (UN2CSettings::TranslationDepth) for its capture; the setting is put back
+ * afterwards and the golden records the depth it ran with.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -71,6 +87,10 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		FString Description;
 		TArray<FKnownDefect> KnownDefects;
 		TFunction<UEdGraph*(N2CTest::FTestBlueprint&)> Build;
+		/** Max Translation Depth for the capture; unset leaves the setting as it is */
+		TOptional<int32> TranslationDepth;
+		/** Error log lines today's capture writes for this case (known defects); each must appear */
+		TArray<FString> ExpectedErrors;
 	};
 
 	/** The capture text, normalised; empty with errors added when the graph or the capture failed */
@@ -146,7 +166,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 	FCaptured Capture(const FCaptureCase& Case)
 	{
 		FCaptured Captured;
-		N2CTest::FTestBlueprint Blueprint(FString::Printf(TEXT("BP_N2CGolden_%s"), *Case.Name));
+		N2CTest::FTestBlueprint Blueprint(FString::Printf(TEXT("BP_N2CGolden_%s"), *Case.Name), TEXT("/Game"));
 		UEdGraph* Graph = Blueprint.GetBlueprint() ? Case.Build(Blueprint) : nullptr;
 		for (const FString& Error : Blueprint.Errors())
 		{
@@ -156,6 +176,18 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		{
 			AddError(FString::Printf(TEXT("%s: the test graph could not be built"), *Case.Name));
 			return Captured;
+		}
+
+		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+		const int32 SavedDepth = Settings->TranslationDepth;
+		ON_SCOPE_EXIT { Settings->TranslationDepth = SavedDepth; };
+		if (Case.TranslationDepth.IsSet())
+		{
+			Settings->TranslationDepth = Case.TranslationDepth.GetValue();
+		}
+		for (const FString& Expected : Case.ExpectedErrors)
+		{
+			AddExpectedError(Expected, EAutomationExpectedErrorFlags::Contains, 0);
 		}
 
 		TArray<UK2Node*> Nodes;
@@ -185,6 +217,10 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		TSharedPtr<FJsonObject> Golden = MakeShared<FJsonObject>();
 		Golden->SetStringField(TEXT("case"), Case.Name);
 		Golden->SetStringField(TEXT("description"), Case.Description);
+		if (Case.TranslationDepth.IsSet())
+		{
+			Golden->SetNumberField(TEXT("translation_depth"), Case.TranslationDepth.GetValue());
+		}
 		TArray<TSharedPtr<FJsonValue>> Defects;
 		for (const FKnownDefect& Defect : Case.KnownDefects)
 		{
@@ -366,6 +402,79 @@ namespace N2CCaptureGolden
 	{
 		return BP.AddCall(Graph, UKismetSystemLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, ControlScreensaver));
 	}
+
+	/** The pin name of a user struct member on Make/Break nodes (<DisplayName>_<n>_<GUID>) */
+	FName MemberPinName(UUserDefinedStruct* Struct, const FString& DisplayName)
+	{
+		if (Struct)
+		{
+			for (const FStructVariableDescription& Var : FStructureEditorUtils::GetVarDesc(Struct))
+			{
+				if (Var.FriendlyName == DisplayName)
+				{
+					return Var.VarName;
+				}
+			}
+		}
+		return FName(*DisplayName);
+	}
+
+	/**
+	 * Root(Count) calls Child and then itself (Count from its input); Child calls Grandchild; Grandchild calls Root.
+	 * Captured from Root, so with working depth limits depth 1 adds Child and depth 2 adds Grandchild as well.
+	 */
+	UEdGraph* BuildRecursion(FTestBlueprint& BP)
+	{
+		UEdGraph* Root = BP.AddFunction(TEXT("Root"));
+		UEdGraph* Child = BP.AddFunction(TEXT("Child"));
+		UEdGraph* Grandchild = BP.AddFunction(TEXT("Grandchild"));
+		BP.AddFunctionInput(Root, TEXT("Count"), FTestBlueprint::IntPinType());
+		UK2Node_CallFunction* CallChild = BP.AddSelfCall(Root, TEXT("Child"));
+		UK2Node_CallFunction* CallRoot = BP.AddSelfCall(Root, TEXT("Root"));
+		UK2Node_CallFunction* CallGrandchild = BP.AddSelfCall(Child, TEXT("Grandchild"));
+		UK2Node_CallFunction* CallRootAgain = BP.AddSelfCall(Grandchild, TEXT("Root"));
+		UK2Node_FunctionEntry* RootEntry = BP.FunctionEntry(Root);
+		BP.Link(RootEntry, UEdGraphSchema_K2::PN_Then, CallChild, UEdGraphSchema_K2::PN_Execute);
+		BP.Link(CallChild, UEdGraphSchema_K2::PN_Then, CallRoot, UEdGraphSchema_K2::PN_Execute);
+		BP.Link(RootEntry, TEXT("Count"), CallRoot, TEXT("Count"));
+		BP.Link(BP.FunctionEntry(Child), UEdGraphSchema_K2::PN_Then, CallGrandchild, UEdGraphSchema_K2::PN_Execute);
+		BP.Link(BP.FunctionEntry(Grandchild), UEdGraphSchema_K2::PN_Then, CallRootAgain, UEdGraphSchema_K2::PN_Execute);
+		return Root;
+	}
+
+	/**
+	 * Nested(): the entry runs a collapsed graph GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs an
+	 * instance of the Blueprint's own macro LocalSteps (In -> ControlScreensaver -> Out)
+	 */
+	UEdGraph* BuildNested(FTestBlueprint& BP)
+	{
+		const FEdGraphPinType Exec = FTestBlueprint::ExecPinType();
+		UEdGraph* Graph = BP.AddFunction(TEXT("Nested"));
+
+		UK2Node_Composite* Collapsed = BP.AddCollapsedGraph(Graph, TEXT("GoldenCollapsed"));
+		UEdGraph* Bound = Collapsed ? Collapsed->BoundGraph.Get() : nullptr;
+		UK2Node_Tunnel* CollapsedIn = BP.TunnelEntry(Bound);
+		UK2Node_Tunnel* CollapsedOut = BP.TunnelExit(Bound);
+		BP.AddTunnelPin(CollapsedIn, TEXT("In"), Exec);
+		BP.AddTunnelPin(CollapsedOut, TEXT("Out"), Exec);
+		UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Bound);
+		BP.Link(CollapsedIn, TEXT("In"), Collect, UEdGraphSchema_K2::PN_Execute);
+		BP.Link(Collect, UEdGraphSchema_K2::PN_Then, CollapsedOut, TEXT("Out"));
+
+		UEdGraph* Macro = BP.AddMacro(TEXT("LocalSteps"));
+		UK2Node_Tunnel* MacroIn = BP.TunnelEntry(Macro);
+		UK2Node_Tunnel* MacroOut = BP.TunnelExit(Macro);
+		BP.AddTunnelPin(MacroIn, TEXT("In"), Exec);
+		BP.AddTunnelPin(MacroOut, TEXT("Out"), Exec);
+		UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Macro);
+		BP.Link(MacroIn, TEXT("In"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+		BP.Link(Screensaver, UEdGraphSchema_K2::PN_Then, MacroOut, TEXT("Out"));
+		UK2Node_MacroInstance* Steps = BP.AddMacroInstance(Graph, Macro);
+
+		BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Collapsed, TEXT("In"));
+		BP.Link(Collapsed, TEXT("Out"), Steps, TEXT("In"));
+		return Graph;
+	}
 }
 
 void FN2CCaptureGoldenSpec::AddCases()
@@ -391,6 +500,13 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)") };
 	const FKnownDefect SwitchName{ TEXT("translation-core-32"), TEXT("0239"),
 		TEXT("Switch nodes are named 'Switch', losing the switched type") };
+	const FKnownDefect BreakAsVariable{ TEXT("translation-core-4"), TEXT("0234"),
+		TEXT("Break Vector (a K2Node_BreakStruct) is captured as a Variable named 'None', with the first member's type "
+			"as member_parent and member_name Var_<graph>_<UObject index>, which changes every session (normalised "
+			"to <OBJECT_INDEX> here)") };
+	const FKnownDefect RepeatMissingName{ TEXT("translation-core-24"), TEXT("0236"),
+		TEXT("A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' "
+			"(expected errors in this case)") };
 
 	Cases.Add({ TEXT("FanOutData"),
 		TEXT("Function FanOut(Value): Value feeds Add.A, Add.B and Multiply.A; Add feeds Multiply.B; Multiply is the result."),
@@ -501,11 +617,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("MakeBreakStruct"),
 		TEXT("Function Structs(Value): Make Vector (X from Value) feeds Break Vector; Break X and Y feed Add (int to "
 			"double through the Make); Add is the result."),
-		{ { TEXT("translation-core-4"), TEXT("0234"),
-			TEXT("Break Vector (a K2Node_BreakStruct) is captured as a Variable named 'None', with the first member's type "
-				"as member_parent and member_name Var_<graph>_<UObject index>, which changes every session (normalised "
-				"to <OBJECT_INDEX> here)") },
-		  GlobalPinIds, DisplayNames },
+		{ BreakAsVariable, GlobalPinIds, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UScriptStruct* Vector = TBaseStructure<FVector>::Get();
@@ -565,6 +677,168 @@ void FN2CCaptureGoldenSpec::AddCases()
 			BP.Link(Timeline, TEXT("Finished"), Screensaver, UEdGraphSchema_K2::PN_Execute);
 			return Graph;
 		} });
+
+	// Card 0127: user types, recursion and depth, copy-paste, nested graphs, Enhanced Input
+
+	Cases.Add({ TEXT("UserStruct"),
+		TEXT("Function UseItem(Item: S_GoldenItem): S_GoldenItem is a user struct {Owner: Actor object, Count: int, "
+			"Level: user enum E_GoldenLevel {Low, High}}. Break S_GoldenItem feeds Count to the Count result and "
+			"Owner, Count and Level to Make S_GoldenItem, which is the Copy result."),
+		{ { TEXT("translation-core-8"), TEXT("0236"),
+			TEXT("S_GoldenItem is missing from 'structs': its object member Owner gets no type name, the validator rejects "
+				"the struct (ERROR 'Member Owner requires a type name') and it is dropped without a warning") },
+		  RepeatMissingName,
+		  { TEXT("translation-core-4"), TEXT("0234"),
+			TEXT("Break S_GoldenItem is captured as a Variable named 'None' with member_parent object/Actor (the first "
+				"member's type) and member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)") },
+		  DataLossy, GlobalPinIds, DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UUserDefinedEnum* Level = BP.AddUserEnum(TEXT("E_GoldenLevel"), { TEXT("Low"), TEXT("High") });
+			UUserDefinedStruct* Item = BP.AddUserStruct(TEXT("S_GoldenItem"), {
+				{ TEXT("Owner"), FTestBlueprint::ObjectPinType(AActor::StaticClass()) },
+				{ TEXT("Count"), FTestBlueprint::IntPinType() },
+				{ TEXT("Level"), FTestBlueprint::EnumPinType(Level) } });
+			if (!Item)
+			{
+				return nullptr;
+			}
+			UEdGraph* Graph = BP.AddFunction(TEXT("UseItem"));
+			BP.AddFunctionInput(Graph, TEXT("Item"), FTestBlueprint::StructPinType(Item));
+			UK2Node_BreakStruct* Break = BP.AddBreakStruct(Graph, Item);
+			UK2Node_MakeStruct* Make = BP.AddMakeStruct(Graph, Item);
+			BP.AddFunctionOutput(Graph, TEXT("Count"), FTestBlueprint::IntPinType());
+			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Copy"), FTestBlueprint::StructPinType(Item));
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(BP.Pin(Entry, TEXT("Item"), EGPD_Output), BP.Pin(Break, Item->GetFName(), EGPD_Input));
+			for (const TCHAR* Member : { TEXT("Owner"), TEXT("Count"), TEXT("Level") })
+			{
+				const FName PinName = MemberPinName(Item, Member);
+				BP.Link(Break, PinName, Make, PinName);
+			}
+			BP.Link(Break, MemberPinName(Item, TEXT("Count")), Result, TEXT("Count"));
+			BP.Link(BP.Pin(Make, Item->GetFName(), EGPD_Output), BP.Pin(Result, TEXT("Copy"), EGPD_Input));
+			return Graph;
+		} });
+
+	Cases.Last().ExpectedErrors = { TEXT("Member Owner requires a type name"), TEXT("Missing name") };
+
+	Cases.Add({ TEXT("UserEnum"),
+		TEXT("Function SwitchLimit(Limit: E_GoldenLimit): E_GoldenLimit is a user enum {Min, Max, MaxHealth}. Switch "
+			"on E_GoldenLimit: Min runs CollectGarbage, Max runs ControlScreensaver, MaxHealth is unconnected."),
+		{ { TEXT("translation-core-11"), TEXT("0236"),
+			TEXT("Enum values whose display name contains 'max' in any case are dropped: E_GoldenLimit lists Min only, "
+				"while the Switch still has Max and Max Health outputs") },
+		  RepeatMissingName, ExecNodeOnly, GlobalPinIds, DisplayNames, SwitchName },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UUserDefinedEnum* Limit = BP.AddUserEnum(TEXT("E_GoldenLimit"), { TEXT("Min"), TEXT("Max"), TEXT("MaxHealth") });
+			if (!Limit)
+			{
+				return nullptr;
+			}
+			UEdGraph* Graph = BP.AddFunction(TEXT("SwitchLimit"));
+			BP.AddFunctionInput(Graph, TEXT("Limit"), FTestBlueprint::EnumPinType(Limit));
+			UK2Node_SwitchEnum* Switch = BP.AddSwitchOnEnum(Graph, Limit);
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Switch, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Entry, TEXT("Limit"), Switch, TEXT("Selection"));
+			BP.Link(Switch, TEXT("NewEnumerator0"), Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Switch, TEXT("NewEnumerator1"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+	Cases.Last().ExpectedErrors = { TEXT("Missing name") };
+
+	for (const int32 Depth : { 1, 2 })
+	{
+		FCaptureCase& Recursion = Cases.Add_GetRef({ FString::Printf(TEXT("Recursion_Depth%d"), Depth),
+			FString::Printf(TEXT("Max Translation Depth %d. Function Root(Count) calls Child, then itself with Count; Child "
+				"calls Grandchild; Grandchild calls Root. Captured from Root."), Depth),
+			{ { TEXT("translation-core-3 (qw-12)"), TEXT("0130"),
+				TEXT("The depth never grows past the first level: every nested user graph is checked as depth 1, so depth "
+					"1 captures Grandchild as well and depth 1 and 2 capture the same graphs") },
+			  { TEXT("translation-core-9"), TEXT("0134"),
+				TEXT("Root calls itself before Root is in the graph list, so Root is captured twice; the second copy "
+					"reuses node IDs N1-N3 and gives every pin the same ID (P10, also Child's entry exec pin), and the "
+					"validator logs ERROR 'Duplicate pin ID' (expected errors in this case)") },
+			  ExecNodeOnly, GlobalPinIds, DisplayNames },
+			&BuildRecursion });
+		Recursion.TranslationDepth = Depth;
+		Recursion.ExpectedErrors = { TEXT("Duplicate pin ID") };
+	}
+
+	Cases.Add({ TEXT("CopyPaste"),
+		TEXT("Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which "
+			"runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed "
+			"from Enabled."),
+		{ { TEXT("translation-core-7"), TEXT("0134"),
+			TEXT("Pin IDs are keyed by pin GUID, which a paste keeps: every pin of the pasted node gets the same ID (P6), "
+				"its flows point at that one ID and the validator logs ERROR 'Duplicate pin ID' (expected errors in "
+				"this case)") },
+		  DataLossy, ExecNodeOnly, DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.AddFunction(TEXT("CopyPaste"));
+			BP.AddFunctionInput(Graph, TEXT("Enabled"), FTestBlueprint::BoolPinType());
+			UK2Node_CallFunction* Original = AddControlScreensaver(BP, Graph);
+			const TArray<UEdGraphNode*> Pasted = BP.CopyPaste(Graph, { Original });
+			if (Pasted.Num() != 1)
+			{
+				return nullptr;
+			}
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Original, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Original, UEdGraphSchema_K2::PN_Then, Pasted[0], UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Entry, TEXT("Enabled"), Original, TEXT("bAllowScreenSaver"));
+			BP.Link(Entry, TEXT("Enabled"), Pasted[0], TEXT("bAllowScreenSaver"));
+			return Graph;
+		} });
+	Cases.Last().ExpectedErrors = { TEXT("Duplicate pin ID") };
+
+	for (const int32 Depth : { 0, 1 })
+	{
+		FCaptureCase& Nested = Cases.Add_GetRef({ FString::Printf(TEXT("NestedGraphs_Depth%d"), Depth),
+			FString::Printf(TEXT("Max Translation Depth %d. Function Nested(): the entry runs a collapsed graph "
+				"GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs the Blueprint's own macro LocalSteps "
+				"(In -> ControlScreensaver -> Out)."), Depth),
+			{ { TEXT("imp-translation-core-5"), TEXT("0235"),
+				TEXT("Collapsed graphs and the Blueprint's own macros only count as nested graphs within the depth limit: "
+					"at depth 0 (the default) GoldenCollapsed and LocalSteps are not captured and only the opaque "
+					"Composite and MacroInstance nodes remain") },
+			  { TEXT("imp-translation-core-4"), TEXT("0235"),
+				TEXT("The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no "
+					"member_parent or member_name)") },
+			  ExecNodeOnly, GlobalPinIds, DisplayNames },
+			&BuildNested });
+		Nested.TranslationDepth = Depth;
+		if (Depth > 0)
+		{
+			Nested.KnownDefects.Insert({ TEXT("translation-core-20"), TEXT("0235"),
+				TEXT("A user macro is classed as a Macro graph only when its name contains 'macro': LocalSteps comes out "
+					"as an EventGraph") }, 2);
+		}
+	}
+
+	Cases.Add({ TEXT("EnhancedInputEvent"),
+		TEXT("Event graph: the Enhanced Input action event for a transient UInputAction IA_GoldenJump (Boolean); "
+			"Triggered runs CollectGarbage, Completed runs ControlScreensaver."),
+		{ { TEXT("translation-core-15"), TEXT("0234"),
+			TEXT("The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead "
+				"of an event") },
+		  GhostEvents, ExecNodeOnly, GlobalPinIds, DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.EventGraph();
+			UEdGraphNode* Action = BP.AddEnhancedInputAction(Graph, TEXT("IA_GoldenJump"));
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			BP.Link(Action, TEXT("Triggered"), Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Action, TEXT("Completed"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
 }
 
 void FN2CCaptureGoldenSpec::Define()
@@ -597,6 +871,42 @@ void FN2CCaptureGoldenSpec::Define()
 			}
 		});
 	}
+
+	Describe(TEXT("Hygiene"), [this]()
+	{
+		It(TEXT("puts Max Translation Depth back after a case that sets it"), [this]()
+		{
+			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+			const int32 Before = Settings->TranslationDepth;
+			const FCaptureCase* DepthCase = Cases.FindByPredicate([Before](const FCaptureCase& Case)
+			{
+				return Case.TranslationDepth.IsSet() && Case.TranslationDepth.GetValue() != Before;
+			});
+			if (TestNotNull(TEXT("a case with another depth"), DepthCase))
+			{
+				Capture(*DepthCase);
+				TestEqual(TEXT("TranslationDepth after the capture"), Settings->TranslationDepth, Before);
+			}
+		});
+
+		It(TEXT("leaves no test package, user type or input action once garbage is collected"), [this]()
+		{
+			FString PackageName;
+			{
+				N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CGolden_Hygiene"), TEXT("/Game"));
+				UUserDefinedEnum* Enum = Blueprint.AddUserEnum(TEXT("E_Hygiene"), { TEXT("One") });
+				Blueprint.AddUserStruct(TEXT("S_Hygiene"), { { TEXT("Value"), N2CTest::FTestBlueprint::EnumPinType(Enum) } });
+				Blueprint.AddEnhancedInputAction(Blueprint.EventGraph(), TEXT("IA_Hygiene"));
+				for (const FString& Error : Blueprint.Errors())
+				{
+					AddError(Error);
+				}
+				PackageName = Blueprint.GetPackagePath();
+			}
+			CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+			TestNull(TEXT("the test package after garbage collection"), FindObject<UPackage>(nullptr, *PackageName));
+		});
+	});
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

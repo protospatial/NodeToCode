@@ -1,0 +1,235 @@
+{
+	"case": "EnhancedInputEvent",
+	"description": "Event graph: the Enhanced Input action event for a transient UInputAction IA_GoldenJump (Boolean); Triggered runs CollectGarbage, Completed runs ControlScreensaver.",
+	"known_defects": [
+		{
+			"finding": "translation-core-15",
+			"card": "0234",
+			"effect": "The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead of an event"
+		},
+		{
+			"finding": "translation-core-18, translation-core-19 (issue #13)",
+			"card": "0137",
+			"effect": "The grayed-out default events CreateBlueprint places (BeginPlay, ActorBeginOverlap, Tick) are captured as live events (N1-N3), and unreachable nodes are not marked"
+		},
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_EnhancedInputEvent",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_EnhancedInputEvent"
+		},
+		"graphs": [
+			{
+				"name": "EventGraph",
+				"graph_type": "EventGraph",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "Event",
+						"name": "Event BeginPlay",
+						"member_parent": "/Script/Engine.Actor",
+						"member_name": "ReceiveBeginPlay",
+						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P2",
+								"name": ""
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "Event",
+						"name": "Event ActorBeginOverlap",
+						"member_parent": "/Script/Engine.Actor",
+						"member_name": "ReceiveActorBeginOverlap",
+						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P4",
+								"name": ""
+							},
+							{
+								"id": "P5",
+								"name": "Other Actor",
+								"type": "Object",
+								"sub_type": "Actor"
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "Event",
+						"name": "Event Tick",
+						"member_parent": "/Script/Engine.Actor",
+						"member_name": "ReceiveTick",
+						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P7",
+								"name": ""
+							},
+							{
+								"id": "P8",
+								"name": "Delta Seconds",
+								"type": "Real",
+								"sub_type": "float",
+								"default_value": "0.0"
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CallFunction",
+						"name": "IA_GoldenJump",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": "Triggered",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Started"
+							},
+							{
+								"id": "P11",
+								"name": "Ongoing"
+							},
+							{
+								"id": "P12",
+								"name": "Canceled"
+							},
+							{
+								"id": "P13",
+								"name": "Completed",
+								"connected": true
+							},
+							{
+								"id": "P14",
+								"name": "Action Value",
+								"type": "Boolean",
+								"default_value": "false"
+							},
+							{
+								"id": "P15",
+								"name": "Elapsed Seconds",
+								"type": "Real",
+								"sub_type": "double"
+							},
+							{
+								"id": "P16",
+								"name": "Triggered Seconds",
+								"type": "Real",
+								"sub_type": "double"
+							},
+							{
+								"id": "P17",
+								"name": "Input Action",
+								"type": "Object",
+								"sub_type": "InputAction",
+								"default_value": "IA_GoldenJump"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"name": "CollectGarbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P18",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P19",
+								"name": ""
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "CallFunction",
+						"name": "ControlScreensaver",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P20",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P22",
+								"name": "Allow Screen Saver",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P21",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4->N5",
+						"N4->N6"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
