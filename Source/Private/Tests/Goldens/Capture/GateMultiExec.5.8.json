@@ -1,0 +1,254 @@
+{
+	"case": "GateMultiExec",
+	"description": "Event graph: custom events OnEnter, OnOpen and OnClose run a Gate (StandardMacros) through its Enter, Open and Close inputs; Exit runs CollectGarbage.",
+	"known_defects": [
+		{
+			"finding": "translation-core-18, translation-core-19 (issue #13)",
+			"card": "0137",
+			"effect": "The grayed-out default events CreateBlueprint places (BeginPlay, ActorBeginOverlap, Tick) are captured as live events (N1-N3), and unreachable nodes are not marked"
+		},
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		},
+		{
+			"finding": "translation-core-16",
+			"card": "0239",
+			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_GateMultiExec",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_GateMultiExec"
+		},
+		"graphs": [
+			{
+				"name": "EventGraph",
+				"graph_type": "EventGraph",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "Event",
+						"name": "Event BeginPlay",
+						"member_parent": "/Script/Engine.Actor",
+						"member_name": "ReceiveBeginPlay",
+						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P2",
+								"name": ""
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "Event",
+						"name": "Event ActorBeginOverlap",
+						"member_parent": "/Script/Engine.Actor",
+						"member_name": "ReceiveActorBeginOverlap",
+						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P4",
+								"name": ""
+							},
+							{
+								"id": "P5",
+								"name": "Other Actor",
+								"type": "Object",
+								"sub_type": "Actor"
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "Event",
+						"name": "Event Tick",
+						"member_parent": "/Script/Engine.Actor",
+						"member_name": "ReceiveTick",
+						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P7",
+								"name": ""
+							},
+							{
+								"id": "P8",
+								"name": "Delta Seconds",
+								"type": "Real",
+								"sub_type": "float",
+								"default_value": "0.0"
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CustomEvent",
+						"name": "OnEnter",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "CustomEvent",
+						"name": "OnOpen",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P12",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N7",
+						"type": "CustomEvent",
+						"name": "OnClose",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P13",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P14",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "MacroInstance",
+						"name": "Gate",
+						"member_parent": "StandardMacros",
+						"member_name": "Gate",
+						"input_pins": [
+							{
+								"id": "P15",
+								"name": "Enter",
+								"connected": true
+							},
+							{
+								"id": "P16",
+								"name": "Open",
+								"connected": true
+							},
+							{
+								"id": "P17",
+								"name": "Close",
+								"connected": true
+							},
+							{
+								"id": "P18",
+								"name": "Toggle"
+							},
+							{
+								"id": "P19",
+								"name": "Start Closed",
+								"type": "Boolean",
+								"default_value": "true"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P20",
+								"name": "Exit",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N8",
+						"type": "CallFunction",
+						"name": "CollectGarbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P21",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P22",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4->N5",
+						"N6->N5",
+						"N7->N5",
+						"N5->N8"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

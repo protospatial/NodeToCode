@@ -1,0 +1,160 @@
+{
+	"case": "FanOutData",
+	"description": "Function FanOut(Value): Value feeds Add.A, Add.B and Multiply.A; Add feeds Multiply.B; Multiply is the result.",
+	"known_defects": [
+		{
+			"finding": "translation-core-1 (PR #7, issue #13)",
+			"card": "0135",
+			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_FanOutData",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_FanOutData"
+		},
+		"graphs": [
+			{
+				"name": "FanOut",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "FanOut",
+						"member_parent": "BP_N2CGolden_FanOutData",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Value",
+								"type": "Integer",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "int + int",
+						"member_parent": "KismetMathLibrary",
+						"member_name": "Add_IntInt",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "A",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Integer",
+								"default_value": "1",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Return Value",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CallFunction",
+						"name": "int * int",
+						"member_parent": "KismetMathLibrary",
+						"member_name": "Multiply_IntInt",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "A",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							},
+							{
+								"id": "P7",
+								"name": "B",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "Return Value",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "FunctionResult",
+						"name": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_FanOutData",
+						"input_pins": [
+							{
+								"id": "P9",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Result",
+								"type": "Integer",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2"
+					],
+					"data":
+					{
+						"N1.P2": "N4.P6",
+						"N3.P5": "N4.P7",
+						"N4.P8": "N2.P10"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

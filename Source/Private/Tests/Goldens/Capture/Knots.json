@@ -1,0 +1,131 @@
+{
+	"case": "Knots",
+	"description": "Function Knots(Value): the exec line runs through a knot; Value runs through two knots and the second fans out to Add.A and Add.B; Add is the result.",
+	"known_defects": [
+		{
+			"finding": "translation-core-1 (knot fan-out)",
+			"card": "0135",
+			"effect": "A knot's fan-out is followed through LinkedTo[0] only, and a knot traced from the input side records the edge backwards, so one of Add's inputs loses its source"
+		},
+		{
+			"finding": "translation-core-1 (PR #7, issue #13)",
+			"card": "0135",
+			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_Knots",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_Knots"
+		},
+		"graphs": [
+			{
+				"name": "Knots",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Knots",
+						"member_parent": "BP_N2CGolden_Knots",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Value",
+								"type": "Integer",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "int + int",
+						"member_parent": "KismetMathLibrary",
+						"member_name": "Add_IntInt",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "A",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Integer",
+								"default_value": "1",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Return Value",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "FunctionResult",
+						"name": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_Knots",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P7",
+								"name": "Result",
+								"type": "Integer",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2"
+					],
+					"data":
+					{
+						"N1.P2": "N3.P4",
+						"N3.P5": "N2.P7"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
