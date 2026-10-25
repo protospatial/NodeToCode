@@ -7,7 +7,8 @@ Stdlib only; run with `python -I`:
         --provider anthropic --model claude-haiku-5-5
 
 It starts a headless editor with only the provider's key (from the repo's .env) added to its environment, makes an
-in-memory probe Blueprint under /Game/N2CTest (as live_env_translation.py does), starts a translation, cancels it
+in-memory probe Blueprint under /Game/N2CTest (probe_blueprint.py: BeginPlay runs a Print String, so the control
+translation has code to return; the editor runs with -RenderOffScreen), starts a translation, cancels it
 about --cancel-after seconds in, then watches for --settle seconds.
 
 --via notification (the default; MCP basic/utilities/cancellation, card 0110) sends notifications/cancelled
@@ -39,7 +40,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
 from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, ToolCallStream, call_tool,  # noqa: E402
                                   post, run_tool_call, stored_key_present, task_id_for_token, tool_text)
@@ -88,7 +89,8 @@ def main():
               'settle': args.settle, 'via': args.via}
     checks = {}
 
-    with EditorSession(args.engine, args.project, port, args.log, allow_python=True, extra_env=keys) as s:
+    with EditorSession(args.engine, args.project, port, args.log, allow_python=True, extra_env=keys,
+                       extra_args=BLUEPRINT_EDITOR_ARGS) as s:
         report['started'] = s.start()
         if report['started']:
             name = 'BP_N2CCancelProbe_%s' % time.strftime('%H%M%S')

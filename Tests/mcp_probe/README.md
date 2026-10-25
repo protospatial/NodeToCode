@@ -154,13 +154,23 @@ its environment when no key is saved, so a live check never types or saves a key
   (`DEEPSEEK_API` becomes `DEEPSEEK_API_KEY`); `find_leaks(keys, paths)` lists files that contain a key value. Run
   alone, it prints only the variable names it found (`--check <paths>` adds a leak scan). Never print the dict.
 - `EditorSession(..., extra_env=keys)` adds those variables to the editor's environment only.
+- `probe_blueprint.py` holds the in-memory probe Blueprint every live translation uses (card 0430): `SETUP_PY`
+  makes an Actor Blueprint under `/Game/N2CTest`, opens its EventGraph, adds a Print String and wires Event
+  BeginPlay to it, and reports `print_string_live` (the captured N2C JSON 2.0.0 has the PrintString node with no
+  `unreachable`, `unused` or `disabled` flag). Since capture marks nodes no event reaches (cards 0135-0138), an
+  unwired Print String is rightly translated to empty code, so the graph must be wired. `SETUP_UNWIRED_PY` and
+  `CONNECT_PY` are the two halves, for `live_provider_matrix.py --liveness`, which builds its own graph.
+  `live_env_translation.SETUP_PY` re-exports `SETUP_PY` for the scripts that import it from there.
+- Every headless session that opens the probe's (or a fixture's) Blueprint editor passes
+  `extra_args=editor_session.BLUEPRINT_EDITOR_ARGS` (`-RenderOffScreen`): on UE 5.6 under `-nullrhi` the Blueprint
+  editor's window otherwise reaches `FGenericWindow::GetRestoredDimensions`, which is Fatal.
 - `live_env_translation.py --engine ... --project ... [--provider gemini --model gemini-3.5-flash-lite]` runs one
-  real translation that way: an in-memory Blueprint under `/Game/N2CTest`, `translate-focused-blueprint` over MCP,
+  real translation that way: the probe Blueprint (`probe_blueprint.py`), `translate-focused-blueprint` over MCP,
   then checks the response parsed, Project Settings shows the key's source by variable name only, and no key value is
   in the editor log or the report (`logs/live_env_translation.json`). It refuses to run if a key for that provider is
   saved in the per-user secrets file, since the saved key would be used instead.
 - `live_translate_cancel.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5] [--via notification|cancelTask]`
-  cancels a live translation: it starts `translate-focused-blueprint` on an in-memory Blueprint, cancels it
+  cancels a live translation: it starts `translate-focused-blueprint` on the probe Blueprint, cancels it
   `--cancel-after` seconds in (default 1.5) and keeps reading the call's own response (a `text/event-stream` on UE
   5.8, where it also checks progress arrived before the cancel) for `--settle` seconds (default 30). With `--via
   notification` (the default) it sends the standard `notifications/cancelled {requestId}` and checks the notification
@@ -194,7 +204,8 @@ its environment when no key is saved, so a live check never types or saves a key
   bridge through its launcher with no `--port` (it finds the editors through their discovery entries). On a headless
   editor with only the provider's key in its environment and an in-memory probe Blueprint focused, it starts
   `translate-focused-blueprint` with a progress token, then a quick `tools/call` and a `ping`, which must answer
-  while the translation runs, then forwards `notifications/cancelled`: nothing more may arrive for that id, a later
+  while the translation runs, then forwards `notifications/cancelled`: nothing more may arrive for that id (a
+  progress event within 1 s of the cancel, sent before the editor read it, is counted as in flight), a later
   request still answers, and the editor log shows the cancel reached the call, the provider request was cancelled
   and the response suppressed. With a second editor (no key) it checks a bridge without `--project` answers
   `initialize` with an error naming both projects, and that `--project` (path or name) and `NODETOCODE_PROJECT`
@@ -205,8 +216,9 @@ its environment when no key is saved, so a live check never types or saves a key
   It checks the editor exits by itself with code 0 in under 10 s (not waiting for the LLM), the log shows
   `CancelAllTasks` cancelled the task on exit before the module shut down and UObjects were purged, the LLM request
   was cancelled and the task completed once, no response was handled after the cancel, and there is no crash, ensure
-  or "context not found" line. Use `--windowed` on UE 5.6 and 5.7 (closing a Blueprint editor under `-nullrhi` fails
-  there with no translation involved). Report: `logs/live_translate_exit.json`.
+  or "context not found" line. The headless editor runs with `-RenderOffScreen`, which lets UE 5.6 close the
+  Blueprint editor and exit cleanly (checked on 5.6 and 5.8, card 0430); `--windowed` runs it with a window instead
+  (no `-nullrhi`, no `-RenderOffScreen`), the earlier way on 5.6 and 5.7. Report: `logs/live_translate_exit.json`.
 - `live_port_restart.py --engine ... --project ...` (no provider key) changes **Server Port** in a running headless
   editor through run-python with PostEditChangeProperty, as the settings page does (card 0112). It checks the
   discovery file and the per-user index entry name the port and the editor's pid, `/mcp/health` answers on the new
@@ -244,7 +256,8 @@ its environment when no key is saved, so a live check never types or saves a key
 - `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
   runs real translations through several providers and models in one headless editor (`--list` prints the case
   ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session so each request payload is
-  logged, wires BeginPlay to a Print String in the in-memory Blueprint so there is logic to translate, then per case
+  logged, makes the probe Blueprint (`SETUP_UNWIRED_PY`, then `CONNECT_PY` wires BeginPlay to its Print String) so
+  there is logic to translate, then per case
   applies the case's settings (DeepSeek model entry, Max Output Tokens), translates, restores the settings and checks
   that case's logged payload: no temperature/top_p/top_k where the provider rules forbid them, the expected output
   budget field and value, OpenAI `response_format` `json_schema` with `strict: true`, Gemini `responseSchema` with no

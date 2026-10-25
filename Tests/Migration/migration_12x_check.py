@@ -564,7 +564,7 @@ LIVE_MODELS = {'anthropic': ('Anthropic', 'anthropic_model_id', 'claude-haiku-5-
 def check_live(ctx, rows, provider):
     """F2 / S26: one real batch translation (key from the repo's .env, in the editor's environment only) lands in the
     migrated CustomTranslationOutputDirectory, and its N2C JSON says version 2.0.0 (card 0135)"""
-    from editor_session import EditorSession, free_port
+    from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port
     from live_env_translation import SETUP_PY, ASSET_DIR, ASSET_NAME, call_tool, tool_text
     project_dir, uproject, exp = ctx['state']['last']
     store, model_prop, model_id, variable = LIVE_MODELS[provider]
@@ -577,7 +577,8 @@ def check_live(ctx, rows, provider):
     port = free_port(27180)
     log = os.path.join(ctx['logs'], 'migration_live_%s.log' % ctx['label'])
     steps, poll = {}, ''
-    with EditorSession(ctx['engine'], uproject, port, log, allow_python=True, extra_env=keys) as s:
+    with EditorSession(ctx['engine'], uproject, port, log, allow_python=True, extra_env=keys,
+                       extra_args=BLUEPRINT_EDITOR_ARGS) as s:
         if s.start():
             name = '%s_%s' % (ASSET_NAME, time.strftime('%H%M%S'))
             steps['setup'] = tool_text(call_tool(port, 'run-python', {'code': SETUP_PY % {'dir': ASSET_DIR, 'name': name}}, 1)[1])[:300]

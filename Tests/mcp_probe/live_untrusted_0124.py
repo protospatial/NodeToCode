@@ -30,7 +30,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 import e05_regressions as e05  # noqa: E402
 from make_injection_fixture import ASSET, NAME, PAYLOADS, markers  # noqa: E402
 
@@ -149,7 +149,7 @@ def main():
     report, checks = {'port': port}, {}
 
     session = EditorSession(args.engine, args.project, port, os.path.join(log_dir, 'live_untrusted_0124_editor.log'),
-                            allow_python=False, extra_args=['-RenderOffScreen'])
+                            allow_python=False, extra_args=BLUEPRINT_EDITOR_ARGS)
     try:
         if not session.start():
             raise SystemExit('editor did not start; see logs/live_untrusted_0124_editor.log')
