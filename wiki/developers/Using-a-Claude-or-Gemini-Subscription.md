@@ -119,4 +119,5 @@ from OpenAI's Codex docs and was not run against NodeToCode when this page was w
 | Failed to connect, or the agent sees another project | Open the editor first, check **Enable MCP Server**, and use the URL in **Server Status** (a second editor moves to the next free port) |
 | Connected, but the agent sees no Blueprint | Click into a Blueprint graph so it has focus, then ask again |
 | Requests rejected with 403 | Use `127.0.0.1` or `localhost` in the URL; the server refuses other host names |
+| `Request body too large` (413) | The server takes requests up to 8 MiB; split the work into smaller tool calls |
 | `Session not found` (404) after the editor restarted | Each agent gets its own session and a restarted editor forgets them: reconnect the agent (Claude Code: `/mcp`, **Reconnect**) |

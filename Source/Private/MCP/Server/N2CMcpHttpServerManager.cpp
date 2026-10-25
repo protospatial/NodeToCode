@@ -739,6 +739,15 @@ FN2CMcpHttpServerManager::~FN2CMcpHttpServerManager() = default;
 
 bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete)
 {
+	// Body size cap (card 0425). HTTPServer gives a handler no chance to look at Content-Length before the body is
+	// read: it buffers the whole body (any Content-Length up to INT32_MAX) into Request.Body, 64 KB per tick, and only
+	// then routes the request. So the cap applies here, before the body is copied into Inbound, converted or parsed.
+	if (Request.Body.Num() > FN2CMcpProtocol::MaxRequestBodyBytes)
+	{
+		N2CMcpHttpTransport::FHttpServerResponder(OnComplete).Reply(FN2CMcpProtocol::BodyTooLargeReply(Request.Body.Num()));
+		return true;
+	}
+
 	FN2CMcpInbound Inbound;
 	switch (Request.Verb)
 	{

@@ -154,6 +154,8 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - **Per-user MCP switches:** a project's committed `Config/DefaultEditorPerProjectUserSettings.ini` can no longer
   turn on **Allow MCP Python Execution** (or set **Enable MCP Server**); only your own Saved/Config value counts, and
   an ignored project value is logged as a warning (card 0423).
+- **MCP request size:** a request body over 8 MiB to `/mcp` is answered 413 with a JSON-RPC -32600 error before it
+  is copied or parsed; before, a body of any size was parsed on the game thread (card 0425).
 - **Crashes:** the active LLM service survives garbage collection; the logger is thread-safe; input that crashed
   the editor returns errors; only real Blueprint editors are treated as such; struct utilities return errors
   instead of fatal asserts; theme edits no longer free brushes an open code editor uses, and `SelectText` is

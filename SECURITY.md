@@ -40,6 +40,9 @@ Blueprints. It is designed for a single developer's machine; it has no authentic
   `Host` is not `localhost`, `127.0.0.1` or `[::1]`, so a page from another site or a DNS-rebinding attack cannot
   drive it. A page served from any port on localhost is a loopback origin and is allowed. POST requests to `/mcp`
   must be `application/json`.
+- **Request size.** A request body over 8 MiB is refused with 413 before NodeToCode parses it. Unreal's HTTP server
+  reads the whole body (and the headers) into memory before NodeToCode sees the request, so this limits the work
+  NodeToCode does, not the memory the engine uses for one request.
 - **Can be turned off.** **Enable MCP Server** (Project Settings, Plugins, Node to Code (User)) is a per-user
   setting. The server does not start in commandlets or unattended runs unless `-N2CMcp` is on the command line.
 - **Python execution off by default.** `run-python`, `save-python-script` and `delete-python-script` exist only when

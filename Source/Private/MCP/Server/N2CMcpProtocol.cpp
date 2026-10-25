@@ -118,6 +118,15 @@ namespace N2CMcpProtocolPrivate
 	}
 }
 
+FN2CMcpReply FN2CMcpProtocol::BodyTooLargeReply(int64 BodyBytes)
+{
+	FN2CLogger::Get().LogWarning(FString::Printf(TEXT("MCP request with a %lld-byte body refused with 413 (limit %d bytes)"),
+		BodyBytes, MaxRequestBodyBytes));
+	// 413 Content Too Large (RFC 9110 15.5.14) with a JSON-RPC error body, as the transport answers other refused requests
+	return N2CMcpProtocolPrivate::ErrorReply(413, JsonRpcErrorCodes::InvalidRequest, FString::Printf(
+		TEXT("Request body too large: %lld bytes; the limit is %d bytes"), BodyBytes, MaxRequestBodyBytes));
+}
+
 FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
 	: Catalogs(InCatalogs)
 {
@@ -250,6 +259,13 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 {
 	using namespace N2CMcpProtocolPrivate;
 
+	// Refuse an oversized body before anything reads it (card 0425). The HTTP transport checks the same limit before
+	// copying the engine's buffer into Inbound; this covers any other transport and the specs.
+	if (Inbound.Body.Num() > MaxRequestBodyBytes)
+	{
+		Responder->Reply(BodyTooLargeReply(Inbound.Body.Num()));
+		return;
+	}
 	if (Inbound.Verb.Equals(TEXT("DELETE"), ESearchCase::IgnoreCase))
 	{
 		HandleDelete(Inbound, Responder);
