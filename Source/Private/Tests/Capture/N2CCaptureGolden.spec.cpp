@@ -6,7 +6,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CNodeCollector.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
+#include "Core/N2CCaptureContext.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "Dom/JsonObject.h"
@@ -57,7 +58,7 @@
  * Golden captures of graph shapes: each case builds a Blueprint graph in code (N2CTest::FTestBlueprint, a transient
  * Actor Blueprint in a /Game/N2CTest_<guid> package that is never saved, so capture treats it and its functions,
  * macros, structs and enums as user content, as it would a project's), runs the capture the editor runs
- * (FN2CNodeCollector::CollectNodesFromGraph, FN2CNodeTranslator::GenerateN2CStruct, FN2CSerializer::ToJson) and
+ * (FN2CNodeCollector::CollectNodesFromGraph, N2C::CaptureNodes, FN2CSerializer::ToJson) and
  * compares the N2C JSON v1 output with Goldens/Capture/<case>.json. The transient package path and any GUID are
  * replaced with <PACKAGE> and <GUID> first.
  *
@@ -70,6 +71,9 @@
  *
  * A case may set Max Translation Depth (UN2CSettings::TranslationDepth) for its capture; the setting is put back
  * afterwards and the golden records the depth it ran with.
+ *
+ * "Isolation" checks that captures share no state (card 0133): a capture started in the middle of another, and a
+ * capture made after another, leave each result equal to its own golden.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -98,6 +102,9 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 	{
 		FString Json;
 		TSharedPtr<FJsonObject> Capture;
+		/** The capture's own result and the test package path, to serialize it again later */
+		FN2CBlueprint Blueprint;
+		FString PackagePath;
 	};
 
 	TArray<FCaptureCase> Cases;
@@ -163,7 +170,8 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		return ReplaceMatches(Out, TEXT("\"Var_[A-Za-z0-9_]+_([0-9]+)\""), TEXT("<OBJECT_INDEX>"));
 	}
 
-	FCaptured Capture(const FCaptureCase& Case)
+	/** Captures Case's graph; DuringCapture, when set, runs once right after the capture's first node */
+	FCaptured Capture(const FCaptureCase& Case, TFunction<void()> DuringCapture = nullptr)
 	{
 		FCaptured Captured;
 		N2CTest::FTestBlueprint Blueprint(FString::Printf(TEXT("BP_N2CGolden_%s"), *Case.Name), TEXT("/Game"));
@@ -195,20 +203,34 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		{
 			return Captured;
 		}
-		FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
-		if (!TestTrue(Case.Name + TEXT(": GenerateN2CStruct succeeds"), Translator.GenerateN2CStruct(Nodes)))
+		if (DuringCapture)
+		{
+			FN2CCaptureContext::SetNodeCapturedHookForTests(MoveTemp(DuringCapture));
+		}
+		const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureNodes(Nodes);
+		FN2CCaptureContext::SetNodeCapturedHookForTests(nullptr);
+		if (!TestTrue(Case.Name + TEXT(": CaptureNodes succeeds"), Result.HasValue()))
 		{
 			return Captured;
 		}
-		const FString Raw = FN2CSerializer::ToJson(Translator.GetN2CBlueprint());
-		const TSharedPtr<FJsonObject> Parsed = N2CTest::ParseJsonObject(Normalise(Raw, Blueprint.GetPackagePath()));
-		if (!TestTrue(Case.Name + TEXT(": ToJson output parses"), Parsed.IsValid()))
-		{
-			return Captured;
-		}
-		Captured.Capture = Parsed;
-		Captured.Json = PrettyJson(Parsed);
+		Captured.Blueprint = Result.GetValue().Blueprint;
+		Captured.PackagePath = Blueprint.GetPackagePath();
+		Serialize(Case, Captured);
 		return Captured;
+	}
+
+	/** Fills Captured's JSON from its Blueprint: ToJson, normalised and parsed */
+	void Serialize(const FCaptureCase& Case, FCaptured& Captured)
+	{
+		const FString Raw = FN2CSerializer::ToJson(Captured.Blueprint, EN2CJsonStyle::Pretty);
+		const TSharedPtr<FJsonObject> Parsed = N2CTest::ParseJsonObject(Normalise(Raw, Captured.PackagePath));
+		Captured.Capture.Reset();
+		Captured.Json.Reset();
+		if (TestTrue(Case.Name + TEXT(": ToJson output parses"), Parsed.IsValid()))
+		{
+			Captured.Capture = Parsed;
+			Captured.Json = PrettyJson(Parsed);
+		}
 	}
 
 	/** The golden file for a case: its description and known defects (from the case table) and the capture */
@@ -272,14 +294,25 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		{
 			return;
 		}
-		const FString Expected = PrettyJson(GoldenObject(Case, Captured.Capture));
-		const FString Path = GoldenPath(Case.Name);
 		if (UpdateGoldens())
 		{
-			TestTrue(TEXT("golden written: ") + Path,
-				FFileHelper::SaveStringToFile(Expected, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM));
+			const FString Path = GoldenPath(Case.Name);
+			TestTrue(TEXT("golden written: ") + Path, FFileHelper::SaveStringToFile(PrettyJson(GoldenObject(Case, Captured.Capture)),
+				*Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM));
 			return;
 		}
+		ExpectGolden(Case, Captured, FString());
+	}
+
+	/** Compares a capture of Case with Case's golden (never writes it); Label tells apart several captures in one test */
+	void ExpectGolden(const FCaptureCase& Case, const FCaptured& Captured, const FString& Label)
+	{
+		if (!TestTrue(Case.Name + Label + TEXT(": captured"), Captured.Capture.IsValid()))
+		{
+			return;
+		}
+		const FString Expected = PrettyJson(GoldenObject(Case, Captured.Capture));
+		const FString Path = GoldenPath(Case.Name);
 		FString GoldenText;
 		if (!FFileHelper::LoadFileToString(GoldenText, *Path))
 		{
@@ -289,8 +322,8 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		GoldenText.ReplaceInline(TEXT("\r\n"), TEXT("\n"));
 		if (GoldenText != Expected)
 		{
-			const FString ActualPath = SaveActual(Case.Name, TEXT(".actual"), Expected);
-			ReportDifference(FString::Printf(TEXT("%s capture (golden %s, actual %s)"), *Case.Name, *Path, *ActualPath),
+			const FString ActualPath = SaveActual(Case.Name + Label, TEXT(".actual"), Expected);
+			ReportDifference(FString::Printf(TEXT("%s%s capture (golden %s, actual %s)"), *Case.Name, *Label, *Path, *ActualPath),
 				GoldenText, Expected);
 		}
 	}
@@ -304,7 +337,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		{
 			return FString();
 		}
-		const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Reread));
+		const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Reread, EN2CJsonStyle::Pretty));
 		return Again.IsValid() ? PrettyJson(Again) : FString();
 	}
 
@@ -939,6 +972,48 @@ void FN2CCaptureGoldenSpec::Define()
 			}
 		});
 	}
+
+	Describe(TEXT("Isolation"), [this]()
+	{
+		const auto FindCase = [this](const TCHAR* Name) { return Cases.FindByPredicate([Name](const FCaptureCase& Case) { return Case.Name == Name; }); };
+
+		// Different depths, so a capture that read the other's depth or queue would not match its golden
+		It(TEXT("gives each of two interleaved captures its single-run golden"), [this, FindCase]()
+		{
+			const FCaptureCase* Outer = FindCase(TEXT("ShortestPath_Depth3"));
+			const FCaptureCase* Inner = FindCase(TEXT("CallChain_Depth1"));
+			if (!TestNotNull(TEXT("outer case"), Outer) || !TestNotNull(TEXT("inner case"), Inner))
+			{
+				return;
+			}
+			FCaptured InnerCaptured;
+			bool bInnerRan = false;
+			const FCaptured OuterCaptured = Capture(*Outer, [this, Inner, &InnerCaptured, &bInnerRan]()
+			{
+				bInnerRan = true;
+				InnerCaptured = Capture(*Inner);
+			});
+			TestTrue(TEXT("the inner capture ran in the middle of the outer one"), bInnerRan);
+			ExpectGolden(*Inner, InnerCaptured, TEXT(" (inner)"));
+			ExpectGolden(*Outer, OuterCaptured, TEXT(" (outer)"));
+		});
+
+		// Capture A, capture B, then serialize A's result: A's JSON, not B's
+		It(TEXT("keeps a capture's result when another graph is captured after it"), [this, FindCase]()
+		{
+			const FCaptureCase* First = FindCase(TEXT("UserStruct"));
+			const FCaptureCase* Second = FindCase(TEXT("NestedGraphs_Depth1"));
+			if (!TestNotNull(TEXT("first case"), First) || !TestNotNull(TEXT("second case"), Second))
+			{
+				return;
+			}
+			FCaptured FirstCaptured = Capture(*First);
+			const FCaptured SecondCaptured = Capture(*Second);
+			Serialize(*First, FirstCaptured);
+			ExpectGolden(*First, FirstCaptured, TEXT(" (first)"));
+			ExpectGolden(*Second, SecondCaptured, TEXT(" (second)"));
+		});
+	});
 
 	Describe(TEXT("Hygiene"), [this]()
 	{

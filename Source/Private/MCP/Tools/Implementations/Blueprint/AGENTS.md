@@ -27,7 +27,7 @@ All Blueprint tools:
 
 These tools integrate with NodeToCode's core functionality:
 - Use `FN2CEditorIntegration` for accessing focused Blueprint context
-- Leverage `FN2CNodeCollector` and `FN2CNodeTranslator` for Blueprint serialization
+- Leverage `FN2CNodeCollector` and the capture module (`Core/N2CCapture.h`: `N2C::CaptureNodes`, `N2C::DescribeNode`) for Blueprint serialization
 - Support the N2CJSON format for Blueprint representation
 
 ## Examples

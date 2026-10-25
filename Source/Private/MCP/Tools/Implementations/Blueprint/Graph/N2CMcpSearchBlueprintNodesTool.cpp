@@ -13,7 +13,7 @@
 #include "BlueprintNodeSpawner.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Kismet2/BlueprintEditorUtils.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CNodeTypeRegistry.h"
 #include "K2Node.h"
@@ -572,17 +572,10 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertNodeToN2CJson(UK
         return nullptr;
     }
     
-    // Create a node definition with the specified ID
-    FN2CNodeDefinition NodeDef;
-    NodeDef.ID = NodeId;
-    
-    // Use the NodeTranslator to properly process the node
-    // This reuses all the existing node processing logic including:
-    // - Node type determination
-    // - Node processor selection
-    // - Pin processing
-    // - Property extraction
-    if (!FN2CNodeTranslator::Get().ProcessSingleNode(Node, NodeDef))
+    // Describe the node with the capture's node logic (type, processor, pins, properties) in a fresh context, with
+    // the specified ID
+    const TValueOrError<FN2CNodeDefinition, FString> NodeDef = N2C::DescribeNode(*Node, NodeId);
+    if (NodeDef.HasError())
     {
         FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to process node %s for search results"), 
             *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()));
@@ -590,7 +583,7 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertNodeToN2CJson(UK
     }
     
     // Convert to JSON using the serializer
-    return FN2CSerializer::NodeToJsonObject(NodeDef);
+    return FN2CSerializer::NodeToJsonObject(NodeDef.GetValue());
 }
 
 FN2CNodeDefinition FN2CMcpSearchBlueprintNodesTool::CreateNodeDefinitionFromAction(const TSharedPtr<FEdGraphSchemaAction>& Action, const FString& NodeId)

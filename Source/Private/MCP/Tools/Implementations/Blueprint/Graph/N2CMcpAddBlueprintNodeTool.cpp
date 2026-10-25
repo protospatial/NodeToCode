@@ -5,7 +5,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
 #include "BlueprintActionFilter.h"
@@ -372,15 +372,13 @@ TSharedPtr<FJsonObject> FN2CMcpAddBlueprintNodeTool::ConvertSpawnedNodeToJson(UK
         return nullptr;
     }
     
-    // Create a node definition
-    FN2CNodeDefinition NodeDef;
-    
-    // Use the NodeTranslator to process the node
-    if (!FN2CNodeTranslator::Get().ProcessSingleNode(Node, NodeDef))
+    // Describe the node on its own (a fresh capture context; no other capture is read or changed)
+    const TValueOrError<FN2CNodeDefinition, FString> NodeDef = N2C::DescribeNode(*Node);
+    if (NodeDef.HasError())
     {
         return nullptr;
     }
     
     // Convert to JSON
-    return FN2CSerializer::NodeToJsonObject(NodeDef);
+    return FN2CSerializer::NodeToJsonObject(NodeDef.GetValue());
 }

@@ -3,7 +3,7 @@
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
 #include "Core/N2CNodeCollector.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CGraphStateManager.h"
@@ -203,7 +203,8 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 		EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
 
 	// Collect and serialize the graph
-	FString JsonPayload = CollectAndSerializeGraph(Item.CachedGraph.Get(), Item.CachedBlueprint.Get());
+	FN2CBlueprint CapturedBlueprint;
+	FString JsonPayload = CollectAndSerializeGraph(Item.CachedGraph.Get(), Item.CachedBlueprint.Get(), CapturedBlueprint);
 
 	if (JsonPayload.IsEmpty())
 	{
@@ -233,8 +234,8 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
 	if (LLMModule)
 	{
-		// Use the simpler ProcessN2CJson that triggers OnTranslationResponseReceived
-		LLMModule->ProcessN2CJson(JsonPayload, FOnLLMResponseReceived());
+		// The ProcessN2CJson that triggers OnTranslationResponseReceived; the translation is saved with this item's capture
+		LLMModule->ProcessN2CJson(JsonPayload, CapturedBlueprint, FOnLLMResponseReceived());
 	}
 	else
 	{
@@ -484,7 +485,7 @@ UEdGraph* UN2CBatchTranslationOrchestrator::FindGraphByGuid(UBlueprint* Blueprin
 	return nullptr;
 }
 
-FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint)
+FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint, FN2CBlueprint& OutCapture)
 {
 	if (!Graph || !Blueprint)
 	{
@@ -506,19 +507,16 @@ FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Gra
 	}
 
 	// Translate to N2CBlueprint structure
-	FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
-	if (!Translator.GenerateN2CStruct(CollectedNodes))
+	TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
+	if (Capture.HasError())
 	{
 		FN2CLogger::Get().LogError(TEXT("Failed to generate N2CStruct"), TEXT("BatchOrchestrator"));
 		return FString();
 	}
 
-	// Get the result and serialize to JSON
-	const FN2CBlueprint& N2CBlueprintData = Translator.GetN2CBlueprint();
-
 	// Serialize to JSON (minified for LLM)
-	FN2CSerializer::SetPrettyPrint(false);
-	FString JsonOutput = FN2CSerializer::ToJson(N2CBlueprintData);
+	FString JsonOutput = FN2CSerializer::ToJson(Capture.GetValue().Blueprint, EN2CJsonStyle::Condensed);
+	OutCapture = MoveTemp(Capture.GetValue().Blueprint);
 
 	return JsonOutput;
 }
@@ -994,8 +992,8 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 		}
 
 		// Translate to N2CBlueprint structure
-		FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
-		if (!Translator.GenerateN2CStruct(CollectedNodes))
+		const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
+		if (Capture.HasError())
 		{
 			Item.Status = EN2CBatchItemStatus::Failed;
 			Item.ErrorMessage = TEXT("Failed to serialize");
@@ -1008,8 +1006,8 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 		}
 
 		// Serialize with formatting based on minify option
-		FN2CSerializer::SetPrettyPrint(!bMinifyJson);
-		FString JsonOutput = FN2CSerializer::ToJson(Translator.GetN2CBlueprint());
+		FString JsonOutput = FN2CSerializer::ToJson(Capture.GetValue().Blueprint,
+			bMinifyJson ? EN2CJsonStyle::Condensed : EN2CJsonStyle::Pretty);
 
 		if (JsonOutput.IsEmpty())
 		{

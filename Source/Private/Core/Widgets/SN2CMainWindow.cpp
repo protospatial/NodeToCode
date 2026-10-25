@@ -18,7 +18,7 @@
 #include "Async/Async.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CNodeCollector.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBackgroundBlur.h"

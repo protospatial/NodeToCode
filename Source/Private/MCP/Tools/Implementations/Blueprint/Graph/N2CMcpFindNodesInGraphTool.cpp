@@ -3,7 +3,6 @@
 #include "N2CMcpFindNodesInGraphTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
-#include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -158,7 +157,7 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
             FString* ActualNodeId = NodeIDMap.Find(Node->NodeGuid);
             FString NodeId = ActualNodeId ? *ActualNodeId : FString::Printf(TEXT("Node_%d"), i + 1);
             
-            TSharedPtr<FJsonObject> NodeJson = ConvertNodeToEnhancedJson(Node, NodeId, NodeIDMap, PinIDMap);
+            TSharedPtr<FJsonObject> NodeJson = ConvertNodeToEnhancedJson(TempBlueprint, Node, NodeId, NodeIDMap, PinIDMap);
             if (NodeJson.IsValid())
             {
                 NodesArray.Add(MakeShareable(new FJsonValueObject(NodeJson)));
@@ -285,6 +284,7 @@ bool FN2CMcpFindNodesInGraphTool::DoesNodeMatchSearch(
 }
 
 TSharedPtr<FJsonObject> FN2CMcpFindNodesInGraphTool::ConvertNodeToEnhancedJson(
+    const FN2CBlueprint& Captured,
     UK2Node* Node,
     const FString& NodeId,
     const TMap<FGuid, FString>& NodeIDMap,
@@ -295,12 +295,11 @@ TSharedPtr<FJsonObject> FN2CMcpFindNodesInGraphTool::ConvertNodeToEnhancedJson(
         return nullptr;
     }
     
-    // Instead of using ProcessSingleNode which causes crashes, 
+    // Instead of describing the node again on its own, 
     // let's extract the node from the full translation we already did
     
-    // First, serialize the full blueprint structure that we already translated
-    FString FullJsonString = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(
-        FN2CNodeTranslator::Get().GetN2CBlueprint(), false);
+    // First, serialize the full blueprint structure that we already translated (this call's own capture)
+    FString FullJsonString = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(Captured, false);
     
     // Parse the JSON to find our specific node
     TSharedPtr<FJsonObject> FullJsonObject;

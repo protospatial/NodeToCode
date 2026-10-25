@@ -48,7 +48,7 @@ inside a trusted project (an asset from Fab, a third-party pack or a teammate), 
 | Web pages | HTTP requests to `/mcp` | refused, see Network controls |
 | Other local processes | HTTP requests to `/mcp`; discovery files | accepted (no auth token) |
 | LAN peers | HTTP requests | no listener off loopback (P5, bind code) |
-| Node comments (`UEdGraphNode::NodeComment`) | N2C JSON `comment` field in get-focused-blueprint, the `nodetocode://blueprint/*` resources, the prompts, translate-focused-blueprint's LLM input | code (`N2CNodeTranslator.cpp`, `N2CBaseNodeProcessor.cpp`); engine-written comments ("This node is disabled...") seen live in get-focused-blueprint |
+| Node comments (`UEdGraphNode::NodeComment`) | N2C JSON `comment` field in get-focused-blueprint, the `nodetocode://blueprint/*` resources, the prompts, translate-focused-blueprint's LLM input | code (`N2CCaptureContext.cpp`, `N2CBaseNodeProcessor.cpp`); engine-written comments ("This node is disabled...") seen live in get-focused-blueprint |
 | Variable tooltips | get-blueprint-member-variables `metadata.tooltip`; N2C JSON member `comment` for struct and enum tooltips | yes: fixture canary B returned by get-blueprint-member-variables |
 | String literals (pin defaults) | get-focused-blueprint, find-nodes-in-graph, the translation input | yes: canary C returned by both |
 | Asset, function, variable, graph and node names | most read tools | code |

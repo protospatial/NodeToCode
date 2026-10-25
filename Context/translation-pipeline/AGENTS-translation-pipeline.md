@@ -9,7 +9,7 @@ Source/
 ├── Public/
 │   ├── Core/
 │   │   ├── N2CNodeCollector.h        → Collects nodes from Blueprint graphs
-│   │   ├── N2CNodeTranslator.h       → Converts nodes to N2CBlueprint format
+│   │   ├── N2CCapture.h              → Capture API: N2C::CaptureNodes/CaptureGraph/DescribeNode
 │   │   └── N2CSerializer.h           → JSON serialization/deserialization
 │   │
 │   ├── Models/
@@ -34,7 +34,8 @@ Source/
 └── Private/
     ├── Core/
     │   ├── N2CNodeCollector.cpp
-    │   ├── N2CNodeTranslator.cpp
+    │   ├── N2CCapture.cpp            → The N2C:: capture functions
+    │   ├── N2CCaptureContext.h/.cpp  → Per-call capture state and node conversion (private)
     │   └── N2CSerializer.cpp
     │
     ├── Models/
@@ -69,19 +70,26 @@ Singleton that gathers `UK2Node` instances and pin details from `UEdGraph`.
 
 Private helpers: `ValidatePin`, `GetK2PinMetadata`, `CollectPinDefaultValue`, `CollectPinConnections`
 
-### Node Translator
+### Capture
 
-**`Source/Public/Core/N2CNodeTranslator.h` (`FN2CNodeTranslator`)**
+**`Source/Public/Core/N2CCapture.h` (namespace `N2C`)**
 
-Singleton converting collected `UK2Node`s into `FN2CBlueprint`.
+Converts collected `UK2Node`s into `FN2CBlueprint`. Every call builds its result in its own private context
+(`FN2CCaptureContext`, `Source/Private/Core/N2CCaptureContext.h`) and returns it by value, so captures share no state:
+two captures, a capture started during another (an overlay estimate during a translation) or one made between sending
+a request and reading its result never change each other's output (card 0133 replaced the `FN2CNodeTranslator`
+singleton). Game thread only.
 
-| Method | Description |
-|--------|-------------|
-| `GenerateN2CStruct()` | Process array of nodes into FN2CBlueprint |
-| `GetN2CBlueprint()` | Get the translated Blueprint structure |
-| `ProcessSingleNode()` | Convert a single UK2Node (useful for MCP tools) |
-| `GetNodeIDMap()` / `GetPinIDMap()` | Get GUID-to-ID mappings |
-| `PreserveIDMaps()` | Copy ID maps before they get cleared |
+| Function | Description |
+|----------|-------------|
+| `CaptureNodes(Nodes, Options)` | Nodes of one graph (and the nested graphs they use) -> `TValueOrError<FN2CCapture, FString>` |
+| `CaptureGraph(Graph, Options)` | Collects the graph's nodes with `FN2CNodeCollector`, then `CaptureNodes` |
+| `DescribeNode(Node, NodeID)` | One node alone (MCP add-node and search tools): fresh context, no nested graphs, no related types |
+
+`FN2CCapture` holds the `FN2CBlueprint` and the node and pin GUID-to-ID maps of that capture.
+`FN2CCaptureOptions` carries `Depth` (default `INDEX_NONE`: `UN2CSettings::TranslationDepth`, read when the capture
+starts), `bIncludeRelatedTypes` and `bDiscoverNestedGraphs`. `FN2CEditorIntegration::TranslateNodesToN2CBlueprint`
+and `TranslateNodesToN2CBlueprintWithMaps` are thin wrappers kept for the MCP tools and the Python bridge.
 
 Key responsibilities:
 - Manages ID generation (N1, N2, etc. for nodes; P1, P2, etc. for pins)
@@ -99,10 +107,9 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 
 | Method | Description |
 |--------|-------------|
-| `ToJson()` | Convert FN2CBlueprint to JSON string |
+| `ToJson(Blueprint, Style)` | Convert FN2CBlueprint to JSON string; `EN2CJsonStyle::Pretty` or `Condensed` per call (no static state) |
 | `FromJson()` | Parse JSON string to FN2CBlueprint |
 | `NodeToJsonObject()` | Convert single node to JSON (for MCP tools) |
-| `SetPrettyPrint()` / `SetIndentLevel()` | Configure formatting |
 
 ## Data Models
 
@@ -303,7 +310,7 @@ Key features:
 ## Translation Workflow
 
 1. **Collection**: `FN2CNodeCollector` gathers nodes from the selected graph(s)
-2. **Translation**: `FN2CNodeTranslator` converts nodes to `FN2CBlueprint` format
+2. **Capture**: `N2C::CaptureNodes` converts nodes to `FN2CBlueprint` format (a value the caller owns)
    - Assigns unique IDs to nodes (N1, N2...) and pins (P1, P2...)
    - Uses `FN2CNodeProcessorFactory` to get specialized processors
    - Builds execution and data flow connections

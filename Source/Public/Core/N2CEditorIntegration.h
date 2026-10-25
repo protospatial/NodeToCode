@@ -79,10 +79,10 @@ public:
     /** Collects K2Nodes from a given UEdGraph */
     bool CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Node*>& OutNodes) const;
 
-    /** Translates an array of K2Nodes into an FN2CBlueprint structure */
+    /** Captures an array of K2Nodes into an FN2CBlueprint structure (a thin wrapper over N2C::CaptureNodes) */
     bool TranslateNodesToN2CBlueprint(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint) const;
     
-    /** Translates an array of K2Nodes into an FN2CBlueprint structure and preserves ID maps */
+    /** Captures an array of K2Nodes into an FN2CBlueprint structure with that capture's node and pin ID maps */
     bool TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint,
         TMap<FGuid, FString>& OutNodeIDMap, TMap<FGuid, FString>& OutPinIDMap) const;
     
@@ -91,9 +91,9 @@ public:
 
     /** New high-level function to be called by the MCP tool handler
      * Returns N2CJSON string for the focused Blueprint, or an empty string on failure.
-     * Populates OutErrorMsg if an error occurs.
+     * Populates OutErrorMsg if an error occurs. OutCapture, when given, receives the Blueprint the JSON was written from.
      */
-    FString GetFocusedBlueprintAsJson(bool bPrettyPrint, FString& OutErrorMsg);
+    FString GetFocusedBlueprintAsJson(bool bPrettyPrint, FString& OutErrorMsg, FN2CBlueprint* OutCapture = nullptr);
 
     /** Simple wrapper function that translates the focused Blueprint graph using the latest active editor */
     void TranslateFocusedBlueprintGraph();

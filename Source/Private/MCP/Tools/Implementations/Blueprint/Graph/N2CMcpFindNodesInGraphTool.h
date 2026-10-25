@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
 #include "Models/N2CNode.h"
+#include "Models/N2CBlueprint.h"
 
 class UK2Node;
 class FJsonObject;
@@ -44,9 +45,10 @@ private:
     );
 
     /**
-     * Convert a single node to N2C JSON format with GUID enhancement
+     * Convert a single node to N2C JSON format with GUID enhancement, from Captured (this call's capture of the graph)
      */
     TSharedPtr<FJsonObject> ConvertNodeToEnhancedJson(
+        const FN2CBlueprint& Captured,
         UK2Node* Node,
         const FString& NodeId,
         const TMap<FGuid, FString>& NodeIDMap,

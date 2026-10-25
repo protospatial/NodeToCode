@@ -7,6 +7,8 @@
 #include "Models/N2CBatchTranslationTypes.h"
 #include "N2CBatchTranslationOrchestrator.generated.h"
 
+struct FN2CBlueprint;
+
 class UBlueprint;
 class UEdGraph;
 
@@ -157,9 +159,10 @@ private:
 	 * Collect nodes from a graph and serialize to JSON
 	 * @param Graph The graph to process
 	 * @param Blueprint The owning blueprint
+	 * @param OutCapture The captured Blueprint the JSON was written from (the translation is saved with it)
 	 * @return JSON string, empty on failure
 	 */
-	FString CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint);
+	FString CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint, FN2CBlueprint& OutCapture);
 
 	/** Create the batch output directory */
 	void CreateBatchOutputDirectory();

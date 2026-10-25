@@ -90,7 +90,7 @@ change they make. Each case builds a graph in code with `N2CTest::FTestBlueprint
 transient Actor Blueprint named `BP_N2CGolden_<case>` in its own `/Game/N2CTest_<guid>` package, never saved or
 registered; under `/Game` because capture only follows functions, macros, structs and enums whose path contains
 `/Game/` or `/Content/`, translation-core-21, card 0235), runs what the editor runs
-(`FN2CNodeCollector::CollectNodesFromGraph`, `FN2CNodeTranslator::GenerateN2CStruct`, `FN2CSerializer::ToJson`),
+(`FN2CNodeCollector::CollectNodesFromGraph`, `N2C::CaptureNodes`, `FN2CSerializer::ToJson`),
 replaces the package path, GUIDs and the session-dependent `Var_<graph>_<index>` member name with `<PACKAGE>`,
 `<GUID>` and `<OBJECT_INDEX>`, and compares the result with `Goldens/Capture/<case>.json`. On a mismatch it reports
 the first differing line and writes the whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`.
@@ -111,6 +111,12 @@ the first differing line and writes the whole output to `<Project>/Saved/Automat
   depth 1 adds B, depth 2 adds B and C, D never) and `ShortestPath_Depth3` (a graph reachable 2 and 3 calls away is
   taken at depth 2, so its callee at depth 3 is captured and the one at depth 4 is not). Max Translation Depth counts
   calls from the captured graph, and nested graphs are processed shallowest first (translation-core-3, qw-12).
+- **Isolation (card 0133):** captures share no state. `gives each of two interleaved captures its single-run golden`
+  starts `CallChain_Depth1` in the middle of `ShortestPath_Depth3` (after its first node, through the test-only
+  `FN2CCaptureContext::SetNodeCapturedHookForTests`) and compares both with their goldens; `keeps a capture's result
+  when another graph is captured after it` captures `UserStruct`, then `NestedGraphs_Depth1`, then serializes the
+  first result. `NodeToCode.Robustness.DescribeNode` (`Capture/N2CDescribeNodeTests.cpp`) checks that
+  `N2C::DescribeNode` never queues nested graphs or leaks into the next capture.
 - **Max Translation Depth:** a case may set `UN2CSettings::TranslationDepth` for its capture; the spec puts it back
   afterwards and the golden records it as `translation_depth`. The `Hygiene` cases check that the depth is put back
   and that a test package with a user struct, enum and input action is gone after garbage collection (the factory

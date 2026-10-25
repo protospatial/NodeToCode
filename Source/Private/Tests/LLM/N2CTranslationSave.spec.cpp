@@ -5,7 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CNodeCollector.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "Dom/JsonObject.h"
@@ -33,8 +33,9 @@
 /**
  * A finished translation is saved with the Blueprint captured when its request was sent (card 0131). Anything that
  * captures while the request is in flight (an overlay's token estimate on open or compile, Copy JSON, find-nodes, a
- * second translation) overwrites FN2CNodeTranslator's Blueprint; the saved folder and its N2C_BP_*.json must still
- * name and describe the Blueprint that was translated.
+ * second translation) and anything the caller does with its own copy afterwards must not change the saved folder or
+ * its N2C_BP_*.json: they name and describe the Blueprint that was translated. Since card 0133 every capture is its
+ * own value (N2C::CaptureNodes), and ProcessN2CJson copies the caller's capture when the request is sent.
  */
 BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C_TEST_FLAGS)
 
@@ -157,12 +158,21 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 		return BP;
 	}
 
-	/** Captures BP's event graph into FN2CNodeTranslator::Get(), as every translate, estimate and Copy JSON path does */
-	bool CaptureIntoTranslator(const N2CTest::FTestBlueprint& BP)
+	/** Captures BP's event graph, as every translate, estimate and Copy JSON path does */
+	bool CaptureEventGraph(const N2CTest::FTestBlueprint& BP, FN2CBlueprint& OutCapture)
 	{
 		TArray<UK2Node*> Nodes;
-		return TestTrue(TEXT("nodes collected"), BP.EventGraph() && FN2CNodeCollector::Get().CollectNodesFromGraph(BP.EventGraph(), Nodes))
-			&& TestTrue(TEXT("graph captured"), FN2CNodeTranslator::Get().GenerateN2CStruct(Nodes));
+		if (!TestTrue(TEXT("nodes collected"), BP.EventGraph() && FN2CNodeCollector::Get().CollectNodesFromGraph(BP.EventGraph(), Nodes)))
+		{
+			return false;
+		}
+		TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(Nodes);
+		if (!TestTrue(TEXT("graph captured"), Capture.HasValue()))
+		{
+			return false;
+		}
+		OutCapture = MoveTemp(Capture.GetValue().Blueprint);
+		return true;
 	}
 
 	/** Checks the module saved its latest translation under Output in a <Expected>_<timestamp> folder describing Expected */
@@ -194,9 +204,11 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 
 	/**
 	 * Initializes the module with Ollama at a stub, captures BP_N2CSaveA, sends it through Send (which starts the
-	 * request), captures BP_N2CSaveB while the request is in flight, then waits for the reply and checks the save.
+	 * request), captures BP_N2CSaveB while the request is in flight, into the very variable that held A's capture when
+	 * bReuseCapture is set, then waits for the reply and checks the save.
 	 */
-	void RunScenario(TFunctionRef<void(const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)> Send)
+	void RunScenario(bool bReuseCapture,
+		TFunctionRef<void(const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)> Send)
 	{
 		FStubOllama Stub;
 		if (!TestTrue(TEXT("stub endpoint started"), Stub.Start(OllamaReply(TEXT("BP_N2CSaveA")))))
@@ -215,24 +227,24 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 
 		const TUniquePtr<N2CTest::FTestBlueprint> A = MakeBlueprint(TEXT("BP_N2CSaveA"));
 		const TUniquePtr<N2CTest::FTestBlueprint> B = MakeBlueprint(TEXT("BP_N2CSaveB"));
-		if (!A->GetBlueprint() || !B->GetBlueprint() || !CaptureIntoTranslator(*A))
+		FN2CBlueprint CapturedA;
+		if (!A->GetBlueprint() || !B->GetBlueprint() || !CaptureEventGraph(*A, CapturedA))
 		{
 			return;
 		}
-		const FN2CBlueprint CapturedA = FN2CNodeTranslator::Get().GetN2CBlueprint();
-		FN2CSerializer::SetPrettyPrint(false);
-		const FString JsonA = FN2CSerializer::ToJson(CapturedA);
+		const FString JsonA = FN2CSerializer::ToJson(CapturedA, EN2CJsonStyle::Condensed);
 
 		const TSharedRef<int32> Completions = MakeShared<int32>(0);
 		Send(JsonA, CapturedA, FOnLLMResponseReceived::CreateLambda([Completions](const FString&) { ++(*Completions); }));
 		TestEqual(TEXT("the request is still in flight"), *Completions, 0);
 
 		// Another capture before the reply, as an overlay's token estimate does when a graph tab opens or a Blueprint compiles
-		if (!CaptureIntoTranslator(*B))
+		FN2CBlueprint CapturedB;
+		if (!CaptureEventGraph(*B, bReuseCapture ? CapturedA : CapturedB))
 		{
 			return;
 		}
-		TestEqual(TEXT("the translator now holds BP_N2CSaveB"), FN2CNodeTranslator::Get().GetN2CBlueprint().Metadata.Name, FString(TEXT("BP_N2CSaveB")));
+		TestEqual(TEXT("the latest capture holds BP_N2CSaveB"), (bReuseCapture ? CapturedA : CapturedB).Metadata.Name, FString(TEXT("BP_N2CSaveB")));
 
 		Pump(15.0, [Completions] { return *Completions > 0; });
 		TestEqual(TEXT("the stub answered once"), *Stub.Hits, 1);
@@ -247,19 +259,19 @@ END_DEFINE_SPEC(FN2CTranslationSaveSpec)
 
 void FN2CTranslationSaveSpec::Define()
 {
-	It(TEXT("saves with the translator's Blueprint as it was when the request was sent"), [this]()
+	It(TEXT("saves with the Blueprint as it was when the request was sent, whatever the caller's copy holds later"), [this]()
 	{
-		// The editor-integration and batch paths: they serialize through the translator, then send JSON only
-		RunScenario([](const FString& JsonA, const FN2CBlueprint&, const FOnLLMResponseReceived& OnComplete)
+		// The caller's variable is reused for the next capture while the request is in flight
+		RunScenario(true, [](const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)
 		{
-			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, OnComplete);
+			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, CapturedA, OnComplete);
 		});
 	});
 
-	It(TEXT("saves with the Blueprint its caller captured, whatever the translator holds"), [this]()
+	It(TEXT("saves with the Blueprint its caller captured, whatever is captured next"), [this]()
 	{
-		// The translation window's path: it passes the capture it serialized
-		RunScenario([](const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)
+		// The translation window's, editor-integration and batch paths: each passes the capture it serialized
+		RunScenario(false, [](const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)
 		{
 			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, CapturedA, OnComplete);
 		});

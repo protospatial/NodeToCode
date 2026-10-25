@@ -2,7 +2,7 @@
 
 #include "LLM/N2CLLMModule.h"
 
-#include "Core/N2CNodeTranslator.h"
+#include "Models/N2CBlueprint.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "LLM/N2CSystemPromptManager.h"
@@ -119,16 +119,6 @@ void UN2CLLMModule::ResetStatusOnCancel(const FN2CLLMRequestHandleRef& Handle)
         }
         FN2CLogger::Get().Log(TEXT("LLM request cancelled"), EN2CLogSeverity::Info, TEXT("LLMModule"));
     });
-}
-
-FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
-    const FString& JsonInput,
-    const FOnLLMResponseReceived& OnComplete)
-{
-    // The translator holds the Blueprint JsonInput was serialized from only until the next capture (an overlay's token
-    // estimate, Copy JSON, find-nodes): copy it now, when the request is sent, never when the response arrives
-    check(IsInGameThread());
-    return ProcessN2CJson(JsonInput, FN2CNodeTranslator::Get().GetN2CBlueprint(), OnComplete);
 }
 
 FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
@@ -311,8 +301,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     FString JsonFilePath = FPaths::Combine(RootPath, JsonFileName);
     
     // Serialize the Blueprint to JSON with pretty printing
-    FN2CSerializer::SetPrettyPrint(true);
-    FString JsonContent = FN2CSerializer::ToJson(Blueprint);
+    FString JsonContent = FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Pretty);
     
     if (!FFileHelper::SaveStringToFile(JsonContent, *JsonFilePath))
     {
@@ -325,8 +314,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     FString MinifiedJsonFilePath = FPaths::Combine(RootPath, MinifiedJsonFileName);
     
     // Serialize the Blueprint to JSON without pretty printing
-    FN2CSerializer::SetPrettyPrint(false);
-    FString MinifiedJsonContent = FN2CSerializer::ToJson(Blueprint);
+    FString MinifiedJsonContent = FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed);
     
     if (!FFileHelper::SaveStringToFile(MinifiedJsonContent, *MinifiedJsonFilePath))
     {
