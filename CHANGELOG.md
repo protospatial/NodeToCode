@@ -34,6 +34,10 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 
 - An MCP server inside the editor at `http://127.0.0.1:27000/mcp` (setting **Server Port**), with JSON-RPC
   batches, resources, prompts and progress notifications (f61300a, 6da9fc2, 04fbfb5, 080c6ad, 9a07871).
+- MCP protocol 2025-11-25, with 2025-06-18, 2025-03-26 and 2024-11-05 for older clients. Each `initialize` gets
+  its own `Mcp-Session-Id`, so several clients can share one editor; `DELETE /mcp` ends a session and cancels its
+  running calls. JSON-RPC batches are accepted on 2025-03-26 sessions only, as the later versions dropped them
+  ([#80], [#81]).
 - Agent tools in these groups: read the focused Blueprint and its functions, variables and components; add,
   connect and delete nodes; create and delete functions, function pins and variables; tag graphs; compile and save;
   search and create Blueprint classes; add, list and remove components; search, move, copy and rename assets and
@@ -45,11 +49,12 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   ([#59]). <!-- PROVISIONAL 0085 -->
 - `nodetocode/cancelTask` stops a running translation and its HTTP request ([#51], [#52]). It is deprecated: the
   standard `notifications/cancelled` with the tools/call's request id now stops the call the same way and no
-  response is sent for it (card 0110).
+  response is sent for it ([#79], [#82]).
 - MCP errors and capabilities follow the 2025-11-25 spec: an unknown tool or prompt and a missing required prompt
   argument are -32602, an unknown resource is -32002 with the uri, a handler timeout is -32603;
   `resources/templates/list` lists the resource templates; `logging` is no longer advertised; `initialize` returns
-  `instructions` naming the tools to start with (card 0110).
+  `instructions` naming the tools to start with ([#82]). A request with `"id": null` or a `method` that is not a
+  string is -32600 ([#80]).
 - Optional dynamic tool discovery: only `assess-needed-tools` is listed until the client asks for tool groups;
   off by default (66659c1, df65415, 9579c4a).
 - **Enable MCP Server** (on by default) and **Allow MCP Python Execution** (off by default), both per user under
@@ -68,7 +73,8 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   only start stdio servers. It finds UE 5.6 to 5.8's Python and passes UTF-8 and streamed responses through
   (8d94a08, e775d97, [#60]). It runs calls side by side and forwards the client's cancel while a call runs, finds
   the editor through the MCP server's discovery file instead of scanning ports (`--project` or
-  `NODETOCODE_PROJECT` picks one of several editors), and can start before the editor (card 0114).
+  `NODETOCODE_PROJECT` picks one of several editors), and can start before the editor ([#85]). After an editor
+  restart it opens a new session by itself, and it ends its session when the client closes stdin ([#81]).
 
 **Editor**
 
@@ -95,6 +101,11 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - API keys from environment variables when none is saved: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
   `GEMINI_API_KEY`, `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`). Project Settings shows an **API Key Source** line
   per provider ([#44]).
+- A failed translation says why. Each error has a kind (Truncated, Refused, Blocked, RateLimited, Overloaded,
+  Auth, InvalidRequest, Billing, Server, Network or Parse), the HTTP status, the provider's own message and
+  whether a retry can help. `translate-focused-blueprint` returns it as an `isError` result whose JSON has
+  `error`, `error_kind`, `message`, `http_status`, `retryable`, `provider` and `model`; batch items and
+  `BatchSummary.json` carry it too, and the batch progress window shows it under the failed item ([#70], [#71]).
 
 **Project**
 
@@ -105,6 +116,16 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - `Scripts/package-release.ps1` builds per-engine zips and a SHA256SUMS file from a clean `git archive`, then
   checks, rebuilds and loads each package ([#67]). Packages include `ThirdParty`, `LICENSE`, `NOTICE` and
   `Config/FilterPlugin.ini` ([#37], [#66]).
+- `build.ps1` at the repository root builds the plugin for UE 5.6, 5.7 and 5.8. `-Smoke` starts the editor in
+  each MCP registration mode and fails on log errors, a changed tool count, a failed MCP probe, the MCP
+  conformance suite or Inspector CLI, or a changed project config file; `-Test` runs the automation tests
+  ([#72], [#73], [#76], [#77]). New tests: Automation Specs for path policy, pagination, names, the model
+  registry and the MCP protocol, CPython pytest for the script library, and live probes for the BeginPlay
+  deletion, apostrophe and PIE-edit bugs ([#74], [#75], [#78], [#88]). How to run them is in `CONTRIBUTING.md`.
+- A threat model for the MCP server, `Context/mcp-server/threat-model.md`, linked from `SECURITY.md` ([#89]).
+- A docs check runs on every pull request into `dev-2.0`: a pull request that changes the plugin updates the
+  matching user guide pages or says why not in a `Docs:` line ([#93]). The contributor docs describe the MCP
+  tool registration modes and the tool categories as the code has them ([#92]).
 
 ### Changed
 
@@ -122,7 +143,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   unchanged, so custom key bindings still work (a86d97f).
 - Startup no longer writes HTTP timeouts to `Config/DefaultEngine.ini` or turns off **Use Less CPU when in
   Background**. Timeouts are set per request, and CPU throttling is off only while a translation runs (4fea3e5).
-- The vendored cpp-httplib is v0.63.0 ([#40]). Since the notification server was removed (card 0113) no source
+- The vendored cpp-httplib is v0.63.0 ([#40]). Since the notification server was removed ([#84]) no source
   file includes it; it stays for a possible UE 5.6/5.7 streaming transport. <!-- PROVISIONAL 0085 -->
 - MCP request bodies are parsed exactly once, so JSON-RPC batches work and trailing bytes are refused; responses
   are condensed JSON ([#56]).
@@ -130,6 +151,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   overload is added ([#43]).
 - The LLM layer returns a cancellable `FN2CLLMRequestHandleRef` from `IN2CLLMService::SendRequest`,
   `UN2CHttpHandlerBase::PostLLMRequest`, `UN2CLLMModule::ProcessN2CJson` and `ProcessN2CJsonWithOverrides` ([#51]).
+  `FN2CTranslationResponse` carries an `FN2CTranslationError` ([#70]).
+- MCP tools that run for a long time implement `IN2CMcpTool::InvokeAsync`, which gets an `FN2CToolCallContext`
+  for progress and cancellation ([#79]).
 
 ### Removed
 
@@ -153,9 +177,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   saved scripts and LLM-supplied graph names cannot leave their folders (fa1f145, f9ab31a, 5ec3add, 4f2b6cc, [#42]).
 - **Per-user MCP switches:** a project's committed `Config/DefaultEditorPerProjectUserSettings.ini` can no longer
   turn on **Allow MCP Python Execution** (or set **Enable MCP Server**); only your own Saved/Config value counts, and
-  an ignored project value is logged as a warning (card 0423).
+  an ignored project value is logged as a warning ([#90]).
 - **MCP request size:** a request body over 8 MiB to `/mcp` is answered 413 with a JSON-RPC -32600 error before it
-  is copied or parsed; before, a body of any size was parsed on the game thread (card 0425).
+  is copied or parsed; before, a body of any size was parsed on the game thread ([#91]).
 - **Crashes:** the active LLM service survives garbage collection; the logger is thread-safe; input that crashed
   the editor returns errors; only real Blueprint editors are treated as such; struct utilities return errors
   instead of fatal asserts; theme edits no longer free brushes an open code editor uses, and `SelectText` is
@@ -170,12 +194,27 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - **MCP tasks:** translations run on the game thread with real cancel; finished tasks are released, and running
   ones are cancelled when the editor exits; `ExecuteOnGameThread` is safe when its caller times out
   ([#50], [#52], [#53]).
+- **Translation errors:** an HTML page or a text error with quotes from a provider or proxy no longer turns into
+  invalid JSON, and a provider's 429, 503 or billing error is no longer reported as "Failed to parse LLM
+  response". An answer cut off at the output limit is a Truncated error that names the provider's **Max Output
+  Tokens** setting; refusals and safety blocks are named; a valid translation whose code has a `{` inside a
+  string is no longer rejected; an empty `content` no longer fails before the reason is read; a request that
+  fails before it is sent no longer leaves a batch waiting ([#70], [#71]).
+- **Translation overrides over MCP:** the provider and language IDs that `get-available-llm-providers` and
+  `get-available-translation-targets` return now work in `translate-focused-blueprint`, in any case. An unknown
+  ID is an `isError` result naming the valid ones; before, an agent asking for `rust` silently got C++ from the
+  default provider. A model ID the registry does not list is still sent, with a `warnings` entry ([#79]).
+- **Python tool results:** `run-python` and the script-library tools return `isError` when they fail, instead of
+  a success with `success:false` inside ([#86]).
+- **Apostrophes in the Python bridge:** a name, value or message with an apostrophe (`Tag 'x' not found`, a
+  comment "Player's input") made the bridge answer invalid JSON, so the `nodetocode` module reported a failure
+  after the edit was made and agents retried and made duplicates. Bridge results are now real JSON ([#87]).
 - **MCP port conflicts:** a second editor no longer says its server started when the port was taken (its agent then
   edited the first editor's project). The server takes the next free port in **Port Fallback Range** (default 10)
   and says so in a notification and in **Server Status**, or shows an error naming the port and **Server Port**;
   changing **Server Port** restarts it on the new port at once. A discovery file
   (`Saved/NodeToCode/mcp-server.json`) names the port, project and process. Stopping the server no longer stops
-  every HTTP listener in the editor, so Remote Control and UE 5.8's Unreal MCP keep running (card 0112).
+  every HTTP listener in the editor, so Remote Control and UE 5.8's Unreal MCP keep running ([#83]).
 - UE 5.8 compile errors and UE 5.7 deprecation warnings (8f16836); synchronous Blueprint compiles to avoid
   preview-actor crashes (d86db38).
 - A missing include in `N2CMcpAddFunctionEntryPinTool.cpp` (deca5c3), the fix first proposed in [#9].
@@ -242,28 +281,40 @@ Only for people who ran a `dev-2.0` build before this beta.
 - The second server on the MCP port + 1 (`/mcp/events`, `/mcp/notifications`) is gone, and so are
   `initialize`'s `_meta.notificationUrl` and the `nodetocode/taskStarted` notification. Only the MCP port is
   opened. `initialize` advertises `tools.listChanged: false`: the server has no channel for
-  `notifications/tools/list_changed` (card 0113).
+  `notifications/tools/list_changed` ([#84]).
+- Every request after `initialize` must send the `Mcp-Session-Id` that `initialize` returned: without one it is
+  400, with an unknown or ended one 404. Before, one session was shared by every client and a wrong id was only
+  logged. The `/mcp/sse` route is gone, and a client's JSON-RPC response gets 202 ([#81]).
+- The script-library tools return the `nodetocode` function's result as it is, not wrapped in a second
+  `{success, data}` ([#86]).
+- C++ MCP tools: `IN2CToolAsyncTask`, `FN2CToolAsyncTaskBase` and the tool-name switch in
+  `FN2CToolAsyncTaskManager` are removed; a long-running tool overrides `IN2CMcpTool::InvokeAsync` ([#79]).
 
 ### Known issues
 
 - With **Enable Dynamic Tool Discovery** on, clients are not told when `assess-needed-tools` changes the tool list;
-  they see the new tools when they list tools again, and the editor logs a warning saying so (card 0113).
-
+  they see the new tools when they list tools again, and the editor logs a warning saying so ([#84]).
 - On UE 5.6 and 5.7, `translate-focused-blueprint` sends no progress, so a client that gives up on silent calls
   (Claude Code does after five minutes) can abort a long translation ([#59]). <!-- PROVISIONAL 0085 -->
 - The secrets file is plain JSON in your user folder, not the OS keychain ([#42]).
 - Settings load before the reference source files are checked, so the token estimate can be stale and missing
   reference files stay listed until edited; 1.2.x does the same ([#64]).
-- Not verified live: Gemini 4 Argon ([#45]).
+- Not verified live: Gemini 4 Argon ([#45]); refusals and safety blocks from a live provider (the tests use
+  each provider's documented response bodies) ([#71]).
+- The 413 for an oversized `/mcp` body is sent after Unreal's HTTP server has read the whole body into memory;
+  the engine offers no earlier hook ([#91]).
 
 ### Credits
 
 Thanks to the people whose pull requests are in this release:
 
 - Dylan Martin ([@Subj3kt1](https://github.com/Subj3kt1)): portable platform code from #23, in [#65], and the
-  Anthropic model update from #24, redone in [#32].
+  Anthropic model update from #24, redone in [#32]. #24 also found that current Claude models reject
+  `temperature`; [#30] (26e40ce) stops sending sampling parameters to every model that rejects them, and that
+  commit did not credit #24 at the time.
 - [@cryptosebek](https://github.com/cryptosebek): the LM Studio max-token setting from #20, which became Max
-  Output Tokens in [#41].
+  Output Tokens in [#41], and the guarded LM Studio `usage`, `stats` and `model_info` reads and empty-content
+  handling from #20, in [#71].
 - [@YakovAU](https://github.com/YakovAU): the Copy Blueprint JSON command from #3 (c5177ab).
 - [@flashpoint493](https://github.com/flashpoint493): the missing-include fix in #9, which landed in deca5c3
   without credit at the time.
@@ -310,3 +361,27 @@ Thanks to the people whose pull requests are in this release:
 [#66]: https://github.com/protospatial/NodeToCode/pull/66
 [#67]: https://github.com/protospatial/NodeToCode/pull/67
 [#68]: https://github.com/protospatial/NodeToCode/pull/68
+[#70]: https://github.com/protospatial/NodeToCode/pull/70
+[#71]: https://github.com/protospatial/NodeToCode/pull/71
+[#72]: https://github.com/protospatial/NodeToCode/pull/72
+[#73]: https://github.com/protospatial/NodeToCode/pull/73
+[#74]: https://github.com/protospatial/NodeToCode/pull/74
+[#75]: https://github.com/protospatial/NodeToCode/pull/75
+[#76]: https://github.com/protospatial/NodeToCode/pull/76
+[#77]: https://github.com/protospatial/NodeToCode/pull/77
+[#78]: https://github.com/protospatial/NodeToCode/pull/78
+[#79]: https://github.com/protospatial/NodeToCode/pull/79
+[#80]: https://github.com/protospatial/NodeToCode/pull/80
+[#81]: https://github.com/protospatial/NodeToCode/pull/81
+[#82]: https://github.com/protospatial/NodeToCode/pull/82
+[#83]: https://github.com/protospatial/NodeToCode/pull/83
+[#84]: https://github.com/protospatial/NodeToCode/pull/84
+[#85]: https://github.com/protospatial/NodeToCode/pull/85
+[#86]: https://github.com/protospatial/NodeToCode/pull/86
+[#87]: https://github.com/protospatial/NodeToCode/pull/87
+[#88]: https://github.com/protospatial/NodeToCode/pull/88
+[#89]: https://github.com/protospatial/NodeToCode/pull/89
+[#90]: https://github.com/protospatial/NodeToCode/pull/90
+[#91]: https://github.com/protospatial/NodeToCode/pull/91
+[#92]: https://github.com/protospatial/NodeToCode/pull/92
+[#93]: https://github.com/protospatial/NodeToCode/pull/93
