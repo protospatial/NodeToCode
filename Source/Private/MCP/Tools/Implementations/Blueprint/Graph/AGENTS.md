@@ -40,41 +40,54 @@ Nodes and pins are addressed by GUID:
     full search text (`SearchActions`). Math symbols such as `+` or `*` find the promotable operators
   - `contextSensitive` (optional, default true): Build the action list for the focused graph (or `blueprintContext`)
   - `blueprintContext` (optional): `owningBlueprintPath` (Blueprint asset path) and `graphPath`
-    (`<Blueprint path>:<GraphName>`). When it does not resolve, the focused graph is used (`GetContextFromPaths`)
+    (`<Blueprint path>:<GraphName>`, or a graph name of `owningBlueprintPath`). Without `graphPath`: the focused graph
+    when it belongs to that Blueprint, else its event graph. A Blueprint that does not load is an error
+    (`ASSET_NOT_FOUND`), and so is a graph it does not have (`GRAPH_NOT_FOUND: no graph '<name>' in <path>. Graphs:
+    ...`); neither falls back to the focused graph or a global search (`GetContextFromPaths`, card 0277)
   - `maxResults` (optional, default 20): Clamped to 1-100
-  - `category` (optional): Keep actions whose category part (from the first `|` of the search text) contains this
-    text, case-insensitively (`MatchesCategoryFilter`), e.g. `flowcontrol`
+  - `category` (optional): Keep actions whose menu category (`FEdGraphSchemaAction::GetCategory`) contains this
+    text, ignoring case and spaces (`N2CNodeActions::MatchesCategory`): `flowcontrol` finds `Utilities|Flow Control`
   - `excludeVMFunctions` (optional, default true): Leave out type-specific math functions such as
     `Multiply_FloatFloat`
-- **Returns**: `nodes`, each an N2C JSON node (`id` such as `SearchNode_12`, `type`, `class`, `member_parent`,
-  `member_name`, the optional `title`, `input_pins`, `output_pins` with their default values) plus `spawnMetadata`
-  (`actionIdentifier`, `isContextSensitive`). The result is marked as untrusted Blueprint data: its first key is
-  `untrusted_content` (card 0124)
-- **actionIdentifier**: the action's full search text (`FEdGraphSchemaAction::GetFullSearchText`, lower case) with
-  each `\n` replaced by `>` (`ConvertActionToJson`). On Windows each line of that text ends in `\r`, which stays in
-  the identifier: Print String's is `"printstring\r>printstringlogprint\r>|development\r>printstring\r>printstringlogprint\r>|development"`
-  (as a JSON string). Pass it to add-bp-node-to-active-graph exactly as received; without the `\r` characters it
-  does not match
-- **Known issue (new):** with `contextSensitive` false the search returns no nodes (UE 5.8: `print string`, `branch`,
-  `add`, `string` all return an empty `nodes`). Use the default
-- **Known issue (card 0277):** an action whose search text contains `>` (comparison operators) cannot be added:
-  add-bp-node-to-active-graph turns every `>` back into a newline
+- **Returns**: `nodes`, each an N2C JSON node (`id` `SearchNode_1`, `SearchNode_2`, ... numbered per search, `type`,
+  `class`, `member_parent`, `member_name`, the optional `title`, `input_pins`, `output_pins` with their default
+  values) plus `spawnMetadata` (`actionIdentifier`, `nodeName` (the menu name), `category` (the menu category) and
+  `isContextSensitive`). The result is marked as untrusted Blueprint data: its first key is `untrusted_content`
+  (card 0124)
+- **actionIdentifier** (card 0277): a stable ID, the node spawner's signature
+  (`UBlueprintNodeSpawner::GetSpawnerSignature`, `FBlueprintNodeSignature::ToString`, `N2CNodeActions::GetActionId`).
+  Print String's is `(FieldName="/Script/Engine.KismetSystemLibrary:PrintString",NodeName="/Script/BlueprintGraph.K2Node_CallFunction")`.
+  It names the node class and the field or asset the node is made from, never display text, so the same action has
+  the same ID in every search, in any editor language, with or without a context graph, and after a capture or a
+  compile; it holds no carriage return or other control character. Where the engine's signature is not enough to
+  tell actions apart, NodeToCode adds to it: the variable of a member-variable Get or Set (`FieldName`), and the
+  template node's own object and member references for spawners that only name a node class (Get `<Subsystem>`,
+  the instanced-struct functions). An Actor Blueprint's event graph lists about 40,000 actions on UE 5.8 with no
+  two spawners sharing an ID (`NodeToCode.MCP.NodeActionIds`). An action without a spawner gets
+  `menu:<category>|<menu name>`
+- **Known issue (card 0434):** with `contextSensitive` false the search returns no nodes (UE 5.8: `print string`,
+  `branch`, `add`, `string` all return an empty `nodes`). Use the default
 
 ### add-bp-node-to-active-graph
 - **Description**: Adds the node of one search result to the focused graph
 - **Parameters**:
-  - `nodeName` (required): Split on spaces; actions whose search text contains every word are candidates, e.g.
-    `Print String`
-  - `actionIdentifier` (required): From `spawnMetadata.actionIdentifier`. Among the candidates, the action whose
-    search text equals it (after each `>` is turned back into `\n`) is spawned (`FindAndSpawnNode`)
+  - `nodeName` (required): The result's `spawnMetadata.nodeName`, e.g. `Print String`. Only used when different
+    actions share the ID (none in the stock engine; see above): the one with this menu name, ignoring case and spaces
+  - `actionIdentifier` (required): From `spawnMetadata.actionIdentifier`, unchanged. It is looked up in the focused
+    graph's action list, the same list search-blueprint-nodes builds (`N2CNodeActions::ResolveAction`). The
+    identifiers search returned before card 0277 (the action's search text with `>` between lines) are still
+    accepted, with or without their `\r` characters, now including actions whose text holds `>` such as
+    `Greater ( > )`; the editor log warns that the identifier is old. This compatibility is planned for removal
+    after one release
   - `location` (optional): `{ "x": number, "y": number }` in graph coordinates (default 0, 0). The view's zoom and
     pan play no part; the engine snaps the node to the 16-unit grid, so `{ "x": 400, "y": 200 }` gives
     `{ "x": 400, "y": 192 }`
 - **Returns**: `success`, `nodeGuid`, `nodeName` (list title), `graphName`, `blueprintName`, `location` (after
   snapping), `inputPins` and `outputPins` (visible pins only; each `pinGuid`, `pinName`, `displayName`, `type`, and
   `defaultValue` on inputs with one), `nextStep`
-- **Errors**: `No nodes found matching name: <nodeName>`; `Found <n> nodes matching name '<nodeName>', but none with
-  the exact actionIdentifier`
+- **Errors**: `ACTION_NOT_FOUND: no action with the actionIdentifier <id> can be added to this graph. ...` (an ID
+  from a search in another kind of graph, or one this graph's context cannot use); `AMBIGUOUS_ACTION: <n> actions
+  have the actionIdentifier <id> (<menu names>). Pass the one you want as nodeName.`
 
 ### connect-pins
 - **Description**: Makes one or more pin connections in the focused graph, in one transaction
@@ -195,7 +208,7 @@ curl -X POST http://localhost:27000/mcp \
 
 ### Step 2: Add Found Node
 ```bash
-# actionIdentifier copied unchanged from spawnMetadata, \r included (UE 5.8 on Windows)
+# nodeName and actionIdentifier copied unchanged from the result's spawnMetadata
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -206,7 +219,7 @@ curl -X POST http://localhost:27000/mcp \
       "name": "add-bp-node-to-active-graph",
       "arguments": {
         "nodeName": "Print String",
-        "actionIdentifier": "printstring\r>printstringlogprint\r>|development\r>printstring\r>printstringlogprint\r>|development",
+        "actionIdentifier": "(FieldName=\"/Script/Engine.KismetSystemLibrary:PrintString\",NodeName=\"/Script/BlueprintGraph.K2Node_CallFunction\")",
         "location": {"x": 400, "y": 200}
       }
     },
@@ -444,5 +457,6 @@ variable node tools cannot be wired yet (card 0155, `../Variables/AGENTS.md`).
 ## Implementation Notes
 
 - Node search reads the Blueprint action database through `FBlueprintActionMenuBuilder`; add-bp-node-to-active-graph
-  rebuilds the same list for the focused graph and calls `PerformAction` on the matching action
+  rebuilds the same list for the focused graph, finds the action by its ID and calls `PerformAction` on it. Both, and
+  the Python bridge's `search_blueprint_nodes` and `add_node_to_graph`, share `MCP/Utils/N2CMcpNodeActions.h`
 - Pin connections are checked by the graph schema (`CanCreateConnection`) and made with `TryCreateConnection`

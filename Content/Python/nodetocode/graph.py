@@ -20,9 +20,9 @@ Usage:
     # Step 1: Search for nodes
     results = n2c.search_blueprint_nodes("Print String")
 
-    # Step 2: Add a node to the focused graph
+    # Step 2: Add a node to the focused graph (spawnMetadata holds the stable action ID and the node's menu name)
     node = n2c.add_node_to_graph(
-        results['data']['nodes'][0]['displayName'],
+        results['data']['nodes'][0]['spawnMetadata']['nodeName'],
         results['data']['nodes'][0]['spawnMetadata']['actionIdentifier']
     )
 
@@ -76,9 +76,13 @@ def search_blueprint_nodes(
         exclude_vm_functions: If True (default), excludes low-level VM math functions
             like Multiply_FloatFloat that are rarely used directly
 
-    Each result's 'name' is the action's full search text (lower case: its title, keywords and category
-    lines) and 'displayName' is that text after its last '>', which in practice is the same text. Neither
-    is a display title, but 'displayName' with 'actionIdentifier' is what add_node_to_graph() needs.
+    Each result carries the action's own fields: 'menuName' (also in 'name' and 'displayName'), 'category'
+    (the menu category, e.g. "Development|String"), 'tooltip' and 'keywords'. Its
+    spawnMetadata.actionIdentifier is a stable ID, the node spawner's signature (for Print String
+    '(FieldName="/Script/Engine.KismetSystemLibrary:PrintString",NodeName="/Script/BlueprintGraph.K2Node_CallFunction")'):
+    the same in every search, context, capture and compile, with no control characters. Pass it with
+    spawnMetadata.nodeName to add_node_to_graph(). 'category' filters on the menu category, ignoring case
+    and spaces ('flowcontrol' finds "Utilities|Flow Control").
 
     Returns:
         {
@@ -86,10 +90,15 @@ def search_blueprint_nodes(
             data: {
                 nodes: [
                     {
-                        name: str,          # full search text: "printstring", keywords, "|development", ...
-                        displayName: str,   # that text after its last '>' (the same text in practice)
+                        name: str,          # the menu name, e.g. "Print String" (same as menuName)
+                        displayName: str,   # the menu name (same as menuName)
+                        menuName: str,
+                        category: str,      # e.g. "Development|String"
+                        tooltip: str,
+                        keywords: str,
                         spawnMetadata: {
-                            actionIdentifier: str,
+                            actionIdentifier: str,   # stable ID (spawner signature)
+                            nodeName: str,           # the menu name, for add_node_to_graph()
                             isContextSensitive: bool
                         }
                     },
@@ -108,7 +117,7 @@ def search_blueprint_nodes(
         results = search_blueprint_nodes("Print String")
         if results['success'] and results['data']['count'] > 0:
             node = results['data']['nodes'][0]
-            print(f"Found: {node['displayName']!r}")
+            print(f"Found: {node['menuName']!r} in {node['category']!r}")
             print(f"ActionID: {node['spawnMetadata']['actionIdentifier']!r}")
     """
     if not search_term or not search_term.strip():
@@ -145,9 +154,11 @@ def add_node_to_graph(
     to other nodes using the nodeGuid and pinGuid values returned in this response.
 
     Args:
-        node_name: Text whose space-separated words all appear in the action's search text; a search
-            result's 'displayName' works. It narrows the actions before the exact action_identifier match.
-        action_identifier: Identifier from search results spawnMetadata
+        node_name: The search result's spawnMetadata['nodeName'] (its menu name). Only used to tell
+            apart actions that share an action_identifier.
+        action_identifier: The search result's spawnMetadata['actionIdentifier'], unchanged (a stable ID).
+            Identifiers from before NodeToCode 2.0's stable IDs (search text with '>' between lines) are
+            still accepted for now.
         location_x: X position for node placement
         location_y: Y position for node placement
 
@@ -185,7 +196,7 @@ def add_node_to_graph(
 
         # Then add it
         added = add_node_to_graph(
-            node_info['displayName'],
+            node_info['spawnMetadata']['nodeName'],
             node_info['spawnMetadata']['actionIdentifier'],
             location_x=400,
             location_y=200

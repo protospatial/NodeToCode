@@ -5,6 +5,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpNodeActions.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
@@ -32,7 +33,7 @@ FMcpToolDefinition FN2CMcpAddBlueprintNodeTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("add-bp-node-to-active-graph"),
-        TEXT("Adds a Blueprint node to the currently active graph. IMPORTANT: The search-blueprint-nodes tool MUST have been used before this tool in order to find the node and get its actionIdentifier from the spawnMetadata alongside its Name. The node's Name and actionIdentifier are required to spawn the exact correct variant of the node. NEXT STEP: After adding a node, use the 'connect-pins' tool to wire the node's pins to other nodes using the pinGuid values returned in inputPins and outputPins arrays."),
+        TEXT("Adds a Blueprint node to the currently active graph. IMPORTANT: Use search-blueprint-nodes first and pass a result's spawnMetadata.actionIdentifier (a stable ID) and spawnMetadata.nodeName. NEXT STEP: After adding a node, use the 'connect-pins' tool to wire the node's pins to other nodes using the pinGuid values returned in inputPins and outputPins arrays."),
         TEXT("Blueprint Graph Editing")
     );
     
@@ -45,13 +46,13 @@ FMcpToolDefinition FN2CMcpAddBlueprintNodeTool::GetDefinition() const
     // nodeName property (required)
     TSharedPtr<FJsonObject> NodeNameProp = MakeShareable(new FJsonObject);
     NodeNameProp->SetStringField(TEXT("type"), TEXT("string"));
-    NodeNameProp->SetStringField(TEXT("description"), TEXT("The name of the node to add (e.g., 'Spawn Actor from Class')"));
+    NodeNameProp->SetStringField(TEXT("description"), TEXT("The node's menu name, spawnMetadata.nodeName of the search result (e.g., 'Spawn Actor from Class'). Only used to tell apart actions that share an actionIdentifier"));
     Properties->SetObjectField(TEXT("nodeName"), NodeNameProp);
     
     // actionIdentifier property (required)
     TSharedPtr<FJsonObject> ActionIdProp = MakeShareable(new FJsonObject);
     ActionIdProp->SetStringField(TEXT("type"), TEXT("string"));
-    ActionIdProp->SetStringField(TEXT("description"), TEXT("The unique action identifier obtained from the spawnMetadata.actionIdentifier field in search-blueprint-nodes results. This MUST be the exact value from the search results, including the carriage returns (\\r) before each '>' that it has on Windows."));
+    ActionIdProp->SetStringField(TEXT("description"), TEXT("The stable action ID from spawnMetadata.actionIdentifier of a search-blueprint-nodes result, passed unchanged, e.g. (FieldName=\"/Script/Engine.KismetSystemLibrary:PrintString\",NodeName=\"/Script/BlueprintGraph.K2Node_CallFunction\"). It is the node spawner's signature, so it stays valid across searches, captures and compiles. Old search-text identifiers are still accepted for now."));
     Properties->SetObjectField(TEXT("actionIdentifier"), ActionIdProp);
     
     // location property (optional)
@@ -239,116 +240,28 @@ bool FN2CMcpAddBlueprintNodeTool::FindAndSpawnNode(
     UEdGraphNode*& OutSpawnedNode,
     FString& OutError)
 {
-    // Build the action filter for the current context
-    FBlueprintActionFilter Filter;
-    Filter.Context.Blueprints.Add(Blueprint);
-    Filter.Context.Graphs.Add(Graph);
-    
-    // Build the action list
+    // The same action list search-blueprint-nodes builds for this graph
     FBlueprintActionMenuBuilder MenuBuilder;
-    MenuBuilder.AddMenuSection(Filter, FText::GetEmpty(), 0);
-    MenuBuilder.RebuildActionList();
-    
-    // Tokenize node name for searching (same logic as search-blueprint-nodes)
-    TArray<FString> FilterTerms;
-    NodeName.ParseIntoArray(FilterTerms, TEXT(" "), true);
-    
-    // Also create case-insensitive versions
-    TArray<FString> LowerFilterTerms;
-    for (const FString& Term : FilterTerms)
-    {
-        LowerFilterTerms.Add(Term.ToLower());
-    }
-    
-    // Search for actions matching the node name
-    TArray<int32> MatchingActionIndices;
-    
-    for (int32 i = 0; i < MenuBuilder.GetNumActions(); ++i)
-    {
-        const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
-        if (!Action.IsValid())
-        {
-            continue;
-        }
-        const FString& ActionSearchText = Action->GetFullSearchText();
-        FString LowerSearchText = ActionSearchText.ToLower();
-        
-        // Check if all search terms match (case-insensitive) - same as search-blueprint-nodes
-        bool bMatchesAllTerms = true;
-        for (const FString& Term : LowerFilterTerms)
-        {
-            if (!LowerSearchText.Contains(Term))
-            {
-                bMatchesAllTerms = false;
-                break;
-            }
-        }
-        
-        if (bMatchesAllTerms)
-        {
-            MatchingActionIndices.Add(i);
-        }
-    }
-    
-    if (MatchingActionIndices.Num() == 0)
-    {
-        OutError = FString::Printf(TEXT("No nodes found matching name: %s"), *NodeName);
-        return false;
-    }
-    
-    // Now find the exact match using actionIdentifier
-    int32 ExactMatchIndex = -1;
-    
-    // Convert the actionIdentifier back to the original format
-    // Simply replace > with \n since we use > as our delimiter
-    FString SearchActionId = ActionIdentifier.Replace(TEXT(">"), TEXT("\n"));
-    
-    for (int32 Index : MatchingActionIndices)
-    {
-        const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(Index);
-        FString CurrentActionId = Action.IsValid() ? Action->GetFullSearchText() : FString();
-        
-        // Compare using the converted identifier
-        if (CurrentActionId == SearchActionId)
-        {
-            ExactMatchIndex = Index;
-            break;
-        }
-    }
-    
-    if (ExactMatchIndex == -1)
-    {
-        OutError = FString::Printf(TEXT("Found %d nodes matching name '%s', but none with the exact actionIdentifier"), 
-            MatchingActionIndices.Num(), *NodeName);
-        return false;
-    }
-    
-    // Get the matching action
-    TSharedPtr<FEdGraphSchemaAction> SchemaAction = MenuBuilder.GetSchemaAction(ExactMatchIndex);
+    N2CNodeActions::BuildActionList(MenuBuilder, Blueprint, Graph);
+
+    // The ID is the spawner signature search-blueprint-nodes returns (card 0277); identifiers from before that
+    // (search text with '>' for line breaks, with or without the carriage returns) are still accepted
+    bool bLegacyIdentifier = false;
+    const TSharedPtr<FEdGraphSchemaAction> SchemaAction = N2CNodeActions::ResolveAction(MenuBuilder, ActionIdentifier,
+        NodeName, OutError, &bLegacyIdentifier);
     if (!SchemaAction.IsValid())
     {
-        OutError = TEXT("Invalid schema action");
         return false;
     }
-    
-    // Store the current node count to identify the new node
-    int32 PreSpawnNodeCount = Graph->Nodes.Num();
-    
-    // Perform the action to spawn the node
-    UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(Graph, nullptr, FVector2f(Location));
-    
+    if (bLegacyIdentifier)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("add-bp-node-to-active-graph: '%s' was given an old-style actionIdentifier; search again for the stable one"), *NodeName));
+    }
+
+    UEdGraphNode* SpawnedNode = N2CNodeActions::SpawnAction(SchemaAction, Graph, FVector2f(Location), OutError);
     if (!SpawnedNode)
     {
-        // Sometimes the action doesn't return the node directly, check if a new node was added
-        if (Graph->Nodes.Num() > PreSpawnNodeCount)
-        {
-            SpawnedNode = Graph->Nodes.Last();
-        }
-        else
-        {
-            OutError = TEXT("Failed to spawn node - action did not create a new node");
-            return false;
-        }
+        return false;
     }
 
     // Return the spawned node for the caller to use

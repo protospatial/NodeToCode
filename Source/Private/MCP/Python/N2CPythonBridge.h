@@ -155,30 +155,23 @@ public:
 	 * @param MaxResults Maximum number of results to return (1-100)
 	 * @param CategoryFilter Optional category filter (e.g., "flowcontrol", "operators", "struct")
 	 * @param bExcludeVMFunctions If true (default), excludes low-level VM math functions
-	 * @return JSON {"nodes": [{"name", "displayName", "spawnMetadata": {"actionIdentifier", "isContextSensitive"}}],
-	 *         "count"}. "name" is the action's full search text (lower case: title, keywords and category lines), and
-	 *         "displayName" is that text after its last '>' (in practice the same text); neither is a display title.
-	 *         Pass "displayName" and "actionIdentifier" to AddNodeToGraph.
+	 * @return JSON {"nodes": [{"name", "displayName", "menuName", "category", "tooltip", "keywords",
+	 *         "spawnMetadata": {"actionIdentifier", "nodeName", "isContextSensitive"}}], "count"}. name, displayName and
+	 *         menuName are the menu name ("Print String"); category is the menu category ("Development|String");
+	 *         actionIdentifier is the stable action ID, the node spawner's signature (card 0277). Pass nodeName and
+	 *         actionIdentifier to AddNodeToGraph. CategoryFilter matches category, ignoring case and spaces.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString SearchBlueprintNodes(const FString& SearchTerm, bool bContextSensitive = true, int32 MaxResults = 20,
 		const FString& CategoryFilter = TEXT(""), bool bExcludeVMFunctions = true);
 
-private:
-	/** Check if the action's category matches the filter */
-	static bool MatchesCategoryFilter(const FString& ActionSearchText, const FString& CategoryFilter);
-
-	/** Check if the action is a VMFunction that should be excluded */
-	static bool IsExcludedVMFunction(const FString& ActionSearchText);
-
-public:
-
 	/**
 	 * Add a Blueprint node to the focused graph.
 	 *
-	 * @param NodeName Text whose space-separated words all appear in the action's search text (a search result's
-	 *        "displayName" works); it narrows the actions before the exact ActionIdentifier match
-	 * @param ActionIdentifier Identifier from search results spawnMetadata
+	 * @param NodeName The search result's spawnMetadata.nodeName (menu name); only breaks a tie between actions that
+	 *        share an ActionIdentifier
+	 * @param ActionIdentifier spawnMetadata.actionIdentifier of a search result (the stable spawner-signature ID);
+	 *        a pre-0277 search-text identifier is still accepted
 	 * @param LocationX X position for node placement
 	 * @param LocationY Y position for node placement
 	 * @return JSON with spawned node info including nodeGuid

@@ -38,6 +38,17 @@ public:
                                                  const FString& CategoryFilter,
                                                  bool bExcludeVMFunctions);
 
+    /**
+     * Resolves blueprintContext (owningBlueprintPath, graphPath) to a Blueprint and one of its graphs. A Blueprint
+     * that does not load fails with ASSET_NOT_FOUND and a graph that is not in it with GRAPH_NOT_FOUND; it never
+     * falls back to another context. Without graphPath: the focused graph if it is this Blueprint's, else its event
+     * graph. Public for the automation tests.
+     */
+    static bool GetContextFromPaths(const TSharedPtr<FJsonObject>& BlueprintContext,
+                            UBlueprint*& OutBlueprint,
+                            UEdGraph*& OutGraph,
+                            FString& OutError);
+
 private:
     // Helper methods
     bool ParseArguments(const TSharedPtr<FJsonObject>& Arguments,
@@ -49,26 +60,12 @@ private:
                        bool& bOutExcludeVMFunctions,
                        FString& OutError);
 
-    /** Check if the action's category matches the filter */
-    static bool MatchesCategoryFilter(const FString& ActionSearchText, const FString& CategoryFilter);
-
-    /** Check if the action is a VMFunction that should be excluded */
-    static bool IsExcludedVMFunction(const FString& ActionSearchText);
-    
-    bool GetContextFromPaths(const TSharedPtr<FJsonObject>& BlueprintContext,
-                            UBlueprint*& OutBlueprint,
-                            UEdGraph*& OutGraph,
-                            FString& OutError);
-    
     TSharedPtr<FJsonObject> ConvertActionToJson(
         const TSharedPtr<FEdGraphSchemaAction>& Action,
+        const FString& NodeId,
         bool bIsContextSensitive,
-        UBlueprint* ContextBlueprint,
         UEdGraph* ContextGraph);
-    
-    static FString ExtractInternalName(const TSharedPtr<FEdGraphSchemaAction>& Action);
-    static TArray<FString> ExtractCategoryPath(const TSharedPtr<FEdGraphSchemaAction>& Action);
-    
+
     // New helper method to convert UK2Node to N2CJSON format
     static TSharedPtr<FJsonObject> ConvertNodeToN2CJson(UK2Node* Node, const FString& NodeId);
     

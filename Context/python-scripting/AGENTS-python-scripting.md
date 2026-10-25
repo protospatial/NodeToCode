@@ -171,10 +171,12 @@ arguments and the keys of its `data`. Grouped:
 
 **Graph Editing (the focused graph):**
 *   `search_blueprint_nodes(term, context_sensitive=True, max_results=20, category="", exclude_vm_functions=True)` -
-    Actions to add; each has `name` and `displayName` (both the action's lower-case search text, not a title) and
-    `spawnMetadata.actionIdentifier`
+    Actions to add; each has `menuName` (also in `name` and `displayName`), `category`, `tooltip`, `keywords` and
+    `spawnMetadata` (`actionIdentifier`: the stable spawner-signature ID, card 0277; `nodeName`). `category` filters
+    on the menu category, ignoring case and spaces
 *   `add_node_to_graph(node_name, action_identifier, location_x=0, location_y=0)` - Add a node (pass a result's
-    `displayName` and `actionIdentifier`); returns `nodeGuid` and `inputPins`/`outputPins` with `pinGuid`, `pinName`
+    `spawnMetadata.nodeName` and `spawnMetadata.actionIdentifier`; pre-0277 search-text identifiers still work);
+    returns `nodeGuid` and `inputPins`/`outputPins` with `pinGuid`, `pinName`
 *   `connect_pins(connections, break_existing_links=False)` - `[{"from": {"nodeGuid", "pinGuid"}, "to": {...}}]`;
     without `break_existing_links` a connection that would replace a link (a linked data input, also through a
     conversion node, or a linked exec output) fails and names that link
