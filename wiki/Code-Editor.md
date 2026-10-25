@@ -6,7 +6,7 @@ The code editor is the central component of the Node to Code Editor window where
 ## Features
 
 ### Syntax Highlighting
-The editor provides language-specific syntax highlighting that automatically adjusts based on your target language:
+The editor highlights code in the language the translation was written in (C++, Python, JavaScript, C#, Swift or Pseudocode), and keeps that language when you change the font size or theme:
 
 - Keywords
 - Operators

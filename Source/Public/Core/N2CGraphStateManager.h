@@ -254,6 +254,12 @@ public:
 	bool LoadTranslation(const FGuid& GraphGuid, FN2CGraphTranslation& OutTranslation) const;
 
 	/**
+	 * LoadTranslation, also giving the recorded language (FN2CPathUtils::ParseLanguageId on the stored id; C++ when
+	 * the id is empty or unknown), so the translation viewer can label and highlight the implementation file
+	 */
+	bool LoadTranslation(const FGuid& GraphGuid, FN2CGraphTranslation& OutTranslation, EN2CCodeLanguage& OutLanguage) const;
+
+	/**
 	 * Load the N2C JSON representation of a graph from disk
 	 * @param GraphGuid The GUID of the graph
 	 * @param OutJsonContent The loaded JSON content as a string

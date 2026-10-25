@@ -22,13 +22,15 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Utils/N2CPathUtils.h"
 
 #define LOCTEXT_NAMESPACE "SN2CTranslationViewer"
 
 void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 {
 	OnCloseRequestedDelegate = InArgs._OnCloseRequested;
-	ActiveFileType = TEXT("h"); // Default to header file
+	ActiveFileType = TEXT("cpp"); // Open on the implementation, which every language has
+	CurrentLanguage = EN2CCodeLanguage::Cpp;
 	bHasTranslation = false;
 
 	ChildSlot
@@ -67,18 +69,18 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
 						[
-							CreateFileTab(TEXT(".cpp"), TEXT("cpp"), CppTabButton)
+							CreateFileTab(TAttribute<FText>::CreateSP(this, &SN2CTranslationViewer::GetImplementationTabLabel), TEXT("cpp"), CppTabButton)
 						]
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
 						[
-							CreateFileTab(TEXT(".h"), TEXT("h"), HeaderTabButton)
+							CreateFileTab(FText::FromString(TEXT(".h")), TEXT("h"), HeaderTabButton)
 						]
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						[
-							CreateFileTab(TEXT("JSON"), TEXT("json"), JsonTabButton)
+							CreateFileTab(FText::FromString(TEXT("JSON")), TEXT("json"), JsonTabButton)
 						]
 					]
 					// Spacer
@@ -170,10 +172,13 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 		]
 	];
 
+	// Only C++ translations have a declaration; hide the tab (and its slot) for the other languages
+	HeaderTabButton->SetVisibility(TAttribute<EVisibility>::CreateSP(this, &SN2CTranslationViewer::GetHeaderTabVisibility));
+
 	UpdateTabStyles();
 }
 
-TSharedRef<SWidget> SN2CTranslationViewer::CreateFileTab(const FString& Label, const FString& FileType, TSharedPtr<SButton>& OutButton)
+TSharedRef<SWidget> SN2CTranslationViewer::CreateFileTab(const TAttribute<FText>& Label, const FString& FileType, TSharedPtr<SButton>& OutButton)
 {
 	return SAssignNew(OutButton, SButton)
 		.ButtonStyle(&N2CStyle::GetButtonStyle())
@@ -181,7 +186,7 @@ TSharedRef<SWidget> SN2CTranslationViewer::CreateFileTab(const FString& Label, c
 		.OnClicked(this, &SN2CTranslationViewer::HandleFileTabClicked, FileType)
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(Label))
+			.Text(Label)
 			.Font(FN2CFonts::Medium())
 			.ColorAndOpacity(this, &SN2CTranslationViewer::GetTabTextColor, FileType)
 		];
@@ -191,19 +196,20 @@ bool SN2CTranslationViewer::LoadTranslation(const FN2CTagInfo& GraphInfo)
 {
 	// Try to load translation from state manager
 	FN2CGraphTranslation Translation;
+	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
 	FGuid GraphGuid;
 	if (!FGuid::Parse(GraphInfo.GraphGuid, GraphGuid))
 	{
 		return false;
 	}
 
-	if (UN2CGraphStateManager::Get().LoadTranslation(GraphGuid, Translation))
+	if (UN2CGraphStateManager::Get().LoadTranslation(GraphGuid, Translation, Language))
 	{
 		// Try to get JSON content as well
 		FString JsonContent;
 		UN2CGraphStateManager::Get().LoadN2CJson(GraphGuid, JsonContent);
 
-		LoadTranslation(Translation, GraphInfo.GraphName, JsonContent);
+		LoadTranslation(Translation, GraphInfo.GraphName, JsonContent, Language);
 		return true;
 	}
 
@@ -212,7 +218,16 @@ bool SN2CTranslationViewer::LoadTranslation(const FN2CTagInfo& GraphInfo)
 
 void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translation, const FString& GraphName, const FString& JsonContent)
 {
+	// A single translate writes in the settings' Target Language (UN2CLLMModule reads the same setting)
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	LoadTranslation(Translation, GraphName, JsonContent, Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp);
+}
+
+void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translation, const FString& GraphName, const FString& JsonContent,
+	EN2CCodeLanguage Language)
+{
 	CurrentTranslation = Translation;
+	CurrentLanguage = Language;
 	CurrentGraphName = GraphName;
 	CurrentJsonContent = JsonContent;
 	bHasTranslation = true;
@@ -234,7 +249,9 @@ void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translat
 		NotesText->SetText(FText::FromString(Notes));
 	}
 
-	// Update code display
+	// Open on the implementation (the .h tab is hidden when there is no declaration)
+	ActiveFileType = TEXT("cpp");
+	UpdateTabStyles();
 	UpdateCodeDisplay();
 }
 
@@ -270,7 +287,10 @@ void SN2CTranslationViewer::Clear()
 	CurrentTranslation = FN2CGraphTranslation();
 	CurrentGraphName = FString();
 	CurrentJsonContent = FString();
+	CurrentLanguage = EN2CCodeLanguage::Cpp;
+	ActiveFileType = TEXT("cpp");
 	bHasTranslation = false;
+	UpdateTabStyles();
 
 	if (HeaderBar.IsValid())
 	{
@@ -340,9 +360,14 @@ void SN2CTranslationViewer::UpdateCodeDisplay()
 		// This provides reasonable highlighting for structured text
 		CodeEditor->SetLanguage(EN2CCodeLanguage::Pseudocode);
 	}
-	else
+	else if (ActiveFileType == TEXT("h"))
 	{
 		CodeEditor->SetLanguage(EN2CCodeLanguage::Cpp);
+	}
+	else
+	{
+		// The implementation, in the language it was written in
+		CodeEditor->SetLanguage(CurrentLanguage);
 	}
 
 	CodeEditor->SetText(FText::FromString(Content));
@@ -398,6 +423,16 @@ FString SN2CTranslationViewer::GetContentForActiveTab() const
 		return CurrentJsonContent;
 	}
 	return FString();
+}
+
+FText SN2CTranslationViewer::GetImplementationTabLabel() const
+{
+	return FText::FromString(FN2CPathUtils::GetFileExtensionForLanguage(CurrentLanguage));
+}
+
+EVisibility SN2CTranslationViewer::GetHeaderTabVisibility() const
+{
+	return CurrentTranslation.Code.GraphDeclaration.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
 }
 
 const FButtonStyle* SN2CTranslationViewer::GetTabButtonStyle(bool bIsActive) const

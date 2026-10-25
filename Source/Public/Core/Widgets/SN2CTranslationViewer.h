@@ -6,6 +6,7 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Models/N2CTranslation.h"
 #include "TagManager/Models/N2CTagManagerTypes.h"
+#include "Code Editor/Models/N2CCodeLanguage.h"
 
 class SN2CCodeEditor;
 class SN2CHeaderBar;
@@ -13,7 +14,8 @@ class SExpandableArea;
 
 /**
  * Translation viewer overlay widget
- * Displays translated code with file tabs (.cpp, .h, JSON), syntax highlighting, and notes
+ * Displays translated code with file tabs (the implementation file, labelled with its language's extension; .h when
+ * the translation has a declaration; JSON), syntax highlighting in the translation's language, and notes
  */
 class NODETOCODE_API SN2CTranslationViewer : public SCompoundWidget
 {
@@ -27,19 +29,28 @@ public:
 	void Construct(const FArguments& InArgs);
 
 	/**
-	 * Load translation for a specific graph from the state manager
+	 * Load translation for a specific graph from the state manager, in the language recorded for it
 	 * @param GraphInfo The tag info for the graph to load translation for
 	 * @return True if translation was loaded successfully
 	 */
 	bool LoadTranslation(const FN2CTagInfo& GraphInfo);
 
 	/**
-	 * Load translation directly from a translation object
+	 * Load translation directly from a translation object, in the Target Language from the plugin settings (what a
+	 * single translate just used)
 	 * @param Translation The translation data
 	 * @param GraphName The name of the graph for display
 	 * @param JsonContent Optional JSON content to display in the JSON tab
 	 */
 	void LoadTranslation(const FN2CGraphTranslation& Translation, const FString& GraphName, const FString& JsonContent = TEXT(""));
+
+	/**
+	 * Load translation directly from a translation object written in Language: the implementation tab is labelled
+	 * with the language's extension and highlighted in it, the .h tab shows only when there is a declaration, and the
+	 * viewer opens on the implementation
+	 */
+	void LoadTranslation(const FN2CGraphTranslation& Translation, const FString& GraphName, const FString& JsonContent,
+		EN2CCodeLanguage Language);
 
 	/**
 	 * Set only the JSON content (for JSON-only viewing)
@@ -80,11 +91,18 @@ private:
 	FN2CGraphTranslation CurrentTranslation;
 	FString CurrentGraphName;
 	FString CurrentJsonContent;
-	FString ActiveFileType; // "cpp", "h", or "json"
+	FString ActiveFileType; // "cpp" (the implementation, any language), "h", or "json"
+	EN2CCodeLanguage CurrentLanguage;
 	bool bHasTranslation;
 
 	/** Create a file tab button */
-	TSharedRef<SWidget> CreateFileTab(const FString& Label, const FString& FileType, TSharedPtr<SButton>& OutButton);
+	TSharedRef<SWidget> CreateFileTab(const TAttribute<FText>& Label, const FString& FileType, TSharedPtr<SButton>& OutButton);
+
+	/** The implementation tab's label: the current language's file extension (.cpp, .py, .js, .cs, .swift, .md) */
+	FText GetImplementationTabLabel() const;
+
+	/** The .h tab shows only when the translation has a declaration */
+	EVisibility GetHeaderTabVisibility() const;
 
 	/** Handle file tab clicked */
 	FReply HandleFileTabClicked(FString FileType);
