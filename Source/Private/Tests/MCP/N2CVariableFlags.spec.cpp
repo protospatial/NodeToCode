@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Tools/Implementations/Blueprint/Variables/N2CMcpCreateVariableTool.h"
 #include "MCP/Tools/Implementations/Blueprint/Variables/N2CMcpCreateLocalVariableTool.h"
@@ -59,15 +60,6 @@ namespace N2CVariableFlagsSpec
 	{
 		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 	}
-
-	/** One tool call: the edit inside an FN2CMcpToolCallScope, compiled once when it ends (as ExecuteOnGameThread does) */
-	template <typename FEdit>
-	TArray<FN2CCompileDiagnostics> InToolCall(FEdit&& Edit)
-	{
-		FN2CMcpToolCallScope CallScope;
-		Edit();
-		return CallScope.Flush();
-	}
 }
 
 /**
@@ -78,8 +70,7 @@ namespace N2CVariableFlagsSpec
  * Blueprint editor cannot be closed below 5.8, see NodeToCode.MCP.CompileOnce).
  */
 BEGIN_DEFINE_SPEC(FN2CVariableFlagsSpec, "NodeToCode.MCP.VariableFlags", N2C_TEST_FLAGS)
-	TUniquePtr<N2CTest::FTestBlueprint> Test;
-	bool bEditorOpen = false;
+	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
 
 	/** A /Game Actor Blueprint, compiled, package not transient (so MarkPackageDirty applies) and clean */
 	UBlueprint* MakeBlueprint(const TCHAR* Name);
@@ -87,15 +78,13 @@ END_DEFINE_SPEC(FN2CVariableFlagsSpec)
 
 UBlueprint* FN2CVariableFlagsSpec::MakeBlueprint(const TCHAR* Name)
 {
-	Test = MakeUnique<N2CTest::FTestBlueprint>(Name, TEXT("/Game"));
+	// Not transient, so the dirty checks see what a saved Blueprint would (FToolSpecBlueprint puts it back)
+	Test = MakeUnique<N2CTest::FToolSpecBlueprint>(Name, TEXT("/Game"));
 	UBlueprint* Blueprint = Test->GetBlueprint();
 	if (!TestNotNull(TEXT("test Blueprint"), Blueprint))
 	{
 		return nullptr;
 	}
-	// FTestBlueprint packages are transient, and MarkPackageDirty skips transient objects: clear the flag so the
-	// dirty checks see what a saved Blueprint would (AfterEach puts it back)
-	Test->GetPackage()->ClearFlags(RF_Transient);
 	N2CVariableFlagsSpec::Recompile(Blueprint);
 	Test->GetPackage()->SetDirtyFlag(false);
 	return Blueprint;
@@ -107,21 +96,7 @@ void FN2CVariableFlagsSpec::Define()
 
 	AfterEach([this]()
 	{
-		if (Test.IsValid())
-		{
-			if (bEditorOpen && GEditor)
-			{
-				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Test->GetBlueprint());
-			}
-			Test->GetPackage()->SetDirtyFlag(false);
-			Test->GetPackage()->SetFlags(RF_Transient);
-		}
-		// The undo buffer holds the test Blueprint's objects: drop them so the Blueprint can be collected
-		if (GEditor && GEditor->Trans)
-		{
-			GEditor->ResetTransaction(NSLOCTEXT("NodeToCode", "N2CVariableFlagsReset", "NodeToCode variable flag tests"));
-		}
-		bEditorOpen = false;
+		// Closes the editor, cleans the package and resets the undo buffer
 		Test.Reset();
 	});
 
@@ -145,7 +120,7 @@ void FN2CVariableFlagsSpec::Define()
 
 			FName Name;
 			FString Error;
-			const TArray<FN2CCompileDiagnostics> Compiles = InToolCall([&]()
+			const TArray<FN2CCompileDiagnostics> Compiles = N2CTest::InToolCall([&]()
 			{
 				Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::DoublePinType(), Error);
 			});
@@ -215,7 +190,7 @@ void FN2CVariableFlagsSpec::Define()
 			Settings.VariableName = TEXT("Plain");
 			FName Name;
 			FString Error;
-			InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::IntPinType(), Error); });
+			N2CTest::InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::IntPinType(), Error); });
 			const FBPVariableDescription* Var = FindMember(Blueprint, Name);
 			if (!TestNotNull(TEXT("created: ") + Error, Var))
 			{
@@ -246,7 +221,7 @@ void FN2CVariableFlagsSpec::Define()
 			Settings.ReplicationCondition = TEXT("repnotify");
 			FName Name;
 			FString Error;
-			const TArray<FN2CCompileDiagnostics> Compiles = InToolCall([&]()
+			const TArray<FN2CCompileDiagnostics> Compiles = N2CTest::InToolCall([&]()
 			{
 				Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::IntPinType(), Error);
 			});
@@ -298,7 +273,7 @@ void FN2CVariableFlagsSpec::Define()
 			Settings.Category = TEXT("Stats");
 			FName Name;
 			FString Error;
-			InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::DoublePinType(), Error); });
+			N2CTest::InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::DoublePinType(), Error); });
 			if (!TestNotNull(TEXT("created: ") + Error, FindMember(Blueprint, Name)))
 			{
 				return;
@@ -349,7 +324,7 @@ void FN2CVariableFlagsSpec::Define()
 				Settings.VariableName = TEXT("State");
 				FString Error;
 				FName Name;
-				InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Refused, Settings, N2CTest::FTestBlueprint::IntPinType(), Error); });
+				N2CTest::InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Refused, Settings, N2CTest::FTestBlueprint::IntPinType(), Error); });
 				TestTrue(FString::Printf(TEXT("%s refused"), Case.Name), Name.IsNone());
 				TestTrue(FString::Printf(TEXT("%s: error names the code and kind: %s"), Case.Name, *Error),
 					Error.StartsWith(TEXT("UNSUPPORTED_BLUEPRINT_TYPE:")) && Error.Contains(Case.Kind));
@@ -369,7 +344,7 @@ void FN2CVariableFlagsSpec::Define()
 			Settings.ReplicationCondition = TEXT("always");
 			FString Error;
 			FName Name;
-			InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::IntPinType(), Error); });
+			N2CTest::InToolCall([&]() { Name = FN2CMcpCreateVariableTool::CreateMemberVariable(Blueprint, Settings, N2CTest::FTestBlueprint::IntPinType(), Error); });
 			TestTrue(TEXT("refused: ") + Error, Name.IsNone() && Error.StartsWith(TEXT("INVALID_ARGUMENT:")));
 			TestEqual(TEXT("no variable added"), Blueprint->NewVariables.Num(), 0);
 		});
@@ -396,7 +371,7 @@ void FN2CVariableFlagsSpec::Define()
 
 			FName Name;
 			FString Error;
-			const TArray<FN2CCompileDiagnostics> Compiles = InToolCall([&]()
+			const TArray<FN2CCompileDiagnostics> Compiles = N2CTest::InToolCall([&]()
 			{
 				Name = FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(Blueprint, Function, TEXT("Target"),
 					N2CTest::FTestBlueprint::IntPinType(), TEXT("3"), TEXT("A local tooltip"), Error);
@@ -445,7 +420,7 @@ void FN2CVariableFlagsSpec::Define()
 			const int32 QueueBefore = GEditor->Trans->GetQueueLength();
 			FName Name;
 			FString Error;
-			InToolCall([&]()
+			N2CTest::InToolCall([&]()
 			{
 				Name = FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(Blueprint, Function, TEXT("Counter"),
 					N2CTest::FTestBlueprint::IntPinType(), FString(), FString(), Error);
@@ -469,7 +444,7 @@ void FN2CVariableFlagsSpec::Define()
 			}
 			FString Error;
 			FName Name;
-			InToolCall([&]()
+			N2CTest::InToolCall([&]()
 			{
 				Name = FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(Blueprint, Test->EventGraph(), TEXT("Nope"),
 					N2CTest::FTestBlueprint::IntPinType(), FString(), FString(), Error);
@@ -478,7 +453,7 @@ void FN2CVariableFlagsSpec::Define()
 		});
 	});
 
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8
+#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
 	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
 	{
 		It(TEXT("create-variable defaults to not instance editable, and create-local-variable targets the focused function"), [this]()
@@ -491,14 +466,10 @@ void FN2CVariableFlagsSpec::Define()
 			UEdGraph* Function = Test->AddFunction(FName(TEXT("N2CToolFn")));
 			Test->AddFunctionInput(Function, FName(TEXT("Amount")), N2CTest::FTestBlueprint::IntPinType());
 			Recompile(Blueprint);
-			TSharedPtr<IBlueprintEditor> Opened;
-			FString OpenError;
-			if (!TestTrue(TEXT("Blueprint editor opens: ") + OpenError, FN2CMcpBlueprintUtils::OpenBlueprintEditor(Blueprint, Opened, OpenError)))
+			if (!Test->OpenInEditor(*this, Function, /*bClean*/ false))
 			{
 				return;
 			}
-			bEditorOpen = true;
-			StaticCastSharedPtr<FBlueprintEditor>(Opened)->JumpToHyperlink(Function, false);
 
 			const TSharedPtr<IN2CMcpTool> CreateVariable = N2CTest::FindRegisteredTool(TEXT("create-variable"));
 			const TSharedPtr<IN2CMcpTool> CreateLocal = N2CTest::FindRegisteredTool(TEXT("create-local-variable"));

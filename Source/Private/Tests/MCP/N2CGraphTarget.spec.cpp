@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
@@ -26,64 +27,11 @@
 
 namespace N2CGraphTargetSpec
 {
-	FMcpToolCallResult Call(const FString& Name, const TSharedPtr<FJsonObject>& Args)
-	{
-		const TSharedPtr<IN2CMcpTool> Tool = N2CTest::FindRegisteredTool(Name);
-		return Tool.IsValid() ? Tool->Execute(Args)
-			: FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("N2CTest: no registered tool '%s'"), *Name));
-	}
-
-	/** {blueprintPath, graphGuid} of a graph */
-	TSharedPtr<FJsonObject> TargetArgs(const UBlueprint* Blueprint, const UEdGraph* Graph)
-	{
-		const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
-		Args->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
-		Args->SetStringField(TEXT("graphGuid"), Graph->GraphGuid.ToString());
-		return Args;
-	}
-
-	/** The first text item of a result as a JSON object, or null */
-	TSharedPtr<FJsonObject> FirstJson(const FMcpToolCallResult& Result)
-	{
-		FString Text;
-		return Result.Content.Num() > 0 && Result.Content[0].IsValid() && Result.Content[0]->TryGetStringField(TEXT("text"), Text)
-			? N2CTest::ParseJsonObject(Text) : nullptr;
-	}
-
-	/** The "target" object of a result (a field of its JSON, or an extra text item of an error), or null */
-	TSharedPtr<FJsonObject> TargetOf(const FMcpToolCallResult& Result)
-	{
-		for (const TSharedPtr<FJsonObject>& Item : Result.Content)
-		{
-			FString Text;
-			if (!Item.IsValid() || !Item->TryGetStringField(TEXT("text"), Text))
-			{
-				continue;
-			}
-			const TSharedPtr<FJsonObject> Parsed = N2CTest::ParseJsonObject(Text);
-			const TSharedPtr<FJsonObject>* Target = nullptr;
-			if (Parsed.IsValid() && Parsed->TryGetObjectField(TEXT("target"), Target))
-			{
-				return *Target;
-			}
-		}
-		return nullptr;
-	}
-
-	TSharedPtr<FJsonValue> PinRef(const UEdGraphPin* Pin)
-	{
-		const TSharedPtr<FJsonObject> Ref = MakeShared<FJsonObject>();
-		Ref->SetStringField(TEXT("nodeGuid"), Pin->GetOwningNode()->NodeGuid.ToString());
-		Ref->SetStringField(TEXT("pinGuid"), Pin->PinId.ToString());
-		Ref->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
-		return MakeShared<FJsonValueObject>(Ref);
-	}
-
 	void AddConnection(const TSharedPtr<FJsonObject>& Args, const UEdGraphPin* From, const UEdGraphPin* To)
 	{
 		const TSharedPtr<FJsonObject> Connection = MakeShared<FJsonObject>();
-		Connection->SetField(TEXT("from"), PinRef(From));
-		Connection->SetField(TEXT("to"), PinRef(To));
+		Connection->SetField(TEXT("from"), N2CTest::PinRef(From));
+		Connection->SetField(TEXT("to"), N2CTest::PinRef(To));
 		TArray<TSharedPtr<FJsonValue>> Connections;
 		Connections.Add(MakeShared<FJsonValueObject>(Connection));
 		Args->SetArrayField(TEXT("connections"), Connections);
@@ -311,7 +259,7 @@ void FN2CGraphTargetSpec::Define()
 		{
 			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 			Args->SetStringField(TEXT("blueprintPath"), Path());
-			const FMcpToolCallResult Result = Call(TEXT("list-blueprint-functions"), Args);
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("list-blueprint-functions"), Args);
 			TestFalse(TEXT("list succeeds: ") + N2CTest::ResultText(Result).Left(300), Result.bIsError);
 			TestTrue(TEXT("lists the GraphGuid"), N2CTest::ResultText(Result).Contains(Function->GraphGuid.ToString()));
 			TestEqual(TEXT("GetFunctionId"), FN2CMcpFunctionGuidUtils::GetFunctionId(Function).ToString(), Function->GraphGuid.ToString());
@@ -397,15 +345,15 @@ void FN2CGraphTargetSpec::Define()
 			}
 
 			// search-blueprint-nodes in that graph for Print String's stable ID
-			const TSharedPtr<FJsonObject> SearchArgs = TargetArgs(Test->GetBlueprint(), Graph);
+			const TSharedPtr<FJsonObject> SearchArgs = N2CTest::TargetArgs(Test->GetBlueprint(), Graph);
 			SearchArgs->SetStringField(TEXT("searchTerm"), TEXT("print string"));
-			const FMcpToolCallResult Search = Call(TEXT("search-blueprint-nodes"), SearchArgs);
-			const TSharedPtr<FJsonObject> SearchTarget = TargetOf(Search);
+			const FMcpToolCallResult Search = N2CTest::RunTool(TEXT("search-blueprint-nodes"), SearchArgs);
+			const TSharedPtr<FJsonObject> SearchTarget = N2CTest::ResultTarget(Search);
 			TestTrue(TEXT("search echoes the target"), SearchTarget.IsValid()
 				&& SearchTarget->GetStringField(TEXT("graphGuid")) == Graph->GraphGuid.ToString());
 			FString ActionId;
 			FString NodeName;
-			const TSharedPtr<FJsonObject> SearchJson = FirstJson(Search);
+			const TSharedPtr<FJsonObject> SearchJson = N2CTest::ResultJson(Search);
 			const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
 			if (SearchJson.IsValid() && SearchJson->TryGetArrayField(TEXT("nodes"), Nodes))
 			{
@@ -425,14 +373,14 @@ void FN2CGraphTargetSpec::Define()
 				return;
 			}
 
-			const TSharedPtr<FJsonObject> AddArgs = TargetArgs(Test->GetBlueprint(), Graph);
+			const TSharedPtr<FJsonObject> AddArgs = N2CTest::TargetArgs(Test->GetBlueprint(), Graph);
 			AddArgs->SetStringField(TEXT("nodeName"), NodeName);
 			AddArgs->SetStringField(TEXT("actionIdentifier"), ActionId);
 			const int32 NodesBefore = Graph->Nodes.Num();
-			const FMcpToolCallResult Added = Call(TEXT("add-bp-node-to-active-graph"), AddArgs);
+			const FMcpToolCallResult Added = N2CTest::RunTool(TEXT("add-bp-node-to-active-graph"), AddArgs);
 			TestFalse(TEXT("add succeeds: ") + N2CTest::ResultText(Added).Left(300), Added.bIsError);
 			TestEqual(TEXT("one node added to that graph"), Graph->Nodes.Num(), NodesBefore + 1);
-			const TSharedPtr<FJsonObject> AddTarget = TargetOf(Added);
+			const TSharedPtr<FJsonObject> AddTarget = N2CTest::ResultTarget(Added);
 			if (TestTrue(TEXT("add echoes the target"), AddTarget.IsValid()))
 			{
 				TestEqual(TEXT("blueprintPath"), AddTarget->GetStringField(TEXT("blueprintPath")), Path());
@@ -446,14 +394,14 @@ void FN2CGraphTargetSpec::Define()
 				return;
 			}
 
-			const TSharedPtr<FJsonObject> ConnectArgs = TargetArgs(Test->GetBlueprint(), Graph);
+			const TSharedPtr<FJsonObject> ConnectArgs = N2CTest::TargetArgs(Test->GetBlueprint(), Graph);
 			UEdGraphPin* Then = Event->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output);
 			UEdGraphPin* Execute = Print->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input);
 			AddConnection(ConnectArgs, Then, Execute);
-			const FMcpToolCallResult Connected = Call(TEXT("connect-pins"), ConnectArgs);
+			const FMcpToolCallResult Connected = N2CTest::RunTool(TEXT("connect-pins"), ConnectArgs);
 			TestFalse(TEXT("connect succeeds: ") + N2CTest::ResultText(Connected).Left(300), Connected.bIsError);
 			TestTrue(TEXT("linked"), Then->LinkedTo.Contains(Execute));
-			TestTrue(TEXT("connect echoes the target"), TargetOf(Connected).IsValid());
+			TestTrue(TEXT("connect echoes the target"), N2CTest::ResultTarget(Connected).IsValid());
 
 			// The other graph tools by graphName
 			const TSharedPtr<FJsonObject> FindArgs = MakeShared<FJsonObject>();
@@ -463,31 +411,31 @@ void FN2CGraphTargetSpec::Define()
 			Terms.Add(MakeShared<FJsonValueString>(Print->NodeGuid.ToString()));
 			FindArgs->SetArrayField(TEXT("searchTerms"), Terms);
 			FindArgs->SetStringField(TEXT("searchType"), TEXT("guid"));
-			const FMcpToolCallResult Found = Call(TEXT("find-nodes-in-graph"), FindArgs);
-			const TSharedPtr<FJsonObject> FoundJson = FirstJson(Found);
+			const FMcpToolCallResult Found = N2CTest::RunTool(TEXT("find-nodes-in-graph"), FindArgs);
+			const TSharedPtr<FJsonObject> FoundJson = N2CTest::ResultJson(Found);
 			TestTrue(TEXT("find-nodes-in-graph finds the node by graphName: ") + N2CTest::ResultText(Found).Left(200),
 				FoundJson.IsValid() && FoundJson->GetObjectField(TEXT("metadata"))->GetIntegerField(TEXT("totalFound")) == 1);
 
-			const TSharedPtr<FJsonObject> SetArgs = TargetArgs(Test->GetBlueprint(), Graph);
+			const TSharedPtr<FJsonObject> SetArgs = N2CTest::TargetArgs(Test->GetBlueprint(), Graph);
 			SetArgs->SetStringField(TEXT("nodeGuid"), Print->NodeGuid.ToString());
 			SetArgs->SetStringField(TEXT("pinGuid"), FGuid().ToString());
 			SetArgs->SetStringField(TEXT("pinName"), TEXT("InString"));
 			SetArgs->SetStringField(TEXT("value"), TEXT("N2C target"));
-			const FMcpToolCallResult Set = Call(TEXT("set-input-pin-value"), SetArgs);
+			const FMcpToolCallResult Set = N2CTest::RunTool(TEXT("set-input-pin-value"), SetArgs);
 			TestFalse(TEXT("set-input-pin-value: ") + N2CTest::ResultText(Set).Left(200), Set.bIsError);
 			UEdGraphPin* InString = Print->FindPin(TEXT("InString"), EGPD_Input);
 			TestTrue(TEXT("value set"), InString && InString->DefaultValue == TEXT("N2C target"));
 
-			const TSharedPtr<FJsonObject> CommentArgs = TargetArgs(Test->GetBlueprint(), Graph);
+			const TSharedPtr<FJsonObject> CommentArgs = N2CTest::TargetArgs(Test->GetBlueprint(), Graph);
 			TArray<TSharedPtr<FJsonValue>> CommentGuids;
 			CommentGuids.Add(MakeShared<FJsonValueString>(Print->NodeGuid.ToString()));
 			CommentArgs->SetArrayField(TEXT("nodeGuids"), CommentGuids);
-			const FMcpToolCallResult Comment = Call(TEXT("create-comment-node"), CommentArgs);
+			const FMcpToolCallResult Comment = N2CTest::RunTool(TEXT("create-comment-node"), CommentArgs);
 			TestFalse(TEXT("create-comment-node: ") + N2CTest::ResultText(Comment).Left(200), Comment.bIsError);
 
-			const TSharedPtr<FJsonObject> DeleteArgs = TargetArgs(Test->GetBlueprint(), Graph);
+			const TSharedPtr<FJsonObject> DeleteArgs = N2CTest::TargetArgs(Test->GetBlueprint(), Graph);
 			DeleteArgs->SetArrayField(TEXT("nodeGuids"), CommentGuids);
-			const FMcpToolCallResult Deleted = Call(TEXT("delete-blueprint-node"), DeleteArgs);
+			const FMcpToolCallResult Deleted = N2CTest::RunTool(TEXT("delete-blueprint-node"), DeleteArgs);
 			TestFalse(TEXT("delete-blueprint-node: ") + N2CTest::ResultText(Deleted).Left(200), Deleted.bIsError);
 			TestFalse(TEXT("the node is gone"), Graph->Nodes.Contains(Print));
 		});
@@ -502,9 +450,9 @@ void FN2CGraphTargetSpec::Define()
 			AddArgs->SetStringField(TEXT("graphGuid"), IdBefore);
 			AddArgs->SetStringField(TEXT("pinName"), TEXT("N2CInput"));
 			AddArgs->SetStringField(TEXT("typeIdentifier"), TEXT("int"));
-			const FMcpToolCallResult Added = Call(TEXT("add-function-input-pin"), AddArgs);
+			const FMcpToolCallResult Added = N2CTest::RunTool(TEXT("add-function-input-pin"), AddArgs);
 			TestFalse(TEXT("add-function-input-pin by the old ID: ") + N2CTest::ResultText(Added).Left(300), Added.bIsError);
-			const TSharedPtr<FJsonObject> Target = TargetOf(Added);
+			const TSharedPtr<FJsonObject> Target = N2CTest::ResultTarget(Added);
 			TestTrue(TEXT("the target is the renamed function"), Target.IsValid()
 				&& Target->GetStringField(TEXT("graphName")) == TEXT("N2CTargetRenamedForTools"));
 			TestNotNull(TEXT("the input exists"), Test->FunctionEntry(Function)->FindPin(TEXT("N2CInput")));
@@ -513,7 +461,7 @@ void FN2CGraphTargetSpec::Define()
 			RemoveArgs->SetStringField(TEXT("blueprintPath"), Path());
 			RemoveArgs->SetStringField(TEXT("graphGuid"), IdBefore);
 			RemoveArgs->SetStringField(TEXT("pinName"), TEXT("N2CInput"));
-			const FMcpToolCallResult Removed = Call(TEXT("remove-function-entry-pin"), RemoveArgs);
+			const FMcpToolCallResult Removed = N2CTest::RunTool(TEXT("remove-function-entry-pin"), RemoveArgs);
 			TestFalse(TEXT("remove-function-entry-pin: ") + N2CTest::ResultText(Removed).Left(300), Removed.bIsError);
 
 			const TSharedPtr<FJsonObject> ReturnArgs = MakeShared<FJsonObject>();
@@ -521,18 +469,18 @@ void FN2CGraphTargetSpec::Define()
 			ReturnArgs->SetStringField(TEXT("graphGuid"), IdBefore);
 			ReturnArgs->SetStringField(TEXT("pinName"), TEXT("bN2COk"));
 			ReturnArgs->SetStringField(TEXT("typeIdentifier"), TEXT("bool"));
-			const FMcpToolCallResult Returned = Call(TEXT("add-function-return-pin"), ReturnArgs);
+			const FMcpToolCallResult Returned = N2CTest::RunTool(TEXT("add-function-return-pin"), ReturnArgs);
 			TestFalse(TEXT("add-function-return-pin: ") + N2CTest::ResultText(Returned).Left(300), Returned.bIsError);
-			const FMcpToolCallResult ReturnRemoved = Call(TEXT("remove-function-return-pin"), ReturnArgs);
+			const FMcpToolCallResult ReturnRemoved = N2CTest::RunTool(TEXT("remove-function-return-pin"), ReturnArgs);
 			TestFalse(TEXT("remove-function-return-pin: ") + N2CTest::ResultText(ReturnRemoved).Left(300), ReturnRemoved.bIsError);
 
 			const TSharedPtr<FJsonObject> DeleteArgs = MakeShared<FJsonObject>();
 			DeleteArgs->SetStringField(TEXT("blueprintPath"), Path());
 			DeleteArgs->SetStringField(TEXT("functionGuid"), IdBefore);
-			const FMcpToolCallResult Deleted = Call(TEXT("delete-blueprint-function"), DeleteArgs);
+			const FMcpToolCallResult Deleted = N2CTest::RunTool(TEXT("delete-blueprint-function"), DeleteArgs);
 			TestFalse(TEXT("delete-blueprint-function by the old ID: ") + N2CTest::ResultText(Deleted).Left(300), Deleted.bIsError);
 			TestFalse(TEXT("the function is gone"), Test->GetBlueprint()->FunctionGraphs.Contains(Function));
-			const TSharedPtr<FJsonObject> DeleteTarget = TargetOf(Deleted);
+			const TSharedPtr<FJsonObject> DeleteTarget = N2CTest::ResultTarget(Deleted);
 			TestTrue(TEXT("delete echoes the deleted function"), DeleteTarget.IsValid()
 				&& DeleteTarget->GetStringField(TEXT("graphGuid")) == IdBefore);
 		});
@@ -546,16 +494,16 @@ void FN2CGraphTargetSpec::Define()
 				return;
 			}
 			Function->bEditable = false;
-			const TSharedPtr<FJsonObject> Args = TargetArgs(Test->GetBlueprint(), Function);
+			const TSharedPtr<FJsonObject> Args = N2CTest::TargetArgs(Test->GetBlueprint(), Function);
 			UEdGraphPin* Then = Event->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output);
 			UEdGraphPin* Execute = Print->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input);
 			AddConnection(Args, Then, Execute);
-			const FMcpToolCallResult Connected = Call(TEXT("connect-pins"), Args);
+			const FMcpToolCallResult Connected = N2CTest::RunTool(TEXT("connect-pins"), Args);
 
-			const TSharedPtr<FJsonObject> PinArgs = TargetArgs(Test->GetBlueprint(), Function);
+			const TSharedPtr<FJsonObject> PinArgs = N2CTest::TargetArgs(Test->GetBlueprint(), Function);
 			PinArgs->SetStringField(TEXT("pinName"), TEXT("N2CReadOnlyInput"));
 			PinArgs->SetStringField(TEXT("typeIdentifier"), TEXT("int"));
-			const FMcpToolCallResult PinAdded = Call(TEXT("add-function-input-pin"), PinArgs);
+			const FMcpToolCallResult PinAdded = N2CTest::RunTool(TEXT("add-function-input-pin"), PinArgs);
 			Function->bEditable = true;
 
 			TestTrue(TEXT("connect-pins is an error"), Connected.bIsError);
@@ -572,11 +520,11 @@ void FN2CGraphTargetSpec::Define()
 			Args->SetStringField(TEXT("graphName"), TEXT("EventGraph"));
 			Args->SetStringField(TEXT("pinName"), TEXT("bN2COk"));
 			Args->SetStringField(TEXT("typeIdentifier"), TEXT("bool"));
-			const FMcpToolCallResult Result = Call(TEXT("add-function-return-pin"), Args);
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("add-function-return-pin"), Args);
 			TestTrue(TEXT("NOT_A_FUNCTION_GRAPH: ") + N2CTest::ResultText(Result).Left(200),
 				Result.bIsError && N2CTest::ResultText(Result).StartsWith(TEXT("NOT_A_FUNCTION_GRAPH")));
 			TestNull(TEXT("no Return node in the event graph"), ResultNode(Test->EventGraph()));
-			TestTrue(TEXT("the error says which graph"), TargetOf(Result).IsValid());
+			TestTrue(TEXT("the error says which graph"), N2CTest::ResultTarget(Result).IsValid());
 		});
 
 		It(TEXT("report a graph that does not resolve with the resolver's code"), [this]()
@@ -587,7 +535,7 @@ void FN2CGraphTargetSpec::Define()
 			TArray<TSharedPtr<FJsonValue>> Terms;
 			Terms.Add(MakeShared<FJsonValueString>(TEXT("Print")));
 			Args->SetArrayField(TEXT("searchTerms"), Terms);
-			const FMcpToolCallResult Result = Call(TEXT("find-nodes-in-graph"), Args);
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("find-nodes-in-graph"), Args);
 			TestTrue(TEXT("GRAPH_NOT_FOUND: ") + N2CTest::ResultText(Result).Left(200),
 				Result.bIsError && N2CTest::ResultText(Result).StartsWith(TEXT("GRAPH_NOT_FOUND")));
 		});

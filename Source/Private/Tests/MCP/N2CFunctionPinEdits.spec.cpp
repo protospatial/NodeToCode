@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Python/N2CPythonBridge.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -31,13 +32,6 @@
 
 namespace N2CFunctionPinEditsSpec
 {
-	FMcpToolCallResult Call(const FString& Name, const TSharedPtr<FJsonObject>& Args)
-	{
-		const TSharedPtr<IN2CMcpTool> Tool = N2CTest::FindRegisteredTool(Name);
-		return Tool.IsValid() ? Tool->Execute(Args)
-			: FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("N2CTest: no registered tool '%s'"), *Name));
-	}
-
 	/** {blueprintPath, graphGuid, pinName[, typeIdentifier]} for the pin tools */
 	TSharedPtr<FJsonObject> PinArgs(const UBlueprint* Blueprint, const UEdGraph* Function, const FString& PinName,
 		const FString& TypeIdentifier = FString())
@@ -51,38 +45,6 @@ namespace N2CFunctionPinEditsSpec
 			Args->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
 		}
 		return Args;
-	}
-
-	/** Every link in the Blueprint as "<node GUID>.<pin> -> <node GUID>.<pin>", from the output side */
-	TSet<FString> Links(UBlueprint* Blueprint)
-	{
-		TSet<FString> Found;
-		TArray<UEdGraph*> Graphs;
-		Blueprint->GetAllGraphs(Graphs);
-		for (const UEdGraph* Graph : Graphs)
-		{
-			for (const UEdGraphNode* Node : Graph->Nodes)
-			{
-				for (const UEdGraphPin* Pin : Node ? Node->Pins : TArray<UEdGraphPin*>())
-				{
-					if (Pin && Pin->Direction == EGPD_Output)
-					{
-						for (const UEdGraphPin* Other : Pin->LinkedTo)
-						{
-							Found.Add(FString::Printf(TEXT("%s.%s -> %s.%s"), *Node->NodeGuid.ToString(), *Pin->PinName.ToString(),
-								*Other->GetOwningNode()->NodeGuid.ToString(), *Other->PinName.ToString()));
-						}
-					}
-				}
-			}
-		}
-		return Found;
-	}
-
-	bool HasUserPin(const UK2Node_EditablePinBase* Node, const FName Name)
-	{
-		return Node && Node->UserDefinedPins.ContainsByPredicate(
-			[Name](const TSharedPtr<FUserPinInfo>& Info) { return Info.IsValid() && Info->PinName == Name; });
 	}
 }
 
@@ -99,8 +61,7 @@ namespace N2CFunctionPinEditsSpec
  * (golden, DataFlows, ExecFlows).
  */
 BEGIN_DEFINE_SPEC(FN2CFunctionPinEditsSpec, "NodeToCode.MCP.FunctionPinEdits", N2C_TEST_FLAGS)
-	TUniquePtr<N2CTest::FTestBlueprint> Test;
-	bool bEditorOpen = false;
+	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* MyFunc = nullptr;
 	UEdGraph* VoidFunc = nullptr;
@@ -130,14 +91,13 @@ END_DEFINE_SPEC(FN2CFunctionPinEditsSpec)
 bool FN2CFunctionPinEditsSpec::Build(const TCHAR* Name)
 {
 	using N2CTest::FTestBlueprint;
-	Test = MakeUnique<FTestBlueprint>(Name, TEXT("/Game"));
+	// Not transient, so MarkPackageDirty applies (FToolSpecBlueprint puts it back)
+	Test = MakeUnique<N2CTest::FToolSpecBlueprint>(Name, TEXT("/Game"));
 	Blueprint = Test->GetBlueprint();
 	if (!TestNotNull(TEXT("test Blueprint"), Blueprint))
 	{
 		return false;
 	}
-	// FTestBlueprint packages are transient, and MarkPackageDirty skips transient objects (AfterEach puts it back)
-	Test->GetPackage()->ClearFlags(RF_Transient);
 
 	// MyFunc(Value: int) -> Result: Entry -> Branch; True -> Return A, False -> Return B; Value -> Result on both
 	MyFunc = Test->AddFunction(TEXT("MyFunc"));
@@ -200,7 +160,7 @@ void FN2CFunctionPinEditsSpec::Settle()
 {
 	FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 	Test->GetPackage()->SetDirtyFlag(false);
-	LinksBefore = N2CFunctionPinEditsSpec::Links(Blueprint);
+	LinksBefore = N2CTest::AllLinks(Blueprint);
 }
 
 void FN2CFunctionPinEditsSpec::ExpectBlueprintCompiles(const FString& What)
@@ -236,7 +196,7 @@ void FN2CFunctionPinEditsSpec::ExpectCallSitesMatch(const FString& What, UEdGrap
 		TestEqual(What + TEXT(": every Return node has the same outputs"), Result->UserDefinedPins.Num(), Outputs.Num());
 		for (const FName Output : Outputs)
 		{
-			TestTrue(What + TEXT(": Return node has ") + Output.ToString(), N2CFunctionPinEditsSpec::HasUserPin(Result, Output)
+			TestTrue(What + TEXT(": Return node has ") + Output.ToString(), N2CTest::HasUserPin(Result, Output)
 				&& Result->FindPin(Output, EGPD_Input) != nullptr);
 		}
 	}
@@ -282,7 +242,7 @@ void FN2CFunctionPinEditsSpec::ExpectCompiled(const FString& What, const TShared
 
 TSharedPtr<FJsonObject> FN2CFunctionPinEditsSpec::CallOk(const FString& What, const FString& Tool, const TSharedPtr<FJsonObject>& Args)
 {
-	const FMcpToolCallResult Result = N2CFunctionPinEditsSpec::Call(Tool, Args);
+	const FMcpToolCallResult Result = N2CTest::RunTool(Tool, Args);
 	const FString Text = N2CTest::ResultText(Result);
 	if (!TestFalse(What + TEXT(": ") + Tool + TEXT(" succeeds: ") + Text.Left(400), Result.bIsError))
 	{
@@ -299,21 +259,7 @@ void FN2CFunctionPinEditsSpec::Define()
 
 	AfterEach([this]()
 	{
-		if (Test.IsValid())
-		{
-			if (bEditorOpen && GEditor)
-			{
-				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Test->GetBlueprint());
-			}
-			Test->GetPackage()->SetDirtyFlag(false);
-			Test->GetPackage()->SetFlags(RF_Transient);
-		}
-		// The undo buffer holds the test Blueprint's objects: drop them so the Blueprint can be collected
-		if (GEditor && GEditor->Trans)
-		{
-			GEditor->ResetTransaction(NSLOCTEXT("NodeToCode", "N2CFunctionPinEditsReset", "NodeToCode function pin tests"));
-		}
-		bEditorOpen = false;
+		// Closes the editor, cleans the package and resets the undo buffer
 		Test.Reset();
 		Blueprint = nullptr;
 	});
@@ -333,11 +279,11 @@ void FN2CFunctionPinEditsSpec::Define()
 			return;
 		}
 		TestEqual(TEXT("actualName"), Json->GetStringField(TEXT("actualName")), FString(TEXT("Speed")));
-		TestTrue(TEXT("entry has Speed"), HasUserPin(MyEntry, TEXT("Speed")) && MyEntry->FindPin(TEXT("Speed"), EGPD_Output));
+		TestTrue(TEXT("entry has Speed"), N2CTest::HasUserPin(MyEntry, TEXT("Speed")) && MyEntry->FindPin(TEXT("Speed"), EGPD_Output));
 		ExpectCallSitesMatch(TEXT("after add"), MyFunc, { EventCall, CallerCall });
 		const UEdGraphPin* CallSpeed = EventCall->FindPin(TEXT("Speed"), EGPD_Input);
 		TestTrue(TEXT("the call's Speed is a real"), CallSpeed && CallSpeed->PinType.PinCategory == UEdGraphSchema_K2::PC_Real);
-		TestTrue(TEXT("the links already made stay"), Links(Blueprint).Includes(LinksBefore) && LinksBefore.Includes(Links(Blueprint)));
+		TestTrue(TEXT("the links already made stay"), N2CTest::AllLinks(Blueprint).Includes(LinksBefore) && LinksBefore.Includes(N2CTest::AllLinks(Blueprint)));
 		TestTrue(TEXT("package dirty"), Test->GetPackage()->IsDirty());
 		TestTrue(TEXT("the tooltip is kept in the function metadata as @param"),
 			MyEntry->MetaData.ToolTip.ToString().Contains(TEXT("@param Speed How fast to go")));
@@ -350,12 +296,12 @@ void FN2CFunctionPinEditsSpec::Define()
 		TestEqual(TEXT("one transaction recorded"), GEditor->Trans->GetQueueLength(), QueueBefore + 1);
 
 		TestTrue(TEXT("undo runs"), GEditor->UndoTransaction());
-		TestFalse(TEXT("undo: Speed gone from UserDefinedPins"), HasUserPin(MyEntry, TEXT("Speed")));
+		TestFalse(TEXT("undo: Speed gone from UserDefinedPins"), N2CTest::HasUserPin(MyEntry, TEXT("Speed")));
 		TestNull(TEXT("undo: Speed gone from the entry"), MyEntry->FindPin(TEXT("Speed")));
 		TestNull(TEXT("undo: Speed gone from the event graph call"), EventCall->FindPin(TEXT("Speed")));
 		TestNull(TEXT("undo: Speed gone from Caller's call"), CallerCall->FindPin(TEXT("Speed")));
 		TestFalse(TEXT("undo: the tooltip line gone"), MyEntry->MetaData.ToolTip.ToString().Contains(TEXT("@param Speed")));
-		TestTrue(TEXT("undo: links as before"), Links(Blueprint).Includes(LinksBefore) && LinksBefore.Includes(Links(Blueprint)));
+		TestTrue(TEXT("undo: links as before"), N2CTest::AllLinks(Blueprint).Includes(LinksBefore) && LinksBefore.Includes(N2CTest::AllLinks(Blueprint)));
 		ExpectBlueprintCompiles(TEXT("after undo"));
 		ExpectCallSitesMatch(TEXT("after undo and compile"), MyFunc, { EventCall, CallerCall });
 	});
@@ -371,16 +317,16 @@ void FN2CFunctionPinEditsSpec::Define()
 		{
 			return;
 		}
-		TestTrue(TEXT("Return A has bOk"), HasUserPin(ReturnA, TEXT("bOk")));
-		TestTrue(TEXT("Return B has bOk"), HasUserPin(ReturnB, TEXT("bOk")));
+		TestTrue(TEXT("Return A has bOk"), N2CTest::HasUserPin(ReturnA, TEXT("bOk")));
+		TestTrue(TEXT("Return B has bOk"), N2CTest::HasUserPin(ReturnB, TEXT("bOk")));
 		TestEqual(TEXT("still two Return nodes"), FN2CMcpFunctionPinUtils::GetAllResultNodes(MyFunc).Num(), 2);
 		ExpectCallSitesMatch(TEXT("after add"), MyFunc, { EventCall, CallerCall });
-		TestTrue(TEXT("the links already made stay"), Links(Blueprint).Includes(LinksBefore) && LinksBefore.Includes(Links(Blueprint)));
+		TestTrue(TEXT("the links already made stay"), N2CTest::AllLinks(Blueprint).Includes(LinksBefore) && LinksBefore.Includes(N2CTest::AllLinks(Blueprint)));
 		TestTrue(TEXT("package dirty"), Test->GetPackage()->IsDirty());
 
 		TestTrue(TEXT("undo runs"), GEditor->UndoTransaction());
-		TestFalse(TEXT("undo: Return A without bOk"), HasUserPin(ReturnA, TEXT("bOk")) || ReturnA->FindPin(TEXT("bOk")));
-		TestFalse(TEXT("undo: Return B without bOk"), HasUserPin(ReturnB, TEXT("bOk")) || ReturnB->FindPin(TEXT("bOk")));
+		TestFalse(TEXT("undo: Return A without bOk"), N2CTest::HasUserPin(ReturnA, TEXT("bOk")) || ReturnA->FindPin(TEXT("bOk")));
+		TestFalse(TEXT("undo: Return B without bOk"), N2CTest::HasUserPin(ReturnB, TEXT("bOk")) || ReturnB->FindPin(TEXT("bOk")));
 		TestNull(TEXT("undo: the event graph call without bOk"), EventCall->FindPin(TEXT("bOk")));
 		TestNull(TEXT("undo: Caller's call without bOk"), CallerCall->FindPin(TEXT("bOk")));
 		ExpectBlueprintCompiles(TEXT("after undo"));
@@ -409,7 +355,7 @@ void FN2CFunctionPinEditsSpec::Define()
 		const UEdGraphPin* Then = Test->FunctionEntry(VoidFunc)->FindPin(UEdGraphSchema_K2::PN_Then);
 		TestTrue(TEXT("wired from the entry"), Then && Then->LinkedTo.Num() == 1 && Then->LinkedTo[0]->GetOwningNode() == Result);
 		ExpectCallSitesMatch(TEXT("after add"), VoidFunc, { EventVoidCall });
-		TestTrue(TEXT("the links already made stay"), Links(Blueprint).Includes(LinksBefore));
+		TestTrue(TEXT("the links already made stay"), N2CTest::AllLinks(Blueprint).Includes(LinksBefore));
 
 		TestTrue(TEXT("undo runs"), GEditor->UndoTransaction());
 		TestEqual(TEXT("undo: no Return node"), FN2CMcpFunctionPinUtils::GetAllResultNodes(VoidFunc).Num(), 0);
@@ -437,7 +383,7 @@ void FN2CFunctionPinEditsSpec::Define()
 		{
 			return;
 		}
-		TestFalse(TEXT("Speed gone from the entry"), HasUserPin(MyEntry, TEXT("Speed")));
+		TestFalse(TEXT("Speed gone from the entry"), N2CTest::HasUserPin(MyEntry, TEXT("Speed")));
 		ExpectCallSitesMatch(TEXT("after removing Speed"), MyFunc, { EventCall, CallerCall });
 		TestTrue(TEXT("package dirty"), Test->GetPackage()->IsDirty());
 
@@ -445,10 +391,10 @@ void FN2CFunctionPinEditsSpec::Define()
 		{
 			return;
 		}
-		TestFalse(TEXT("bOk gone from Return A"), HasUserPin(ReturnA, TEXT("bOk")));
-		TestFalse(TEXT("bOk gone from Return B"), HasUserPin(ReturnB, TEXT("bOk")));
+		TestFalse(TEXT("bOk gone from Return A"), N2CTest::HasUserPin(ReturnA, TEXT("bOk")));
+		TestFalse(TEXT("bOk gone from Return B"), N2CTest::HasUserPin(ReturnB, TEXT("bOk")));
 		ExpectCallSitesMatch(TEXT("after removing bOk"), MyFunc, { EventCall, CallerCall });
-		TestTrue(TEXT("the original links are all there"), Links(Blueprint).Includes(Original) && Original.Includes(Links(Blueprint)));
+		TestTrue(TEXT("the original links are all there"), N2CTest::AllLinks(Blueprint).Includes(Original) && Original.Includes(N2CTest::AllLinks(Blueprint)));
 	});
 
 	It(TEXT("a misspelled pin name is refused with no transaction and a clean package"), [this]()
@@ -467,7 +413,7 @@ void FN2CFunctionPinEditsSpec::Define()
 			{ TEXT("remove-function-entry-pin"), MyFunc, TEXT("then"), TEXT("Cannot remove execution pin") },
 			{ TEXT("remove-function-return-pin"), VoidFunc, TEXT("bOk"), TEXT("No function result node found") } })
 		{
-			const FMcpToolCallResult Result = Call(Case.Tool, PinArgs(Blueprint, Case.Function, Case.Pin));
+			const FMcpToolCallResult Result = N2CTest::RunTool(Case.Tool, PinArgs(Blueprint, Case.Function, Case.Pin));
 			const FString Text = N2CTest::ResultText(Result);
 			const FString What = FString(Case.Tool) + TEXT(" ") + Case.Pin;
 			TestTrue(What + TEXT(": refused"), Result.bIsError);
@@ -475,25 +421,21 @@ void FN2CFunctionPinEditsSpec::Define()
 			TestFalse(What + TEXT(": package clean"), Test->GetPackage()->IsDirty());
 			TestEqual(What + TEXT(": no transaction"), GEditor->Trans->GetQueueLength(), QueueBefore);
 		}
-		TestTrue(TEXT("Value still on the entry"), HasUserPin(MyEntry, TEXT("Value")));
-		TestTrue(TEXT("Result still on both Return nodes"), HasUserPin(ReturnA, TEXT("Result")) && HasUserPin(ReturnB, TEXT("Result")));
+		TestTrue(TEXT("Value still on the entry"), N2CTest::HasUserPin(MyEntry, TEXT("Value")));
+		TestTrue(TEXT("Result still on both Return nodes"), N2CTest::HasUserPin(ReturnA, TEXT("Result")) && N2CTest::HasUserPin(ReturnB, TEXT("Result")));
 	});
 
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8
+#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
 	It(TEXT("the Python bridge's four pin functions do the same on the focused function (UE 5.8)"), [this]()
 	{
 		if (!Build(TEXT("BP_N2CPinEditsBridge")))
 		{
 			return;
 		}
-		TSharedPtr<IBlueprintEditor> Opened;
-		FString OpenError;
-		if (!TestTrue(TEXT("Blueprint editor opens: ") + OpenError, FN2CMcpBlueprintUtils::OpenBlueprintEditor(Blueprint, Opened, OpenError)))
+		if (!Test->OpenInEditor(*this, MyFunc, /*bClean*/ false))
 		{
 			return;
 		}
-		bEditorOpen = true;
-		StaticCastSharedPtr<FBlueprintEditor>(Opened)->JumpToHyperlink(MyFunc, false);
 		Settle();
 		const TSet<FString> Original = LinksBefore;
 
@@ -522,24 +464,24 @@ void FN2CFunctionPinEditsSpec::Define()
 
 		Bridge(TEXT("bridge add Speed"), UN2CPythonBridge::AddFunctionInputPin(TEXT("Speed"), TEXT("float")), true);
 		Bridge(TEXT("bridge add bOk"), UN2CPythonBridge::AddFunctionReturnPin(TEXT("bOk"), TEXT("bool")), true);
-		TestTrue(TEXT("bridge: entry has Speed"), HasUserPin(MyEntry, TEXT("Speed")));
-		TestTrue(TEXT("bridge: both Return nodes have bOk"), HasUserPin(ReturnA, TEXT("bOk")) && HasUserPin(ReturnB, TEXT("bOk")));
+		TestTrue(TEXT("bridge: entry has Speed"), N2CTest::HasUserPin(MyEntry, TEXT("Speed")));
+		TestTrue(TEXT("bridge: both Return nodes have bOk"), N2CTest::HasUserPin(ReturnA, TEXT("bOk")) && N2CTest::HasUserPin(ReturnB, TEXT("bOk")));
 		ExpectCallSitesMatch(TEXT("bridge after adds"), MyFunc, { EventCall, CallerCall });
-		TestTrue(TEXT("bridge: links kept"), Links(Blueprint).Includes(Original) && Original.Includes(Links(Blueprint)));
+		TestTrue(TEXT("bridge: links kept"), N2CTest::AllLinks(Blueprint).Includes(Original) && Original.Includes(N2CTest::AllLinks(Blueprint)));
 		TestTrue(TEXT("bridge: package dirty"), Test->GetPackage()->IsDirty());
 
 		// One undo takes back the last edit (bOk) everywhere, and leaves Speed
 		TestTrue(TEXT("bridge: undo runs"), GEditor->UndoTransaction());
-		TestFalse(TEXT("bridge undo: bOk gone from both Return nodes"), HasUserPin(ReturnA, TEXT("bOk")) || HasUserPin(ReturnB, TEXT("bOk")));
+		TestFalse(TEXT("bridge undo: bOk gone from both Return nodes"), N2CTest::HasUserPin(ReturnA, TEXT("bOk")) || N2CTest::HasUserPin(ReturnB, TEXT("bOk")));
 		TestNull(TEXT("bridge undo: bOk gone from the call"), EventCall->FindPin(TEXT("bOk")));
-		TestTrue(TEXT("bridge undo: Speed stays"), HasUserPin(MyEntry, TEXT("Speed")) && EventCall->FindPin(TEXT("Speed")) != nullptr);
+		TestTrue(TEXT("bridge undo: Speed stays"), N2CTest::HasUserPin(MyEntry, TEXT("Speed")) && EventCall->FindPin(TEXT("Speed")) != nullptr);
 		ExpectBlueprintCompiles(TEXT("bridge after undo"));
 
 		Bridge(TEXT("bridge add bOk again"), UN2CPythonBridge::AddFunctionReturnPin(TEXT("bOk"), TEXT("bool")), true);
 		Bridge(TEXT("bridge remove Speed"), UN2CPythonBridge::RemoveFunctionEntryPin(TEXT("Speed")), true);
 		Bridge(TEXT("bridge remove bOk"), UN2CPythonBridge::RemoveFunctionReturnPin(TEXT("bOk")), true);
 		ExpectCallSitesMatch(TEXT("bridge after removes"), MyFunc, { EventCall, CallerCall });
-		TestTrue(TEXT("bridge: the original links are all there"), Links(Blueprint).Includes(Original) && Original.Includes(Links(Blueprint)));
+		TestTrue(TEXT("bridge: the original links are all there"), N2CTest::AllLinks(Blueprint).Includes(Original) && Original.Includes(N2CTest::AllLinks(Blueprint)));
 	});
 #endif
 }

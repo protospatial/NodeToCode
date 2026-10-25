@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "BlueprintActionDatabase.h"
@@ -26,70 +27,6 @@
 #include "UObject/Package.h"
 #include "Runtime/Launch/Resources/Version.h"
 
-namespace N2CCompileOnceSpec
-{
-	/** Full compiles of one Blueprint (UBlueprint::OnCompiled), from construction until destruction */
-	struct FCompileCounter
-	{
-		UBlueprint* Blueprint = nullptr;
-		FDelegateHandle Handle;
-		int32 Count = 0;
-
-		explicit FCompileCounter(UBlueprint* InBlueprint)
-			: Blueprint(InBlueprint)
-		{
-			Handle = Blueprint->OnCompiled().AddLambda([this](UBlueprint*) { ++Count; });
-		}
-		~FCompileCounter()
-		{
-			Blueprint->OnCompiled().Remove(Handle);
-		}
-	};
-
-	FMcpToolCallResult Call(const FString& Name, const TSharedPtr<FJsonObject>& Args)
-	{
-		const TSharedPtr<IN2CMcpTool> Tool = N2CTest::FindRegisteredTool(Name);
-		return Tool.IsValid() ? Tool->Execute(Args)
-			: FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("N2CTest: no registered tool '%s'"), *Name));
-	}
-
-	TSharedPtr<FJsonValue> PinRef(const UEdGraphPin* Pin)
-	{
-		const TSharedPtr<FJsonObject> Ref = MakeShared<FJsonObject>();
-		Ref->SetStringField(TEXT("nodeGuid"), Pin->GetOwningNode()->NodeGuid.ToString());
-		Ref->SetStringField(TEXT("pinGuid"), Pin->PinId.ToString());
-		Ref->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
-		return MakeShared<FJsonValueObject>(Ref);
-	}
-
-	/** connect-pins arguments linking each From[i] to To[i] */
-	TSharedPtr<FJsonObject> ConnectArgs(const TArray<TPair<UEdGraphPin*, UEdGraphPin*>>& Links)
-	{
-		TArray<TSharedPtr<FJsonValue>> Connections;
-		for (const TPair<UEdGraphPin*, UEdGraphPin*>& Link : Links)
-		{
-			const TSharedPtr<FJsonObject> Connection = MakeShared<FJsonObject>();
-			Connection->SetField(TEXT("from"), PinRef(Link.Key));
-			Connection->SetField(TEXT("to"), PinRef(Link.Value));
-			Connections.Add(MakeShared<FJsonValueObject>(Connection));
-		}
-		const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
-		Args->SetArrayField(TEXT("connections"), Connections);
-		return Args;
-	}
-
-	/** The result's "compile" object, or null */
-	TSharedPtr<FJsonObject> CompileOf(const FMcpToolCallResult& Result)
-	{
-		const TSharedPtr<FJsonObject> Parsed = N2CTest::ParseJsonObject(N2CTest::ResultText(Result));
-		const TSharedPtr<FJsonObject>* Compile = nullptr;
-		return Parsed.IsValid() && Parsed->TryGetObjectField(TEXT("compile"), Compile) ? *Compile : nullptr;
-	}
-
-	UEdGraphPin* ExecOut(UEdGraphNode* Node) { return Node ? Node->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output) : nullptr; }
-	UEdGraphPin* ExecIn(UEdGraphNode* Node) { return Node ? Node->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input) : nullptr; }
-}
-
 /**
  * One compile per tool call, with the compiler's diagnostics in the result (card 0151), through the MCP tools on a
  * Blueprint open and focused in its editor. The tools act on the focused graph, so these cases open a Blueprint
@@ -97,9 +34,8 @@ namespace N2CCompileOnceSpec
  * same behaviour is checked without an editor in NodeToCode.MCP.CompileScope and live through claude -p.
  */
 BEGIN_DEFINE_SPEC(FN2CCompileOnceSpec, "NodeToCode.MCP.CompileOnce", N2C_TEST_FLAGS)
-	TUniquePtr<N2CTest::FTestBlueprint> Test;
+	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
 	TArray<UEdGraphNode*> Chain;
-	bool bEditorOpen = false;
 
 	/** A custom event and Count Print String calls, unlinked, in a /Game Blueprint opened and focused in its editor */
 	bool OpenChain(const TCHAR* Name, int32 Count);
@@ -107,10 +43,8 @@ END_DEFINE_SPEC(FN2CCompileOnceSpec)
 
 bool FN2CCompileOnceSpec::OpenChain(const TCHAR* Name, int32 Count)
 {
-	Test = MakeUnique<N2CTest::FTestBlueprint>(Name, TEXT("/Game"));
-	// FTestBlueprint packages are transient, and MarkPackageDirty skips transient objects: clear the flag so the
-	// dirty checks see what a saved Blueprint would (AfterEach puts it back)
-	Test->GetPackage()->ClearFlags(RF_Transient);
+	// Not transient, so the dirty checks see what a saved Blueprint would (FToolSpecBlueprint puts it back)
+	Test = MakeUnique<N2CTest::FToolSpecBlueprint>(Name, TEXT("/Game"));
 	Chain.Reset();
 	UEdGraph* Graph = Test->EventGraph();
 	Chain.Add(Test->AddCustomEvent(Graph, FName(TEXT("N2CCompileOnceEvent"))));
@@ -123,23 +57,12 @@ bool FN2CCompileOnceSpec::OpenChain(const TCHAR* Name, int32 Count)
 		return false;
 	}
 
-	TSharedPtr<IBlueprintEditor> Opened;
-	FString OpenError;
-	if (!TestTrue(TEXT("Blueprint editor opens: ") + OpenError, FN2CMcpBlueprintUtils::OpenBlueprintEditor(Test->GetBlueprint(), Opened, OpenError)))
-	{
-		return false;
-	}
-	bEditorOpen = true;
-	StaticCastSharedPtr<FBlueprintEditor>(Opened)->JumpToHyperlink(Graph, false);
-	Test->GetPackage()->SetDirtyFlag(false);
-	return true;
+	return Test->OpenInEditor(*this, Graph);
 }
 
 void FN2CCompileOnceSpec::Define()
 {
-	using namespace N2CCompileOnceSpec;
-
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
+#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
 	It(TEXT("runs on UE 5.8 only (a headless Blueprint editor cannot be closed below 5.8)"), [this]()
 	{
 		AddInfo(TEXT("Skipped below UE 5.8; NodeToCode.MCP.CompileScope covers the same behaviour without an editor"));
@@ -147,17 +70,6 @@ void FN2CCompileOnceSpec::Define()
 #else
 	AfterEach([this]()
 	{
-		if (Test.IsValid())
-		{
-			Test->GetPackage()->SetDirtyFlag(false);
-			if (bEditorOpen && GEditor)
-			{
-				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Test->GetBlueprint());
-			}
-			Test->GetPackage()->SetDirtyFlag(false);
-			Test->GetPackage()->SetFlags(RF_Transient);
-		}
-		bEditorOpen = false;
 		Chain.Reset();
 		Test.Reset();
 	});
@@ -171,12 +83,12 @@ void FN2CCompileOnceSpec::Define()
 		TArray<TPair<UEdGraphPin*, UEdGraphPin*>> Links;
 		for (int32 Index = 0; Index + 1 < Chain.Num(); ++Index)
 		{
-			Links.Emplace(ExecOut(Chain[Index]), ExecIn(Chain[Index + 1]));
+			Links.Emplace(N2CTest::ExecOut(Chain[Index]), N2CTest::ExecIn(Chain[Index + 1]));
 		}
 
-		FCompileCounter Compiles(Test->GetBlueprint());
+		N2CTest::FCompileCounter Compiles(Test->GetBlueprint());
 		const double Start = FPlatformTime::Seconds();
-		const FMcpToolCallResult Result = Call(TEXT("connect-pins"), ConnectArgs(Links));
+		const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("connect-pins"), N2CTest::ConnectArgs(Links));
 		const double Seconds = FPlatformTime::Seconds() - Start;
 		AddInfo(FString::Printf(TEXT("connect-pins, 20 connections: %d full compile(s), %.1f ms"), Compiles.Count, Seconds * 1000.0));
 
@@ -190,7 +102,7 @@ void FN2CCompileOnceSpec::Define()
 		TestEqual(TEXT("one full compile for the call"), Compiles.Count, 1);
 		TestTrue(TEXT("package dirty"), Test->GetPackage()->IsDirty());
 
-		const TSharedPtr<FJsonObject> Compile = CompileOf(Result);
+		const TSharedPtr<FJsonObject> Compile = N2CTest::ResultCompile(Result);
 		if (TestTrue(TEXT("the result carries the compile"), Compile.IsValid()))
 		{
 			TestTrue(TEXT("compile success"), Compile->GetBoolField(TEXT("success")));
@@ -215,12 +127,12 @@ void FN2CCompileOnceSpec::Define()
 		}
 		Test->GetPackage()->SetDirtyFlag(false);
 
-		FCompileCounter Compiles(Test->GetBlueprint());
-		const FMcpToolCallResult Result = Call(TEXT("connect-pins"), ConnectArgs({ { ExecOut(Chain[0]), ExecIn(SetMesh) } }));
+		N2CTest::FCompileCounter Compiles(Test->GetBlueprint());
+		const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("connect-pins"), N2CTest::ConnectArgs({ { N2CTest::ExecOut(Chain[0]), N2CTest::ExecIn(SetMesh) } }));
 		TestFalse(TEXT("the connection itself succeeds"), Result.bIsError);
 		TestEqual(TEXT("one compile"), Compiles.Count, 1);
 
-		const TSharedPtr<FJsonObject> Compile = CompileOf(Result);
+		const TSharedPtr<FJsonObject> Compile = N2CTest::ResultCompile(Result);
 		if (!TestTrue(TEXT("the result carries the compile: ") + N2CTest::ResultText(Result).Left(300), Compile.IsValid()))
 		{
 			return;
@@ -248,12 +160,12 @@ void FN2CCompileOnceSpec::Define()
 		{
 			return;
 		}
-		FCompileCounter Compiles(Test->GetBlueprint());
+		N2CTest::FCompileCounter Compiles(Test->GetBlueprint());
 		const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 		Args->SetArrayField(TEXT("nodeGuids"), { MakeShared<FJsonValueString>(Chain[1]->NodeGuid.ToString()),
 			MakeShared<FJsonValueString>(Chain[2]->NodeGuid.ToString()) });
 		Args->SetStringField(TEXT("commentText"), TEXT("N2C test comment"));
-		const FMcpToolCallResult Result = Call(TEXT("create-comment-node"), Args);
+		const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("create-comment-node"), Args);
 		TestFalse(TEXT("comment created: ") + N2CTest::ResultText(Result).Left(300), Result.bIsError);
 		TestEqual(TEXT("no compile for a comment"), Compiles.Count, 0);
 		TestTrue(TEXT("package dirty"), Test->GetPackage()->IsDirty());
@@ -265,7 +177,7 @@ void FN2CCompileOnceSpec::Define()
 		{
 			return;
 		}
-		FCompileCounter Compiles(Test->GetBlueprint());
+		N2CTest::FCompileCounter Compiles(Test->GetBlueprint());
 		double ConnectMs = 0.0;
 		double SetValueMs = 0.0;
 		double DeleteMs = 0.0;
@@ -274,10 +186,10 @@ void FN2CCompileOnceSpec::Define()
 		TArray<TPair<UEdGraphPin*, UEdGraphPin*>> Links;
 		for (int32 Index = 0; Index + 1 < Chain.Num(); ++Index)
 		{
-			Links.Emplace(ExecOut(Chain[Index]), ExecIn(Chain[Index + 1]));
+			Links.Emplace(N2CTest::ExecOut(Chain[Index]), N2CTest::ExecIn(Chain[Index + 1]));
 		}
 		double Start = FPlatformTime::Seconds();
-		TestFalse(TEXT("connect-pins"), Call(TEXT("connect-pins"), ConnectArgs(Links)).bIsError);
+		TestFalse(TEXT("connect-pins"), N2CTest::RunTool(TEXT("connect-pins"), N2CTest::ConnectArgs(Links)).bIsError);
 		ConnectMs = (FPlatformTime::Seconds() - Start) * 1000.0;
 		const int32 AfterConnect = Compiles.Count;
 
@@ -294,7 +206,7 @@ void FN2CCompileOnceSpec::Define()
 			Args->SetStringField(TEXT("nodeGuid"), Chain[Index]->NodeGuid.ToString());
 			Args->SetStringField(TEXT("pinGuid"), InString->PinId.ToString());
 			Args->SetStringField(TEXT("value"), FString::Printf(TEXT("step %d"), Index));
-			TestFalse(TEXT("set-input-pin-value"), Call(TEXT("set-input-pin-value"), Args).bIsError);
+			TestFalse(TEXT("set-input-pin-value"), N2CTest::RunTool(TEXT("set-input-pin-value"), Args).bIsError);
 		}
 		SetValueMs = (FPlatformTime::Seconds() - Start) * 1000.0;
 		const int32 AfterSetValues = Compiles.Count;
@@ -305,7 +217,7 @@ void FN2CCompileOnceSpec::Define()
 			Args->SetArrayField(TEXT("nodeGuids"), { MakeShared<FJsonValueString>(Chain[Chain.Num() - 1]->NodeGuid.ToString()),
 				MakeShared<FJsonValueString>(Chain[Chain.Num() - 2]->NodeGuid.ToString()) });
 			Start = FPlatformTime::Seconds();
-			TestFalse(TEXT("delete-blueprint-node"), Call(TEXT("delete-blueprint-node"), Args).bIsError);
+			TestFalse(TEXT("delete-blueprint-node"), N2CTest::RunTool(TEXT("delete-blueprint-node"), Args).bIsError);
 			DeleteMs = (FPlatformTime::Seconds() - Start) * 1000.0;
 		}
 

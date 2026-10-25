@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Tools/Implementations/Blueprint/Graph/N2CMcpSearchBlueprintNodesTool.h"
 #include "MCP/Tools/Implementations/Blueprint/Graph/N2CMcpAddBlueprintNodeTool.h"
@@ -153,13 +154,6 @@ namespace N2CNodeActionIdsSpec
 		return Hit ? Hit : FindHit(Hits, { TEXT(":Greater_IntInt") });
 	}
 
-	FMcpToolCallResult Call(const FString& Name, const TSharedPtr<FJsonObject>& Args)
-	{
-		const TSharedPtr<IN2CMcpTool> Tool = N2CTest::FindRegisteredTool(Name);
-		return Tool.IsValid() ? Tool->Execute(Args)
-			: FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("N2CTest: no registered tool '%s'"), *Name));
-	}
-
 	/** The nodes array of a search-blueprint-nodes result (or of the bridge's data object) */
 	TArray<TSharedPtr<FJsonValue>> NodesOf(const TSharedPtr<FJsonObject>& Object)
 	{
@@ -220,7 +214,7 @@ namespace N2CNodeActionIdsSpec
 		Args->SetBoolField(TEXT("contextSensitive"), bContextSensitive);
 		Args->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
 		Args->SetNumberField(TEXT("maxResults"), MaxResults);
-		return Call(TEXT("search-blueprint-nodes"), Args);
+		return N2CTest::RunTool(TEXT("search-blueprint-nodes"), Args);
 	}
 
 	/** The IDs of the spawner-backed actions the engine's own node menu (FBlueprintActionMenuUtils::MakeContextMenu) lists */
@@ -290,8 +284,7 @@ namespace N2CNodeActionIdsSpec
  * engine.
  */
 BEGIN_DEFINE_SPEC(FN2CNodeActionIdsSpec, "NodeToCode.MCP.NodeActionIds", N2C_TEST_FLAGS)
-	TUniquePtr<N2CTest::FTestBlueprint> Test;
-	bool bEditorOpen = false;
+	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
 
 	/** A /Game Actor Blueprint with an int member variable N2CTestHealth and BeginPlay wired to Print String */
 	bool MakeBlueprint(const TCHAR* Name);
@@ -301,10 +294,8 @@ END_DEFINE_SPEC(FN2CNodeActionIdsSpec)
 
 bool FN2CNodeActionIdsSpec::MakeBlueprint(const TCHAR* Name)
 {
-	Test = MakeUnique<N2CTest::FTestBlueprint>(Name, TEXT("/Game"));
-	// FTestBlueprint packages are transient and MarkPackageDirty skips transient objects: clear the flag so the dirty
-	// checks see what a saved Blueprint would (AfterEach puts it back)
-	Test->GetPackage()->ClearFlags(RF_Transient);
+	// Not transient, so the dirty checks see what a saved Blueprint would (FToolSpecBlueprint puts it back)
+	Test = MakeUnique<N2CTest::FToolSpecBlueprint>(Name, TEXT("/Game"));
 	Test->AddMemberVariable(FName(TEXT("N2CTestHealth")), N2CTest::FTestBlueprint::IntPinType());
 	// The editor refreshes a Blueprint's actions when its members change; do it here too, or the variable's Get and Set
 	// are missing whenever the action database was built before this Blueprint existed (any earlier test searched)
@@ -330,16 +321,7 @@ bool FN2CNodeActionIdsSpec::MakeBlueprint(const TCHAR* Name)
 
 bool FN2CNodeActionIdsSpec::OpenInEditor()
 {
-	TSharedPtr<IBlueprintEditor> Opened;
-	FString OpenError;
-	if (!TestTrue(TEXT("Blueprint editor opens: ") + OpenError, FN2CMcpBlueprintUtils::OpenBlueprintEditor(Test->GetBlueprint(), Opened, OpenError)))
-	{
-		return false;
-	}
-	bEditorOpen = true;
-	StaticCastSharedPtr<FBlueprintEditor>(Opened)->JumpToHyperlink(Test->EventGraph(), false);
-	Test->GetPackage()->SetDirtyFlag(false);
-	return true;
+	return Test->OpenInEditor(*this, Test->EventGraph());
 }
 
 void FN2CNodeActionIdsSpec::Define()
@@ -348,16 +330,7 @@ void FN2CNodeActionIdsSpec::Define()
 
 	AfterEach([this]()
 	{
-		if (Test.IsValid())
-		{
-			if (bEditorOpen && GEditor)
-			{
-				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Test->GetBlueprint());
-			}
-			Test->GetPackage()->SetDirtyFlag(false);
-			Test->GetPackage()->SetFlags(RF_Transient);
-		}
-		bEditorOpen = false;
+		// Closes the editor, cleans the package and resets the undo buffer
 		Test.Reset();
 	});
 
@@ -574,7 +547,7 @@ void FN2CNodeActionIdsSpec::Define()
 			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 			Args->SetStringField(TEXT("searchTerm"), TEXT("print string"));
 			Args->SetObjectField(TEXT("blueprintContext"), Context);
-			const FMcpToolCallResult Result = Call(TEXT("search-blueprint-nodes"), Args);
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("search-blueprint-nodes"), Args);
 			TestTrue(TEXT("search-blueprint-nodes fails"), Result.bIsError);
 			TestTrue(TEXT("with GRAPH_NOT_FOUND: ") + N2CTest::ResultText(Result).Left(200), N2CTest::ResultText(Result).Contains(TEXT("GRAPH_NOT_FOUND")));
 
@@ -675,7 +648,7 @@ void FN2CNodeActionIdsSpec::Define()
 				AddArgs->SetStringField(TEXT("nodeName"), Hit->Name);
 				AddArgs->SetStringField(TEXT("actionIdentifier"), Hit->Id);
 				AddArgs->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
-				const FMcpToolCallResult Added = Call(TEXT("add-bp-node-to-active-graph"), AddArgs);
+				const FMcpToolCallResult Added = N2CTest::RunTool(TEXT("add-bp-node-to-active-graph"), AddArgs);
 				TestFalse(TEXT("Set Text adds: ") + N2CTest::ResultText(Added).Left(300), Added.bIsError);
 			}
 		});
@@ -706,7 +679,7 @@ void FN2CNodeActionIdsSpec::Define()
 					Location->SetNumberField(TEXT("y"), Y);
 					AddArgs->SetObjectField(TEXT("location"), Location);
 					Y += 200;
-					const FMcpToolCallResult Result = Call(TEXT("add-bp-node-to-active-graph"), AddArgs);
+					const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("add-bp-node-to-active-graph"), AddArgs);
 					const bool bAdded = TestFalse(FString::Printf(TEXT("'%s' result %s (%s) adds: %s"), Term, *Hit.Name, *Hit.Id.Left(160),
 						*N2CTest::ResultText(Result).Left(300)), Result.bIsError);
 					const TSharedPtr<FJsonObject> AddedJson = N2CTest::ParseJsonObject(N2CTest::ResultText(Result));
@@ -752,7 +725,7 @@ void FN2CNodeActionIdsSpec::Define()
 			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 			Args->SetStringField(TEXT("searchTerm"), TEXT("print string"));
 			Args->SetBoolField(TEXT("contextSensitive"), false);
-			const FMcpToolCallResult Result = Call(TEXT("search-blueprint-nodes"), Args);
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("search-blueprint-nodes"), Args);
 			const int32 Found = NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(Result))).Num();
 			// With a focused graph (another test may leave one) it searches that graph; without one it is an error
 			TestTrue(FString::Printf(TEXT("an error or results, not an empty list: %s"), *N2CTest::ResultText(Result).Left(200)),
@@ -764,7 +737,7 @@ void FN2CNodeActionIdsSpec::Define()
 		});
 	});
 
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
+#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
 	Describe(TEXT("through MCP and the Python bridge"), [this]()
 	{
 		It(TEXT("runs on UE 5.8 only (a headless Blueprint editor cannot be closed below 5.8)"), [this]()
@@ -792,7 +765,7 @@ void FN2CNodeActionIdsSpec::Define()
 			{
 				const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 				Args->SetStringField(TEXT("searchTerm"), Term);
-				const FMcpToolCallResult Result = Call(TEXT("search-blueprint-nodes"), Args);
+				const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("search-blueprint-nodes"), Args);
 				TestFalse(FString::Printf(TEXT("MCP '%s' succeeds"), Term), Result.bIsError);
 				TestTrue(FString::Printf(TEXT("MCP '%s' finds results"), Term), NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(Result))).Num() > 0);
 
@@ -821,7 +794,7 @@ void FN2CNodeActionIdsSpec::Define()
 			const TSharedPtr<FJsonObject> SearchArgs = MakeShared<FJsonObject>();
 			SearchArgs->SetStringField(TEXT("searchTerm"), TEXT("greater"));
 			SearchArgs->SetNumberField(TEXT("maxResults"), 100);
-			const FMcpToolCallResult Searched = Call(TEXT("search-blueprint-nodes"), SearchArgs);
+			const FMcpToolCallResult Searched = N2CTest::RunTool(TEXT("search-blueprint-nodes"), SearchArgs);
 			const TArray<FHit> Hits = HitsOf(NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(Searched))));
 			const FHit* Hit = FindGreater(Hits);
 			if (TestNotNull(FString::Printf(TEXT("MCP search finds integer > integer (%d results)"), Hits.Num()), Hit))
@@ -830,7 +803,7 @@ void FN2CNodeActionIdsSpec::Define()
 				const TSharedPtr<FJsonObject> AddArgs = MakeShared<FJsonObject>();
 				AddArgs->SetStringField(TEXT("nodeName"), Hit->Name);
 				AddArgs->SetStringField(TEXT("actionIdentifier"), Hit->Id);
-				const FMcpToolCallResult Added = Call(TEXT("add-bp-node-to-active-graph"), AddArgs);
+				const FMcpToolCallResult Added = N2CTest::RunTool(TEXT("add-bp-node-to-active-graph"), AddArgs);
 				TestFalse(TEXT("MCP add succeeds: ") + N2CTest::ResultText(Added).Left(300), Added.bIsError);
 				const TSharedPtr<FJsonObject> AddedJson = N2CTest::ParseJsonObject(N2CTest::ResultText(Added));
 				const UEdGraphNode* Node = AddedJson.IsValid() ? NodeByGuid(Graph, AddedJson->GetStringField(TEXT("nodeGuid"))) : nullptr;

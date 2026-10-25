@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CCapture.h"
@@ -42,13 +43,6 @@
 
 namespace N2CBlueprintByPathSpec
 {
-	FMcpToolCallResult Call(const FString& Name, const TSharedPtr<FJsonObject>& Args)
-	{
-		const TSharedPtr<IN2CMcpTool> Tool = N2CTest::FindRegisteredTool(Name);
-		return Tool.IsValid() ? Tool->Execute(Args)
-			: FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("N2CTest: no registered tool '%s'"), *Name));
-	}
-
 	/** The K2 nodes of a graph: what a capture describes (knots aside, which these graphs do not use) */
 	int32 K2NodeCount(const UEdGraph* Graph)
 	{
@@ -233,7 +227,7 @@ void FN2CBlueprintByPathSpec::Define()
 	{
 		It(TEXT("lists every graph with its GraphGuid, kind, node count and read-only flag"), [this]()
 		{
-			const TSharedPtr<FJsonObject> Json = N2CTest::ParseJsonObject(SuccessText(TEXT("list"), Call(TEXT("list-blueprint-graphs"), Args(Path()))));
+			const TSharedPtr<FJsonObject> Json = N2CTest::ParseJsonObject(SuccessText(TEXT("list"), N2CTest::RunToolUnmarked(TEXT("list-blueprint-graphs"), Args(Path()))));
 			if (!TestTrue(TEXT("a JSON object"), Json.IsValid()))
 			{
 				return;
@@ -274,8 +268,8 @@ void FN2CBlueprintByPathSpec::Define()
 
 		It(TEXT("refuses a missing or unknown blueprintPath with a code"), [this]()
 		{
-			ExpectError(TEXT("no path"), Call(TEXT("list-blueprint-graphs"), MakeShared<FJsonObject>()), TEXT("INVALID_ARGUMENT"));
-			ExpectError(TEXT("unknown path"), Call(TEXT("list-blueprint-graphs"), Args(TEXT("/Game/N2CTest/NoSuch/BP_Nope"))), TEXT("ASSET_NOT_FOUND"));
+			ExpectError(TEXT("no path"), N2CTest::RunToolUnmarked(TEXT("list-blueprint-graphs"), MakeShared<FJsonObject>()), TEXT("INVALID_ARGUMENT"));
+			ExpectError(TEXT("unknown path"), N2CTest::RunToolUnmarked(TEXT("list-blueprint-graphs"), Args(TEXT("/Game/N2CTest/NoSuch/BP_Nope"))), TEXT("ASSET_NOT_FOUND"));
 		});
 	});
 
@@ -288,10 +282,10 @@ void FN2CBlueprintByPathSpec::Define()
 				const FString Name = Graph.Key->GetName();
 				const TSharedPtr<FJsonObject> ByGuidArgs = Args(Path(), FString(), Graph.Key->GraphGuid.ToString());
 				ByGuidArgs->SetNumberField(TEXT("depth"), 0);
-				const FString ByGuid = SuccessText(Name + TEXT(" by GUID"), Call(TEXT("get-blueprint-n2cjson"), ByGuidArgs));
+				const FString ByGuid = SuccessText(Name + TEXT(" by GUID"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), ByGuidArgs));
 				const TSharedPtr<FJsonObject> ByNameArgs = Args(Path(), Name);
 				ByNameArgs->SetNumberField(TEXT("depth"), 0);
-				const FString ByName = SuccessText(Name + TEXT(" by name"), Call(TEXT("get-blueprint-n2cjson"), ByNameArgs));
+				const FString ByName = SuccessText(Name + TEXT(" by name"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), ByNameArgs));
 				TestEqual(Name + TEXT(": by name and by GUID read the same document"), ByName, ByGuid);
 
 				const TSharedPtr<FJsonObject> Document = N2CTest::ParseJsonObject(ByGuid);
@@ -309,7 +303,7 @@ void FN2CBlueprintByPathSpec::Define()
 
 		It(TEXT("reads every graph that holds nodes into one document when no graph is named"), [this]()
 		{
-			const FString Text = SuccessText(TEXT("every graph"), Call(TEXT("get-blueprint-n2cjson"), Args(Path())));
+			const FString Text = SuccessText(TEXT("every graph"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path())));
 			const TSharedPtr<FJsonObject> Document = N2CTest::ParseJsonObject(Text);
 			const TArray<TSharedPtr<FJsonValue>>* GraphArray = nullptr;
 			if (!TestTrue(TEXT("parses, with graphs"), Document.IsValid() && Document->TryGetArrayField(TEXT("graphs"), GraphArray)))
@@ -343,10 +337,10 @@ void FN2CBlueprintByPathSpec::Define()
 
 		It(TEXT("returns compact JSON by default and the indented document with compact false"), [this]()
 		{
-			const FString Compact = SuccessText(TEXT("compact"), Call(TEXT("get-blueprint-n2cjson"), Args(Path(), Function->GetName())));
+			const FString Compact = SuccessText(TEXT("compact"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), Function->GetName())));
 			const TSharedPtr<FJsonObject> PrettyArgs = Args(Path(), Function->GetName());
 			PrettyArgs->SetBoolField(TEXT("compact"), false);
-			const FString Pretty = SuccessText(TEXT("indented"), Call(TEXT("get-blueprint-n2cjson"), PrettyArgs));
+			const FString Pretty = SuccessText(TEXT("indented"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), PrettyArgs));
 			TestFalse(TEXT("compact has no newline"), Compact.Contains(TEXT("\n")));
 			TestTrue(TEXT("indented has newlines"), Pretty.Contains(TEXT("\n")));
 			TestTrue(TEXT("compact is shorter"), Compact.Len() < Pretty.Len());
@@ -371,14 +365,14 @@ void FN2CBlueprintByPathSpec::Define()
 				const TSharedPtr<FJsonObject> PrettyArgs = Args(Path(), FString(), Graph.Key->GraphGuid.ToString());
 				PrettyArgs->SetBoolField(TEXT("compact"), false);
 				TestEqual(Graph.Key->GetName() + TEXT(": the same text"),
-					SuccessText(Graph.Key->GetName(), Call(TEXT("get-blueprint-n2cjson"), PrettyArgs)),
+					SuccessText(Graph.Key->GetName(), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), PrettyArgs)),
 					FN2CMcpGetFocusedBlueprintTool::BuildResultJson(Capture));
 			}
 		});
 
 		It(TEXT("returns the text get-focused-blueprint returns when the same graph is focused"), [this]()
 		{
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
+#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
 			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor window (see NodeToCode.Editor.Focus); the
 			// case above covers the same capture on every engine
 			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
@@ -411,13 +405,13 @@ void FN2CBlueprintByPathSpec::Define()
 				{
 					continue;
 				}
-				const FString Focused = SuccessText(TEXT("get-focused-blueprint"), Call(TEXT("get-focused-blueprint"), MakeShared<FJsonObject>()));
+				const FString Focused = SuccessText(TEXT("get-focused-blueprint"), N2CTest::RunToolUnmarked(TEXT("get-focused-blueprint"), MakeShared<FJsonObject>()));
 				const TSharedPtr<FJsonObject> PrettyArgs = Args(Path(), Graph->GetName());
 				PrettyArgs->SetBoolField(TEXT("compact"), false);
 				TestEqual(Graph->GetName() + TEXT(": compact false is get-focused-blueprint's text"),
-					SuccessText(TEXT("by path"), Call(TEXT("get-blueprint-n2cjson"), PrettyArgs)), Focused);
+					SuccessText(TEXT("by path"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), PrettyArgs)), Focused);
 				TestEqual(Graph->GetName() + TEXT(": compact is the same document"),
-					Condensed(N2CTest::ParseJsonObject(SuccessText(TEXT("compact"), Call(TEXT("get-blueprint-n2cjson"), Args(Path(), Graph->GetName()))))),
+					Condensed(N2CTest::ParseJsonObject(SuccessText(TEXT("compact"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), Graph->GetName()))))),
 					Condensed(N2CTest::ParseJsonObject(Focused)));
 			}
 #endif
@@ -425,26 +419,26 @@ void FN2CBlueprintByPathSpec::Define()
 
 		It(TEXT("gives the same IDs on every read and keeps nothing between reads"), [this]()
 		{
-			const FString First = SuccessText(TEXT("first"), Call(TEXT("get-blueprint-n2cjson"), Args(Path(), Function->GetName())));
-			SuccessText(TEXT("every graph"), Call(TEXT("get-blueprint-n2cjson"), Args(Path())));
-			SuccessText(TEXT("event graph"), Call(TEXT("get-blueprint-n2cjson"), Args(Path(), TEXT("EventGraph"))));
+			const FString First = SuccessText(TEXT("first"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), Function->GetName())));
+			SuccessText(TEXT("every graph"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path())));
+			SuccessText(TEXT("event graph"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), TEXT("EventGraph"))));
 			TestEqual(TEXT("the function reads the same after other reads"), SuccessText(TEXT("again"),
-				Call(TEXT("get-blueprint-n2cjson"), Args(Path(), Function->GetName()))), First);
+				N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), Function->GetName()))), First);
 		});
 
 		It(TEXT("refuses bad arguments, unknown Blueprints and graphs, and an empty graph, with codes"), [this]()
 		{
-			ExpectError(TEXT("no blueprintPath"), Call(TEXT("get-blueprint-n2cjson"), MakeShared<FJsonObject>()), TEXT("INVALID_ARGUMENT"));
-			ExpectError(TEXT("unknown path"), Call(TEXT("get-blueprint-n2cjson"), Args(TEXT("/Game/N2CTest/NoSuch/BP_Nope"))), TEXT("ASSET_NOT_FOUND"));
-			ExpectError(TEXT("unknown path with a graph"), Call(TEXT("get-blueprint-n2cjson"), Args(TEXT("/Game/N2CTest/NoSuch/BP_Nope"), TEXT("EventGraph"))), TEXT("ASSET_NOT_FOUND"));
-			ExpectError(TEXT("unknown graph name"), Call(TEXT("get-blueprint-n2cjson"), Args(Path(), TEXT("NoSuchGraph"))), TEXT("GRAPH_NOT_FOUND"));
-			ExpectError(TEXT("unknown graph GUID"), Call(TEXT("get-blueprint-n2cjson"), Args(Path(), FString(), FGuid::NewGuid().ToString())), TEXT("GRAPH_NOT_FOUND"));
-			ExpectError(TEXT("a graph with no nodes"), Call(TEXT("get-blueprint-n2cjson"), Args(Path(), Empty->GetName())), TEXT("EMPTY_GRAPH"));
+			ExpectError(TEXT("no blueprintPath"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), MakeShared<FJsonObject>()), TEXT("INVALID_ARGUMENT"));
+			ExpectError(TEXT("unknown path"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(TEXT("/Game/N2CTest/NoSuch/BP_Nope"))), TEXT("ASSET_NOT_FOUND"));
+			ExpectError(TEXT("unknown path with a graph"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(TEXT("/Game/N2CTest/NoSuch/BP_Nope"), TEXT("EventGraph"))), TEXT("ASSET_NOT_FOUND"));
+			ExpectError(TEXT("unknown graph name"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), TEXT("NoSuchGraph"))), TEXT("GRAPH_NOT_FOUND"));
+			ExpectError(TEXT("unknown graph GUID"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), FString(), FGuid::NewGuid().ToString())), TEXT("GRAPH_NOT_FOUND"));
+			ExpectError(TEXT("a graph with no nodes"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), Empty->GetName())), TEXT("EMPTY_GRAPH"));
 			for (const double Depth : { -1.0, 6.0, 1.5 })
 			{
 				const TSharedPtr<FJsonObject> DepthArgs = Args(Path(), Function->GetName());
 				DepthArgs->SetNumberField(TEXT("depth"), Depth);
-				ExpectError(FString::Printf(TEXT("depth %g"), Depth), Call(TEXT("get-blueprint-n2cjson"), DepthArgs), TEXT("INVALID_ARGUMENT"));
+				ExpectError(FString::Printf(TEXT("depth %g"), Depth), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), DepthArgs), TEXT("INVALID_ARGUMENT"));
 			}
 		});
 
@@ -454,8 +448,8 @@ void FN2CBlueprintByPathSpec::Define()
 			Depth0->SetNumberField(TEXT("depth"), 0);
 			const TSharedPtr<FJsonObject> Depth1 = Args(Path(), TEXT("EventGraph"));
 			Depth1->SetNumberField(TEXT("depth"), 1);
-			const TMap<FString, TSharedPtr<FJsonObject>> At0 = GraphsByName(N2CTest::ParseJsonObject(SuccessText(TEXT("depth 0"), Call(TEXT("get-blueprint-n2cjson"), Depth0))));
-			const TMap<FString, TSharedPtr<FJsonObject>> At1 = GraphsByName(N2CTest::ParseJsonObject(SuccessText(TEXT("depth 1"), Call(TEXT("get-blueprint-n2cjson"), Depth1))));
+			const TMap<FString, TSharedPtr<FJsonObject>> At0 = GraphsByName(N2CTest::ParseJsonObject(SuccessText(TEXT("depth 0"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Depth0))));
+			const TMap<FString, TSharedPtr<FJsonObject>> At1 = GraphsByName(N2CTest::ParseJsonObject(SuccessText(TEXT("depth 1"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Depth1))));
 			TestFalse(TEXT("depth 0: the event graph only"), At0.Contains(Function->GetName()));
 			TestTrue(TEXT("depth 1: the called function too"), At1.Contains(Function->GetName()));
 			TestTrue(TEXT("depth 1: and the collapsed graph"), At1.Contains(Collapsed->BoundGraph->GetName()));
@@ -511,7 +505,7 @@ void FN2CBlueprintByPathSpec::Define()
 
 				const TSharedPtr<FJsonObject> LargeArgs = Args(Path(), Large->GetName());
 				LargeArgs->SetNumberField(TEXT("depth"), 0);
-				const TSharedPtr<FJsonObject> Result = N2CTest::ParseJsonObject(SuccessText(TEXT("large"), Call(TEXT("get-blueprint-n2cjson"), LargeArgs)));
+				const TSharedPtr<FJsonObject> Result = N2CTest::ParseJsonObject(SuccessText(TEXT("large"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), LargeArgs)));
 				if (!TestTrue(TEXT("the result names a file"), Result.IsValid() && Result->HasTypedField<EJson::String>(TEXT("path"))))
 				{
 					return;
@@ -528,11 +522,11 @@ void FN2CBlueprintByPathSpec::Define()
 				TestEqual(TEXT("the file's JSON parses with every node"), NodesIn(Graphs.FindRef(Large->GetName())), 121);
 
 				// The same read again replaces the file; toFile writes a small document too
-				const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(SuccessText(TEXT("again"), Call(TEXT("get-blueprint-n2cjson"), LargeArgs)));
+				const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(SuccessText(TEXT("again"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), LargeArgs)));
 				TestEqual(TEXT("the same file"), Again.IsValid() ? Again->GetStringField(TEXT("path")) : FString(), FilePath);
 				const TSharedPtr<FJsonObject> SmallArgs = Args(Path(), Function->GetName());
 				SmallArgs->SetBoolField(TEXT("toFile"), true);
-				const TSharedPtr<FJsonObject> Small = N2CTest::ParseJsonObject(SuccessText(TEXT("toFile"), Call(TEXT("get-blueprint-n2cjson"), SmallArgs)));
+				const TSharedPtr<FJsonObject> Small = N2CTest::ParseJsonObject(SuccessText(TEXT("toFile"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), SmallArgs)));
 				TestTrue(TEXT("toFile: reason toFile"), Small.IsValid() && Small->GetStringField(TEXT("reason")) == TEXT("toFile"));
 				TArray<FString> Files;
 				IFileManager::Get().FindFiles(Files, *(Scratch.Path / TEXT("*")), true, false);
@@ -547,12 +541,12 @@ void FN2CBlueprintByPathSpec::Define()
 		{
 			const TSharedPtr<FJsonObject> Listed = N2CTest::ParseJsonObject(UN2CPythonBridge::ListBlueprintGraphs(Path()));
 			TestTrue(TEXT("ListBlueprintGraphs succeeds"), Listed.IsValid() && Listed->GetBoolField(TEXT("success")));
-			const TSharedPtr<FJsonObject> ToolList = N2CTest::ParseJsonObject(N2CTest::ResultText(Call(TEXT("list-blueprint-graphs"), Args(Path()))));
+			const TSharedPtr<FJsonObject> ToolList = N2CTest::ParseJsonObject(N2CTest::ResultText(N2CTest::RunToolUnmarked(TEXT("list-blueprint-graphs"), Args(Path()))));
 			TestEqual(TEXT("ListBlueprintGraphs data is the tool's result"),
 				Listed.IsValid() ? Condensed(Listed->GetObjectField(TEXT("data"))) : FString(), Condensed(ToolList));
 
 			const TSharedPtr<FJsonObject> Read = N2CTest::ParseJsonObject(UN2CPythonBridge::GetBlueprintN2CJson(Path(), FString(), Function->GraphGuid.ToString()));
-			const TSharedPtr<FJsonObject> ToolRead = N2CTest::ParseJsonObject(N2CTest::ResultText(Call(TEXT("get-blueprint-n2cjson"), Args(Path(), FString(), Function->GraphGuid.ToString()))));
+			const TSharedPtr<FJsonObject> ToolRead = N2CTest::ParseJsonObject(N2CTest::ResultText(N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), FString(), Function->GraphGuid.ToString()))));
 			if (TestTrue(TEXT("GetBlueprintN2CJson succeeds"), Read.IsValid() && Read->GetBoolField(TEXT("success"))))
 			{
 				const TSharedPtr<FJsonObject> Data = Read->GetObjectField(TEXT("data"));
@@ -583,11 +577,11 @@ void FN2CBlueprintByPathSpec::Define()
 			Terms.Add(MakeShared<FJsonValueString>(TEXT("PrintString")));
 			Terms.Add(MakeShared<FJsonValueString>(TEXT("FunctionEntry")));
 			FindArgs->SetArrayField(TEXT("searchTerms"), Terms);
-			const TSharedPtr<FJsonObject> Found = N2CTest::ParseJsonObject(SuccessText(TEXT("find"), Call(TEXT("find-nodes-in-graph"), FindArgs)));
+			const TSharedPtr<FJsonObject> Found = N2CTest::ParseJsonObject(SuccessText(TEXT("find"), N2CTest::RunToolUnmarked(TEXT("find-nodes-in-graph"), FindArgs)));
 			const TSharedPtr<FJsonObject> ReadArgs = Args(Path(), Function->GetName());
 			ReadArgs->SetNumberField(TEXT("depth"), 0);
 			const TMap<FString, TSharedPtr<FJsonObject>> Graphs = GraphsByName(N2CTest::ParseJsonObject(
-				SuccessText(TEXT("read"), Call(TEXT("get-blueprint-n2cjson"), ReadArgs))));
+				SuccessText(TEXT("read"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), ReadArgs))));
 			if (!TestTrue(TEXT("both parse"), Found.IsValid() && Graphs.Contains(Function->GetName())))
 			{
 				return;
