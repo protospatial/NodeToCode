@@ -129,6 +129,7 @@ and exits non-zero on any failure. The MCP run ends by checking that the editor 
 |---|---|---|
 | p0-6 `prompts/get` with null, array and object arguments | MCP `prompts_get_non_string_argument` (-32602 each) | 0043 |
 | p0-6 1,100-character `typeIdentifier` / `variableName` | MCP `create_variable_long_type`, `create_local_variable_long_name`, `get_local_variable_node_long_name` | 0043 |
+| p0-6 `create-variable` with a bare struct or enum name (`HitResult` asserted in `AddMemberVariable` on UE 5.8) | MCP `create_variable_bare_type_names` (`HitResult`, `FHitResult`, `Guid`, `ECollisionChannel`, `AActor` make variables of the right type and the Blueprint compiles; `multicastdelegate`, `wildcard`, a bool set and `TSubclassOf<AActor>` are refused and add nothing); test `NodeToCode.MCP.TypeResolver` | 0153 |
 | p0-6 page 2147483647 | MCP `read_content_browser_huge_page`; test `NodeToCode.Robustness.Pagination` | 0043 |
 | p0-6 `create_user_defined_struct` on unmounted and invalid paths; `save_struct` on a read-only file | `e05_struct_check.py` | 0048 |
 | p0-6 `SelectText` out of range | test `NodeToCode.Robustness.CodeEditor` (clamps lines and columns on a live `SN2CCodeEditor`, and an empty document) | 0063 |

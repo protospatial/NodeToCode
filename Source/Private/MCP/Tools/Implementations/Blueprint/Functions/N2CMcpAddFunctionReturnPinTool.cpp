@@ -134,20 +134,8 @@ FMcpToolCallResult FN2CMcpAddFunctionReturnPinTool::Execute(const TSharedPtr<FJs
 			PinType,
 			ResolveError))
 		{
-			// If direct resolution fails, try with the type identifier as a subtype for object types
-			if (!FN2CMcpTypeResolver::ResolvePinType(
-				TEXT("object"),    // Primary type
-				TypeIdentifier,    // SubType
-				TEXT("none"),      // Container type
-				TEXT(""),          // Key type
-				false,             // Is reference
-				false,             // Is const
-				PinType,
-				ResolveError))
-			{
-				return FMcpToolCallResult::CreateErrorResult(
-					FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
-			}
+			return FMcpToolCallResult::CreateErrorResult(
+				FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
 		}
 
 		// Start a transaction for undo/redo

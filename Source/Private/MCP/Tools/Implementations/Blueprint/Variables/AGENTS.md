@@ -37,7 +37,11 @@ comparison in `FindLocalVariable`): `health` finds `Health`.
   - `mapKeyTypeIdentifier` (optional): Key type, required when `containerType` is `map` and refused otherwise
 - **Returns**: `success`, `variableName` (as requested), `actualName`, `blueprintName`, `typeInfo`,
   `containerType`, `message`. A taken name is made unique by `FBlueprintEditorUtils::FindUniqueKismetName`: a
-  second `Health` becomes `Health_0`. For a map, `typeInfo` describes the KEY type
+  second `Health` becomes `Health_0`. `typeInfo.category` is `object`, `struct`, `enum` (with `enumName` and
+  `path`) or `primitive` (with the pin category as `typeName`). For a map, `typeInfo` describes the KEY type
+- **Errors**: A type that does not resolve (see "Type Identifiers") fails before the Blueprint is changed, for
+  example `INVALID_TYPE: 'multicastdelegate' cannot be created from a type name: ...` or
+  `TYPE_NOT_FOUND: Unknown type 'HitResults'. ...`
 - **Known issue (card 0154):** `isInstanceEditable`, `isBlueprintReadOnly` and the replication options are written
   to the compiled class property (`ApplyVariableProperties`), not to the variable description, so the next compile
   can drop them, and `isInstanceEditable` turns on Expose to Cinematics (`SetInterpFlag`)
@@ -156,42 +160,59 @@ comparison in `FindLocalVariable`): `health` finds `Health`.
 
 ## Type Identifiers
 
-`create-variable`, `create-local-variable` and the function tools resolve `typeIdentifier` with
-`FN2CMcpTypeResolver::ResolvePinType`. The checks run in this order:
+`create-variable`, `create-local-variable`, the function tools and the Python bridge resolve `typeIdentifier` with
+`FN2CMcpTypeResolver::ResolvePinType` (`Source/Private/MCP/Utils/N2CMcpTypeResolver.cpp`). Every identifier becomes
+the pin type the editor's own variable type picker makes, or the call fails with an error code before the Blueprint
+is touched. The checks run in this order:
 
-1. **Paths**: an identifier starting with `/Script/`, `/Game/` or `/Plugin/` is loaded as an object path and must be
-   a class, struct or enum (`ResolveFullObjectPathInternal`): `/Script/Engine.Actor`, `/Script/Engine.HitResult`,
-   `/Script/CoreUObject.Guid`, `/Script/Engine.ECollisionChannel`, `/Game/Data/S_MyStruct.S_MyStruct`. A path into
-   plugin content (`/<PluginName>/...`) or `/Engine/` does not start with these prefixes: it goes to step 5, which
-   loads it but always makes an object pin, even for a struct or enum (card 0153).
-2. **Generic categories**: `object`, `class`, `struct`, `enum` and `interface` need a sub-type (the `subType` of a
-   create-blueprint-function parameter); as a variable's `typeIdentifier` they fail with `INVALID_SUBTYPE`.
-3. **Primitives** (`ResolvePrimitiveTypeInternal`, case-insensitive): `bool`/`boolean`, `byte`/`uint8`, `int`/`int32`,
-   `int64`, `float`, `double`, `string`/`FString`, `text`/`FText`, `name`/`FName`. `float` and `double` both become a
-   `real` pin (sub-category `float` or `double`).
-4. **Math structs** (`ResolveMathTypeInternal`, case-insensitive, with or without the `F`): `FVector` (also `vector3`),
-   `FVector2D`, `FVector4`, `FRotator`, `FTransform`, `FQuat`, `FColor`, `FLinearColor`. These eight are the only
-   structs a short name works for. The special names `wildcard`, `delegate`, `multicastdelegate`, `softobject` and
-   `softclass` are checked here too (`ResolveSpecialTypeInternal`).
-5. **Anything else** is looked up by object name (`ResolveObjectLikeTypeInternal` with `object`, then
-   `FindObjectByPathOrName`, which walks every loaded object). A class name without its prefix works (`Actor`,
-   `Pawn`); `AActor`, `FHitResult`, `FGuid` and `FDateTime` fail with `INVALID_PARAMETER_TYPE: Unknown type`.
+1. **Generic categories** (with a sub-type): `object`, `class`, `softobject`, `softclass`, `struct`, `enum` and
+   `interface` take the class, struct or enum from a sub-type (the `subType` of a create-blueprint-function
+   parameter). The variable tools send no sub-type, so there `object`, `class`, `struct`, `enum` and `interface` fail
+   with `INVALID_SUBTYPE`, and `softobject` / `softclass` alone are soft references to `UObject`. A sub-type of the
+   wrong kind is refused: `object` + `HitResult` gives `INVALID_TYPE: 'HitResult' is a struct (...), not a object`.
+2. **Paths**: any identifier starting with `/` is an object path: `/Script/Engine.HitResult`,
+   `/Script/CoreUObject.Guid`, `/Script/Engine.ECollisionChannel`, `/Script/Engine.Actor`,
+   `/Game/Data/S_MyStruct.S_MyStruct`, a plugin's `/<PluginName>/...` or `/Engine/...`. `/Game/Data/S_MyStruct`
+   (no object name) means the asset of that name. A Blueprint path (`/Game/BP_Enemy.BP_Enemy` or
+   `/Game/BP_Enemy.BP_Enemy_C`) stands for its generated class. An asset that is not loaded is looked up in the asset
+   registry first, and only a Blueprint, user struct or user enum is loaded; a map, mesh or other asset is refused
+   with `INVALID_TYPE_AT_PATH` without loading it. A missing native type is `TYPE_NOT_FOUND`, a missing asset
+   `ASSET_NOT_FOUND`.
+3. **Primitives** (case-insensitive): `bool`/`boolean`, `byte`/`uint8`, `int`/`int32`, `int64`, `float`, `double`,
+   `string`/`FString`, `text`/`FText`, `name`/`FName`. `float` and `double` both become a `real` pin (sub-category
+   `float` or `double`).
+4. **Math structs** (case-insensitive, with or without the `F`): `FVector` (also `vector3`), `FVector2D`, `FVector4`,
+   `FRotator`, `FTransform`, `FQuat`, `FColor`, `FLinearColor`.
+5. **Refused names**: `wildcard`, `exec`, `delegate` and `multicastdelegate` fail with `INVALID_TYPE` (a delegate
+   variable needs a signature; make event dispatchers in the Blueprint editor). C++ template spellings
+   (`TArray<int32>`, `TSubclassOf<AActor>`, `TSoftObjectPtr<...>`) fail with `INVALID_TYPE`: containers go in
+   `containerType`, and class and soft references to a particular class cannot be expressed through
+   `typeIdentifier` (card 0292).
+6. **Type names**: anything else is a class, struct or enum name, found among loaded types with
+   `FindFirstObject` (native types first) and then, for user types that are not loaded, in the asset registry
+   (Blueprints, user structs, user enums). The C++ prefix is optional and names the kind: `HitResult` or `FHitResult`
+   (struct), `Guid` or `FGuid`, `ECollisionChannel` (enum), `Actor`, `AActor` or `AActor*` (object reference),
+   `UObject`, `IMyInterface` (interface), `BP_Enemy` or `BP_Enemy_C` (a Blueprint's class), `S_Loot`, `E_AIState`.
+   A prefix only matches its own kind (`FActor` is not the class `Actor`). A name that matches more than one type
+   fails with `AMBIGUOUS_TYPE` and lists their paths; pass one of them. An unknown name is `TYPE_NOT_FOUND`.
 
-- **Struct types**: use the full path, as search-variable-types returns it. `FHitResult` and `FGuid` are refused.
-- **Known issue (card 0153):** a short struct name without the `F` (`HitResult`, `Guid`) or a short enum name
-  (`ECollisionChannel`) is found by the name walk and becomes an object pin whose sub-type is a struct or enum. On
-  UE 5.8, `create-variable` with `HitResult` fails an assertion (`ClassObject != nullptr`) in
-  `FBlueprintEditorUtils::AddMemberVariable` and the editor exits. Never send these short names.
-- **Known issue (card 0153):** native enums (`/Script/Engine.ECollisionChannel`) get the `enum` pin category, which
-  the compiler does not treat like an editor-made enum variable, and `wildcard`, `delegate`, `multicastdelegate`,
-  `softobject` and `softclass` (step 4) are accepted with no check of whether a variable can have that type.
+Every class, struct and enum must pass `UEdGraphSchema_K2::IsAllowableBlueprintVariableType`, as in the type picker:
+a class or struct that is not a `BlueprintType`, `LevelScriptActor`, skeleton classes and internal-only structs are
+refused with `INVALID_TYPE`. Enums, native or user-defined, become `byte` pins with the enum as sub-type (the only
+form the Blueprint compiler turns into an enum property). As a last check every result passes
+`FN2CMcpTypeResolver::ValidateVariablePinType`, so an object pin whose sub-type is not a class never reaches
+`FBlueprintEditorUtils::AddMemberVariable` (on UE 5.8 that asserted and closed the editor, card 0153).
+`search-variable-types` returns full paths, which always work.
 
 ### Containers
-- `containerType` `array` or `set`: `typeIdentifier` is the element type (sets are not checked for hashable elements).
-- `containerType` `map`: `typeIdentifier` is the VALUE type and `mapKeyTypeIdentifier` the KEY type.
-  `FN2CMcpVariableUtils::ValidateMapKeyType` accepts byte, integer, int64, float/double, name, string, object, class,
-  soft object, soft class and enum keys, and refuses bool (`Boolean types cannot be used as map keys`), text, and
-  every struct (`Struct types like '/Script/CoreUObject.Guid' cannot be used as map keys in Blueprints`).
+- `containerType` `array`: `typeIdentifier` is the element type.
+- `containerType` `set`: `typeIdentifier` is the element type, which must be hashable
+  (`FBlueprintEditorUtils::HasGetTypeHash`, as in the type picker): bool, text and structs without a hash function
+  (`HitResult`) fail with `INVALID_SET_ELEMENT_TYPE`; `FGuid`, names, strings, numbers, enums and object references
+  work.
+- `containerType` `map`: `typeIdentifier` is the VALUE type and `mapKeyTypeIdentifier` the KEY type, which must be
+  hashable in the same way (`FN2CMcpVariableUtils::ValidateMapKeyType`): `Guid` or `/Script/CoreUObject.Guid` keys
+  work; bool, text and `HitResult` keys fail with `INVALID_MAP_KEY_TYPE`.
 
 #### Array Variable
 ```json
