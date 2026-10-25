@@ -8,11 +8,6 @@
 			"effect": "Break Vector (a K2Node_BreakStruct) is captured as a Variable named 'None', with the first member's type as member_parent and member_name Var_<graph>_<UObject index>, which changes every session (normalised to <OBJECT_INDEX> here)"
 		},
 		{
-			"finding": "translation-core-7",
-			"card": "0134",
-			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -55,7 +50,7 @@
 						]
 					},
 					{
-						"id": "N3",
+						"id": "N2",
 						"type": "MakeStruct",
 						"name": "Make Vector",
 						"member_parent": "/Script/CoreUObject",
@@ -96,7 +91,7 @@
 						]
 					},
 					{
-						"id": "N4",
+						"id": "N3",
 						"type": "Variable",
 						"name": "None",
 						"member_parent": "real/double",
@@ -137,7 +132,7 @@
 						]
 					},
 					{
-						"id": "N5",
+						"id": "N4",
 						"type": "CallFunction",
 						"name": "float + float",
 						"member_parent": "KismetMathLibrary",
@@ -173,7 +168,7 @@
 						]
 					},
 					{
-						"id": "N2",
+						"id": "N5",
 						"type": "FunctionResult",
 						"name": "Add Return Node...",
 						"member_parent": "BP_N2CGolden_MakeBreakStruct",
@@ -197,15 +192,15 @@
 				"flows":
 				{
 					"execution": [
-						"N1->N2"
+						"N1->N5"
 					],
 					"data":
 					{
-						"N1.P2": "N3.P4",
-						"N3.P3": "N4.P7",
-						"N4.P8": "N5.P11",
-						"N4.P9": "N5.P12",
-						"N5.P13": "N2.P15"
+						"N1.P2": "N2.P4",
+						"N2.P3": "N3.P7",
+						"N3.P8": "N4.P11",
+						"N3.P9": "N4.P12",
+						"N4.P13": "N5.P15"
 					}
 				}
 			}

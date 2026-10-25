@@ -13,11 +13,6 @@
 			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
 		},
 		{
-			"finding": "translation-core-7",
-			"card": "0134",
-			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -59,7 +54,7 @@
 						]
 					},
 					{
-						"id": "N3",
+						"id": "N2",
 						"type": "CallFunction",
 						"name": "int + int",
 						"member_parent": "KismetMathLibrary",
@@ -92,7 +87,7 @@
 						]
 					},
 					{
-						"id": "N2",
+						"id": "N3",
 						"type": "FunctionResult",
 						"name": "Add Return Node...",
 						"member_parent": "BP_N2CGolden_Knots",
@@ -115,12 +110,12 @@
 				"flows":
 				{
 					"execution": [
-						"N1->N2"
+						"N1->N3"
 					],
 					"data":
 					{
-						"N1.P2": "N3.P4",
-						"N3.P5": "N2.P7"
+						"N1.P2": "N2.P4",
+						"N2.P5": "N3.P7"
 					}
 				}
 			}

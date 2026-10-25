@@ -7,6 +7,18 @@
 #include "EdGraph/EdGraph.h"
 #include "K2Node.h"
 
+const FString* FN2CCapture::FindNodeID(const FGuid& NodeGuid) const
+{
+	for (const TPair<FString, FGuid>& Node : NodeGuids)
+	{
+		if (Node.Value == NodeGuid)
+		{
+			return &Node.Key;
+		}
+	}
+	return nullptr;
+}
+
 namespace N2C
 {
 	TValueOrError<FN2CCapture, FString> CaptureNodes(TConstArrayView<UK2Node*> Nodes, const FN2CCaptureOptions& Options)

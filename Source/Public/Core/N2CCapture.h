@@ -26,21 +26,44 @@ struct NODETOCODE_API FN2CCaptureOptions
 	bool bDiscoverNestedGraphs = true;
 };
 
+/** Where one captured pin is in the editor. A pin's PinId is only unique on its node (a paste keeps it), so a pin is
+ * the pair (NodeGuid, PinGuid). */
+struct NODETOCODE_API FN2CCapturedPin
+{
+	/** The ID of the pin's node in the capture (N1, N2, ...) */
+	FString NodeID;
+	/** UEdGraphNode::NodeGuid of the pin's node */
+	FGuid NodeGuid;
+	/** UEdGraphPin::PinId */
+	FGuid PinGuid;
+};
+
 /** The result of one capture. Owns everything it describes; nothing is shared with any other capture. */
 struct NODETOCODE_API FN2CCapture
 {
 	/** The captured graph first, then the nested graphs shallowest first, the related structs and enums */
 	FN2CBlueprint Blueprint;
 
-	/** Node GUID -> the node's ID in Blueprint (N1, N2, ...) */
-	TMap<FGuid, FString> NodeIDMap;
+	/** UEdGraph::GraphGuid of each graph in Blueprint.Graphs, same order */
+	TArray<FGuid> GraphGuids;
 
-	/** Pin GUID -> the pin's ID in Blueprint (P1, P2, ...) */
-	TMap<FGuid, FString> PinIDMap;
+	/** Node ID (N1, N2, ...) -> the node's NodeGuid: one entry per captured node */
+	TMap<FString, FGuid> NodeGuids;
+
+	/** Pin ID (P1, P2, ...) -> its node and PinId: one entry per captured pin */
+	TMap<FString, FN2CCapturedPin> Pins;
+
+	/** The ID of the captured node with this NodeGuid, or null */
+	const FString* FindNodeID(const FGuid& NodeGuid) const;
 };
 
 /**
  * Blueprint capture: turns editor nodes into the N2C model (FN2CBlueprint) that FN2CSerializer writes as N2C JSON.
+ *
+ * IDs: nodes are N1, N2, ... and pins P1, P2, ..., unique across the whole capture and given graph by graph, node by
+ * node in graph order (pins in the node's pin order, hidden pins skipped) before any flow is recorded, so capturing an
+ * unchanged graph again gives the same IDs. They are keyed by the node and pin objects, never by GUID alone, and every
+ * graph (the captured one included) is captured at most once.
  *
  * Each call builds its result in its own context and returns it by value, so captures never share state: two
  * captures, a capture started while another is running (for example an overlay's token estimate during a

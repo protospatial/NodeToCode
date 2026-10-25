@@ -24,11 +24,6 @@
 			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
 		},
 		{
-			"finding": "translation-core-7",
-			"card": "0134",
-			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -132,7 +127,7 @@
 						]
 					},
 					{
-						"id": "N6",
+						"id": "N5",
 						"type": "Tunnel",
 						"name": "Outputs",
 						"input_pins": [
@@ -145,7 +140,7 @@
 						"output_pins": []
 					},
 					{
-						"id": "N5",
+						"id": "N6",
 						"type": "CallFunction",
 						"name": "ControlScreensaver",
 						"member_parent": "KismetSystemLibrary",
@@ -175,8 +170,8 @@
 				"flows":
 				{
 					"execution": [
-						"N4->N5",
-						"N5->N6"
+						"N4->N6",
+						"N6->N5"
 					],
 					"data":
 					{
@@ -201,7 +196,7 @@
 						]
 					},
 					{
-						"id": "N9",
+						"id": "N8",
 						"type": "Tunnel",
 						"name": "Outputs",
 						"input_pins": [
@@ -214,7 +209,7 @@
 						"output_pins": []
 					},
 					{
-						"id": "N8",
+						"id": "N9",
 						"type": "CallFunction",
 						"name": "CollectGarbage",
 						"member_parent": "KismetSystemLibrary",
@@ -238,8 +233,8 @@
 				"flows":
 				{
 					"execution": [
-						"N7->N8",
-						"N8->N9"
+						"N7->N9",
+						"N9->N8"
 					],
 					"data":
 					{

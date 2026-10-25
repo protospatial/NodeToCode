@@ -71,6 +71,18 @@ namespace N2CTest
 			return;
 		}
 		Package->SetFlags(RF_Transient);
+		CreateBlueprintIn(BlueprintName);
+	}
+
+	FTestBlueprint::FTestBlueprint(const FString& BlueprintName, UPackage* InPackage)
+		: Package(InPackage)
+		, bOwnsPackage(false)
+	{
+		CreateBlueprintIn(BlueprintName);
+	}
+
+	void FTestBlueprint::CreateBlueprintIn(const FString& BlueprintName)
+	{
 		Blueprint = FKismetEditorUtilities::CreateBlueprint(AActor::StaticClass(), Package, FName(*BlueprintName),
 			BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
 		if (!Blueprint)
@@ -79,8 +91,31 @@ namespace N2CTest
 		}
 	}
 
+	FTestBlueprint* FTestBlueprint::AddSiblingBlueprint(const FString& BlueprintName)
+	{
+		if (!Package)
+		{
+			AddError(TEXT("no package for sibling Blueprint ") + BlueprintName);
+			return nullptr;
+		}
+		FTestBlueprint* Sibling = Siblings.Add_GetRef(TUniquePtr<FTestBlueprint>(new FTestBlueprint(BlueprintName, Package))).Get();
+		return Sibling->GetBlueprint() ? Sibling : nullptr;
+	}
+
+	TArray<FString> FTestBlueprint::Errors() const
+	{
+		TArray<FString> All = ErrorList;
+		for (const TUniquePtr<FTestBlueprint>& Sibling : Siblings)
+		{
+			All.Append(Sibling->Errors());
+		}
+		return All;
+	}
+
 	FTestBlueprint::~FTestBlueprint()
 	{
+		// Siblings first (they live in this package and do not own it)
+		Siblings.Reset();
 		if (Blueprint)
 		{
 			Blueprint->ClearFlags(RF_Standalone | RF_Public);
@@ -89,7 +124,7 @@ namespace N2CTest
 				Blueprint->GeneratedClass->ClearFlags(RF_Standalone | RF_Public);
 			}
 		}
-		if (Package)
+		if (Package && bOwnsPackage)
 		{
 			// The user structs, enums and input actions made in the package too
 			ForEachObjectWithPackage(Package, [](UObject* Object)

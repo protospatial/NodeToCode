@@ -86,10 +86,22 @@ singleton). Game thread only.
 | `CaptureGraph(Graph, Options)` | Collects the graph's nodes with `FN2CNodeCollector`, then `CaptureNodes` |
 | `DescribeNode(Node, NodeID)` | One node alone (MCP add-node and search tools): fresh context, no nested graphs, no related types |
 
-`FN2CCapture` holds the `FN2CBlueprint` and the node and pin GUID-to-ID maps of that capture.
+`FN2CCapture` holds the `FN2CBlueprint` and that capture's ID-to-GUID maps: `NodeGuids` (node ID -> `NodeGuid`),
+`Pins` (pin ID -> `FN2CCapturedPin`: node ID, `NodeGuid`, `PinId`; a `PinId` is only unique on its node) and
+`GraphGuids` (one per graph, in `Blueprint.Graphs` order), with `FindNodeID(NodeGuid)`.
 `FN2CCaptureOptions` carries `Depth` (default `INDEX_NONE`: `UN2CSettings::TranslationDepth`, read when the capture
 starts), `bIncludeRelatedTypes` and `bDiscoverNestedGraphs`. `FN2CEditorIntegration::TranslateNodesToN2CBlueprint`
-and `TranslateNodesToN2CBlueprintWithMaps` are thin wrappers kept for the MCP tools and the Python bridge.
+and `TranslateNodesToN2CBlueprintWithMaps` (which returns the whole `FN2CCapture`) are thin wrappers kept for the MCP
+tools and the Python bridge.
+
+IDs (card 0134): nodes are N1, N2, ... and pins P1, P2, ..., each unique across the whole capture. They are keyed by
+the `UEdGraphNode*`/`UEdGraphPin*` themselves (never by GUID alone) and given in two passes per graph: first every
+node and its visible pins in graph order (collection order for the captured graph), then the nodes are described and
+their flows recorded, so IDs never depend on which links are met first and an unchanged graph gets the same IDs. A
+node outside the capture that an exec flow reaches gets the next ID when the flow is recorded. Every graph, the
+captured one included, is marked visited when it starts (by pointer), so a function that calls itself and a graph
+reached twice are captured once, and same-named functions of different Blueprints are both captured; a nested graph
+from another Blueprint sets `FN2CGraph::OwnerBlueprint` (JSON `owner_blueprint`, optional).
 
 Key responsibilities:
 - Manages ID generation (N1, N2, etc. for nodes; P1, P2, etc. for pins)
@@ -108,6 +120,7 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 | Method | Description |
 |--------|-------------|
 | `ToJson(Blueprint, Style)` | Convert FN2CBlueprint to JSON string; `EN2CJsonStyle::Pretty` or `Condensed` per call (no static state) |
+| `ToJson(Capture, Style, Guids)` | A capture's Blueprint; `EN2CJsonGuids::Table` adds the top-level `guids` table for agents (get-focused-blueprint), never for LLM prompts |
 | `FromJson()` | Parse JSON string to FN2CBlueprint |
 | `NodeToJsonObject()` | Convert single node to JSON (for MCP tools) |
 

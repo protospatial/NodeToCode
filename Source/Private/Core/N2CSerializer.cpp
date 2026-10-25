@@ -25,6 +25,62 @@ FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint, EN2CJsonStyle Sty
         return TEXT("");
     }
 
+    return WriteJson(JsonObject, Style);
+}
+
+FString FN2CSerializer::ToJson(const FN2CCapture& Capture, EN2CJsonStyle Style, EN2CJsonGuids Guids)
+{
+    if (Guids == EN2CJsonGuids::None)
+    {
+        return ToJson(Capture.Blueprint, Style);
+    }
+
+    if (!Capture.Blueprint.IsValid())
+    {
+        FN2CLogger::Get().LogWarning(TEXT("Blueprint validation failed - attempting partial serialization"));
+    }
+    TSharedPtr<FJsonObject> JsonObject = BlueprintToJsonObject(Capture.Blueprint);
+    if (!JsonObject.IsValid())
+    {
+        FN2CLogger::Get().LogError(TEXT("Failed to create JSON object from Blueprint"), TEXT("Serialization"));
+        return TEXT("");
+    }
+    JsonObject->SetObjectField(TEXT("guids"), GuidTableToJsonObject(Capture));
+    return WriteJson(JsonObject, Style);
+}
+
+TSharedPtr<FJsonObject> FN2CSerializer::GuidTableToJsonObject(const FN2CCapture& Capture)
+{
+    TSharedPtr<FJsonObject> Table = MakeShared<FJsonObject>();
+
+    TArray<TSharedPtr<FJsonValue>> Graphs;
+    for (const FGuid& GraphGuid : Capture.GraphGuids)
+    {
+        Graphs.Add(MakeShared<FJsonValueString>(GraphGuid.ToString(EGuidFormats::DigitsWithHyphens)));
+    }
+    Table->SetArrayField(TEXT("graphs"), Graphs);
+
+    TSharedPtr<FJsonObject> Nodes = MakeShared<FJsonObject>();
+    for (const TPair<FString, FGuid>& Node : Capture.NodeGuids)
+    {
+        Nodes->SetStringField(Node.Key, Node.Value.ToString(EGuidFormats::DigitsWithHyphens));
+    }
+    Table->SetObjectField(TEXT("nodes"), Nodes);
+
+    TSharedPtr<FJsonObject> Pins = MakeShared<FJsonObject>();
+    for (const TPair<FString, FN2CCapturedPin>& Pin : Capture.Pins)
+    {
+        TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+        Entry->SetStringField(TEXT("node"), Pin.Value.NodeID);
+        Entry->SetStringField(TEXT("guid"), Pin.Value.PinGuid.ToString(EGuidFormats::DigitsWithHyphens));
+        Pins->SetObjectField(Pin.Key, Entry);
+    }
+    Table->SetObjectField(TEXT("pins"), Pins);
+    return Table;
+}
+
+FString FN2CSerializer::WriteJson(const TSharedPtr<FJsonObject>& JsonObject, EN2CJsonStyle Style)
+{
     FString OutputString;
 
     if (Style == EN2CJsonStyle::Pretty)
@@ -128,8 +184,14 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
 
     // Add basic properties
     JsonObject->SetStringField(TEXT("name"), Graph.Name);
-    JsonObject->SetStringField(TEXT("graph_type"), 
+    JsonObject->SetStringField(TEXT("graph_type"),
         StaticEnum<EN2CGraphType>()->GetNameStringByValue(static_cast<int64>(Graph.GraphType)));
+
+    // Optional: only a nested graph from another Blueprint has an owner
+    if (!Graph.OwnerBlueprint.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("owner_blueprint"), Graph.OwnerBlueprint);
+    }
 
     // Add nodes array
     TArray<TSharedPtr<FJsonValue>> NodesArray;
@@ -515,6 +577,10 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
         return false;
     }
     OutGraph.GraphType = static_cast<EN2CGraphType>(TypeValue);
+
+    // Optional
+    OutGraph.OwnerBlueprint.Reset();
+    JsonObject->TryGetStringField(TEXT("owner_blueprint"), OutGraph.OwnerBlueprint);
 
     // Parse nodes array
     const TArray<TSharedPtr<FJsonValue>>* NodesArray;

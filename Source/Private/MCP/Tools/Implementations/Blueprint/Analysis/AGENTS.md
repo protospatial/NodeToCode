@@ -7,7 +7,12 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
 ### get-focused-blueprint
 - **Description**: Collects and serializes the currently focused Blueprint graph into N2CJSON format
 - **Parameters**: None
-- **Returns**: Complete N2CJSON representation of the focused Blueprint
+- **Returns**: Complete N2CJSON representation of the focused Blueprint, where each node's and pin's `id` is
+  `ids` (`{"short": "N1", "guid": "<NodeGuid>"}`; a pin's also has its `name`, and `guid` is its `PinId`), the flows
+  keep the short IDs, and a top-level `guids` table lists every captured graph's `GraphGuid` (in `graphs` order), every
+  node ID with its `NodeGuid` and every pin ID with `{"node": "<node ID>", "guid": "<PinId>"}`. A pin's `PinId` is only
+  unique on its node (a pasted node keeps its pins' IDs), so address a pin by its node GUID and pin GUID together.
+  Short IDs are unique across the capture and given in graph order, so an unchanged graph gets the same IDs each time.
 - **Use Case**: Primary tool for extracting Blueprint data for LLM translation
 
 ### list-blueprint-functions

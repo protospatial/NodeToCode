@@ -37,6 +37,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/StructureEditorUtils.h"
+#include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpGetFocusedBlueprintTool.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -74,6 +75,11 @@
  *
  * "Isolation" checks that captures share no state (card 0133): a capture started in the middle of another, and a
  * capture made after another, leave each result equal to its own golden.
+ *
+ * "Identity" checks the capture's IDs (card 0134): a pasted node's pins get IDs of their own and the capture validates,
+ * a function that calls itself is captured once, same-named functions of two Blueprints are both captured with their
+ * owner, an unchanged graph captured twice gets the same IDs, and the ID-to-GUID maps (and get-focused-blueprint's
+ * result) have one entry per node and per pin.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -105,6 +111,8 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		/** The capture's own result and the test package path, to serialize it again later */
 		FN2CBlueprint Blueprint;
 		FString PackagePath;
+		/** The whole capture result (Blueprint and its ID-to-GUID maps) */
+		FN2CCapture Result;
 	};
 
 	TArray<FCaptureCase> Cases;
@@ -214,6 +222,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 			return Captured;
 		}
 		Captured.Blueprint = Result.GetValue().Blueprint;
+		Captured.Result = Result.GetValue();
 		Captured.PackagePath = Blueprint.GetPackagePath();
 		Serialize(Case, Captured);
 		return Captured;
@@ -414,6 +423,56 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 
 	void AddCases();
 
+	const FCaptureCase* FindCase(const TCHAR* Name) const
+	{
+		return Cases.FindByPredicate([Name](const FCaptureCase& Case) { return Case.Name == Name; });
+	}
+
+	/**
+	 * Checks a capture's IDs and maps: node and pin IDs unique across the capture, Blueprint valid, NodeGuids one entry
+	 * per node, Pins one entry per pin naming that pin's node, and no (NodeGuid, PinGuid) pair twice
+	 */
+	void ExpectConsistentIDs(const FString& What, const FN2CCapture& Capture)
+	{
+		TestTrue(What + TEXT(": the captured Blueprint validates"), Capture.Blueprint.IsValid());
+		TSet<FString> NodeIDs;
+		TSet<FString> PinIDs;
+		TSet<TPair<FGuid, FGuid>> PinGuidPairs;
+		int32 NodeCount = 0;
+		int32 PinCount = 0;
+		for (const FN2CGraph& Graph : Capture.Blueprint.Graphs)
+		{
+			for (const FN2CNodeDefinition& Node : Graph.Nodes)
+			{
+				++NodeCount;
+				bool bSeen = false;
+				NodeIDs.Add(Node.ID, &bSeen);
+				TestFalse(What + TEXT(": node ID ") + Node.ID + TEXT(" is used once"), bSeen);
+				TestTrue(What + TEXT(": NodeGuids has ") + Node.ID, Capture.NodeGuids.Contains(Node.ID));
+				for (const TArray<FN2CPinDefinition>* Pins : { &Node.InputPins, &Node.OutputPins })
+				{
+					for (const FN2CPinDefinition& Pin : *Pins)
+					{
+						++PinCount;
+						PinIDs.Add(Pin.ID, &bSeen);
+						TestFalse(What + TEXT(": pin ID ") + Pin.ID + TEXT(" is used once"), bSeen);
+						const FN2CCapturedPin* Entry = Capture.Pins.Find(Pin.ID);
+						if (TestNotNull(What + TEXT(": Pins has ") + Pin.ID, Entry))
+						{
+							TestEqual(What + TEXT(": the node of ") + Pin.ID, Entry->NodeID, Node.ID);
+							TestEqual(What + TEXT(": the node GUID of ") + Pin.ID, Entry->NodeGuid.ToString(), Capture.NodeGuids.FindRef(Node.ID).ToString());
+							PinGuidPairs.Add(TPair<FGuid, FGuid>(Entry->NodeGuid, Entry->PinGuid), &bSeen);
+							TestFalse(What + TEXT(": the (node GUID, pin GUID) of ") + Pin.ID + TEXT(" is unique"), bSeen);
+						}
+					}
+				}
+			}
+		}
+		TestEqual(What + TEXT(": one Pins entry per captured pin"), Capture.Pins.Num(), PinCount);
+		TestEqual(What + TEXT(": one NodeGuids entry per captured node"), Capture.NodeGuids.Num(), NodeCount);
+		TestEqual(What + TEXT(": one GraphGuids entry per graph"), Capture.GraphGuids.Num(), Capture.Blueprint.Graphs.Num());
+	}
+
 END_DEFINE_SPEC(FN2CCaptureGoldenSpec)
 
 namespace N2CCaptureGolden
@@ -528,7 +587,39 @@ namespace N2CCaptureGolden
 	}
 
 	/**
-	 * Nested(): the entry runs a collapsed graph GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs an
+	 * Run calls Helper, then Init; Helper calls BP_..._Other's Init. Graphs of one depth are taken most recently queued
+	 * first, so the own Init is captured before Helper queues the other Init: a name check would drop the second.
+	 */
+	UEdGraph* BuildSameNameOwners(FTestBlueprint& BP)
+	{
+		FTestBlueprint* Other = BP.AddSiblingBlueprint(TEXT("BP_N2CGolden_SameNameOwners_Other"));
+		if (!Other)
+		{
+			return nullptr;
+		}
+		UEdGraph* OtherInit = Other->AddFunction(TEXT("Init"));
+		UK2Node_CallFunction* OtherCollect = AddCollectGarbage(*Other, OtherInit);
+		Other->Link(Other->FunctionEntry(OtherInit), UEdGraphSchema_K2::PN_Then, OtherCollect, UEdGraphSchema_K2::PN_Execute);
+
+		UEdGraph* Run = BP.AddFunction(TEXT("Run"));
+		UEdGraph* Helper = BP.AddFunction(TEXT("Helper"));
+		UEdGraph* Init = BP.AddFunction(TEXT("Init"));
+		UK2Node_CallFunction* OwnScreensaver = AddControlScreensaver(BP, Init);
+		BP.Link(BP.FunctionEntry(Init), UEdGraphSchema_K2::PN_Then, OwnScreensaver, UEdGraphSchema_K2::PN_Execute);
+
+		// A call from Helper to the other Blueprint's Init (through that Blueprint's skeleton class)
+		UK2Node_CallFunction* CallOtherInit = Other->AddSelfCall(Helper, TEXT("Init"));
+		BP.Link(BP.FunctionEntry(Helper), UEdGraphSchema_K2::PN_Then, CallOtherInit, UEdGraphSchema_K2::PN_Execute);
+
+		UK2Node_CallFunction* CallHelper = BP.AddSelfCall(Run, TEXT("Helper"));
+		UK2Node_CallFunction* CallInit = BP.AddSelfCall(Run, TEXT("Init"));
+		BP.Link(BP.FunctionEntry(Run), UEdGraphSchema_K2::PN_Then, CallHelper, UEdGraphSchema_K2::PN_Execute);
+		BP.Link(CallHelper, UEdGraphSchema_K2::PN_Then, CallInit, UEdGraphSchema_K2::PN_Execute);
+		return Run;
+	}
+
+	/**
+	 * Nested(): the entry runs a collapsed graph GoldenCollapsed(In -> CollectGarbage -> Out), whose Out runs an
 	 * instance of the Blueprint's own macro LocalSteps (In -> ControlScreensaver -> Out)
 	 */
 	UEdGraph* BuildNested(FTestBlueprint& BP)
@@ -575,10 +666,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	const FKnownDefect DataLossy{ TEXT("translation-core-1 (PR #7, issue #13)"), TEXT("0135"),
 		TEXT("flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge "
 			"recorded; the other inputs say connected with no source") };
-	const FKnownDefect GlobalPinIds{ TEXT("translation-core-7"), TEXT("0134"),
-		TEXT("Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on "
-			"traversal order") };
-	const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
+const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 		TEXT("Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable "
 			"identifiers, so they change with editor language and settings") };
 	const FKnownDefect CustomEventNone{ TEXT("translation-core-16"), TEXT("0239"),
@@ -595,7 +683,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 
 	Cases.Add({ TEXT("FanOutData"),
 		TEXT("Function FanOut(Value): Value feeds Add.A, Add.B and Multiply.A; Add feeds Multiply.B; Multiply is the result."),
-		{ DataLossy, GlobalPinIds, DisplayNames },
+		{ DataLossy, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("FanOut"));
@@ -619,7 +707,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-1 (knot fan-out)"), TEXT("0135"),
 			TEXT("A knot's fan-out is followed through LinkedTo[0] only, and a knot traced from the input side records "
 				"the edge backwards, so one of Add's inputs loses its source") },
-		  DataLossy, GlobalPinIds, DisplayNames },
+		  DataLossy, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("Knots"));
@@ -643,7 +731,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("Branch"),
 		TEXT("Event graph: custom event OnBranch runs a Branch on Less(A, B); True runs CollectGarbage, False runs "
 			"ControlScreensaver."),
-		{ GhostEvents, ExecNodeOnly, GlobalPinIds, DisplayNames, CustomEventNone },
+		{ GhostEvents, ExecNodeOnly, DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -662,7 +750,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnInt"),
 		TEXT("Function SwitchInt(Selection): Switch on Int with cases 0 and 1 and Default; 0 and Default both run "
 			"CollectGarbage, 1 runs ControlScreensaver."),
-		{ ExecNodeOnly, GlobalPinIds, DisplayNames, SwitchName },
+		{ ExecNodeOnly, DisplayNames, SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("SwitchInt"));
@@ -682,7 +770,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnEnum"),
 		TEXT("Function SwitchEnum(Mobility: EComponentMobility): Switch on the engine enum; Static runs CollectGarbage, "
 			"Movable runs ControlScreensaver, Stationary is unconnected."),
-		{ ExecNodeOnly, GlobalPinIds, DisplayNames, SwitchName },
+		{ ExecNodeOnly, DisplayNames, SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEnum* Mobility = StaticEnum<EComponentMobility::Type>();
@@ -702,7 +790,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("MakeBreakStruct"),
 		TEXT("Function Structs(Value): Make Vector (X from Value) feeds Break Vector; Break X and Y feed Add (int to "
 			"double through the Make); Add is the result."),
-		{ BreakAsVariable, GlobalPinIds, DisplayNames },
+		{ BreakAsVariable, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UScriptStruct* Vector = TBaseStructure<FVector>::Get();
@@ -728,7 +816,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("GateMultiExec"),
 		TEXT("Event graph: custom events OnEnter, OnOpen and OnClose run a Gate (StandardMacros) through its Enter, "
 			"Open and Close inputs; Exit runs CollectGarbage."),
-		{ GhostEvents, ExecNodeOnly, GlobalPinIds, DisplayNames, CustomEventNone },
+		{ GhostEvents, ExecNodeOnly, DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -747,7 +835,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("TimelineMultiExec"),
 		TEXT("Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through "
 			"Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver."),
-		{ GhostEvents, ExecNodeOnly, GlobalPinIds, DisplayNames, CustomEventNone },
+		{ GhostEvents, ExecNodeOnly, DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -776,7 +864,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		  { TEXT("translation-core-4"), TEXT("0234"),
 			TEXT("Break S_GoldenItem is captured as a Variable named 'None' with member_parent object/Actor (the first "
 				"member's type) and member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)") },
-		  DataLossy, GlobalPinIds, DisplayNames },
+		  DataLossy, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Level = BP.AddUserEnum(TEXT("E_GoldenLevel"), { TEXT("Low"), TEXT("High") });
@@ -815,7 +903,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-11"), TEXT("0236"),
 			TEXT("Enum values whose display name contains 'max' in any case are dropped: E_GoldenLimit lists Min only, "
 				"while the Switch still has Max and Max Health outputs") },
-		  RepeatMissingName, ExecNodeOnly, GlobalPinIds, DisplayNames, SwitchName },
+		  RepeatMissingName, ExecNodeOnly, DisplayNames, SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Limit = BP.AddUserEnum(TEXT("E_GoldenLimit"), { TEXT("Min"), TEXT("Max"), TEXT("MaxHealth") });
@@ -842,14 +930,9 @@ void FN2CCaptureGoldenSpec::AddCases()
 		FCaptureCase& Recursion = Cases.Add_GetRef({ FString::Printf(TEXT("Recursion_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function Root(Count) calls Child, then itself with Count; Child "
 				"calls Grandchild; Grandchild calls Root. Captured from Root."), Depth),
-			{ { TEXT("translation-core-9"), TEXT("0134"),
-				TEXT("Root calls itself before Root is in the graph list, so Root is captured twice; the second copy "
-					"reuses node IDs N1-N3 and gives every pin the same ID (P10, also Child's entry exec pin), and the "
-					"validator logs ERROR 'Duplicate pin ID' (expected errors in this case)") },
-			  ExecNodeOnly, GlobalPinIds, DisplayNames },
+			{ ExecNodeOnly, DisplayNames },
 			&BuildRecursion });
 		Recursion.TranslationDepth = Depth;
-		Recursion.ExpectedErrors = { TEXT("Duplicate pin ID") };
 	}
 
 	// Max Translation Depth counts calls from the captured graph (translation-core-3, card 0130)
@@ -858,7 +941,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		FCaptureCase& Chain = Cases.Add_GetRef({ FString::Printf(TEXT("CallChain_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function A calls B, B calls C, C calls D. Captured from A, so "
 				"depth 1 adds B and depth 2 adds B and C; D is never captured."), Depth),
-			{ ExecNodeOnly, GlobalPinIds, DisplayNames },
+			{ ExecNodeOnly, DisplayNames },
 			&BuildChain });
 		Chain.TranslationDepth = Depth;
 	}
@@ -867,7 +950,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Max Translation Depth 3. Root calls Near, then Far. Near calls Shared; Far calls Mid, Mid calls Shared; "
 			"Shared calls Leaf, Leaf calls Beyond. Captured from Root. Shared is 2 calls away through Near (3 through "
 			"Far), so Leaf (3) is captured and Beyond (4) is not."),
-		{ ExecNodeOnly, GlobalPinIds, DisplayNames },
+		{ ExecNodeOnly, DisplayNames },
 		&BuildShortestPath });
 	Cases.Last().TranslationDepth = 3;
 
@@ -875,11 +958,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which "
 			"runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed "
 			"from Enabled."),
-		{ { TEXT("translation-core-7"), TEXT("0134"),
-			TEXT("Pin IDs are keyed by pin GUID, which a paste keeps: every pin of the pasted node gets the same ID (P6), "
-				"its flows point at that one ID and the validator logs ERROR 'Duplicate pin ID' (expected errors in "
-				"this case)") },
-		  DataLossy, ExecNodeOnly, DisplayNames },
+		{ DataLossy, ExecNodeOnly, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("CopyPaste"));
@@ -897,7 +976,15 @@ void FN2CCaptureGoldenSpec::AddCases()
 			BP.Link(Entry, TEXT("Enabled"), Pasted[0], TEXT("bAllowScreenSaver"));
 			return Graph;
 		} });
-	Cases.Last().ExpectedErrors = { TEXT("Duplicate pin ID") };
+
+	// Card 0134: graphs are told apart by identity, not by name
+	Cases.Add({ TEXT("SameNameOwners"),
+		TEXT("Max Translation Depth 2. Function Run calls Helper, then Init (both its own). Helper calls Init of a second "
+			"Blueprint in the same package, BP_N2CGolden_SameNameOwners_Other. Captured from Run: both Init graphs "
+			"appear, the other Blueprint's with owner_blueprint."),
+		{ ExecNodeOnly, DisplayNames },
+		&BuildSameNameOwners });
+	Cases.Last().TranslationDepth = 2;
 
 	for (const int32 Depth : { 0, 1 })
 	{
@@ -912,7 +999,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 			  { TEXT("imp-translation-core-4"), TEXT("0235"),
 				TEXT("The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no "
 					"member_parent or member_name)") },
-			  ExecNodeOnly, GlobalPinIds, DisplayNames },
+			  ExecNodeOnly, DisplayNames },
 			&BuildNested });
 		Nested.TranslationDepth = Depth;
 		if (Depth > 0)
@@ -929,7 +1016,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-15"), TEXT("0234"),
 			TEXT("The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead "
 				"of an event") },
-		  GhostEvents, ExecNodeOnly, GlobalPinIds, DisplayNames },
+		  GhostEvents, ExecNodeOnly, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -975,10 +1062,9 @@ void FN2CCaptureGoldenSpec::Define()
 
 	Describe(TEXT("Isolation"), [this]()
 	{
-		const auto FindCase = [this](const TCHAR* Name) { return Cases.FindByPredicate([Name](const FCaptureCase& Case) { return Case.Name == Name; }); };
 
 		// Different depths, so a capture that read the other's depth or queue would not match its golden
-		It(TEXT("gives each of two interleaved captures its single-run golden"), [this, FindCase]()
+		It(TEXT("gives each of two interleaved captures its single-run golden"), [this]()
 		{
 			const FCaptureCase* Outer = FindCase(TEXT("ShortestPath_Depth3"));
 			const FCaptureCase* Inner = FindCase(TEXT("CallChain_Depth1"));
@@ -999,7 +1085,7 @@ void FN2CCaptureGoldenSpec::Define()
 		});
 
 		// Capture A, capture B, then serialize A's result: A's JSON, not B's
-		It(TEXT("keeps a capture's result when another graph is captured after it"), [this, FindCase]()
+		It(TEXT("keeps a capture's result when another graph is captured after it"), [this]()
 		{
 			const FCaptureCase* First = FindCase(TEXT("UserStruct"));
 			const FCaptureCase* Second = FindCase(TEXT("NestedGraphs_Depth1"));
@@ -1012,6 +1098,152 @@ void FN2CCaptureGoldenSpec::Define()
 			Serialize(*First, FirstCaptured);
 			ExpectGolden(*First, FirstCaptured, TEXT(" (first)"));
 			ExpectGolden(*Second, SecondCaptured, TEXT(" (second)"));
+		});
+	});
+
+	// Card 0134: IDs are allocated per node and pin object, graphs are deduplicated by identity
+	Describe(TEXT("Identity"), [this]()
+	{
+		It(TEXT("gives a pasted node's pins IDs of their own and the capture validates"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("CopyPaste"));
+			if (TestNotNull(TEXT("CopyPaste case"), Case))
+			{
+				const FCaptured Captured = Capture(*Case);
+				ExpectConsistentIDs(TEXT("CopyPaste"), Captured.Result);
+				TestEqual(TEXT("CopyPaste graphs"), Captured.Result.Blueprint.Graphs.Num(), 1);
+			}
+		});
+
+		It(TEXT("captures a function that calls itself once"), [this]()
+		{
+			for (const TCHAR* Name : { TEXT("Recursion_Depth1"), TEXT("Recursion_Depth2") })
+			{
+				const FCaptureCase* Case = FindCase(Name);
+				if (!TestNotNull(Name, Case))
+				{
+					continue;
+				}
+				const FCaptured Captured = Capture(*Case);
+				ExpectConsistentIDs(Name, Captured.Result);
+				int32 RootGraphs = 0;
+				for (const FN2CGraph& Graph : Captured.Result.Blueprint.Graphs)
+				{
+					RootGraphs += Graph.Name == TEXT("Root") ? 1 : 0;
+				}
+				TestEqual(FString(Name) + TEXT(": Root graphs"), RootGraphs, 1);
+			}
+		});
+
+		It(TEXT("captures same-named functions of two Blueprints, each with its owner"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("SameNameOwners"));
+			if (!TestNotNull(TEXT("SameNameOwners case"), Case))
+			{
+				return;
+			}
+			const FCaptured Captured = Capture(*Case);
+			ExpectConsistentIDs(TEXT("SameNameOwners"), Captured.Result);
+			TArray<FString> InitOwners;
+			for (const FN2CGraph& Graph : Captured.Result.Blueprint.Graphs)
+			{
+				if (Graph.Name == TEXT("Init"))
+				{
+					InitOwners.Add(Graph.OwnerBlueprint);
+				}
+				else
+				{
+					TestTrue(Graph.Name + TEXT(" (the captured Blueprint's own) has no owner_blueprint"), Graph.OwnerBlueprint.IsEmpty());
+				}
+			}
+			InitOwners.Sort();
+			TestEqual(TEXT("Init graphs and their owners"), FString::Join(InitOwners, TEXT("|")),
+				FString(TEXT("|BP_N2CGolden_SameNameOwners_Other")));
+		});
+
+		It(TEXT("gives the same IDs when an unchanged graph is captured twice"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("ShortestPath_Depth3"));
+			if (!TestNotNull(TEXT("ShortestPath_Depth3 case"), Case))
+			{
+				return;
+			}
+			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CGolden_Twice"), TEXT("/Game"));
+			UEdGraph* Graph = Blueprint.GetBlueprint() ? Case->Build(Blueprint) : nullptr;
+			TArray<UK2Node*> Nodes;
+			if (!TestNotNull(TEXT("graph"), Graph) || !TestTrue(TEXT("collect"), FN2CNodeCollector::Get().CollectNodesFromGraph(Graph, Nodes)))
+			{
+				return;
+			}
+			FN2CCaptureOptions Options;
+			Options.Depth = Case->TranslationDepth.Get(0);
+			const TValueOrError<FN2CCapture, FString> First = N2C::CaptureNodes(Nodes, Options);
+			const TValueOrError<FN2CCapture, FString> Second = N2C::CaptureNodes(Nodes, Options);
+			if (TestTrue(TEXT("both captures succeed"), First.HasValue() && Second.HasValue()))
+			{
+				ExpectConsistentIDs(TEXT("first capture"), First.GetValue());
+				const FString FirstJson = FN2CSerializer::ToJson(First.GetValue(), EN2CJsonStyle::Pretty, EN2CJsonGuids::Table);
+				const FString SecondJson = FN2CSerializer::ToJson(Second.GetValue(), EN2CJsonStyle::Pretty, EN2CJsonGuids::Table);
+				if (FirstJson != SecondJson)
+				{
+					ReportDifference(TEXT("a second capture of the same graph (with the guids table)"), FirstJson, SecondJson);
+				}
+			}
+		});
+
+		It(TEXT("gives get-focused-blueprint one GUID entry per node and per pin"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("CopyPaste"));
+			if (!TestNotNull(TEXT("CopyPaste case"), Case))
+			{
+				return;
+			}
+			const FCaptured Captured = Capture(*Case);
+			const FN2CCapture& Result = Captured.Result;
+			const TSharedPtr<FJsonObject> Json = N2CTest::ParseJsonObject(FN2CMcpGetFocusedBlueprintTool::BuildResultJson(Result));
+			const TSharedPtr<FJsonObject>* Guids = nullptr;
+			if (!TestTrue(TEXT("the result parses"), Json.IsValid()) || !TestTrue(TEXT("the result has a guids table"), Json->TryGetObjectField(TEXT("guids"), Guids)))
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> NodesTable = (*Guids)->GetObjectField(TEXT("nodes"));
+			const TSharedPtr<FJsonObject> PinsTable = (*Guids)->GetObjectField(TEXT("pins"));
+			TestEqual(TEXT("guids.nodes entries"), NodesTable->Values.Num(), Result.NodeGuids.Num());
+			TestEqual(TEXT("guids.pins entries"), PinsTable->Values.Num(), Result.Pins.Num());
+			TestEqual(TEXT("guids.graphs entries"), (*Guids)->GetArrayField(TEXT("graphs")).Num(), Result.Blueprint.Graphs.Num());
+
+			// Every pin's inline ids.guid is its own pin's PinId, and the table names its node
+			int32 PinsChecked = 0;
+			for (const TSharedPtr<FJsonValue>& GraphValue : Json->GetArrayField(TEXT("graphs")))
+			{
+				for (const TSharedPtr<FJsonValue>& NodeValue : GraphValue->AsObject()->GetArrayField(TEXT("nodes")))
+				{
+					const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+					const FString NodeID = Node->GetObjectField(TEXT("ids"))->GetStringField(TEXT("short"));
+					TestEqual(NodeID + TEXT(" ids.guid"), Node->GetObjectField(TEXT("ids"))->GetStringField(TEXT("guid")),
+						Result.NodeGuids.FindRef(NodeID).ToString(EGuidFormats::DigitsWithHyphens));
+					for (const TCHAR* Field : { TEXT("input_pins"), TEXT("output_pins") })
+					{
+						for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(Field))
+						{
+							const TSharedPtr<FJsonObject> Ids = PinValue->AsObject()->GetObjectField(TEXT("ids"));
+							const FString PinID = Ids->GetStringField(TEXT("short"));
+							const FN2CCapturedPin* Entry = Result.Pins.Find(PinID);
+							const TSharedPtr<FJsonObject>* Row = nullptr;
+							if (TestNotNull(PinID + TEXT(" in the capture's Pins"), Entry)
+								&& TestTrue(PinID + TEXT(" in guids.pins"), PinsTable->TryGetObjectField(PinID, Row)))
+							{
+								const FString PinGuid = Entry->PinGuid.ToString(EGuidFormats::DigitsWithHyphens);
+								TestEqual(PinID + TEXT(" ids.guid"), Ids->GetStringField(TEXT("guid")), PinGuid);
+								TestEqual(PinID + TEXT(" guids.pins guid"), (*Row)->GetStringField(TEXT("guid")), PinGuid);
+								TestEqual(PinID + TEXT(" guids.pins node"), (*Row)->GetStringField(TEXT("node")), NodeID);
+								++PinsChecked;
+							}
+						}
+					}
+				}
+			}
+			TestEqual(TEXT("pins checked"), PinsChecked, Result.Pins.Num());
 		});
 	});
 

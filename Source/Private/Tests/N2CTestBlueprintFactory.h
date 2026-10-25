@@ -62,7 +62,14 @@ namespace N2CTest
 		/** The transient package's path, for tests that normalise it out of captured text */
 		FString GetPackagePath() const;
 		UPackage* GetPackage() const { return Package; }
-		const TArray<FString>& Errors() const { return ErrorList; }
+		/** What failed, in this Blueprint and in its siblings */
+		TArray<FString> Errors() const;
+
+		/**
+		 * Another Actor Blueprint named BlueprintName in this one's package (so the same package path normalises both),
+		 * owned by this one and released with it. Null and an error when it cannot be made.
+		 */
+		FTestBlueprint* AddSiblingBlueprint(const FString& BlueprintName);
 
 		/** The event graph (holds the default ghost events CreateBlueprint adds to an Actor Blueprint) */
 		UEdGraph* EventGraph() const;
@@ -135,9 +142,15 @@ namespace N2CTest
 		static FEdGraphPinType StructPinType(UScriptStruct* Struct);
 
 	private:
+		/** A sibling: a Blueprint in InPackage, which the sibling does not own */
+		FTestBlueprint(const FString& BlueprintName, UPackage* InPackage);
+		void CreateBlueprintIn(const FString& BlueprintName);
+
 		UPackage* Package = nullptr;
+		bool bOwnsPackage = true;
 		UBlueprint* Blueprint = nullptr;
 		TArray<FString> ErrorList;
+		TArray<TUniquePtr<FTestBlueprint>> Siblings;
 
 		void AddError(const FString& Error) { ErrorList.Add(Error); }
 	};
