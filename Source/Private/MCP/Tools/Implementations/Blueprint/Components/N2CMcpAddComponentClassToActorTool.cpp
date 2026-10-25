@@ -48,7 +48,7 @@ FMcpToolDefinition FN2CMcpAddComponentClassToActorTool::GetDefinition() const
     // parentComponent property
     TSharedPtr<FJsonObject> ParentComponentProp = MakeShareable(new FJsonObject);
     ParentComponentProp->SetStringField(TEXT("type"), TEXT("string"));
-    ParentComponentProp->SetStringField(TEXT("description"), TEXT("Name of parent component to attach to (scene components only)"));
+    ParentComponentProp->SetStringField(TEXT("description"), TEXT("Name of a component this Blueprint added (not a native or inherited one) to attach to, scene components only. After the compile the new component sits under the Blueprint's root component, so only the root is kept as a parent"));
     Properties->SetObjectField(TEXT("parentComponent"), ParentComponentProp);
 
     // attachSocketName property

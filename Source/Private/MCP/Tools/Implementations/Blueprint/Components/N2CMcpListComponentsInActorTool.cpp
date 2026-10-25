@@ -40,7 +40,7 @@ FMcpToolDefinition FN2CMcpListComponentsInActorTool::GetDefinition() const
     TSharedPtr<FJsonObject> IncludeInheritedProp = MakeShareable(new FJsonObject);
     IncludeInheritedProp->SetStringField(TEXT("type"), TEXT("boolean"));
     IncludeInheritedProp->SetBoolField(TEXT("default"), true);
-    IncludeInheritedProp->SetStringField(TEXT("description"), TEXT("Include components from parent classes"));
+    IncludeInheritedProp->SetStringField(TEXT("description"), TEXT("Include components added by parent Blueprints. Native components of a C++ parent are never listed"));
     Properties->SetObjectField(TEXT("includeInherited"), IncludeInheritedProp);
 
     // componentTypeFilter property

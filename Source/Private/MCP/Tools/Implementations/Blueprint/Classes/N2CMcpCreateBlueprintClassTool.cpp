@@ -47,7 +47,7 @@ FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 	// blueprintName property
 	TSharedPtr<FJsonObject> BlueprintNameProp = MakeShareable(new FJsonObject);
 	BlueprintNameProp->SetStringField(TEXT("type"), TEXT("string"));
-	BlueprintNameProp->SetStringField(TEXT("description"), TEXT("Name for the new Blueprint (without BP_ prefix)"));
+	BlueprintNameProp->SetStringField(TEXT("description"), TEXT("Name for the new Blueprint; BP_ is put in front unless the name already starts with it"));
 	Properties->SetObjectField(TEXT("blueprintName"), BlueprintNameProp);
 
 	// parentClassPath property
@@ -59,7 +59,7 @@ FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 	// assetPath property
 	TSharedPtr<FJsonObject> AssetPathProp = MakeShareable(new FJsonObject);
 	AssetPathProp->SetStringField(TEXT("type"), TEXT("string"));
-	AssetPathProp->SetStringField(TEXT("description"), TEXT("Content path where the Blueprint will be created (e.g., '/Game/Blueprints')"));
+	AssetPathProp->SetStringField(TEXT("description"), TEXT("Content folder for the new Blueprint (e.g., '/Game/Blueprints/Doors'). The folder must not exist yet: the tool creates it and refuses an existing one"));
 	Properties->SetObjectField(TEXT("assetPath"), AssetPathProp);
 
 	// openInEditor property
@@ -86,7 +86,7 @@ FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 	TSharedPtr<FJsonObject> GenerateConstructionScriptProp = MakeShareable(new FJsonObject);
 	GenerateConstructionScriptProp->SetStringField(TEXT("type"), TEXT("boolean"));
 	GenerateConstructionScriptProp->SetBoolField(TEXT("default"), true);
-	GenerateConstructionScriptProp->SetStringField(TEXT("description"), TEXT("Generate default construction script (for Actor-based Blueprints)"));
+	GenerateConstructionScriptProp->SetStringField(TEXT("description"), TEXT("Has no effect: an Actor Blueprint always gets its construction script"));
 	Properties->SetObjectField(TEXT("generateConstructionScript"), GenerateConstructionScriptProp);
 
 	// blueprintType property
@@ -99,7 +99,7 @@ FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 	BlueprintTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("interface"))));
 	BlueprintTypeProp->SetArrayField(TEXT("enum"), BlueprintTypeEnum);
 	BlueprintTypeProp->SetStringField(TEXT("default"), TEXT("auto"));
-	BlueprintTypeProp->SetStringField(TEXT("description"), TEXT("Blueprint type (auto-detected from parent if not specified)"));
+	BlueprintTypeProp->SetStringField(TEXT("description"), TEXT("Blueprint type. normal, const and interface are used as given, whatever the parent; auto (and any other value) gives interface for an interface parent, otherwise normal"));
 	Properties->SetObjectField(TEXT("blueprintType"), BlueprintTypeProp);
 
 	Schema->SetObjectField(TEXT("properties"), Properties);

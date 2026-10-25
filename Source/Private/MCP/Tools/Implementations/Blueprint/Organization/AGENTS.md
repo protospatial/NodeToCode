@@ -1,62 +1,91 @@
 # Blueprint Organization Tools
 
-This directory contains MCP tools for organizing and tracking Blueprint graphs using a tagging system. These tools help manage complex Blueprint projects by adding metadata to graphs.
+This directory contains the MCP tools in the 'Blueprint Organization' category: tagging Blueprint graphs, listing the
+tags and removing them. The tools are thin wrappers over `UN2CTagManager`, which stores every tag in
+`UN2CGraphStateManager` (`Source/Private/Core/N2CGraphStateManager.cpp`), the per-graph state that also records each
+graph's translation and JSON export.
 
 ## Available Tools
 
 ### tag-blueprint-graph
-- **Description**: Tags the currently focused Blueprint graph with metadata
+- **Description**: Tags the focused graph of the active Blueprint editor (`FN2CMcpBlueprintUtils::GetFocusedEditorGraph`)
+  under its `GraphGuid` (`FN2CMcpTagBlueprintGraphTool::Execute`)
 - **Parameters**:
-  - `tag` (required): The tag name to apply
-  - `category` (optional): Category for organizing tags
-  - `description` (optional): Additional notes about the tag
-- **Returns**: Tagged graph information with timestamp
-- **Use Case**: Marking graphs for organization and tracking
+  - `tag` (required, not empty): The tag name
+  - `category` (optional, default `Default`): Grouping
+  - `description` (optional): Free text
+- **Returns**: `success`, `message` (`Successfully tagged EventGraph with 'PlayerMovement'`) and `taggedGraph` (`tag`,
+  `category`, `description`, `graphGuid` (hyphenated), `graphName`, `blueprintPath`, `timestamp` (UTC, ISO 8601))
+- **Duplicates**: a tag with the same name and category, compared case-insensitively (`FN2CTagEntry::MatchesTag`), is
+  not added again and the call still succeeds. The `taggedGraph` it returns echoes the request (`playermovement` /
+  `feature`, a new timestamp), not the stored tag, which keeps its first spelling and timestamp. The same name in
+  another category is a separate tag
+- **Errors**: `Missing required parameter: tag` (missing or empty), `NO_FOCUSED_GRAPH: ...`,
+  `Current graph is not valid for tagging` (a graph without a `GraphGuid`), `Failed to persist tag`
+- **Known issue (card 0191):** an explicit empty `category` is kept as given, and an empty category matches any
+  category in the duplicate check, so `{"tag": "Combat", "category": ""}` on a graph that has `Combat` in another
+  category adds nothing
+- **Known issue (card 0274):** only the focused graph can be tagged
 
 ### list-blueprint-tags
-- **Description**: Lists tags applied to Blueprint graphs with filtering
-- **Parameters** (all optional):
-  - `graphGuid`: Filter by specific graph GUID
-  - `tag`: Filter by tag name
-  - `category`: Filter by category
-- **Returns**: Tag list with summary statistics
-- **Use Case**: Finding tagged graphs and understanding organization
+- **Description**: Lists stored tags (read-only, `readOnlyHint`; results marked as untrusted content, card 0124:
+  `untrusted_content` is the first key)
+- **Parameters** (all optional; one filter applies, in this order, `FN2CMcpListBlueprintTagsTool::Execute`):
+  - `graphGuid`: Every tag of that graph. With hyphens or without (`FGuid::Parse`). When it is given, `tag` and
+    `category` are ignored
+  - `tag`: Tags with that name, case-insensitive (`UN2CTagManager::GetGraphsWithTag`), narrowed by `category` when
+    that is given too
+  - `category`: Tags in that category, case-insensitive (`GetTagsInCategory`)
+  - none: every tag (`GetAllTags`)
+- **Returns**: `untrusted_content`, `tags` (each as in `taggedGraph` above), `count`, `summary` (`uniqueTagNames`
+  and `uniqueCategories` across all stored tags, not only the listed ones) and `appliedFilters` (the arguments as
+  given, so it can name a `tag` filter that was ignored)
+- **Errors**: `Invalid graphGuid format: Invalid GUID format`
+- **Known issue (card 0294):** with `graphGuid` the `tag` and `category` filters are ignored while `appliedFilters`
+  still lists them
 
 ### remove-tag-from-graph
-- **Description**: Removes a tag from a Blueprint graph
+- **Description**: Removes every tag with that name from a graph, whatever its category
+  (`UN2CGraphStateManager::RemoveTagByName`, case-insensitive)
 - **Parameters**:
-  - `graphGuid` (required): GUID of the graph
-  - `tag` (required): Tag name to remove
-- **Returns**: Removal confirmation and remaining tag count
-- **Use Case**: Cleaning up outdated tags
+  - `graphGuid` (required): The graph's GUID, as `list-blueprint-tags` returns it (hyphens optional)
+  - `tag` (required, not empty): Tag name
+- **Returns**: `success` (true also when nothing matched), `message` (`Tag 'X' removed from graph`, `Removed 2
+  instances of tag 'X' from graph`, or `Tag 'X' was not found on graph <guid> (no action taken)`), `removedTag`
+  (`tag`, `category` and `graphGuid` of the first match, only when something was removed) and `remainingTags`
+- **Errors**: `Invalid graph GUID format: Invalid GUID format`, `Missing required parameter: graphGuid` or `tag`
 
-## Tagging System Features
+## Storage
 
-### Tag Properties
-- **Tag Name**: Primary identifier (e.g., "PlayerMovement", "NeedsRefactor")
-- **Category**: Organizational grouping (e.g., "Gameplay", "UI", "Audio")
-- **Description**: Extended notes about why the tag was applied
-- **Timestamp**: ISO 8601 timestamp of when tag was applied
-- **Graph Context**: GUID, name, and Blueprint path
+- **File.** Tags live in `<Project>/Saved/NodeToCode/BlueprintGraphState.json` (`GetStateFilePath`), one entry per
+  graph keyed by `GraphGuid`, together with that graph's translation and JSON-export state. A graph left with no tags,
+  translation or export is dropped from the file.
+- **Writes.** Every change saves the whole in-memory state at once (`SaveState`, no undo). Since card 0066 the write
+  is atomic (`FN2CFileUtils::SaveStringAtomically`: a temporary file, then a replace, with the previous file kept as
+  `BlueprintGraphState.json.bak`); a corrupt file is set aside as `.corrupt-*` and saving stops until the tags are
+  reloaded (`LoadStateInternal`), so a bad file is never overwritten.
+- **Reads.** The file is read once, when the editor starts (`UN2CGraphStateManager::Initialize`), and again only when
+  the user reloads the tags (`UN2CTagManager::LoadTags`). Tags survive editor restarts and belong to one project.
+- **Several editors on one project: the last writer wins.** There is no lock and no merge: each editor keeps its own
+  copy in memory and writes all of it on every change. On UE 5.8, a tag written into the file from outside while the
+  editor ran was not seen by `list-blueprint-tags`, and the editor's next `tag-blueprint-graph` rewrote the file
+  without it. Tag from one editor at a time, or reload the tags in the other editor before tagging there.
+- **Known issue (suggested card 0436):** no lock or merge between editors.
+- **Keys.** Tags follow a graph's `GraphGuid`, which survives a rename; the stored `graphName` and `blueprintPath`
+  are updated the next time that graph is tagged.
+- **Known issue (card 0192):** a Blueprint duplicated in the Content Browser keeps its graphs' GUIDs, so the copy
+  shares the original's tags; renamed or deleted Blueprints keep stale paths.
 
-### Persistence
-- Tags are saved to disk in the project's Saved directory
-- Tags survive editor restarts and project reloads
-- Tags are project-specific, not shared between projects
+## Examples
 
-### Idempotency
-- Applying the same tag multiple times is safe
-- Removing non-existent tags doesn't cause errors
-
-## Usage Examples
-
-### Organizing Feature Development
-The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in
+`Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
 
 ```bash
-# Tag graphs related to player movement
+# Tag the focused graph
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
@@ -71,87 +100,37 @@ curl -X POST http://localhost:27000/mcp \
     },
     "id": 1
   }'
-```
 
-### Tracking Technical Debt
-```bash
-# Mark graphs that need optimization
+# Every graph tagged PlayerMovement (any category)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "tag-blueprint-graph",
-      "arguments": {
-        "tag": "PerformanceIssue",
-        "category": "TechDebt",
-        "description": "Heavy tick operations, needs refactoring"
-      }
-    },
-    "id": 1
-  }'
-```
-
-### Finding Related Graphs
-```bash
-# Find all graphs tagged with a specific feature
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
     "params": {
       "name": "list-blueprint-tags",
-      "arguments": {
-        "tag": "PlayerMovement"
-      }
+      "arguments": { "tag": "PlayerMovement" }
     },
-    "id": 1
+    "id": 2
   }'
 
-# Find all tech debt items
+# Remove it again, by the graphGuid from the listing
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
     "params": {
-      "name": "list-blueprint-tags",
-      "arguments": {
-        "category": "TechDebt"
-      }
+      "name": "remove-tag-from-graph",
+      "arguments": { "graphGuid": "DFDB5585-48EE-D4EF-AC46-AF8239259FC2", "tag": "PlayerMovement" }
     },
-    "id": 1
+    "id": 3
   }'
 ```
 
-## Workflow Patterns
-
-### Feature Development Workflow
-1. Tag all graphs related to a feature during development
-2. Use tags to quickly navigate between related graphs
-3. List all graphs for a feature before deployment
-4. Remove feature tags after completion
-
-### Code Review Workflow
-1. Tag graphs with review status: "NeedsReview", "InReview", "Approved"
-2. Filter by review status to track progress
-3. Add reviewer notes in tag descriptions
-4. Clean up review tags after merge
-
-### Refactoring Workflow
-1. Tag graphs that need refactoring with specific issues
-2. Prioritize by filtering tags
-3. Track refactoring progress with status tags
-4. Verify all refactoring tags are resolved
-
-## Implementation Notes
-
-- Tags are stored in a JSON file in the Saved directory
-- Graph GUIDs ensure tags remain valid even if graphs are renamed
-- The system handles concurrent access from multiple editor instances
-- Tag operations are not included in Unreal's undo system (persistent metadata)
+Typical uses: review status (`NeedsReview`, `Approved` in a `Review` category), technical debt (`PerformanceIssue`
+in `TechDebt`), or feature membership, then `list-blueprint-tags` by tag or category to find the graphs again.
