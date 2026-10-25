@@ -88,7 +88,7 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         }
         
         // Create a transaction for undo/redo
-        const FScopedTransaction Transaction(NSLOCTEXT("MCP", "SetLocalVariableDefaultValue", "Set Local Variable Default Value"));
+        TOptional<FScopedTransaction> Transaction(InPlace, NSLOCTEXT("MCP", "SetLocalVariableDefaultValue", "Set Local Variable Default Value"));
         FunctionEntryNode->Modify();
         FocusedBlueprint->Modify();
         
@@ -101,14 +101,16 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         // Update the function variable cache to ensure the default value is properly applied
         FunctionEntryNode->RefreshFunctionVariableCache();
         
-        // Compile Blueprint synchronously to ensure preview actors are properly updated
-        FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(FocusedBlueprint);
+        FN2CMcpBlueprintUtils::MarkModified(FocusedBlueprint, /*bStructural*/ false);
 
-        // Get compilation status (already compiled by MarkBlueprintAsModifiedAndCompile)
-        int32 ErrorCount = FocusedBlueprint->Status == BS_Error ? 1 : 0;
-        int32 WarningCount = 0;
-        float CompilationTime = 0.0f;
-        bool bCompileSuccess = (ErrorCount == 0);
+        // Close the undo transaction, then compile once and report what the compiler said (card 0151)
+        Transaction.Reset();
+        FN2CCompileDiagnostics Diagnostics;
+        FN2CMcpBlueprintUtils::Compile(FocusedBlueprint, Diagnostics);
+        const int32 ErrorCount = Diagnostics.ErrorCount;
+        const int32 WarningCount = Diagnostics.WarningCount;
+        const float CompilationTime = Diagnostics.CompileSeconds;
+        const bool bCompileSuccess = Diagnostics.bSuccess;
 
         // Build the result JSON
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);

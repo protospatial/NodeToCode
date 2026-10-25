@@ -460,8 +460,12 @@ curl -X POST http://localhost:27000/mcp \
 - **Known issue (cards 0154, 0155, 0283):** the four tools above get transactions in those cards, and undoing
   `set-member-variable-default-value` restores the variable description but not the class default object.
 - **Read-only**: `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`.
-- Every successful edit compiles the Blueprint synchronously and marks its package dirty
-  (`FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile`). Nothing is saved: use `save-blueprint`.
+- Every successful edit marks the Blueprint modified (structurally for create-variable and create-local-variable)
+  and its package dirty, and the tool call compiles it once, after the edit's transaction has closed, with the
+  compiler's diagnostics in the result as `compile` (card 0151; fields in the Graph folder's AGENTS.md).
+  set-member-variable-default-value compiles once (it compiled twice before); its `compilation*` fields and
+  set-local-function-variable-default-value's `compilationStatus` come from that compile. Nothing is saved: use
+  `save-blueprint`.
 
 ## Implementation Notes
 

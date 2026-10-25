@@ -40,8 +40,25 @@
 #include "ScopedTransaction.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
+#include "Misc/Optional.h"
 
 #define LOCTEXT_NAMESPACE "NodeToCode"
+
+namespace N2CPythonBridgePrivate
+{
+	/** Adds a call's compile diagnostics to a bridge result as "compile" (nothing when the call compiled nothing) */
+	void AddCompileResult(const TSharedPtr<FJsonObject>& Data, const TArray<FN2CCompileDiagnostics>& Compiles)
+	{
+		if (const TSharedPtr<FJsonObject> CompileJson = FN2CMcpBlueprintUtils::CompileDiagnosticsToJson(Compiles))
+		{
+			if (Data.IsValid())
+			{
+				Data->SetObjectField(TEXT("compile"), CompileJson);
+			}
+		}
+	}
+}
+using N2CPythonBridgePrivate::AddCompileResult;
 
 FString UN2CPythonBridge::GetFocusedBlueprintJson()
 {
@@ -185,46 +202,25 @@ FString UN2CPythonBridge::CompileFocusedBlueprint()
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("CompileFocusedBlueprint: Compiling %s"), *OwningBlueprint->GetName()), EN2CLogSeverity::Info);
 
-	// Compile the Blueprint
-	FKismetEditorUtilities::CompileBlueprint(OwningBlueprint);
-
-	// Get status after compilation
-	FString StatusStr;
-	bool bHadErrors = false;
-	bool bHadWarnings = false;
-
-	switch (OwningBlueprint->Status)
-	{
-	case BS_Unknown:
-		StatusStr = TEXT("Unknown");
-		break;
-	case BS_Dirty:
-		StatusStr = TEXT("Dirty");
-		break;
-	case BS_Error:
-		StatusStr = TEXT("Error");
-		bHadErrors = true;
-		break;
-	case BS_UpToDate:
-		StatusStr = TEXT("UpToDate");
-		break;
-	case BS_BeingCreated:
-		StatusStr = TEXT("BeingCreated");
-		break;
-	case BS_UpToDateWithWarnings:
-		StatusStr = TEXT("UpToDateWithWarnings");
-		bHadWarnings = true;
-		break;
-	default:
-		StatusStr = TEXT("Unknown");
-		break;
-	}
+	// Compile the Blueprint, with the compiler's messages (card 0151)
+	FN2CCompileDiagnostics Diagnostics;
+	FN2CMcpBlueprintUtils::Compile(OwningBlueprint, Diagnostics, /*bSkipGarbageCollection*/ false, /*bReportInToolResult*/ false);
+	const bool bHadErrors = !Diagnostics.bSuccess;
+	const bool bHadWarnings = Diagnostics.WarningCount > 0 || OwningBlueprint->Status == BS_UpToDateWithWarnings;
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
-	Data->SetStringField(TEXT("status"), StatusStr);
+	Data->SetStringField(TEXT("status"), Diagnostics.Status);
 	Data->SetBoolField(TEXT("had_errors"), bHadErrors);
 	Data->SetBoolField(TEXT("had_warnings"), bHadWarnings);
+	Data->SetNumberField(TEXT("error_count"), Diagnostics.ErrorCount);
+	Data->SetNumberField(TEXT("warning_count"), Diagnostics.WarningCount);
+	TArray<TSharedPtr<FJsonValue>> Messages;
+	for (const FN2CCompilerMessage& Message : Diagnostics.Messages)
+	{
+		Messages.Add(MakeShared<FJsonValueObject>(FN2CCompileDiagnostics::MessageToJson(Message)));
+	}
+	Data->SetArrayField(TEXT("messages"), Messages);
 
 	if (bHadErrors)
 	{
@@ -872,9 +868,7 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 	ResultObject->SetArrayField(TEXT("nodes"), ResultNodes);
 	ResultObject->SetNumberField(TEXT("count"), ResultCount);
 
-	// Schedule deferred refresh
-	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-
+	// Read only: no compile and no action-database refresh (card 0151)
 	return MakeSuccessJson(ResultObject);
 }
 
@@ -937,6 +931,9 @@ bool UN2CPythonBridge::IsExcludedVMFunction(const FString& ActionSearchText)
 
 FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX, float LocationY)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (NodeName.IsEmpty() || ActionIdentifier.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("NodeName and ActionIdentifier are required"));
@@ -1053,9 +1050,8 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 		}
 	}
 
-	// Compile Blueprint
-	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(ActiveBlueprint);
-	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
+	// Mark it modified; the call compiles it once, below
+	FN2CMcpBlueprintUtils::MarkModified(ActiveBlueprint, /*bStructural*/ false);
 
 	// Build result with pin information for immediate use
 	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
@@ -1111,11 +1107,16 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	NextStepObject->SetStringField(TEXT("description"), TEXT("Use nodetocode.connect_pins() with the nodeGuid and pinGuid values above to wire this node to other nodes in the graph."));
 	ResultObject->SetObjectField(TEXT("nextStep"), NextStepObject);
 
+	AddCompileResult(ResultObject, CallScope.Flush());
+
 	return MakeSuccessJson(ResultObject);
 }
 
 FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (ConnectionsJson.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("ConnectionsJson cannot be empty"));
@@ -1164,7 +1165,7 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	TArray<TSharedPtr<FJsonValue>> SucceededArray;
 	TArray<TSharedPtr<FJsonValue>> FailedArray;
 
-	const FScopedTransaction Transaction(LOCTEXT("PythonConnectPins", "Python: Connect Pins"));
+	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonConnectPins", "Python: Connect Pins"));
 	Blueprint->Modify();
 	FocusedGraph->Modify();
 
@@ -1306,8 +1307,7 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 		}
 	}
 
-	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
-	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 
 	// Build result
 	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
@@ -1319,11 +1319,17 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	SummaryObject->SetNumberField(TEXT("failed"), FailedArray.Num());
 	ResultObject->SetObjectField(TEXT("summary"), SummaryObject);
 
+	Transaction.Reset(); // close the undo transaction before compiling
+	AddCompileResult(ResultObject, CallScope.Flush());
+
 	return MakeSuccessJson(ResultObject);
 }
 
 FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (NodeGuid.IsEmpty() || PinGuid.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("NodeGuid and PinGuid are required"));
@@ -1418,13 +1424,12 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 		return MakeErrorJson(TEXT("Graph has no schema"));
 	}
 
-	const FScopedTransaction Transaction(LOCTEXT("PythonSetPinValue", "Python: Set Pin Value"));
+	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonSetPinValue", "Python: Set Pin Value"));
 	TargetNode->Modify();
 
 	Schema->TrySetDefaultValue(*TargetPin, Value);
 
-	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
-	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("nodeGuid"), NodeGuid);
@@ -1433,11 +1438,17 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 	Data->SetStringField(TEXT("oldValue"), OldValue);
 	Data->SetStringField(TEXT("newValue"), Value);
 
+	Transaction.Reset(); // close the undo transaction before compiling
+	AddCompileResult(Data, CallScope.Flush());
+
 	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections, bool bForce)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (NodeGuidsJson.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("NodeGuidsJson cannot be empty"));
@@ -1512,7 +1523,7 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 	}
 
 	// Delete nodes
-	const FScopedTransaction Transaction(LOCTEXT("PythonDeleteNodes", "Python: Delete Nodes"));
+	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonDeleteNodes", "Python: Delete Nodes"));
 	Blueprint->Modify();
 	FocusedGraph->Modify();
 
@@ -1522,8 +1533,7 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 		Node->DestroyNode();
 	}
 
-	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
-	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 
 	// Build result
 	TArray<TSharedPtr<FJsonValue>> DeletedArray;
@@ -1538,6 +1548,9 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
 	ResultObject->SetArrayField(TEXT("deletedNodes"), DeletedArray);
 	ResultObject->SetNumberField(TEXT("deletedCount"), DeletedArray.Num());
+
+	Transaction.Reset(); // close the undo transaction before compiling
+	AddCompileResult(ResultObject, CallScope.Flush());
 
 	return MakeSuccessJson(ResultObject);
 }
@@ -1838,8 +1851,8 @@ FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const 
 	CommentNode->OnUpdateCommentText(CommentNode->NodeComment);
 	CommentNode->ReconstructNode();
 
-	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
-	FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
+	// A comment changes nothing the compiler sees: dirty the package, do not compile (card 0151)
+	FN2CMcpBlueprintUtils::MarkCosmeticChange(Blueprint);
 
 	// Build result
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
@@ -1864,6 +1877,9 @@ FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const 
 
 FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue, bool bIsPassByReference, const FString& Tooltip)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (PinName.IsEmpty() || TypeIdentifier.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("PinName and TypeIdentifier are required"));
@@ -1899,7 +1915,7 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 	}
 
 	// Create the pin
-	const FScopedTransaction Transaction(FText::Format(LOCTEXT("PythonAddInputPin", "Python: Add Input Pin '{0}'"), FText::FromString(PinName)));
+	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonAddInputPin", "Python: Add Input Pin '{0}'"), FText::FromString(PinName)));
 
 	FText ErrorMessage;
 	if (!FunctionEntry->CanCreateUserDefinedPin(PinType, EGPD_Output, ErrorMessage))
@@ -1935,7 +1951,7 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 	if (Blueprint)
 	{
 		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 	}
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
@@ -1945,11 +1961,17 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
 
+	Transaction.Reset(); // close the undo transaction before compiling
+	AddCompileResult(Data, CallScope.Flush());
+
 	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (PinName.IsEmpty() || TypeIdentifier.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("PinName and TypeIdentifier are required"));
@@ -1985,7 +2007,7 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 	}
 
 	// Create the pin
-	const FScopedTransaction Transaction(FText::Format(LOCTEXT("PythonAddReturnPin", "Python: Add Return Pin '{0}'"), FText::FromString(PinName)));
+	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonAddReturnPin", "Python: Add Return Pin '{0}'"), FText::FromString(PinName)));
 
 	FText ErrorMessage;
 	if (!FunctionResult->CanCreateUserDefinedPin(PinType, EGPD_Input, ErrorMessage))
@@ -2010,7 +2032,7 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 	if (Blueprint)
 	{
 		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 	}
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
@@ -2020,11 +2042,17 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
 	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
 
+	Transaction.Reset(); // close the undo transaction before compiling
+	AddCompileResult(Data, CallScope.Flush());
+
 	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (PinName.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("PinName is required"));
@@ -2056,7 +2084,7 @@ FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 		return MakeErrorJson(TEXT("Cannot find Blueprint for function"));
 	}
 
-	const FScopedTransaction Transaction(FText::Format(LOCTEXT("PythonRemoveEntryPin", "Python: Remove Entry Pin '{0}'"), FText::FromString(PinName)));
+	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonRemoveEntryPin", "Python: Remove Entry Pin '{0}'"), FText::FromString(PinName)));
 	FunctionEntry->Modify();
 
 	FString RemovalError;
@@ -2066,17 +2094,23 @@ FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 	}
 
 	FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("removedPin"), PinName);
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
+
+	Transaction.Reset(); // close the undo transaction before compiling
+	AddCompileResult(Data, CallScope.Flush());
 
 	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
 {
+	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
+	FN2CMcpToolCallScope CallScope;
+
 	if (PinName.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("PinName is required"));
@@ -2108,7 +2142,7 @@ FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
 		return MakeErrorJson(TEXT("Cannot find Blueprint for function"));
 	}
 
-	const FScopedTransaction Transaction(FText::Format(LOCTEXT("PythonRemoveReturnPin", "Python: Remove Return Pin '{0}'"), FText::FromString(PinName)));
+	TOptional<FScopedTransaction> Transaction(InPlace, FText::Format(LOCTEXT("PythonRemoveReturnPin", "Python: Remove Return Pin '{0}'"), FText::FromString(PinName)));
 	FunctionResult->Modify();
 
 	FString RemovalError;
@@ -2118,11 +2152,14 @@ FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
 	}
 
 	FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-	FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("removedPin"), PinName);
 	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
+
+	Transaction.Reset(); // close the undo transaction before compiling
+	AddCompileResult(Data, CallScope.Flush());
 
 	return MakeSuccessJson(Data);
 }

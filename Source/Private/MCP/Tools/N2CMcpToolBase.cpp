@@ -2,6 +2,7 @@
 
 #include "MCP/Tools/N2CMcpToolBase.h"
 #include "Utils/N2CLogger.h"
+#include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "Async/Async.h"
 #include "Async/Future.h"
 #include "Dom/JsonObject.h"
@@ -27,6 +28,19 @@ namespace N2CMcpToolBasePrivate
 		TFunction<FMcpToolCallResult()> Logic;
 		std::atomic<int32> State{ static_cast<int32>(EGameThreadWorkState::Pending) };
 	};
+
+	/**
+	 * Runs a tool's game-thread logic as one tool call (card 0151): the Blueprints its edits mark modified compile once,
+	 * here, after the logic has returned and its transactions have closed, and the compile diagnostics are added to
+	 * the result.
+	 */
+	FMcpToolCallResult RunAsToolCall(const TFunction<FMcpToolCallResult()>& Logic)
+	{
+		FN2CMcpToolCallScope CallScope;
+		FMcpToolCallResult Result = Logic();
+		FN2CMcpBlueprintUtils::AttachCompileDiagnostics(Result, CallScope.Flush());
+		return Result;
+	}
 }
 
 FMcpToolCallResult FN2CMcpToolBase::ExecuteOnGameThread(TFunction<FMcpToolCallResult()> Logic, float TimeoutSeconds)
@@ -37,7 +51,7 @@ FMcpToolCallResult FN2CMcpToolBase::ExecuteOnGameThread(TFunction<FMcpToolCallRe
 	if (IsInGameThread())
 	{
 		FN2CLogger::Get().Log(TEXT("MCP Tool: Already on Game Thread, executing directly"), EN2CLogSeverity::Debug);
-		return Logic();
+		return RunAsToolCall(Logic);
 	}
 
 	// We're on a worker thread, need to dispatch to Game Thread
@@ -65,7 +79,7 @@ FMcpToolCallResult FN2CMcpToolBase::ExecuteOnGameThread(TFunction<FMcpToolCallRe
 
 		FN2CLogger::Get().Log(TEXT("MCP Tool: Game Thread task executing"), EN2CLogSeverity::Debug);
 
-		FMcpToolCallResult TaskResult = Work->Logic();
+		FMcpToolCallResult TaskResult = RunAsToolCall(Work->Logic);
 		Work->Logic.Reset();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP Tool: Game Thread task completed. Success: %s"),

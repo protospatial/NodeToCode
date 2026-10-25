@@ -432,9 +432,14 @@ variable node tools cannot be wired yet (card 0155, `../Variables/AGENTS.md`).
   create-comment-node open an `FScopedTransaction`; add-bp-node-to-active-graph uses the engine's own "Add Node"
   transaction (`FBlueprintActionMenuItem::PerformAction`).
 - search-blueprint-nodes and find-nodes-in-graph are read-only.
-- Every successful edit compiles the Blueprint synchronously and marks its package dirty
-  (`FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile`); connect-pins compiles once per connection made
-  (card 0151). Nothing is saved: use `save-blueprint`.
+- Every successful edit marks the Blueprint modified and its package dirty (`FN2CMcpBlueprintUtils::MarkModified`),
+  and the tool call compiles it once, after the edit's transaction has closed (card 0151): connect-pins with 20
+  connections runs one compile, not 20. create-comment-node only dirties the package and never compiles. The
+  search and find tools compile nothing and queue no action-database refresh. Nothing is saved: use `save-blueprint`.
+  Every edit tool's result has a `compile` object: `blueprint`, `blueprintPath`, `status`, `success`, `errorCount`,
+  `warningCount`, `noteCount`, `compileSeconds` and `messages` (each `severity` and `message`, plus `nodeGuid`,
+  `nodeTitle`, `graph` and `pin` when the compiler names a node). A failed compile does not make the call an error:
+  the edit was made, and `compile.success` is false.
 
 ## Implementation Notes
 

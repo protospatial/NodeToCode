@@ -52,13 +52,14 @@ FMcpToolCallResult FN2CMcpCompileBlueprint::Execute(const TSharedPtr<FJsonObject
         // Record pre-compilation state
         EBlueprintStatus PreCompileStatus = Blueprint->Status;
         
-        // Use the utility method to compile with detailed messages
-        int32 ErrorCount = 0;
-        int32 WarningCount = 0;
-        float CompilationTime = 0.0f;
-        TArray<TSharedPtr<FN2CCompilerMessage>> CompilerMessages;
-        bool bCompileSuccess = FN2CMcpBlueprintUtils::CompileBlueprint(
-            Blueprint, bSkipGarbageCollection, ErrorCount, WarningCount, CompilationTime, &CompilerMessages);
+        // Compile with the compiler's messages, each with the node and graph it names (card 0151). The result
+        // reports them in its own fields, so they are not added again as a "compile" field.
+        FN2CCompileDiagnostics Diagnostics;
+        const bool bCompileSuccess = FN2CMcpBlueprintUtils::Compile(Blueprint, Diagnostics, bSkipGarbageCollection,
+            /*bReportInToolResult*/ false);
+        const int32 ErrorCount = Diagnostics.ErrorCount;
+        const int32 WarningCount = Diagnostics.WarningCount;
+        const float CompilationTime = Diagnostics.CompileSeconds;
         
         // Build result JSON
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -83,25 +84,13 @@ FMcpToolCallResult FN2CMcpCompileBlueprint::Execute(const TSharedPtr<FJsonObject
         ResultsObj->SetNumberField(TEXT("errorCount"), ErrorCount);
         ResultsObj->SetNumberField(TEXT("warningCount"), WarningCount);
         
-        // Count notes (info messages)
-        int32 NoteCount = 0;
-        for (const TSharedPtr<FN2CCompilerMessage>& Message : CompilerMessages)
-        {
-            if (Message->Severity == TEXT("Note"))
-            {
-                NoteCount++;
-            }
-        }
-        ResultsObj->SetNumberField(TEXT("noteCount"), NoteCount);
+        ResultsObj->SetNumberField(TEXT("noteCount"), Diagnostics.NoteCount);
         
-        // Add detailed messages
+        // Detailed messages: severity and text, plus nodeGuid, nodeTitle, graph and pin when the message names one
         TArray<TSharedPtr<FJsonValue>> MessagesArray;
-        for (const TSharedPtr<FN2CCompilerMessage>& Message : CompilerMessages)
+        for (const FN2CCompilerMessage& Message : Diagnostics.Messages)
         {
-            TSharedPtr<FJsonObject> MessageObj = MakeShareable(new FJsonObject);
-            MessageObj->SetStringField(TEXT("severity"), Message->Severity);
-            MessageObj->SetStringField(TEXT("message"), Message->Message);
-            MessagesArray.Add(MakeShareable(new FJsonValueObject(MessageObj)));
+            MessagesArray.Add(MakeShared<FJsonValueObject>(FN2CCompileDiagnostics::MessageToJson(Message)));
         }
         ResultsObj->SetArrayField(TEXT("messages"), MessagesArray);
         Result->SetObjectField(TEXT("results"), ResultsObj);

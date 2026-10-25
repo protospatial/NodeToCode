@@ -164,9 +164,6 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
 		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer); // Use ResultJsonObj
 
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-        
 		return FMcpToolCallResult::CreateTextResult(JsonString);
 	});
 }
@@ -264,11 +261,11 @@ FName FN2CMcpCreateLocalVariableTool::CreateLocalVariable(UK2Node_FunctionEntry*
 	// Reconstruct the node to show the new local variable
 	FunctionEntry->ReconstructNode();
 	
-	// Compile Blueprint synchronously to ensure preview actors are properly updated
+	// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
 	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionEntry);
 	if (Blueprint)
 	{
-		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 	}
 	
 	// Show notification

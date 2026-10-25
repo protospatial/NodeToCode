@@ -158,7 +158,8 @@ arguments and the keys of its `data`. Grouped:
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
     a 1.x node's display `name` comes back as `title` (no `class`), its pin names stay the display names it has
 *   `compile_blueprint(path=None)` - Compile the focused Blueprint (a `path` is ignored for now: open the Blueprint
-    first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`
+    first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
+    `messages` (each `severity`, `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node)
 *   `save_blueprint(path=None, only_if_dirty=True)` - Save the focused Blueprint (a `path` is ignored the same way);
     `data`: `blueprint_name`, `was_dirty`, `was_saved`
 *   `load_blueprint(path)` - Load Blueprint by asset path; `data`: `name`, `path`, `class_name`, `parent_class`
@@ -185,6 +186,13 @@ arguments and the keys of its `data`. Grouped:
 
 Pick pins by `pinName` (`execute`, `then`, `ReturnValue`, `InString`, ...): it is the stable pin name, while
 `displayName` is the editor's label.
+
+Compiling (card 0151): the edit calls above and the function pin calls below compile the Blueprint once per call,
+after the call's undo transaction, and return the compiler's diagnostics in `data.compile` (`success`,
+`errorCount`, `warningCount`, `messages` with `nodeGuid` and `graph` when a message names a node). Inside
+`run-python` they compile nothing themselves: the run-python tool call compiles each edited Blueprint once when the
+script ends and reports it as `compile` in its own result, so a script that adds and wires 30 nodes compiles once.
+`create_comment_node` never compiles; searches and finds compile nothing and refresh nothing.
 
 **Function Pins (a function graph focused):**
 *   `add_function_input_pin(name, type, default_value="", is_pass_by_reference=False, tooltip="")`,

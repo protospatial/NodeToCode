@@ -146,11 +146,8 @@ FMcpToolCallResult FN2CMcpCreateCommentNodeTool::Execute(const TSharedPtr<FJsonO
         // Associate nodes with comment
         AssociateNodesWithComment(CommentNode, NodesToComment);
         
-        // Compile Blueprint synchronously to ensure preview actors are properly updated
-        FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(FocusedBlueprint);
-        
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
+        // A comment changes nothing the compiler sees: dirty the package, never compile (card 0151)
+        FN2CMcpBlueprintUtils::MarkCosmeticChange(FocusedBlueprint);
         
         // Show notification
         FNotificationInfo Info(FText::Format(

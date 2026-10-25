@@ -165,8 +165,8 @@ FMcpToolCallResult FN2CMcpAddFunctionEntryPinTool::Execute(const TSharedPtr<FJso
 		if (Blueprint)
 		{
 			FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-			// Compile Blueprint synchronously to ensure preview actors are properly updated
-			FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+			// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
+			FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 		}
 
 		// Show notification

@@ -232,10 +232,19 @@ FMcpToolCallResult FN2CMcpConnectPinsTool::Execute(const TSharedPtr<FJsonObject>
 			Blueprint->Modify();
 			FocusedGraph->Modify();
 			
+			bool bAnyConnected = false;
 			for (const FConnectionRequest& Request : ConnectionRequests)
 			{
 				FConnectionResult Result = ProcessConnection(Request, NodeMap, Schema, Options, Blueprint);
+				bAnyConnected |= Result.bSuccess;
 				Results.Add(Result);
+			}
+
+			// One mark for the whole batch; the tool call compiles once, after this transaction closes, and adds the
+			// compiler's errors and warnings to the result (card 0151)
+			if (bAnyConnected)
+			{
+				FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 			}
 		}
 		
@@ -270,9 +279,6 @@ FMcpToolCallResult FN2CMcpConnectPinsTool::Execute(const TSharedPtr<FJsonObject>
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
 		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 
-        // Schedule deferred refresh of BlueprintActionDatabase
-        FN2CMcpBlueprintUtils::DeferredRefreshBlueprintActionDatabase();
-        
 		return FMcpToolCallResult::CreateTextResult(JsonString);
 	});
 }
@@ -592,9 +598,8 @@ FN2CMcpConnectPinsTool::FConnectionResult FN2CMcpConnectPinsTool::ProcessConnect
 	if (bConnectionMade)
 	{
 		Result.bSuccess = true;
-		// Compile Blueprint synchronously to ensure preview actors are properly updated
-		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
-		
+		// No compile here: the tool call compiles the Blueprint once, after the transaction (card 0151)
+
 		// Log success
 		FString LogMessage = FString::Printf(
 			TEXT("Successfully connected %s:%s to %s:%s"),

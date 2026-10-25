@@ -173,6 +173,12 @@ The compile-blueprint tool returns detailed compilation results:
 }
 ```
 
+A message that names a node (as the editor's Compiler Results log links it) also carries `nodeGuid` (the node GUID
+that get-focused-blueprint and find-nodes-in-graph report), `nodeTitle`, `graph` and, when it names a pin, `pin`;
+for example an error `This blueprint (self) is not a StaticMeshComponent, therefore ' Target ' must have a
+connection.` with `nodeTitle` `Set Static Mesh`, `graph` `EventGraph`, `pin` `self` (card 0151). The edit tools
+return the same diagnostics in a `compile` object after the one compile each tool call runs.
+
 ### Save Blueprint Response
 
 The save-blueprint tool returns save operation results:

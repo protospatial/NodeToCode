@@ -62,7 +62,9 @@ bool FN2CMarkModifiedDirtiesTest::RunTest(const FString& Parameters)
 	Package->SetDirtyFlag(false);
 	TestFalse(TEXT("baseline: package clean"), Package->IsDirty());
 
-	// The add-function-return-pin path: transaction, CreateUserDefinedPin, UpdateFunctionCallSites, then the helper
+	// The add-function-return-pin path: one tool call (card 0151) holding a transaction, CreateUserDefinedPin,
+	// UpdateFunctionCallSites and MarkModified; the call compiles once after the transaction closes
+	FN2CMcpToolCallScope CallScope;
 	{
 		const FScopedTransaction Transaction(NSLOCTEXT("NodeToCode", "N2CMarkDirtyTest", "Add Return Pin (test)"));
 		FEdGraphPinType BoolType;
@@ -73,11 +75,13 @@ bool FN2CMarkModifiedDirtiesTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FunctionGraph, Blueprint);
-		FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile(Blueprint);
+		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 	}
+	const TArray<FN2CCompileDiagnostics> Compiles = CallScope.Flush();
+	TestEqual(TEXT("the call compiled the Blueprint once"), Compiles.Num(), 1);
 
 	TestTrue(TEXT("result node has the new pin"), FunctionResult->FindPin(FName(TEXT("bOk"))) != nullptr);
-	TestTrue(TEXT("package dirty after MarkBlueprintAsModifiedAndCompile"), Blueprint->GetPackage()->IsDirty());
+	TestTrue(TEXT("package dirty after MarkModified and Compile"), Blueprint->GetPackage()->IsDirty());
 	return true;
 }
 

@@ -239,6 +239,17 @@ its environment when no key is saved, so a live check never types or saves a key
   get-open-blueprint-editors marks only it `isFocused`, and every editor still shows its own graph. Then (without
   `--no-cli`) `claude -p` with only `mcp__nodetocode__*` opens two of them and reads each; each read must be the one
   opened just before. The editors are closed and the folder deleted. Report: `logs/live_focus_0150_<label>.json`.
+- `live_compile_0151.py --engine ... --project ... --label 5.8 [--no-cli] [--cli-model sonnet]` (no provider key)
+  checks one compile per tool call with the compiler's diagnostics in the result (card 0151): an in-memory Actor
+  Blueprint under a fresh `/Game/N2CTest/Compile0151_<time>` folder, opened on its EventGraph. Over MCP the probe runs
+  a context-free search-blueprint-nodes, adds a Static Mesh component, then searches for and adds a Custom Event, a
+  Print String and a Set Static Mesh node. Then `claude -p` with only `mcp__nodetocode__*` wires them in one
+  connect-pins call, leaving Set Static Mesh's Target unconnected. The editor log's `Blueprint '<name>' compiled:`
+  lines between `Calling tool:` lines must show one compile per edit call and none for a search or find; the
+  connect-pins result's `compile` must report the error with the Set Static Mesh node's GUID, and the agent's answer
+  must repeat it. The probe adds the nodes itself because an agent cannot pass a search result's `actionIdentifier`
+  on Windows (it holds a carriage return; suggested card 0441). The folder is deleted. Report:
+  `logs/live_compile_0151_<label>.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a
