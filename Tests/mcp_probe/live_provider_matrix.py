@@ -6,7 +6,7 @@ Stdlib only; run with `python -I`:
     python -I live_provider_matrix.py --engine G:/UE/UE_5.8 \
         --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 \
         [--cases anthropic/claude-haiku-5-5 deepseek/deepseek-flash:off ...] [--providers gemini openai] [--fanout]
-        [--branch] [--liveness]
+        [--branch] [--liveness] [--issue13] [--gate] [--viewer] [--languages cpp python ...]
 
 It reads the keys from the repo's .env (env_keys.py) and refuses to run if a key for a selected provider is saved in
 the per-user secrets file (the saved key would be used, not the variable). For the session it sets Min Severity to
@@ -53,6 +53,27 @@ only the cpp runs; for the other languages they are kept in the report for readi
 the shared-spec prompt: the system prompt holds the N2C JSON specification (Content/Prompting/Shared/N2CJsonSpec.md,
 found by its heading) and the response contract (Shared/N2CResponseFormat.md) exactly once and no {{...}}
 placeholder, and the user message holds the N2C JSON inside <n2c_json> tags.
+
+--issue13 (gate 0385) translates issue #13's function graph instead of the event graph, built the way the capture
+golden "Issue13" builds it: create-blueprint-function makes Issue13Label(Value: int) -> Result: Text on the probe
+Actor (whose default events stay ghosts), and To String (Integer) of Value feeds both To Text (String), whose result is
+returned, and the {effect} argument of a Format Text nobody reads. The report has 'issue13' (the captured nodes, flags
+and flows) and each case's 'code' plus 'issue13_check', which gates every language: the code returns a value, computes
+no Format Text ({effect}, FText::Format, a format call), implements no ghost default event, and the notes name the
+skipped Format Text. It cannot be combined with --fanout, --branch, --gate or --liveness.
+
+--gate (gate 0385) adds the golden "GateMultiExec" wiring to the probe event graph (three custom events into a Gate's
+Enter, Open and Close, Exit into Flush Debug Strings), after --fanout and --branch when those are on, and keeps each
+code for reading. The report's 'gate' lists the exec flows with node and pin names.
+
+--viewer (gates 0384 and 0385) runs after the MCP cases, once per language: it sets Target Language, batch-translates
+the tagged focused graph (UN2CBatchTranslationBlueprintLibrary.TranslateGraphsWithTag, the path that writes a
+translation folder and records it in the graph state), then loads it through UN2CTagBlueprintLibrary.LoadTranslation,
+the UN2CGraphStateManager::LoadTranslation call the translation viewer makes. A language passes when the batch wrote a
+folder with the implementation, the request went to the case's model, and the viewer load returns that
+implementation. A batch uses the provider the LLM module was initialized with, so the cases must share one provider;
+the session starts with that provider and the first case's model in the Saved/Config layer, guards
+Saved/NodeToCode/BlueprintGraphState.json (and .bak), and removes its tag afterwards. The report has 'viewer'.
 """
 import argparse
 import json
@@ -384,6 +405,209 @@ result = steps
 """
 
 
+# Shared run-python prelude for --issue13 and --gate: add(title) spawns the action whose menu title is `title` and
+# returns the bridge's result for it (nodeGuid and pins), pin() picks a pin from such a node, link() makes a
+# connect_pins entry. Expects nothing; defines bridge, steps, walk, norm, add, pin, link, node_by_guid.
+_NODE_HELPERS_PY = r"""
+import json, unreal
+bridge = unreal.N2CPythonBridge
+steps = {}
+def walk(v):
+    if isinstance(v, dict):
+        yield v
+        for x in v.values():
+            yield from walk(x)
+    elif isinstance(v, list):
+        for x in v:
+            yield from walk(x)
+def norm(s):
+    return str(s).replace(" ", "").lower()
+def add(title, x, y, category=""):
+    found = json.loads(bridge.search_blueprint_nodes(title, True, 100, category, True))
+    want = norm(title)
+    actions = []
+    for d in walk(found):
+        ident = d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier")
+        if ident:
+            for label in (d.get("title"), d.get("member_name"), d.get("name"), d.get("displayName"), ident.split(">")[0]):
+                if label:
+                    actions.append((norm(label), ident))
+    exact = [i for n, i in actions if (n.splitlines() or [""])[0] == want]
+    prefix = [i for n, i in actions if n.startswith(want)]
+    for ident in exact + prefix:
+        added = json.loads(bridge.add_node_to_graph(title, ident, x, y))
+        if added.get("success"):
+            return added.get("data") or {}
+        return {"error": added.get("error")}
+    return {"error": "not found in %s" % [n for n, _ in actions][:12]}
+def node_by_guid(guid):
+    found = json.loads(bridge.find_nodes_in_graph(json.dumps([guid]), "guid", False, 5))
+    nodes = (found.get("data") or {}).get("nodes") or []
+    return nodes[0] if nodes else None
+def pin(n, side, names=None, want_exec=False):
+    for p in (n or {}).get(side) or []:
+        is_exec = str(p.get("type", "")).lower() == "exec"
+        if is_exec == want_exec and (names is None or norm(p.get("pinName", "")) in names or norm(p.get("displayName", "")) in names):
+            return p
+    return None
+def link(a, ap, b, bp):
+    return {"from": {"nodeGuid": a["nodeGuid"], "pinGuid": (ap or {}).get("pinGuid")},
+            "to": {"nodeGuid": b["nodeGuid"], "pinGuid": (bp or {}).get("pinGuid")}}
+def capture():
+    raw = json.loads(bridge.get_focused_blueprint_json())
+    return (raw.get("data") or {}).get("n2c_json") or {}
+"""
+
+# Runs in the editor after create-blueprint-function made and focused Issue13Label(Value: int) -> Result: Text
+# (--issue13, card 0137's golden NodeToCode.Capture.Golden "Issue13", built the way N2CCaptureGolden.spec.cpp builds it):
+# To String (Integer) of Value feeds both To Text (String), whose result is the Return node's Result, and the {effect}
+# argument of a Format Text whose Result nothing reads. Reports the captured graph's nodes, flags and flows.
+ISSUE13_PY = _NODE_HELPERS_PY + r"""
+found = json.loads(bridge.find_nodes_in_graph(json.dumps(["Issue13Label", "Return"]), "keyword", False, 20))
+nodes = (found.get("data") or {}).get("nodes") or []
+steps["found"] = [[n.get("nodeName"), n.get("nodeClass")] for n in nodes]
+entry = next((n for n in nodes if "functionentry" in norm(n.get("nodeClass", ""))), None)
+ret = next((n for n in nodes if "functionresult" in norm(n.get("nodeClass", ""))), None)
+to_string = add("To String (Integer)", 250.0, 150.0)
+to_text = add("To Text (String)", 500.0, 100.0)
+fmt = add("Format Text", 500.0, 300.0)
+steps["added"] = {k: (v.get("nodeGuid") or v.get("error")) for k, v in
+                  (("to_string", to_string), ("to_text", to_text), ("format_text", fmt))}
+if fmt.get("nodeGuid"):
+    fmt_pin = pin(fmt, "inputPins", ["format"])
+    steps["format_set"] = json.loads(bridge.set_pin_value(fmt["nodeGuid"], (fmt_pin or {}).get("pinGuid", ""),
+                                                          "{effect}", "Format")).get("success")
+    fmt = node_by_guid(fmt["nodeGuid"]) or fmt
+    steps["format_pins"] = [p.get("pinName") for p in fmt.get("inputPins") or []]
+if entry and ret and to_string.get("nodeGuid") and to_text.get("nodeGuid") and fmt.get("nodeGuid"):
+    s_out = pin(to_string, "outputPins", ["returnvalue"])
+    # create-blueprint-function already links the entry's exec output to the Return node
+    conns = [link(entry, pin(entry, "outputPins", ["value"]), to_string, pin(to_string, "inputPins", ["inint"])),
+             link(to_string, s_out, to_text, pin(to_text, "inputPins", ["instring"])),
+             link(to_string, s_out, fmt, pin(fmt, "inputPins", ["effect"])),
+             link(to_text, pin(to_text, "outputPins", ["returnvalue"]), ret, pin(ret, "inputPins", ["result"]))]
+    res = json.loads(bridge.connect_pins(json.dumps(conns), False))
+    steps["connected"] = res.get("success")
+    steps["connect_result"] = json.dumps(res.get("data") or res.get("error"))[:900]
+steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success")
+n2c = capture()
+steps["version"] = n2c.get("version")
+steps["graphs"] = [g.get("name") for g in n2c.get("graphs") or []]
+steps["nodes"] = [[n.get("id"), n.get("member_name") or n.get("title") or n.get("type"),
+                   [f for f in ("unused", "unreachable", "disabled") if n.get(f)]]
+                  for g in n2c.get("graphs") or [] for n in g.get("nodes") or []]
+steps["flows"] = [g.get("flows") for g in n2c.get("graphs") or []]
+result = steps
+"""
+
+# Runs in the editor on the focused event graph (--gate, golden "GateMultiExec"): three custom events run a Gate
+# (StandardMacros) through Enter, Open and Close; the Gate's Exit runs Flush Debug Strings. Added after --fanout and
+# --branch when those are on, so all of them share one event graph. Reports the exec flows with node and pin names.
+GATE_PY = _NODE_HELPERS_PY + r"""
+events = [add("Add Custom Event", -400.0, 600.0 + 150.0 * i) for i in range(3)]
+gate = add("Gate", 0.0, 750.0, "flowcontrol")
+flush = add("Flush Debug Strings", 400.0, 750.0)
+steps["added"] = [e.get("nodeGuid") or e.get("error") for e in events] + [gate.get("nodeGuid") or gate.get("error"),
+                                                                          flush.get("nodeGuid") or flush.get("error")]
+steps["event_names"] = [e.get("nodeName") for e in events]
+if all(e.get("nodeGuid") for e in events) and gate.get("nodeGuid") and flush.get("nodeGuid"):
+    conns = [link(events[0], pin(events[0], "outputPins", None, True), gate, pin(gate, "inputPins", ["enter"], True)),
+             link(events[1], pin(events[1], "outputPins", None, True), gate, pin(gate, "inputPins", ["open"], True)),
+             link(events[2], pin(events[2], "outputPins", None, True), gate, pin(gate, "inputPins", ["close"], True)),
+             link(gate, pin(gate, "outputPins", ["exit"], True), flush, pin(flush, "inputPins", None, True))]
+    res = json.loads(bridge.connect_pins(json.dumps(conns), False))
+    steps["connected"] = res.get("success")
+    steps["connect_result"] = json.dumps(res.get("data") or res.get("error"))[:900]
+steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success")
+n2c = capture()
+names = {}
+for g in n2c.get("graphs") or []:
+    for n in g.get("nodes") or []:
+        for p in (n.get("input_pins") or []) + (n.get("output_pins") or []):
+            names["%s.%s" % (n.get("id"), p.get("id"))] = "%s.%s" % (
+                n.get("member_name") if n.get("member_name") not in (None, "None") else (n.get("title") or n.get("type")),
+                p.get("name") or "exec")
+steps["execution"] = [" -> ".join(names.get(x.strip(), x.strip()) for x in e.split("->"))
+                      for g in n2c.get("graphs") or [] for e in (g.get("flows") or {}).get("execution") or []]
+result = steps
+"""
+
+# --viewer: the run-python steps of one batch translation of the tagged graph and of the translation viewer's load
+# path (SN2CTranslationViewer::LoadTranslation(FN2CTagInfo) -> UN2CGraphStateManager::LoadTranslation, reached from
+# Python through UN2CTagBlueprintLibrary.LoadTranslation, the same call).
+TAG_PY = r"""
+import json, unreal
+res = json.loads(unreal.N2CPythonBridge.tag_focused_graph("%(tag)s", "N2CGate", "live_provider_matrix --viewer"))
+result = res.get("data") or {"error": res.get("error")}
+"""
+
+BATCH_START_PY = r"""
+import unreal
+lib = unreal.N2CBatchTranslationBlueprintLibrary
+out = lib.translate_graphs_with_tag("%(tag)s", "")
+result = {"returned": str(out), "in_progress": lib.is_batch_translation_in_progress()}
+"""
+
+BATCH_POLL_PY = r"""
+import unreal
+lib = unreal.N2CBatchTranslationBlueprintLibrary
+result = {"in_progress": lib.is_batch_translation_in_progress(), "progress": lib.get_batch_progress()}
+"""
+
+VIEWER_LOAD_PY = r"""
+import json, os, unreal
+tags = unreal.N2CTagBlueprintLibrary
+guid = "%(guid)s"
+steps = {"has_translation": tags.has_translation(guid)}
+out = tags.load_translation(guid)
+translation = out[1] if isinstance(out, tuple) else out
+steps["load_returned"] = type(out).__name__ if not isinstance(out, tuple) else "tuple(%%s)" %% out[0]
+if translation is not None and hasattr(translation, "code"):
+    code = translation.code
+    steps["loaded"] = True
+    steps["graph_name"] = str(translation.graph_name)
+    steps["declaration"] = str(code.graph_declaration)[:3000]
+    steps["implementation"] = str(code.graph_implementation)[:6000]
+    steps["notes"] = str(code.implementation_notes)[:2000]
+else:
+    steps["loaded"] = False
+result = steps
+"""
+
+REMOVE_TAG_PY = r"""
+import json, unreal
+result = json.loads(unreal.N2CPythonBridge.remove_tag("%(guid)s", "%(tag)s"))
+"""
+
+
+def strip_comments(text):
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+    text = re.sub(r'//[^\n]*', '', text)
+    text = re.sub(r'(?m)^\s*#(?!include)[^\n]*', '', text)  # Python and Markdown comment or heading lines
+    text = re.sub(r'(?<=\s)#\s[^\n]*', '', text)  # trailing Python comments
+    return re.sub(r'"""[\s\S]*?"""', '', text)
+
+
+def check_issue13(code):
+    """Issue #13 (ISSUE13_PY's graph), any language: the function returns a value (the To Text result), no Format Text
+    is computed ({effect}, FText::Format, a format call), no ghost default event is implemented, and the notes name
+    the skipped Format Text. Comments are ignored; read the kept code when a language's idiom trips a pattern."""
+    text = strip_comments('\n'.join((c.get('declaration') or '') + '\n' + (c.get('implementation') or '')
+                                    for c in code or []))
+    notes = '\n'.join(c.get('notes') or '' for c in code or [])
+    found = {
+        'returns': bool(re.search(r'\breturn\b', text, re.I)),
+        'format_text_computed': bool(re.search(r'\{effect\}|format_?text|\bformat\s*\(|\.format\b|FText::Format',
+                                               text, re.I)),
+        'ghost_events': [n for n, p in (('BeginPlay', r'BeginPlay'), ('Tick', r'\bTick\s*\(|ReceiveTick|\btick\b'),
+                                        ('ActorBeginOverlap', r'ActorBeginOverlap')) if re.search(p, text)],
+        'notes_name_format_text': bool(re.search(r'format', notes, re.I)),
+    }
+    ok = found['returns'] and not found['format_text_computed'] and not found['ghost_events'] \
+        and found['notes_name_format_text']
+    return {'ok': ok, 'found': found, 'notes': notes[:800]}
+
+
 def check_liveness(code):
     """Whether the translation leaves out what Blueprint never runs (LIVENESS_PY's graph): calls CollectGarbage, and
     implements no BeginPlay, Tick or ActorBeginOverlap, no PrintString and no GetActorLocation (comments ignored)"""
@@ -652,6 +876,76 @@ def run_case(port, c, rid, timeout, log_reader, keep_code=False, language='cpp',
     return rec
 
 
+# --viewer: the Saved/Config value of Provider and the model setting for each provider
+VIEWER_PROVIDER = {'anthropic': ('Anthropic', 'AnthropicModelId'), 'openai': ('OpenAI', 'OpenAIModelId'),
+                   'gemini': ('Gemini', 'GeminiModelId'), 'deepseek': ('DeepSeek', 'DeepSeekModelId')}
+VIEWER_LANGUAGE = {'cpp': 'Cpp', 'python': 'Python', 'javascript': 'JavaScript', 'csharp': 'CSharp',
+                   'swift': 'Swift', 'pseudocode': 'Pseudocode'}
+VIEWER_TAG = 'N2CViewerCheck'
+
+
+def run_viewer(port, c, languages, log_reader, translations_dir, timeout):
+    """Per language: set Target Language, batch-translate the tagged focused graph (the path that writes a
+    translation folder and records it in the graph state), then load it the way the translation viewer does. A
+    language passes when the batch wrote a folder with an implementation file, the payload went to the expected
+    model, and the viewer load returned the same implementation."""
+    out = {'provider': c['provider'], 'model': c['model'], 'runs': []}
+    tag = run_py(port, TAG_PY % {'tag': VIEWER_TAG}, 900) or {}
+    out['tag'] = tag
+    guid = tag.get('graph_guid')
+    for i, language in enumerate(languages):
+        rid = 1000 + 20 * i
+        run = {'language': language}
+        run['settings'] = apply_settings(port, {'target_language': ['N2CCodeLanguage', VIEWER_LANGUAGE[language]]}, rid)
+        before = set(os.listdir(translations_dir)) if os.path.isdir(translations_dir) else set()
+        offset = log_reader.size()
+        run['start'] = run_py(port, BATCH_START_PY % {'tag': VIEWER_TAG}, rid + 1)
+        started = time.time()
+        poll = {}
+        while time.time() - started < timeout:
+            time.sleep(3.0)
+            poll = run_py(port, BATCH_POLL_PY, rid + 2) or {}
+            if not poll.get('in_progress'):
+                break
+        run['seconds'] = round(time.time() - started, 1)
+        run['finished'] = poll.get('in_progress') is False
+        time.sleep(1.0)
+        slice_text = log_reader.read_from(offset)
+        payloads = [p for p in extract_payloads(slice_text) if '_unparsed_head' not in p]
+        run['payload_models'] = [summarise(p).get('model') for p in payloads]
+        run['log_errors'] = nodetocode_errors(slice_text)
+        new = sorted((set(os.listdir(translations_dir)) if os.path.isdir(translations_dir) else set()) - before)
+        files = []
+        for d in new:
+            for root, _, names in os.walk(os.path.join(translations_dir, d)):
+                files += [os.path.relpath(os.path.join(root, n), translations_dir).replace('\\', '/') for n in names]
+        run['folders'], run['files'] = new, files
+        # The batch folder's file (the LLM module also saves its own timestamped folder for each request)
+        impl_files = [f for f in sorted(files, key=lambda f: not f.startswith('BatchTranslation_')) if os.path.splitext(f)[1] in ('.cpp', '.py', '.js', '.cs', '.swift', '.md', '.txt')
+                      and not f.endswith('_Notes.txt')]
+        saved_impl = ''
+        if impl_files:
+            with open(os.path.join(translations_dir, impl_files[0]), encoding='utf-8', errors='replace') as f:
+                saved_impl = f.read()
+        load = run_py(port, VIEWER_LOAD_PY % {'guid': guid}, rid + 3) if guid else {'error': 'no tag guid'}
+        run['viewer_load'] = {k: v for k, v in (load or {}).items() if k not in ('declaration', 'implementation', 'notes')}
+        run['code'] = [{'graph': (load or {}).get('graph_name'), 'declaration': (load or {}).get('declaration') or '',
+                        'implementation': (load or {}).get('implementation') or '', 'notes': (load or {}).get('notes') or ''}]
+        run['saved_implementation_head'] = saved_impl[:400]
+        loaded_impl = ((load or {}).get('implementation') or '').strip()
+        run['viewer_matches_file'] = bool(loaded_impl) and loaded_impl == saved_impl[:6000].strip()
+        run['ok'] = bool(run['finished'] and impl_files and run['payload_models']
+                         and all(m == c['model'] for m in run['payload_models'])
+                         and (load or {}).get('loaded') and run['viewer_matches_file'])
+        out['runs'].append(run)
+        print('viewer %-11s %s  folders=%s files=%s loaded=%s matches=%s models=%s' % (
+            language, 'PASS' if run['ok'] else 'FAIL', new, len(files), (load or {}).get('loaded'),
+            run['viewer_matches_file'], run['payload_models']), flush=True)
+    if guid:
+        out['tag_removed'] = run_py(port, REMOVE_TAG_PY % {'guid': guid, 'tag': VIEWER_TAG}, 990)
+    return out
+
+
 class LogReader:
     def __init__(self, path):
         self.path = path
@@ -688,6 +982,16 @@ def main():
     ap.add_argument('--liveness', action='store_true',
                     help='translate a graph with ghost default events, a disabled Print String and an unused node '
                          '(instead of the wired BeginPlay), keep each code and check none of them is implemented')
+    ap.add_argument('--issue13', action='store_true',
+                    help="translate issue #13's function graph (golden Issue13) instead of the event graph, keep each "
+                         'code and check every language returns To Text and skips the unused Format Text')
+    ap.add_argument('--gate', action='store_true',
+                    help='add a Gate run by three custom events (Enter, Open, Close; golden GateMultiExec) to the '
+                         'probe event graph and keep each code')
+    ap.add_argument('--viewer', action='store_true',
+                    help='after the MCP cases, translate the focused graph once per language through a batch '
+                         'translation (which writes a translation folder) and load it through the translation '
+                         "viewer's load path; needs cases of one provider (its first case's model is used)")
     ap.add_argument('--languages', nargs='+', choices=LANGUAGES, default=['cpp'],
                     help='target languages to translate each case into (default: cpp); "all" is not accepted, list them')
     ap.add_argument('--timeout', type=int, default=300,
@@ -715,6 +1019,13 @@ def main():
         print(json.dumps({'ok': False, 'reason': 'keys saved in the per-user secrets file for %s' % saved}))
         return 2
     cases = [c for c in cases if c['provider'] not in missing]
+    if args.issue13 and (args.fanout or args.branch or args.gate or args.liveness):
+        print(json.dumps({'ok': False, 'reason': '--issue13 translates its own function graph; run --fanout, '
+                                                 '--branch, --gate and --liveness without it'}))
+        return 2
+    if args.viewer and len({c['provider'] for c in cases}) != 1:
+        print(json.dumps({'ok': False, 'reason': '--viewer needs cases of exactly one provider'}))
+        return 2
 
     logs = os.path.join(HERE, 'logs')
     os.makedirs(logs, exist_ok=True)
@@ -737,6 +1048,14 @@ def main():
     with session as s:
         # Payloads are logged at Debug; restored with the other Saved/Config patches when the session stops
         s._patch('NodeToCode.ini', SETTINGS_SECTION, 'MinSeverity', 'Debug')
+        if args.viewer:
+            # A batch translation uses the provider and model the LLM module was initialized with (from the settings
+            # at its first translation), so the session starts with the viewer provider's model selected
+            s._patch('NodeToCode.ini', SETTINGS_SECTION, 'Provider', VIEWER_PROVIDER[cases[0]['provider']][0])
+            s._patch('NodeToCode.ini', SETTINGS_SECTION, VIEWER_PROVIDER[cases[0]['provider']][1], cases[0]['model'])
+            # The batch records graph state and the tag in Saved/NodeToCode: put both back when the session stops
+            for state_file in ('BlueprintGraphState.json', 'BlueprintGraphState.json.bak'):
+                s.guard_file(os.path.join(project_dir, 'Saved', 'NodeToCode', state_file))
         report['started'] = s.start()
         if report['started']:
             name = 'BP_N2CProviderMatrix_%s' % time.strftime('%H%M%S')
@@ -744,6 +1063,16 @@ def main():
             if args.liveness:
                 report['liveness'] = run_py(port, LIVENESS_PY.replace('%(path)s', '%s/%s' % (ASSET_DIR, name)), 2)
                 print('liveness', json.dumps(report['liveness'])[:1600], flush=True)
+            elif args.issue13:
+                # The event graph keeps its ghost default events (and the unwired Print String the setup added);
+                # create-blueprint-function makes and focuses Issue13Label(Value: int) -> Result: Text
+                status, response = call_tool(port, 'create-blueprint-function', {
+                    'functionName': 'Issue13Label', 'blueprintPath': '%s/%s' % (ASSET_DIR, name),
+                    'parameters': [{'name': 'Value', 'direction': 'input', 'type': 'int'},
+                                   {'name': 'Result', 'direction': 'output', 'type': 'text'}]}, 2)
+                report['issue13_function'] = {'status': status, 'text': tool_text(response)[:600]}
+                report['issue13'] = run_py(port, ISSUE13_PY, 3)
+                print('issue13', json.dumps(report['issue13'])[:2400], flush=True)
             else:
                 report['wiring'] = run_py(port, CONNECT_PY, 2)
             if args.fanout:
@@ -752,6 +1081,9 @@ def main():
             if args.branch:
                 report['branch'] = run_py(port, BRANCH_PY, 4)
                 print('branch', json.dumps(report['branch'])[:1200], flush=True)
+            if args.gate:
+                report['gate'] = run_py(port, GATE_PY, 5)
+                print('gate', json.dumps(report['gate'])[:1600], flush=True)
             print('setup', json.dumps(report['setup']), 'wiring', json.dumps(report.get('wiring'))[:400], flush=True)
             reader = LogReader(log_path)
             tag_language = args.languages != ['cpp']
@@ -764,7 +1096,8 @@ def main():
                                             'skipped': 'an earlier case timed out'})
                     continue
                 rec = run_case(port, c, 100 + 10 * i, args.timeout, reader,
-                               keep_code=args.fanout or args.branch or args.liveness or tag_language,
+                               keep_code=args.fanout or args.branch or args.liveness or args.issue13 or args.gate
+                               or tag_language,
                                language=language, tag_language=tag_language)
                 # The branch and liveness heuristics read C++; other languages keep them for reading only
                 gates = language == 'cpp'
@@ -778,11 +1111,20 @@ def main():
                     if gates:
                         rec['ok'] = bool(rec['ok'] and rec['liveness_check'].get('ok'))
                     print('  liveness_check', json.dumps(rec['liveness_check'])[:1500], flush=True)
+                if args.issue13:
+                    # Language-neutral patterns: it gates every language
+                    rec['issue13_check'] = check_issue13(rec.get('code'))
+                    rec['ok'] = bool(rec['ok'] and rec['issue13_check'].get('ok'))
+                    print('  issue13_check', json.dumps(rec['issue13_check'])[:1500], flush=True)
                 report['cases'].append(rec)
                 print('%-48s %s  %ss  usage=%s  prompt=%s' % (run_id, 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
                                                               rec.get('usage'),
                                                               (rec['payloads'][0].get('prompt') if rec.get('payloads') else None)),
                       flush=True)
+
+            if args.viewer:
+                report['viewer'] = run_viewer(port, cases[0], args.languages, reader, translations_dir,
+                                              args.timeout)
 
     report['config_restored'] = session.restore_ok
     log_text = session.log_text()
@@ -812,12 +1154,15 @@ def main():
     leaks = find_leaks(keys, [log_path, report_path, saved_logs, plugin_log] + new_dirs)
     report['leaks'] = [{'path': p, 'variable': n} for p, n in leaks]
     report['ok'] = bool(report['started'] and report['cases'] and all(c['ok'] for c in report['cases'])
+                        and all(v.get('ok') for v in (report.get('viewer') or {}).get('runs', [{'ok': True}]))
                         and not leaks and not key_eq and report['config_restored'])
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=1)
     print(json.dumps({'ok': report['ok'], 'report': report_path, 'leaks': report['leaks'], 'key_eq_in_logs': key_eq,
                       'not_verified': report['not_verified'],
-                      'failed': [c['id'] for c in report['cases'] if not c['ok']]}, indent=1))
+                      'failed': [c['id'] for c in report['cases'] if not c['ok']],
+                      'viewer_failed': [v.get('language') for v in (report.get('viewer') or {}).get('runs', [])
+                                        if not v.get('ok')]}, indent=1))
     return 0 if report['ok'] else 1
 
 
