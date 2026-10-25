@@ -35,6 +35,10 @@ Before translation, optimize your Blueprint graphs for complexity considerations
     - Disabled nodes, unwired default events and nodes nothing runs are left out of the generated code (see
       [Improving Generated Code](Improving-Generated-Code#5-code-for-nodes-that-never-run)), but they still cost
       tokens, except the unwired default events, which are not sent
+    - A graph that holds nothing but unwired default events (a new Actor Blueprint's untouched EventGraph) has
+      nothing to translate: Translate and Copy JSON stop, and the Output Log (and the MCP
+      `translate-focused-blueprint` result) says "Nothing to capture: the graph holds only unwired default events
+      (ghost nodes)". Wire one of them, or add a node, first
     - Break up overly complex sequences
 
 > [!NOTE]

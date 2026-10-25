@@ -76,7 +76,8 @@ Private helpers: `ValidatePin`, `GetK2PinMetadata`, `CollectPinDefaultValue`, `C
 **`Source/Public/Core/N2CCapture.h` (namespace `N2C`)**
 
 Liveness (card 0137, issue #13): the capture leaves out the editor's ghost nodes (`IsAutomaticallyPlacedGhostNode()`,
-unless `FN2CCaptureOptions::bIncludeGhostNodes`, which the graph-editing MCP tools set), marks a node whose
+unless `FN2CCaptureOptions::bIncludeGhostNodes`, which the graph-editing MCP tools and the Python bridge's
+`GetFocusedBlueprintJson` set), marks a node whose
 `IsNodeEnabled()` is false `bDisabled` and routes exec past it when it has one exec input and one exec output (as the
 compiler's `GetPassThroughPin` does), then `N2CLiveness::MarkGraph` (`Source/Private/Core/N2CLiveness.h`) marks pure
 nodes nothing live reads `bUnused` and impure nodes no entry reaches `bUnreachable` ("unused", "unreachable",

@@ -80,15 +80,21 @@ public:
     /** Collects K2Nodes from a given UEdGraph */
     bool CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Node*>& OutNodes) const;
 
-    /** Captures an array of K2Nodes into an FN2CBlueprint structure (a thin wrapper over N2C::CaptureNodes) */
-    bool TranslateNodesToN2CBlueprint(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint) const;
-    
+    /**
+     * Captures an array of K2Nodes into an FN2CBlueprint structure (a thin wrapper over N2C::CaptureNodes). On failure
+     * OutError, when given, receives why: the capture's own error (for a graph of only ghost default events, "Nothing
+     * to capture: the graph holds only unwired default events (ghost nodes)") or that the result does not validate.
+     */
+    bool TranslateNodesToN2CBlueprint(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint,
+        FString* OutError = nullptr) const;
+
     /**
      * Captures an array of K2Nodes with the capture's ID-to-GUID maps (OutCapture.NodeGuids and Pins: one entry per
-     * captured node and pin). False when nothing was captured or the result does not validate.
+     * captured node and pin). False when nothing was captured or the result does not validate; OutError, when given,
+     * then says which, as for TranslateNodesToN2CBlueprint.
      */
     bool TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CCapture& OutCapture,
-        const FN2CCaptureOptions& Options = FN2CCaptureOptions()) const;
+        const FN2CCaptureOptions& Options = FN2CCaptureOptions(), FString* OutError = nullptr) const;
     
     /** Serializes an FN2CBlueprint structure to a JSON string */
     FString SerializeN2CBlueprintToJson(const FN2CBlueprint& Blueprint, bool bPrettyPrint) const;
@@ -98,6 +104,13 @@ public:
      * Populates OutErrorMsg if an error occurs. OutCapture, when given, receives the Blueprint the JSON was written from.
      */
     FString GetFocusedBlueprintAsJson(bool bPrettyPrint, FString& OutErrorMsg, FN2CBlueprint* OutCapture = nullptr);
+
+    /**
+     * GetFocusedBlueprintAsJson's work on one graph: collect, capture (ghost default events left out, card 0137) and
+     * serialize. Empty on failure with OutErrorMsg set; a graph of only ghost default events fails with the capture's
+     * own message ("Nothing to capture: the graph holds only unwired default events (ghost nodes)", card 0433).
+     */
+    FString GetGraphAsJson(UEdGraph* Graph, bool bPrettyPrint, FString& OutErrorMsg, FN2CBlueprint* OutCapture = nullptr) const;
 
     /** Simple wrapper function that translates the focused Blueprint graph using the latest active editor */
     void TranslateFocusedBlueprintGraph();

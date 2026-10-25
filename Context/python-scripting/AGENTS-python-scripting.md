@@ -147,9 +147,12 @@ arguments and the keys of its `data`. Grouped:
 **Blueprint Operations:**
 *   `get_focused_blueprint()` - The focused graph as N2C JSON: `data` has `name`, `path`, `graph_name`, `node_count`
     and `n2c_json` (version 2.0.0, stable names: each node's `class`, `member_parent`, `member_name`, each pin's
-    `name` such as `execute`, `then` or `ReturnValue`; `title` and `label` are English display hints). A new
-    Blueprint's EventGraph that holds only its default (disabled) events fails with "Failed to translate collected
-    nodes into N2CBlueprint structure."
+    `name` such as `execute`, `then` or `ReturnValue`; `title` and `label` are English display hints). Like the MCP
+    `get-focused-blueprint` tool it keeps the editor's unwired default events (a new Actor Blueprint's greyed-out
+    BeginPlay, ActorBeginOverlap and Tick) as `"disabled": true` nodes, so a script finds the default BeginPlay and
+    wires it instead of adding a second one: a new Actor Blueprint's untouched EventGraph gives `node_count` 3 and
+    those three nodes (card 0433). Translation leaves them out, and translating a graph of only those events fails
+    with "Nothing to capture: the graph holds only unwired default events (ghost nodes)"
 *   `read_n2c_json(text)` - Read N2C JSON 1.x or 2.x (for example a saved `N2C_BP_*.json`) with the plugin's reader
     (`UN2CPythonBridge::ReadN2CJson`); returns its source version, counts (`data_edges`, `exec_edges`) and the document
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
