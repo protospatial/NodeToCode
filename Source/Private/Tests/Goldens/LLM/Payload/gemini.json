@@ -1,0 +1,601 @@
+{
+	"gemini-3-flash-preview":
+	{
+		"endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+		"headers":
+		{
+			"content-type": "application/json",
+			"x-goog-api-key": "n2c-placeholder-key-0125"
+		},
+		"body":
+		{
+			"model": "gemini-3-flash-preview",
+			"systemInstruction":
+			{
+				"role": "user",
+				"parts": [
+					{
+						"text": "You are a NodeToCode translator."
+					}
+				]
+			},
+			"contents": [
+				{
+					"role": "user",
+					"parts": [
+						{
+							"text": "Translate this Blueprint graph: {\"nodes\":[]}"
+						}
+					]
+				}
+			],
+			"generationConfig":
+			{
+				"maxOutputTokens": 32000,
+				"responseMimeType": "application/json",
+				"responseSchema":
+				{
+					"type": "object",
+					"properties":
+					{
+						"graphs":
+						{
+							"type": "array",
+							"items":
+							{
+								"type": "object",
+								"properties":
+								{
+									"graph_name":
+									{
+										"type": "string"
+									},
+									"graph_type":
+									{
+										"type": "string"
+									},
+									"graph_class":
+									{
+										"type": "string"
+									},
+									"code":
+									{
+										"type": "object",
+										"properties":
+										{
+											"graphDeclaration":
+											{
+												"type": "string"
+											},
+											"graphImplementation":
+											{
+												"type": "string"
+											},
+											"implementationNotes":
+											{
+												"type": "string"
+											}
+										},
+										"required": [
+											"graphDeclaration",
+											"graphImplementation",
+											"implementationNotes"
+										]
+									}
+								},
+								"required": [
+									"graph_name",
+									"graph_type",
+									"graph_class",
+									"code"
+								]
+							}
+						}
+					},
+					"required": [
+						"graphs"
+					]
+				}
+			}
+		}
+	},
+	"gemini-3.8-flash":
+	{
+		"endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+		"headers":
+		{
+			"content-type": "application/json",
+			"x-goog-api-key": "n2c-placeholder-key-0125"
+		},
+		"body":
+		{
+			"model": "gemini-3.8-flash",
+			"systemInstruction":
+			{
+				"role": "user",
+				"parts": [
+					{
+						"text": "You are a NodeToCode translator."
+					}
+				]
+			},
+			"contents": [
+				{
+					"role": "user",
+					"parts": [
+						{
+							"text": "Translate this Blueprint graph: {\"nodes\":[]}"
+						}
+					]
+				}
+			],
+			"generationConfig":
+			{
+				"maxOutputTokens": 32000,
+				"responseMimeType": "application/json",
+				"responseSchema":
+				{
+					"type": "object",
+					"properties":
+					{
+						"graphs":
+						{
+							"type": "array",
+							"items":
+							{
+								"type": "object",
+								"properties":
+								{
+									"graph_name":
+									{
+										"type": "string"
+									},
+									"graph_type":
+									{
+										"type": "string"
+									},
+									"graph_class":
+									{
+										"type": "string"
+									},
+									"code":
+									{
+										"type": "object",
+										"properties":
+										{
+											"graphDeclaration":
+											{
+												"type": "string"
+											},
+											"graphImplementation":
+											{
+												"type": "string"
+											},
+											"implementationNotes":
+											{
+												"type": "string"
+											}
+										},
+										"required": [
+											"graphDeclaration",
+											"graphImplementation",
+											"implementationNotes"
+										]
+									}
+								},
+								"required": [
+									"graph_name",
+									"graph_type",
+									"graph_class",
+									"code"
+								]
+							}
+						}
+					},
+					"required": [
+						"graphs"
+					]
+				}
+			}
+		}
+	},
+	"gemini-4-argon":
+	{
+		"endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent",
+		"headers":
+		{
+			"content-type": "application/json",
+			"x-goog-api-key": "n2c-placeholder-key-0125"
+		},
+		"body":
+		{
+			"model": "gemini-4-argon",
+			"systemInstruction":
+			{
+				"role": "user",
+				"parts": [
+					{
+						"text": "You are a NodeToCode translator."
+					}
+				]
+			},
+			"contents": [
+				{
+					"role": "user",
+					"parts": [
+						{
+							"text": "Translate this Blueprint graph: {\"nodes\":[]}"
+						}
+					]
+				}
+			],
+			"generationConfig":
+			{
+				"maxOutputTokens": 32000,
+				"responseMimeType": "application/json",
+				"responseSchema":
+				{
+					"type": "object",
+					"properties":
+					{
+						"graphs":
+						{
+							"type": "array",
+							"items":
+							{
+								"type": "object",
+								"properties":
+								{
+									"graph_name":
+									{
+										"type": "string"
+									},
+									"graph_type":
+									{
+										"type": "string"
+									},
+									"graph_class":
+									{
+										"type": "string"
+									},
+									"code":
+									{
+										"type": "object",
+										"properties":
+										{
+											"graphDeclaration":
+											{
+												"type": "string"
+											},
+											"graphImplementation":
+											{
+												"type": "string"
+											},
+											"implementationNotes":
+											{
+												"type": "string"
+											}
+										},
+										"required": [
+											"graphDeclaration",
+											"graphImplementation",
+											"implementationNotes"
+										]
+									}
+								},
+								"required": [
+									"graph_name",
+									"graph_type",
+									"graph_class",
+									"code"
+								]
+							}
+						}
+					},
+					"required": [
+						"graphs"
+					]
+				}
+			}
+		}
+	},
+	"gemini-3.5-flash-lite":
+	{
+		"endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+		"headers":
+		{
+			"content-type": "application/json",
+			"x-goog-api-key": "n2c-placeholder-key-0125"
+		},
+		"body":
+		{
+			"model": "gemini-3.5-flash-lite",
+			"systemInstruction":
+			{
+				"role": "user",
+				"parts": [
+					{
+						"text": "You are a NodeToCode translator."
+					}
+				]
+			},
+			"contents": [
+				{
+					"role": "user",
+					"parts": [
+						{
+							"text": "Translate this Blueprint graph: {\"nodes\":[]}"
+						}
+					]
+				}
+			],
+			"generationConfig":
+			{
+				"maxOutputTokens": 32000,
+				"responseMimeType": "application/json",
+				"responseSchema":
+				{
+					"type": "object",
+					"properties":
+					{
+						"graphs":
+						{
+							"type": "array",
+							"items":
+							{
+								"type": "object",
+								"properties":
+								{
+									"graph_name":
+									{
+										"type": "string"
+									},
+									"graph_type":
+									{
+										"type": "string"
+									},
+									"graph_class":
+									{
+										"type": "string"
+									},
+									"code":
+									{
+										"type": "object",
+										"properties":
+										{
+											"graphDeclaration":
+											{
+												"type": "string"
+											},
+											"graphImplementation":
+											{
+												"type": "string"
+											},
+											"implementationNotes":
+											{
+												"type": "string"
+											}
+										},
+										"required": [
+											"graphDeclaration",
+											"graphImplementation",
+											"implementationNotes"
+										]
+									}
+								},
+								"required": [
+									"graph_name",
+									"graph_type",
+									"graph_class",
+									"code"
+								]
+							}
+						}
+					},
+					"required": [
+						"graphs"
+					]
+				}
+			}
+		}
+	},
+	"gemini-3.8-flash:max4096":
+	{
+		"endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+		"headers":
+		{
+			"content-type": "application/json",
+			"x-goog-api-key": "n2c-placeholder-key-0125"
+		},
+		"body":
+		{
+			"model": "gemini-3.8-flash",
+			"systemInstruction":
+			{
+				"role": "user",
+				"parts": [
+					{
+						"text": "You are a NodeToCode translator."
+					}
+				]
+			},
+			"contents": [
+				{
+					"role": "user",
+					"parts": [
+						{
+							"text": "Translate this Blueprint graph: {\"nodes\":[]}"
+						}
+					]
+				}
+			],
+			"generationConfig":
+			{
+				"maxOutputTokens": 4096,
+				"responseMimeType": "application/json",
+				"responseSchema":
+				{
+					"type": "object",
+					"properties":
+					{
+						"graphs":
+						{
+							"type": "array",
+							"items":
+							{
+								"type": "object",
+								"properties":
+								{
+									"graph_name":
+									{
+										"type": "string"
+									},
+									"graph_type":
+									{
+										"type": "string"
+									},
+									"graph_class":
+									{
+										"type": "string"
+									},
+									"code":
+									{
+										"type": "object",
+										"properties":
+										{
+											"graphDeclaration":
+											{
+												"type": "string"
+											},
+											"graphImplementation":
+											{
+												"type": "string"
+											},
+											"implementationNotes":
+											{
+												"type": "string"
+											}
+										},
+										"required": [
+											"graphDeclaration",
+											"graphImplementation",
+											"implementationNotes"
+										]
+									}
+								},
+								"required": [
+									"graph_name",
+									"graph_type",
+									"graph_class",
+									"code"
+								]
+							}
+						}
+					},
+					"required": [
+						"graphs"
+					]
+				}
+			}
+		}
+	},
+	"unregistered:gemini-n2c-unregistered":
+	{
+		"endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-n2c-unregistered:generateContent",
+		"headers":
+		{
+			"content-type": "application/json",
+			"x-goog-api-key": "n2c-placeholder-key-0125"
+		},
+		"body":
+		{
+			"model": "gemini-n2c-unregistered",
+			"systemInstruction":
+			{
+				"role": "user",
+				"parts": [
+					{
+						"text": "You are a NodeToCode translator."
+					}
+				]
+			},
+			"contents": [
+				{
+					"role": "user",
+					"parts": [
+						{
+							"text": "Translate this Blueprint graph: {\"nodes\":[]}"
+						}
+					]
+				}
+			],
+			"generationConfig":
+			{
+				"responseMimeType": "application/json",
+				"responseSchema":
+				{
+					"type": "object",
+					"properties":
+					{
+						"graphs":
+						{
+							"type": "array",
+							"items":
+							{
+								"type": "object",
+								"properties":
+								{
+									"graph_name":
+									{
+										"type": "string"
+									},
+									"graph_type":
+									{
+										"type": "string"
+									},
+									"graph_class":
+									{
+										"type": "string"
+									},
+									"code":
+									{
+										"type": "object",
+										"properties":
+										{
+											"graphDeclaration":
+											{
+												"type": "string"
+											},
+											"graphImplementation":
+											{
+												"type": "string"
+											},
+											"implementationNotes":
+											{
+												"type": "string"
+											}
+										},
+										"required": [
+											"graphDeclaration",
+											"graphImplementation",
+											"implementationNotes"
+										]
+									}
+								},
+								"required": [
+									"graph_name",
+									"graph_type",
+									"graph_class",
+									"code"
+								]
+							}
+						}
+					},
+					"required": [
+						"graphs"
+					]
+				}
+			}
+		}
+	}
+}

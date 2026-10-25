@@ -1,0 +1,149 @@
+{
+	"deepseek-flash@high":
+	{
+		"endpoint": "https://api.deepseek.com/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "deepseek-flash",
+			"thinking":
+			{
+				"type": "enabled"
+			},
+			"reasoning_effort": "high",
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"max_tokens": 65536
+		}
+	},
+	"deepseek-flash@none":
+	{
+		"endpoint": "https://api.deepseek.com/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "deepseek-flash",
+			"thinking":
+			{
+				"type": "disabled"
+			},
+			"temperature": 0,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"max_tokens": 32000,
+			"response_format":
+			{
+				"type": "json_object"
+			}
+		}
+	},
+	"deepseek-v4-pro@high":
+	{
+		"endpoint": "https://api.deepseek.com/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "deepseek-v4-pro",
+			"thinking":
+			{
+				"type": "enabled"
+			},
+			"reasoning_effort": "high",
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"max_tokens": 65536
+		}
+	},
+	"deepseek-flash@none:max4096":
+	{
+		"endpoint": "https://api.deepseek.com/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "deepseek-flash",
+			"thinking":
+			{
+				"type": "disabled"
+			},
+			"temperature": 0,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"max_tokens": 4096,
+			"response_format":
+			{
+				"type": "json_object"
+			}
+		}
+	},
+	"unregistered:deepseek-n2c-unregistered":
+	{
+		"endpoint": "https://api.deepseek.com/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "deepseek-n2c-unregistered",
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			]
+		}
+	}
+}

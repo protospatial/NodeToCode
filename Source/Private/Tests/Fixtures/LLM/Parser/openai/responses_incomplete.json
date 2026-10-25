@@ -1,0 +1,23 @@
+{
+  "id": "resp_N2CFixture",
+  "object": "response",
+  "created_at": 1761264000,
+  "status": "incomplete",
+  "error": null,
+  "incomplete_details": {
+    "reason": "max_output_tokens"
+  },
+  "model": "gpt-5.2-pro",
+  "output": [
+    {
+      "id": "rs_N2CFixture",
+      "type": "reasoning",
+      "summary": []
+    }
+  ],
+  "usage": {
+    "input_tokens": 5120,
+    "output_tokens": 32000,
+    "total_tokens": 37120
+  }
+}

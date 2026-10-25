@@ -1,0 +1,20 @@
+{
+  "id": "msg_01N2CFixture",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+    {
+      "type": "text",
+      "text": "```json\n{\n  \"graphs\": [\n    {\n      \"graph_name\": \"EventGraph\",\n      \"graph_type\": \"EventGraph\",\n      \"graph_class\": \"BP_N2CProviderMatrix_111346\",\n      \"code\": {\n        \"graphDeclaration\": \"\",\n        \"graphImplementation\": \"// No executable Blueprint flow is connected in this graph.\\n// Event BeginPlay, Event ActorBeginOverlap, and Event Tick are marked disabled.\\n// The PrintString node is not connected to an execution flow and therefore is not called.\",\n        \"implementationNotes\": \"No event overrides or calls are generated because the three event nodes are explicitly marked disabled and flows.execution is empty. The PrintString node has no connected execution input, so its default values (\\\"Hello\\\", print to screen/log enabled, color (0.0, 0.66, 1.0, 1.0), duration 2.0, key None) do not produce behavior.\"\n      }\n    }\n  ]\n}\n```\n"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 5120,
+    "output_tokens": 412,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
+}

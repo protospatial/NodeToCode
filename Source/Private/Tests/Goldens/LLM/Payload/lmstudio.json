@@ -1,0 +1,201 @@
+{
+	"qwen3-32b":
+	{
+		"endpoint": "http://localhost:1234/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "qwen3-32b",
+			"stream": false,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			}
+		}
+	},
+	"qwen3-32b:max4096":
+	{
+		"endpoint": "http://localhost:1234/v1/chat/completions",
+		"headers":
+		{
+			"authorization": "Bearer n2c-placeholder-key-0125",
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "qwen3-32b",
+			"stream": false,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"max_tokens": 4096,
+			"response_format":
+			{
+				"type": "json_schema",
+				"json_schema":
+				{
+					"name": "n2c_translation_schema",
+					"strict": true,
+					"schema":
+					{
+						"type": "object",
+						"properties":
+						{
+							"graphs":
+							{
+								"type": "array",
+								"items":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graph_name":
+										{
+											"type": "string"
+										},
+										"graph_type":
+										{
+											"type": "string"
+										},
+										"graph_class":
+										{
+											"type": "string"
+										},
+										"code":
+										{
+											"type": "object",
+											"properties":
+											{
+												"graphDeclaration":
+												{
+													"type": "string"
+												},
+												"graphImplementation":
+												{
+													"type": "string"
+												},
+												"implementationNotes":
+												{
+													"type": "string"
+												}
+											},
+											"required": [
+												"graphDeclaration",
+												"graphImplementation",
+												"implementationNotes"
+											],
+											"additionalProperties": false
+										}
+									},
+									"required": [
+										"graph_name",
+										"graph_type",
+										"graph_class",
+										"code"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"graphs"
+						],
+						"additionalProperties": false
+					}
+				}
+			}
+		}
+	}
+}

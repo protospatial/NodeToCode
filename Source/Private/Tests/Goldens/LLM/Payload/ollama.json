@@ -1,0 +1,182 @@
+{
+	"qwen3:32b":
+	{
+		"endpoint": "http://localhost:11434/api/chat",
+		"headers":
+		{
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "qwen3:32b",
+			"stream": false,
+			"keep_alive": 3600,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"format":
+			{
+				"type": "object",
+				"properties":
+				{
+					"graphs":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"graph_name":
+								{
+									"type": "string"
+								},
+								"graph_type":
+								{
+									"type": "string"
+								},
+								"graph_class":
+								{
+									"type": "string"
+								},
+								"code":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graphDeclaration":
+										{
+											"type": "string"
+										},
+										"graphImplementation":
+										{
+											"type": "string"
+										},
+										"implementationNotes":
+										{
+											"type": "string"
+										}
+									},
+									"required": [
+										"graphDeclaration",
+										"graphImplementation",
+										"implementationNotes"
+									],
+									"additionalProperties": false
+								}
+							},
+							"required": [
+								"graph_name",
+								"graph_type",
+								"graph_class",
+								"code"
+							],
+							"additionalProperties": false
+						}
+					}
+				},
+				"required": [
+					"graphs"
+				],
+				"additionalProperties": false
+			}
+		}
+	},
+	"qwen3:32b:max4096":
+	{
+		"endpoint": "http://localhost:11434/api/chat",
+		"headers":
+		{
+			"content-type": "application/json"
+		},
+		"body":
+		{
+			"model": "qwen3:32b",
+			"stream": false,
+			"keep_alive": 3600,
+			"messages": [
+				{
+					"role": "system",
+					"content": "You are a NodeToCode translator."
+				},
+				{
+					"role": "user",
+					"content": "Translate this Blueprint graph: {\"nodes\":[]}"
+				}
+			],
+			"format":
+			{
+				"type": "object",
+				"properties":
+				{
+					"graphs":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"graph_name":
+								{
+									"type": "string"
+								},
+								"graph_type":
+								{
+									"type": "string"
+								},
+								"graph_class":
+								{
+									"type": "string"
+								},
+								"code":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graphDeclaration":
+										{
+											"type": "string"
+										},
+										"graphImplementation":
+										{
+											"type": "string"
+										},
+										"implementationNotes":
+										{
+											"type": "string"
+										}
+									},
+									"required": [
+										"graphDeclaration",
+										"graphImplementation",
+										"implementationNotes"
+									],
+									"additionalProperties": false
+								}
+							},
+							"required": [
+								"graph_name",
+								"graph_type",
+								"graph_class",
+								"code"
+							],
+							"additionalProperties": false
+						}
+					}
+				},
+				"required": [
+					"graphs"
+				],
+				"additionalProperties": false
+			}
+		}
+	}
+}

@@ -1,0 +1,26 @@
+{
+  "id": "chatcmpl-N2CFixture",
+  "object": "chat.completion",
+  "created": 1761264000,
+  "model": "gpt-6-luna",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "refusal": "I'm sorry, I can't help with that."
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 5120,
+    "completion_tokens": 412,
+    "total_tokens": 5532,
+    "completion_tokens_details": {
+      "reasoning_tokens": 256
+    }
+  }
+}

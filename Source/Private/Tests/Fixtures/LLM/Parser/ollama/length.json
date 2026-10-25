@@ -1,0 +1,13 @@
+{
+  "model": "qwen3:32b",
+  "created_at": "2026-10-24T00:00:00Z",
+  "message": {
+    "role": "assistant",
+    "content": "{\"graphs\":[{\"graph_name\":\"EventGraph\",\"graph_type\":\"EventGraph\",\"graph_class\":\"BP_N2CProvi"
+  },
+  "done_reason": "length",
+  "done": true,
+  "total_duration": 1000,
+  "prompt_eval_count": 5120,
+  "eval_count": 412
+}

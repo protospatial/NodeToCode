@@ -1,0 +1,26 @@
+{
+  "id": "chatcmpl-N2CFixture",
+  "object": "chat.completion",
+  "created": 1761264000,
+  "model": "gpt-6-luna",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```\n{\"graphs\":[{\"graph_name\":\"EventGraph\",\"graph_type\":\"EventGraph\",\"graph_class\":\"BP_N2CProviderMatrix_111346\",\"code\":{\"graphDeclaration\":\"\",\"graphImplementation\":\"// No executable Blueprint flow is connected in this graph.\\n// Event BeginPlay, Event ActorBeginOverlap, and Event Tick are marked disabled.\\n// The PrintString node is not connected to an execution flow and therefore is not called.\",\"implementationNotes\":\"No event overrides or calls are generated because the three event nodes are explicitly marked disabled and flows.execution is empty. The PrintString node has no connected execution input, so its default values (\\\"Hello\\\", print to screen/log enabled, color (0.0, 0.66, 1.0, 1.0), duration 2.0, key None) do not produce behavior.\"}}]}\n```",
+        "refusal": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 5120,
+    "completion_tokens": 412,
+    "total_tokens": 5532,
+    "completion_tokens_details": {
+      "reasoning_tokens": 256
+    }
+  }
+}

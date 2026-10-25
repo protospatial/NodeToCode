@@ -1,0 +1,26 @@
+{
+  "id": "chatcmpl-N2CFixture",
+  "object": "chat.completion",
+  "created": 1761264000,
+  "model": "gpt-6-luna",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"graphs\":[{\"graph_name\":\"EventGraph\",\"graph_type\":\"EventGraph\",\"graph_class\":\"BP_N2CProvi",
+        "refusal": null
+      },
+      "logprobs": null,
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 5120,
+    "completion_tokens": 32000,
+    "total_tokens": 37120,
+    "completion_tokens_details": {
+      "reasoning_tokens": 256
+    }
+  }
+}
