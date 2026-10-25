@@ -172,12 +172,13 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
         HttpHandler->OnTranslationResponseReceived = OnTranslationResponseReceived;
     }
 
-    // Send request through service. The callback keeps the service it was sent on alive and parses with that
+    // Send request through service, with the JSON in <n2c_json> tags (data, not instructions; see N2CJsonSpec.md).
+    // The callback keeps the service it was sent on alive and parses with that
     // service's parser, even if the active provider changes or GC runs while the request is in flight.
     // The translation is saved with the Blueprint captured for this request, shared (not copied) by the delegate's copies
     TStrongObjectPtr<UObject> RequestServiceObject(Service.GetObject());
     const TSharedRef<const FN2CBlueprint> RequestBlueprint = MakeShared<const FN2CBlueprint>(CapturedBlueprint);
-    FN2CLLMRequestHandleRef Handle = ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
+    FN2CLLMRequestHandleRef Handle = ActiveService->SendRequest(UN2CSystemPromptManager::WrapN2CJson(JsonInput), SystemPrompt, FOnLLMResponseReceived::CreateLambda(
         [this, OnComplete, RequestServiceObject, RequestService = Service, RequestModel = Config.Model, RequestBlueprint](const FString& Response)
         {
             // Create translation response struct
@@ -607,8 +608,9 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
 
     TempPromptManager.Reset();
 
+    // The JSON goes in <n2c_json> tags, as in ProcessN2CJson.
     // The callback keeps TempServiceObject (and so the service) alive until the request completes or is cancelled
-    FN2CLLMRequestHandleRef Handle = TempService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
+    FN2CLLMRequestHandleRef Handle = TempService->SendRequest(UN2CSystemPromptManager::WrapN2CJson(JsonInput), SystemPrompt, FOnLLMResponseReceived::CreateLambda(
         [this, TempService, TempServiceObject, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
         {
             FN2CTranslationResponse TranslationResponse;

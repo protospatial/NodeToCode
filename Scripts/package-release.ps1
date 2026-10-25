@@ -81,6 +81,8 @@ $RequiredFiles = @(
     'Source/NodeToCode.Build.cs',
     'Resources/Icon128.png',
     'Content/Prompting/CodeGen_CPP.md',
+    'Content/Prompting/Shared/N2CJsonSpec.md',
+    'Content/Prompting/Shared/N2CResponseFormat.md',
     'Content/Python/mcp_bridge/nodetocode_bridge.py',
     'Binaries/Win64/UnrealEditor-NodeToCode.dll',
     'Binaries/Win64/UnrealEditor.modules'
