@@ -46,8 +46,8 @@ SERVICE_CLASS = {'anthropic': 'N2CAnthropicService', 'openai': 'N2COpenAIService
                  'deepseek': 'N2CDeepSeekService'}
 PROVIDER_ENUM = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'gemini': 'Gemini', 'deepseek': 'DeepSeek'}
 # Settings model entries for the toolbar translation (the toolbar uses Project Settings, not the MCP arguments)
-MODEL_SETTING = {('anthropic', 'claude-haiku-5-5'): ('AnthropicModel', 'Claude5_5_Haiku'),
-                 ('gemini', 'gemini-3.5-flash-lite'): ('GeminiModel', 'Gemini_3_5_Flash_Lite')}
+MODEL_SETTING = {('anthropic', 'claude-haiku-5-5'): ('AnthropicModelId', 'claude-haiku-5-5'),
+                 ('gemini', 'gemini-3.5-flash-lite'): ('GeminiModelId', 'gemini-3.5-flash-lite')}
 
 CRASH_RE = re.compile(r'Unhandled Exception|Fatal error|EXCEPTION_ACCESS_VIOLATION|Assertion failed|'
                       r'Ensure condition failed')

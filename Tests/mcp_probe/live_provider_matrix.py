@@ -14,7 +14,7 @@ Debug in the host's Saved/Config layer (restored afterwards), so UN2CLLMPayloadB
 Applying a case's settings saves them to the host's Config/DefaultNodeToCode.ini; EditorSession restores that file
 byte for byte when the editor stops (or deletes it if it did not exist), and the report's config_restored says so.
 It makes one in-memory probe Blueprint (live_env_translation.SETUP_PY: an Actor with a Print String node, never
-saved), then per case: applies the case's settings (model enum, Max Output Tokens) on the settings object, runs
+saved), then per case: applies the case's settings (DeepSeek model ID and thinking mode, Max Output Tokens) on the settings object, runs
 translate-focused-blueprint over MCP, reads the task stream, restores the settings, and takes that case's slice of
 the editor log: the payload (summarised: model, sampling fields, output budget, response_format, Gemini
 responseSchema, thinking), token usage and any NodeToCode errors. A case passes when the translation parses with
@@ -107,22 +107,22 @@ CASES = [
          {'sampling': False, 'budget_field': 'maxOutputTokens', 'budget': AUTO, 'response_format': 'gemini_response_schema'}),
     case('gemini', 'gemini-4-argon', 'quality',
          {'sampling': False, 'budget_field': 'maxOutputTokens', 'budget': AUTO, 'response_format': 'gemini_response_schema'}),
-    case('deepseek', 'deepseek-flash', 'default (R1 entry, thinking on)',
+    case('deepseek', 'deepseek-flash', 'default (thinking high)',
          {'sampling': False, 'budget_field': 'max_tokens', 'budget': AUTO_DEEPSEEK_THINKING, 'response_format': None,
           'thinking': 'enabled', 'reasoning_effort': 'high'},
-         settings={'deep_seek_model': ('N2CDeepSeekModel', 'DeepSeek_R1')}, suffix=':on'),
-    case('deepseek', 'deepseek-flash', 'cheap (V3 entry, thinking off)',
+         settings={'deep_seek_model_id': 'deepseek-flash', 'deep_seek_reasoning_effort': 'high'}, suffix=':on'),
+    case('deepseek', 'deepseek-flash', 'cheap (thinking none)',
          {'sampling': True, 'budget_field': 'max_tokens', 'budget': AUTO, 'response_format': 'json_object',
           'thinking': 'disabled', 'reasoning_effort': None},
-         settings={'deep_seek_model': ('N2CDeepSeekModel', 'DeepSeek_V3')}, suffix=':off'),
+         settings={'deep_seek_model_id': 'deepseek-flash', 'deep_seek_reasoning_effort': 'none'}, suffix=':off'),
     case('deepseek', 'deepseek-v4-pro', 'quality (thinking on)',
          {'sampling': False, 'budget_field': 'max_tokens', 'budget': AUTO_DEEPSEEK_THINKING, 'response_format': None,
           'thinking': 'enabled', 'reasoning_effort': 'high'},
-         settings={'deep_seek_model': ('N2CDeepSeekModel', 'DeepSeek_V4_Pro')}),
+         settings={'deep_seek_model_id': 'deepseek-v4-pro', 'deep_seek_reasoning_effort': 'high'}),
 ]
 
 # Runs in the editor: sets settings on the settings object for one case and returns the previous values (as
-# strings for enums). spec values: an int, or [EnumName, member] matched without underscores and case.
+# strings for enums). spec values: an int or a string, or [EnumName, member] matched without underscores and case.
 APPLY_PY = r'''
 import json, unreal
 settings = unreal.get_default_object(unreal.N2CSettings)

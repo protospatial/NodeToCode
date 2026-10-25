@@ -129,13 +129,14 @@ void FN2CModelCatalogSpec::Define()
 		It(TEXT("finds each provider's default ID with pricing, context window and max output"), [this]()
 		{
 			const FN2CModelCatalog& Catalog = FN2CModelCatalog::Get();
-			struct FExpected { EN2CLLMProvider Provider; const TCHAR* Id; FString EnumName; };
+			struct FExpected { EN2CLLMProvider Provider; const TCHAR* Id; FString EnumName; const TCHAR* SettingsDefault; };
 			for (const FExpected& E : {
-				FExpected{ EN2CLLMProvider::OpenAI, TEXT("gpt-6.1-sol"), StaticEnum<EN2COpenAIModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::OpenAI)) },
-				FExpected{ EN2CLLMProvider::Anthropic, TEXT("claude-sonnet-5-5"), StaticEnum<EN2CAnthropicModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Anthropic)) },
-				FExpected{ EN2CLLMProvider::Gemini, TEXT("gemini-3.8-flash"), StaticEnum<EN2CGeminiModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Gemini)) },
-				FExpected{ EN2CLLMProvider::DeepSeek, TEXT("deepseek-flash"), StaticEnum<EN2CDeepSeekModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::DeepSeek)) } })
+				FExpected{ EN2CLLMProvider::OpenAI, TEXT("gpt-6.1-sol"), StaticEnum<EN2COpenAIModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::OpenAI)), N2CDefaultModelIds::OpenAI },
+				FExpected{ EN2CLLMProvider::Anthropic, TEXT("claude-sonnet-5-5"), StaticEnum<EN2CAnthropicModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Anthropic)), N2CDefaultModelIds::Anthropic },
+				FExpected{ EN2CLLMProvider::Gemini, TEXT("gemini-3.8-flash"), StaticEnum<EN2CGeminiModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Gemini)), N2CDefaultModelIds::Gemini },
+				FExpected{ EN2CLLMProvider::DeepSeek, TEXT("deepseek-flash"), StaticEnum<EN2CDeepSeekModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::DeepSeek)), N2CDefaultModelIds::DeepSeek } })
 			{
+				TestEqual(FString::Printf(TEXT("%s is the N2CDefaultModelIds default of Project Settings"), E.Id), FString(E.SettingsDefault), FString(E.Id));
 				const FName ProviderId = FN2CModelCatalog::ProviderIdFor(E.Provider);
 				const FN2CModelMetadata* Meta = Catalog.Find(ProviderId, E.Id);
 				if (!TestNotNull(FString::Printf(TEXT("%s found"), E.Id), Meta)) { continue; }
@@ -147,6 +148,10 @@ void FN2CModelCatalogSpec::Define()
 				TestTrue(FString::Printf(TEXT("%s is the provider default"), E.Id), Meta->bIsDefault && Catalog.FindDefault(ProviderId) == Meta);
 				TestFalse(FString::Printf(TEXT("%s is not deprecated"), E.Id), Meta->bIsDeprecated);
 				TestEqual(FString::Printf(TEXT("%s is the N2CDefaultModels enumerator"), E.Id), Meta->LegacyEnumName, E.EnumName);
+				if (E.Provider == EN2CLLMProvider::DeepSeek)
+				{
+					TestEqual(TEXT("DeepSeek's default thinking mode is its default row's"), FString(N2CDefaultModelIds::DeepSeekReasoningEffort), Meta->ReasoningEffort);
+				}
 			}
 			TestNull(TEXT("Ollama has no catalog models"), Catalog.FindDefault(TEXT("ollama")));
 		});
@@ -236,9 +241,10 @@ void FN2CModelCatalogSpec::Define()
 
 			// A broken install must not rewrite saved selections the catalog would know
 			UN2CSettings* Settings = NewObject<UN2CSettings>(GetTransientPackage());
-			Settings->OpenAI_Model = EN2COpenAIModel::GPT_6_Astra;
+			Settings->OpenAIModelId = TEXT("gpt-6-astra");
 			TestEqual(TEXT("selection kept in fallback"), Settings->MigrateRetiredModelSelections(), 0);
-			TestEqual(TEXT("GPT-6 Astra still selected"), Settings->OpenAI_Model, EN2COpenAIModel::GPT_6_Astra);
+			TestEqual(TEXT("GPT-6 Astra still selected"), Settings->OpenAIModelId, FString(TEXT("gpt-6-astra")));
+			TestEqual(TEXT("and sent"), Settings->GetActiveModelForProvider(EN2CLLMProvider::OpenAI), FString(TEXT("gpt-6-astra")));
 		});
 
 		It(TEXT("falls back and logs an error when the file is missing"), [this]()

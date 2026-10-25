@@ -7,16 +7,17 @@
 #include "N2CLLMModels.generated.h"
 
 /*
- * Model enums.
+ * Model enums (deprecated: kept for the 2.x line, removed in the next major version).
  *
- * Settings are saved by enumerator name (Config=NodeToCode), so enumerators are never renamed or removed:
- * - New models are appended at the end of their enum.
- * - A model the provider has shut down keeps its enumerator, marked UMETA(Hidden) so Project Settings does not
- *   offer it, and its row is compiled into FN2CModelCatalog's retired list (N2CModelCatalog.cpp).
- *   UN2CSettings::PostInitProperties moves a saved retired value to the provider default (see N2CDefaultModels).
- * - A model the provider has deprecated but still serves shows its shutdown date in its display name.
- * Model IDs, limits, prices and dates live in the model catalog, Content/Data/N2CModelCatalog.json, whose rows name
- * their enumerator in "legacy_enum"; FN2CLLMModelRegistry files them under these enums.
+ * Since settings version 4 (card 0129) Project Settings selects models by string ID from the model catalog
+ * (UN2CSettings::AnthropicModelId and the others) and nothing new is added here: a new model is a catalog row
+ * (Content/Data/N2CModelCatalog.json) with no "legacy_enum". The enums stay because:
+ * - configs saved before version 4 hold enumerator names (AnthropicModel=Claude4_5_Sonnet), which the one-time upgrade
+ *   (UN2CSettings::MigrateModelSelectionsToIds) maps to IDs with the catalog rows' "legacy_enum" and the UMETA Value
+ *   strings below, so enumerators are never renamed or removed;
+ * - user Blueprints or Python may name the types.
+ * A model the provider has shut down keeps its enumerator, marked UMETA(Hidden), and its row is compiled into
+ * FN2CModelCatalog's retired list (N2CModelCatalog.cpp). FN2CLLMModelRegistry files the catalog rows under these enums.
  */
 
 /** Available OpenAI models */
@@ -119,9 +120,9 @@ struct FN2CLLMModelUtils
 };
 
 /**
- * Default model per provider: the Project Settings defaults and the value a saved retired selection is moved to.
- * Each must be the enumerator of its provider's catalog row marked "is_default" (NodeToCode.LLM.Catalog checks
- * this), which is also the registry's fallback ID.
+ * Default model per provider as enumerators (deprecated, see N2CDefaultModelIds). Each must be the enumerator of its
+ * provider's catalog row marked "is_default" (NodeToCode.LLM.Catalog checks this), which is also the registry's
+ * fallback ID.
  */
 namespace N2CDefaultModels
 {
@@ -129,4 +130,19 @@ namespace N2CDefaultModels
     constexpr EN2CAnthropicModel Anthropic = EN2CAnthropicModel::Claude5_5_Sonnet;
     constexpr EN2CGeminiModel Gemini = EN2CGeminiModel::Gemini_3_8_Flash;
     constexpr EN2CDeepSeekModel DeepSeek = EN2CDeepSeekModel::DeepSeek_R1;
+}
+
+/**
+ * Default model ID per provider: the Project Settings defaults (UN2CSettings::AnthropicModelId and the others) and the
+ * ID a saved retired selection is moved to when the catalog has no default row. Each must be the ID of its provider's
+ * catalog row marked "is_default" (NodeToCode.LLM.Catalog checks this). DeepSeek's default row also sets
+ * DeepSeekReasoningEffort's default.
+ */
+namespace N2CDefaultModelIds
+{
+    inline constexpr const TCHAR* OpenAI = TEXT("gpt-6.1-sol");
+    inline constexpr const TCHAR* Anthropic = TEXT("claude-sonnet-5-5");
+    inline constexpr const TCHAR* Gemini = TEXT("gemini-3.8-flash");
+    inline constexpr const TCHAR* DeepSeek = TEXT("deepseek-flash");
+    inline constexpr const TCHAR* DeepSeekReasoningEffort = TEXT("high");
 }

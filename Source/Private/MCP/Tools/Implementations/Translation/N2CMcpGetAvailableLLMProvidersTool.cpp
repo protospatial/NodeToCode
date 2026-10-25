@@ -5,7 +5,7 @@
 #include "Core/N2CSettings.h"
 #include "Core/N2CSecretStore.h"
 #include "LLM/N2CLLMModels.h"
-#include "LLM/N2CLLMModelRegistry.h"
+#include "LLM/N2CModelCatalog.h"
 #include "LLM/N2COllamaConfig.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -197,7 +197,8 @@ TSharedPtr<FJsonObject> FN2CMcpGetAvailableLLMProvidersTool::BuildProviderInfo(E
         const UN2CSettings* Settings = GetDefault<UN2CSettings>();
         if (Settings)
         {
-            bSupportsSystemPrompts = FN2CLLMModelUtils::SupportsSystemPrompts(Settings->OpenAI_Model);
+            const FN2CModelMetadata* Meta = Settings->GetActiveModelMetadataForProvider(EN2CLLMProvider::OpenAI);
+            bSupportsSystemPrompts = !Meta || Meta->bSupportsSystemPrompts;
         }
     }
     ProviderObject->SetBoolField(TEXT("supportsSystemPrompts"), bSupportsSystemPrompts);
@@ -208,133 +209,57 @@ TSharedPtr<FJsonObject> FN2CMcpGetAvailableLLMProvidersTool::BuildProviderInfo(E
 TArray<TSharedPtr<FJsonValue>> FN2CMcpGetAvailableLLMProvidersTool::GetAvailableModels(EN2CLLMProvider Provider) const
 {
     TArray<TSharedPtr<FJsonValue>> Models;
-    
-    // Get the appropriate model enum for each provider
-    const UEnum* ModelEnum = nullptr;
-    
-    switch (Provider)
-    {
-        case EN2CLLMProvider::OpenAI:
-            ModelEnum = StaticEnum<EN2COpenAIModel>();
-            break;
-        case EN2CLLMProvider::Anthropic:
-            ModelEnum = StaticEnum<EN2CAnthropicModel>();
-            break;
-        case EN2CLLMProvider::Gemini:
-            ModelEnum = StaticEnum<EN2CGeminiModel>();
-            break;
-        case EN2CLLMProvider::DeepSeek:
-            ModelEnum = StaticEnum<EN2CDeepSeekModel>();
-            break;
-        default:
-            return Models; // Empty for local providers or unknown
-    }
-    
-    if (ModelEnum)
-    {
-        const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
-        TSet<FString> OfferedIds;
+    TSet<FString> OfferedIds;
 
-        // Iterate through enum values (skip _MAX)
-        for (int32 i = 0; i < ModelEnum->NumEnums() - 1; ++i)
+    // The provider's live catalog rows in catalog order; retired rows are kept only for saved settings and are not
+    // offered. Ollama and LM Studio have none.
+    for (const FN2CModelMetadata* Meta : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(Provider)))
+    {
+        // Entries that share an ID differ only in thinking mode (DeepSeek). A model override is just an ID: it
+        // gets the selected entry's mode when it names the selected model, otherwise the first entry's (the
+        // provider default), so the ID is offered once, with the first entry's mode.
+        if (OfferedIds.Contains(Meta->ModelId))
         {
-            // Models the provider has shut down stay in the enum for saved settings but are not offered
-            if (ModelEnum->HasMetaData(TEXT("Hidden"), i))
-            {
-                continue;
-            }
-
-            const int64 Value = ModelEnum->GetValueByIndex(i);
-            const FN2CModelMetadata* Meta = nullptr;
-            switch (Provider)
-            {
-                case EN2CLLMProvider::OpenAI:
-                    Meta = Registry.GetModelMetadata(static_cast<EN2COpenAIModel>(Value));
-                    break;
-                case EN2CLLMProvider::Anthropic:
-                    Meta = Registry.GetModelMetadata(static_cast<EN2CAnthropicModel>(Value));
-                    break;
-                case EN2CLLMProvider::Gemini:
-                    Meta = Registry.GetModelMetadata(static_cast<EN2CGeminiModel>(Value));
-                    break;
-                case EN2CLLMProvider::DeepSeek:
-                    Meta = Registry.GetModelMetadata(static_cast<EN2CDeepSeekModel>(Value));
-                    break;
-                default:
-                    break;
-            }
-            if (!Meta || Meta->bIsRetired)
-            {
-                continue;
-            }
-
-            // Entries that share an ID differ only in thinking mode (DeepSeek). A model override is just an ID: it
-            // gets the selected entry's mode when it names the selected model, otherwise the first entry's (the
-            // provider default), so the ID is offered once, with the first entry's mode.
-            if (OfferedIds.Contains(Meta->ModelId))
-            {
-                continue;
-            }
-            OfferedIds.Add(Meta->ModelId);
-
-            TSharedPtr<FJsonObject> ModelObj = MakeShareable(new FJsonObject);
-            ModelObj->SetStringField(TEXT("id"), Meta->ModelId);
-            ModelObj->SetStringField(TEXT("name"), ModelEnum->GetDisplayNameTextByIndex(i).ToString());
-
-            // Deprecated but still served: say when it stops working
-            if (Meta->bIsDeprecated)
-            {
-                ModelObj->SetBoolField(TEXT("deprecated"), true);
-                if (!Meta->ShutdownDate.IsEmpty())
-                {
-                    ModelObj->SetStringField(TEXT("shutdownDate"), Meta->ShutdownDate);
-                }
-            }
-
-            // Add system prompt support for OpenAI models
-            if (Provider == EN2CLLMProvider::OpenAI)
-            {
-                ModelObj->SetBoolField(TEXT("supportsSystemPrompts"), Meta->bSupportsSystemPrompts);
-            }
-
-            // Thinking mode a request for this ID sends ("none" = thinking off)
-            if (!Meta->ReasoningEffort.IsEmpty())
-            {
-                ModelObj->SetStringField(TEXT("reasoningEffort"), Meta->ReasoningEffort);
-            }
-
-            Models.Add(MakeShareable(new FJsonValueObject(ModelObj)));
+            continue;
         }
+        OfferedIds.Add(Meta->ModelId);
+
+        TSharedPtr<FJsonObject> ModelObj = MakeShareable(new FJsonObject);
+        ModelObj->SetStringField(TEXT("id"), Meta->ModelId);
+        ModelObj->SetStringField(TEXT("name"), Meta->DisplayName);
+
+        // Deprecated but still served: say when it stops working
+        if (Meta->bIsDeprecated)
+        {
+            ModelObj->SetBoolField(TEXT("deprecated"), true);
+            if (!Meta->ShutdownDate.IsEmpty())
+            {
+                ModelObj->SetStringField(TEXT("shutdownDate"), Meta->ShutdownDate);
+            }
+        }
+
+        // Add system prompt support for OpenAI models
+        if (Provider == EN2CLLMProvider::OpenAI)
+        {
+            ModelObj->SetBoolField(TEXT("supportsSystemPrompts"), Meta->bSupportsSystemPrompts);
+        }
+
+        // Thinking mode a request for this ID sends ("none" = thinking off)
+        if (!Meta->ReasoningEffort.IsEmpty())
+        {
+            ModelObj->SetStringField(TEXT("reasoningEffort"), Meta->ReasoningEffort);
+        }
+
+        Models.Add(MakeShareable(new FJsonValueObject(ModelObj)));
     }
-    
+
     return Models;
 }
 
 FString FN2CMcpGetAvailableLLMProvidersTool::GetCurrentModel(EN2CLLMProvider Provider) const
 {
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (!Settings)
-    {
-        return FString();
-    }
-    
-    switch (Provider)
-    {
-        case EN2CLLMProvider::OpenAI:
-            return FN2CLLMModelUtils::GetOpenAIModelValue(Settings->OpenAI_Model);
-        case EN2CLLMProvider::Anthropic:
-            return FN2CLLMModelUtils::GetAnthropicModelValue(Settings->AnthropicModel);
-        case EN2CLLMProvider::Gemini:
-            return FN2CLLMModelUtils::GetGeminiModelValue(Settings->Gemini_Model);
-        case EN2CLLMProvider::DeepSeek:
-            return FN2CLLMModelUtils::GetDeepSeekModelValue(Settings->DeepSeekModel);
-        case EN2CLLMProvider::Ollama:
-            return Settings->OllamaModel;
-        case EN2CLLMProvider::LMStudio:
-            return Settings->LMStudioModel;
-        default:
-            return FString();
-    }
+    return Settings ? Settings->GetActiveModelForProvider(Provider) : FString();
 }
 
 bool FN2CMcpGetAvailableLLMProvidersTool::SupportsStructuredOutput(EN2CLLMProvider Provider) const

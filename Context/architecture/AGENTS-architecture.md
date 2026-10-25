@@ -95,13 +95,10 @@ The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is
 
     **LLM Provider Settings:**
     *   `Provider` - Selected LLM provider (`EN2CLLMProvider`)
-    *   `AnthropicModel` - Anthropic model selection
-    *   `OpenAI_Model` - OpenAI model selection
-    *   `Gemini_Model` - Gemini model selection
-    *   `DeepSeekModel` - DeepSeek model selection
+    *   `AnthropicModelId`, `OpenAIModelId`, `GeminiModelId`, `DeepSeekModelId` - model selection by catalog model ID, each with a `<Provider>CustomModelId` sent instead when set; `DeepSeekReasoningEffort` - DeepSeek thinking mode (settings version 4; configs saved with the old enum keys `AnthropicModel`, `OpenAI_Model`, `Gemini_Model`, `DeepSeekModel` are converted once, see `Context/llm-providers/AGENTS-llm-providers.md`)
     *   `OllamaConfig`, `OllamaModel` - Ollama settings
     *   `LMStudioModel`, `LMStudioEndpoint`, `LMStudioPrependedModelCommand` - LM Studio settings
-    *   Model pricing maps per provider
+    *   `ModelPricing` - price overrides keyed by model ID (replaces the four per-provider maps)
 
     **Code Generation Settings:**
     *   `TargetLanguage` - Target programming language (`EN2CCodeLanguage`)

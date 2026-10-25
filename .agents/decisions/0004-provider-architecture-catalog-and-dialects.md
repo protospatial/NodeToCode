@@ -59,7 +59,10 @@ Option 2, provisionally. The sub-questions of card 0115:
    enum keys through `GConfig` and maps each enumerator name to its row with `FN2CModelCatalog::FindByLegacyEnum`
    (every live row names its enumerator in `legacy_enum`; the retired ones are compiled in), writes the new string
    ID keys and records that it ran (card 0129). DeepSeek rows share a model ID, so a DeepSeek selection is the model
-   ID plus its `reasoning_effort`. No CoreRedirects EnumRedirects: no enumerator is removed in 2.x. The four model
+   ID plus its `reasoning_effort`. As built (card 0129): `MigrateModelSelectionsToIds` converts in memory on each
+   load while `SettingsVersion` is below 4, `MigrateLegacy12Settings` saves the result once at editor start, stamps
+   version 4 and removes the old keys; a name with no catalog row keeps its UMETA `Value` ID as the provider's Custom
+   Model ID instead of being reset; price overrides become one `ModelPricing` map keyed by model ID. No CoreRedirects EnumRedirects: no enumerator is removed in 2.x. The four model
    enums stay for the 2.x line as deprecated BlueprintType types, since user Blueprints or Python may reference them,
    and go in the next major version.
 3. **(c) Live `/models` discovery.** Off by default, opt in per provider in Project Settings, never run in commandlets
@@ -69,15 +72,17 @@ Option 2, provisionally. The sub-questions of card 0115:
    (with its `thinking` extension), LM Studio, MiniMax, vLLM, llama.cpp, OpenRouter, Groq and Azure OpenAI. Each
    preset is a provider row (`dialect`, `base_url`, `path`, `auth_style`, `models_path`), not code.
 5. **(e) Provider identity.** A string provider ID (`FName`: `openai`, `anthropic`, `gemini`, `deepseek`, `ollama`,
-   `lmstudio`, later presets) keys the catalog and, after card 0129, the settings. `EN2CLLMProvider` stays only for
-   the built-in services until the dialect adapters replace them, and for the config upgrade; each provider row names
-   its value in `legacy_enum`.
+   `lmstudio`, later presets) keys the catalog and, once providers come from catalog rows, the settings. Card 0129
+   moved model selection to string IDs but kept the `Provider` setting as `EN2CLLMProvider`, with one model ID
+   property per built-in provider: a string provider setting needs the dialect adapters and preset providers first.
+   `EN2CLLMProvider` stays for the built-in services until the dialect adapters replace them, and for the config
+   upgrade; each provider row names its value in `legacy_enum`.
 
 ## Consequences
 
 - Adding, repricing, deprecating or retiring a model is an edit to `Content/Data/N2CModelCatalog.json` with no
-  rebuild, checked by `NodeToCode.LLM.Catalog`, `NodeToCode.LLM.Registry` and the payload goldens. Until card 0129
-  lands, a model users pick in Project Settings still needs an appended enumerator.
+  rebuild, checked by `NodeToCode.LLM.Catalog`, `NodeToCode.LLM.Registry` and the payload goldens. Since card 0129
+  Project Settings offers every live catalog row by model ID, so a new model needs no enumerator.
 - `FN2CModelMetadata` moved to `N2CModelCatalog.h` (same module, same struct path) and gained `ProviderId`,
   `Dialect`, `LegacyEnumName`, `CachedInputCostPer1M`, `StructuredOutputMode`, `ReasoningParam`, `ReasoningLevels`,
   `MaxTokensField`, `bSupportsStreaming` and `bIsDefault`. `FN2CLLMModelRegistry` is an enum-keyed view of the catalog

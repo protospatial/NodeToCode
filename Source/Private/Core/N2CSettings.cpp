@@ -11,6 +11,7 @@
 #include "IDetailsView.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CLLMModelRegistry.h"
+#include "LLM/N2CModelCatalog.h"
 #include "Utils/N2CLogger.h"
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -36,8 +37,7 @@ UN2CSettings::UN2CSettings()
 {
     FN2CLogger::Get().Log(TEXT("N2CSettings constructor called"), EN2CLogSeverity::Info);
 
-    // Note: Pricing defaults are now centralized in FN2CLLMModelRegistry.
-    // Users can still override pricing in config files; the getters fall back to registry.
+    // Prices come from the model catalog; ModelPricing holds the user's overrides by model ID.
 
     // Validate reference source paths on startup
     ValidateReferenceSourcePaths();
@@ -66,8 +66,8 @@ void UN2CSettings::PostInitProperties()
 {
     // Config is loaded by now (LoadConfig runs before PostInitProperties), so saved selections can be checked
     Super::PostInitProperties();
-    MigrateRetiredModelSelections();
     MigrateSavedSettings();
+    MigrateRetiredModelSelections();
     ReportRemovedSignInSelections();
 }
 
@@ -76,55 +76,149 @@ void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
     // The NodeToCode config branch is applied to the class default object by a config reload once the plugin's
     // config is mounted, which is after PostInitProperties; check the saved selections again
     Super::PostReloadConfig(PropertyThatWasLoaded);
-    MigrateRetiredModelSelections();
     MigrateSavedSettings();
+    MigrateRetiredModelSelections();
     ReportRemovedSignInSelections();
 }
 
-namespace
+namespace N2CModelIds
 {
-    /** Moves Selected to Default when the registry marks it retired or does not know it; records the change */
-    template <typename TEnum>
-    void MigrateIfRetired(TEnum& Selected, TEnum Default, const TCHAR* PropertyName, TArray<FString>& OutChanges)
+    /** One cloud provider's model selection: the version 4 properties and the enum key saved before them */
+    struct FSelection
     {
-        const FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
-        const FN2CModelMetadata* Meta = Registry.GetModelMetadata(Selected);
-        if (Meta && !Meta->bIsRetired)
-        {
-            return;
-        }
-        if (!Meta && FN2CModelCatalog::Get().IsFallback())
-        {
-            // The catalog file did not load, so only the defaults are known: keep the selection rather than
-            // overwrite it on the strength of a broken install (the catalog has logged the error)
-            return;
-        }
+        EN2CLLMProvider Provider;
+        const TCHAR* LegacyKey;
+        FString UN2CSettings::* ModelId;
+        FString UN2CSettings::* CustomModelId;
+        const TCHAR* DefaultId;
+        UEnum* (*GetEnum)();
+    };
 
-        const UEnum* Enum = StaticEnum<TEnum>();
-        const FString OldName = Enum ? Enum->GetNameStringByValue(static_cast<int64>(Selected)) : FString();
-        const FString OldId = Meta ? Meta->ModelId : FString(TEXT("unknown"));
-        const FString NewName = Enum ? Enum->GetNameStringByValue(static_cast<int64>(Default)) : FString();
-        OutChanges.Add(FString::Printf(TEXT("%s=%s (%s%s) -> %s (%s)"),
-            PropertyName, *OldName, *OldId,
-            (Meta && !Meta->ShutdownDate.IsEmpty()) ? *FString::Printf(TEXT(", shut down %s"), *Meta->ShutdownDate) : TEXT(", shut down"),
-            *NewName, *Registry.GetModelId(Default)));
-        Selected = Default;
+    template <typename TEnum>
+    UEnum* EnumOf() { return StaticEnum<TEnum>(); }
+
+    const FSelection Selections[] = {
+        { EN2CLLMProvider::OpenAI, TEXT("OpenAI_Model"), &UN2CSettings::OpenAIModelId, &UN2CSettings::OpenAICustomModelId, N2CDefaultModelIds::OpenAI, &EnumOf<EN2COpenAIModel> },
+        { EN2CLLMProvider::Anthropic, TEXT("AnthropicModel"), &UN2CSettings::AnthropicModelId, &UN2CSettings::AnthropicCustomModelId, N2CDefaultModelIds::Anthropic, &EnumOf<EN2CAnthropicModel> },
+        { EN2CLLMProvider::Gemini, TEXT("Gemini_Model"), &UN2CSettings::GeminiModelId, &UN2CSettings::GeminiCustomModelId, N2CDefaultModelIds::Gemini, &EnumOf<EN2CGeminiModel> },
+        { EN2CLLMProvider::DeepSeek, TEXT("DeepSeekModel"), &UN2CSettings::DeepSeekModelId, &UN2CSettings::DeepSeekCustomModelId, N2CDefaultModelIds::DeepSeek, &EnumOf<EN2CDeepSeekModel> },
+    };
+
+    const FSelection* Find(EN2CLLMProvider Provider)
+    {
+        for (const FSelection& Selection : Selections)
+        {
+            if (Selection.Provider == Provider)
+            {
+                return &Selection;
+            }
+        }
+        return nullptr;
+    }
+
+    /** The provider's default model ID: its catalog row marked is_default, else the compiled-in N2CDefaultModelIds */
+    FString DefaultModelId(const FSelection& Selection)
+    {
+        const FN2CModelMetadata* Row = FN2CModelCatalog::Get().FindDefault(FN2CModelCatalog::ProviderIdFor(Selection.Provider));
+        return Row ? Row->ModelId : FString(Selection.DefaultId);
+    }
+
+    /** The thinking mode of DeepSeek's default row (N2CDefaultModelIds::DeepSeekReasoningEffort when it has none) */
+    FString DefaultDeepSeekEffort()
+    {
+        const FN2CModelMetadata* Row = FN2CModelCatalog::Get().FindDefault(FN2CModelCatalog::ProviderIdFor(EN2CLLMProvider::DeepSeek));
+        return Row && !Row->ReasoningEffort.IsEmpty() ? Row->ReasoningEffort : FString(N2CDefaultModelIds::DeepSeekReasoningEffort);
+    }
+
+    /** Index of a saved enumerator name ("GPT_5" or "EN2COpenAIModel::GPT_5") in Enum; INDEX_NONE when it has none */
+    int32 EnumIndex(const UEnum* Enum, const FString& Name)
+    {
+        if (!Enum || Name.IsEmpty())
+        {
+            return INDEX_NONE;
+        }
+        int64 Value = Enum->GetValueByNameString(Name);
+        if (Value == INDEX_NONE)
+        {
+            Value = Enum->GetValueByNameString(FString::Printf(TEXT("%s::%s"), *Enum->GetName(), *Name));
+        }
+        return Value == INDEX_NONE ? INDEX_NONE : Enum->GetIndexByValue(Value);
+    }
+
+    /** The model ID an enumerator's UMETA Value names (N2CLLMModels.h); empty when the enum lacks the name */
+    FString EnumValueId(const UEnum* Enum, const FString& Name)
+    {
+        const int32 Index = EnumIndex(Enum, Name);
+#if WITH_METADATA
+        if (Index != INDEX_NONE)
+        {
+            return Enum->GetMetaData(TEXT("Value"), Index);
+        }
+#endif
+        return FString();
+    }
+
+    /** Thinking mode each DeepSeek enumerator selects, for when the catalog file did not load (its rows say the same) */
+    FString LegacyDeepSeekEffort(const FString& Name)
+    {
+        return Name == TEXT("DeepSeek_V3") ? FString(TEXT("none")) : FString(TEXT("high"));
+    }
+
+    /** True the first time Key is seen in this editor session, so a conversion found again by a later load is not logged again */
+    bool FirstTime(const FString& Key)
+    {
+        static TSet<FString> Seen;
+        bool bAlready = false;
+        Seen.Add(Key, &bAlready);
+        return !bAlready;
     }
 }
 
 int32 UN2CSettings::MigrateRetiredModelSelections()
 {
+    const FN2CModelCatalog& Catalog = FN2CModelCatalog::Get();
     TArray<FString> Changes;
-    MigrateIfRetired(OpenAI_Model, N2CDefaultModels::OpenAI, TEXT("OpenAI_Model"), Changes);
-    MigrateIfRetired(AnthropicModel, N2CDefaultModels::Anthropic, TEXT("AnthropicModel"), Changes);
-    MigrateIfRetired(Gemini_Model, N2CDefaultModels::Gemini, TEXT("Gemini_Model"), Changes);
-    MigrateIfRetired(DeepSeekModel, N2CDefaultModels::DeepSeek, TEXT("DeepSeekModel"), Changes);
+    TArray<FString> Unlisted;
+    for (const N2CModelIds::FSelection& Selection : N2CModelIds::Selections)
+    {
+        FString& Selected = this->*Selection.ModelId;
+        const FString DefaultId = N2CModelIds::DefaultModelId(Selection);
+        if (Selected.TrimStartAndEnd().IsEmpty())
+        {
+            Selected = DefaultId;
+            continue;
+        }
+        const FN2CModelMetadata* Row = Catalog.Find(FN2CModelCatalog::ProviderIdFor(Selection.Provider), Selected);
+        if (!Row)
+        {
+            // Not a model this catalog lists (a newer model, or the catalog file did not load): sent as it is
+            Unlisted.Add(FString::Printf(TEXT("%s=%s"), *GetModelIdPropertyName(Selection.Provider).ToString(), *Selected));
+            continue;
+        }
+        if (!Row->bIsRetired)
+        {
+            continue;
+        }
+        Changes.Add(FString::Printf(TEXT("%s=%s (%s) -> %s"), *GetModelIdPropertyName(Selection.Provider).ToString(), *Selected,
+            Row->ShutdownDate.IsEmpty() ? TEXT("shut down") : *FString::Printf(TEXT("shut down %s"), *Row->ShutdownDate), *DefaultId));
+        Selected = DefaultId;
+        if (Selection.Provider == EN2CLLMProvider::DeepSeek)
+        {
+            DeepSeekReasoningEffort = N2CModelIds::DefaultDeepSeekEffort();
+        }
+    }
 
     if (Changes.Num() > 0)
     {
         FN2CLogger::Get().LogWarning(FString::Printf(
             TEXT("Saved model selection no longer served by its provider, using the current default instead: %s. NodeToCode saves the new selection to the project's config at editor start, so this is reported once; choose another model in Project Settings > Plugins > Node to Code."),
             *FString::Join(Changes, TEXT("; "))), TEXT("N2CSettings"));
+    }
+    if (Unlisted.Num() > 0 && N2CModelIds::FirstTime(TEXT("unlisted|") + FString::Join(Unlisted, TEXT(";"))))
+    {
+        FN2CLogger::Get().Log(FString::Printf(
+            TEXT("Selected model not in the model catalog, sent as it is without the catalog's limits and prices: %s."),
+            *FString::Join(Unlisted, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
     }
     return Changes.Num();
 }
@@ -201,8 +295,9 @@ int32 UN2CSettings::MigrateLegacyLMStudioMaxTokens(const FString& ConfigFilename
     return 1;
 }
 
-int32 UN2CSettings::MigrateSavedSettings()
+int32 UN2CSettings::MigrateSavedSettings(const FString& ConfigFilename)
 {
+    const FString Config = ConfigFilename.IsEmpty() ? GetClass()->GetConfigName() : ConfigFilename;
     TArray<FString> Changes;
     if (SettingsVersion < 1)
     {
@@ -211,7 +306,13 @@ int32 UN2CSettings::MigrateSavedSettings()
     if (SettingsVersion < 2)
     {
         // Max Output Tokens keys are new, so they load as 0 = Auto; only PR #20's LM Studio key carries over
-        MigrateLegacyLMStudioMaxTokens(GetClass()->GetConfigName(), LMStudioMaxOutputTokens, Changes);
+        MigrateLegacyLMStudioMaxTokens(Config, LMStudioMaxOutputTokens, Changes);
+    }
+    int32 ModelIdChanges = 0;
+    if (SettingsVersion < ModelIdSettingsVersion)
+    {
+        // Logs its own lines (once per session per conversion)
+        ModelIdChanges = MigrateModelSelectionsToIds(Config).ChangedProperties.Num();
     }
 
     if (Changes.Num() > 0)
@@ -220,7 +321,7 @@ int32 UN2CSettings::MigrateSavedSettings()
             TEXT("Settings saved before NodeToCode 2.0 updated so the server and model defaults apply: %s. Saving Project Settings > Plugins > Node to Code stores this."),
             *FString::Join(Changes, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
     }
-    return Changes.Num();
+    return Changes.Num() + ModelIdChanges;
 }
 
 namespace N2CLegacy12
@@ -376,26 +477,244 @@ FN2CLegacyMigrationTargets FN2CLegacyMigrationTargets::ForProject()
     return Targets;
 }
 
-TArray<FName> UN2CSettings::DropLegacyPricing(TArray<FString>& OutDropped)
+TArray<FName> UN2CSettings::DropLegacyPricing(FN2CLegacyPricingMaps& Maps, TArray<FString>& OutDropped)
 {
     TArray<FName> Changed;
-    if (N2CLegacy12::DropPrices(OpenAIModelPricing, TEXT("OpenAIModelPricing"), N2CLegacy12::OpenAIPrices, OutDropped))
+    if (N2CLegacy12::DropPrices(Maps.OpenAIModelPricing, TEXT("OpenAIModelPricing"), N2CLegacy12::OpenAIPrices, OutDropped))
     {
-        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelPricing));
+        Changed.Add(GET_MEMBER_NAME_CHECKED(FN2CLegacyPricingMaps, OpenAIModelPricing));
     }
-    if (N2CLegacy12::DropPrices(AnthropicModelPricing, TEXT("AnthropicModelPricing"), N2CLegacy12::AnthropicPrices, OutDropped))
+    if (N2CLegacy12::DropPrices(Maps.AnthropicModelPricing, TEXT("AnthropicModelPricing"), N2CLegacy12::AnthropicPrices, OutDropped))
     {
-        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelPricing));
+        Changed.Add(GET_MEMBER_NAME_CHECKED(FN2CLegacyPricingMaps, AnthropicModelPricing));
     }
-    if (N2CLegacy12::DropPrices(GeminiModelPricing, TEXT("GeminiModelPricing"), N2CLegacy12::GeminiPrices, OutDropped))
+    if (N2CLegacy12::DropPrices(Maps.GeminiModelPricing, TEXT("GeminiModelPricing"), N2CLegacy12::GeminiPrices, OutDropped))
     {
-        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiModelPricing));
+        Changed.Add(GET_MEMBER_NAME_CHECKED(FN2CLegacyPricingMaps, GeminiModelPricing));
     }
-    if (N2CLegacy12::DropPrices(DeepSeekModelPricing, TEXT("DeepSeekModelPricing"), N2CLegacy12::DeepSeekPrices, OutDropped))
+    if (N2CLegacy12::DropPrices(Maps.DeepSeekModelPricing, TEXT("DeepSeekModelPricing"), N2CLegacy12::DeepSeekPrices, OutDropped))
     {
-        Changed.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModelPricing));
+        Changed.Add(GET_MEMBER_NAME_CHECKED(FN2CLegacyPricingMaps, DeepSeekModelPricing));
     }
     return Changed;
+}
+
+void UN2CSettings::ReadLegacyPricingMaps(const FString& ConfigFilename, FN2CLegacyPricingMaps& OutMaps, TArray<FString>& OutKeys, TArray<FString>& OutUnreadable)
+{
+    OutMaps = FN2CLegacyPricingMaps();
+    if (!GConfig || ConfigFilename.IsEmpty())
+    {
+        return;
+    }
+    const FString Section = StaticClass()->GetPathName();
+    for (TFieldIterator<FMapProperty> It(FN2CLegacyPricingMaps::StaticStruct()); It; ++It)
+    {
+        // The struct's members are named after the old settings keys
+        const FMapProperty* Map = *It;
+        FString Saved;
+        if (!GConfig->GetString(*Section, *Map->GetName(), Saved, ConfigFilename))
+        {
+            continue;
+        }
+        OutKeys.Add(Map->GetName());
+        void* Value = Map->ContainerPtrToValuePtr<void>(&OutMaps);
+        FOutputDeviceNull Quiet;
+        if (Map->ImportText_Direct(*Saved, Value, nullptr, PPF_None, &Quiet) == nullptr)
+        {
+            // As LoadConfig: one key the enum lacks fails the whole map
+            Map->ClearValue(Value);
+            OutUnreadable.Add(Map->GetName());
+        }
+    }
+}
+
+namespace N2CModelIds
+{
+    /** Re-keys one enum-keyed price map by model ID into OutPricing */
+    template <typename TEnum, typename TPricing>
+    void ConvertPrices(const TMap<TEnum, TPricing>& Map, EN2CLLMProvider Provider, const TCHAR* Key, bool bDeferred,
+        TMap<FString, FN2CModelPricing>& OutPricing, FN2CModelIdMigrationReport& Report)
+    {
+        const UEnum* Enum = StaticEnum<TEnum>();
+        const FN2CModelCatalog& Catalog = FN2CModelCatalog::Get();
+        for (const TPair<TEnum, TPricing>& Entry : Map)
+        {
+            const FString Name = Enum ? Enum->GetNameStringByValue(static_cast<int64>(Entry.Key)) : FString();
+            const FString Price = FString::Printf(TEXT("%s/%s"), *FString::SanitizeFloat(Entry.Value.InputCost), *FString::SanitizeFloat(Entry.Value.OutputCost));
+            const FN2CModelMetadata* Row = Catalog.FindByLegacyEnum(FN2CModelCatalog::ProviderIdFor(Provider), Name);
+            if (Row && Row->bIsRetired && !bDeferred)
+            {
+                Report.DroppedPrices.Add(FString::Printf(TEXT("%s[%s] %s (retired model)"), Key, *Name, *Price));
+                continue;
+            }
+            const FString Id = Row ? Row->ModelId : EnumValueId(Enum, Name);
+            if (Id.IsEmpty())
+            {
+                continue;
+            }
+            if (OutPricing.Contains(Id))
+            {
+                // DeepSeek_R1 and DeepSeek_V3 both name deepseek-flash, whose price does not depend on thinking
+                Report.DroppedPrices.Add(FString::Printf(TEXT("%s[%s] %s (a second price for %s)"), Key, *Name, *Price, *Id));
+                continue;
+            }
+            OutPricing.Add(Id, FN2CModelPricing(Entry.Value.InputCost, Entry.Value.OutputCost));
+            Report.Prices.Add(FString::Printf(TEXT("%s[%s] -> %s %s"), Key, *Name, *Id, *Price));
+        }
+    }
+}
+
+FN2CModelIdMigrationReport UN2CSettings::MigrateModelSelectionsToIds(const FString& ConfigFilename)
+{
+    FN2CModelIdMigrationReport Report;
+    if (SettingsVersion >= ModelIdSettingsVersion || !GConfig || ConfigFilename.IsEmpty())
+    {
+        return Report;
+    }
+    const FString Section = StaticClass()->GetPathName();
+    auto ReadSaved = [&Section, &ConfigFilename](const FString& Key, FString& OutValue)
+    {
+        return GConfig->GetString(*Section, *Key, OutValue, ConfigFilename);
+    };
+    auto IsSaved = [&ReadSaved](const FName& Key)
+    {
+        FString Unused;
+        return ReadSaved(Key.ToString(), Unused);
+    };
+    const FN2CModelCatalog& Catalog = FN2CModelCatalog::Get();
+    Report.bDeferred = Catalog.IsFallback();
+
+    // Model selections
+    for (const N2CModelIds::FSelection& Selection : N2CModelIds::Selections)
+    {
+        FString Saved;
+        if (!ReadSaved(Selection.LegacyKey, Saved))
+        {
+            continue;
+        }
+        Report.bRan = true;
+        Report.LegacyKeys.Add(Selection.LegacyKey);
+        const FString Name = N2CLegacy12::ShortEnumName(Saved);
+        Report.bFound12xNames |= N2CLegacy12::IsLegacyModelName(Name);
+
+        const FName IdProperty = GetModelIdPropertyName(Selection.Provider);
+        const FName CustomProperty = GetCustomModelIdPropertyName(Selection.Provider);
+        const bool bDeepSeek = Selection.Provider == EN2CLLMProvider::DeepSeek;
+        if (IsSaved(IdProperty) || IsSaved(CustomProperty))
+        {
+            // Already chosen in the version 4 layout (an edit made after the upgrade, or by hand): the old key is stale
+            continue;
+        }
+
+        const UEnum* Enum = Selection.GetEnum();
+        const FN2CModelMetadata* Row = Catalog.FindByLegacyEnum(FN2CModelCatalog::ProviderIdFor(Selection.Provider), Name);
+        const FString ValueId = N2CModelIds::EnumValueId(Enum, Name);
+        const FString DefaultId = N2CModelIds::DefaultModelId(Selection);
+        FString NewId = DefaultId;
+        FString NewCustom;
+        FString NewEffort = N2CModelIds::DefaultDeepSeekEffort();
+        if (Row && !Row->bIsRetired)
+        {
+            NewId = Row->ModelId;
+            NewEffort = Row->ReasoningEffort.IsEmpty() ? NewEffort : Row->ReasoningEffort;
+            Report.Converted.Add(FString::Printf(TEXT("%s=%s -> %s%s"), Selection.LegacyKey, *Name, *NewId,
+                bDeepSeek ? *FString::Printf(TEXT(" (thinking %s)"), *NewEffort) : TEXT("")));
+        }
+        else if (Row)
+        {
+            Report.Retired.Add(FString::Printf(TEXT("%s=%s (%s, %s) -> %s"), Selection.LegacyKey, *Name, *Row->ModelId,
+                Row->ShutdownDate.IsEmpty() ? TEXT("shut down") : *FString::Printf(TEXT("shut down %s"), *Row->ShutdownDate), *NewId));
+        }
+        else if (N2CModelIds::EnumIndex(Enum, Name) == INDEX_NONE)
+        {
+            // A name this build's enum lacks (only 1.2.3's Gemini_2_5_ProExp): the model is gone, so the default
+            Report.Removed.Add(FString::Printf(TEXT("%s=%s -> %s"), Selection.LegacyKey, *Name, *NewId));
+        }
+        else if (Report.bDeferred)
+        {
+            // Catalog file not loaded: keep the selection by its enumerator's model ID, in memory only
+            NewId = ValueId.IsEmpty() ? DefaultId : ValueId;
+            NewEffort = N2CModelIds::LegacyDeepSeekEffort(Name);
+            Report.Converted.Add(FString::Printf(TEXT("%s=%s -> %s"), Selection.LegacyKey, *Name, *NewId));
+        }
+        else
+        {
+            // The catalog does not list it: keep its model ID as a custom ID rather than reset it
+            NewCustom = ValueId;
+            if (bDeepSeek)
+            {
+                NewEffort = N2CModelIds::LegacyDeepSeekEffort(Name);
+            }
+            Report.Custom.Add(FString::Printf(TEXT("%s=%s -> Custom Model ID %s"), Selection.LegacyKey, *Name, *NewCustom));
+            Report.ChangedProperties.Add(CustomProperty);
+        }
+
+        this->*Selection.ModelId = NewId;
+        this->*Selection.CustomModelId = NewCustom;
+        Report.ChangedProperties.Add(IdProperty);
+        if (bDeepSeek)
+        {
+            DeepSeekReasoningEffort = NewEffort;
+            Report.ChangedProperties.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekReasoningEffort));
+        }
+    }
+
+    // Price overrides
+    FN2CLegacyPricingMaps Legacy;
+    TArray<FString> PriceKeys;
+    ReadLegacyPricingMaps(ConfigFilename, Legacy, PriceKeys, Report.UnreadablePriceMaps);
+    if (PriceKeys.Num() > 0)
+    {
+        Report.bRan = true;
+        Report.LegacyKeys.Append(PriceKeys);
+        if (!IsSaved(GET_MEMBER_NAME_CHECKED(UN2CSettings, ModelPricing)))
+        {
+            if (SettingsVersion < 3 && !Report.bDeferred)
+            {
+                // The 1.2.x cleanup of version 3, on the maps it was written for
+                DropLegacyPricing(Legacy, Report.DroppedPrices);
+            }
+            TMap<FString, FN2CModelPricing> Pricing;
+            N2CModelIds::ConvertPrices(Legacy.OpenAIModelPricing, EN2CLLMProvider::OpenAI, TEXT("OpenAIModelPricing"), Report.bDeferred, Pricing, Report);
+            N2CModelIds::ConvertPrices(Legacy.AnthropicModelPricing, EN2CLLMProvider::Anthropic, TEXT("AnthropicModelPricing"), Report.bDeferred, Pricing, Report);
+            N2CModelIds::ConvertPrices(Legacy.GeminiModelPricing, EN2CLLMProvider::Gemini, TEXT("GeminiModelPricing"), Report.bDeferred, Pricing, Report);
+            N2CModelIds::ConvertPrices(Legacy.DeepSeekModelPricing, EN2CLLMProvider::DeepSeek, TEXT("DeepSeekModelPricing"), Report.bDeferred, Pricing, Report);
+            ModelPricing = MoveTemp(Pricing);
+            Report.ChangedProperties.Add(GET_MEMBER_NAME_CHECKED(UN2CSettings, ModelPricing));
+        }
+    }
+
+    // Each finding once per editor session for this config (a reload or the startup save finds it again)
+    const FString LogKey = ConfigFilename + TEXT("|");
+    if (Report.Retired.Num() > 0 && N2CModelIds::FirstTime(LogKey + TEXT("retired|") + FString::Join(Report.Retired, TEXT(";"))))
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Saved model selection no longer served by its provider, using the current default instead: %s. NodeToCode saves the new selection to the project's config at editor start, so this is reported once; choose another model in Project Settings > Plugins > Node to Code."),
+            *FString::Join(Report.Retired, TEXT("; "))), TEXT("N2CSettings"));
+    }
+    if (Report.Custom.Num() > 0 && N2CModelIds::FirstTime(LogKey + TEXT("custom|") + FString::Join(Report.Custom, TEXT(";"))))
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Saved model selection is not in the model catalog, so it is kept as the provider's Custom Model ID and sent as it is, without the catalog's limits and prices: %s. To use a catalog model, choose a Model in Project Settings > Plugins > Node to Code and clear Custom Model ID. This is reported once."),
+            *FString::Join(Report.Custom, TEXT("; "))), TEXT("N2CSettings"));
+    }
+    TArray<FString> Done;
+    if (Report.Converted.Num() > 0)
+    {
+        Done.Add(FString::Printf(TEXT("model selections %s"), *FString::Join(Report.Converted, TEXT(", "))));
+    }
+    if (Report.Prices.Num() > 0)
+    {
+        Done.Add(FString::Printf(TEXT("price overrides %s"), *FString::Join(Report.Prices, TEXT(", "))));
+    }
+    if (Done.Num() > 0 && N2CModelIds::FirstTime(LogKey + TEXT("converted|") + FString::Join(Done, TEXT(";"))))
+    {
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Model settings saved by model enum name now use model IDs: %s.%s"),
+            *FString::Join(Done, TEXT("; ")),
+            Report.bDeferred ? TEXT(" The model catalog did not load, so this is not saved and runs again on the next start.") : TEXT("")),
+            EN2CLogSeverity::Info, TEXT("N2CSettings"));
+    }
+    return Report;
 }
 
 bool UN2CSettings::RemoveLegacyHttpTimeouts(const FString& EngineIniPath, TArray<FString>& OutRemoved)
@@ -464,9 +783,10 @@ bool UN2CSettings::RemoveLegacyHttpTimeouts(const FString& EngineIniPath, TArray
     return bWritten;
 }
 
-bool UN2CSettings::WriteConfigProperties(const TArray<FName>& PropertyNames, const FString& IniPath, bool bReloadGConfig)
+bool UN2CSettings::WriteConfigProperties(const TArray<FName>& PropertyNames, const FString& IniPath, bool bReloadGConfig,
+    const TArray<FString>& KeysToRemove, TArray<FString>* OutRemovedKeys)
 {
-    if (PropertyNames.Num() == 0)
+    if (PropertyNames.Num() == 0 && KeysToRemove.Num() == 0)
     {
         return true;
     }
@@ -499,6 +819,34 @@ bool UN2CSettings::WriteConfigProperties(const TArray<FName>& PropertyNames, con
     {
         bWritten &= Saved.UpdateSinglePropertyInSection(*IniPath, *Name.ToString(), *Sections[0]);
     }
+    if (bWritten && KeysToRemove.Num() > 0)
+    {
+        FString Text;
+        FFileHelper::LoadFileToString(Text, *IniPath);
+        TArray<FString> Lines;
+        Text.ParseIntoArrayLines(Lines);
+        for (const FString& Key : KeysToRemove)
+        {
+            const FString Prefix = Key + TEXT("=");
+            if (!Lines.ContainsByPredicate([&Prefix](const FString& Line) { return Line.TrimStart().StartsWith(Prefix, ESearchCase::CaseSensitive); }))
+            {
+                continue;
+            }
+            // An empty config file has no value for the key, so the update removes its line from the file on disk
+            FConfigFile NoValue;
+            if (NoValue.UpdateSinglePropertyInSection(*IniPath, *Key, *Sections[0]))
+            {
+                if (OutRemovedKeys)
+                {
+                    OutRemovedKeys->Add(Key);
+                }
+            }
+            else
+            {
+                bWritten = false;
+            }
+        }
+    }
     if (bReloadGConfig)
     {
         FConfigContext Context = FConfigContext::ForceReloadIntoGConfig();
@@ -517,13 +865,16 @@ FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacy
         return GConfig && !Targets.ReadConfig.IsEmpty() && GConfig->GetString(*Section, Key, OutValue, Targets.ReadConfig);
     };
 
-    // Both normally ran when the config was loaded; they change nothing and log nothing the second time
+    // These normally ran when the config was loaded; they change nothing and log nothing the second time. The model ID
+    // conversion runs once more for its report: what it converted must be saved
+    MigrateSavedSettings(Targets.ReadConfig);
+    Report.ModelIds = MigrateModelSelectionsToIds(Targets.ReadConfig);
     MigrateRetiredModelSelections();
-    MigrateSavedSettings();
+    const bool bSaveModelIds = Report.ModelIds.bRan && !Report.ModelIds.bDeferred;
 
     // Every start: write back enum values that did not load as saved, so their warnings are not repeated
     TArray<FName> ToSave;
-    bool bLegacyTrace = false;
+    bool bLegacyTrace = Report.ModelIds.bFound12xNames;
     for (TFieldIterator<FProperty> It(GetClass(), EFieldIteratorFlags::ExcludeSuper); It; ++It)
     {
         const FProperty* Property = *It;
@@ -550,8 +901,8 @@ FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacy
         }
         if (!Enum)
         {
-            // Any other value the engine could not import (a pricing map keyed by a model 2.0 does not have loses
-            // the whole map) failed on load and would fail again on every start until rewritten
+            // Any other value the engine could not import failed on load and would fail again on every start until
+            // rewritten
             if (!N2CLegacy12::CanImport(Property, Saved))
             {
                 Report.ResetEnumValues.Add(FString::Printf(TEXT("%s (it names a value 2.0 does not have, so the whole entry was skipped)"), *Property->GetName()));
@@ -569,8 +920,36 @@ FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacy
         {
             Report.ResetEnumValues.Add(FString::Printf(TEXT("%s=%s -> %s"), *Property->GetName(), *SavedName, *CurrentName));
         }
-        bLegacyTrace |= N2CLegacy12::IsLegacyModelName(SavedName);
         ToSave.Add(Property->GetFName());
+    }
+
+    // Every start: a saved model ID MigrateRetiredModelSelections moved off a retired model is written back
+    for (const N2CModelIds::FSelection& Selection : N2CModelIds::Selections)
+    {
+        const FName IdProperty = GetModelIdPropertyName(Selection.Provider);
+        FString Saved;
+        if (ReadSaved(*IdProperty.ToString(), Saved) && Saved.TrimQuotes() != this->*Selection.ModelId)
+        {
+            ToSave.AddUnique(IdProperty);
+            if (Selection.Provider == EN2CLLMProvider::DeepSeek)
+            {
+                ToSave.AddUnique(GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekReasoningEffort));
+            }
+        }
+    }
+
+    // Version 4: the model selections and prices converted from enum names, once (not while the catalog is missing)
+    if (bSaveModelIds)
+    {
+        for (const FName& Changed : Report.ModelIds.ChangedProperties)
+        {
+            ToSave.AddUnique(Changed);
+        }
+        Report.ResetEnumValues.Append(Report.ModelIds.Removed);
+        for (const FString& Map : Report.ModelIds.UnreadablePriceMaps)
+        {
+            Report.ResetEnumValues.Add(FString::Printf(TEXT("%s (it names a value 2.0 does not have, so the whole entry was skipped)"), *Map));
+        }
     }
     if (Report.ResetEnumValues.Num() > 0)
     {
@@ -580,7 +959,7 @@ FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacy
     }
 
     // Once: what NodeToCode 1.2.x left in this project
-    bool bStamp = false;
+    bool bStamp = bSaveModelIds;
     TArray<FString> ThemeKeys;
     if (SettingsVersion < 3)
     {
@@ -599,11 +978,8 @@ FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacy
             bStamp = true;
         }
 
-        for (const FName& Changed : DropLegacyPricing(Report.DroppedPrices))
-        {
-            ToSave.AddUnique(Changed);
-            bStamp = true;
-        }
+        // 1.2.x prices were dropped by the version 4 conversion before re-keying (DropLegacyPricing)
+        Report.DroppedPrices = Report.ModelIds.DroppedPrices;
 
         for (const TCHAR* Key : N2CLegacy12::ThemeKeys)
         {
@@ -642,12 +1018,15 @@ FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacy
     const int32 PreviousVersion = SettingsVersion;
     if (bStamp)
     {
-        SettingsVersion = CurrentSettingsVersion;
+        // While the catalog file is missing the model ID conversion has not been saved, so it must run again
+        SettingsVersion = Report.ModelIds.bDeferred && SettingsVersion < ModelIdSettingsVersion
+            ? ModelIdSettingsVersion - 1 : CurrentSettingsVersion;
         ToSave.AddUnique(GET_MEMBER_NAME_CHECKED(UN2CSettings, SettingsVersion));
     }
-    if (ToSave.Num() > 0)
+    const TArray<FString> KeysToRemove = bSaveModelIds ? Report.ModelIds.LegacyKeys : TArray<FString>();
+    if (ToSave.Num() > 0 || KeysToRemove.Num() > 0)
     {
-        if (WriteConfigProperties(ToSave, Targets.WriteIni, Targets.bReloadGConfigAfterWrite))
+        if (WriteConfigProperties(ToSave, Targets.WriteIni, Targets.bReloadGConfigAfterWrite, KeysToRemove, &Report.RemovedLegacyKeys))
         {
             Report.bStampedVersion = bStamp;
             for (const FName& Name : ToSave)
@@ -671,9 +1050,13 @@ FN2CLegacyMigrationReport UN2CSettings::MigrateLegacy12Settings(const FN2CLegacy
     {
         Done.Add(FString::Printf(TEXT("saved %s to %s"), *FString::Join(Report.PersistedProperties, TEXT(", ")), *Targets.WriteIni));
     }
-    if (Report.DroppedPrices.Num() > 0)
+    if (Report.RemovedLegacyKeys.Num() > 0)
     {
-        Done.Add(FString::Printf(TEXT("dropped pricing entries so the model registry's prices apply: %s"), *FString::Join(Report.DroppedPrices, TEXT(", "))));
+        Done.Add(FString::Printf(TEXT("removed %s from %s (replaced by the model ID settings)"), *FString::Join(Report.RemovedLegacyKeys, TEXT(", ")), *Targets.WriteIni));
+    }
+    if (Report.DroppedPrices.Num() > 0 || (bSaveModelIds && Report.ModelIds.DroppedPrices.Num() > 0))
+    {
+        Done.Add(FString::Printf(TEXT("dropped pricing entries so the model catalog's prices apply: %s"), *FString::Join(Report.ModelIds.DroppedPrices, TEXT(", "))));
     }
     if (Report.RemovedEngineKeys.Num() > 0)
     {
@@ -744,23 +1127,7 @@ FString UN2CSettings::GetActiveApiKey() const
 
 FString UN2CSettings::GetActiveModel() const
 {
-    switch (Provider)
-    {
-        case EN2CLLMProvider::OpenAI:
-            return FN2CLLMModelUtils::GetOpenAIModelValue(OpenAI_Model);
-        case EN2CLLMProvider::Anthropic:
-            return FN2CLLMModelUtils::GetAnthropicModelValue(AnthropicModel);
-        case EN2CLLMProvider::Gemini:
-            return FN2CLLMModelUtils::GetGeminiModelValue(Gemini_Model);
-        case EN2CLLMProvider::DeepSeek:
-            return FN2CLLMModelUtils::GetDeepSeekModelValue(DeepSeekModel);
-        case EN2CLLMProvider::Ollama:
-            return OllamaModel;
-        case EN2CLLMProvider::LMStudio:
-            return LMStudioModel;
-        default:
-            return FString();
-    }
+    return GetActiveModelForProvider(Provider);
 }
 
 void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
@@ -771,8 +1138,10 @@ void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
     LastEditedProperty = PropertyAboutToChange;
 
     // The values being edited are already migrated (MigrateSavedSettings ran on load), so the config saved after
-    // this edit carries the current layout version and the migrations do not run on it again
-    SettingsVersion = CurrentSettingsVersion;
+    // this edit carries the current layout version and the migrations do not run on it again. While the model catalog
+    // is missing the model ID conversion has not been saved, so the version stays below it.
+    SettingsVersion = FN2CModelCatalog::Get().IsFallback() && SettingsVersion < ModelIdSettingsVersion
+        ? FMath::Max(SettingsVersion, ModelIdSettingsVersion - 1) : CurrentSettingsVersion;
 }
 
 bool UN2CSettings::IsColorProperty(const FProperty* Property) const
@@ -801,9 +1170,7 @@ void UN2CSettings::CopyToClipboard(const FString& Text)
 
 void UN2CSettings::InitializePricing()
 {
-    // Pricing defaults are now centralized in FN2CLLMModelRegistry.
-    // This method is kept for backward compatibility but does nothing.
-    // Users can override pricing in config files; getters fall back to the registry.
+    // Prices come from the model catalog; ModelPricing holds the user's overrides by model ID. Kept, does nothing.
 }
 
 void UN2CSettings::ValidateReferenceSourcePaths()
@@ -884,10 +1251,16 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 
         // Notify token estimation service when provider or model changes
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) ||
-            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_Model) ||
-            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModel) ||
-            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_Model) ||
-            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModel) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAICustomModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicCustomModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiCustomModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekCustomModelId) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekReasoningEffort) ||
+            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, ModelPricing) ||
             PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaModel) ||
             PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel))
         {
@@ -1010,34 +1383,212 @@ FString UN2CSettings::GetActiveModelForProvider(EN2CLLMProvider InProvider) cons
 {
     switch (InProvider)
     {
-        case EN2CLLMProvider::OpenAI:
-            return FN2CLLMModelUtils::GetOpenAIModelValue(OpenAI_Model);
-        case EN2CLLMProvider::Anthropic:
-            return FN2CLLMModelUtils::GetAnthropicModelValue(AnthropicModel);
-        case EN2CLLMProvider::Gemini:
-            return FN2CLLMModelUtils::GetGeminiModelValue(Gemini_Model);
-        case EN2CLLMProvider::DeepSeek:
-            return FN2CLLMModelUtils::GetDeepSeekModelValue(DeepSeekModel);
         case EN2CLLMProvider::Ollama:
             return OllamaModel;
         case EN2CLLMProvider::LMStudio:
             return LMStudioModel;
         default:
-            return FString();
+            break;
     }
+    const N2CModelIds::FSelection* Selection = N2CModelIds::Find(InProvider);
+    if (!Selection)
+    {
+        return FString();
+    }
+    const FString Custom = (this->*Selection->CustomModelId).TrimStartAndEnd();
+    if (!Custom.IsEmpty())
+    {
+        return Custom;
+    }
+    const FString Selected = (this->*Selection->ModelId).TrimStartAndEnd();
+    return Selected.IsEmpty() ? N2CModelIds::DefaultModelId(*Selection) : Selected;
+}
+
+const FN2CModelMetadata* UN2CSettings::GetActiveModelMetadataForProvider(EN2CLLMProvider InProvider) const
+{
+    if (!N2CModelIds::Find(InProvider))
+    {
+        return nullptr;
+    }
+    return FN2CModelCatalog::Get().Find(FN2CModelCatalog::ProviderIdFor(InProvider), GetActiveModelForProvider(InProvider),
+        GetActiveReasoningEffortForProvider(InProvider));
+}
+
+FN2CModelPricing UN2CSettings::GetActivePricingForProvider(EN2CLLMProvider InProvider) const
+{
+    if (!N2CModelIds::Find(InProvider))
+    {
+        return FN2CModelPricing(); // Ollama and LM Studio run locally
+    }
+    if (const FN2CModelPricing* Override = ModelPricing.Find(GetActiveModelForProvider(InProvider)))
+    {
+        return *Override;
+    }
+    if (const FN2CModelMetadata* Row = GetActiveModelMetadataForProvider(InProvider))
+    {
+        return FN2CModelPricing(Row->InputCostPer1M, Row->OutputCostPer1M);
+    }
+    return FN2CModelPricing();
+}
+
+float UN2CSettings::GetCurrentInputCost() const
+{
+    return GetActivePricingForProvider(Provider).InputCost;
+}
+
+float UN2CSettings::GetCurrentOutputCost() const
+{
+    return GetActivePricingForProvider(Provider).OutputCost;
+}
+
+void UN2CSettings::SelectModel(const FN2CModelMetadata& Row)
+{
+    const N2CModelIds::FSelection* Selection = N2CModelIds::Find(Row.Provider);
+    if (!Selection)
+    {
+        return;
+    }
+    this->*Selection->ModelId = Row.ModelId;
+    (this->*Selection->CustomModelId).Reset();
+    if (Row.Provider == EN2CLLMProvider::DeepSeek && !Row.ReasoningEffort.IsEmpty())
+    {
+        DeepSeekReasoningEffort = Row.ReasoningEffort;
+    }
+}
+
+FName UN2CSettings::GetModelIdPropertyName(EN2CLLMProvider InProvider)
+{
+    switch (InProvider)
+    {
+        case EN2CLLMProvider::OpenAI: return GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId);
+        case EN2CLLMProvider::Anthropic: return GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelId);
+        case EN2CLLMProvider::Gemini: return GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiModelId);
+        case EN2CLLMProvider::DeepSeek: return GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModelId);
+        default: return NAME_None;
+    }
+}
+
+FName UN2CSettings::GetCustomModelIdPropertyName(EN2CLLMProvider InProvider)
+{
+    switch (InProvider)
+    {
+        case EN2CLLMProvider::OpenAI: return GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAICustomModelId);
+        case EN2CLLMProvider::Anthropic: return GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicCustomModelId);
+        case EN2CLLMProvider::Gemini: return GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiCustomModelId);
+        case EN2CLLMProvider::DeepSeek: return GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekCustomModelId);
+        default: return NAME_None;
+    }
+}
+
+namespace N2CModelIds
+{
+    /** A provider's live catalog model IDs in catalog order (an ID shared by DeepSeek thinking modes once), plus Current when it is not one */
+    TArray<FString> ModelOptions(EN2CLLMProvider Provider, const FString& Current)
+    {
+        TArray<FString> Options;
+        for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(Provider)))
+        {
+            Options.AddUnique(Row->ModelId);
+        }
+        if (!Current.IsEmpty() && !Options.Contains(Current))
+        {
+            Options.Add(Current);
+        }
+        return Options;
+    }
+}
+
+TArray<FString> UN2CSettings::GetAnthropicModelOptions() const
+{
+    return N2CModelIds::ModelOptions(EN2CLLMProvider::Anthropic, AnthropicModelId);
+}
+
+TArray<FString> UN2CSettings::GetOpenAIModelOptions() const
+{
+    return N2CModelIds::ModelOptions(EN2CLLMProvider::OpenAI, OpenAIModelId);
+}
+
+TArray<FString> UN2CSettings::GetGeminiModelOptions() const
+{
+    return N2CModelIds::ModelOptions(EN2CLLMProvider::Gemini, GeminiModelId);
+}
+
+TArray<FString> UN2CSettings::GetDeepSeekModelOptions() const
+{
+    return N2CModelIds::ModelOptions(EN2CLLMProvider::DeepSeek, DeepSeekModelId);
+}
+
+TArray<FString> UN2CSettings::GetDeepSeekReasoningEffortOptions() const
+{
+    TArray<FString> Options;
+    const FName ProviderId = FN2CModelCatalog::ProviderIdFor(EN2CLLMProvider::DeepSeek);
+    for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(ProviderId))
+    {
+        if (Row->ModelId == DeepSeekModelId)
+        {
+            for (const FString& Level : Row->ReasoningLevels)
+            {
+                Options.AddUnique(Level);
+            }
+            if (!Row->ReasoningEffort.IsEmpty())
+            {
+                Options.AddUnique(Row->ReasoningEffort);
+            }
+        }
+    }
+    if (Options.Num() == 0)
+    {
+        Options = { TEXT("none"), TEXT("low"), TEXT("high"), TEXT("max") };
+    }
+    if (!DeepSeekReasoningEffort.IsEmpty())
+    {
+        Options.AddUnique(DeepSeekReasoningEffort);
+    }
+    return Options;
+}
+
+TArray<FString> UN2CSettings::GetModelPricingKeyOptions() const
+{
+    TArray<FString> Options;
+    for (const FN2CModelMetadata& Row : FN2CModelCatalog::Get().AllModels())
+    {
+        if (!Row.bIsRetired && N2CModelIds::Find(Row.Provider))
+        {
+            Options.AddUnique(Row.ModelId);
+        }
+    }
+    for (const N2CModelIds::FSelection& Selection : N2CModelIds::Selections)
+    {
+        const FString Custom = (this->*Selection.CustomModelId).TrimStartAndEnd();
+        if (!Custom.IsEmpty())
+        {
+            Options.AddUnique(Custom);
+        }
+    }
+    TArray<FString> Keys;
+    ModelPricing.GetKeys(Keys);
+    for (const FString& Key : Keys)
+    {
+        Options.AddUnique(Key);
+    }
+    return Options;
 }
 
 FString UN2CSettings::GetActiveReasoningEffortForProvider(EN2CLLMProvider InProvider) const
 {
     // Only DeepSeek switches thinking per request on a shared model ID
-    if (InProvider == EN2CLLMProvider::DeepSeek)
+    if (InProvider != EN2CLLMProvider::DeepSeek)
     {
-        if (const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadata(DeepSeekModel))
-        {
-            return Meta->ReasoningEffort;
-        }
+        return FString();
     }
-    return FString();
+    const FString Effort = DeepSeekReasoningEffort.TrimStartAndEnd();
+    if (!Effort.IsEmpty())
+    {
+        return Effort;
+    }
+    // Empty: the catalog entry's own mode for the model
+    const FN2CModelMetadata* Row = FN2CModelCatalog::Get().Find(FN2CModelCatalog::ProviderIdFor(InProvider), GetActiveModelForProvider(InProvider));
+    return Row ? Row->ReasoningEffort : FString();
 }
 
 int32 UN2CSettings::GetMaxOutputTokensForProvider(EN2CLLMProvider InProvider) const

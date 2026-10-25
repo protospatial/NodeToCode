@@ -3,62 +3,63 @@
 
 ## Provider Selection & Setup
 
-Choose and configure your [preferred LLM provider](Choosing-an-LLM-Provider) through the [Plugin Settings](Initial-Configuration#accessing-plugin-settings):
+Choose and configure your [preferred LLM provider](Choosing-an-LLM-Provider) through the [Plugin Settings](Initial-Configuration#accessing-plugin-settings).
+Each cloud provider's **Model** is a model ID picked from the list of models Node to Code knows (shown below by
+name, with the ID the list shows). **Custom Model ID**, when set, is sent instead: use it for a model released after
+your Node to Code version. Node to Code then has no context size or price for it; add one under
+[Model Price Overrides](#model-price-overrides) to see costs.
 
 ### [Anthropic](LLM-Provider-Documentation-&-Resources#anthropic-claude)
 - **API Key**: Enter your Claude API key
 - **Model**:
-  - **Claude Sonnet 5.5** (default, recommended)
-  - **Claude Opus 5.5** (most capable)
-  - **Claude Haiku 5.5** (lowest cost)
-  - **Claude Opus 4.5**
-  - **Claude Sonnet 4.5 (retires 2026-11-30)**
+  - **Claude Sonnet 5.5**, `claude-sonnet-5-5` (default, recommended)
+  - **Claude Opus 5.5**, `claude-opus-5-5` (most capable)
+  - **Claude Haiku 5.5**, `claude-haiku-5-5` (lowest cost)
+  - **Claude Opus 4.5**, `claude-opus-4-5-20251101`
+  - **Claude Sonnet 4.5**, `claude-sonnet-4-5-20250929` (retires 2026-11-30)
 - **Max Output Tokens**: 0 (Auto) by default, see [Output Token Budget](#output-token-budget)
 
 ### [OpenAI](LLM-Provider-Documentation-&-Resources#openai)
 - **API Key**: Enter your OpenAI API key
 - **Model**:
-  - **GPT-6.1 Sol** (default, recommended)
-  - **GPT-6 Astra** (most capable)
-  - **GPT-6 Luna** (lowest cost)
-  - **GPT-5.2**, **GPT-5.2 Pro**
-  - **GPT-5**, **GPT-5 Mini**, **GPT-5 Nano** and **o3** (shut down 2026-12-11)
-  - **GPT-4.1**, **GPT-4o** and **GPT-4o Mini** (shut down 2027-01-14)
+  - **GPT-6.1 Sol**, `gpt-6.1-sol` (default, recommended)
+  - **GPT-6 Astra**, `gpt-6-astra` (most capable)
+  - **GPT-6 Luna**, `gpt-6-luna` (lowest cost)
+  - `gpt-5.2`, `gpt-5.2-pro`
+  - `gpt-5`, `gpt-5-mini`, `gpt-5-nano` and `o3` (shut down 2026-12-11)
+  - `gpt-4.1`, `gpt-4o-2024-08-06` and `gpt-4o-mini-2024-07-18` (shut down 2027-01-14)
 - **Max Output Tokens**: 0 (Auto) by default, see [Output Token Budget](#output-token-budget)
 
 ### [Google's Gemini](LLM-Provider-Documentation-&-Resources#gemini)
 - **API Key**: Enter your Gemini API key
 - **Model**:
-  - **Gemini 3.8 Flash** (default, recommended)
-  - **Gemini 4 Argon** (most capable)
-  - **Gemini 3.5 Flash-Lite** (lowest cost)
-  - **Gemini 3 Flash Preview**
+  - **Gemini 3.8 Flash**, `gemini-3.8-flash` (default, recommended)
+  - **Gemini 4 Argon**, `gemini-4-argon` (most capable)
+  - **Gemini 3.5 Flash-Lite**, `gemini-3.5-flash-lite` (lowest cost)
+  - **Gemini 3 Flash Preview**, `gemini-3-flash-preview`
 - **Max Output Tokens**: 0 (Auto) by default, see [Output Token Budget](#output-token-budget)
 
-A model whose name ends in a date still works until that date, then the provider turns it off. Switch to one of
-the recommended models before then.
+A model with a date still works until that date, then the provider turns it off. Switch to one of the
+recommended models before then.
 
 ### Retired models
 
 Models the provider has shut down are no longer offered in the **Model** list. If your project had one selected
-(for example Claude 3.7 Sonnet, o4-mini or Gemini 2.5 Flash Preview), Node to Code uses that provider's default
-model instead when the editor starts and writes a warning to the Output Log. Your project's config file is not
-changed until you choose a **Model** in **Project Settings → Plugins → Node to Code**, so the warning repeats on
-each start until you do.
+(for example Claude 3.7 Sonnet, o4-mini or Gemini 2.5 Flash Preview), Node to Code selects that provider's default
+model when the editor starts, saves it to the project's config and writes one warning to the Output Log. A
+**Custom Model ID** is never changed.
 
 ### [DeepSeek](LLM-Provider-Documentation-&-Resources#deepseek)
 - **API Key**: Enter your DeepSeek API key
-- **Model**:
-  - **DeepSeek Flash, thinking (high effort)** (default, recommended): `deepseek-flash` with thinking on
-  - **DeepSeek Flash, no thinking (JSON output)**: `deepseek-flash` with thinking off and JSON output, faster and cheaper
-  - **DeepSeek V4 Pro, thinking (high effort)** (most capable): `deepseek-v4-pro` with thinking on
+- **Model**: `deepseek-flash` (default, recommended) or `deepseek-v4-pro` (most capable)
+- **Thinking**: `high` (default) thinks at high effort; `none` turns thinking off and asks for JSON output, faster
+  and cheaper; `low` and `max` are the other efforts DeepSeek offers
 - **Max Output Tokens**: 0 (Auto) by default, see [Output Token Budget](#output-token-budget)
 
 DeepSeek discontinued `deepseek-reasoner` and `deepseek-chat` on 2026-07-24. A project that saved DeepSeek R1 or
-DeepSeek V3 keeps working without changes: R1 now sends `deepseek-flash` with thinking on, and V3 sends
-`deepseek-flash` with thinking off. A model chosen per request through the MCP `translate-focused-blueprint` tool uses
-that model's own thinking mode (for `deepseek-flash` that is thinking on, unless it is also the model selected
-here).
+DeepSeek V3 keeps working without changes: R1 becomes `deepseek-flash` with Thinking `high`, and V3 `deepseek-flash`
+with Thinking `none`. A model chosen per request through the MCP `translate-focused-blueprint` tool uses that model's
+own thinking mode (for `deepseek-flash` that is thinking on, unless it is also the model selected here).
 
 ### [Ollama (Local Processing)](LLM-Provider-Documentation-&-Resources#ollama-local)
 - **Endpoint**: Default http://localhost:11434/
@@ -115,6 +116,12 @@ reasoning models the thinking tokens count against it too.
 Before 2.0 every request asked for 16,000 output tokens and there was no setting. Projects saved by an earlier
 version load with Max Output Tokens 0 (Auto). Ollama keeps its own **Max Tokens** setting in the Advanced Settings
 above.
+
+## Model Price Overrides
+
+Cost estimates use each model's list price. To use your own (a discount, or a **Custom Model ID**), add an entry
+under **LLM Services → Pricing → Model Price Overrides**: the key is the model ID, the value the input and output
+price in USD per million tokens. Ollama and LM Studio are always free.
 
 ## Subscription sign-in removed in 2.0
 

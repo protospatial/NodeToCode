@@ -44,20 +44,33 @@ General rules for every row:
 - An enum name 2.0 does not know fails to import (run on 5.8): the engine logs `FEnumProperty: ... invalid value of
   '<name>'` and `LogObj: Error: LoadConfig (...): import failed for <key>`, and the field keeps its 2.0 default. A map
   keyed by such a name fails as a whole and loads empty. No CoreRedirects `EnumRedirects` exist (the plugin has no
-  Config ini besides `FilterPlugin.ini`).
-- `MigrateRetiredModelSelections` (PR #32) runs from `PostInitProperties` and `PostReloadConfig`: a selection the
-  model registry marks retired, or does not know, becomes the provider's `N2CDefaultModels` value and one
-  `LogNodeToCode` warning lists every change ("Saved model selection no longer served by its provider, using the
-  current default instead: ...").
+  Config ini besides `FilterPlugin.ini`). Since settings version 4 (card 0129) no setting holds a model enum, so the
+  model keys can no longer cause these errors.
+- **Model keys (settings version 4, card 0129).** 2.0 stores model selections as catalog model IDs
+  (`AnthropicModelId`, `OpenAIModelId`, `GeminiModelId`, `DeepSeekModelId` plus `DeepSeekReasoningEffort`, each
+  provider with an optional `<Provider>CustomModelId`) and price overrides in one `ModelPricing` map keyed by model ID.
+  `MigrateModelSelectionsToIds` runs from `PostInitProperties` and `PostReloadConfig` while `SettingsVersion` < 4 and
+  converts the 1.2.x keys in memory: a name whose catalog row is live becomes that row's ID; a retired row or a name
+  2.0's enum lacks becomes the provider default, with the warning "Saved model selection no longer served by its
+  provider, using the current default instead: ..." (retired) or the unknown-value warning below (removed); a name
+  the enum has but the catalog does not list keeps its model ID as the Custom Model ID with a warning (cannot happen
+  with the shipped catalog, where every enumerator has a row). Prices are re-keyed by model ID after the 1.2.x
+  cleanup (S11). An Info line lists the conversions ("Model settings saved by model enum name now use model IDs:
+  ..."). If the catalog file did not load, the conversion stays in memory and nothing is written.
+- `MigrateRetiredModelSelections` (PR #32) runs from `PostInitProperties` and `PostReloadConfig`: a selected model ID
+  the catalog marks retired becomes the provider default, with the same warning. An ID the catalog does not list is
+  left alone.
 - `MigrateSavedSettings` runs the layout migrations for `SettingsVersion` < 2 on every load. One Info line lists
   the changes ("Settings saved before NodeToCode 2.0 updated so the server and model defaults apply: ...").
 - `MigrateLegacy12Settings` (card 0418) runs once per editor start from `FNodeToCodeModule::StartupModule` (not in
   commandlets) and writes to `Config/DefaultNodeToCode.ini` with the engine's per-key update, leaving other lines
-  alone. On every start it writes back any enum value that did not load as saved (a retired model moved to the
-  default, a name 2.0 lacks) and any value the engine could not import, so those warnings and engine errors appear
-  on the first start only; names 2.0 lacks get a warning ("Saved settings hold values NodeToCode 2.0 does not have,
-  so these load as the 2.0 value instead: ..."). While `SettingsVersion` < 3 it also does the one-time steps in S6,
-  S11 to S23, F7 and F8, then writes `SettingsVersion=3`. A project with nothing to migrate is not written. One
+  alone. On every start it writes back any enum value that did not load as saved and any model ID moved off a
+  retired model, and any value the engine could not import, so those warnings and engine errors appear on the first
+  start only; names 2.0 lacks get a warning ("Saved settings hold values NodeToCode 2.0 does not have, so these load
+  as the 2.0 value instead: ..."). While `SettingsVersion` < 4 it writes the model ID conversion above and removes the
+  eight enum keys (`AnthropicModel`, `OpenAI_Model`, `Gemini_Model`, `DeepSeekModel`, `OpenAIModelPricing`,
+  `AnthropicModelPricing`, `GeminiModelPricing`, `DeepSeekModelPricing`). While `SettingsVersion` < 3 it also does
+  the one-time steps in S6, S11 to S23, F7 and F8. Then it writes `SettingsVersion=4`. A project with nothing to migrate is not written. One
   Info line lists what it saved, dropped and removed ("Updated settings left by an earlier NodeToCode version:
   ..."). The second start logs none of these lines.
 
@@ -68,19 +81,19 @@ properties with no editor flags (`SettingsVersion`) are not visible to Python; r
 | ID | 1.2.x key, type, default | 2.0 | Handling | Owner | Check |
 |---|---|---|---|---|---|
 | S1 | `Provider` (`EN2CLLMProvider`), Anthropic. Values OpenAI, Anthropic, Gemini, Ollama, DeepSeek, LMStudio (LMStudio not on the tag) | Same key and values | Unchanged | - | Value equals the fixture's |
-| S2 | `AnthropicModel` (`EN2CAnthropicModel`), main Claude4_Sonnet, tag Claude3_7_Sonnet | Same key; every 1.2.x value is retired (see the enum table) | Auto: becomes Claude5_5_Sonnet with the warning above, written to the ini on the first start, so the second start is silent | PR #32, card 0418 done; E09 replaces enums with string IDs | Value is Claude5_5_Sonnet; first start's warning names `AnthropicModel=<old>`; ini reads `AnthropicModel=Claude5_5_Sonnet`; second start has no warning |
-| S3 | `OpenAI_Model` (`EN2COpenAIModel`), main GPT_o4_mini, tag GPT_o3_mini | Same key. Kept: GPT4o_2024_08_06, GPT4o_Mini_2024_07_18, GPT_4_1, GPT_o3. Retired: GPT_o1, GPT_o3_mini, GPT_o1_Preview, GPT_o1_Mini, GPT_o4_mini | Unchanged for kept values (each now deprecated, see the enum table; the ini line is not touched); Auto to GPT_6_1_Sol with the warning for retired ones, written to the ini once (as S2) | PR #32, card 0418; E09 | Kept value equals the fixture's; retired value reads GPT_6_1_Sol plus warning on the first start only |
-| S4 | `Gemini_Model` (`EN2CGeminiModel`), main Gemini_2_5_Flash, tag Gemini_2_5_ProExp | Same key. Gemini_2_5_ProExp no longer exists; every other 1.2.x value is retired | Tag's Gemini_2_5_ProExp: **Reset** to Gemini_3_8_Flash; on the first start the engine's invalid-value warning and `import failed` error plus a NodeToCode warning naming `Gemini_Model=Gemini_2_5_ProExp -> Gemini_3_8_Flash`, and the new value is written (no EnumRedirect: the model is gone, so the default is the right target). Others: Auto to Gemini_3_8_Flash with the retired-model warning, written once | Card 0418 done; E09 | Value is Gemini_3_8_Flash; ini reads `Gemini_Model=Gemini_3_8_Flash`; second start has no engine or NodeToCode message |
-| S5 | `DeepSeekModel` (`EN2CDeepSeekModel`), DeepSeek_R1 (`deepseek-reasoner`); DeepSeek_V3 (`deepseek-chat`) | Same names; both now send `deepseek-flash` (R1 with thinking at high effort, V3 without thinking), since `deepseek-reasoner` and `deepseek-chat` were discontinued 2026-07-24 | Auto, silent (not retired, so no warning) | PR #33 done | Value equals the fixture's; a request's payload model is `deepseek-flash` |
+| S2 | `AnthropicModel` (`EN2CAnthropicModel`), main Claude4_Sonnet, tag Claude3_7_Sonnet | `AnthropicModelId` (string model ID); every 1.2.x value is retired (see the enum table) | Auto: becomes `claude-sonnet-5-5` with the retired-model warning, written as `AnthropicModelId` on the first start and `AnthropicModel` removed, so the second start is silent | PR #32, cards 0418 and 0129 done | `anthropic_model_id` is `claude-sonnet-5-5`; first start's warning names `AnthropicModel=<old>`; ini reads `AnthropicModelId=claude-sonnet-5-5` and has no `AnthropicModel`; second start has no warning |
+| S3 | `OpenAI_Model` (`EN2COpenAIModel`), main GPT_o4_mini, tag GPT_o3_mini | `OpenAIModelId`. Kept: GPT4o_2024_08_06, GPT4o_Mini_2024_07_18, GPT_4_1, GPT_o3 (now `gpt-4o-2024-08-06`, `gpt-4o-mini-2024-07-18`, `gpt-4.1`, `o3`). Retired: GPT_o1, GPT_o3_mini, GPT_o1_Preview, GPT_o1_Mini, GPT_o4_mini | Auto: kept values become their model ID, silently (each now deprecated, see the enum table); retired ones become `gpt-6.1-sol` with the warning. Written once as `OpenAIModelId`, `OpenAI_Model` removed (as S2) | PR #32, cards 0418 and 0129 | Kept value reads its model ID with no warning; retired value reads `gpt-6.1-sol` plus warning on the first start only |
+| S4 | `Gemini_Model` (`EN2CGeminiModel`), main Gemini_2_5_Flash, tag Gemini_2_5_ProExp | `GeminiModelId`. Gemini_2_5_ProExp no longer exists; every other 1.2.x value is retired | Tag's Gemini_2_5_ProExp: **Reset** to `gemini-3.8-flash`; on the first start a NodeToCode warning names `Gemini_Model=Gemini_2_5_ProExp -> gemini-3.8-flash` (no engine error: no setting holds the enum any more) and the new value is written. Others: Auto to `gemini-3.8-flash` with the retired-model warning. Written once as `GeminiModelId`, `Gemini_Model` removed | Cards 0418 and 0129 done | `gemini_model_id` is `gemini-3.8-flash`; ini reads `GeminiModelId=gemini-3.8-flash` and has no `Gemini_Model`; no engine import error; second start has no NodeToCode message |
+| S5 | `DeepSeekModel` (`EN2CDeepSeekModel`), DeepSeek_R1 (`deepseek-reasoner`); DeepSeek_V3 (`deepseek-chat`) | `DeepSeekModelId` plus `DeepSeekReasoningEffort`: both become `deepseek-flash`, R1 with thinking `high`, V3 with `none`, since `deepseek-reasoner` and `deepseek-chat` were discontinued 2026-07-24 | Auto, silent (not retired, so no warning); written once, `DeepSeekModel` removed | PR #33, card 0129 done | `deep_seek_model_id` is `deepseek-flash` and `deep_seek_reasoning_effort` the fixture's mode (V3: `none`); a request's payload model is `deepseek-flash` |
 | S6 | `OllamaConfig` (struct): OllamaEndpoint, bUseSystemPrompts (false), PrependedModelCommand (not on the tag), KeepAlive, Temperature, NumPredict (8192), TopP, TopK, MinP, RepeatPenalty, NumCtx (8192), Mirostat, MirostatEta, MirostatTau, Seed | Same members plus Think, ThinkLevel and one `bOverride_*` per sampler; options are sent only when set | Auto (settings version 1, PR #34): NumCtx 8192 and NumPredict 8192 become 0 (server default); bUseSystemPrompts false becomes true (a deliberate false is lost too); a sampler that differs from the old default gets its override turned on, one at the old default stays off. Endpoint, command and KeepAlive unchanged. The migrated struct is written once with `SettingsVersion=3` (card 0418) | PR #34, card 0418 done | Fixture with NumCtx 8192, Temperature 0.7, bUseSystemPrompts False reads NumCtx 0, bOverride_Temperature True, Temperature 0.7, bUseSystemPrompts True; Info line lists them |
 | S7 | `OllamaModel` (string), main `qwen3:32b`, tag `qwen2.5-coder:32b` | Same | Unchanged (an absent key now gives `qwen3:32b`) | - | Value equals the fixture's |
 | S8 | `LMStudioModel` (string, main only) | Same | Unchanged | - | Value equals the fixture's |
 | S9 | `LMStudioEndpoint` (string, main only) | Same | Unchanged | - | Value equals the fixture's |
 | S10 | `LMStudioPrependedModelCommand` (string, main only) | Same | Unchanged | - | Value equals the fixture's |
-| S11 | `OpenAIModelPricing` (map enum to input/output price), filled with 1.2.x prices by the constructor | Same key; the constructor no longer fills it, prices come from the model registry and a map entry overrides them | Auto, once (card 0418): entries for retired or unknown models and entries still at 1.2.x's built-in price (for example o3 at 15/60) are dropped and the map is written, so registry prices apply; any other price is the user's and stays as an override (a user who typed exactly the 1.2.x price loses it; the two cannot be told apart) | Card 0418 done; E09 (pricing moves to the registry) | Fixture with GPT_4_1 at 1.5/6 and the 1.2.x prices: map keeps only GPT_4_1; `GetCurrentInputCost` for o3 is the registry price; Info line lists each dropped entry |
-| S12 | `AnthropicModelPricing` | As S11 | As S11; every 1.2.x entry is for a retired model, so the map is written empty | Card 0418; E09 | Map empty |
-| S13 | `GeminiModelPricing` | As S11 | As S11. A tag entry keyed Gemini_2_5_ProExp makes the whole map fail to import (run on 5.8: `import failed for GeminiModelPricing`, map empty); card 0418 writes the empty map so the error is not repeated. Every 1.2.x Gemini model is retired or removed, so nothing a user could keep is lost | Card 0418; E09 | Map empty; ini reads `GeminiModelPricing=()`; second start has no `import failed` |
-| S14 | `DeepSeekModelPricing` | As S11 | As S11 (R1 0.55/2.19 and V3 0.14/0.28 were the 1.2.x prices) | Card 0418; E09 | As S11 |
+| S11 | `OpenAIModelPricing` (map enum to input/output price), filled with 1.2.x prices by the constructor | `ModelPricing` (one map, model ID to input/output price, for every provider); prices come from the model catalog and an entry overrides them | Auto, once (cards 0418 and 0129): entries for retired or unknown models and entries still at 1.2.x's built-in price (for example o3 at 15/60) are dropped, the rest are written to `ModelPricing` under their model ID and the old key is removed, so catalog prices apply; any other price is the user's and stays as an override (a user who typed exactly the 1.2.x price loses it; the two cannot be told apart) | Cards 0418 and 0129 done | Fixture with GPT_4_1 at 1.5/6 and the 1.2.x prices: `ModelPricing` holds only `gpt-4.1` of the OpenAI prices; `GetCurrentInputCost` for o3 is the catalog price; Info line lists each dropped entry; no `OpenAIModelPricing` key left |
+| S12 | `AnthropicModelPricing` | As S11 | As S11; every 1.2.x entry is for a retired model, so none reaches `ModelPricing` | Cards 0418 and 0129 | No `claude-*` entry in `ModelPricing` |
+| S13 | `GeminiModelPricing` | As S11 | As S11. A tag entry keyed Gemini_2_5_ProExp makes the whole map unreadable; the upgrade reads it with the engine's import, names it in the unknown-value warning and removes the key (no engine error any more). Every 1.2.x Gemini model is retired or removed, so nothing a user could keep is lost | Cards 0418 and 0129 | No `gemini-*` entry in `ModelPricing`; no `GeminiModelPricing` key left; no engine `import failed` on either start |
+| S14 | `DeepSeekModelPricing` | As S11 | As S11 (R1 0.55/2.19 and V3 0.14/0.28 were the 1.2.x prices). R1 and V3 both become `deepseek-flash`; if both kept a user price, the first (R1) wins and the other is listed as dropped | Cards 0418 and 0129 | Fixture with V3 at 0.2/0.5: `ModelPricing` `deepseek-flash` is 0.2/0.5 |
 | S15 | `TargetLanguage` (`EN2CCodeLanguage`), Cpp | Same key and values | Unchanged | - | Value equals the fixture's |
 | S16 | `TranslationDepth` (int, 0) | Same | Unchanged | - | Value equals the fixture's |
 | S17 | `MinSeverity` (`EN2CLogSeverity`), Info | Same | Unchanged | - | Value equals the fixture's |
@@ -99,7 +112,7 @@ New 2.0 keys in the same section (absent from a 1.2.x ini, so the default applie
 | ID | 2.0 key, default | Handling | Check |
 |---|---|---|---|
 | N1 | `AnthropicMaxOutputTokens`, `OpenAIMaxOutputTokens`, `GeminiMaxOutputTokens`, `DeepSeekMaxOutputTokens`, `LMStudioMaxOutputTokens`, all 0 = Auto (PR #41). 1.2.x had no setting and sent a fixed budget | New | All read 0 |
-| N2 | `SettingsVersion`, 0 when absent; `CurrentSettingsVersion` is 3 | New: 0 makes S6, the LMStudioMaxTokens step and the 1.2.x clean-up (card 0418) run on load. The clean-up writes 3 when it found anything 1.2.x left; any Project Settings edit also writes it next to the edited key | `SettingsVersion=3` after the first start of a 1.2.x fixture; a 2.0 project with nothing to migrate gets no key until an edit |
+| N2 | `SettingsVersion`, 0 when absent; `CurrentSettingsVersion` is 4 | New: 0 makes S6, the LMStudioMaxTokens step, the 1.2.x clean-up (card 0418) and the model ID conversion (card 0129) run on load. The clean-up writes 4 when it found anything 1.2.x left or converted a model key; any Project Settings edit also writes it next to the edited key (3 while the model catalog file is missing, so the conversion still runs once it loads) | `SettingsVersion=4` and none of the eight model enum keys after the first start of a 1.2.x fixture; a 2.0 project with nothing to migrate gets no key until an edit |
 | N3 | `McpServerPort`, 27000 | New | Reads 27000 |
 | N4 | `bEnableDynamicToolDiscovery`, false | New | Reads false |
 | N5 | `bEnablePythonScriptOnlyMode`, false (provisional 0019) | New | Reads false |
@@ -110,7 +123,9 @@ New 2.0 keys in the same section (absent from a 1.2.x ini, so the default applie
 
 Values present in 1.2.x (main or tag). No 1.2.x value of `EN2CLLMProvider`, `EN2CCodeLanguage`,
 `EN2CLogSeverity` or the Blueprint/pin/node enums changed; only the model enums did. 2.0 keeps retired values
-(hidden in the editor) so saved names still import; S2 to S5 say what happens on load.
+(hidden in the editor) so saved names still map to a model ID; S2 to S5 say what happens on load. The "2.0" column
+names enumerators; since card 0129 the setting holds the model ID of the row the enumerator names (the default's
+for "migrated").
 
 | Enum | 1.2.x value | Model ID in 1.2.x | 2.0 |
 |---|---|---|---|
