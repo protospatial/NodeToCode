@@ -29,6 +29,12 @@ def get_focused_blueprint() -> Dict[str, Any]:
     as 'execute', 'then' or 'ReturnValue'). A node's 'title' and a pin's 'label' are
     English display hints, present only when they say more than the identifier.
 
+    Like the MCP get-focused-blueprint tool, the editor's unwired default events (a new
+    Actor Blueprint's greyed-out BeginPlay, ActorBeginOverlap and Tick) are included as
+    nodes with 'disabled': True, so a script can find the default BeginPlay and wire it
+    instead of adding a second one. A new Actor Blueprint's untouched EventGraph gives
+    node_count 3 and those three nodes. Translation leaves them out.
+
     Returns:
         dict: {
             'success': bool,

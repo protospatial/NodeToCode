@@ -54,7 +54,11 @@ FString UN2CPythonBridge::GetFocusedBlueprintJson()
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("GetFocusedBlueprintJson failed: %s"), *GraphError));
 		return MakeErrorJson(GraphError);
 	}
+	return GraphToJson(OwningBlueprint, FocusedGraph);
+}
 
+FString UN2CPythonBridge::GraphToJson(UBlueprint* OwningBlueprint, UEdGraph* FocusedGraph)
+{
 	// Collect nodes
 	TArray<UK2Node*> CollectedNodes;
 	if (!FN2CEditorIntegration::Get().CollectNodesFromGraph(FocusedGraph, CollectedNodes) || CollectedNodes.IsEmpty())
@@ -62,15 +66,20 @@ FString UN2CPythonBridge::GetFocusedBlueprintJson()
 		return MakeErrorJson(TEXT("Failed to collect nodes or no nodes found in the focused graph."));
 	}
 
-	// Translate nodes
-	FN2CBlueprint N2CBlueprintData;
-	if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprint(CollectedNodes, N2CBlueprintData))
+	// Capture the nodes. The default events the editor placed stay visible (marked disabled), as in the MCP
+	// get-focused-blueprint tool, so a script finds and wires a new Blueprint's BeginPlay instead of adding a second
+	// one; a graph of only those events is three disabled nodes, not an error (cards 0137, 0433)
+	FN2CCapture Capture;
+	FN2CCaptureOptions Options;
+	Options.bIncludeGhostNodes = true;
+	FString CaptureError;
+	if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(CollectedNodes, Capture, Options, &CaptureError))
 	{
-		return MakeErrorJson(TEXT("Failed to translate collected nodes into N2CBlueprint structure."));
+		return MakeErrorJson(FString::Printf(TEXT("Could not capture the focused graph: %s"), *CaptureError));
 	}
 
 	// Serialize to JSON
-	FString JsonOutput = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(N2CBlueprintData, false);
+	FString JsonOutput = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(Capture.Blueprint, false);
 	if (JsonOutput.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("Failed to serialize N2CBlueprint to JSON."));

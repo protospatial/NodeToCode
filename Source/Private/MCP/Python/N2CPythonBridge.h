@@ -7,6 +7,8 @@
 #include "N2CPythonBridge.generated.h"
 
 class FJsonObject;
+class UBlueprint;
+class UEdGraph;
 
 /**
  * Bridge class exposing NodeToCode functionality to Python scripts.
@@ -23,7 +25,12 @@ public:
 	/**
 	 * Get the currently focused Blueprint graph as N2CJSON format.
 	 *
-	 * @return JSON string containing the Blueprint data, or error JSON if no Blueprint is focused.
+	 * Like the MCP get-focused-blueprint tool, the editor's automatically placed ghost default events (a new Actor
+	 * Blueprint's greyed-out BeginPlay, ActorBeginOverlap and Tick) are included, marked "disabled": true, so a
+	 * script can find the default BeginPlay and wire it instead of adding a second one. Translation leaves them out.
+	 *
+	 * @return JSON string containing the Blueprint data, or error JSON if no Blueprint is focused or the graph has
+	 *         no nodes at all.
 	 *         Format: {"success": true/false, "data": {"name", "path", "graph_name", "node_count", "n2c_json": {...}}
 	 *         or null, "error": "..." or null}
 	 */
@@ -287,6 +294,13 @@ public:
 	static FString RemoveFunctionReturnPin(const FString& PinName);
 
 private:
+	/**
+	 * GetFocusedBlueprintJson's response for one graph: the graph captured with the editor's ghost default events kept
+	 * (marked "disabled"), as the MCP get-focused-blueprint tool does, so a new Actor Blueprint's EventGraph reads as
+	 * its three default events (card 0433)
+	 */
+	static FString GraphToJson(UBlueprint* OwningBlueprint, UEdGraph* Graph);
+
 	/**
 	 * The one response builder: {"success": bSuccess, "data": Data or null, "error": Error or null}, serialized with a
 	 * condensed TJsonWriter so every name, value and message is escaped as JSON (the nodetocode package json.loads it).

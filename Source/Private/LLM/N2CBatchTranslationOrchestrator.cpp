@@ -511,7 +511,7 @@ FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Gra
 	TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
 	if (Capture.HasError())
 	{
-		FN2CLogger::Get().LogError(TEXT("Failed to generate N2CStruct"), TEXT("BatchOrchestrator"));
+		FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to generate N2CStruct: %s"), *Capture.GetError()), TEXT("BatchOrchestrator"));
 		return FString();
 	}
 
@@ -997,11 +997,12 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 		if (Capture.HasError())
 		{
 			Item.Status = EN2CBatchItemStatus::Failed;
-			Item.ErrorMessage = TEXT("Failed to serialize");
+			// The capture's own reason, such as a graph of only ghost default events (card 0433)
+			Item.ErrorMessage = Capture.GetError();
 			Result.FailureCount++;
 			Result.FailedGraphNames.Add(Item.TagInfo.GraphName);
 			FN2CLogger::Get().LogError(
-				FString::Printf(TEXT("Failed to generate N2CStruct for: %s"), *Item.TagInfo.GraphName),
+				FString::Printf(TEXT("Failed to generate N2CStruct for: %s: %s"), *Item.TagInfo.GraphName, *Capture.GetError()),
 				TEXT("BatchOrchestrator"));
 			continue;
 		}

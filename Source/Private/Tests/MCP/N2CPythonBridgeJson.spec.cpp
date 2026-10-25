@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Python/N2CPythonBridge.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "Core/N2CEditorIntegration.h"
@@ -41,6 +42,8 @@ N2C_TEST_PRIVATE_MEMBER(FBridgeJsonMakeErrorJson, FString (*)(const FString&, co
 	&UN2CPythonBridge::MakeErrorJson)
 N2C_TEST_PRIVATE_MEMBER(FBridgeJsonMakeSuccessJson, FString (*)(const TSharedPtr<FJsonObject>&),
 	&UN2CPythonBridge::MakeSuccessJson)
+N2C_TEST_PRIVATE_MEMBER(FBridgeJsonGraphToJson, FString (*)(UBlueprint*, UEdGraph*),
+	&UN2CPythonBridge::GraphToJson)
 N2C_TEST_PRIVATE_MEMBER(FBridgeJsonStateDirectory, FString UN2CGraphStateManager::*,
 	&UN2CGraphStateManager::StateDirectoryOverride)
 
@@ -123,6 +126,35 @@ BEGIN_DEFINE_SPEC(FN2CPythonBridgeJsonSpec, "NodeToCode.Python.Bridge", N2C_TEST
 			TestTrue(FString::Printf(TEXT("%s has %s"), *What, Field), Data->TryGetStringField(Field, Value));
 			TestEqual(FString::Printf(TEXT("%s %s"), *What, Field), Value, Expected);
 		}
+	}
+
+	/** Data is a GetFocusedBlueprintJson response for a new Actor Blueprint's untouched event graph: three nodes, the
+	 *  default BeginPlay, ActorBeginOverlap and Tick, each marked "disabled" (card 0433) */
+	void ExpectGhostEvents(const FString& What, const TSharedPtr<FJsonObject>& Data)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+		TestEqual(What + TEXT(" node_count"), static_cast<int32>(Data->GetNumberField(TEXT("node_count"))), 3);
+		const TSharedPtr<FJsonObject>* N2CJson = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Graphs = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
+		if (!TestTrue(What + TEXT(" n2c_json has a graph with nodes"), Data->TryGetObjectField(TEXT("n2c_json"), N2CJson)
+			&& (*N2CJson)->TryGetArrayField(TEXT("graphs"), Graphs) && Graphs->Num() > 0
+			&& (*Graphs)[0]->AsObject()->TryGetArrayField(TEXT("nodes"), Nodes)))
+		{
+			return;
+		}
+		TArray<FString> Members;
+		for (const TSharedPtr<FJsonValue>& Node : *Nodes)
+		{
+			bool bDisabled = false;
+			Node->AsObject()->TryGetBoolField(TEXT("disabled"), bDisabled);
+			Members.Add(Node->AsObject()->GetStringField(TEXT("member_name")) + (bDisabled ? TEXT(":disabled") : TEXT("")));
+		}
+		TestEqual(What + TEXT(" ghost events"), FString::Join(Members, TEXT(",")),
+			FString(TEXT("ReceiveBeginPlay:disabled,ReceiveActorBeginOverlap:disabled,ReceiveTick:disabled")));
 	}
 
 	/** Saves the graph state manager makes during a case go to a scratch folder, and the real folder comes back after */
@@ -547,6 +579,70 @@ void FN2CPythonBridgeJsonSpec::Define()
 				ExpectString(TEXT("AddNodeToGraph"), Added, TEXT("graphName"), GraphName);
 				ExpectString(TEXT("AddNodeToGraph"), Added, TEXT("blueprintName"), BlueprintObjectName);
 			}
+		});
+	});
+
+	Describe(TEXT("a new Actor Blueprint whose event graph holds only its ghost default events"), [this]()
+	{
+		// Card 0433: since card 0137 translation leaves out the editor's ghost default events, and the bridge failed
+		// such a graph with "Failed to translate collected nodes into N2CBlueprint structure.". The bridge now keeps
+		// them (marked disabled) as the MCP get-focused-blueprint tool does; translation still refuses the graph, with
+		// the capture's own message
+		It(TEXT("GetFocusedBlueprintJson's graph response lists the three default events, marked disabled"), [this]()
+		{
+			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CBridgeGhostOnly"));
+			if (!TestNotNull(TEXT("event graph"), Blueprint.EventGraph()))
+			{
+				return;
+			}
+			const FString Json = (*GetPrivateMember(N2CTest::FBridgeJsonGraphToJson()))(Blueprint.GetBlueprint(), Blueprint.EventGraph());
+			TestFalse(TEXT("not the old misleading error"), Json.Contains(TEXT("Failed to translate collected nodes")));
+			ExpectGhostEvents(TEXT("GraphToJson"), SuccessData(TEXT("GraphToJson"), Json));
+		});
+
+		It(TEXT("translation's JSON refuses the graph with the capture's ghost-node message"), [this]()
+		{
+			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CBridgeGhostOnly"));
+			if (!TestNotNull(TEXT("event graph"), Blueprint.EventGraph()))
+			{
+				return;
+			}
+			AddExpectedMessagePlain(TEXT("unwired default events"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 0);
+			FString Error;
+			const FString Json = FN2CEditorIntegration::Get().GetGraphAsJson(Blueprint.EventGraph(), false, Error);
+			TestTrue(TEXT("no JSON"), Json.IsEmpty());
+			// The expected message above also swallows a failure line that quotes it, so this check's text never does
+			TestTrue(FString::Printf(TEXT("the error is the capture's ghost-node message (got: %s)"), *Error),
+				Error == TEXT("Nothing to capture: the graph holds only unwired default events (ghost nodes)"));
+		});
+
+		It(TEXT("GetFocusedBlueprintJson on the focused event graph returns the default events"), [this]()
+		{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
+			// As above: a headless Blueprint editor window cannot be closed on 5.6 and 5.7 (the two cases before this
+			// one cover GetFocusedBlueprintJson's work on the graph there; only the focus lookup is not exercised)
+			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
+#else
+			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CBridgeGhostOnly"));
+			UEdGraph* EventGraph = Blueprint.EventGraph();
+			TSharedPtr<IBlueprintEditor> Editor;
+			FString OpenError;
+			if (!TestNotNull(TEXT("event graph"), EventGraph)
+				|| !TestTrue(TEXT("the Blueprint opens: ") + OpenError,
+					FN2CMcpBlueprintUtils::OpenBlueprintEditor(Blueprint.GetBlueprint(), Editor, OpenError) && Editor.IsValid()))
+			{
+				return;
+			}
+			Editor->JumpToHyperlink(EventGraph, false);
+			if (TestTrue(TEXT("the event graph is focused"), FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor() == EventGraph))
+			{
+				const FString Json = UN2CPythonBridge::GetFocusedBlueprintJson();
+				TestFalse(TEXT("not the old misleading error"), Json.Contains(TEXT("Failed to translate collected nodes")));
+				ExpectGhostEvents(TEXT("GetFocusedBlueprintJson"), SuccessData(TEXT("GetFocusedBlueprintJson"), Json));
+			}
+			Blueprint.GetPackage()->SetDirtyFlag(false);
+			GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Blueprint.GetBlueprint());
+#endif
 		});
 	});
 

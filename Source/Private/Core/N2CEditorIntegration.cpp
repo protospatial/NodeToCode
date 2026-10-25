@@ -102,16 +102,17 @@ bool FN2CEditorIntegration::CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Nod
     return bSuccess;
 }
 
-bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint) const
+bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint,
+    FString* OutError) const
 {
     TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
     if (Capture.HasValue())
     {
         OutN2CBlueprint = MoveTemp(Capture.GetValue().Blueprint);
-        
+
         // Validate the result
         bool bIsValid = OutN2CBlueprint.IsValid();
-        
+
         if (bIsValid)
         {
             FN2CLogger::Get().Log(TEXT("TranslateNodesToN2CBlueprint: Translation validation successful"), EN2CLogSeverity::Info);
@@ -119,42 +120,59 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>&
         else
         {
             FN2CLogger::Get().LogError(TEXT("TranslateNodesToN2CBlueprint: Translation validation failed"));
+            if (OutError)
+            {
+                *OutError = TEXT("The captured Blueprint did not validate.");
+            }
         }
-        
+
         return bIsValid;
     }
-    
-    FN2CLogger::Get().LogError(TEXT("TranslateNodesToN2CBlueprint: Failed to generate N2C structure"));
+
+    // The capture says why (a graph of only ghost default events, card 0137), so callers can pass it on (card 0433)
+    FN2CLogger::Get().LogError(FString::Printf(TEXT("TranslateNodesToN2CBlueprint: Failed to generate N2C structure: %s"), *Capture.GetError()));
+    if (OutError)
+    {
+        *OutError = Capture.GetError();
+    }
     return false;
 }
 
 bool FN2CEditorIntegration::TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CCapture& OutCapture,
-    const FN2CCaptureOptions& Options) const
+    const FN2CCaptureOptions& Options, FString* OutError) const
 {
     TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes, Options);
     if (Capture.HasValue())
     {
         // The blueprint and its ID maps come from the same capture, which nothing else can change
         OutCapture = Capture.StealValue();
-        
+
         // Validate the result
         bool bIsValid = OutCapture.Blueprint.IsValid();
-        
+
         if (bIsValid)
         {
             FN2CLogger::Get().Log(TEXT("TranslateNodesToN2CBlueprintWithMaps: Translation validation successful"), EN2CLogSeverity::Info);
-            FN2CLogger::Get().Log(FString::Printf(TEXT("TranslateNodesToN2CBlueprintWithMaps: Preserved %d node IDs and %d pin IDs"), 
+            FN2CLogger::Get().Log(FString::Printf(TEXT("TranslateNodesToN2CBlueprintWithMaps: Preserved %d node IDs and %d pin IDs"),
                 OutCapture.NodeGuids.Num(), OutCapture.Pins.Num()), EN2CLogSeverity::Info);
         }
         else
         {
             FN2CLogger::Get().LogError(TEXT("TranslateNodesToN2CBlueprintWithMaps: Translation validation failed"));
+            if (OutError)
+            {
+                *OutError = TEXT("The captured Blueprint did not validate.");
+            }
         }
-        
+
         return bIsValid;
     }
-    
-    FN2CLogger::Get().LogError(TEXT("TranslateNodesToN2CBlueprintWithMaps: Failed to generate N2C structure"));
+
+    FN2CLogger::Get().LogError(FString::Printf(TEXT("TranslateNodesToN2CBlueprintWithMaps: Failed to generate N2C structure: %s"), *Capture.GetError()));
+    if (OutError)
+    {
+        *OutError = Capture.GetError();
+    }
     return false;
 }
 
@@ -172,7 +190,7 @@ FString FN2CEditorIntegration::GetFocusedBlueprintAsJson(bool bPrettyPrint, FStr
         OutErrorMsg = TEXT("No active Blueprint Editor.");
         return FString();
     }
-    
+
     // Get the focused graph
     UEdGraph* FocusedGraph = GetFocusedGraphFromActiveEditor();
     if (!FocusedGraph)
@@ -180,23 +198,30 @@ FString FN2CEditorIntegration::GetFocusedBlueprintAsJson(bool bPrettyPrint, FStr
         OutErrorMsg = TEXT("No focused graph in the active Blueprint Editor.");
         return FString();
     }
-    
+
+    return GetGraphAsJson(FocusedGraph, bPrettyPrint, OutErrorMsg, OutCapture);
+}
+
+FString FN2CEditorIntegration::GetGraphAsJson(UEdGraph* Graph, bool bPrettyPrint, FString& OutErrorMsg, FN2CBlueprint* OutCapture) const
+{
     // Collect nodes from the graph
     TArray<UK2Node*> CollectedNodes;
-    if (!CollectNodesFromGraph(FocusedGraph, CollectedNodes) || CollectedNodes.IsEmpty())
+    if (!CollectNodesFromGraph(Graph, CollectedNodes) || CollectedNodes.IsEmpty())
     {
         OutErrorMsg = TEXT("Failed to collect nodes or no nodes found in the focused graph.");
         return FString();
     }
-    
-    // Translate nodes to N2CBlueprint structure
+
+    // Translate nodes to N2CBlueprint structure. Ghost default events are left out (card 0137); a graph of nothing
+    // else fails with the capture's own message rather than a generic one (card 0433)
     FN2CBlueprint N2CBlueprintData;
-    if (!TranslateNodesToN2CBlueprint(CollectedNodes, N2CBlueprintData))
+    FString CaptureError;
+    if (!TranslateNodesToN2CBlueprint(CollectedNodes, N2CBlueprintData, &CaptureError))
     {
-        OutErrorMsg = TEXT("Failed to translate collected nodes into N2CBlueprint structure.");
+        OutErrorMsg = CaptureError.IsEmpty() ? FString(TEXT("Failed to translate collected nodes into N2CBlueprint structure.")) : CaptureError;
         return FString();
     }
-    
+
     // Serialize to JSON
     FString JsonOutput = SerializeN2CBlueprintToJson(N2CBlueprintData, bPrettyPrint);
     if (JsonOutput.IsEmpty())
@@ -209,7 +234,7 @@ FString FN2CEditorIntegration::GetFocusedBlueprintAsJson(bool bPrettyPrint, FStr
     {
         *OutCapture = MoveTemp(N2CBlueprintData);
     }
-    
+
     OutErrorMsg = TEXT("Success.");
     return JsonOutput;
 }
