@@ -1,0 +1,38 @@
+# Checks every pull request into dev-2.0 against the docs contract (.agents/contracts/docs.md).
+# A change to a surface's code (.agents/docs-parity.json) must change that surface's wiki pages, or say why not
+# with a `Docs: none, <why>` line in the pull request description or a commit message. Critical findings and
+# PARITY_MISSING fail the job; other warnings show in the job summary. Needs no Unreal Engine.
+# The tree checks (summaries, page budget, links) run with --tree once their baseline warnings are fixed
+# (card 0334); until then only the changed files and stale shots are checked. Which warnings block is set by
+# BLOCKING_WARNINGS in .github/scripts/docs_check_pr.py.
+name: Docs check
+
+on:
+  pull_request:
+    branches: [dev-2.0]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # --changed and --stale read history
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Check the docs
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python -I .github/scripts/docs_check_pr.py --base "$BASE_REF"
