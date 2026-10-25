@@ -53,6 +53,46 @@ def get_focused_blueprint() -> Dict[str, Any]:
         return make_error_result(str(e))
 
 
+def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
+    """
+    Read N2C JSON text with NodeToCode's own reader, for example a saved N2C_BP_*.json translation file.
+
+    Version 1.x documents (NodeToCode 1.2.x and earlier 2.0 builds) and 2.x documents are read into the current
+    model and written back as N2C JSON of the current version (2.0.0), so a 1.x file comes back with the same nodes
+    and flows and "version": "2.0.0".
+
+    Args:
+        n2c_json: The N2C JSON text
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'source_version': str,  # The document's own "version"
+                'version': str,         # The version of the model it was read into
+                'valid': bool,          # Whether the model passes NodeToCode's validator
+                'graphs': int,
+                'nodes': int,
+                'data_edges': int,      # Data connections (an output feeding two inputs counts twice)
+                'n2c_json': dict,       # The document written again as current N2C JSON
+            } or None,
+            'error': str or None
+        }
+
+    Example:
+        text = open(path, encoding='utf-8').read()
+        result = read_n2c_json(text)
+        if result['success']:
+            print(result['data']['source_version'], '->', result['data']['version'])
+    """
+    try:
+        result_json = unreal.N2CPythonBridge.read_n2c_json(n2c_json)
+        return _parse_bridge_result(result_json)
+    except Exception as e:
+        log_error(f"read_n2c_json failed: {e}")
+        return make_error_result(str(e))
+
+
 def compile_blueprint(blueprint_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Compile a Blueprint. If no path is provided, compiles the focused Blueprint.

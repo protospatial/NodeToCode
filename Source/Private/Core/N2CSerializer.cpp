@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CSerializer.h"
+#include "Models/N2CJsonContract.h"
 #include "Utils/N2CLogger.h"
 
 namespace
@@ -129,7 +130,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
 
     // Add version
-    JsonObject->SetStringField(TEXT("version"), Blueprint.Version.Value);
+    JsonObject->SetStringField(N2CJsonContract::VersionField, Blueprint.Version.Value);
 
     // Add metadata
     TSharedPtr<FJsonObject> MetadataObject = MakeShared<FJsonObject>();
@@ -206,7 +207,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
     JsonObject->SetArrayField(TEXT("nodes"), NodesArray);
 
     // Add flows
-    JsonObject->SetObjectField(TEXT("flows"), FlowsToJsonObject(Graph.Flows));
+    JsonObject->SetObjectField(N2CJsonContract::FlowsField, FlowsToJsonObject(Graph.Flows));
 
     return JsonObject;
 }
@@ -338,15 +339,29 @@ TSharedPtr<FJsonObject> FN2CSerializer::FlowsToJsonObject(const FN2CFlows& Flows
     {
         ExecutionArray.Add(MakeShared<FJsonValueString>(Flow));
     }
-    JsonObject->SetArrayField(TEXT("execution"), ExecutionArray);
+    JsonObject->SetArrayField(N2CJsonContract::ExecutionField, ExecutionArray);
 
-    // Add data flows object
+    // Data flows: output pin ref -> the input it feeds, or an array of them when it feeds several (so a graph without
+    // fan-out gets the same object as N2C JSON v1)
     TSharedPtr<FJsonObject> DataFlowsObject = MakeShared<FJsonObject>();
-    for (const auto& DataFlow : Flows.Data)
+    for (const TPair<FString, FN2CDataFlowTargets>& DataFlow : Flows.Data)
     {
-        DataFlowsObject->SetStringField(DataFlow.Key, DataFlow.Value);
+        const TArray<FString>& Targets = DataFlow.Value.Targets;
+        if (Targets.Num() == 1)
+        {
+            DataFlowsObject->SetStringField(DataFlow.Key, Targets[0]);
+        }
+        else if (Targets.Num() > 1)
+        {
+            TArray<TSharedPtr<FJsonValue>> TargetValues;
+            for (const FString& Target : Targets)
+            {
+                TargetValues.Add(MakeShared<FJsonValueString>(Target));
+            }
+            DataFlowsObject->SetArrayField(DataFlow.Key, TargetValues);
+        }
     }
-    JsonObject->SetObjectField(TEXT("data"), DataFlowsObject);
+    JsonObject->SetObjectField(N2CJsonContract::DataField, DataFlowsObject);
 
     return JsonObject;
 }
@@ -460,19 +475,30 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
         return false;
     }
 
-    // Parse version
+    // Parse version: 1.x (1.2.x and earlier 2.0 builds) and 2.x are read into the v2 model, which then says
+    // N2CJsonContract::Version; anything else is read as far as its fields are known and keeps its version
     FString Version;
-    if (!JsonObject->TryGetStringField(TEXT("version"), Version))
+    if (!JsonObject->TryGetStringField(N2CJsonContract::VersionField, Version))
     {
         FN2CLogger::Get().LogError(TEXT("Missing version field in JSON"), TEXT("Deserialization"));
         return false;
     }
-    
-    if (Version != TEXT("1.0.0"))
+
+    if (N2CJsonContract::IsReadable(Version))
     {
-        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Unexpected version '%s' - expected '1.0.0'"), *Version));
+        if (N2CJsonContract::ParseMajor(Version) < N2CJsonContract::Major)
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Reading N2C JSON %s into the %s model"), *Version,
+                N2CJsonContract::Version), EN2CLogSeverity::Info, TEXT("Deserialization"));
+        }
+        OutBlueprint.Version.Value = N2CJsonContract::Version;
     }
-    OutBlueprint.Version.Value = Version;
+    else
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Unexpected N2C JSON version '%s' (this reader reads %d.x to %d.x); "
+            "reading the fields it knows"), *Version, N2CJsonContract::OldestReadableMajor, N2CJsonContract::Major));
+        OutBlueprint.Version.Value = Version;
+    }
 
     // Parse metadata
     const TSharedPtr<FJsonObject>* MetadataObject;
@@ -537,6 +563,49 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
             FN2CLogger::Get().LogWarning(TEXT("Skipping invalid graph during deserialization"));
             bHasPartialData = true;
         }
+    }
+
+    // Structs and enums are optional
+    OutBlueprint.Structs.Empty();
+    const TArray<TSharedPtr<FJsonValue>>* StructsArray = nullptr;
+    if (JsonObject->TryGetArrayField(TEXT("structs"), StructsArray))
+    {
+        for (const TSharedPtr<FJsonValue>& StructValue : *StructsArray)
+        {
+            const TSharedPtr<FJsonObject>* StructObject = nullptr;
+            FN2CStruct Struct;
+            if (StructValue.IsValid() && StructValue->TryGetObject(StructObject) && ParseStructFromJson(*StructObject, Struct))
+            {
+                OutBlueprint.Structs.Add(MoveTemp(Struct));
+            }
+            else
+            {
+                bHasPartialData = true;
+            }
+        }
+    }
+
+    OutBlueprint.Enums.Empty();
+    const TArray<TSharedPtr<FJsonValue>>* EnumsArray = nullptr;
+    if (JsonObject->TryGetArrayField(TEXT("enums"), EnumsArray))
+    {
+        for (const TSharedPtr<FJsonValue>& EnumValue : *EnumsArray)
+        {
+            const TSharedPtr<FJsonObject>* EnumObject = nullptr;
+            FN2CEnum Enum;
+            if (EnumValue.IsValid() && EnumValue->TryGetObject(EnumObject) && ParseEnumFromJson(*EnumObject, Enum))
+            {
+                OutBlueprint.Enums.Add(MoveTemp(Enum));
+            }
+            else
+            {
+                bHasPartialData = true;
+            }
+        }
+    }
+    if (bHasPartialData)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("Some graphs, structs or enums in the N2C JSON could not be read"));
     }
 
     // Log deserialization results
@@ -608,7 +677,7 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
 
     // Parse flows
     const TSharedPtr<FJsonObject>* FlowsObject;
-    if (!JsonObject->TryGetObjectField(TEXT("flows"), FlowsObject))
+    if (!JsonObject->TryGetObjectField(N2CJsonContract::FlowsField, FlowsObject))
     {
         FN2CLogger::Get().LogError(TEXT("Missing flows object in JSON"));
         return false;
@@ -724,8 +793,7 @@ bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject,
     // Parse basic properties
     FString ID, Name, TypeString, SubType, DefaultValue;
     if (!JsonObject->TryGetStringField(TEXT("id"), ID) ||
-        !JsonObject->TryGetStringField(TEXT("name"), Name) ||
-        !JsonObject->TryGetStringField(TEXT("type"), TypeString))
+        !JsonObject->TryGetStringField(TEXT("name"), Name))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required pin fields in JSON"));
         return false;
@@ -734,14 +802,21 @@ bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject,
     OutPin.ID = ID;
     OutPin.Name = Name;
 
-    // Convert type string to enum
-    int64 TypeValue = StaticEnum<EN2CPinType>()->GetValueByNameString(TypeString, EGetByNameFlags::None);
-    if (TypeValue == INDEX_NONE)
+    // ToJson leaves "type" out for exec pins, so a pin without one is Exec
+    if (!JsonObject->TryGetStringField(TEXT("type"), TypeString))
     {
-        FN2CLogger::Get().LogError(TEXT("Invalid pin_type in JSON"));
-        return false;
+        OutPin.Type = EN2CPinType::Exec;
     }
-    OutPin.Type = static_cast<EN2CPinType>(TypeValue);
+    else
+    {
+        const int64 TypeValue = StaticEnum<EN2CPinType>()->GetValueByNameString(TypeString, EGetByNameFlags::None);
+        if (TypeValue == INDEX_NONE)
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("Invalid pin type '%s' in JSON"), *TypeString));
+            return false;
+        }
+        OutPin.Type = static_cast<EN2CPinType>(TypeValue);
+    }
 
     // Optional fields
     JsonObject->TryGetStringField(TEXT("sub_type"), OutPin.SubType);
@@ -781,7 +856,7 @@ bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObjec
 
     // Parse execution flows array
     const TArray<TSharedPtr<FJsonValue>>* ExecutionArray;
-    if (!JsonObject->TryGetArrayField(TEXT("execution"), ExecutionArray))
+    if (!JsonObject->TryGetArrayField(N2CJsonContract::ExecutionField, ExecutionArray))
     {
         FN2CLogger::Get().LogError(TEXT("Missing execution array in JSON"));
         return false;
@@ -796,9 +871,9 @@ bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObjec
         }
     }
 
-    // Parse data flows object
+    // Parse data flows object: output pin ref -> one input pin ref (v1 and v2) or an array of them (v2 fan-out)
     const TSharedPtr<FJsonObject>* DataFlowsObject;
-    if (!JsonObject->TryGetObjectField(TEXT("data"), DataFlowsObject))
+    if (!JsonObject->TryGetObjectField(N2CJsonContract::DataField, DataFlowsObject))
     {
         FN2CLogger::Get().LogError(TEXT("Missing data flows object in JSON"));
         return false;
@@ -807,9 +882,29 @@ bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObjec
     OutFlows.Data.Empty();
     for (const auto& DataFlow : (*DataFlowsObject)->Values)
     {
+        if (!DataFlow.Value.IsValid())
+        {
+            continue;
+        }
         if (DataFlow.Value->Type == EJson::String)
         {
-            OutFlows.Data.Add(FString(*DataFlow.Key), DataFlow.Value->AsString());
+            OutFlows.Data.FindOrAdd(FString(*DataFlow.Key)).Targets.AddUnique(DataFlow.Value->AsString());
+        }
+        else if (DataFlow.Value->Type == EJson::Array)
+        {
+            FN2CDataFlowTargets& Targets = OutFlows.Data.FindOrAdd(FString(*DataFlow.Key));
+            for (const TSharedPtr<FJsonValue>& Target : DataFlow.Value->AsArray())
+            {
+                if (Target.IsValid() && Target->Type == EJson::String)
+                {
+                    Targets.Targets.AddUnique(Target->AsString());
+                }
+            }
+        }
+        else
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Skipping data flow %s: its value is not a pin ref or an array of them"),
+                *DataFlow.Key));
         }
     }
 
@@ -955,12 +1050,9 @@ bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject
         
         FN2CEnumValue Value;
         
-        // Parse value properties
+        // Parse value properties: "name" (ToJson writes no numeric "value", and none is needed)
         FString ValueName;
-        double ValueNumber;
-        
-        if (!ValueObject->TryGetStringField(TEXT("name"), ValueName) ||
-            !ValueObject->TryGetNumberField(TEXT("value"), ValueNumber))
+        if (!ValueObject->TryGetStringField(TEXT("name"), ValueName))
         {
             FN2CLogger::Get().LogError(TEXT("Missing required enum value fields in JSON"));
             continue;

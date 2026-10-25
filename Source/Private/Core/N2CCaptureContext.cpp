@@ -57,7 +57,6 @@ void FN2CCaptureContext::BeginGraph(const FString& Name, EN2CGraphType GraphType
     Graph.GraphType = GraphType;
     CurrentGraphIndex = N2CBlueprint.Graphs.Num() - 1;
     GraphGuids.Add(Source ? Source->GraphGuid : FGuid());
-    FlowsRecorded.Reset();
 
     if (Source)
     {
@@ -624,6 +623,52 @@ UEdGraphPin* FN2CCaptureContext::TraceConnectionThroughKnots(UEdGraphPin* StartP
     return nullptr;
 }
 
+TArray<UEdGraphPin*> FN2CCaptureContext::TraceTargetsThroughKnots(UEdGraphPin* OutputPin) const
+{
+    // Depth first in link order: every non-knot pin the output reaches, each once, following every branch of a knot
+    TArray<UEdGraphPin*> Targets;
+    if (!OutputPin)
+    {
+        return Targets;
+    }
+    TSet<const UEdGraphNode*> VisitedKnots;
+    TArray<UEdGraphPin*> Stack;
+    for (int32 Index = OutputPin->LinkedTo.Num() - 1; Index >= 0; --Index)
+    {
+        Stack.Push(OutputPin->LinkedTo[Index]);
+    }
+    while (Stack.Num() > 0)
+    {
+        UEdGraphPin* Linked = Stack.Pop(EAllowShrinking::No);
+        UEdGraphNode* LinkedNode = Linked ? Linked->GetOwningNode() : nullptr;
+        if (!LinkedNode)
+        {
+            continue;
+        }
+        if (!LinkedNode->IsA<UK2Node_Knot>())
+        {
+            Targets.AddUnique(Linked);
+            continue;
+        }
+        bool bAlreadyVisited = false;
+        VisitedKnots.Add(LinkedNode, &bAlreadyVisited);
+        if (bAlreadyVisited)
+        {
+            continue;
+        }
+        // A knot passes its input on to every link of its output
+        UK2Node_Knot* Knot = CastChecked<UK2Node_Knot>(LinkedNode);
+        if (UEdGraphPin* KnotOutput = Knot->GetOutputPin())
+        {
+            for (int32 Index = KnotOutput->LinkedTo.Num() - 1; Index >= 0; --Index)
+            {
+                Stack.Push(KnotOutput->LinkedTo[Index]);
+            }
+        }
+    }
+    return Targets;
+}
+
 bool FN2CCaptureContext::ValidateFlowReferences(FN2CGraph& Graph)
 {
     // Use the blueprint validator to validate the graph
@@ -940,74 +985,41 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
         }
     }
 
-    // Record data flows
+    // Record data flows: each edge once, from its output pin, to every input it reaches (through knots and their
+    // fan-out), so an output feeding several inputs keeps all of them (translation-core-1, PR #7)
     for (UEdGraphPin* Pin : Node->Pins)
     {
-        if (Pin && Pin->PinType.PinCategory != TEXT("exec"))
+        if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
         {
-            for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
-            {
-                // Trace through any knot nodes to find the actual source and target
-                UEdGraphPin* ActualSourcePin = Pin;
-                UEdGraphPin* ActualTargetPin = TraceConnectionThroughKnots(LinkedPin);
-                
-                // A link is recorded from whichever of its ends is processed second (or on a node linked to itself),
-                // so each link is recorded once and in the order it always was (flows.data keeps one edge per key
-                // until card 0135)
-                const UEdGraphNode* LinkedNode = ActualTargetPin ? ActualTargetPin->GetOwningNode() : nullptr;
-                if (ActualSourcePin && ActualTargetPin &&
-                    ActualSourcePin->GetOwningNode() && LinkedNode &&
-                    (LinkedNode == Node || FlowsRecorded.Contains(LinkedNode)))
-                {
-                    // Get node and pin IDs
-                    FString SourceNodeID = NodeIDs.FindRef(ActualSourcePin->GetOwningNode());
-                    FString SourcePinID = PinIDs.FindRef(ActualSourcePin);
-                    FString TargetNodeID = NodeIDs.FindRef(LinkedNode);
-                    FString TargetPinID = PinIDs.FindRef(ActualTargetPin);
+            continue;
+        }
+        const FString SourcePinID = PinIDs.FindRef(Pin);
+        const FString SourceNodeID = NodeIDs.FindRef(Node);
+        if (SourceNodeID.IsEmpty() || SourcePinID.IsEmpty())
+        {
+            continue;
+        }
+        const FString SourceRef = FString::Printf(TEXT("%s.%s"), *SourceNodeID, *SourcePinID);
 
-                    if (!SourceNodeID.IsEmpty() && !SourcePinID.IsEmpty() && 
-                        !TargetNodeID.IsEmpty() && !TargetPinID.IsEmpty())
-                    {
-                        // Add data flow (always store as output->input direction)
-                        FString SourceRef = FString::Printf(TEXT("%s.%s"), *SourceNodeID, *SourcePinID);
-                        FString TargetRef = FString::Printf(TEXT("%s.%s"), *TargetNodeID, *TargetPinID);
-                
-                        // Always store flow from output pin to input pin
-                        if (ActualSourcePin->Direction == EGPD_Output)
-                        {
-                            CurrentGraph().Flows.Data.Add(SourceRef, TargetRef);
-                    
-                            // Log data flow
-                            FString FlowContext = FString::Printf(TEXT("Added data flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),
-                                *SourceNodeID, *SourcePinID, 
-                                *ActualSourcePin->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(), 
-                                *ActualSourcePin->GetDisplayName().ToString(),
-                                *TargetNodeID, *TargetPinID,
-                                *ActualTargetPin->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(),
-                                *ActualTargetPin->GetDisplayName().ToString());
-                            FN2CLogger::Get().Log(FlowContext, EN2CLogSeverity::Debug);
-                        }
-                        else
-                        {
-                            CurrentGraph().Flows.Data.Add(TargetRef, SourceRef);
-                    
-                            // Log data flow
-                            FString FlowContext = FString::Printf(TEXT("Added data flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),
-                                *TargetNodeID, *TargetPinID,
-                                *ActualTargetPin->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(),
-                                *ActualTargetPin->GetDisplayName().ToString(),
-                                *SourceNodeID, *SourcePinID,
-                                *ActualSourcePin->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(),
-                                *ActualSourcePin->GetDisplayName().ToString());
-                            FN2CLogger::Get().Log(FlowContext, EN2CLogSeverity::Debug);
-                        }
-                    }
-                }
+        for (UEdGraphPin* TargetPin : TraceTargetsThroughKnots(Pin))
+        {
+            const UEdGraphNode* TargetNode = TargetPin->GetOwningNode();
+            const FString TargetNodeID = NodeIDs.FindRef(TargetNode);
+            const FString TargetPinID = PinIDs.FindRef(TargetPin);
+            if (TargetNodeID.IsEmpty() || TargetPinID.IsEmpty())
+            {
+                // The input is outside the capture (or hidden): there is no ID to point at
+                continue;
             }
+            const FString TargetRef = FString::Printf(TEXT("%s.%s"), *TargetNodeID, *TargetPinID);
+            CurrentGraph().Flows.Data.FindOrAdd(SourceRef).Targets.AddUnique(TargetRef);
+
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Added data flow: %s (%s.%s) -> %s (%s.%s)"),
+                *SourceRef, *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(), *Pin->GetDisplayName().ToString(),
+                *TargetRef, *TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+                *TargetPin->GetDisplayName().ToString()), EN2CLogSeverity::Debug);
         }
     }
-
-    FlowsRecorded.Add(Node);
 }
 
 FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)

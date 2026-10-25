@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/Validators/N2CBlueprintValidator.h"
+#include "Models/N2CJsonContract.h"
 
 bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, FString& OutError)
 {
@@ -33,10 +34,10 @@ bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, FString& O
 
 bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, FString& OutError)
 {
-    // Check version
-    if (Blueprint.Version.Value.IsEmpty() || Blueprint.Version.Value != TEXT("1.0.0"))
+    // Check version: a version this build reads (1.x and 2.x; FromJson maps 1.x to N2CJsonContract::Version)
+    if (Blueprint.Version.Value.IsEmpty() || !N2CJsonContract::IsReadable(Blueprint.Version.Value))
     {
-        OutError = TEXT("Invalid or missing version");
+        OutError = FString::Printf(TEXT("Invalid or missing version '%s'"), *Blueprint.Version.Value);
         FN2CLogger::Get().LogError(OutError);
         return false;
     }
@@ -221,14 +222,23 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
             return false;
         }
 
-        // Validate target pin format (N#.P#)
-        TArray<FString> TargetParts;
-        DataFlow.Value.ParseIntoArray(TargetParts, TEXT("."));
-        if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]))
+        // Validate every target pin's format (N#.P#)
+        if (DataFlow.Value.Targets.Num() == 0)
         {
-            OutError = FString::Printf(TEXT("Invalid target pin format %s in graph %s"), *DataFlow.Value, *Graph.Name);
+            OutError = FString::Printf(TEXT("Data flow %s has no target in graph %s"), *DataFlow.Key, *Graph.Name);
             FN2CLogger::Get().LogError(OutError);
             return false;
+        }
+        for (const FString& Target : DataFlow.Value.Targets)
+        {
+            TArray<FString> TargetParts;
+            Target.ParseIntoArray(TargetParts, TEXT("."));
+            if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]))
+            {
+                OutError = FString::Printf(TEXT("Invalid target pin format %s in graph %s"), *Target, *Graph.Name);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
         }
     }
 

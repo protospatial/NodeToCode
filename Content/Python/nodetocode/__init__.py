@@ -61,7 +61,8 @@ Return Format:
 Available Functions:
     Blueprint Operations:
     - get_focused_blueprint() - Get info about the focused Blueprint
-    - compile_blueprint(path=None) - Compile a Blueprint
+    - read_n2c_json(text) - Read N2C JSON (1.x or 2.x) into the current version
+- compile_blueprint(path=None) - Compile a Blueprint
     - save_blueprint(path=None) - Save a Blueprint to disk
     - load_blueprint(path) - Load a Blueprint by path
     - open_blueprint(path, focus_graph) - Open Blueprint in editor
@@ -111,7 +112,8 @@ __author__ = "Protospatial"
 # Blueprint operations
 from .blueprint import (
     get_focused_blueprint,
-    compile_blueprint,
+    read_n2c_json,
+compile_blueprint,
     save_blueprint,
     load_blueprint,
 )
@@ -177,6 +179,7 @@ __all__ = [
     '__author__',
     # Blueprint operations
     'get_focused_blueprint',
+    'read_n2c_json',
     'compile_blueprint',
     'save_blueprint',
     'load_blueprint',

@@ -86,6 +86,25 @@ try:
                    'allow_mcp_python_execution': u.get_editor_property('allow_mcp_python_execution')}
 except Exception as e:  # noqa: BLE001
     out['errors'].append('user settings: %s' % e)
+# F2: the saved N2C JSON of earlier translations (1.2.x writes version 1.0.0) read with the plugin's own reader
+# (UN2CPythonBridge::ReadN2CJson, card 0135); read only, so the folder stays byte-identical (F1)
+out['n2c_json'] = []
+translations = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_saved_dir()), 'NodeToCode', 'Translations')
+for base, _, names in os.walk(translations):
+    for name in sorted(names):
+        if not (name.startswith('N2C_BP_') and name.endswith('.json')):
+            continue
+        entry = {'file': os.path.relpath(os.path.join(base, name), translations).replace('\\', '/')}
+        try:
+            with open(os.path.join(base, name), encoding='utf-8-sig') as f:
+                result = json.loads(unreal.N2CPythonBridge.read_n2c_json(f.read()))
+            data = result.get('data') or {}
+            entry.update({'success': result.get('success'), 'error': result.get('error')})
+            entry.update({k: data.get(k) for k in ('source_version', 'version', 'valid', 'graphs', 'nodes', 'data_edges')})
+        except Exception as e:  # noqa: BLE001
+            entry['error'] = str(e)
+        out['n2c_json'].append(entry)
+
 with open(OUT, 'w', encoding='utf-8') as f:
     json.dump(out, f, indent=1, sort_keys=True)
 print('MIGDUMP written %s (%d settings, %d missing, %d errors)' % (OUT, len(out['settings']), len(out['missing']), len(out['errors'])))

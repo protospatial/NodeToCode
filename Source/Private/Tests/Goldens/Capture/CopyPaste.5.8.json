@@ -3,11 +3,6 @@
 	"description": "Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed from Enabled.",
 	"known_defects": [
 		{
-			"finding": "translation-core-1 (PR #7, issue #13)",
-			"card": "0135",
-			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
-		},
-		{
 			"finding": "translation-core-2",
 			"card": "0136",
 			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
@@ -20,7 +15,7 @@
 	],
 	"capture":
 	{
-		"version": "1.0.0",
+		"version": "2.0.0",
 		"metadata":
 		{
 			"name": "BP_N2CGolden_CopyPaste",
@@ -117,7 +112,10 @@
 					],
 					"data":
 					{
-						"N1.P2": "N3.P8"
+						"N1.P2": [
+							"N2.P5",
+							"N3.P8"
+						]
 					}
 				}
 			}

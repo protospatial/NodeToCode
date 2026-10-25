@@ -1,0 +1,232 @@
+{
+	"case": "FanOutActorLocation",
+	"description": "Function ReportLocation(): the entry runs Print String, then SetActorLocation. GetActorLocation's Return Value feeds both To String (Vector), whose result is Print String's In String, and SetActorLocation's New Location.",
+	"known_defects": [
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_FanOutActorLocation",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_FanOutActorLocation"
+		},
+		"graphs": [
+			{
+				"name": "ReportLocation",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "ReportLocation",
+						"member_parent": "BP_N2CGolden_FanOutActorLocation",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "Get Actor Location",
+						"member_parent": "Actor",
+						"member_name": "K2_GetActorLocation",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "Actor"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Return Value",
+								"type": "Struct",
+								"sub_type": "Vector",
+								"default_value": "0, 0, 0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "To String (Vector)",
+						"member_parent": "KismetStringLibrary",
+						"member_name": "Conv_VectorToString",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "In Vec",
+								"type": "Struct",
+								"sub_type": "Vector",
+								"default_value": "0, 0, 0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Return Value",
+								"type": "String",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CallFunction",
+						"name": "Print String",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "PrintString",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P8",
+								"name": "In String",
+								"type": "String",
+								"default_value": "Hello",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "Print to Screen",
+								"type": "Boolean",
+								"default_value": "true"
+							},
+							{
+								"id": "P10",
+								"name": "Print to Log",
+								"type": "Boolean",
+								"default_value": "true"
+							},
+							{
+								"id": "P11",
+								"name": "Text Color",
+								"type": "Struct",
+								"sub_type": "LinearColor",
+								"default_value": "(R=0.000000,G=0.660000,B=1.000000,A=1.000000)"
+							},
+							{
+								"id": "P12",
+								"name": "Duration",
+								"type": "Real",
+								"sub_type": "float",
+								"default_value": "2.000000"
+							},
+							{
+								"id": "P13",
+								"name": "Key",
+								"type": "Name",
+								"default_value": "None",
+								"is_const": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"name": "Set Actor Location",
+						"member_parent": "Actor",
+						"member_name": "K2_SetActorLocation",
+						"input_pins": [
+							{
+								"id": "P14",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P16",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "Actor"
+							},
+							{
+								"id": "P17",
+								"name": "New Location",
+								"type": "Struct",
+								"sub_type": "Vector",
+								"default_value": "0, 0, 0",
+								"connected": true
+							},
+							{
+								"id": "P18",
+								"name": "Sweep",
+								"type": "Boolean",
+								"default_value": "false"
+							},
+							{
+								"id": "P20",
+								"name": "Teleport",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P15",
+								"name": ""
+							},
+							{
+								"id": "P19",
+								"name": "Sweep Hit Result",
+								"type": "Struct",
+								"sub_type": "HitResult"
+							},
+							{
+								"id": "P21",
+								"name": "Return Value",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N4",
+						"N4->N5"
+					],
+					"data":
+					{
+						"N2.P3": [
+							"N3.P4",
+							"N5.P17"
+						],
+						"N3.P5": "N4.P8"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

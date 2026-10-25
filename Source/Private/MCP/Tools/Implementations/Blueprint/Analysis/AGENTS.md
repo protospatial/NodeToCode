@@ -13,6 +13,8 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
   node ID with its `NodeGuid` and every pin ID with `{"node": "<node ID>", "guid": "<PinId>"}`. A pin's `PinId` is only
   unique on its node (a pasted node keeps its pins' IDs), so address a pin by its node GUID and pin GUID together.
   Short IDs are unique across the capture and given in graph order, so an unchanged graph gets the same IDs each time.
+  The document is N2C JSON 2.0.0: `flows.data` maps each output pin ("N1.P2") to the input pin it feeds, or to an
+  array of input pins when it feeds several, and every connected data input appears there once.
 - **Use Case**: Primary tool for extracting Blueprint data for LLM translation
 
 ### list-blueprint-functions

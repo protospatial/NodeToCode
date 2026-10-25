@@ -441,7 +441,16 @@ def check_fixture(fixture, ctx, rows, state):
              else 'no translation folder in this fixture')
     if before_translation and listed:
         rows.add('F1', False, 'the 1.2.x folder is listed in BlueprintGraphState.json')
-    rows.add('F2', None, 'needs a new translation: --live')
+    saved_json = s1['dump'].get('n2c_json') or []
+    if saved_json:
+        # F2: 1.2.x's N2C JSON (1.0.0) still reads, through the plugin's reader, into the 2.0.0 model (card 0135)
+        rows.add('F2', all(e.get('success') and e.get('source_version') == '1.0.0' and e.get('version') == '2.0.0' and
+                           e.get('valid') and (e.get('nodes') or 0) > 0 for e in saved_json),
+                 'saved N2C JSON read by ReadN2CJson: %s' % ['%s %s->%s valid %s, %s graphs, %s nodes, %s data edges%s' % (
+                     e['file'], e.get('source_version'), e.get('version'), e.get('valid'), e.get('graphs'), e.get('nodes'),
+                     e.get('data_edges'), (', error ' + e['error']) if e.get('error') else '') for e in saved_json])
+    else:
+        rows.add('F2', None, 'no saved translation in this fixture; a new translation\'s version: --live')
     legacy = os.path.join(saved, 'Tags', 'BlueprintTags.json')
     if exp['prerelease_tags']:
         st = json.loads(state1.decode('utf-8-sig')) if state1 else {}
@@ -530,7 +539,7 @@ LIVE_MODELS = {'anthropic': ('Anthropic', 'anthropic_model', 'unreal.N2CAnthropi
 
 def check_live(ctx, rows, provider):
     """F2 / S26: one real batch translation (key from the repo's .env, in the editor's environment only) lands in the
-    migrated CustomTranslationOutputDirectory, and its N2C JSON says version 1.0.0"""
+    migrated CustomTranslationOutputDirectory, and its N2C JSON says version 2.0.0 (card 0135)"""
     from editor_session import EditorSession, free_port
     from live_env_translation import SETUP_PY, ASSET_DIR, ASSET_NAME, call_tool, tool_text
     project_dir, uproject, exp = ctx['state']['last']
@@ -578,7 +587,7 @@ def check_live(ctx, rows, provider):
     rows.add('S26', bool(new) and files > 1 and not leaks,
              'live batch translation (%s %s) wrote %s (%d files) under the migrated CustomTranslationOutputDirectory; '
              'no key in those files or the log: %s; steps %s' % (provider, model_enum, new, files, not leaks, steps))
-    rows.add('F2', bool(versions) and set(versions) == {'1.0.0'}, 'new translation\'s N2C JSON version: %s' % versions)
+    rows.add('F2', bool(versions) and set(versions) == {'2.0.0'}, 'new translation\'s N2C JSON version: %s' % versions)
 
 
 def main():

@@ -154,7 +154,7 @@ Values present in 1.2.x (main or tag). No 1.2.x value of `EN2CLLMProvider`, `EN2
 | ID | 1.2.x writes | 2.0 | Handling | Owner | Check |
 |---|---|---|---|---|---|
 | F1 | `Saved/NodeToCode/Translations/<Blueprint>_<YYYY-MM-DD-HH.MM.SS>/` (or the custom directory): `N2C_BP_<folder>.json`, `N2C_BP_Minified_<folder>.json`, `N2C_Translation_<folder>.json`, and per graph `<Graph>/<Graph>.h`, `<Graph>.<ext>`, `<Graph>_Notes.txt` | Same root and layout for new translations; folder and graph names pass through `GetTranslationFileStem` (differs only for names with path characters or over 128 characters) | Unchanged on disk; never moved, rewritten or deleted. 2.0 does not scan the folder: its window lists translations recorded in `BlueprintGraphState.json` (F3), so 1.2.x translations are not listed there. User: open them from disk | - | Fixture folder byte-identical after a 2.0 session; not listed in the 2.0 window |
-| F2 | N2C JSON `"version": "1.0.0"` in the `N2C_BP_*` files | Still `FN2CVersion` "1.0.0" | Unchanged; consumers cannot tell 1.2.x JSON from 2.0 JSON | E10 (N2C JSON v2 bumps the version) | `version` field in a new translation reads 1.0.0 |
+| F2 | N2C JSON `"version": "1.0.0"` in the `N2C_BP_*` files | `FN2CVersion` "2.0.0" (decision 0003, provisional 0117): a `flows.data` value is an array when one output feeds several inputs, otherwise the same JSON as 1.0.0 | Auto: 1.0.0 files stay as they are and still read: `FN2CSerializer::FromJson`, `UN2CPythonBridge::ReadN2CJson` (Python `nodetocode.read_n2c_json`) and the validator read 1.x and 2.x into the 2.0.0 model, through the 2.x line | Card 0135 done | The 1.2.3 fixture's `N2C_BP_*.json` files read with `ReadN2CJson` (source 1.0.0, model 2.0.0, valid); `--live`: a new translation's `version` reads 2.0.0 |
 | F3 | Nothing (no tags or graph state in 1.2.x) | `Saved/NodeToCode/BlueprintGraphState.json` (tags and translation records), with `.tmp`, `.bak` and `.corrupt-<UTC stamp>` beside it | New | PR #48 done | File appears after the first tag or translation |
 | F4 | Nothing | Reads `Saved/NodeToCode/Tags/BlueprintTags.json` (written by 2.0 development builds from 2025-06-21) once when there is no state file and no `.bak`/`.corrupt-*`, then renames it `.migrated` | New for 1.2.x users (nothing to migrate); Auto for pre-release users | PR #48 done | 0079's legacy-tags fixture tests the pre-release path, not a 1.2.3 one |
 | F5 | Batch output: none | `Translations/BatchTranslation_<stamp>/` with `BatchSummary.json`, and `Translations/BatchJson_<stamp>/` | New | - | - |
@@ -223,7 +223,8 @@ Each run makes a scratch copy of the built host, starts a headless 2.0 editor tw
 main fixture as a second project sharing the per-user secrets file), then once more with only an environment key.
 Run on 2026-10-23 at dev-2.0 8c9a3c1: UE 5.6, 5.7 and 5.8 each 79 PASS, 0 FAIL, 4 KNOWN, 10 SKIP; 5.8 ran a
 second time with `--live` (81 PASS: S26 and F2 with a claude-haiku-5-5 batch translation). Results were the same
-on every engine and in both 5.8 runs.
+on every engine and in both 5.8 runs. Card 0135 (N2C JSON 2.0.0, 2026-10-24, UE 5.8): F2 now also reads the 1.2.3
+fixture's two saved `N2C_BP_*.json` files with `ReadN2CJson`; 80 PASS, 4 KNOWN, 9 SKIP, and 82 PASS with `--live`.
 
 | Row | 1.2.3 fixture | 1.2.x-main fixture | Result |
 |---|---|---|---|
@@ -250,7 +251,7 @@ on every engine and in both 5.8 runs.
 | K3 | Environment key used and named, field empty, nothing saved | - | Pass |
 | K4 | Not 1.2.x data | - | Skip |
 | F1 | Translation folder byte-identical after two starts, not listed in graph state | No folder | Pass |
-| F2 | `--live`: new N2C JSON says 1.0.0 | - | Pass |
+| F2 | Both saved `N2C_BP_*.json` (1.0.0) read into the 2.0.0 model, valid, 1 graph, 2 nodes; `--live`: new N2C JSON says 2.0.0 | No saved translation | Pass |
 | F3, F4 | Pre-release tags migrated into `BlueprintGraphState.json`, file renamed `.migrated`, not migrated again | No state file written | Pass |
 | F6 | No `Saved/NodeToCode.log` | Same | Pass |
 | F7 | Both 1.2.x keys removed, rest of DefaultEngine.ini unchanged | User's `HttpConnectionTimeout=120` and `HttpTimeout=180` kept, 3600 removed | Pass |

@@ -12,6 +12,7 @@ NodeToCode includes code contributed by, or adapted from pull requests by:
   its temperature fix also in #30)
 - cryptosebek, pull request #20 (taken in #41 and #71)
 - YakovAU, pull request #3
+- Yury Rakhuba (GitHub: insomni-mimic), pull request #7 (lossless data edges, ported in card 0135)
 
 These contributions are licensed under the Apache License, Version 2.0.
 
