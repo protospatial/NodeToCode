@@ -182,7 +182,9 @@ arguments and the keys of its `data`. Grouped:
 *   `search_blueprint_nodes(term, context_sensitive=True, max_results=20, category="", exclude_vm_functions=True)` -
     Actions to add; each has `menuName` (also in `name` and `displayName`), `category`, `tooltip`, `keywords` and
     `spawnMetadata` (`actionIdentifier`: the stable spawner-signature ID, card 0277; `nodeName`). `category` filters
-    on the menu category, ignoring case and spaces
+    on the menu category, ignoring case and spaces. `context_sensitive` True and False search the same list, the
+    focused graph's (the editor's node menu with Context Sensitive off), and set only `isContextSensitive`; both need
+    a focused graph (card 0434)
 *   `add_node_to_graph(node_name, action_identifier, location_x=0, location_y=0)` - Add a node (pass a result's
     `spawnMetadata.nodeName` and `spawnMetadata.actionIdentifier`; pre-0277 search-text identifiers still work);
     returns `nodeGuid` and `inputPins`/`outputPins` with `pinGuid`, `pinName`

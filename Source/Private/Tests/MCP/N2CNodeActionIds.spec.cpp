@@ -15,6 +15,8 @@
 #include "Core/N2CCapture.h"
 #include "BlueprintActionDatabase.h"
 #include "BlueprintActionMenuBuilder.h"
+#include "BlueprintActionMenuUtils.h"
+#include "BlueprintActionFilter.h"
 #include "BlueprintEditor.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -204,6 +206,79 @@ namespace N2CNodeActionIdsSpec
 		}
 		Links.Sort();
 		return Links;
+	}
+	/** search-blueprint-nodes through MCP for Blueprint's event graph by blueprintPath (no editor needed) */
+	FMcpToolCallResult SearchByPath(UBlueprint* Blueprint, const FString& Term, bool bContextSensitive, int32 MaxResults = 100,
+		const FString& Category = FString())
+	{
+		const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetStringField(TEXT("searchTerm"), Term);
+		if (!Category.IsEmpty())
+		{
+			Args->SetStringField(TEXT("category"), Category);
+		}
+		Args->SetBoolField(TEXT("contextSensitive"), bContextSensitive);
+		Args->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
+		Args->SetNumberField(TEXT("maxResults"), MaxResults);
+		return Call(TEXT("search-blueprint-nodes"), Args);
+	}
+
+	/** The IDs of the spawner-backed actions the engine's own node menu (FBlueprintActionMenuUtils::MakeContextMenu) lists */
+	TSet<FString> EngineMenuIds(UBlueprint* Blueprint, UEdGraph* Graph, bool bContextSensitive)
+	{
+		FBlueprintActionContext Context;
+		Context.Blueprints.Add(Blueprint);
+		Context.Graphs.Add(Graph);
+		// Context Sensitive on with every target the menu offers ticked (its default profile, no pin dragged)
+		const uint32 AllTargets = EContextTargetFlags::TARGET_Blueprint | EContextTargetFlags::TARGET_SubComponents
+			| EContextTargetFlags::TARGET_NodeTarget | EContextTargetFlags::TARGET_PinObject | EContextTargetFlags::TARGET_SiblingPinObjects
+			| EContextTargetFlags::TARGET_BlueprintLibraries | EContextTargetFlags::TARGET_NonImportedTypes;
+		FBlueprintActionMenuBuilder MenuBuilder;
+		FBlueprintActionMenuUtils::MakeContextMenu(Context, bContextSensitive, bContextSensitive ? AllTargets : 0, MenuBuilder);
+		TSet<FString> Ids;
+		for (int32 Index = 0; Index < MenuBuilder.GetNumActions(); ++Index)
+		{
+			const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(Index);
+			if (Action.IsValid() && N2CNodeActions::GetSpawner(*Action))
+			{
+				Ids.Add(N2CNodeActions::GetActionId(Action));
+			}
+		}
+		return Ids;
+	}
+
+	/** The IDs of N2C's action list for the graph (the list search and add use) */
+	TSet<FString> N2CListIds(UBlueprint* Blueprint, UEdGraph* Graph)
+	{
+		FBlueprintActionMenuBuilder MenuBuilder;
+		N2CNodeActions::BuildActionList(MenuBuilder, Blueprint, Graph);
+		TSet<FString> Ids;
+		for (int32 Index = 0; Index < MenuBuilder.GetNumActions(); ++Index)
+		{
+			const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(Index);
+			if (Action.IsValid() && N2CNodeActions::GetSpawner(*Action))
+			{
+				Ids.Add(N2CNodeActions::GetActionId(Action));
+			}
+		}
+		return Ids;
+	}
+
+	/** The spawnMetadata.isContextSensitive of every hit (true when any hit lacks it) */
+	bool AnyMarkedContextSensitive(const TArray<TSharedPtr<FJsonValue>>& Nodes)
+	{
+		for (const TSharedPtr<FJsonValue>& Value : Nodes)
+		{
+			const TSharedPtr<FJsonObject>* Node = nullptr;
+			const TSharedPtr<FJsonObject>* Spawn = nullptr;
+			bool bMarked = true;
+			if (!Value.IsValid() || !Value->TryGetObject(Node) || !(*Node)->TryGetObjectField(TEXT("spawnMetadata"), Spawn)
+				|| !(*Spawn)->TryGetBoolField(TEXT("isContextSensitive"), bMarked) || bMarked)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 }
 
@@ -513,6 +588,179 @@ void FN2CNodeActionIdsSpec::Define()
 			Error.Reset();
 			TestTrue(TEXT("Blueprint alone resolves: ") + Error, FN2CMcpSearchBlueprintNodesTool::GetContextFromPaths(BlueprintOnly, Blueprint, Graph, Error));
 			TestTrue(TEXT("to its event graph"), Graph == Test->EventGraph());
+		});
+	});
+
+	Describe(TEXT("contextSensitive false"), [this]()
+	{
+		// Card 0434: a search with contextSensitive false ran the engine's action filter with an empty context, whose
+		// IsSchemaIncompatible test rejects every action without a Blueprint or a graph, so it found nothing. It now
+		// searches the target graph's list, which is the list the editor's node menu shows with Context Sensitive off
+		It(TEXT("finds results for print string, branch, add and string, with the IDs of the default search, marked not context-sensitive"), [this]()
+		{
+			if (!MakeBlueprint(TEXT("BP_N2CNonContextSearch")))
+			{
+				return;
+			}
+			UBlueprint* Blueprint = Test->GetBlueprint();
+			for (const TCHAR* Term : { TEXT("print string"), TEXT("branch"), TEXT("add"), TEXT("string") })
+			{
+				const FMcpToolCallResult Result = SearchByPath(Blueprint, Term, /*bContextSensitive*/ false, 20);
+				TestFalse(FString::Printf(TEXT("'%s' succeeds: %s"), Term, *N2CTest::ResultText(Result).Left(200)), Result.bIsError);
+				const TSharedPtr<FJsonObject> Json = N2CTest::ParseJsonObject(N2CTest::ResultText(Result));
+				const TArray<TSharedPtr<FJsonValue>> Nodes = NodesOf(Json);
+				TestTrue(FString::Printf(TEXT("'%s' finds results (%d)"), Term, Nodes.Num()), Nodes.Num() > 0);
+				TestFalse(FString::Printf(TEXT("'%s' results are marked isContextSensitive false"), Term), AnyMarkedContextSensitive(Nodes));
+				TestTrue(FString::Printf(TEXT("'%s' result names its target"), Term), Json.IsValid() && Json->HasField(TEXT("target")));
+
+				const FMcpToolCallResult Default = SearchByPath(Blueprint, Term, /*bContextSensitive*/ true, 20);
+				TestEqual(FString::Printf(TEXT("'%s' gives the IDs of the default search"), Term),
+					IdsOf(HitsOf(Nodes)), IdsOf(HitsOf(NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(Default))))));
+			}
+			const TArray<FHit> Print = HitsOf(NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(SearchByPath(Blueprint, TEXT("print string"), false)))));
+			TestNotNull(TEXT("print string finds Print String"), FindHit(Print, { TEXT("KismetSystemLibrary:PrintString") }));
+			const TArray<FHit> Branch = HitsOf(NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(SearchByPath(Blueprint, TEXT("branch"), false)))));
+			TestNotNull(TEXT("branch finds Branch"), FindHit(Branch, { TEXT("K2Node_IfThenElse") }));
+		});
+
+		It(TEXT("lists what the editor's node menu lists with Context Sensitive off, including actions Context Sensitive on hides"), [this]()
+		{
+			if (!MakeBlueprint(TEXT("BP_N2CNonContextParity")))
+			{
+				return;
+			}
+			UBlueprint* Blueprint = Test->GetBlueprint();
+			UEdGraph* Graph = Test->EventGraph();
+			const TSet<FString> Ours = N2CListIds(Blueprint, Graph);
+			const TSet<FString> EngineOff = EngineMenuIds(Blueprint, Graph, /*bContextSensitive*/ false);
+			const TSet<FString> EngineOn = EngineMenuIds(Blueprint, Graph, /*bContextSensitive*/ true);
+			AddInfo(FString::Printf(TEXT("N2C list %d IDs; editor menu: Context Sensitive off %d, on %d"), Ours.Num(), EngineOff.Num(), EngineOn.Num()));
+			const TSet<FString> Missing = EngineOff.Difference(Ours);
+			const TSet<FString> Extra = Ours.Difference(EngineOff);
+			int32 Shown = 0;
+			for (const FString& Id : Missing)
+			{
+				if (Shown++ < 10)
+				{
+					AddInfo(TEXT("menu only: ") + Id);
+				}
+			}
+			Shown = 0;
+			for (const FString& Id : Extra)
+			{
+				if (Shown++ < 10)
+				{
+					AddInfo(TEXT("N2C only: ") + Id);
+				}
+			}
+			TestEqual(TEXT("actions the editor's menu (Context Sensitive off) lists and the search does not"), Missing.Num(), 0);
+			TestEqual(TEXT("actions the search lists and the editor's menu (Context Sensitive off) does not"), Extra.Num(), 0);
+
+			// Context Sensitive on hides member functions of classes this Blueprint has no member of, such as Set Text of a
+			// Text Render component; the search with contextSensitive false finds it, and it adds
+			const TSet<FString> HiddenOn = EngineOff.Difference(EngineOn);
+			TestTrue(FString::Printf(TEXT("Context Sensitive on hides actions (%d)"), HiddenOn.Num()), HiddenOn.Num() > 0);
+			const TArray<FString> HiddenIds = HiddenOn.Array();
+			const FString* SetText = HiddenIds.FindByPredicate([](const FString& Id) { return Id.Contains(TEXT("TextRenderComponent:K2_SetText")); });
+			if (!TestNotNull(TEXT("Context Sensitive on hides Set Text (Text Render)"), SetText))
+			{
+				return;
+			}
+			const TArray<FHit> Hits = HitsOf(NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(SearchByPath(Blueprint, TEXT("set text"), false, 100, TEXT("textrender"))))));
+			const FHit* Hit = FindHit(Hits, { TEXT("TextRenderComponent:K2_SetText") });
+			if (TestNotNull(FString::Printf(TEXT("contextSensitive false finds Set Text (Text Render) (%d results)"), Hits.Num()), Hit))
+			{
+				TestEqual(TEXT("with the menu's ID"), Hit->Id, *SetText);
+				const TSharedPtr<FJsonObject> AddArgs = MakeShared<FJsonObject>();
+				AddArgs->SetStringField(TEXT("nodeName"), Hit->Name);
+				AddArgs->SetStringField(TEXT("actionIdentifier"), Hit->Id);
+				AddArgs->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
+				const FMcpToolCallResult Added = Call(TEXT("add-bp-node-to-active-graph"), AddArgs);
+				TestFalse(TEXT("Set Text adds: ") + N2CTest::ResultText(Added).Left(300), Added.bIsError);
+			}
+		});
+
+		It(TEXT("returns results that each add through add-bp-node-to-active-graph"), [this]()
+		{
+			if (!MakeBlueprint(TEXT("BP_N2CNonContextAdd")))
+			{
+				return;
+			}
+			UBlueprint* Blueprint = Test->GetBlueprint();
+			UEdGraph* Graph = Test->EventGraph();
+			int32 Y = 300;
+			int32 Added = 0;
+			for (const TCHAR* Term : { TEXT("print string"), TEXT("branch"), TEXT("add"), TEXT("string") })
+			{
+				const TArray<FHit> Hits = HitsOf(NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(SearchByPath(Blueprint, Term, false, 20)))));
+				TestTrue(FString::Printf(TEXT("'%s' finds results"), Term), Hits.Num() > 0);
+				for (const FHit& Hit : Hits)
+				{
+					const int32 NodesBefore = Graph->Nodes.Num();
+					const TSharedPtr<FJsonObject> AddArgs = MakeShared<FJsonObject>();
+					AddArgs->SetStringField(TEXT("nodeName"), Hit.Name);
+					AddArgs->SetStringField(TEXT("actionIdentifier"), Hit.Id);
+					AddArgs->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
+					const TSharedPtr<FJsonObject> Location = MakeShared<FJsonObject>();
+					Location->SetNumberField(TEXT("x"), 800);
+					Location->SetNumberField(TEXT("y"), Y);
+					AddArgs->SetObjectField(TEXT("location"), Location);
+					Y += 200;
+					const FMcpToolCallResult Result = Call(TEXT("add-bp-node-to-active-graph"), AddArgs);
+					const bool bAdded = TestFalse(FString::Printf(TEXT("'%s' result %s (%s) adds: %s"), Term, *Hit.Name, *Hit.Id.Left(160),
+						*N2CTest::ResultText(Result).Left(300)), Result.bIsError);
+					const TSharedPtr<FJsonObject> AddedJson = N2CTest::ParseJsonObject(N2CTest::ResultText(Result));
+					FString Guid;
+					TestTrue(FString::Printf(TEXT("'%s' result %s is in the graph"), Term, *Hit.Name),
+						AddedJson.IsValid() && AddedJson->TryGetStringField(TEXT("nodeGuid"), Guid) && NodeByGuid(Graph, Guid) != nullptr);
+					TestTrue(FString::Printf(TEXT("'%s' result %s: one node more"), Term, *Hit.Name), Graph->Nodes.Num() == NodesBefore + 1);
+					Added += bAdded ? 1 : 0;
+				}
+			}
+			AddInfo(FString::Printf(TEXT("%d results added"), Added));
+		});
+
+		It(TEXT("leaves nodes, links, timelines, components, the undo buffer and the dirty flag unchanged"), [this]()
+		{
+			if (!MakeBlueprint(TEXT("BP_N2CNonContextReadOnly")))
+			{
+				return;
+			}
+			UBlueprint* Blueprint = Test->GetBlueprint();
+			UEdGraph* Graph = Test->EventGraph();
+			const TArray<UEdGraphNode*> NodesBefore = Graph->Nodes;
+			const TArray<FString> LinksBefore = CollectLinks(Graph);
+			const int32 TimelinesBefore = Blueprint->Timelines.Num();
+			const int32 ComponentsBefore = Blueprint->ComponentTemplates.Num();
+			const int32 QueueBefore = GEditor->Trans->GetQueueLength();
+			for (const TCHAR* Term : { TEXT("begin play"), TEXT("timeline"), TEXT("add static mesh component"), TEXT("print string") })
+			{
+				const FMcpToolCallResult Result = SearchByPath(Blueprint, Term, /*bContextSensitive*/ false);
+				TestFalse(FString::Printf(TEXT("'%s' succeeds"), Term), Result.bIsError);
+				TestTrue(FString::Printf(TEXT("'%s' finds results"), Term), NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(Result))).Num() > 0);
+				TestTrue(FString::Printf(TEXT("'%s': same nodes"), Term), Graph->Nodes == NodesBefore);
+				TestTrue(FString::Printf(TEXT("'%s': links unchanged"), Term), CollectLinks(Graph) == LinksBefore);
+				TestEqual(FString::Printf(TEXT("'%s': Timelines unchanged"), Term), Blueprint->Timelines.Num(), TimelinesBefore);
+				TestEqual(FString::Printf(TEXT("'%s': ComponentTemplates unchanged"), Term), Blueprint->ComponentTemplates.Num(), ComponentsBefore);
+				TestEqual(FString::Printf(TEXT("'%s': undo buffer unchanged"), Term), GEditor->Trans->GetQueueLength(), QueueBefore);
+				TestFalse(FString::Printf(TEXT("'%s': package not dirty"), Term), Test->GetPackage()->IsDirty());
+			}
+		});
+
+		It(TEXT("never answers an empty success when it has no graph to search for"), [this]()
+		{
+			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+			Args->SetStringField(TEXT("searchTerm"), TEXT("print string"));
+			Args->SetBoolField(TEXT("contextSensitive"), false);
+			const FMcpToolCallResult Result = Call(TEXT("search-blueprint-nodes"), Args);
+			const int32 Found = NodesOf(N2CTest::ParseJsonObject(N2CTest::ResultText(Result))).Num();
+			// With a focused graph (another test may leave one) it searches that graph; without one it is an error
+			TestTrue(FString::Printf(TEXT("an error or results, not an empty list: %s"), *N2CTest::ResultText(Result).Left(200)),
+				Result.bIsError || Found > 0);
+			if (Result.bIsError)
+			{
+				TestTrue(TEXT("the error says there is no graph"), N2CTest::ResultText(Result).Contains(TEXT("No graph to search for")));
+			}
 		});
 	});
 

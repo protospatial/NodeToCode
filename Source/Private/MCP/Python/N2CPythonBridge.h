@@ -179,7 +179,8 @@ public:
 	 * Search for Blueprint nodes/actions matching a search term.
 	 *
 	 * @param SearchTerm The text query to search for
-	 * @param bContextSensitive If true, performs context-sensitive search
+	 * @param bContextSensitive Kept for compatibility: true and false search the focused graph's action list (the
+	 *        editor's node menu with Context Sensitive off) and only set isContextSensitive. Needs a focused graph
 	 * @param MaxResults Maximum number of results to return (1-100)
 	 * @param CategoryFilter Optional category filter (e.g., "flowcontrol", "operators", "struct")
 	 * @param bExcludeVMFunctions If true (default), excludes low-level VM math functions

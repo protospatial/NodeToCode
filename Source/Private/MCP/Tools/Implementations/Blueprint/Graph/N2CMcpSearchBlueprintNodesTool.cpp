@@ -32,7 +32,7 @@ FMcpToolDefinition FN2CMcpSearchBlueprintNodesTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("search-blueprint-nodes"),
-        TEXT("Searches for Blueprint nodes/actions relevant to a given query. Can perform a context-sensitive search based on the current Blueprint or a global search. ")
+        TEXT("Searches for Blueprint nodes/actions relevant to a given query, in the action list of the target graph (blueprintPath, graphName, graphGuid, or the focused graph): the list the editor's node menu shows with Context Sensitive off. ")
         TEXT("For common math operations, you can simply search for symbols like '+', '-', '*', or '/'. ")
         TEXT("The promotable math nodes (e.g., Add, Subtract, Multiply, Divide) typically have wildcard pins that automatically promote to compatible types (e.g., float, integer, vector), so you usually don't need to search for type-specific versions like 'multiply float by float'. ")
         TEXT("Read-only: it never changes the graph. Each result's spawnMetadata.actionIdentifier is a stable ID (the node spawner's signature, the same in every search) to pass to add-bp-node-to-active-graph unchanged, with spawnMetadata.nodeName as nodeName."),
@@ -54,7 +54,7 @@ FMcpToolDefinition FN2CMcpSearchBlueprintNodesTool::GetDefinition() const
     // contextSensitive property
     TSharedPtr<FJsonObject> ContextSensitiveProp = MakeShareable(new FJsonObject);
     ContextSensitiveProp->SetStringField(TEXT("type"), TEXT("boolean"));
-    ContextSensitiveProp->SetStringField(TEXT("description"), TEXT("If true, performs a context-sensitive search using blueprintContext. If false, performs a global search ignoring blueprintContext."));
+    ContextSensitiveProp->SetStringField(TEXT("description"), TEXT("Kept for compatibility: true and false search the same list, the target graph's (as the editor's node menu with Context Sensitive off), and only set spawnMetadata.isContextSensitive. Both need a target graph."));
     ContextSensitiveProp->SetBoolField(TEXT("default"), true);
     Properties->SetObjectField(TEXT("contextSensitive"), ContextSensitiveProp);
     
@@ -88,7 +88,7 @@ FMcpToolDefinition FN2CMcpSearchBlueprintNodesTool::GetDefinition() const
     // blueprintContext property
     TSharedPtr<FJsonObject> ContextProp = MakeShareable(new FJsonObject);
     ContextProp->SetStringField(TEXT("type"), TEXT("object"));
-    ContextProp->SetStringField(TEXT("description"), TEXT("The older form of blueprintPath plus graphName, used only when none of blueprintPath, graphName and graphGuid is given. Information to make the search context-sensitive when contextSensitive is true. Without it (and without blueprintPath, graphName, graphGuid) the focused graph is used. A Blueprint or graph that does not exist is an error (ASSET_NOT_FOUND, GRAPH_NOT_FOUND), never a search in another context"));
+    ContextProp->SetStringField(TEXT("description"), TEXT("The older form of blueprintPath plus graphName, used only when none of blueprintPath, graphName and graphGuid is given. The graph to search for. Without it (and without blueprintPath, graphName, graphGuid) the focused graph is used. A Blueprint or graph that does not exist is an error (ASSET_NOT_FOUND, GRAPH_NOT_FOUND), never a search in another context"));
     
     TSharedPtr<FJsonObject> ContextProps = MakeShareable(new FJsonObject);
     
@@ -150,33 +150,29 @@ FMcpToolCallResult FN2CMcpSearchBlueprintNodesTool::Execute(const TSharedPtr<FJs
 
         // Context: the graph blueprintPath / graphName / graphGuid (or the older blueprintContext) names, else the
         // focused graph, through the one graph resolver (card 0152). A context that does not resolve is an error; it
-        // never silently becomes another context or a global search (card 0277)
-        UBlueprint* ContextBlueprint = nullptr;
-        UEdGraph* ContextGraph = nullptr;
-        FN2CGraphTarget Target;
-        if (bContextSensitive)
+        // never silently becomes another context or a global search (card 0277). contextSensitive false needs the
+        // graph too: the engine's action filter rejects every action when its context has no Blueprint and no graph,
+        // and the editor's menu keeps its Blueprint and graph with Context Sensitive off (card 0434)
+        FN2CGraphTargetArgs TargetArgs = FN2CGraphTargetArgs::FromJson(Arguments);
+        const bool bExplicitContext = BlueprintContext.IsValid()
+            && (BlueprintContext->HasField(TEXT("owningBlueprintPath")) || BlueprintContext->HasField(TEXT("graphPath")));
+        if (bExplicitContext && TargetArgs.IsEmpty())
         {
-            FN2CGraphTargetArgs TargetArgs = FN2CGraphTargetArgs::FromJson(Arguments);
-            const bool bExplicitContext = BlueprintContext.IsValid()
-                && (BlueprintContext->HasField(TEXT("owningBlueprintPath")) || BlueprintContext->HasField(TEXT("graphPath")));
-            if (bExplicitContext && TargetArgs.IsEmpty())
+            FString ContextError;
+            if (!ContextToTargetArgs(BlueprintContext, TargetArgs, ContextError))
             {
-                FString ContextError;
-                if (!ContextToTargetArgs(BlueprintContext, TargetArgs, ContextError))
-                {
-                    return FMcpToolCallResult::CreateErrorResult(ContextError);
-                }
+                return FMcpToolCallResult::CreateErrorResult(ContextError);
             }
-            Target = FN2CGraphTarget::Resolve(TargetArgs, /*bForWrite*/ false);
-            if (!Target.IsValid())
-            {
-                return FMcpToolCallResult::CreateErrorResult(TargetArgs.IsEmpty()
-                    ? TEXT("Context-sensitive search requested but no Blueprint editor is active or graph focused. Error: ") + Target.Error
-                    : Target.Error);
-            }
-            ContextBlueprint = Target.Blueprint;
-            ContextGraph = Target.Graph;
         }
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(TargetArgs, /*bForWrite*/ false);
+        if (!Target.IsValid())
+        {
+            return FMcpToolCallResult::CreateErrorResult(TargetArgs.IsEmpty()
+                ? TEXT("No graph to search for: no Blueprint editor is active or graph focused. Pass blueprintPath (with graphName or graphGuid for a graph other than the event graph); contextSensitive true and false both need it. Error: ") + Target.Error
+                : Target.Error);
+        }
+        UBlueprint* ContextBlueprint = Target.Blueprint;
+        UEdGraph* ContextGraph = Target.Graph;
 
         TArray<TSharedPtr<FJsonValue>> ResultNodes = SearchActions(SearchTerm, MaxResults, bContextSensitive,
             ContextBlueprint, ContextGraph, CategoryFilter, bExcludeVMFunctions);
@@ -193,7 +189,7 @@ FMcpToolCallResult FN2CMcpSearchBlueprintNodesTool::Execute(const TSharedPtr<FJs
         FN2CLogger::Get().Log(FString::Printf(TEXT("Blueprint node search completed. Found %d results"), ResultCount), EN2CLogSeverity::Info);
 
         // No BlueprintActionDatabase refresh: the search no longer adds or removes nodes, so there is nothing to resync.
-        // A context-sensitive search says which graph it searched for ('target'; nothing for a global search)
+        // The result says which graph it searched for ('target')
         return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultJsonString));
     });
 }
@@ -209,14 +205,18 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpSearchBlueprintNodesTool::SearchActions(
 {
     check(IsInGameThread());
 
-    if (!(bContextSensitive && ContextBlueprint && ContextGraph))
+    if (!(ContextBlueprint && ContextGraph))
     {
-        // Global search: no context graph to build templates against
+        // Without a graph the engine's filter rejects every action (BlueprintActionFilter's IsSchemaIncompatible, with
+        // no Blueprint and no graph in its context), so there are no results; Execute refuses that case first
         ContextBlueprint = nullptr;
         ContextGraph = nullptr;
     }
 
-    // Build the action list from the database (the same list add-bp-node-to-active-graph resolves IDs in)
+    // Build the action list from the database (the same list add-bp-node-to-active-graph resolves IDs in). It is the
+    // list the editor's node menu shows with Context Sensitive off: SBlueprintActionMenu keeps the Blueprint and the
+    // graph in the context, and FBlueprintActionMenuUtils::MakeContextMenu then adds no filter flags, target classes or
+    // pins. bContextSensitive true and false build this same list and differ only in isContextSensitive (card 0434)
     FBlueprintActionMenuBuilder MenuBuilder;
     N2CNodeActions::BuildActionList(MenuBuilder, ContextBlueprint, ContextGraph);
 
@@ -244,7 +244,7 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpSearchBlueprintNodesTool::SearchActions(
 
         // Result IDs are numbered per search, so the same search gives the same IDs
         const FString NodeId = FString::Printf(TEXT("SearchNode_%d"), ResultNodes.Num() + 1);
-        TSharedPtr<FJsonObject> NodeJson = ConvertActionToJson(Action, NodeId, bContextSensitive && ContextGraph != nullptr, ContextGraph);
+        TSharedPtr<FJsonObject> NodeJson = ConvertActionToJson(Action, NodeId, bContextSensitive, ContextGraph);
         if (NodeJson.IsValid())
         {
             ResultNodes.Add(MakeShareable(new FJsonValueObject(NodeJson)));
@@ -380,7 +380,7 @@ TSharedPtr<FJsonObject> FN2CMcpSearchBlueprintNodesTool::ConvertActionToJson(
         SpawnMetadata->SetStringField(TEXT("nodeName"), Action->GetMenuDescription().ToString());
         SpawnMetadata->SetStringField(TEXT("category"), Action->GetCategory().ToString());
 
-        // Whether the search ran against a graph
+        // The contextSensitive the search was called with
         SpawnMetadata->SetBoolField(TEXT("isContextSensitive"), bIsContextSensitive);
 
         NodeJson->SetObjectField(TEXT("spawnMetadata"), SpawnMetadata);
