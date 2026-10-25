@@ -147,6 +147,33 @@ namespace N2CJsonContract
 			? FCString::Atoi(*MajorText) : INDEX_NONE;
 	}
 
+	/**
+	 * Reader policy (card 0445): FromJson reads a document of a readable major without dropping what it does not know,
+	 * so a 2.0 build reads a later 2.x document (for example a material capture) and writes it back unchanged.
+	 * - An unknown "blueprint_type", "graph_type", node "type" or pin "type" is read as the enum's Unknown value, its
+	 *   text kept (UnknownBlueprintType, UnknownGraphType, UnknownType) and written back in place of "Unknown". The
+	 *   document is still read; the node keeps its pins and the flows that name them.
+	 * - A field this build does not know, at the top level or in "metadata", a graph, a node or a pin, is kept as
+	 *   condensed JSON text (UnknownFields) and written back after the known fields of its object, in the order read.
+	 * - A 2.x document keeps its own version string (a 2.1.0 document stays 2.1.0); 1.x is read into Version.
+	 * - Each of these, and each graph, node or pin skipped because it is malformed (a missing required field), gives
+	 *   one structured warning (FN2CJsonReadWarning: a code below, a path such as "graphs[0].nodes[2].type", the
+	 *   value) and one log warning. Text that is not JSON, or JSON without a version, metadata or graphs, is still
+	 *   rejected.
+	 */
+	namespace ReadWarning
+	{
+		inline constexpr const TCHAR* UnknownBlueprintType = TEXT("UNKNOWN_BLUEPRINT_TYPE");
+		inline constexpr const TCHAR* UnknownGraphType = TEXT("UNKNOWN_GRAPH_TYPE");
+		inline constexpr const TCHAR* UnknownNodeType = TEXT("UNKNOWN_NODE_TYPE");
+		inline constexpr const TCHAR* UnknownPinType = TEXT("UNKNOWN_PIN_TYPE");
+		inline constexpr const TCHAR* UnknownField = TEXT("UNKNOWN_FIELD");
+		inline constexpr const TCHAR* NewerVersion = TEXT("NEWER_VERSION");
+		inline constexpr const TCHAR* SkippedGraph = TEXT("SKIPPED_GRAPH");
+		inline constexpr const TCHAR* SkippedNode = TEXT("SKIPPED_NODE");
+		inline constexpr const TCHAR* SkippedPin = TEXT("SKIPPED_PIN");
+	}
+
 	/** True when FromJson reads this version (majors OldestReadableMajor..Major) */
 	inline bool IsReadable(const FString& VersionString)
 	{

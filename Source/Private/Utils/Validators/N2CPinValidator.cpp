@@ -147,6 +147,12 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
             }
             break;
 
+        case EN2CPinType::Unknown:
+            // A pin type this build does not know (a later 2.x document, card 0445): accepted with a warning
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Pin %s has a pin type this build does not know: '%s'"),
+                *Pin.ID, *Pin.UnknownType));
+            break;
+
         default:
             // Log other types
             FN2CLogger::Get().Log(FString::Printf(TEXT("Pin %s has standard type %s"), 

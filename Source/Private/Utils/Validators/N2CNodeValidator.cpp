@@ -19,6 +19,13 @@ bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutErr
         return false;
     }
 
+    // A node type this build does not know (a later 2.x document, card 0445) is accepted with a warning
+    if (Node.NodeType == EN2CNodeType::Unknown)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node %s has a node type this build does not know: '%s'"),
+            *Node.ID, *Node.UnknownType));
+    }
+
     // Validate node flags
     if (!ValidateFlags(Node, OutError))
     {

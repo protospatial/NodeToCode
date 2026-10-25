@@ -50,6 +50,13 @@ bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, FS
         return false;
     }
 
+    // A blueprint_type this build does not know (a later 2.x document, card 0445) is accepted with a warning
+    if (Blueprint.Metadata.BlueprintType == EN2CBlueprintType::Unknown)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Blueprint %s has a blueprint_type this build does not know: '%s'"),
+            *Blueprint.Metadata.Name, *Blueprint.Metadata.UnknownBlueprintType));
+    }
+
     if (Blueprint.Metadata.BlueprintClass.IsEmpty())
     {
         OutError = TEXT("Missing Blueprint class");
@@ -109,6 +116,13 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
         OutError = TEXT("Empty graph name");
         FN2CLogger::Get().LogError(OutError);
         return false;
+    }
+
+    // A graph_type this build does not know (a later 2.x document, card 0445) is accepted with a warning
+    if (Graph.GraphType == EN2CGraphType::Unknown)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Graph %s has a graph_type this build does not know: '%s'"),
+            *Graph.Name, *Graph.UnknownGraphType));
     }
 
     // Check nodes array

@@ -145,11 +145,15 @@ def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
     Read N2C JSON text with NodeToCode's own reader, for example a saved N2C_BP_*.json translation file.
 
     Version 1.x documents (NodeToCode 1.2.x and earlier 2.0 builds) and 2.x documents are read into the current
-    model and written back as N2C JSON of the current version (2.0.0), so a 1.x file comes back with the same nodes
-    and flows and "version": "2.0.0". Exec flows are "N1.P2->N3.P4" (exec output pin -> exec input pin) in documents
+    model and written back as current N2C JSON, so a 1.x file comes back with the same nodes and flows and
+    "version": "2.0.0" (a 2.x file keeps its own version). Exec flows are "N1.P2->N3.P4" (exec output pin -> exec input pin) in documents
     NodeToCode 2.0 writes; 1.x documents (and early 2.0 development builds) keep their node-only "N1->N2" entries.
     A 1.x node's display "name" is written back as its "title" (1.x has no "class"), and 1.x pin names, which are
     display names, stay as they are.
+
+    A later 2.x document (for example 2.1.0) is read without loss: it keeps its version, a node, pin, graph or
+    blueprint type this version does not know is kept as it is written, and so is a field it does not know, in
+    'n2c_json' (after the known fields of its object). Each of these is listed in 'warnings'.
 
     Args:
         n2c_json: The N2C JSON text
@@ -166,6 +170,10 @@ def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
                 'data_edges': int,      # Data connections (an output feeding two inputs counts twice)
                 'exec_edges': int,      # Exec links ("N1.P2->N3.P4" is one; a 1.x chain "N1->N2->N3" is two)
                 'n2c_json': dict,       # The document written again as current N2C JSON
+                'warnings': list,       # One {'code', 'path', 'value', 'message'} per unknown kind or field kept,
+                                        # or part skipped (codes: UNKNOWN_NODE_TYPE, UNKNOWN_PIN_TYPE,
+                                        # UNKNOWN_GRAPH_TYPE, UNKNOWN_BLUEPRINT_TYPE, UNKNOWN_FIELD, NEWER_VERSION,
+                                        # SKIPPED_GRAPH, SKIPPED_NODE, SKIPPED_PIN); empty for a 1.x or 2.0.0 file
             } or None,
             'error': str or None
         }

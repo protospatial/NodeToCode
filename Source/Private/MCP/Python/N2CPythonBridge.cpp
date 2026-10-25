@@ -206,7 +206,8 @@ FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
 	Source->TryGetStringField(N2CJsonContract::VersionField, SourceVersion);
 
 	FN2CBlueprint Blueprint;
-	if (!FN2CSerializer::FromJson(N2CJson, Blueprint))
+	TArray<FN2CJsonReadWarning> Warnings;
+	if (!FN2CSerializer::FromJson(N2CJson, Blueprint, Warnings))
 	{
 		return MakeErrorJson(FString::Printf(TEXT("The text is not N2C JSON that this version reads (version '%s'; NodeToCode reads %d.x to %d.x)."),
 			*SourceVersion, N2CJsonContract::OldestReadableMajor, N2CJsonContract::Major));
@@ -246,6 +247,19 @@ FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
 	Data->SetNumberField(TEXT("data_edges"), DataEdgeCount);
 	Data->SetNumberField(TEXT("exec_edges"), ExecEdgeCount);
 	Data->SetObjectField(TEXT("n2c_json"), Rewritten);
+
+	// What the reader kept without knowing it, or skipped (card 0445): an unknown kind or field of a later 2.x document
+	TArray<TSharedPtr<FJsonValue>> WarningValues;
+	for (const FN2CJsonReadWarning& Warning : Warnings)
+	{
+		const TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+		Entry->SetStringField(TEXT("code"), Warning.Code);
+		Entry->SetStringField(TEXT("path"), Warning.Path);
+		Entry->SetStringField(TEXT("value"), Warning.Value);
+		Entry->SetStringField(TEXT("message"), Warning.Message);
+		WarningValues.Add(MakeShared<FJsonValueObject>(Entry));
+	}
+	Data->SetArrayField(TEXT("warnings"), WarningValues);
 	return MakeSuccessJson(Data);
 }
 

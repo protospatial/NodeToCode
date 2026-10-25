@@ -95,3 +95,34 @@ Option 1, provisionally. The sub-choices of card 0117:
   every golden, and V1Reader reads a node-only 2.0.0 document.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
+
+## Proposed amendment: reader policy for later 2.x documents (card 0445, 2026-10-25)
+
+Proposed, not decided: it waits for the owner on card 0117 with the rest of this record. Card 0445 (epic 0442,
+material graphs) implements it so the 2.0.0 reader is forward-compatible before 2.0.0 stable freezes the contract;
+otherwise every later 2.x document (a material capture with `metadata.asset_kind`, a new node or pin kind) would be
+rejected or lose nodes and pins in a 2.0 build and in Python, and could only ship as 3.0.0.
+
+1. **Unknown kinds are kept.** An unknown `metadata.blueprint_type`, `graph_type`, node `type` or pin `type` is read as
+   the `Unknown` value of its enum (`EN2CBlueprintType`, `EN2CGraphType`, `EN2CNodeType`, `EN2CPinType`), with its text
+   kept (`UnknownBlueprintType`, `UnknownGraphType`, `UnknownType`) and written back by `ToJson` in place of "Unknown".
+   The document is still read, the graph, node or pin is kept, and so are the flows that name it. Card 0234 reuses
+   `EN2CNodeType::Unknown` for a captured node class with no mapping rather than adding a second value.
+2. **Unknown fields are kept.** A field the reader does not know, at the top level or in `metadata`, a graph, a node
+   or a pin, is kept as condensed JSON text (`UnknownFields`) and written back after the known fields of its object, in
+   the order read, never replacing a field the writer sets. A document whose unknown fields come after the known ones
+   (as a later writer that only appends fields produces) therefore round-trips byte for byte.
+3. **Version.** Item 6 above maps 1.x to 2.0.0; a 2.x document now keeps its own version string (2.1.0 stays 2.1.0),
+   because its unknown fields are kept too. A newer 2.x version gives a `NEWER_VERSION` warning. Majors outside
+   1..2 are handled as before.
+4. **Warnings.** Each unknown kind, unknown field, newer version and each graph, node or pin skipped as malformed (a
+   missing required field) gives one structured warning, `FN2CJsonReadWarning` {code, path, value, message}, codes in
+   `N2CJsonContract::ReadWarning`, from `FN2CSerializer::FromJson(Text, Blueprint, Warnings)`, plus a log warning.
+   `UN2CPythonBridge::ReadN2CJson` / Python `nodetocode.read_n2c_json` return them as `warnings`. The validator accepts
+   the Unknown kinds with a log warning.
+5. **Still rejected:** text that is not JSON, and JSON without `version`, `metadata` (with its three fields) or
+   `graphs`, or with no readable graph.
+
+Checked by `NodeToCode.Serializer.ForwardCompat` (a synthetic 2.1.0 material document,
+`Source/Private/Tests/Fixtures/Capture/ForwardCompat/UnknownKinds_2.1.json`, read with 16 warnings and written back
+byte for byte; the 1.x fixtures and every capture golden read with none) and `NodeToCode.Python.Bridge`.

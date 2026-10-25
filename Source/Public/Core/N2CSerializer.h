@@ -31,6 +31,22 @@ enum class EN2CJsonGuids : uint8
 };
 
 /**
+ * One thing FN2CSerializer::FromJson read without knowing it, or skipped (reader policy, card 0445; codes in
+ * N2CJsonContract::ReadWarning)
+ */
+struct FN2CJsonReadWarning
+{
+    /** N2CJsonContract::ReadWarning code, for example "UNKNOWN_NODE_TYPE" */
+    FString Code;
+    /** Where in the document: "metadata.blueprint_type", "graphs[0].nodes[2].type", "graphs[0].nodes[2].input_pins[1]" */
+    FString Path;
+    /** The unknown kind's text or field name, empty when there is none */
+    FString Value;
+    /** A sentence for people */
+    FString Message;
+};
+
+/**
  * @class FN2CSerializer
  * @brief Handles serialization of N2CStruct data to JSON format
  *
@@ -52,6 +68,12 @@ public:
     /** Convert JSON string back to FN2CBlueprint */
     static bool FromJson(const FString& JsonString, FN2CBlueprint& OutBlueprint);
 
+    /**
+     * FromJson, also giving one structured warning per unknown kind, unknown field or skipped part (reader policy in
+     * N2CJsonContract.h, card 0445). OutWarnings is emptied first; each warning is logged as well.
+     */
+    static bool FromJson(const FString& JsonString, FN2CBlueprint& OutBlueprint, TArray<FN2CJsonReadWarning>& OutWarnings);
+
     /** Convert a single node to JSON object - useful for tools */
     static TSharedPtr<FJsonObject> NodeToJsonObject(const FN2CNodeDefinition& Node);
 
@@ -68,10 +90,10 @@ private:
     static TSharedPtr<FJsonObject> EnumToJsonObject(const FN2CEnum& Enum);
 
     /** JSON parsing helpers */
-    static bool ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CBlueprint& OutBlueprint);
-    static bool ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraph& OutGraph);
-    static bool ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CNodeDefinition& OutNode);
-    static bool ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CPinDefinition& OutPin);
+    static bool ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CBlueprint& OutBlueprint, const FString& Path, TArray<FN2CJsonReadWarning>& Warnings);
+    static bool ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraph& OutGraph, const FString& Path, TArray<FN2CJsonReadWarning>& Warnings);
+    static bool ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CNodeDefinition& OutNode, const FString& Path, TArray<FN2CJsonReadWarning>& Warnings);
+    static bool ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CPinDefinition& OutPin, const FString& Path, TArray<FN2CJsonReadWarning>& Warnings);
     static bool ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CFlows& OutFlows);
     static bool ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CStruct& OutStruct);
     static bool ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CEnum& OutEnum);

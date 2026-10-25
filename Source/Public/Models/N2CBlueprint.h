@@ -48,6 +48,11 @@ enum class EN2CBlueprintType : uint8
     LevelScript UMETA(DisplayName = "Level Blueprint"),
     /** Blueprint that serves as a container for functions to be used in other blueprints. */
     FunctionLibrary UMETA(DisplayName = "Blueprint Function Library"),
+    /**
+     * A "blueprint_type" this build does not know (a later 2.x document), read by FN2CSerializer::FromJson and kept
+     * with its text in FN2CMetadata::UnknownBlueprintType so ToJson writes it back unchanged (card 0445). Never captured.
+     */
+    Unknown UMETA(DisplayName = "Unknown"),
 };
 
 /**
@@ -69,6 +74,17 @@ struct FN2CMetadata
 
     /** The Blueprint class this graph belongs to */                                                                                                                                                                                 UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")                                                                                                                                                             
     FString BlueprintClass; 
+
+    /** The "blueprint_type" text as read when BlueprintType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownBlueprintType;
+
+    /**
+     * Fields of "metadata" this build does not know, by name, each value as condensed JSON text, in the order read.
+     * ToJson writes them back after the known fields (card 0445).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> UnknownFields;
 
     FN2CMetadata() : Name(TEXT("")), BlueprintType(EN2CBlueprintType::Normal), BlueprintClass(TEXT("")) {}
 };
@@ -311,7 +327,12 @@ enum class EN2CGraphType : uint8
     /** A struct definition */
     Struct         UMETA(DisplayName = "Struct"),
     /** An enum definition */
-    Enum           UMETA(DisplayName = "Enum")
+    Enum           UMETA(DisplayName = "Enum"),
+    /**
+     * A "graph_type" this build does not know (a later 2.x document), read by FN2CSerializer::FromJson and kept with
+     * its text in FN2CGraph::UnknownGraphType so ToJson writes it back unchanged (card 0445). Never captured.
+     */
+    Unknown        UMETA(DisplayName = "Unknown")
 };
 
 /**
@@ -345,6 +366,17 @@ struct FN2CGraph
     /** Execution and data flow connections for this graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CFlows Flows;
+
+    /** The "graph_type" text as read when GraphType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownGraphType;
+
+    /**
+     * Fields of the graph's JSON object this build does not know, by name, each value as condensed JSON text, in the
+     * order read. ToJson writes them back after the known fields (card 0445).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> UnknownFields;
 
     FN2CGraph()
         : GraphType(EN2CGraphType::EventGraph)
@@ -383,6 +415,13 @@ struct FN2CBlueprint
     /** Array of all enums used in the Blueprint */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CEnum> Enums;
+
+    /**
+     * Top-level fields this build does not know (a later 2.x document), by name, each value as condensed JSON text, in
+     * the order read. ToJson writes them back after the known fields (card 0445).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> UnknownFields;
 
     FN2CBlueprint()
     {
