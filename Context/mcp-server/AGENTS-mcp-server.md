@@ -527,6 +527,38 @@ Category strings the tools register (`FMcpToolDefinition::Category`), which `ass
 The tool's own description (`FN2CMcpAssessNeededToolsTool::GetCategoryDescriptions`) names nine of them (the
 first six, Content Browser, File System and Translation), but the other four match too; `find-nodes-in-graph` has no category and cannot be enabled.
 
+## Mounted in Epic's ToolsetRegistry (UE 5.8 MCPClientToolset, card 0141)
+
+User page: `wiki/developers/Using-NodeToCode-with-Unreal-MCP.md`. Live check: `Tests/mcp_probe/live_mcpclienttoolset.py`
+(5.8 only; enables ModelContextProtocol and MCPClientToolset in the host `.uproject` for the run and restores it).
+Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPClientToolset`,
+`UMCPClientToolsetSubsystem`, `UMCPToolsetSettings`).
+
+*   **Entry**: Editor Preferences > Plugins > MCP Toolset Servers (`UMCPToolsetSettings`, config
+    `EditorPerProjectUserSettings`), Name=NodeToCode, ServerUrl=http://127.0.0.1:27000/mcp, Transport=Streamable
+    HTTP (default Legacy SSE GETs `<url>/sse`), Auth=None (default Bearer Token; with no ApiKey it sends no header,
+    so both work). In `Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini` the line must be
+    `MCPServers=(...)`: a `+MCPServers=(...)` line left the list empty on 5.8 and the subsystem logged nothing.
+*   **Tool profile**: Python script-only mode and dynamic discovery off (the defaults). Tools register as
+    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 62 tools with Allow MCP
+    Python Execution, all in the first `tools/list` (one page, no cursor).
+*   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
+    `Accept: application/json, text/event-stream`, `Mcp-Session-Id` from the first response on every later POST,
+    no `MCP-Protocol-Version` header, `tools/list` without params, no `_meta.progressToken`. Without a token the
+    5.8 transport does not stream, so every call is one held `application/json` response. Host `127.0.0.1:<port>`
+    passes the Host check; no Origin; bodies are far below the 8 MiB cap. No logging capability is used.
+*   **Startup**: the subsystem makes one `Create()` per entry when it initializes (PostEngineInit, like NodeToCode);
+    a failure is one `failed to connect` warning and no retry. The handshake is logged before NodeToCode's
+    "MCP HTTP server started" line but is answered in frame 1; it registered on every headless start (6 of 6).
+*   **Limits** (client behaviour, not fixable here): tool list fixed at connect (no `list_changed`); the session id
+    is kept forever, so a NodeToCode server restart (Server Port change) or session eviction (64 sessions) makes
+    every call fail until the editor restarts; port fallback moves NodeToCode off the configured URL; `isError`
+    and non-text content are dropped and the text is wrapped as `{"text": "..."}`; a JSON-RPC error keeps only its
+    message; the engine HTTP activity timeout (`[HTTP] HttpActivityTimeout`, 30 s) applies to each call. With it at
+    3 s a translate failed with `tools/call failed: no response received`, NodeToCode kept translating (provider
+    billed) and logged `socket_send_failure` writing the late reply. Live: claude-haiku-5-5 on the probe Blueprint
+    took 8 to 12 s, direct and through Epic's `call_tool`.
+
 ## Editor Integration Updates
 
 *   **`FN2CEditorIntegration` Refactoring**:
