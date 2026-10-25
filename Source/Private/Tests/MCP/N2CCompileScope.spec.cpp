@@ -307,6 +307,8 @@ void FN2CCompileScopeSpec::Define()
 
 	It(TEXT("runs no compile and queues no refresh for a search, through the tool or the Python bridge"), [this]()
 	{
+		// A graph to search for: without one a search is refused (card 0434)
+		N2CTest::FTestBlueprint Test(TEXT("BP_N2CCompileSearch"), TEXT("/Game"));
 		FN2CMcpBlueprintUtils::FlushActionDatabaseRefreshForTest();
 		const int32 RequestsBefore = FN2CMcpBlueprintUtils::GetActionDatabaseRefreshRequestCount();
 		const int32 CompilesBefore = FN2CMcpBlueprintUtils::GetCompileCount();
@@ -319,15 +321,17 @@ void FN2CCompileScopeSpec::Define()
 		const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 		Args->SetStringField(TEXT("searchTerm"), TEXT("print string"));
 		Args->SetBoolField(TEXT("contextSensitive"), false);
+		Args->SetStringField(TEXT("blueprintPath"), Test.GetBlueprint()->GetPathName());
 		Args->SetNumberField(TEXT("maxResults"), 5);
 		const FMcpToolCallResult Result = Search->Execute(Args);
 		TestFalse(TEXT("the search succeeds: ") + N2CTest::ResultText(Result).Left(200), Result.bIsError);
 		TestFalse(TEXT("no compile field on a search"), N2CTest::ResultText(Result).Contains(TEXT("\"compile\"")));
+		TestTrue(TEXT("the search finds Print String"), N2CTest::ResultText(Result).Contains(TEXT("KismetSystemLibrary:PrintString")));
 
+		// The bridge searches the focused graph; this test has none, so it refuses (an answer, not an empty list)
 		const FString BridgeResult = UN2CPythonBridge::SearchBlueprintNodes(TEXT("print string"), /*bContextSensitive*/ false, 5);
 		const TSharedPtr<FJsonObject> Bridge = N2CTest::ParseJsonObject(BridgeResult);
-		bool bBridgeOk = false;
-		TestTrue(TEXT("the bridge search succeeds: ") + BridgeResult.Left(200), Bridge.IsValid() && Bridge->TryGetBoolField(TEXT("success"), bBridgeOk) && bBridgeOk);
+		TestTrue(TEXT("the bridge answers: ") + BridgeResult.Left(200), Bridge.IsValid() && Bridge->HasField(TEXT("success")));
 
 		TestEqual(TEXT("no refresh requested"), FN2CMcpBlueprintUtils::GetActionDatabaseRefreshRequestCount(), RequestsBefore);
 		TestFalse(TEXT("no refresh queued"), FN2CMcpBlueprintUtils::IsActionDatabaseRefreshPending());

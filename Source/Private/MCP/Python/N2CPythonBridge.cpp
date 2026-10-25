@@ -832,27 +832,20 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 
 	MaxResults = FMath::Clamp(MaxResults, 1, 100);
 
-	// Get context from focused editor
-	UBlueprint* ContextBlueprint = nullptr;
-	UEdGraph* ContextGraph = nullptr;
-	FString GraphError;
-
-	if (bContextSensitive)
+	// The focused graph, through the one graph resolver (card 0152), for bContextSensitive true and false: the engine's
+	// action filter rejects every action without a Blueprint and a graph, so a search without one found nothing (card 0434)
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
+	if (!Target.IsValid())
 	{
-		// The focused graph, through the one graph resolver (card 0152)
-		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
-		if (!Target.IsValid())
-		{
-			return MakeErrorJson(TEXT("Context-sensitive search requested but no Blueprint editor is active: ") + Target.Error);
-		}
-		ContextBlueprint = Target.Blueprint;
-		ContextGraph = Target.Graph;
+		return MakeErrorJson(TEXT("No graph to search for: no Blueprint editor is active or graph focused: ") + Target.Error);
 	}
+	UBlueprint* ContextBlueprint = Target.Blueprint;
+	UEdGraph* ContextGraph = Target.Graph;
 
-	// The same action list search-blueprint-nodes and AddNodeToGraph build (global without a context)
+	// The same action list search-blueprint-nodes and AddNodeToGraph build: the editor's node menu with Context
+	// Sensitive off, for either value of bContextSensitive
 	FBlueprintActionMenuBuilder MenuBuilder;
-	N2CNodeActions::BuildActionList(MenuBuilder, bContextSensitive ? ContextBlueprint : nullptr,
-		bContextSensitive ? ContextGraph : nullptr);
+	N2CNodeActions::BuildActionList(MenuBuilder, ContextBlueprint, ContextGraph);
 
 	const TArray<FString> LowerFilterTerms = N2CNodeActions::TokenizeSearchTerm(SearchTerm);
 
@@ -891,7 +884,7 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 		TSharedPtr<FJsonObject> SpawnMetadata = MakeShareable(new FJsonObject);
 		SpawnMetadata->SetStringField(TEXT("actionIdentifier"), N2CNodeActions::GetActionId(Action));
 		SpawnMetadata->SetStringField(TEXT("nodeName"), MenuName);
-		SpawnMetadata->SetBoolField(TEXT("isContextSensitive"), bContextSensitive && ContextGraph != nullptr);
+		SpawnMetadata->SetBoolField(TEXT("isContextSensitive"), bContextSensitive);
 		NodeJson->SetObjectField(TEXT("spawnMetadata"), SpawnMetadata);
 
 		ResultNodes.Add(MakeShareable(new FJsonValueObject(NodeJson)));

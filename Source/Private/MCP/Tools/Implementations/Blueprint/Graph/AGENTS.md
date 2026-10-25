@@ -75,8 +75,18 @@ Nodes and pins are addressed by GUID:
 - **Parameters**:
   - `searchTerm` (required): Split on spaces; an action matches when every word appears, case-insensitively, in its
     full search text (`SearchActions`). Math symbols such as `+` or `*` find the promotable operators
-  - `contextSensitive` (optional, default true): Build the action list for the target graph (see "Targeting and
-    IDs"); false searches without a graph and ignores the target arguments
+  - `contextSensitive` (optional, default true): Kept for compatibility. True and false search the same list, the
+    target graph's (see "Targeting and IDs"), and set only `spawnMetadata.isContextSensitive`. That list is what the
+    editor's node menu shows with Context Sensitive off: the menu keeps its Blueprint and graph in the filter context
+    either way (`SBlueprintActionMenu::ConstructActionContext`), and with Context Sensitive off
+    `FBlueprintActionMenuUtils::MakeContextMenu` adds no filter flags, target classes or pins, which is the filter
+    `N2CNodeActions::BuildActionList` builds. Context Sensitive on in the editor also limits member functions to this
+    Blueprint's class and its components (in the automation run an Actor event graph lists about 31,000 actions with
+    it off and 16,500 with it on on UE 5.6, 41,700 and 22,600 on UE 5.8; Set Text of a Text Render component is one it
+    hides); NodeToCode has no such mode. Both values need
+    a target graph: with no target argument and no focused graph the search is an error (`No graph to search for`)
+    (card 0434). Before card 0434, false ran the filter with an empty context, whose `IsSchemaIncompatible` test
+    rejects every action when the context has no Blueprint and no graph, so it found nothing
   - `blueprintPath`, `graphName`, `graphGuid` (optional): The graph to search for, as for every tool here
   - `blueprintContext` (optional): The older form of the target, used only when none of `blueprintPath`, `graphName`
     and `graphGuid` is given, and resolved by the same resolver: `owningBlueprintPath` (Blueprint asset path) and `graphPath`
@@ -93,7 +103,7 @@ Nodes and pins are addressed by GUID:
   `class`, `member_parent`, `member_name`, the optional `title`, `input_pins`, `output_pins` with their default
   values) plus `spawnMetadata` (`actionIdentifier`, `nodeName` (the menu name), `category` (the menu category) and
   `isContextSensitive`). The result is marked as untrusted Blueprint data: its first key is `untrusted_content`
-  (card 0124), and a context-sensitive search has `target`
+  (card 0124), and `target` (the graph searched for)
 - **actionIdentifier** (card 0277): a stable ID, the node spawner's signature
   (`UBlueprintNodeSpawner::GetSpawnerSignature`, `FBlueprintNodeSignature::ToString`, `N2CNodeActions::GetActionId`).
   Print String's is `(FieldName="/Script/Engine.KismetSystemLibrary:PrintString",NodeName="/Script/BlueprintGraph.K2Node_CallFunction")`.
@@ -105,8 +115,10 @@ Nodes and pins are addressed by GUID:
   the instanced-struct functions). An Actor Blueprint's event graph lists about 40,000 actions on UE 5.8 with no
   two spawners sharing an ID (`NodeToCode.MCP.NodeActionIds`). An action without a spawner gets
   `menu:<category>|<menu name>`
-- **Known issue (card 0434):** with `contextSensitive` false the search returns no nodes (UE 5.8: `print string`,
-  `branch`, `add`, `string` all return an empty `nodes`). Use the default
+- **Tests (card 0434):** `NodeToCode.MCP.NodeActionIds` "contextSensitive false", on every engine: results for
+  `print string`, `branch`, `add` and `string` with the default search's IDs; the same IDs as the engine's own menu
+  with Context Sensitive off; Set Text (Text Render), hidden with Context Sensitive on, found and added; every result
+  added through `add-bp-node-to-active-graph`; the graph, undo buffer and dirty flag unchanged by the search
 
 ### add-bp-node-to-active-graph
 - **Description**: Adds the node of one search result to the target graph

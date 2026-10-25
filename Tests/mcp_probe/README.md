@@ -273,6 +273,13 @@ its environment when no key is saved, so a live check never types or saves a key
   to every call. Every call must succeed with a `target` naming the renamed function (`resolvedBy` `explicit`), and
   `list-blueprint-functions` must list the renamed function with the first ID. The folder is deleted. Report:
   `logs/live_graph_target_0152_<label>.json`.
+- `live_non_context_search_0434.py --engine ... --project ... --label 5.8` (no provider key, no `claude -p`) checks
+  `search-blueprint-nodes` with `contextSensitive` false (card 0434) on an in-memory Actor Blueprint under a fresh
+  `/Game/N2CTest/NonContext0434_<time>` folder: "print string" and "branch" by `blueprintPath` with nothing focused,
+  once with no target at all (must be an error saying there is no graph, not an empty list), then on the focused
+  event graph next to the default search (same IDs, `isContextSensitive` false and true), and adds the Print String
+  and Branch results. Searches must leave the node count; each add adds one node. The folder is deleted. Report:
+  `logs/live_non_context_search_0434_<label>.json`.
 - `live_blueprint_by_path_0157.py --engine ... --project ... --label 5.8 [--cli-model sonnet]` (no provider key)
   checks the by-path read tools (card 0157). The probe makes an Actor Blueprint with a function under a fresh
   `/Game/N2CTest/ByPath0157_<time>` folder (run-python) and closes its editors, so get-open-blueprint-editors lists

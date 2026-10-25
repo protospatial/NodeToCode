@@ -65,7 +65,9 @@ def search_blueprint_nodes(
 
     Args:
         search_term: Text query to search for (e.g., "Print String", "Branch")
-        context_sensitive: If True, filters results based on focused Blueprint context
+        context_sensitive: Kept for compatibility. True and False both search the focused graph's
+            action list (what the editor's node menu shows with Context Sensitive off) and only set
+            isContextSensitive; both need a focused Blueprint graph
         max_results: Maximum number of results to return (1-100)
         category: Optional category filter. Common categories:
             - "flowcontrol" - Branch, Sequence, ForLoop, etc.
