@@ -15,6 +15,8 @@
 #include "StructUtils/UserDefinedStruct.h"
 #include "BlueprintEditorModule.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "ScopedTransaction.h"
+#include "Animation/AnimBlueprint.h"
 #include "K2Node.h"
 #include "EdGraphSchema_K2.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -29,7 +31,7 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("create-variable"),
-		TEXT("Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
+		TEXT("Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
 	,
 		TEXT("Blueprint Variable Management")
 	);
@@ -69,8 +71,8 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 	// isInstanceEditable property
 	TSharedPtr<FJsonObject> InstanceEditableProp = MakeShareable(new FJsonObject);
 	InstanceEditableProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	InstanceEditableProp->SetStringField(TEXT("description"), TEXT("Whether the variable can be edited per-instance"));
-	InstanceEditableProp->SetBoolField(TEXT("default"), true);
+	InstanceEditableProp->SetStringField(TEXT("description"), TEXT("Whether the variable can be edited per instance (Instance Editable in the editor). Off by default, as for a variable added in the editor"));
+	InstanceEditableProp->SetBoolField(TEXT("default"), false);
 	Properties->SetObjectField(TEXT("isInstanceEditable"), InstanceEditableProp);
 
 	// isBlueprintReadOnly property
@@ -96,7 +98,7 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 	ReplicationEnum.Add(MakeShareable(new FJsonValueString(TEXT("repnotify"))));
 	ReplicationProp->SetArrayField(TEXT("enum"), ReplicationEnum);
 	ReplicationProp->SetStringField(TEXT("default"), TEXT("none"));
-	ReplicationProp->SetStringField(TEXT("description"), TEXT("Network replication setting"));
+	ReplicationProp->SetStringField(TEXT("description"), TEXT("Network replication setting. 'repnotify' also creates the OnRep_<variable> function, as the editor does"));
 	Properties->SetObjectField(TEXT("replicationCondition"), ReplicationProp);
 
 	// Add container type properties (includes mapKeyTypeIdentifier)
@@ -124,36 +126,36 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		FVariableCreationSettings Settings;
 		FN2CMcpArgumentParser ArgParser(Arguments);
 		FString ErrorMsg;
-		
+
 		if (!ArgParser.TryGetRequiredName(TEXT("variableName"), Settings.VariableName, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
-		
+
 		if (!ArgParser.TryGetRequiredName(TEXT("typeIdentifier"), Settings.TypeIdentifier, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
-		
+
 		// Optional fields
 		Settings.DefaultValue = ArgParser.GetOptionalString(TEXT("defaultValue"));
 		Settings.Category = ArgParser.GetOptionalString(TEXT("category"), TEXT("Default"));
-		Settings.bInstanceEditable = ArgParser.GetOptionalBool(TEXT("isInstanceEditable"), true);
+		Settings.bInstanceEditable = ArgParser.GetOptionalBool(TEXT("isInstanceEditable"), false);
 		Settings.bBlueprintReadOnly = ArgParser.GetOptionalBool(TEXT("isBlueprintReadOnly"), false);
 		Settings.Tooltip = ArgParser.GetOptionalString(TEXT("tooltip"));
 		Settings.ReplicationCondition = ArgParser.GetOptionalString(TEXT("replicationCondition"), TEXT("none"));
-		
+
 		// Container type fields
 		FString ContainerType, ParsedMapKeyTypeIdentifier;
 		FN2CMcpVariableUtils::ParseContainerTypeArguments(ArgParser, ContainerType, ParsedMapKeyTypeIdentifier);
-		
+
 		// Validate variable name
 		FString ValidationError;
 		if (!ValidateVariableName(Settings.VariableName, ValidationError))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ValidationError);
 		}
-		
+
 		// Get active Blueprint
 		FString ResolveError;
 		UBlueprint* ActiveBlueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(TEXT(""), ResolveError); // Empty path gets focused
@@ -161,20 +163,20 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		{
 			return FMcpToolCallResult::CreateErrorResult(ResolveError);
 		}
-		
+
 		// Validate Blueprint is modifiable
 		if (!ValidateBlueprintModifiable(ActiveBlueprint, ValidationError))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ValidationError);
 		}
-		
+
 		// Validate container type and key type combination
 		FString ContainerValidationError;
 		if (!FN2CMcpVariableUtils::ValidateContainerTypeParameters(ContainerType, ParsedMapKeyTypeIdentifier, ContainerValidationError))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ContainerValidationError);
 		}
-		
+
 		// Resolve type identifier to FEdGraphPinType
 		FEdGraphPinType ResolvedPinType;
 		FString TypeResolveError;
@@ -183,21 +185,15 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		{
 			return FMcpToolCallResult::CreateErrorResult(TypeResolveError);
 		}
-		
-		// Create the variable
-		FName ActualVariableName = CreateVariable(ActiveBlueprint, Settings.VariableName, 
-			ResolvedPinType, Settings.DefaultValue, Settings.Category);
-		
+
+		// Create the variable with its flags, in one transaction
+		FString CreateError;
+		const FName ActualVariableName = CreateMemberVariable(ActiveBlueprint, Settings, ResolvedPinType, CreateError);
 		if (ActualVariableName.IsNone())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create variable"));
+			return FMcpToolCallResult::CreateErrorResult(CreateError);
 		}
-		
-		// Apply additional properties
-		ApplyVariableProperties(ActiveBlueprint, ActualVariableName, 
-			Settings.bInstanceEditable, Settings.bBlueprintReadOnly, 
-			Settings.Tooltip, Settings.ReplicationCondition);
-		
+
 		// Show notification
 		FNotificationInfo Info(FText::Format(
 			NSLOCTEXT("NodeToCode", "VariableCreated", "Variable '{0}' created successfully"),
@@ -205,135 +201,122 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		));
 		Info.ExpireDuration = 3.0f;
 		FSlateNotificationManager::Get().AddNotification(Info);
-		
+
 		// Return success result
-		TSharedPtr<FJsonObject> ResultJsonObj = BuildSuccessResult(ActiveBlueprint, Settings.VariableName, // Renamed to avoid conflict
+		TSharedPtr<FJsonObject> ResultJsonObj = BuildSuccessResult(ActiveBlueprint, Settings.VariableName,
 			ActualVariableName, ResolvedPinType, ContainerType);
-		
+
 		// Convert JSON object to string
 		FString ResultString;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
-		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer); // Use ResultJsonObj
+		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer);
 
 		return FMcpToolCallResult::CreateTextResult(ResultString);
 	});
 }
 
-FName FN2CMcpCreateVariableTool::CreateVariable(UBlueprint* Blueprint, const FString& DesiredName, 
-	const FEdGraphPinType& PinType, const FString& DefaultValue, const FString& Category)
+FName FN2CMcpCreateVariableTool::CreateMemberVariable(UBlueprint* Blueprint, const FVariableCreationSettings& Settings,
+	const FEdGraphPinType& PinType, FString& OutError)
 {
-	// Ensure name is unique
-	FName UniqueName = FBlueprintEditorUtils::FindUniqueKismetName(Blueprint, DesiredName);
-	
-	// Add the variable
-	bool bSuccess = FBlueprintEditorUtils::AddMemberVariable(Blueprint, UniqueName, PinType, DefaultValue);
-	
-	if (bSuccess)
+	if (!ValidateBlueprintModifiable(Blueprint, OutError))
 	{
-		// Set category if provided
-		if (!Category.IsEmpty() && Category != TEXT("Default"))
+		return NAME_None;
+	}
+
+	const bool bReplicated = Settings.ReplicationCondition.Equals(TEXT("replicated"), ESearchCase::IgnoreCase);
+	const bool bRepNotify = Settings.ReplicationCondition.Equals(TEXT("repnotify"), ESearchCase::IgnoreCase);
+	if (!bReplicated && !bRepNotify && !Settings.ReplicationCondition.IsEmpty()
+		&& !Settings.ReplicationCondition.Equals(TEXT("none"), ESearchCase::IgnoreCase))
+	{
+		OutError = FString::Printf(TEXT("INVALID_ARGUMENT: replicationCondition '%s' is not one of none, replicated, repnotify"),
+			*Settings.ReplicationCondition);
+		return NAME_None;
+	}
+
+	const FName UniqueName = FBlueprintEditorUtils::FindUniqueKismetName(Blueprint, Settings.VariableName);
+	const FString OnRepName = FString::Printf(TEXT("OnRep_%s"), *UniqueName.ToString());
+	if (bRepNotify && !FindObject<UEdGraph>(Blueprint, *OnRepName) && StaticFindObject(nullptr, Blueprint, *OnRepName) != nullptr)
+	{
+		OutError = FString::Printf(TEXT("NAME_COLLISION: cannot create the RepNotify function '%s': another object of the Blueprint has that name"), *OnRepName);
+		return NAME_None;
+	}
+
+	// The whole edit is one undo step (card 0154): the variable, its flags, its metadata and the OnRep function.
+	// The compile runs after the transaction has closed (FN2CMcpToolCallScope, card 0151).
+	FScopedTransaction Transaction(FText::Format(
+		NSLOCTEXT("NodeToCode", "CreateVariableTransaction", "Create Variable '{0}'"), FText::FromString(Settings.VariableName)));
+	Blueprint->Modify();
+
+	if (!FBlueprintEditorUtils::AddMemberVariable(Blueprint, UniqueName, PinType, Settings.DefaultValue))
+	{
+		Transaction.Cancel();
+		OutError = FString::Printf(TEXT("Failed to create variable '%s' in Blueprint '%s'"),
+			*Settings.VariableName, *Blueprint->GetName());
+		FN2CLogger::Get().LogError(OutError);
+		return NAME_None;
+	}
+
+	// Every setting goes to the variable description (FBPVariableDescription), which each compile rebuilds the class
+	// property from; never to the compiled FProperty, whose flags the next compile would drop
+	if (!Settings.Category.IsEmpty() && Settings.Category != TEXT("Default"))
+	{
+		FBlueprintEditorUtils::SetBlueprintVariableCategory(
+			Blueprint, UniqueName, nullptr, FText::FromString(Settings.Category), /*bDontRecompile*/ true);
+	}
+
+	// AddMemberVariable makes the variable editable on the class defaults only (CPF_DisableEditOnInstance), as the
+	// editor does. Instance Editable clears that flag; it is not Expose to Cinematics (CPF_Interp, SetInterpFlag).
+	if (Settings.bInstanceEditable)
+	{
+		FBlueprintEditorUtils::SetBlueprintOnlyEditableFlag(Blueprint, UniqueName, /*bNewBlueprintOnly*/ false);
+	}
+
+	if (Settings.bBlueprintReadOnly)
+	{
+		FBlueprintEditorUtils::SetBlueprintPropertyReadOnlyFlag(Blueprint, UniqueName, true);
+	}
+
+	if (!Settings.Tooltip.IsEmpty())
+	{
+		FBlueprintEditorUtils::SetBlueprintVariableMetaData(
+			Blueprint, UniqueName, nullptr, FBlueprintMetadata::MD_Tooltip, Settings.Tooltip);
+	}
+
+	if (bReplicated || bRepNotify)
+	{
+		// As the editor's replication setting does (FBlueprintVarActionDetails::OnChangeReplication; UE 5.8's
+		// UBlueprintEditorLibrary::SetBlueprintVariableReplication is the same code)
+		if (uint64* PropertyFlags = FBlueprintEditorUtils::GetBlueprintVariablePropertyFlags(Blueprint, UniqueName))
 		{
-			FBlueprintEditorUtils::SetBlueprintVariableCategory(
-				Blueprint, UniqueName, nullptr, FText::FromString(Category), true);
-		}
-
-		// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
-		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
-
-		FN2CLogger::Get().Log(FString::Printf(
-			TEXT("Created variable '%s' in Blueprint '%s'"),
-			*UniqueName.ToString(), *Blueprint->GetName()), EN2CLogSeverity::Info);
-
-		return UniqueName;
-	}
-	
-	FN2CLogger::Get().LogError(FString::Printf(
-		TEXT("Failed to create variable '%s' in Blueprint '%s'"), 
-		*DesiredName, *Blueprint->GetName()));
-	
-	return NAME_None;
-}
-
-void FN2CMcpCreateVariableTool::ApplyVariableProperties(UBlueprint* Blueprint, FName VariableName,
-	bool bInstanceEditable, bool bBlueprintReadOnly,
-	const FString& Tooltip, const FString& ReplicationCondition)
-{
-	// Get variable property from the Blueprint's GeneratedClass
-	FProperty* Property = nullptr;
-	if (Blueprint->GeneratedClass)
-	{
-		Property = Blueprint->GeneratedClass->FindPropertyByName(VariableName);
-	}
-	
-	if (!Property)
-	{
-		// Try the skeleton class if GeneratedClass didn't have it
-		if (Blueprint->SkeletonGeneratedClass)
-		{
-			Property = Blueprint->SkeletonGeneratedClass->FindPropertyByName(VariableName);
+			*PropertyFlags |= CPF_Net;
+			if (bRepNotify)
+			{
+				UEdGraph* OnRepGraph = FindObject<UEdGraph>(Blueprint, *OnRepName);
+				if (!OnRepGraph)
+				{
+					OnRepGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(*OnRepName),
+						UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+					FBlueprintEditorUtils::AddFunctionGraph<UClass>(Blueprint, OnRepGraph, /*bIsUserCreated*/ false, nullptr);
+				}
+				FBlueprintEditorUtils::SetBlueprintVariableRepNotifyFunc(Blueprint, UniqueName, FName(*OnRepName));
+				*PropertyFlags |= CPF_RepNotify;
+			}
 		}
 	}
-	
-	if (!Property)
-	{
-		FN2CLogger::Get().LogWarning(FString::Printf(
-			TEXT("Could not find property for variable '%s'"), *VariableName.ToString()));
-		return;
-	}
-	
-	// Instance editable
-	if (bInstanceEditable)
-	{
-		FBlueprintEditorUtils::SetInterpFlag(Blueprint, VariableName, true);
-		Property->SetPropertyFlags(CPF_Edit | CPF_BlueprintVisible);
-	}
-	else
-	{
-		Property->ClearPropertyFlags(CPF_Edit);
-	}
-	
-	// Blueprint read-only
-	if (bBlueprintReadOnly)
-	{
-		Property->SetPropertyFlags(CPF_BlueprintReadOnly);
-	}
-	
-	// Tooltip
-	if (!Tooltip.IsEmpty())
-	{
-		FBlueprintEditorUtils::SetBlueprintVariableMetaData(
-			Blueprint, VariableName, nullptr, TEXT("tooltip"), Tooltip);
-	}
-	
-	// Replication
-	if (ReplicationCondition == TEXT("replicated"))
-	{
-		Property->SetPropertyFlags(CPF_Net);
-		FBlueprintEditorUtils::SetBlueprintVariableMetaData(
-			Blueprint, VariableName, nullptr, TEXT("ReplicatedUsing"), TEXT(""));
-	}
-	else if (ReplicationCondition == TEXT("repnotify"))
-	{
-		Property->SetPropertyFlags(CPF_Net | CPF_RepNotify);
-		
-		// Create OnRep function name
-		FString OnRepFunctionName = FString::Printf(TEXT("OnRep_%s"), *VariableName.ToString());
-		
-		// Set the RepNotify metadata
-		FBlueprintEditorUtils::SetBlueprintVariableMetaData(
-			Blueprint, VariableName, nullptr, TEXT("ReplicatedUsing"), OnRepFunctionName);
-		
-		// Note: Creating the actual OnRep function would require more complex logic
-		// and is typically done through the Blueprint editor UI
-	}
-	
-	// Refresh Blueprint to apply changes
-	FBlueprintEditorUtils::RefreshVariables(Blueprint);
+
+	// Marked modified; the tool call compiles it once, after this transaction closes (card 0151)
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
+
+	FN2CLogger::Get().Log(FString::Printf(
+		TEXT("Created variable '%s' in Blueprint '%s'"),
+		*UniqueName.ToString(), *Blueprint->GetName()), EN2CLogSeverity::Info);
+
+	return UniqueName;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpCreateVariableTool::BuildSuccessResult(const UBlueprint* Blueprint, 
 	const FString& RequestedName, FName ActualName, const FEdGraphPinType& ResolvedPinType,
-	const FString& ContainerType) const // Removed KeyPinType
+	const FString& ContainerType) const
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 	
@@ -387,7 +370,7 @@ bool FN2CMcpCreateVariableTool::ValidateVariableName(const FString& VariableName
 	return true;
 }
 
-bool FN2CMcpCreateVariableTool::ValidateBlueprintModifiable(const UBlueprint* Blueprint, FString& OutError) const
+bool FN2CMcpCreateVariableTool::ValidateBlueprintModifiable(const UBlueprint* Blueprint, FString& OutError)
 {
 	if (!Blueprint)
 	{
@@ -395,10 +378,26 @@ bool FN2CMcpCreateVariableTool::ValidateBlueprintModifiable(const UBlueprint* Bl
 		return false;
 	}
 	
+	// The editor offers no new variable in these Blueprints (FBlueprintEditor::NewDocument_IsVisibleForType,
+	// CGT_NewVariable): an interface carries no state, and function and macro libraries are never instanced
+	const TCHAR* RefusedKind = nullptr;
+	switch (Blueprint->BlueprintType)
+	{
+	case BPTYPE_Interface: RefusedKind = TEXT("a Blueprint Interface"); break;
+	case BPTYPE_FunctionLibrary: RefusedKind = TEXT("a Blueprint Function Library"); break;
+	case BPTYPE_MacroLibrary: RefusedKind = TEXT("a Blueprint Macro Library"); break;
+	default: break;
+	}
+	if (RefusedKind)
+	{
+		OutError = FString::Printf(TEXT("UNSUPPORTED_BLUEPRINT_TYPE: '%s' is %s, which cannot have member variables"),
+			*Blueprint->GetName(), RefusedKind);
+		return false;
+	}
+	
 	if (Blueprint->IsA<UAnimBlueprint>())
 	{
 		// Animation Blueprints have special variable handling
-		// For now, we'll allow it but note this limitation
 		FN2CLogger::Get().LogWarning(TEXT("Creating variables in Animation Blueprints may have limitations"));
 	}
 	

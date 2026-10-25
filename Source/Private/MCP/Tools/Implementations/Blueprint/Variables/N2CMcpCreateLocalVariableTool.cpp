@@ -2,6 +2,7 @@
 
 #include "N2CMcpCreateLocalVariableTool.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
@@ -12,6 +13,8 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_EditablePinBase.h"
+#include "ScopedTransaction.h"
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_VariableGet.h"
@@ -33,7 +36,7 @@ FMcpToolDefinition FN2CMcpCreateLocalVariableTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("create-local-variable"),
-		TEXT("Creates a new local variable in the currently focused Blueprint function. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
+		TEXT("Creates a new local variable in the currently focused Blueprint function. The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
 	,
 		TEXT("Blueprint Variable Management")
 	);
@@ -94,57 +97,55 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		// Parse arguments
 		FN2CMcpArgumentParser ArgParser(Arguments);
 		FString ErrorMsg;
-		
+
 		// Extract required parameters
 		FString VariableName;
 		if (!ArgParser.TryGetRequiredName(TEXT("variableName"), VariableName, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
-		
+
 		FString TypeIdentifier;
 		if (!ArgParser.TryGetRequiredName(TEXT("typeIdentifier"), TypeIdentifier, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
-		
+
 		// Optional parameters
 		FString DefaultValue = ArgParser.GetOptionalString(TEXT("defaultValue"));
 		FString Tooltip = ArgParser.GetOptionalString(TEXT("tooltip"));
-		
+
 		// Container type parameters
 		FString ContainerType, ParsedMapKeyTypeIdentifier;
 		FN2CMcpVariableUtils::ParseContainerTypeArguments(ArgParser, ContainerType, ParsedMapKeyTypeIdentifier);
-		
-		// Get focused function graph
-		UBlueprint* OwningBlueprint = nullptr;
-		UEdGraph* FocusedGraph = nullptr;
-		FString GraphError;
-		if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(OwningBlueprint, FocusedGraph, GraphError))
+
+		// The focused graph, through the shared graph resolver (card 0152). This tool takes no target arguments (card
+		// 0274 adds them), so the empty target is the focused graph; a read-only graph is refused (READ_ONLY_GRAPH).
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+		if (!Target.IsValid())
 		{
-			return FMcpToolCallResult::CreateErrorResult(GraphError);
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
 		}
-		
-		// Ensure we're in a K2 graph
-		if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
+		UBlueprint* OwningBlueprint = Target.Blueprint;
+		UEdGraph* FunctionGraph = FBlueprintEditorUtils::GetTopLevelGraph(Target.Graph);
+
+		// Ensure we're in a K2 function graph (a collapsed graph inside a function counts as its function)
+		if (!FunctionGraph || !FunctionGraph->GetSchema() || !FunctionGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Focused graph is not a Blueprint graph"));
 		}
-		
-		// Find the function entry node
-		UK2Node_FunctionEntry* FunctionEntry = FindFunctionEntryNode(FocusedGraph);
-		if (!FunctionEntry)
+		if (FunctionGraph->GetSchema()->GetGraphType(FunctionGraph) != GT_Function)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Not in a function graph. Local variables can only be created in functions, not event graphs."));
+			return FMcpToolCallResult::CreateErrorResult(TEXT("NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs."));
 		}
-		
+
 		// Validate container type and key type combination
 		FString ContainerValidationError;
 		if (!FN2CMcpVariableUtils::ValidateContainerTypeParameters(ContainerType, ParsedMapKeyTypeIdentifier, ContainerValidationError))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ContainerValidationError);
 		}
-		
+
 		// Resolve type identifier to FEdGraphPinType
 		FEdGraphPinType ResolvedPinType; // This will be the final pin type (e.g. TMap<Key,Value>)
 		FString ResolveError;
@@ -153,132 +154,143 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		{
 			return FMcpToolCallResult::CreateErrorResult(ResolveError);
 		}
-		
-		// Create the local variable
-		FName ActualVariableName = CreateLocalVariable(FunctionEntry, VariableName, ResolvedPinType, DefaultValue, Tooltip);
-		
+
+		// Create the local variable, in one transaction
+		FString CreateError;
+		const FName ActualVariableName = AddLocalVariableToFunction(OwningBlueprint, FunctionGraph, VariableName,
+			ResolvedPinType, DefaultValue, Tooltip, CreateError);
+		if (ActualVariableName.IsNone())
+		{
+			return FMcpToolCallResult::CreateErrorResult(CreateError);
+		}
+
+		// Show notification
+		FNotificationInfo Info(FText::Format(
+			LOCTEXT("LocalVariableCreated", "Local variable '{0}' created successfully"),
+			FText::FromName(ActualVariableName)
+		));
+		Info.ExpireDuration = 3.0f;
+		Info.bFireAndForget = true;
+		Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
+		FSlateNotificationManager::Get().AddNotification(Info);
+
 		// Build and return success result
-		TSharedPtr<FJsonObject> ResultJsonObj = BuildSuccessResult(FunctionEntry, FocusedGraph, VariableName, ActualVariableName, ResolvedPinType, ContainerType); // Renamed
-		
+		UK2Node_FunctionEntry* FunctionEntry = nullptr;
+		{
+			TArray<UK2Node_FunctionEntry*> EntryNodes;
+			FunctionGraph->GetNodesOfClass(EntryNodes);
+			FunctionEntry = EntryNodes.Num() > 0 ? EntryNodes[0] : nullptr;
+		}
+		TSharedPtr<FJsonObject> ResultJsonObj = BuildSuccessResult(FunctionEntry, FunctionGraph, VariableName, ActualVariableName, ResolvedPinType, ContainerType);
+
 		FString JsonString;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
-		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer); // Use ResultJsonObj
+		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer);
 
 		return FMcpToolCallResult::CreateTextResult(JsonString);
 	});
 }
 
-UK2Node_FunctionEntry* FN2CMcpCreateLocalVariableTool::FindFunctionEntryNode(UEdGraph* Graph) const
+FName FN2CMcpCreateLocalVariableTool::MakeUniqueLocalVariableName(UBlueprint* Blueprint, UEdGraph* FunctionGraph, const FString& BaseName)
 {
-	if (!Graph)
+	UStruct* Scope = (Blueprint && Blueprint->SkeletonGeneratedClass && FunctionGraph)
+		? FindUField<UFunction>(Blueprint->SkeletonGeneratedClass, FunctionGraph->GetFName()) : nullptr;
+	FName Name = FBlueprintEditorUtils::FindUniqueKismetName(Blueprint, BaseName, Scope);
+
+	// The skeleton function lists the parameters only once it has been regenerated: also check the entry and return
+	// nodes' parameters and the entry's locals, so a local never shares a parameter's name (the compiler would refuse
+	// to create the second property in the function's scope)
+	TArray<UK2Node_EditablePinBase*> SignatureNodes;
+	if (FunctionGraph)
 	{
-		return nullptr;
+		FunctionGraph->GetNodesOfClass(SignatureNodes);
 	}
-	
-	// Iterate through all nodes in the graph
-	for (UEdGraphNode* Node : Graph->Nodes)
+	auto IsTaken = [&SignatureNodes](const FName Candidate)
 	{
-		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+		for (const UK2Node_EditablePinBase* Node : SignatureNodes)
 		{
-			return Entry;
+			for (const TSharedPtr<FUserPinInfo>& Pin : Node->UserDefinedPins)
+			{
+				if (Pin.IsValid() && Pin->PinName == Candidate)
+				{
+					return true;
+				}
+			}
+			if (const UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+			{
+				for (const FBPVariableDescription& Local : Entry->LocalVariables)
+				{
+					if (Local.VarName == Candidate)
+					{
+						return true;
+					}
+				}
+			}
 		}
-	}
-	
-	// For event graphs, check for event nodes (which don't support local variables)
-	for (UEdGraphNode* Node : Graph->Nodes)
+		return false;
+	};
+
+	const FString Stem = Name.ToString();
+	for (int32 Suffix = 0; IsTaken(Name) && Suffix < 1000; ++Suffix)
 	{
-		if (Cast<UK2Node_Event>(Node) || Cast<UK2Node_CustomEvent>(Node))
-		{
-			// Events don't support local variables directly
-			return nullptr;
-		}
+		Name = FBlueprintEditorUtils::FindUniqueKismetName(Blueprint, FString::Printf(TEXT("%s_%d"), *Stem, Suffix), Scope);
 	}
-	
-	return nullptr;
+	return Name;
 }
 
-FName FN2CMcpCreateLocalVariableTool::MakeUniqueLocalVariableName(UK2Node_FunctionEntry* FunctionEntry, const FString& BaseName) const
+FName FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(UBlueprint* Blueprint, UEdGraph* Graph, const FString& DesiredName,
+	const FEdGraphPinType& PinType, const FString& DefaultValue, const FString& Tooltip, FString& OutError)
 {
-	if (!FunctionEntry)
+	UEdGraph* FunctionGraph = Graph ? FBlueprintEditorUtils::GetTopLevelGraph(Graph) : nullptr;
+	if (!Blueprint || !FunctionGraph || !FunctionGraph->GetSchema()
+		|| FunctionGraph->GetSchema()->GetGraphType(FunctionGraph) != GT_Function)
 	{
-		return FName(*BaseName);
+		OutError = TEXT("NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs.");
+		return NAME_None;
 	}
-	
-	FName TestName(*BaseName);
-	int32 Counter = 0;
-	
-	// Check against existing local variables
-	while (true)
+	TArray<UK2Node_FunctionEntry*> EntryNodes;
+	FunctionGraph->GetNodesOfClass(EntryNodes);
+	if (EntryNodes.Num() == 0)
 	{
-		bool bNameExists = false;
-		
-		for (const FBPVariableDescription& LocalVar : FunctionEntry->LocalVariables)
+		OutError = FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: '%s' has no function entry node"), *FunctionGraph->GetName());
+		return NAME_None;
+	}
+	UK2Node_FunctionEntry* FunctionEntry = EntryNodes[0];
+
+	const FName UniqueName = MakeUniqueLocalVariableName(Blueprint, FunctionGraph, DesiredName);
+
+	// One undo step for the variable and its tooltip (card 0154). AddLocalVariable opens its own transaction, which
+	// joins this one, and calls Modify on the Blueprint and the entry node. The compile runs after this transaction
+	// has closed (FN2CMcpToolCallScope, card 0151).
+	FScopedTransaction Transaction(FText::Format(
+		LOCTEXT("CreateLocalVariableTransaction", "Create Local Variable '{0}'"), FText::FromName(UniqueName)));
+	if (!FBlueprintEditorUtils::AddLocalVariable(Blueprint, FunctionGraph, UniqueName, PinType, DefaultValue))
+	{
+		Transaction.Cancel();
+		OutError = FString::Printf(TEXT("Failed to create local variable '%s' in function '%s'"), *DesiredName, *FunctionGraph->GetName());
+		FN2CLogger::Get().LogError(OutError);
+		return NAME_None;
+	}
+
+	if (!Tooltip.IsEmpty())
+	{
+		FunctionEntry->Modify();
+		for (FBPVariableDescription& Local : FunctionEntry->LocalVariables)
 		{
-			if (LocalVar.VarName == TestName)
+			if (Local.VarName == UniqueName)
 			{
-				bNameExists = true;
+				Local.SetMetaData(FBlueprintMetadata::MD_Tooltip, Tooltip);
 				break;
 			}
 		}
-		
-		if (!bNameExists)
-		{
-			return TestName;
-		}
-		
-		// Try with counter
-		Counter++;
-		TestName = FName(*FString::Printf(TEXT("%s_%d"), *BaseName, Counter));
 	}
-}
 
-FName FN2CMcpCreateLocalVariableTool::CreateLocalVariable(UK2Node_FunctionEntry* FunctionEntry, const FString& DesiredName,
-	const FEdGraphPinType& PinType, const FString& DefaultValue, const FString& Tooltip)
-{
-	if (!FunctionEntry)
-	{
-		return NAME_None;
-	}
-	
-	// Create FBPVariableDescription
-	FBPVariableDescription NewVar;
-	NewVar.VarName = MakeUniqueLocalVariableName(FunctionEntry, DesiredName);
-	NewVar.VarGuid = FGuid::NewGuid();
-	NewVar.VarType = PinType; // PinType is the fully resolved type (e.g. TMap<Key,Value>)
-	NewVar.FriendlyName = DesiredName;
-	NewVar.DefaultValue = DefaultValue;
-	NewVar.Category = FText::FromString(TEXT("Local"));
-	
-	// Set metadata
-	if (!Tooltip.IsEmpty())
-	{
-		NewVar.SetMetaData(TEXT("ToolTip"), Tooltip);
-	}
-	
-	// Add to function entry's local variables
-	FunctionEntry->LocalVariables.Add(NewVar);
-	
-	// Reconstruct the node to show the new local variable
-	FunctionEntry->ReconstructNode();
-	
 	// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
-	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionEntry);
-	if (Blueprint)
-	{
-		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
-	}
-	
-	// Show notification
-	FNotificationInfo Info(FText::Format(
-		LOCTEXT("LocalVariableCreated", "Local variable '{0}' created successfully"),
-		FText::FromName(NewVar.VarName)
-	));
-	Info.ExpireDuration = 3.0f;
-	Info.bFireAndForget = true;
-	Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
-	FSlateNotificationManager::Get().AddNotification(Info);
-	
-	return NewVar.VarName;
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Created local variable '%s' in function '%s' of Blueprint '%s'"),
+		*UniqueName.ToString(), *FunctionGraph->GetName(), *Blueprint->GetName()), EN2CLogSeverity::Info);
+	return UniqueName;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpCreateLocalVariableTool::BuildSuccessResult(UK2Node_FunctionEntry* FunctionEntry, UEdGraph* FunctionGraph,

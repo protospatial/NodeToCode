@@ -22,17 +22,28 @@ comparison in `FindLocalVariable`): `health` finds `Health`.
 
 ### create-variable
 - **Description**: Creates a member variable in the focused Blueprint
-  (`FBlueprintEditorUtils::AddMemberVariable` in `FN2CMcpCreateVariableTool::CreateVariable`)
+  (`FBlueprintEditorUtils::AddMemberVariable` in `FN2CMcpCreateVariableTool::CreateMemberVariable`). Every setting is
+  written to the variable description (`FBPVariableDescription` in `Blueprint->NewVariables`) through the engine
+  helpers the details panel uses, so every later compile keeps it (card 0154):
+  - `isInstanceEditable` clears `CPF_DisableEditOnInstance` (`SetBlueprintOnlyEditableFlag`); it never sets
+    `CPF_Interp` (Expose to Cinematics)
+  - `isBlueprintReadOnly` sets `CPF_BlueprintReadOnly` (`SetBlueprintPropertyReadOnlyFlag`)
+  - `replicated` sets `CPF_Net`; `repnotify` sets `CPF_Net | CPF_RepNotify`, sets the description's `RepNotifyFunc`
+    to `OnRep_<name>` and creates that function graph when the Blueprint has none (as the details panel and UE 5.8's
+    `UBlueprintEditorLibrary::SetBlueprintVariableReplication` do)
+  - `category` (`SetBlueprintVariableCategory`) and `tooltip` (`tooltip` metadata) also go on the description
+  - The default value is written to the description; the compile moves it to the class default object
 - **Parameters**:
   - `variableName` (required): Name for the new variable. Empty names, names with invalid object-name characters and
     a few reserved words (`None`, `Self`, `True`, `Class`, `Return`, ...) are refused (`ValidateVariableName`)
   - `typeIdentifier` (required): Type identifier, see "Type Identifiers" (for maps, the VALUE type)
   - `defaultValue` (optional): Default value, as text
   - `category` (optional, default `Default`): Category shown in the My Blueprint panel
-  - `isInstanceEditable` (optional, default true): Per-instance editability
+  - `isInstanceEditable` (optional, default false, as for a variable added in the editor): Instance Editable
   - `isBlueprintReadOnly` (optional, default false): Read-only in graphs
   - `tooltip` (optional): Tooltip text
-  - `replicationCondition` (optional, default `none`): `none`, `replicated` or `repnotify`
+  - `replicationCondition` (optional, default `none`): `none`, `replicated` or `repnotify` (case-insensitive); any
+    other value is refused with `INVALID_ARGUMENT: ...` before the Blueprint is changed
   - `containerType` (optional, default `none`): `none`, `array`, `set` or `map`
   - `mapKeyTypeIdentifier` (optional): Key type, required when `containerType` is `map` and refused otherwise
 - **Returns**: `success`, `variableName` (as requested), `actualName`, `blueprintName`, `typeInfo`,
@@ -41,22 +52,28 @@ comparison in `FindLocalVariable`): `health` finds `Health`.
   `path`) or `primitive` (with the pin category as `typeName`). For a map, `typeInfo` describes the KEY type
 - **Errors**: A type that does not resolve (see "Type Identifiers") fails before the Blueprint is changed, for
   example `INVALID_TYPE: 'multicastdelegate' cannot be created from a type name: ...` or
-  `TYPE_NOT_FOUND: Unknown type 'HitResults'. ...`
-- **Known issue (card 0154):** `isInstanceEditable`, `isBlueprintReadOnly` and the replication options are written
-  to the compiled class property (`ApplyVariableProperties`), not to the variable description, so the next compile
-  can drop them, and `isInstanceEditable` turns on Expose to Cinematics (`SetInterpFlag`)
+  `TYPE_NOT_FOUND: Unknown type 'HitResults'. ...`. A Blueprint Interface, Function Library or Macro Library is
+  refused, as the editor offers no new variable there (`FBlueprintEditor::NewDocument_IsVisibleForType`):
+  `UNSUPPORTED_BLUEPRINT_TYPE: 'BPI_Door' is a Blueprint Interface, which cannot have member variables`. With
+  `repnotify`, an object of the Blueprint already named `OnRep_<name>` that is not a graph gives `NAME_COLLISION: ...`
 
 ### create-local-variable
 - **Description**: Creates a local variable in the focused function graph
-  (`FN2CMcpCreateLocalVariableTool::CreateLocalVariable` appends to `UK2Node_FunctionEntry::LocalVariables`)
+  (`FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction`, which calls `FBlueprintEditorUtils::AddLocalVariable`
+  on the focused graph's top-level graph, so a collapsed graph inside a function works too). The focused graph comes
+  from `FN2CGraphTarget::Resolve` with no target arguments (card 0152), so a read-only graph (an interface function)
+  is refused with `READ_ONLY_GRAPH: ...`. The local gets `CPF_BlueprintVisible`, the `Default` category and the
+  tooltip as `tooltip` metadata
 - **Parameters**: `variableName` (required), `typeIdentifier` (required), `defaultValue`, `tooltip`,
   `containerType`, `mapKeyTypeIdentifier` (as for create-variable)
 - **Returns**: `success`, `variableName`, `actualName`, `typeInfo`, `functionName`, `blueprintName`, `message`, and
-  for a container `containerType` (plus a `note` for maps). The name is made unique among the function's locals only
-  (`MakeUniqueLocalVariableName`): a second `TempCounter` becomes `TempCounter_1`; a local may share a member
-  variable's name
-- **Errors**: In an event graph,
-  `Not in a function graph. Local variables can only be created in functions, not event graphs.`
+  for a container `containerType` (plus a `note` for maps). The name is made unique with
+  `FBlueprintEditorUtils::FindUniqueKismetName` in the function's scope, also checked against the entry and return
+  nodes' parameters (`MakeUniqueLocalVariableName`): a name taken by a member variable, graph, parameter or another
+  local of the function gets a suffix (a second `TempCounter` becomes `TempCounter_0`, a local named like the
+  parameter `Target` becomes `Target_0`), and invalid characters are replaced. `actualName` is the name used
+- **Errors**: In an event graph or macro,
+  `NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs.`
 
 ### search-variable-types
 - **Description**: Searches the types a variable can have and returns identifiers the other tools accept
@@ -450,14 +467,15 @@ curl -X POST http://localhost:27000/mcp \
 
 ## Undo, Compile and Save
 
-- **Undoable** (the tool opens an `FScopedTransaction`): `set-member-variable-default-value`
-  (`ApplyDefaultValue`), `set-local-function-variable-default-value`, `create-get-local-function-variable-node` and
-  `create-set-local-function-variable-node`. These are the four `.cpp` files in this folder that open one.
-- **Not undoable** by their own transaction: `create-variable`, `create-local-variable`,
-  `create-get-member-variable-node` and `create-set-member-variable-node`. Ctrl+Z after one of them undoes the
-  editor's previous transaction instead, and restoring that earlier snapshot can also remove the untracked change
-  (an undo of an earlier `set-member-variable-default-value` removed a variable `create-variable` had added after it).
-- **Known issue (cards 0154, 0155, 0283):** the four tools above get transactions in those cards, and undoing
+- **Undoable** (the tool opens an `FScopedTransaction`): `create-variable` and `create-local-variable` (card 0154:
+  one undo removes the variable with all its settings, and for `repnotify` the `OnRep_` function too, and leaves the
+  previous transaction alone), `set-member-variable-default-value` (`ApplyDefaultValue`),
+  `set-local-function-variable-default-value`, `create-get-local-function-variable-node` and
+  `create-set-local-function-variable-node`. These are the six `.cpp` files in this folder that open one.
+- **Not undoable** by their own transaction: `create-get-member-variable-node` and
+  `create-set-member-variable-node`. Ctrl+Z after one of them undoes the editor's previous transaction instead, and
+  restoring that earlier snapshot can also remove the untracked change.
+- **Known issue (cards 0155, 0283):** the two tools above get transactions in card 0155, and undoing
   `set-member-variable-default-value` restores the variable description but not the class default object.
 - **Read-only**: `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`.
 - Every successful edit marks the Blueprint modified (structurally for create-variable and create-local-variable)

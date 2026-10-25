@@ -9,7 +9,6 @@
 
 // Forward declarations
 class UBlueprint;
-class FProperty;
 
 /**
  * MCP tool that creates a new variable in the active Blueprint
@@ -22,7 +21,6 @@ public:
 	virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
 	virtual bool RequiresGameThread() const override { return true; }
 
-private:
 	// Variable creation settings
 	struct FVariableCreationSettings
 	{
@@ -30,31 +28,35 @@ private:
 		FString TypeIdentifier;
 		FString DefaultValue;
 		FString Category = TEXT("Default");
-		bool bInstanceEditable = true;
-		bool bBlueprintReadOnly = false;	
+		bool bInstanceEditable = false;
+		bool bBlueprintReadOnly = false;
 		FString Tooltip;
+		/** none, replicated or repnotify */
 		FString ReplicationCondition = TEXT("none");
 	};
 
-	// Main operations
-	// UBlueprint* GetActiveBlueprint() const; // Removed
-	// bool ResolveTypeIdentifier(const FString& TypeIdentifier, FEdGraphPinType& OutPinType, FString& OutError) const; // Removed
-	FName CreateVariable(UBlueprint* Blueprint, const FString& DesiredName, 
-		const FEdGraphPinType& PinType, const FString& DefaultValue, const FString& Category);
-	void ApplyVariableProperties(UBlueprint* Blueprint, FName VariableName,
-		bool bInstanceEditable, bool bBlueprintReadOnly,
-		const FString& Tooltip, const FString& ReplicationCondition);
+	/**
+	 * Adds the member variable and sets its flags on the variable description (FBPVariableDescription), in one
+	 * FScopedTransaction, so one undo removes it with its flags and the OnRep function a repnotify variable gets
+	 * (card 0154). The name is made unique with FBlueprintEditorUtils::FindUniqueKismetName. Marks the Blueprint
+	 * modified; inside a tool call (FN2CMcpToolCallScope) the compile runs once when the call ends. Game thread.
+	 * @return The variable's name, or NAME_None and OutError (nothing is changed then)
+	 */
+	static FName CreateMemberVariable(UBlueprint* Blueprint, const FVariableCreationSettings& Settings,
+		const FEdGraphPinType& PinType, FString& OutError);
 
-	// Type resolution helpers
-	// bool ResolvePrimitiveType(const FString& TypeIdentifier, FEdGraphPinType& OutPinType) const; // Removed
-	// bool ResolveObjectType(const FString& TypeIdentifier, FEdGraphPinType& OutPinType, FString& OutError) const; // Removed
-	
+	/**
+	 * False and an error for a Blueprint the editor does not let you add variables to (Interface, Function Library and
+	 * Macro Library Blueprints, as FBlueprintEditor::NewDocument_IsVisibleForType(CGT_NewVariable)) or one that is
+	 * regenerating on load
+	 */
+	static bool ValidateBlueprintModifiable(const UBlueprint* Blueprint, FString& OutError);
+
+private:
 	// Result building
 	TSharedPtr<FJsonObject> BuildSuccessResult(const UBlueprint* Blueprint, const FString& RequestedName,
-		FName ActualName, const FEdGraphPinType& ResolvedPinType, // Changed from ValuePinType, removed KeyPinType
-		const FString& ContainerType) const;
-	
+		FName ActualName, const FEdGraphPinType& ResolvedPinType, const FString& ContainerType) const;
+
 	// Validation
 	bool ValidateVariableName(const FString& VariableName, FString& OutError) const;
-	bool ValidateBlueprintModifiable(const UBlueprint* Blueprint, FString& OutError) const;
 };
