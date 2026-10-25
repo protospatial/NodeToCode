@@ -12,16 +12,16 @@ Quick Start:
     bp = n2c.get_focused_blueprint()
     if bp['success']:
         print(f"Blueprint: {bp['data']['name']}")
-        print(f"Status: {bp['data']['status']}")
+        print(f"Graph: {bp['data']['graph_name']} ({bp['data']['node_count']} nodes)")
 
     # Compile the blueprint
     result = n2c.compile_blueprint()
     if result['success']:
-        print("Compilation successful!")
+        print(f"Compile status: {result['data']['status']}")
 
     # Save the blueprint
     result = n2c.save_blueprint()
-    if result['data']['was_saved']:
+    if result['success'] and result['data']['was_saved']:
         print("Saved to disk")
 
 Script Management:
@@ -40,14 +40,20 @@ Graph Editing:
     node = results['data']['nodes'][0]
     added = n2c.add_node_to_graph(node['displayName'], node['spawnMetadata']['actionIdentifier'])
 
-    # Connect nodes
-    n2c.connect_pins([{"from": {...}, "to": {...}}])
+    # Connect nodes: pins are picked by their stable pinName ('execute', 'then', 'ReturnValue', ...)
+    begin = n2c.find_nodes_in_graph(["BeginPlay"])['data']['nodes'][0]
+    n2c.connect_pins([{
+        "from": {"nodeGuid": begin['nodeGuid'],
+                 "pinGuid": next(p['pinGuid'] for p in begin['outputPins'] if p['pinName'] == 'then')},
+        "to": {"nodeGuid": added['data']['nodeGuid'],
+               "pinGuid": next(p['pinGuid'] for p in added['data']['inputPins'] if p['pinName'] == 'execute')},
+    }])
 
     # Find and delete nodes
-    found = n2c.find_nodes_in_graph(["Print"])
+    found = n2c.find_nodes_in_graph(["PrintString"])
     n2c.delete_nodes([found['data']['nodes'][0]['nodeGuid']])
 
-Function Pin Management:
+Function Pin Management (with a function graph focused, for example after open_blueprint_function):
     # Add function parameters
     n2c.add_function_input_pin("Target", "/Script/Engine.Actor")
     n2c.add_function_return_pin("bSuccess", "bool")
@@ -58,12 +64,12 @@ Return Format:
     - 'data': dict or None - Operation-specific result data
     - 'error': str or None - Error message if success is False
 
-Available Functions:
+Available Functions (the authoritative list is __all__ below):
     Blueprint Operations:
     - get_focused_blueprint() - Get info about the focused Blueprint
     - read_n2c_json(text) - Read N2C JSON (1.x or 2.x) into the current version
-- compile_blueprint(path=None) - Compile a Blueprint
-    - save_blueprint(path=None) - Save a Blueprint to disk
+    - compile_blueprint(path=None) - Compile the focused Blueprint (path is ignored for now)
+    - save_blueprint(path=None, only_if_dirty=True) - Save the focused Blueprint (path is ignored for now)
     - load_blueprint(path) - Load a Blueprint by path
     - open_blueprint(path, focus_graph) - Open Blueprint in editor
     - open_blueprint_function(name) - Focus a function in the open Blueprint
@@ -81,10 +87,10 @@ Available Functions:
     Graph Editing:
     - search_blueprint_nodes(term, context_sensitive, max) - Search for nodes to add
     - add_node_to_graph(name, action_id, x, y) - Add a node to focused graph
-    - connect_pins(connections, break_existing) - Connect pins between nodes
+    - connect_pins(connections, break_existing_links) - Connect pins between nodes
     - set_pin_value(node_guid, pin_guid, value) - Set input pin default value
     - delete_nodes(guids, preserve_connections, force) - Delete nodes
-    - find_nodes_in_graph(terms, type, case_sensitive) - Find nodes by keyword/GUID
+    - find_nodes_in_graph(terms, type, case_sensitive, max) - Find nodes by keyword/GUID
     - create_comment_node(guids, text, color, font_size) - Create comment around nodes
 
     Function Pin Management:
@@ -103,7 +109,9 @@ Available Functions:
     Utilities:
     - get_editor_subsystem(class) - Get an editor subsystem
     - is_blueprint_valid(obj) - Check if object is a Blueprint
+    - get_project_content_dir(), get_project_dir() - Project paths
     - log_info/warning/error(msg) - Log messages
+    - make_success_result(data), make_error_result(error) - Build the standard result dict
 """
 
 __version__ = "1.0.0"
@@ -113,7 +121,7 @@ __author__ = "Protospatial"
 from .blueprint import (
     get_focused_blueprint,
     read_n2c_json,
-compile_blueprint,
+    compile_blueprint,
     save_blueprint,
     load_blueprint,
 )

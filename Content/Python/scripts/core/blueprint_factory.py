@@ -35,7 +35,8 @@ def create_blueprint(
     Create a new Blueprint asset.
 
     Args:
-        name: Blueprint name (BP_ prefix added automatically if missing and parent is Actor-based)
+        name: Blueprint name, used as given (no prefix is added here; create_actor_blueprint and the
+            other create_*_blueprint helpers add their prefix, such as BP_ or WBP_, when it is missing)
         package_path: Content folder path (e.g., '/Game/Blueprints')
         parent_class: Parent class - can be:
             - Simple name: 'Actor', 'Pawn', 'Character', 'UserWidget'

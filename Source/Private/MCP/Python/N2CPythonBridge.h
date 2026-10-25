@@ -24,7 +24,8 @@ public:
 	 * Get the currently focused Blueprint graph as N2CJSON format.
 	 *
 	 * @return JSON string containing the Blueprint data, or error JSON if no Blueprint is focused.
-	 *         Format: {"success": true/false, "data": {...} or null, "error": "..." or null}
+	 *         Format: {"success": true/false, "data": {"name", "path", "graph_name", "node_count", "n2c_json": {...}}
+	 *         or null, "error": "..." or null}
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString GetFocusedBlueprintJson();
@@ -119,8 +120,11 @@ public:
 	 * Open a Blueprint asset in the editor.
 	 *
 	 * @param BlueprintPath Asset path of the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
-	 * @param FocusGraph Optional graph name to focus (e.g., "EventGraph", "ConstructionScript")
-	 * @return JSON with success status and Blueprint info
+	 * @param FocusGraph Optional graph to focus: the exact name of one of the Blueprint's event, function or macro
+	 *        graphs (e.g., "EventGraph", "UserConstructionScript" for the construction script, or a function name).
+	 *        A name that matches no graph is not an error: the Blueprint opens and "focusedGraph" comes back empty.
+	 * @return JSON with success status and Blueprint info: {"blueprintName", "blueprintPath", "focusedGraph",
+	 *         "eventGraphCount", "functionCount"}
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString OpenBlueprint(const FString& BlueprintPath, const FString& FocusGraph = TEXT(""));
@@ -144,7 +148,10 @@ public:
 	 * @param MaxResults Maximum number of results to return (1-100)
 	 * @param CategoryFilter Optional category filter (e.g., "flowcontrol", "operators", "struct")
 	 * @param bExcludeVMFunctions If true (default), excludes low-level VM math functions
-	 * @return JSON with matching nodes and their actionIdentifiers for spawning
+	 * @return JSON {"nodes": [{"name", "displayName", "spawnMetadata": {"actionIdentifier", "isContextSensitive"}}],
+	 *         "count"}. "name" is the action's full search text (lower case: title, keywords and category lines), and
+	 *         "displayName" is that text after its last '>' (in practice the same text); neither is a display title.
+	 *         Pass "displayName" and "actionIdentifier" to AddNodeToGraph.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString SearchBlueprintNodes(const FString& SearchTerm, bool bContextSensitive = true, int32 MaxResults = 20,
@@ -162,7 +169,8 @@ public:
 	/**
 	 * Add a Blueprint node to the focused graph.
 	 *
-	 * @param NodeName Name of the node (used for action lookup)
+	 * @param NodeName Text whose space-separated words all appear in the action's search text (a search result's
+	 *        "displayName" works); it narrows the actions before the exact ActionIdentifier match
 	 * @param ActionIdentifier Identifier from search results spawnMetadata
 	 * @param LocationX X position for node placement
 	 * @param LocationY Y position for node placement
@@ -208,7 +216,8 @@ public:
 	/**
 	 * Find nodes in the focused graph by keywords or GUIDs.
 	 *
-	 * @param SearchTermsJson JSON array of search terms: ["term1","term2",...] or ["guid1","guid2",...]
+	 * @param SearchTermsJson JSON array of search terms: ["term1","term2",...] or ["guid1","guid2",...]; a node matches
+	 *        when any term is a substring of its title (as shown and in source text), its class or its member name
 	 * @param SearchType Either "keyword" or "guid"
 	 * @param bCaseSensitive Whether keyword search is case-sensitive
 	 * @param MaxResults Maximum nodes to return (1-200)

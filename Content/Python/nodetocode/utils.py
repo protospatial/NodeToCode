@@ -25,9 +25,9 @@ def get_editor_subsystem(subsystem_class: type) -> Optional[Any]:
         The subsystem instance or None if not available
 
     Example:
-        subsystem = get_editor_subsystem(unreal.AssetEditorSubsystem)
+        subsystem = get_editor_subsystem(unreal.EditorAssetSubsystem)
         if subsystem:
-            assets = subsystem.get_all_edited_assets()
+            exists = subsystem.does_asset_exist('/Game/Blueprints/BP_Player')
     """
     try:
         return unreal.get_editor_subsystem(subsystem_class)

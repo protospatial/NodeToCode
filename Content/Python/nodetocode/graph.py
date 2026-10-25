@@ -26,15 +26,18 @@ Usage:
         results['data']['nodes'][0]['spawnMetadata']['actionIdentifier']
     )
 
-    # Step 3: Connect pins between nodes (IMPORTANT: This is the next step after add_node_to_graph)
-    # Use the nodeGuid and pinGuid values returned from add_node_to_graph
-    n2c.connect_pins([{
-        "from": {"nodeGuid": node['data']['nodeGuid'], "pinGuid": "..."},
-        "to": {"nodeGuid": "...", "pinGuid": "..."}
-    }])
-
     # Find existing nodes in the graph (use when you need GUIDs for existing nodes)
-    found = n2c.find_nodes_in_graph(["Print"])
+    found = n2c.find_nodes_in_graph(["BeginPlay"])
+
+    # Step 3: Connect pins between nodes (IMPORTANT: This is the next step after add_node_to_graph)
+    # Pick pins by their stable 'pinName' ('execute', 'then', 'ReturnValue', ...), not the display label
+    begin = found['data']['nodes'][0]
+    n2c.connect_pins([{
+        "from": {"nodeGuid": begin['nodeGuid'],
+                 "pinGuid": next(p['pinGuid'] for p in begin['outputPins'] if p['pinName'] == 'then')},
+        "to": {"nodeGuid": node['data']['nodeGuid'],
+               "pinGuid": next(p['pinGuid'] for p in node['data']['inputPins'] if p['pinName'] == 'execute')}
+    }])
 """
 
 import json
@@ -73,14 +76,18 @@ def search_blueprint_nodes(
         exclude_vm_functions: If True (default), excludes low-level VM math functions
             like Multiply_FloatFloat that are rarely used directly
 
+    Each result's 'name' is the action's full search text (lower case: its title, keywords and category
+    lines) and 'displayName' is that text after its last '>', which in practice is the same text. Neither
+    is a display title, but 'displayName' with 'actionIdentifier' is what add_node_to_graph() needs.
+
     Returns:
         {
             success: bool,
             data: {
                 nodes: [
                     {
-                        name: str,
-                        displayName: str,
+                        name: str,          # full search text: "printstring", keywords, "|development", ...
+                        displayName: str,   # that text after its last '>' (the same text in practice)
                         spawnMetadata: {
                             actionIdentifier: str,
                             isContextSensitive: bool
@@ -101,8 +108,8 @@ def search_blueprint_nodes(
         results = search_blueprint_nodes("Print String")
         if results['success'] and results['data']['count'] > 0:
             node = results['data']['nodes'][0]
-            print(f"Found: {node['displayName']}")
-            print(f"ActionID: {node['spawnMetadata']['actionIdentifier']}")
+            print(f"Found: {node['displayName']!r}")
+            print(f"ActionID: {node['spawnMetadata']['actionIdentifier']!r}")
     """
     if not search_term or not search_term.strip():
         return make_error_result("search_term cannot be empty")
@@ -138,7 +145,8 @@ def add_node_to_graph(
     to other nodes using the nodeGuid and pinGuid values returned in this response.
 
     Args:
-        node_name: Name of the node (used for action lookup)
+        node_name: Text whose space-separated words all appear in the action's search text; a search
+            result's 'displayName' works. It narrows the actions before the exact action_identifier match.
         action_identifier: Identifier from search results spawnMetadata
         location_x: X position for node placement
         location_y: Y position for node placement
@@ -152,6 +160,8 @@ def add_node_to_graph(
                 graphName: str,
                 blueprintName: str,
                 location: {x: float, y: float},
+                # pinName is the stable pin name ('execute', 'then', 'InString', 'ReturnValue', ...);
+                # displayName is the editor's label, which can differ and follows the editor language
                 inputPins: [
                     {pinGuid: str, pinName: str, displayName: str, type: str, defaultValue?: str},
                     ...
@@ -183,7 +193,7 @@ def add_node_to_graph(
         if added['success']:
             print(f"Added node with GUID: {added['data']['nodeGuid']}")
             # Pin GUIDs are immediately available for connecting
-            exec_pin = next(p for p in added['data']['outputPins'] if p['type'] == 'exec')
+            exec_pin = next(p for p in added['data']['outputPins'] if p['pinName'] == 'then')
             print(f"Exec output pin: {exec_pin['pinGuid']}")
 
             # NEXT STEP: Connect this node to others using connect_pins()
@@ -387,6 +397,10 @@ def find_nodes_in_graph(
 ) -> Dict[str, Any]:
     """
     Find nodes in the focused Blueprint graph by keywords or GUIDs.
+
+    A keyword matches a node when it is a substring of the node's title (as shown, and its source text),
+    its class name (e.g. 'K2Node_CallFunction') or its member name (e.g. 'PrintString'); one matching
+    term is enough.
 
     Args:
         search_terms: List of keywords or GUIDs to search for
