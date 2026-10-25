@@ -12,6 +12,7 @@ Source/Private/Tests/
   README.md               this file
   N2CTestHelpers.h        shared helpers (N2CTest namespace) and N2C_TEST_FLAGS
   N2CTestBlueprintFactory.h/.cpp  N2CTest::FTestBlueprint: builds Blueprint graphs in code for capture specs
+  N2CToolSpecHarness.h/.cpp       the MCP tool spec harness: scratch Blueprints, tool calls, results, graph invariants
   Capture/  Core/  LLM/  MCP/     specs by area: <Area>/N2C<Thing>.spec.cpp
   N2C*Tests.cpp           older IMPLEMENT_SIMPLE_AUTOMATION_TEST regression tests (NodeToCode.Robustness.*,
                           NodeToCode.Security.PathUtils.*, NodeToCode.MCP.Transport.*); kept as they are
@@ -62,10 +63,58 @@ case back on. Currently disabled:
 | `NodeToCode.LLM.Parse.Fixtures` | Anthropic: a sentence before the fenced answer is skipped | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | OpenAI: an answer in a bare fence parses | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | Gemini: output tokens include thoughtsTokenCount | llm-layer-27 (card 0185) |
+| `NodeToCode.MCP.Graph` | connect-pins reports a malformed connection entry in failed and counts it | mcp-tools-graph-functions-25 (card 0276) |
+| `NodeToCode.MCP.Graph` | delete-blueprint-node with preserveConnections keeps the exec chain through a deleted Print String | mcp-tools-graph-functions-12 (card 0279) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
 `N2C_RUN_KNOWN_DEFECTS=1` in the editor's environment to run the disabled cases too and see which still fail.
+
+## MCP tool specs and the harness
+
+`N2CToolSpecHarness.h` (card 0147) is the one way the `NodeToCode.MCP.*` specs build a Blueprint, call a tool and
+check what it did. Use it for any new tool spec instead of a local copy:
+
+- **Scratch Blueprint:** `N2CTest::FToolSpecBlueprint` is an `FTestBlueprint` (all its graph helpers) in its own
+  package under `/Temp` (or `/Game` when the code under test only treats `/Game` content as the user's), never saved
+  or registered. Its package's `RF_Transient` is cleared so `MarkPackageDirty` applies and a spec can check an edit
+  dirties the package; `Settle()` compiles and cleans it for a baseline. Its destructor closes the editor it opened,
+  cleans the package, gives `RF_Transient` back and resets the editor's undo buffer, so `AfterEach` only resets it.
+- **Calling tools:** `N2CTest::RunTool(name, args)` runs the tool through `FN2CMcpToolManager::ExecuteTool`, as
+  `tools/call` does: one `FN2CMcpToolCallScope` per call (one compile, diagnostics in the result's `compile`
+  object) and the untrusted-content mark for tools that declare `bReturnsUntrustedContent`. A tool missing from the
+  active tool set is registered for the call. `RunToolUnmarked` skips the mark, for a spec that compares the text
+  byte for byte with what the tool builds (`NodeToCode.MCP.BlueprintByPath`). `InToolCall(lambda)` runs code that a
+  tool would run (a tool's static helper) inside one call scope and returns the compiles. Arguments:
+  `TargetArgs(Blueprint, Graph)` (`blueprintPath` + `graphGuid`), `PinRef`, `ConnectArgs`.
+- **Results:** `ResultJson`, `ResultTarget`, `ResultCompile`, `IsMarkedUntrusted`; `ExpectResultTargets` checks the
+  result names the intended Blueprint and graph, `ExpectToolCompiled` that it succeeded and its compile has no
+  errors.
+- **Invariants:** `Snapshot(Blueprint)` writes every graph's nodes, pins (ID, type, default, flags, links) and
+  `UserDefinedPins`, and the Blueprint's variables, timelines and component templates as text;
+  `ExpectUndoRedoExact` undoes the last transaction and compares with the snapshot from before the edit, then redoes
+  it and compares with the edited one, reporting the first differing line. `ExpectSymmetricLinks` (every `LinkedTo`
+  links back, to a node still in its graph), `ExpectCompilesClean` (zero compile errors), `FCompileCounter`,
+  `UndoQueueLength`, `AllLinks`, `HasUserPin`, `ExecIn`/`ExecOut`, `FindNodeByGuid`.
+- **Headless limits:** the Graph, Functions and Variables tools take `blueprintPath` with `graphName` or `graphGuid`
+  (card 0152), so their specs need no editor and run on every engine. A case that needs the focused graph (the
+  Python bridge, the variable node tools, `get-focused-blueprint`) calls `FToolSpecBlueprint::OpenInEditor`, which
+  opens and focuses the graph where `N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR` is 1 (UE 5.8) and elsewhere adds the
+  reason as info and returns false: under `-nullrhi`, UE 5.6 and 5.7 hit a fatal error in `GenericWindow.cpp` when a
+  Blueprint editor window is closed. Such cases are compiled under `#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR`
+  with a skip case naming the reason on the other engines.
+
+`NodeToCode.MCP.Graph` (`MCP/N2CMcpGraphTools.spec.cpp`) and `NodeToCode.MCP.Functions`
+(`MCP/N2CMcpFunctionTools.spec.cpp`) run the Graph and Functions tools that way and check, for each edit, a dirty
+package, one undo step, symmetric links, a clean compile and an exact Undo then Redo: a context-sensitive
+search-blueprint-nodes on an explicit event graph and function graph changes nothing (nodes, pins, links,
+timelines, components, undo buffer, dirty flag) and compiles nothing; add-bp-node-to-active-graph; connect-pins
+keeps exec fan-in and refuses to replace an exec output's link without `breakExistingLinks`
+(`WOULD_BREAK_EXISTING_LINK`), replacing it with it; delete-blueprint-node removes a wired node's links on both sides
+and refuses an unknown GUID and a function entry; and add-function-input-pin, add-function-return-pin,
+remove-function-entry-pin and remove-function-return-pin on a function with two Return nodes. What they leave to
+other specs is listed in each spec's header comment (NodeActionIds, SearchIsReadOnly, GraphTarget, CompileOnce,
+CompileScope, SpawnedNodes, FunctionPinEdits).
 
 ## LLM payload goldens and parser fixtures
 
@@ -240,3 +289,5 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
 - **From an agent on UE 5.8:** enable the engine's experimental AutomationTestToolset plugin in the host project
   (never in this plugin) and call its `DiscoverTests`, then `RunTestsByFilter("StartsWith:NodeToCode")` (or `RunTests`
   with full names from `ListTests("NodeToCode")`), `GetTestStatus` and `GetTestResults` through the editor's Unreal MCP connection.
+  The tool specs alone: `RunTestsByFilter("StartsWith:NodeToCode.MCP.Graph")` and
+  `RunTestsByFilter("StartsWith:NodeToCode.MCP.Functions")` (the first also runs `NodeToCode.MCP.GraphTarget`).

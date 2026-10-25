@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Python/N2CPythonBridge.h"
@@ -23,25 +24,6 @@
 
 namespace N2CCompileScopeSpec
 {
-	/** Counts the full compiles of one Blueprint (UBlueprint::OnCompiled fires once per full compile, never for a
-	 *  skeleton-only regeneration), from construction until destruction */
-	struct FCompileCounter
-	{
-		UBlueprint* Blueprint = nullptr;
-		FDelegateHandle Handle;
-		int32 Count = 0;
-
-		explicit FCompileCounter(UBlueprint* InBlueprint)
-			: Blueprint(InBlueprint)
-		{
-			Handle = Blueprint->OnCompiled().AddLambda([this](UBlueprint*) { ++Count; });
-		}
-		~FCompileCounter()
-		{
-			Blueprint->OnCompiled().Remove(Handle);
-		}
-	};
-
 	/** A custom event wired to a chain of Count Print String calls; returns the nodes in order (event first) */
 	TArray<UEdGraphNode*> MakePrintChain(N2CTest::FTestBlueprint& Test, int32 Count)
 	{
@@ -53,16 +35,6 @@ namespace N2CCompileScopeSpec
 			Nodes.Add(Test.AddCall(Graph, UKismetSystemLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString)));
 		}
 		return Nodes;
-	}
-
-	UEdGraphPin* ExecOut(UEdGraphNode* Node)
-	{
-		return Node ? Node->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output) : nullptr;
-	}
-
-	UEdGraphPin* ExecIn(UEdGraphNode* Node)
-	{
-		return Node ? Node->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input) : nullptr;
 	}
 }
 
@@ -96,7 +68,7 @@ void FN2CCompileScopeSpec::Define()
 		}
 		Test.GetPackage()->SetDirtyFlag(false);
 
-		FCompileCounter Compiles(Blueprint);
+		N2CTest::FCompileCounter Compiles(Blueprint);
 		const int32 UtilCompilesBefore = FN2CMcpBlueprintUtils::GetCompileCount();
 		TArray<FN2CCompileDiagnostics> Reported;
 		{
@@ -107,7 +79,7 @@ void FN2CCompileScopeSpec::Define()
 			{
 				const FScopedTransaction Transaction(NSLOCTEXT("NodeToCode", "N2CCompileScopeTest", "Connect (test)"));
 				TestTrue(FString::Printf(TEXT("link %d made"), Index),
-					GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(ExecOut(Nodes[Index]), ExecIn(Nodes[Index + 1])));
+					GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(N2CTest::ExecOut(Nodes[Index]), N2CTest::ExecIn(Nodes[Index + 1])));
 				FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 			}
 			TestEqual(TEXT("no compile while the call is open"), Compiles.Count, 0);
@@ -136,18 +108,18 @@ void FN2CCompileScopeSpec::Define()
 		const TArray<UEdGraphNode*> Nodes = MakePrintChain(Test, 2);
 		UBlueprint* Blueprint = Test.GetBlueprint();
 		ON_SCOPE_EXIT { Test.GetPackage()->SetDirtyFlag(false); };
-		FCompileCounter Compiles(Blueprint);
+		N2CTest::FCompileCounter Compiles(Blueprint);
 		{
 			FN2CMcpToolCallScope Outer;
 			{
 				FN2CMcpToolCallScope Inner;
 				TestFalse(TEXT("the inner scope is not outermost"), Inner.IsOutermost());
-				GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(ExecOut(Nodes[0]), ExecIn(Nodes[1]));
+				GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(N2CTest::ExecOut(Nodes[0]), N2CTest::ExecIn(Nodes[1]));
 				FN2CMcpBlueprintUtils::MarkModified(Blueprint, false);
 				TestEqual(TEXT("the inner flush compiles nothing"), Inner.Flush().Num(), 0);
 			}
 			TestEqual(TEXT("no compile when the inner call ends"), Compiles.Count, 0);
-			GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(ExecOut(Nodes[1]), ExecIn(Nodes[2]));
+			GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(N2CTest::ExecOut(Nodes[1]), N2CTest::ExecIn(Nodes[2]));
 			FN2CMcpBlueprintUtils::MarkModified(Blueprint, false);
 			TestEqual(TEXT("the outer flush compiles the Blueprint once"), Outer.Flush().Num(), 1);
 		}
@@ -182,7 +154,7 @@ void FN2CCompileScopeSpec::Define()
 		TArray<FN2CCompileDiagnostics> Reported;
 		{
 			FN2CMcpToolCallScope CallScope;
-			TestTrue(TEXT("exec linked"), GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(ExecOut(Event), ExecIn(SetMesh)));
+			TestTrue(TEXT("exec linked"), GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(N2CTest::ExecOut(Event), N2CTest::ExecIn(SetMesh)));
 			FN2CMcpBlueprintUtils::MarkModified(Test.GetBlueprint(), false);
 			Reported = CallScope.Flush();
 		}

@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CEditorIntegration.h"
@@ -85,7 +86,7 @@ void FN2CEditorFocusSpec::Define()
 	{
 		It(TEXT("follows tab clicks, tool opens and closes, and the MCP tools and the bridge read the same Blueprint"), [this]()
 		{
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
+#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
 			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor's window (closing it, or a later Slate
 			// layout pass while it is open, asks the null native window for its restored size: a fatal error in
 			// GenericWindow.cpp). This case runs on 5.8; the same behaviour is checked live on the others.

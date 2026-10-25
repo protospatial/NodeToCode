@@ -6,11 +6,13 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "MCP/Tools/Implementations/Blueprint/Variables/N2CMcpCreateLocalVariableTool.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
+#include "Core/N2CBlueprintEditorTracker.h"
 #include "BlueprintEditor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Dom/JsonObject.h"
@@ -39,31 +41,6 @@ namespace N2CSpawnedNodesSpec
 	void Recompile(UBlueprint* Blueprint)
 	{
 		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
-	}
-
-	/** One tool call: the edit inside an FN2CMcpToolCallScope, compiled once when it ends (as ExecuteOnGameThread does) */
-	template <typename FEdit>
-	TArray<FN2CCompileDiagnostics> InToolCall(FEdit&& Edit)
-	{
-		FN2CMcpToolCallScope CallScope;
-		Edit();
-		return CallScope.Flush();
-	}
-
-	FMcpToolCallResult Call(const FString& Name, const TSharedPtr<FJsonObject>& Args)
-	{
-		const TSharedPtr<IN2CMcpTool> Tool = N2CTest::FindRegisteredTool(Name);
-		return Tool.IsValid() ? Tool->Execute(Args)
-			: FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("N2CTest: no registered tool '%s'"), *Name));
-	}
-
-	/** {blueprintPath, graphGuid} of a graph, for the Graph tools */
-	TSharedPtr<FJsonObject> TargetArgs(const UBlueprint* Blueprint, const UEdGraph* Graph)
-	{
-		const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
-		Args->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
-		Args->SetStringField(TEXT("graphGuid"), Graph->GraphGuid.ToString());
-		return Args;
 	}
 
 	/** Every node of every graph of the Blueprint with this GUID */
@@ -114,8 +91,7 @@ namespace N2CSpawnedNodesSpec
  * NodeToCode.Capture.Golden (golden, DataFlows, ExecFlows).
  */
 BEGIN_DEFINE_SPEC(FN2CSpawnedNodesSpec, "NodeToCode.MCP.SpawnedNodes", N2C_TEST_FLAGS)
-	TUniquePtr<N2CTest::FTestBlueprint> Test;
-	bool bEditorOpen = false;
+	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
 
 	/** A /Game Actor Blueprint with a double member Health, compiled, package not transient (so dirtying applies) and clean */
 	UBlueprint* MakeBlueprint(const TCHAR* Name);
@@ -130,14 +106,13 @@ END_DEFINE_SPEC(FN2CSpawnedNodesSpec)
 
 UBlueprint* FN2CSpawnedNodesSpec::MakeBlueprint(const TCHAR* Name)
 {
-	Test = MakeUnique<N2CTest::FTestBlueprint>(Name, TEXT("/Game"));
+	// Not transient, so MarkPackageDirty applies (FToolSpecBlueprint puts it back)
+	Test = MakeUnique<N2CTest::FToolSpecBlueprint>(Name, TEXT("/Game"));
 	UBlueprint* Blueprint = Test->GetBlueprint();
 	if (!TestNotNull(TEXT("test Blueprint"), Blueprint))
 	{
 		return nullptr;
 	}
-	// FTestBlueprint packages are transient, and MarkPackageDirty skips transient objects (AfterEach puts it back)
-	Test->GetPackage()->ClearFlags(RF_Transient);
 	if (!TestTrue(TEXT("member Health added"), Test->AddMemberVariable(TEXT("Health"), N2CTest::FTestBlueprint::DoublePinType())))
 	{
 		return nullptr;
@@ -175,7 +150,7 @@ UK2Node_Variable* FN2CSpawnedNodesSpec::Spawn(const FString& What, UBlueprint* B
 {
 	TSharedPtr<FJsonObject> Result;
 	FString Error;
-	const TArray<FN2CCompileDiagnostics> Compiles = N2CSpawnedNodesSpec::InToolCall([&]()
+	const TArray<FN2CCompileDiagnostics> Compiles = N2CTest::InToolCall([&]()
 	{
 		Result = bLocal
 			? FN2CMcpNodeSpawn::CreateLocalVariableNode(Blueprint, Graph, Name, bSet, FVector2D(200, 100), Value, Error)
@@ -218,21 +193,7 @@ void FN2CSpawnedNodesSpec::Define()
 
 	AfterEach([this]()
 	{
-		if (Test.IsValid())
-		{
-			if (bEditorOpen && GEditor)
-			{
-				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Test->GetBlueprint());
-			}
-			Test->GetPackage()->SetDirtyFlag(false);
-			Test->GetPackage()->SetFlags(RF_Transient);
-		}
-		// The undo buffer holds the test Blueprint's objects: drop them so the Blueprint can be collected
-		if (GEditor && GEditor->Trans)
-		{
-			GEditor->ResetTransaction(NSLOCTEXT("NodeToCode", "N2CSpawnedNodesReset", "NodeToCode spawned node tests"));
-		}
-		bEditorOpen = false;
+		// Closes the editor, cleans the package and resets the undo buffer
 		Test.Reset();
 	});
 
@@ -297,14 +258,14 @@ void FN2CSpawnedNodesSpec::Define()
 				FString Error;
 				TSharedPtr<FJsonObject> Result;
 				const int32 NodesBefore = Graph->Nodes.Num();
-				InToolCall([&]() { Result = FN2CMcpNodeSpawn::CreateMemberVariableNode(Blueprint, Graph, ReadOnly, true, FVector2D::ZeroVector, FString(), Error); });
+				N2CTest::InToolCall([&]() { Result = FN2CMcpNodeSpawn::CreateMemberVariableNode(Blueprint, Graph, ReadOnly, true, FVector2D::ZeroVector, FString(), Error); });
 				TestFalse(TEXT("Set refused for ") + ReadOnly, Result.IsValid());
 				TestTrue(TEXT("READ_ONLY_VARIABLE for ") + ReadOnly + TEXT(": ") + Error, Error.StartsWith(TEXT("READ_ONLY_VARIABLE:")));
 				TestEqual(TEXT("no node added for ") + ReadOnly, Graph->Nodes.Num(), NodesBefore);
 			}
 			FString Error;
 			TSharedPtr<FJsonObject> Missing;
-			InToolCall([&]() { Missing = FN2CMcpNodeSpawn::CreateMemberVariableNode(Blueprint, Graph, TEXT("NoSuchVariable"), false, FVector2D::ZeroVector, FString(), Error); });
+			N2CTest::InToolCall([&]() { Missing = FN2CMcpNodeSpawn::CreateMemberVariableNode(Blueprint, Graph, TEXT("NoSuchVariable"), false, FVector2D::ZeroVector, FString(), Error); });
 			TestTrue(TEXT("an unknown variable is an error: ") + Error, !Missing.IsValid() && Error.Contains(TEXT("not found")));
 		});
 	});
@@ -326,7 +287,7 @@ void FN2CSpawnedNodesSpec::Define()
 			}
 			FString Error;
 			FName Local;
-			InToolCall([&]()
+			N2CTest::InToolCall([&]()
 			{
 				Local = FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(Blueprint, Function, TEXT("Counter"),
 					N2CTest::FTestBlueprint::IntPinType(), FString(), FString(), Error);
@@ -356,7 +317,7 @@ void FN2CSpawnedNodesSpec::Define()
 			}
 
 			TSharedPtr<FJsonObject> Refused;
-			InToolCall([&]() { Refused = FN2CMcpNodeSpawn::CreateLocalVariableNode(Blueprint, Test->EventGraph(), Local.ToString(), false, FVector2D::ZeroVector, FString(), Error); });
+			N2CTest::InToolCall([&]() { Refused = FN2CMcpNodeSpawn::CreateLocalVariableNode(Blueprint, Test->EventGraph(), Local.ToString(), false, FVector2D::ZeroVector, FString(), Error); });
 			TestFalse(TEXT("an event graph has no locals"), Refused.IsValid());
 		});
 	});
@@ -396,11 +357,11 @@ void FN2CSpawnedNodesSpec::Define()
 				Object->SetObjectField(TEXT("to"), End(ToNode, ToPin));
 				return MakeShared<FJsonValueObject>(Object);
 			};
-			const TSharedPtr<FJsonObject> Args = TargetArgs(Blueprint, Function);
+			const TSharedPtr<FJsonObject> Args = N2CTest::TargetArgs(Blueprint, Function);
 			Args->SetArrayField(TEXT("connections"), TArray<TSharedPtr<FJsonValue>>{
 				Connection(Entry->NodeGuid.ToString(), TEXT("then"), SetResult->GetStringField(TEXT("nodeId")), TEXT("execute")),
 				Connection(GetResult->GetStringField(TEXT("nodeId")), TEXT("Health"), SetResult->GetStringField(TEXT("nodeId")), TEXT("Health")) });
-			const FMcpToolCallResult Result = Call(TEXT("connect-pins"), Args);
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("connect-pins"), Args);
 			TestFalse(TEXT("connect-pins succeeds: ") + N2CTest::ResultText(Result).Left(400), Result.bIsError);
 			const UEdGraphPin* Execute = Set->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input);
 			const UEdGraphPin* Value = Set->FindPin(TEXT("Health"), EGPD_Input);
@@ -421,7 +382,7 @@ void FN2CSpawnedNodesSpec::Define()
 			UEdGraph* Function = Test->AddFunction(FName(TEXT("N2CUndoFn")));
 			FString Error;
 			FName Local;
-			InToolCall([&]()
+			N2CTest::InToolCall([&]()
 			{
 				Local = FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(Blueprint, Function, TEXT("Counter"),
 					N2CTest::FTestBlueprint::IntPinType(), FString(), FString(), Error);
@@ -473,11 +434,11 @@ void FN2CSpawnedNodesSpec::Define()
 			}
 			Test->GetPackage()->SetDirtyFlag(false);
 			const int32 QueueBefore = GEditor->Trans->GetQueueLength();
-			const TSharedPtr<FJsonObject> Args = TargetArgs(Blueprint, Graph);
+			const TSharedPtr<FJsonObject> Args = N2CTest::TargetArgs(Blueprint, Graph);
 			Args->SetArrayField(TEXT("nodeGuids"), TArray<TSharedPtr<FJsonValue>>{ MakeShared<FJsonValueString>(Get->NodeGuid.ToString()),
 				MakeShared<FJsonValueString>(Set->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens)) });
 			Args->SetStringField(TEXT("commentText"), TEXT("Spawned"));
-			const FMcpToolCallResult Result = Call(TEXT("create-comment-node"), Args);
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("create-comment-node"), Args);
 			if (!TestFalse(TEXT("create-comment-node succeeds: ") + N2CTest::ResultText(Result).Left(400), Result.bIsError))
 			{
 				return;
@@ -502,7 +463,7 @@ void FN2CSpawnedNodesSpec::Define()
 		});
 	});
 
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8
+#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
 	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
 	{
 		It(TEXT("the four variable node tools return the node GUID, and the local ones work in a collapsed graph"), [this]()
@@ -516,7 +477,7 @@ void FN2CSpawnedNodesSpec::Define()
 			UK2Node_Composite* Collapsed = Test->AddCollapsedGraph(Function, FName(TEXT("N2CToolInner")));
 			FString Error;
 			FName Local;
-			InToolCall([&]()
+			N2CTest::InToolCall([&]()
 			{
 				Local = FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(Blueprint, Function, TEXT("Counter"),
 					N2CTest::FTestBlueprint::IntPinType(), FString(), FString(), Error);
@@ -526,13 +487,15 @@ void FN2CSpawnedNodesSpec::Define()
 			{
 				return;
 			}
-			TSharedPtr<IBlueprintEditor> Opened;
-			FString OpenError;
-			if (!TestTrue(TEXT("Blueprint editor opens: ") + OpenError, FN2CMcpBlueprintUtils::OpenBlueprintEditor(Blueprint, Opened, OpenError)))
+			if (!Test->OpenInEditor(*this, Function, /*bClean*/ false))
 			{
 				return;
 			}
-			bEditorOpen = true;
+			const TSharedPtr<FBlueprintEditor> Opened = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+			if (!TestTrue(TEXT("the editor is tracked"), Opened.IsValid()))
+			{
+				return;
+			}
 
 			struct FToolCase { const TCHAR* Tool; bool bSet; bool bLocal; UEdGraph* Graph; };
 			const FToolCase Cases[] = {
@@ -546,10 +509,10 @@ void FN2CSpawnedNodesSpec::Define()
 			for (const FToolCase& Case : Cases)
 			{
 				const FString What = FString(Case.Tool) + (Case.Graph == Function ? TEXT(" (function)") : TEXT(" (collapsed graph)"));
-				StaticCastSharedPtr<FBlueprintEditor>(Opened)->JumpToHyperlink(Case.Graph, false);
+				Opened->JumpToHyperlink(Case.Graph, false);
 				const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 				Args->SetStringField(TEXT("variableName"), Case.bLocal ? Local.ToString() : TEXT("Health"));
-				const FMcpToolCallResult Result = Call(Case.Tool, Args);
+				const FMcpToolCallResult Result = N2CTest::RunTool(Case.Tool, Args);
 				if (!TestFalse(What + TEXT(" succeeds: ") + N2CTest::ResultText(Result).Left(300), Result.bIsError))
 				{
 					continue;
