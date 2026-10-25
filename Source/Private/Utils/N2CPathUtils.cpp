@@ -79,6 +79,101 @@ FString FN2CPathUtils::GetFileExtensionForLanguage(EN2CCodeLanguage Language)
     }
 }
 
+TArray<FString> FN2CPathUtils::GetTranslationFileExtensions(EN2CCodeLanguage Language)
+{
+    TArray<FString> Extensions;
+    Extensions.Add(GetFileExtensionForLanguage(Language));
+    if (Language == EN2CCodeLanguage::Pseudocode)
+    {
+        Extensions.AddUnique(TEXT(".txt"));
+    }
+    return Extensions;
+}
+
+FString FN2CPathUtils::GetLanguageId(EN2CCodeLanguage Language)
+{
+    switch (Language)
+    {
+        case EN2CCodeLanguage::Cpp:
+            return TEXT("Cpp");
+        case EN2CCodeLanguage::Python:
+            return TEXT("Python");
+        case EN2CCodeLanguage::JavaScript:
+            return TEXT("JavaScript");
+        case EN2CCodeLanguage::CSharp:
+            return TEXT("CSharp");
+        case EN2CCodeLanguage::Swift:
+            return TEXT("Swift");
+        case EN2CCodeLanguage::Pseudocode:
+            return TEXT("Pseudocode");
+        default:
+            return TEXT("Cpp");
+    }
+}
+
+bool FN2CPathUtils::ParseLanguageId(const FString& Id, EN2CCodeLanguage& OutLanguage)
+{
+    OutLanguage = EN2CCodeLanguage::Cpp;
+    FString Name = Id.TrimStartAndEnd();
+    int32 Separator = INDEX_NONE;
+    if (Name.FindLastChar(TEXT(':'), Separator))
+    {
+        Name.RightChopInline(Separator + 1); // EN2CCodeLanguage::Python -> Python
+    }
+    if (Name.IsEmpty())
+    {
+        return false;
+    }
+
+    static const EN2CCodeLanguage All[] = { EN2CCodeLanguage::Cpp, EN2CCodeLanguage::Python, EN2CCodeLanguage::JavaScript,
+        EN2CCodeLanguage::CSharp, EN2CCodeLanguage::Swift, EN2CCodeLanguage::Pseudocode };
+    for (EN2CCodeLanguage Language : All)
+    {
+        if (Name.Equals(GetLanguageId(Language), ESearchCase::IgnoreCase))
+        {
+            OutLanguage = Language;
+            return true;
+        }
+    }
+    if (Name.Equals(TEXT("C++"), ESearchCase::IgnoreCase))
+    {
+        OutLanguage = EN2CCodeLanguage::Cpp;
+        return true;
+    }
+    if (Name.Equals(TEXT("C#"), ESearchCase::IgnoreCase))
+    {
+        OutLanguage = EN2CCodeLanguage::CSharp;
+        return true;
+    }
+    return false;
+}
+
+FString FN2CPathUtils::MakeTranslationRecordPath(const FString& GraphDirectory)
+{
+    FString Full = FPaths::ConvertRelativePathToFull(GraphDirectory);
+    FPaths::NormalizeDirectoryName(Full);
+    FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+    FPaths::NormalizeDirectoryName(ProjectDir);
+    if (FPaths::IsUnderDirectory(Full, ProjectDir) && !Full.Equals(ProjectDir, ESearchCase::IgnoreCase))
+    {
+        FString Relative = Full;
+        if (FPaths::MakePathRelativeTo(Relative, *(ProjectDir + TEXT("/"))))
+        {
+            return Relative;
+        }
+    }
+    return Full;
+}
+
+FString FN2CPathUtils::ResolveTranslationRecordPath(const FString& RecordPath)
+{
+    if (RecordPath.IsEmpty() || FPaths::IsRelative(RecordPath))
+    {
+        return FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectDir(), RecordPath));
+    }
+    return RecordPath;
+}
+
 
 bool FN2CPathUtils::IsDeniedForAgentAccess(const FString& AbsolutePath)
 {

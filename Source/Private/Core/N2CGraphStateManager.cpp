@@ -500,6 +500,15 @@ void UN2CGraphStateManager::SetTranslationState(const FGuid& GraphGuid, const FS
 	SaveState();
 }
 
+void UN2CGraphStateManager::RecordSavedTranslation(const FGuid& GraphGuid, const FString& GraphName,
+	const FSoftObjectPath& Blueprint, const FString& GraphDirectory,
+	const FString& Provider, const FString& Model, EN2CCodeLanguage Language,
+	const FN2CTranslationSummary& Summary)
+{
+	SetTranslationState(GraphGuid, GraphName, Blueprint, FN2CPathUtils::MakeTranslationRecordPath(GraphDirectory),
+		Provider, Model, FN2CPathUtils::GetLanguageId(Language), Summary);
+}
+
 void UN2CGraphStateManager::ClearTranslationState(const FGuid& GraphGuid)
 {
 	FN2CGraphState* State = FindGraphState(GraphGuid);
@@ -542,39 +551,53 @@ bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTra
 		return false;
 	}
 
-	// Build full path from relative path
-	FString FullPath = FPaths::Combine(FPaths::ProjectDir(), State->Translation.OutputPath);
+	// Absolute, or relative to the project folder
+	const FString FullPath = FN2CPathUtils::ResolveTranslationRecordPath(State->Translation.OutputPath);
 
-	// Determine file extension based on language
-	FString Extension = TEXT(".cpp");
-	FString Language = State->Translation.Language;
-	if (Language.Equals(TEXT("Python"), ESearchCase::IgnoreCase))
+	// The recorded language picks the extension; an unknown id reads as C++ (what older builds did)
+	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
+	if (!FN2CPathUtils::ParseLanguageId(State->Translation.Language, Language) && !State->Translation.Language.IsEmpty())
 	{
-		Extension = TEXT(".py");
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Unknown translation language '%s' for graph %s, loading it as C++"),
+			*State->Translation.Language, *State->GraphName));
 	}
-	else if (Language.Equals(TEXT("JavaScript"), ESearchCase::IgnoreCase))
-	{
-		Extension = TEXT(".js");
-	}
-	else if (Language.Equals(TEXT("CSharp"), ESearchCase::IgnoreCase))
-	{
-		Extension = TEXT(".cs");
-	}
-	else if (Language.Equals(TEXT("Swift"), ESearchCase::IgnoreCase))
-	{
-		Extension = TEXT(".swift");
-	}
-	else if (Language.Equals(TEXT("Pseudocode"), ESearchCase::IgnoreCase))
-	{
-		Extension = TEXT(".txt");
-	}
+	const TArray<FString> Extensions = FN2CPathUtils::GetTranslationFileExtensions(Language);
 
-	// Build file paths
 	// Same stem the save path used (identical to the raw name for names without path characters)
-	const FString Stem = FN2CPathUtils::GetTranslationFileStem(State->GraphName);
-	FString DeclarationPath = FPaths::Combine(FullPath, Stem + TEXT(".h"));
-	FString ImplementationPath = FPaths::Combine(FullPath, Stem + Extension);
-	FString NotesPath = FPaths::Combine(FullPath, Stem + TEXT("_Notes.txt"));
+	FString Stem = FN2CPathUtils::GetTranslationFileStem(State->GraphName);
+	FString ImplementationPath;
+	for (const FString& Extension : Extensions)
+	{
+		const FString Candidate = FPaths::Combine(FullPath, Stem + Extension);
+		if (FPaths::FileExists(Candidate))
+		{
+			ImplementationPath = Candidate;
+			break;
+		}
+	}
+	if (ImplementationPath.IsEmpty())
+	{
+		// The single translate names the file after the graph name in the LLM's response: take the folder's only
+		// implementation file of this language, if there is exactly one
+		for (const FString& Extension : Extensions)
+		{
+			TArray<FString> Found;
+			IFileManager::Get().FindFiles(Found, *FPaths::Combine(FullPath, TEXT("*") + Extension), true, false);
+			Found.RemoveAll([](const FString& Name) { return Name.EndsWith(TEXT("_Notes.txt"), ESearchCase::IgnoreCase); });
+			if (Found.Num() == 1)
+			{
+				ImplementationPath = FPaths::Combine(FullPath, Found[0]);
+				Stem = FPaths::GetBaseFilename(Found[0]);
+				break;
+			}
+		}
+	}
+	if (ImplementationPath.IsEmpty())
+	{
+		ImplementationPath = FPaths::Combine(FullPath, Stem + Extensions[0]);
+	}
+	const FString DeclarationPath = FPaths::Combine(FullPath, Stem + TEXT(".h"));
+	const FString NotesPath = FPaths::Combine(FullPath, Stem + TEXT("_Notes.txt"));
 
 	// Load declaration (header) if it exists
 	FString Declaration;
@@ -625,8 +648,8 @@ bool UN2CGraphStateManager::LoadN2CJson(const FGuid& GraphGuid, FString& OutJson
 		return false;
 	}
 
-	// Build full path from relative path
-	FString FullPath = FPaths::Combine(FPaths::ProjectDir(), State->Translation.OutputPath);
+	// Absolute, or relative to the project folder
+	const FString FullPath = FN2CPathUtils::ResolveTranslationRecordPath(State->Translation.OutputPath);
 
 	// Try multiple JSON filename patterns:
 	// 1. Batch translation format: {GraphName}.json

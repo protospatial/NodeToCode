@@ -80,6 +80,13 @@ public:
 	/** Check if batch progress is visible */
 	bool IsBatchProgressVisible() const { return bShowBatchProgress; }
 
+	/**
+	 * Record a finished single translation of Graph in the graph state, pointing at the folder
+	 * UN2CLLMModule::SaveTranslationToDisk wrote for it and the language it was saved as, so the translation viewer
+	 * can load it again. False when nothing was saved or Graph has no valid GUID.
+	 */
+	static bool RecordSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response);
+
 private:
 	// External event delegates
 	FOnN2CBatchOperationComplete OnBatchCompleteDelegate;

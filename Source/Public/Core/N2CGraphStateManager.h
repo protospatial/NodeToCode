@@ -6,6 +6,7 @@
 #include "Core/N2CGraphStateTypes.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Models/N2CTranslation.h"
+#include "Code Editor/Models/N2CCodeLanguage.h"
 #include "N2CGraphStateManager.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphStateChanged, const FGuid& /*GraphGuid*/);
@@ -218,6 +219,18 @@ public:
 		const FN2CTranslationSummary& Summary);
 
 	/**
+	 * Record a translation saved to disk. Every writer (batch, main window, LLM module) records through this, so the
+	 * stored language id (FN2CPathUtils::GetLanguageId) and output path (FN2CPathUtils::MakeTranslationRecordPath) are
+	 * the ones LoadTranslation reads.
+	 * @param GraphDirectory The folder holding <Graph><ext> (absolute, or relative to the working directory)
+	 * @param Language The language the implementation file was saved as
+	 */
+	void RecordSavedTranslation(const FGuid& GraphGuid, const FString& GraphName,
+		const FSoftObjectPath& Blueprint, const FString& GraphDirectory,
+		const FString& Provider, const FString& Model, EN2CCodeLanguage Language,
+		const FN2CTranslationSummary& Summary);
+
+	/**
 	 * Clear the translation state for a graph
 	 * @param GraphGuid The GUID of the graph
 	 */
@@ -231,7 +244,9 @@ public:
 	bool HasTranslation(const FGuid& GraphGuid) const;
 
 	/**
-	 * Load a translation from disk
+	 * Load a translation from disk: <OutputPath>/<Graph><ext> for the recorded language, with the older records
+	 * still readable (an enum-qualified or CPP language id, Pseudocode saved as .txt). When that file is missing and
+	 * the folder holds exactly one implementation file of the language (the LLM named the graph differently), that one.
 	 * @param GraphGuid The GUID of the graph
 	 * @param OutTranslation The loaded translation data
 	 * @return True if loaded successfully

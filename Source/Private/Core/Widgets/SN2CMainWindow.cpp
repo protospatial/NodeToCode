@@ -30,6 +30,7 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Editor.h"
 #include "Core/N2CSettings.h"
+#include "Utils/N2CPathUtils.h"
 
 #define LOCTEXT_NAMESPACE "SN2CMainWindow"
 
@@ -749,41 +750,7 @@ void SN2CMainWindow::OnSingleTranslationComplete(const FN2CTranslationResponse& 
 		ShowTranslationViewer(Response.Graphs[0], PendingSingleTranslateGraph.GraphName);
 
 		// Update translation state in state manager
-		FGuid GraphGuid;
-		if (FGuid::Parse(PendingSingleTranslateGraph.GraphGuid, GraphGuid))
-		{
-			// Create translation summary from the response
-			FN2CTranslationSummary Summary;
-			const FN2CGraphTranslation& Translation = Response.Graphs[0];
-			Summary.DeclarationPreview = Translation.Code.GraphDeclaration.Left(100);
-			TArray<FString> Lines;
-			Translation.Code.GraphImplementation.ParseIntoArrayLines(Lines, false);
-			Summary.ImplementationLines = Lines.Num();
-			Summary.bHasNotes = !Translation.Code.ImplementationNotes.IsEmpty();
-
-			// Get output path from LLM module
-			FString OutputPath;
-			if (UN2CLLMModule* LLMModule = UN2CLLMModule::Get())
-			{
-				OutputPath = LLMModule->GetLatestTranslationPath();
-			}
-
-			// Get provider and model info from settings
-			FString Provider = TEXT("Unknown");
-			FString Model = TEXT("Unknown");
-			FString Language = TEXT("CPP");
-
-			UN2CGraphStateManager::Get().SetTranslationState(
-				GraphGuid,
-				PendingSingleTranslateGraph.GraphName,
-				FSoftObjectPath(PendingSingleTranslateGraph.BlueprintPath),
-				OutputPath,
-				Provider,
-				Model,
-				Language,
-				Summary
-			);
-		}
+		RecordSingleTranslation(PendingSingleTranslateGraph, Response);
 	}
 
 	// Fire external delegate
@@ -791,6 +758,46 @@ void SN2CMainWindow::OnSingleTranslationComplete(const FN2CTranslationResponse& 
 
 	// Clear pending graph
 	PendingSingleTranslateGraph = FN2CTagInfo();
+}
+
+bool SN2CMainWindow::RecordSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response)
+{
+	FGuid GraphGuid;
+	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
+	if (Response.Graphs.Num() == 0 || !FGuid::Parse(Graph.GraphGuid, GraphGuid) || !LLMModule)
+	{
+		return false;
+	}
+
+	// SaveTranslationToDisk wrote <root>/<stem>/<stem><ext>, the stem from the graph name in the response
+	const FString Root = LLMModule->GetLatestTranslationPath();
+	const FString Stem = FN2CPathUtils::GetTranslationFileStem(Response.Graphs[0].GraphName);
+	if (Root.IsEmpty() || Stem.IsEmpty())
+	{
+		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CMainWindow] Translation of %s was not saved to disk; not recorded"), *Graph.GraphName);
+		return false;
+	}
+
+	// Create translation summary from the response
+	FN2CTranslationSummary Summary;
+	const FN2CGraphTranslation& Translation = Response.Graphs[0];
+	Summary.DeclarationPreview = Translation.Code.GraphDeclaration.Left(100);
+	TArray<FString> Lines;
+	Translation.Code.GraphImplementation.ParseIntoArrayLines(Lines, false);
+	Summary.ImplementationLines = Lines.Num();
+	Summary.bHasNotes = !Translation.Code.ImplementationNotes.IsEmpty();
+
+	UN2CGraphStateManager::Get().RecordSavedTranslation(
+		GraphGuid,
+		Graph.GraphName,
+		FSoftObjectPath(Graph.BlueprintPath),
+		FPaths::Combine(Root, Stem),
+		TEXT("Unknown"),
+		TEXT("Unknown"),
+		LLMModule->GetLatestTranslationLanguage(),
+		Summary
+	);
+	return true;
 }
 
 // ==================== Overlay Visibility ====================

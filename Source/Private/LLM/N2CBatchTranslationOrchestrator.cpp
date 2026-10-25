@@ -613,7 +613,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		// Save implementation file with appropriate extension
 		if (!Graph.Code.GraphImplementation.IsEmpty())
 		{
-			FString Extension = GetFileExtensionForLanguage();
+			FString Extension = FN2CPathUtils::GetFileExtensionForLanguage(TargetLanguage);
 			FString ImplPath = FPaths::Combine(GraphDir, Stem + Extension);
 			if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
 			{
@@ -689,25 +689,16 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 			// Get provider info
 			FString Provider = Settings ? UEnum::GetValueAsString(Settings->Provider) : TEXT("Unknown");
 			FString Model = Settings ? Settings->GetActiveModel() : TEXT("Unknown");
-			FString Language = Settings ? UEnum::GetValueAsString(Settings->TargetLanguage) : TEXT("Cpp");
 
-			// Make the output path relative to the project directory
-			FString RelativeGraphDir = GraphDir;
-			FString ProjectDir = FPaths::ProjectDir();
-			if (RelativeGraphDir.StartsWith(ProjectDir))
-			{
-				RelativeGraphDir = RelativeGraphDir.Mid(ProjectDir.Len());
-			}
-
-			// Set translation state
-			UN2CGraphStateManager::Get().SetTranslationState(
+			// The shared language id and record path, which UN2CGraphStateManager::LoadTranslation reads back
+			UN2CGraphStateManager::Get().RecordSavedTranslation(
 				GraphGuid,
 				GraphName,
 				FSoftObjectPath(Item.TagInfo.BlueprintPath),
-				RelativeGraphDir,
+				GraphDir,
 				Provider,
 				Model,
-				Language,
+				TargetLanguage,
 				Summary
 			);
 
@@ -825,30 +816,6 @@ FString UN2CBatchTranslationOrchestrator::GetTranslationBasePath() const
 	}
 
 	return BasePath;
-}
-
-FString UN2CBatchTranslationOrchestrator::GetFileExtensionForLanguage() const
-{
-	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	EN2CCodeLanguage Language = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
-
-	switch (Language)
-	{
-		case EN2CCodeLanguage::Cpp:
-			return TEXT(".cpp");
-		case EN2CCodeLanguage::Python:
-			return TEXT(".py");
-		case EN2CCodeLanguage::JavaScript:
-			return TEXT(".js");
-		case EN2CCodeLanguage::CSharp:
-			return TEXT(".cs");
-		case EN2CCodeLanguage::Swift:
-			return TEXT(".swift");
-		case EN2CCodeLanguage::Pseudocode:
-			return TEXT(".md");
-		default:
-			return TEXT(".txt");
-	}
 }
 
 bool UN2CBatchTranslationOrchestrator::EnsureDirectoryExists(const FString& DirectoryPath) const
