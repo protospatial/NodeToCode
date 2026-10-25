@@ -9,6 +9,7 @@ void UN2CHttpHandlerBase::Initialize(const FN2CLLMConfig& InConfig)
 {
     Config = InConfig;
     RequestTimeout = Config.TimeoutSeconds;
+    ActivityTimeout = Config.ActivityTimeoutSeconds > 0.0f ? FMath::Min(Config.ActivityTimeoutSeconds, RequestTimeout) : RequestTimeout;
 }
 
 FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
@@ -50,10 +51,8 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     Request->SetContentAsString(Payload);
     Request->SetTimeout(RequestTimeout);
 
-    // SetActivityTimeout is only available in UE5.4 and later
-#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION >= 4
-    Request->SetActivityTimeout(RequestTimeout);
-#endif
+    // A request that receives nothing for ActivityTimeout seconds fails (UE 5.4+; 5.6 is the floor)
+    Request->SetActivityTimeout(ActivityTimeout);
     
     // Create a weak pointer to this for safety
     TWeakObjectPtr<UN2CHttpHandlerBase> WeakThis(this);
@@ -126,6 +125,13 @@ void UN2CHttpHandlerBase::OnRequestComplete(
     {
         // No HTTP response at all: connection refused, DNS, TLS or timeout
         const FString Reason = Request.IsValid() ? FString(LexToString(Request->GetFailureReason())) : FString(TEXT("Unknown"));
+        FString TimeoutMessage;
+        if (IsTimeoutFailure(Request, TimeoutMessage))
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP request failed (%s): %s"), *Reason, *TimeoutMessage), TEXT("HttpHandler"));
+            OnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(TimeoutMessage, EN2CTranslationErrorKind::Timeout));
+            return;
+        }
         FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP request failed (%s)"), *Reason), TEXT("HttpHandler"));
         OnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(
             FString::Printf(TEXT("No response from the provider (%s)"), *Reason), EN2CTranslationErrorKind::Network));
@@ -150,4 +156,28 @@ void UN2CHttpHandlerBase::OnRequestComplete(
     );
 
     OnComplete.ExecuteIfBound(FN2CTranslationError::WrapHttpErrorBody(ResponseCode, ResponseContent));
+}
+
+bool UN2CHttpHandlerBase::IsTimeoutFailure(const FHttpRequestPtr& Request, FString& OutMessage) const
+{
+    if (!Request.IsValid())
+    {
+        return false;
+    }
+    const EHttpFailureReason Failure = Request->GetFailureReason();
+    const float Elapsed = Request->GetElapsedTime();
+    if (Failure == EHttpFailureReason::TimedOut)
+    {
+        OutMessage = FString::Printf(TEXT("The request ran past its total timeout of %.0f s (%.0f s elapsed)"), RequestTimeout, Elapsed);
+        return true;
+    }
+    // UE reports an activity timeout as ConnectionError (FHttpRequestCommon::HandleRequestFailed), so tell it from a
+    // refused or dropped connection by how long the request ran: a connection failure is immediate, an activity
+    // timeout takes at least ActivityTimeout seconds of silence
+    if (Failure == EHttpFailureReason::ConnectionError && ActivityTimeout > 0.0f && Elapsed >= ActivityTimeout * 0.95f)
+    {
+        OutMessage = FString::Printf(TEXT("No data from the provider for %.0f s (HTTP Activity Timeout). Raise Project Settings > Plugins > Node to Code > LLM Provider > HTTP Activity Timeout for very long translations or slow local models."), ActivityTimeout);
+        return true;
+    }
+    return false;
 }

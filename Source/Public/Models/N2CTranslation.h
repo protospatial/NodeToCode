@@ -99,7 +99,12 @@ enum class EN2CTranslationErrorKind : uint8
     /** The response arrived but could not be read as a translation */
     Parse,
     /** An error the provider or NodeToCode reported that fits no other kind */
-    Unknown
+    Unknown,
+    /**
+     * No data arrived from the provider within the HTTP Activity Timeout, or the whole request ran past its total
+     * timeout. Retryable. (Appended last so the values before it keep their numbers.)
+     */
+    Timeout
 };
 
 /**

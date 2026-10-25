@@ -28,8 +28,24 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module", meta = (DisplayName = "Get N2C LLM Module"))
     static UN2CLLMModule* GetBP() { return Get(); }
 
-    /** Initialize module */
+    /** Initialize module: reads provider, model and key from the settings and creates the service */
     bool Initialize();
+
+    /**
+     * The request configuration the settings give now: provider, API key, model with its thinking mode, output
+     * budget and HTTP activity timeout. Every request starts from this snapshot, so a settings change (Project
+     * Settings, the context window's quick picker) applies to the next request, including the next batch item.
+     */
+    static FN2CLLMConfig MakeConfigFromSettings();
+
+    /**
+     * Re-reads the settings (MakeConfigFromSettings) and, when the provider, model, key, thinking mode, output budget
+     * or activity timeout differ from the current configuration, or the module is not initialized, rebuilds the
+     * active service so its headers and endpoint come from the new values. Requests already in flight keep the
+     * service they were sent on. ProcessN2CJson calls it before every request. Returns false if no service could be
+     * created.
+     */
+    bool RefreshFromSettings();
 
     /**
      * Process N2C JSON through LLM. Returns the request's handle: Cancel() stops the HTTP request, OnComplete and the
@@ -43,6 +59,18 @@ public:
         const FString& JsonInput,
         const FN2CBlueprint& CapturedBlueprint,
         const FOnLLMResponseReceived& OnComplete
+    );
+
+    /**
+     * ProcessN2CJson with a per-request parsed result: OnParsed gets this request's FN2CTranslationResponse (with its
+     * typed error on failure) at most once, never after a successful Cancel() on the returned handle. Use it instead of
+     * OnTranslationResponseReceived to tell your result from another caller's (the batch orchestrator does).
+     */
+    FN2CLLMRequestHandleRef ProcessN2CJson(
+        const FString& JsonInput,
+        const FN2CBlueprint& CapturedBlueprint,
+        const FOnLLMResponseReceived& OnComplete,
+        const FOnN2CTranslationParsed& OnParsed
     );
 
     /** Process N2C JSON through LLM with specific overrides for provider, model, and language. Returns the request's handle. */
@@ -72,7 +100,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
     TScriptInterface<IN2CLLMService> GetActiveService() const { return ActiveService; }
 
-    /** Delegate for notifying when translation response is received */
+    /**
+     * Broadcast for every ProcessN2CJson result, whoever sent it. Kept for Blueprint listeners only: it cannot tell one
+     * request from another, so C++ callers use the per-request OnParsed of ProcessN2CJson (deprecated for correlation).
+     */
     UPROPERTY(BlueprintAssignable, Category = "Node to Code | LLM Module")
     FOnTranslationResponseReceived OnTranslationResponseReceived;
 
@@ -129,8 +160,28 @@ private:
     /** A handle already completed with Response (for errors found before a request is sent) */
     static FN2CLLMRequestHandleRef CompleteWithoutRequest(const FOnLLMResponseReceived& OnComplete, const FString& Response);
 
-    /** Returns the module to Idle when Handle is cancelled while the module is still Processing */
+    /** Ends the request's status ownership (EndRequest(Idle)) when Handle is cancelled */
     void ResetStatusOnCancel(const FN2CLLMRequestHandleRef& Handle);
+
+    /**
+     * Status ownership: each sent request owns the Processing status until it ends. BeginRequest counts it in;
+     * EndRequest counts it out and sets Result only when no other request is still in flight, so one caller's result
+     * cannot mark another caller's request Idle or Error.
+     */
+    void BeginRequest();
+    void EndRequest(EN2CSystemStatus Result);
+
+    /** Sets Status unless a request is in flight (for errors found before anything is sent) */
+    void SetStatusIfIdle(EN2CSystemStatus Status);
+
+    /** Requests sent and not yet completed or cancelled */
+    int32 InFlightRequests = 0;
+
+    /** The local provider endpoint setting the active service was created with (Ollama, LM Studio) */
+    FString ServiceEndpointSetting;
+
+    /** The endpoint setting a local provider reads when its service is created; empty for cloud providers */
+    static FString GetLocalEndpointSetting(EN2CLLMProvider Provider);
 
     /** Current configuration */
     UPROPERTY()

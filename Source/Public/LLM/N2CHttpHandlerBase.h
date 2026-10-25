@@ -26,6 +26,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     float RequestTimeout = 3600.0f;
 
+    /**
+     * Seconds without any data received before the request fails with a Timeout error (FN2CLLMConfig::
+     * ActivityTimeoutSeconds, from the HTTP Activity Timeout setting). Lower than RequestTimeout, so a provider that
+     * accepts the connection and then stalls fails in minutes rather than after an hour.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    float ActivityTimeout = 300.0f;
+
     /** Additional headers for requests */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     TMap<FString, FString> ExtraHeaders;
@@ -59,6 +67,9 @@ protected:
         bool bWasSuccessful,
         FOnLLMResponseReceived OnComplete
     );
+
+    /** True when a failed request timed out (total or activity timeout); OutMessage says which, for the user */
+    bool IsTimeoutFailure(const FHttpRequestPtr& Request, FString& OutMessage) const;
 
     /** Current configuration */
     FN2CLLMConfig Config;

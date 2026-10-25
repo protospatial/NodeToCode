@@ -709,7 +709,9 @@ FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateJsonAsync(
         FN2CLogger::Get().LogWarning(Warning);
     }
 
-    FN2CLLMConfig RequestConfig = LLMModule->GetConfig(); // Start with default config from module
+    // Start from the settings as they are now, not the module's config from its last Initialize: a provider picked
+    // since then (Project Settings, the quick picker) is the default for this request
+    FN2CLLMConfig RequestConfig = UN2CLLMModule::MakeConfigFromSettings();
 
     const EN2CLLMProvider FinalProvider = Overrides.Provider.Get(RequestConfig.Provider);
     RequestConfig.Provider = FinalProvider;

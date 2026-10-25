@@ -22,10 +22,11 @@ When using cloud-based LLM providers (Anthropic, OpenAI, DeepSeek), you may enco
 ## How a Failed Translation Is Reported
 
 NodeToCode keeps the provider's HTTP status and its own error message and sorts every failure into a kind:
-`RateLimited`, `Overloaded`, `Auth`, `InvalidRequest`, `Billing`, `Server`, `Network` (no response, a timeout, or a
-proxy or gateway error such as 502), `Truncated`, `Refused`, `Blocked`, `Parse` (the answer arrived but could not be
-read as a translation) or `Unknown`. `RateLimited`, `Overloaded`, `Server` and `Network` are marked retryable: the same
-request may work later.
+`RateLimited`, `Overloaded`, `Auth`, `InvalidRequest`, `Billing`, `Server`, `Network` (no response, or a proxy or
+gateway error such as 502), `Timeout` (nothing arrived within the HTTP Activity Timeout, or the request ran past
+3600 seconds), `Truncated`, `Refused`, `Blocked`, `Parse` (the answer arrived but could not be read as a translation)
+or `Unknown`. `RateLimited`, `Overloaded`, `Server`, `Network` and `Timeout` are marked retryable: the same request
+may work later.
 
 A successful (HTTP 200) answer can still stop early. NodeToCode reads the provider's stop or finish reason before the
 answer and reports it by name, with the provider's reason in `provider_error_type`:
@@ -68,11 +69,13 @@ provider is still sent as given, and the result JSON gets a `warnings` array tha
 
 ## Translation Timeout Issues
 
-If your translation appears to hang indefinitely:
+A translation that receives nothing from the provider for **HTTP Activity Timeout (s)** (Project Settings →
+Plugins → Node to Code → LLM Provider, default 300) fails with a `Timeout` error, and no request runs longer than
+3600 seconds. Translations usually finish in 30 to 60 seconds. If a long translation or a slow local model fails
+with `Timeout` while the provider is healthy, raise the setting (see [Request Timeout](Provider-Configuration#request-timeout)).
 
-> [!NOTE]
-> Node to Code's default timeout is 1000 seconds, but translations typically
-> complete within 30-60 seconds depending on graph complexity and LLM provider & model.
+**Cancel** in the batch progress dialog stops the graph being translated at once (its request is cancelled and
+nothing is saved for it) and skips the graphs after it.
 
 **Check for:**
 - Network connectivity issues

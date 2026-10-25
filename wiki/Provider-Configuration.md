@@ -117,6 +117,18 @@ Before 2.0 every request asked for 16,000 output tokens and there was no setting
 version load with Max Output Tokens 0 (Auto). Ollama keeps its own **Max Tokens** setting in the Advanced Settings
 above.
 
+## Request Timeout
+
+**LLM Provider → HTTP Activity Timeout (s)** (default 300) is how long a translation request may wait without
+receiving anything from the provider. When it passes, the translation fails with a `Timeout` error instead of
+waiting: a provider that accepts the request and then stalls no longer holds a translation or a batch for up to an
+hour. Responses are not streamed yet, so the provider sends nothing until the whole answer is ready: raise this for
+very long translations (a large Max Output Tokens, a reasoning model) or a slow local model. The whole request is
+also limited to 3600 seconds.
+
+Settings are read again for every request: a provider, model, API key or timeout you change applies to the next
+translation, including the next graph of a batch that is already running.
+
 ## Model Price Overrides
 
 Cost estimates use each model's list price. To use your own (a discount, or a **Custom Model ID**), add an entry
