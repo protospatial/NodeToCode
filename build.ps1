@@ -51,7 +51,10 @@
     -Test first runs Tests/python (pytest, Content/Python logic with a stub `unreal` module, no editor) on the engine's
     own Python through `uv run` with the pinned Tests/python/requirements.txt (needs uv on PATH; without it the step is
     a WARN), then Automation RunTests <TestFilter> in a headless editor. Logs: BuildLogs/PyTest_<ver>_<stamp>.log and
-    BuildLogs/Tests_<ver>_<stamp>.log plus its report folder.
+    BuildLogs/Tests_<ver>_<stamp>.log plus its report folder. The editor runs with -culture=en (-TestCulture changes
+    it, for a locale check of the capture goldens). -UpdateGoldens passes -N2CUpdateGoldens, so the golden specs
+    (NodeToCode.Capture.Golden, NodeToCode.LLM.Payload.Golden) rewrite their goldens instead of comparing; review and
+    commit the diff with the change that caused it.
 
 .EXAMPLE
     .\build.ps1 -UEVersion 5.7              # incremental editor build for 5.7
@@ -79,7 +82,9 @@ param(
     [string]$PackagesRoot,# default: <checkout>\..\Packages
     [string]$LogRoot,     # default: <checkout>\BuildLogs
     [string]$TestFilter = 'NodeToCode',
-    [int]$TestTimeoutMinutes = 60
+    [int]$TestTimeoutMinutes = 60,
+    [string]$TestCulture = 'en', # -culture for the -Test editor (the goldens are recorded with en)
+    [switch]$UpdateGoldens       # -Test: rewrite the golden files (-N2CUpdateGoldens) instead of comparing
 )
 
 $ErrorActionPreference = 'Stop'
@@ -441,10 +446,12 @@ function Invoke-Tests($h, [string]$engine, [string]$ver, [string]$stamp) {
     New-Item -ItemType Directory -Force $reportDir | Out-Null
     Write-Step "Automation tests UE $ver ($TestFilter)"
     # -ExecCmds holds one command; never chain with ';' (it hangs the editor), use ',' if more are ever needed
-    $code = Invoke-Editor (Get-EngineTool $engine 'EditorCmd') @(
+    $editorArgs = @(
         $h.UProject, "-ExecCmds=`"Automation RunTests $TestFilter`"", '-TestExit="Automation Test Queue Empty"',
         "-ReportExportPath=`"$reportDir`"", "-abslog=`"$log`"",
-        '-unattended', '-nullrhi', '-nosplash', '-nosound', '-NoLiveCoding', '-culture=en') $TestTimeoutMinutes
+        '-unattended', '-nullrhi', '-nosplash', '-nosound', '-NoLiveCoding', "-culture=$TestCulture")
+    if ($UpdateGoldens) { $editorArgs += '-N2CUpdateGoldens' }
+    $code = Invoke-Editor (Get-EngineTool $engine 'EditorCmd') $editorArgs $TestTimeoutMinutes
     if ($null -eq $code) { return 'tests FAIL (timed out)' }
 
     $index = Join-Path $reportDir 'index.json'

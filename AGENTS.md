@@ -66,8 +66,10 @@ step is reported as `pytest WARN (uv not found)` and skipped.
 - `-Test` runs `UnrealEditor-Cmd <host> -ExecCmds="Automation RunTests NodeToCode"
   -TestExit="Automation Test Queue Empty" -ReportExportPath=<dir>` with `-unattended -nullrhi -NoLiveCoding
   -culture=en`, reads the report's `index.json`, fails on any failed or unfinished test and warns when none ran.
-  `-TestFilter` narrows the run and `-TestTimeoutMinutes` (default 60) stops a hung editor. If `-ExecCmds` ever holds
-  more than one command, separate them with commas: a semicolon hangs the editor.
+  `-TestFilter` narrows the run and `-TestTimeoutMinutes` (default 60) stops a hung editor. `-UpdateGoldens` passes
+  `-N2CUpdateGoldens`, so the golden specs rewrite `Source/Private/Tests/Goldens/` instead of comparing, and
+  `-TestCulture de` replaces `-culture=en` for a locale check (see "Capture goldens" in the tests README). If
+  `-ExecCmds` ever holds more than one command, separate them with commas: a semicolon hangs the editor.
 - Before that, `-Test` runs the CPython tests in `Tests/python` on each engine's own Python (3.11.8 in UE 5.6, 5.7
   and 5.8): `uv run --no-project --python <engine python> --with-requirements Tests/python/requirements.txt --
   python -m pytest -q Tests/python`, in a throwaway environment, so the engine install is not changed. They test

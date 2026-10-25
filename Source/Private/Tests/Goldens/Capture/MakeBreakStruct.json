@@ -1,0 +1,216 @@
+{
+	"case": "MakeBreakStruct",
+	"description": "Function Structs(Value): Make Vector (X from Value) feeds Break Vector; Break X and Y feed Add (int to double through the Make); Add is the result.",
+	"known_defects": [
+		{
+			"finding": "translation-core-4",
+			"card": "0234",
+			"effect": "Break Vector (a K2Node_BreakStruct) is captured as a Variable named 'None', with the first member's type as member_parent and member_name Var_<graph>_<UObject index>, which changes every session (normalised to <OBJECT_INDEX> here)"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_MakeBreakStruct",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_MakeBreakStruct"
+		},
+		"graphs": [
+			{
+				"name": "Structs",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Structs",
+						"member_parent": "BP_N2CGolden_MakeBreakStruct",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Value",
+								"type": "Real",
+								"sub_type": "double",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MakeStruct",
+						"name": "Make Vector",
+						"member_parent": "/Script/CoreUObject",
+						"member_name": "Vector",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "X",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.000000",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "Y",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.000000"
+							},
+							{
+								"id": "P6",
+								"name": "Z",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.000000"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Vector",
+								"type": "Struct",
+								"sub_type": "Vector",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "Variable",
+						"name": "None",
+						"member_parent": "real/double",
+						"member_name": "Var_Structs_<OBJECT_INDEX>",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Vector",
+								"type": "Struct",
+								"sub_type": "Vector",
+								"connected": true,
+								"is_reference": true,
+								"is_const": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "X",
+								"type": "Real",
+								"sub_type": "double",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "Y",
+								"type": "Real",
+								"sub_type": "double",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Z",
+								"type": "Real",
+								"sub_type": "double"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"name": "float + float",
+						"member_parent": "KismetMathLibrary",
+						"member_name": "Add_DoubleDouble",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P11",
+								"name": "A",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.0",
+								"connected": true
+							},
+							{
+								"id": "P12",
+								"name": "B",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "1.000000",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P13",
+								"name": "Return Value",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "FunctionResult",
+						"name": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_MakeBreakStruct",
+						"input_pins": [
+							{
+								"id": "P14",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P15",
+								"name": "Result",
+								"type": "Real",
+								"sub_type": "double",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2"
+					],
+					"data":
+					{
+						"N1.P2": "N3.P4",
+						"N3.P3": "N4.P7",
+						"N4.P8": "N5.P11",
+						"N4.P9": "N5.P12",
+						"N5.P13": "N2.P15"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

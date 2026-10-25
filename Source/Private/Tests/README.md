@@ -11,7 +11,8 @@ the headless editor helper are Python and live in `Tests/mcp_probe/`; the smoke 
 Source/Private/Tests/
   README.md               this file
   N2CTestHelpers.h        shared helpers (N2CTest namespace) and N2C_TEST_FLAGS
-  Core/  LLM/  MCP/       specs by area: <Area>/N2C<Thing>.spec.cpp
+  N2CTestBlueprintFactory.h/.cpp  N2CTest::FTestBlueprint: builds Blueprint graphs in code for capture specs
+  Capture/  Core/  LLM/  MCP/     specs by area: <Area>/N2C<Thing>.spec.cpp
   N2C*Tests.cpp           older IMPLEMENT_SIMPLE_AUTOMATION_TEST regression tests (NodeToCode.Robustness.*,
                           NodeToCode.Security.PathUtils.*, NodeToCode.MCP.Transport.*); kept as they are
   Fixtures/<Area>/        checked-in inputs a spec reads (N2CTest::FixturesDir(Area))
@@ -61,6 +62,7 @@ case back on. Currently disabled:
 | `NodeToCode.LLM.Parse.Fixtures` | Anthropic: a sentence before the fenced answer is skipped | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | OpenAI: an answer in a bare fence parses | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | Gemini: output tokens include thoughtsTokenCount | llm-layer-27 (card 0185) |
+| `NodeToCode.Capture.Golden` | <every case> survives ToJson -> FromJson -> ToJson unchanged (8 cases) | translation-core-25 (card 0135) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -79,6 +81,45 @@ a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing ca
   (success, fenced output, truncation, refusal, 400/401/429/503/529 errors, string-typed errors, malformed
   `graph_name`). Error bodies go through `FN2CTranslationError::WrapHttpErrorBody` first, as the HTTP handler sends
   them. No fixture may hold a real key; the spec fails on `sk-` or `AIza` in a fixture.
+
+## Capture goldens
+
+`NodeToCode.Capture.Golden` (`Capture/N2CCaptureGolden.spec.cpp`) pins today's N2C JSON v1 capture of the core graph
+shapes, so the E10 capture rewrite (cards 0133-0138) shows every output change it makes. Each case builds a graph in
+code with `N2CTest::FTestBlueprint` (`N2CTestBlueprintFactory.h`: a transient Actor Blueprint named
+`BP_N2CGolden_<case>` in its own `/Temp/N2CTest_<guid>` package; no assets), runs what the editor runs
+(`FN2CNodeCollector::CollectNodesFromGraph`, `FN2CNodeTranslator::GenerateN2CStruct`, `FN2CSerializer::ToJson`),
+replaces the package path, GUIDs and the session-dependent `Var_<graph>_<index>` member name with `<PACKAGE>`,
+`<GUID>` and `<OBJECT_INDEX>`, and compares the result with `Goldens/Capture/<case>.json`. On a mismatch it reports
+the first differing line and writes the whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`.
+
+- **Cases:** `FanOutData` (one output into three inputs), `Knots` (an exec knot and a two-knot data chain that fans
+  out), `Branch`, `SwitchOnInt` (cases 0, 1 and Default, two of them into one node), `SwitchOnEnum`
+  (`EComponentMobility`), `MakeBreakStruct` (Make and Break Vector), `GateMultiExec` (three events into Enter, Open
+  and Close of the StandardMacros Gate) and `TimelineMultiExec` (Play and Reverse of an empty timeline).
+- **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
+  card that changes them: lossy data edges and knot fan-out (translation-core-1, card 0135), node-pair exec flows
+  (translation-core-2, 0136), ghost default events (translation-core-18/19, 0137), global pin IDs and traversal-order
+  node IDs (translation-core-7, 0134), display-text names (gap-5, 0138), Break Struct captured as a Variable named
+  `None` (translation-core-4, 0234), custom events with member_name `None` and Switch nodes named `Switch`
+  (translation-core-16 and -32, 0239). The list lives in the case table in the spec and is written into the golden.
+- **Round trip:** `drops exec pins, structs and enums in ToJson -> FromJson -> ToJson today` pins the lossy reader
+  (translation-core-25): `FromJson` needs a pin `type` that `ToJson` never writes for exec pins and never reads
+  structs or enums. Card 0135 deletes that case and enables `survives ToJson -> FromJson -> ToJson unchanged`.
+- **Updating:** a change to capture output regenerates the goldens in the same commit and its message explains the
+  golden diff: `.uild.ps1 -All -Test -TestFilter NodeToCode.Capture -UpdateGoldens` (the editor gets
+  `-N2CUpdateGoldens`; `N2C_UPDATE_GOLDENS=1` in its environment does the same), then the same command without
+  `-UpdateGoldens` to check every engine agrees. Engines run 5.6, 5.7, 5.8 in that order and each writes
+  `<case>.<engine>.json` when that file exists, else `<case>.json`.
+- **Per-engine goldens:** `<case>.<engine>.json` replaces `<case>.json` on that engine only where the engine really
+  differs. Today: `Branch`, `GateMultiExec`, `SwitchOnEnum`, `SwitchOnInt` and `TimelineMultiExec` have a `.5.8.json`,
+  because UE 5.8's `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's own name
+  (`CollectGarbage`) where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Card 0138's stable identifiers
+  remove the difference. To add one, copy `<case>.json` to `<case>.<engine>.json` and regenerate on that engine.
+- **Locale:** `build.ps1 -Test` runs the editor with `-culture=en`; the goldens are recorded that way.
+  `-TestCulture de` runs once in another culture. With `de` (checked on 5.6 and 5.8) the function return node's name
+  (`Add Return Node...`) and the ghost events' comment (`This node is disabled ...`) come out in German, in 6 of the 8
+  cases; node titles such as Branch and Switch and all pin names stay English. Both are display text, card 0138.
 
 ## Running the tests
 

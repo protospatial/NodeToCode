@@ -19,7 +19,9 @@
 #include "LLM/Providers/N2CLMStudioService.h"
 #include "LLM/Providers/N2COllamaService.h"
 #include "LLM/Providers/N2COpenAIService.h"
+#include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Tests/N2CTestHelpers.h"
 #include "Policies/PrettyJsonPrintPolicy.h"
@@ -251,7 +253,8 @@ BEGIN_DEFINE_SPEC(FN2CPayloadGoldensSpec, "NodeToCode.LLM.Payload.Golden", N2C_T
 
 	static bool UpdateGoldens()
 	{
-		return FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_UPDATE_GOLDENS")) == TEXT("1");
+		return FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_UPDATE_GOLDENS")) == TEXT("1")
+			|| FParse::Param(FCommandLine::Get(), TEXT("N2CUpdateGoldens"));
 	}
 
 	static FString JsonTypeName(EJson Type)

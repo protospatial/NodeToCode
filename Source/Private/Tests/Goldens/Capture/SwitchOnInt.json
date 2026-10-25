@@ -1,0 +1,161 @@
+{
+	"case": "SwitchOnInt",
+	"description": "Function SwitchInt(Selection): Switch on Int with cases 0 and 1 and Default; 0 and Default both run CollectGarbage, 1 runs ControlScreensaver.",
+	"known_defects": [
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		},
+		{
+			"finding": "translation-core-32",
+			"card": "0239",
+			"effect": "Switch nodes are named 'Switch', losing the switched type"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_SwitchOnInt",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_SwitchOnInt"
+		},
+		"graphs": [
+			{
+				"name": "SwitchInt",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "SwitchInt",
+						"member_parent": "BP_N2CGolden_SwitchOnInt",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Selection",
+								"type": "Integer",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "SwitchInt",
+						"name": "Switch",
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "Selection",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Default",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "0",
+								"connected": true
+							},
+							{
+								"id": "P7",
+								"name": "1",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "Collect Garbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P8",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": ""
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CallFunction",
+						"name": "Control Screensaver",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P12",
+								"name": "Allow Screen Saver",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2",
+						"N2->N3",
+						"N2->N4"
+					],
+					"data":
+					{
+						"N1.P2": "N2.P5"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
