@@ -1,0 +1,154 @@
+{
+	"case": "SpawnedVariableNodes",
+	"description": "Function Spawned with local Counter (int) and member Score (int), its nodes made by the MCP spawn path (card 0155, UBlueprintVariableNodeSpawner): Entry runs Set Score (from Get Counter), then Set Counter (from Get Score); a comment encloses the four variable nodes.",
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_SpawnedVariableNodes",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_SpawnedVariableNodes"
+		},
+		"graphs": [
+			{
+				"name": "Spawned",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Spawned",
+						"member_parent": "BP_N2CGolden_SpawnedVariableNodes",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "VariableSet",
+						"class": "K2Node_VariableSet",
+						"member_parent": "BP_N2CGolden_SpawnedVariableNodes",
+						"member_name": "Score",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "Score",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "Output_Get",
+								"type": "Integer",
+								"default_value": "0"
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "LocalFunctionVariable",
+						"class": "K2Node_VariableGet",
+						"member_name": "Counter",
+						"pure": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Counter",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "LocalFunctionVariable",
+						"class": "K2Node_VariableSet",
+						"member_name": "Counter",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "Counter",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "then"
+							},
+							{
+								"id": "P10",
+								"name": "Output_Get",
+								"type": "Integer",
+								"default_value": "0"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "VariableGet",
+						"class": "K2Node_VariableGet",
+						"member_parent": "BP_N2CGolden_SpawnedVariableNodes",
+						"member_name": "Score",
+						"pure": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": "Score",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2",
+						"N2.P3->N4.P7"
+					],
+					"data":
+					{
+						"N3.P6": "N2.P4",
+						"N5.P11": "N4.P9"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

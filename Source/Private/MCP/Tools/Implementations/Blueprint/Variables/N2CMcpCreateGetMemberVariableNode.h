@@ -5,9 +5,6 @@
 #include "CoreMinimal.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
 
-class UK2Node_VariableGet;
-class UEdGraph;
-class UBlueprint;
 
 /**
  * MCP tool for creating a Get node for a member variable in the focused blueprint graph.
@@ -25,7 +22,7 @@ class UBlueprint;
  *   "location": { "x": 400, "y": 200 }
  * }
  * 
- * The returned nodeId can be used with the connect-pins tool to wire up the node.
+ * The returned nodeId is the node GUID: connect-pins wires the node with it (card 0155).
  */
 class FN2CMcpCreateGetMemberVariableNode : public FN2CMcpToolBase
 {
@@ -34,48 +31,4 @@ public:
     virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
     virtual bool RequiresGameThread() const override { return true; }
 
-private:
-    /**
-     * Parse and validate the input arguments
-     */
-    bool ParseArguments(
-        const TSharedPtr<FJsonObject>& Arguments,
-        FString& OutVariableName,
-        FVector2D& OutLocation,
-        FString& OutError
-    );
-
-    /**
-     * Find the member variable in the blueprint
-     */
-    const FBPVariableDescription* FindMemberVariable(
-        UBlueprint* Blueprint,
-        const FString& VariableName,
-        FString& OutError
-    );
-
-    /**
-     * Create the Get node for the variable
-     */
-    UK2Node_VariableGet* CreateGetNode(
-        UBlueprint* Blueprint,
-        UEdGraph* Graph,
-        const FBPVariableDescription& Variable,
-        const FVector2D& Location
-    );
-
-    /**
-     * Build the success result JSON
-     */
-    TSharedPtr<FJsonObject> BuildSuccessResult(
-        UK2Node_VariableGet* GetNode,
-        const FBPVariableDescription& Variable,
-        UBlueprint* Blueprint,
-        UEdGraph* Graph
-    );
-
-    /**
-     * Get information about a node's pins for the result
-     */
-    TArray<TSharedPtr<FJsonValue>> GetNodePins(UK2Node_VariableGet* GetNode);
 };

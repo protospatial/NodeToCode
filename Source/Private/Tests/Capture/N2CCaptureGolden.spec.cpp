@@ -46,6 +46,11 @@
 #include "Kismet/KismetTextLibrary.h"
 #include "Kismet2/StructureEditorUtils.h"
 #include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpGetFocusedBlueprintTool.h"
+#include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
+#include "MCP/Utils/N2CMcpVariableUtils.h"
+#include "EdGraphNode_Comment.h"
+#include "K2Node_Variable.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -1165,6 +1170,41 @@ void FN2CCaptureGoldenSpec::AddCases()
 			BP.Link(Less, UEdGraphSchema_K2::PN_ReturnValue, Branch, UEdGraphSchema_K2::PN_Condition);
 			BP.Link(Branch, UEdGraphSchema_K2::PN_Then, OnTrue, UEdGraphSchema_K2::PN_Execute);
 			BP.Link(Branch, UEdGraphSchema_K2::PN_Else, OnFalse, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	Cases.Add({ TEXT("SpawnedVariableNodes"),
+		TEXT("Function Spawned with local Counter (int) and member Score (int), its nodes made by the MCP spawn path "
+			"(card 0155, UBlueprintVariableNodeSpawner): Entry runs Set Score (from Get Counter), then Set Counter (from "
+			"Get Score); a comment encloses the four variable nodes."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UBlueprint* Blueprint = BP.GetBlueprint();
+			BP.AddMemberVariable(TEXT("Score"), FTestBlueprint::IntPinType());
+			UEdGraph* Graph = BP.AddFunction(TEXT("Spawned"));
+			FBlueprintEditorUtils::AddLocalVariable(Blueprint, Graph, TEXT("Counter"), FTestBlueprint::IntPinType());
+			const FBPVariableDescription* Counter = FN2CMcpVariableUtils::FindLocalVariable(BP.FunctionEntry(Graph), TEXT("Counter"));
+			FString Error;
+			const FProperty* Score = FN2CMcpVariableUtils::FindMemberVariableProperty(Blueprint, TEXT("Score"), /*bForSet*/ true, Error);
+			if (!Counter || !Score)
+			{
+				return nullptr;
+			}
+			UK2Node_Variable* SetScore = FN2CMcpNodeSpawn::SpawnMemberVariableNode(Blueprint, Graph, Score, true, FVector2D(300, 0), Error);
+			UK2Node_Variable* GetCounter = FN2CMcpNodeSpawn::SpawnLocalVariableNode(Blueprint, Graph, *Counter, false, FVector2D(100, 150), Error);
+			UK2Node_Variable* SetCounter = FN2CMcpNodeSpawn::SpawnLocalVariableNode(Blueprint, Graph, *Counter, true, FVector2D(600, 0), Error);
+			UK2Node_Variable* GetScore = FN2CMcpNodeSpawn::SpawnMemberVariableNode(Blueprint, Graph, Score, false, FVector2D(400, 150), Error);
+			if (!SetScore || !GetCounter || !SetCounter || !GetScore)
+			{
+				return nullptr;
+			}
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, SetScore, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(GetCounter, TEXT("Counter"), SetScore, TEXT("Score"));
+			BP.Link(SetScore, UEdGraphSchema_K2::PN_Then, SetCounter, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(GetScore, TEXT("Score"), SetCounter, TEXT("Counter"));
+			FN2CMcpNodeSpawn::SpawnCommentNode(Graph, FSlateRect(50, -50, 800, 250), TEXT("Spawned nodes"), FLinearColor::White, 18, true,
+				{ SetScore, GetCounter, SetCounter, GetScore });
 			return Graph;
 		} });
 

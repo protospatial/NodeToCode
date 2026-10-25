@@ -8,6 +8,11 @@
 
 // Forward declarations
 class FN2CMcpArgumentParser;
+class FProperty;
+class UBlueprint;
+class UEdGraph;
+class UK2Node_FunctionEntry;
+struct FBPVariableDescription;
 
 /**
  * Shared utilities for MCP variable creation tools
@@ -61,6 +66,28 @@ public:
 	 * @return JSON object with type information
 	 */
 	static TSharedPtr<FJsonObject> BuildTypeInfo(const FEdGraphPinType& PinType);
+
+	/**
+	 * The function graph Graph belongs to: Graph itself, or for a collapsed graph inside a function the function
+	 * (FBlueprintEditorUtils::GetTopLevelGraph). Null when that graph is not a K2 function graph. Its name is the
+	 * scope of the function's local variables (card 0155).
+	 */
+	static UEdGraph* GetFunctionGraph(UEdGraph* Graph);
+
+	/** The entry node of GetFunctionGraph(Graph), or null outside a function (one shared lookup, card 0155) */
+	static UK2Node_FunctionEntry* FindFunctionEntryNode(UEdGraph* Graph);
+
+	/** A local variable of the function by name (FName comparison, so case-insensitive), or null */
+	static FBPVariableDescription* FindLocalVariable(UK2Node_FunctionEntry* FunctionEntry, const FString& VariableName);
+
+	/**
+	 * A member variable as the Blueprint's graphs see it, through the skeleton class: its own variables, inherited
+	 * ones (a parent Blueprint or a C++ base, such as RootComponent) and component variables. It must be visible to
+	 * Blueprints (UEdGraphSchema_K2::CanUserKismetAccessVariable, not a delegate) and not private to another class;
+	 * with bForSet it must also be writable (a BlueprintReadOnly property is refused, as the editor refuses its Set
+	 * node). Null with OutError otherwise (card 0155).
+	 */
+	static FProperty* FindMemberVariableProperty(UBlueprint* Blueprint, const FString& VariableName, bool bForSet, FString& OutError);
 
 private:
 	// Private constructor to prevent instantiation
