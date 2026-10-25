@@ -109,6 +109,9 @@ void SN2CCodeEditor::SetLanguage(EN2CCodeLanguage NewLanguage)
         CurrentText = EditableText->GetText();
     }
 
+    // Remember it, so a font size, tab size or theme change rebuilds the highlighter in this language, not the first one
+    CurrentLanguage = NewLanguage;
+
     // Create new syntax highlighter
     CreateSyntaxHighlighter(NewLanguage);
 

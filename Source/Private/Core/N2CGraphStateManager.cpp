@@ -542,6 +542,13 @@ bool UN2CGraphStateManager::HasTranslation(const FGuid& GraphGuid) const
 
 bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTranslation& OutTranslation) const
 {
+	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
+	return LoadTranslation(GraphGuid, OutTranslation, Language);
+}
+
+bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTranslation& OutTranslation, EN2CCodeLanguage& OutLanguage) const
+{
+	OutLanguage = EN2CCodeLanguage::Cpp;
 	const FN2CGraphState* State = FindGraphState(GraphGuid);
 	if (!State || !State->HasTranslation())
 	{
@@ -629,6 +636,7 @@ bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTra
 	OutTranslation.Code.GraphDeclaration = Declaration;
 	OutTranslation.Code.GraphImplementation = Implementation;
 	OutTranslation.Code.ImplementationNotes = Notes;
+	OutLanguage = Language;
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Loaded translation for graph %s from %s"),
 		*State->GraphName, *FullPath),

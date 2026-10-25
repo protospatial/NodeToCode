@@ -11,8 +11,10 @@ After translation completes, you'll see the code appear within the Node to Code 
     - Basic text editing capabilities
     - **(1a)**: Copy the current text in the code editor to the system clipboard
 2. [**Switching Between Implementation & Declaration**](Top-Navbar-Overview#b-implementation--declaration-tabs-center)
-    - **(2a)**: Implementation tab (for .cpp file content)
-    - **(2b)**: Declaration tab (for .h file content)
+    - **(2a)**: Implementation tab, labelled with the translation's file extension: **.cpp**, **.py**, **.js**, **.cs**, **.swift** or **.md** (Pseudocode)
+    - **(2b)**: Declaration tab (**.h**), shown only when the translation has a declaration, which in practice means C++
+    - **JSON** tab: the Blueprint graph the translation was made from
+    - The viewer opens on the implementation tab and highlights it in the translation's language. A translation you open from the graph list uses the language it was saved in; the result of a single translate uses the **Target Language** from the plugin settings
 3. [**Translations Browser**](Top-Navbar-Overview#a-translations-browser-left)
     - **(3a)**: Browse and open other nested graphs included in your translation
     - **(3b)**: View what the estimated translation cost was in USD 
