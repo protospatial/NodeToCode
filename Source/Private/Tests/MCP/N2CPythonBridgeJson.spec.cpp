@@ -19,6 +19,8 @@
 #include "BlueprintEditor.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Editor.h"
@@ -324,6 +326,52 @@ void FN2CPythonBridgeJsonSpec::Define()
 			TestFalse(TEXT("ReadN2CJson of text that is not JSON"), FailureError(TEXT("ReadN2CJson"), UN2CPythonBridge::ReadN2CJson(Awkward)).IsEmpty());
 			AddExpectedError(TEXT("Missing version field in JSON"), EAutomationExpectedErrorFlags::Contains, 1);
 			TestFalse(TEXT("ReadN2CJson of JSON that is not N2C JSON"), FailureError(TEXT("ReadN2CJson"), UN2CPythonBridge::ReadN2CJson(TEXT("{\"name\":\"x\"}"))).IsEmpty());
+		});
+
+		// Card 0445: a later 2.x document (a synthetic material capture) is read from Python without loss
+		It(TEXT("ReadN2CJson reads a later 2.x document with unknown kinds and fields without loss, listing its warnings"), [this]()
+		{
+			FString Text;
+			if (!TestTrue(TEXT("the forward-compat fixture loads"), FFileHelper::LoadFileToString(Text,
+				*(N2CTest::FixturesDir(TEXT("Capture/ForwardCompat")) / TEXT("UnknownKinds_2.1.json")))))
+			{
+				return;
+			}
+			Text.TrimStartAndEndInline();
+			AddExpectedMessage(TEXT("N2C JSON "), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 0, false);
+			AddExpectedMessage(TEXT("this build does not know"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 0, false);
+			const TSharedPtr<FJsonObject> Data = SuccessData(TEXT("ReadN2CJson"), UN2CPythonBridge::ReadN2CJson(Text));
+			ExpectString(TEXT("ReadN2CJson"), Data, TEXT("source_version"), TEXT("2.1.0"));
+			ExpectString(TEXT("ReadN2CJson"), Data, TEXT("version"), TEXT("2.1.0"));
+			if (!Data.IsValid())
+			{
+				return;
+			}
+			TestTrue(TEXT("valid"), Data->GetBoolField(TEXT("valid")));
+			TestEqual(TEXT("graphs"), static_cast<int32>(Data->GetNumberField(TEXT("graphs"))), 2);
+			TestEqual(TEXT("nodes"), static_cast<int32>(Data->GetNumberField(TEXT("nodes"))), 4);
+			TestEqual(TEXT("data_edges"), static_cast<int32>(Data->GetNumberField(TEXT("data_edges"))), 2);
+			TestEqual(TEXT("exec_edges"), static_cast<int32>(Data->GetNumberField(TEXT("exec_edges"))), 1);
+			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
+			if (TestTrue(TEXT("warnings is an array"), Data->TryGetArrayField(TEXT("warnings"), Warnings)))
+			{
+				TestEqual(TEXT("warnings"), Warnings->Num(), 16);
+				const TSharedPtr<FJsonObject> First = (*Warnings)[0]->AsObject();
+				if (TestTrue(TEXT("a warning is an object"), First.IsValid()))
+				{
+					TestEqual(TEXT("first warning code"), First->GetStringField(TEXT("code")), FString(TEXT("NEWER_VERSION")));
+					TestEqual(TEXT("first warning path"), First->GetStringField(TEXT("path")), FString(TEXT("version")));
+				}
+			}
+			const TSharedPtr<FJsonObject>* N2CJson = nullptr;
+			if (TestTrue(TEXT("n2c_json is an object"), Data->TryGetObjectField(TEXT("n2c_json"), N2CJson)))
+			{
+				FString Again;
+				const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+					TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Again);
+				FJsonSerializer::Serialize(N2CJson->ToSharedRef(), Writer);
+				TestEqual(TEXT("n2c_json is the document, unchanged"), Again, Text);
+			}
 		});
 
 		It(TEXT("RemoveTag reports an awkward invalid GUID"), [this]()

@@ -202,6 +202,13 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   fan-out written back unchanged and the readable versions (1.x and 2.x). Card 0136: a 2.0.0 document with node-only
   exec flows (development builds between cards 0135 and 0136) reads, validates and is written back unchanged, and so
   is a pin-qualified one.
+- **Forward compatibility (card 0445):** `NodeToCode.Serializer.ForwardCompat` (`Core/N2CSerializerForwardCompat.spec.cpp`)
+  reads `Fixtures/Capture/ForwardCompat/UnknownKinds_2.1.json`, a synthetic 2.1.0 material document with unknown
+  blueprint, graph, node and pin kinds and unknown fields at every level: one structured warning each, nothing
+  dropped, the validator accepts it, and condensed `ToJson` gives the file back byte for byte. The 1.x fixtures and
+  every capture golden give no warning; non-JSON text and a document without version or metadata are still rejected,
+  and a malformed node or graph is skipped with a `SKIPPED_*` warning. `NodeToCode.Python.Bridge` reads the same file
+  through `ReadN2CJson`, and `Tests/python/test_read_n2c_json.py` checks the Python wrapper returns its warnings.
 - **Updating:** a change to capture output regenerates the goldens in the same commit and its message explains the
   golden diff: `.\build.ps1 -All -Test -TestFilter NodeToCode.Capture -UpdateGoldens` (the editor gets
   `-N2CUpdateGoldens`; `N2C_UPDATE_GOLDENS=1` in its environment does the same), then the same command without

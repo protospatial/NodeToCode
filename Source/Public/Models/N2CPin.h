@@ -59,7 +59,12 @@ enum class EN2CPinType : uint8
     Bitmask     UMETA(DisplayName = "Bitmask"),
     Self        UMETA(DisplayName = "Self"),
     Index       UMETA(DisplayName = "Index"),
-    Wildcard    UMETA(DisplayName = "Wildcard")
+    Wildcard    UMETA(DisplayName = "Wildcard"),
+    /**
+     * A pin "type" this build does not know (a later 2.x document), read by FN2CSerializer::FromJson and kept with its
+     * text in FN2CPinDefinition::UnknownType so ToJson writes it back unchanged (card 0445). Never captured.
+     */
+    Unknown     UMETA(DisplayName = "Unknown")
 };
 
 /**
@@ -130,6 +135,17 @@ struct FN2CPinDefinition
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     bool bIsSet = false;
+
+    /** The "type" text as read when Type is Unknown (card 0445); ToJson writes it in place of "Unknown" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownType;
+
+    /**
+     * Fields of the pin's JSON object this build does not know, by name, each value as condensed JSON text, in the
+     * order read. ToJson writes them back after the known fields (card 0445).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> UnknownFields;
 
     FN2CPinDefinition()
         : ID(TEXT(""))

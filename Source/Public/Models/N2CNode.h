@@ -167,6 +167,13 @@ enum class EN2CNodeType : uint8
     PromotableOperator  UMETA(DisplayName = "promotable_operator"),
     MacroInstance       UMETA(DisplayName = "macro_instance"),
     BaseMCDelegate      UMETA(DisplayName = "base_mc_delegate"),
+
+    /**
+     * A node "type" this build does not know (a later 2.x document), read by FN2CSerializer::FromJson and kept with
+     * its text in FN2CNodeDefinition::UnknownType so ToJson writes it back unchanged (card 0445). Card 0234 reuses
+     * this value for a captured node class with no mapping.
+     */
+    Unknown             UMETA(DisplayName = "unknown"),
 };
 
 /**
@@ -238,6 +245,17 @@ struct FN2CNodeDefinition
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CPinDefinition> OutputPins;
+
+    /** The "type" text as read when NodeType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownType;
+
+    /**
+     * Fields of the node's JSON object this build does not know, by name, each value as condensed JSON text, in the
+     * order read. ToJson writes them back after the known fields (card 0445).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> UnknownFields;
 
     FN2CNodeDefinition()
         : ID(TEXT(""))

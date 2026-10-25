@@ -160,7 +160,7 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 |--------|-------------|
 | `ToJson(Blueprint, Style)` | Convert FN2CBlueprint to JSON string; `EN2CJsonStyle::Pretty` or `Condensed` per call (no static state) |
 | `ToJson(Capture, Style, Guids)` | A capture's Blueprint; `EN2CJsonGuids::Table` adds the top-level `guids` table for agents (get-focused-blueprint), never for LLM prompts |
-| `FromJson()` | Parse N2C JSON into `FN2CBlueprint`: 1.x (1.2.x and earlier 2.0 builds) and 2.x are read into the v2 model, whose version is then `N2CJsonContract::Version`; a pin without `type` is Exec, `structs` and `enums` are read, an enum value needs only `name`; `FromJson(ToJson(x))` equals x for every capture golden |
+| `FromJson()` | Parse N2C JSON into `FN2CBlueprint`: 1.x (1.2.x and earlier 2.0 builds) is read into the v2 model, whose version is then `N2CJsonContract::Version`, and a 2.x document keeps its version; an unknown `blueprint_type`, `graph_type`, node or pin `type` is read as `Unknown` with its text kept and an unknown field is kept, each written back unchanged and reported as an `FN2CJsonReadWarning` (reader policy in `N2CJsonContract.h`, card 0445); a pin without `type` is Exec, `structs` and `enums` are read, an enum value needs only `name`; `FromJson(ToJson(x))` equals x for every capture golden |
 | `NodeToJsonObject()` | Convert single node to JSON (for MCP tools) |
 
 ## Data Models
@@ -194,7 +194,14 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
   they are), so a 1.x document reads into the v2 model with no `class` and is written back with `title`. 2.0.0 documents saved by development builds between cards 0135 and 0136
   also have node-only exec entries: readers accept both forms in any readable version and keep them as they are.
   `FromJson`, `UN2CPythonBridge::ReadN2CJson` (Python `nodetocode.read_n2c_json`) and the validator read it through
-  the 2.x line. `NodeToCode.Capture.Golden.V1Reader` reads the 1.0.0 documents in
+  the 2.x line.
+- **Later 2.x documents (card 0445):** the reader keeps what it does not know instead of rejecting or dropping it
+  (`N2CJsonContract.h`, reader policy): unknown kinds become `Unknown` with their text (`UnknownBlueprintType`,
+  `UnknownGraphType`, `UnknownType`), unknown fields at the top level and in `metadata`, graphs, nodes and pins are kept
+  in `UnknownFields` and written after the known fields, and each gives one structured warning
+  (`N2CJsonContract::ReadWarning`). The validator accepts them with a log warning.
+  `NodeToCode.Serializer.ForwardCompat` reads `Source/Private/Tests/Fixtures/Capture/ForwardCompat/UnknownKinds_2.1.json`
+  and writes it back byte for byte. `NodeToCode.Capture.Golden.V1Reader` reads the 1.0.0 documents in
   `Source/Private/Tests/Fixtures/Capture/V1` (earlier goldens and a 1.2.3 save); `Tests/Migration` reads the 1.2.3
   fixture's saved translation (row F2).
 

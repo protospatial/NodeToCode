@@ -165,7 +165,9 @@ arguments and the keys of its `data`. Grouped:
 *   `read_n2c_json(text)` - Read N2C JSON 1.x or 2.x (for example a saved `N2C_BP_*.json`) with the plugin's reader
     (`UN2CPythonBridge::ReadN2CJson`); returns its source version, counts (`data_edges`, `exec_edges`) and the document
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
-    a 1.x node's display `name` comes back as `title` (no `class`), its pin names stay the display names it has
+    a 1.x node's display `name` comes back as `title` (no `class`), its pin names stay the display names it has.
+    A later 2.x document keeps its version, its unknown node, pin, graph and blueprint types and its unknown fields
+    (card 0445), each listed in `warnings` (`code`, `path`, `value`, `message`)
 *   `compile_blueprint(path=None)` - Compile the focused Blueprint (a `path` is ignored for now: open the Blueprint
     first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
     `messages` (each `severity`, `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node)
