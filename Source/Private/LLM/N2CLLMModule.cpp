@@ -125,6 +125,17 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     const FString& JsonInput,
     const FOnLLMResponseReceived& OnComplete)
 {
+    // The translator holds the Blueprint JsonInput was serialized from only until the next capture (an overlay's token
+    // estimate, Copy JSON, find-nodes): copy it now, when the request is sent, never when the response arrives
+    check(IsInGameThread());
+    return ProcessN2CJson(JsonInput, FN2CNodeTranslator::Get().GetN2CBlueprint(), OnComplete);
+}
+
+FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
+    const FString& JsonInput,
+    const FN2CBlueprint& CapturedBlueprint,
+    const FOnLLMResponseReceived& OnComplete)
+{
     // Creates and uses UObjects and writes CurrentStatus: game thread only (objects made elsewhere are never collected)
     check(IsInGameThread());
 
@@ -173,9 +184,11 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
 
     // Send request through service. The callback keeps the service it was sent on alive and parses with that
     // service's parser, even if the active provider changes or GC runs while the request is in flight.
+    // The translation is saved with the Blueprint captured for this request, shared (not copied) by the delegate's copies
     TStrongObjectPtr<UObject> RequestServiceObject(Service.GetObject());
+    const TSharedRef<const FN2CBlueprint> RequestBlueprint = MakeShared<const FN2CBlueprint>(CapturedBlueprint);
     FN2CLLMRequestHandleRef Handle = ActiveService->SendRequest(JsonInput, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, OnComplete, RequestServiceObject, RequestService = Service, RequestModel = Config.Model](const FString& Response)
+        [this, OnComplete, RequestServiceObject, RequestService = Service, RequestModel = Config.Model, RequestBlueprint](const FString& Response)
         {
             // Create translation response struct
             FN2CTranslationResponse TranslationResponse;
@@ -191,9 +204,8 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
                     {
                         CurrentStatus = EN2CSystemStatus::Idle;
 
-                        // Save translation to disk
-                        const FN2CBlueprint& Blueprint = FN2CNodeTranslator::Get().GetN2CBlueprint();
-                        if (SaveTranslationToDisk(TranslationResponse, Blueprint))
+                        // Save translation to disk, with the Blueprint captured when the request was sent
+                        if (SaveTranslationToDisk(TranslationResponse, *RequestBlueprint))
                         {
                             FN2CLogger::Get().Log(TEXT("Successfully saved translation to disk"), EN2CLogSeverity::Info);
                         }
