@@ -8,6 +8,8 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CPinConnectPolicy.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
@@ -686,10 +688,14 @@ FString UN2CPythonBridge::OpenBlueprintFunction(const FString& FunctionName)
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
 
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+	// The focused graph, through the one graph resolver (card 0152)
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(TEXT("No Blueprint editor is focused. Please open a Blueprint first."));
+		return MakeErrorJson(Target.Error);
 	}
+	Blueprint = Target.Blueprint;
+	FocusedGraph = Target.Graph;
 
 	if (!Blueprint)
 	{
@@ -770,10 +776,14 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 
 	if (bContextSensitive)
 	{
-		if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(ContextBlueprint, ContextGraph, GraphError))
+		// The focused graph, through the one graph resolver (card 0152)
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
+		if (!Target.IsValid())
 		{
-			return MakeErrorJson(TEXT("Context-sensitive search requested but no Blueprint editor is active: ") + GraphError);
+			return MakeErrorJson(TEXT("Context-sensitive search requested but no Blueprint editor is active: ") + Target.Error);
 		}
+		ContextBlueprint = Target.Blueprint;
+		ContextGraph = Target.Graph;
 	}
 
 	// The same action list search-blueprint-nodes and AddNodeToGraph build (global without a context)
@@ -848,10 +858,14 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	UBlueprint* ActiveBlueprint = nullptr;
 	UEdGraph* ActiveGraph = nullptr;
 	FString ContextError;
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(ActiveBlueprint, ActiveGraph, ContextError))
+	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(ContextError);
+		return MakeErrorJson(Target.Error);
 	}
+	ActiveBlueprint = Target.Blueprint;
+	ActiveGraph = Target.Graph;
 
 	// The same action list search_blueprint_nodes builds for this graph
 	FBlueprintActionMenuBuilder MenuBuilder;
@@ -963,10 +977,14 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(GraphError);
+		return MakeErrorJson(Target.Error);
 	}
+	Blueprint = Target.Blueprint;
+	FocusedGraph = Target.Graph;
 
 	const UEdGraphSchema* Schema = FocusedGraph->GetSchema();
 	if (!Schema)
@@ -1162,10 +1180,14 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(GraphError);
+		return MakeErrorJson(Target.Error);
 	}
+	Blueprint = Target.Blueprint;
+	FocusedGraph = Target.Graph;
 
 	// Find the node
 	FGuid ParsedNodeGuid;
@@ -1295,10 +1317,14 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(GraphError);
+		return MakeErrorJson(Target.Error);
 	}
+	Blueprint = Target.Blueprint;
+	FocusedGraph = Target.Graph;
 
 	// Parse GUIDs and find nodes
 	TArray<UEdGraphNode*> NodesToDelete;
@@ -1420,10 +1446,14 @@ FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+	// The focused graph, through the one graph resolver (card 0152)
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(GraphError);
+		return MakeErrorJson(Target.Error);
 	}
+	Blueprint = Target.Blueprint;
+	FocusedGraph = Target.Graph;
 
 	// Collect nodes
 	TArray<UK2Node*> AllNodes;
@@ -1573,10 +1603,14 @@ FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const 
 	UBlueprint* Blueprint = nullptr;
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(GraphError);
+		return MakeErrorJson(Target.Error);
 	}
+	Blueprint = Target.Blueprint;
+	FocusedGraph = Target.Graph;
 
 	// Build node lookup and find nodes
 	TMap<FGuid, UEdGraphNode*> NodeMap;
@@ -1708,11 +1742,18 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 		return MakeErrorJson(TEXT("PinName and TypeIdentifier are required"));
 	}
 
-	// Get focused function graph
-	UEdGraph* FocusedGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
-	if (!FocusedGraph)
+	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
+	// is not a function is refused before anything changes
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(TEXT("No focused graph found. Please open a Blueprint function in the editor."));
+		return MakeErrorJson(Target.Error);
+	}
+	UEdGraph* FocusedGraph = Target.Graph;
+	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
+	{
+		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
+			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
 	}
 
 	// Check if this is a K2 graph
@@ -1800,11 +1841,18 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 		return MakeErrorJson(TEXT("PinName and TypeIdentifier are required"));
 	}
 
-	// Get focused function graph
-	UEdGraph* FocusedGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
-	if (!FocusedGraph)
+	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
+	// is not a function is refused before anything changes
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(TEXT("No focused graph found. Please open a Blueprint function in the editor."));
+		return MakeErrorJson(Target.Error);
+	}
+	UEdGraph* FocusedGraph = Target.Graph;
+	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
+	{
+		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
+			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
 	}
 
 	// Check if this is a K2 graph
@@ -1881,11 +1929,18 @@ FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 		return MakeErrorJson(TEXT("PinName is required"));
 	}
 
-	// Get focused function graph
-	UEdGraph* FocusedGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
-	if (!FocusedGraph)
+	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
+	// is not a function is refused before anything changes
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(TEXT("No focused graph found. Please open a Blueprint function in the editor."));
+		return MakeErrorJson(Target.Error);
+	}
+	UEdGraph* FocusedGraph = Target.Graph;
+	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
+	{
+		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
+			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
 	}
 
 	// Check if this is a K2 graph
@@ -1939,11 +1994,18 @@ FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
 		return MakeErrorJson(TEXT("PinName is required"));
 	}
 
-	// Get focused function graph
-	UEdGraph* FocusedGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
-	if (!FocusedGraph)
+	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
+	// is not a function is refused before anything changes
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(TEXT("No focused graph found. Please open a Blueprint function in the editor."));
+		return MakeErrorJson(Target.Error);
+	}
+	UEdGraph* FocusedGraph = Target.Graph;
+	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
+	{
+		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
+			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
 	}
 
 	// Check if this is a K2 graph

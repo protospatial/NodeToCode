@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpNodeActions.h"
 #include "Utils/N2CLogger.h"
@@ -87,7 +88,7 @@ FMcpToolDefinition FN2CMcpSearchBlueprintNodesTool::GetDefinition() const
     // blueprintContext property
     TSharedPtr<FJsonObject> ContextProp = MakeShareable(new FJsonObject);
     ContextProp->SetStringField(TEXT("type"), TEXT("object"));
-    ContextProp->SetStringField(TEXT("description"), TEXT("Information to make the search context-sensitive when contextSensitive is true. Without it the focused graph is used. A Blueprint or graph that does not exist is an error (ASSET_NOT_FOUND, GRAPH_NOT_FOUND), never a search in another context"));
+    ContextProp->SetStringField(TEXT("description"), TEXT("The older form of blueprintPath plus graphName, used only when none of blueprintPath, graphName and graphGuid is given. Information to make the search context-sensitive when contextSensitive is true. Without it (and without blueprintPath, graphName, graphGuid) the focused graph is used. A Blueprint or graph that does not exist is an error (ASSET_NOT_FOUND, GRAPH_NOT_FOUND), never a search in another context"));
     
     TSharedPtr<FJsonObject> ContextProps = MakeShareable(new FJsonObject);
     
@@ -120,6 +121,8 @@ FMcpToolDefinition FN2CMcpSearchBlueprintNodesTool::GetDefinition() const
     // Results carry Blueprint text (tooltips of the project's own Blueprint functions and variables): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;
 
+    FN2CGraphTarget::AddSchemaProperties(Definition);
+
     return Definition;
 }
 
@@ -145,26 +148,34 @@ FMcpToolCallResult FN2CMcpSearchBlueprintNodesTool::Execute(const TSharedPtr<FJs
             *SearchTerm, bContextSensitive ? TEXT("true") : TEXT("false"), MaxResults,
             CategoryFilter.IsEmpty() ? TEXT("any") : *CategoryFilter, bExcludeVMFunctions ? TEXT("true") : TEXT("false")), EN2CLogSeverity::Info);
 
-        // Context: the Blueprint and graph blueprintContext names, else the focused graph. A context that does not
-        // resolve is an error; it never silently becomes another context or a global search (card 0277)
+        // Context: the graph blueprintPath / graphName / graphGuid (or the older blueprintContext) names, else the
+        // focused graph, through the one graph resolver (card 0152). A context that does not resolve is an error; it
+        // never silently becomes another context or a global search (card 0277)
         UBlueprint* ContextBlueprint = nullptr;
         UEdGraph* ContextGraph = nullptr;
+        FN2CGraphTarget Target;
         if (bContextSensitive)
         {
+            FN2CGraphTargetArgs TargetArgs = FN2CGraphTargetArgs::FromJson(Arguments);
             const bool bExplicitContext = BlueprintContext.IsValid()
                 && (BlueprintContext->HasField(TEXT("owningBlueprintPath")) || BlueprintContext->HasField(TEXT("graphPath")));
-            FString ContextError;
-            if (bExplicitContext)
+            if (bExplicitContext && TargetArgs.IsEmpty())
             {
-                if (!GetContextFromPaths(BlueprintContext, ContextBlueprint, ContextGraph, ContextError))
+                FString ContextError;
+                if (!ContextToTargetArgs(BlueprintContext, TargetArgs, ContextError))
                 {
                     return FMcpToolCallResult::CreateErrorResult(ContextError);
                 }
             }
-            else if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(ContextBlueprint, ContextGraph, ContextError))
+            Target = FN2CGraphTarget::Resolve(TargetArgs, /*bForWrite*/ false);
+            if (!Target.IsValid())
             {
-                return FMcpToolCallResult::CreateErrorResult(TEXT("Context-sensitive search requested but no Blueprint editor is active or graph focused. Error: ") + ContextError);
+                return FMcpToolCallResult::CreateErrorResult(TargetArgs.IsEmpty()
+                    ? TEXT("Context-sensitive search requested but no Blueprint editor is active or graph focused. Error: ") + Target.Error
+                    : Target.Error);
             }
+            ContextBlueprint = Target.Blueprint;
+            ContextGraph = Target.Graph;
         }
 
         TArray<TSharedPtr<FJsonValue>> ResultNodes = SearchActions(SearchTerm, MaxResults, bContextSensitive,
@@ -181,8 +192,9 @@ FMcpToolCallResult FN2CMcpSearchBlueprintNodesTool::Execute(const TSharedPtr<FJs
 
         FN2CLogger::Get().Log(FString::Printf(TEXT("Blueprint node search completed. Found %d results"), ResultCount), EN2CLogSeverity::Info);
 
-        // No BlueprintActionDatabase refresh: the search no longer adds or removes nodes, so there is nothing to resync
-        return FMcpToolCallResult::CreateTextResult(ResultJsonString);
+        // No BlueprintActionDatabase refresh: the search no longer adds or removes nodes, so there is nothing to resync.
+        // A context-sensitive search says which graph it searched for ('target'; nothing for a global search)
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultJsonString));
     });
 }
 
@@ -269,14 +281,12 @@ bool FN2CMcpSearchBlueprintNodesTool::ParseArguments(
     return true;
 }
 
-bool FN2CMcpSearchBlueprintNodesTool::GetContextFromPaths(
+bool FN2CMcpSearchBlueprintNodesTool::ContextToTargetArgs(
     const TSharedPtr<FJsonObject>& BlueprintContext,
-    UBlueprint*& OutBlueprint,
-    UEdGraph*& OutGraph,
+    FN2CGraphTargetArgs& OutArgs,
     FString& OutError)
 {
-    OutBlueprint = nullptr;
-    OutGraph = nullptr;
+    OutArgs = FN2CGraphTargetArgs();
     if (!BlueprintContext.IsValid())
     {
         OutError = TEXT("Invalid blueprintContext object");
@@ -296,69 +306,39 @@ bool FN2CMcpSearchBlueprintNodesTool::GetContextFromPaths(
     FString GraphName = GraphPath;
     GraphPath.Split(TEXT(":"), &GraphPackagePath, &GraphName);
 
-    const FString PathToLoad = !BlueprintPath.IsEmpty() ? BlueprintPath : GraphPackagePath;
-    if (PathToLoad.IsEmpty())
+    OutArgs.BlueprintPath = !BlueprintPath.IsEmpty() ? BlueprintPath : GraphPackagePath;
+    OutArgs.GraphName = GraphName.TrimStartAndEnd();
+    if (OutArgs.BlueprintPath.IsEmpty())
     {
         OutError = FString::Printf(TEXT("GRAPH_NOT_FOUND: graphPath '%s' names no Blueprint; use '<Blueprint path>:<GraphName>' or pass owningBlueprintPath"), *GraphPath);
         return false;
     }
+    return true;
+}
 
-    FString ResolveError;
-    OutBlueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(PathToLoad, ResolveError);
-    if (!OutBlueprint)
+bool FN2CMcpSearchBlueprintNodesTool::GetContextFromPaths(
+    const TSharedPtr<FJsonObject>& BlueprintContext,
+    UBlueprint*& OutBlueprint,
+    UEdGraph*& OutGraph,
+    FString& OutError)
+{
+    OutBlueprint = nullptr;
+    OutGraph = nullptr;
+    FN2CGraphTargetArgs Args;
+    if (!ContextToTargetArgs(BlueprintContext, Args, OutError))
     {
-        OutError = ResolveError.StartsWith(TEXT("ASSET_NOT_FOUND")) ? ResolveError
-            : FString::Printf(TEXT("ASSET_NOT_FOUND: Failed to load Blueprint from path: %s. %s"), *PathToLoad, *ResolveError);
         return false;
     }
-
-    TArray<UEdGraph*> AllGraphs;
-    OutBlueprint->GetAllGraphs(AllGraphs);
-
-    if (GraphName.IsEmpty())
+    // The one graph resolver (card 0152): ASSET_NOT_FOUND, GRAPH_NOT_FOUND, AMBIGUOUS_GRAPH_NAME; without a graph name,
+    // the Blueprint's focused graph or else its event graph
+    const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Args, /*bForWrite*/ false);
+    if (!Target.IsValid())
     {
-        // No graph named: the focused graph when it belongs to this Blueprint, else its event graph
-        UBlueprint* FocusedBlueprint = nullptr;
-        UEdGraph* FocusedGraph = nullptr;
-        FString FocusError;
-        if (FN2CMcpBlueprintUtils::GetFocusedEditorGraph(FocusedBlueprint, FocusedGraph, FocusError)
-            && FocusedBlueprint == OutBlueprint && FocusedGraph)
-        {
-            OutGraph = FocusedGraph;
-        }
-        else
-        {
-            OutGraph = FBlueprintEditorUtils::FindEventGraph(OutBlueprint);
-        }
-        if (!OutGraph)
-        {
-            OutError = FString::Printf(TEXT("GRAPH_NOT_FOUND: %s has no event graph and none is focused; pass graphPath"), *OutBlueprint->GetPathName());
-            return false;
-        }
-        return true;
-    }
-
-    TArray<FString> GraphNames;
-    for (UEdGraph* Graph : AllGraphs)
-    {
-        if (!Graph)
-        {
-            continue;
-        }
-        GraphNames.Add(Graph->GetName());
-        if (Graph->GetName().Equals(GraphName, ESearchCase::IgnoreCase))
-        {
-            OutGraph = Graph;
-            break;
-        }
-    }
-
-    if (!OutGraph)
-    {
-        OutError = FString::Printf(TEXT("GRAPH_NOT_FOUND: no graph '%s' in %s. Graphs: %s"), *GraphName,
-            *OutBlueprint->GetPathName(), *FString::Join(GraphNames, TEXT(", ")));
+        OutError = Target.Error;
         return false;
     }
+    OutBlueprint = Target.Blueprint;
+    OutGraph = Target.Graph;
     return true;
 }
 

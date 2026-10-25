@@ -125,14 +125,13 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
 
 ## Function IDs
 
-`list-blueprint-functions` returns `guid` for each function, from `FN2CMcpFunctionGuidUtils::GetOrCreateFunctionGuid`.
-It is not stored: `GenerateDeterministicGuid` computes the MD5 of `<Blueprint path name>::<function graph name>`, so
-the same function has the same ID in every session, but renaming the function, or renaming or moving the Blueprint,
-gives it a new one (on UE 5.8, `MyFunc` was `AC3D30FD58F9C81F23413CA1A0E4C433` and became
-`357589F9599B5095655D6299AF831C39` as `MyFuncRenamed`). Read the current ID again after a rename. The function tools
-take these IDs (see "Function GUIDs" in `../Functions/AGENTS.md`).
-
-- **Known issue (card 0152):** function IDs change on rename; the card moves them to the persistent `GraphGuid`.
+`list-blueprint-functions` returns `guid` for each function: its function graph's `UEdGraph::GraphGuid`
+(`FN2CMcpFunctionGuidUtils::GetFunctionId`, card 0152). The engine saves it with the graph, so it stays the same in
+every session and when the function is renamed or the Blueprint is renamed or moved. It is unique only inside one
+Blueprint (a duplicated Blueprint keeps it), so pair it with `blueprintPath`. The function, graph and pin tools take
+it as `functionGuid` or `graphGuid` (see "Function GUIDs" in `../Functions/AGENTS.md`). Before card 0152 the ID was an
+MD5 of the Blueprint path and function name that changed on rename; those old IDs are still accepted, with a
+warning, until NodeToCode 2.1.
 
 ## Examples
 

@@ -3,6 +3,7 @@
 #include "N2CMcpDeleteBlueprintNodeTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -32,7 +33,7 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintNodeTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("delete-blueprint-node"),
-        TEXT("Deletes one or more Blueprint nodes from the currently focused graph using their GUIDs. Supports connection preservation and batch operations."),
+        TEXT("Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Supports connection preservation and batch operations."),
         TEXT("Blueprint Graph Editing")
     );
     
@@ -77,6 +78,8 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintNodeTool::GetDefinition() const
     
     Definition.InputSchema = Schema;
     
+    FN2CGraphTarget::AddSchemaProperties(Definition);
+
     return Definition;
 }
 
@@ -101,21 +104,22 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintNodeTool::Execute(const TSharedPtr<FJso
             NodeGuids.Num(), bPreserveConnections ? TEXT("true") : TEXT("false"), bForce ? TEXT("true") : TEXT("false")), 
             EN2CLogSeverity::Info);
         
-        // Get the active graph context
-        FString ContextError;
-        UBlueprint* ActiveBlueprint = nullptr;
-        UEdGraph* ActiveGraph = nullptr;
-        if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(ActiveBlueprint, ActiveGraph, ContextError))
+        // The graph blueprintPath / graphName / graphGuid name, else the focused one (card 0152); every result
+        // after this says which graph was used ('target')
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+        if (!Target.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(ContextError);
+            return FMcpToolCallResult::CreateErrorResult(Target.Error);
         }
+        UBlueprint* ActiveBlueprint = Target.Blueprint;
+        UEdGraph* ActiveGraph = Target.Graph;
         
         // Validate nodes
         TArray<UEdGraphNode*> NodesToDelete;
         FString ValidationError;
         if (!ValidateNodes(ActiveGraph, NodeGuids, NodesToDelete, bForce, ValidationError))
         {
-            return FMcpToolCallResult::CreateErrorResult(ValidationError);
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(ValidationError));
         }
         
         // Create transaction for undo/redo
@@ -126,7 +130,7 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintNodeTool::Execute(const TSharedPtr<FJso
         TArray<FDeletedNodeInfo> DeletedInfo;
         if (!DeleteNodes(ActiveBlueprint, ActiveGraph, NodesToDelete, bPreserveConnections, DeletedInfo))
         {
-            return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to delete nodes"));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to delete nodes")));
         }
         
         // Show notification
@@ -139,7 +143,7 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintNodeTool::Execute(const TSharedPtr<FJso
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
         
-        return FMcpToolCallResult::CreateTextResult(ResultJson);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultJson));
     });
 }
 

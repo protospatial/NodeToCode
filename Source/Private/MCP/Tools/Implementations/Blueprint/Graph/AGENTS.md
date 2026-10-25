@@ -7,9 +7,45 @@ This directory contains the MCP tools that find, add, wire, set, comment and del
 
 ## Targeting and IDs
 
-Every tool here works on the graph of the active Blueprint editor (`FN2CMcpBlueprintUtils::GetFocusedEditorGraph`);
-none takes a Blueprint or graph argument (card 0152 adds explicit targets). Open the graph first
-(`open-blueprint-asset` with `focus_graph`, or `open-blueprint-function`).
+Every tool here acts on one graph, chosen by the shared graph resolver (`FN2CGraphTarget`,
+`MCP/Utils/N2CMcpGraphTarget.h`, card 0152) from three optional arguments every tool here takes:
+
+- `blueprintPath`: the Blueprint's asset path, `/Game/Blueprints/BP_Door.BP_Door` (or `/Game/Blueprints/BP_Door`);
+- `graphName`: a graph of that Blueprint by name, ignoring case: the event graph (`EventGraph`), a function, a macro,
+  a collapsed graph, a delegate signature or an interface graph (every graph `UBlueprint::GetAllGraphs` returns);
+- `graphGuid`: a graph by its `UEdGraph::GraphGuid`, 32 hex digits or hyphenated (`target.graphGuid` of an earlier
+  result). A function's `functionGuid` is its graph GUID. `graphGuid` wins over `graphName` when both are given.
+
+Which graph:
+
+- none of the three: the graph focused in the Blueprint editor (as before card 0152);
+- `graphName` or `graphGuid` without `blueprintPath`: that graph of the focused Blueprint;
+- `blueprintPath` alone: that Blueprint's focused graph when one of its graphs is focused, else its event graph.
+
+A `GraphGuid` is unique only inside one Blueprint (a duplicated Blueprint keeps its graphs' GUIDs), so an agent that
+works without the editor's focus, or next to other agents, passes `blueprintPath` with `graphGuid`. No editor needs to
+be open: `NodeToCode.MCP.GraphTarget` runs these tools on a Blueprint built in code. `add-bp-node-to-active-graph`
+keeps its name, but adds to the target graph like the others.
+
+Every result after the graph has resolved carries `target`: `blueprintPath`, `blueprintName`, `graphName`,
+`graphGuid`, `graphKind` (`event`, `function`, `macro`, `collapsed`, `delegate`, `interface` or `graph`) and
+`resolvedBy` (`explicit` for a graph named by `graphName` or `graphGuid`, `focus`, or `eventGraph` for
+`blueprintPath` alone). It is a field of the JSON result, or a second text item `{"target": {...}}` after an error
+text. A function found by an old name-hash ID adds `deprecatedId` and `warning` (see "Function GUIDs" in
+`../Functions/AGENTS.md`).
+
+Errors from the resolver (the result text starts with the code):
+
+- `ASSET_NOT_FOUND`: `blueprintPath` loads no Blueprint;
+- `GRAPH_NOT_FOUND`: no graph of that name or GUID (`GRAPH_NOT_FOUND: no graph 'Foo' in /Game/BP_Door.BP_Door.
+  Graphs: EventGraph (event, <GUID>), ...`), or `blueprintPath` alone and the Blueprint has no event graph;
+- `AMBIGUOUS_GRAPH_NAME`: two graphs have the name (two collapsed graphs in different graphs can) or the GUID; the
+  message lists each with its GUID: pass `graphGuid`;
+- `READ_ONLY_GRAPH`: an edit (every tool here except search-blueprint-nodes and find-nodes-in-graph) to a graph the
+  Blueprint editor shows read-only (`FBlueprintEditorUtils::IsGraphReadOnly`: interface graphs, delegate signatures,
+  math expressions, graphs that are not editable). Nothing is changed;
+- `NO_FOCUSED_GRAPH`: no target argument and no graph focused, or `graphName`/`graphGuid` without `blueprintPath` and
+  no Blueprint focused.
 
 Nodes and pins are addressed by GUID:
 
@@ -38,12 +74,15 @@ Nodes and pins are addressed by GUID:
 - **Parameters**:
   - `searchTerm` (required): Split on spaces; an action matches when every word appears, case-insensitively, in its
     full search text (`SearchActions`). Math symbols such as `+` or `*` find the promotable operators
-  - `contextSensitive` (optional, default true): Build the action list for the focused graph (or `blueprintContext`)
-  - `blueprintContext` (optional): `owningBlueprintPath` (Blueprint asset path) and `graphPath`
+  - `contextSensitive` (optional, default true): Build the action list for the target graph (see "Targeting and
+    IDs"); false searches without a graph and ignores the target arguments
+  - `blueprintPath`, `graphName`, `graphGuid` (optional): The graph to search for, as for every tool here
+  - `blueprintContext` (optional): The older form of the target, used only when none of `blueprintPath`, `graphName`
+    and `graphGuid` is given, and resolved by the same resolver: `owningBlueprintPath` (Blueprint asset path) and `graphPath`
     (`<Blueprint path>:<GraphName>`, or a graph name of `owningBlueprintPath`). Without `graphPath`: the focused graph
     when it belongs to that Blueprint, else its event graph. A Blueprint that does not load is an error
     (`ASSET_NOT_FOUND`), and so is a graph it does not have (`GRAPH_NOT_FOUND: no graph '<name>' in <path>. Graphs:
-    ...`); neither falls back to the focused graph or a global search (`GetContextFromPaths`, card 0277)
+    ...`); neither falls back to the focused graph or a global search (`GetContextFromPaths`, cards 0277, 0152)
   - `maxResults` (optional, default 20): Clamped to 1-100
   - `category` (optional): Keep actions whose menu category (`FEdGraphSchemaAction::GetCategory`) contains this
     text, ignoring case and spaces (`N2CNodeActions::MatchesCategory`): `flowcontrol` finds `Utilities|Flow Control`
@@ -53,7 +92,7 @@ Nodes and pins are addressed by GUID:
   `class`, `member_parent`, `member_name`, the optional `title`, `input_pins`, `output_pins` with their default
   values) plus `spawnMetadata` (`actionIdentifier`, `nodeName` (the menu name), `category` (the menu category) and
   `isContextSensitive`). The result is marked as untrusted Blueprint data: its first key is `untrusted_content`
-  (card 0124)
+  (card 0124), and a context-sensitive search has `target`
 - **actionIdentifier** (card 0277): a stable ID, the node spawner's signature
   (`UBlueprintNodeSpawner::GetSpawnerSignature`, `FBlueprintNodeSignature::ToString`, `N2CNodeActions::GetActionId`).
   Print String's is `(FieldName="/Script/Engine.KismetSystemLibrary:PrintString",NodeName="/Script/BlueprintGraph.K2Node_CallFunction")`.
@@ -69,11 +108,11 @@ Nodes and pins are addressed by GUID:
   `branch`, `add`, `string` all return an empty `nodes`). Use the default
 
 ### add-bp-node-to-active-graph
-- **Description**: Adds the node of one search result to the focused graph
+- **Description**: Adds the node of one search result to the target graph
 - **Parameters**:
   - `nodeName` (required): The result's `spawnMetadata.nodeName`, e.g. `Print String`. Only used when different
     actions share the ID (none in the stock engine; see above): the one with this menu name, ignoring case and spaces
-  - `actionIdentifier` (required): From `spawnMetadata.actionIdentifier`, unchanged. It is looked up in the focused
+  - `actionIdentifier` (required): From `spawnMetadata.actionIdentifier`, unchanged. It is looked up in the target
     graph's action list, the same list search-blueprint-nodes builds (`N2CNodeActions::ResolveAction`). The
     identifiers search returned before card 0277 (the action's search text with `>` between lines) are still
     accepted, with or without their `\r` characters, now including actions whose text holds `>` such as
@@ -90,10 +129,10 @@ Nodes and pins are addressed by GUID:
   have the actionIdentifier <id> (<menu names>). Pass the one you want as nodeName.`
 
 ### connect-pins
-- **Description**: Makes one or more pin connections in the focused graph, in one transaction
+- **Description**: Makes one or more pin connections in the target graph, in one transaction
 - **Parameters**:
   - `connections` (required): Array of `{ "from": {...}, "to": {...} }`. Each side has:
-    - `nodeGuid` (required): A node of the focused graph
+    - `nodeGuid` (required): A node of the target graph
     - `pinGuid` (required): The pin's GUID. When it matches no pin on the node, `pinName` is tried
     - `pinName` (optional): `PinName` or display name, compared case-insensitively (`FindPinRobustly`)
     - `pinDirection` (optional): `EGPD_Input` or `EGPD_Output`; filters the `pinName` lookup
@@ -133,7 +172,7 @@ Nodes and pins are addressed by GUID:
   `oldValue`, `newValue`, `subType`
 
 ### delete-blueprint-node
-- **Description**: Deletes nodes from the focused graph
+- **Description**: Deletes nodes from the target graph
 - **Parameters**:
   - `nodeGuids` (required): Array of node GUIDs. All are checked first: an unknown GUID (`Node with GUID '<guid>' not
     found in graph`) or a protected node fails the call and nothing is deleted
@@ -148,7 +187,7 @@ Nodes and pins are addressed by GUID:
   String -> Print String leaves BeginPlay unconnected. Reconnect with connect-pins
 
 ### create-comment-node
-- **Description**: Adds a comment box around nodes of the focused graph
+- **Description**: Adds a comment box around nodes of the target graph
 - **Parameters**:
   - `nodeGuids` (required): Node GUIDs to enclose. GUIDs that are not in the graph are listed in `missingGuids`;
     comment nodes are skipped; with no valid node the call fails
@@ -165,7 +204,7 @@ Nodes and pins are addressed by GUID:
   `moveMode`), `includedNodes` (`guid`, `title`), `includedCount`, `missingGuids` (when any), `message`
 
 ### find-nodes-in-graph
-- **Description**: Finds nodes of the focused graph by keyword or GUID and returns them as N2C JSON with GUIDs
+- **Description**: Finds nodes of the target graph by keyword or GUID and returns them as N2C JSON with GUIDs
 - **Parameters**:
   - `searchTerms` (required): Array of keywords or node GUIDs; a node matches when any term matches
   - `searchType` (optional, default `keyword`): `keyword` or `guid`
@@ -208,7 +247,8 @@ curl -X POST http://localhost:27000/mcp \
 
 ### Step 2: Add Found Node
 ```bash
-# nodeName and actionIdentifier copied unchanged from the result's spawnMetadata
+# nodeName and actionIdentifier copied unchanged from the result's spawnMetadata. Without blueprintPath and graphName
+# (or graphGuid) the node goes into the focused graph
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -220,11 +260,15 @@ curl -X POST http://localhost:27000/mcp \
       "arguments": {
         "nodeName": "Print String",
         "actionIdentifier": "(FieldName=\"/Script/Engine.KismetSystemLibrary:PrintString\",NodeName=\"/Script/BlueprintGraph.K2Node_CallFunction\")",
-        "location": {"x": 400, "y": 200}
+        "location": {"x": 400, "y": 200},
+        "blueprintPath": "/Game/Blueprints/BP_Door.BP_Door",
+        "graphName": "EventGraph"
       }
     },
     "id": 2
   }'
+# The result's target: {"blueprintPath": "/Game/Blueprints/BP_Door.BP_Door", "blueprintName": "BP_Door",
+#   "graphName": "EventGraph", "graphGuid": "<32 hex digits>", "graphKind": "event", "resolvedBy": "explicit"}
 ```
 
 ## Pin Connection Example
@@ -428,6 +472,9 @@ curl -X POST http://localhost:27000/mcp \
 ## Common Patterns
 
 ### A Print on BeginPlay in a new Actor Blueprint
+Pass the same `blueprintPath` and `graphName` `EventGraph` (or the `graphGuid` the first result's `target` gives) to
+every step to work without the editor's focus.
+
 1. `find-nodes-in-graph` `["BeginPlay"]`: the default Event BeginPlay is there, `"disabled": true`; keep its `ids.guid`
 2. `search-blueprint-nodes` `print string`, then `add-bp-node-to-active-graph` with its `actionIdentifier`
 3. `connect-pins` BeginPlay `then` -> Print String `execute`
@@ -457,6 +504,9 @@ variable node tools cannot be wired yet (card 0155, `../Variables/AGENTS.md`).
 ## Implementation Notes
 
 - Node search reads the Blueprint action database through `FBlueprintActionMenuBuilder`; add-bp-node-to-active-graph
-  rebuilds the same list for the focused graph, finds the action by its ID and calls `PerformAction` on it. Both, and
+  rebuilds the same list for the target graph, finds the action by its ID and calls `PerformAction` on it. Both, and
   the Python bridge's `search_blueprint_nodes` and `add_node_to_graph`, share `MCP/Utils/N2CMcpNodeActions.h`
 - Pin connections are checked by the graph schema (`CanCreateConnection`) and made with `TryCreateConnection`
+- Every tool here resolves its graph through `FN2CGraphTarget::Resolve` (`MCP/Utils/N2CMcpGraphTarget.h`), and so do
+  the Python bridge's graph and function calls (`N2CPythonBridge.cpp`), which take no target arguments and use the
+  focused graph; they refuse read-only graphs (`READ_ONLY_GRAPH`) the same way

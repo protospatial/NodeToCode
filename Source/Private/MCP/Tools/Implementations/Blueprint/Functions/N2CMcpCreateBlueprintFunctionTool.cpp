@@ -7,6 +7,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
@@ -137,6 +138,8 @@ FMcpToolDefinition FN2CMcpCreateBlueprintFunctionTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition, /*bGraphArguments*/ false);
+
 	return Definition;
 }
 
@@ -175,8 +178,8 @@ FMcpToolCallResult FN2CMcpCreateBlueprintFunctionTool::Execute(const TSharedPtr<
             ParseFunctionFlags(FlagsObjectJson, Flags);
         }
 		
-		// Resolve target Blueprint using the new utility
-		UBlueprint* TargetBlueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(BlueprintPath, Error);
+		// The Blueprint blueprintPath names, else the focused one (the graph resolver's Blueprint step, card 0152)
+		UBlueprint* TargetBlueprint = FN2CGraphTarget::LoadBlueprint(BlueprintPath, Error);
 		if (!TargetBlueprint)
 		{
 			return FMcpToolCallResult::CreateErrorResult(Error);
@@ -247,7 +250,7 @@ FMcpToolCallResult FN2CMcpCreateBlueprintFunctionTool::Execute(const TSharedPtr<
 		// Set function metadata
 		SetFunctionMetadata(EntryNode, Flags);
 		
-		// Get or create function GUID
+		// The function's stable ID: its GraphGuid, unchanged by renames and moves (card 0152)
 		FGuid FunctionGuid = GetOrCreateFunctionGuid(FunctionGraph);
 		
 		// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
@@ -272,7 +275,12 @@ FMcpToolCallResult FN2CMcpCreateBlueprintFunctionTool::Execute(const TSharedPtr<
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
 		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer); // Use ResultJsonObj
 
-		return FMcpToolCallResult::CreateTextResult(ResultString);
+		// The new function as a target the graph and function tools take (blueprintPath plus graphGuid)
+		FN2CGraphTarget Target;
+		Target.Blueprint = TargetBlueprint;
+		Target.Graph = FunctionGraph;
+		Target.ResolvedBy = BlueprintPath.IsEmpty() ? EN2CGraphResolvedBy::Focus : EN2CGraphResolvedBy::Explicit;
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultString));
 	});
 }
 
@@ -458,7 +466,7 @@ FGuid FN2CMcpCreateBlueprintFunctionTool::GetOrCreateFunctionGuid(UEdGraph* Func
 	}
 	
 	// Use the utility to get or create a consistent GUID for this function
-	return FN2CMcpFunctionGuidUtils::GetOrCreateFunctionGuid(FunctionGraph);
+	return FN2CMcpFunctionGuidUtils::GetFunctionId(FunctionGraph);
 }
 
 void FN2CMcpCreateBlueprintFunctionTool::CreateParameter(UK2Node_FunctionEntry* EntryNode, 

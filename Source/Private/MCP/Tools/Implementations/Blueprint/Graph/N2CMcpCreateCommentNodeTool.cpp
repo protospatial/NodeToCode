@@ -3,6 +3,7 @@
 #include "N2CMcpCreateCommentNodeTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -24,7 +25,7 @@ FMcpToolDefinition FN2CMcpCreateCommentNodeTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("create-comment-node"),
-        TEXT("Creates a comment node around specified Blueprint nodes using their GUIDs. Requires get-focused-blueprint to be called first to obtain node GUIDs. Do NOT set a color unless the user requests it.")
+        TEXT("Creates a comment node around specified Blueprint nodes using their GUIDs, in the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Get node GUIDs from find-nodes-in-graph or get-focused-blueprint first. Do NOT set a color unless the user requests it.")
     ,
 
     	TEXT("Blueprint Graph Editing")
@@ -94,6 +95,8 @@ FMcpToolDefinition FN2CMcpCreateCommentNodeTool::GetDefinition() const
     
     Definition.InputSchema = Schema;
     
+    FN2CGraphTarget::AddSchemaProperties(Definition);
+
     return Definition;
 }
 
@@ -110,15 +113,15 @@ FMcpToolCallResult FN2CMcpCreateCommentNodeTool::Execute(const TSharedPtr<FJsonO
             return FMcpToolCallResult::CreateErrorResult(ParseError);
         }
         
-        // Get the focused graph
-        UBlueprint* FocusedBlueprint = nullptr;
-        UEdGraph* FocusedGraph = nullptr;
-        FString GraphError;
-        
-        if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(FocusedBlueprint, FocusedGraph, GraphError))
+        // The graph blueprintPath / graphName / graphGuid name, else the focused one (card 0152); every result
+        // after this says which graph was used ('target')
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+        if (!Target.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(GraphError);
+            return FMcpToolCallResult::CreateErrorResult(Target.Error);
         }
+        UBlueprint* FocusedBlueprint = Target.Blueprint;
+        UEdGraph* FocusedGraph = Target.Graph;
         
         // Find nodes by GUIDs
         TArray<FString> MissingGuids;
@@ -126,7 +129,7 @@ FMcpToolCallResult FN2CMcpCreateCommentNodeTool::Execute(const TSharedPtr<FJsonO
         
         if (NodesToComment.Num() == 0)
         {
-            return FMcpToolCallResult::CreateErrorResult(TEXT("No valid nodes found with the specified GUIDs"));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("No valid nodes found with the specified GUIDs")));
         }
         
         // Create a transaction for undo/redo
@@ -140,7 +143,7 @@ FMcpToolCallResult FN2CMcpCreateCommentNodeTool::Execute(const TSharedPtr<FJsonO
         UEdGraphNode_Comment* CommentNode = CreateCommentNode(FocusedGraph, Request, Bounds);
         if (!CommentNode)
         {
-            return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create comment node"));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create comment node")));
         }
         
         // Associate nodes with comment
@@ -172,7 +175,7 @@ FMcpToolCallResult FN2CMcpCreateCommentNodeTool::Execute(const TSharedPtr<FJsonO
             EN2CLogSeverity::Debug
         );
         
-        return FMcpToolCallResult::CreateTextResult(ResultJson);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultJson));
     });
 }
 

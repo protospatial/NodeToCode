@@ -2,6 +2,8 @@
 
 #include "N2CMcpRemoveFunctionEntryPinTool.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
@@ -24,7 +26,7 @@ FMcpToolDefinition FN2CMcpRemoveFunctionEntryPinTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("remove-function-entry-pin"),
-		TEXT("Removes an input parameter from the focused Blueprint function (a pin on its entry node). Return values are on the result node: remove them with remove-function-return-pin.")
+		TEXT("Removes an input parameter from a Blueprint function (a pin on its entry node): the function blueprintPath plus graphName or graphGuid name, else the focused one. Return values are on the result node: remove them with remove-function-return-pin.")
 	,
 
 		TEXT("Blueprint Function Management")
@@ -40,6 +42,8 @@ FMcpToolDefinition FN2CMcpRemoveFunctionEntryPinTool::GetDefinition() const
 	
 	Definition.InputSchema = BuildInputSchema(Properties, Required);
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition);
+
 	return Definition;
 }
 
@@ -57,24 +61,33 @@ FMcpToolCallResult FN2CMcpRemoveFunctionEntryPinTool::Execute(const TSharedPtr<F
 			return FMcpToolCallResult::CreateErrorResult(Error);
 		}
 
-		// Get focused function graph
-		UEdGraph* FocusedGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
-		if (!FocusedGraph)
+		// The function blueprintPath / graphName / graphGuid name, else the focused graph (card 0152); every result
+		// after this says which graph was used ('target')
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+		if (!Target.IsValid())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("No focused graph found. Please open a Blueprint function in the editor."));
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
+		}
+		UEdGraph* FocusedGraph = Target.Graph;
+		if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
+		{
+			// Before any change: an event graph never gets a Return node added (the old focused-graph path did that)
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("NOT_A_FUNCTION_GRAPH: %s (%s graph) of %s is not a function. Pass the function as graphName or graphGuid (its functionGuid), or focus it."),
+				*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph), *Target.Blueprint->GetName())));
 		}
 
 		// Check if this is a K2 graph
 		if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph")));
 		}
 
 		// Find the function entry node
 		UK2Node_FunctionEntry* FunctionEntry = FN2CMcpFunctionPinUtils::FindFunctionEntryNode(FocusedGraph);
 		if (!FunctionEntry)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("No function entry node found in the graph"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("No function entry node found in the graph")));
 		}
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveFunctionEntryPin: Found function entry node in graph '%s'"), 
@@ -84,7 +97,7 @@ FMcpToolCallResult FN2CMcpRemoveFunctionEntryPinTool::Execute(const TSharedPtr<F
 		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionEntry);
 		if (!Blueprint)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Cannot find Blueprint for function"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Cannot find Blueprint for function")));
 		}
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveFunctionEntryPin: Blueprint found: %s"), 
@@ -162,7 +175,7 @@ FMcpToolCallResult FN2CMcpRemoveFunctionEntryPinTool::Execute(const TSharedPtr<F
 			FN2CLogger::Get().LogError(FString::Printf(
 				TEXT("RemoveFunctionEntryPin: Failed to remove pin '%s' - %s"), 
 				*PinName, *RemovalError));
-			return FMcpToolCallResult::CreateErrorResult(RemovalError);
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(RemovalError));
 		}
 
 		// Update all function call sites
@@ -192,6 +205,6 @@ FMcpToolCallResult FN2CMcpRemoveFunctionEntryPinTool::Execute(const TSharedPtr<F
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
 		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 		
-		return FMcpToolCallResult::CreateTextResult(ResultString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultString));
 	});
 }

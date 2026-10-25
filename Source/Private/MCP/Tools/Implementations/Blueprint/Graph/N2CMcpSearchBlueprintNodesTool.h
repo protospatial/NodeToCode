@@ -10,6 +10,7 @@
 
 class UEdGraph;
 struct FBlueprintActionMenuBuilder;
+struct FN2CGraphTargetArgs;
 
 /**
  * MCP Tool for searching Blueprint nodes/actions
@@ -38,8 +39,13 @@ public:
                                                  const FString& CategoryFilter,
                                                  bool bExcludeVMFunctions);
 
+    /** blueprintContext as resolver arguments (graphPath split into Blueprint path and graph name) */
+    static bool ContextToTargetArgs(const TSharedPtr<FJsonObject>& BlueprintContext,
+                            FN2CGraphTargetArgs& OutArgs,
+                            FString& OutError);
+
     /**
-     * Resolves blueprintContext (owningBlueprintPath, graphPath) to a Blueprint and one of its graphs. A Blueprint
+     * Resolves blueprintContext through FN2CGraphTarget (owningBlueprintPath, graphPath) to a Blueprint and one of its graphs. A Blueprint
      * that does not load fails with ASSET_NOT_FOUND and a graph that is not in it with GRAPH_NOT_FOUND; it never
      * falls back to another context. Without graphPath: the focused graph if it is this Blueprint's, else its event
      * graph. Public for the automation tests.
