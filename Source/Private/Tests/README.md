@@ -65,6 +65,11 @@ case back on. Currently disabled:
 | `NodeToCode.LLM.Parse.Fixtures` | Gemini: output tokens include thoughtsTokenCount | llm-layer-27 (card 0185) |
 | `NodeToCode.MCP.Graph` | connect-pins reports a malformed connection entry in failed and counts it | mcp-tools-graph-functions-25 (card 0276) |
 | `NodeToCode.MCP.Graph` | delete-blueprint-node with preserveConnections keeps the exec chain through a deleted Print String | mcp-tools-graph-functions-12 (card 0279) |
+| `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
+| `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: float, double | mcp-tools-variables-8 (card 0283) |
+| `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: the four maps | mcp-tools-variables-8 (card 0283) |
+| `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
+| `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -115,6 +120,24 @@ and refuses an unknown GUID and a function entry; and add-function-input-pin, ad
 remove-function-entry-pin and remove-function-return-pin on a function with two Return nodes. What they leave to
 other specs is listed in each spec's header comment (NodeActionIds, SearchIsReadOnly, GraphTarget, CompileOnce,
 CompileScope, SpawnedNodes, FunctionPinEdits).
+
+`NodeToCode.MCP.Variables` (`MCP/N2CMcpVariableTools.spec.cpp`, card 0148) is a type table: bool, int, int64, byte,
+float, double, string, name, text, a native enum (by path and name), a user enum and a user struct (by name and by
+path, in a `/NodeToCode`-mounted package, so plugin content), a native and a math struct, objects by name and path, a
+Blueprint class, a plugin native class (EnhancedInput `InputAction`), an interface, soft object and soft class,
+arrays, sets and maps. Each row runs what create-variable runs once it has the Blueprint (argument parsing,
+`ResolvePinType`, `CreateMemberVariable`) in one tool call and checks the resolved type, the variable description
+and `UEdGraphSchema_K2::ConvertPropertyToPinType` of the compiled property against the type the editor makes, after
+the call's compile and a second one; the default value on the class defaults; one exact Undo and Redo; and Get and
+Set nodes with a unique GUID, one set of pins and a value pin of that type. The same rows run as local variables
+(the compiled function's property) and through get-blueprint-member-variables' type description read back into
+create-variable arguments. Refused inputs (wildcard, exec, delegates, template spellings, an over-long name or type
+through both tools) return an error and change nothing, and every class, struct and enum the editor's variable type
+tree offers resolves by path to itself. On UE 5.8 the rows also run through the create-variable tool on a focused
+Blueprint, and search-variable-types results are resolved. A row's `CreateDefect`/`ReadBackDefect` field (finding
+id and card) makes it an `xIt`; `N2C_RUN_KNOWN_DEFECTS=1` runs those too. Flags, OnRep and their undo are
+`NodeToCode.MCP.VariableFlags`; the node tools' wiring and undo are `NodeToCode.MCP.SpawnedNodes`; the resolver's
+error codes, prefixes and ambiguity are `NodeToCode.MCP.TypeResolver`.
 
 ## LLM payload goldens and parser fixtures
 
