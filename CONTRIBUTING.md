@@ -9,7 +9,7 @@ public issue.
 
 - **`dev-2.0` is the target branch.** NodeToCode 2.0 (UE 5.6 to 5.8, the MCP server and agent tools) is developed
   there. Branch from an up-to-date `dev-2.0` and open your pull request against it.
-- **`main` holds 1.2.x** and only receives critical fixes from the maintainer. Pull requests against `main` are not
+- **`main` stays at 1.2.x** and takes no new work, fixes included. Pull requests against `main` are not
   merged. If one carries something 2.0 needs, the maintainer ports it to `dev-2.0` by hand, keeps you as a
   co-author with a `Co-authored-by:` trailer, and closes the original with a link to the port. You can save that
   step by rebasing your change onto `dev-2.0` yourself.

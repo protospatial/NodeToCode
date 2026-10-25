@@ -8,8 +8,9 @@ Community contributions
 
 NodeToCode includes code contributed by, or adapted from pull requests by:
 
-- Dylan Martin (GitHub: Subj3kt1), pull requests #23 and #24
-- cryptosebek, pull request #20
+- Dylan Martin (GitHub: Subj3kt1), pull requests #23 (taken in #65) and #24 (taken in #32;
+  its temperature fix also in #30)
+- cryptosebek, pull request #20 (taken in #41 and #71)
 - YakovAU, pull request #3
 
 These contributions are licensed under the Apache License, Version 2.0.

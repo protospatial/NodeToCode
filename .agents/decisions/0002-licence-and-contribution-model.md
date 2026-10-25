@@ -58,11 +58,17 @@ Option 1, provisionally.
   `git log dev-2.0 --format='%an %(trailers:key=Co-authored-by)'`,
   `gh pr list --repo protospatial/NodeToCode --state all --json number,author,state,baseRefName,title` and a
   comparison of PR diffs with dev-2.0):
-  - Dylan Martin (GitHub Subj3kt1): PR #23 (Linux-portable platform code, in 5de97c4) and PR #24 (Anthropic model
-    update, redone by hand in ebf6414); both commits carry his Co-authored-by trailer.
-  - cryptosebek: PR #20 (LM Studio max-token setting, taken in 87ac8f4 with a Co-authored-by trailer).
+  - Dylan Martin (GitHub Subj3kt1): PR #23 (Linux-portable platform code, in 5de97c4, #65) and PR #24 (Anthropic
+    model update, redone by hand in ebf6414, #32); both commits carry his Co-authored-by trailer. PR #24's
+    temperature fix was also made, for every provider, in 26e40ce (#30), which has no trailer; the CHANGELOG
+    credits it.
+  - cryptosebek: PR #20 (LM Studio max-token setting, taken in 87ac8f4, #41; LM Studio `usage`, `stats` and
+    `model_info` guards and empty-content handling, ported in ca98d59, #71); both commits carry a Co-authored-by
+    trailer.
   - YakovAU: PR #3 (Copy Blueprint JSON menu command), merged into the old `dev` branch on GitHub in 2025 and carried
     into dev-2.0 as c5177ab under the maintainer's name.
+  Rechecked on 2026-10-25 at dev-2.0 95ec840 (card 0428): these four commits are the only ones with a
+  Co-authored-by trailer for someone other than the maintainer or Claude.
   None of these was signed off; their contributions were offered as pull requests to an Apache-2.0 repository and are
   credited in `NOTICE`. From now on, code taken from a pull request keeps its author's credit as a Co-authored-by
   trailer, and its sign-off when there is one.

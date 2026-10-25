@@ -18,7 +18,7 @@ possible, and the advisory is published once a fix is available.
 | Version | Branch | Security fixes |
 |---|---|---|
 | 2.0-beta | `dev-2.0` | Yes |
-| 1.2.x | `main` (and the Fab release) | Critical fixes only |
+| 1.2.x | `main` (and the Fab release) | No; `main` stays at 1.2.x, fixes go into 2.0 |
 | Older | | No |
 
 ## Scope

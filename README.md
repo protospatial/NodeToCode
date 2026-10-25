@@ -158,7 +158,7 @@ released. Pages for agents and MCP clients are in [`wiki/developers/`](wiki/deve
 
 ## Contributing
 
-Pull requests go to **`dev-2.0`**; `main` holds 1.2.x and takes critical fixes only. Every commit needs a DCO
+Pull requests go to **`dev-2.0`**; `main` stays at 1.2.x and takes no new work. Every commit needs a DCO
 sign-off (`git commit -s`). Building, testing on each engine version and the commit format are in
 [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as described in [SECURITY.md](SECURITY.md),
 never in a public issue.
