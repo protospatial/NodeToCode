@@ -20,7 +20,7 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
     if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
     {
         FN2CLogger::Get().LogError(
-            FString::Printf(TEXT("Failed to parse OpenAI response JSON: %s"), *InJson),
+            FString::Printf(TEXT("Failed to parse OpenAI response JSON (%d characters)"), InJson.Len()),
             TEXT("OpenAIResponseParser")
         );
         SetParseError(OutResponse, TEXT("The provider response is not valid JSON"));
@@ -83,7 +83,7 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
         }
     }
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response Message Content: %s"), *MessageContent), EN2CLogSeverity::Debug);
+    FN2CLogger::Get().LogLLMContent(TEXT("LLM Response Message Content"), TEXT("LLM response message content"), MessageContent);
 
     // Parse the extracted content as our expected JSON format
     return Super::ParseLLMResponse(MessageContent, OutResponse);

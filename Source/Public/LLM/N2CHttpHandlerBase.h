@@ -53,6 +53,9 @@ public:
         const FOnLLMResponseReceived& OnComplete
     );
 
+    /** True when Headers already carries a credential (Authorization, x-api-key or x-goog-api-key, any case) */
+    static bool HasCredentialHeader(const TMap<FString, FString>& Headers);
+
 protected:
     /** Validate request parameters */
     virtual bool ValidateRequest(

@@ -20,7 +20,7 @@ void UN2CDeepSeekService::GetConfiguration(
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = Config.ApiKey;
+    OutAuthToken = TEXT("");  // GetProviderHeaders sends the one Authorization header
     OutSupportsSystemPrompts = true;  // DeepSeek always supports system prompts
 }
 

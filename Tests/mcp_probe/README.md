@@ -313,15 +313,19 @@ its environment when no key is saved, so a live check never types or saves a key
   `logs/live_truncated_<label>.json`.
 - `live_provider_matrix.py --engine ... --project ... --label 5.8 [--cases <id> ...] [--providers ...] [--timeout 300]`
   runs real translations through several providers and models in one headless editor (`--list` prints the case
-  ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session so each request payload is
+  ids). It sets Min Severity to Debug in the host's `Saved/Config` layer for the session and turns the console
+  variable `n2c.LogLLMPayloads` on (card 0159: payloads are logged only with it) so each request payload is
   logged, makes the probe Blueprint (`SETUP_UNWIRED_PY`, then `CONNECT_PY` wires BeginPlay to its Print String) so
   there is logic to translate, then per case
   applies the case's settings (DeepSeek model entry, Max Output Tokens), translates, restores the settings and checks
   that case's logged payload: no temperature/top_p/top_k where the provider rules forbid them, the expected output
   budget field and value, OpenAI `response_format` `json_schema` with `strict: true`, Gemini `responseSchema` with no
   `additionalProperties`, DeepSeek `thinking` and `reasoning_effort`. A case passes when the translation returns
-  code and every rule holds. It also scans the editor log, `Saved/Logs`, the plugin log and new translation folders
-  for key values and `Saved/Logs` for `key=`. Report: `logs/live_provider_matrix_<label>.json`.
+  code and every rule holds. After the cases it turns `n2c.LogLLMPayloads` off and translates the first case again
+  (`payloads_off`): that slice must have no payload, prompt or answer line, only sizes. It also scans the editor log,
+  `Saved/Logs`, the plugin log and new translation folders for key values, and the logs for a key in URL form
+  (`?key=`, `&key=`) or `key=` with a key-shaped value (Print String's `key` argument in generated code does not
+  count). Report: `logs/live_provider_matrix_<label>.json`.
   - `--fanout` (card 0135) also adds a data fan-out before the cases: Get Actor Location's Return Value into Print
     String's In String (through the To String (Vector) node the schema inserts) and into a Set Actor Location run
     after the Print String. The report's `fanout` lists the N2C JSON's array-valued `flows.data` entries, and each

@@ -35,7 +35,7 @@ void UN2COpenAIService::GetConfiguration(
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = Config.ApiKey;
+    OutAuthToken = TEXT("");  // GetProviderHeaders sends the one Authorization header
     
     // System prompt support comes from the registry by model ID; IDs it does not know (for example an MCP
     // model override) are assumed to accept developer/system messages
