@@ -442,6 +442,58 @@ namespace N2CCaptureGolden
 		return Root;
 	}
 
+	/** A calls B, B calls C, C calls D, each from its entry; captured from A */
+	UEdGraph* BuildChain(FTestBlueprint& BP)
+	{
+		const FName Names[] = { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D") };
+		TArray<UEdGraph*> Graphs;
+		for (const FName Name : Names)
+		{
+			Graphs.Add(BP.AddFunction(Name));
+		}
+		for (int32 Index = 0; Index + 1 < Graphs.Num(); ++Index)
+		{
+			UK2Node_CallFunction* Call = BP.AddSelfCall(Graphs[Index], Names[Index + 1]);
+			BP.Link(BP.FunctionEntry(Graphs[Index]), UEdGraphSchema_K2::PN_Then, Call, UEdGraphSchema_K2::PN_Execute);
+		}
+		return Graphs[0];
+	}
+
+	/**
+	 * Root calls Near and then Far. Far -> Mid -> Shared (Shared at depth 3 that way); Near -> Shared (depth 2);
+	 * Shared -> Leaf -> Beyond. Far is queued last, so a depth-first walk reaches Shared through Far at depth 3 first
+	 * and drops Leaf at Max Translation Depth 3; a shallowest-first walk reaches Shared at depth 2 and keeps Leaf
+	 * (depth 3), while Beyond (depth 4) stays out.
+	 */
+	UEdGraph* BuildShortestPath(FTestBlueprint& BP)
+	{
+		TMap<FName, UEdGraph*> Graphs;
+		for (const TCHAR* Name : { TEXT("Root"), TEXT("Near"), TEXT("Far"), TEXT("Mid"), TEXT("Shared"), TEXT("Leaf"),
+			TEXT("Beyond") })
+		{
+			Graphs.Add(Name, BP.AddFunction(Name));
+		}
+		// The caller runs its calls in order from its entry
+		auto Calls = [&BP, &Graphs](const TCHAR* Caller, const TArray<FName>& Callees)
+		{
+			UEdGraph* Graph = Graphs.FindRef(Caller);
+			UEdGraphNode* Previous = BP.FunctionEntry(Graph);
+			for (const FName Callee : Callees)
+			{
+				UK2Node_CallFunction* Call = BP.AddSelfCall(Graph, Callee);
+				BP.Link(Previous, UEdGraphSchema_K2::PN_Then, Call, UEdGraphSchema_K2::PN_Execute);
+				Previous = Call;
+			}
+		};
+		Calls(TEXT("Root"), { TEXT("Near"), TEXT("Far") });
+		Calls(TEXT("Near"), { TEXT("Shared") });
+		Calls(TEXT("Far"), { TEXT("Mid") });
+		Calls(TEXT("Mid"), { TEXT("Shared") });
+		Calls(TEXT("Shared"), { TEXT("Leaf") });
+		Calls(TEXT("Leaf"), { TEXT("Beyond") });
+		return Graphs.FindRef(TEXT("Root"));
+	}
+
 	/**
 	 * Nested(): the entry runs a collapsed graph GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs an
 	 * instance of the Blueprint's own macro LocalSteps (In -> ControlScreensaver -> Out)
@@ -757,10 +809,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		FCaptureCase& Recursion = Cases.Add_GetRef({ FString::Printf(TEXT("Recursion_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function Root(Count) calls Child, then itself with Count; Child "
 				"calls Grandchild; Grandchild calls Root. Captured from Root."), Depth),
-			{ { TEXT("translation-core-3 (qw-12)"), TEXT("0130"),
-				TEXT("The depth never grows past the first level: every nested user graph is checked as depth 1, so depth "
-					"1 captures Grandchild as well and depth 1 and 2 capture the same graphs") },
-			  { TEXT("translation-core-9"), TEXT("0134"),
+			{ { TEXT("translation-core-9"), TEXT("0134"),
 				TEXT("Root calls itself before Root is in the graph list, so Root is captured twice; the second copy "
 					"reuses node IDs N1-N3 and gives every pin the same ID (P10, also Child's entry exec pin), and the "
 					"validator logs ERROR 'Duplicate pin ID' (expected errors in this case)") },
@@ -769,6 +818,25 @@ void FN2CCaptureGoldenSpec::AddCases()
 		Recursion.TranslationDepth = Depth;
 		Recursion.ExpectedErrors = { TEXT("Duplicate pin ID") };
 	}
+
+	// Max Translation Depth counts calls from the captured graph (translation-core-3, card 0130)
+	for (const int32 Depth : { 1, 2 })
+	{
+		FCaptureCase& Chain = Cases.Add_GetRef({ FString::Printf(TEXT("CallChain_Depth%d"), Depth),
+			FString::Printf(TEXT("Max Translation Depth %d. Function A calls B, B calls C, C calls D. Captured from A, so "
+				"depth 1 adds B and depth 2 adds B and C; D is never captured."), Depth),
+			{ ExecNodeOnly, GlobalPinIds, DisplayNames },
+			&BuildChain });
+		Chain.TranslationDepth = Depth;
+	}
+
+	Cases.Add({ TEXT("ShortestPath_Depth3"),
+		TEXT("Max Translation Depth 3. Root calls Near, then Far. Near calls Shared; Far calls Mid, Mid calls Shared; "
+			"Shared calls Leaf, Leaf calls Beyond. Captured from Root. Shared is 2 calls away through Near (3 through "
+			"Far), so Leaf (3) is captured and Beyond (4) is not."),
+		{ ExecNodeOnly, GlobalPinIds, DisplayNames },
+		&BuildShortestPath });
+	Cases.Last().TranslationDepth = 3;
 
 	Cases.Add({ TEXT("CopyPaste"),
 		TEXT("Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which "

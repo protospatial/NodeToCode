@@ -1,0 +1,148 @@
+{
+	"case": "CallChain_Depth1",
+	"description": "Max Translation Depth 1. Function A calls B, B calls C, C calls D. Captured from A, so depth 1 adds B and depth 2 adds B and C; D is never captured.",
+	"translation_depth": 1,
+	"known_defects": [
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_CallChain_Depth1",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_CallChain_Depth1"
+		},
+		"graphs": [
+			{
+				"name": "A",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "A",
+						"member_parent": "BP_N2CGolden_CallChain_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "B",
+						"member_parent": "BP_N2CGolden_CallChain_Depth1",
+						"member_name": "B",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "B",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N3",
+						"type": "FunctionEntry",
+						"name": "B",
+						"member_parent": "BP_N2CGolden_CallChain_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CallFunction",
+						"name": "C",
+						"member_parent": "BP_N2CGolden_CallChain_Depth1",
+						"member_name": "C",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P8",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N3->N4"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

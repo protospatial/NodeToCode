@@ -4,11 +4,6 @@
 	"translation_depth": 1,
 	"known_defects": [
 		{
-			"finding": "translation-core-3 (qw-12)",
-			"card": "0130",
-			"effect": "The depth never grows past the first level: every nested user graph is checked as depth 1, so depth 1 captures Grandchild as well and depth 1 and 2 capture the same graphs"
-		},
-		{
 			"finding": "translation-core-9",
 			"card": "0134",
 			"effect": "Root calls itself before Root is in the graph list, so Root is captured twice; the second copy reuses node IDs N1-N3 and gives every pin the same ID (P10, also Child's entry exec pin), and the validator logs ERROR 'Duplicate pin ID' (expected errors in this case)"
@@ -285,68 +280,6 @@
 				{
 					"execution": [
 						"N4->N5"
-					],
-					"data":
-					{
-					}
-				}
-			},
-			{
-				"name": "Grandchild",
-				"graph_type": "Function",
-				"nodes": [
-					{
-						"id": "N6",
-						"type": "FunctionEntry",
-						"name": "Grandchild",
-						"member_parent": "BP_N2CGolden_Recursion_Depth1",
-						"member_name": "None",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P14",
-								"name": "",
-								"connected": true
-							}
-						]
-					},
-					{
-						"id": "N7",
-						"type": "CallFunction",
-						"name": "Root",
-						"member_parent": "BP_N2CGolden_Recursion_Depth1",
-						"member_name": "Root",
-						"input_pins": [
-							{
-								"id": "P15",
-								"name": "",
-								"connected": true
-							},
-							{
-								"id": "P17",
-								"name": "Target",
-								"type": "Object",
-								"sub_type": "self"
-							},
-							{
-								"id": "P18",
-								"name": "Count",
-								"type": "Integer",
-								"default_value": "0"
-							}
-						],
-						"output_pins": [
-							{
-								"id": "P16",
-								"name": ""
-							}
-						]
-					}
-				],
-				"flows":
-				{
-					"execution": [
-						"N6->N7"
 					],
 					"data":
 					{

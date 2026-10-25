@@ -101,18 +101,19 @@ private:
     {
         /** Weak: a queued graph may be deleted (or its Blueprint unloaded) before it is processed */
         TWeakObjectPtr<UEdGraph> Graph;
-        int32 ParentDepth;
+        /** The graph's own depth: 1 for a graph the captured graph uses directly, 2 for one that graph uses, ... */
+        int32 Depth;
 
-        FGraphProcessInfo(UEdGraph* InGraph, int32 InParentDepth)
+        FGraphProcessInfo(UEdGraph* InGraph, int32 InDepth)
             : Graph(InGraph)
-            , ParentDepth(InParentDepth)
+            , Depth(InDepth)
         {}
     };
 
-    /** Queue of graphs to process with their parent depths */
+    /** Queue of graphs to process with their depths (processed shallowest first) */
     TArray<FGraphProcessInfo> AdditionalGraphsToProcess;
 
-    /** Current processing depth */
+    /** Depth of the graph being processed (0 for the captured graph); a graph it uses is at CurrentDepth + 1 */
     int32 CurrentDepth = 0;
     
     /** Fallback method for processing node properties when no processor is available */
