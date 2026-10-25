@@ -51,16 +51,6 @@ private:
     FSlateRect CalculateBoundingBox(const TArray<UEdGraphNode*>& Nodes, float Padding) const;
 
     /**
-     * Creates and configures a comment node in the graph
-     */
-    UEdGraphNode_Comment* CreateCommentNode(UEdGraph* Graph, const FCommentNodeRequest& Request, const FSlateRect& Bounds) const;
-
-    /**
-     * Associates nodes with the comment node
-     */
-    void AssociateNodesWithComment(UEdGraphNode_Comment* CommentNode, const TArray<UEdGraphNode*>& Nodes) const;
-
-    /**
      * Builds the JSON result for the tool response
      */
     TSharedPtr<FJsonObject> BuildResultJson(

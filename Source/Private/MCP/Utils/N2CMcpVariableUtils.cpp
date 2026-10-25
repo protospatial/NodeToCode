@@ -5,6 +5,8 @@
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "EdGraphSchema_K2.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "K2Node_FunctionEntry.h"
+#include "Engine/Blueprint.h"
 #include "Serialization/JsonSerializer.h"
 
 bool FN2CMcpVariableUtils::ValidateMapKeyType(const FString& KeyType, FString& OutError)
@@ -129,4 +131,75 @@ TSharedPtr<FJsonObject> FN2CMcpVariableUtils::BuildTypeInfo(const FEdGraphPinTyp
 	}
 	
 	return TypeInfo;
+}
+
+UEdGraph* FN2CMcpVariableUtils::GetFunctionGraph(UEdGraph* Graph)
+{
+	UEdGraph* FunctionGraph = Graph ? FBlueprintEditorUtils::GetTopLevelGraph(Graph) : nullptr;
+	if (!FunctionGraph || !FunctionGraph->GetSchema() || !FunctionGraph->GetSchema()->IsA<UEdGraphSchema_K2>()
+		|| FunctionGraph->GetSchema()->GetGraphType(FunctionGraph) != GT_Function)
+	{
+		return nullptr;
+	}
+	return FunctionGraph;
+}
+
+UK2Node_FunctionEntry* FN2CMcpVariableUtils::FindFunctionEntryNode(UEdGraph* Graph)
+{
+	UEdGraph* FunctionGraph = GetFunctionGraph(Graph);
+	if (!FunctionGraph)
+	{
+		return nullptr;
+	}
+	TArray<UK2Node_FunctionEntry*> EntryNodes;
+	FunctionGraph->GetNodesOfClass(EntryNodes);
+	return EntryNodes.Num() > 0 ? EntryNodes[0] : nullptr;
+}
+
+FBPVariableDescription* FN2CMcpVariableUtils::FindLocalVariable(UK2Node_FunctionEntry* FunctionEntry, const FString& VariableName)
+{
+	if (!FunctionEntry || VariableName.IsEmpty())
+	{
+		return nullptr;
+	}
+	const FName VarFName(*VariableName);
+	return FunctionEntry->LocalVariables.FindByPredicate([VarFName](const FBPVariableDescription& Local) { return Local.VarName == VarFName; });
+}
+
+FProperty* FN2CMcpVariableUtils::FindMemberVariableProperty(UBlueprint* Blueprint, const FString& VariableName, bool bForSet, FString& OutError)
+{
+	if (!Blueprint || !Blueprint->SkeletonGeneratedClass)
+	{
+		OutError = TEXT("Invalid Blueprint (no skeleton class)");
+		return nullptr;
+	}
+	UClass* SkeletonClass = Blueprint->SkeletonGeneratedClass;
+	FProperty* Property = VariableName.IsEmpty() ? nullptr : FindFProperty<FProperty>(SkeletonClass, FName(*VariableName));
+	if (!Property)
+	{
+		OutError = FString::Printf(TEXT("Variable '%s' not found in Blueprint '%s' (its own, inherited and component variables were searched)"),
+			*VariableName, *Blueprint->GetName());
+		return nullptr;
+	}
+	if (!UEdGraphSchema_K2::CanUserKismetAccessVariable(Property, SkeletonClass, UEdGraphSchema_K2::CannotBeDelegate)
+		|| FBlueprintEditorUtils::IsPropertyReadableInBlueprint(Blueprint, Property) != FBlueprintEditorUtils::EPropertyReadableState::Readable)
+	{
+		OutError = FString::Printf(TEXT("Variable '%s' of Blueprint '%s' is not accessible from Blueprint graphs (not Blueprint visible, private, or a delegate)"),
+			*VariableName, *Blueprint->GetName());
+		return nullptr;
+	}
+	if (bForSet)
+	{
+		const FBlueprintEditorUtils::EPropertyWritableState Writable = FBlueprintEditorUtils::IsPropertyWritableInBlueprint(Blueprint, Property);
+		if (Writable != FBlueprintEditorUtils::EPropertyWritableState::Writable)
+		{
+			OutError = FString::Printf(TEXT("READ_ONLY_VARIABLE: Variable '%s' of Blueprint '%s' cannot be set from a Blueprint graph (%s)"),
+				*VariableName, *Blueprint->GetName(),
+				Writable == FBlueprintEditorUtils::EPropertyWritableState::BlueprintReadOnly ? TEXT("it is BlueprintReadOnly")
+				: Writable == FBlueprintEditorUtils::EPropertyWritableState::Private ? TEXT("it is private to its class")
+				: TEXT("it is not Blueprint visible"));
+			return nullptr;
+		}
+	}
+	return Property;
 }

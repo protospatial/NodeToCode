@@ -17,19 +17,4 @@ public:
     virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
     virtual bool RequiresGameThread() const override { return true; }
     
-private:
-    /**
-     * Finds the function entry node in a graph.
-     * @param Graph The graph to search
-     * @return The function entry node, or nullptr if not found
-     */
-    class UK2Node_FunctionEntry* FindFunctionEntryNode(class UEdGraph* Graph) const;
-    
-    /**
-     * Finds a local variable by name in the function entry node.
-     * @param FunctionEntry The function entry node
-     * @param VariableName The name of the local variable
-     * @return The variable description, or nullptr if not found
-     */
-    struct FBPVariableDescription* FindLocalVariable(class UK2Node_FunctionEntry* FunctionEntry, const FString& VariableName) const;
 };

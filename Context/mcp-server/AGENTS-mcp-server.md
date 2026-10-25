@@ -64,6 +64,7 @@ Source/
     │   ├── N2CMcpContentBrowserUtils.h/.cpp
     │   ├── N2CMcpFunctionPinUtils.h/.cpp
     │   ├── N2CMcpGraphTarget.h/.cpp      # FN2CGraphTarget: the graph a Graph/Functions tool acts on (card 0152)
+    │   ├── N2CMcpNodeSpawnUtils.h/.cpp   # FN2CMcpNodeSpawn: variable and comment nodes the engine way (card 0155)
     │   ├── N2CMcpTagUtils.h/.cpp
     │   ├── N2CMcpTypeResolver.h/.cpp
     │   └── N2CMcpVariableUtils.h/.cpp
@@ -359,7 +360,11 @@ Common utilities shared across MCP tools:
 *   **`N2CMcpFunctionPinUtils`**: Function pin manipulation
 *   **`N2CMcpTagUtils`**: Graph tagging utilities
 *   **`N2CMcpTypeResolver`**: UE type resolution (class/struct lookups)
-*   **`N2CMcpVariableUtils`**: Variable creation and manipulation
+*   **`N2CMcpNodeSpawnUtils`**: `FN2CMcpNodeSpawn`, which makes variable Get/Set nodes through
+    `UBlueprintVariableNodeSpawner` and comment nodes through the schema's template path (a GUID, `RF_Transactional`,
+    one set of pins, one transaction), and the node result fields add-bp-node-to-active-graph returns (card 0155)
+*   **`N2CMcpVariableUtils`**: Variable creation and manipulation; the shared member-variable (skeleton class),
+    function-entry and local-variable lookups (card 0155)
 
 ## Resource System (`Source/Public/MCP/Resources/`)
 

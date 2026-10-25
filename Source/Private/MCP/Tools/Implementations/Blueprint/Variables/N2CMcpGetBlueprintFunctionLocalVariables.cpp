@@ -7,6 +7,7 @@
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_FunctionEntry.h"
+#include "MCP/Utils/N2CMcpVariableUtils.h"
 #include "Serialization/JsonSerializer.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
@@ -59,7 +60,7 @@ FMcpToolCallResult FN2CMcpGetBlueprintFunctionLocalVariables::Execute(const TSha
         }
         
         // Find the function entry node to verify this is a function graph
-        UK2Node_FunctionEntry* FunctionEntryNode = FindFunctionEntryNode(FocusedGraph);
+        UK2Node_FunctionEntry* FunctionEntryNode = FN2CMcpVariableUtils::FindFunctionEntryNode(FocusedGraph);
         if (!FunctionEntryNode)
         {
             return FMcpToolCallResult::CreateErrorResult(
@@ -70,7 +71,7 @@ FMcpToolCallResult FN2CMcpGetBlueprintFunctionLocalVariables::Execute(const TSha
         // Build the result JSON
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
         Result->SetStringField(TEXT("blueprintName"), FocusedBlueprint->GetName());
-        Result->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
+        Result->SetStringField(TEXT("functionName"), FN2CMcpVariableUtils::GetFunctionGraph(FocusedGraph)->GetName());
         Result->SetNumberField(TEXT("localVariableCount"), FunctionEntryNode->LocalVariables.Num());
         
         // Create array of local variables
@@ -146,23 +147,4 @@ FMcpToolCallResult FN2CMcpGetBlueprintFunctionLocalVariables::Execute(const TSha
         
         return FMcpToolCallResult::CreateTextResult(OutputString);
     });
-}
-
-UK2Node_FunctionEntry* FN2CMcpGetBlueprintFunctionLocalVariables::FindFunctionEntryNode(UEdGraph* Graph) const
-{
-    if (!Graph)
-    {
-        return nullptr;
-    }
-    
-    // Search through all nodes in the graph
-    for (UEdGraphNode* Node : Graph->Nodes)
-    {
-        if (UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node))
-        {
-            return FunctionEntry;
-        }
-    }
-    
-    return nullptr;
 }

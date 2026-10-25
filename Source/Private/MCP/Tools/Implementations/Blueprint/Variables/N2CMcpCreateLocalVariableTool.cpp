@@ -175,12 +175,7 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		FSlateNotificationManager::Get().AddNotification(Info);
 
 		// Build and return success result
-		UK2Node_FunctionEntry* FunctionEntry = nullptr;
-		{
-			TArray<UK2Node_FunctionEntry*> EntryNodes;
-			FunctionGraph->GetNodesOfClass(EntryNodes);
-			FunctionEntry = EntryNodes.Num() > 0 ? EntryNodes[0] : nullptr;
-		}
+		UK2Node_FunctionEntry* FunctionEntry = FN2CMcpVariableUtils::FindFunctionEntryNode(FunctionGraph);
 		TSharedPtr<FJsonObject> ResultJsonObj = BuildSuccessResult(FunctionEntry, FunctionGraph, VariableName, ActualVariableName, ResolvedPinType, ContainerType);
 
 		FString JsonString;
@@ -241,21 +236,19 @@ FName FN2CMcpCreateLocalVariableTool::MakeUniqueLocalVariableName(UBlueprint* Bl
 FName FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(UBlueprint* Blueprint, UEdGraph* Graph, const FString& DesiredName,
 	const FEdGraphPinType& PinType, const FString& DefaultValue, const FString& Tooltip, FString& OutError)
 {
-	UEdGraph* FunctionGraph = Graph ? FBlueprintEditorUtils::GetTopLevelGraph(Graph) : nullptr;
-	if (!Blueprint || !FunctionGraph || !FunctionGraph->GetSchema()
-		|| FunctionGraph->GetSchema()->GetGraphType(FunctionGraph) != GT_Function)
+	// The function the graph is in (a collapsed graph inside a function counts as it), through the shared lookup
+	UEdGraph* FunctionGraph = FN2CMcpVariableUtils::GetFunctionGraph(Graph);
+	if (!Blueprint || !FunctionGraph)
 	{
 		OutError = TEXT("NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs.");
 		return NAME_None;
 	}
-	TArray<UK2Node_FunctionEntry*> EntryNodes;
-	FunctionGraph->GetNodesOfClass(EntryNodes);
-	if (EntryNodes.Num() == 0)
+	UK2Node_FunctionEntry* FunctionEntry = FN2CMcpVariableUtils::FindFunctionEntryNode(FunctionGraph);
+	if (!FunctionEntry)
 	{
 		OutError = FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: '%s' has no function entry node"), *FunctionGraph->GetName());
 		return NAME_None;
 	}
-	UK2Node_FunctionEntry* FunctionEntry = EntryNodes[0];
 
 	const FName UniqueName = MakeUniqueLocalVariableName(Blueprint, FunctionGraph, DesiredName);
 

@@ -6,17 +6,21 @@ variables, reading them, setting their defaults, placing Get and Set nodes, and 
 ## Targeting: the focused Blueprint only
 
 Every tool here works on the Blueprint, or the graph, of the active Blueprint editor. Member-variable tools resolve
-it with `FN2CMcpBlueprintUtils::ResolveBlueprint(TEXT(""))`, graph tools with
-`FN2CMcpBlueprintUtils::GetFocusedEditorGraph`, and the local-variable tools also need that graph to be a function
-graph (they look for its `UK2Node_FunctionEntry`). No tool in this folder has a `blueprintPath` parameter, and the MCP
-layer does not reject arguments a schema does not list, so an extra `blueprintPath` is ignored and the edit goes to
-the focused Blueprint. Open the Blueprint first (`open-blueprint-asset`, or `open-blueprint-function` for a function
+it with `FN2CMcpBlueprintUtils::ResolveBlueprint(TEXT(""))`; the four node tools and `create-local-variable` take the
+focused graph from the shared resolver with no target arguments (`FN2CGraphTarget::Resolve`, so a read-only graph is
+refused with `READ_ONLY_GRAPH`), and `get-blueprint-function-local-variables` and
+`set-local-function-variable-default-value` from `FN2CMcpBlueprintUtils::GetFocusedEditorGraph`. The local-variable
+tools need that graph to be in a function: the function graph itself, or a collapsed graph inside it (one shared
+`FN2CMcpVariableUtils::FindFunctionEntryNode`, which goes through `FBlueprintEditorUtils::GetTopLevelGraph`; the
+function's name is the locals' scope and the `functionName` they return, card 0155). No tool in this folder has a
+`blueprintPath` parameter, and the MCP layer does not reject arguments a schema does not list, so an extra
+`blueprintPath` is ignored and the edit goes to the focused Blueprint. Open the Blueprint first (`open-blueprint-asset`, or `open-blueprint-function` for a function
 graph).
 
 - **Known issue (card 0274):** there is no explicit target; a `blueprintPath` argument is silently ignored.
 
-Variable names are matched case-insensitively (`FString` comparison in `FindMemberVariable` and `FindVariable`, `FName`
-comparison in `FindLocalVariable`): `health` finds `Health`.
+Variable names are matched case-insensitively (`FName` lookups in `FN2CMcpVariableUtils::FindMemberVariableProperty`
+and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds `Health`.
 
 ## Available Tools
 
@@ -108,28 +112,32 @@ comparison in `FindLocalVariable`): `health` finds `Health`.
   description's default into the class default object
 
 ### create-get-member-variable-node
-- **Description**: Places a Get node for a member variable in the focused graph
+- **Description**: Places a Get node for a member variable in the focused graph. The variable is looked up on the
+  Blueprint's skeleton class, so its own variables, inherited ones (a parent Blueprint or a C++ base, such as
+  `RootComponent`) and component variables all work; one that Blueprints cannot read (not Blueprint visible, private
+  to another class, a delegate) is refused
 - **Parameters**:
-  - `variableName` (required): A variable from get-blueprint-member-variables
+  - `variableName` (required): A variable from get-blueprint-member-variables, or an inherited or component variable
   - `location` (optional): `{ "x": number, "y": number }`, graph coordinates (default 0, 0)
-- **Returns**: `success`, `nodeId`, `nodeType` (`K2Node_VariableGet`), `variableName`, `graphName`, `blueprintName`,
-  `location`, `pins` (each with `id` = the pin GUID, `name`, `direction`, `type`, `friendlyName`), `variableType`,
-  `message`
-- **Known issue (card 0155):** `nodeId` is a counter string such as `GetNode_Health_1`, not a node GUID, and the node
-  is created without one (`CreateGetNode` never calls `CreateNewGuid`; get-focused-blueprint shows its GUID as all
-  zeros). connect-pins answers `INVALID_GUID` for that `nodeId` and cannot find the node by GUID, so the node cannot
-  be wired through MCP
+- **Returns** (the same shape for all four node tools, card 0155): `success`, `nodeId` (the node GUID with hyphens,
+  `157CF7BA-49F8-CE45-71C9-61AAEA82547F`, for connect-pins, find-nodes-in-graph and delete-blueprint-node), the fields
+  add-bp-node-to-active-graph returns (`nodeGuid`, the same GUID as 32 digits; `nodeName`; `inputPins` and
+  `outputPins` with `pinGuid`, `pinName`, `displayName`, `type`, an input's `defaultValue`; visible pins only),
+  `nodeType` (`K2Node_VariableGet`), `nodeClass`, `variableName` (as declared), `graphName`, `blueprintName`,
+  `location`, `pins` (every pin, hidden self pin included: `id` = the pin GUID, `name`, `direction` `input` or
+  `output`, `type`, `friendlyName`, an input's `defaultValue`), `variableType` (`category`, `subCategory`,
+  `typeObject`, `typeName`, `isArray`, `isSet`, `isMap`), `message`, and `compile`
 
 ### create-set-member-variable-node
 - **Description**: Places a Set node for a member variable in the focused graph
 - **Parameters**:
   - `variableName` (required)
   - `defaultValue` (optional): Value for the Set node's input pin (not the variable's default). A value the pin
-    rejects is only logged as a warning; the call still succeeds
+    rejects does not fail the call: the result carries `warning`
   - `location` (optional): As for the Get node
-- **Returns**: As for create-get-member-variable-node, with `nodeType` `K2Node_VariableSet`, `nodeId` such as
-  `SetNode_Health_1`, and each input pin's `defaultValue`
-- **Known issue (card 0155):** the same counter `nodeId` and missing node GUID as the Get node
+- **Returns**: As for create-get-member-variable-node, with `nodeType` `K2Node_VariableSet`
+- **Errors**: `READ_ONLY_VARIABLE: ...` for a variable Blueprints may read but not write (`BlueprintReadOnly`, such as
+  `RootComponent`, or private to another class), as the editor offers no Set node for it; nothing is added
 
 ### set-member-variable-default-value
 - **Description**: Sets a member variable's default value (the Details panel value), without adding a node
@@ -155,19 +163,15 @@ comparison in `FindLocalVariable`): `health` finds `Health`.
 ### create-get-local-function-variable-node
 - **Description**: Places a Get node for a local variable in the focused function graph
 - **Parameters**: `variableName` (required), `x`, `y` (optional, graph coordinates, default 0)
-- **Returns**: `message`, `nodeId` (the node's GUID, usable with connect-pins), `nodeClass`, `nodeType`,
-  `variableName` (as sent), `functionName`, `blueprintName`, `x`, `y`, `variableType`, `pins` (`name`, `type`,
-  `direction`, `id` = pin GUID, `friendlyName`)
+- **Returns**: As for create-get-member-variable-node, plus `functionName` (the function, also from a collapsed graph
+  inside it), `x` and `y`. A local's nodes have no self pin
 
 ### create-set-local-function-variable-node
 - **Description**: Places a Set node for a local variable in the focused function graph
 - **Parameters**: `variableName` (required), `x`, `y` (optional), `inputPinValue` (optional): value for the node's
   input pin
-- **Returns**: `message`, `nodeId`, `nodeClass`, `x`, `y`, `pins` (`name`, `type`, `direction`, `id`, and
-  `defaultValue` on inputs with one)
-- **Known issue (card 0155):** `nodeId` is all zeros and `pins` lists every pin twice:
-  `FN2CMcpCreateSetLocalFunctionVariableNode::Execute` calls `AllocateDefaultPins` after `ReconstructNode` and never
-  gives the node a GUID
+- **Returns**: As for create-get-local-function-variable-node; the Set node has exactly four pins (`execute`, `then`,
+  the value input and `Output_Get`). A refused `inputPinValue` gives `warning`
 
 ### set-local-function-variable-default-value
 - **Description**: Sets a local variable's default value
@@ -335,7 +339,7 @@ curl -X POST http://localhost:27000/mcp \
 ```
 
 ### Creating Get and Set Nodes for Member Variables
-These nodes cannot be wired with connect-pins yet (card 0155, above).
+Wire the result's `nodeId` with connect-pins (card 0155).
 ```bash
 # Create a Get node for a member variable
 curl -X POST http://localhost:27000/mcp \
@@ -470,13 +474,11 @@ curl -X POST http://localhost:27000/mcp \
 - **Undoable** (the tool opens an `FScopedTransaction`): `create-variable` and `create-local-variable` (card 0154:
   one undo removes the variable with all its settings, and for `repnotify` the `OnRep_` function too, and leaves the
   previous transaction alone), `set-member-variable-default-value` (`ApplyDefaultValue`),
-  `set-local-function-variable-default-value`, `create-get-local-function-variable-node` and
-  `create-set-local-function-variable-node`. These are the six `.cpp` files in this folder that open one.
-- **Not undoable** by their own transaction: `create-get-member-variable-node` and
-  `create-set-member-variable-node`. Ctrl+Z after one of them undoes the editor's previous transaction instead, and
-  restoring that earlier snapshot can also remove the untracked change.
-- **Known issue (cards 0155, 0283):** the two tools above get transactions in card 0155, and undoing
-  `set-member-variable-default-value` restores the variable description but not the class default object.
+  `set-local-function-variable-default-value`, and the four node tools (card 0155: one undo removes the node with its
+  input value, and leaves the previous transaction alone; the node is `RF_Transactional`, so later edits to it undo
+  too).
+- **Known issue (card 0283):** undoing `set-member-variable-default-value` restores the variable description but not
+  the class default object.
 - **Read-only**: `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`.
 - Every successful edit marks the Blueprint modified (structurally for create-variable and create-local-variable)
   and its package dirty, and the tool call compiles it once, after the edit's transaction has closed, with the
@@ -489,5 +491,10 @@ curl -X POST http://localhost:27000/mcp \
 
 - Member variables are stored in `Blueprint->NewVariables`; local variables in
   `UK2Node_FunctionEntry::LocalVariables`
-- Member Get/Set nodes use `VariableReference.SetSelfMember()`, local ones `VariableReference.SetLocalMember()`
+- The four node tools spawn through `UBlueprintVariableNodeSpawner` (`CreateFromMemberOrParam` for members,
+  `CreateFromLocal` with the function graph as the scope for locals), as the editor's menus do, in
+  `FN2CMcpNodeSpawn::CreateMemberVariableNode` and `CreateLocalVariableNode` (`MCP/Utils/N2CMcpNodeSpawnUtils.h`): a
+  new node GUID, `RF_Transactional`, `PostPlacedNewNode`, pins allocated once, and the member reference the engine
+  sets (a self reference with the variable's GUID for the Blueprint's own variables). `NodeToCode.MCP.SpawnedNodes`
+  and the `SpawnedVariableNodes` capture golden test them
 - Container types are set on the `FEdGraphPinType` (`ContainerType`, and `PinValueType` for a map's value)

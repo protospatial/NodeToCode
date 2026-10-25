@@ -225,6 +225,14 @@ its environment when no key is saved, so a live check never types or saves a key
   discovery file and the per-user index entry name the port and the editor's pid, `/mcp/health` answers on the new
   port, the old port's routes answer 404, the discovery files and **Server Status** follow, the log shows the restart
   and no error line, and the discovery files are gone after `quit_editor()`. Report: `logs/live_port_restart.json`.
+- `live_spawned_nodes_0155.py --engine ... --project ... --label 5.8 [--model claude-haiku-5-5]` checks the
+  variable and comment node tools end to end (card 0155): on an in-memory Actor Blueprint under a fresh
+  `/Game/N2CTest/Spawn0155_<time>` folder with a float member Health, `claude -p` with only `mcp__nodetocode__*` adds
+  a Get and a Set Health node, wires BeginPlay -> Set and Get -> Set with connect-pins by the returned `nodeId`s and
+  comments the two nodes. The probe finds both nodes by `nodeId` (find-nodes-in-graph), checks the links and one pin
+  set in the capture, translates once with the model (the Anthropic key in the editor's environment only), checks
+  the package is dirty and that three undos remove the comment, the links and the Set node in turn. Report:
+  `logs/live_spawned_nodes_0155_<label>.json`.
 - `live_user_settings_0423.py --engine ... --project ...` (no provider key) checks that a committed project config
   cannot switch on MCP Python execution (card 0423), in three headless sessions: `committed` (no
   `bAllowMcpPythonExecution` in the user's Saved/Config layer, `EditorSession(allow_python=None)`, and the host's

@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpCreateCommentNodeTool.h"
+#include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
@@ -139,15 +140,14 @@ FMcpToolCallResult FN2CMcpCreateCommentNodeTool::Execute(const TSharedPtr<FJsonO
         // Calculate bounding box
         FSlateRect Bounds = CalculateBoundingBox(NodesToComment, Request.Padding);
         
-        // Create the comment node
-        UEdGraphNode_Comment* CommentNode = CreateCommentNode(FocusedGraph, Request, Bounds);
+        // Create the comment node through the schema's template path, around the nodes: RF_Transactional and a GUID
+        // (card 0155), in this transaction
+        UEdGraphNode_Comment* CommentNode = FN2CMcpNodeSpawn::SpawnCommentNode(FocusedGraph, Bounds, Request.CommentText,
+            Request.Color, Request.FontSize, Request.bGroupMovement, NodesToComment);
         if (!CommentNode)
         {
             return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create comment node")));
         }
-        
-        // Associate nodes with comment
-        AssociateNodesWithComment(CommentNode, NodesToComment);
         
         // A comment changes nothing the compiler sees: dirty the package, never compile (card 0151)
         FN2CMcpBlueprintUtils::MarkCosmeticChange(FocusedBlueprint);
@@ -330,72 +330,6 @@ FSlateRect FN2CMcpCreateCommentNodeTool::CalculateBoundingBox(const TArray<UEdGr
     MaxY += Padding;
     
     return FSlateRect(MinX, MinY, MaxX, MaxY);
-}
-
-UEdGraphNode_Comment* FN2CMcpCreateCommentNodeTool::CreateCommentNode(UEdGraph* Graph, const FCommentNodeRequest& Request, const FSlateRect& Bounds) const
-{
-    if (!Graph)
-    {
-        return nullptr;
-    }
-    
-    // Create the comment node
-    UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(Graph);
-    if (!CommentNode)
-    {
-        return nullptr;
-    }
-    
-    // Create a unique GUID for the comment node first
-    CommentNode->CreateNewGuid();
-    
-    // Set position and size before adding to graph
-    CommentNode->NodePosX = Bounds.Left;
-    CommentNode->NodePosY = Bounds.Top;
-    CommentNode->NodeWidth = Bounds.GetSize().X;
-    CommentNode->NodeHeight = Bounds.GetSize().Y;
-    
-    // Add to graph before setting properties
-    Graph->AddNode(CommentNode, true);
-    
-    // Now set comment properties after it's in the graph
-    CommentNode->NodeComment = Request.CommentText;
-    CommentNode->CommentColor = Request.Color;
-    CommentNode->FontSize = Request.FontSize;
-    CommentNode->MoveMode = Request.bGroupMovement ? ECommentBoxMode::GroupMovement : ECommentBoxMode::NoGroupMovement;
-    
-    // Enable comment bubble visibility for better visibility
-    CommentNode->bCommentBubbleVisible_InDetailsPanel = true;
-    CommentNode->bColorCommentBubble = true;
-    
-    // Reconstruct and refresh the node
-    CommentNode->ReconstructNode();
-    
-    return CommentNode;
-}
-
-void FN2CMcpCreateCommentNodeTool::AssociateNodesWithComment(UEdGraphNode_Comment* CommentNode, const TArray<UEdGraphNode*>& Nodes) const
-{
-    if (!CommentNode)
-    {
-        return;
-    }
-    
-    // Clear any existing associations
-    CommentNode->ClearNodesUnderComment();
-    
-    // Add each node to the comment
-    for (UEdGraphNode* Node : Nodes)
-    {
-        if (Node)
-        {
-            CommentNode->AddNodeUnderComment(Node);
-        }
-    }
-    
-    // Force the comment node to update its internal state
-    // This is normally done by the UI layer when selecting the comment
-    CommentNode->OnUpdateCommentText(CommentNode->NodeComment);
 }
 
 TSharedPtr<FJsonObject> FN2CMcpCreateCommentNodeTool::BuildResultJson(

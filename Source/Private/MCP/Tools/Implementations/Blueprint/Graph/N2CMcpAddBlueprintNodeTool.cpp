@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpAddBlueprintNodeTool.h"
+#include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -136,8 +137,6 @@ FMcpToolCallResult FN2CMcpAddBlueprintNodeTool::Execute(const TSharedPtr<FJsonOb
         // Build result with pin information for immediate use
         TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
         ResultObject->SetBoolField(TEXT("success"), true);
-        ResultObject->SetStringField(TEXT("nodeGuid"), SpawnedNode->NodeGuid.ToString());
-        ResultObject->SetStringField(TEXT("nodeName"), SpawnedNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
         ResultObject->SetStringField(TEXT("graphName"), ActiveGraph->GetName());
         ResultObject->SetStringField(TEXT("blueprintName"), ActiveBlueprint->GetName());
 
@@ -146,41 +145,9 @@ FMcpToolCallResult FN2CMcpAddBlueprintNodeTool::Execute(const TSharedPtr<FJsonOb
         LocationObject->SetNumberField(TEXT("y"), SpawnedNode->NodePosY);
         ResultObject->SetObjectField(TEXT("location"), LocationObject);
 
-        // Add pin information so caller can immediately connect pins without additional lookup
-        TArray<TSharedPtr<FJsonValue>> InputPinsArray;
-        TArray<TSharedPtr<FJsonValue>> OutputPinsArray;
-
-        for (UEdGraphPin* Pin : SpawnedNode->Pins)
-        {
-            if (!Pin || Pin->bHidden)
-            {
-                continue;
-            }
-
-            TSharedPtr<FJsonObject> PinObj = MakeShareable(new FJsonObject);
-            PinObj->SetStringField(TEXT("pinGuid"), Pin->PinId.ToString());
-            PinObj->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
-            PinObj->SetStringField(TEXT("displayName"), Pin->GetDisplayName().ToString());
-            PinObj->SetStringField(TEXT("type"), Pin->PinType.PinCategory.ToString());
-
-            // Include default value for input pins
-            if (Pin->Direction == EGPD_Input && !Pin->GetDefaultAsString().IsEmpty())
-            {
-                PinObj->SetStringField(TEXT("defaultValue"), Pin->GetDefaultAsString());
-            }
-
-            if (Pin->Direction == EGPD_Input)
-            {
-                InputPinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
-            }
-            else
-            {
-                OutputPinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
-            }
-        }
-
-        ResultObject->SetArrayField(TEXT("inputPins"), InputPinsArray);
-        ResultObject->SetArrayField(TEXT("outputPins"), OutputPinsArray);
+        // nodeGuid, nodeName and the visible pins (inputPins, outputPins), so the caller can connect them without
+        // another lookup; the variable node tools return the same fields (FN2CMcpNodeSpawn::AddNodeFields, card 0155)
+        FN2CMcpNodeSpawn::AddNodeFields(*ResultObject, SpawnedNode);
 
         // Add guidance for the next step
         TSharedPtr<FJsonObject> NextStepObject = MakeShareable(new FJsonObject);

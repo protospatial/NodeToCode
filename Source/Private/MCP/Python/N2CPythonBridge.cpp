@@ -14,6 +14,7 @@
 #include "MCP/Utils/N2CPinConnectPolicy.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "MCP/Utils/N2CMcpNodeActions.h"
+#include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CJsonContract.h"
 #include "Utils/N2CStableNames.h"
@@ -1678,35 +1679,13 @@ FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const 
 	const FScopedTransaction Transaction(LOCTEXT("PythonCreateComment", "Python: Create Comment"));
 	FocusedGraph->Modify();
 
-	UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(FocusedGraph);
+	// Through the schema's template path, as create-comment-node does: RF_Transactional and a GUID (card 0155)
+	UEdGraphNode_Comment* CommentNode = FN2CMcpNodeSpawn::SpawnCommentNode(FocusedGraph, FSlateRect(MinX, MinY, MaxX, MaxY),
+		CommentText, FLinearColor(ColorR, ColorG, ColorB), FontSize, MoveMode.Equals(TEXT("group"), ESearchCase::IgnoreCase), NodesToComment);
 	if (!CommentNode)
 	{
 		return MakeErrorJson(TEXT("Failed to create comment node"));
 	}
-
-	CommentNode->CreateNewGuid();
-	CommentNode->NodePosX = MinX;
-	CommentNode->NodePosY = MinY;
-	CommentNode->NodeWidth = MaxX - MinX;
-	CommentNode->NodeHeight = MaxY - MinY;
-
-	FocusedGraph->AddNode(CommentNode, true);
-
-	CommentNode->NodeComment = CommentText;
-	CommentNode->CommentColor = FLinearColor(ColorR, ColorG, ColorB);
-	CommentNode->FontSize = FMath::Clamp(FontSize, 1, 1000);
-	CommentNode->MoveMode = MoveMode.Equals(TEXT("group"), ESearchCase::IgnoreCase) ? ECommentBoxMode::GroupMovement : ECommentBoxMode::NoGroupMovement;
-	CommentNode->bCommentBubbleVisible_InDetailsPanel = true;
-	CommentNode->bColorCommentBubble = true;
-
-	// Associate nodes
-	CommentNode->ClearNodesUnderComment();
-	for (UEdGraphNode* Node : NodesToComment)
-	{
-		CommentNode->AddNodeUnderComment(Node);
-	}
-	CommentNode->OnUpdateCommentText(CommentNode->NodeComment);
-	CommentNode->ReconstructNode();
 
 	// A comment changes nothing the compiler sees: dirty the package, do not compile (card 0151)
 	FN2CMcpBlueprintUtils::MarkCosmeticChange(Blueprint);

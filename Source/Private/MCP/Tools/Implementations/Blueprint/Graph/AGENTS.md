@@ -50,7 +50,8 @@ Errors from the resolver (the result text starts with the code):
 Nodes and pins are addressed by GUID:
 
 - **Node GUID** (`UEdGraphNode::NodeGuid`): `ids.guid` of a node in find-nodes-in-graph or get-focused-blueprint
-  results, `nodeGuid` from add-bp-node-to-active-graph, `nodeId` from create-get-local-function-variable-node.
+  results, `nodeGuid` from add-bp-node-to-active-graph, `nodeId` (or `nodeGuid`) from the four variable node tools
+  (`create-get-member-variable-node` and the others, card 0155).
 - **Pin GUID** (`UEdGraphPin::PinId`): `ids.guid` of a pin, `pinGuid` from add-bp-node-to-active-graph, `pinId`
   from the function pin tools, `id` in the variable node tools' `pins`.
 - Both forms are accepted: 32 hex digits (`C834682D4F58EDB4003504B4BBAFA0E2`, as the add tools return them) or
@@ -202,6 +203,9 @@ Nodes and pins are addressed by GUID:
     each node counts as 150 x 50 from its position (`CalculateBoundingBox`)
 - **Returns**: `success`, `commentNode` (`guid`, `text`, `x`, `y`, `width`, `height`, `color`, `fontSize`,
   `moveMode`), `includedNodes` (`guid`, `title`), `includedCount`, `missingGuids` (when any), `message`
+- The comment is made through the schema's template path (`FEdGraphSchemaAction_NewNode::CreateNode`, as the editor's
+  Add Comment does, in `FN2CMcpNodeSpawn::SpawnCommentNode`): it has a GUID and `RF_Transactional`, so resizing or
+  renaming it later is undoable (card 0155). The Python bridge's `create_comment_node` uses the same function
 
 ### find-nodes-in-graph
 - **Description**: Finds nodes of the target graph by keyword or GUID and returns them as N2C JSON with GUIDs
@@ -481,10 +485,11 @@ every step to work without the editor's focus.
 4. `set-input-pin-value` on `InString`
 
 ### Working with Variables
-Local variables: `create-get-local-function-variable-node` / `create-set-local-function-variable-node` return a node
-GUID and pin GUIDs to wire. Member variables: search for the variable's Get or Set action with
-`search-blueprint-nodes` and add it with `add-bp-node-to-active-graph`, which returns usable GUIDs; the member
-variable node tools cannot be wired yet (card 0155, `../Variables/AGENTS.md`).
+`create-get-member-variable-node`, `create-set-member-variable-node`, `create-get-local-function-variable-node` and
+`create-set-local-function-variable-node` return the node GUID as `nodeId` and the same `nodeGuid`, `inputPins` and
+`outputPins` as add-bp-node-to-active-graph, so connect-pins wires them (card 0155, `../Variables/AGENTS.md`). They
+work on the focused graph; searching for the variable's Get or Set action with `search-blueprint-nodes` and adding it
+with `add-bp-node-to-active-graph` also works, with the target arguments.
 
 ## Undo, Compile and Save
 

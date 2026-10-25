@@ -15,12 +15,4 @@ public:
     virtual FMcpToolDefinition GetDefinition() const override;
     virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
     virtual bool RequiresGameThread() const override { return true; }
-    
-private:
-    /**
-     * Finds the function entry node in a graph.
-     * @param Graph The graph to search
-     * @return The function entry node, or nullptr if not found
-     */
-    class UK2Node_FunctionEntry* FindFunctionEntryNode(class UEdGraph* Graph) const;
 };

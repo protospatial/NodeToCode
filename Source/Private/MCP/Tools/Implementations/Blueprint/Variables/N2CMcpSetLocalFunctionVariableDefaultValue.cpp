@@ -8,6 +8,7 @@
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "K2Node_FunctionEntry.h"
+#include "MCP/Utils/N2CMcpVariableUtils.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Serialization/JsonSerializer.h"
 #include "ScopedTransaction.h"
@@ -69,7 +70,7 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         }
         
         // Find the function entry node
-        UK2Node_FunctionEntry* FunctionEntryNode = FindFunctionEntryNode(FocusedGraph);
+        UK2Node_FunctionEntry* FunctionEntryNode = FN2CMcpVariableUtils::FindFunctionEntryNode(FocusedGraph);
         if (!FunctionEntryNode)
         {
             return FMcpToolCallResult::CreateErrorResult(
@@ -78,12 +79,12 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         }
         
         // Find the local variable
-        FBPVariableDescription* LocalVarDesc = FindLocalVariable(FunctionEntryNode, VariableName);
+        FBPVariableDescription* LocalVarDesc = FN2CMcpVariableUtils::FindLocalVariable(FunctionEntryNode, VariableName);
         if (!LocalVarDesc)
         {
             return FMcpToolCallResult::CreateErrorResult(
                 FString::Printf(TEXT("Local variable '%s' not found in function '%s'"), 
-                    *VariableName, *FocusedGraph->GetName())
+                    *VariableName, *FN2CMcpVariableUtils::GetFunctionGraph(FocusedGraph)->GetName())
             );
         }
         
@@ -129,7 +130,7 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         }
         
         Result->SetStringField(TEXT("variableName"), VariableName);
-        Result->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
+        Result->SetStringField(TEXT("functionName"), FN2CMcpVariableUtils::GetFunctionGraph(FocusedGraph)->GetName());
         Result->SetStringField(TEXT("oldValue"), OldValue);
         Result->SetStringField(TEXT("newValue"), DefaultValue);
         Result->SetStringField(TEXT("variableType"), LocalVarDesc->VarType.PinCategory.ToString());
@@ -166,43 +167,4 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         
         return FMcpToolCallResult::CreateTextResult(OutputString);
     });
-}
-
-UK2Node_FunctionEntry* FN2CMcpSetLocalFunctionVariableDefaultValue::FindFunctionEntryNode(UEdGraph* Graph) const
-{
-    if (!Graph)
-    {
-        return nullptr;
-    }
-    
-    // Search through all nodes in the graph
-    for (UEdGraphNode* Node : Graph->Nodes)
-    {
-        if (UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node))
-        {
-            return FunctionEntry;
-        }
-    }
-    
-    return nullptr;
-}
-
-FBPVariableDescription* FN2CMcpSetLocalFunctionVariableDefaultValue::FindLocalVariable(UK2Node_FunctionEntry* FunctionEntry, const FString& VariableName) const
-{
-    if (!FunctionEntry)
-    {
-        return nullptr;
-    }
-    
-    FName VarFName(*VariableName);
-    
-    for (FBPVariableDescription& LocalVar : FunctionEntry->LocalVariables)
-    {
-        if (LocalVar.VarName == VarFName)
-        {
-            return &LocalVar;
-        }
-    }
-    
-    return nullptr;
 }
