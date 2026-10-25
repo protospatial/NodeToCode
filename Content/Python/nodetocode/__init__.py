@@ -38,7 +38,7 @@ Graph Editing:
     # Search for and add nodes
     results = n2c.search_blueprint_nodes("Print String")
     node = results['data']['nodes'][0]
-    added = n2c.add_node_to_graph(node['displayName'], node['spawnMetadata']['actionIdentifier'])
+    added = n2c.add_node_to_graph(node['spawnMetadata']['nodeName'], node['spawnMetadata']['actionIdentifier'])
 
     # Connect nodes: pins are picked by their stable pinName ('execute', 'then', 'ReturnValue', ...)
     begin = n2c.find_nodes_in_graph(["BeginPlay"])['data']['nodes'][0]

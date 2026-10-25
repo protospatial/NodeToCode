@@ -11,6 +11,7 @@
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CPinConnectPolicy.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
+#include "MCP/Utils/N2CMcpNodeActions.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CJsonContract.h"
 #include "Utils/N2CStableNames.h"
@@ -775,88 +776,49 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 		}
 	}
 
-	// Set up the action filter
-	FBlueprintActionFilter Filter;
-	if (bContextSensitive && ContextBlueprint && ContextGraph)
-	{
-		Filter.Context.Blueprints.Add(ContextBlueprint);
-		Filter.Context.Graphs.Add(ContextGraph);
-	}
-
-	// Build the action list
+	// The same action list search-blueprint-nodes and AddNodeToGraph build (global without a context)
 	FBlueprintActionMenuBuilder MenuBuilder;
-	MenuBuilder.AddMenuSection(Filter, FText::GetEmpty(), 0);
-	MenuBuilder.RebuildActionList();
+	N2CNodeActions::BuildActionList(MenuBuilder, bContextSensitive ? ContextBlueprint : nullptr,
+		bContextSensitive ? ContextGraph : nullptr);
 
-	// Tokenize search terms
-	TArray<FString> FilterTerms;
-	SearchTerm.ParseIntoArray(FilterTerms, TEXT(" "), true);
+	const TArray<FString> LowerFilterTerms = N2CNodeActions::TokenizeSearchTerm(SearchTerm);
 
-	TArray<FString> LowerFilterTerms;
-	for (const FString& Term : FilterTerms)
-	{
-		LowerFilterTerms.Add(Term.ToLower());
-	}
-
-	// Search through actions
 	TArray<TSharedPtr<FJsonValue>> ResultNodes;
 	int32 ResultCount = 0;
 
 	for (int32 i = 0; i < MenuBuilder.GetNumActions() && ResultCount < MaxResults; ++i)
 	{
 		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
-		if (!Action.IsValid())
-		{
-			continue;
-		}
-		const FString& ActionSearchText = Action->GetFullSearchText();
-		FString LowerSearchText = ActionSearchText.ToLower();
-
-		bool bMatchesAllTerms = true;
-		for (const FString& Term : LowerFilterTerms)
-		{
-			if (!LowerSearchText.Contains(Term))
-			{
-				bMatchesAllTerms = false;
-				break;
-			}
-		}
-
-		if (!bMatchesAllTerms)
+		if (!Action.IsValid() || !N2CNodeActions::MatchesSearchTerm(*Action, LowerFilterTerms))
 		{
 			continue;
 		}
 
-		// Apply category filter if specified
-		if (!CategoryFilter.IsEmpty() && !MatchesCategoryFilter(ActionSearchText, CategoryFilter))
+		// Category filter on the action's own menu category, not a pipe heuristic over the search text
+		if (!N2CNodeActions::MatchesCategory(*Action, CategoryFilter))
 		{
 			continue;
 		}
 
-		// Apply VMFunction exclusion filter
-		if (bExcludeVMFunctions && IsExcludedVMFunction(ActionSearchText))
+		if (bExcludeVMFunctions && N2CNodeActions::IsExcludedVMFunction(*Action))
 		{
 			continue;
 		}
 
 		TSharedPtr<FJsonObject> NodeJson = MakeShareable(new FJsonObject);
 
-		// Get basic action info
-		FString ActionIdentifier = ActionSearchText.Replace(TEXT("\n"), TEXT(">"));
-		NodeJson->SetStringField(TEXT("name"), ActionSearchText);
+		// The action's own fields: menuName, category, tooltip and keywords. name and displayName are the menu name
+		// (before card 0277 both were the raw search text)
+		const FString MenuName = Action->GetMenuDescription().ToString();
+		NodeJson->SetStringField(TEXT("name"), MenuName);
+		NodeJson->SetStringField(TEXT("displayName"), MenuName);
+		N2CNodeActions::AddDescriptionFields(*Action, *NodeJson);
 
-		// Extract category path from search text
-		TArray<FString> Categories;
-		ActionSearchText.ParseIntoArray(Categories, TEXT(">"), true);
-		if (Categories.Num() > 0)
-		{
-			NodeJson->SetStringField(TEXT("displayName"), Categories.Last().TrimStartAndEnd());
-		}
-
-		// Spawn metadata for adding the node later
+		// Spawn metadata for adding the node later: the stable ID (the spawner signature)
 		TSharedPtr<FJsonObject> SpawnMetadata = MakeShareable(new FJsonObject);
-		SpawnMetadata->SetStringField(TEXT("actionIdentifier"), ActionIdentifier);
-		SpawnMetadata->SetBoolField(TEXT("isContextSensitive"), bContextSensitive);
+		SpawnMetadata->SetStringField(TEXT("actionIdentifier"), N2CNodeActions::GetActionId(Action));
+		SpawnMetadata->SetStringField(TEXT("nodeName"), MenuName);
+		SpawnMetadata->SetBoolField(TEXT("isContextSensitive"), bContextSensitive && ContextGraph != nullptr);
 		NodeJson->SetObjectField(TEXT("spawnMetadata"), SpawnMetadata);
 
 		ResultNodes.Add(MakeShareable(new FJsonValueObject(NodeJson)));
@@ -870,63 +832,6 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 
 	// Read only: no compile and no action-database refresh (card 0151)
 	return MakeSuccessJson(ResultObject);
-}
-
-bool UN2CPythonBridge::MatchesCategoryFilter(const FString& ActionSearchText, const FString& CategoryFilter)
-{
-	// Categories in the search text are enclosed in pipes, e.g., |utilities|flowcontrol
-	// We do a case-insensitive partial match on the category portion
-	FString LowerSearchText = ActionSearchText.ToLower();
-	FString LowerCategoryFilter = CategoryFilter.ToLower();
-
-	// Look for the category pattern between pipes
-	int32 PipeIndex = LowerSearchText.Find(TEXT("|"));
-	if (PipeIndex == INDEX_NONE)
-	{
-		return false;
-	}
-
-	// Extract everything after the first pipe (the category section)
-	FString CategorySection = LowerSearchText.Mid(PipeIndex);
-
-	// Check if the filter matches anywhere in the category section
-	return CategorySection.Contains(LowerCategoryFilter);
-}
-
-bool UN2CPythonBridge::IsExcludedVMFunction(const FString& ActionSearchText)
-{
-	FString LowerSearchText = ActionSearchText.ToLower();
-
-	// VMFunction patterns to exclude - these are low-level type-specific math operations
-	// that Blueprint developers rarely use directly (they use the promotable operators instead)
-	static const TArray<FString> ExcludedPatterns = {
-		// Type-specific math operations (use promotable operators like * instead)
-		TEXT("_floatfloat"),      // e.g., Multiply_FloatFloat
-		TEXT("_intint"),          // e.g., Add_IntInt
-		TEXT("_int64int64"),      // e.g., Multiply_Int64Int64
-		TEXT("_vectorfloat"),     // e.g., Multiply_VectorFloat
-		TEXT("_vectorvector"),    // e.g., Add_VectorVector
-		TEXT("_vectorint"),       // e.g., Multiply_VectorInt
-		TEXT("_rotatorrotator"),  // e.g., Add_RotatorRotator
-		TEXT("_transformtransform"), // Combined transforms
-		TEXT("_linearcolorfloat"), // Color math
-		TEXT("_linearcolorlinearcolor"),
-		TEXT("_bytebyte"),        // Byte math
-		TEXT("_matrix"),          // Matrix operations
-		TEXT("_quatquat"),        // Quaternion operations
-		TEXT("_timespantimespan"), // TimeSpan operations
-		TEXT("_datetimetimespan"), // DateTime operations
-	};
-
-	for (const FString& Pattern : ExcludedPatterns)
-	{
-		if (LowerSearchText.Contains(Pattern))
-		{
-			return true;
-		}
-	}
-
-	return false;
 }
 
 FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX, float LocationY)
@@ -948,106 +853,24 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 		return MakeErrorJson(ContextError);
 	}
 
-	// Build the action filter
-	FBlueprintActionFilter Filter;
-	Filter.Context.Blueprints.Add(ActiveBlueprint);
-	Filter.Context.Graphs.Add(ActiveGraph);
-
-	// Build the action list
+	// The same action list search_blueprint_nodes builds for this graph
 	FBlueprintActionMenuBuilder MenuBuilder;
-	MenuBuilder.AddMenuSection(Filter, FText::GetEmpty(), 0);
-	MenuBuilder.RebuildActionList();
+	N2CNodeActions::BuildActionList(MenuBuilder, ActiveBlueprint, ActiveGraph);
 
-	// Tokenize node name for searching
-	TArray<FString> FilterTerms;
-	NodeName.ParseIntoArray(FilterTerms, TEXT(" "), true);
-
-	TArray<FString> LowerFilterTerms;
-	for (const FString& Term : FilterTerms)
-	{
-		LowerFilterTerms.Add(Term.ToLower());
-	}
-
-	// Search for actions matching the node name
-	TArray<int32> MatchingActionIndices;
-
-	for (int32 i = 0; i < MenuBuilder.GetNumActions(); ++i)
-	{
-		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
-		if (!Action.IsValid())
-		{
-			continue;
-		}
-		const FString& ActionSearchText = Action->GetFullSearchText();
-		FString LowerSearchText = ActionSearchText.ToLower();
-
-		bool bMatchesAllTerms = true;
-		for (const FString& Term : LowerFilterTerms)
-		{
-			if (!LowerSearchText.Contains(Term))
-			{
-				bMatchesAllTerms = false;
-				break;
-			}
-		}
-
-		if (bMatchesAllTerms)
-		{
-			MatchingActionIndices.Add(i);
-		}
-	}
-
-	if (MatchingActionIndices.Num() == 0)
-	{
-		return MakeErrorJson(FString::Printf(TEXT("No nodes found matching name: %s"), *NodeName));
-	}
-
-	// Find exact match using actionIdentifier
-	int32 ExactMatchIndex = -1;
-	FString SearchActionId = ActionIdentifier.Replace(TEXT(">"), TEXT("\n"));
-
-	for (int32 Index : MatchingActionIndices)
-	{
-		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(Index);
-		FString CurrentActionId = Action.IsValid() ? Action->GetFullSearchText() : FString();
-
-		if (CurrentActionId == SearchActionId)
-		{
-			ExactMatchIndex = Index;
-			break;
-		}
-	}
-
-	if (ExactMatchIndex == -1)
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Found %d nodes matching name '%s', but none with the exact actionIdentifier"),
-			MatchingActionIndices.Num(), *NodeName));
-	}
-
-	// Get the matching action
-	TSharedPtr<FEdGraphSchemaAction> SchemaAction = MenuBuilder.GetSchemaAction(ExactMatchIndex);
+	// The stable ID (spawner signature); pre-0277 search-text identifiers are still accepted (card 0277)
+	FString ResolveError;
+	const TSharedPtr<FEdGraphSchemaAction> SchemaAction = N2CNodeActions::ResolveAction(MenuBuilder, ActionIdentifier,
+		NodeName, ResolveError);
 	if (!SchemaAction.IsValid())
 	{
-		return MakeErrorJson(TEXT("Invalid schema action"));
+		return MakeErrorJson(ResolveError);
 	}
 
-	// Store current node count
-	int32 PreSpawnNodeCount = ActiveGraph->Nodes.Num();
-
-	// Perform the action
-	const FVector2f Location(LocationX, LocationY);
-	UEdGraphNode* SpawnedNode = SchemaAction->PerformAction(ActiveGraph, nullptr, Location);
-
+	FString SpawnError;
+	UEdGraphNode* SpawnedNode = N2CNodeActions::SpawnAction(SchemaAction, ActiveGraph, FVector2f(LocationX, LocationY), SpawnError);
 	if (!SpawnedNode)
 	{
-		if (ActiveGraph->Nodes.Num() > PreSpawnNodeCount)
-		{
-			SpawnedNode = ActiveGraph->Nodes.Last();
-		}
-		else
-		{
-			return MakeErrorJson(TEXT("Failed to spawn node - action did not create a new node"));
-		}
+		return MakeErrorJson(SpawnError);
 	}
 
 	// Mark it modified; the call compiles it once, below

@@ -8,18 +8,20 @@ Stdlib only; run with `python -I`:
 It starts a headless editor, makes an Actor Blueprint in memory under a fresh /Game/N2CTest/Compile0151_<time>
 folder and opens it on its EventGraph, then:
 
-1. MCP: a context-free search-blueprint-nodes call (must compile nothing), then the probe itself adds a Static Mesh
-   component (add-component-class-to-actor) and a Custom Event, a Print String and a Set Static Mesh node with search-blueprint-nodes and add-bp-node-to-active-graph (one compile
-   per add). The agent does not add them: a search result's actionIdentifier holds a carriage return before each '>'
-   on Windows, which an agent cannot type into a tool argument (a separate defect, suggested card 0441).
-2. claude -p (unless --no-cli), with only mcp__nodetocode__* allowed, asked to wire the three nodes in ONE
-   connect-pins call, leaving Set Static Mesh's Target unconnected (an Actor Blueprint is not a StaticMeshComponent,
-   so that does not compile), then to report what the connect-pins result said about the compile.
+1. MCP: a context-free search-blueprint-nodes call (must compile nothing), then the probe adds a Static Mesh
+   component (add-component-class-to-actor) and a Branch node from its search result's stable actionIdentifier
+   (card 0277: the spawner signature, no carriage returns), one compile per call.
+2. claude -p (unless --no-cli), with only mcp__nodetocode__* allowed, asked to add a Custom Event, a Print String and
+   a Set Static Mesh node itself (search-blueprint-nodes, then add-bp-node-to-active-graph with the returned
+   actionIdentifier; before card 0277 an agent could not, so the probe added them), wire them in ONE connect-pins
+   call, leaving Set Static Mesh's Target unconnected (an Actor Blueprint is not a StaticMeshComponent, so that does
+   not compile), then report what the connect-pins result said about the compile.
 
 Checks: the editor log's "Blueprint '<name>' compiled:" lines (FN2CMcpBlueprintUtils::Compile) between the
 "Calling tool:" lines give the compiles per tool call: one for each node add and for the connect-pins call, none for
-a search or a find. The connect-pins result carries compile.errorCount >= 1 with a message naming the Set Static Mesh node's
-GUID, and the agent's answer repeats the error. Afterwards the editor is closed and the folder deleted (nothing was
+a search or a find. The agent's adds all succeed with the IDs it was given (no failed add-bp-node-to-active-graph
+call). The connect-pins result carries compile.errorCount >= 1 with a message naming the Set Static Mesh node's GUID,
+and the agent's answer repeats the error. Afterwards the editor is closed and the folder deleted (nothing was
 saved). Report: logs/live_compile_0151_<label>.json.
 """
 import argparse
@@ -60,18 +62,16 @@ result["exists_after"] = unreal.EditorAssetLibrary.does_directory_exist(folder)
 '''
 
 CLI_PROMPT = (
-    'Using only the nodetocode MCP tools, edit the Blueprint that is open and focused (do not open, add, delete or '
-    'save anything). Its graph has a custom event (node %(event)s), a Print String node (%(print)s) and a Set Static '
-    'Mesh node (%(mesh)s). Make ONE connect-pins call with two connections, using pin names: the custom event\'s '
-    '"then" pin to Print String\'s "execute" pin, and Print String\'s "then" pin to Set Static Mesh\'s "execute" pin '
-    '(find-nodes-in-graph with searchType "guid" gives the pin GUIDs). Leave every other pin unconnected and do not '
-    'fix any compile error. Reply with only a JSON object {"errorCount": <compile.errorCount from the connect-pins '
-    'result>, "errors": [<each compile error message text>], "errorNodeGuids": [<nodeGuid of each compile error>]}.')
-
-# The nodes the script adds itself (search term, add-node name, context-sensitive search). The agent only wires them:
-# the search results' actionIdentifier carries a carriage return before each '>' on Windows, which an agent cannot
-# type into a tool argument (see the report's note; a separate defect)
-NODES = (('event', 'add custom event', True), ('print', 'print string', True), ('mesh', 'set static mesh', True))
+    'Using only the nodetocode MCP tools, edit the Blueprint that is open and focused (do not open, delete or save '
+    'anything, and add no components or variables). Add three nodes to its graph with search-blueprint-nodes and then '
+    'add-bp-node-to-active-graph, passing a result\'s spawnMetadata.actionIdentifier and spawnMetadata.nodeName: a '
+    'Custom Event (search "add custom event"), a Print String, and a Set Static Mesh for the StaticMeshComponent '
+    '(search "set static mesh"). Then make ONE connect-pins call with two connections, using pin names: the custom '
+    'event\'s "then" pin to Print String\'s "execute" pin, and Print String\'s "then" pin to Set Static Mesh\'s '
+    '"execute" pin (the add results give the node GUIDs and pin GUIDs). Leave every other pin unconnected and do not fix '
+    'any compile error. Reply with only a JSON object {"added": {"event": <nodeGuid>, "print": <nodeGuid>, "mesh": '
+    '<nodeGuid>}, "errorCount": <compile.errorCount from the connect-pins result>, "errors": [<each compile error '
+    'message text>], "errorNodeGuids": [<nodeGuid of each compile error>]}.')
 
 
 class Probe:
@@ -174,41 +174,38 @@ def main():
             report['component'] = {k: comp.get(k) for k in ('componentName', 'compilationStatus')}
             checks['component result carries compile'] = isinstance(comp.get('compile'), dict)
 
-            # Add the three nodes through MCP, one tool call each, and count the compiles of each call
-            for key, term, context in NODES:
-                status, text, err = p.tool('search-blueprint-nodes', {'searchTerm': term, 'contextSensitive': context,
-                                                                     'maxResults': 10})
+            # A Branch from its search result's stable ID (card 0277), one add call: one compile
+            status, text, err = p.tool('search-blueprint-nodes', {'searchTerm': 'branch', 'maxResults': 10})
+            try:
+                nodes = json.loads(text).get('nodes') or []
+            except ValueError:
+                nodes = []
+            branch = next((n['spawnMetadata'] for n in nodes
+                           if 'K2Node_IfThenElse' in ((n.get('spawnMetadata') or {}).get('actionIdentifier') or '')), None)
+            checks['branch found'] = branch is not None
+            if branch:
+                ident = branch['actionIdentifier']
+                report['branch_id'] = ident
+                checks['branch id has no control character'] = not any(ord(c) < 32 for c in ident)
+                status, text, err = p.tool('add-bp-node-to-active-graph', {'nodeName': branch.get('nodeName', 'Branch'),
+                                                                          'actionIdentifier': ident})
+                checks['branch added from its id'] = not err
                 try:
-                    nodes = json.loads(text).get('nodes') or []
+                    checks['add branch result carries compile'] = isinstance(json.loads(text).get('compile'), dict)
                 except ValueError:
-                    nodes = []
-                ids = [((n.get('spawnMetadata') or {}).get('actionIdentifier') or '') for n in nodes]
-                ids = [a for a in ids if term.replace('add ', '') in a.lower()] or ids
-                added = None
-                for action_id in ids[:5]:
-                    status, text, err = p.tool('add-bp-node-to-active-graph', {'nodeName': term, 'actionIdentifier': action_id})
-                    if not err:
-                        added = json.loads(text)
-                        break
-                checks['added %s' % key] = added is not None
-                if added is None:
-                    report.setdefault('add_failures', []).append({'term': term, 'ids': ids[:5], 'last': text[:300]})
-                if added:
-                    guids[key] = added.get('nodeGuid')
-                    report.setdefault('adds', []).append({'node': added.get('nodeName'), 'nodeGuid': added.get('nodeGuid'),
-                                                          'compile': (added.get('compile') or {}).get('status')})
-                    checks['add %s result carries compile' % key] = isinstance(added.get('compile'), dict)
+                    checks['add branch result carries compile'] = False
             time.sleep(1.0)
             add_calls = compiles_per_call(read_log(log_path), start, NAME)
             report['add_compiles_per_call'] = add_calls
-            checks['each add compiled exactly once'] = all(c == 1 for t, c in add_calls if t == 'add-bp-node-to-active-graph')                 and any(t == 'add-bp-node-to-active-graph' for t, _ in add_calls)
+            checks['each add compiled exactly once'] = all(c == 1 for t, c in add_calls if t == 'add-bp-node-to-active-graph') \
+                and any(t == 'add-bp-node-to-active-graph' for t, _ in add_calls)
             checks['searches compiled nothing'] = all(c == 0 for t, c in add_calls if t == 'search-blueprint-nodes')
 
-            if not args.no_cli and len(guids) == 3:
+            if not args.no_cli:
                 with open(mcp_config_path, 'w', encoding='utf-8') as f:
                     json.dump({'mcpServers': {'nodetocode': {'type': 'http', 'url': 'http://127.0.0.1:%d/mcp' % port}}}, f)
                 start = len(read_log(log_path))
-                cmd = [shutil.which('claude') or 'claude', '-p', CLI_PROMPT % guids,
+                cmd = [shutil.which('claude') or 'claude', '-p', CLI_PROMPT,
                        '--mcp-config', mcp_config_path, '--strict-mcp-config', '--allowedTools', 'mcp__nodetocode__*',
                        '--output-format', 'stream-json', '--verbose', '--model', args.cli_model]
                 t0 = time.time()
@@ -245,6 +242,7 @@ def main():
                                 x.get('text', '') for x in (c or []) if isinstance(x, dict))
 
                 added = {}
+                add_errors = []
                 connect_compile = None
                 sequence = []
                 for call in calls:
@@ -255,6 +253,10 @@ def main():
                     except ValueError:
                         body = {}
                     entry = {'tool': name}
+                    if name == 'add-bp-node-to-active-graph':
+                        entry['actionIdentifier'] = (call.get('input') or {}).get('actionIdentifier')
+                        if not (isinstance(body, dict) and body.get('success')):
+                            add_errors.append(text[:300])
                     if name == 'add-bp-node-to-active-graph' and isinstance(body, dict):
                         entry['node'] = body.get('nodeName')
                         entry['nodeGuid'] = body.get('nodeGuid')
@@ -271,9 +273,16 @@ def main():
                                                                       'get-focused-blueprint')]
                 report['cli_mutating_calls'] = mutating
                 checks['cli: one connect-pins call, compiled exactly once'] = [c for t, c in mutating if t == 'connect-pins'] == [1]
+                report['cli_add_errors'] = add_errors
+                checks['cli: the agent added the three nodes itself'] = len(added) >= 3 and \
+                    any('StaticMesh' in n.replace(' ', '') for n in added.values()) \
+                    and any('Print' in n for n in added.values())
+                checks['cli: no add call failed'] = not add_errors
+                checks['cli: each add compiled exactly once'] = all(c == 1 for t, c in mutating
+                                                                    if t == 'add-bp-node-to-active-graph')
                 checks['cli: read-only calls compiled nothing'] = all(c == 0 for t, c in per_call
                                                                       if t in ('search-blueprint-nodes', 'find-nodes-in-graph', 'get-focused-blueprint'))
-                set_mesh = [guids.get('mesh')]
+                set_mesh = [g for g, n in added.items() if 'StaticMesh' in n.replace(' ', '')][:1] or [None]
                 err_guids = [m.get('nodeGuid') for m in ((connect_compile or {}).get('messages') or [])
                              if m.get('severity') == 'Error']
                 checks['cli: connect-pins result reports compile errors'] = bool(connect_compile) and \
