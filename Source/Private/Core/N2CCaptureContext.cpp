@@ -1,8 +1,9 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCaptureContext.h"
 
 #include "Core/N2CSettings.h"
+#include "Misc/ScopeExit.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CNodeTypeRegistry.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
@@ -11,20 +12,58 @@
 #include "UObject/Class.h"
 #include "UObject/UnrealTypePrivate.h"
 
-FN2CNodeTranslator& FN2CNodeTranslator::Get()
+#if WITH_DEV_AUTOMATION_TESTS
+namespace
 {
-    static FN2CNodeTranslator Instance;
-    return Instance;
+    TFunction<void()>& NodeCapturedHookForTests()
+    {
+        static TFunction<void()> Hook;
+        return Hook;
+    }
 }
 
-bool FN2CNodeTranslator::ProcessSingleNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+void FN2CCaptureContext::SetNodeCapturedHookForTests(TFunction<void()> Hook)
+{
+    NodeCapturedHookForTests() = MoveTemp(Hook);
+}
+#endif
+
+FN2CCaptureContext::FN2CCaptureContext(const FN2CCaptureOptions& InOptions)
+    : Options(InOptions)
+{
+    // The depth limit is read once, when the capture starts
+    if (Options.Depth == INDEX_NONE)
+    {
+        const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+        Options.Depth = Settings ? Settings->TranslationDepth : 0;
+    }
+}
+
+FN2CCapture FN2CCaptureContext::TakeCapture()
+{
+    FN2CCapture Capture;
+    Capture.Blueprint = MoveTemp(N2CBlueprint);
+    Capture.NodeIDMap = MoveTemp(NodeIDMap);
+    Capture.PinIDMap = MoveTemp(PinIDMap);
+    return Capture;
+}
+
+void FN2CCaptureContext::BeginGraph(const FString& Name, EN2CGraphType GraphType)
+{
+    FN2CGraph& Graph = N2CBlueprint.Graphs.AddDefaulted_GetRef();
+    Graph.Name = Name;
+    Graph.GraphType = GraphType;
+    CurrentGraphIndex = N2CBlueprint.Graphs.Num() - 1;
+}
+
+bool FN2CCaptureContext::DescribeNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     if (!Node)
     {
-        FN2CLogger::Get().LogWarning(TEXT("ProcessSingleNode called with null node"));
+        FN2CLogger::Get().LogWarning(TEXT("DescribeNode called with null node"));
         return false;
     }
-    
+
     // Keep a caller-supplied ID; generate one otherwise
     const FString CallerID = OutNodeDef.ID;
     if (OutNodeDef.ID.IsEmpty())
@@ -32,24 +71,10 @@ bool FN2CNodeTranslator::ProcessSingleNode(UK2Node* Node, FN2CNodeDefinition& Ou
         OutNodeDef.ID = GenerateNodeID();
     }
 
-    // Flows go into a scratch graph that lives only for this call (CurrentGraph used to dangle at a previous
-    // capture's stack local), and a lone node never queues nested graphs for the next capture.
-    FN2CGraph ScratchGraph;
-    TGuardValue<FN2CGraph*> GraphGuard(CurrentGraph, &ScratchGraph);
-    TGuardValue<bool> DiscoveryGuard(bSuppressGraphDiscovery, true);
-
-    // Struct and enum definitions a lone node pulls in must not be appended to the last capture's output
-    const int32 StructCount = N2CBlueprint.Structs.Num();
-    const int32 EnumCount = N2CBlueprint.Enums.Num();
-    const TSet<FString> SavedStructPaths = ProcessedStructPaths;
-    const TSet<FString> SavedEnumPaths = ProcessedEnumPaths;
-
+    // Flows go into a scratch graph that this context throws away with everything else it built
+    BeginGraph(FString(), EN2CGraphType::EventGraph);
     const bool bProcessed = ProcessNode(Node, OutNodeDef);
-
-    N2CBlueprint.Structs.SetNum(StructCount);
-    N2CBlueprint.Enums.SetNum(EnumCount);
-    ProcessedStructPaths = SavedStructPaths;
-    ProcessedEnumPaths = SavedEnumPaths;
+    CurrentGraphIndex = INDEX_NONE;
 
     if (!CallerID.IsEmpty())
     {
@@ -58,18 +83,8 @@ bool FN2CNodeTranslator::ProcessSingleNode(UK2Node* Node, FN2CNodeDefinition& Ou
     return bProcessed;
 }
 
-bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNodes)
+bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes)
 {
-    // Clear any existing data, including state a previous capture or ProcessSingleNode could have left behind
-    N2CBlueprint = FN2CBlueprint();
-    AdditionalGraphsToProcess.Empty();
-    CurrentDepth = 0;
-    CurrentGraph = nullptr;
-    NodeIDMap.Empty();
-    PinIDMap.Empty();
-    ProcessedStructPaths.Empty();  // Clear processed structs set
-    ProcessedEnumPaths.Empty();    // Clear processed enums set
-
     if (CollectedNodes.Num() == 0)
     {
         FN2CLogger::Get().LogWarning(TEXT("No nodes provided to translate"));
@@ -78,20 +93,20 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
 
     FN2CLogger::Get().Log(TEXT("Starting node translation"), EN2CLogSeverity::Info);
 
-    // Get Blueprint metadata from first node (all nodes are from the same graph)                                                                                                                                                             
-    if (UK2Node* FirstNode = CollectedNodes[0])                                                                                                                                                                                        
+    // Get Blueprint metadata from first node (all nodes are from the same graph)
+    if (UK2Node* FirstNode = CollectedNodes[0])
     {
         if (UBlueprint* Blueprint = FirstNode->GetBlueprint())
         {
             // Set Blueprint name
             N2CBlueprint.Metadata.Name = Blueprint->GetName();
-            
+
             // Set Blueprint class
             if (UClass* BPClass = FirstNode->GetBlueprintClassFromNode())
             {
                 N2CBlueprint.Metadata.BlueprintClass = GetCleanClassName(BPClass->GetName());
             }
-            
+
             // Determine Blueprint type
             switch (Blueprint->BlueprintType)
             {
@@ -123,26 +138,24 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
             FN2CLogger::Get().Log(TEXT("Blueprint metadata collected"), EN2CLogSeverity::Info, Context);
         }
     }
-    
-    // Create initial graph for the nodes
-    FN2CGraph MainGraph;
-    
-    // Get graph info from first node
-    if (CollectedNodes.Num() > 0 && CollectedNodes[0])
+
+    // The main graph is Graphs[0], named and typed from the first node's graph
+    FString MainGraphName;
+    EN2CGraphType MainGraphType = EN2CGraphType::EventGraph;
+    if (CollectedNodes[0])
     {
         if (UEdGraph* Graph = CollectedNodes[0]->GetGraph())
         {
-            MainGraph.Name = Graph->GetName();
-            MainGraph.GraphType = DetermineGraphType(Graph);
-            
+            MainGraphName = Graph->GetName();
+            MainGraphType = DetermineGraphType(Graph);
+
             FString Context = FString::Printf(TEXT("Created graph: %s of type %s"),
-                *MainGraph.Name,
-                *StaticEnum<EN2CGraphType>()->GetNameStringByValue(static_cast<int64>(MainGraph.GraphType)));
+                *MainGraphName,
+                *StaticEnum<EN2CGraphType>()->GetNameStringByValue(static_cast<int64>(MainGraphType)));
             FN2CLogger::Get().Log(TEXT("Graph info"), EN2CLogSeverity::Debug, Context);
         }
     }
-    
-    CurrentGraph = &MainGraph;
+    BeginGraph(MainGraphName, MainGraphType);
 
     // Process each node
     for (UK2Node* Node : CollectedNodes)
@@ -156,12 +169,20 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
         FN2CNodeDefinition NodeDef;
         if (ProcessNode(Node, NodeDef))
         {
-            CurrentGraph->Nodes.Add(NodeDef);
+            CurrentGraph().Nodes.Add(NodeDef);
         }
-    }
 
-    // Add the main graph to the blueprint
-    N2CBlueprint.Graphs.Add(MainGraph);
+#if WITH_DEV_AUTOMATION_TESTS
+        if (NodeCapturedHookForTests())
+        {
+            const TFunction<void()> Hook = MoveTemp(NodeCapturedHookForTests());
+            NodeCapturedHookForTests() = nullptr;
+            Hook();
+        }
+#endif
+    }
+    const int32 MainGraphNodeCount = CurrentGraph().Nodes.Num();
+    CurrentGraphIndex = INDEX_NONE;
 
     // Process any additional graphs that were discovered, shallowest first: every graph at depth N is processed
     // (and queues its own children at N + 1) before any graph at N + 1, so a graph is always reached by its shortest
@@ -188,29 +209,26 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
     }
     CurrentDepth = 0;
 
-    FString Context = FString::Printf(TEXT("Translated %d nodes in %d graphs"), 
-        MainGraph.Nodes.Num(), 
+    FString Context = FString::Printf(TEXT("Translated %d nodes in %d graphs"),
+        MainGraphNodeCount,
         N2CBlueprint.Graphs.Num());
     FN2CLogger::Get().Log(TEXT("Node translation complete"), EN2CLogSeverity::Info, Context);
-
-    // MainGraph and ProcessGraph's NewGraph are locals; never leave CurrentGraph pointing at them
-    CurrentGraph = nullptr;
 
     return N2CBlueprint.Graphs.Num() > 0;
 }
 
-FString FN2CNodeTranslator::GenerateNodeID()
+FString FN2CCaptureContext::GenerateNodeID()
 {
     return FString::Printf(TEXT("N%d"), NodeIDMap.Num() + 1);
 }
 
-FString FN2CNodeTranslator::GeneratePinID(int32 PinCount)
+FString FN2CCaptureContext::GeneratePinID(int32 PinCount)
 {
     // Use the total number of pins in the map to ensure global uniqueness
     return FString::Printf(TEXT("P%d"), PinIDMap.Num() + 1);
 }
 
-bool FN2CNodeTranslator::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+bool FN2CCaptureContext::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     if (!Node)
     {
@@ -250,7 +268,7 @@ bool FN2CNodeTranslator::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinit
     return true;
 }
 
-bool FN2CNodeTranslator::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+bool FN2CCaptureContext::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     if (!InitializeNodeProcessing(Node, OutNodeDef))
     {
@@ -269,9 +287,9 @@ bool FN2CNodeTranslator::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeD
     return true;
 }
 
-void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
+void FN2CCaptureContext::AddGraphToProcess(UEdGraph* Graph)
 {
-    if (bSuppressGraphDiscovery)
+    if (!Options.bDiscoverNestedGraphs)
     {
         return;
     }
@@ -280,10 +298,11 @@ void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
         return;
     }
 
-    // Check if we've already processed this graph
-    for (const FN2CGraph& ExistingGraph : N2CBlueprint.Graphs)
+    // Check if we've already processed this graph. The graph being written does not count: it is only "processed"
+    // once it is finished (a graph that calls itself is queued again today, known defect translation-core-9).
+    for (int32 GraphIndex = 0; GraphIndex < N2CBlueprint.Graphs.Num(); ++GraphIndex)
     {
-        if (ExistingGraph.Name == Graph->GetName())
+        if (GraphIndex != CurrentGraphIndex && N2CBlueprint.Graphs[GraphIndex].Name == Graph->GetName())
         {
             return;
         }
@@ -330,12 +349,11 @@ void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
     if (bIsUserCreated)
     {
         // Now check recursion depth limit since we know it's a user graph
-        const UN2CSettings* Settings = GetDefault<UN2CSettings>();
         int32 NextDepth = CurrentDepth + 1;
-        if (Settings && NextDepth > Settings->TranslationDepth)
+        if (NextDepth > Options.Depth)
         {
             FString Context = FString::Printf(TEXT("Skipping graph '%s' - maximum translation depth reached (%d)"), 
-                *Graph->GetName(), Settings->TranslationDepth);
+                *Graph->GetName(), Options.Depth);
             FN2CLogger::Get().Log(Context, EN2CLogSeverity::Warning);
             return;
         }
@@ -367,7 +385,7 @@ void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
     }
 }
 
-bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
+bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
 {
     if (!Graph)
     {
@@ -375,14 +393,11 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
         return false;
     }
 
-    // Create new graph structure
-    FN2CGraph NewGraph;
-    NewGraph.Name = Graph->GetName();
-    NewGraph.GraphType = GraphType;
-    CurrentGraph = &NewGraph;
+    // Write the graph in place at the end of Graphs; it is removed again if it gets no nodes
+    BeginGraph(Graph->GetName(), GraphType);
+    ON_SCOPE_EXIT { CurrentGraphIndex = INDEX_NONE; };
 
     // Collect and process nodes from this graph
-    TArray<UK2Node*> GraphNodes;
     for (UEdGraphNode* Node : Graph->Nodes)
     {
         if (UK2Node* K2Node = Cast<UK2Node>(Node))
@@ -390,13 +405,14 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
             FN2CNodeDefinition NodeDef;
             if (ProcessNode(K2Node, NodeDef))
             {
-                CurrentGraph->Nodes.Add(NodeDef);
+                CurrentGraph().Nodes.Add(NodeDef);
             }
         }
     }
 
-    // Add the processed graph to the blueprint if it has nodes
-    if (CurrentGraph->Nodes.Num() > 0)
+    // Keep the graph if it has nodes
+    FN2CGraph& NewGraph = CurrentGraph();
+    if (NewGraph.Nodes.Num() > 0)
     {
         // Validate all flow references
         if (!ValidateFlowReferences(NewGraph))
@@ -404,8 +420,6 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
             FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Flow validation issues found in graph: %s"), *NewGraph.Name));
         }
 
-        N2CBlueprint.Graphs.Add(NewGraph);
-        
         FString Context = FString::Printf(TEXT("Processed graph: %s with %d nodes"), 
             *NewGraph.Name, 
             NewGraph.Nodes.Num());
@@ -414,10 +428,11 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
         return true;
     }
 
+    N2CBlueprint.Graphs.RemoveAt(CurrentGraphIndex);
     return false;
 }
 
-EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
+EN2CGraphType FN2CCaptureContext::DetermineGraphType(UEdGraph* Graph) const
 {
     if (!Graph)
     {
@@ -461,12 +476,12 @@ EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
     return EN2CGraphType::EventGraph;
 }
 
-void FN2CNodeTranslator::DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType)
+void FN2CCaptureContext::DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType)
 {
     OutType = FN2CNodeTypeRegistry::Get().GetNodeType(Node);
 }
 
-EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
+EN2CPinType FN2CCaptureContext::DeterminePinType(const UEdGraphPin* Pin) const
 {
     if (!Pin) return EN2CPinType::Wildcard;
 
@@ -540,7 +555,7 @@ EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
     return EN2CPinType::Wildcard;
 }
 
-UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
+UEdGraphPin* FN2CCaptureContext::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
 {
     if (!StartPin)
     {
@@ -588,7 +603,7 @@ UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartP
     return nullptr;
 }
 
-bool FN2CNodeTranslator::ValidateFlowReferences(FN2CGraph& Graph)
+bool FN2CCaptureContext::ValidateFlowReferences(FN2CGraph& Graph)
 {
     // Use the blueprint validator to validate the graph
     FN2CBlueprintValidator Validator;
@@ -596,7 +611,7 @@ bool FN2CNodeTranslator::ValidateFlowReferences(FN2CGraph& Graph)
     return Validator.ValidateFlowReferences(Graph, ErrorMessage);
 }
 
-void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     // Determine node type
     DetermineNodeType(Node, OutNodeDef.NodeType);
@@ -638,7 +653,10 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
     }
 
     // Process any struct or enum types used in this node
-    ProcessRelatedTypes(Node, OutNodeDef);
+    if (Options.bIncludeRelatedTypes)
+    {
+        ProcessRelatedTypes(Node, OutNodeDef);
+    }
 
     // Check for nested graphs that might need processing
     if (UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(Node))
@@ -720,7 +738,7 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
     }
 }
 
-void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+void FN2CCaptureContext::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     // Set node name
     OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
@@ -736,7 +754,7 @@ void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDe
     OutNodeDef.bPure = Node->IsNodePure();
 }
 
-void FN2CNodeTranslator::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)
+void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)
 {
     // Process input pins
     for (UEdGraphPin* Pin : Node->Pins)
@@ -846,7 +864,7 @@ void FN2CNodeTranslator::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
     }
 }
 
-void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs)
+void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs)
 {
     // Record execution flows
     FString ExecDebug = FString::Printf(TEXT("Node %s has %d exec outputs"), 
@@ -906,7 +924,7 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
 
             // Add execution flow
             FString FlowStr = FString::Printf(TEXT("%s->%s"), *SourceNodeID, *TargetNodeID);
-            CurrentGraph->Flows.Execution.AddUnique(FlowStr);
+            CurrentGraph().Flows.Execution.AddUnique(FlowStr);
             
             // Log execution flow
             FString FlowContext = FString::Printf(TEXT("Added execution flow: %s (%s) -> %s (%s)"),
@@ -946,7 +964,7 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
                         // Always store flow from output pin to input pin
                         if (ActualSourcePin->Direction == EGPD_Output)
                         {
-                            CurrentGraph->Flows.Data.Add(SourceRef, TargetRef);
+                            CurrentGraph().Flows.Data.Add(SourceRef, TargetRef);
                     
                             // Log data flow
                             FString FlowContext = FString::Printf(TEXT("Added data flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),
@@ -960,7 +978,7 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
                         }
                         else
                         {
-                            CurrentGraph->Flows.Data.Add(TargetRef, SourceRef);
+                            CurrentGraph().Flows.Data.Add(TargetRef, SourceRef);
                     
                             // Log data flow
                             FString FlowContext = FString::Printf(TEXT("Added data flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),
@@ -979,7 +997,7 @@ void FN2CNodeTranslator::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
     }
 }
 
-FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
+FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
 {
     FN2CEnum Result;
     
@@ -1088,7 +1106,7 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
     return Result;
 }
 
-FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
+FString FN2CCaptureContext::GetCleanClassName(const FString& InName)
 {
     FString CleanName = InName;                                                                                                                                                                      
                                                                                                                                                                                                            
@@ -1107,7 +1125,7 @@ FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
      return CleanName;
 }
 
-bool FN2CNodeTranslator::IsBlueprintStruct(UScriptStruct* Struct) const
+bool FN2CCaptureContext::IsBlueprintStruct(UScriptStruct* Struct) const
 {
     if (!Struct)
     {
@@ -1120,7 +1138,7 @@ bool FN2CNodeTranslator::IsBlueprintStruct(UScriptStruct* Struct) const
            StructPath.Contains(TEXT("/Content/"));
 }
 
-bool FN2CNodeTranslator::IsBlueprintEnum(UEnum* Enum) const
+bool FN2CCaptureContext::IsBlueprintEnum(UEnum* Enum) const
 {
     if (!Enum)
     {
@@ -1133,7 +1151,7 @@ bool FN2CNodeTranslator::IsBlueprintEnum(UEnum* Enum) const
            EnumPath.Contains(TEXT("/Content/"));
 }
 
-EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(FProperty* Property) const
+EN2CStructMemberType FN2CCaptureContext::ConvertPropertyToStructMemberType(FProperty* Property) const
 {
     if (!Property)
     {
@@ -1244,7 +1262,7 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(FProp
     return EN2CStructMemberType::Custom; // For any other types
 }
 
-void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     if (!Node)
     {
@@ -1367,7 +1385,7 @@ void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
     }
 }
 
-void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
+void FN2CCaptureContext::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
 {
     // Log detailed node info
     FString NodeInfo = FString::Printf(TEXT("Node Details:\n")
@@ -1448,7 +1466,7 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
     FN2CLogger::Get().Log(NodeInfo, EN2CLogSeverity::Debug);
 }
 
-FString FN2CNodeTranslator::CleanPropertyName(const FString& RawName) const
+FString FN2CCaptureContext::CleanPropertyName(const FString& RawName) const
 {
     FString CleanName = RawName;
 
@@ -1474,7 +1492,7 @@ FString FN2CNodeTranslator::CleanPropertyName(const FString& RawName) const
  return CleanName;
 }
 
-FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
+FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
 {
     FN2CStructMember Member;
 
@@ -1718,7 +1736,7 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
     return Member;
 }
 
-FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
+FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)
 {
     FN2CStruct Result;
     
@@ -1840,7 +1858,7 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
     return Result;
 }
 
-void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+void FN2CCaptureContext::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     if (!Node)
     {

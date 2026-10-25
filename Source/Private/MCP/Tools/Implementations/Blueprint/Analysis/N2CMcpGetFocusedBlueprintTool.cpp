@@ -3,7 +3,7 @@
 #include "N2CMcpGetFocusedBlueprintTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Utils/N2CLogger.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "Dom/JsonObject.h"

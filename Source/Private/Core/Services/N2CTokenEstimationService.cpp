@@ -3,7 +3,7 @@
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CNodeCollector.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMTypes.h"
@@ -554,16 +554,15 @@ FString FN2CTokenEstimationService::SerializeGraphToJson(const FN2CTagInfo& Grap
 		return FString();
 	}
 
-	// Translate to N2CBlueprint structure
-	FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
-	if (!Translator.GenerateN2CStruct(CollectedNodes))
+	// Capture into this call's own result: an estimate never changes another capture (a translation in flight, MCP)
+	const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
+	if (Capture.HasError())
 	{
 		return FString();
 	}
 
 	// Serialize to minified JSON for accurate size calculation
-	FN2CSerializer::SetPrettyPrint(false);
-	return FN2CSerializer::ToJson(Translator.GetN2CBlueprint());
+	return FN2CSerializer::ToJson(Capture.GetValue().Blueprint, EN2CJsonStyle::Condensed);
 }
 
 void FN2CTokenEstimationService::EvictOldestCacheEntries()

@@ -174,6 +174,7 @@ result is set, holds the `FN2CLLMRequestHandle` that `ProcessN2CJsonWithOverride
 // N2CMcpMyLongTool.cpp (the class derives from FN2CMcpToolBase and declares the InvokeAsync override)
 #include "N2CMcpMyLongTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
+#include "Core/N2CSerializer.h"
 #include "LLM/N2CLLMModule.h"
 #include "Async/Future.h"
 
@@ -202,8 +203,12 @@ TFuture<FMcpToolCallResult> FN2CMcpMyLongTool::InvokeAsync(const FN2CToolCallCon
         return Future;
     }
 
+    // The translation is saved with the Blueprint the JSON describes (a capture's FN2CCapture::Blueprint, when you have one)
+    FN2CBlueprint Captured;
+    FN2CSerializer::FromJson(Json, Captured);
+
     Context->ReportProgress(0.1f, TEXT("Sending request..."));
-    State->Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, FOnLLMResponseReceived::CreateLambda(
+    State->Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, Captured, FOnLLMResponseReceived::CreateLambda(
         [State](const FString& Response)
         {
             // Runs on the game thread, at most once, and never after Request->Cancel() succeeded

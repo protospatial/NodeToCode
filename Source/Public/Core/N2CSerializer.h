@@ -8,6 +8,15 @@
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
 
+/** How FN2CSerializer::ToJson lays out its text */
+enum class EN2CJsonStyle : uint8
+{
+    /** Indented, one value per line (Copy JSON, the saved N2C_BP_*.json) */
+    Pretty,
+    /** No whitespace (what is sent to an LLM, token estimates, MCP results) */
+    Condensed
+};
+
 /**
  * @class FN2CSerializer
  * @brief Handles serialization of N2CStruct data to JSON format
@@ -18,15 +27,11 @@
 class FN2CSerializer
 {
 public:
-    /** Convert an FN2CBlueprint to JSON string */
-    static FString ToJson(const FN2CBlueprint& Blueprint);
+    /** Convert an FN2CBlueprint to JSON string. Stateless: the style is per call. */
+    static FString ToJson(const FN2CBlueprint& Blueprint, EN2CJsonStyle Style);
 
     /** Convert JSON string back to FN2CBlueprint */
     static bool FromJson(const FString& JsonString, FN2CBlueprint& OutBlueprint);
-
-    /** Configure JSON output formatting */
-    static void SetPrettyPrint(bool bEnabled);
-    static void SetIndentLevel(int32 Level);
 
     /** Convert a single node to JSON object - useful for tools */
     static TSharedPtr<FJsonObject> NodeToJsonObject(const FN2CNodeDefinition& Node);
@@ -48,8 +53,4 @@ private:
     static bool ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CFlows& OutFlows);
     static bool ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CStruct& OutStruct);
     static bool ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CEnum& OutEnum);
-
-    /** Formatting configuration */
-    static bool bPrettyPrint;
-    static int32 IndentLevel;
 };

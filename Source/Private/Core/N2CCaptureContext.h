@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/N2CCapture.h"
 #include "Models/N2CBlueprint.h"
 #include "EdGraph/EdGraphNode.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
@@ -10,81 +11,52 @@
 #include "Utils/Processors/N2CNodeProcessorFactory.h"
 
 /**
- * @class FN2CNodeTranslator
- * @brief Converts collected Blueprint nodes into N2CStruct format
+ * @class FN2CCaptureContext
+ * @brief The state of one capture (private to the capture module; use N2C::CaptureNodes, CaptureGraph, DescribeNode)
  *
- * Takes raw Blueprint nodes collected from the editor and translates them
- * into the structured FN2CBlueprint format for further processing.
+ * Turns collected Blueprint nodes into an FN2CBlueprint. One context serves one call and is then thrown away, so the
+ * Blueprint, ID maps, processed type sets and nested-graph queue are never shared between captures.
  */
-class FN2CNodeTranslator
+class FN2CCaptureContext
 {
 public:
-    /** Get the singleton instance */
-    static FN2CNodeTranslator& Get();
+    explicit FN2CCaptureContext(const FN2CCaptureOptions& InOptions);
+
+    FN2CCaptureContext(const FN2CCaptureContext&) = delete;
+    FN2CCaptureContext& operator=(const FN2CCaptureContext&) = delete;
 
     /**
-     * @brief Generate N2CStruct from collected nodes
-     * @param CollectedNodes Array of nodes from the Blueprint Editor
-     * @return True if translation succeeded
+     * Captures CollectedNodes as the main graph, then the nested graphs they use within the depth limit
+     * @return True if a graph was captured (false when CollectedNodes is empty)
      */
-    bool GenerateN2CStruct(const TArray<UK2Node*>& CollectedNodes);
+    bool CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes);
 
-    /**
-     * @brief Get the generated Blueprint structure
-     * @return The translated Blueprint structure
-     */
-    const FN2CBlueprint& GetN2CBlueprint() const { return N2CBlueprint; }
+    /** Describes one node into OutNodeDef; its flows go to a scratch graph that is discarded */
+    bool DescribeNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
-    /**
-     * @brief Process a single K2Node into an N2CNodeDefinition
-     * @param Node The K2Node to process
-     * @param OutNodeDef The resulting node definition
-     * @return True if processing succeeded
-     * 
-     * This method is useful for tools that need to convert individual nodes
-     * without processing an entire graph.
-     */
-    bool ProcessSingleNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
+    /** Moves the result out; the context is spent afterwards */
+    FN2CCapture TakeCapture();
 
+#if WITH_DEV_AUTOMATION_TESTS
     /**
-     * @brief Get the NodeID to GUID mapping
-     * @return Map of NodeGUIDs to simplified NodeIDs
+     * Test hook: runs Hook once, right after the next main-graph node any context captures, then clears it. Lets a spec
+     * start a second capture in the middle of the first (NodeToCode.Capture.Golden "Isolation").
      */
-    const TMap<FGuid, FString>& GetNodeIDMap() const { return NodeIDMap; }
-
-    /**
-     * @brief Get the PinID to GUID mapping  
-     * @return Map of PinGUIDs to simplified PinIDs
-     */
-    const TMap<FGuid, FString>& GetPinIDMap() const { return PinIDMap; }
-    
-    /**
-     * @brief Preserve the current ID maps before they get cleared
-     * @param OutNodeIDMap Copy of the node ID map
-     * @param OutPinIDMap Copy of the pin ID map
-     */
-    void PreserveIDMaps(TMap<FGuid, FString>& OutNodeIDMap, TMap<FGuid, FString>& OutPinIDMap) const
-    {
-        OutNodeIDMap = NodeIDMap;
-        OutPinIDMap = PinIDMap;
-    }
-
-    /** True while a capture is writing into a graph; false between calls (exposed for tests) */
-    bool HasActiveGraph() const { return CurrentGraph != nullptr; }
+    static void SetNodeCapturedHookForTests(TFunction<void()> Hook);
+#endif
 
 private:
-    /** Constructor */
-    FN2CNodeTranslator() = default;
+    /** What this capture includes, with Depth resolved from the settings when it was INDEX_NONE */
+    FN2CCaptureOptions Options;
 
     /** The Blueprint structure being built */
     FN2CBlueprint N2CBlueprint;
 
-    /** Current graph being processed. Points at a local only for the length of a GenerateN2CStruct or
-     *  ProcessSingleNode call; null otherwise. */
-    FN2CGraph* CurrentGraph = nullptr;
+    /** Index in N2CBlueprint.Graphs of the graph being written, INDEX_NONE between graphs */
+    int32 CurrentGraphIndex = INDEX_NONE;
 
-    /** Set while ProcessSingleNode runs, so a lone node never queues nested graphs */
-    bool bSuppressGraphDiscovery = false;
+    /** The graph being written (CurrentGraphIndex must be set) */
+    FN2CGraph& CurrentGraph() { return N2CBlueprint.Graphs[CurrentGraphIndex]; }
 
     /** Maps node GUIDs to simplified IDs */
     TMap<FGuid, FString> NodeIDMap;
@@ -115,7 +87,10 @@ private:
 
     /** Depth of the graph being processed (0 for the captured graph); a graph it uses is at CurrentDepth + 1 */
     int32 CurrentDepth = 0;
-    
+
+    /** Starts writing a new graph at the end of N2CBlueprint.Graphs */
+    void BeginGraph(const FString& Name, EN2CGraphType GraphType);
+
     /** Fallback method for processing node properties when no processor is available */
     void FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 

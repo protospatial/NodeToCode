@@ -52,7 +52,7 @@
     },
     {
       "name": "depth-and-size",
-      "code": ["Source/Private/Core/N2CNodeTranslator.cpp", "Source/Private/Core/Widgets/SN2CContextWindowVisualizer.cpp",
+      "code": ["Source/Private/Core/N2CCaptureContext.cpp", "Source/Private/Core/Widgets/SN2CContextWindowVisualizer.cpp",
                "Source/Private/Core/Services/N2CTokenEstimationService.cpp"],
       "pages": ["wiki/Translation-Depth.md", "wiki/Handling-Large-Graphs.md"]
     },

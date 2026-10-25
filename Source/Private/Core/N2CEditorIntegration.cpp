@@ -30,7 +30,7 @@ namespace
 #include "BlueprintEditorModule.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CEditorWindow.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "Core/Widgets/SN2CGraphEditorWrapper.h"
@@ -104,12 +104,10 @@ bool FN2CEditorIntegration::CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Nod
 
 bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint) const
 {
-    FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
-    
-    if (Translator.GenerateN2CStruct(CollectedNodes))
+    TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
+    if (Capture.HasValue())
     {
-        // Get the translated blueprint structure
-        OutN2CBlueprint = Translator.GetN2CBlueprint();
+        OutN2CBlueprint = MoveTemp(Capture.GetValue().Blueprint);
         
         // Validate the result
         bool bIsValid = OutN2CBlueprint.IsValid();
@@ -133,15 +131,14 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>&
 bool FN2CEditorIntegration::TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CBlueprint& OutN2CBlueprint, 
     TMap<FGuid, FString>& OutNodeIDMap, TMap<FGuid, FString>& OutPinIDMap) const
 {
-    FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
-    
-    if (Translator.GenerateN2CStruct(CollectedNodes))
+    TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
+    if (Capture.HasValue())
     {
-        // Get the translated blueprint structure
-        OutN2CBlueprint = Translator.GetN2CBlueprint();
-        
-        // IMPORTANT: Preserve the ID maps immediately after translation
-        Translator.PreserveIDMaps(OutNodeIDMap, OutPinIDMap);
+        // The blueprint and its ID maps come from the same capture, which nothing else can change
+        FN2CCapture& Captured = Capture.GetValue();
+        OutN2CBlueprint = MoveTemp(Captured.Blueprint);
+        OutNodeIDMap = MoveTemp(Captured.NodeIDMap);
+        OutPinIDMap = MoveTemp(Captured.PinIDMap);
         
         // Validate the result
         bool bIsValid = OutN2CBlueprint.IsValid();
@@ -166,11 +163,10 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprintWithMaps(const TArray<UK
 
 FString FN2CEditorIntegration::SerializeN2CBlueprintToJson(const FN2CBlueprint& Blueprint, bool bPrettyPrint) const
 {
-    FN2CSerializer::SetPrettyPrint(bPrettyPrint);
-    return FN2CSerializer::ToJson(Blueprint);
+    return FN2CSerializer::ToJson(Blueprint, bPrettyPrint ? EN2CJsonStyle::Pretty : EN2CJsonStyle::Condensed);
 }
 
-FString FN2CEditorIntegration::GetFocusedBlueprintAsJson(bool bPrettyPrint, FString& OutErrorMsg)
+FString FN2CEditorIntegration::GetFocusedBlueprintAsJson(bool bPrettyPrint, FString& OutErrorMsg, FN2CBlueprint* OutCapture)
 {
     // Get the active Blueprint editor
     TSharedPtr<FBlueprintEditor> Editor = GetActiveBlueprintEditor();
@@ -210,6 +206,11 @@ FString FN2CEditorIntegration::GetFocusedBlueprintAsJson(bool bPrettyPrint, FStr
     {
         OutErrorMsg = TEXT("Failed to serialize N2CBlueprint to JSON.");
         return FString();
+    }
+
+    if (OutCapture)
+    {
+        *OutCapture = MoveTemp(N2CBlueprintData);
     }
     
     OutErrorMsg = TEXT("Success.");
@@ -552,7 +553,8 @@ void FN2CEditorIntegration::TranslateBlueprintNodesForEditor(TWeakPtr<FBlueprint
 
     // Use the new helper method to get JSON
     FString ErrorMsg;
-    FString JsonOutput = GetFocusedBlueprintAsJson(false /* no pretty print */, ErrorMsg);
+    FN2CBlueprint Captured;
+    FString JsonOutput = GetFocusedBlueprintAsJson(false /* no pretty print */, ErrorMsg, &Captured);
 
     if (JsonOutput.IsEmpty())
     {
@@ -567,7 +569,8 @@ void FN2CEditorIntegration::TranslateBlueprintNodesForEditor(TWeakPtr<FBlueprint
     if (LLMModule->Initialize())
     {
         // Send JSON to LLM service
-        LLMModule->ProcessN2CJson(JsonOutput, FOnLLMResponseReceived::CreateLambda(
+        // The translation is saved with the Blueprint this JSON was captured from
+        LLMModule->ProcessN2CJson(JsonOutput, Captured, FOnLLMResponseReceived::CreateLambda(
             [](const FString& Response)
             {
                 FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response:\n\n%s"), *Response), EN2CLogSeverity::Debug);

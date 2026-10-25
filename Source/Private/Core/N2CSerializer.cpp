@@ -3,11 +3,13 @@
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
 
-// Initialize static members
-bool FN2CSerializer::bPrettyPrint = true;
-int32 FN2CSerializer::IndentLevel = 1;
+namespace
+{
+    /** Pretty output starts one level in, as it always has (the N2C JSON goldens and saved files depend on it) */
+    constexpr int32 PrettyInitialIndentLevel = 1;
+}
 
-FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint)
+FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint, EN2CJsonStyle Style)
 {
     // Validate Blueprint before serialization
     if (!Blueprint.IsValid())
@@ -25,10 +27,10 @@ FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint)
 
     FString OutputString;
 
-    if (bPrettyPrint)
+    if (Style == EN2CJsonStyle::Pretty)
     {
         TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
-            TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&OutputString, IndentLevel);
+            TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&OutputString, PrettyInitialIndentLevel);
 
         if (!FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer))
         {
@@ -64,16 +66,6 @@ bool FN2CSerializer::FromJson(const FString& JsonString, FN2CBlueprint& OutBluep
 
     // Convert to Blueprint
     return ParseBlueprintFromJson(JsonObject, OutBlueprint);
-}
-
-void FN2CSerializer::SetPrettyPrint(bool bEnabled)
-{
-    bPrettyPrint = bEnabled;
-}
-
-void FN2CSerializer::SetIndentLevel(int32 Level)
-{
-    IndentLevel = FMath::Max(0, Level);
 }
 
 TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprint& Blueprint)

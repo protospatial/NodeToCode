@@ -45,15 +45,6 @@ public:
         const FOnLLMResponseReceived& OnComplete
     );
 
-    /**
-     * ProcessN2CJson for callers that serialized JsonInput through FN2CNodeTranslator::Get() just before this call:
-     * the translator's Blueprint is snapshotted here, when the request is sent, and the translation is saved with it.
-     */
-    FN2CLLMRequestHandleRef ProcessN2CJson(
-        const FString& JsonInput,
-        const FOnLLMResponseReceived& OnComplete
-    );
-
     /** Process N2C JSON through LLM with specific overrides for provider, model, and language. Returns the request's handle. */
     FN2CLLMRequestHandleRef ProcessN2CJsonWithOverrides(
         const FString& JsonInput,

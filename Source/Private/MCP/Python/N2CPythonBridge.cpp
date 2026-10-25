@@ -4,7 +4,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTagManager.h"
-#include "Core/N2CNodeTranslator.h"
+#include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"

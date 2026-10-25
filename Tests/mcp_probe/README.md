@@ -132,7 +132,7 @@ and exits non-zero on any failure. The MCP run ends by checking that the editor 
 | p0-7 graph-state file survives a truncated file | test `NodeToCode.Robustness.GraphStatePersistence` | 0066 |
 
 The default test filter also runs the other `NodeToCode.Robustness` tests (async task cleanup and cancel, LLM
-request cancel, `ExecuteOnGameThread` timeout, logger concurrency, LLM service GC, `ProcessSingleNode`).
+request cancel, `ExecuteOnGameThread` timeout, logger concurrency, LLM service GC, `DescribeNode`).
 
 ## Live provider checks
 
