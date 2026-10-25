@@ -151,6 +151,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - **MCP security:** requests with a non-local `Host` or `Origin` are refused and listeners bind to loopback;
   file tools refuse the secrets store, `.git` and `.env`, and the path jail resolves junctions and symlinks;
   saved scripts and LLM-supplied graph names cannot leave their folders (fa1f145, f9ab31a, 5ec3add, 4f2b6cc, [#42]).
+- **Per-user MCP switches:** a project's committed `Config/DefaultEditorPerProjectUserSettings.ini` can no longer
+  turn on **Allow MCP Python Execution** (or set **Enable MCP Server**); only your own Saved/Config value counts, and
+  an ignored project value is logged as a warning (card 0423).
 - **Crashes:** the active LLM service survives garbage collection; the logger is thread-safe; input that crashed
   the editor returns errors; only real Blueprint editors are treated as such; struct utilities return errors
   instead of fatal asserts; theme edits no longer free brushes an open code editor uses, and `SelectText` is

@@ -44,9 +44,13 @@ Blueprints. It is designed for a single developer's machine; it has no authentic
   setting. The server does not start in commandlets or unattended runs unless `-N2CMcp` is on the command line.
 - **Python execution off by default.** `run-python`, `save-python-script` and `delete-python-script` exist only when
   the per-user **Allow MCP Python Execution** setting is on. With it on, any connected MCP client can run arbitrary
-  Python in the editor, including reading your API keys. The setting is stored per user, but a project's committed
-  `Config/DefaultEditorPerProjectUserSettings.ini` can still switch it on; check that file in projects you did not
-  write.
+  Python in the editor, including reading your API keys. Only your own value counts (in
+  `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`, or a `-ini:` override on your command line): a
+  value in the project's `Config/DefaultEditorPerProjectUserSettings.ini` or any other shared config file is ignored
+  with a warning in the log, so a committed file cannot switch it on for everyone who opens the project. The same
+  applies to **Enable MCP Server**. A project can still run its own code when you open it (C++ modules,
+  `Content/Python/init_unreal.py`), so this protects against an accidental or careless commit, not a hostile
+  project.
 - **API keys.** Keys entered in Project Settings are kept outside the project in a per-user file,
   `<user settings folder>/NodeToCode/secrets.json`, as plain (unencrypted) JSON; they are not written to the
   project's config files. The MCP file tools refuse to read or list that folder, any `secrets.json*` file, `.env`

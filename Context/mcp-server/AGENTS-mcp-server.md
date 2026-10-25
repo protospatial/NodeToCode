@@ -524,9 +524,15 @@ curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
 ## Server switches (per-user)
 
 `UN2CUserSettings` (Project Settings > Plugins > Node to Code (User), saved to the user's
-`Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`; Unreal also reads a committed
-`Config/DefaultEditorPerProjectUserSettings.ini` as the default layer, so a project file can still set them, card
-0423):
+`Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`). Unreal also reads a committed
+`Config/DefaultEditorPerProjectUserSettings.ini` (and the Base and platform files) as lower layers of that config, so
+code reads the two switches through `UN2CUserSettings::IsMcpServerEnabled()` and `IsMcpPythonExecutionAllowed()`,
+never the properties: they take the value from the branch's `SavedLayer` and `CommandLineOverrides` only
+(`FConfigBranch`, the same on UE 5.6, 5.7 and 5.8), fall back to the code default, log one warning when a shared
+layer set something else, and write the value in effect back to the settings object so Project Settings shows it
+(card 0423, spec `NodeToCode.Security.UserSettings`, live check `Tests/mcp_probe/live_user_settings_0423.py`).
+Unreal saves only values that differ from the lower layers, so if a project file sets the same value the user
+picks, the choice is not saved; the warning says to remove it from the project file:
 
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 

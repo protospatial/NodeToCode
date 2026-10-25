@@ -36,8 +36,8 @@ Pro/Max** or **Google Account** selected:
 ## Before you connect an agent
 
 - Open your project in the Unreal editor. The MCP server runs only while the editor is open.
-- **Enable MCP Server** (**Project Settings → Plugins → Node to Code (User) → MCP Server**) is on by default.
-  Changing it needs an editor restart.
+- **Enable MCP Server** (**Project Settings → Plugins → Node to Code (User) → MCP Server**) is on by default and
+  per user: a project's config files cannot change it. Changing it needs an editor restart.
 - **Server Port** (**Project Settings → Plugins → Node to Code → MCP Server**) is 27000; a change applies at once.
 - The server answers only on this machine (`localhost`, `127.0.0.1`), so run the agent on the same computer.
 

@@ -26,9 +26,10 @@ bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
 		return false;
 	}
 
-	// Python execution tools exist only when the user opted in (per-user setting, off by default).
+	// Python execution tools exist only when the user opted in (per-user setting, off by default; a committed
+	// project config cannot turn it on, card 0423).
 	// Every registration path (startup, dynamic discovery) goes through here.
-	if (UN2CUserSettings::IsPythonExecutionTool(ToolName) && !GetDefault<UN2CUserSettings>()->bAllowMcpPythonExecution)
+	if (UN2CUserSettings::IsPythonExecutionTool(ToolName) && !UN2CUserSettings::IsMcpPythonExecutionAllowed())
 	{
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping MCP tool '%s': Allow MCP Python Execution is off"), *ToolName), EN2CLogSeverity::Debug);
 		return false;
