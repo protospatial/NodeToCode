@@ -5,6 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "LLM/N2CModelCatalog.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CLLMModelRegistry.h"
@@ -59,8 +60,17 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 	TSharedPtr<FJsonObject> BuildDeepSeek(EN2CDeepSeekModel Selected, const FString& ModelIdOverride = FString())
 	{
 		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-		const EN2CDeepSeekModel Saved = Settings->DeepSeekModel;
-		Settings->DeepSeekModel = Selected;
+		const FString SavedId = Settings->DeepSeekModelId;
+		const FString SavedEffort = Settings->DeepSeekReasoningEffort;
+		const FString SavedCustom = Settings->DeepSeekCustomModelId;
+		// The catalog entry the enumerator names (model ID plus thinking mode), as Project Settings selects it
+		const FString Name = StaticEnum<EN2CDeepSeekModel>()->GetNameStringByValue(static_cast<int64>(Selected));
+		const FN2CModelMetadata* Row = FN2CModelCatalog::Get().FindByLegacyEnum(FN2CModelCatalog::ProviderIdFor(EN2CLLMProvider::DeepSeek), Name);
+		TestNotNull(FString::Printf(TEXT("catalog row for %s"), *Name), Row);
+		if (Row)
+		{
+			Settings->SelectModel(*Row);
+		}
 
 		FN2CLLMConfig Config;
 		Config.Provider = EN2CLLMProvider::DeepSeek;
@@ -69,7 +79,9 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 		Service->Initialize(Config);
 		const FString Payload = Service->BuildRequestPayloadForTesting(TEXT("Translate this graph to JSON."), TEXT("You are a translator."));
 
-		Settings->DeepSeekModel = Saved;
+		Settings->DeepSeekModelId = SavedId;
+		Settings->DeepSeekReasoningEffort = SavedEffort;
+		Settings->DeepSeekCustomModelId = SavedCustom;
 		return Parse(Payload);
 	}
 

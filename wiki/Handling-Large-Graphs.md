@@ -23,6 +23,11 @@
 > them) are not sent to the LLM, so they cost no tokens. Disabled, unused and unreachable nodes are still sent,
 > marked so the LLM skips them; delete them from the graph to save their tokens.
 
+The context window bar in the Node to Code window estimates a graph's size and input cost for the selected
+**Model**: its context size and price, or your entry under
+[Model Price Overrides](Provider-Configuration#model-price-overrides). For a **Custom Model ID** it shows the ID,
+assumes a 128K context and costs nothing unless you add a price override.
+
 ## Translation Approaches
 
 1. **Incremental Translation**

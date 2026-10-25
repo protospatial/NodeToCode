@@ -9,7 +9,7 @@ and in the wiki's [Latest Updates](wiki/Latest-Updates.md).
 Owner, before tagging (card 0083): lines marked PROVISIONAL follow a review recommendation for an owner decision
 that is not confirmed yet. Edit them if the decision changes, then delete these comments.
   0052 engines 5.6-5.8 | 0053 licence and DCO | 0073 Win64 only | 0085 5.6/5.7 MCP transport
-  0019 run-python off by default | 0038 subscription sign-in removed | 0061 per-user secrets file
+  0019 run-python off by default | 0038 subscription sign-in removed | 0061 per-user secrets file | 0115 model catalog and string model IDs
 Set the release date in the heading below when the tag is made.
 -->
 
@@ -140,6 +140,10 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - Default models: Claude Sonnet 5.5, GPT-6.1 Sol, Gemini 3.8 Flash and DeepSeek Flash with thinking ([#32], [#33]).
 - DeepSeek's `deepseek-chat` and `deepseek-reasoner` were discontinued, so the saved R1 and V3 choices both send
   `deepseek-flash`, R1 with thinking on and V3 with it off ([#33]).
+- Project Settings selects each cloud provider's **Model** by model ID from the bundled model catalog, so a new
+  model is a catalog edit, not a plugin update; **Custom Model ID** sends an ID the catalog does not list, and
+  DeepSeek's **Thinking** sets its thinking mode. Price overrides are one **Model Price Overrides** map keyed by
+  model ID, and the cost getters fall back to the catalog price (card 0129). <!-- PROVISIONAL 0115 -->
 - Requests no longer send sampling parameters or schema fields that current models reject. The OpenAI JSON
   schema is sent as strict, and the Gemini key goes in the `x-goog-api-key` header instead of the URL
   ([#30], [#31]).
@@ -263,6 +267,11 @@ setting, file and API, row by row.
   display title is `title` (optional) instead of `name`, nodes have a `class`, pin names are `PinName`s with an
   optional `label`, and a variable's `member_parent` is its owning class (card 0138). C++ code that read
   `FN2CNodeDefinition::Name` reads `Title` (a hint) or `NodeClass`/`MemberName`. <!-- PROVISIONAL 0117 -->
+- **Model settings in Blueprints, Python or C++:** `AnthropicModel`, `OpenAI_Model`, `Gemini_Model`,
+  `DeepSeekModel` and the four `*ModelPricing` maps are gone from `UN2CSettings`. Read `AnthropicModelId` (and
+  the others, plus `DeepSeekReasoningEffort`) and `ModelPricing`, or call `GetCurrentInputCost` /
+  `GetCurrentOutputCost`. The model enums and per-provider pricing structs stay as deprecated types (card 0129).
+  <!-- PROVISIONAL 0115 -->
 - **C++ providers:** a provider that overrides `IN2CLLMService::SendRequest` must return
   `FN2CLLMRequestHandleRef` ([#51]). Code that used `UN2CUserSecrets` must use `FN2CSecretStore::Get()` ([#42]).
 
@@ -273,11 +282,11 @@ change in the Output Log under **LogNodeToCode**; the second start logs none of 
 
 - API keys move from `<Project>/Saved/NodeToCode/User/secrets.json` to the per-user file, and the project copy is
   deleted.
-- A model the provider has retired becomes the provider's current default, saved to
-  `Config/DefaultNodeToCode.ini`. The v1.2.3 default `Gemini_2_5_ProExp` no longer exists and becomes Gemini 3.8
-  Flash.
+- Model selections are saved again as model IDs (`AnthropicModelId=...`), and the old entries are removed from
+  `Config/DefaultNodeToCode.ini` (card 0129). A model the provider has retired becomes the provider's current
+  default. The v1.2.3 default `Gemini_2_5_ProExp` no longer exists and becomes Gemini 3.8 Flash.
 - Price entries for retired models, or still at 1.2.x's built-in prices, are removed so current prices apply.
-  Prices you entered for current models stay.
+  Prices you entered for current models move to **Model Price Overrides** under the model's ID.
 - Ollama: Context Window and Max Tokens saved at 1.2.x's 8192 go back to the server's default, sampler values you
   changed stay set, and **Use System Prompts** is turned on ([#34]).
 - `HttpConnectionTimeout=300` and `HttpActivityTimeout=3600` under `[HTTP]` in `Config/DefaultEngine.ini` are
@@ -300,6 +309,9 @@ Only for people who ran a `dev-2.0` build before this beta.
 - `translate-focused-blueprint` no longer answers `{status: "accepted", ..., sseUrl}` and sends the result on
   another port. Clients read the result from the call's own response ([#59]). <!-- PROVISIONAL 0085 -->
 - `LMStudioMaxTokens` becomes `LMStudioMaxOutputTokens`; the old default 32768 becomes Auto ([#41]).
+- Model selections and price overrides saved by enum name are converted to model IDs once, at the first start
+  (settings version 4), and the old keys are removed; a saved model the catalog does not list is kept as the
+  provider's **Custom Model ID** (card 0129).
 - `datatable_populator.populate_from_json` / `populate_from_csv` merge rows by name by default and save only
   with `save=True`. Pass `clear_existing=True, save=True` for the old replace-and-save behaviour ([#47]).
 - The stdio bridge reads streamed responses and no longer follows `sseUrl` ([#60]).

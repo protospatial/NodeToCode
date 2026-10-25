@@ -6,6 +6,12 @@
 
 #include "Core/N2CSettings.h"
 #include "LLM/N2CLLMModels.h"
+#include "LLM/N2CModelCatalog.h"
+#include "Tests/N2CTestHelpers.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "UObject/Package.h"
 #include "HAL/FileManager.h"
 #include "Misc/ConfigCacheIni.h"
@@ -17,7 +23,8 @@
  * A project saved by NodeToCode 1.2.x opened in 2.0 (card 0418): the one-time migration saves the remapped and
  * reset model selections so their warnings are logged once, drops 1.2.x prices, reports the per-language themes,
  * removes the HTTP timeouts 1.2.x wrote to DefaultEngine.ini and says once that the CPU-throttle preference is
- * left alone. Every file is a temp copy under Saved/Automation; the host's own config is never read or written.
+ * left alone. Since settings version 4 (card 0129) the model selections and prices are saved by model ID and the
+ * enum keys removed, once, and not while the model catalog file is missing. Every file is a temp copy under Saved/Automation; the host's own config is never read or written.
  */
 BEGIN_DEFINE_SPEC(FN2CLegacySettingsMigrationSpec, "NodeToCode.Settings.LegacyMigration",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -114,6 +121,22 @@ BEGIN_DEFINE_SPEC(FN2CLegacySettingsMigrationSpec, "NodeToCode.Settings.LegacyMi
 		return Lines.ContainsByPredicate([&Line](const FString& Each) { return Each.TrimStartAndEnd() == Line; });
 	}
 
+	/** The value of Key= in the file text, quotes trimmed; empty when the key is absent */
+	static FString IniValue(const FString& Text, const FString& Key)
+	{
+		TArray<FString> Lines;
+		Text.ParseIntoArrayLines(Lines);
+		for (const FString& Line : Lines)
+		{
+			const FString Trimmed = Line.TrimStart();
+			if (Trimmed.StartsWith(Key + TEXT("="), ESearchCase::CaseSensitive))
+			{
+				return Trimmed.RightChop(Key.Len() + 1).TrimEnd().TrimQuotes();
+			}
+		}
+		return FString();
+	}
+
 	static bool HasKey(const FString& Text, const FString& Key)
 	{
 		TArray<FString> Lines;
@@ -134,23 +157,19 @@ void FN2CLegacySettingsMigrationSpec::Define()
 	AfterEach([this]()
 	{
 		Cleanup();
+		// A case may have replaced the catalog rows; later cases and tests get the shipped file again
+		FN2CModelCatalog::Get().ReloadBundled();
 	});
 
 	It(TEXT("migrates a 1.2.x config once and is silent on the next start"), [this]()
 	{
 		WriteFixture(LegacySettingsSection(), LegacyEngineIni());
-
-		// The engine's own messages while loading Gemini_2_5_ProExp (Gemini_Model and the pricing map keyed by it), on
-		// the first load only: the second load below must not repeat them
-		AddExpectedMessage(TEXT("invalid value of 'Gemini_2_5_ProExp'"), EAutomationExpectedMessageFlags::Contains, 2);
-		AddExpectedMessage(TEXT("import failed for"), EAutomationExpectedMessageFlags::Contains, 2);
 		UN2CSettings* Settings = LoadSettings();
 		if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
 
-		// What loading alone gives: the retired name loads as saved, the name 2.0 lacks keeps the 2.0 value
-		TestEqual(TEXT("Claude4_Sonnet loads as saved"), Settings->AnthropicModel, EN2CAnthropicModel::Claude4_Sonnet);
-		TestEqual(TEXT("Gemini_2_5_ProExp cannot load"), Settings->Gemini_Model, N2CDefaultModels::Gemini);
-		TestEqual(TEXT("a map keyed by a removed model loses every entry on load"), Settings->GeminiModelPricing.Num(), 0);
+		// The model enum keys are not properties any more, so loading alone keeps the 2.0 defaults (and the engine
+		// has nothing to fail on: no import error for Gemini_2_5_ProExp)
+		TestEqual(TEXT("ModelPricing empty before the upgrade"), Settings->ModelPricing.Num(), 0);
 
 		// First start: each notice exactly once
 		AddExpectedMessage(TEXT("no longer served by its provider"), EAutomationExpectedMessageFlags::Contains, 1);
@@ -160,32 +179,35 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		const FN2CLegacyMigrationReport First = Settings->MigrateLegacy12Settings(Targets());
 
 		TestTrue(TEXT("one-time steps ran"), First.bRanLegacySteps);
+		TestTrue(TEXT("model ID conversion ran"), First.ModelIds.bRan);
+		TestFalse(TEXT("not deferred"), First.ModelIds.bDeferred);
 		TestTrue(TEXT("settings version stamped"), First.bStampedVersion);
 		TestFalse(TEXT("config written"), First.bWriteFailed);
 		TestEqual(TEXT("version in memory"), Settings->SettingsVersion, UN2CSettings::CurrentSettingsVersion);
 
-		// Model selections: the retired one moved to the default, the unknown one reported, the kept ones untouched
-		TestEqual(TEXT("Anthropic on the default"), Settings->AnthropicModel, N2CDefaultModels::Anthropic);
-		TestEqual(TEXT("o3 kept"), Settings->OpenAI_Model, EN2COpenAIModel::GPT_o3);
-		TestEqual(TEXT("DeepSeek R1 kept"), Settings->DeepSeekModel, EN2CDeepSeekModel::DeepSeek_R1);
+		// Model selections: the retired one and the removed one on the default, the kept ones by their catalog ID
+		TestEqual(TEXT("Anthropic on the default"), Settings->AnthropicModelId, FString(N2CDefaultModelIds::Anthropic));
+		TestEqual(TEXT("o3 kept"), Settings->OpenAIModelId, FString(TEXT("o3")));
+		TestEqual(TEXT("Gemini on the default"), Settings->GeminiModelId, FString(N2CDefaultModelIds::Gemini));
+		TestEqual(TEXT("DeepSeek R1 is deepseek-flash"), Settings->DeepSeekModelId, FString(TEXT("deepseek-flash")));
+		TestEqual(TEXT("DeepSeek R1 thinks at high effort"), Settings->DeepSeekReasoningEffort, FString(TEXT("high")));
+		TestTrue(TEXT("no custom IDs"), Settings->AnthropicCustomModelId.IsEmpty() && Settings->OpenAICustomModelId.IsEmpty()
+			&& Settings->GeminiCustomModelId.IsEmpty() && Settings->DeepSeekCustomModelId.IsEmpty());
 		TestEqual(TEXT("two values could not load"), First.ResetEnumValues.Num(), 2);
+		TestTrue(TEXT("reset names the old and new value"), First.ResetEnumValues.Contains(
+			FString::Printf(TEXT("Gemini_Model=Gemini_2_5_ProExp -> %s"), N2CDefaultModelIds::Gemini)));
 		TestTrue(TEXT("the unreadable pricing map is named"), First.ResetEnumValues.ContainsByPredicate([](const FString& Each) { return Each.StartsWith(TEXT("GeminiModelPricing ")); }));
-		TestTrue(TEXT("reset names the old and new value"), First.ResetEnumValues.Num() > 0
-			&& First.ResetEnumValues[0] == FString::Printf(TEXT("Gemini_Model=Gemini_2_5_ProExp -> %s"),
-				*StaticEnum<EN2CGeminiModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Gemini))));
 
-		// Pricing: retired models and 1.2.x built-in prices dropped, the user's prices for current models kept
-		const FN2COpenAIPricing* Gpt41 = Settings->OpenAIModelPricing.Find(EN2COpenAIModel::GPT_4_1);
+		// Pricing: retired models and 1.2.x built-in prices dropped, the user's prices for current models kept by ID
+		const FN2CModelPricing* Gpt41 = Settings->ModelPricing.Find(TEXT("gpt-4.1"));
 		TestTrue(TEXT("user price for GPT-4.1 kept"), Gpt41 && FMath::IsNearlyEqual(Gpt41->InputCost, 1.5f) && FMath::IsNearlyEqual(Gpt41->OutputCost, 6.0f));
-		TestEqual(TEXT("only the user's OpenAI price is left"), Settings->OpenAIModelPricing.Num(), 1);
-		TestFalse(TEXT("o3's 1.2.x price (15/60) dropped"), Settings->OpenAIModelPricing.Contains(EN2COpenAIModel::GPT_o3));
-		TestEqual(TEXT("retired Anthropic prices dropped"), Settings->AnthropicModelPricing.Num(), 0);
-		TestEqual(TEXT("retired Gemini prices dropped"), Settings->GeminiModelPricing.Num(), 0);
-		TestTrue(TEXT("DeepSeek R1 1.2.x price dropped"), !Settings->DeepSeekModelPricing.Contains(EN2CDeepSeekModel::DeepSeek_R1));
-		TestTrue(TEXT("user price for DeepSeek V3 kept"), Settings->DeepSeekModelPricing.Contains(EN2CDeepSeekModel::DeepSeek_V3));
+		const FN2CModelPricing* Flash = Settings->ModelPricing.Find(TEXT("deepseek-flash"));
+		TestTrue(TEXT("user price for DeepSeek V3 kept as deepseek-flash"), Flash && FMath::IsNearlyEqual(Flash->InputCost, 0.2f) && FMath::IsNearlyEqual(Flash->OutputCost, 0.4f));
+		TestEqual(TEXT("only the two user prices are left"), Settings->ModelPricing.Num(), 2);
+		TestFalse(TEXT("o3's 1.2.x price (15/60) dropped"), Settings->ModelPricing.Contains(TEXT("o3")));
 		Settings->Provider = EN2CLLMProvider::OpenAI;
-		Settings->OpenAI_Model = EN2COpenAIModel::GPT_o3;
-		TestFalse(TEXT("o3 now costs the registry price, not 1.2.x's 15"), FMath::IsNearlyEqual(Settings->GetCurrentInputCost(), 15.0f));
+		TestFalse(TEXT("o3 now costs the catalog price, not 1.2.x's 15"), FMath::IsNearlyEqual(Settings->GetCurrentInputCost(), 15.0f));
+		TestTrue(TEXT("o3 costs something"), Settings->GetCurrentInputCost() > 0.0f);
 		Settings->Provider = EN2CLLMProvider::Anthropic;
 
 		// Themes reported, CPU throttle reported because the project shows 1.2.x traces
@@ -201,14 +223,21 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		TestTrue(TEXT("section before kept"), HasLine(Engine, TEXT("GameDefaultMap=/Engine/Maps/Templates/OpenWorld")));
 		TestTrue(TEXT("section after kept"), HasLine(Engine, TEXT("r.DefaultFeature.AutoExposure=False")));
 
-		// DefaultNodeToCode.ini: changed keys rewritten, the rest of the user's lines untouched
+		// DefaultNodeToCode.ini: model IDs written, enum keys removed, the rest of the user's lines untouched
 		const FString Saved = ReadText(SettingsIni);
-		const FString AnthropicName = StaticEnum<EN2CAnthropicModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Anthropic));
-		const FString GeminiName = StaticEnum<EN2CGeminiModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Gemini));
-		TestTrue(TEXT("Anthropic selection saved"), HasLine(Saved, TEXT("AnthropicModel=") + AnthropicName));
-		TestTrue(TEXT("Gemini selection saved"), HasLine(Saved, TEXT("Gemini_Model=") + GeminiName));
+		TestEqual(TEXT("Anthropic ID saved"), IniValue(Saved, TEXT("AnthropicModelId")), FString(N2CDefaultModelIds::Anthropic));
+		TestEqual(TEXT("OpenAI ID saved"), IniValue(Saved, TEXT("OpenAIModelId")), FString(TEXT("o3")));
+		TestEqual(TEXT("Gemini ID saved"), IniValue(Saved, TEXT("GeminiModelId")), FString(N2CDefaultModelIds::Gemini));
+		TestEqual(TEXT("DeepSeek ID saved"), IniValue(Saved, TEXT("DeepSeekModelId")), FString(TEXT("deepseek-flash")));
+		TestEqual(TEXT("DeepSeek thinking saved"), IniValue(Saved, TEXT("DeepSeekReasoningEffort")), FString(TEXT("high")));
+		TestTrue(TEXT("prices saved by ID"), IniValue(Saved, TEXT("ModelPricing")).Contains(TEXT("gpt-4.1")) && IniValue(Saved, TEXT("ModelPricing")).Contains(TEXT("deepseek-flash")));
 		TestTrue(TEXT("version saved"), HasLine(Saved, FString::Printf(TEXT("SettingsVersion=%d"), UN2CSettings::CurrentSettingsVersion)));
-		TestTrue(TEXT("kept OpenAI selection untouched"), HasLine(Saved, TEXT("OpenAI_Model=GPT_o3")));
+		for (const TCHAR* Old : { TEXT("AnthropicModel"), TEXT("OpenAI_Model"), TEXT("Gemini_Model"), TEXT("DeepSeekModel"),
+			TEXT("OpenAIModelPricing"), TEXT("AnthropicModelPricing"), TEXT("GeminiModelPricing"), TEXT("DeepSeekModelPricing") })
+		{
+			TestFalse(FString::Printf(TEXT("%s removed"), Old), HasKey(Saved, Old));
+			TestTrue(FString::Printf(TEXT("%s reported as removed"), Old), First.RemovedLegacyKeys.Contains(Old));
+		}
 		TestTrue(TEXT("other settings untouched"), HasLine(Saved, TEXT("TargetLanguage=Python")) && HasLine(Saved, TEXT("OllamaModel=\"qwen2.5-coder:32b\"")));
 		TestTrue(TEXT("theme keys left for the user"), HasKey(Saved, TEXT("CPPThemes")) && HasKey(Saved, TEXT("PythonThemes")));
 		TestFalse(TEXT("no value names the removed model"), Saved.Contains(TEXT("Gemini_2_5_ProExp")));
@@ -220,16 +249,146 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		UN2CSettings* Reloaded = LoadSettings();
 		if (!TestNotNull(TEXT("settings reloaded"), Reloaded)) { return; }
 		TestEqual(TEXT("no retired selection left"), Reloaded->MigrateRetiredModelSelections(), 0);
+		TestFalse(TEXT("no model ID conversion on the second load"), Reloaded->MigrateModelSelectionsToIds(SettingsIni).bRan);
 		const FN2CLegacyMigrationReport Second = Reloaded->MigrateLegacy12Settings(Targets());
 		TestFalse(TEXT("one-time steps skipped"), Second.bRanLegacySteps);
+		TestFalse(TEXT("conversion skipped"), Second.ModelIds.bRan);
 		TestEqual(TEXT("nothing written"), Second.PersistedProperties.Num(), 0);
 		TestEqual(TEXT("nothing reset"), Second.ResetEnumValues.Num(), 0);
-		TestEqual(TEXT("Anthropic loads as the default"), Reloaded->AnthropicModel, N2CDefaultModels::Anthropic);
-		TestEqual(TEXT("Gemini loads as the default"), Reloaded->Gemini_Model, N2CDefaultModels::Gemini);
-		TestEqual(TEXT("user price still there"), Reloaded->OpenAIModelPricing.Num(), 1);
+		TestEqual(TEXT("Anthropic loads as the default"), Reloaded->AnthropicModelId, FString(N2CDefaultModelIds::Anthropic));
+		TestEqual(TEXT("o3 loads"), Reloaded->OpenAIModelId, FString(TEXT("o3")));
+		TestEqual(TEXT("DeepSeek thinking loads"), Reloaded->DeepSeekReasoningEffort, FString(TEXT("high")));
+		TestEqual(TEXT("user prices still there"), Reloaded->ModelPricing.Num(), 2);
 		TestEqual(TEXT("Ollama context stays at the server default"), Reloaded->OllamaConfig.NumCtx, 0);
 		TestEqual(TEXT("settings file unchanged"), ReadText(SettingsIni), SettingsBefore);
 		TestEqual(TEXT("engine file unchanged"), ReadText(EngineIni), EngineBefore);
+	});
+
+	It(TEXT("converts saved enum selections and a price override to model IDs once (card 0129)"), [this]()
+	{
+		// A config saved by a 2.0 build before the model catalog took over selection (no 1.2.x traces)
+		WriteFixture(FString::Printf(TEXT("[%s]\n"), *UN2CSettings::StaticClass()->GetPathName()) + TEXT(
+			"Provider=Anthropic\n"
+			"AnthropicModel=Claude4_5_Sonnet\n"
+			"OpenAI_Model=GPT_5\n"
+			"Gemini_Model=Gemini_2_5_Flash\n"
+			"DeepSeekModel=DeepSeek_R1\n"
+			"AnthropicModelPricing=((Claude4_5_Sonnet, (InputCost=2.500000,OutputCost=12.500000)))\n"
+			"TargetLanguage=Cpp\n"), TEXT("[/Script/EngineSettings.GameMapsSettings]\n"));
+		UN2CSettings* Settings = LoadSettings();
+		if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
+
+		AddExpectedMessage(TEXT("no longer served by its provider"), EAutomationExpectedMessageFlags::Contains, 1);
+		const FN2CLegacyMigrationReport First = Settings->MigrateLegacy12Settings(Targets(true));
+		TestTrue(TEXT("converted"), First.ModelIds.bRan);
+		TestTrue(TEXT("version 4 stamped"), First.bStampedVersion);
+
+		TestEqual(TEXT("AnthropicModelId"), Settings->AnthropicModelId, FString(TEXT("claude-sonnet-4-5-20250929")));
+		TestEqual(TEXT("OpenAIModelId"), Settings->OpenAIModelId, FString(TEXT("gpt-5")));
+		TestEqual(TEXT("GeminiModelId (Gemini 2.5 Flash Preview is retired: the default)"), Settings->GeminiModelId, FString(N2CDefaultModelIds::Gemini));
+		TestEqual(TEXT("DeepSeekModelId"), Settings->DeepSeekModelId, FString(TEXT("deepseek-flash")));
+		TestEqual(TEXT("DeepSeekReasoningEffort"), Settings->DeepSeekReasoningEffort, FString(TEXT("high")));
+		const FN2CModelPricing* Sonnet = Settings->ModelPricing.Find(TEXT("claude-sonnet-4-5-20250929"));
+		TestTrue(TEXT("price override kept under the model ID"), Sonnet && FMath::IsNearlyEqual(Sonnet->InputCost, 2.5f) && FMath::IsNearlyEqual(Sonnet->OutputCost, 12.5f));
+		TestEqual(TEXT("the override is the current cost"), Settings->GetCurrentInputCost(), 2.5f);
+
+		const FString Saved = ReadText(SettingsIni);
+		TestEqual(TEXT("ini AnthropicModelId"), IniValue(Saved, TEXT("AnthropicModelId")), FString(TEXT("claude-sonnet-4-5-20250929")));
+		TestEqual(TEXT("ini OpenAIModelId"), IniValue(Saved, TEXT("OpenAIModelId")), FString(TEXT("gpt-5")));
+		TestTrue(TEXT("ini ModelPricing keyed by ID"), IniValue(Saved, TEXT("ModelPricing")).Contains(TEXT("claude-sonnet-4-5-20250929")));
+		TestFalse(TEXT("ini AnthropicModel removed"), HasKey(Saved, TEXT("AnthropicModel")));
+		TestFalse(TEXT("ini AnthropicModelPricing removed"), HasKey(Saved, TEXT("AnthropicModelPricing")));
+		TestTrue(TEXT("other keys kept"), HasLine(Saved, TEXT("TargetLanguage=Cpp")));
+
+		// Second load: the upgrade does not run again and the values come from the new keys
+		const FString Before = ReadText(SettingsIni);
+		UN2CSettings* Reloaded = LoadSettings();
+		if (!TestNotNull(TEXT("settings reloaded"), Reloaded)) { return; }
+		const FN2CLegacyMigrationReport Second = Reloaded->MigrateLegacy12Settings(Targets(true));
+		TestFalse(TEXT("no second conversion"), Second.ModelIds.bRan);
+		TestEqual(TEXT("nothing written"), Second.PersistedProperties.Num(), 0);
+		TestEqual(TEXT("file unchanged"), ReadText(SettingsIni), Before);
+		TestEqual(TEXT("AnthropicModelId loads"), Reloaded->AnthropicModelId, FString(TEXT("claude-sonnet-4-5-20250929")));
+		TestEqual(TEXT("price loads"), Reloaded->ModelPricing.Num(), 1);
+
+		// Gemini costs its catalog price (GetCurrentInputCost used to return 0 for every Gemini model)
+		Reloaded->Provider = EN2CLLMProvider::Gemini;
+		const FN2CModelMetadata* Gemini = FN2CModelCatalog::Get().Find(TEXT("gemini"), N2CDefaultModelIds::Gemini);
+		if (TestNotNull(TEXT("Gemini default row"), Gemini))
+		{
+			TestTrue(TEXT("Gemini input cost is non-zero"), Reloaded->GetCurrentInputCost() > 0.0f);
+			TestEqual(TEXT("Gemini input cost is the catalog price"), Reloaded->GetCurrentInputCost(), Gemini->InputCostPer1M);
+			TestEqual(TEXT("Gemini output cost is the catalog price"), Reloaded->GetCurrentOutputCost(), Gemini->OutputCostPer1M);
+		}
+	});
+
+	It(TEXT("keeps a saved model the catalog does not list as a custom model ID with a warning"), [this]()
+	{
+		// The shipped catalog without its gpt-5 row: GPT_5 is still an enumerator, but no row names it
+		FString Json;
+		TestTrue(TEXT("bundled catalog read"), FFileHelper::LoadFileToString(Json, *FN2CModelCatalog::GetBundledPath()));
+		TSharedPtr<FJsonObject> Root;
+		TestTrue(TEXT("bundled catalog parses"), FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Root) && Root.IsValid());
+		if (!Root.IsValid()) { return; }
+		TArray<TSharedPtr<FJsonValue>> Models = Root->GetArrayField(TEXT("models"));
+		Models.RemoveAll([](const TSharedPtr<FJsonValue>& Value) { return Value->AsObject()->GetStringField(TEXT("id")) == TEXT("gpt-5"); });
+		Root->SetArrayField(TEXT("models"), Models);
+		FString Trimmed;
+		FJsonSerializer::Serialize(Root.ToSharedRef(), TJsonWriterFactory<>::Create(&Trimmed));
+		if (!TestTrue(TEXT("trimmed catalog loads"), FN2CModelCatalog::Get().LoadFromString(Trimmed, TEXT("test without gpt-5")))) { return; }
+
+		WriteFixture(FString::Printf(TEXT("[%s]\nSettingsVersion=3\nProvider=OpenAI\nOpenAI_Model=GPT_5\n"), *UN2CSettings::StaticClass()->GetPathName()),
+			TEXT("[/Script/EngineSettings.GameMapsSettings]\n"));
+		UN2CSettings* Settings = LoadSettings();
+		if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
+
+		AddExpectedMessage(TEXT("is not in the model catalog"), EAutomationExpectedMessageFlags::Contains, 1);
+		const FN2CLegacyMigrationReport Report = Settings->MigrateLegacy12Settings(Targets(true));
+		TestEqual(TEXT("one custom ID"), Report.ModelIds.Custom.Num(), 1);
+		TestEqual(TEXT("kept as the Custom Model ID"), Settings->OpenAICustomModelId, FString(TEXT("gpt-5")));
+		TestEqual(TEXT("not reset: requests send gpt-5"), Settings->GetActiveModelForProvider(EN2CLLMProvider::OpenAI), FString(TEXT("gpt-5")));
+		TestEqual(TEXT("Model left at the default"), Settings->OpenAIModelId, FString(N2CDefaultModelIds::OpenAI));
+		const FString Saved = ReadText(SettingsIni);
+		TestEqual(TEXT("custom ID saved"), IniValue(Saved, TEXT("OpenAICustomModelId")), FString(TEXT("gpt-5")));
+		TestFalse(TEXT("old key removed"), HasKey(Saved, TEXT("OpenAI_Model")));
+		TestEqual(TEXT("a custom model has no catalog price"), Settings->GetCurrentInputCost(), 0.0f);
+	});
+
+	It(TEXT("keeps saved selections and prices unconverted on disk while the catalog file is missing"), [this]()
+	{
+		N2CTest::FScratchDir Dir(TEXT("N2CLegacyMigrationCatalog"));
+		AddExpectedError(TEXT("could not be read"), EAutomationExpectedErrorFlags::Contains, 1);
+		TestFalse(TEXT("missing catalog does not load"), FN2CModelCatalog::Get().LoadFromFile(Dir / TEXT("missing.json")));
+		TestTrue(TEXT("fallback"), FN2CModelCatalog::Get().IsFallback());
+
+		const FString Settings = FString::Printf(TEXT("[%s]\nSettingsVersion=3\nProvider=OpenAI\nOpenAI_Model=GPT_6_Astra\nDeepSeekModel=DeepSeek_V3\n")
+			TEXT("OpenAIModelPricing=((GPT_6_Astra, (InputCost=11.000000,OutputCost=55.000000)))\n"), *UN2CSettings::StaticClass()->GetPathName());
+		WriteFixture(Settings, TEXT("[/Script/EngineSettings.GameMapsSettings]\n"));
+		UN2CSettings* Loaded = LoadSettings();
+		if (!TestNotNull(TEXT("settings loaded"), Loaded)) { return; }
+
+		const FN2CLegacyMigrationReport Report = Loaded->MigrateLegacy12Settings(Targets(true));
+		TestTrue(TEXT("deferred"), Report.ModelIds.bDeferred);
+		TestFalse(TEXT("no version stamped"), Report.bStampedVersion);
+		TestEqual(TEXT("nothing written"), Report.PersistedProperties.Num(), 0);
+		TestEqual(TEXT("settings file unchanged"), ReadText(SettingsIni), Settings);
+		TestEqual(TEXT("version stays below 4"), Loaded->SettingsVersion, 3);
+
+		// In memory the selection and price still apply, by the enumerators' model IDs
+		TestEqual(TEXT("GPT-6 Astra still selected"), Loaded->GetActiveModelForProvider(EN2CLLMProvider::OpenAI), FString(TEXT("gpt-6-astra")));
+		TestEqual(TEXT("DeepSeek V3 still thinking off"), Loaded->GetActiveReasoningEffortForProvider(EN2CLLMProvider::DeepSeek), FString(TEXT("none")));
+		TestEqual(TEXT("price kept"), Loaded->GetCurrentInputCost(), 11.0f);
+
+		// With the catalog back, the next start converts and saves
+		FN2CModelCatalog::Get().ReloadBundled();
+		UN2CSettings* Next = LoadSettings();
+		if (!TestNotNull(TEXT("settings reloaded"), Next)) { return; }
+		const FN2CLegacyMigrationReport After = Next->MigrateLegacy12Settings(Targets(true));
+		TestTrue(TEXT("converted once the catalog loads"), After.ModelIds.bRan && !After.ModelIds.bDeferred && After.bStampedVersion);
+		const FString Saved = ReadText(SettingsIni);
+		TestEqual(TEXT("OpenAIModelId saved"), IniValue(Saved, TEXT("OpenAIModelId")), FString(TEXT("gpt-6-astra")));
+		TestEqual(TEXT("DeepSeek thinking saved"), IniValue(Saved, TEXT("DeepSeekReasoningEffort")), FString(TEXT("none")));
+		TestTrue(TEXT("price saved by ID"), IniValue(Saved, TEXT("ModelPricing")).Contains(TEXT("gpt-6-astra")));
 	});
 
 	It(TEXT("keeps HTTP timeouts and a CPU-throttle setting it cannot attribute to 1.2.x"), [this]()
@@ -251,9 +410,8 @@ void FN2CLegacySettingsMigrationSpec::Define()
 
 	It(TEXT("leaves a config with no 1.2.x traces unwritten"), [this]()
 	{
-		const FString Settings = FString::Printf(TEXT("[%s]\nProvider=Anthropic\nAnthropicModel=%s\n"),
-			*UN2CSettings::StaticClass()->GetPathName(),
-			*StaticEnum<EN2CAnthropicModel>()->GetNameStringByValue(static_cast<int64>(N2CDefaultModels::Anthropic)));
+		const FString Settings = FString::Printf(TEXT("[%s]\nProvider=Anthropic\nAnthropicModelId=%s\n"),
+			*UN2CSettings::StaticClass()->GetPathName(), N2CDefaultModelIds::Anthropic);
 		const FString Engine = TEXT("[/Script/EngineSettings.GameMapsSettings]\nGameDefaultMap=/Engine/Maps/Templates/OpenWorld\n");
 		WriteFixture(Settings, Engine);
 		UN2CSettings* Loaded = LoadSettings();
@@ -262,6 +420,7 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		// Throttling off with nothing from 1.2.x in the project: not ours to mention
 		const FN2CLegacyMigrationReport Report = Loaded->MigrateLegacy12Settings(Targets(false));
 		TestTrue(TEXT("checks ran"), Report.bRanLegacySteps);
+		TestFalse(TEXT("nothing to convert"), Report.ModelIds.bRan);
 		TestFalse(TEXT("no version stamped"), Report.bStampedVersion);
 		TestFalse(TEXT("no throttle notice"), Report.bReportedThrottle);
 		TestEqual(TEXT("nothing written"), Report.PersistedProperties.Num(), 0);

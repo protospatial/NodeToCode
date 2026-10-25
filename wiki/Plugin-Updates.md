@@ -38,9 +38,10 @@ says what it did in the **Output Log** (category **LogNodeToCode**). The next st
 
 | What 1.2.x left | What 2.0 does |
 |---|---|
+| A model selection | Saved again as the model's ID (**Model**), for example `gpt-4.1`; DeepSeek R1 and V3 become `deepseek-flash` with **Thinking** `high` or `none`. The old entries are removed from `Config/DefaultNodeToCode.ini` |
 | A model 2.0 no longer offers (every 1.2.x Claude model, the older OpenAI and Gemini models) | Selects the provider's current default and saves it to `Config/DefaultNodeToCode.ini`, with one warning |
 | A value 2.0 does not have (the Gemini 2.5 Pro Experimental selection, a price list naming it) | Uses the 2.0 value, saves it, and names the old value in a warning |
-| Pricing entries for retired models, or still at the 1.2.x prices | Removes them so current prices apply; prices you entered for current models stay |
+| Pricing entries for retired models, or still at the 1.2.x prices | Removes them so current prices apply; prices you entered for current models move to **Model Price Overrides**, under the model's ID |
 | Custom code editor themes per language | Not used: 2.0 has one theme for every language, under **Project Settings > Plugins > Node to Code > Theming > Code Editor Theme**. A warning names the old entries, which stay in `Config/DefaultNodeToCode.ini` so you can copy the colours |
 | `HttpConnectionTimeout=300` and `HttpActivityTimeout=3600` under `[HTTP]` in `Config/DefaultEngine.ini` | Removes these two lines; other values there are yours and stay. NodeToCode 2.0 sets its timeouts per request |
 | **Use Less CPU when in Background** turned off | Leaves it as it is, since it cannot tell whether 1.2.x or you turned it off, and says so once. Turn it back on in **Editor Preferences > General > Performance** if you want it |

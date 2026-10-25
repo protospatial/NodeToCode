@@ -10,9 +10,11 @@ import unreal
 OUT = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_saved_dir()), 'n2c_migration_dump.json')
 NEVER = unreal.PropertyAccessChangeNotifyMode.NEVER
 
-SETTINGS = ['provider', 'anthropic_model', 'open_ai_model', 'gemini_model', 'deep_seek_model', 'ollama_config',
+SETTINGS = ['provider', 'anthropic_model_id', 'open_ai_model_id', 'gemini_model_id', 'deep_seek_model_id',
+            'deep_seek_reasoning_effort', 'anthropic_custom_model_id', 'open_ai_custom_model_id',
+            'gemini_custom_model_id', 'deep_seek_custom_model_id', 'ollama_config',
             'ollama_model', 'lm_studio_model', 'lm_studio_endpoint', 'lm_studio_prepended_model_command',
-            'open_ai_model_pricing', 'anthropic_model_pricing', 'gemini_model_pricing', 'deep_seek_model_pricing',
+            'model_pricing',
             'target_language', 'translation_depth', 'min_severity', 'estimated_reference_tokens',
             'reference_source_file_paths', 'custom_translation_output_directory', 'anthropic_max_output_tokens',
             'open_ai_max_output_tokens', 'gemini_max_output_tokens', 'deep_seek_max_output_tokens',
@@ -61,20 +63,18 @@ try:
 except Exception as e:  # noqa: BLE001
     out['errors'].append('theme/ui: %s' % e)
 
-# Pricing in effect (map entry if there is one, else the model registry), read with notify Never so nothing is saved;
-# the selection is put back afterwards
-saved = {p: s.get_editor_property(p) for p in ('provider', 'open_ai_model', 'deep_seek_model', 'anthropic_model', 'gemini_model')}
-probe = [('OpenAI', 'open_ai_model', unreal.N2COpenAIModel, m) for m in ('GPT_o3', 'GPT_4_1', 'GPT4o_2024_08_06', 'GPT4o_Mini_2024_07_18')]
-probe += [('DeepSeek', 'deep_seek_model', unreal.N2CDeepSeekModel, m) for m in ('DeepSeek_R1', 'DeepSeek_V3')]
-probe += [('Anthropic', 'anthropic_model', unreal.N2CAnthropicModel, m) for m in ('Claude3_5_Haiku', 'Claude5_5_Sonnet')]
-probe += [('Gemini', 'gemini_model', unreal.N2CGeminiModel, m) for m in ('Gemini_Flash_2_0', 'Gemini_3_8_Flash')]
+# Pricing in effect (Model Price Overrides entry if there is one, else the model catalog) per model ID, read with
+# notify Never so nothing is saved; the selection is put back afterwards
+ID_PROPS = ('provider', 'open_ai_model_id', 'deep_seek_model_id', 'anthropic_model_id', 'gemini_model_id')
+saved = {p: s.get_editor_property(p) for p in ID_PROPS}
+probe = [('OpenAI', 'open_ai_model_id', m) for m in ('o3', 'gpt-4.1', 'gpt-4o-2024-08-06', 'gpt-4o-mini-2024-07-18')]
+probe += [('DeepSeek', 'deep_seek_model_id', 'deepseek-flash')]
+probe += [('Anthropic', 'anthropic_model_id', m) for m in ('claude-sonnet-5-5',)]
+probe += [('Gemini', 'gemini_model_id', m) for m in ('gemini-3.8-flash',)]
 try:
-    for provider, prop, cls, model in probe:
-        value = enum(cls, model)
-        if value is None:
-            continue
+    for provider, prop, model in probe:
         s.set_editor_property('provider', enum(unreal.N2CLLMProvider, provider), NEVER)
-        s.set_editor_property(prop, value, NEVER)
+        s.set_editor_property(prop, model, NEVER)
         out['costs'][model] = [round(s.get_current_input_cost(), 6), round(s.get_current_output_cost(), 6)]
 finally:
     for p, v in saved.items():

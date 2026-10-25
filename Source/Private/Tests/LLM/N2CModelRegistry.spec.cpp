@@ -223,7 +223,9 @@ void FN2CModelRegistrySpec::Define()
 		{
 			UN2CSettings* Settings = NewObject<UN2CSettings>(GetTransientPackage());
 			FN2CLLMConfig Config;
-			Settings->DeepSeekModel = EN2CDeepSeekModel::DeepSeek_V3;
+			Settings->DeepSeekModelId = TEXT("deepseek-flash");
+			Settings->DeepSeekReasoningEffort = TEXT("none");
+			Settings->DeepSeekCustomModelId.Reset();
 			Settings->ResolveRequestModel(EN2CLLMProvider::DeepSeek, FString(), Config);
 			TestEqual(TEXT("V3 selected: model"), Config.Model, FString(TEXT("deepseek-flash")));
 			TestEqual(TEXT("V3 selected: thinking off"), Config.ReasoningEffort, FString(TEXT("none")));
@@ -242,23 +244,21 @@ void FN2CModelRegistrySpec::Define()
 
 	Describe(TEXT("Migration"), [this]()
 	{
-		It(TEXT("loads a config that saved retired models as the current defaults"), [this]()
+		It(TEXT("moves a selected model ID the provider retired to the current default"), [this]()
 		{
-			UN2CSettings* Settings = LoadSettingsFromIni(
-				TEXT("AnthropicModel=Claude3_7_Sonnet\nGemini_Model=Gemini_2_5_Flash\nOpenAI_Model=GPT_o4_mini"));
+			UN2CSettings* Settings = LoadSettingsFromIni(TEXT("SettingsVersion=4\n")
+				TEXT("AnthropicModelId=claude-3-7-sonnet-20250219\nGeminiModelId=gemini-2.5-flash-preview-05-20\nOpenAIModelId=o4-mini"));
 			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
 
-			// The retired enum names still resolve, so the saved values are read rather than silently reset
-			TestEqual(TEXT("Claude3_7_Sonnet still loads"), Settings->AnthropicModel, EN2CAnthropicModel::Claude3_7_Sonnet);
-			TestEqual(TEXT("Gemini_2_5_Flash still loads"), Settings->Gemini_Model, EN2CGeminiModel::Gemini_2_5_Flash);
-			TestEqual(TEXT("GPT_o4_mini still loads"), Settings->OpenAI_Model, EN2COpenAIModel::GPT_o4_mini);
+			// A string ID loads as saved; the catalog's retired rows say it no longer works
+			TestEqual(TEXT("retired Anthropic ID loads as saved"), Settings->AnthropicModelId, FString(TEXT("claude-3-7-sonnet-20250219")));
 
 			AddExpectedMessage(TEXT("no longer served by its provider"), EAutomationExpectedMessageFlags::Contains, 1);
 			TestEqual(TEXT("three selections migrated"), Settings->MigrateRetiredModelSelections(), 3);
-			TestEqual(TEXT("Anthropic moved to the default"), Settings->AnthropicModel, N2CDefaultModels::Anthropic);
-			TestEqual(TEXT("Gemini moved to the default"), Settings->Gemini_Model, N2CDefaultModels::Gemini);
-			TestEqual(TEXT("OpenAI moved to the default"), Settings->OpenAI_Model, N2CDefaultModels::OpenAI);
-			TestEqual(TEXT("active Anthropic model ID"), FN2CLLMModelUtils::GetAnthropicModelValue(Settings->AnthropicModel), FString(TEXT("claude-sonnet-5-5")));
+			TestEqual(TEXT("Anthropic moved to the default"), Settings->AnthropicModelId, FString(N2CDefaultModelIds::Anthropic));
+			TestEqual(TEXT("Gemini moved to the default"), Settings->GeminiModelId, FString(N2CDefaultModelIds::Gemini));
+			TestEqual(TEXT("OpenAI moved to the default"), Settings->OpenAIModelId, FString(N2CDefaultModelIds::OpenAI));
+			TestEqual(TEXT("active Anthropic model ID"), Settings->GetActiveModelForProvider(EN2CLLMProvider::Anthropic), FString(TEXT("claude-sonnet-5-5")));
 		});
 
 		It(TEXT("migrates when the config is reloaded as the plugin config reaches the settings at startup"), [this]()
@@ -266,34 +266,37 @@ void FN2CModelRegistrySpec::Define()
 			// Reloading fires PostReloadConfig, which must run the migration without an explicit call
 			AddExpectedMessage(TEXT("no longer served by its provider"), EAutomationExpectedMessageFlags::Contains, 1);
 			UN2CSettings* Settings = LoadSettingsFromIni(
-				TEXT("AnthropicModel=Claude4_Sonnet\nGemini_Model=Gemini_3_Pro_Preview"), UE::LCPF_ReloadingConfigData);
+				TEXT("SettingsVersion=4\nAnthropicModelId=claude-sonnet-4-20250514\nGeminiModelId=gemini-3-pro-preview"), UE::LCPF_ReloadingConfigData);
 			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
-			TestEqual(TEXT("Anthropic moved to the default on reload"), Settings->AnthropicModel, N2CDefaultModels::Anthropic);
-			TestEqual(TEXT("Gemini moved to the default on reload"), Settings->Gemini_Model, N2CDefaultModels::Gemini);
+			TestEqual(TEXT("Anthropic moved to the default on reload"), Settings->AnthropicModelId, FString(N2CDefaultModelIds::Anthropic));
+			TestEqual(TEXT("Gemini moved to the default on reload"), Settings->GeminiModelId, FString(N2CDefaultModelIds::Gemini));
 		});
 
-		It(TEXT("leaves live selections alone, deprecated ones included"), [this]()
+		It(TEXT("leaves live selections alone, deprecated and unlisted ones included"), [this]()
 		{
-			UN2CSettings* Settings = LoadSettingsFromIni(
-				TEXT("AnthropicModel=Claude4_5_Sonnet\nGemini_Model=Gemini_3_Flash_Preview\nOpenAI_Model=GPT_o3\nDeepSeekModel=DeepSeek_V3"));
+			UN2CSettings* Settings = LoadSettingsFromIni(TEXT("SettingsVersion=4\n")
+				TEXT("AnthropicModelId=claude-sonnet-4-5-20250929\nGeminiModelId=gemini-3-flash-preview\nOpenAIModelId=o3\n")
+				TEXT("DeepSeekModelId=deepseek-flash\nDeepSeekReasoningEffort=none\nGeminiCustomModelId=gemini-9-not-listed"));
 			if (!TestNotNull(TEXT("settings loaded"), Settings)) { return; }
 			TestEqual(TEXT("nothing migrated"), Settings->MigrateRetiredModelSelections(), 0);
-			TestEqual(TEXT("Sonnet 4.5 kept until it retires"), Settings->AnthropicModel, EN2CAnthropicModel::Claude4_5_Sonnet);
-			TestEqual(TEXT("Gemini 3 Flash Preview kept"), Settings->Gemini_Model, EN2CGeminiModel::Gemini_3_Flash_Preview);
-			TestEqual(TEXT("o3 kept until it shuts down"), Settings->OpenAI_Model, EN2COpenAIModel::GPT_o3);
-			TestEqual(TEXT("DeepSeek V3 kept"), Settings->DeepSeekModel, EN2CDeepSeekModel::DeepSeek_V3);
+			TestEqual(TEXT("Sonnet 4.5 kept until it retires"), Settings->AnthropicModelId, FString(TEXT("claude-sonnet-4-5-20250929")));
+			TestEqual(TEXT("o3 kept until it shuts down"), Settings->OpenAIModelId, FString(TEXT("o3")));
+			TestEqual(TEXT("DeepSeek thinking off kept"), Settings->GetActiveReasoningEffortForProvider(EN2CLLMProvider::DeepSeek), FString(TEXT("none")));
+			TestEqual(TEXT("a custom Gemini ID is what requests send"), Settings->GetActiveModelForProvider(EN2CLLMProvider::Gemini), FString(TEXT("gemini-9-not-listed")));
+			TestNull(TEXT("and has no catalog row"), Settings->GetActiveModelMetadataForProvider(EN2CLLMProvider::Gemini));
 		});
 
-		It(TEXT("loads the DeepSeek_R1 and DeepSeek_V3 names saved before the V4 move as live selections"), [this]()
+		It(TEXT("sends deepseek-flash with the thinking mode Thinking names, or the entry's own when it is empty"), [this]()
 		{
-			for (const TCHAR* Name : { TEXT("DeepSeek_R1"), TEXT("DeepSeek_V3") })
+			for (const TCHAR* Effort : { TEXT("high"), TEXT("none"), TEXT("") })
 			{
-				UN2CSettings* Settings = LoadSettingsFromIni(FString::Printf(TEXT("Provider=DeepSeek\nDeepSeekModel=%s"), Name));
+				UN2CSettings* Settings = LoadSettingsFromIni(FString::Printf(
+					TEXT("SettingsVersion=4\nProvider=DeepSeek\nDeepSeekModelId=deepseek-flash\nDeepSeekReasoningEffort=%s"), Effort));
 				if (!TestNotNull(TEXT("settings loaded"), Settings)) { continue; }
-				const UEnum* Enum = StaticEnum<EN2CDeepSeekModel>();
-				TestEqual(FString::Printf(TEXT("%s loads"), Name), Enum->GetNameStringByValue(static_cast<int64>(Settings->DeepSeekModel)), FString(Name));
-				TestEqual(FString::Printf(TEXT("%s not migrated"), Name), Settings->MigrateRetiredModelSelections(), 0);
-				TestEqual(FString::Printf(TEXT("%s sends deepseek-flash"), Name), Settings->GetActiveModel(), FString(TEXT("deepseek-flash")));
+				TestEqual(FString::Printf(TEXT("'%s' not migrated"), Effort), Settings->MigrateRetiredModelSelections(), 0);
+				TestEqual(FString::Printf(TEXT("'%s' sends deepseek-flash"), Effort), Settings->GetActiveModel(), FString(TEXT("deepseek-flash")));
+				TestEqual(FString::Printf(TEXT("'%s' thinking"), Effort), Settings->GetActiveReasoningEffortForProvider(EN2CLLMProvider::DeepSeek),
+					FString(*Effort ? Effort : TEXT("high")));
 			}
 		});
 	});
@@ -366,14 +369,15 @@ void FN2CModelRegistrySpec::Define()
 		{
 			UN2CSettings* Settings = NewObject<UN2CSettings>(GetTransientPackage());
 			Settings->Provider = EN2CLLMProvider::Gemini;
-			Settings->Gemini_Model = N2CDefaultModels::Gemini;
-			Settings->GeminiModelPricing.Empty();
+			Settings->GeminiModelId = N2CDefaultModelIds::Gemini;
+			Settings->GeminiCustomModelId.Reset();
+			Settings->ModelPricing.Empty();
 			const FN2CGeminiPricing Expected = FN2CLLMModelRegistry::Get().GetGeminiPricing(N2CDefaultModels::Gemini);
 			TestTrue(TEXT("registry has a Gemini price"), Expected.InputCost > 0.0f && Expected.OutputCost > 0.0f);
 			TestEqual(TEXT("Gemini input cost"), Settings->GetCurrentInputCost(), Expected.InputCost);
 			TestEqual(TEXT("Gemini output cost"), Settings->GetCurrentOutputCost(), Expected.OutputCost);
 
-			Settings->GeminiModelPricing.Add(N2CDefaultModels::Gemini, FN2CGeminiPricing(9.0f, 19.0f));
+			Settings->ModelPricing.Add(N2CDefaultModelIds::Gemini, FN2CModelPricing(9.0f, 19.0f));
 			TestEqual(TEXT("Gemini input cost override"), Settings->GetCurrentInputCost(), 9.0f);
 			TestEqual(TEXT("Gemini output cost override"), Settings->GetCurrentOutputCost(), 19.0f);
 		});

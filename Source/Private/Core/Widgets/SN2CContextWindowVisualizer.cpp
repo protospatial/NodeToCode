@@ -6,7 +6,7 @@
 #include "Models/N2CStyle.h"
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/N2CDesignTokens.h"
-#include "LLM/N2CLLMModelRegistry.h"
+#include "LLM/N2CModelCatalog.h"
 #include "LLM/N2CLLMModels.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -237,49 +237,11 @@ void SN2CContextWindowVisualizer::PopulateModelOptions()
 	ModelOptions.Empty();
 
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
 
-	switch (Settings->Provider)
+	// The provider's live catalog rows (retired ones are not offered); Ollama and LM Studio have none (text input)
+	for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(Settings->Provider)))
 	{
-	case EN2CLLMProvider::OpenAI:
-		for (const auto& Pair : Registry.GetAllOpenAIModels())
-		{
-			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
-			{
-				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
-			}
-		}
-		break;
-	case EN2CLLMProvider::Anthropic:
-		for (const auto& Pair : Registry.GetAllAnthropicModels())
-		{
-			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
-			{
-				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
-			}
-		}
-		break;
-	case EN2CLLMProvider::Gemini:
-		for (const auto& Pair : Registry.GetAllGeminiModels())
-		{
-			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
-			{
-				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
-			}
-		}
-		break;
-	case EN2CLLMProvider::DeepSeek:
-		for (const auto& Pair : Registry.GetAllDeepSeekModels())
-		{
-			if (!Pair.Value.bIsRetired) // shut down by the provider; kept only so saved settings load
-			{
-				ModelOptions.Add(MakeShared<FString>(Pair.Value.DisplayName));
-			}
-		}
-		break;
-	// Ollama and LM Studio use text input, not dropdown
-	default:
-		break;
+		ModelOptions.Add(MakeShared<FString>(Row->DisplayName));
 	}
 
 	// Refresh combo box if it exists
@@ -395,54 +357,16 @@ void SN2CContextWindowVisualizer::OnModelSelectionChanged(TSharedPtr<FString> Ne
 	}
 
 	UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-	FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
 	const FString& SelectedDisplayName = *NewValue;
 
-	// Find the model enum value by display name
-	switch (Settings->Provider)
+	// The catalog row with that display name sets the model ID (and the DeepSeek thinking mode its entry names)
+	for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(Settings->Provider)))
 	{
-	case EN2CLLMProvider::OpenAI:
-		for (const auto& Pair : Registry.GetAllOpenAIModels())
+		if (Row->DisplayName == SelectedDisplayName)
 		{
-			if (Pair.Value.DisplayName == SelectedDisplayName)
-			{
-				Settings->OpenAI_Model = Pair.Key;
-				break;
-			}
+			Settings->SelectModel(*Row);
+			break;
 		}
-		break;
-	case EN2CLLMProvider::Anthropic:
-		for (const auto& Pair : Registry.GetAllAnthropicModels())
-		{
-			if (Pair.Value.DisplayName == SelectedDisplayName)
-			{
-				Settings->AnthropicModel = Pair.Key;
-				break;
-			}
-		}
-		break;
-	case EN2CLLMProvider::Gemini:
-		for (const auto& Pair : Registry.GetAllGeminiModels())
-		{
-			if (Pair.Value.DisplayName == SelectedDisplayName)
-			{
-				Settings->Gemini_Model = Pair.Key;
-				break;
-			}
-		}
-		break;
-	case EN2CLLMProvider::DeepSeek:
-		for (const auto& Pair : Registry.GetAllDeepSeekModels())
-		{
-			if (Pair.Value.DisplayName == SelectedDisplayName)
-			{
-				Settings->DeepSeekModel = Pair.Key;
-				break;
-			}
-		}
-		break;
-	default:
-		break;
 	}
 
 	// Save and notify

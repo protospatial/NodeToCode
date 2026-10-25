@@ -13,6 +13,8 @@
 #include "Styling/SlateColor.h"
 #include "N2CSettings.generated.h"
 
+struct FN2CModelMetadata;
+
 USTRUCT(BlueprintType)
 struct FN2CUIColors
 {
@@ -198,6 +200,69 @@ struct FN2CCodeEditorThemes
     }
 };
 
+/**
+ * The four enum-keyed price maps settings saved before version 4 (OpenAIModelPricing, AnthropicModelPricing,
+ * GeminiModelPricing, DeepSeekModelPricing), read from the config by UN2CSettings::ReadLegacyPricingMaps with the
+ * engine's own text import so the saved format is parsed exactly as LoadConfig parsed it. Not a setting.
+ */
+USTRUCT()
+struct NODETOCODE_API FN2CLegacyPricingMaps
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIModelPricing;
+
+    UPROPERTY()
+    TMap<EN2CAnthropicModel, FN2CAnthropicPricing> AnthropicModelPricing;
+
+    UPROPERTY()
+    TMap<EN2CGeminiModel, FN2CGeminiPricing> GeminiModelPricing;
+
+    UPROPERTY()
+    TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> DeepSeekModelPricing;
+};
+
+/** What UN2CSettings::MigrateModelSelectionsToIds found and did; every list holds one readable entry per item */
+struct NODETOCODE_API FN2CModelIdMigrationReport
+{
+    /** Selections converted to their catalog ID ("AnthropicModel=Claude4_5_Sonnet -> claude-sonnet-4-5-20250929") */
+    TArray<FString> Converted;
+
+    /** Retired selections moved to the provider default ("OpenAI_Model=GPT_o1 (o1, shut down 2026-10-23) -> gpt-6.1-sol") */
+    TArray<FString> Retired;
+
+    /** Names this build's enum lacks, reset to the provider default ("Gemini_Model=Gemini_2_5_ProExp -> gemini-3.8-flash") */
+    TArray<FString> Removed;
+
+    /** Names the catalog does not list, kept as the Custom Model ID ("OpenAI_Model=GPT_5 -> custom gpt-5") */
+    TArray<FString> Custom;
+
+    /** Prices re-keyed by model ID ("AnthropicModelPricing[Claude4_5_Sonnet] -> claude-sonnet-4-5-20250929 1/2") */
+    TArray<FString> Prices;
+
+    /** Prices dropped: the 1.2.x cleanup (below version 3), retired models, or a second entry for the same ID */
+    TArray<FString> DroppedPrices;
+
+    /** Price maps the engine could not import (they name a value this build lacks); their entries are lost */
+    TArray<FString> UnreadablePriceMaps;
+
+    /** New properties the conversion set and that must be saved (AnthropicModelId, ModelPricing, ...) */
+    TArray<FName> ChangedProperties;
+
+    /** Old keys found in the config (AnthropicModel, OpenAIModelPricing, ...), to remove once the new ones are saved */
+    TArray<FString> LegacyKeys;
+
+    /** True when a saved model name is one only NodeToCode 1.2.x wrote (a trace of 1.2.x in the project) */
+    bool bFound12xNames = false;
+
+    /** True when the conversion ran (SettingsVersion below 4 and an old key present) */
+    bool bRan = false;
+
+    /** True when the catalog file did not load: converted in memory only, the caller must not save or stamp */
+    bool bDeferred = false;
+};
+
 /** Where UN2CSettings::MigrateLegacy12Settings reads and writes; the editor uses ForProject(), tests temp files */
 struct NODETOCODE_API FN2CLegacyMigrationTargets
 {
@@ -241,6 +306,12 @@ struct NODETOCODE_API FN2CLegacyMigrationReport
     /** "[HTTP] Key=Value" entries removed from EngineIni */
     TArray<FString> RemovedEngineKeys;
 
+    /** The version 4 conversion of enum model selections and price maps to string IDs (MigrateModelSelectionsToIds) */
+    FN2CModelIdMigrationReport ModelIds;
+
+    /** Keys of properties 2.0 no longer has that were removed from WriteIni (AnthropicModel, OpenAIModelPricing, ...) */
+    TArray<FString> RemovedLegacyKeys;
+
     /** True when the one-time 1.2.x steps ran (SettingsVersion was below 3) */
     bool bRanLegacySteps = false;
 
@@ -273,9 +344,16 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Provider")
     EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
 
-    /** Anthropic Model Selection - Sonnet 5.5 recommended for the best quality/cost balance, Opus 5.5 for the most capability, Haiku 5.5 for the lowest cost */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic")
-    EN2CAnthropicModel AnthropicModel = N2CDefaultModels::Anthropic;
+    /** Anthropic model ID - claude-sonnet-5-5 recommended for the best quality/cost balance, claude-opus-5-5 for the most capability, claude-haiku-5-5 for the lowest cost */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "Model", GetOptions = "GetAnthropicModelOptions",
+            ToolTip = "Model ID sent to Anthropic, chosen from the model catalog (Content/Data/N2CModelCatalog.json). claude-sonnet-5-5 is recommended for the best quality/cost balance, claude-opus-5-5 for the most capability, claude-haiku-5-5 for the lowest cost. Custom Model ID, when set, is sent instead."))
+    FString AnthropicModelId = N2CDefaultModelIds::Anthropic;
+
+    /** Anthropic model ID sent instead of Model when set (a model the catalog does not list) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "Custom Model ID", ToolTip = "A model ID the catalog does not list (for example a model released after this NodeToCode version). When set it is sent instead of Model, without the catalog's limits and prices (add one under Model Price Overrides to see costs). Leave empty to use Model."))
+    FString AnthropicCustomModelId;
     
     /**
      * Anthropic API key from console.anthropic.com, stored separately in user secrets. NodeToCode needs an API key:
@@ -300,9 +378,16 @@ public:
             ToolTip = "Most output tokens a translation may use. 0 = Auto: sends the model's maximum output, at most 32000 while requests are not streamed (65536 for DeepSeek thinking modes), reduced so the prompt plus the output fits the model's context window (the Messages API requires a value, so one is always sent). Any other value is sent as-is, capped at the model's maximum. Thinking tokens count against it on reasoning models."))
     int32 AnthropicMaxOutputTokens = 0;
 
-    /** OpenAI Model Selection - GPT-6.1 Sol recommended for the best quality/cost balance, GPT-6 Astra for the most capability, GPT-6 Luna for the lowest cost */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI")
-    EN2COpenAIModel OpenAI_Model = N2CDefaultModels::OpenAI;
+    /** OpenAI model ID - gpt-6.1-sol recommended for the best quality/cost balance, gpt-6-astra for the most capability, gpt-6-luna for the lowest cost */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI",
+        meta = (DisplayName = "Model", GetOptions = "GetOpenAIModelOptions",
+            ToolTip = "Model ID sent to OpenAI, chosen from the model catalog (Content/Data/N2CModelCatalog.json). gpt-6.1-sol is recommended for the best quality/cost balance, gpt-6-astra for the most capability, gpt-6-luna for the lowest cost. Custom Model ID, when set, is sent instead."))
+    FString OpenAIModelId = N2CDefaultModelIds::OpenAI;
+
+    /** OpenAI model ID sent instead of Model when set (a model the catalog does not list) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI",
+        meta = (DisplayName = "Custom Model ID", ToolTip = "A model ID the catalog does not list (for example a model released after this NodeToCode version). When set it is sent instead of Model, without the catalog's limits and prices (add one under Model Price Overrides to see costs). Leave empty to use Model."))
+    FString OpenAICustomModelId;
 
     /** OpenAI API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | OpenAI",
@@ -323,9 +408,16 @@ public:
             ToolTip = "Most output tokens a translation may use. 0 = Auto: sends the model's maximum output, at most 32000 while requests are not streamed (65536 for DeepSeek thinking modes), reduced so the prompt plus the output fits the model's context window; sent as max_completion_tokens to reasoning models and as max_output_tokens on the Responses API. Any other value is sent as-is, capped at the model's maximum. Thinking tokens count against it on reasoning models."))
     int32 OpenAIMaxOutputTokens = 0;
 
-    /** Gemini Model Selection - Gemini 3.8 Flash recommended for the best price-performance, Gemini 4 Argon for the most capability, Gemini 3.5 Flash-Lite for the lowest cost */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini")
-    EN2CGeminiModel Gemini_Model = N2CDefaultModels::Gemini;
+    /** Gemini model ID - gemini-3.8-flash recommended for the best price-performance, gemini-4-argon for the most capability, gemini-3.5-flash-lite for the lowest cost */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
+        meta = (DisplayName = "Model", GetOptions = "GetGeminiModelOptions",
+            ToolTip = "Model ID sent to Gemini, chosen from the model catalog (Content/Data/N2CModelCatalog.json). gemini-3.8-flash is recommended for the best price-performance, gemini-4-argon for the most capability, gemini-3.5-flash-lite for the lowest cost. Custom Model ID, when set, is sent instead."))
+    FString GeminiModelId = N2CDefaultModelIds::Gemini;
+
+    /** Gemini model ID sent instead of Model when set (a model the catalog does not list) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
+        meta = (DisplayName = "Custom Model ID", ToolTip = "A model ID the catalog does not list (for example a model released after this NodeToCode version). When set it is sent instead of Model, without the catalog's limits and prices (add one under Model Price Overrides to see costs). Leave empty to use Model."))
+    FString GeminiCustomModelId;
 
     /** Gemini API key from Google AI Studio, stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Gemini",
@@ -346,9 +438,22 @@ public:
             ToolTip = "Most output tokens a translation may use. 0 = Auto: sends the model's maximum output, at most 32000 while requests are not streamed (65536 for DeepSeek thinking modes), reduced so the prompt plus the output fits the model's context window. Any other value is sent as-is, capped at the model's maximum. Thinking tokens count against it on reasoning models."))
     int32 GeminiMaxOutputTokens = 0;
 
-    /** DeepSeek Model Selection - each entry names the model and thinking mode it sends */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek")
-    EN2CDeepSeekModel DeepSeekModel = N2CDefaultModels::DeepSeek;
+    /** DeepSeek model ID - deepseek-flash recommended (Thinking high, or none for the fastest and cheapest), deepseek-v4-pro for the most capability */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek",
+        meta = (DisplayName = "Model", GetOptions = "GetDeepSeekModelOptions",
+            ToolTip = "Model ID sent to DeepSeek, chosen from the model catalog (Content/Data/N2CModelCatalog.json). deepseek-flash is recommended, deepseek-v4-pro is the most capable; Thinking sets the thinking mode. Custom Model ID, when set, is sent instead."))
+    FString DeepSeekModelId = N2CDefaultModelIds::DeepSeek;
+
+    /** DeepSeek thinking mode sent with each request: none (thinking off, JSON output), or low, high or max effort */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek",
+        meta = (DisplayName = "Thinking", GetOptions = "GetDeepSeekReasoningEffortOptions",
+            ToolTip = "Thinking mode sent with each DeepSeek request: none turns thinking off (faster and cheaper, with JSON output); low, high or max turn it on at that reasoning effort. Empty uses the catalog entry's mode for the model."))
+    FString DeepSeekReasoningEffort = N2CDefaultModelIds::DeepSeekReasoningEffort;
+
+    /** DeepSeek model ID sent instead of Model when set (a model the catalog does not list) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek",
+        meta = (DisplayName = "Custom Model ID", ToolTip = "A model ID the catalog does not list (for example a model released after this NodeToCode version). When set it is sent instead of Model, with the Thinking mode above but without the catalog's limits and prices (add one under Model Price Overrides to see costs). Leave empty to use Model."))
+    FString DeepSeekCustomModelId;
     
     /** DeepSeek API Key - Stored separately in user secrets */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | DeepSeek",
@@ -386,8 +491,14 @@ public:
      * 2: per-provider Max Output Tokens (0 = Auto); a LMStudioMaxTokens value saved by the PR #20 build carries over.
      * 3: settings left by NodeToCode 1.2.x cleaned up once at editor start (MigrateLegacy12Settings), and this
      *    version written to the config so it does not run again.
+     * 4: model selections and price overrides stored by string model ID (AnthropicModelId, ..., ModelPricing) instead
+     *    of the model enums (AnthropicModel, ..., AnthropicModelPricing): MigrateModelSelectionsToIds converts a saved
+     *    config, and MigrateLegacy12Settings writes the result once at editor start and removes the old keys.
      */
-    static constexpr int32 CurrentSettingsVersion = 3;
+    static constexpr int32 CurrentSettingsVersion = 4;
+
+    /** The version whose migration stores model selections and prices by string model ID */
+    static constexpr int32 ModelIdSettingsVersion = 4;
     
     /** Ollama Model Selection */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Ollama",
@@ -416,21 +527,14 @@ public:
             ToolTip = "Most output tokens a translation may use. 0 = Auto: no max_tokens is sent, so the server uses the context the prompt leaves (needed for servers with a small window, such as vLLM with max_model_len 16384). Any other value is sent as-is; keep prompt plus this value inside the model's loaded context length."))
     int32 LMStudioMaxOutputTokens = 0;
     
-    /** OpenAI Model Pricing */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | OpenAI", DisplayName = "OpenAI Model Pricing")
-    TMap<EN2COpenAIModel, FN2COpenAIPricing> OpenAIModelPricing;
-
-    /** Anthropic Model Pricing */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | Anthropic")
-    TMap<EN2CAnthropicModel, FN2CAnthropicPricing> AnthropicModelPricing;
-
-    /** Gemini Model Pricing */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | Gemini")
-    TMap<EN2CGeminiModel, FN2CGeminiPricing> GeminiModelPricing;
-
-    /** DeepSeek Model Pricing */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing | DeepSeek")
-    TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> DeepSeekModelPricing;
+    /**
+     * Price overrides per model ID (USD per 1M tokens). A model without an entry costs its catalog price; Ollama and
+     * LM Studio are free. Read by the cost estimates and GetCurrentInputCost / GetCurrentOutputCost.
+     */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Pricing",
+        meta = (DisplayName = "Model Price Overrides", GetKeyOptions = "GetModelPricingKeyOptions",
+            ToolTip = "Price overrides per model ID, in USD per 1M input and output tokens. A model without an entry uses its catalog price (Content/Data/N2CModelCatalog.json); local providers are free."))
+    TMap<FString, FN2CModelPricing> ModelPricing;
     
     /** Target programming language for translation */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation", 
@@ -499,8 +603,45 @@ public:
     /** The API Key Source text for Provider: the saved key, the environment variable it uses, or none */
     static FString DescribeApiKeySource(EN2CLLMProvider Provider);
 
-    /** Get the model for a specific provider */
+    /**
+     * The model ID requests to Provider send: its Custom Model ID when set, else its Model (the provider default when
+     * empty); Ollama and LM Studio their model name.
+     */
     FString GetActiveModelForProvider(EN2CLLMProvider Provider) const;
+
+    /** Catalog row of Provider's selected model (with the DeepSeek thinking mode); null for a model the catalog lacks */
+    const FN2CModelMetadata* GetActiveModelMetadataForProvider(EN2CLLMProvider InProvider) const;
+
+    /** Price per 1M tokens of Provider's selected model: Model Price Overrides entry, else catalog price, else 0 */
+    FN2CModelPricing GetActivePricingForProvider(EN2CLLMProvider InProvider) const;
+
+    /**
+     * Sets InProvider's selected model to a catalog row: Model to its ID, Thinking to its mode (DeepSeek), and clears
+     * the Custom Model ID. Does not save.
+     */
+    void SelectModel(const FN2CModelMetadata& Row);
+
+    /** Names of a cloud provider's Model and Custom Model ID properties (NAME_None for Ollama and LM Studio) */
+    static FName GetModelIdPropertyName(EN2CLLMProvider InProvider);
+    static FName GetCustomModelIdPropertyName(EN2CLLMProvider InProvider);
+
+    /** Options of the Model drop-downs (also callable from Blueprints and Python): the provider's live catalog model IDs, plus the current value when it is not one */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
+    TArray<FString> GetAnthropicModelOptions() const;
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
+    TArray<FString> GetOpenAIModelOptions() const;
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
+    TArray<FString> GetGeminiModelOptions() const;
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
+    TArray<FString> GetDeepSeekModelOptions() const;
+
+    /** Options of DeepSeek Thinking: the levels the catalog lists for the selected model */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
+    TArray<FString> GetDeepSeekReasoningEffortOptions() const;
+
+    /** Key options of Model Price Overrides: every live catalog model ID, the custom model IDs and the keys already set */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
+    TArray<FString> GetModelPricingKeyOptions() const;
 
     /** Thinking control of the selected model's registry entry (see FN2CLLMConfig::ReasoningEffort); empty if none */
     FString GetActiveReasoningEffortForProvider(EN2CLLMProvider InProvider) const;
@@ -552,36 +693,68 @@ public:
     // End UObject Interface
 
     /**
-     * Moves each saved model selection whose model the provider has shut down (registry bIsRetired, or a value
-     * the registry does not know) to that provider's N2CDefaultModels value, and logs one warning naming every
-     * change. Called after the config is loaded (PostInitProperties) and after it is reloaded (PostReloadConfig,
-     * which is how a plugin's config branch reaches the settings object at startup), so a project that saved
-     * AnthropicModel=Claude3_7_Sonnet loads with the current default instead of failing every request.
-     * The config file is not rewritten here; MigrateLegacy12Settings saves the new value once at editor start.
+     * Moves each selected model ID whose catalog row is retired (the provider shut the model down) to that provider's
+     * default model, and logs one warning naming every change. A Custom Model ID and an ID the catalog does not list
+     * are left alone, so a model released after this build keeps working. Called after the config is loaded
+     * (PostInitProperties) and reloaded (PostReloadConfig, which is how a plugin's config branch reaches the settings
+     * object at startup). The config file is not rewritten here; MigrateLegacy12Settings saves the new value once at
+     * editor start.
      * @return the number of selections changed
      */
     int32 MigrateRetiredModelSelections();
+
+    /**
+     * Version 4 migration: converts the model selections and price maps a config saved before version 4 holds as model
+     * enum names (AnthropicModel=Claude4_5_Sonnet, AnthropicModelPricing=((Claude4_5_Sonnet, (...)))) to string model
+     * IDs on this object (AnthropicModelId=claude-sonnet-4-5-20250929, ModelPricing=(("claude-...", (...)))). Reads the
+     * old keys of ConfigFilename through GConfig. Runs only while SettingsVersion is below 4, and converts only into a
+     * new key ConfigFilename does not hold yet, so running it again, or on a converted config, changes nothing.
+     * - A name with a live catalog row (legacy_enum) becomes that row's ID (and, for DeepSeek, its thinking mode).
+     * - A retired row, or a name this build's enum lacks (1.2.3's Gemini_2_5_ProExp), becomes the provider default.
+     * - A name the enum has but the catalog does not list keeps its model ID (the enumerator's UMETA Value) as the
+     *   Custom Model ID, with a warning, instead of being reset.
+     * - Prices are re-keyed by model ID; below version 3 the 1.2.x cleanup (DropLegacyPricing) is applied first, and
+     *   entries for retired models are dropped.
+     * If the catalog file did not load (FN2CModelCatalog::IsFallback), names are converted in memory from the UMETA
+     * Value strings, nothing is reset or dropped, and bDeferred tells the caller not to save, so a broken install
+     * never rewrites the project's config. Warnings and the Info line are logged only for values this call changes
+     * in memory, so loading and the startup save report each conversion once.
+     */
+    FN2CModelIdMigrationReport MigrateModelSelectionsToIds(const FString& ConfigFilename);
+
+    /**
+     * Reads the four enum-keyed price maps saved before version 4 (OpenAIModelPricing, ...) from ConfigFilename. A map
+     * the engine cannot import (it names a value this build's enum lacks) is reported in OutUnreadable and left empty.
+     * @param OutKeys the keys found in the config
+     */
+    static void ReadLegacyPricingMaps(const FString& ConfigFilename, FN2CLegacyPricingMaps& OutMaps, TArray<FString>& OutKeys, TArray<FString>& OutUnreadable);
 
     /**
      * Runs the migrations for every settings version above SettingsVersion. It does not change SettingsVersion,
      * and every step gives the same result when run again on its own output, so it is safe on each load and
      * reload; SettingsVersion moves to CurrentSettingsVersion only on an edit (PreEditChange), so the config is
      * not rewritten on load. Called from PostInitProperties and PostReloadConfig.
+     * @param ConfigFilename config the legacy keys are read from (empty: this class's config)
      * @return the number of values changed
      */
-    int32 MigrateSavedSettings();
+    int32 MigrateSavedSettings(const FString& ConfigFilename = FString());
 
     /**
      * Saves what loading a NodeToCode 1.2.x config changed and cleans up what 1.2.x left behind. The editor calls it
      * once at startup on the class default object (FNodeToCodeModule::StartupModule, not in commandlets).
-     * Every start: a saved enum value that loaded as something else (a retired model moved to the default by
-     *   MigrateRetiredModelSelections, or a name 2.0 does not know, which the engine resets) is written back, so its
-     *   warning is logged once; unknown names get their own warning.
+     * Every start: a saved enum value that loaded as something else (a name 2.0 does not know, which the engine
+     *   resets) and a saved model ID MigrateRetiredModelSelections moved off a retired model are written back, so
+     *   their warnings are logged once; unknown names get their own warning.
+     * Once, while SettingsVersion is below 4 (MigrateModelSelectionsToIds): the model selections and price overrides
+     *   converted from model enum names to model IDs are written and the old keys (AnthropicModel, ...,
+     *   DeepSeekModelPricing) removed from WriteIni; enum names 2.0 lacks are named in the unknown-value warning. Not
+     *   while the model catalog file is missing: then nothing of it is written and the version stays below 4.
      * Once, while SettingsVersion is below 3:
      * - the version 1 and 2 results (Ollama options, LM Studio max tokens) are written, since they stop running once
      *   the version is stamped;
      * - pricing entries for retired or unknown models, and entries still at 1.2.x's built-in price (a Project Settings
-     *   save of any map wrote every price), are dropped so the registry's prices apply; other prices are kept;
+     *   save of any map wrote every price), are dropped so the catalog's prices apply; other prices are kept (done by
+     *   the version 4 conversion before it re-keys the prices);
      * - the 1.2.x per-language theme keys (CPPThemes ... PseudocodeThemes) are reported in one warning: 2.0 draws
      *   every language with CodeEditorTheme and 1.2.x kept the selected theme name in its UI asset, not in the config,
      *   so they cannot be converted; the keys are left in the ini for the user to copy colours from;
@@ -596,11 +769,12 @@ public:
 
     /**
      * Drops pricing entries for retired or unknown models and entries equal to 1.2.x's built-in price for that model
-     * (NodeToCode 1.2.x filled every map with its prices and saved them all), so the model registry's prices apply.
+     * (NodeToCode 1.2.x filled every map with its prices and saved them all), so the catalog's prices apply. Applied by
+     * MigrateModelSelectionsToIds to a config below version 3, before the prices are re-keyed by model ID.
      * @param OutDropped one entry per dropped price
-     * @return the names of the pricing properties that changed
+     * @return the names of the maps that changed (OpenAIModelPricing, ...)
      */
-    TArray<FName> DropLegacyPricing(TArray<FString>& OutDropped);
+    static TArray<FName> DropLegacyPricing(FN2CLegacyPricingMaps& Maps, TArray<FString>& OutDropped);
 
     /**
      * Removes the HTTP timeouts NodeToCode 1.2.x wrote to the project's DefaultEngine.ini ([HTTP]
@@ -653,81 +827,16 @@ public:
     /** Check if a property is a color property in our editor colors structs */
     bool IsColorProperty(const FProperty* Property) const;
 
-    /** Get the current model's input cost */
+    /**
+     * Input price per 1M tokens of the selected provider's model: its Model Price Overrides entry, else the catalog
+     * price (Gemini included), 0 for Ollama, LM Studio and a custom model without an override
+     */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services | Pricing")
-    float GetCurrentInputCost() const
-    {
-        switch (Provider)
-        {
-            case EN2CLLMProvider::OpenAI:
-                if (const FN2COpenAIPricing* Pricing = OpenAIModelPricing.Find(OpenAI_Model))
-                {
-                    return Pricing->InputCost;
-                }
-                return FN2CLLMModelUtils::GetOpenAIPricing(OpenAI_Model).InputCost;
-            case EN2CLLMProvider::Anthropic:
-                if (const FN2CAnthropicPricing* Pricing = AnthropicModelPricing.Find(AnthropicModel))
-                {
-                    return Pricing->InputCost;
-                }
-                return FN2CLLMModelUtils::GetAnthropicPricing(AnthropicModel).InputCost;
-            case EN2CLLMProvider::Gemini:
-                if (const FN2CGeminiPricing* Pricing = GeminiModelPricing.Find(Gemini_Model))
-                {
-                    return Pricing->InputCost;
-                }
-                return FN2CLLMModelUtils::GetGeminiPricing(Gemini_Model).InputCost;
-            case EN2CLLMProvider::DeepSeek:
-                if (const FN2CDeepSeekPricing* Pricing = DeepSeekModelPricing.Find(DeepSeekModel))
-                {
-                    return Pricing->InputCost;
-                }
-                return FN2CLLMModelUtils::GetDeepSeekPricing(DeepSeekModel).InputCost;
-            case EN2CLLMProvider::Ollama:
-            case EN2CLLMProvider::LMStudio:
-                return 0.0f; // Local models are free
-            default:
-                return 0.0f;
-        }
-    }
+    float GetCurrentInputCost() const;
 
-    /** Get the current model's output cost */
+    /** Output price per 1M tokens of the selected provider's model (as GetCurrentInputCost) */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services | Pricing")
-    float GetCurrentOutputCost() const
-    {
-        switch (Provider)
-        {
-            case EN2CLLMProvider::OpenAI:
-                if (const FN2COpenAIPricing* Pricing = OpenAIModelPricing.Find(OpenAI_Model))
-                {
-                    return Pricing->OutputCost;
-                }
-                return FN2CLLMModelUtils::GetOpenAIPricing(OpenAI_Model).OutputCost;
-            case EN2CLLMProvider::Anthropic:
-                if (const FN2CAnthropicPricing* Pricing = AnthropicModelPricing.Find(AnthropicModel))
-                {
-                    return Pricing->OutputCost;
-                }
-                return FN2CLLMModelUtils::GetAnthropicPricing(AnthropicModel).OutputCost;
-            case EN2CLLMProvider::Gemini:
-                if (const FN2CGeminiPricing* Pricing = GeminiModelPricing.Find(Gemini_Model))
-                {
-                    return Pricing->OutputCost;
-                }
-                return FN2CLLMModelUtils::GetGeminiPricing(Gemini_Model).OutputCost;
-            case EN2CLLMProvider::DeepSeek:
-                if (const FN2CDeepSeekPricing* Pricing = DeepSeekModelPricing.Find(DeepSeekModel))
-                {
-                    return Pricing->OutputCost;
-                }
-                return FN2CLLMModelUtils::GetDeepSeekPricing(DeepSeekModel).OutputCost;
-            case EN2CLLMProvider::Ollama:
-            case EN2CLLMProvider::LMStudio:
-                return 0.0f; // Local models are free
-            default:
-                return 0.0f;
-        }
-    }
+    float GetCurrentOutputCost() const;
 
     /** Calculate and store token estimate for reference files */
     int32 GetReferenceFilesTokenEstimate() const
@@ -793,9 +902,12 @@ private:
     /**
      * Writes these config properties' current values into IniPath, leaving the file's other lines as they are (the
      * same per-key update Project Settings makes), then reloads this class's config into GConfig when asked.
+     * KeysToRemove (keys of properties this class no longer has) are deleted from the file; OutRemovedKeys gets those
+     * that were there.
      * @return false when IniPath could not be written
      */
-    bool WriteConfigProperties(const TArray<FName>& PropertyNames, const FString& IniPath, bool bReloadGConfig);
+    bool WriteConfigProperties(const TArray<FName>& PropertyNames, const FString& IniPath, bool bReloadGConfig,
+        const TArray<FString>& KeysToRemove, TArray<FString>* OutRemovedKeys = nullptr);
     
 #if WITH_EDITOR
     /** Show a notification that the editor needs to restart */

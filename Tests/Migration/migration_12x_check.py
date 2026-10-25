@@ -58,8 +58,13 @@ FIXTURES = {
         'prerelease_tags': False, 'http_user': {'HttpConnectionTimeout': '120.000000', 'HttpTimeout': '180'},
     },
 }
-RETIRED_TARGET = {'anthropic': 'Claude5_5_Sonnet', 'openai': 'GPT_6_1_Sol', 'gemini': 'Gemini_3_8_Flash'}
-KEPT_OPENAI = {'GPT4o_2024_08_06', 'GPT4o_Mini_2024_07_18', 'GPT_4_1', 'GPT_o3'}
+# Settings version 4 (card 0129): selections are model IDs; a retired or removed selection becomes the provider default
+RETIRED_TARGET = {'anthropic': 'claude-sonnet-5-5', 'openai': 'gpt-6.1-sol', 'gemini': 'gemini-3.8-flash'}
+KEPT_OPENAI = {'GPT4o_2024_08_06': 'gpt-4o-2024-08-06', 'GPT4o_Mini_2024_07_18': 'gpt-4o-mini-2024-07-18',
+               'GPT_4_1': 'gpt-4.1', 'GPT_o3': 'o3'}
+DEEPSEEK_EFFORT = {'DeepSeek_R1': 'high', 'DeepSeek_V3': 'none'}
+LEGACY_KEYS = ('AnthropicModel', 'OpenAI_Model', 'Gemini_Model', 'DeepSeekModel', 'OpenAIModelPricing',
+               'AnthropicModelPricing', 'GeminiModelPricing', 'DeepSeekModelPricing')
 THEME_KEYS = ('CPPThemes', 'PythonThemes', 'JavaScriptThemes', 'CSharpThemes', 'SwiftThemes', 'PseudocodeThemes')
 SEVERITY = ['Debug', 'Info', 'Warning', 'Error', 'Fatal']
 # Behaviour that differs from the matrix because of a defect an open card owns: reported as KNOWN (not a failure)
@@ -107,6 +112,12 @@ def ini_value(text, section, key):
         elif current == section and '=' in s and s.split('=', 1)[0].strip().lstrip('+!-.') == key:
             value = s.split('=', 1)[1]
     return value
+
+
+def ini_str(text, section, key):
+    """ini_value with the quotes UE puts around some strings removed"""
+    value = ini_value(text, section, key)
+    return value.strip('"') if value is not None else None
 
 
 def engine_version(engine):
@@ -289,31 +300,39 @@ def check_fixture(fixture, ctx, rows, state):
 
     rows.add('S1', n(d1['provider']) == n(exp['provider']), 'Provider %s (fixture %s)' % (d1['provider'], exp['provider']))
 
-    for row, key, prop, ini_key in (('S2', 'anthropic', 'anthropic_model', 'AnthropicModel'),
-                                    ('S3', 'openai', 'open_ai_model', 'OpenAI_Model'),
-                                    ('S4', 'gemini', 'gemini_model', 'Gemini_Model')):
+    # Model selections (settings version 4, card 0129): the enum keys become model ID keys and are removed
+    for row, key, prop, ini_key, id_key in (('S2', 'anthropic', 'anthropic_model_id', 'AnthropicModel', 'AnthropicModelId'),
+                                            ('S3', 'openai', 'open_ai_model_id', 'OpenAI_Model', 'OpenAIModelId'),
+                                            ('S4', 'gemini', 'gemini_model_id', 'Gemini_Model', 'GeminiModelId')):
         old = exp[key]
+        gone = ini_value(ini1t, sec, ini_key) is None
         if key == 'openai' and old in KEPT_OPENAI:
-            ok = (n(d1[prop]) == n(old) and ini_value(ini1t, sec, ini_key) == old and
+            want = KEPT_OPENAI[old]
+            ok = (d1[prop] == want and ini_str(ini1t, sec, id_key) == want and gone and
                   not any(ini_key + '=' in l for l in retired_warn1))
-            rows.add(row, ok, '%s kept: loads %s, ini %s=%s, no retired warning' % (
-                ini_key, d1[prop], ini_key, ini_value(ini1t, sec, ini_key)))
+            rows.add(row, ok, '%s=%s kept as %s: loads %s, ini %s=%s, old key removed: %s, no retired warning' % (
+                ini_key, old, want, d1[prop], id_key, ini_str(ini1t, sec, id_key), gone))
             continue
         new = RETIRED_TARGET[key]
         named = [l for l in w1 if '%s=%s' % (ini_key, old) in l and new in l]
-        ok = n(d1[prop]) == n(new) and ini_value(ini1t, sec, ini_key) == new and bool(named) and not retired_warn2
-        detail = '%s=%s -> loads %s, ini %s=%s, start-1 warning names it: %s, start 2 silent: %s' % (
-            ini_key, old, d1[prop], ini_key, ini_value(ini1t, sec, ini_key), bool(named), not retired_warn2)
+        ok = d1[prop] == new and ini_str(ini1t, sec, id_key) == new and gone and bool(named) and not retired_warn2
+        detail = '%s=%s -> loads %s, ini %s=%s, old key removed: %s, start-1 warning names it: %s, start 2 silent: %s' % (
+            ini_key, old, d1[prop], id_key, ini_str(ini1t, sec, id_key), gone, bool(named), not retired_warn2)
         if key == 'gemini' and old == 'Gemini_2_5_ProExp':
+            # No property holds the enum any more, so the engine has nothing to fail on; NodeToCode names the value
             eng_err = [l for l in engine_import_errors(s1['log']) if 'Gemini_Model' in l]
-            ok = ok and bool(eng_err) and any('values NodeToCode 2.0 does not have' in l for l in named)
-            detail += ', engine import error on start 1: %s (none on start 2: %s)' % (
-                bool(eng_err), not engine_import_errors(s2['log']))
+            ok = ok and not eng_err and any('values NodeToCode 2.0 does not have' in l for l in named)
+            detail += ', engine import error on start 1: %s (expected none)' % bool(eng_err)
         rows.add(row, ok, detail)
 
-    rows.add('S5', n(d1['deep_seek_model']) == n(exp['deepseek']) and not any('DeepSeekModel=' in l for l in w1),
-             'DeepSeekModel %s (fixture %s), no warning; the request model (deepseek-flash) is not checked here' % (
-                 d1['deep_seek_model'], exp['deepseek']))
+    effort_want = DEEPSEEK_EFFORT[exp['deepseek']]
+    ds_ok = (d1['deep_seek_model_id'] == 'deepseek-flash' and d1['deep_seek_reasoning_effort'] == effort_want and
+             ini_str(ini1t, sec, 'DeepSeekModelId') == 'deepseek-flash' and
+             ini_str(ini1t, sec, 'DeepSeekReasoningEffort') == effort_want and
+             ini_value(ini1t, sec, 'DeepSeekModel') is None and not any('DeepSeekModel=' in l for l in w1))
+    rows.add('S5', ds_ok, 'DeepSeekModel=%s -> DeepSeekModelId %s with thinking %s (want deepseek-flash, %s), ini written, '
+             'old key removed, no warning' % (exp['deepseek'], d1['deep_seek_model_id'], d1['deep_seek_reasoning_effort'],
+                                               effort_want))
 
     oc = d1['ollama_config']
     want = {'NumCtx': '0', 'NumPredict': '0', 'bUseSystemPrompts': 'True', 'bOverride_Temperature': 'True',
@@ -337,25 +356,30 @@ def check_fixture(fixture, ctx, rows, state):
         else:
             rows.add(row, d1[prop] == exp['lmstudio'][prop], '%s %s' % (prop, d1[prop]))
 
+    # Price overrides (settings version 4): one ModelPricing map keyed by model ID replaces the four enum-keyed maps
     kept_model, kin, kout = exp['openai_kept_price']
-    oai = d1['open_ai_model_pricing']
+    kept_id = KEPT_OPENAI[kept_model]
+    prices = d1['model_pricing']
     costs = s1['dump']['costs']
-    entry = oai.get(next((k for k in oai if n(k) == n(kept_model)), ''), '')
-    ok = (len(oai) == 1 and 'InputCost=%.6f' % kin in entry and costs.get(kept_model) == [kin, kout] and
-          costs.get('GPT_o3', [15.0])[0] != 15.0)
-    rows.add('S11', ok, 'OpenAIModelPricing keeps only %s (%s); cost %s=%s; GPT_o3 cost %s (1.2.x had 15/60)' % (
-        list(oai), entry, kept_model, costs.get(kept_model), costs.get('GPT_o3')))
-    rows.add('S12', d1['anthropic_model_pricing'] == {}, 'AnthropicModelPricing %s' % d1['anthropic_model_pricing'])
-    gem_ini = ini_value(ini1t, sec, 'GeminiModelPricing')
-    gem_err = [l for l in engine_import_errors(s1['log']) if 'GeminiModelPricing' in l]
-    rows.add('S13', d1['gemini_model_pricing'] == {} and gem_ini == '()' and not engine_import_errors(s2['log']),
-             'GeminiModelPricing %s, ini GeminiModelPricing=%s, start-1 import error %s, start 2 none' % (
-                 d1['gemini_model_pricing'], gem_ini, bool(gem_err)))
-    ds = d1['deep_seek_model_pricing']
-    rows.add('S14', list(map(n, ds)) == [n('DeepSeek_V3')] and costs.get('DeepSeek_V3') == [0.2, 0.5] and
-             costs.get('DeepSeek_R1', [0.55])[0] != 0.55,
-             'DeepSeekModelPricing keeps %s; cost V3 %s, R1 %s (1.2.x 0.55/2.19)' % (
-                 list(ds), costs.get('DeepSeek_V3'), costs.get('DeepSeek_R1')))
+    old_maps = [k for k in ('OpenAIModelPricing', 'AnthropicModelPricing', 'GeminiModelPricing', 'DeepSeekModelPricing')
+                if ini_value(ini1t, sec, k) is not None]
+    openai_ids = [k for k in prices if k.startswith(('gpt', 'o1', 'o3', 'o4'))]
+    entry = prices.get(kept_id, '')
+    ok = (openai_ids == [kept_id] and 'InputCost=%.6f' % kin in entry and costs.get(kept_id) == [kin, kout] and
+          costs.get('o3', [15.0])[0] != 15.0 and not old_maps)
+    rows.add('S11', ok, 'ModelPricing keeps only %s of the OpenAI prices (%s); cost %s=%s; o3 cost %s (1.2.x had 15/60); '
+             'old maps left in the ini: %s' % (openai_ids, entry, kept_id, costs.get(kept_id), costs.get('o3'), old_maps))
+    claude_ids = [k for k in prices if k.startswith('claude')]
+    rows.add('S12', not claude_ids, 'ModelPricing Anthropic entries %s (every 1.2.x one is retired)' % claude_ids)
+    gemini_ids = [k for k in prices if k.startswith('gemini')]
+    gem_err = engine_import_errors(s1['log']) + engine_import_errors(s2['log'])
+    rows.add('S13', not gemini_ids and ini_value(ini1t, sec, 'GeminiModelPricing') is None and not gem_err,
+             'ModelPricing Gemini entries %s, ini GeminiModelPricing removed: %s, engine import errors on either start: %d' % (
+                 gemini_ids, ini_value(ini1t, sec, 'GeminiModelPricing') is None, len(gem_err)))
+    ds = prices.get('deepseek-flash', '')
+    rows.add('S14', 'InputCost=0.200000' in ds and 'OutputCost=0.500000' in ds and costs.get('deepseek-flash') == [0.2, 0.5],
+             'ModelPricing deepseek-flash %s (V3\'s user price 0.2/0.5 kept, R1\'s 1.2.x 0.55/2.19 dropped); cost %s' % (
+                 ds, costs.get('deepseek-flash')))
     rows.add('S15', n(d1['target_language']) == n(exp['language']), 'TargetLanguage %s' % d1['target_language'])
     rows.add('S16', d1['translation_depth'] == exp['depth'], 'TranslationDepth %s' % d1['translation_depth'])
     rows.add('S17', n(d1['min_severity']) == n(exp['severity']), 'MinSeverity %s' % d1['min_severity'])
@@ -384,8 +408,9 @@ def check_fixture(fixture, ctx, rows, state):
     tokens = [d1[k] for k in ('anthropic_max_output_tokens', 'open_ai_max_output_tokens', 'gemini_max_output_tokens',
                               'deep_seek_max_output_tokens', 'lm_studio_max_output_tokens')]
     rows.add('N1', tokens == [0] * 5, 'MaxOutputTokens %s' % tokens)
-    rows.add('N2', ini_value(ini1t, sec, 'SettingsVersion') == '3', 'ini SettingsVersion=%s after start 1' %
-             ini_value(ini1t, sec, 'SettingsVersion'))
+    left = [k for k in LEGACY_KEYS if ini_value(ini1t, sec, k) is not None]
+    rows.add('N2', ini_value(ini1t, sec, 'SettingsVersion') == '4' and not left,
+             'ini SettingsVersion=%s after start 1; model enum keys left: %s' % (ini_value(ini1t, sec, 'SettingsVersion'), left))
     rows.add('N3', d1['mcp_server_port'] == 27000, 'McpServerPort %s' % d1['mcp_server_port'])
     rows.add('N4', d1['enable_dynamic_tool_discovery'] is False, 'bEnableDynamicToolDiscovery %s' % d1['enable_dynamic_tool_discovery'])
     rows.add('N5', d1['enable_python_script_only_mode'] is False, 'bEnablePythonScriptOnlyMode %s' % d1['enable_python_script_only_mode'])
@@ -524,7 +549,7 @@ def pick(cls, name):
     want = name.replace("_", "").upper()
     return getattr(cls, [m for m in dir(cls) if not m.startswith("_") and m.replace("_", "").upper() == want][0])
 s.set_editor_property("provider", pick(unreal.N2CLLMProvider, "%(provider)s"))
-s.set_editor_property("%(model_prop)s", pick(%(enum)s, "%(model_enum)s"))
+s.set_editor_property("%(model_prop)s", "%(model_id)s")
 tag = unreal.N2CTagBlueprintLibrary.tag_focused_blueprint_graph("N2CMigrationLive", "Default", "")
 started = unreal.N2CBatchTranslationBlueprintLibrary.translate_graphs_with_tag("N2CMigrationLive", "")
 result = {"tagged": str(tag), "started": str(started)}
@@ -533,8 +558,7 @@ LIVE_POLL_PY = r'''
 import unreal
 result = {"running": unreal.N2CBatchTranslationBlueprintLibrary.is_batch_translation_in_progress()}
 '''
-LIVE_MODELS = {'anthropic': ('Anthropic', 'anthropic_model', 'unreal.N2CAnthropicModel', 'Claude5_5_Haiku',
-                             'ANTHROPIC_API_KEY')}
+LIVE_MODELS = {'anthropic': ('Anthropic', 'anthropic_model_id', 'claude-haiku-5-5', 'ANTHROPIC_API_KEY')}
 
 
 def check_live(ctx, rows, provider):
@@ -543,7 +567,7 @@ def check_live(ctx, rows, provider):
     from editor_session import EditorSession, free_port
     from live_env_translation import SETUP_PY, ASSET_DIR, ASSET_NAME, call_tool, tool_text
     project_dir, uproject, exp = ctx['state']['last']
-    store, model_prop, enum, model_enum, variable = LIVE_MODELS[provider]
+    store, model_prop, model_id, variable = LIVE_MODELS[provider]
     keys = load_provider_keys(only=[variable])
     if variable not in keys:
         rows.add('S26', None, '%s not in the repo .env' % variable)
@@ -558,7 +582,7 @@ def check_live(ctx, rows, provider):
             name = '%s_%s' % (ASSET_NAME, time.strftime('%H%M%S'))
             steps['setup'] = tool_text(call_tool(port, 'run-python', {'code': SETUP_PY % {'dir': ASSET_DIR, 'name': name}}, 1)[1])[:300]
             steps['start'] = tool_text(call_tool(port, 'run-python', {'code': LIVE_START_PY % {
-                'provider': store, 'model_prop': model_prop, 'enum': enum, 'model_enum': model_enum}}, 2)[1])[:300]
+                'provider': store, 'model_prop': model_prop, 'model_id': model_id}}, 2)[1])[:300]
             deadline = time.time() + 300
             while time.time() < deadline:
                 time.sleep(2)
@@ -586,7 +610,7 @@ def check_live(ctx, rows, provider):
     leaks = find_leaks(keys, [log] + [os.path.join(custom, d) for d in new])
     rows.add('S26', bool(new) and files > 1 and not leaks,
              'live batch translation (%s %s) wrote %s (%d files) under the migrated CustomTranslationOutputDirectory; '
-             'no key in those files or the log: %s; steps %s' % (provider, model_enum, new, files, not leaks, steps))
+             'no key in those files or the log: %s; steps %s' % (provider, model_id, new, files, not leaks, steps))
     rows.add('F2', bool(versions) and set(versions) == {'2.0.0'}, 'new translation\'s N2C JSON version: %s' % versions)
 
 

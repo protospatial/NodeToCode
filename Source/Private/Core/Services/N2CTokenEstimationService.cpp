@@ -399,23 +399,8 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 		return;
 	}
 
-	FN2CLLMModelRegistry& Registry = FN2CLLMModelRegistry::Get();
-	const FN2CModelMetadata* Metadata = nullptr;
-
 	switch (Settings->Provider)
 	{
-	case EN2CLLMProvider::OpenAI:
-		Metadata = Registry.GetModelMetadata(Settings->OpenAI_Model);
-		break;
-	case EN2CLLMProvider::Anthropic:
-		Metadata = Registry.GetModelMetadata(Settings->AnthropicModel);
-		break;
-	case EN2CLLMProvider::Gemini:
-		Metadata = Registry.GetModelMetadata(Settings->Gemini_Model);
-		break;
-	case EN2CLLMProvider::DeepSeek:
-		Metadata = Registry.GetModelMetadata(Settings->DeepSeekModel);
-		break;
 	case EN2CLLMProvider::Ollama:
 		CachedModelName = Settings->OllamaModel;
 		// The Context Window the requests send; unset (0), the server's own length applies, which is not known here
@@ -435,22 +420,23 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 		break;
 	}
 
+	// Cloud providers: the selected model ID's catalog row; the price is the user's override when there is one
+	const FN2CModelMetadata* Metadata = Settings->GetActiveModelMetadataForProvider(Settings->Provider);
+	CachedInputCostPer1M = Settings->GetActivePricingForProvider(Settings->Provider).InputCost;
+	bCachedIsLocal = false;
 	if (Metadata)
 	{
 		CachedModelName = Metadata->DisplayName;
 		CachedFullContextWindow = Metadata->ContextWindowSize;
-		CachedUsableContextWindow = FMath::RoundToInt(CachedFullContextWindow * ContextWindowFactor);
-		CachedInputCostPer1M = Metadata->InputCostPer1M;
-		bCachedIsLocal = false;
 	}
 	else
 	{
-		CachedModelName = TEXT("Unknown Model");
+		// A custom model ID the catalog does not list: its own name, and a common context size as the estimate
+		const FString ModelId = Settings->GetActiveModelForProvider(Settings->Provider);
+		CachedModelName = ModelId.IsEmpty() ? FString(TEXT("Unknown Model")) : ModelId;
 		CachedFullContextWindow = 128000;
-		CachedUsableContextWindow = FMath::RoundToInt(CachedFullContextWindow * ContextWindowFactor);
-		CachedInputCostPer1M = 0.0f;
-		bCachedIsLocal = false;
 	}
+	CachedUsableContextWindow = FMath::RoundToInt(CachedFullContextWindow * ContextWindowFactor);
 }
 
 void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent)
@@ -464,10 +450,16 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 	// Check if relevant property changed
 	FName PropertyName = PropertyChangedEvent.GetPropertyName();
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_Model) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModel) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_Model) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModel) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAICustomModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicCustomModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, GeminiCustomModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekCustomModelId) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekReasoningEffort) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, ModelPricing) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaModel) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, NumCtx))
