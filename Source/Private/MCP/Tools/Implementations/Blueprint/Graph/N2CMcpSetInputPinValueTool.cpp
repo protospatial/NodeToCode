@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -27,7 +28,7 @@ FMcpToolDefinition FN2CMcpSetInputPinValueTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("set-input-pin-value"),
-        TEXT("Sets the default value of an input pin on a Blueprint node. Only works on pins that accept default values (not exec, reference, or container pins).")
+        TEXT("Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins).")
     ,
 
     	TEXT("Blueprint Graph Editing")
@@ -47,6 +48,8 @@ FMcpToolDefinition FN2CMcpSetInputPinValueTool::GetDefinition() const
     Required.Add(TEXT("value"));
 
     Definition.InputSchema = BuildInputSchema(Properties, Required);
+
+    FN2CGraphTarget::AddSchemaProperties(Definition);
 
     return Definition;
 }
@@ -81,20 +84,21 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
 
-        // Get focused graph and Blueprint
-        UBlueprint* Blueprint = nullptr;
-        UEdGraph* FocusedGraph = nullptr;
-        FString GraphError;
-        if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+        // The graph blueprintPath / graphName / graphGuid name, else the focused one (card 0152); every result
+        // after this says which graph was used ('target')
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+        if (!Target.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(GraphError);
+            return FMcpToolCallResult::CreateErrorResult(Target.Error);
         }
+        UBlueprint* Blueprint = Target.Blueprint;
+        UEdGraph* FocusedGraph = Target.Graph;
 
         // Find the node
         FGuid ParsedNodeGuid;
         if (!FGuid::Parse(NodeGuid, ParsedNodeGuid))
         {
-            return FMcpToolCallResult::CreateErrorResult(TEXT("Invalid node GUID format"));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Invalid node GUID format")));
         }
 
         UEdGraphNode* TargetNode = nullptr;
@@ -109,9 +113,9 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
 
         if (!TargetNode)
         {
-            return FMcpToolCallResult::CreateErrorResult(
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
                 FString::Printf(TEXT("Node with GUID %s not found in graph"), *NodeGuid)
-            );
+            ));
         }
 
         FN2CLogger::Get().Log(
@@ -124,9 +128,9 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         UEdGraphPin* TargetPin = FindPinOnNode(TargetNode, PinGuid, PinName);
         if (!TargetPin)
         {
-            return FMcpToolCallResult::CreateErrorResult(
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
                 FString::Printf(TEXT("Pin with GUID %s not found on node"), *PinGuid)
-            );
+            ));
         }
 
         FN2CLogger::Get().Log(
@@ -138,14 +142,14 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         FString ValidationError;
         if (!ValidatePinForDefaultValue(TargetPin, ValidationError))
         {
-            return FMcpToolCallResult::CreateErrorResult(ValidationError);
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(ValidationError));
         }
 
         // Validate and format the value
         FString FormattedValue;
         if (!ValidateAndFormatValue(TargetPin, Value, FormattedValue, ValidationError))
         {
-            return FMcpToolCallResult::CreateErrorResult(ValidationError);
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(ValidationError));
         }
 
         // Store the old value for the result
@@ -155,7 +159,7 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         const UEdGraphSchema* Schema = FocusedGraph->GetSchema();
         if (!Schema)
         {
-            return FMcpToolCallResult::CreateErrorResult(TEXT("Graph has no schema"));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Graph has no schema")));
         }
 
         FN2CLogger::Get().Log(
@@ -224,7 +228,7 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
 
-        return FMcpToolCallResult::CreateTextResult(ResultString);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultString));
     });
 }
 

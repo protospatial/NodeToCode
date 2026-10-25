@@ -2,6 +2,8 @@
 
 #include "N2CMcpAddFunctionEntryPinTool.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -25,7 +27,7 @@ FMcpToolDefinition FN2CMcpAddFunctionEntryPinTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("add-function-input-pin"),
-		TEXT("Adds a new input parameter to the currently focused Blueprint function")
+		TEXT("Adds a new input parameter to a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function")
 	,
 
 		TEXT("Blueprint Function Management")
@@ -81,6 +83,8 @@ FMcpToolDefinition FN2CMcpAddFunctionEntryPinTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition);
+
 	return Definition;
 }
 
@@ -108,24 +112,33 @@ FMcpToolCallResult FN2CMcpAddFunctionEntryPinTool::Execute(const TSharedPtr<FJso
 		bool bIsPassByReference = ArgParser.GetOptionalBool(TEXT("isPassByReference"), false);
 		FString Tooltip = ArgParser.GetOptionalString(TEXT("tooltip"), TEXT(""));
 
-		// Get focused function graph
-		UEdGraph* FocusedGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
-		if (!FocusedGraph)
+		// The function blueprintPath / graphName / graphGuid name, else the focused graph (card 0152); every result
+		// after this says which graph was used ('target')
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+		if (!Target.IsValid())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("No focused graph found. Please open a Blueprint function in the editor."));
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
+		}
+		UEdGraph* FocusedGraph = Target.Graph;
+		if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
+		{
+			// Before any change: an event graph never gets a Return node added (the old focused-graph path did that)
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("NOT_A_FUNCTION_GRAPH: %s (%s graph) of %s is not a function. Pass the function as graphName or graphGuid (its functionGuid), or focus it."),
+				*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph), *Target.Blueprint->GetName())));
 		}
 
 		// Check if this is a K2 graph
 		if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph")));
 		}
 
 		// Find the function entry node
 		UK2Node_FunctionEntry* FunctionEntry = FN2CMcpFunctionPinUtils::FindFunctionEntryNode(FocusedGraph);
 		if (!FunctionEntry)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Not in a function graph. Please focus on a Blueprint function."));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Not in a function graph. Please focus on a Blueprint function.")));
 		}
 
 		// Resolve type identifier to FEdGraphPinType
@@ -143,8 +156,8 @@ FMcpToolCallResult FN2CMcpAddFunctionEntryPinTool::Execute(const TSharedPtr<FJso
 			PinType,
 			ResolveError))
 		{
-			return FMcpToolCallResult::CreateErrorResult(
-				FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(
+				FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError)));
 		}
 
 		// Start a transaction for undo/redo
@@ -157,7 +170,7 @@ FMcpToolCallResult FN2CMcpAddFunctionEntryPinTool::Execute(const TSharedPtr<FJso
 		UEdGraphPin* NewPin = CreateInputPin(FunctionEntry, PinName, PinType, DefaultValue, Tooltip);
 		if (!NewPin)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create input pin"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create input pin")));
 		}
 
 		// Update all function call sites
@@ -187,7 +200,7 @@ FMcpToolCallResult FN2CMcpAddFunctionEntryPinTool::Execute(const TSharedPtr<FJso
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
 		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 		
-		return FMcpToolCallResult::CreateTextResult(ResultString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultString));
 	});
 }
 

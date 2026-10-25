@@ -417,8 +417,6 @@ FGuid FN2CMcpListBlueprintFunctionsTool::GetFunctionGuid(const UEdGraph* Functio
 		return FGuid();
 	}
 	
-	// Use the utility to get or create a consistent GUID for this function
-	// Cast away const since GetOrCreateFunctionGuid may need to store the GUID
-	UEdGraph* MutableGraph = const_cast<UEdGraph*>(FunctionGraph);
-	return FN2CMcpFunctionGuidUtils::GetOrCreateFunctionGuid(MutableGraph);
+	// The function's stable ID: its graph's GraphGuid, unchanged by renames and moves (card 0152)
+	return FN2CMcpFunctionGuidUtils::GetFunctionId(FunctionGraph);
 }

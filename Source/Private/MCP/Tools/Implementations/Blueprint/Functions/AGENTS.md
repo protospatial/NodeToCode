@@ -21,14 +21,24 @@ remove-function-entry-pin answers `Pin 'bSuccess' not found. Available pins: the
 
 ## Function GUIDs
 
-`functionGuid` is not stored anywhere. `FN2CMcpFunctionGuidUtils::GenerateDeterministicGuid` computes it as the MD5
-of `<Blueprint path name>::<function graph name>`, and `FindFunctionByGuid` recomputes it for each function graph.
-The same function has the same GUID in every editor session, but renaming the function, or renaming or moving the
-Blueprint, gives it a new one: after a rename the old GUID answers `Function with GUID ... not found`. Get the current
-GUID from `list-blueprint-functions` (`guid`) or from create-blueprint-function's result. Both the 32-digit form the
-tools return and the hyphenated form are accepted (`FGuid::Parse`).
+A function's ID (`functionGuid` from create-blueprint-function, `guid` from `list-blueprint-functions`) is its
+function graph's `UEdGraph::GraphGuid` (`FN2CMcpFunctionGuidUtils::GetFunctionId`, card 0152). The engine saves it
+with the graph and keeps it when the function is renamed and when the Blueprint is renamed or moved, so an agent can
+keep using the ID it got first. It is unique only inside one Blueprint (a duplicated Blueprint keeps its graphs'
+GUIDs), so pass `blueprintPath` with it when the function's Blueprint is not the focused one. Both the 32-digit form
+the tools return and the hyphenated form are accepted (`FGuid::Parse`).
 
-- **Known issue (card 0152):** function GUIDs change on rename; the card switches to the persistent `GraphGuid`.
+Every function tool here takes the ID: `functionGuid` on open-blueprint-function and delete-blueprint-function, and
+`graphGuid` on all of them (the same value), with `blueprintPath` and `graphName` as in "Targeting and IDs" in
+`../Graph/AGENTS.md`. The pin tools act on that function, or on the focused function without one.
+
+- **Deprecated, accepted until NodeToCode 2.1:** the IDs the tools returned before card 0152 were
+  MD5(`<Blueprint path name>::<function name>`) and changed on every rename or move. Such an ID still finds its
+  function while the function and its Blueprint keep the name and path it was made from; the result's `target` then
+  has `deprecatedId` (the ID sent) and `warning` (naming the stable ID to use instead), and the editor log warns.
+  NodeToCode 2.1 removes this fallback (`FN2CMcpFunctionGuidUtils::LegacyIdRemovalVersion`).
+- A function graph saved without a valid `GraphGuid` (never seen in practice; `UEdGraph::PostInitProperties` gives
+  every graph one) keeps the old hash as its ID.
 
 ## Available Tools
 
@@ -40,7 +50,8 @@ tools return and the hyphenated form are accepted (`FGuid::Parse`).
     function graph of that name exists (`NAME_COLLISION`), or when the parent class has a non-BlueprintEvent
     function of that name (`ValidateFunctionName`)
   - `blueprintPath` (optional): Asset path of the target Blueprint (`/Game/Blueprints/BP_MyActor.BP_MyActor`);
-    without it, the focused Blueprint. A path that does not resolve is an error (`ASSET_NOT_FOUND: ...`)
+    without it, the focused Blueprint. A path that does not resolve is an error (`ASSET_NOT_FOUND: ...`). It takes
+    no `graphName` or `graphGuid` (it makes the graph)
   - `parameters` (optional): Array of objects with `name` and `type` (required), `direction` (`input`, the default,
     or `output`, compared case-insensitively), `subType`, `container` (`none`, `array`, `set`, `map`), `keyType` (map
     key), `isReference`, `isConst`, and `defaultValue` (inputs only). `type` and `subType` are resolved like a
@@ -52,8 +63,9 @@ tools return and the hyphenated form are accepted (`FGuid::Parse`).
   - `functionFlags` (optional): Object with `isPure`, `isCallInEditor`, `isStatic`, `isConst`,
     `isReliableReplication`, `isMulticast` (booleans), `category` (default `Default`), `keywords`, `tooltip`, and
     `accessSpecifier` (`public`, the default, `protected` or `private`). `isOverride` is read but has no effect
-- **Returns**: `success`, `functionName`, `functionGuid` (32 hex digits), `blueprintName`, `blueprintPath`,
-  `graphInfo` (`graphName`, `nodeCount`), `message`
+- **Returns**: `success`, `functionName`, `functionGuid` (32 hex digits; the stable ID, see "Function GUIDs"),
+  `blueprintName`, `blueprintPath`, `graphInfo` (`graphName`, `nodeCount`), `message`, and `target` (the new function
+  as `blueprintPath` plus `graphGuid`, for the graph and pin tools)
 - **Known issue (card 0280):** a parameter whose direction is neither `input` nor `output` is left out and only
   logged (`CreateFunctionParameters`); the call still reports success. Check the
   signature with list-blueprint-functions afterwards. `CreateNewGraph` also renames any other graph that already has
@@ -62,23 +74,25 @@ tools return and the hyphenated form are accepted (`FGuid::Parse`).
 ### open-blueprint-function
 - **Description**: Opens a function graph in the Blueprint editor and focuses it
 - **Parameters**:
-  - `functionGuid` (required): See "Function GUIDs"
-  - `blueprintPath` (optional): Blueprint to search. If it does not resolve, the focused Blueprint is searched instead
-    (`FindFunctionByGuid`)
+  - `functionGuid` (or `graphGuid`), or `graphName`: The function; one of them is required. See "Function GUIDs"
+  - `blueprintPath` (optional): Blueprint to search; without it, the focused Blueprint. A path that does not load is
+    an error (`ASSET_NOT_FOUND`); before card 0152 it fell back to the focused Blueprint. A graph that is not a
+    function: `NOT_A_FUNCTION_GRAPH` (open other graphs with `open-blueprint-asset` and `focus_graph`)
   - `centerView` (optional, default true): Accepted but has no effect (`CenterViewOnFunction` only returns true)
   - `selectNodes` (optional, default true): Accepted but has no effect (`SelectAllNodesInFunction` only returns true)
-- **Returns**: `success`, `functionName`, `functionGuid`, `blueprintName`, `blueprintPath`, `graphName`,
-  `editorState` (`opened`)
+- **Returns**: `success`, `functionName`, `functionGuid` (the stable ID, also when an old one was sent),
+  `blueprintName`, `blueprintPath`, `graphName`, `editorState` (`opened`), `target`
 
 ### delete-blueprint-function
 - **Description**: Deletes a function graph, and with `force` the nodes that call it
 - **Parameters**:
-  - `functionGuid` (required)
-  - `blueprintPath` (optional): Without it, the focused Blueprint
+  - `functionGuid` (or `graphGuid`), or `graphName`: The function; one of them is required
+  - `blueprintPath` (optional): Without it, the focused Blueprint. Functions of an interface Blueprint can be deleted
+    (the resolver's read-only check does not apply to a delete)
   - `force` (optional, default false): Also delete the function's call nodes in this Blueprint, and delete a function
     that child Blueprints override
 - **Returns**: `success`, `deletedFunction` (`name`, `guid`), `referencesRemoved` (each `graphName`, `nodeId`,
-  `nodeTitle`), `blueprintPath`, `transactionId`. `transactionId` is a new random GUID, not a handle to the undo
+  `nodeTitle`), `blueprintPath`, `target` (the deleted function, taken before the delete), `transactionId`. `transactionId` is a new random GUID, not a handle to the undo
   transaction
 - **Errors**: Call nodes in the same Blueprint without `force`: `Function '<name>' has <n> references and cannot be
   deleted. Use force=true to remove anyway.` `UserConstructionScript` and a few engine event names are protected
@@ -87,7 +101,10 @@ tools return and the hyphenated form are accepted (`FGuid::Parse`).
   `force` a call to a same-named function of another class is deleted too
 
 ### add-function-input-pin
-- **Description**: Adds an input parameter to the focused function (a pin on its entry node)
+- **Description**: Adds an input parameter to the target function (a pin on its entry node): the function
+  `blueprintPath` plus `graphName` or `graphGuid` names, else the focused one. A read-only function graph is refused
+  (`READ_ONLY_GRAPH`), and so is a graph that is not a function (`NOT_A_FUNCTION_GRAPH`); the four pin tools share
+  this, and their results carry `target`
 - **Parameters**:
   - `pinName` (required): Name for the new input. A taken name is made unique by `CreateUserDefinedPin`: a second
     `Tag` becomes `Tag1`
@@ -98,18 +115,19 @@ tools return and the hyphenated form are accepted (`FGuid::Parse`).
 - **Returns**: `success`, `pinName` (as requested), `actualName`, `displayName` (as the editor shows it, for example
   `Target Actor`), `pinId` (the pin GUID), `typeInfo` (`category`, `className`, `path`, `typeName`), `functionName`,
   `blueprintName`, `message`
-- **Errors**: With an event graph focused, `Not in a function graph. Please focus on a Blueprint function.`
+- **Errors**: An event graph (focused or named): `NOT_A_FUNCTION_GRAPH: EventGraph (event graph) of BP_Door is not a
+  function. ...`
 
 ### add-function-return-pin
-- **Description**: Adds a return value to the focused function (a pin on its result node; a result node is created
+- **Description**: Adds a return value to the target function (a pin on its result node; a result node is created
   when the function has none, `FN2CMcpFunctionPinUtils::EnsureFunctionResultNode`)
 - **Parameters**: `pinName` (required), `typeIdentifier` (required, a single type), `tooltip` (optional). Return
   values take no default value and are never by reference
 - **Returns**: As for add-function-input-pin (`bSuccess` is displayed as `Success`)
 - **Known issue (card 0156):** only the first result node gets the pin, and the tooltip is stored on the pin
   (`SetPinTooltip`), so it is lost when the node is rebuilt
-- **Known issue (new):** with an event graph focused the call fails with `Failed to create return pin`, but
-  `EnsureFunctionResultNode` has already added a Return node to the event graph, and it stays there
+- An event graph is refused with `NOT_A_FUNCTION_GRAPH` before anything changes; before card 0152 the call failed
+  only after `EnsureFunctionResultNode` had added a Return node to the event graph
 
 ### remove-function-entry-pin
 - **Description**: Removes an input parameter (a user-defined pin on the entry node)
@@ -177,9 +195,10 @@ curl -X POST http://localhost:27000/mcp \
 ## Function Lifecycle Workflow
 
 1. **Create**: `create-blueprint-function`; the new function graph is opened and focused
-2. **Keep the GUID**: the returned `functionGuid` is valid until the function or its Blueprint is renamed or moved
-3. **Open later**: `open-blueprint-function` with the GUID (from `list-blueprint-functions` if it may have changed)
-4. **Edit the signature** (the function graph must be focused):
+2. **Keep the GUID**: the returned `functionGuid` stays valid when the function or its Blueprint is renamed or moved
+3. **Open later**: `open-blueprint-function` with the GUID (and `blueprintPath`), or skip opening: every tool below
+   takes `blueprintPath` plus `graphGuid`
+4. **Edit the signature** (the function `blueprintPath` plus `graphGuid` names, or the focused one):
    - `add-function-input-pin` / `remove-function-entry-pin` for inputs (entry node)
    - `add-function-return-pin` / `remove-function-return-pin` for return values (result node)
 5. **Implement**: use the Graph tools (`../Graph/AGENTS.md`) and the local-variable tools
@@ -188,7 +207,7 @@ curl -X POST http://localhost:27000/mcp \
 ## Example: Adding Function Input Pin
 
 ```bash
-# A function graph must be focused
+# The function blueprintPath plus graphGuid (its functionGuid) names; without them, the focused function
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -198,6 +217,8 @@ curl -X POST http://localhost:27000/mcp \
     "params": {
       "name": "add-function-input-pin",
       "arguments": {
+        "blueprintPath": "/Game/Blueprints/BP_MyActor.BP_MyActor",
+        "graphGuid": "<functionGuid from create-blueprint-function>",
         "pinName": "TargetActor",
         "typeIdentifier": "/Script/Engine.Actor",
         "isPassByReference": true,
@@ -211,7 +232,7 @@ curl -X POST http://localhost:27000/mcp \
 ## Example: Adding Function Return Pin
 
 ```bash
-# A function graph must be focused
+# The focused function (or pass blueprintPath and graphGuid)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \

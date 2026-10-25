@@ -2,66 +2,29 @@
 
 #include "N2CMcpFunctionGuidUtils.h"
 #include "Engine/Blueprint.h"
-#include "K2Node_FunctionEntry.h"
 #include "EdGraph/EdGraph.h"
 #include "Misc/SecureHash.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
-const FString FN2CMcpFunctionGuidUtils::GuidMetadataKey = TEXT("NodeToCode_FunctionGuid");
-
-FGuid FN2CMcpFunctionGuidUtils::GetOrCreateFunctionGuid(UEdGraph* FunctionGraph)
+FGuid FN2CMcpFunctionGuidUtils::GetFunctionId(const UEdGraph* FunctionGraph)
 {
 	if (!FunctionGraph)
 	{
 		return FGuid();
 	}
-	
-	// First check if a GUID is already stored
-	FGuid StoredGuid = GetStoredFunctionGuid(FunctionGraph);
-	if (StoredGuid.IsValid())
-	{
-		return StoredGuid;
-	}
-	
-	// Generate a deterministic GUID
-	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(FunctionGraph);
-	if (!Blueprint)
-	{
-		return FGuid();
-	}
-	
-	FGuid NewGuid = GenerateDeterministicGuid(Blueprint, FunctionGraph->GetName());
-	
-	// Store it for future use
-	StoreFunctionGuid(FunctionGraph, NewGuid);
-	
-	return NewGuid;
+	// UEdGraph::PostInitProperties gives every new graph a GUID and it is saved with the graph; a graph loaded from
+	// an asset saved without one keeps the old scheme so it still has an ID
+	return FunctionGraph->GraphGuid.IsValid() ? FunctionGraph->GraphGuid : GetLegacyFunctionId(FunctionGraph);
 }
 
-FGuid FN2CMcpFunctionGuidUtils::GetStoredFunctionGuid(const UEdGraph* FunctionGraph)
+FGuid FN2CMcpFunctionGuidUtils::GetLegacyFunctionId(const UEdGraph* FunctionGraph)
 {
 	if (!FunctionGraph)
 	{
 		return FGuid();
 	}
-	
-	// For now, since we can't store metadata on K2Node_FunctionEntry,
-	// we'll generate a deterministic GUID based on the function
-	// This ensures consistency across all tools
-	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(FunctionGraph);
-	if (!Blueprint)
-	{
-		return FGuid();
-	}
-	
-	return GenerateDeterministicGuid(Blueprint, FunctionGraph->GetName());
-}
-
-void FN2CMcpFunctionGuidUtils::StoreFunctionGuid(UEdGraph* FunctionGraph, const FGuid& Guid)
-{
-	// Since we can't store metadata on K2Node_FunctionEntry,
-	// we rely on deterministic GUID generation instead
-	// This function is left as a no-op for now
+	const UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(FunctionGraph);
+	return Blueprint ? GenerateDeterministicGuid(Blueprint, FunctionGraph->GetName()) : FGuid();
 }
 
 FGuid FN2CMcpFunctionGuidUtils::GenerateDeterministicGuid(const UBlueprint* Blueprint, const FString& FunctionName)
@@ -70,72 +33,54 @@ FGuid FN2CMcpFunctionGuidUtils::GenerateDeterministicGuid(const UBlueprint* Blue
 	{
 		return FGuid();
 	}
-	
-	// Create a unique string based on Blueprint path and function name
-	FString UniqueString = FString::Printf(TEXT("%s::%s"), *Blueprint->GetPathName(), *FunctionName);
-	
-	// Generate a hash from the unique string
+
+	// The pre-0152 scheme, kept byte for byte so old IDs still match: MD5 over the TCHAR bytes of "<path>::<name>"
+	const FString UniqueString = FString::Printf(TEXT("%s::%s"), *Blueprint->GetPathName(), *FunctionName);
 	FMD5 Md5Gen;
 	Md5Gen.Update(reinterpret_cast<const uint8*>(*UniqueString), UniqueString.Len() * sizeof(TCHAR));
-	
 	uint8 Digest[16];
 	Md5Gen.Final(Digest);
-	
-	// Convert the first 16 bytes of the hash to a GUID
-	// Note: This is deterministic - the same input will always produce the same GUID
-	FGuid DeterministicGuid(
-		*reinterpret_cast<uint32*>(&Digest[0]),
-		*reinterpret_cast<uint32*>(&Digest[4]),
-		*reinterpret_cast<uint32*>(&Digest[8]),
-		*reinterpret_cast<uint32*>(&Digest[12])
-	);
-	
-	return DeterministicGuid;
+
+	uint32 Parts[4];
+	FMemory::Memcpy(Parts, Digest, sizeof(Parts));
+	return FGuid(Parts[0], Parts[1], Parts[2], Parts[3]);
 }
 
-UEdGraph* FN2CMcpFunctionGuidUtils::FindFunctionByGuid(UBlueprint* Blueprint, const FGuid& FunctionGuid)
+UEdGraph* FN2CMcpFunctionGuidUtils::FindFunctionByGuid(UBlueprint* Blueprint, const FGuid& FunctionGuid, bool* bOutLegacy)
 {
+	if (bOutLegacy)
+	{
+		*bOutLegacy = false;
+	}
 	if (!Blueprint || !FunctionGuid.IsValid())
 	{
 		return nullptr;
 	}
-	
-	// Search through all function graphs
+
 	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 	{
-		if (!Graph)
-		{
-			continue;
-		}
-		
-		FGuid GraphGuid = GetOrCreateFunctionGuid(Graph);
-		if (GraphGuid == FunctionGuid)
+		if (Graph && GetFunctionId(Graph) == FunctionGuid)
 		{
 			return Graph;
 		}
 	}
-	
-	// Also search through event graphs for custom events
-	// Note: Custom events don't have persistent GUIDs in this implementation
-	// You would need to extend this to handle custom events if needed
-	
+
+	// Deprecated: an ID from before card 0152 (accepted until LegacyIdRemovalVersion)
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && GetLegacyFunctionId(Graph) == FunctionGuid)
+		{
+			if (bOutLegacy)
+			{
+				*bOutLegacy = true;
+			}
+			return Graph;
+		}
+	}
 	return nullptr;
 }
 
-UK2Node_FunctionEntry* FN2CMcpFunctionGuidUtils::GetFunctionEntryNode(UEdGraph* FunctionGraph)
+bool FN2CMcpFunctionGuidUtils::IsFunctionGraph(const UBlueprint* Blueprint, const UEdGraph* Graph)
 {
-	if (!FunctionGraph)
-	{
-		return nullptr;
-	}
-	
-	for (UEdGraphNode* Node : FunctionGraph->Nodes)
-	{
-		if (UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node))
-		{
-			return EntryNode;
-		}
-	}
-	
-	return nullptr;
+	return Blueprint && Graph && Blueprint->FunctionGraphs.Contains(Graph);
 }

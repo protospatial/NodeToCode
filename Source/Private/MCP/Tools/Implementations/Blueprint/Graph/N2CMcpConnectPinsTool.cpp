@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CPinConnectPolicy.h"
 #include "Utils/N2CLogger.h"
@@ -25,7 +26,7 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("connect-pins"),
-		TEXT("Connect pins between nodes of the focused Blueprint graph using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error."),
+		TEXT("Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error."),
 		TEXT("Blueprint Graph Editing")
 	);
 
@@ -161,6 +162,8 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition);
+
 	return Definition;
 }
 
@@ -188,15 +191,15 @@ FMcpToolCallResult FN2CMcpConnectPinsTool::Execute(const TSharedPtr<FJsonObject>
 		
 		FN2CLogger::Get().Log(FString::Printf(TEXT("ConnectPins: Processing %d connection requests"), ConnectionRequests.Num()), EN2CLogSeverity::Debug);
 		
-		// Get focused graph and Blueprint
-		UBlueprint* Blueprint = nullptr;
-		UEdGraph* FocusedGraph = nullptr;
-		FString GraphError;
-		if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(Blueprint, FocusedGraph, GraphError))
+		// The graph blueprintPath / graphName / graphGuid name, else the focused one (card 0152); every result
+		// after this says which graph was used ('target')
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+		if (!Target.IsValid())
 		{
-			FN2CLogger::Get().LogError(FString::Printf(TEXT("ConnectPins: Failed to get focused graph/Blueprint: %s"), *GraphError));
-			return FMcpToolCallResult::CreateErrorResult(GraphError);
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
 		}
+		UBlueprint* Blueprint = Target.Blueprint;
+		UEdGraph* FocusedGraph = Target.Graph;
 		
 		FN2CLogger::Get().Log(FString::Printf(TEXT("ConnectPins: Found focused graph: %s in Blueprint: %s"), 
 			*FocusedGraph->GetName(), *Blueprint->GetName()), EN2CLogSeverity::Debug);
@@ -205,7 +208,7 @@ FMcpToolCallResult FN2CMcpConnectPinsTool::Execute(const TSharedPtr<FJsonObject>
 		const UEdGraphSchema* Schema = FocusedGraph->GetSchema();
 		if (!Schema)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Graph has no schema"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Graph has no schema")));
 		}
 		
 		// Build node lookup map for efficient GUID lookups
@@ -279,7 +282,7 @@ FMcpToolCallResult FN2CMcpConnectPinsTool::Execute(const TSharedPtr<FJsonObject>
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
 		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 
-		return FMcpToolCallResult::CreateTextResult(JsonString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(JsonString));
 	});
 }
 

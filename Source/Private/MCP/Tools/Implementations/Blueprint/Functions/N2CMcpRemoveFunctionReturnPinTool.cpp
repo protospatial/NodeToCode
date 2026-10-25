@@ -2,6 +2,8 @@
 
 #include "N2CMcpRemoveFunctionReturnPinTool.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
@@ -24,7 +26,7 @@ FMcpToolDefinition FN2CMcpRemoveFunctionReturnPinTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("remove-function-return-pin"),
-		TEXT("Removes a return value from the currently focused Blueprint function")
+		TEXT("Removes a return value from a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function")
 	,
 
 		TEXT("Blueprint Function Management")
@@ -40,6 +42,8 @@ FMcpToolDefinition FN2CMcpRemoveFunctionReturnPinTool::GetDefinition() const
 	
 	Definition.InputSchema = BuildInputSchema(Properties, Required);
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition);
+
 	return Definition;
 }
 
@@ -57,31 +61,40 @@ FMcpToolCallResult FN2CMcpRemoveFunctionReturnPinTool::Execute(const TSharedPtr<
 			return FMcpToolCallResult::CreateErrorResult(Error);
 		}
 
-		// Get focused function graph
-		UEdGraph* FocusedGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
-		if (!FocusedGraph)
+		// The function blueprintPath / graphName / graphGuid name, else the focused graph (card 0152); every result
+		// after this says which graph was used ('target')
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+		if (!Target.IsValid())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("No focused graph found. Please open a Blueprint function in the editor."));
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
+		}
+		UEdGraph* FocusedGraph = Target.Graph;
+		if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
+		{
+			// Before any change: an event graph never gets a Return node added (the old focused-graph path did that)
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("NOT_A_FUNCTION_GRAPH: %s (%s graph) of %s is not a function. Pass the function as graphName or graphGuid (its functionGuid), or focus it."),
+				*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph), *Target.Blueprint->GetName())));
 		}
 
 		// Check if this is a K2 graph
 		if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph")));
 		}
 
 		// Find the function result node
 		UK2Node_FunctionResult* FunctionResult = FN2CMcpFunctionPinUtils::FindFunctionResultNode(FocusedGraph);
 		if (!FunctionResult)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("No function result node found. This function has no return values."));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("No function result node found. This function has no return values.")));
 		}
 
 		// Find the Blueprint
 		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionResult);
 		if (!Blueprint)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Cannot find Blueprint for function"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Cannot find Blueprint for function")));
 		}
 
 		// Start a transaction for undo/redo
@@ -96,7 +109,7 @@ FMcpToolCallResult FN2CMcpRemoveFunctionReturnPinTool::Execute(const TSharedPtr<
 		FString RemovalError;
 		if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(FunctionResult, PinName, RemovalError))
 		{
-			return FMcpToolCallResult::CreateErrorResult(RemovalError);
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(RemovalError));
 		}
 
 		// Update all function call sites
@@ -123,6 +136,6 @@ FMcpToolCallResult FN2CMcpRemoveFunctionReturnPinTool::Execute(const TSharedPtr<
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
 		FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 		
-		return FMcpToolCallResult::CreateTextResult(ResultString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultString));
 	});
 }

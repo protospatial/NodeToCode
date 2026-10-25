@@ -249,6 +249,15 @@ its environment when no key is saved, so a live check never types or saves a key
   `Blueprint '<name>' compiled:` lines between `Calling tool:` lines must show one compile per edit call and none for
   a search or find; the connect-pins result's `compile` must report the error with the Set Static Mesh node's GUID,
   and the agent's answer must repeat it. The folder is deleted. Report: `logs/live_compile_0151_<label>.json`.
+- `live_graph_target_0152.py --engine ... --project ... --label 5.8 [--cli-model sonnet]` (no provider key) checks
+  explicit graph targets and stable function IDs (card 0152) on an in-memory Actor Blueprint under a fresh
+  `/Game/N2CTest/Target0152_<time>` folder that is never opened by the probe. `claude -p` with only
+  `mcp__nodetocode__*` creates a function by `blueprintPath` and answers with its `functionGuid`; the probe renames the
+  function (`BlueprintEditorLibrary.rename_graph`) and closes the Blueprint's editors; the same session (`--resume`)
+  then adds an input, a Print String and a connection to it, passing `blueprintPath` and the first ID as `graphGuid`
+  to every call. Every call must succeed with a `target` naming the renamed function (`resolvedBy` `explicit`), and
+  `list-blueprint-functions` must list the renamed function with the first ID. The folder is deleted. Report:
+  `logs/live_graph_target_0152_<label>.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

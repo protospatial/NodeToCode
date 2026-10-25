@@ -5,6 +5,7 @@
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Utils/N2CLogger.h"
@@ -25,7 +26,7 @@ FMcpToolDefinition FN2CMcpOpenBlueprintFunctionTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("open-blueprint-function"),
-		TEXT("Opens a Blueprint function in the editor using its GUID"),
+		TEXT("Opens a Blueprint function in the editor and focuses it, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint"),
 		TEXT("Blueprint Function Management")
 	);
 	
@@ -38,13 +39,13 @@ FMcpToolDefinition FN2CMcpOpenBlueprintFunctionTool::GetDefinition() const
 	// functionGuid parameter (required)
 	TSharedPtr<FJsonObject> FunctionGuid = MakeShareable(new FJsonObject);
 	FunctionGuid->SetStringField(TEXT("type"), TEXT("string"));
-	FunctionGuid->SetStringField(TEXT("description"), TEXT("The GUID of the function to open"));
+	FunctionGuid->SetStringField(TEXT("description"), TEXT("The function's ID (functionGuid from create-blueprint-function, guid from list-blueprint-functions): its graph GUID, stable across renames and moves. Same as graphGuid. Pass this or graphName."));
 	Properties->SetObjectField(TEXT("functionGuid"), FunctionGuid);
 	
 	// blueprintPath parameter (optional)
 	TSharedPtr<FJsonObject> BlueprintPath = MakeShareable(new FJsonObject);
 	BlueprintPath->SetStringField(TEXT("type"), TEXT("string"));
-	BlueprintPath->SetStringField(TEXT("description"), TEXT("Asset path of the Blueprint. If not provided, searches in focused Blueprint first"));
+	BlueprintPath->SetStringField(TEXT("description"), TEXT("Asset path of the Blueprint. Without it, the focused Blueprint. A path that does not load is an error (ASSET_NOT_FOUND)"));
 	Properties->SetObjectField(TEXT("blueprintPath"), BlueprintPath);
 	
 	// centerView parameter (optional)
@@ -63,12 +64,10 @@ FMcpToolDefinition FN2CMcpOpenBlueprintFunctionTool::GetDefinition() const
 	
 	InputSchema->SetObjectField(TEXT("properties"), Properties);
 	
-	TArray<TSharedPtr<FJsonValue>> Required;
-	Required.Add(MakeShareable(new FJsonValueString(TEXT("functionGuid"))));
-	InputSchema->SetArrayField(TEXT("required"), Required);
-	
 	Definition.InputSchema = InputSchema;
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition);
+
 	return Definition;
 }
 
@@ -80,45 +79,48 @@ FMcpToolCallResult FN2CMcpOpenBlueprintFunctionTool::Execute(const TSharedPtr<FJ
 		FN2CMcpArgumentParser ArgParser(Arguments);
 		FString ErrorMsg;
 		
-		// Extract required parameters
-		FString FunctionGuidString;
-		if (!ArgParser.TryGetRequiredString(TEXT("functionGuid"), FunctionGuidString, ErrorMsg))
+		// The function: functionGuid (or graphGuid) or graphName, in blueprintPath or else the focused Blueprint, through
+		// the one graph resolver (card 0152). A blueprintPath that does not load is an error (ASSET_NOT_FOUND); it no
+		// longer falls back to the focused Blueprint. An old name-hash ID still resolves, with a warning, until 2.1
+		FN2CGraphTargetArgs TargetArgs = FN2CGraphTargetArgs::FromJson(Arguments);
+		const FString FunctionGuidString = ArgParser.GetOptionalString(TEXT("functionGuid")).TrimStartAndEnd();
+		if (!FunctionGuidString.IsEmpty())
 		{
-			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+			TargetArgs.GraphGuid = FunctionGuidString;
 		}
-		
-		// Parse GUID
-		FGuid FunctionGuid;
-		if (!FGuid::Parse(FunctionGuidString, FunctionGuid))
+		if (TargetArgs.GraphGuid.IsEmpty() && TargetArgs.GraphName.IsEmpty())
 		{
-			return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Invalid GUID format: %s"), *FunctionGuidString));
+			return FMcpToolCallResult::CreateErrorResult(TEXT("Missing the function: pass functionGuid (from list-blueprint-functions or create-blueprint-function) or graphName"));
 		}
-		
-		// Optional parameters
-		FString BlueprintPath = ArgParser.GetOptionalString(TEXT("blueprintPath"));
 		bool bCenterView = ArgParser.GetOptionalBool(TEXT("centerView"), true);
 		bool bSelectNodes = ArgParser.GetOptionalBool(TEXT("selectNodes"), true);
-		
-		// Find the function
-		UBlueprint* Blueprint = nullptr;
-		UEdGraph* FunctionGraph = FindFunctionByGuid(FunctionGuid, BlueprintPath, Blueprint);
-		
-		if (!FunctionGraph || !Blueprint)
+
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(TargetArgs, /*bForWrite*/ false);
+		if (!Target.IsValid())
 		{
-			return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Function with GUID %s not found"), *FunctionGuidString));
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
 		}
-		
+		UBlueprint* Blueprint = Target.Blueprint;
+		UEdGraph* FunctionGraph = Target.Graph;
+		if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Blueprint, FunctionGraph))
+		{
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("NOT_A_FUNCTION_GRAPH: %s (%s graph) of %s is not a function. Use open-blueprint-asset with focus_graph for other graphs."),
+				*FunctionGraph->GetName(), *FN2CGraphTarget::GraphKind(FunctionGraph), *Blueprint->GetName())));
+		}
+		const FGuid FunctionGuid = FN2CMcpFunctionGuidUtils::GetFunctionId(FunctionGraph);
+
 		// Open the Blueprint editor
 		TSharedPtr<IBlueprintEditor> Editor;
 		if (!OpenBlueprintEditor(Blueprint, Editor))
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to open Blueprint editor"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to open Blueprint editor")));
 		}
 		
 		// Navigate to the function
 		if (!NavigateToFunction(Editor, FunctionGraph))
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to navigate to function"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to navigate to function")));
 		}
 		
 		// Optional: Center view
@@ -139,7 +141,7 @@ FMcpToolCallResult FN2CMcpOpenBlueprintFunctionTool::Execute(const TSharedPtr<FJ
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
 		FJsonSerializer::Serialize(SuccessData.ToSharedRef(), Writer);
 		
-		return FMcpToolCallResult::CreateTextResult(JsonString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(JsonString));
 	});
 }
 
@@ -200,7 +202,7 @@ FGuid FN2CMcpOpenBlueprintFunctionTool::GetFunctionGuid(const UEdGraph* Function
 	}
 	
 	// Use the utility to get the stored GUID
-	return FN2CMcpFunctionGuidUtils::GetStoredFunctionGuid(FunctionGraph);
+	return FN2CMcpFunctionGuidUtils::GetFunctionId(FunctionGraph);
 }
 
 bool FN2CMcpOpenBlueprintFunctionTool::OpenBlueprintEditor(UBlueprint* Blueprint, TSharedPtr<IBlueprintEditor>& OutEditor) const

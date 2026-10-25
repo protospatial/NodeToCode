@@ -5,6 +5,7 @@
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -33,7 +34,7 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintFunctionTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("delete-blueprint-function"),
-		TEXT("Deletes a specific Blueprint function using its GUID. Supports reference detection and forced deletion."),
+		TEXT("Deletes a Blueprint function, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint. Supports reference detection and forced deletion."),
 		TEXT("Blueprint Function Management")
 	);
 
@@ -46,7 +47,7 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintFunctionTool::GetDefinition() const
 	// functionGuid property (required)
 	TSharedPtr<FJsonObject> FunctionGuidProp = MakeShareable(new FJsonObject);
 	FunctionGuidProp->SetStringField(TEXT("type"), TEXT("string"));
-	FunctionGuidProp->SetStringField(TEXT("description"), TEXT("The GUID of the function to delete"));
+	FunctionGuidProp->SetStringField(TEXT("description"), TEXT("The function's ID (functionGuid from create-blueprint-function, guid from list-blueprint-functions): its graph GUID, stable across renames and moves. Same as graphGuid. Pass this or graphName."));
 	Properties->SetObjectField(TEXT("functionGuid"), FunctionGuidProp);
 
 	// blueprintPath property (optional)
@@ -64,13 +65,10 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintFunctionTool::GetDefinition() const
 
 	Schema->SetObjectField(TEXT("properties"), Properties);
 	
-	// Required parameters
-	TArray<TSharedPtr<FJsonValue>> Required;
-	Required.Add(MakeShareable(new FJsonValueString(TEXT("functionGuid"))));
-	Schema->SetArrayField(TEXT("required"), Required);
-	
 	Definition.InputSchema = Schema;
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition);
+
 	return Definition;
 }
 
@@ -82,42 +80,39 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 		FN2CMcpArgumentParser ArgParser(Arguments);
 		FString ErrorMsg;
 		
-		// Extract required parameters
-		FString FunctionGuidString;
-		if (!ArgParser.TryGetRequiredString(TEXT("functionGuid"), FunctionGuidString, ErrorMsg))
+		// The function: functionGuid (or graphGuid) or graphName, in blueprintPath or else the focused Blueprint, through
+		// the one graph resolver (card 0152). functionGuid is the function's GraphGuid; an old name-hash ID still
+		// resolves, with a warning in the result's target, until NodeToCode 2.1
+		FN2CGraphTargetArgs TargetArgs = FN2CGraphTargetArgs::FromJson(Arguments);
+		const FString FunctionGuidString = ArgParser.GetOptionalString(TEXT("functionGuid")).TrimStartAndEnd();
+		if (!FunctionGuidString.IsEmpty())
 		{
-			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+			TargetArgs.GraphGuid = FunctionGuidString;
 		}
-		
-		// Parse GUID
-		FGuid FunctionGuid;
-		if (!FGuid::Parse(FunctionGuidString, FunctionGuid))
+		if (TargetArgs.GraphGuid.IsEmpty() && TargetArgs.GraphName.IsEmpty())
 		{
-			return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Invalid GUID format: %s"), *FunctionGuidString));
+			return FMcpToolCallResult::CreateErrorResult(TEXT("Missing the function: pass functionGuid (from list-blueprint-functions or create-blueprint-function) or graphName"));
 		}
-		
-		// Get optional parameters
-		FString BlueprintPath = ArgParser.GetOptionalString(TEXT("blueprintPath"));
 		bool bForce = ArgParser.GetOptionalBool(TEXT("force"), false);
-		
-		// Resolve target Blueprint
-		FString ResolveError;
-		UBlueprint* TargetBlueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(BlueprintPath, ResolveError);
-		if (!TargetBlueprint)
+
+		// Not bForWrite: deleting a function of an interface Blueprint is allowed, as in the editor
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(TargetArgs, /*bForWrite*/ false);
+		if (!Target.IsValid())
 		{
-			return FMcpToolCallResult::CreateErrorResult(ResolveError);
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
 		}
-		
-		// Find the function by GUID
-		UEdGraph* FunctionGraph = FindFunctionByGuid(TargetBlueprint, FunctionGuid);
-		if (!FunctionGraph)
+		UBlueprint* TargetBlueprint = Target.Blueprint;
+		UEdGraph* FunctionGraph = Target.Graph;
+		if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(TargetBlueprint, FunctionGraph))
 		{
-			return FMcpToolCallResult::CreateErrorResult(FString::Printf(
-				TEXT("Function with GUID '%s' not found in Blueprint '%s'"),
-				*FunctionGuidString, *TargetBlueprint->GetPathName()
-			));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("NOT_A_FUNCTION_GRAPH: %s (%s graph) of %s is not a function"),
+				*FunctionGraph->GetName(), *FN2CGraphTarget::GraphKind(FunctionGraph), *TargetBlueprint->GetName())));
 		}
-		
+		const FGuid FunctionGuid = FN2CMcpFunctionGuidUtils::GetFunctionId(FunctionGraph);
+		// Taken now: the graph leaves the Blueprint below
+		const TSharedRef<FJsonObject> TargetJson = Target.ToJson();
+
 		// Get function name for reference
 		FString FunctionName = GetFunctionDisplayName(FunctionGraph);
 		
@@ -125,7 +120,7 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 		FString ValidationError;
 		if (!ValidateFunctionDeletion(TargetBlueprint, FunctionGraph, bForce, ValidationError))
 		{
-			return FMcpToolCallResult::CreateErrorResult(ValidationError);
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(ValidationError));
 		}
 		
 		// Find references to this function
@@ -145,23 +140,23 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 		{
 			if (!bForce)
 			{
-				return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
 					TEXT("Function '%s' has %d references and cannot be deleted. Use force=true to remove anyway."),
 					*FunctionName, CallNodes.Num()
-				));
+				)));
 			}
 			
 			// Remove references within the transaction
 			if (!RemoveFunctionReferences(CallNodes, RemovedReferences))
 			{
-				return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to remove function references"));
+				return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to remove function references")));
 			}
 		}
 		
 		// Delete the function within the same transaction
 		if (!DeleteFunctionGraph(TargetBlueprint, FunctionGraph, TransactionGuid))
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to delete function graph"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to delete function graph")));
 		}
 		
 		// Post-deletion operations
@@ -179,9 +174,10 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 		
 		FString JsonString;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+		Result->SetObjectField(TEXT("target"), TargetJson);
 		FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
 
-		return FMcpToolCallResult::CreateTextResult(JsonString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(JsonString));
 	});
 }
 

@@ -6,6 +6,7 @@
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -22,7 +23,7 @@ FMcpToolDefinition FN2CMcpFindNodesInGraphTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("find-nodes-in-graph"),
-        TEXT("Searches for specific nodes in the focused Blueprint graph by keywords or node GUIDs. ")
+        TEXT("Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. ")
         TEXT("Returns matching nodes in N2C JSON format with full node and pin GUID information.")
     );
     
@@ -72,6 +73,8 @@ FMcpToolDefinition FN2CMcpFindNodesInGraphTool::GetDefinition() const
     // Results carry Blueprint text (node titles and pin default values): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;
 
+    FN2CGraphTarget::AddSchemaProperties(Definition);
+
     return Definition;
 }
 
@@ -91,21 +94,21 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
             return FMcpToolCallResult::CreateErrorResult(ParseError);
         }
         
-        // Get the focused graph
-        UBlueprint* OwningBlueprint = nullptr;
-        UEdGraph* FocusedGraph = nullptr;
-        FString GraphError;
-        if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(OwningBlueprint, FocusedGraph, GraphError))
+        // The graph blueprintPath / graphName / graphGuid name, else the focused one (card 0152); every result
+        // after this says which graph was used ('target')
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ false);
+        if (!Target.IsValid())
         {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("find-nodes-in-graph tool failed: %s"), *GraphError));
-            return FMcpToolCallResult::CreateErrorResult(GraphError);
+            return FMcpToolCallResult::CreateErrorResult(Target.Error);
         }
+        UBlueprint* OwningBlueprint = Target.Blueprint;
+        UEdGraph* FocusedGraph = Target.Graph;
         
         // Collect all nodes from the graph
         TArray<UK2Node*> AllNodes;
         if (!FN2CEditorIntegration::Get().CollectNodesFromGraph(FocusedGraph, AllNodes))
         {
-            return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to collect nodes from the focused graph."));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to collect nodes from the focused graph.")));
         }
         
         FN2CLogger::Get().Log(FString::Printf(TEXT("FindNodesInGraph: Searching through %d nodes for %d search terms (type: %s)"), 
@@ -127,7 +130,7 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         
         if (MatchingNodes.IsEmpty())
         {
-            return FMcpToolCallResult::CreateTextResult(TEXT("{\"nodes\":[],\"metadata\":{\"totalFound\":0}}"));
+            return Target.Finish(FMcpToolCallResult::CreateTextResult(TEXT("{\"nodes\":[],\"metadata\":{\"totalFound\":0}}")));
         }
         
         // Capture ALL nodes so the IDs are the ones get-focused-blueprint gives, but return only the matching ones
@@ -138,7 +141,7 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         Options.bIncludeGhostNodes = true;
         if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(AllNodes, Capture, Options))
         {
-            return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to translate nodes for ID mapping."));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to translate nodes for ID mapping.")));
         }
         
         // Build the result JSON
@@ -178,7 +181,7 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         FN2CLogger::Get().Log(FString::Printf(TEXT("find-nodes-in-graph tool found %d matching nodes"), 
             MatchingNodes.Num()), EN2CLogSeverity::Info);
         
-        return FMcpToolCallResult::CreateTextResult(ResultJsonString);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultJsonString));
     });
 }
 

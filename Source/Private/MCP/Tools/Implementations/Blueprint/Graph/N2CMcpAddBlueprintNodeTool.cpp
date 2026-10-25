@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpNodeActions.h"
 #include "Core/N2CCapture.h"
@@ -33,7 +34,7 @@ FMcpToolDefinition FN2CMcpAddBlueprintNodeTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("add-bp-node-to-active-graph"),
-        TEXT("Adds a Blueprint node to the currently active graph. IMPORTANT: Use search-blueprint-nodes first and pass a result's spawnMetadata.actionIdentifier (a stable ID) and spawnMetadata.nodeName. NEXT STEP: After adding a node, use the 'connect-pins' tool to wire the node's pins to other nodes using the pinGuid values returned in inputPins and outputPins arrays."),
+        TEXT("Adds a Blueprint node to a graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph (the result's target says which). IMPORTANT: Use search-blueprint-nodes first and pass a result's spawnMetadata.actionIdentifier (a stable ID) and spawnMetadata.nodeName. NEXT STEP: After adding a node, use the 'connect-pins' tool to wire the node's pins to other nodes using the pinGuid values returned in inputPins and outputPins arrays."),
         TEXT("Blueprint Graph Editing")
     );
     
@@ -85,6 +86,8 @@ FMcpToolDefinition FN2CMcpAddBlueprintNodeTool::GetDefinition() const
     
     Definition.InputSchema = Schema;
     
+    FN2CGraphTarget::AddSchemaProperties(Definition);
+
     return Definition;
 }
 
@@ -108,14 +111,15 @@ FMcpToolCallResult FN2CMcpAddBlueprintNodeTool::Execute(const TSharedPtr<FJsonOb
         FN2CLogger::Get().Log(FString::Printf(TEXT("Adding Blueprint node: '%s' with identifier: '%s' at location (%.2f, %.2f)"),
             *NodeName, *ActionIdentifier, Location.X, Location.Y), EN2CLogSeverity::Info);
     
-        // Get the active graph context
-        FString ContextError;
-        UBlueprint* ActiveBlueprint = nullptr;
-        UEdGraph* ActiveGraph = nullptr;
-        if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(ActiveBlueprint, ActiveGraph, ContextError))
+        // The graph blueprintPath / graphName / graphGuid name, else the focused one (card 0152); every result
+        // after this says which graph was used ('target')
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+        if (!Target.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(ContextError);
+            return FMcpToolCallResult::CreateErrorResult(Target.Error);
         }
+        UBlueprint* ActiveBlueprint = Target.Blueprint;
+        UEdGraph* ActiveGraph = Target.Graph;
     
         // Find and spawn the node
         UEdGraphNode* SpawnedNode = nullptr;
@@ -123,7 +127,7 @@ FMcpToolCallResult FN2CMcpAddBlueprintNodeTool::Execute(const TSharedPtr<FJsonOb
 
         if (!FindAndSpawnNode(NodeName, ActionIdentifier, ActiveBlueprint, ActiveGraph, Location, SpawnedNode, SpawnError))
         {
-            return FMcpToolCallResult::CreateErrorResult(SpawnError);
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(SpawnError));
         }
 
         FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully added node '%s' to graph '%s'"),
@@ -188,7 +192,7 @@ FMcpToolCallResult FN2CMcpAddBlueprintNodeTool::Execute(const TSharedPtr<FJsonOb
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
         FJsonSerializer::Serialize(ResultObject.ToSharedRef(), Writer);
 
-        return FMcpToolCallResult::CreateTextResult(ResultJson);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultJson));
     });
 }
 
