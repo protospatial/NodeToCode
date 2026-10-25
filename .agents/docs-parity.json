@@ -41,6 +41,7 @@
     {
       "name": "providers",
       "code": ["Source/Public/LLM/N2CLLMModels.h", "Source/Private/LLM/N2CLLMModelRegistry.cpp", "Source/Public/LLM/N2CLLMModelRegistry.h",
+               "Content/Data/N2CModelCatalog.json", "Source/Public/LLM/N2CModelCatalog.h", "Source/Private/LLM/N2CModelCatalog.cpp",
                "Source/Private/LLM/Providers/**", "Source/Public/LLM/Providers/**"],
       "pages": ["wiki/Provider-Configuration.md", "wiki/Choosing-an-LLM-Provider.md", "wiki/LM-Studio-Quick-Start.md",
                 "wiki/LLM-Provider-Documentation-&-Resources.md"]

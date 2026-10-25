@@ -268,8 +268,8 @@ its environment when no key is saved, so a live check never types or saves a key
     their flags and its exec flows, and each case gets `liveness_check`: the code calls CollectGarbage and implements
     no BeginPlay, Tick, ActorBeginOverlap, PrintString or GetActorLocation (comments ignored). A user-disabled node
     cannot be made from Python (EnabledState is not editable there); the capture golden `DisabledNodes` covers it.
-  - The case list holds current models only (the live entries of `N2CLLMModelRegistry.cpp`): no retired, deprecated
-    or "shuts down" IDs are tested. Update it when the registry's lineup changes.
+  - The case list holds current models only (the active rows of `Content/Data/N2CModelCatalog.json`): no retired,
+    deprecated or "shuts down" IDs are tested. Update it when the catalog's lineup changes.
   - Each translation is bounded by `--timeout` (wall clock; the streamed response's half-second progress events keep
     a socket timeout from ever firing). A case that gets no response in time fails as timed out and the remaining cases
     are skipped, since the editor still holds that request. Pass `--cases` in the order to run them and put slow

@@ -6,193 +6,14 @@
 #include "N2CLLMTypes.h"
 #include "N2CLLMModels.h"
 #include "N2CLLMPricing.h"
-#include "N2CLLMModelRegistry.generated.h"
+#include "N2CModelCatalog.h"
 
 /**
- * Unified model metadata structure - single source of truth for all model properties.
- * Contains all information about a specific LLM model including pricing, capabilities,
- * and default generation parameters.
- */
-USTRUCT(BlueprintType)
-struct NODETOCODE_API FN2CModelMetadata
-{
-	GENERATED_BODY()
-
-	/** API identifier sent to the provider (e.g., "claude-sonnet-4-5-20250929") */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Model")
-	FString ModelId;
-
-	/** Human-readable display name (e.g., "Claude Sonnet 4.5") */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Model")
-	FString DisplayName;
-
-	/** Provider this model belongs to */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Model")
-	EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
-
-	// === Pricing (per 1M tokens in USD) ===
-
-	/** Cost per 1M input tokens (USD) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pricing")
-	float InputCostPer1M = 0.0f;
-
-	/** Cost per 1M output tokens (USD) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pricing")
-	float OutputCostPer1M = 0.0f;
-
-	// === Capabilities ===
-
-	/** Maximum context window size in tokens */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	int32 ContextWindowSize = 128000;
-
-	/**
-	 * Maximum output tokens this model can generate. Requests send this in Auto (up to the non-streaming cap, and
-	 * reduced so prompt plus output fits ContextWindowSize) and cap an explicit Max Output Tokens setting at it; see
-	 * UN2CLLMPayloadBuilder::ResolveMaxOutputTokens.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	int32 MaxOutputTokens = 16000;
-
-	/** Whether this model supports system/developer prompts */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	bool bSupportsSystemPrompts = true;
-
-	/** Whether this model supports structured JSON output */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	bool bSupportsStructuredOutput = true;
-
-	/** Whether this is a reasoning/thinking model (affects temperature handling) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	bool bIsReasoningModel = false;
-
-	/** Whether this model requires the OpenAI Responses API instead of Chat Completions */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	bool bRequiresResponsesAPI = false;
-
-	/**
-	 * Whether the provider accepts sampling parameters (temperature, top_p, top_k) for this model.
-	 * When false the payload builder sends none of them, so the provider's own default applies.
-	 * Set from provider docs; false when unsure (current Claude, OpenAI reasoning and Gemini 3 models
-	 * reject or discourage non-default sampling values).
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	bool bAcceptsSamplingParams = false;
-
-	/** Whether this OpenAI model takes max_completion_tokens instead of max_tokens (reasoning models) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	bool bUsesMaxCompletionTokens = false;
-
-	/**
-	 * Thinking control sent with each request, for providers that switch thinking per request on one model ID
-	 * (DeepSeek: "none" sends thinking disabled; "low", "high" or "max" sends thinking enabled with that
-	 * reasoning_effort). Empty: the provider takes no such control, or its default applies.
-	 * Entries may share a ModelId when they differ here; ModelId plus ReasoningEffort is unique per entry.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Capabilities")
-	FString ReasoningEffort;
-
-	// === Generation Defaults ===
-
-	/** Default temperature for this model, sent only when bAcceptsSamplingParams is true */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
-	float DefaultTemperature = 0.0f;
-
-	// === Metadata ===
-
-	/**
-	 * Whether the provider has deprecated this model: it is retired already, or it has an announced shutdown date.
-	 * A default model is never deprecated.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
-	bool bIsDeprecated = false;
-
-	/**
-	 * Whether the provider has shut this model down, so every request to it fails. Retired models stay in their
-	 * enum (UMETA(Hidden)) so saved settings still load; they are not offered in Project Settings, the context
-	 * window model picker or get-available-llm-providers, and a saved retired selection moves to the default.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
-	bool bIsRetired = false;
-
-	/** The provider's shutdown date (YYYY-MM-DD), past or announced; empty when none is known */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
-	FString ShutdownDate;
-
-	/** Default constructor */
-	FN2CModelMetadata() = default;
-
-	/** Full initialization constructor */
-	FN2CModelMetadata(
-		const FString& InModelId,
-		const FString& InDisplayName,
-		EN2CLLMProvider InProvider,
-		float InInputCost,
-		float InOutputCost,
-		int32 InContextWindow = 128000,
-		int32 InMaxOutput = 16000,
-		bool bInSupportsSystem = true,
-		bool bInSupportsStructured = true,
-		bool bInIsReasoning = false,
-		float InDefaultTemp = 0.0f,
-		bool bInRequiresResponsesAPI = false,
-		bool bInAcceptsSamplingParams = false,
-		bool bInUsesMaxCompletionTokens = false
-	)
-		: ModelId(InModelId)
-		, DisplayName(InDisplayName)
-		, Provider(InProvider)
-		, InputCostPer1M(InInputCost)
-		, OutputCostPer1M(InOutputCost)
-		, ContextWindowSize(InContextWindow)
-		, MaxOutputTokens(InMaxOutput)
-		, bSupportsSystemPrompts(bInSupportsSystem)
-		, bSupportsStructuredOutput(bInSupportsStructured)
-		, bIsReasoningModel(bInIsReasoning)
-		, bRequiresResponsesAPI(bInRequiresResponsesAPI)
-		, bAcceptsSamplingParams(bInAcceptsSamplingParams)
-		, bUsesMaxCompletionTokens(bInUsesMaxCompletionTokens)
-		, DefaultTemperature(InDefaultTemp)
-		, bIsDeprecated(false)
-	{
-	}
-
-	/** Marks a model the provider has shut down (an empty date when the provider no longer lists one) */
-	FN2CModelMetadata& Retired(const TCHAR* InShutdownDate)
-	{
-		bIsDeprecated = true;
-		bIsRetired = true;
-		ShutdownDate = InShutdownDate;
-		return *this;
-	}
-
-	/** Sets the per-request thinking control (see ReasoningEffort) */
-	FN2CModelMetadata& WithReasoningEffort(const TCHAR* InReasoningEffort)
-	{
-		ReasoningEffort = InReasoningEffort;
-		return *this;
-	}
-
-	/** Whether ReasoningEffort turns thinking on ("low", "high", "max"; not empty or "none") */
-	bool IsThinkingEnabled() const
-	{
-		return !ReasoningEffort.IsEmpty() && ReasoningEffort != TEXT("none");
-	}
-
-	/** Marks a model the provider still serves but will shut down on the given date */
-	FN2CModelMetadata& ShutsDown(const TCHAR* InShutdownDate)
-	{
-		bIsDeprecated = true;
-		bIsRetired = false;
-		ShutdownDate = InShutdownDate;
-		return *this;
-	}
-};
-
-/**
- * Centralized registry for all LLM model metadata.
- * Provides single source of truth for model properties, pricing, and capabilities.
- * Use FN2CLLMModelRegistry::Get() to access the singleton instance.
+ * Enum-keyed view of the model catalog (FN2CModelCatalog, loaded from Content/Data/N2CModelCatalog.json) for the
+ * callers that still select models through EN2COpenAIModel, EN2CAnthropicModel, EN2CGeminiModel and
+ * EN2CDeepSeekModel. It holds no model data of its own: each catalog row is filed under the enumerator its
+ * legacy_enum names, and the view is rebuilt when the catalog reloads. Later cards move these callers to the
+ * catalog's string IDs and remove the wrappers. Use FN2CLLMModelRegistry::Get() to access the singleton instance.
  */
 class NODETOCODE_API FN2CLLMModelRegistry
 {
@@ -240,11 +61,6 @@ public:
 	bool SupportsSystemPrompts(EN2CGeminiModel Model) const;
 	bool SupportsSystemPrompts(EN2CDeepSeekModel Model) const;
 
-	bool IsReasoningModel(EN2COpenAIModel Model) const;
-	bool IsReasoningModel(EN2CAnthropicModel Model) const;
-	bool IsReasoningModel(EN2CGeminiModel Model) const;
-	bool IsReasoningModel(EN2CDeepSeekModel Model) const;
-
 	/** Check if a model requires the OpenAI Responses API */
 	bool RequiresResponsesAPI(EN2COpenAIModel Model) const;
 	bool RequiresResponsesAPI(const FString& ModelId) const;
@@ -256,16 +72,9 @@ public:
 	FN2CGeminiPricing GetGeminiPricing(EN2CGeminiModel Model) const;
 	FN2CDeepSeekPricing GetDeepSeekPricing(EN2CDeepSeekModel Model) const;
 
-	// === Generation Defaults ===
-
-	float GetDefaultTemperature(EN2COpenAIModel Model) const;
-	float GetDefaultTemperature(EN2CAnthropicModel Model) const;
-	float GetDefaultTemperature(EN2CGeminiModel Model) const;
-	float GetDefaultTemperature(EN2CDeepSeekModel Model) const;
-
 	// === Provider Enumeration ===
 
-	/** Get all models for a specific provider */
+	/** Get all models for a specific provider, retired ones included, in catalog order */
 	TArray<FN2CModelMetadata> GetAllModelsForProvider(EN2CLLMProvider Provider) const;
 
 	/** Get all OpenAI models */
@@ -284,8 +93,11 @@ private:
 	FN2CLLMModelRegistry();
 	~FN2CLLMModelRegistry() = default;
 
-	/** Initialize all model metadata - called once on first Get() */
+	/** Files the catalog's rows under their enumerators; runs on first Get() and whenever the catalog reloads */
 	void InitializeRegistry();
+
+	/** Catalog generation the maps were built from */
+	uint32 BuiltGeneration = 0;
 
 	/** Model metadata storage by provider */
 	TMap<EN2COpenAIModel, FN2CModelMetadata> OpenAIModels;
@@ -293,12 +105,13 @@ private:
 	TMap<EN2CGeminiModel, FN2CModelMetadata> GeminiModels;
 	TMap<EN2CDeepSeekModel, FN2CModelMetadata> DeepSeekModels;
 
+	/** Catalog rows with no enumerator (a model added only in the catalog file), per provider in catalog order */
+	TArray<FN2CModelMetadata> UnmappedModels;
+
 	/** Index by model ID for fast lookup across all providers (first live entry per ID) */
 	TMap<FString, const FN2CModelMetadata*> ModelIdIndex;
 
 	/** Every entry per model ID, for IDs shared by several thinking modes */
 	TMultiMap<FString, const FN2CModelMetadata*> ModelIdEntries;
 
-	/** Flag to track initialization state */
-	bool bIsInitialized = false;
 };
