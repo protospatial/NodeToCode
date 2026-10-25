@@ -239,9 +239,11 @@ When calling a long-running tool, clients should provide a progress token (`$SID
 
 ```bash
 # Call with progress token
-curl -X POST http://localhost:27000/mcp \
+curl -N -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -255,15 +257,23 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# With -H "Accept: application/json, text/event-stream" on UE 5.8, the same response is a stream:
+# UE 5.8 (Accept lists text/event-stream and a progressToken is sent): 200, Content-Type: text/event-stream,
+# one event per message; the connection closes after the response (-N prints events as they arrive):
 # event: message
-# data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"unique-progress-token-123","progress":0.1,"message":"Translation request sent to the LLM provider"}}
+# data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"unique-progress-token-123","progress":0.019999999552965164,"message":"Collecting the focused Blueprint"}}
+#
+# ... "Translation request sent to the LLM provider", "Waiting for the LLM response (3 s elapsed)" about once a
+# second, "LLM response received; parsing the translation", then progress 1 "Translation complete" ...
 #
 # event: message
 # data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"..."}]}}
 #
-# Without it (or on UE 5.6/5.7) the call waits and returns one JSON response:
+# Accept without text/event-stream, no progressToken, or UE 5.6/5.7: the request is held, no progress is sent, and
+# the call answers with one application/json response when it finishes:
 # {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"..."}]}}
+#
+# With no Blueprint editor focused the call ends at once with "isError": true and the text
+# "... Failed to get Blueprint JSON: No active Blueprint Editor." (the 5.8 stream sends progress 1, "Translation failed", first).
 ```
 
 ### Cancelling a Task
@@ -271,9 +281,11 @@ curl -X POST http://localhost:27000/mcp \
 To cancel a running call, send `notifications/cancelled` with the tools/call's id (here 1) in the same session:
 
 ```bash
-curl -X POST http://localhost:27000/mcp \
+curl -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{
     "jsonrpc": "2.0",
     "method": "notifications/cancelled",
@@ -342,15 +354,19 @@ When dynamic tool discovery is enabled (after the `initialize` in "Calling the S
 
 ```bash
 # 1. Initial connection - only assess-needed-tools is available
-curl -X POST http://localhost:27000/mcp \
+curl -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 
 # 2. Assess needed tools for a task
-curl -X POST http://localhost:27000/mcp \
+curl -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -366,9 +382,11 @@ curl -X POST http://localhost:27000/mcp \
 # 3. No notification arrives (tools.listChanged is false): list the tools again
 
 # 4. Get updated tool list (assess-needed-tools plus the 10 tools of the two categories)
-curl -X POST http://localhost:27000/mcp \
+curl -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 3}'
 ```
 
@@ -504,15 +522,19 @@ public:
 
 ```bash
 # List available tools
-curl -X POST http://localhost:27000/mcp \
+curl -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 
 # Call your tool
-curl -X POST http://localhost:27000/mcp \
+curl -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -573,26 +595,47 @@ return ExecuteOnGameThread([this]() -> FMcpToolCallResult
 
 ## Calling the Server with curl
 
-The server speaks MCP Streamable HTTP on one endpoint, `http://localhost:27000/mcp` (Server Port, default 27000; when
-that port is taken the server uses the next free one in Port Fallback Range and writes the port it took to
-`<Project>/Saved/NodeToCode/mcp-server.json`). Every POST needs `Content-Type: application/json` (else 415), and every
-POST after `initialize` needs the `Mcp-Session-Id` that `initialize` returned in its response header (none: 400, an
-unknown or ended session: 404). `MCP-Protocol-Version` is optional; when sent it must be a supported version. See
-"Sessions and versions" in `Context/mcp-server/AGENTS-mcp-server.md`.
+The server speaks MCP Streamable HTTP (2025-11-25) on one endpoint, `http://127.0.0.1:27000/mcp`, on Unreal's
+HTTPServer, which listens on loopback only unless `[HTTPServer.Listeners]` in the project's engine config says
+otherwise. Server Port is 27000 by default; when that port is taken the server uses the next free one in Port Fallback
+Range and writes the URL it took to `<Project>/Saved/NodeToCode/mcp-server.json` and
+`<UserSettingsDir>/NodeToCode/servers/<pid>.json`. There is no second port and no other MCP route (`/mcp/health` is
+a plain health check).
+
+- **POST** carries every JSON-RPC message. It needs `Content-Type: application/json` (else 415). Send
+  `Accept: application/json, text/event-stream`: a request answers with `application/json`, except a long-running
+  `tools/call` on UE 5.8, which may answer with `text/event-stream` (see "Long-Running Tools and Async Execution" above). Notifications
+  and client responses get 202 with no body.
+- **`Mcp-Session-Id`**: `initialize` returns it as a response header; every later POST must send it (none: 400, an
+  unknown or ended session: 404, after which the client initializes again).
+- **`MCP-Protocol-Version`**: send the negotiated version after `initialize`. An unsupported value gets 400; a missing
+  header is accepted and the session's version applies.
+- **GET** gets 405 with `Allow: POST, DELETE` (there is no server-to-client stream); **DELETE** with the session id
+  ends the session (204) and cancels its running long-running calls.
+- A body over 8 MiB gets 413. A request whose `Origin` or `Host` names a host other than `localhost`, `127.0.0.1` or
+  `[::1]` (any port) gets 403; a request without `Origin` (curl, CLI agents) passes that check.
+
+Transport and session errors come back as a JSON-RPC error with a null id, for example
+`{"jsonrpc":"2.0","id":null,"error":{"code":-32001,"message":"Session not found"}}`. Details: "Sessions and versions" in
+`Context/mcp-server/AGENTS-mcp-server.md`.
 
 ```bash
 # Open a session: keep the Mcp-Session-Id response header
-SID=$(curl -s -D - -o /dev/null -X POST http://localhost:27000/mcp \
+SID=$(curl -s -D - -o /dev/null -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "curl", "version": "1.0"}}, "id": 0}' \
   | tr -d '\r' | sed -n 's/^[Mm]cp-[Ss]ession-[Ii]d: //p')
-curl -X POST http://localhost:27000/mcp -H "Content-Type: application/json" -H "Mcp-Session-Id: $SID" \
+curl -X POST http://127.0.0.1:27000/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
+# 202, no body
 
 # See all available tools and their schemas
-curl -X POST http://localhost:27000/mcp \
+curl -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 ```
 
@@ -600,7 +643,7 @@ The examples in this file and in the per-folder `AGENTS.md` files under `Impleme
 way. End the session when done (later requests with that id get 404):
 
 ```bash
-curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
+curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 ```
 
 ## Best Practices
