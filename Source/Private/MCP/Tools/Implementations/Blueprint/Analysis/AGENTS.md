@@ -38,14 +38,20 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
 ## Common Usage Patterns
 
 ### Analyzing Blueprint Structure
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # First, get the focused Blueprint data
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", 
        "params": {"name": "get-focused-blueprint", "arguments": {}}, "id": 1}'
 
 # Then list its functions
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", 
        "params": {"name": "list-blueprint-functions", 
                   "arguments": {"includeInherited": true}}, "id": 2}'
@@ -55,6 +61,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Search for input-related functions that can be overridden
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", 
        "params": {"name": "list-overridable-functions", 
                   "arguments": {"filterByCategory": "Input", 

@@ -60,9 +60,13 @@ This directory contains MCP tools for safely reading files and directories withi
 ## Usage Examples
 
 ### Browsing Project Structure
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # List project root
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -75,6 +79,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # List Config directory
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -87,6 +93,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # List plugin directory
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -102,6 +110,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Read project configuration
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -114,6 +124,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Read plugin descriptor
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -129,6 +141,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Move an asset to a different folder
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -144,6 +158,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Rename an asset (same directory)
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -160,6 +176,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Move and rename in one operation
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

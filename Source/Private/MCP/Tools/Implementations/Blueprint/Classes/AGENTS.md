@@ -63,9 +63,13 @@ The tool returns comprehensive metadata for each class:
 
 ### Complete Workflow: Search and Create
 
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # Step 1: Search for a parent class
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -82,6 +86,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Step 2: Create a Blueprint using the found class
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -103,6 +109,8 @@ curl -X POST http://localhost:27000/mcp \
 #### Actor Blueprint
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -121,6 +129,8 @@ curl -X POST http://localhost:27000/mcp \
 #### Component Blueprint
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -140,6 +150,8 @@ curl -X POST http://localhost:27000/mcp \
 #### Widget Blueprint
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -160,6 +172,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Search for character-related actor classes
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -179,6 +193,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Search for mesh component classes
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -198,6 +214,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Search for UI widget base classes
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

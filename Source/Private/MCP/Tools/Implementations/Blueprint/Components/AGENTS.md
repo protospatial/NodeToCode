@@ -79,9 +79,12 @@ When using `add-component-class-to-actor`, common component classes include:
 ## Usage Examples
 
 ### List All Components in a Blueprint
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -99,6 +102,7 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -120,6 +124,7 @@ curl -X POST http://localhost:27000/mcp \
 # First, add a spring arm component
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -140,6 +145,7 @@ curl -X POST http://localhost:27000/mcp \
 # Then, add a camera to the spring arm
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -160,6 +166,7 @@ curl -X POST http://localhost:27000/mcp \
 # List only scene components
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -178,6 +185,7 @@ curl -X POST http://localhost:27000/mcp \
 # Delete a single component (reparent children)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -194,6 +202,7 @@ curl -X POST http://localhost:27000/mcp \
 # Delete a component and all its children
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

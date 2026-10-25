@@ -77,8 +77,12 @@ This directory contains MCP tools for manipulating nodes and connections within 
 The search and add tools work together in a two-step process:
 
 ### Step 1: Search for Nodes
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -97,6 +101,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Use the actionIdentifier from search results
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -131,6 +137,8 @@ Each connection requires:
 ### Batch Connection Example
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -164,6 +172,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Set String Value Example
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -183,6 +193,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Integer value
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -199,6 +211,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Float value
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -217,6 +231,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Set Boolean Value Example
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -244,6 +260,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Delete Single Node Example
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -260,6 +278,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Delete Multiple Nodes Example
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -281,6 +301,8 @@ curl -X POST http://localhost:27000/mcp \
 When deleting nodes in the middle of a flow, preserve connections:
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -299,6 +321,8 @@ curl -X POST http://localhost:27000/mcp \
 Override protection for system nodes (use with caution):
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -324,6 +348,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Create Comment with Default Settings
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -343,6 +369,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Create Colored Comment with Custom Text
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -386,6 +414,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Search by Keywords
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -405,6 +435,8 @@ curl -X POST http://localhost:27000/mcp \
 ### Search by Node GUIDs
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

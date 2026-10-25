@@ -53,10 +53,8 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 ## LLM Provider Configuration
 
 ### Cloud Providers
-- **OpenAI**: GPT-4 and GPT-3.5 models
-- **Anthropic**: Claude models
-- **Google Gemini**: Gemini Pro models
-- **DeepSeek**: DeepSeek Coder models
+- **OpenAI**, **Anthropic**, **Google Gemini**, **DeepSeek**: the models in the plugin's model registry
+  (`get-available-llm-providers` lists each provider's models)
 
 ### Local Providers
 - **Ollama**: Local model execution
@@ -65,8 +63,12 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 ## Translation Workflow
 
 ### 1. Check Available Providers
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -81,6 +83,8 @@ curl -X POST http://localhost:27000/mcp \
 ### 2. Select Translation Target
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -93,9 +97,15 @@ curl -X POST http://localhost:27000/mcp \
 ```
 
 ### 3. Perform Translation (with Progress)
+On UE 5.8, `Accept` with `text/event-stream` plus the `progressToken` makes the response a stream of
+`notifications/progress` events followed by the result (`-N` prints them as they arrive); without them, or on
+UE 5.6/5.7, the request is held and answered with one JSON response when the translation finishes.
+
 ```bash
-curl -X POST http://localhost:27000/mcp \
+curl -N -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

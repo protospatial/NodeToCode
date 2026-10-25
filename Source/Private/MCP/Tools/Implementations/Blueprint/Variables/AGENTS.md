@@ -185,9 +185,13 @@ Full path format: `"/Script/Engine.ECollisionChannel"`
 ## Workflow Examples
 
 ### Finding and Creating Variables
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # Step 1: Search for Actor-related types
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -203,6 +207,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Step 2: Create a variable using found type
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -224,6 +230,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Create a map from String to Transform
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -245,6 +253,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Get all member variables from the focused Blueprint
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -260,6 +270,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Create a Get node for a member variable
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -275,6 +287,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Create a Set node for a member variable with optional default value
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -291,6 +305,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Create a Set node without default value (for later connection)
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -308,6 +324,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Set the default value of a member variable (like in Details panel)
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -323,6 +341,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Reset a variable to its type's default value
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -341,6 +361,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Get all local variables in the focused function
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -353,6 +375,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Create a Get node for a local variable
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -369,6 +393,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Create a Set node for a local variable
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -386,6 +412,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Set default value of a local variable
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

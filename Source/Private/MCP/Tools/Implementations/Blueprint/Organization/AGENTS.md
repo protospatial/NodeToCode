@@ -51,9 +51,13 @@ This directory contains MCP tools for organizing and tracking Blueprint graphs u
 ## Usage Examples
 
 ### Organizing Feature Development
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # Tag graphs related to player movement
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -73,6 +77,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Mark graphs that need optimization
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -92,6 +98,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Find all graphs tagged with a specific feature
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -106,6 +114,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Find all tech debt items
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

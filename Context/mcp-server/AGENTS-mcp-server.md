@@ -46,7 +46,11 @@ Source/
     │   └── N2CMcpJsonRpcTypes.cpp
     ├── Async/                            # Long-running call implementation
     │   └── N2CToolAsyncTaskManager.cpp
+    ├── Prompts/                          # N2CMcpPromptManager.cpp, N2CMcpPromptTypes.cpp
+    ├── Resources/                        # N2CMcpResourceManager.cpp, N2CMcpResourceTypes.cpp
     ├── Tools/                            # Tool framework and implementations
+    │   ├── AGENTS.md                     # Tool guide: registration modes, categories, new tools
+    │   ├── N2CToolCallContext.cpp
     │   ├── N2CMcpToolBase.cpp
     │   ├── N2CMcpToolTypes.cpp
     │   ├── N2CMcpToolManager.cpp
@@ -80,7 +84,10 @@ The MCP server is built on HTTP transport with full JSON-RPC 2.0 compliance:
     `/mcp/events` and `/mcp/notifications`) was removed in card 0113, so the server sends no unsolicited
     notifications (`tools.listChanged` is false)
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
-*   **Lifecycle**: Auto-starts with plugin, graceful shutdown on exit
+*   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
+    unless the command line has `-N2CMcp`), graceful shutdown on exit
+*   **Tools**: which tools `tools/list` returns depends on the registration mode (default: every tool except
+    `assess-needed-tools`, 62 tools, or 59 without Allow MCP Python Execution); see Tool Registration Modes
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
 ### Sessions and versions (MCP 2025-11-25, Streamable HTTP on one `/mcp` endpoint)
@@ -223,20 +230,28 @@ The tool system provides a scalable framework for exposing Blueprint operations:
 
 ### Core Infrastructure
 
+Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/Tools/`:
+
 *   `IN2CMcpTool.h`: Tool interface contract
 *   `N2CMcpToolBase.h/.cpp`: Base class with common functionality
 *   `N2CMcpToolTypes.h/.cpp`: Tool definition and result structures
-*   `N2CMcpToolManager.h/.cpp`: Thread-safe tool registry
-*   `N2CMcpToolRegistry.h/.cpp`: Automatic registration system
+*   `N2CMcpToolManager.h/.cpp`: the active tool set (what `tools/list` returns) and tool execution
+*   `N2CMcpToolRegistry.h/.cpp`: Automatic registration system (every compiled tool)
+*   `N2CToolCallContext.h/.cpp`: progress and cancellation for one long-running call
 
 ### Tool Registration
 
-*   `REGISTER_MCP_TOOL` macro for static initialization
-*   Self-contained tools auto-register on plugin load
+*   `REGISTER_MCP_TOOL` macro for static initialization: every tool adds itself to `FN2CMcpToolRegistry` on plugin
+    load
+*   At server start `FN2CMcpHttpServerManager::RegisterMcpTools()` copies tools from the registry into the active
+    set by registration mode (see Tool Registration Modes below)
 *   Game Thread execution support with timeouts
 *   Input schema validation framework
 
 ### Tool Implementations (`Implementations/`)
+
+63 tools by folder (the category each tool registers under, which dynamic discovery uses, is in the category table
+of `Source/Private/MCP/Tools/AGENTS.md`; folders and categories do not map one to one):
 
 **Blueprint/Analysis/** - Blueprint inspection tools:
 *   `get-focused-blueprint` - Get currently focused Blueprint
@@ -250,7 +265,7 @@ The tool system provides a scalable framework for exposing Blueprint operations:
 *   `delete-blueprint-function` - Delete a function
 *   `add-function-return-pin` - Add return pin to function
 *   `remove-function-return-pin` - Remove function return pin
-*   `add-function-entry-pin` - Add input parameter to function
+*   `add-function-input-pin` - Add input parameter to function
 *   `remove-function-entry-pin` - Remove function input parameter
 
 **Blueprint/Variables/** - Variable management:
@@ -273,7 +288,7 @@ The tool system provides a scalable framework for exposing Blueprint operations:
 *   `set-input-pin-value` - Set literal value on input pin
 *   `delete-blueprint-node` - Delete a node from graph
 *   `create-comment-node` - Create a comment box
-*   `find-nodes-in-graph` - Find nodes in current graph
+*   `find-nodes-in-graph` - Find nodes in current graph (sets no category, so dynamic discovery cannot enable it)
 
 **Blueprint/Organization/** - Tagging and organization:
 *   `tag-blueprint-graph` - Apply tag to a graph
@@ -316,13 +331,13 @@ The tool system provides a scalable framework for exposing Blueprint operations:
 *   `rename-folder` - Rename folder
 
 **Python/** - Python script management:
-*   `run-python` - Execute Python code in UE environment
+*   `run-python` - Execute Python code in UE environment (only with Allow MCP Python Execution)
 *   `list-python-scripts` - List scripts by category
 *   `search-python-scripts` - Search by name/description/tags
 *   `get-python-script` - Get full script code and metadata
 *   `get-script-functions` - Get function signatures via AST (token-efficient)
-*   `save-python-script` - Save script to library
-*   `delete-python-script` - Remove script from library
+*   `save-python-script` - Save script to library (only with Allow MCP Python Execution)
+*   `delete-python-script` - Remove script from library (only with Allow MCP Python Execution)
 
 **ToolManagement/** - Dynamic tool management:
 *   `assess-needed-tools` - Request activation of tool categories (for dynamic discovery mode)
@@ -346,15 +361,18 @@ Resources expose Blueprint data in a structured, queryable format:
 
 ### Core Infrastructure
 
-*   `N2CMcpResourceTypes.h/.cpp`: Resource definitions and contents
-*   `N2CMcpResourceManager.h/.cpp`: Resource registry with subscription support
-*   `IN2CMcpResource.h`: Resource interface for implementations
+*   `N2CMcpResourceTypes.h/.cpp`: Resource definitions and contents (`FMcpResourceDefinition`,
+    `FMcpResourceContents`, `FMcpResourceTemplate`, the `FMcpResourceReadDelegate` and `FMcpResourceTemplateHandler`
+    delegates) and the `IN2CMcpResource` interface that implementations derive from
+*   `N2CMcpResourceManager.h/.cpp`: Resource registry (`RegisterStaticResource`, `RegisterDynamicResource`)
+*   `FN2CMcpHttpServerManager::RegisterMcpResources()` registers the resources below at server start
 
 ### Resource Types
 
-*   Static resources: Fixed URIs with direct handlers
-*   Dynamic resources: Template-based URI patterns
-*   Subscription support for real-time updates
+*   Static resources: Fixed URIs with direct handlers (`resources/list`)
+*   Dynamic resources: Template-based URI patterns (`resources/templates/list`)
+*   No subscriptions: `initialize` advertises `resources.subscribe: false` and there is no `resources/subscribe`
+    method (the manager's `SubscribeToResource` bookkeeping is not wired to the protocol)
 
 ### Implemented Resources (`Implementations/`)
 
@@ -369,9 +387,11 @@ Prompts provide guided interactions for common Blueprint tasks:
 
 ### Core Infrastructure
 
-*   `N2CMcpPromptTypes.h`: Prompt structures with type alias for arguments
+*   `N2CMcpPromptTypes.h/.cpp`: Prompt structures (`FMcpPromptDefinition`, `FMcpPromptResult`, ...), the
+    `FMcpPromptArguments` alias, the `FMcpPromptGetDelegate` delegate and the `IN2CMcpPrompt` interface that
+    implementations derive from
 *   `N2CMcpPromptManager.h/.cpp`: Prompt registry and execution
-*   `IN2CMcpPrompt.h`: Interface for prompt implementations
+*   `FN2CMcpHttpServerManager::RegisterMcpPrompts()` registers the prompts below at server start
 
 ### Type Safety
 
@@ -381,7 +401,14 @@ Prompts provide guided interactions for common Blueprint tasks:
 
 ### Implemented Prompts (`Implementations/`)
 
-*   `N2CMcpCodeGenerationPrompt`: Generate code with language/style options
+All four classes are in `N2CMcpCodeGenerationPrompt.h/.cpp`:
+
+| Prompt | Class | Arguments |
+|---|---|---|
+| `generate-code` | `FN2CMcpCodeGenerationPrompt` | `language`, `style`, `optimization` (all optional) |
+| `analyze-blueprint` | `FN2CMcpBlueprintAnalysisPrompt` | `focus`, `detail` (optional) |
+| `refactor-blueprint` | `FN2CMcpRefactorPrompt` | `goal`, `language` (optional) |
+| `python-scripting` | `FN2CMcpPythonScriptingPrompt` | `task` (required), `save_script`, `category` (optional) |
 
 ## MCP Protocol Implementation
 
@@ -412,17 +439,37 @@ The server implements these MCP methods:
 *   Per-client sessions (`Mcp-Session-Id`), ended with HTTP DELETE
 *   Request cancellation (`notifications/cancelled`; the custom `nodetocode/cancelTask` is deprecated)
 
+## Tool Registration Modes
+
+`FN2CMcpHttpServerManager::RegisterMcpTools()` runs once when the server starts and picks one of three modes from
+`UN2CSettings` (Project Settings > Plugins > Node to Code > MCP Server). The first that applies wins:
+
+1. **Python script-only** (`bEnablePythonScriptOnlyMode`, default false): `RegisterToolsByName` with `run-python`,
+   `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`,
+   `save-python-script` and `delete-python-script`. No translation, Blueprint, Content Browser or file tools. 7 tools.
+2. **Dynamic tool discovery** (`bEnableDynamicToolDiscovery`, default false): `SetDefaultToolSet`, so only
+   `assess-needed-tools`. 1 tool.
+3. **All tools** (both false, the shipped default): `RegisterAllToolsExceptAssess`, every registered tool except
+   `assess-needed-tools`. 62 tools.
+
+Every path goes through `FN2CMcpToolManager::RegisterTool`, which drops `run-python`, `save-python-script` and
+`delete-python-script` unless the per-user Allow MCP Python Execution is on (see Server switches, below; off by
+default). So with the shipped defaults a fresh install lists 59 tools; Python script-only mode without the switch
+lists 4 and logs a warning at start. Both mode settings are read only when the server starts, so they need an
+editor restart. `build.ps1 -Smoke` checks each mode
+with Python execution allowed against `Tests/smoke/expected.json` (`default` 62, `dynamic` 1, `python_only` 7). The
+full tool and category tables are in `Source/Private/MCP/Tools/AGENTS.md`.
+
 ## Dynamic Tool Management
 
-The MCP server supports dynamic tool discovery (configurable in plugin settings):
-
-*   **Disabled (Default)**: All tools registered at startup
-*   **Enabled**: Only `assess-needed-tools` initially available
-*   Use `assess-needed-tools` with category names to activate tool sets
+*   **Enabled** (mode 2 above): only `assess-needed-tools` at start
+*   `assess-needed-tools {categories: [...]}` replaces the active set with itself plus every tool whose category is
+    in the list (`FN2CMcpToolManager::UpdateActiveTools`, exact string match); an empty list resets it. The set is
+    global, shared by every session on the editor
 *   No `notifications/tools/list_changed` is sent (no notification channel, `tools.listChanged` false): the client
     must call `tools/list` again; the server logs a warning at start when this mode is on (card 0165 replaces it)
 
-Available tool categories for `assess-needed-tools`:
+Category strings the tools register (`FMcpToolDefinition::Category`), which `assess-needed-tools` matches:
 *   Tool Management
 *   Blueprint Discovery
 *   Blueprint Graph Editing
@@ -430,12 +477,15 @@ Available tool categories for `assess-needed-tools`:
 *   Blueprint Variable Management
 *   Blueprint Organization
 *   Blueprint Compilation
-*   Blueprint Class Management
-*   Blueprint Component Management
+*   Blueprint Classes
+*   Blueprint Components
 *   Content Browser
 *   File System
 *   Translation
-*   Python Scripting
+*   Python
+
+The tool's own description (`FN2CMcpAssessNeededToolsTool::GetCategoryDescriptions`) names nine of them (the
+first six, Content Browser, File System and Translation), but the other four match too; `find-nodes-in-graph` has no category and cannot be enabled.
 
 ## Editor Integration Updates
 
@@ -452,9 +502,13 @@ Available tool categories for `assess-needed-tools`:
         `McpServerPortRange` (default 10): ports tried from there when one is taken; `McpServerStatus` (transient,
         read-only): where the server listens now. A port change restarts the server on the next tick
         (`FN2CMcpHttpServerManager::HandlePortSettingsChanged`), no editor restart
-    *   `bEnableDynamicToolDiscovery`: Toggle dynamic tool management (logs a warning: no `tools/list_changed` is
-        sent, clients see newly enabled tools when they list again)
-    *   Exposed in Editor UI for runtime configuration
+    *   `bEnableDynamicToolDiscovery` (default false): Toggle dynamic tool management (logs a warning: no
+        `tools/list_changed` is sent, clients see newly enabled tools when they list again)
+    *   `bEnablePythonScriptOnlyMode` (default false): Python script-only mode; takes precedence over dynamic
+        discovery (see Tool Registration Modes)
+    *   Shown in Project Settings > Plugins > Node to Code > MCP Server. A port change applies at once (the
+        server restarts); the two mode settings are read only when the server starts, so they need an editor
+        restart (a restart caused by a port change also picks them up)
 
 ## Testing and Development
 
@@ -520,8 +574,10 @@ curl -X DELETE http://localhost:27000/mcp -H "Mcp-Session-Id: $SID"
 
 *   **NodeToCode MCP Bridge**: Python stdio-to-HTTP bridge for MCP clients
     *   Location: `Content/Python/mcp_bridge/nodetocode_bridge.py`
-    *   Enables Claude for Desktop and other MCP client integration
-    *   Handles protocol translation and session management
+    *   Enables Claude for Desktop and other stdio MCP clients
+    *   Finds the editor through the discovery files (above, card 0114) unless `--url`/`--port` names it, keeps the
+        `Mcp-Session-Id`, and forwards streamed responses and `notifications/cancelled`; details in
+        `Context/python-scripting/AGENTS-python-scripting.md`
 
 ## Server switches (per-user)
 
@@ -537,6 +593,11 @@ Unreal saves only values that differ from the lower layers, so if a project file
 picks, the choice is not saved; the warning says to remove it from the project file:
 
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
+- **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
+  `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so dynamic discovery cannot add them either.
+  Without it the default mode lists 59 tools, not 62.
+
+Both are read once per editor session, so a change needs an editor restart.
 
 Ports and shutdown (card 0112): `FN2CMcpHttpServerManager::StartServer(Port, Range)` checks each port with a bind of
 its own before handing it to HTTPServer (`GetHttpRouter(Port, true)`), so a port another process or plugin holds is
@@ -549,8 +610,6 @@ writes a discovery file, `<Project>/Saved/NodeToCode/mcp-server.json` plus
 `<UserSettingsDir>/NodeToCode/servers/<pid>.json` (port, requestedPort, url, pid, projectFile, projectName,
 engineVersion, pluginVersion, protocolVersions, startedAt), removed on stop; index entries of processes that are gone are pruned on the next start. Spec:
 `NodeToCode.MCP.ServerLifecycle`; live check: `Tests/mcp_probe/live_port_restart.py`.
-- **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
-  `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so dynamic discovery cannot add them either.
 
 The server does not start in commandlets or `-unattended` runs (build agents, the smoke test) unless the command
 line has `-N2CMcp`. `bEnablePythonScriptOnlyMode` now defaults to false.
