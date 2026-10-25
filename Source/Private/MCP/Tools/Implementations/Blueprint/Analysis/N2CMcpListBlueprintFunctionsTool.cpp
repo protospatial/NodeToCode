@@ -45,14 +45,14 @@ FMcpToolDefinition FN2CMcpListBlueprintFunctionsTool::GetDefinition() const
 	// includeInherited property (optional)
 	TSharedPtr<FJsonObject> IncludeInheritedProp = MakeShareable(new FJsonObject);
 	IncludeInheritedProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	IncludeInheritedProp->SetStringField(TEXT("description"), TEXT("Whether to include inherited functions from parent classes"));
+	IncludeInheritedProp->SetStringField(TEXT("description"), TEXT("Read but has no effect yet: only the Blueprint's own function graphs are listed"));
 	IncludeInheritedProp->SetBoolField(TEXT("default"), false);
 	Properties->SetObjectField(TEXT("includeInherited"), IncludeInheritedProp);
 
 	// includeOverridden property (optional)
 	TSharedPtr<FJsonObject> IncludeOverriddenProp = MakeShareable(new FJsonObject);
 	IncludeOverriddenProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	IncludeOverriddenProp->SetStringField(TEXT("description"), TEXT("Whether to include overridden parent functions"));
+	IncludeOverriddenProp->SetStringField(TEXT("description"), TEXT("Read but has no effect yet: only the Blueprint's own function graphs are listed"));
 	IncludeOverriddenProp->SetBoolField(TEXT("default"), false);
 	Properties->SetObjectField(TEXT("includeOverridden"), IncludeOverriddenProp);
 	

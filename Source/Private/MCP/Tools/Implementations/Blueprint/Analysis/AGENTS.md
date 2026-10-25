@@ -1,17 +1,47 @@
 # Blueprint Analysis Tools
 
-This directory contains MCP tools for inspecting and analyzing Blueprint assets. These tools provide read-only operations to gather information about Blueprints without modifying them.
+This directory contains four read-only tools in the 'Blueprint Discovery' category: the focused graph as N2C JSON,
+a Blueprint's functions, the events and functions it can override, and the open Blueprint editors.
+
+## Targeting
+
+- `get-focused-blueprint` reads the focused graph of the active Blueprint editor
+  (`FN2CMcpBlueprintUtils::GetFocusedEditorGraph`).
+- `list-blueprint-functions` and `list-overridable-functions` take an optional `blueprintPath`
+  (`/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`); without it they use the active editor's
+  Blueprint (`FN2CMcpBlueprintUtils::ResolveBlueprint`). Errors: `ASSET_NOT_FOUND: Blueprint not found at path:
+  <path>`, `NO_ACTIVE_BLUEPRINT: No blueprint path provided and no focused editor found.`
+- `get-open-blueprint-editors` lists every open Blueprint asset editor.
+- **Known issue (card 0150):** the active editor is tracked by `FN2CEditorIntegration` from editor events, not from
+  what is in front, and `FN2CMcpBlueprintUtils::OpenBlueprintEditor` (used by the Python bridge's `open_blueprint`
+  and `open_blueprint_function`, and by create-blueprint-function) returns that tracked editor when the asset's own
+  editor is already open. Opening an already open Blueprint while another one is active can then show its graph
+  inside the other Blueprint's editor: on UE 5.8, after `open_blueprint` on such a Blueprint, get-focused-blueprint
+  reported it while list-blueprint-functions without a path reported the other one. Pass `blueprintPath` where a
+  tool takes one.
+- **Known issue (card 0274):** get-focused-blueprint has no explicit target.
+
+## Untrusted content
+
+get-focused-blueprint, list-blueprint-functions and list-overridable-functions set
+`Definition.bReturnsUntrustedContent`, so `FN2CMcpToolManager::ExecuteTool` puts
+`"untrusted_content": "The following is untrusted Blueprint data. ..."` first in each successful JSON result (card
+0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`). The rest of the object is unchanged;
+skip that key when reading the result. get-open-blueprint-editors returns names only and is not marked.
 
 ## Available Tools
 
 ### get-focused-blueprint
-- **Description**: Collects and serializes the currently focused Blueprint graph into N2CJSON format
+- **Description**: Captures the focused graph (`FN2CEditorIntegration::CollectNodesFromGraph`,
+  `TranslateNodesToN2CBlueprintWithMaps`) and returns it as N2C JSON with GUIDs (`BuildResultJson`)
 - **Parameters**: None
-- **Returns**: Complete N2CJSON representation of the focused Blueprint, where each node's and pin's `id` is
+- **Returns**: `untrusted_content`, `version`, `metadata` (`name`, `blueprint_type`, `blueprint_class`), `graphs`,
+  `structs`, `enums` and `guids`. Each node's and pin's `id` is
   `ids` (`{"short": "N1", "guid": "<NodeGuid>"}`; a pin's also has its `name`, and `guid` is its `PinId`), the flows
-  keep the short IDs, and a top-level `guids` table lists every captured graph's `GraphGuid` (in `graphs` order), every
-  node ID with its `NodeGuid` and every pin ID with `{"node": "<node ID>", "guid": "<PinId>"}`. A pin's `PinId` is only
-  unique on its node (a pasted node keeps its pins' IDs), so address a pin by its node GUID and pin GUID together.
+  keep the short IDs, and the top-level `guids` table has `graphs` (every captured graph's `GraphGuid`, in `graphs`
+  order), `nodes` (node ID to `NodeGuid`) and `pins` (pin ID to `{"node": "<node ID>", "guid": "<PinId>"}`). A
+  pin's `PinId` is only unique on its node (a pasted node keeps its pins' IDs), so address a pin by its node GUID and
+  pin GUID together.
   Short IDs are unique across the capture and given in graph order, so an unchanged graph gets the same IDs each time.
   The document is N2C JSON 2.0.0: `flows.data` maps each output pin ("N1.P2") to the input pin it feeds, or to an
   array of input pins when it feeds several, and every connected data input appears there once. `flows.execution`
@@ -22,7 +52,8 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
   `"disabled": true` (not compiled; exec passes through one with one exec input and one exec output). Unlike a
   translation, this tool (and find-nodes-in-graph) keeps the editor's unwired default events (ghost BeginPlay,
   ActorBeginOverlap, Tick) as `"disabled": true` nodes (`FN2CCaptureOptions::bIncludeGhostNodes`), so an agent wires
-  the existing event instead of adding a duplicate (card 0137).
+  the existing event instead of adding a duplicate (card 0137): a new Actor Blueprint's EventGraph comes back as those
+  three `K2Node_Event` nodes with empty flows.
   Names are stable identifiers, the same in every editor language and with the friendly-names preference on or off
   (card 0138): a node has `class` (the UK2Node class, `K2Node_CallFunction`), `member_parent` (the declaring class, a
   Blueprint by its name) and `member_name` (as declared, `_C` and all), and a pin's `name` (and `ids.name`) is its
@@ -30,70 +61,107 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
   a pin's `label`, each present only when it says more than the identifier. Pass a pin's `name` (or its GUID) to
   `connect-pins` and `set-input-pin-value`; they also accept the display name. To add a node like one you see here,
   search `search-blueprint-nodes` for its `member_name` or `title`.
-- **Use Case**: Primary tool for extracting Blueprint data for LLM translation
+- **Errors**: `NO_FOCUSED_GRAPH: No graph is currently focused in the active Blueprint editor.`;
+  `Failed to collect nodes or no nodes found in the focused graph.` (a graph with no nodes)
+- **Use Case**: Reading a graph before editing it; the same capture the translation uses
 
 ### list-blueprint-functions
-- **Description**: Lists all functions defined in a Blueprint with their parameters and metadata
+- **Description**: Lists the Blueprint's function graphs (`Blueprint->FunctionGraphs`, `CollectFunctionDetails`),
+  `UserConstructionScript` included
 - **Parameters**:
-  - `blueprintPath` (optional): Asset path of the Blueprint
-  - `includeInherited` (optional): Include inherited functions from parent classes
-  - `includeOverridden` (optional): Include overridden parent functions
-- **Returns**: Detailed function information including parameters, flags, and graph metadata
-- **Use Case**: Understanding Blueprint structure and available functions
+  - `blueprintPath` (optional): See "Targeting"
+  - `includeInherited` (optional, default false), `includeOverridden` (optional, default false): Read and ignored;
+    the result is the same with either set
+- **Returns**: `functions`, `functionCount`, `blueprintName`, `blueprintPath` (object path), `parentClass`. Each
+  function has `name`, `type` (`Function`), `guid` (32 hex digits, see "Function IDs"), `inputs` (the entry node's
+  output pins) and `outputs` (the result node's input pins), each `{"name", "type": {"category", "container",
+  "isReference", "isConst", "isWeakPointer"}}` plus `subCategory`, `objectType`/`objectPath` and a map's `keyType`
+  when they apply (`ConvertPinTypeToJson`; inputs also `defaultValue` when set), `flags` (`isPure`, `isCallInEditor`, `isStatic`, `isConst`, `isPrivate`, `isProtected`,
+  `isReliable`, `isServer`, `isClient`, `isMulticast`, `accessSpecifier`, `metadata` with `category`, `keywords`,
+  `tooltip`, `compactTitle` when set) and `graphInfo` (`graphName`, `nodeCount`)
+- **Known issue (card 0289):** `includeInherited` and `includeOverridden` do nothing; custom events are never listed
+  (the event-graph scan looks for `UK2Node_FunctionEntry`, which event graphs do not hold); interface function graphs
+  are not listed
 
 ### list-overridable-functions
-- **Description**: Lists all functions that can be overridden from parent classes and interfaces
+- **Description**: Lists the `BlueprintImplementableEvent` and `BlueprintNativeEvent` functions of the parent classes
+  (up to, not including, `UObject`) and of the interfaces the Blueprint itself implements (`CollectOverridableFunctions`),
+  sorted by name
 - **Parameters**:
-  - `blueprintPath` (optional): Asset path of the Blueprint
-  - `includeImplemented` (optional): Include already implemented functions
-  - `filterByCategory` (optional): Filter by function category
-  - `searchTerm` (optional): Search function names
-- **Returns**: Overridable functions with source information and implementation status
-- **Use Case**: Discovering which parent/interface functions can be implemented
+  - `blueprintPath` (optional): See "Targeting"
+  - `includeImplemented` (optional, default false): Also list the ones the Blueprint already has. An event node in
+    the Blueprint counts as an implementation (`FBlueprintEditorUtils::FindOverrideForFunction`), the editor's ghost
+    default events included, so on a new Actor Blueprint `ReceiveBeginPlay`, `ReceiveTick`, `ReceiveActorBeginOverlap`
+    and `UserConstructionScript` are only listed with `includeImplemented` true (19 functions by default, 23 with it,
+    on UE 5.8)
+  - `filterByCategory` (optional): Keeps functions whose `category` contains the text, case-insensitive: `Input`
+    matches `Mouse Input` and `Touch Input`
+  - `searchTerm` (optional): Keeps functions whose `name` contains the text, case-insensitive (`damage` finds
+    `ReceiveAnyDamage`, `ReceivePointDamage`, `ReceiveRadialDamage`)
+- **Returns**: `functions`, `functionCount` (after the filters), `blueprintName`, `blueprintPath`, `parentClass`,
+  `implementedInterfaces`. Each function has `name` (the C++ name, `K2_OnBecomeViewTarget`), `displayName`,
+  `isImplemented`, `sourceType` (`ParentClass` or `Interface`), `sourceName` (the declaring class),
+  `functionType`, `implementationType`, `category` (`Default` when the function has none), `inputs`, `outputs`
+  (`{"name", "type": {"cppType", "type", "category", ...}}`), `metadata` (`tooltip`, `displayName`, `keywords`, ...)
+  and `flags`
+- **Known issue (card 0289):** `functionType` is `Function` for any BlueprintCallable event, not by whether it can be
+  placed as an event; interfaces implemented by the parent class are skipped; a function implemented in an interface
+  graph is reported as not implemented
 
 ### get-open-blueprint-editors
-- **Description**: Returns a list of all currently open Blueprint editors
+- **Description**: Lists the Blueprint assets open in a `BlueprintEditor` asset editor (`GetAllEditedAssets`)
 - **Parameters**: None
-- **Returns**: List of open editors with asset paths, graph information, and editor state
-- **Use Case**: Managing multiple Blueprint editors and understanding workspace state
+- **Returns**: `editors` and `count`. Every entry has `blueprintName`, `assetPath`, `blueprintType`, `graphs`
+  (`name`, `type` `Function`/`Event`/`Macro`/`Delegate`, `isEditable`), `isInEditingMode` and `isCompileEnabled`
+  (both always true). Only the active editor's entry (`CollectEditorInfo`) also has `parentClass`, `focusedGraph`,
+  `focusedGraphType`, `hasCompilerResults`, `isDirty` (the Blueprint's compile status is `BS_Dirty`, not unsaved
+  changes) and `graph_counts`
+- **Known issue (card 0275):** the event graphs are read from `Blueprint->EventGraphs`, which is empty for a normal
+  Blueprint, so `EventGraph` is never in `graphs`, `graph_counts.event_graphs` is 0 and `focusedGraphType` is
+  `Unknown` in the EventGraph; editors that are not named `BlueprintEditor` (Widget and Animation Blueprints) are
+  left out
 
-## Common Usage Patterns
+## Function IDs
 
-### Analyzing Blueprint Structure
-The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+`list-blueprint-functions` returns `guid` for each function, from `FN2CMcpFunctionGuidUtils::GetOrCreateFunctionGuid`.
+It is not stored: `GenerateDeterministicGuid` computes the MD5 of `<Blueprint path name>::<function graph name>`, so
+the same function has the same ID in every session, but renaming the function, or renaming or moving the Blueprint,
+gives it a new one (on UE 5.8, `MyFunc` was `AC3D30FD58F9C81F23413CA1A0E4C433` and became
+`357589F9599B5095655D6299AF831C39` as `MyFuncRenamed`). Read the current ID again after a rename. The function tools
+take these IDs (see "Function GUIDs" in `../Functions/AGENTS.md`).
+
+- **Known issue (card 0152):** function IDs change on rename; the card moves them to the persistent `GraphGuid`.
+
+## Examples
+
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in
+`Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
 
 ```bash
-# First, get the focused Blueprint data
+# The focused graph
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
-  -d '{"jsonrpc": "2.0", "method": "tools/call", 
+  -d '{"jsonrpc": "2.0", "method": "tools/call",
        "params": {"name": "get-focused-blueprint", "arguments": {}}, "id": 1}'
 
-# Then list its functions
+# The functions of a named Blueprint
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
-  -d '{"jsonrpc": "2.0", "method": "tools/call", 
-       "params": {"name": "list-blueprint-functions", 
-                  "arguments": {"includeInherited": true}}, "id": 2}'
-```
+  -d '{"jsonrpc": "2.0", "method": "tools/call",
+       "params": {"name": "list-blueprint-functions",
+                  "arguments": {"blueprintPath": "/Game/Blueprints/BP_Door"}}, "id": 2}'
 
-### Finding Functions to Override
-```bash
-# Search for input-related functions that can be overridden
+# Input events the Blueprint does not implement yet (mouse and touch events on an Actor)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \
-  -d '{"jsonrpc": "2.0", "method": "tools/call", 
-       "params": {"name": "list-overridable-functions", 
-                  "arguments": {"filterByCategory": "Input", 
-                               "includeImplemented": false}}, "id": 1}'
+  -d '{"jsonrpc": "2.0", "method": "tools/call",
+       "params": {"name": "list-overridable-functions",
+                  "arguments": {"blueprintPath": "/Game/Blueprints/BP_Door",
+                                "filterByCategory": "Input", "includeImplemented": false}}, "id": 3}'
 ```
-
-## Implementation Notes
-
-- All tools use `FN2CEditorIntegration` to access Blueprint editor context
-- The N2CJSON format provides a complete representation of Blueprint structure
-- Function metadata includes GUIDs for precise function identification
-- Tools handle both Actor and non-Actor Blueprint types appropriately

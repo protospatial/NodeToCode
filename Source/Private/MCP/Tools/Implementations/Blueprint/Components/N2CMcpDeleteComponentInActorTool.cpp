@@ -21,7 +21,7 @@ FMcpToolDefinition FN2CMcpDeleteComponentInActorTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("delete-component-in-actor"),
-        TEXT("Deletes a component from a Blueprint actor. Can optionally delete or reparent child components"),
+        TEXT("Deletes a component from a Blueprint actor. Its child components are deleted too, or kept and moved under the Blueprint's root component"),
         TEXT("Blueprint Components")
     );
 
@@ -41,7 +41,7 @@ FMcpToolDefinition FN2CMcpDeleteComponentInActorTool::GetDefinition() const
     TSharedPtr<FJsonObject> DeleteChildrenProp = MakeShareable(new FJsonObject);
     DeleteChildrenProp->SetStringField(TEXT("type"), TEXT("boolean"));
     DeleteChildrenProp->SetBoolField(TEXT("default"), false);
-    DeleteChildrenProp->SetStringField(TEXT("description"), TEXT("If true, deletes all child components. If false, reparents children to the deleted component's parent"));
+    DeleteChildrenProp->SetStringField(TEXT("description"), TEXT("If true, deletes all child components. If false, the children are kept and end up under the Blueprint's root component, not under the deleted component's parent"));
     Properties->SetObjectField(TEXT("deleteChildren"), DeleteChildrenProp);
 
     // blueprintPath property
