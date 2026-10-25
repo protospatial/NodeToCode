@@ -94,7 +94,12 @@ def kill_with_parent(proc):
 
 def free_port(preferred):
     """The preferred port if both it and port+1 are free, else the first such pair above it. Nothing listens on port+1
-    since card 0113; probe P5 and the smoke check need it free at start to show the editor does not take it."""
+    since card 0113; probe P5 and the smoke check need it free at start to show the editor does not take it.
+
+    N2C_PORT_OFFSET (an integer, default 0) is added to the preferred port, so agents running probes at the same time
+    in separate worktrees each search their own range and cannot pick the same free pair and talk to each other's
+    editor."""
+    preferred += int(os.environ.get('N2C_PORT_OFFSET', '0') or 0)
     port = preferred
     while port < preferred + 200:
         ok = True
