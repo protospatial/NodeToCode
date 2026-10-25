@@ -1,0 +1,934 @@
+{
+	"_comment": "NodeToCode model catalog. Schema: Context/llm-providers/AGENTS-llm-providers.md (Model catalog). Prices in USD per 1M tokens. Checked against each provider's model and pricing pages on 2026-10-25.",
+	"schema_version": 1,
+	"checked": "2026-10-25",
+	"providers": [
+		{
+			"id": "openai",
+			"display_name": "OpenAI",
+			"legacy_enum": "OpenAI",
+			"dialect": "openai_chat",
+			"base_url": "https://api.openai.com",
+			"path": "/v1/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/v1/models"
+		},
+		{
+			"id": "anthropic",
+			"display_name": "Anthropic",
+			"legacy_enum": "Anthropic",
+			"dialect": "anthropic_messages",
+			"base_url": "https://api.anthropic.com",
+			"path": "/v1/messages",
+			"auth_style": "x-api-key",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/v1/models"
+		},
+		{
+			"id": "gemini",
+			"display_name": "Google Gemini",
+			"legacy_enum": "Gemini",
+			"dialect": "gemini",
+			"base_url": "https://generativelanguage.googleapis.com",
+			"path": "/v1beta/models/",
+			"auth_style": "x-goog-api-key",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/v1beta/models"
+		},
+		{
+			"id": "deepseek",
+			"display_name": "DeepSeek",
+			"legacy_enum": "DeepSeek",
+			"dialect": "deepseek_chat",
+			"base_url": "https://api.deepseek.com",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models"
+		},
+		{
+			"id": "ollama",
+			"display_name": "Ollama",
+			"legacy_enum": "Ollama",
+			"dialect": "ollama",
+			"base_url": "http://localhost:11434",
+			"path": "/api/chat",
+			"auth_style": "none",
+			"is_local": true,
+			"needs_key": false,
+			"models_path": "/api/tags"
+		},
+		{
+			"id": "lmstudio",
+			"display_name": "LM Studio",
+			"legacy_enum": "LMStudio",
+			"dialect": "openai_chat",
+			"base_url": "http://localhost:1234",
+			"path": "/v1/chat/completions",
+			"auth_style": "bearer",
+			"is_local": true,
+			"needs_key": false,
+			"models_path": "/v1/models"
+		}
+	],
+	"models": [
+		{
+			"id": "gpt-5.2",
+			"provider": "openai",
+			"display_name": "GPT-5.2",
+			"legacy_enum": "GPT_5_2",
+			"dialect": "openai_chat",
+			"context_window": 400000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 1.75,
+				"output": 14.0,
+				"cached_input": 0.175
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [
+					"none",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-5.2-pro",
+			"provider": "openai",
+			"display_name": "GPT-5.2 Pro",
+			"legacy_enum": "GPT_5_2_Pro",
+			"dialect": "openai_responses",
+			"context_window": 400000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 21.0,
+				"output": 168.0,
+				"cached_input": null
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [
+					"medium",
+					"high",
+					"xhigh"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_output_tokens",
+				"responses_only": true,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-5",
+			"provider": "openai",
+			"display_name": "GPT-5 (shuts down 2026-12-11)",
+			"legacy_enum": "GPT_5",
+			"dialect": "openai_chat",
+			"context_window": 400000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 1.25,
+				"output": 10.0,
+				"cached_input": 0.125
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2026-12-11"
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-5-mini",
+			"provider": "openai",
+			"display_name": "GPT-5 Mini (shuts down 2026-12-11)",
+			"legacy_enum": "GPT_5_Mini",
+			"dialect": "openai_chat",
+			"context_window": 400000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 0.25,
+				"output": 2.0,
+				"cached_input": 0.025
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2026-12-11"
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-5-nano",
+			"provider": "openai",
+			"display_name": "GPT-5 Nano (shuts down 2026-12-11)",
+			"legacy_enum": "GPT_5_Nano",
+			"dialect": "openai_chat",
+			"context_window": 400000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 0.05,
+				"output": 0.4,
+				"cached_input": 0.005
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2026-12-11"
+			},
+			"is_default": false
+		},
+		{
+			"id": "o3",
+			"provider": "openai",
+			"display_name": "o3 (shuts down 2026-12-11)",
+			"legacy_enum": "GPT_o3",
+			"dialect": "openai_chat",
+			"context_window": 200000,
+			"max_output": 100000,
+			"pricing": {
+				"input": 2.0,
+				"output": 8.0,
+				"cached_input": 0.5
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 1.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": true,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2026-12-11"
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-4.1",
+			"provider": "openai",
+			"display_name": "GPT-4.1 (shuts down 2027-01-14)",
+			"legacy_enum": "GPT_4_1",
+			"dialect": "openai_chat",
+			"context_window": 1000000,
+			"max_output": 32768,
+			"pricing": {
+				"input": 2.0,
+				"output": 8.0,
+				"cached_input": 0.5
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": true,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "none",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2027-01-14"
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-4o-2024-08-06",
+			"provider": "openai",
+			"display_name": "GPT-4o (shuts down 2027-01-14)",
+			"legacy_enum": "GPT4o_2024_08_06",
+			"dialect": "openai_chat",
+			"context_window": 128000,
+			"max_output": 16384,
+			"pricing": {
+				"input": 2.5,
+				"output": 10.0,
+				"cached_input": 1.25
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": true,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "none",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2027-01-14"
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-4o-mini-2024-07-18",
+			"provider": "openai",
+			"display_name": "GPT-4o Mini (shuts down 2027-01-14)",
+			"legacy_enum": "GPT4o_Mini_2024_07_18",
+			"dialect": "openai_chat",
+			"context_window": 128000,
+			"max_output": 16384,
+			"pricing": {
+				"input": 0.15,
+				"output": 0.6,
+				"cached_input": 0.075
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": true,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "none",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2027-01-14"
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-6.1-sol",
+			"provider": "openai",
+			"display_name": "GPT-6.1 Sol",
+			"legacy_enum": "GPT_6_1_Sol",
+			"dialect": "openai_chat",
+			"context_window": 1050000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 2.0,
+				"output": 10.0,
+				"cached_input": 0.1
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"reasoning_effort": "",
+				"thinking_model": true,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": true
+		},
+		{
+			"id": "gpt-6-astra",
+			"provider": "openai",
+			"display_name": "GPT-6 Astra",
+			"legacy_enum": "GPT_6_Astra",
+			"dialect": "openai_chat",
+			"context_window": 1050000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 10.0,
+				"output": 50.0,
+				"cached_input": 1.0
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"reasoning_effort": "",
+				"thinking_model": true,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "gpt-6-luna",
+			"provider": "openai",
+			"display_name": "GPT-6 Luna",
+			"legacy_enum": "GPT_6_Luna",
+			"dialect": "openai_chat",
+			"context_window": 1050000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 0.1,
+				"output": 0.5,
+				"cached_input": 0.01
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_schema",
+				"reasoning_param": "reasoning_effort",
+				"reasoning_levels": [
+					"none",
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"reasoning_effort": "",
+				"thinking_model": true,
+				"max_tokens_field": "max_completion_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "claude-opus-4-5-20251101",
+			"provider": "anthropic",
+			"display_name": "Claude Opus 4.5",
+			"legacy_enum": "Claude4_5_Opus",
+			"dialect": "anthropic_messages",
+			"context_window": 200000,
+			"max_output": 64000,
+			"pricing": {
+				"input": 5.0,
+				"output": 25.0,
+				"cached_input": 0.5
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": true,
+				"default_temperature": 0.0,
+				"structured_output_mode": "none",
+				"reasoning_param": "effort",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "claude-sonnet-4-5-20250929",
+			"provider": "anthropic",
+			"display_name": "Claude Sonnet 4.5 (retires 2026-11-30)",
+			"legacy_enum": "Claude4_5_Sonnet",
+			"dialect": "anthropic_messages",
+			"context_window": 200000,
+			"max_output": 64000,
+			"pricing": {
+				"input": 3.0,
+				"output": 15.0,
+				"cached_input": 0.3
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": true,
+				"default_temperature": 0.0,
+				"structured_output_mode": "none",
+				"reasoning_param": "none",
+				"reasoning_levels": [],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "deprecated",
+				"shutdown_date": "2026-11-30"
+			},
+			"is_default": false
+		},
+		{
+			"id": "claude-sonnet-5-5",
+			"provider": "anthropic",
+			"display_name": "Claude Sonnet 5.5",
+			"legacy_enum": "Claude5_5_Sonnet",
+			"dialect": "anthropic_messages",
+			"context_window": 1000000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 2.0,
+				"output": 10.0,
+				"cached_input": 0.1
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "none",
+				"reasoning_param": "effort",
+				"reasoning_levels": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": true
+		},
+		{
+			"id": "claude-opus-5-5",
+			"provider": "anthropic",
+			"display_name": "Claude Opus 5.5",
+			"legacy_enum": "Claude5_5_Opus",
+			"dialect": "anthropic_messages",
+			"context_window": 1000000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 4.0,
+				"output": 20.0,
+				"cached_input": 0.2
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "none",
+				"reasoning_param": "effort",
+				"reasoning_levels": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "claude-haiku-5-5",
+			"provider": "anthropic",
+			"display_name": "Claude Haiku 5.5",
+			"legacy_enum": "Claude5_5_Haiku",
+			"dialect": "anthropic_messages",
+			"context_window": 1000000,
+			"max_output": 128000,
+			"pricing": {
+				"input": 0.1,
+				"output": 0.5,
+				"cached_input": 0.01
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "none",
+				"reasoning_param": "effort",
+				"reasoning_levels": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "gemini-3-flash-preview",
+			"provider": "gemini",
+			"display_name": "Gemini 3 Flash Preview",
+			"legacy_enum": "Gemini_3_Flash_Preview",
+			"dialect": "gemini",
+			"context_window": 1048576,
+			"max_output": 65536,
+			"pricing": {
+				"input": 0.5,
+				"output": 3.0,
+				"cached_input": 0.05
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "response_schema",
+				"reasoning_param": "thinking_level",
+				"reasoning_levels": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "maxOutputTokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "gemini-3.8-flash",
+			"provider": "gemini",
+			"display_name": "Gemini 3.8 Flash",
+			"legacy_enum": "Gemini_3_8_Flash",
+			"dialect": "gemini",
+			"context_window": 1048576,
+			"max_output": 65536,
+			"pricing": {
+				"input": 0.75,
+				"output": 3.75,
+				"cached_input": 0.075
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "response_schema",
+				"reasoning_param": "thinking_level",
+				"reasoning_levels": [
+					"low",
+					"medium",
+					"high"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "maxOutputTokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": true
+		},
+		{
+			"id": "gemini-4-argon",
+			"provider": "gemini",
+			"display_name": "Gemini 4 Argon",
+			"legacy_enum": "Gemini_4_Argon",
+			"dialect": "gemini",
+			"context_window": 1048576,
+			"max_output": 65536,
+			"pricing": {
+				"input": 2.0,
+				"output": 10.0,
+				"cached_input": 0.1
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "response_schema",
+				"reasoning_param": "thinking_level",
+				"reasoning_levels": [
+					"low",
+					"medium",
+					"high"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "maxOutputTokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "gemini-3.5-flash-lite",
+			"provider": "gemini",
+			"display_name": "Gemini 3.5 Flash-Lite",
+			"legacy_enum": "Gemini_3_5_Flash_Lite",
+			"dialect": "gemini",
+			"context_window": 1048576,
+			"max_output": 65536,
+			"pricing": {
+				"input": 0.3,
+				"output": 2.5,
+				"cached_input": 0.03
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "response_schema",
+				"reasoning_param": "thinking_level",
+				"reasoning_levels": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"reasoning_effort": "",
+				"thinking_model": false,
+				"max_tokens_field": "maxOutputTokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "deepseek-flash",
+			"provider": "deepseek",
+			"display_name": "DeepSeek Flash, thinking (high effort)",
+			"legacy_enum": "DeepSeek_R1",
+			"dialect": "deepseek_chat",
+			"context_window": 1000000,
+			"max_output": 393216,
+			"pricing": {
+				"input": 0.3,
+				"output": 1.2,
+				"cached_input": 0.006
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "none",
+				"reasoning_param": "thinking",
+				"reasoning_levels": [
+					"none",
+					"low",
+					"high",
+					"max"
+				],
+				"reasoning_effort": "high",
+				"thinking_model": true,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": true
+		},
+		{
+			"id": "deepseek-flash",
+			"provider": "deepseek",
+			"display_name": "DeepSeek Flash, no thinking (JSON output)",
+			"legacy_enum": "DeepSeek_V3",
+			"dialect": "deepseek_chat",
+			"context_window": 1000000,
+			"max_output": 393216,
+			"pricing": {
+				"input": 0.3,
+				"output": 1.2,
+				"cached_input": 0.006
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": true,
+				"default_temperature": 0.0,
+				"structured_output_mode": "json_object",
+				"reasoning_param": "thinking",
+				"reasoning_levels": [
+					"none",
+					"low",
+					"high",
+					"max"
+				],
+				"reasoning_effort": "none",
+				"thinking_model": false,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		},
+		{
+			"id": "deepseek-v4-pro",
+			"provider": "deepseek",
+			"display_name": "DeepSeek V4 Pro, thinking (high effort)",
+			"legacy_enum": "DeepSeek_V4_Pro",
+			"dialect": "deepseek_chat",
+			"context_window": 1000000,
+			"max_output": 393216,
+			"pricing": {
+				"input": 1.32,
+				"output": 3.96,
+				"cached_input": 0.044
+			},
+			"caps": {
+				"system_prompt": true,
+				"temperature": false,
+				"default_temperature": 0.0,
+				"structured_output_mode": "none",
+				"reasoning_param": "thinking",
+				"reasoning_levels": [
+					"none",
+					"low",
+					"high",
+					"max"
+				],
+				"reasoning_effort": "high",
+				"thinking_model": true,
+				"max_tokens_field": "max_tokens",
+				"responses_only": false,
+				"streaming": true
+			},
+			"lifecycle": {
+				"status": "active",
+				"shutdown_date": null
+			},
+			"is_default": false
+		}
+	]
+}

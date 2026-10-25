@@ -12,10 +12,11 @@
  * Settings are saved by enumerator name (Config=NodeToCode), so enumerators are never renamed or removed:
  * - New models are appended at the end of their enum.
  * - A model the provider has shut down keeps its enumerator, marked UMETA(Hidden) so Project Settings does not
- *   offer it, and its registry entry is marked retired. UN2CSettings::PostInitProperties moves a saved retired
- *   value to the provider default (see N2CDefaultModels below).
+ *   offer it, and its row is compiled into FN2CModelCatalog's retired list (N2CModelCatalog.cpp).
+ *   UN2CSettings::PostInitProperties moves a saved retired value to the provider default (see N2CDefaultModels).
  * - A model the provider has deprecated but still serves shows its shutdown date in its display name.
- * Model IDs, limits, prices and dates live in FN2CLLMModelRegistry (N2CLLMModelRegistry.cpp).
+ * Model IDs, limits, prices and dates live in the model catalog, Content/Data/N2CModelCatalog.json, whose rows name
+ * their enumerator in "legacy_enum"; FN2CLLMModelRegistry files them under these enums.
  */
 
 /** Available OpenAI models */
@@ -118,9 +119,9 @@ struct FN2CLLMModelUtils
 };
 
 /**
- * Default model per provider: the Project Settings defaults, the registry's fallback IDs, and the value a saved
- * retired selection is moved to. Each must map to a registry entry that is not deprecated
- * (NodeToCode.LLM.Registry checks this).
+ * Default model per provider: the Project Settings defaults and the value a saved retired selection is moved to.
+ * Each must be the enumerator of its provider's catalog row marked "is_default" (NodeToCode.LLM.Catalog checks
+ * this), which is also the registry's fallback ID.
  */
 namespace N2CDefaultModels
 {

@@ -93,6 +93,12 @@ namespace
         {
             return;
         }
+        if (!Meta && FN2CModelCatalog::Get().IsFallback())
+        {
+            // The catalog file did not load, so only the defaults are known: keep the selection rather than
+            // overwrite it on the strength of a broken install (the catalog has logged the error)
+            return;
+        }
 
         const UEnum* Enum = StaticEnum<TEnum>();
         const FString OldName = Enum ? Enum->GetNameStringByValue(static_cast<int64>(Selected)) : FString();
@@ -327,6 +333,11 @@ namespace N2CLegacy12
             const FPrice* Old = Legacy.FindByPredicate([&Name](const FPrice& Price) { return Name == Price.Model; });
 
             const TCHAR* Reason = nullptr;
+            if (!Meta && FN2CModelCatalog::Get().IsFallback())
+            {
+                // Catalog file not loaded: unknown here does not mean unknown to the plugin, keep the price
+                continue;
+            }
             if (!Meta)
             {
                 Reason = TEXT("unknown model");

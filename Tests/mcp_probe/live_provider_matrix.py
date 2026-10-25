@@ -81,8 +81,8 @@ def case(provider, model, role, expect, settings=None, suffix=''):
             'expect': expect, 'settings': settings or {}}
 
 
-# Current models only (owner instruction 2026-10-23): the live entries of N2CLLMModelRegistry.cpp per provider, with no
-# retired, deprecated or "shuts down" IDs. Update the list when the registry's lineup changes.
+# Current models only (owner instruction 2026-10-23): the active rows of Content/Data/N2CModelCatalog.json per provider,
+# with no retired, deprecated or "shuts down" IDs. Update the list when the catalog's lineup changes.
 # expect: sampling (False = no temperature/top_p/top_k), budget_field and budget, response_format,
 # thinking (enabled/disabled), reasoning_effort
 CASES = [
