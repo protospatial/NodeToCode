@@ -79,6 +79,22 @@ This problem is typically more common in smaller local models but can also (less
 > larger blueprint graphs, increase [Translation Depth](Translation-Depth), and/or add reference source code files, 
 > the context window will need to increase dramatically.
 
+### 5. Code for Nodes That Never Run
+
+Blueprint never runs some of the nodes in a graph, and Node to Code tells the LLM which ones so it leaves them out:
+
+| In the graph | What Node to Code sends | What the LLM is told |
+|---|---|---|
+| The greyed-out default events of a new Blueprint (**Event BeginPlay**, **Event ActorBeginOverlap**, **Event Tick**) that nothing is wired to | Nothing: they are left out | (not sent) |
+| A node you disabled (right-click, **Disable (Do Not Compile)**; shown when Editor Preferences > Blueprint Editor > **Show Node Enable/Disable Options** is on) | The node, marked disabled. A node with one exec input and one exec output is bypassed: the node before it runs the node after it | Do not translate it; mention it in the implementation notes |
+| A pure node whose result nothing that runs reads, such as a **Format Text** left unwired | The node, marked unused | Do not translate it or return its value |
+| Nodes with exec pins that no event or function entry reaches | The nodes, marked unreachable | Do not translate them |
+
+The LLM is also told that a function returns only what is wired into its **Return Node**. If generated code still
+contains an empty `Tick`, a disabled call or a value returned from a node that is not wired to the Return Node,
+check the [Implementation Notes](Implementation-Notes) for the nodes it skipped, and delete or wire the node in the
+Blueprint if it should run. A **Development Only** node counts as live, as it does in the editor.
+
 ## Understanding the Translation Structure
 
 ### Blueprint to C++ Mapping

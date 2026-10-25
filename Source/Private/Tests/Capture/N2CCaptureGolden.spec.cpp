@@ -24,7 +24,9 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
 #include "K2Node_ExecutionSequence.h"
+#include "K2Node_FormatText.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
@@ -38,6 +40,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetStringLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/KismetTextLibrary.h"
 #include "Kismet2/StructureEditorUtils.h"
 #include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpGetFocusedBlueprintTool.h"
 #include "Misc/CommandLine.h"
@@ -92,6 +95,10 @@
  * "ExecFlows" checks the pin-to-pin exec edges (card 0136): in every case each exec link is one "N3.P5->N4.P1" entry
  * from an exec output pin to an exec input pin, and Branch, Sequence, ForEachLoop, Switch, Gate and Timeline name the
  * pin on each end; the validator checks both pins, and node-only entries (1.x) still read.
+ *
+ * "Liveness" checks the nodes Blueprint never runs (card 0137, issue #13): ghost default events are not captured,
+ * disabled nodes are marked and exec passes through them as the compiler does, pure nodes nothing live reads are
+ * "unused" and impure nodes no entry reaches are "unreachable"; no other case marks a node.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -615,10 +622,28 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 			TSet<FString> ExecInputs;
 			TSet<FString> ConnectedOutputs;
 			TSet<FString> ConnectedInputs;
+			// Card 0137: a disabled node has no exec entries (exec passes around it), an unreachable node's exec input
+			// may have had only a disabled source, and a link into a disabled node exec does not pass through is dropped
+			bool bStopsAtDisabledNode = false;
 			for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
 			{
 				const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
 				const FString NodeID = Node->GetStringField(TEXT("id"));
+				if (NodeFlag(Node, N2CJsonContract::DisabledField))
+				{
+					int32 ExecIn = 0;
+					int32 ExecOut = 0;
+					for (const bool bOutput : { false, true })
+					{
+						for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(bOutput ? TEXT("output_pins") : TEXT("input_pins")))
+						{
+							(bOutput ? ExecOut : ExecIn) += PinValue->AsObject()->HasField(TEXT("type")) ? 0 : 1;
+						}
+					}
+					bStopsAtDisabledNode |= !(ExecIn == 1 && ExecOut == 1);
+					continue;
+				}
+				const bool bUnreachable = NodeFlag(Node, N2CJsonContract::UnreachableField);
 				for (const bool bOutput : { false, true })
 				{
 					for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(bOutput ? TEXT("output_pins") : TEXT("input_pins")))
@@ -631,7 +656,7 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 						const FString Ref = NodeID + TEXT(".") + Pin->GetStringField(TEXT("id"));
 						(bOutput ? ExecOutputs : ExecInputs).Add(Ref);
 						bool bConnected = false;
-						if (Pin->TryGetBoolField(TEXT("connected"), bConnected) && bConnected)
+						if (Pin->TryGetBoolField(TEXT("connected"), bConnected) && bConnected && (bOutput || !bUnreachable))
 						{
 							(bOutput ? ConnectedOutputs : ConnectedInputs).Add(Ref);
 						}
@@ -662,7 +687,8 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 			}
 			for (const FString& Output : ConnectedOutputs)
 			{
-				TestTrue(GraphWhat + TEXT(": connected exec output ") + Output + TEXT(" is the source of an exec entry"), Sources.Contains(Output));
+				TestTrue(GraphWhat + TEXT(": connected exec output ") + Output + TEXT(" is the source of an exec entry"),
+					Sources.Contains(Output) || bStopsAtDisabledNode);
 			}
 			for (const FString& Input : ConnectedInputs)
 			{
@@ -682,6 +708,65 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 			TEXT("{\"id\":\"P3\",\"name\":\"\",\"connected\":true},{\"id\":\"P4\",\"name\":\"Count\",\"type\":\"Integer\"}],")
 			TEXT("\"output_pins\":[{\"id\":\"P5\",\"name\":\"\"}]}],")
 			TEXT("\"flows\":{\"execution\":[\"%s\"],\"data\":{}}}],\"structs\":[],\"enums\":[]}"), *Version, *ExecEntry);
+	}
+
+	/** A node's boolean flag ("pure", "unused", ...): true only when present and true */
+	static bool NodeFlag(const TSharedPtr<FJsonObject>& Node, const TCHAR* Field)
+	{
+		bool bValue = false;
+		return Node->TryGetBoolField(Field, bValue) && bValue;
+	}
+
+	/** The node of the capture's first graph whose member_name (or else name) is Key; null and an error when none */
+	TSharedPtr<FJsonObject> FindNode(const TSharedPtr<FJsonObject>& Capture, const FString& Key)
+	{
+		const TSharedPtr<FJsonObject> Graph = Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
+		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
+		{
+			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+			FString Member;
+			Node->TryGetStringField(TEXT("member_name"), Member);
+			if (Member == Key || Node->GetStringField(TEXT("name")) == Key)
+			{
+				return Node;
+			}
+		}
+		AddError(FString::Printf(TEXT("no node '%s' in the first graph"), *Key));
+		return nullptr;
+	}
+
+	/** The liveness flags a node carries, joined ("unused", "unused,disabled", "" for none) */
+	static FString LivenessOf(const TSharedPtr<FJsonObject>& Node)
+	{
+		TArray<FString> Flags;
+		for (const TCHAR* Field : { N2CJsonContract::UnusedField, N2CJsonContract::UnreachableField, N2CJsonContract::DisabledField })
+		{
+			if (Node.IsValid() && NodeFlag(Node, Field))
+			{
+				Flags.Add(Field);
+			}
+		}
+		return FString::Join(Flags, TEXT(","));
+	}
+
+	/** Expects each named node (member_name or name) of the capture's first graph to carry exactly these flags */
+	void ExpectLiveness(const FString& What, const TSharedPtr<FJsonObject>& Capture, const TArray<TPair<FString, FString>>& Expected)
+	{
+		for (const TPair<FString, FString>& Entry : Expected)
+		{
+			TestEqual(What + TEXT(": liveness of ") + Entry.Key, LivenessOf(FindNode(Capture, Entry.Key)), Entry.Value);
+		}
+	}
+
+	/** Captures a case by name; an invalid capture (with an error) when the case or the capture fails */
+	FCaptured CaptureNamed(const TCHAR* CaseName)
+	{
+		const FCaptureCase* Case = FindCase(CaseName);
+		if (!TestNotNull(CaseName, Case))
+		{
+			return FCaptured();
+		}
+		return Capture(*Case);
 	}
 
 	void AddCases();
@@ -920,9 +1005,6 @@ void FN2CCaptureGoldenSpec::AddCases()
 {
 	using namespace N2CCaptureGolden;
 
-	const FKnownDefect GhostEvents{ TEXT("translation-core-18, translation-core-19 (issue #13)"), TEXT("0137"),
-		TEXT("The grayed-out default events CreateBlueprint places (BeginPlay, ActorBeginOverlap, Tick) are captured as "
-			"live events (N1-N3), and unreachable nodes are not marked") };
 	const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 		TEXT("Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable "
 			"identifiers, so they change with editor language and settings") };
@@ -1007,7 +1089,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("Branch"),
 		TEXT("Event graph: custom event OnBranch runs a Branch on Less(A, B); True runs CollectGarbage, False runs "
 			"ControlScreensaver."),
-		{ GhostEvents, DisplayNames, CustomEventNone },
+		{ DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1092,7 +1174,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("GateMultiExec"),
 		TEXT("Event graph: custom events OnEnter, OnOpen and OnClose run a Gate (StandardMacros) through its Enter, "
 			"Open and Close inputs; Exit runs CollectGarbage."),
-		{ GhostEvents, DisplayNames, CustomEventNone },
+		{ DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1111,7 +1193,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("TimelineMultiExec"),
 		TEXT("Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through "
 			"Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver."),
-		{ GhostEvents, DisplayNames, CustomEventNone },
+		{ DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1346,7 +1428,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-15"), TEXT("0234"),
 			TEXT("The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead "
 				"of an event") },
-		  GhostEvents, DisplayNames },
+		  DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1355,6 +1437,96 @@ void FN2CCaptureGoldenSpec::AddCases()
 			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
 			BP.Link(Action, TEXT("Triggered"), Collect, UEdGraphSchema_K2::PN_Execute);
 			BP.Link(Action, TEXT("Completed"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	// Card 0137: nodes Blueprint never runs (translation-core-18, translation-core-19, issue #13)
+	Cases.Add({ TEXT("Issue13"),
+		TEXT("Function Issue13Label(Value), the graph of issue #13: To String (Integer) stands in for its Number Format. "
+			"Its Return Value feeds both To Text (String), whose result is the Return node's Result, and the {effect} "
+			"argument of a Format Text whose Result nothing reads, so Format Text is unused."),
+		{ DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.AddFunction(TEXT("Issue13Label"));
+			BP.AddFunctionInput(Graph, TEXT("Value"), FTestBlueprint::IntPinType());
+			UK2Node_CallFunction* NumberFormat = BP.AddCall(Graph, UKismetStringLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetStringLibrary, Conv_IntToString));
+			UK2Node_CallFunction* ToText = BP.AddCall(Graph, UKismetTextLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetTextLibrary, Conv_StringToText));
+			UK2Node_FormatText* Format = BP.AddFormatText(Graph, TEXT("{effect}"));
+			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Result"), FTestBlueprint::TextPinType());
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Entry, TEXT("Value"), NumberFormat, TEXT("InInt"));
+			BP.Link(NumberFormat, UEdGraphSchema_K2::PN_ReturnValue, ToText, TEXT("InString"));
+			BP.Link(NumberFormat, UEdGraphSchema_K2::PN_ReturnValue, Format, TEXT("effect"));
+			BP.Link(ToText, UEdGraphSchema_K2::PN_ReturnValue, Result, TEXT("Result"));
+			return Graph;
+		} });
+
+	Cases.Add({ TEXT("GhostEvents"),
+		TEXT("Event graph of a new Actor Blueprint: its default BeginPlay is wired to CollectGarbage, which makes it a "
+			"real event; the untouched default ActorBeginOverlap and Tick stay ghost nodes and are not captured."),
+		{ DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.EventGraph();
+			UK2Node_Event* BeginPlay = BP.FindEvent(Graph, TEXT("ReceiveBeginPlay"));
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			BP.Link(BeginPlay, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	Cases.Add({ TEXT("DisabledNodes"),
+		TEXT("Function Disabled(Value): the entry runs CollectGarbage, then a Print String the user disabled (its In "
+			"String from To String (Integer) of Value), then ControlScreensaver set to Development Only, then a disabled "
+			"Branch whose True runs ResetGamepadAssignments. Exec passes through the disabled Print String (one exec "
+			"input, one exec output) to ControlScreensaver; the disabled Branch ends the chain, so "
+			"ResetGamepadAssignments is unreachable and To String, read only by the disabled Print String, is unused."),
+		{ DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.AddFunction(TEXT("Disabled"));
+			BP.AddFunctionInput(Graph, TEXT("Value"), FTestBlueprint::IntPinType());
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* ToString = BP.AddCall(Graph, UKismetStringLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetStringLibrary, Conv_IntToString));
+			UK2Node_CallFunction* Print = BP.AddCall(Graph, UKismetSystemLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString));
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			UK2Node_IfThenElse* Branch = BP.AddBranch(Graph);
+			UK2Node_CallFunction* Reset = BP.AddCall(Graph, UKismetSystemLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, ResetGamepadAssignments));
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Collect, UEdGraphSchema_K2::PN_Then, Print, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Print, UEdGraphSchema_K2::PN_Then, Screensaver, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Screensaver, UEdGraphSchema_K2::PN_Then, Branch, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Branch, UEdGraphSchema_K2::PN_Then, Reset, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Entry, TEXT("Value"), ToString, TEXT("InInt"));
+			BP.Link(ToString, UEdGraphSchema_K2::PN_ReturnValue, Print, TEXT("InString"));
+			if (Print && Screensaver && Branch)
+			{
+				// As the editor's Disable (Do Not Compile) and Enable Compile > Development Only commands set them
+				Print->SetEnabledState(ENodeEnabledState::Disabled);
+				Branch->SetEnabledState(ENodeEnabledState::Disabled);
+				Screensaver->SetEnabledState(ENodeEnabledState::DevelopmentOnly);
+			}
+			return Graph;
+		} });
+
+	Cases.Add({ TEXT("UnreachableChain"),
+		TEXT("Event graph: custom event OnRun runs CollectGarbage. Apart from it, ControlScreensaver (its Allow Screen "
+			"Saver from Not of a literal) runs ResetGamepadAssignments with no event before them: both are unreachable "
+			"and Not, read only by them, is unused. The default ghost events are not captured."),
+		{ DisplayNames, CustomEventNone },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.EventGraph();
+			UK2Node_CustomEvent* Event = BP.AddCustomEvent(Graph, TEXT("OnRun"));
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* Not = AddMath(BP, Graph, GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Not_PreBool));
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			UK2Node_CallFunction* Reset = BP.AddCall(Graph, UKismetSystemLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, ResetGamepadAssignments));
+			BP.Link(Event, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Not, UEdGraphSchema_K2::PN_ReturnValue, Screensaver, TEXT("bAllowScreenSaver"));
+			BP.Link(Screensaver, UEdGraphSchema_K2::PN_Then, Reset, UEdGraphSchema_K2::PN_Execute);
 			return Graph;
 		} });
 }
@@ -1569,6 +1741,196 @@ void FN2CCaptureGoldenSpec::Define()
 	});
 
 	// Card 0135: N2C JSON 1.x (1.2.x and earlier 2.0 builds) reads into the v2 model
+	// Card 0137: nodes Blueprint never runs (translation-core-18, translation-core-19, issue #13)
+	Describe(TEXT("Liveness"), [this]()
+	{
+		It(TEXT("keeps both edges of issue #13's fan-out and marks the Format Text nobody reads unused"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("Issue13"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> NumberFormat = FindNode(Captured.Capture, TEXT("Conv_IntToString"));
+			const TSharedPtr<FJsonObject> ToText = FindNode(Captured.Capture, TEXT("Conv_StringToText"));
+			const TSharedPtr<FJsonObject> Format = FindNode(Captured.Capture, TEXT("Format Text"));
+			if (!NumberFormat.IsValid() || !ToText.IsValid() || !Format.IsValid())
+			{
+				return;
+			}
+			TestEqual(TEXT("Number Format's Return Value feeds To Text and Format Text"),
+				FString::Join(DataTargetsOf(Captured.Capture, NumberFormat->GetStringField(TEXT("name")), TEXT("Return Value")), TEXT(",")),
+				InputRef(Captured.Capture, ToText->GetStringField(TEXT("name")), TEXT("In String")) + TEXT(",")
+					+ InputRef(Captured.Capture, TEXT("Format Text"), TEXT("effect")));
+			ExpectLiveness(TEXT("Issue13"), Captured.Capture, {
+				{ TEXT("Conv_IntToString"), TEXT("") },
+				{ TEXT("Conv_StringToText"), TEXT("") },
+				{ TEXT("Format Text"), TEXT("unused") } });
+		});
+
+		It(TEXT("captures a wired default event and drops the ghost ones"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("GhostEvents"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			TArray<FString> Members;
+			for (const TSharedPtr<FJsonValue>& Node : Captured.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject()->GetArrayField(TEXT("nodes")))
+			{
+				FString Member;
+				Node->AsObject()->TryGetStringField(TEXT("member_name"), Member);
+				Members.Add(Member);
+			}
+			TestEqual(TEXT("the captured nodes"), FString::Join(Members, TEXT(",")), FString(TEXT("ReceiveBeginPlay,CollectGarbage")));
+			ExpectLiveness(TEXT("GhostEvents"), Captured.Capture, { { TEXT("ReceiveBeginPlay"), TEXT("") } });
+		});
+
+		It(TEXT("captures nothing from a new Actor Blueprint's untouched event graph"), [this]()
+		{
+			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CGolden_Untouched"), TEXT("/Game"));
+			TArray<UK2Node*> Nodes;
+			if (!TestTrue(TEXT("CollectNodesFromGraph succeeds"), Blueprint.EventGraph() != nullptr
+				&& FN2CNodeCollector::Get().CollectNodesFromGraph(Blueprint.EventGraph(), Nodes)))
+			{
+				return;
+			}
+			TestEqual(TEXT("the collector still lists the three ghost events (find-nodes-in-graph sees them)"), Nodes.Num(), 3);
+			AddExpectedMessage(TEXT("the graph holds only unwired default events"), ELogVerbosity::Warning,
+				EAutomationExpectedMessageFlags::Contains, 1, false);
+			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureNodes(Nodes);
+			if (TestTrue(TEXT("the capture fails"), Result.HasError()))
+			{
+				TestTrue(TEXT("the error names the ghost nodes: ") + Result.GetError(), Result.GetError().Contains(TEXT("ghost")));
+			}
+		});
+
+		It(TEXT("keeps the ghost events, marked disabled, when the graph-editing MCP tools ask for them"), [this]()
+		{
+			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CGolden_Untouched"), TEXT("/Game"));
+			TArray<UK2Node*> Nodes;
+			if (!TestTrue(TEXT("CollectNodesFromGraph succeeds"), Blueprint.EventGraph() != nullptr
+				&& FN2CNodeCollector::Get().CollectNodesFromGraph(Blueprint.EventGraph(), Nodes)))
+			{
+				return;
+			}
+			FN2CCaptureOptions Options;
+			Options.bIncludeGhostNodes = true;
+			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureNodes(Nodes, Options);
+			if (!TestTrue(TEXT("the capture succeeds"), Result.HasValue()))
+			{
+				return;
+			}
+			const FN2CGraph& Graph = Result.GetValue().Blueprint.Graphs[0];
+			TArray<FString> Members;
+			for (const FN2CNodeDefinition& Node : Graph.Nodes)
+			{
+				Members.Add(Node.MemberName + (Node.bDisabled ? TEXT(":disabled") : TEXT("")));
+				TestFalse(Node.MemberName + TEXT(" is not unused or unreachable"), Node.bUnused || Node.bUnreachable);
+			}
+			TestEqual(TEXT("the ghost events"), FString::Join(Members, TEXT(",")),
+				FString(TEXT("ReceiveBeginPlay:disabled,ReceiveActorBeginOverlap:disabled,ReceiveTick:disabled")));
+			TestEqual(TEXT("one GUID entry per node"), Result.GetValue().NodeGuids.Num(), 3);
+		});
+
+		It(TEXT("marks disabled nodes, passes exec through a disabled Print String and stops at a disabled Branch"), [this]()
+		{
+			ExpectExecLinks(TEXT("DisabledNodes"), {
+				{ TEXT("Disabled"), TEXT(""), TEXT("CollectGarbage"), TEXT("") },
+				{ TEXT("CollectGarbage"), TEXT(""), TEXT("ControlScreensaver"), TEXT("") } });
+			const FCaptured Captured = CaptureNamed(TEXT("DisabledNodes"));
+			if (Captured.Capture.IsValid())
+			{
+				ExpectLiveness(TEXT("DisabledNodes"), Captured.Capture, {
+					{ TEXT("CollectGarbage"), TEXT("") },
+					{ TEXT("PrintString"), TEXT("disabled") },
+					{ TEXT("ControlScreensaver"), TEXT("") },
+					{ TEXT("Branch"), TEXT("disabled") },
+					{ TEXT("ResetGamepadAssignments"), TEXT("unreachable") },
+					{ TEXT("Conv_IntToString"), TEXT("unused") } });
+			}
+		});
+
+		It(TEXT("marks an impure chain no entry reaches unreachable and the pure node only it reads unused"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("UnreachableChain"));
+			if (Captured.Capture.IsValid())
+			{
+				ExpectLiveness(TEXT("UnreachableChain"), Captured.Capture, {
+					{ TEXT("OnRun"), TEXT("") },
+					{ TEXT("CollectGarbage"), TEXT("") },
+					{ TEXT("ControlScreensaver"), TEXT("unreachable") },
+					{ TEXT("ResetGamepadAssignments"), TEXT("unreachable") },
+					{ TEXT("Not_PreBool"), TEXT("unused") } });
+			}
+		});
+
+		It(TEXT("marks no node in the cases where every node runs"), [this]()
+		{
+			for (const FCaptureCase& Case : Cases)
+			{
+				if (Case.Name == TEXT("Issue13") || Case.Name == TEXT("DisabledNodes") || Case.Name == TEXT("UnreachableChain"))
+				{
+					continue;
+				}
+				const FCaptured Captured = Capture(Case);
+				if (!Captured.Capture.IsValid())
+				{
+					continue;
+				}
+				for (const TSharedPtr<FJsonValue>& Graph : Captured.Capture->GetArrayField(TEXT("graphs")))
+				{
+					for (const TSharedPtr<FJsonValue>& Node : Graph->AsObject()->GetArrayField(TEXT("nodes")))
+					{
+						TestEqual(FString::Printf(TEXT("%s %s: liveness of %s"), *Case.Name, *Graph->AsObject()->GetStringField(TEXT("name")),
+							*Node->AsObject()->GetStringField(TEXT("id"))), LivenessOf(Node->AsObject()), FString());
+					}
+				}
+			}
+		});
+
+		It(TEXT("warns when a connected data input has no data flow into it"), [this]()
+		{
+			// N2's Count is connected but flows.data is empty: a lost edge or a hand-edited document
+			FN2CBlueprint Read;
+			const FString Document = ExecFlowDocument(TEXT("2.0.0"), TEXT("N1.P1->N2.P3"))
+				.Replace(TEXT("{\"id\":\"P4\",\"name\":\"Count\",\"type\":\"Integer\"}"),
+					TEXT("{\"id\":\"P4\",\"name\":\"Count\",\"type\":\"Integer\",\"connected\":true}"));
+			if (!TestTrue(TEXT("the document marks Count connected"), Document.Contains(TEXT("\"Count\",\"type\":\"Integer\",\"connected\":true"))))
+			{
+				return;
+			}
+			AddExpectedMessage(TEXT("connected data input(s) N2.P4 have no data flow into them"), ELogVerbosity::Warning,
+				EAutomationExpectedMessageFlags::Contains, 0, false);
+			TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Document, Read));
+			TestTrue(TEXT("it still validates"), Read.IsValid());
+		});
+
+		It(TEXT("reads and writes the liveness flags"), [this]()
+		{
+			FN2CBlueprint Read;
+			const FString Document = ExecFlowDocument(TEXT("2.0.0"), TEXT("N1.P1->N2.P3"))
+				.Replace(TEXT("\"name\":\"Collect Garbage\","), TEXT("\"name\":\"Collect Garbage\",\"disabled\":true,\"unreachable\":true,\"unused\":true,"));
+			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Document, Read)) || !TestEqual(TEXT("graphs"), Read.Graphs.Num(), 1)
+				|| !TestEqual(TEXT("nodes"), Read.Graphs[0].Nodes.Num(), 2))
+			{
+				return;
+			}
+			const FN2CNodeDefinition& Node = Read.Graphs[0].Nodes[1];
+			TestTrue(TEXT("disabled"), Node.bDisabled);
+			TestTrue(TEXT("unreachable"), Node.bUnreachable);
+			TestTrue(TEXT("unused"), Node.bUnused);
+			const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Read, EN2CJsonStyle::Pretty));
+			if (!TestTrue(TEXT("ToJson output parses"), Again.IsValid()))
+			{
+				return;
+			}
+			const TArray<TSharedPtr<FJsonValue>>& Nodes = Again->GetArrayField(TEXT("graphs"))[0]->AsObject()->GetArrayField(TEXT("nodes"));
+			TestEqual(TEXT("written back"), LivenessOf(Nodes[1]->AsObject()), FString(TEXT("unused,unreachable,disabled")));
+			TestEqual(TEXT("not written when false"), LivenessOf(Nodes[0]->AsObject()), FString());
+		});
+	});
+
 	Describe(TEXT("V1Reader"), [this]()
 	{
 		// Written by ToJson before card 0135 (the goldens of FanOutData, Knots and UserEnum, and a struct and enum

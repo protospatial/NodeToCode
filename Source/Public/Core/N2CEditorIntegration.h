@@ -87,7 +87,8 @@ public:
      * Captures an array of K2Nodes with the capture's ID-to-GUID maps (OutCapture.NodeGuids and Pins: one entry per
      * captured node and pin). False when nothing was captured or the result does not validate.
      */
-    bool TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CCapture& OutCapture) const;
+    bool TranslateNodesToN2CBlueprintWithMaps(const TArray<UK2Node*>& CollectedNodes, FN2CCapture& OutCapture,
+        const FN2CCaptureOptions& Options = FN2CCaptureOptions()) const;
     
     /** Serializes an FN2CBlueprint structure to a JSON string */
     FString SerializeN2CBlueprintToJson(const FN2CBlueprint& Blueprint, bool bPrettyPrint) const;

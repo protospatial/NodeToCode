@@ -3,11 +3,6 @@
 	"description": "Event graph: custom event OnBranch runs a Branch on Less(A, B); True runs CollectGarbage, False runs ControlScreensaver.",
 	"known_defects": [
 		{
-			"finding": "translation-core-18, translation-core-19 (issue #13)",
-			"card": "0137",
-			"effect": "The grayed-out default events CreateBlueprint places (BeginPlay, ActorBeginOverlap, Tick) are captured as live events (N1-N3), and unreachable nodes are not marked"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -34,11 +29,9 @@
 				"nodes": [
 					{
 						"id": "N1",
-						"type": "Event",
-						"name": "Event BeginPlay",
-						"member_parent": "/Script/Engine.Actor",
-						"member_name": "ReceiveBeginPlay",
-						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+						"type": "CustomEvent",
+						"name": "OnBranch",
+						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -48,84 +41,13 @@
 							},
 							{
 								"id": "P2",
-								"name": ""
-							}
-						]
-					},
-					{
-						"id": "N2",
-						"type": "Event",
-						"name": "Event ActorBeginOverlap",
-						"member_parent": "/Script/Engine.Actor",
-						"member_name": "ReceiveActorBeginOverlap",
-						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P3",
-								"name": "Output Delegate",
-								"type": "Delegate"
-							},
-							{
-								"id": "P4",
-								"name": ""
-							},
-							{
-								"id": "P5",
-								"name": "Other Actor",
-								"type": "Object",
-								"sub_type": "Actor"
-							}
-						]
-					},
-					{
-						"id": "N3",
-						"type": "Event",
-						"name": "Event Tick",
-						"member_parent": "/Script/Engine.Actor",
-						"member_name": "ReceiveTick",
-						"comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P6",
-								"name": "Output Delegate",
-								"type": "Delegate"
-							},
-							{
-								"id": "P7",
-								"name": ""
-							},
-							{
-								"id": "P8",
-								"name": "Delta Seconds",
-								"type": "Real",
-								"sub_type": "float",
-								"default_value": "0.0"
-							}
-						]
-					},
-					{
-						"id": "N4",
-						"type": "CustomEvent",
-						"name": "OnBranch",
-						"member_name": "None",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P9",
-								"name": "Output Delegate",
-								"type": "Delegate"
-							},
-							{
-								"id": "P10",
 								"name": "",
 								"connected": true
 							}
 						]
 					},
 					{
-						"id": "N5",
+						"id": "N2",
 						"type": "CallFunction",
 						"name": "integer < integer",
 						"member_parent": "KismetMathLibrary",
@@ -133,13 +55,13 @@
 						"pure": true,
 						"input_pins": [
 							{
-								"id": "P11",
+								"id": "P3",
 								"name": "A",
 								"type": "Integer",
 								"default_value": "0"
 							},
 							{
-								"id": "P12",
+								"id": "P4",
 								"name": "B",
 								"type": "Integer",
 								"default_value": "0"
@@ -147,7 +69,7 @@
 						],
 						"output_pins": [
 							{
-								"id": "P13",
+								"id": "P5",
 								"name": "Return Value",
 								"type": "Boolean",
 								"default_value": "false",
@@ -156,17 +78,17 @@
 						]
 					},
 					{
-						"id": "N6",
+						"id": "N3",
 						"type": "Branch",
 						"name": "Branch",
 						"input_pins": [
 							{
-								"id": "P14",
+								"id": "P6",
 								"name": "",
 								"connected": true
 							},
 							{
-								"id": "P15",
+								"id": "P7",
 								"name": "Condition",
 								"type": "Boolean",
 								"default_value": "true",
@@ -175,51 +97,51 @@
 						],
 						"output_pins": [
 							{
-								"id": "P16",
+								"id": "P8",
 								"name": "True",
 								"connected": true
 							},
 							{
-								"id": "P17",
+								"id": "P9",
 								"name": "False",
 								"connected": true
 							}
 						]
 					},
 					{
-						"id": "N7",
+						"id": "N4",
 						"type": "CallFunction",
 						"name": "Collect Garbage",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
-								"id": "P18",
+								"id": "P10",
 								"name": "",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
-								"id": "P19",
+								"id": "P11",
 								"name": ""
 							}
 						]
 					},
 					{
-						"id": "N8",
+						"id": "N5",
 						"type": "CallFunction",
 						"name": "Control Screensaver",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
-								"id": "P20",
+								"id": "P12",
 								"name": "",
 								"connected": true
 							},
 							{
-								"id": "P22",
+								"id": "P14",
 								"name": "Allow Screen Saver",
 								"type": "Boolean",
 								"default_value": "false"
@@ -227,7 +149,7 @@
 						],
 						"output_pins": [
 							{
-								"id": "P21",
+								"id": "P13",
 								"name": ""
 							}
 						]
@@ -236,13 +158,13 @@
 				"flows":
 				{
 					"execution": [
-						"N4.P10->N6.P14",
-						"N6.P16->N7.P18",
-						"N6.P17->N8.P20"
+						"N1.P2->N3.P6",
+						"N3.P8->N4.P10",
+						"N3.P9->N5.P12"
 					],
 					"data":
 					{
-						"N5.P13": "N6.P15"
+						"N2.P5": "N3.P7"
 					}
 				}
 			}

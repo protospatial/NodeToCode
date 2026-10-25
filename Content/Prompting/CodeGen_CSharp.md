@@ -137,6 +137,9 @@
             - "comment": Any user comment on the node (optional).
             - "pure": (bool) True if the node is “pure” (no exec pins).
             - "latent": (bool) True if the node is an async/latent operation.
+            - "unused": (bool) Present only when true: a pure node whose outputs nothing that runs reads. Blueprint never evaluates it.
+            - "unreachable": (bool) Present only when true: a node with exec pins that no event, function entry or other entry reaches through exec links. It never runs.
+            - "disabled": (bool) Present only when true: the node is disabled in the editor and is not compiled. When it has one exec input and one exec output, "flows".execution already links its predecessor straight to its successor; otherwise the exec chain stops at it.
             - "input_pins": Array of pins representing the node’s inputs.
             - "output_pins": Array of pins for the node’s outputs.
 
@@ -211,6 +214,8 @@
            - If a node is latent/async, consider using Coroutines in Unity.
 
         4. **Data Pins for Values**:
+           - **Nodes that never run:** Blueprint never runs a node marked "unused", "unreachable" or "disabled". Do not translate these nodes or any value they compute; list each one (id and name) in "implementationNotes" instead. A data input fed only by a disabled node gets its "default_value". This overrides any instruction to include every node. The editor's greyed-out placeholder events (a new Blueprint's default BeginPlay, ActorBeginOverlap and Tick that nothing is wired to) are left out of the JSON, so never add them.
+           - **Return values:** A function's return value(s) come only from the input pins of its "FunctionResult" node(s) (the Return Node): the data flow into that pin, or the pin's "default_value" when nothing feeds it. Never return a value that is not wired into a "FunctionResult" input pin, even when the graph computes it somewhere else.
            - Map data pins to method parameters or local variables as needed.
            - Pass default values or connected values appropriately.
            - Convert Unreal container types (TArray, TMap) to C# equivalents (List, Dictionary).

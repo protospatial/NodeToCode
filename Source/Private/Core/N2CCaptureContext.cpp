@@ -2,6 +2,7 @@
 
 #include "Core/N2CCaptureContext.h"
 
+#include "Core/N2CLiveness.h"
 #include "Core/N2CSettings.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/ScopeExit.h"
@@ -126,11 +127,41 @@ bool FN2CCaptureContext::DescribeNode(UK2Node* Node, FN2CNodeDefinition& OutNode
     return bProcessed;
 }
 
-bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes)
+bool FN2CCaptureContext::IsGhostNode(const UEdGraphNode* Node)
 {
+    // A placeholder the editor placed (a new Blueprint's greyed-out BeginPlay, ActorBeginOverlap and Tick): disabled,
+    // never by the user, and turned into a real node as soon as a pin is wired to it (UEdGraphPin::MakeLinkTo)
+    return Node && Node->IsAutomaticallyPlacedGhostNode();
+}
+
+bool FN2CCaptureContext::IsDisabledNode(const UEdGraphNode* Node)
+{
+    // What the compiler leaves out (FEdGraphUtilities::CloneGraph for compile): Disabled, or DevelopmentOnly when the
+    // Blueprint does not compile in development mode (UK2Node::IsInDevelopmentMode)
+    return Node && !Node->IsNodeEnabled();
+}
+
+bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes)
+{
+    // Ghost nodes are placeholders, not logic: they are not captured at all (translation-core-18, issue #13)
+    TArray<UK2Node*> CollectedNodes;
+    CollectedNodes.Reserve(InCollectedNodes.Num());
+    for (UK2Node* Node : InCollectedNodes)
+    {
+        if (!Options.bIncludeGhostNodes && IsGhostNode(Node))
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping ghost node %s (an unwired default event)"),
+                *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()), EN2CLogSeverity::Debug);
+            continue;
+        }
+        CollectedNodes.Add(Node);
+    }
+
     if (CollectedNodes.Num() == 0)
     {
-        FN2CLogger::Get().LogWarning(TEXT("No nodes provided to translate"));
+        FN2CLogger::Get().LogWarning(InCollectedNodes.Num() > 0
+            ? TEXT("No nodes to translate: the graph holds only unwired default events")
+            : TEXT("No nodes provided to translate"));
         return false;
     }
 
@@ -235,6 +266,7 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes)
 #endif
     }
     const int32 MainGraphNodeCount = CurrentGraph().Nodes.Num();
+    N2CLiveness::MarkGraph(CurrentGraph());
     CurrentGraphIndex = INDEX_NONE;
 
     // Process any additional graphs that were discovered, shallowest first: every graph at depth N is processed
@@ -281,6 +313,7 @@ bool FN2CCaptureContext::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeD
     OutNodeDef.ID = *NodeID;
 
     ProcessNodeTypeAndProperties(Node, OutNodeDef);
+    OutNodeDef.bDisabled = IsDisabledNode(Node);
 
     // Track pin connections for flows
     TArray<UEdGraphPin*> ExecInputs;
@@ -402,11 +435,15 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     // First pass: IDs for every node and pin in graph order; second pass: the nodes and their flows
     for (UEdGraphNode* Node : Graph->Nodes)
     {
-        AssignIDs(Cast<UK2Node>(Node));
+        if (Options.bIncludeGhostNodes || !IsGhostNode(Node))
+        {
+            AssignIDs(Cast<UK2Node>(Node));
+        }
     }
     for (UEdGraphNode* Node : Graph->Nodes)
     {
-        if (UK2Node* K2Node = Cast<UK2Node>(Node))
+        UK2Node* K2Node = Cast<UK2Node>(Node);
+        if (K2Node && (Options.bIncludeGhostNodes || !IsGhostNode(K2Node)))
         {
             FN2CNodeDefinition NodeDef;
             if (ProcessNode(K2Node, NodeDef))
@@ -420,6 +457,8 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     FN2CGraph& NewGraph = CurrentGraph();
     if (NewGraph.Nodes.Num() > 0)
     {
+        N2CLiveness::MarkGraph(NewGraph);
+
         // Validate all flow references
         if (!ValidateFlowReferences(NewGraph))
         {
@@ -602,6 +641,37 @@ TArray<UEdGraphPin*> FN2CCaptureContext::TraceTargetsThroughKnots(UEdGraphPin* O
             for (int32 Index = KnotOutput->LinkedTo.Num() - 1; Index >= 0; --Index)
             {
                 Stack.Push(KnotOutput->LinkedTo[Index]);
+            }
+        }
+    }
+    return Targets;
+}
+
+TArray<UEdGraphPin*> FN2CCaptureContext::TraceExecTargets(UEdGraphPin* ExecOutput) const
+{
+    // The exec inputs an output runs, as the compiler sees them: a disabled node is left out, and exec passes through
+    // it to whatever its exec output runs when it has exactly one exec input and one exec output
+    // (UK2Node::GetPassThroughPin); any other disabled node ends the chain there (translation-core-18)
+    TArray<UEdGraphPin*> Targets;
+    TSet<const UEdGraphNode*> VisitedDisabled;
+    TArray<UEdGraphPin*> Outputs;
+    Outputs.Push(ExecOutput);
+    while (Outputs.Num() > 0)
+    {
+        for (UEdGraphPin* Target : TraceTargetsThroughKnots(Outputs.Pop(EAllowShrinking::No)))
+        {
+            UEdGraphNode* TargetNode = Target->GetOwningNode();
+            if (!IsDisabledNode(TargetNode))
+            {
+                Targets.AddUnique(Target);
+                continue;
+            }
+            bool bAlreadyVisited = false;
+            VisitedDisabled.Add(TargetNode, &bAlreadyVisited);
+            UEdGraphPin* PassThrough = bAlreadyVisited ? nullptr : TargetNode->GetPassThroughPin(Target);
+            if (PassThrough && PassThrough->Direction == EGPD_Output)
+            {
+                Outputs.Push(PassThrough);
             }
         }
     }
@@ -878,8 +948,9 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
         ExecOutputs.Num());
     FN2CLogger::Get().Log(ExecDebug, EN2CLogSeverity::Debug);
 
+    // A disabled node runs nothing: the links into it go on to where exec passes through it, if anywhere
     const FString SourceNodeID = NodeIDs.FindRef(Node);
-    for (UEdGraphPin* ExecOutput : ExecOutputs)
+    for (UEdGraphPin* ExecOutput : IsDisabledNode(Node) ? TArray<UEdGraphPin*>() : ExecOutputs)
     {
         const FString SourcePinID = ExecOutput ? PinIDs.FindRef(ExecOutput) : FString();
         if (SourceNodeID.IsEmpty() || SourcePinID.IsEmpty())
@@ -892,7 +963,7 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
             ExecOutput->LinkedTo.Num());
         FN2CLogger::Get().Log(PinDebug, EN2CLogSeverity::Debug);
 
-        for (UEdGraphPin* TargetPin : TraceTargetsThroughKnots(ExecOutput))
+        for (UEdGraphPin* TargetPin : TraceExecTargets(ExecOutput))
         {
             const UEdGraphNode* TargetNode = TargetPin->GetOwningNode();
             const FString TargetNodeID = NodeIDs.FindRef(TargetNode);

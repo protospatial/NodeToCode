@@ -45,6 +45,20 @@ namespace N2CJsonContract
 	 */
 	inline constexpr const TCHAR* ExecEdgeSeparator = TEXT("->");
 
+	/**
+	 * Node liveness flags (card 0137, issue #13), each written only when true. "unused": a pure node (no exec pins)
+	 * whose outputs no live node reads, so Blueprint never evaluates it. "unreachable": an impure node that no entry
+	 * (an event, a function entry, a tunnel entry: an impure node without exec inputs) reaches through exec links.
+	 * "disabled": a node the compiler leaves out (UEdGraphNode::IsNodeEnabled() is false: Disabled, or DevelopmentOnly
+	 * when the Blueprint does not compile in development mode); exec passes through it when it has exactly one exec
+	 * input and one exec output, as UK2Node::GetPassThroughPin does, and flows.execution records that bypass. The
+	 * editor's automatically placed ghost nodes (a new Blueprint's greyed-out BeginPlay, ActorBeginOverlap and Tick) are
+	 * not captured at all.
+	 */
+	inline constexpr const TCHAR* UnusedField = TEXT("unused");
+	inline constexpr const TCHAR* UnreachableField = TEXT("unreachable");
+	inline constexpr const TCHAR* DisabledField = TEXT("disabled");
+
 	/** Separates a node ID from a pin ID in a pin ref ("N3.P5") */
 	inline constexpr const TCHAR* PinRefSeparator = TEXT(".");
 

@@ -1,0 +1,164 @@
+{
+	"case": "Issue13",
+	"description": "Function Issue13Label(Value), the graph of issue #13: To String (Integer) stands in for its Number Format. Its Return Value feeds both To Text (String), whose result is the Return node's Result, and the {effect} argument of a Format Text whose Result nothing reads, so Format Text is unused.",
+	"known_defects": [
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_Issue13",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_Issue13"
+		},
+		"graphs": [
+			{
+				"name": "Issue13Label",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Issue13Label",
+						"member_parent": "BP_N2CGolden_Issue13",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Value",
+								"type": "Integer",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "To String (Integer)",
+						"member_parent": "KismetStringLibrary",
+						"member_name": "Conv_IntToString",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "In Int",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "Return Value",
+								"type": "String",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "To Text (String)",
+						"member_parent": "KismetTextLibrary",
+						"member_name": "Conv_StringToText",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "In String",
+								"type": "String",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Return Value",
+								"type": "Text",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "FormatText",
+						"name": "Format Text",
+						"pure": true,
+						"unused": true,
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Format",
+								"type": "Text",
+								"default_value": "{effect}"
+							},
+							{
+								"id": "P9",
+								"name": "Effect",
+								"type": "String",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "Result",
+								"type": "Text"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "FunctionResult",
+						"name": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_Issue13",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P11",
+								"name": "Result",
+								"type": "Text",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N5.P10"
+					],
+					"data":
+					{
+						"N1.P2": "N2.P3",
+						"N2.P4": [
+							"N3.P5",
+							"N4.P9"
+						],
+						"N3.P6": "N5.P11"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

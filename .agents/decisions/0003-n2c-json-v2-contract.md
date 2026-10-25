@@ -59,7 +59,14 @@ Option 1, provisionally. The sub-choices of card 0117:
    `member_name` from `FMemberReference`; display text only in named hint fields (node `title`, pin `label`).
 5. **Liveness (card 0137):** `"unused": true` on pure nodes whose outputs are never consumed, `"unreachable": true`
    on impure nodes no entry reaches, `"disabled": true` on disabled nodes; ghost (default, unconnected) events
-   dropped. Each flag is written only when true.
+   dropped. Each flag is written only when true. Card 0137 applied it: "disabled" means
+   `UEdGraphNode::IsNodeEnabled()` is false (Disabled, or DevelopmentOnly when the Blueprint does not compile in
+   development mode); `flows.execution` routes exec past a disabled node with one exec input and one exec output,
+   as the compiler does (`UK2Node::GetPassThroughPin`), and records no link into any other disabled node; ghost
+   nodes are `IsAutomaticallyPlacedGhostNode()` (the same on 5.6, 5.7 and 5.8). Entries for "unreachable" are
+   impure nodes with exec outputs and no exec input.
+   The graph-editing MCP tools (get-focused-blueprint, find-nodes-in-graph) keep ghost nodes, as `"disabled": true`,
+   so an agent can wire a default event instead of adding a duplicate; translation never sees them.
 6. **v1 reader:** `FN2CSerializer::FromJson` (and `UN2CPythonBridge::ReadN2CJson`, Python
    `nodetocode.read_n2c_json`) reads 1.x and 2.x into the v2 model, whose version is then 2.0.0; the validator accepts
    both majors. It is kept for the whole 2.x line and may go with 3.0.0. Saved translations are never rewritten.

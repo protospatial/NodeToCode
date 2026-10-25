@@ -268,6 +268,32 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
         }
     }
 
+    // A connected data input with no data flow into it lost its source (a lossy edge, as before card 0135, or a
+    // hand-edited document): readers would have to guess the value (issue #13). A warning, not an error, so such a
+    // document still reads.
+    TSet<FString> DataTargets;
+    for (const auto& DataFlow : Graph.Flows.Data)
+    {
+        DataTargets.Append(DataFlow.Value.Targets);
+    }
+    TArray<FString> Unfed;
+    for (const FN2CNodeDefinition& Node : Graph.Nodes)
+    {
+        for (const FN2CPinDefinition& Pin : Node.InputPins)
+        {
+            const FString PinRef = Node.ID + N2CJsonContract::PinRefSeparator + Pin.ID;
+            if (Pin.Type != EN2CPinType::Exec && Pin.bConnected && !DataTargets.Contains(PinRef))
+            {
+                Unfed.Add(PinRef);
+            }
+        }
+    }
+    if (Unfed.Num() > 0)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Graph %s: connected data input(s) %s have no data flow into them; their source is missing"),
+            *Graph.Name, *FString::Join(Unfed, TEXT(", "))));
+    }
+
     return true;
 }
 

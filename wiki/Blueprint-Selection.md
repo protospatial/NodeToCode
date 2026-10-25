@@ -32,6 +32,9 @@ Before translation, optimize your Blueprint graphs for complexity considerations
     - Align nodes logically
     - Group related functionality
     - Remove unused variables and nodes
+    - Disabled nodes, unwired default events and nodes nothing runs are left out of the generated code (see
+      [Improving Generated Code](Improving-Generated-Code#5-code-for-nodes-that-never-run)), but they still cost
+      tokens, except the unwired default events, which are not sent
     - Break up overly complex sequences
 
 > [!NOTE]

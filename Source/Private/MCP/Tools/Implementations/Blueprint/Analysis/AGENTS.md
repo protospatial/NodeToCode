@@ -17,7 +17,12 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
   array of input pins when it feeds several, and every connected data input appears there once. `flows.execution`
   has one entry per exec wire, from the exec output pin to the exec input pin it runs ("N3.P5->N4.P1"), so the
   source pin says which output fired (Branch True/False, a Switch case, Sequence then_0/then_1, Loop Body/Completed)
-  and the target pin which input runs (Gate Enter/Open/Close, Timeline Play/Reverse).
+  and the target pin which input runs (Gate Enter/Open/Close, Timeline Play/Reverse). Nodes Blueprint never runs
+  carry `"unused": true` (pure, nothing live reads it), `"unreachable": true` (impure, no entry reaches it) or
+  `"disabled": true` (not compiled; exec passes through one with one exec input and one exec output). Unlike a
+  translation, this tool (and find-nodes-in-graph) keeps the editor's unwired default events (ghost BeginPlay,
+  ActorBeginOverlap, Tick) as `"disabled": true` nodes (`FN2CCaptureOptions::bIncludeGhostNodes`), so an agent wires
+  the existing event instead of adding a duplicate (card 0137).
 - **Use Case**: Primary tool for extracting Blueprint data for LLM translation
 
 ### list-blueprint-functions

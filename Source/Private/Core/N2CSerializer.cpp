@@ -245,6 +245,19 @@ TSharedPtr<FJsonObject> FN2CSerializer::NodeToJsonObject(const FN2CNodeDefinitio
     {
         JsonObject->SetBoolField(TEXT("latent"), true);
     }
+    // Liveness (card 0137): nodes Blueprint never runs
+    if (Node.bUnused)
+    {
+        JsonObject->SetBoolField(N2CJsonContract::UnusedField, true);
+    }
+    if (Node.bUnreachable)
+    {
+        JsonObject->SetBoolField(N2CJsonContract::UnreachableField, true);
+    }
+    if (Node.bDisabled)
+    {
+        JsonObject->SetBoolField(N2CJsonContract::DisabledField, true);
+    }
 
     // Add input pins array
     TArray<TSharedPtr<FJsonValue>> InputPinsArray;
@@ -731,6 +744,16 @@ bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject
     JsonObject->TryGetBoolField(TEXT("latent"), bLatent);
     OutNode.bPure = bPure;
     OutNode.bLatent = bLatent;
+
+    bool bUnused = false;
+    bool bUnreachable = false;
+    bool bDisabled = false;
+    JsonObject->TryGetBoolField(N2CJsonContract::UnusedField, bUnused);
+    JsonObject->TryGetBoolField(N2CJsonContract::UnreachableField, bUnreachable);
+    JsonObject->TryGetBoolField(N2CJsonContract::DisabledField, bDisabled);
+    OutNode.bUnused = bUnused;
+    OutNode.bUnreachable = bUnreachable;
+    OutNode.bDisabled = bDisabled;
 
     // Parse input pins array
     const TArray<TSharedPtr<FJsonValue>>* InputPinsArray;

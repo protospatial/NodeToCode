@@ -228,6 +228,20 @@ struct FN2CNodeDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     uint8 bLatent:1;      // Latent/async operation
 
+    /**
+     * Liveness (N2C JSON 2.0.0 "unused", "unreachable", "disabled"; card 0137): Blueprint never runs a node with one
+     * of these set. Unused: a pure node no live node reads. Unreachable: an impure node no entry reaches through exec
+     * links. Disabled: the compiler leaves the node out (UEdGraphNode::IsNodeEnabled() is false).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    uint8 bUnused:1;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    uint8 bUnreachable:1;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    uint8 bDisabled:1;
+
     /** Input/Output parameters */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CPinDefinition> InputPins;
@@ -244,6 +258,9 @@ struct FN2CNodeDefinition
         , Comment(TEXT(""))
         , bPure(false)
         , bLatent(false)
+        , bUnused(false)
+        , bUnreachable(false)
+        , bDisabled(false)
     {
     }
 

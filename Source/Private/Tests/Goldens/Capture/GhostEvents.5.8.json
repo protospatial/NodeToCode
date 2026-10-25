@@ -1,0 +1,80 @@
+{
+	"case": "GhostEvents",
+	"description": "Event graph of a new Actor Blueprint: its default BeginPlay is wired to CollectGarbage, which makes it a real event; the untouched default ActorBeginOverlap and Tick stay ghost nodes and are not captured.",
+	"known_defects": [
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_GhostEvents",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_GhostEvents"
+		},
+		"graphs": [
+			{
+				"name": "EventGraph",
+				"graph_type": "EventGraph",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "Event",
+						"name": "Event BeginPlay",
+						"member_parent": "/Script/Engine.Actor",
+						"member_name": "ReceiveBeginPlay",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output Delegate",
+								"type": "Delegate"
+							},
+							{
+								"id": "P2",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "CollectGarbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P2->N2.P3"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

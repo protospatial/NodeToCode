@@ -140,6 +140,15 @@ private:
     /** Every non-knot pin an output pin (exec or data) reaches, through knots and every branch of their fan-out, in link order */
     TArray<UEdGraphPin*> TraceTargetsThroughKnots(UEdGraphPin* OutputPin) const;
 
+    /** The exec input pins an exec output runs: through knots, and through a disabled node that exec passes through */
+    TArray<UEdGraphPin*> TraceExecTargets(UEdGraphPin* ExecOutput) const;
+
+    /** An automatically placed ghost node (an unwired default event): never captured */
+    static bool IsGhostNode(const UEdGraphNode* Node);
+
+    /** A node the Blueprint compiler leaves out (UEdGraphNode::IsNodeEnabled() is false): captured with "disabled" */
+    static bool IsDisabledNode(const UEdGraphNode* Node);
+
     /** Process node type and core properties */
     void ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
