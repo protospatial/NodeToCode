@@ -344,6 +344,17 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Provider")
     EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
 
+    /**
+     * Seconds a translation request may wait without receiving any data from the provider before it fails with a
+     * Timeout error (the HTTP activity timeout). Requests are not streamed: the provider sends nothing until the whole
+     * answer is ready, so raise this for very long translations or slow local models. The whole request is also
+     * limited to 3600 s. Applies to the next request.
+     */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Provider",
+        meta = (DisplayName = "HTTP Activity Timeout (s)", ClampMin = "1", ClampMax = "3600", UIMin = "30", UIMax = "3600",
+            ToolTip = "Seconds a translation request may go without receiving data before it fails with a Timeout error. Responses are not streamed, so the provider sends nothing until the answer is complete: raise this for very long translations or slow local models. Applies to the next request."))
+    float HttpActivityTimeoutSeconds = 300.0f;
+
     /** Anthropic model ID - claude-sonnet-5-5 recommended for the best quality/cost balance, claude-opus-5-5 for the most capability, claude-haiku-5-5 for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
         meta = (DisplayName = "Model", GetOptions = "GetAnthropicModelOptions",
@@ -656,7 +667,8 @@ public:
      * Sets InOutConfig.Model and InOutConfig.ReasoningEffort for a request to InProvider: the selected model and
      * its thinking mode, or ModelIdOverride. An override naming a different model than the selection leaves
      * ReasoningEffort empty, so that model's own registry entry decides. Also sets InOutConfig.MaxOutputTokens
-     * from the provider's Max Output Tokens setting, which an override model gets too (capped at its own maximum).
+     * from the provider's Max Output Tokens setting, which an override model gets too (capped at its own maximum),
+     * and InOutConfig.ActivityTimeoutSeconds from HTTP Activity Timeout.
      */
     void ResolveRequestModel(EN2CLLMProvider InProvider, const FString& ModelIdOverride, FN2CLLMConfig& InOutConfig) const;
 

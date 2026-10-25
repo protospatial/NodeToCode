@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
 #include "Models/N2CBatchTranslationTypes.h"
+#include "LLM/N2CLLMRequestHandle.h"
 #include "N2CBatchTranslationOrchestrator.generated.h"
 
 struct FN2CBlueprint;
@@ -41,8 +42,10 @@ public:
 	bool StartBatchTranslation(const TArray<FN2CTagInfo>& TagInfos);
 
 	/**
-	 * Cancel the current batch translation
-	 * Remaining items will be marked as Skipped
+	 * Cancel the current batch translation. The in-flight item's LLM request is cancelled at once (its HTTP request
+	 * is aborted and nothing is saved for it); that item and the remaining ones are marked Skipped and the batch
+	 * completes (OnBatchComplete) before this returns. If the in-flight item's response is already being handled,
+	 * that item finishes and the batch completes right after it.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Batch Translation")
 	void CancelBatch();
@@ -124,9 +127,11 @@ private:
 	/** Process the next pending item in the batch */
 	void ProcessNextItem();
 
-	/** Handle translation response from LLM module - must be UFUNCTION for dynamic delegate */
-	UFUNCTION()
-	void HandleTranslationResponse(const FN2CTranslationResponse& Response, bool bSuccess);
+	/**
+	 * Handles one item's own parsed result (the per-request OnParsed of UN2CLLMModule::ProcessN2CJson). Serial and
+	 * ItemIndex identify the batch and item the request was sent for; a result for any other is ignored.
+	 */
+	void HandleItemResult(int32 Serial, int32 ItemIndex, const FN2CTranslationResponse& Response, bool bSuccess);
 
 	/** Finalize the batch and broadcast completion */
 	void FinalizeBatch();
@@ -215,6 +220,9 @@ private:
 	UPROPERTY()
 	FN2CBatchTranslationResult CurrentResult;
 
-	/** Whether we are bound to the LLM module's response delegate */
-	bool bIsBoundToLLMModule = false;
+	/** The in-flight item's LLM request (CancelBatch cancels it); reset when the item completes */
+	FN2CLLMRequestHandlePtr CurrentRequest;
+
+	/** Increases with every batch, so a late result from an earlier batch is never applied to this one */
+	int32 BatchSerial = 0;
 };

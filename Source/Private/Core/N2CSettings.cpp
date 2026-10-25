@@ -1614,6 +1614,7 @@ int32 UN2CSettings::GetMaxOutputTokensForProvider(EN2CLLMProvider InProvider) co
 void UN2CSettings::ResolveRequestModel(EN2CLLMProvider InProvider, const FString& ModelIdOverride, FN2CLLMConfig& InOutConfig) const
 {
     InOutConfig.MaxOutputTokens = GetMaxOutputTokensForProvider(InProvider);
+    InOutConfig.ActivityTimeoutSeconds = FMath::Clamp(HttpActivityTimeoutSeconds, 1.0f, 3600.0f);
     const FString SelectedModel = GetActiveModelForProvider(InProvider);
     if (ModelIdOverride.IsEmpty() || ModelIdOverride == SelectedModel)
     {

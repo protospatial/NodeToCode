@@ -134,6 +134,7 @@ bool FN2CTranslationError::IsRetryableKind(EN2CTranslationErrorKind InKind)
     case EN2CTranslationErrorKind::Overloaded:
     case EN2CTranslationErrorKind::Server:
     case EN2CTranslationErrorKind::Network:
+    case EN2CTranslationErrorKind::Timeout:
         return true;
     default:
         return false;

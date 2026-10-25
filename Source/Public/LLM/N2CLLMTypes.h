@@ -11,6 +11,9 @@ DECLARE_DELEGATE_OneParam(FOnLLMResponseReceived, const FString& /* Response */)
 /** Delegate for receiving parsed translation responses */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTranslationResponseReceived, const FN2CTranslationResponse&, Response, bool, bSuccess);
 
+/** Per-request delegate for one parsed translation (native; the request's owner gets only its own result) */
+DECLARE_DELEGATE_TwoParams(FOnN2CTranslationParsed, const FN2CTranslationResponse& /* Response */, bool /* bSuccess */);
+
 /** Delegate for when a translation request is sent */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTranslationRequestSent);
 
@@ -56,6 +59,14 @@ struct FN2CLLMConfig
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     float TimeoutSeconds = 3600.0f;
+
+    /**
+     * Seconds the HTTP request may go without receiving any data before it fails with a Timeout error (the HTTP
+     * activity timeout). Requests are not streamed, so it must exceed the longest expected generation.
+     * UN2CSettings::ResolveRequestModel fills it from the HTTP Activity Timeout setting.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    float ActivityTimeoutSeconds = 300.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     bool bUseSystemPrompts = true;

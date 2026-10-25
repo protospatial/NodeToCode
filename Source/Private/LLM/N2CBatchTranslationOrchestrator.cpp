@@ -54,20 +54,19 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTa
 		return false;
 	}
 
-	// Initialize LLM module if needed
-	if (LLMModule && !LLMModule->IsInitialized())
+	// Initialize the LLM module, or pick up settings changed since it was (each item's request does this again)
+	if (LLMModule && !LLMModule->RefreshFromSettings())
 	{
-		if (!LLMModule->Initialize())
-		{
-			FN2CLogger::Get().LogError(TEXT("Failed to initialize LLM module for batch translation"), TEXT("BatchOrchestrator"));
-			return false;
-		}
+		FN2CLogger::Get().LogError(TEXT("Failed to initialize LLM module for batch translation"), TEXT("BatchOrchestrator"));
+		return false;
 	}
 
 	// Initialize batch state
 	bBatchInProgress = true;
 	bCancellationRequested = false;
 	CurrentItemIndex = -1;
+	CurrentRequest.Reset();
+	++BatchSerial;
 	BatchStartTime = FPlatformTime::Seconds();
 	BatchItems.Empty();
 	BlueprintCache.Empty();
@@ -114,15 +113,10 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTa
 		return false;
 	}
 
-	// Bind to LLM module's response delegate
-	if (LLMModule && !bIsBoundToLLMModule)
-	{
-		LLMModule->OnTranslationResponseReceived.AddDynamic(
-			this, &UN2CBatchTranslationOrchestrator::HandleTranslationResponse);
-		bIsBoundToLLMModule = true;
-	}
+	// Each item's request reports its own result (HandleItemResult); the module-wide OnTranslationResponseReceived
+	// broadcast is not used, so another caller's translation can never be taken for a batch item
 
-	// Start processing first item
+// Start processing first item
 	ProcessNextItem();
 	return true;
 }
@@ -136,6 +130,27 @@ void UN2CBatchTranslationOrchestrator::CancelBatch()
 
 	FN2CLogger::Get().Log(TEXT("Batch translation cancellation requested"), EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
 	bCancellationRequested = true;
+
+	// Cancel the in-flight request now instead of waiting for its response (which could take minutes)
+	FN2CLLMRequestHandlePtr Request = MoveTemp(CurrentRequest);
+	CurrentRequest.Reset();
+	if (!Request.IsValid() || !Request->Cancel())
+	{
+		// No request in flight, or its result is being handled: ProcessNextItem sees the flag after it
+		return;
+	}
+
+	// The request will never complete: its item is skipped, then ProcessNextItem skips the rest and finalizes
+	if (BatchItems.IsValidIndex(CurrentItemIndex) && BatchItems[CurrentItemIndex].Status == EN2CBatchItemStatus::Processing)
+	{
+		FN2CBatchTranslationItem& Item = BatchItems[CurrentItemIndex];
+		Item.Status = EN2CBatchItemStatus::Skipped;
+		Item.ErrorMessage = TEXT("Cancelled while translating");
+		CurrentResult.SkippedCount++;
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Cancelled the in-flight translation of %s"), *Item.TagInfo.GraphName),
+			EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
+	}
+	ProcessNextItem();
 }
 
 float UN2CBatchTranslationOrchestrator::GetBatchProgress() const
@@ -235,8 +250,27 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
 	if (LLMModule)
 	{
-		// The ProcessN2CJson that triggers OnTranslationResponseReceived; the translation is saved with this item's capture
-		LLMModule->ProcessN2CJson(JsonPayload, CapturedBlueprint, FOnLLMResponseReceived());
+		// The translation is saved with this item's capture. The request re-reads the provider, model and key from the
+		// settings, so a change made during the batch applies from this item on. Its result comes back through this
+		// item's own OnParsed, tagged with the batch and item it was sent for.
+		const int32 Serial = BatchSerial;
+		const int32 ItemIndex = CurrentItemIndex;
+		TWeakObjectPtr<UN2CBatchTranslationOrchestrator> WeakThis(this);
+		FN2CLLMRequestHandleRef Request = LLMModule->ProcessN2CJson(JsonPayload, CapturedBlueprint, FOnLLMResponseReceived(),
+			FOnN2CTranslationParsed::CreateLambda([WeakThis, Serial, ItemIndex](const FN2CTranslationResponse& Response, bool bSuccess)
+			{
+				if (UN2CBatchTranslationOrchestrator* StrongThis = WeakThis.Get())
+				{
+					StrongThis->HandleItemResult(Serial, ItemIndex, Response, bSuccess);
+				}
+			}));
+
+		// An error found before sending completes inside the call (and may already have moved on to the next item,
+		// which then holds CurrentRequest): keep only a request that is really in flight for this item
+		if (!Request->IsFinished() && Serial == BatchSerial && ItemIndex == CurrentItemIndex)
+		{
+			CurrentRequest = Request;
+		}
 	}
 	else
 	{
@@ -253,12 +287,14 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 	}
 }
 
-void UN2CBatchTranslationOrchestrator::HandleTranslationResponse(const FN2CTranslationResponse& Response, bool bSuccess)
+void UN2CBatchTranslationOrchestrator::HandleItemResult(int32 Serial, int32 ItemIndex, const FN2CTranslationResponse& Response, bool bSuccess)
 {
-	if (!bBatchInProgress || CurrentItemIndex < 0 || CurrentItemIndex >= BatchItems.Num())
+	// Only the result of the request this batch sent for its current item
+	if (!bBatchInProgress || Serial != BatchSerial || ItemIndex != CurrentItemIndex || !BatchItems.IsValidIndex(CurrentItemIndex))
 	{
 		return;
 	}
+	CurrentRequest.Reset();
 
 	FN2CBatchTranslationItem& Item = BatchItems[CurrentItemIndex];
 
@@ -330,16 +366,10 @@ void UN2CBatchTranslationOrchestrator::FinalizeBatch()
 
 void UN2CBatchTranslationOrchestrator::CleanupBatch()
 {
-	// Unbind from LLM module delegate
-	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
-	if (LLMModule && bIsBoundToLLMModule)
-	{
-		LLMModule->OnTranslationResponseReceived.RemoveDynamic(
-			this, &UN2CBatchTranslationOrchestrator::HandleTranslationResponse);
-		bIsBoundToLLMModule = false;
-	}
+	// A request still held here was cancelled or has completed; drop the reference
+	CurrentRequest.Reset();
 
-	// Clear blueprint cache
+// Clear blueprint cache
 	BlueprintCache.Empty();
 
 	// Reset state
