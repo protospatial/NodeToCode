@@ -467,6 +467,11 @@ FMcpToolCallResult FN2CMcpYourToolName::Execute(const TSharedPtr<FJsonObject>& A
 A new tool changes the mode 3 count: update `Tests/smoke/expected.json` (`default`), the tables in this file and
 the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change.
 
+A tool whose result carries text from the project's Blueprints (comments, titles, names, tooltips, descriptions,
+string literals) sets `Definition.bReturnsUntrustedContent = true`; `FN2CMcpToolManager::ExecuteTool` then marks its
+successful results as untrusted data (card 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`).
+Add its name to the list in `Source/Private/Tests/MCP/N2CMcpUntrustedContent.spec.cpp`.
+
 ### 3. Tools Requiring Game Thread Execution
 
 If your tool needs to access Unreal Editor APIs, it must run on the Game Thread:

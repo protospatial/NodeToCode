@@ -34,6 +34,9 @@ FMcpToolDefinition FN2CMcpGetBlueprintFunctionLocalVariables::GetDefinition() co
     
     Definition.InputSchema = BuildInputSchema(Properties, Required);
     
+    // Results carry Blueprint text (local variable names, categories and default values): marked as untrusted data (card 0124)
+    Definition.bReturnsUntrustedContent = true;
+
     return Definition;
 }
 

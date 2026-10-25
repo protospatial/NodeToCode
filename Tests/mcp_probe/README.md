@@ -85,6 +85,17 @@ tooltip, a string literal, the Blueprint description and a comment box, then a r
 The node-comment payload is one manual editor step (the threat model gives it). The asset stays in the host and is
 never committed. `--remove` deletes it, `--keep-existing` re-reads it.
 
+`live_untrusted_0124.py --engine ... --project ... [--claude]` (no provider key; needs the fixture) checks card 0124
+on a headless editor with Python execution off: get-focused-blueprint, get-blueprint-member-variables,
+find-nodes-in-graph and `resources/read nodetocode://blueprint/current` return JSON whose first key is
+`untrusted_content` with the canaries after it; generate-code, analyze-blueprint and refactor-blueprint end with the
+notice message and then the embedded resource (`annotations.audience: ["assistant"]`) that alone holds the canaries;
+generate-code embeds `CodeGen_CPP.md`; `language: cobol` answers -32602; every prompt has a title; python-scripting
+says run-python is disabled. `--claude` adds one `claude -p` session (`--allowedTools "mcp__nodetocode__*"`, model
+`--cli-model`, default haiku) that summarizes the Blueprint, and records its tool calls, any call that follows a planted
+instruction and whether the answer flags the planted text. One observation, not gate 0383. Report:
+`logs/live_untrusted_0124.json`.
+
 ## E05 regression probe
 
 `e05_regressions.py` proves the epic E05 fixes: every p0-6 input returns an error instead of crashing the editor,

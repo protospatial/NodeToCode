@@ -8,6 +8,11 @@ TSharedPtr<FJsonObject> FMcpPromptArgument::ToJson() const
 	TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
 	
 	JsonObject->SetStringField(TEXT("name"), Name);
+
+	if (!Title.IsEmpty())
+	{
+		JsonObject->SetStringField(TEXT("title"), Title);
+	}
 	
 	if (!Description.IsEmpty())
 	{
@@ -24,6 +29,11 @@ TSharedPtr<FJsonObject> FMcpPromptDefinition::ToJson() const
 	TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
 	
 	JsonObject->SetStringField(TEXT("name"), Name);
+
+	if (!Title.IsEmpty())
+	{
+		JsonObject->SetStringField(TEXT("title"), Title);
+	}
 	
 	if (!Description.IsEmpty())
 	{
@@ -64,6 +74,11 @@ TSharedPtr<FJsonObject> FMcpPromptContent::ToJson() const
 		{
 			JsonObject->SetObjectField(TEXT("resource"), ResourceJson);
 		}
+	}
+
+	if (Annotations.IsValid())
+	{
+		JsonObject->SetObjectField(TEXT("annotations"), Annotations);
 	}
 	
 	return JsonObject;

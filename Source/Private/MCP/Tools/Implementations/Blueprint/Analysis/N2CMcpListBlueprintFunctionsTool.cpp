@@ -67,6 +67,9 @@ FMcpToolDefinition FN2CMcpListBlueprintFunctionsTool::GetDefinition() const
 	// Mark as read-only
 	AddReadOnlyAnnotation(Definition);
 	
+	// Results carry Blueprint text (function tooltips, descriptions and parameter defaults): marked as untrusted data (card 0124)
+	Definition.bReturnsUntrustedContent = true;
+
 	return Definition;
 }
 

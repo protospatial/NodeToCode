@@ -1,118 +1,189 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Prompts/Implementations/N2CMcpCodeGenerationPrompt.h"
+#include "LLM/N2CLLMTypes.h"
+#include "LLM/N2CSystemPromptManager.h"
 #include "MCP/Resources/N2CMcpResourceManager.h"
+#include "MCP/Server/N2CMcpJsonRpcTypes.h"
+#include "MCP/Tools/N2CMcpToolManager.h"
+#include "MCP/Utils/N2CMcpUntrustedContent.h"
+#include "UObject/Package.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Utils/N2CLogger.h"
+
+namespace
+{
+	const TCHAR* const BlueprintUri = TEXT("nodetocode://blueprint/current");
+
+	FMcpPromptArgument MakeArgument(const TCHAR* Name, const TCHAR* Title, const FString& Description, bool bRequired = false)
+	{
+		FMcpPromptArgument Argument;
+		Argument.Name = Name;
+		Argument.Title = Title;
+		Argument.Description = Description;
+		Argument.bRequired = bRequired;
+		return Argument;
+	}
+
+	FMcpPromptMessage MakeTextMessage(const FString& Text)
+	{
+		FMcpPromptMessage Message;
+		Message.Role = TEXT("user");
+		Message.Content.Type = TEXT("text");
+		Message.Content.Text = Text;
+		return Message;
+	}
+}
+
+// ============================================================================
+// Shared by the Blueprint prompts (card 0124)
+// ============================================================================
+
+const TArray<FN2CMcpPromptLanguage>& FN2CMcpBlueprintPrompts::Languages()
+{
+	static const TArray<FN2CMcpPromptLanguage> All = {
+		{TEXT("cpp"), TEXT("C++"), EN2CCodeLanguage::Cpp},
+		{TEXT("python"), TEXT("Python"), EN2CCodeLanguage::Python},
+		{TEXT("csharp"), TEXT("C#"), EN2CCodeLanguage::CSharp},
+		{TEXT("javascript"), TEXT("JavaScript"), EN2CCodeLanguage::JavaScript},
+		{TEXT("swift"), TEXT("Swift"), EN2CCodeLanguage::Swift},
+		{TEXT("pseudocode"), TEXT("Pseudocode"), EN2CCodeLanguage::Pseudocode},
+	};
+	return All;
+}
+
+FString FN2CMcpBlueprintPrompts::LanguageIdList()
+{
+	TArray<FString> Ids;
+	for (const FN2CMcpPromptLanguage& Language : Languages())
+	{
+		Ids.Add(Language.Id);
+	}
+	return FString::Join(Ids, TEXT(", "));
+}
+
+bool FN2CMcpBlueprintPrompts::ResolveLanguage(const FMcpPromptArguments& Arguments, FN2CMcpPromptLanguage& OutLanguage,
+	FMcpPromptResult& OutError)
+{
+	const FString Requested = Arguments.FindRef(TEXT("language")).TrimStartAndEnd();
+	if (Requested.IsEmpty())
+	{
+		OutLanguage = Languages()[0];
+		return true;
+	}
+	for (const FN2CMcpPromptLanguage& Language : Languages())
+	{
+		if (Language.Id.Equals(Requested, ESearchCase::IgnoreCase))
+		{
+			OutLanguage = Language;
+			return true;
+		}
+	}
+	// MCP 2025-11-25, server/prompts, error handling: invalid arguments are -32602 (Invalid params)
+	OutError.ErrorCode = JsonRpcErrorCodes::InvalidParams;
+	OutError.ErrorMessage = FString::Printf(TEXT("Unknown language '%s'. Use one of: %s"), *Requested, *LanguageIdList());
+	return false;
+}
+
+FString FN2CMcpBlueprintPrompts::CodeGenInstructions(EN2CCodeLanguage Language)
+{
+	// The same assembly as the in-editor translation: CodeGen_<Language>.md with the shared N2C JSON specification
+	// and response format (card 0132)
+	const TStrongObjectPtr<UN2CSystemPromptManager> Manager(NewObject<UN2CSystemPromptManager>(GetTransientPackage()));
+	Manager->Initialize(FN2CLLMConfig());
+	return Manager->GetLanguageSpecificPrompt(TEXT("CodeGen"), Language);
+}
+
+void FN2CMcpBlueprintPrompts::AppendBlueprint(FMcpPromptResult& Result, const FMcpResourceContents& Blueprint)
+{
+	Result.Messages.Add(MakeTextMessage(FString::Printf(
+		TEXT("%s It is the N2C JSON of the Blueprint focused in the editor (%s), in the next message."),
+		FN2CMcpUntrustedContent::Notice, *Blueprint.Uri)));
+
+	FMcpPromptMessage ResourceMsg;
+	ResourceMsg.Role = TEXT("user");
+	ResourceMsg.Content.Type = TEXT("resource");
+	ResourceMsg.Content.Resource = Blueprint;
+	// The resource marks its own text; marking here as well covers a resource read some other way (MarkJson adds one mark)
+	ResourceMsg.Content.Resource.Text = FN2CMcpUntrustedContent::MarkJson(Blueprint.Text);
+	ResourceMsg.Content.Annotations = FN2CMcpUntrustedContent::AssistantAudience();
+	Result.Messages.Add(ResourceMsg);
+}
+
+// ============================================================================
+// generate-code
+// ============================================================================
 
 FMcpPromptDefinition FN2CMcpCodeGenerationPrompt::GetDefinition() const
 {
 	FMcpPromptDefinition Definition;
 	Definition.Name = TEXT("generate-code");
-	Definition.Description = TEXT("Generate code from the current Blueprint with customization options");
-	
-	// Language argument
-	FMcpPromptArgument LangArg;
-	LangArg.Name = TEXT("language");
-	LangArg.Description = TEXT("Target programming language (cpp, python, csharp, javascript, swift, pseudocode)");
-	LangArg.bRequired = false;
-	Definition.Arguments.Add(LangArg);
-	
-	// Style argument
-	FMcpPromptArgument StyleArg;
-	StyleArg.Name = TEXT("style");
-	StyleArg.Description = TEXT("Coding style preference (verbose, concise, documented)");
-	StyleArg.bRequired = false;
-	Definition.Arguments.Add(StyleArg);
-	
-	// Optimization argument
-	FMcpPromptArgument OptimizationArg;
-	OptimizationArg.Name = TEXT("optimization");
-	OptimizationArg.Description = TEXT("Optimization level (readability, performance, size)");
-	OptimizationArg.bRequired = false;
-	Definition.Arguments.Add(OptimizationArg);
-	
+	Definition.Title = TEXT("Generate Code from Blueprint");
+	Definition.Description = TEXT("Translate the focused Blueprint to code with NodeToCode's own translation instructions for the language");
+	Definition.Arguments.Add(MakeArgument(TEXT("language"), TEXT("Target language"),
+		FString::Printf(TEXT("Target language, one of: %s. Default: cpp"), *FN2CMcpBlueprintPrompts::LanguageIdList())));
+	Definition.Arguments.Add(MakeArgument(TEXT("style"), TEXT("Coding style"),
+		TEXT("Coding style preference (verbose, concise, documented)")));
+	Definition.Arguments.Add(MakeArgument(TEXT("optimization"), TEXT("Optimize for"),
+		TEXT("Optimization level (readability, performance, size)")));
 	return Definition;
 }
 
 FMcpPromptResult FN2CMcpCodeGenerationPrompt::GetPrompt(const FMcpPromptArguments& Arguments)
 {
-	return ExecuteOnGameThread<FMcpPromptResult>([Arguments]() -> FMcpPromptResult
+	FN2CMcpPromptLanguage Language;
+	FMcpPromptResult Error;
+	if (!FN2CMcpBlueprintPrompts::ResolveLanguage(Arguments, Language, Error))
+	{
+		return Error;
+	}
+
+	return ExecuteOnGameThread<FMcpPromptResult>([Arguments, Language]() -> FMcpPromptResult
 	{
 		FMcpPromptResult Result;
-		
-		// Get current Blueprint as resource
-		FString BlueprintUri = TEXT("nodetocode://blueprint/current");
-		FMcpResourceContents BlueprintResource = FN2CMcpResourceManager::Get().ReadResource(BlueprintUri);
-		
-		// Build the prompt with context
-		FString Language = Arguments.FindRef(TEXT("language"));
-		if (Language.IsEmpty())
-		{
-			Language = TEXT("C++"); // Default to C++
-		}
-		
+
 		FString Style = Arguments.FindRef(TEXT("style"));
 		if (Style.IsEmpty())
 		{
 			Style = TEXT("clear and well-documented");
 		}
-		
+
 		FString Optimization = Arguments.FindRef(TEXT("optimization"));
 		if (Optimization.IsEmpty())
 		{
 			Optimization = TEXT("readability");
 		}
-		
-		// Create the prompt description
+
 		Result.Description = FString::Printf(
 			TEXT("Generate %s code from the current Blueprint with %s style optimized for %s"),
-			*Language, *Style, *Optimization
-		);
-		
-		// Create the user message
-		FMcpPromptMessage UserMsg;
-		UserMsg.Role = TEXT("user");
-		UserMsg.Content.Type = TEXT("text");
-		UserMsg.Content.Text = FString::Printf(
-			TEXT("Please translate this Unreal Engine Blueprint to %s code. ")
-			TEXT("Make the code %s and optimize for %s. ")
-			TEXT("Focus on correctness and Unreal Engine best practices. ")
-			TEXT("Include appropriate comments and follow standard %s conventions."),
-			*Language, *Style, *Optimization, *Language
-		);
-		Result.Messages.Add(UserMsg);
-		
-		// Add the Blueprint as a resource reference
-		FMcpPromptMessage ResourceMsg;
-		ResourceMsg.Role = TEXT("user");
-		ResourceMsg.Content.Type = TEXT("resource");
-		ResourceMsg.Content.Resource = BlueprintResource;
-		Result.Messages.Add(ResourceMsg);
-		
+			*Language.DisplayName, *Style, *Optimization);
+
+		// NodeToCode's tuned translation instructions, the ones the in-editor translation sends as its system prompt
+		Result.Messages.Add(MakeTextMessage(FString::Printf(
+			TEXT("Translate the Unreal Engine Blueprint given at the end of this prompt to %s, following NodeToCode's ")
+			TEXT("translation instructions below. Make the code %s and optimize for %s.\n\n")
+			TEXT("<n2c_translation_instructions>\n%s\n</n2c_translation_instructions>"),
+			*Language.DisplayName, *Style, *Optimization, *FN2CMcpBlueprintPrompts::CodeGenInstructions(Language.Language))));
+
+		FN2CMcpBlueprintPrompts::AppendBlueprint(Result, FN2CMcpResourceManager::Get().ReadResource(BlueprintUri));
 		return Result;
 	});
 }
+
+// ============================================================================
+// analyze-blueprint
+// ============================================================================
 
 FMcpPromptDefinition FN2CMcpBlueprintAnalysisPrompt::GetDefinition() const
 {
 	FMcpPromptDefinition Definition;
 	Definition.Name = TEXT("analyze-blueprint");
+	Definition.Title = TEXT("Analyze Blueprint");
 	Definition.Description = TEXT("Analyze a Blueprint's structure, complexity, and potential issues");
-	
-	// Focus argument
-	FMcpPromptArgument FocusArg;
-	FocusArg.Name = TEXT("focus");
-	FocusArg.Description = TEXT("Analysis focus (complexity, performance, best-practices, all)");
-	FocusArg.bRequired = false;
-	Definition.Arguments.Add(FocusArg);
-	
-	// Detail level argument
-	FMcpPromptArgument DetailArg;
-	DetailArg.Name = TEXT("detail");
-	DetailArg.Description = TEXT("Level of detail (summary, detailed, comprehensive)");
-	DetailArg.bRequired = false;
-	Definition.Arguments.Add(DetailArg);
-	
+	Definition.Arguments.Add(MakeArgument(TEXT("focus"), TEXT("Focus"),
+		TEXT("Analysis focus (complexity, performance, best-practices, all)")));
+	Definition.Arguments.Add(MakeArgument(TEXT("detail"), TEXT("Detail level"),
+		TEXT("Level of detail (summary, detailed, comprehensive)")));
 	return Definition;
 }
 
@@ -121,127 +192,80 @@ FMcpPromptResult FN2CMcpBlueprintAnalysisPrompt::GetPrompt(const FMcpPromptArgum
 	return ExecuteOnGameThread<FMcpPromptResult>([Arguments]() -> FMcpPromptResult
 	{
 		FMcpPromptResult Result;
-		
-		// Get current Blueprint as resource
-		FString BlueprintUri = TEXT("nodetocode://blueprint/current");
-		FMcpResourceContents BlueprintResource = FN2CMcpResourceManager::Get().ReadResource(BlueprintUri);
-		
-		// Build the prompt with context
+
 		FString Focus = Arguments.FindRef(TEXT("focus"));
 		if (Focus.IsEmpty())
 		{
 			Focus = TEXT("all aspects");
 		}
-		
+
 		FString Detail = Arguments.FindRef(TEXT("detail"));
 		if (Detail.IsEmpty())
 		{
 			Detail = TEXT("detailed");
 		}
-		
-		// Create the prompt description
-		Result.Description = FString::Printf(
-			TEXT("Analyze Blueprint focusing on %s with %s level of detail"),
-			*Focus, *Detail
-		);
-		
-		// Create the user message
-		FMcpPromptMessage UserMsg;
-		UserMsg.Role = TEXT("user");
-		UserMsg.Content.Type = TEXT("text");
-		UserMsg.Content.Text = FString::Printf(
-			TEXT("Please analyze this Unreal Engine Blueprint. ")
+
+		Result.Description = FString::Printf(TEXT("Analyze Blueprint focusing on %s with %s level of detail"), *Focus, *Detail);
+
+		Result.Messages.Add(MakeTextMessage(FString::Printf(
+			TEXT("Please analyze the Unreal Engine Blueprint given at the end of this prompt. ")
 			TEXT("Focus on %s and provide a %s analysis. ")
 			TEXT("Identify potential issues, suggest improvements, and highlight best practices. ")
 			TEXT("Consider performance implications and maintainability."),
-			*Focus, *Detail
-		);
-		Result.Messages.Add(UserMsg);
-		
-		// Add the Blueprint as a resource reference
-		FMcpPromptMessage ResourceMsg;
-		ResourceMsg.Role = TEXT("user");
-		ResourceMsg.Content.Type = TEXT("resource");
-		ResourceMsg.Content.Resource = BlueprintResource;
-		Result.Messages.Add(ResourceMsg);
-		
+			*Focus, *Detail)));
+
+		FN2CMcpBlueprintPrompts::AppendBlueprint(Result, FN2CMcpResourceManager::Get().ReadResource(BlueprintUri));
 		return Result;
 	});
 }
+
+// ============================================================================
+// refactor-blueprint
+// ============================================================================
 
 FMcpPromptDefinition FN2CMcpRefactorPrompt::GetDefinition() const
 {
 	FMcpPromptDefinition Definition;
 	Definition.Name = TEXT("refactor-blueprint");
+	Definition.Title = TEXT("Refactor Blueprint");
 	Definition.Description = TEXT("Suggest refactoring improvements for Blueprint code");
-	
-	// Goal argument
-	FMcpPromptArgument GoalArg;
-	GoalArg.Name = TEXT("goal");
-	GoalArg.Description = TEXT("Refactoring goal (simplify, optimize, modularize, clean)");
-	GoalArg.bRequired = false;
-	Definition.Arguments.Add(GoalArg);
-	
-	// Language argument
-	FMcpPromptArgument LangArg;
-	LangArg.Name = TEXT("language");
-	LangArg.Description = TEXT("Target language for refactored code (cpp, python, etc.)");
-	LangArg.bRequired = false;
-	Definition.Arguments.Add(LangArg);
-	
+	Definition.Arguments.Add(MakeArgument(TEXT("goal"), TEXT("Goal"),
+		TEXT("Refactoring goal (simplify, optimize, modularize, clean)")));
+	Definition.Arguments.Add(MakeArgument(TEXT("language"), TEXT("Target language"),
+		FString::Printf(TEXT("Target language for refactored code, one of: %s. Default: cpp"), *FN2CMcpBlueprintPrompts::LanguageIdList())));
 	return Definition;
 }
 
 FMcpPromptResult FN2CMcpRefactorPrompt::GetPrompt(const FMcpPromptArguments& Arguments)
 {
-	return ExecuteOnGameThread<FMcpPromptResult>([Arguments]() -> FMcpPromptResult
+	FN2CMcpPromptLanguage Language;
+	FMcpPromptResult Error;
+	if (!FN2CMcpBlueprintPrompts::ResolveLanguage(Arguments, Language, Error))
+	{
+		return Error;
+	}
+
+	return ExecuteOnGameThread<FMcpPromptResult>([Arguments, Language]() -> FMcpPromptResult
 	{
 		FMcpPromptResult Result;
-		
-		// Get current Blueprint as resource
-		FString BlueprintUri = TEXT("nodetocode://blueprint/current");
-		FMcpResourceContents BlueprintResource = FN2CMcpResourceManager::Get().ReadResource(BlueprintUri);
-		
-		// Build the prompt with context
+
 		FString Goal = Arguments.FindRef(TEXT("goal"));
 		if (Goal.IsEmpty())
 		{
 			Goal = TEXT("improve overall quality");
 		}
-		
-		FString Language = Arguments.FindRef(TEXT("language"));
-		if (Language.IsEmpty())
-		{
-			Language = TEXT("C++");
-		}
-		
-		// Create the prompt description
-		Result.Description = FString::Printf(
-			TEXT("Refactor Blueprint to %s, targeting %s"),
-			*Goal, *Language
-		);
-		
-		// Create the user message
-		FMcpPromptMessage UserMsg;
-		UserMsg.Role = TEXT("user");
-		UserMsg.Content.Type = TEXT("text");
-		UserMsg.Content.Text = FString::Printf(
-			TEXT("Please refactor this Unreal Engine Blueprint to %s. ")
+
+		Result.Description = FString::Printf(TEXT("Refactor Blueprint to %s, targeting %s"), *Goal, *Language.DisplayName);
+
+		Result.Messages.Add(MakeTextMessage(FString::Printf(
+			TEXT("Please refactor the Unreal Engine Blueprint given at the end of this prompt to %s. ")
 			TEXT("Target language is %s. ")
 			TEXT("Provide specific refactoring suggestions with code examples. ")
 			TEXT("Explain the benefits of each suggested change. ")
 			TEXT("Maintain functionality while improving code quality."),
-			*Goal, *Language
-		);
-		Result.Messages.Add(UserMsg);
+			*Goal, *Language.DisplayName)));
 
-		// Add the Blueprint as a resource reference
-		FMcpPromptMessage ResourceMsg;
-		ResourceMsg.Role = TEXT("user");
-		ResourceMsg.Content.Type = TEXT("resource");
-		ResourceMsg.Content.Resource = BlueprintResource;
-		Result.Messages.Add(ResourceMsg);
-
+		FN2CMcpBlueprintPrompts::AppendBlueprint(Result, FN2CMcpResourceManager::Get().ReadResource(BlueprintUri));
 		return Result;
 	});
 }
@@ -254,30 +278,16 @@ FMcpPromptDefinition FN2CMcpPythonScriptingPrompt::GetDefinition() const
 {
 	FMcpPromptDefinition Definition;
 	Definition.Name = TEXT("python-scripting");
+	Definition.Title = TEXT("Write a UE Python Script");
 	Definition.Description = TEXT("Write Unreal Engine Python scripts with Context7 documentation lookup and script management. "
-		"REQUIRES: Context7 MCP server for API documentation lookup via the radial-hks/unreal-python-stubhub library.");
-
-	// Task argument - what the user wants to accomplish
-	FMcpPromptArgument TaskArg;
-	TaskArg.Name = TEXT("task");
-	TaskArg.Description = TEXT("Description of what the Python script should accomplish (e.g., 'create health variables', 'add debug nodes')");
-	TaskArg.bRequired = true;
-	Definition.Arguments.Add(TaskArg);
-
-	// Save argument - whether to save the script for reuse
-	FMcpPromptArgument SaveArg;
-	SaveArg.Name = TEXT("save_script");
-	SaveArg.Description = TEXT("Whether to save the script for future reuse (yes, no, ask). Default: ask");
-	SaveArg.bRequired = false;
-	Definition.Arguments.Add(SaveArg);
-
-	// Category argument - for organizing saved scripts
-	FMcpPromptArgument CategoryArg;
-	CategoryArg.Name = TEXT("category");
-	CategoryArg.Description = TEXT("Category for saved scripts (gameplay, ui, utilities, animation, etc.). Default: general");
-	CategoryArg.bRequired = false;
-	Definition.Arguments.Add(CategoryArg);
-
+		"REQUIRES: Context7 MCP server for API documentation lookup via the radial-hks/unreal-python-stubhub library. "
+		"Running and saving scripts needs Allow MCP Python Execution.");
+	Definition.Arguments.Add(MakeArgument(TEXT("task"), TEXT("Task"),
+		TEXT("Description of what the Python script should accomplish (e.g., 'create health variables', 'add debug nodes')"), true));
+	Definition.Arguments.Add(MakeArgument(TEXT("save_script"), TEXT("Save script"),
+		TEXT("Whether to save the script for future reuse (yes, no, ask). Default: ask")));
+	Definition.Arguments.Add(MakeArgument(TEXT("category"), TEXT("Category"),
+		TEXT("Category for saved scripts (gameplay, ui, utilities, animation, etc.). Default: general")));
 	return Definition;
 }
 
@@ -305,20 +315,47 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		Category = TEXT("general");
 	}
 
-	// Create the prompt description
-	Result.Description = FString::Printf(
-		TEXT("Write Python script for: %s (Category: %s, Save: %s)"),
-		*Task, *Category, *SaveScript
-	);
+	// run-python, save-python-script and delete-python-script exist only with the per-user Allow MCP Python Execution
+	// on (card 0423); without them the workflow below cannot run or save anything, so the prompt says so (card 0124)
+	const bool bPythonExecution = FN2CMcpToolManager::Get().IsToolRegistered(TEXT("run-python"));
 
-	// Create the comprehensive instruction message
-	FMcpPromptMessage InstructionMsg;
-	InstructionMsg.Role = TEXT("user");
-	InstructionMsg.Content.Type = TEXT("text");
-	InstructionMsg.Content.Text = FString::Printf(TEXT(
-		"# Unreal Engine Python Scripting Task\n\n"
-		"**Task:** %s\n\n"
-		"---\n\n"
+	Result.Description = FString::Printf(
+		TEXT("Write Python script for: %s (Category: %s, Save: %s)%s"),
+		*Task, *Category, *SaveScript, bPythonExecution ? TEXT("") : TEXT(" - run-python is disabled"));
+
+	const FString DisabledSection = bPythonExecution ? FString() : FString(TEXT(
+		"## run-python is disabled on this server\n\n"
+		"`run-python`, `save-python-script` and `delete-python-script` are not available: the per-user setting "
+		"**Allow MCP Python Execution** is off (the default). To enable them, the user turns it on in Project Settings > "
+		"Plugins > Node to Code (User) > MCP Server and restarts the editor. It lets any connected MCP client run "
+		"arbitrary Python in the editor, so leave that decision to the user.\n\n"
+		"Until then you can still search, list and read saved scripts, research the API and write the script. Give "
+		"the finished script to the user to run (for example in the editor's Python console), and say that it has "
+		"not been run or tested. Do not claim it ran.\n\n"
+		"---\n\n"));
+	const TCHAR* const ExactMatchAction = bPythonExecution
+		? TEXT("Execute it with `run-python`")
+		: TEXT("Give it to the user to run (`run-python` is disabled)");
+	const TCHAR* const ExecuteStep = bPythonExecution
+		? TEXT("Use the `run-python` tool to execute your script and verify it works.\n\n")
+		: TEXT("`run-python` is disabled: give the script to the user to run, and say it has not been run or tested.\n\n");
+	const FString SaveStep = bPythonExecution
+		? FString::Printf(TEXT(
+			"If the script is useful and reusable:\n"
+			"1. Use `save-python-script` with:\n"
+			"   - A descriptive name (snake_case)\n"
+			"   - Clear description of what it does\n"
+			"   - Relevant tags for searchability\n"
+			"   - Category: '%s'\n\n"), *Category)
+		: FString::Printf(TEXT(
+			"`save-python-script` is disabled with `run-python`. If the script is reusable, suggest the user saves it as "
+			"`Content/Python/scripts/%s/<name>.py` once Allow MCP Python Execution is on.\n\n"), *Category);
+	const TCHAR* const WriteToolsState = bPythonExecution ? TEXT("") : TEXT(" (disabled: Allow MCP Python Execution is off)");
+
+	FString Text;
+	Text += FString::Printf(TEXT("# Unreal Engine Python Scripting Task\n\n**Task:** %s\n\n---\n\n"), *Task);
+	Text += DisabledSection;
+	Text += FString::Printf(TEXT(
 		"## MANDATORY WORKFLOW\n\n"
 		"You MUST follow this workflow when writing Unreal Engine Python scripts:\n\n"
 		"### Step 1: Check for Existing Scripts\n"
@@ -326,9 +363,10 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		"1. Call `search-python-scripts` with relevant keywords from the task\n"
 		"2. Call `list-python-scripts` to see available scripts in the '%s' category\n"
 		"3. Analyze results for:\n"
-		"   - **Exact match**: A script that solves the entire task → Execute it with `run-python`\n"
+		"   - **Exact match**: A script that solves the entire task → %s\n"
 		"   - **Partial matches**: Scripts with useful functions → Import and reuse them (see Step 3)\n"
-		"   - **No matches**: Proceed to write a new script\n\n"
+		"   - **No matches**: Proceed to write a new script\n\n"), *Category, ExactMatchAction);
+	Text += TEXT(
 		"### Step 2: Research the UE Python API (REQUIRED for new/partial scripts)\n"
 		"If writing new code or extending existing scripts, you MUST use Context7 MCP to look up the correct API:\n\n"
 		"1. **Resolve the library ID first:**\n"
@@ -376,25 +414,22 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		"- Set a `result` variable at the end to return structured data\n"
 		"- Handle errors gracefully with try/except blocks\n"
 		"- Include comments explaining complex logic\n\n"
-		"### Step 4: Execute and Test\n"
-		"Use the `run-python` tool to execute your script and verify it works.\n\n"
-		"### Step 5: Save for Reuse (%s)\n"
-		"If the script is useful and reusable:\n"
-		"1. Use `save-python-script` with:\n"
-		"   - A descriptive name (snake_case)\n"
-		"   - Clear description of what it does\n"
-		"   - Relevant tags for searchability\n"
-		"   - Category: '%s'\n\n"
+		"### Step 4: Execute and Test\n");
+	Text += ExecuteStep;
+	Text += FString::Printf(TEXT("### Step 5: Save for Reuse (%s)\n"), *SaveScript);
+	Text += SaveStep;
+	Text += FString::Printf(TEXT(
 		"---\n\n"
 		"## Available NodeToCode Tools\n\n"
 		"**Script Management:**\n"
 		"- `list-python-scripts` - List scripts by category\n"
 		"- `search-python-scripts` - Search by name/description/tags\n"
 		"- `get-python-script` - Get full script code\n"
-		"- `save-python-script` - Save script to library\n"
-		"- `delete-python-script` - Remove a script\n\n"
+		"- `save-python-script` - Save script to library%s\n"
+		"- `delete-python-script` - Remove a script%s\n\n"
 		"**Execution:**\n"
-		"- `run-python` - Execute Python code in UE\n\n"
+		"- `run-python` - Execute Python code in UE%s\n\n"), WriteToolsState, WriteToolsState, WriteToolsState);
+	Text += TEXT(
 		"**NodeToCode Module (in scripts):**\n"
 		"- `n2c.get_focused_blueprint()` - Get current Blueprint info\n"
 		"- `n2c.compile_blueprint()` - Compile the Blueprint\n"
@@ -426,14 +461,8 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		"2. Use Context7 to research APIs (MANDATORY - never assume)\n"
 		"3. Import and reuse existing functions whenever possible\n"
 		"4. Structure new scripts as reusable modules with clear functions\n"
-		"5. Save useful scripts to grow the shared library\n"
-	),
-		*Task,
-		*Category,
-		*SaveScript,
-		*Category
-	);
-	Result.Messages.Add(InstructionMsg);
+		"5. Save useful scripts to grow the shared library\n");
 
+	Result.Messages.Add(MakeTextMessage(Text));
 	return Result;
 }

@@ -29,6 +29,9 @@ FMcpToolDefinition FN2CMcpGetFocusedBlueprintTool::GetDefinition() const
 	// Add read-only annotation
 	AddReadOnlyAnnotation(Definition);
 	
+	// Results carry Blueprint text (node comments, titles and string literals): marked as untrusted data (card 0124)
+	Definition.bReturnsUntrustedContent = true;
+
 	return Definition;
 }
 

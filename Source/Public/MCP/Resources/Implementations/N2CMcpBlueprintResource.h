@@ -17,6 +17,12 @@ public:
 	virtual bool CanSubscribe() const override { return true; }
 	virtual bool RequiresGameThread() const override { return true; }
 
+	/**
+	 * The contents Read returns for a focused Blueprint's N2C JSON: the JSON marked as untrusted data
+	 * (FN2CMcpUntrustedContent::MarkJson, card 0124). Public for the NodeToCode.MCP.UntrustedContent spec.
+	 */
+	static FMcpResourceContents MakeBlueprintContents(const FString& Uri, const FString& BlueprintJson);
+
 protected:
 	/**
 	 * Helper to execute code on the game thread

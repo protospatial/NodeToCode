@@ -82,6 +82,12 @@ a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing ca
   every property of `GetN2CResponseSchema`, that the batch export's `Combined_Blueprints.md` holds the same spec, and
   that `WrapN2CJson` puts the user message in `<n2c_json>` tags no node comment can close. It keeps no golden of the
   assembled prompts: that would be a second copy of the spec.
+- `NodeToCode.MCP.UntrustedContent` (card 0124) checks that Blueprint text reaches an MCP client marked as untrusted
+  data on each channel: the `untrusted_content` mark and `</` escaping (`FN2CMcpUntrustedContent`), `ExecuteTool`
+  marking the result of a tool that sets `bReturnsUntrustedContent` (and the exact list of tools that set it), the
+  current-Blueprint resource, and the Blueprint prompts (notice message, then the annotated embedded resource). It
+  also checks prompt titles, the language validation and generate-code's CodeGen prompt, and python-scripting's
+  disabled notice.
 - `NodeToCode.LLM.Parse.Fixtures` runs each provider's parser on the bodies in `Fixtures/LLM/Parser/<provider>/`
   (success, fenced output, truncation, refusal, 400/401/429/503/529 errors, string-typed errors, malformed
   `graph_name`). Error bodies go through `FN2CTranslationError::WrapHttpErrorBody` first, as the HTTP handler sends

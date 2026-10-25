@@ -19,6 +19,10 @@ struct NODETOCODE_API FMcpPromptArgument
 	UPROPERTY()
 	FString Name;
 
+	/** Human-readable name for display (MCP "title"; omitted when empty) */
+	UPROPERTY()
+	FString Title;
+
 	/** Description of what this argument is for */
 	UPROPERTY()
 	FString Description;
@@ -44,6 +48,10 @@ struct NODETOCODE_API FMcpPromptDefinition
 	/** Unique name for this prompt */
 	UPROPERTY()
 	FString Name;
+
+	/** Human-readable name for display (MCP "title"; omitted when empty) */
+	UPROPERTY()
+	FString Title;
 
 	/** Description of what this prompt does */
 	UPROPERTY()
@@ -77,6 +85,9 @@ struct NODETOCODE_API FMcpPromptContent
 
 	/** Resource content (if type is resource) */
 	FMcpResourceContents Resource;
+
+	/** Optional MCP annotations ("audience", "priority"), sent as "annotations" when set */
+	TSharedPtr<FJsonObject> Annotations;
 
 	/**
 	 * Converts this content to JSON format
