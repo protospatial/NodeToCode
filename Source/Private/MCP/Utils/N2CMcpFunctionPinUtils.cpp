@@ -3,7 +3,6 @@
 #include "N2CMcpFunctionPinUtils.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
-#include "K2Node_CallFunction.h"
 #include "K2Node_EditablePinBase.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -12,6 +11,8 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Dom/JsonObject.h"
 #include "Utils/N2CLogger.h"
+#include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "ScopedTransaction.h"
 
 UK2Node_FunctionEntry* FN2CMcpFunctionPinUtils::FindFunctionEntryNode(UEdGraph* Graph)
 {
@@ -51,100 +52,268 @@ UK2Node_FunctionResult* FN2CMcpFunctionPinUtils::FindFunctionResultNode(UEdGraph
 	return nullptr;
 }
 
-UK2Node_FunctionResult* FN2CMcpFunctionPinUtils::EnsureFunctionResultNode(UEdGraph* FunctionGraph)
+TArray<UK2Node_FunctionResult*> FN2CMcpFunctionPinUtils::GetAllResultNodes(UEdGraph* Graph)
 {
-	if (!FunctionGraph)
+	TArray<UK2Node_FunctionResult*> ResultNodes;
+	if (Graph)
 	{
-		return nullptr;
+		Graph->GetNodesOfClass(ResultNodes);
+	}
+	return ResultNodes;
+}
+
+void FN2CMcpFunctionPinUtils::FinishSignatureEdit(UBlueprint* Blueprint, const TArray<UK2Node_EditablePinBase*>& EditedNodes)
+{
+	// As the Blueprint editor's OnParamsChanged: rebuild each edited entry/result node from its UserDefinedPins (no
+	// orphan pins for a removed parameter), then HandleParameterDefaultValueChanged regenerates the skeleton class
+	// (MarkBlueprintAsStructurallyModified) and only then rebuilds the call sites, delegates and macro instances of the
+	// function in every loaded Blueprint (FParamsChangedHelper, which Modifies each call node first), so they get the
+	// new signature. Rebuilding call sites before the skeleton (card 0156) left them with the old pins.
+	for (UK2Node_EditablePinBase* Node : EditedNodes)
+	{
+		const bool bOldDisableOrphanSaving = Node->bDisableOrphanPinSaving;
+		Node->bDisableOrphanPinSaving = true;
+		Node->ReconstructNode();
+		Node->bDisableOrphanPinSaving = bOldDisableOrphanSaving;
+	}
+	if (EditedNodes.Num() > 0)
+	{
+		GetDefault<UEdGraphSchema_K2>()->HandleParameterDefaultValueChanged(EditedNodes[0]);
 	}
 
-	// Check if we already have a result node
-	UK2Node_FunctionResult* ResultNode = FindFunctionResultNode(FunctionGraph);
-	if (ResultNode)
+	// Package dirty and the compile queued for the end of the tool call, after its transaction closes (card 0151)
+	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
+}
+
+bool FN2CMcpFunctionPinUtils::AddFunctionPin(UBlueprint* Blueprint, UEdGraph* FunctionGraph, bool bReturnValue,
+	const FString& DesiredName, const FEdGraphPinType& PinType, const FString& DefaultValue, const FString& Tooltip,
+	const FText& TransactionTitle, FN2CFunctionPinEdit& Out)
+{
+	Out = FN2CFunctionPinEdit();
+
+	// Validate everything before the transaction opens, so a refused edit changes nothing and leaves the package clean
+	if (!Blueprint || !FunctionGraph)
 	{
-		return ResultNode;
+		Out.Error = TEXT("Invalid Blueprint or function graph");
+		return false;
+	}
+	if (DesiredName.TrimStartAndEnd().IsEmpty())
+	{
+		Out.Error = TEXT("The pin name is empty");
+		return false;
+	}
+	UK2Node_FunctionEntry* FunctionEntry = FindFunctionEntryNode(FunctionGraph);
+	if (!FunctionEntry)
+	{
+		Out.Error = TEXT("Not in a function graph. Please focus on a Blueprint function.");
+		return false;
+	}
+	TArray<UK2Node_FunctionResult*> ResultNodes = GetAllResultNodes(FunctionGraph);
+	FText CannotCreate;
+	if (!bReturnValue)
+	{
+		if (!FunctionEntry->CanCreateUserDefinedPin(PinType, EGPD_Output, CannotCreate))
+		{
+			Out.Error = FString::Printf(TEXT("Cannot create pin: %s"), *CannotCreate.ToString());
+			return false;
+		}
+	}
+	else if (ResultNodes.Num() > 0)
+	{
+		for (UK2Node_FunctionResult* ResultNode : ResultNodes)
+		{
+			if (!ResultNode->CanCreateUserDefinedPin(PinType, EGPD_Input, CannotCreate))
+			{
+				Out.Error = FString::Printf(TEXT("Cannot create return pin: %s"), *CannotCreate.ToString());
+				return false;
+			}
+		}
+	}
+	else if (!FunctionEntry->IsEditable() || PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+	{
+		// No result node yet: the one FindOrCreateFunctionResultNode makes is editable and takes no exec pins
+		Out.Error = FunctionEntry->IsEditable() ? TEXT("Cannot create return pin: an exec pin cannot be a return value")
+			: TEXT("Cannot create return pin: the function cannot be edited");
+		return false;
 	}
 
-	// Create a new function result node
-	ResultNode = NewObject<UK2Node_FunctionResult>(FunctionGraph);
-	if (!ResultNode)
-	{
-		UE_LOG(LogNodeToCode, Error, TEXT("Failed to create UK2Node_FunctionResult"));
-		return nullptr;
-	}
+	const FScopedTransaction Transaction(TransactionTitle);
+	Blueprint->Modify();
+	FunctionGraph->Modify();
+	FunctionEntry->Modify(); // the tooltip lives in the entry's metadata, and the editor records the entry for outputs too
 
-	// Add the node to the graph BEFORE calling any initialization methods
-	FunctionGraph->AddNode(ResultNode, true);
-
-	// Position it appropriately (to the right of function entry if it exists)
-	UK2Node_FunctionEntry* EntryNode = FindFunctionEntryNode(FunctionGraph);
-	if (EntryNode)
+	TArray<UK2Node_EditablePinBase*> EditedNodes;
+	if (!bReturnValue)
 	{
-		ResultNode->NodePosX = EntryNode->NodePosX + 400;
-		ResultNode->NodePosY = EntryNode->NodePosY;
+		UEdGraphPin* NewPin = FunctionEntry->CreateUserDefinedPin(FName(*DesiredName), PinType, EGPD_Output, /*bUseUniqueName*/ true);
+		if (!NewPin)
+		{
+			Out.Error = TEXT("Failed to create input pin");
+			return false;
+		}
+		if (!DefaultValue.IsEmpty())
+		{
+			TSharedPtr<FUserPinInfo>* PinInfo = FunctionEntry->UserDefinedPins.FindByPredicate(
+				[NewPin](const TSharedPtr<FUserPinInfo>& Info) { return Info.IsValid() && Info->PinName == NewPin->PinName; });
+			if (PinInfo && PinInfo->IsValid())
+			{
+				FunctionEntry->ModifyUserDefinedPinDefaultValue(*PinInfo, DefaultValue);
+			}
+		}
+		Out.PinName = NewPin->PinName;
+		EditedNodes.Add(FunctionEntry);
 	}
 	else
 	{
-		// Default position if no entry node
-		ResultNode->NodePosX = 400;
-		ResultNode->NodePosY = 0;
+		if (ResultNodes.Num() == 0)
+		{
+			// The engine's own result node (FGraphNodeCreator: RF_Transactional, a NodeGuid, editable), placed right of
+			// the entry and wired from its exec output when that is free
+			UK2Node_FunctionResult* Created = FBlueprintEditorUtils::FindOrCreateFunctionResultNode(FunctionEntry);
+			if (!Created)
+			{
+				Out.Error = TEXT("Failed to find or create function result node");
+				return false;
+			}
+			Out.bCreatedResultNode = true;
+			ResultNodes = Created->GetAllResultNodes();
+		}
+
+		// One name for every Return node (the editor's OnAddNewOutputClicked): unique against the function's
+		// parameters and the first node's pins
+		const FName PinName = ResultNodes[0]->CreateUniquePinName(FName(*DesiredName));
+		for (UK2Node_FunctionResult* ResultNode : ResultNodes)
+		{
+			ResultNode->Modify();
+			UEdGraphPin* NewPin = ResultNode->CreateUserDefinedPin(PinName, PinType, EGPD_Input, /*bUseUniqueName*/ false);
+			if (!NewPin)
+			{
+				// Nothing reports this for a validated type; undo what this call did rather than leave the nodes apart
+				Out.Error = FString::Printf(TEXT("Failed to create return pin '%s' on %s"), *PinName.ToString(), *ResultNode->GetName());
+				for (UK2Node_EditablePinBase* Done : EditedNodes)
+				{
+					Done->RemoveUserDefinedPinByName(PinName);
+				}
+				return false;
+			}
+			Out.Pin = Out.Pin ? Out.Pin : NewPin;
+			EditedNodes.Add(ResultNode);
+		}
+		Out.PinName = PinName;
 	}
 
-	// Call PostPlacedNewNode to properly initialize the node
-	// This is critical for K2Node_FunctionResult to set up its internal state
-	ResultNode->PostPlacedNewNode();
-	
-	// Allocate default pins after the node is properly initialized
-	ResultNode->AllocateDefaultPins();
-	
-	// Reconstruct to ensure everything is properly set up
-	ResultNode->ReconstructNode();
-	
-	// Snap to grid for visual alignment
-	ResultNode->SnapToGrid(16);
+	if (!Tooltip.IsEmpty())
+	{
+		SetParameterTooltip(FunctionEntry, Out.PinName, Tooltip);
+	}
 
-	UE_LOG(LogNodeToCode, Verbose, TEXT("Created new UK2Node_FunctionResult for function graph: %s"), 
-		*FunctionGraph->GetName());
+	FinishSignatureEdit(Blueprint, EditedNodes);
 
-	return ResultNode;
+	// The pin objects are recreated by ReconstructNode: hand back the live one
+	Out.Pin = EditedNodes[0]->FindPin(Out.PinName, bReturnValue ? EGPD_Input : EGPD_Output);
+	Out.EditedNodeCount = EditedNodes.Num();
+	return true;
 }
 
-void FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(UEdGraph* FunctionGraph, UBlueprint* Blueprint)
+bool FN2CMcpFunctionPinUtils::RemoveFunctionPin(UBlueprint* Blueprint, UEdGraph* FunctionGraph, bool bReturnValue,
+	const FString& PinName, const FText& TransactionTitle, FN2CFunctionPinEdit& Out)
 {
-	if (!FunctionGraph || !Blueprint)
+	Out = FN2CFunctionPinEdit();
+
+	// Validate before the transaction opens: a misspelled name changes nothing and leaves the package clean
+	if (!Blueprint || !FunctionGraph)
 	{
-		return;
+		Out.Error = TEXT("Invalid Blueprint or function graph");
+		return false;
 	}
-
-	// Find all references to this function
-	TArray<UK2Node_CallFunction*> CallSites;
-	FBlueprintEditorUtils::GetAllNodesOfClass<UK2Node_CallFunction>(Blueprint, CallSites);
-
-	int32 UpdatedCount = 0;
-	for (UK2Node_CallFunction* CallSite : CallSites)
+	UK2Node_FunctionEntry* FunctionEntry = FindFunctionEntryNode(FunctionGraph);
+	if (!FunctionEntry)
 	{
-		// Check if this call site references our function
-		if (CallSite->FunctionReference.GetMemberName() == FunctionGraph->GetFName())
+		Out.Error = TEXT("No function entry node found in the graph");
+		return false;
+	}
+	TArray<UK2Node_EditablePinBase*> TargetNodes;
+	if (bReturnValue)
+	{
+		for (UK2Node_FunctionResult* ResultNode : GetAllResultNodes(FunctionGraph))
 		{
-			// Reconstruct the node to update its pins
-			CallSite->ReconstructNode();
-			UpdatedCount++;
+			TargetNodes.Add(ResultNode);
+		}
+		if (TargetNodes.Num() == 0)
+		{
+			Out.Error = TEXT("No function result node found. This function has no return values.");
+			return false;
 		}
 	}
+	else
+	{
+		TargetNodes.Add(FunctionEntry);
+	}
+	const UEdGraphPin* Found = FindPinForRemoval(TargetNodes[0], PinName, Out.Error);
+	if (!Found)
+	{
+		return false;
+	}
+	const FName RemovedName = Found->PinName;
 
-	UE_LOG(LogNodeToCode, Verbose, TEXT("Updated %d call sites for function: %s"), 
-		UpdatedCount, *FunctionGraph->GetName());
+	const FScopedTransaction Transaction(TransactionTitle);
+	Blueprint->Modify();
+	FunctionGraph->Modify();
+	FunctionEntry->Modify();
+	for (UK2Node_EditablePinBase* Node : TargetNodes)
+	{
+		Node->Modify();
+		if (UEdGraphPin* Pin = Node->FindPin(RemovedName))
+		{
+			// Inside the function: wires to the parameter go with it (BreakLinkTo Modifies both ends)
+			Pin->BreakAllPinLinks(/*bNotifyNodes*/ true);
+		}
+		Node->RemoveUserDefinedPinByName(RemovedName);
+	}
+	SetParameterTooltip(FunctionEntry, RemovedName, FString());
+
+	FinishSignatureEdit(Blueprint, TargetNodes);
+
+	Out.PinName = RemovedName;
+	Out.EditedNodeCount = TargetNodes.Num();
+	return true;
 }
 
-void FN2CMcpFunctionPinUtils::SetPinTooltip(UK2Node_EditablePinBase* Node, UEdGraphPin* Pin, const FString& Tooltip)
+void FN2CMcpFunctionPinUtils::SetParameterTooltip(UK2Node_FunctionEntry* FunctionEntry, FName PinName, const FString& Tooltip)
 {
-	if (!Node || !Pin || Tooltip.IsEmpty())
+	if (!FunctionEntry || PinName.IsNone())
 	{
 		return;
 	}
 
-	// Pin tooltips are stored on the pin itself
-	Pin->PinToolTip = Tooltip;
+	// UEdGraphPin::PinToolTip is rebuilt on every ReconstructNode (FUserPinInfo has no tooltip), so the text goes where
+	// the engine reads parameter tooltips from: an "@param <name> <text>" line of the function's tooltip, which
+	// UK2Node_CallFunction::GeneratePinTooltipFromFunction shows on the call node's pin and
+	// ObjectTools::GetDefaultTooltipForFunction leaves out of the function's own tooltip
+	const FString Tag = FString::Printf(TEXT("@param %s"), *PinName.ToString());
+	TArray<FString> Lines;
+	FunctionEntry->MetaData.ToolTip.ToString().ParseIntoArrayLines(Lines, /*bCullEmpty*/ false);
+	const int32 Before = Lines.Num();
+	Lines.RemoveAll([&Tag](const FString& Line)
+	{
+		const FString Trimmed = Line.TrimStart();
+		return Trimmed.StartsWith(Tag, ESearchCase::CaseSensitive)
+			&& (Trimmed.Len() == Tag.Len() || FChar::IsWhitespace(Trimmed[Tag.Len()]));
+	});
+	const FString Text = Tooltip.Replace(TEXT("\r"), TEXT(" ")).Replace(TEXT("\n"), TEXT(" ")).TrimStartAndEnd();
+	if (Text.IsEmpty() && Lines.Num() == Before)
+	{
+		return;
+	}
+	if (!Text.IsEmpty())
+	{
+		Lines.Add(FString::Printf(TEXT("%s %s"), *Tag, *Text));
+	}
+	while (Lines.Num() > 0 && Lines.Last().TrimStartAndEnd().IsEmpty())
+	{
+		Lines.Pop();
+	}
+	FunctionEntry->MetaData.ToolTip = FText::FromString(FString::Join(Lines, TEXT("\n")));
 }
 
 TSharedPtr<FJsonObject> FN2CMcpFunctionPinUtils::BuildPinCreationSuccessResult(
@@ -267,110 +436,52 @@ bool FN2CMcpFunctionPinUtils::ValidatePinForRemoval(UK2Node_EditablePinBase* Nod
 	return true;
 }
 
-bool FN2CMcpFunctionPinUtils::RemoveFunctionPin(UK2Node_EditablePinBase* Node, const FString& PinName, FString& OutError)
+UEdGraphPin* FN2CMcpFunctionPinUtils::FindPinForRemoval(UK2Node_EditablePinBase* Node, const FString& PinName, FString& OutError)
 {
 	if (!Node)
 	{
 		OutError = TEXT("Invalid node");
-		return false;
+		return nullptr;
 	}
 
-	UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Attempting to remove pin '%s' from node '%s'"), 
-		*PinName, *Node->GetName());
-
-	// Log all current pins for debugging
-	UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Node has %d pins total"), Node->Pins.Num());
-	for (UEdGraphPin* Pin : Node->Pins)
-	{
-		if (Pin)
-		{
-			UE_LOG(LogNodeToCode, Verbose, TEXT("  Available pin: Name='%s', DisplayName='%s', FName='%s'"), 
-				*Pin->PinName.ToString(), 
-				*Pin->GetDisplayName().ToString(),
-				*Pin->GetFName().ToString());
-		}
-	}
-
-	// Find the pin
+	// The exact pin name first, then the pin name or the display name, ignoring case
 	UEdGraphPin* PinToRemove = Node->FindPin(FName(*PinName));
 	if (!PinToRemove)
 	{
-		// Try case-insensitive search as fallback, checking both PinName and DisplayName
-		UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Exact match failed, trying case-insensitive and display name search"));
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && (Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase)
+				|| Pin->GetDisplayName().ToString().Equals(PinName, ESearchCase::IgnoreCase)))
+			{
+				PinToRemove = Pin;
+				break;
+			}
+		}
+	}
+
+	if (!PinToRemove)
+	{
+		TArray<FString> AvailablePins;
 		for (UEdGraphPin* Pin : Node->Pins)
 		{
 			if (Pin)
 			{
-				// Check PinName (case-insensitive)
-				if (Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
-				{
-					PinToRemove = Pin;
-					UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Found pin with case-insensitive match on PinName: %s"), 
-						*Pin->PinName.ToString());
-					break;
-				}
-				
-				// Check DisplayName (case-insensitive)
-				FString DisplayName = Pin->GetDisplayName().ToString();
-				if (DisplayName.Equals(PinName, ESearchCase::IgnoreCase))
-				{
-					PinToRemove = Pin;
-					UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Found pin with display name match: PinName=%s, DisplayName=%s"), 
-						*Pin->PinName.ToString(), *DisplayName);
-					break;
-				}
+				const FString DisplayName = Pin->GetDisplayName().ToString();
+				AvailablePins.Add(DisplayName != Pin->PinName.ToString()
+					? FString::Printf(TEXT("%s (display: %s)"), *Pin->PinName.ToString(), *DisplayName)
+					: Pin->PinName.ToString());
 			}
 		}
-		
-		if (!PinToRemove)
-		{
-			// Build list of available pins for error message
-			TArray<FString> AvailablePins;
-			for (UEdGraphPin* Pin : Node->Pins)
-			{
-				if (Pin)
-				{
-					FString DisplayName = Pin->GetDisplayName().ToString();
-					if (DisplayName != Pin->PinName.ToString())
-					{
-						AvailablePins.Add(FString::Printf(TEXT("%s (display: %s)"), 
-							*Pin->PinName.ToString(), *DisplayName));
-					}
-					else
-					{
-						AvailablePins.Add(Pin->PinName.ToString());
-					}
-				}
-			}
-			
-			OutError = FString::Printf(TEXT("Pin '%s' not found. Available pins: %s"), 
-				*PinName, *FString::Join(AvailablePins, TEXT(", ")));
-			return false;
-		}
+		OutError = FString::Printf(TEXT("Pin '%s' not found. Available pins: %s"),
+			*PinName, *FString::Join(AvailablePins, TEXT(", ")));
+		return nullptr;
 	}
 
-	UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Found pin to remove: '%s'"), 
-		*PinToRemove->PinName.ToString());
-
-	// Validate the pin can be removed
 	if (!ValidatePinForRemoval(Node, PinToRemove, OutError))
 	{
-		UE_LOG(LogNodeToCode, Warning, TEXT("RemoveFunctionPin: Pin validation failed: %s"), *OutError);
-		return false;
+		return nullptr;
 	}
-
-	// Break all connections before removal
-	int32 ConnectionCount = PinToRemove->LinkedTo.Num();
-	PinToRemove->BreakAllPinLinks();
-	UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Broke %d connections"), ConnectionCount);
-
-	// Remove the pin
-	Node->RemoveUserDefinedPinByName(PinToRemove->GetFName());
-
-	UE_LOG(LogNodeToCode, Verbose, TEXT("RemoveFunctionPin: Successfully removed pin '%s' from node '%s'"), 
-		*PinName, *Node->GetName());
-
-	return true;
+	return PinToRemove;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpFunctionPinUtils::BuildPinRemovalSuccessResult(

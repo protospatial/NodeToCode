@@ -118,20 +118,6 @@ FMcpToolCallResult FN2CMcpAddFunctionReturnPinTool::Execute(const TSharedPtr<FJs
 			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph")));
 		}
 
-		// Find or create the function result node
-		UK2Node_FunctionResult* FunctionResult = FN2CMcpFunctionPinUtils::EnsureFunctionResultNode(FocusedGraph);
-		if (!FunctionResult)
-		{
-			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to find or create function result node")));
-		}
-		
-		// Verify the node is properly initialized
-		if (!FunctionResult->NodeGuid.IsValid())
-		{
-			UE_LOG(LogNodeToCode, Warning, TEXT("Function result node has invalid GUID, regenerating..."));
-			FunctionResult->CreateNewGuid();
-		}
-
 		// Resolve type identifier to FEdGraphPinType
 		FEdGraphPinType PinType;
 		FString ResolveError;
@@ -151,27 +137,16 @@ FMcpToolCallResult FN2CMcpAddFunctionReturnPinTool::Execute(const TSharedPtr<FJs
 				FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError)));
 		}
 
-		// Start a transaction for undo/redo
-		const FScopedTransaction Transaction(
-			FText::Format(NSLOCTEXT("NodeToCode", "AddFunctionReturnPin", "Add Return Pin '{0}'"), 
-			FText::FromString(PinName))
-		);
-
-		// Create the return pin
-		UEdGraphPin* NewPin = CreateReturnPin(FunctionResult, PinName, PinType, Tooltip);
-		if (!NewPin)
+		// Validates, then in one transaction adds the pin to every Return node (creating one, wired from the entry, when
+		// the function has none), regenerates the skeleton and rebuilds the call sites (card 0156)
+		FN2CFunctionPinEdit Edit;
+		if (!FN2CMcpFunctionPinUtils::AddFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ true, PinName, PinType,
+			FString(), Tooltip, FText::Format(NSLOCTEXT("NodeToCode", "AddFunctionReturnPin", "Add Return Pin '{0}'"),
+			FText::FromString(PinName)), Edit))
 		{
-			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create return pin")));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(Edit.Error));
 		}
-
-		// Update all function call sites
-		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionResult);
-		if (Blueprint)
-		{
-			FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-			// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
-			FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
-		}
+		UEdGraphPin* NewPin = Edit.Pin;
 
 		// Show notification
 		FNotificationInfo Info(FText::Format(
@@ -193,56 +168,4 @@ FMcpToolCallResult FN2CMcpAddFunctionReturnPinTool::Execute(const TSharedPtr<FJs
 		
 		return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultString));
 	});
-}
-
-UEdGraphPin* FN2CMcpAddFunctionReturnPinTool::CreateReturnPin(UK2Node_FunctionResult* FunctionResult, 
-	const FString& DesiredName, const FEdGraphPinType& PinType, 
-	const FString& Tooltip) const
-{
-	if (!FunctionResult)
-	{
-		return nullptr;
-	}
-
-	// Log current state
-	UE_LOG(LogNodeToCode, Verbose, TEXT("Creating return pin on node: %s (GUID: %s)"), 
-		*FunctionResult->GetName(), *FunctionResult->NodeGuid.ToString());
-	UE_LOG(LogNodeToCode, Verbose, TEXT("Current user defined pins count: %d"), 
-		FunctionResult->UserDefinedPins.Num());
-
-	// Check if we can create input pins (function outputs)
-	FText ErrorMessage;
-	if (!FunctionResult->CanCreateUserDefinedPin(PinType, EGPD_Input, ErrorMessage))
-	{
-		UE_LOG(LogNodeToCode, Error, TEXT("Cannot create return pin: %s"), *ErrorMessage.ToString());
-		return nullptr;
-	}
-
-	// Create the pin (will auto-generate unique name if needed)
-	UEdGraphPin* NewPin = FunctionResult->CreateUserDefinedPin(
-		FName(*DesiredName), 
-		PinType, 
-		EGPD_Input,   // Input to FunctionResult = Output from function
-		true          // Use unique name
-	);
-
-	if (NewPin)
-	{
-		// Set tooltip metadata
-		if (!Tooltip.IsEmpty())
-		{
-			FN2CMcpFunctionPinUtils::SetPinTooltip(FunctionResult, NewPin, Tooltip);
-		}
-		
-		UE_LOG(LogNodeToCode, Verbose, TEXT("Created return pin '%s' with actual name '%s' (ID: %s)"), 
-			*DesiredName, *NewPin->PinName.ToString(), *NewPin->PinId.ToString());
-		UE_LOG(LogNodeToCode, Verbose, TEXT("User defined pins count after creation: %d"), 
-			FunctionResult->UserDefinedPins.Num());
-	}
-	else
-	{
-		UE_LOG(LogNodeToCode, Error, TEXT("CreateUserDefinedPin returned nullptr for pin '%s'"), *DesiredName);
-	}
-
-	return NewPin;
 }

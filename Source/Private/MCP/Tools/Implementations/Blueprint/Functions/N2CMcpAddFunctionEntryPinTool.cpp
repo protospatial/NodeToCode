@@ -160,27 +160,15 @@ FMcpToolCallResult FN2CMcpAddFunctionEntryPinTool::Execute(const TSharedPtr<FJso
 				FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError)));
 		}
 
-		// Start a transaction for undo/redo
-		const FScopedTransaction Transaction(
-			FText::Format(NSLOCTEXT("NodeToCode", "AddFunctionInputPin", "Add Input Pin '{0}'"), 
-			FText::FromString(PinName))
-		);
-
-		// Create the input pin
-		UEdGraphPin* NewPin = CreateInputPin(FunctionEntry, PinName, PinType, DefaultValue, Tooltip);
-		if (!NewPin)
+		// Validates, then in one transaction adds the pin, regenerates the skeleton and rebuilds the call sites (card 0156)
+		FN2CFunctionPinEdit Edit;
+		if (!FN2CMcpFunctionPinUtils::AddFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ false, PinName, PinType,
+			DefaultValue, Tooltip, FText::Format(NSLOCTEXT("NodeToCode", "AddFunctionInputPin", "Add Input Pin '{0}'"),
+			FText::FromString(PinName)), Edit))
 		{
-			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to create input pin")));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(Edit.Error));
 		}
-
-		// Update all function call sites
-		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionEntry);
-		if (Blueprint)
-		{
-			FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-			// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
-			FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
-		}
+		UEdGraphPin* NewPin = Edit.Pin;
 
 		// Show notification
 		FNotificationInfo Info(FText::Format(
@@ -202,59 +190,5 @@ FMcpToolCallResult FN2CMcpAddFunctionEntryPinTool::Execute(const TSharedPtr<FJso
 		
 		return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultString));
 	});
-}
-
-
-UEdGraphPin* FN2CMcpAddFunctionEntryPinTool::CreateInputPin(UK2Node_FunctionEntry* FunctionEntry, 
-	const FString& DesiredName, const FEdGraphPinType& PinType, 
-	const FString& DefaultValue, const FString& Tooltip) const
-{
-	if (!FunctionEntry)
-	{
-		return nullptr;
-	}
-
-	// Check if we can create output pins (function inputs)
-	FText ErrorMessage;
-	if (!FunctionEntry->CanCreateUserDefinedPin(PinType, EGPD_Output, ErrorMessage))
-	{
-		UE_LOG(LogNodeToCode, Error, TEXT("Cannot create pin: %s"), *ErrorMessage.ToString());
-		return nullptr;
-	}
-
-	// Create the pin (will auto-generate unique name if needed)
-	UEdGraphPin* NewPin = FunctionEntry->CreateUserDefinedPin(
-		FName(*DesiredName), 
-		PinType, 
-		EGPD_Output,  // Output from FunctionEntry = Input to function
-		true          // Use unique name
-	);
-
-	if (NewPin)
-	{
-		// Set default value if provided
-		if (!DefaultValue.IsEmpty())
-		{
-			// Find the corresponding FUserPinInfo for this pin
-			TSharedPtr<FUserPinInfo>* PinInfoPtr = FunctionEntry->UserDefinedPins.FindByPredicate(
-				[NewPin](const TSharedPtr<FUserPinInfo>& Info)
-				{
-					return Info->PinName == NewPin->PinName;
-				});
-			
-			if (PinInfoPtr && PinInfoPtr->IsValid())
-			{
-				FunctionEntry->ModifyUserDefinedPinDefaultValue(*PinInfoPtr, DefaultValue);
-			}
-		}
-
-		// Set tooltip metadata
-		if (!Tooltip.IsEmpty())
-		{
-			FN2CMcpFunctionPinUtils::SetPinTooltip(FunctionEntry, NewPin, Tooltip);
-		}
-	}
-
-	return NewPin;
 }
 

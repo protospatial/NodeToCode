@@ -28,10 +28,4 @@ public:
 	virtual FMcpToolDefinition GetDefinition() const override;
 	virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
 	virtual bool RequiresGameThread() const override { return true; }
-
-private:
-	// Core operations
-	UEdGraphPin* CreateReturnPin(UK2Node_FunctionResult* FunctionResult, 
-		const FString& DesiredName, const FEdGraphPinType& PinType, 
-		const FString& Tooltip) const;
 };

@@ -83,40 +83,14 @@ FMcpToolCallResult FN2CMcpRemoveFunctionReturnPinTool::Execute(const TSharedPtr<
 			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("The focused graph is not a Blueprint graph")));
 		}
 
-		// Find the function result node
-		UK2Node_FunctionResult* FunctionResult = FN2CMcpFunctionPinUtils::FindFunctionResultNode(FocusedGraph);
-		if (!FunctionResult)
+		// Validates first (no result node, a misspelled name: no transaction, package clean), then in one transaction
+		// removes the pin from every Return node, regenerates the skeleton and rebuilds the call sites (card 0156)
+		FN2CFunctionPinEdit Edit;
+		if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ true, PinName,
+			FText::Format(NSLOCTEXT("NodeToCode", "RemoveFunctionReturnPin", "Remove Return Pin '{0}'"), FText::FromString(PinName)), Edit))
 		{
-			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("No function result node found. This function has no return values.")));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(Edit.Error));
 		}
-
-		// Find the Blueprint
-		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNode(FunctionResult);
-		if (!Blueprint)
-		{
-			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Cannot find Blueprint for function")));
-		}
-
-		// Start a transaction for undo/redo
-		const FScopedTransaction Transaction(
-			FText::Format(NSLOCTEXT("NodeToCode", "RemoveFunctionReturnPin", "Remove Return Pin '{0}'"), 
-			FText::FromString(PinName))
-		);
-
-		FunctionResult->Modify();
-
-		// Remove the pin using our utility
-		FString RemovalError;
-		if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(FunctionResult, PinName, RemovalError))
-		{
-			return Target.Finish(FMcpToolCallResult::CreateErrorResult(RemovalError));
-		}
-
-		// Update all function call sites
-		FN2CMcpFunctionPinUtils::UpdateFunctionCallSites(FocusedGraph, Blueprint);
-
-		// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
-		FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 
 		// Show notification
 		FNotificationInfo Info(FText::Format(
