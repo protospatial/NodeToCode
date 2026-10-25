@@ -8,11 +8,6 @@
 			"effect": "The grayed-out default events CreateBlueprint places (BeginPlay, ActorBeginOverlap, Tick) are captured as live events (N1-N3), and unreachable nodes are not marked"
 		},
 		{
-			"finding": "translation-core-2",
-			"card": "0136",
-			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -241,9 +236,9 @@
 				"flows":
 				{
 					"execution": [
-						"N4->N6",
-						"N6->N7",
-						"N6->N8"
+						"N4.P10->N6.P14",
+						"N6.P16->N7.P18",
+						"N6.P17->N8.P20"
 					],
 					"data":
 					{

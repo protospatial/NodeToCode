@@ -14,7 +14,10 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
   unique on its node (a pasted node keeps its pins' IDs), so address a pin by its node GUID and pin GUID together.
   Short IDs are unique across the capture and given in graph order, so an unchanged graph gets the same IDs each time.
   The document is N2C JSON 2.0.0: `flows.data` maps each output pin ("N1.P2") to the input pin it feeds, or to an
-  array of input pins when it feeds several, and every connected data input appears there once.
+  array of input pins when it feeds several, and every connected data input appears there once. `flows.execution`
+  has one entry per exec wire, from the exec output pin to the exec input pin it runs ("N3.P5->N4.P1"), so the
+  source pin says which output fired (Branch True/False, a Switch case, Sequence then_0/then_1, Loop Body/Completed)
+  and the target pin which input runs (Gate Enter/Open/Close, Timeline Play/Reverse).
 - **Use Case**: Primary tool for extracting Blueprint data for LLM translation
 
 ### list-blueprint-functions

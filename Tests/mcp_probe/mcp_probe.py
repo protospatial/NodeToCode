@@ -388,6 +388,7 @@ if state["opened"]:
         begin = [n for n in nodes if n.get("member_name") == "ReceiveBeginPlay"]
         state.update({
             "nodes": len(nodes),
+            # One per entry ("N1.P2->N3.P4", N2C JSON 2.0.0 since card 0136); a 1.x chain has one per arrow
             "exec_links": sum(f.count("->") for f in flows.get("execution") or []),
             # N2C JSON 2.0.0: a data value is one input pin or a list of them (fan-out)
             "data_links": sum(len(v) if isinstance(v, list) else 1 for v in (flows.get("data") or {}).values()),

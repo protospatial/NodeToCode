@@ -6,6 +6,7 @@ Stdlib only; run with `python -I`:
     python -I live_provider_matrix.py --engine G:/UE/UE_5.8 \
         --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 \
         [--cases anthropic/claude-haiku-5-5 deepseek/deepseek-flash:off ...] [--providers gemini openai] [--fanout]
+        [--branch]
 
 It reads the keys from the repo's .env (env_keys.py) and refuses to run if a key for a selected provider is saved in
 the per-user secrets file (the saved key would be used, not the variable). For the session it sets Min Severity to
@@ -26,6 +27,14 @@ feeds both Print String's In String (through the conversion node the schema inse
 runs after the Print String. The report then has 'fanout' (the wiring and the flows.data entries of the focused
 graph's N2C JSON whose value is an array) and each case's 'code' (declaration and implementation, so the
 translation of the fan-out can be read).
+
+--branch (card 0136) puts a Branch on the probe graph's exec line: BeginPlay runs a Branch on Has Authority, whose
+True runs Collect Garbage and whose False runs the Print String (the opposite of the nodes' order, so a model that
+guesses from node order gets it wrong). The report then has 'branch' (the wiring and the focused graph's
+flows.execution, which names the True and False pins) and each case's 'code' plus 'branch_check': whether the
+generated implementation runs CollectGarbage when HasAuthority() is true and the Print String when it is false
+(a heuristic over the if/else blocks; read the kept code when it says unclear). A case with --branch passes only when
+branch_check is ok.
 """
 import argparse
 import json
@@ -225,6 +234,126 @@ steps["fanout_entries"] = {k: v for g in n2c.get("graphs") or [] for k, v in ((g
 steps["node_names"] = [n.get("name") for g in n2c.get("graphs") or [] for n in g.get("nodes") or []]
 result = steps
 """
+
+
+# Runs in the editor after CONNECT_PY (--branch): BeginPlay -> Branch(Has Authority); True -> Collect Garbage,
+# False -> Print String. Reports the focused graph's exec flows with the node and pin names they point at.
+BRANCH_PY = r"""
+import json, unreal
+bridge = unreal.N2CPythonBridge
+steps = {}
+def walk(v):
+    if isinstance(v, dict):
+        yield v
+        for x in v.values():
+            yield from walk(x)
+    elif isinstance(v, list):
+        for x in v:
+            yield from walk(x)
+def norm(s):
+    return str(s).replace(" ", "").lower()
+def add(title, x, y):
+    found = json.loads(bridge.search_blueprint_nodes(title, True, 20, "", True))
+    want = norm(title)
+    actions = []
+    for d in walk(found):
+        ident = d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier")
+        if ident:
+            actions.append((str(d.get("name", d.get("displayName", ""))).replace(" ", "").lower(), ident))
+    exact = [i for n, i in actions if (n.splitlines() or [""])[0] == want]
+    prefix = [i for n, i in actions if n.startswith(want)]
+    for ident in exact + prefix:
+        added = json.loads(bridge.add_node_to_graph(title, ident, x, y))
+        return added.get("success") or added.get("error")
+    return "not found in %s" % [n for n, _ in actions][:12]
+steps["added_branch"] = add("Branch", 150.0, 0.0)
+steps["added_authority"] = add("Has Authority", 0.0, 200.0)
+steps["added_collect"] = add("Collect Garbage", 500.0, -200.0)
+found = json.loads(bridge.find_nodes_in_graph(json.dumps(["BeginPlay", "Branch", "Has Authority", "Collect Garbage", "Print String"]), "keyword", False, 20))
+nodes = (found.get("data") or {}).get("nodes") or []
+def node(*words):
+    return next((n for n in nodes if any(w in norm(n.get("nodeName", "")) for w in words)), None)
+def pin(n, side, names=None, want_exec=False):
+    for p in n.get(side) or []:
+        is_exec = str(p.get("type", "")).lower() == "exec"
+        if is_exec == want_exec and (names is None or norm(p.get("pinName", "")) in names or norm(p.get("displayName", "")) in names):
+            return p
+    return None
+begin, branch, authority = node("beginplay"), node("branch"), node("hasauthority")
+collect, prints = node("collectgarbage"), node("printstring")
+steps["found"] = [n.get("nodeName") for n in nodes]
+if begin and branch and authority and collect and prints:
+    def link(a, ap, b, bp):
+        return {"from": {"nodeGuid": a["nodeGuid"], "pinGuid": ap["pinGuid"]}, "to": {"nodeGuid": b["nodeGuid"], "pinGuid": bp["pinGuid"]}}
+    conns = [link(begin, pin(begin, "outputPins", None, True), branch, pin(branch, "inputPins", None, True)),
+             link(authority, pin(authority, "outputPins", ["returnvalue"]), branch, pin(branch, "inputPins", ["condition"])),
+             link(branch, pin(branch, "outputPins", ["then", "true"], True), collect, pin(collect, "inputPins", None, True)),
+             link(branch, pin(branch, "outputPins", ["else", "false"], True), prints, pin(prints, "inputPins", None, True))]
+    res = json.loads(bridge.connect_pins(json.dumps(conns), True))
+    steps["connected"] = res.get("success")
+    steps["connect_result"] = json.dumps(res.get("data") or res.get("error"))[:600]
+steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success")
+raw = json.loads(bridge.get_focused_blueprint_json())
+n2c = (raw.get("data") or {}).get("n2c_json") or {}
+steps["version"] = n2c.get("version")
+names = {}
+for g in n2c.get("graphs") or []:
+    for n in g.get("nodes") or []:
+        ids = n.get("ids") or {}
+        nid = ids.get("short") or n.get("id")
+        for p in (n.get("input_pins") or []) + (n.get("output_pins") or []):
+            pids = p.get("ids") or {}
+            names["%s.%s" % (nid, pids.get("short") or p.get("id"))] = "%s.%s" % (n.get("name"), p.get("name") or "exec")
+def named(entry):
+    return " -> ".join(names.get(e.strip(), e.strip()) for e in entry.split("->"))
+steps["execution"] = [[e, named(e)] for g in n2c.get("graphs") or [] for e in (g.get("flows") or {}).get("execution") or []]
+result = steps
+"""
+
+
+def _block(text, start):
+    """The text of the brace block opening at text[start] ('{'), without the braces, and the index after it"""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:i], i + 1
+    return text[start + 1:], len(text)
+
+
+def check_branch(code):
+    """Whether the implementation runs CollectGarbage when HasAuthority() is true and PrintString when it is false
+    (BRANCH_PY's wiring): finds the if whose condition reads HasAuthority (directly or through a variable assigned
+    from it) and looks at its then and else blocks"""
+    impl = '\n'.join((c.get('implementation') or '') for c in code or [])
+    impl = re.sub(r'//[^\n]*', '', impl)
+    alias = [m.group(1) for m in re.finditer(r'(\w+)\s*=\s*[^;]*HasAuthority\s*\(', impl)]
+    for m in re.finditer(r'\bif\s*\(', impl):
+        depth, i = 1, m.end()
+        while i < len(impl) and depth:
+            depth += {'(': 1, ')': -1}.get(impl[i], 0)
+            i += 1
+        cond = impl[m.end():i - 1]
+        if 'HasAuthority' not in cond and not any(re.search(r'\b%s\b' % re.escape(a), cond) for a in alias):
+            continue
+        negated = bool(re.search(r'!\s*\(?\s*\w*(HasAuthority|%s)' % '|'.join(map(re.escape, alias or ['HasAuthority'])), cond)
+                       or re.search(r'==\s*false|false\s*==', cond))
+        rest = impl[i:].lstrip()
+        if not rest.startswith('{'):
+            return {'ok': None, 'reason': 'unclear: the if has no braces', 'condition': cond.strip()}
+        then_block, after = _block(impl, impl.index('{', i))
+        else_match = re.match(r'\s*else\s*\{', impl[after:])
+        else_block = _block(impl, after + else_match.end() - 1)[0] if else_match else impl[after:]
+        true_block, false_block = (else_block, then_block) if negated else (then_block, else_block)
+        ok = 'CollectGarbage' in true_block and 'PrintString' not in true_block and 'PrintString' in false_block \
+            and 'CollectGarbage' not in false_block
+        return {'ok': ok, 'condition': cond.strip(), 'negated': negated, 'has_else': bool(else_match),
+                'true_runs': [f for f in ('CollectGarbage', 'PrintString') if f in true_block],
+                'false_runs': [f for f in ('CollectGarbage', 'PrintString') if f in false_block]}
+    return {'ok': None, 'reason': 'unclear: no if on HasAuthority found'}
 
 
 def run_py(port, code, rid):
@@ -431,6 +560,9 @@ def main():
     ap.add_argument('--port', type=int, default=27190)
     ap.add_argument('--fanout', action='store_true',
                     help='add a data fan-out (Get Actor Location into two inputs) to the probe graph and keep each code')
+    ap.add_argument('--branch', action='store_true',
+                    help='put a Branch (Has Authority: True -> Collect Garbage, False -> Print String) on the probe '
+                         'graph, keep each code and check the generated if/else takes the right branch')
     ap.add_argument('--timeout', type=int, default=300,
                     help='seconds per translation; a case that hits it fails as timed out and the rest are skipped, '
                          'since the editor still holds that request')
@@ -486,6 +618,9 @@ def main():
             if args.fanout:
                 report['fanout'] = run_py(port, FANOUT_PY, 3)
                 print('fanout', json.dumps(report['fanout'])[:800], flush=True)
+            if args.branch:
+                report['branch'] = run_py(port, BRANCH_PY, 4)
+                print('branch', json.dumps(report['branch'])[:1200], flush=True)
             print('setup', json.dumps(report['setup']), 'wiring', json.dumps(report['wiring'])[:400], flush=True)
             reader = LogReader(log_path)
             for i, c in enumerate(cases):
@@ -493,7 +628,11 @@ def main():
                     report['cases'].append({'id': c['id'], 'provider': c['provider'], 'model': c['model'],
                                             'role': c['role'], 'ok': False, 'skipped': 'an earlier case timed out'})
                     continue
-                rec = run_case(port, c, 100 + 10 * i, args.timeout, reader, keep_code=args.fanout)
+                rec = run_case(port, c, 100 + 10 * i, args.timeout, reader, keep_code=args.fanout or args.branch)
+                if args.branch:
+                    rec['branch_check'] = check_branch(rec.get('code'))
+                    rec['ok'] = bool(rec['ok'] and rec['branch_check'].get('ok'))
+                    print('  branch_check', json.dumps(rec['branch_check']), flush=True)
                 report['cases'].append(rec)
                 print('%-40s %s  %ss  usage=%s' % (c['id'], 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
                                                    rec.get('usage')), flush=True)

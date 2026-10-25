@@ -100,7 +100,10 @@ struct FN2CFlows
 {
     GENERATED_BODY()
 
-    /** Execution array. Each entry is a chain like "N1->N2->N3" */
+    /**
+     * Exec links, one per link in capture order: exec output pin ref -> exec input pin ref ("N3.P5->N4.P1"). Documents
+     * read from N2C JSON 1.x (and 2.0 builds before card 0136) keep their node-only entries ("N1->N2")
+     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FString> Execution;
 

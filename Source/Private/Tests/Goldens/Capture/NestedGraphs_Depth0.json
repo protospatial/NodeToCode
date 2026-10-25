@@ -14,11 +14,6 @@
 			"effect": "The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no member_parent or member_name)"
 		},
 		{
-			"finding": "translation-core-2",
-			"card": "0136",
-			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -96,8 +91,8 @@
 				"flows":
 				{
 					"execution": [
-						"N1->N2",
-						"N2->N3"
+						"N1.P1->N2.P2",
+						"N2.P3->N3.P4"
 					],
 					"data":
 					{

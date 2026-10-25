@@ -24,6 +24,7 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_ExecutionSequence.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
@@ -56,6 +57,7 @@
 #include "UObject/GarbageCollection.h"
 #include "UObject/Package.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
+#include "Utils/Validators/N2CBlueprintValidator.h"
 
 /**
  * Golden captures of graph shapes: each case builds a Blueprint graph in code (N2CTest::FTestBlueprint, a transient
@@ -86,6 +88,10 @@
  * "DataFlows" checks the lossless data edges (card 0135, PR #7): in every case each connected data input is the target of
  * exactly one flows.data entry, and a fan-out (directly or through a knot) lists every target. "V1Reader" checks that
  * the N2C JSON 1.x documents in Fixtures/Capture/V1 (earlier 2.0 goldens and a 1.2.3 save) read into the v2 model.
+ *
+ * "ExecFlows" checks the pin-to-pin exec edges (card 0136): in every case each exec link is one "N3.P5->N4.P1" entry
+ * from an exec output pin to an exec input pin, and Branch, Sequence, ForEachLoop, Switch, Gate and Timeline name the
+ * pin on each end; the validator checks both pins, and node-only entries (1.x) still read.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -514,6 +520,170 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		return PrettyJson(Object);
 	}
 
+	/** A pin display name compared loosely: no spaces or underscores, lower case ("then_0" and "Then 0" are "then0") */
+	static FString LoosePinName(const FString& Name)
+	{
+		return Name.Replace(TEXT(" "), TEXT("")).Replace(TEXT("_"), TEXT("")).ToLower();
+	}
+
+	/**
+	 * The pin ref ("N3.P7") of an exec pin (a pin without "type") in the capture's first graph: on the first node whose
+	 * member_name or name is NodeKey, the output (or input) exec pin named PinName (compared with LoosePinName; "" for
+	 * the blank exec pins of calls and events)
+	 */
+	FString ExecPinRef(const TSharedPtr<FJsonObject>& Capture, const FString& NodeKey, const FString& PinName, bool bOutput)
+	{
+		const TSharedPtr<FJsonObject> Graph = Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
+		for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
+		{
+			const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+			FString Member;
+			Node->TryGetStringField(TEXT("member_name"), Member);
+			if (Member != NodeKey && Node->GetStringField(TEXT("name")) != NodeKey)
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(bOutput ? TEXT("output_pins") : TEXT("input_pins")))
+			{
+				const TSharedPtr<FJsonObject> Pin = PinValue->AsObject();
+				if (!Pin->HasField(TEXT("type")) && LoosePinName(Pin->GetStringField(TEXT("name"))) == LoosePinName(PinName))
+				{
+					return Node->GetStringField(TEXT("id")) + TEXT(".") + Pin->GetStringField(TEXT("id"));
+				}
+			}
+			break;
+		}
+		AddError(FString::Printf(TEXT("no exec %s pin '%s' on node '%s'"), bOutput ? TEXT("output") : TEXT("input"), *PinName, *NodeKey));
+		return FString();
+	}
+
+	/** One exec link by names: source node (member_name or name) and its output pin, target node and its input pin */
+	struct FExecLink
+	{
+		FString SourceNode;
+		FString SourcePin;
+		FString TargetNode;
+		FString TargetPin;
+	};
+
+	/**
+	 * Captures the named case and checks that its first graph's flows.execution is exactly Links (in any order), each
+	 * written "N3.P5->N4.P1" from the exec output pin to the exec input pin
+	 */
+	void ExpectExecLinks(const TCHAR* CaseName, const TArray<FExecLink>& Links)
+	{
+		const FCaptureCase* Case = FindCase(CaseName);
+		if (!TestNotNull(CaseName, Case))
+		{
+			return;
+		}
+		const FCaptured Captured = Capture(*Case);
+		if (!Captured.Capture.IsValid())
+		{
+			return;
+		}
+		TArray<FString> Expected;
+		for (const FExecLink& Link : Links)
+		{
+			Expected.Add(ExecPinRef(Captured.Capture, Link.SourceNode, Link.SourcePin, true) + N2CJsonContract::ExecEdgeSeparator
+				+ ExecPinRef(Captured.Capture, Link.TargetNode, Link.TargetPin, false));
+		}
+		TArray<FString> Actual;
+		const TSharedPtr<FJsonObject> Graph = Captured.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject();
+		for (const TSharedPtr<FJsonValue>& Flow : Graph->GetObjectField(TEXT("flows"))->GetArrayField(N2CJsonContract::ExecutionField))
+		{
+			Actual.Add(Flow->AsString());
+		}
+		Expected.Sort();
+		Actual.Sort();
+		TestEqual(FString(CaseName) + TEXT(": flows.execution"), FString::Join(Actual, TEXT(", ")), FString::Join(Expected, TEXT(", ")));
+		TestTrue(FString(CaseName) + TEXT(": the capture validates"), Captured.Blueprint.IsValid());
+	}
+
+	/**
+	 * flows.execution is pin to pin: every entry is "N#.P#->N#.P#" from an exec output pin to an exec input pin of the
+	 * graph, no entry appears twice, every connected exec output is the source of an entry and every connected exec
+	 * input the target of one
+	 */
+	void ExpectPinQualifiedExecFlows(const FString& What, const TSharedPtr<FJsonObject>& Capture)
+	{
+		for (const TSharedPtr<FJsonValue>& GraphValue : Capture->GetArrayField(TEXT("graphs")))
+		{
+			const TSharedPtr<FJsonObject> Graph = GraphValue->AsObject();
+			const FString GraphWhat = What + TEXT(" ") + Graph->GetStringField(TEXT("name"));
+			TSet<FString> ExecOutputs;
+			TSet<FString> ExecInputs;
+			TSet<FString> ConnectedOutputs;
+			TSet<FString> ConnectedInputs;
+			for (const TSharedPtr<FJsonValue>& NodeValue : Graph->GetArrayField(TEXT("nodes")))
+			{
+				const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+				const FString NodeID = Node->GetStringField(TEXT("id"));
+				for (const bool bOutput : { false, true })
+				{
+					for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(bOutput ? TEXT("output_pins") : TEXT("input_pins")))
+					{
+						const TSharedPtr<FJsonObject> Pin = PinValue->AsObject();
+						if (Pin->HasField(TEXT("type")))
+						{
+							continue;
+						}
+						const FString Ref = NodeID + TEXT(".") + Pin->GetStringField(TEXT("id"));
+						(bOutput ? ExecOutputs : ExecInputs).Add(Ref);
+						bool bConnected = false;
+						if (Pin->TryGetBoolField(TEXT("connected"), bConnected) && bConnected)
+						{
+							(bOutput ? ConnectedOutputs : ConnectedInputs).Add(Ref);
+						}
+					}
+				}
+			}
+
+			TSet<FString> Entries;
+			TSet<FString> Sources;
+			TSet<FString> Targets;
+			for (const TSharedPtr<FJsonValue>& Flow : Graph->GetObjectField(TEXT("flows"))->GetArrayField(N2CJsonContract::ExecutionField))
+			{
+				const FString Entry = Flow->AsString();
+				bool bSeen = false;
+				Entries.Add(Entry, &bSeen);
+				TestFalse(GraphWhat + TEXT(": exec entry ") + Entry + TEXT(" is recorded once"), bSeen);
+				FString Source;
+				FString Target;
+				if (!TestTrue(GraphWhat + TEXT(": exec entry ") + Entry + TEXT(" is one link"), Entry.Split(N2CJsonContract::ExecEdgeSeparator, &Source, &Target)
+					&& !Target.Contains(N2CJsonContract::ExecEdgeSeparator)))
+				{
+					continue;
+				}
+				TestTrue(GraphWhat + TEXT(": ") + Entry + TEXT(" starts at an exec output pin"), ExecOutputs.Contains(Source));
+				TestTrue(GraphWhat + TEXT(": ") + Entry + TEXT(" ends at an exec input pin"), ExecInputs.Contains(Target));
+				Sources.Add(Source);
+				Targets.Add(Target);
+			}
+			for (const FString& Output : ConnectedOutputs)
+			{
+				TestTrue(GraphWhat + TEXT(": connected exec output ") + Output + TEXT(" is the source of an exec entry"), Sources.Contains(Output));
+			}
+			for (const FString& Input : ConnectedInputs)
+			{
+				TestTrue(GraphWhat + TEXT(": connected exec input ") + Input + TEXT(" is the target of an exec entry"), Targets.Contains(Input));
+			}
+		}
+	}
+
+	/** A one-graph document: N1 (outputs P1 exec, P2 Integer) and N2 (inputs P3 exec, P4 Integer; output P5 exec) */
+	static FString ExecFlowDocument(const FString& Version, const FString& ExecEntry)
+	{
+		return FString::Printf(TEXT("{\"version\":\"%s\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",")
+			TEXT("\"blueprint_class\":\"BP\"},\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[")
+			TEXT("{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"name\":\"G\",\"input_pins\":[],\"output_pins\":[")
+			TEXT("{\"id\":\"P1\",\"name\":\"\",\"connected\":true},{\"id\":\"P2\",\"name\":\"Value\",\"type\":\"Integer\"}]},")
+			TEXT("{\"id\":\"N2\",\"type\":\"CallFunction\",\"name\":\"Collect Garbage\",\"input_pins\":[")
+			TEXT("{\"id\":\"P3\",\"name\":\"\",\"connected\":true},{\"id\":\"P4\",\"name\":\"Count\",\"type\":\"Integer\"}],")
+			TEXT("\"output_pins\":[{\"id\":\"P5\",\"name\":\"\"}]}],")
+			TEXT("\"flows\":{\"execution\":[\"%s\"],\"data\":{}}}],\"structs\":[],\"enums\":[]}"), *Version, *ExecEntry);
+	}
+
 	void AddCases();
 
 	const FCaptureCase* FindCase(const TCHAR* Name) const
@@ -753,9 +923,6 @@ void FN2CCaptureGoldenSpec::AddCases()
 	const FKnownDefect GhostEvents{ TEXT("translation-core-18, translation-core-19 (issue #13)"), TEXT("0137"),
 		TEXT("The grayed-out default events CreateBlueprint places (BeginPlay, ActorBeginOverlap, Tick) are captured as "
 			"live events (N1-N3), and unreachable nodes are not marked") };
-	const FKnownDefect ExecNodeOnly{ TEXT("translation-core-2"), TEXT("0136"),
-		TEXT("Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and "
-			"two outputs into one node collapse to one entry") };
 	const FKnownDefect DisplayNames{ TEXT("gap-5"), TEXT("0138"),
 		TEXT("Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable "
 			"identifiers, so they change with editor language and settings") };
@@ -840,7 +1007,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("Branch"),
 		TEXT("Event graph: custom event OnBranch runs a Branch on Less(A, B); True runs CollectGarbage, False runs "
 			"ControlScreensaver."),
-		{ GhostEvents, ExecNodeOnly, DisplayNames, CustomEventNone },
+		{ GhostEvents, DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -859,7 +1026,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnInt"),
 		TEXT("Function SwitchInt(Selection): Switch on Int with cases 0 and 1 and Default; 0 and Default both run "
 			"CollectGarbage, 1 runs ControlScreensaver."),
-		{ ExecNodeOnly, DisplayNames, SwitchName },
+		{ DisplayNames, SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("SwitchInt"));
@@ -879,7 +1046,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnEnum"),
 		TEXT("Function SwitchEnum(Mobility: EComponentMobility): Switch on the engine enum; Static runs CollectGarbage, "
 			"Movable runs ControlScreensaver, Stationary is unconnected."),
-		{ ExecNodeOnly, DisplayNames, SwitchName },
+		{ DisplayNames, SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEnum* Mobility = StaticEnum<EComponentMobility::Type>();
@@ -925,7 +1092,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("GateMultiExec"),
 		TEXT("Event graph: custom events OnEnter, OnOpen and OnClose run a Gate (StandardMacros) through its Enter, "
 			"Open and Close inputs; Exit runs CollectGarbage."),
-		{ GhostEvents, ExecNodeOnly, DisplayNames, CustomEventNone },
+		{ GhostEvents, DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -944,7 +1111,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("TimelineMultiExec"),
 		TEXT("Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through "
 			"Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver."),
-		{ GhostEvents, ExecNodeOnly, DisplayNames, CustomEventNone },
+		{ GhostEvents, DisplayNames, CustomEventNone },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -957,6 +1124,60 @@ void FN2CCaptureGoldenSpec::AddCases()
 			BP.Link(OnReverse, UEdGraphSchema_K2::PN_Then, Timeline, TEXT("Reverse"));
 			BP.Link(Timeline, TEXT("Update"), Collect, UEdGraphSchema_K2::PN_Execute);
 			BP.Link(Timeline, TEXT("Finished"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	// Card 0136: exec flows name the pin on each end, so outputs into one node and inputs of one node stay apart
+	Cases.Add({ TEXT("BranchSameTarget"),
+		TEXT("Function BranchSame(Condition): Branch on Condition; True and False both run CollectGarbage."),
+		{ DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.AddFunction(TEXT("BranchSame"));
+			BP.AddFunctionInput(Graph, TEXT("Condition"), FTestBlueprint::BoolPinType());
+			UK2Node_IfThenElse* Branch = BP.AddBranch(Graph);
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Branch, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Entry, TEXT("Condition"), Branch, UEdGraphSchema_K2::PN_Condition);
+			BP.Link(Branch, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Branch, UEdGraphSchema_K2::PN_Else, Collect, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	Cases.Add({ TEXT("Sequence"),
+		TEXT("Function RunSequence(): a Sequence; then_0 runs CollectGarbage, then_1 runs ControlScreensaver."),
+		{ DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.AddFunction(TEXT("RunSequence"));
+			UK2Node_ExecutionSequence* Sequence = BP.AddSequence(Graph);
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Sequence, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Sequence, TEXT("then_0"), Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Sequence, TEXT("then_1"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	Cases.Add({ TEXT("ForEachLoop"),
+		TEXT("Function Loop(Values: int array): ForEachLoop (StandardMacros) over Values; Loop Body runs CollectGarbage, "
+			"Completed runs ControlScreensaver."),
+		{ DisplayNames },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			FEdGraphPinType IntArray = FTestBlueprint::IntPinType();
+			IntArray.ContainerType = EPinContainerType::Array;
+			UEdGraph* Graph = BP.AddFunction(TEXT("Loop"));
+			BP.AddFunctionInput(Graph, TEXT("Values"), IntArray);
+			UK2Node_MacroInstance* Loop = BP.AddStandardMacro(Graph, TEXT("ForEachLoop"));
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Loop, TEXT("Exec"));
+			BP.Link(Entry, TEXT("Values"), Loop, TEXT("Array"));
+			BP.Link(Loop, TEXT("LoopBody"), Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Loop, TEXT("Completed"), Screensaver, UEdGraphSchema_K2::PN_Execute);
 			return Graph;
 		} });
 
@@ -1012,7 +1233,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-11"), TEXT("0236"),
 			TEXT("Enum values whose display name contains 'max' in any case are dropped: E_GoldenLimit lists Min only, "
 				"while the Switch still has Max and Max Health outputs") },
-		  RepeatMissingName, ExecNodeOnly, DisplayNames, SwitchName },
+		  RepeatMissingName, DisplayNames, SwitchName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Limit = BP.AddUserEnum(TEXT("E_GoldenLimit"), { TEXT("Min"), TEXT("Max"), TEXT("MaxHealth") });
@@ -1039,7 +1260,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		FCaptureCase& Recursion = Cases.Add_GetRef({ FString::Printf(TEXT("Recursion_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function Root(Count) calls Child, then itself with Count; Child "
 				"calls Grandchild; Grandchild calls Root. Captured from Root."), Depth),
-			{ ExecNodeOnly, DisplayNames },
+			{ DisplayNames },
 			&BuildRecursion });
 		Recursion.TranslationDepth = Depth;
 	}
@@ -1050,7 +1271,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		FCaptureCase& Chain = Cases.Add_GetRef({ FString::Printf(TEXT("CallChain_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function A calls B, B calls C, C calls D. Captured from A, so "
 				"depth 1 adds B and depth 2 adds B and C; D is never captured."), Depth),
-			{ ExecNodeOnly, DisplayNames },
+			{ DisplayNames },
 			&BuildChain });
 		Chain.TranslationDepth = Depth;
 	}
@@ -1059,7 +1280,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Max Translation Depth 3. Root calls Near, then Far. Near calls Shared; Far calls Mid, Mid calls Shared; "
 			"Shared calls Leaf, Leaf calls Beyond. Captured from Root. Shared is 2 calls away through Near (3 through "
 			"Far), so Leaf (3) is captured and Beyond (4) is not."),
-		{ ExecNodeOnly, DisplayNames },
+		{ DisplayNames },
 		&BuildShortestPath });
 	Cases.Last().TranslationDepth = 3;
 
@@ -1067,7 +1288,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which "
 			"runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed "
 			"from Enabled."),
-		{ ExecNodeOnly, DisplayNames },
+		{ DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("CopyPaste"));
@@ -1091,7 +1312,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Max Translation Depth 2. Function Run calls Helper, then Init (both its own). Helper calls Init of a second "
 			"Blueprint in the same package, BP_N2CGolden_SameNameOwners_Other. Captured from Run: both Init graphs "
 			"appear, the other Blueprint's with owner_blueprint."),
-		{ ExecNodeOnly, DisplayNames },
+		{ DisplayNames },
 		&BuildSameNameOwners });
 	Cases.Last().TranslationDepth = 2;
 
@@ -1108,7 +1329,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 			  { TEXT("imp-translation-core-4"), TEXT("0235"),
 				TEXT("The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no "
 					"member_parent or member_name)") },
-			  ExecNodeOnly, DisplayNames },
+			  DisplayNames },
 			&BuildNested });
 		Nested.TranslationDepth = Depth;
 		if (Depth > 0)
@@ -1125,7 +1346,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-15"), TEXT("0234"),
 			TEXT("The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead "
 				"of an event") },
-		  GhostEvents, ExecNodeOnly, DisplayNames },
+		  GhostEvents, DisplayNames },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1235,6 +1456,118 @@ void FN2CCaptureGoldenSpec::Define()
 		});
 	});
 
+	// Card 0136: exec flows are recorded pin to pin (translation-core-2)
+	Describe(TEXT("ExecFlows"), [this]()
+	{
+		It(TEXT("records every exec link once, from its exec output pin to its exec input pin, in every case"), [this]()
+		{
+			for (const FCaptureCase& Case : Cases)
+			{
+				const FCaptured Captured = Capture(Case);
+				if (Captured.Capture.IsValid())
+				{
+					ExpectPinQualifiedExecFlows(Case.Name, Captured.Capture);
+					TestTrue(Case.Name + TEXT(": the capture validates"), Captured.Blueprint.IsValid());
+				}
+			}
+		});
+
+		It(TEXT("tells a Branch's True and False apart"), [this]()
+		{
+			ExpectExecLinks(TEXT("Branch"), {
+				{ TEXT("OnBranch"), TEXT(""), TEXT("Branch"), TEXT("") },
+				{ TEXT("Branch"), TEXT("True"), TEXT("CollectGarbage"), TEXT("") },
+				{ TEXT("Branch"), TEXT("False"), TEXT("ControlScreensaver"), TEXT("") } });
+		});
+
+		It(TEXT("records True and False into one node as two entries"), [this]()
+		{
+			ExpectExecLinks(TEXT("BranchSameTarget"), {
+				{ TEXT("BranchSame"), TEXT(""), TEXT("Branch"), TEXT("") },
+				{ TEXT("Branch"), TEXT("True"), TEXT("CollectGarbage"), TEXT("") },
+				{ TEXT("Branch"), TEXT("False"), TEXT("CollectGarbage"), TEXT("") } });
+		});
+
+		It(TEXT("tells a Gate's Enter, Open and Close inputs apart"), [this]()
+		{
+			ExpectExecLinks(TEXT("GateMultiExec"), {
+				{ TEXT("OnEnter"), TEXT(""), TEXT("Gate"), TEXT("Enter") },
+				{ TEXT("OnOpen"), TEXT(""), TEXT("Gate"), TEXT("Open") },
+				{ TEXT("OnClose"), TEXT(""), TEXT("Gate"), TEXT("Close") },
+				{ TEXT("Gate"), TEXT("Exit"), TEXT("CollectGarbage"), TEXT("") } });
+		});
+
+		It(TEXT("tells a Sequence's then_0 and then_1 apart"), [this]()
+		{
+			ExpectExecLinks(TEXT("Sequence"), {
+				{ TEXT("RunSequence"), TEXT(""), TEXT("Sequence"), TEXT("") },
+				{ TEXT("Sequence"), TEXT("then_0"), TEXT("CollectGarbage"), TEXT("") },
+				{ TEXT("Sequence"), TEXT("then_1"), TEXT("ControlScreensaver"), TEXT("") } });
+		});
+
+		It(TEXT("tells a ForEachLoop's Loop Body and Completed apart"), [this]()
+		{
+			ExpectExecLinks(TEXT("ForEachLoop"), {
+				{ TEXT("Loop"), TEXT(""), TEXT("ForEachLoop"), TEXT("Exec") },
+				{ TEXT("ForEachLoop"), TEXT("LoopBody"), TEXT("CollectGarbage"), TEXT("") },
+				{ TEXT("ForEachLoop"), TEXT("Completed"), TEXT("ControlScreensaver"), TEXT("") } });
+		});
+
+		It(TEXT("records each wired case of a Switch on Int, two of them into one node"), [this]()
+		{
+			ExpectExecLinks(TEXT("SwitchOnInt"), {
+				{ TEXT("SwitchInt"), TEXT(""), TEXT("Switch"), TEXT("") },
+				{ TEXT("Switch"), TEXT("0"), TEXT("CollectGarbage"), TEXT("") },
+				{ TEXT("Switch"), TEXT("1"), TEXT("ControlScreensaver"), TEXT("") },
+				{ TEXT("Switch"), TEXT("Default"), TEXT("CollectGarbage"), TEXT("") } });
+		});
+
+		It(TEXT("tells a Timeline's Play and Reverse inputs apart"), [this]()
+		{
+			ExpectExecLinks(TEXT("TimelineMultiExec"), {
+				{ TEXT("OnPlay"), TEXT(""), TEXT("GoldenTimeline"), TEXT("Play") },
+				{ TEXT("OnReverse"), TEXT(""), TEXT("GoldenTimeline"), TEXT("Reverse") },
+				{ TEXT("GoldenTimeline"), TEXT("Update"), TEXT("CollectGarbage"), TEXT("") },
+				{ TEXT("GoldenTimeline"), TEXT("Finished"), TEXT("ControlScreensaver"), TEXT("") } });
+		});
+
+		It(TEXT("validates an exec entry's pins: an exec output to an exec input of the named nodes"), [this]()
+		{
+			AddExpectedError(TEXT("xecution flow"), EAutomationExpectedErrorFlags::Contains, 0);
+			struct FEntryCase
+			{
+				const TCHAR* Entry;
+				bool bValid;
+			};
+			const FEntryCase EntryCases[] = {
+				{ TEXT("N1.P1->N2.P3"), true },
+				{ TEXT("N1->N2"), true },               // 1.x (and 2.0 builds before card 0136): node only
+				{ TEXT("N1->N2->N2"), true },           // a 1.x chain
+				{ TEXT("N1.P2->N2.P3"), false },        // P2 is a data pin
+				{ TEXT("N2.P3->N1.P1"), false },        // input to output
+				{ TEXT("N1.P1->N2.P5"), false },        // P5 is an output
+				{ TEXT("N1.P1->N2.P9"), false },        // no such pin
+				{ TEXT("N1.P1->N3.P3"), false },        // no such node
+				{ TEXT("N1.P1->N2"), false },           // a pin ref and a node ID mixed
+				{ TEXT("N1.P1->N2.P3->N2.P5"), false }, // a pin-qualified entry is one link
+				{ TEXT("N1.->N2.P3"), false },
+				{ TEXT("N1"), false } };
+			for (const FEntryCase& EntryCase : EntryCases)
+			{
+				FN2CBlueprint Blueprint;
+				if (!TestTrue(FString(TEXT("FromJson reads ")) + EntryCase.Entry,
+					FN2CSerializer::FromJson(ExecFlowDocument(N2CJsonContract::Version, EntryCase.Entry), Blueprint))
+					|| !TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1))
+				{
+					continue;
+				}
+				FString Error;
+				TestEqual(FString(TEXT("the validator on ")) + EntryCase.Entry,
+					FN2CBlueprintValidator().ValidateFlowReferences(Blueprint.Graphs[0], Error), EntryCase.bValid);
+			}
+		});
+	});
+
 	// Card 0135: N2C JSON 1.x (1.2.x and earlier 2.0 builds) reads into the v2 model
 	Describe(TEXT("V1Reader"), [this]()
 	{
@@ -1340,6 +1673,30 @@ void FN2CCaptureGoldenSpec::Define()
 			}
 			TestTrue(TEXT("the model validates"), Blueprint.IsValid());
 			TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
+		});
+
+		It(TEXT("reads a 2.0.0 document with node-only exec flows (2.0 builds before card 0136) and keeps them"), [this]()
+		{
+			const FString Text = ExecFlowDocument(TEXT("2.0.0"), TEXT("N1->N2"));
+			FN2CBlueprint Blueprint;
+			if (TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint)) && TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1))
+			{
+				TestEqual(TEXT("execution flows"), FString::Join(Blueprint.Graphs[0].Flows.Execution, TEXT(",")), FString(TEXT("N1->N2")));
+				TestTrue(TEXT("the model validates"), Blueprint.IsValid());
+				TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
+			}
+		});
+
+		It(TEXT("reads pin-qualified exec flows and writes them back the same"), [this]()
+		{
+			const FString Text = ExecFlowDocument(N2CJsonContract::Version, TEXT("N1.P1->N2.P3"));
+			FN2CBlueprint Blueprint;
+			if (TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint)) && TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1))
+			{
+				TestEqual(TEXT("execution flows"), FString::Join(Blueprint.Graphs[0].Flows.Execution, TEXT(",")), FString(TEXT("N1.P1->N2.P3")));
+				TestTrue(TEXT("the model validates"), Blueprint.IsValid());
+				TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
+			}
 		});
 
 		It(TEXT("reads 1.x and 2.x and flags any other version"), [this]()

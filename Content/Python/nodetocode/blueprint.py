@@ -59,7 +59,8 @@ def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
 
     Version 1.x documents (NodeToCode 1.2.x and earlier 2.0 builds) and 2.x documents are read into the current
     model and written back as N2C JSON of the current version (2.0.0), so a 1.x file comes back with the same nodes
-    and flows and "version": "2.0.0".
+    and flows and "version": "2.0.0". Exec flows are "N1.P2->N3.P4" (exec output pin -> exec input pin) in documents
+    NodeToCode 2.0 writes; 1.x documents (and early 2.0 development builds) keep their node-only "N1->N2" entries.
 
     Args:
         n2c_json: The N2C JSON text
@@ -74,6 +75,7 @@ def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
                 'graphs': int,
                 'nodes': int,
                 'data_edges': int,      # Data connections (an output feeding two inputs counts twice)
+                'exec_edges': int,      # Exec links ("N1.P2->N3.P4" is one; a 1.x chain "N1->N2->N3" is two)
                 'n2c_json': dict,       # The document written again as current N2C JSON
             } or None,
             'error': str or None

@@ -19,11 +19,6 @@
 			"effect": "A user macro is classed as a Macro graph only when its name contains 'macro': LocalSteps comes out as an EventGraph"
 		},
 		{
-			"finding": "translation-core-2",
-			"card": "0136",
-			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -101,8 +96,8 @@
 				"flows":
 				{
 					"execution": [
-						"N1->N2",
-						"N2->N3"
+						"N1.P1->N2.P2",
+						"N2.P3->N3.P4"
 					],
 					"data":
 					{
@@ -170,8 +165,8 @@
 				"flows":
 				{
 					"execution": [
-						"N4->N6",
-						"N6->N5"
+						"N4.P6->N6.P8",
+						"N6.P9->N5.P7"
 					],
 					"data":
 					{
@@ -233,8 +228,8 @@
 				"flows":
 				{
 					"execution": [
-						"N7->N9",
-						"N9->N8"
+						"N7.P11->N9.P13",
+						"N9.P14->N8.P12"
 					],
 					"data":
 					{

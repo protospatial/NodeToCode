@@ -13,11 +13,6 @@
 			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
 		},
 		{
-			"finding": "translation-core-2",
-			"card": "0136",
-			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -151,9 +146,9 @@
 				"flows":
 				{
 					"execution": [
-						"N1->N2",
-						"N2->N3",
-						"N2->N4"
+						"N1.P1->N2.P3",
+						"N2.P5->N3.P8",
+						"N2.P6->N4.P10"
 					],
 					"data":
 					{

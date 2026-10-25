@@ -132,7 +132,8 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - N2C JSON is version 2.0.0 ([decision 0003](.agents/decisions/0003-n2c-json-v2-contract.md)): when one output
   feeds several inputs, its `flows.data` value is an array of every input; a graph without fan-out gets the same
   JSON as 1.0.0. 1.0.0 documents (1.2.x saves) still read, also from Python with `nodetocode.read_n2c_json`
-  (card 0135). <!-- PROVISIONAL 0117 -->
+  (card 0135). Each `flows.execution` entry is one exec wire, from the output pin to the input pin it runs
+  (`"N3.P5->N4.P1"`), instead of a node pair (card 0136). <!-- PROVISIONAL 0117 -->
 - Default models: Claude Sonnet 5.5, GPT-6.1 Sol, Gemini 3.8 Flash and DeepSeek Flash with thinking ([#32], [#33]).
 - DeepSeek's `deepseek-chat` and `deepseek-reasoner` were discontinued, so the saved R1 and V3 choices both send
   `deepseek-flash`, R1 with thinking on and V3 with it off ([#33]).
@@ -179,6 +180,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - **Fan-out:** an output wired to several inputs, directly or through a knot, kept only one of its connections in
   the N2C JSON, so the LLM invented the other inputs' values (issue #13). Every connection is now sent, based on
   PR #7 by Yury Rakhuba (card 0135). The JSON reader also reads exec pins, structs and enums again.
+- **Exec wiring:** the N2C JSON recorded exec wires as node pairs, so the LLM could not tell a Branch's True from its
+  False, a Switch's cases, a loop's body from its Completed, or which of a Gate's or Timeline's inputs an event
+  ran, and two wires into one node were one entry. Each wire now names its output and input pin (card 0136).
 - **MCP security:** requests with a non-local `Host` or `Origin` are refused and listeners bind to loopback;
   file tools refuse the secrets store, `.git` and `.env`, and the path jail resolves junctions and symlinks;
   saved scripts and LLM-supplied graph names cannot leave their folders (fa1f145, f9ab31a, 5ec3add, 4f2b6cc, [#42]).
@@ -247,7 +251,9 @@ setting, file and API, row by row.
   them from disk ([#62]).
 - **N2C JSON readers:** a tool that parses N2C JSON must accept an array as a `flows.data` value (fan-out) and
   `"version": "2.0.0"`. C++ or Blueprint code that read `FN2CFlows::Data` as `TMap<FString, FString>` reads
-  `FN2CDataFlowTargets::Targets` now (card 0135). <!-- PROVISIONAL 0117 -->
+  `FN2CDataFlowTargets::Targets` now (card 0135). They must also accept `flows.execution` entries of the form
+  `"N3.P5->N4.P1"` (exec output pin to exec input pin) as well as 1.x node pairs `"N1->N2"` (card 0136).
+  <!-- PROVISIONAL 0117 -->
 - **C++ providers:** a provider that overrides `IN2CLLMService::SendRequest` must return
   `FN2CLLMRequestHandleRef` ([#51]). Code that used `UN2CUserSecrets` must use `FN2CSecretStore::Get()` ([#42]).
 

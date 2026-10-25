@@ -163,46 +163,72 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
 
 bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FString& OutError)
 {
-    // Build lookup maps for validation
+    // Build lookup maps for validation: node IDs, and each node's exec input and exec output pin IDs
     TSet<FString> NodeIds;
-    TMap<FString, TSet<FString>> NodePinIds;
+    TMap<FString, TSet<FString>> NodeExecOutputs;
+    TMap<FString, TSet<FString>> NodeExecInputs;
 
     for (const FN2CNodeDefinition& Node : Graph.Nodes)
     {
         NodeIds.Add(Node.ID);
         
-        // Track all pin IDs for this node
-        TSet<FString>& PinIds = NodePinIds.Add(Node.ID);
+        TSet<FString>& ExecInputs = NodeExecInputs.Add(Node.ID);
+        TSet<FString>& ExecOutputs = NodeExecOutputs.Add(Node.ID);
         for (const FN2CPinDefinition& Pin : Node.InputPins)
         {
-            PinIds.Add(Pin.ID);
+            if (Pin.Type == EN2CPinType::Exec)
+            {
+                ExecInputs.Add(Pin.ID);
+            }
         }
         for (const FN2CPinDefinition& Pin : Node.OutputPins)
         {
-            PinIds.Add(Pin.ID);
+            if (Pin.Type == EN2CPinType::Exec)
+            {
+                ExecOutputs.Add(Pin.ID);
+            }
         }
     }
 
-    // Validate execution flows
+    // Validate execution flows: "N3.P5->N4.P1" from an exec output pin to an exec input pin (N2C JSON 2.0.0), or the
+    // node-only form "N1->N2" ("N1->N2->N3") of 1.x documents and earlier 2.0 builds, whose nodes must exist
     for (const FString& ExecFlow : Graph.Flows.Execution)
     {
-        TArray<FString> FlowNodes;
-        ExecFlow.ParseIntoArray(FlowNodes, TEXT("->"));
-        
-        // Each flow must have at least 2 nodes
-        if (FlowNodes.Num() < 2)
+        TArray<N2CJsonContract::FExecEndpoint> Endpoints;
+        if (!N2CJsonContract::ParseExecFlow(ExecFlow, Endpoints))
         {
-            OutError = FString::Printf(TEXT("Invalid execution flow %s (needs at least 2 nodes) in graph %s"), *ExecFlow, *Graph.Name);
+            OutError = FString::Printf(TEXT("Invalid execution flow %s (expected \"N1.P2->N3.P4\" or \"N1->N2\") in graph %s"), *ExecFlow, *Graph.Name);
             FN2CLogger::Get().LogError(OutError);
             return false;
         }
 
-        // Verify all referenced nodes exist
-        for (const FString& NodeId : FlowNodes)
+        const bool bPinForm = Endpoints[0].Pin.Len() > 0 || Endpoints[1].Pin.Len() > 0;
+        if (bPinForm && (Endpoints.Num() != 2 || Endpoints[0].Pin.IsEmpty() || Endpoints[1].Pin.IsEmpty()))
         {
-            if (!NodeIds.Contains(NodeId))
+            OutError = FString::Printf(TEXT("Execution flow %s mixes pin refs and node IDs (a pin-qualified entry is one \"N1.P2->N3.P4\" link) in graph %s"), *ExecFlow, *Graph.Name);
+            FN2CLogger::Get().LogError(OutError);
+            return false;
+        }
+
+        for (int32 Index = 0; Index < Endpoints.Num(); ++Index)
+        {
+            const N2CJsonContract::FExecEndpoint& Endpoint = Endpoints[Index];
+            if (!NodeIds.Contains(Endpoint.Node))
             {
-                OutError = FString::Printf(TEXT("Execution flow %s references non-existent node %s in graph %s"), *ExecFlow, *NodeId, *Graph.Name);
+                OutError = FString::Printf(TEXT("Execution flow %s references non-existent node %s in graph %s"), *ExecFlow, *Endpoint.Node, *Graph.Name);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
+            if (!bPinForm)
+            {
+                continue;
+            }
+            const bool bSource = Index == 0;
+            const TSet<FString>& ExecPins = bSource ? NodeExecOutputs.FindChecked(Endpoint.Node) : NodeExecInputs.FindChecked(Endpoint.Node);
+            if (!ExecPins.Contains(Endpoint.Pin))
+            {
+                OutError = FString::Printf(TEXT("Execution flow %s: %s is not an exec %s pin of node %s in graph %s"), *ExecFlow,
+                    *Endpoint.Pin, bSource ? TEXT("output") : TEXT("input"), *Endpoint.Node, *Graph.Name);
                 FN2CLogger::Get().LogError(OutError);
                 return false;
             }

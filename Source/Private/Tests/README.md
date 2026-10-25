@@ -100,6 +100,8 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   Default, two of them into one node), `SwitchOnEnum` (`EComponentMobility`), `MakeBreakStruct` (Make and Break Vector),
   `GateMultiExec` (three events into Enter, Open and Close of the StandardMacros Gate) and `TimelineMultiExec` (Play and
   Reverse of an empty timeline).
+- **Exec pins (card 0136):** `BranchSameTarget` (True and False into one node), `Sequence` (then_0 and then_1) and
+  `ForEachLoop` (the StandardMacros loop over an int array input: Loop Body and Completed).
 - **Harder shapes (card 0127):** `UserStruct` (a user struct with an Actor object member, an int and a user enum
   member, through Break and Make), `UserEnum` (Switch on a user enum with the entries Min, Max and MaxHealth),
   `Recursion_Depth1` and `Recursion_Depth2` (Root calls Child and itself, Child calls Grandchild, Grandchild calls
@@ -131,13 +133,15 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   makes user types outside the editor's undo history and clears the flags of the `STRUCT_REINST_` copies the struct
   compiler leaves behind; either would keep the package alive).
 - **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
-  card that changes them: node-pair exec flows (translation-core-2, 0136), ghost default events (translation-core-18/19,
+  card that changes them: ghost default events (translation-core-18/19,
   0137), display-text names (gap-5, 0138), Break Struct captured as a Variable named `None` (translation-core-4, 0234),
   custom events with member_name `None` and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134
   fixed and removed the ID defects (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one
   ID, and node IDs that depended on traversal order; translation-core-9: a function that calls itself was captured
   twice). Card 0135 fixed and removed the lossy data edges (translation-core-1: `flows.data` kept one edge per output,
-  and a knot's fan-out only its first link). From card 0127: a user struct with an object member is dropped from
+  and a knot's fan-out only its first link). Card 0136 fixed and removed the node-pair exec flows (translation-core-2:
+  `flows.execution` held "N1->N2" node pairs, so which pin a link used was lost and two outputs into one node were one
+  entry). From card 0127: a user struct with an object member is dropped from
   `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped (translation-core-11,
   0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236); collapsed graphs and user macros
   are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not name the captured graph
@@ -151,18 +155,27 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
 - **Data flows (card 0135):** `DataFlows` checks on every case that each connected data input is the target of
   exactly one `flows.data` edge, every key is an output pin and an array value has several targets, and that
   `FanOutActorLocation` and `Knots` list both targets of their fan-out.
+- **Exec flows (card 0136):** `ExecFlows` checks on every case that each `flows.execution` entry is one link from an
+  exec output pin to an exec input pin ("N3.P5->N4.P1"), recorded once, and that every connected exec pin is in one;
+  then that `Branch`, `BranchSameTarget`, `GateMultiExec`, `Sequence`, `ForEachLoop`, `SwitchOnInt` and
+  `TimelineMultiExec` have exactly the links their graphs make, named by node and pin; and that the validator
+  accepts a pin-qualified link and the node-only form and refuses a data pin, a reversed link, a missing pin or node,
+  a mixed entry and a pin-qualified chain.
 - **v1 reader (card 0135):** `V1Reader` reads the N2C JSON 1.0.0 documents in `Fixtures/Capture/V1`: the goldens of
   `FanOutData`, `Knots` and `UserEnum` from before card 0135 and `StructsAndEnums` (FromJson then ToJson gives the
   same document with version 2.0.0), and `BP_Door_1.2.3.json` (the 1.2.3 save of `Tests/Migration`); plus an array
-  fan-out written back unchanged and the readable versions (1.x and 2.x).
+  fan-out written back unchanged and the readable versions (1.x and 2.x). Card 0136: a 2.0.0 document with node-only
+  exec flows (development builds between cards 0135 and 0136) reads, validates and is written back unchanged, and so
+  is a pin-qualified one.
 - **Updating:** a change to capture output regenerates the goldens in the same commit and its message explains the
   golden diff: `.\build.ps1 -All -Test -TestFilter NodeToCode.Capture -UpdateGoldens` (the editor gets
   `-N2CUpdateGoldens`; `N2C_UPDATE_GOLDENS=1` in its environment does the same), then the same command without
   `-UpdateGoldens` to check every engine agrees. Engines run 5.6, 5.7, 5.8 in that order and each writes
   `<case>.<engine>.json` when that file exists, else `<case>.json`.
 - **Per-engine goldens:** `<case>.<engine>.json` replaces `<case>.json` on that engine only where the engine really
-  differs. Today: `Branch`, `CopyPaste`, `EnhancedInputEvent`, `FanOutActorLocation`, `GateMultiExec`,
-  `NestedGraphs_Depth1`, `SameNameOwners`, `SwitchOnEnum`, `SwitchOnInt`, `TimelineMultiExec` and `UserEnum` have a
+  differs. Today: `Branch`, `BranchSameTarget`, `CopyPaste`, `EnhancedInputEvent`, `FanOutActorLocation`,
+  `ForEachLoop`, `GateMultiExec`, `NestedGraphs_Depth1`, `SameNameOwners`, `Sequence`, `SwitchOnEnum`, `SwitchOnInt`,
+  `TimelineMultiExec` and `UserEnum` have a
   `.5.8.json`, because UE 5.8's `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's
   own name (`CollectGarbage`) where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Calls to the Blueprint's own
   functions are the same on every engine. Card 0138's stable identifiers remove the difference. To add one, copy

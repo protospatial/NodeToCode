@@ -98,8 +98,8 @@ tools and the Python bridge.
 IDs (card 0134): nodes are N1, N2, ... and pins P1, P2, ..., each unique across the whole capture. They are keyed by
 the `UEdGraphNode*`/`UEdGraphPin*` themselves (never by GUID alone) and given in two passes per graph: first every
 node and its visible pins in graph order (collection order for the captured graph), then the nodes are described and
-their flows recorded, so IDs never depend on which links are met first and an unchanged graph gets the same IDs. A
-node outside the capture that an exec flow reaches gets the next ID when the flow is recorded. Every graph, the
+their flows recorded, so IDs never depend on which links are met first and an unchanged graph gets the same IDs.
+Nodes outside the capture get no ID, and links to them are not recorded (card 0136). Every graph, the
 captured one included, is marked visited when it starts (by pointer), so a function that calls itself and a graph
 reached twice are captured once, and same-named functions of different Blueprints are both captured; a nested graph
 from another Blueprint sets `FN2CGraph::OwnerBlueprint` (JSON `owner_blueprint`, optional).
@@ -109,7 +109,17 @@ pass. `TraceTargetsThroughKnots` follows the output's links depth first in link 
 of a knot's fan-out, and returns every non-knot input it reaches; each with an ID is added with `AddUnique` to
 `Flows.Data[<output ref>].Targets`. So an output feeding several inputs keeps all of them, and every connected data
 input of the capture is the target of exactly one edge (`NodeToCode.Capture.Golden.DataFlows` checks this on every
-golden). Exec flows still use `TraceConnectionThroughKnots` (first link only; exec outputs have one link).
+golden).
+
+Exec edges (card 0136): each exec link is recorded once, from its exec output pin, the same way:
+`TraceTargetsThroughKnots` gives every exec input it reaches, and each with an ID is added to `Flows.Execution` as
+`N2CJsonContract::MakeExecEdge` "N3.P5->N4.P1" (`AddUnique` per pin pair, so two outputs into one node are two
+entries). The source pin tells Branch True/False, Switch cases, Sequence then_N and Loop Body/Completed apart, the
+target pin Gate Enter/Open/Close and Timeline Play/Reverse. `FN2CBlueprintValidator::ValidateFlowReferences`
+parses each entry with `N2CJsonContract::ParseExecFlow`: a pin-qualified entry must run from an exec output pin to
+an exec input pin of the named nodes; a node-only entry ("N1->N2", or a 1.x chain) needs only its nodes.
+`NodeToCode.Capture.Golden.ExecFlows` checks every golden and the Branch, Sequence, ForEachLoop, Switch, Gate and
+Timeline cases by pin name.
 
 Key responsibilities:
 - Manages ID generation (N1, N2, etc. for nodes; P1, P2, etc. for pins)
@@ -143,7 +153,7 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 | `FN2CBlueprint` | Top-level container (version, metadata, graphs, structs, enums) |
 | `FN2CMetadata` | Blueprint name, type (`EN2CBlueprintType`), class |
 | `FN2CGraph` | Single graph with nodes and `FN2CFlows` |
-| `FN2CFlows` | `Execution` (node pairs "N1->N2") and `Data`: output pin ref -> `FN2CDataFlowTargets` (`Targets`, every input pin it feeds, in link order) |
+| `FN2CFlows` | `Execution` (exec links "N3.P5->N4.P1", one per link; node pairs "N1->N2" when read from 1.x) and `Data`: output pin ref -> `FN2CDataFlowTargets` (`Targets`, every input pin it feeds, in link order) |
 | `FN2CDataFlowTargets` | The input pin refs one output feeds (PR #7's `FN2CInputConnectors`, as an ordered array) |
 | `FN2CVersion` | Version string, default `N2CJsonContract::Version` ("2.0.0") |
 
@@ -154,8 +164,11 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 
 - **2.0.0** (card 0135): `flows.data` is an object keyed by the output pin ref. Its value is the input pin ref it
   feeds, or an array of them when it feeds several, so a graph without fan-out gets the same object as 1.0.0. Every
-  data edge appears once. Additive optional fields bump the minor; a breaking change bumps the major.
-- **1.0.0** (1.2.x and earlier 2.0 builds): the same fields, one string per output, so a fan-out kept one edge.
+  data edge appears once. `flows.execution` has one "N3.P5->N4.P1" entry per exec link, exec output pin to exec
+  input pin (card 0136). Additive optional fields bump the minor; a breaking change bumps the major.
+- **1.0.0** (1.2.x and earlier 2.0 builds): the same fields, one string per output, so a fan-out kept one edge,
+  and node-only exec entries ("N1->N2"). 2.0.0 documents saved by development builds between cards 0135 and 0136
+  also have node-only exec entries: readers accept both forms in any readable version and keep them as they are.
   `FromJson`, `UN2CPythonBridge::ReadN2CJson` (Python `nodetocode.read_n2c_json`) and the validator read it through
   the 2.x line. `NodeToCode.Capture.Golden.V1Reader` reads the 1.0.0 documents in
   `Source/Private/Tests/Fixtures/Capture/V1` (earlier goldens and a 1.2.3 save); `Tests/Migration` reads the 1.2.3

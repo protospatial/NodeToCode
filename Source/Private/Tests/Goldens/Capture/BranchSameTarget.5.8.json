@@ -1,0 +1,115 @@
+{
+	"case": "BranchSameTarget",
+	"description": "Function BranchSame(Condition): Branch on Condition; True and False both run CollectGarbage.",
+	"known_defects": [
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_BranchSameTarget",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_BranchSameTarget"
+		},
+		"graphs": [
+			{
+				"name": "BranchSame",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "BranchSame",
+						"member_parent": "BP_N2CGolden_BranchSameTarget",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Condition",
+								"type": "Boolean",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "Branch",
+						"name": "Branch",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "Condition",
+								"type": "Boolean",
+								"default_value": "true",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "True",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "False",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "CollectGarbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P3",
+						"N2.P5->N3.P7",
+						"N2.P6->N3.P7"
+					],
+					"data":
+					{
+						"N1.P2": "N2.P4"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

@@ -120,9 +120,16 @@ FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
 
 	int32 NodeCount = 0;
 	int32 DataEdgeCount = 0;
+	int32 ExecEdgeCount = 0;
 	for (const FN2CGraph& Graph : Blueprint.Graphs)
 	{
 		NodeCount += Graph.Nodes.Num();
+		for (const FString& Flow : Graph.Flows.Execution)
+		{
+			// One link per entry ("N1.P2->N3.P4"); a 1.x node chain ("N1->N2->N3") has one per arrow
+			TArray<N2CJsonContract::FExecEndpoint> Endpoints;
+			ExecEdgeCount += N2CJsonContract::ParseExecFlow(Flow, Endpoints) ? Endpoints.Num() - 1 : 0;
+		}
 		for (const TPair<FString, FN2CDataFlowTargets>& Flow : Graph.Flows.Data)
 		{
 			DataEdgeCount += Flow.Value.Targets.Num();
@@ -143,6 +150,7 @@ FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
 	Data->SetNumberField(TEXT("graphs"), Blueprint.Graphs.Num());
 	Data->SetNumberField(TEXT("nodes"), NodeCount);
 	Data->SetNumberField(TEXT("data_edges"), DataEdgeCount);
+	Data->SetNumberField(TEXT("exec_edges"), ExecEdgeCount);
 	Data->SetObjectField(TEXT("n2c_json"), Rewritten);
 	return MakeSuccessJson(Data);
 }
