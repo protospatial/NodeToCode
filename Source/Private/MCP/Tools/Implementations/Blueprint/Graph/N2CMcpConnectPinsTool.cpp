@@ -25,7 +25,7 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("connect-pins"),
-		TEXT("Connect pins between Blueprint nodes using their GUIDs. Supports batch connections with transactional safety. Output data pins can connect to multiple input pins, while execution pins maintain single connections."),
+		TEXT("Connect pins between nodes of the focused Blueprint graph using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error."),
 		TEXT("Blueprint Graph Editing")
 	);
 
@@ -59,12 +59,12 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	
 	TSharedPtr<FJsonObject> FromPinGuidProp = MakeShareable(new FJsonObject);
 	FromPinGuidProp->SetStringField(TEXT("type"), TEXT("string"));
-	FromPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the source pin"));
+	FromPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the source pin. Required: an entry without it is skipped"));
 	FromProperties->SetObjectField(TEXT("pinGuid"), FromPinGuidProp);
 	
 	TSharedPtr<FJsonObject> FromPinNameProp = MakeShareable(new FJsonObject);
 	FromPinNameProp->SetStringField(TEXT("type"), TEXT("string"));
-	FromPinNameProp->SetStringField(TEXT("description"), TEXT("Pin name for fallback lookup"));
+	FromPinNameProp->SetStringField(TEXT("description"), TEXT("Pin name (PinName such as 'then', or display name), case-insensitive; used when pinGuid matches no pin"));
 	FromProperties->SetObjectField(TEXT("pinName"), FromPinNameProp);
 	
 	TSharedPtr<FJsonObject> FromPinDirectionProp = MakeShareable(new FJsonObject);
@@ -97,12 +97,12 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	
 	TSharedPtr<FJsonObject> ToPinGuidProp = MakeShareable(new FJsonObject);
 	ToPinGuidProp->SetStringField(TEXT("type"), TEXT("string"));
-	ToPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the target pin"));
+	ToPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the target pin. Required: an entry without it is skipped"));
 	ToProperties->SetObjectField(TEXT("pinGuid"), ToPinGuidProp);
 	
 	TSharedPtr<FJsonObject> ToPinNameProp = MakeShareable(new FJsonObject);
 	ToPinNameProp->SetStringField(TEXT("type"), TEXT("string"));
-	ToPinNameProp->SetStringField(TEXT("description"), TEXT("Pin name for fallback lookup"));
+	ToPinNameProp->SetStringField(TEXT("description"), TEXT("Pin name (PinName such as 'execute', or display name), case-insensitive; used when pinGuid matches no pin"));
 	ToProperties->SetObjectField(TEXT("pinName"), ToPinNameProp);
 	
 	TSharedPtr<FJsonObject> ToPinDirectionProp = MakeShareable(new FJsonObject);

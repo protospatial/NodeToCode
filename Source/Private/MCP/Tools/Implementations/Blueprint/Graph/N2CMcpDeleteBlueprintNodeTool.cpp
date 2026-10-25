@@ -57,7 +57,7 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintNodeTool::GetDefinition() const
     // preserveConnections property (optional)
     TSharedPtr<FJsonObject> PreserveConnectionsProp = MakeShareable(new FJsonObject);
     PreserveConnectionsProp->SetStringField(TEXT("type"), TEXT("boolean"));
-    PreserveConnectionsProp->SetStringField(TEXT("description"), TEXT("If true, attempts to preserve data flow by connecting input sources to output targets when possible. Default: false"));
+    PreserveConnectionsProp->SetStringField(TEXT("description"), TEXT("Meant to reconnect the deleted node's input sources to its output targets. Currently has no effect: no link is ever made. Default: false"));
     PreserveConnectionsProp->SetBoolField(TEXT("default"), false);
     Properties->SetObjectField(TEXT("preserveConnections"), PreserveConnectionsProp);
     

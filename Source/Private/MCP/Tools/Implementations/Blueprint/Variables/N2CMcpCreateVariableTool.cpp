@@ -29,7 +29,7 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("create-variable"),
-		TEXT("Creates a new member variable in the active Blueprint. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
+		TEXT("Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
 	,
 		TEXT("Blueprint Variable Management")
 	);
@@ -49,7 +49,7 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 	// typeIdentifier property (VALUE type for maps)
 	TSharedPtr<FJsonObject> TypeIdentifierProp = MakeShareable(new FJsonObject);
 	TypeIdentifierProp->SetStringField(TEXT("type"), TEXT("string"));
-	TypeIdentifierProp->SetStringField(TEXT("description"), TEXT("Type identifier for the variable. For non-container types, this is the variable's type (e.g., 'bool', 'FVector', '/Script/Engine.Actor'). For 'array' or 'set' containers, this is the element type. For 'map' containers, this specifies the map's VALUE type; the KEY type is specified by 'mapKeyTypeIdentifier'."));
+	TypeIdentifierProp->SetStringField(TEXT("description"), TEXT("Type identifier for the variable. For non-container types, this is the variable's type (e.g., 'bool', 'FVector', '/Script/Engine.Actor'). Structs other than FVector, FVector2D, FVector4, FRotator, FTransform, FQuat, FColor and FLinearColor need their full path (e.g., '/Script/Engine.HitResult'). For 'array' or 'set' containers, this is the element type. For 'map' containers, this specifies the map's VALUE type; the KEY type is specified by 'mapKeyTypeIdentifier'."));
 	Properties->SetObjectField(TEXT("typeIdentifier"), TypeIdentifierProp);
 
 	// defaultValue property

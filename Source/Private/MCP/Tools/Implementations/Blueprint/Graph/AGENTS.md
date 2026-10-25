@@ -1,89 +1,180 @@
 # Blueprint Graph Manipulation Tools
 
-This directory contains MCP tools for manipulating nodes and connections within Blueprint graphs. These tools enable programmatic construction of Blueprint logic.
+This directory contains the MCP tools that find, add, wire, set, comment and delete nodes in a Blueprint graph:
+`search-blueprint-nodes` ('Blueprint Discovery'), `add-bp-node-to-active-graph`, `connect-pins`,
+`set-input-pin-value`, `delete-blueprint-node`, `create-comment-node` ('Blueprint Graph Editing') and
+`find-nodes-in-graph` (no category, so dynamic tool discovery cannot enable it).
+
+## Targeting and IDs
+
+Every tool here works on the graph of the active Blueprint editor (`FN2CMcpBlueprintUtils::GetFocusedEditorGraph`);
+none takes a Blueprint or graph argument (card 0152 adds explicit targets). Open the graph first
+(`open-blueprint-asset` with `focus_graph`, or `open-blueprint-function`).
+
+Nodes and pins are addressed by GUID:
+
+- **Node GUID** (`UEdGraphNode::NodeGuid`): `ids.guid` of a node in find-nodes-in-graph or get-focused-blueprint
+  results, `nodeGuid` from add-bp-node-to-active-graph, `nodeId` from create-get-local-function-variable-node.
+- **Pin GUID** (`UEdGraphPin::PinId`): `ids.guid` of a pin, `pinGuid` from add-bp-node-to-active-graph, `pinId`
+  from the function pin tools, `id` in the variable node tools' `pins`.
+- Both forms are accepted: 32 hex digits (`C834682D4F58EDB4003504B4BBAFA0E2`, as the add tools return them) or
+  hyphenated (`157CF7BA-49F8-CE45-71C9-61AAEA82547F`, as `ids.guid` shows them).
+- The short IDs in N2C JSON (`ids.short` such as `N4` and `P9`) belong to one capture: every call numbers the nodes
+  again (cards 0133, 0134), so after a node is added or deleted the same node can get another short ID. No tool takes
+  a short ID.
+- **Pin names are stable**: a pin's `name` is its `PinName` (`execute` and `then` for exec pins, `ReturnValue`, and
+  the parameter names such as `InString`), not the display name the editor language changes. connect-pins and
+  set-input-pin-value accept a pin name when the pin GUID does not match, so `"pinName": "then"` with any
+  `pinGuid` wires an exec output.
+- **Default events**: a new Blueprint's editor-placed events (Event BeginPlay, Event Tick, ...) are disabled
+  "ghost" nodes. find-nodes-in-graph and get-focused-blueprint include them with `"disabled": true` and the editor's
+  comment (cards 0137, 0433). Wire one of them instead of adding a second event of the same kind; the link enables it.
 
 ## Available Tools
 
 ### search-blueprint-nodes
-- **Description**: Searches for Blueprint nodes/actions relevant to a query
+- **Description**: Searches the Blueprint action menu for nodes. Read-only: it describes each result from the
+  spawner's template node and never adds anything to the graph (card 0050)
 - **Parameters**:
-  - `searchTerm` (required): Text query to search for
-  - `contextSensitive` (optional): Perform context-sensitive search
-  - `maxResults` (optional): Maximum results to return (1-100)
-  - `blueprintContext` (optional): Context for sensitive search
-- **Returns**: Array of nodes with spawn metadata
-- **Use Case**: Discovering available nodes before adding them
+  - `searchTerm` (required): Split on spaces; an action matches when every word appears, case-insensitively, in its
+    full search text (`SearchActions`). Math symbols such as `+` or `*` find the promotable operators
+  - `contextSensitive` (optional, default true): Build the action list for the focused graph (or `blueprintContext`)
+  - `blueprintContext` (optional): `owningBlueprintPath` (Blueprint asset path) and `graphPath`
+    (`<Blueprint path>:<GraphName>`). When it does not resolve, the focused graph is used (`GetContextFromPaths`)
+  - `maxResults` (optional, default 20): Clamped to 1-100
+  - `category` (optional): Keep actions whose category part (from the first `|` of the search text) contains this
+    text, case-insensitively (`MatchesCategoryFilter`), e.g. `flowcontrol`
+  - `excludeVMFunctions` (optional, default true): Leave out type-specific math functions such as
+    `Multiply_FloatFloat`
+- **Returns**: `nodes`, each an N2C JSON node (`id` such as `SearchNode_12`, `type`, `class`, `member_parent`,
+  `member_name`, the optional `title`, `input_pins`, `output_pins` with their default values) plus `spawnMetadata`
+  (`actionIdentifier`, `isContextSensitive`). The result is marked as untrusted Blueprint data: its first key is
+  `untrusted_content` (card 0124)
+- **actionIdentifier**: the action's full search text (`FEdGraphSchemaAction::GetFullSearchText`, lower case) with
+  each `\n` replaced by `>` (`ConvertActionToJson`). On Windows each line of that text ends in `\r`, which stays in
+  the identifier: Print String's is `"printstring\r>printstringlogprint\r>|development\r>printstring\r>printstringlogprint\r>|development"`
+  (as a JSON string). Pass it to add-bp-node-to-active-graph exactly as received; without the `\r` characters it
+  does not match
+- **Known issue (new):** with `contextSensitive` false the search returns no nodes (UE 5.8: `print string`, `branch`,
+  `add`, `string` all return an empty `nodes`). Use the default
+- **Known issue (card 0277):** an action whose search text contains `>` (comparison operators) cannot be added:
+  add-bp-node-to-active-graph turns every `>` back into a newline
 
 ### add-bp-node-to-active-graph
-- **Description**: Adds a Blueprint node to the currently active graph
+- **Description**: Adds the node of one search result to the focused graph
 - **Parameters**:
-  - `nodeName` (required): Name of the node to add
-  - `actionIdentifier` (required): Identifier from search results
-  - `location` (optional): X,Y coordinates for placement
-- **Returns**: Node ID, graph name, and success status
-- **Use Case**: Building Blueprint logic programmatically
+  - `nodeName` (required): Split on spaces; actions whose search text contains every word are candidates, e.g.
+    `Print String`
+  - `actionIdentifier` (required): From `spawnMetadata.actionIdentifier`. Among the candidates, the action whose
+    search text equals it (after each `>` is turned back into `\n`) is spawned (`FindAndSpawnNode`)
+  - `location` (optional): `{ "x": number, "y": number }` in graph coordinates (default 0, 0). The view's zoom and
+    pan play no part; the engine snaps the node to the 16-unit grid, so `{ "x": 400, "y": 200 }` gives
+    `{ "x": 400, "y": 192 }`
+- **Returns**: `success`, `nodeGuid`, `nodeName` (list title), `graphName`, `blueprintName`, `location` (after
+  snapping), `inputPins` and `outputPins` (visible pins only; each `pinGuid`, `pinName`, `displayName`, `type`, and
+  `defaultValue` on inputs with one), `nextStep`
+- **Errors**: `No nodes found matching name: <nodeName>`; `Found <n> nodes matching name '<nodeName>', but none with
+  the exact actionIdentifier`
 
 ### connect-pins
-- **Description**: Connect pins between Blueprint nodes using GUIDs
+- **Description**: Makes one or more pin connections in the focused graph, in one transaction
 - **Parameters**:
-  - `connections` (required): Array of connection specifications
-  - `options` (optional): Transaction name and link breaking behavior
-- **Returns**: Succeeded/failed connections with details
-- **Use Case**: Wiring up Blueprint node networks
+  - `connections` (required): Array of `{ "from": {...}, "to": {...} }`. Each side has:
+    - `nodeGuid` (required): A node of the focused graph
+    - `pinGuid` (required): The pin's GUID. When it matches no pin on the node, `pinName` is tried
+    - `pinName` (optional): `PinName` or display name, compared case-insensitively (`FindPinRobustly`)
+    - `pinDirection` (optional): `EGPD_Input` or `EGPD_Output`; filters the `pinName` lookup
+  - `options` (optional): `transactionName` (default `NodeToCode: Connect Pins`) and `breakExistingLinks` (default
+    false)
+- **Rules** (the schema's `CanCreateConnection`, then `N2CPinConnectPolicy::Allow`):
+  - A data output and an exec input take any number of links: a second event or Then wired into the same `execute`
+    pin is allowed and keeps the first link
+  - A data input and an exec output take one link. A connection that would replace it fails with
+    `WOULD_BREAK_EXISTING_LINK` ("Connecting would replace the existing link on then (currently linked to
+    PrintString.execute). Pass breakExistingLinks=true to replace it.") unless `breakExistingLinks` is true. A link
+    that needs a conversion node into an already linked data input counts as a replace too (cards 0046, 0415)
+  - A connection the schema refuses fails with `SCHEMA_VALIDATION_FAILED` and the schema's message
+- **Returns**: `succeeded` and `failed` (each with `from` and `to` as sent; failed ones add `errorCode` and `reason`)
+  and `summary` (`totalRequested`, `succeeded`, `failed`). Failed connections do not make the call an error result
+  and do not undo the successful ones: read `summary.failed`. Error codes: `INVALID_GUID` (a `nodeGuid` that is not a
+  GUID), `NODE_NOT_FOUND`, `PIN_NOT_FOUND`, `WOULD_BREAK_EXISTING_LINK`, `SCHEMA_VALIDATION_FAILED`,
+  `CONNECTION_FAILED`
+- **Known issue (card 0276):** an entry missing `from`, `to`, or a `nodeGuid` or `pinGuid` on either side is skipped
+  without a trace (`ParseConnectionRequests`): it is not in `failed` and not counted in `totalRequested`. Always send
+  `pinGuid`, even when you rely on `pinName`
 
 ### set-input-pin-value
-- **Description**: Sets the default value of an input pin on a Blueprint node
+- **Description**: Sets the default value of an input pin
 - **Parameters**:
-  - `nodeGuid` (required): GUID of the node containing the pin
-  - `pinGuid` (required): GUID of the pin to set
-  - `pinName` (optional): Pin name for fallback lookup
-  - `value` (required): The value to set (as string)
-- **Returns**: Pin information and old/new values
-- **Use Case**: Setting default values on node inputs
+  - `nodeGuid` (required), `pinGuid` (required): The pin is found by GUID, then by `pinName`
+  - `pinName` (optional): `PinName` or display name, used when `pinGuid` matches no pin
+  - `value` (required): The value as text
+- **Accepted values** (`ValidateAndFormatValue`): booleans `true`/`false`/`1`/`0`/`yes`/`no` (empty is false);
+  integers; reals; `FVector`/`FRotator` as `1.0,2.0,3.0` and `FVector2D` as `1.0,2.0` (no parentheses or `=`);
+  other structs in the engine's text form, e.g. `(R=1,G=0,B=0,A=1)` for a Linear Color; enums by entry name or index;
+  strings, names, text and object paths as given
+- **Refused** (`ValidatePinForDefaultValue`): output pins, hidden pins, pins whose default the schema hides (exec
+  pins: `This pin does not accept default values`), container pins, by-reference pins, and connected pins (`Cannot
+  set default value on connected pin. Disconnect it first.`)
+- **Returns**: `message`, `nodeGuid`, `nodeName`, `pinGuid` (as sent), `pinName` (display name), `pinType`,
+  `oldValue`, `newValue`, `subType`
 
 ### delete-blueprint-node
-- **Description**: Deletes one or more Blueprint nodes from the focused graph
+- **Description**: Deletes nodes from the focused graph
 - **Parameters**:
-  - `nodeGuids` (required): Array of node GUIDs to delete
-  - `preserveConnections` (optional): Attempt to bridge connections
-  - `force` (optional): Skip validation and force deletion
-- **Returns**: Deleted nodes info and preserved connections
-- **Use Case**: Removing nodes while optionally maintaining flow
+  - `nodeGuids` (required): Array of node GUIDs. All are checked first: an unknown GUID (`Node with GUID '<guid>' not
+    found in graph`) or a protected node fails the call and nothing is deleted
+  - `preserveConnections` (optional, default false): See the known issue below
+  - `force` (optional, default false): Also delete protected nodes: function entry and result nodes, and tunnel nodes
+    with both inputs and outputs (`IsNodeDeletable`)
+- **Returns**: `success`, `blueprintName`, `transactionId` (a new random GUID, not a handle to the undo transaction),
+  `deletedCount`, `deletedNodes` (each `guid`, `title`, `type`, `graph`)
+- **Known issue (card 0279):** `preserveConnections` has no effect. `PreserveNodeConnections` checks an input's
+  source pin against the node's own output pin with `ArePinsCompatible`, two output pins that never match, so no
+  link is made and no `preservedConnections` is returned. Deleting the middle Print String of BeginPlay -> Print
+  String -> Print String leaves BeginPlay unconnected. Reconnect with connect-pins
 
 ### create-comment-node
-- **Description**: Creates a comment node around specified Blueprint nodes using their GUIDs
+- **Description**: Adds a comment box around nodes of the focused graph
 - **Parameters**:
-  - `nodeGuids` (required): Array of node GUIDs to include in the comment
-  - `commentText` (optional): Text for the comment (default: "Comment")
-  - `color` (optional): RGB color object with r, g, b values 0-1 (default: white)
-  - `fontSize` (optional): Font size 1-1000 (default: 18)
-  - `moveMode` (optional): "group" or "none" (default: "group")
-  - `padding` (optional): Extra padding around nodes (default: 50)
-- **Returns**: Comment node info, included nodes, and any missing GUIDs
-- **Use Case**: Organizing and documenting Blueprint logic with visual grouping
+  - `nodeGuids` (required): Node GUIDs to enclose. GUIDs that are not in the graph are listed in `missingGuids`;
+    comment nodes are skipped; with no valid node the call fails
+  - `commentText` (optional, default `Comment`)
+  - `color` (optional): `{ "r", "g", "b" }`, 0-1. Without `color` the comment is white; with it, a missing component
+    is 0.075 (`ParseArguments`), so `{ "r": 0.2 }` gives (0.2, 0.075, 0.075)
+  - `fontSize` (optional, default 18): Clamped to 1-1000
+  - `moveMode` (optional, default `group`): `group` moves the enclosed nodes with the comment; any other value gives
+    no group movement
+  - `padding` (optional, default 50): Added on every side of the nodes' bounds. The bounds use the stored node size
+    (`NodeWidth` and `NodeHeight` stay 0 on ordinary nodes; only resizable nodes such as comments store a size), so
+    each node counts as 150 x 50 from its position (`CalculateBoundingBox`)
+- **Returns**: `success`, `commentNode` (`guid`, `text`, `x`, `y`, `width`, `height`, `color`, `fontSize`,
+  `moveMode`), `includedNodes` (`guid`, `title`), `includedCount`, `missingGuids` (when any), `message`
 
 ### find-nodes-in-graph
-- **Description**: Searches for specific nodes in the focused Blueprint graph by keywords or node GUIDs
+- **Description**: Finds nodes of the focused graph by keyword or GUID and returns them as N2C JSON with GUIDs
 - **Parameters**:
-  - `searchTerms` (required): Array of keywords or GUIDs to search for
-  - `searchType` (optional): "keyword" or "guid" (default: "keyword")
-  - `caseSensitive` (optional): Whether keyword search is case-sensitive (default: false)
-  - `maxResults` (optional): Maximum nodes to return 1-200 (default: 50)
-- **Returns**: Matching nodes in N2C JSON format with full GUID information (the same node JSON as
-  get-focused-blueprint: `class`, `member_parent`, `member_name`, pin `name` = `PinName`, and the `title` and `label`
-  hints)
-- **Matching**: a keyword matches the node's title as the editor shows it and in English, its UK2Node class, its menu
-  category and its function or variable name, so `PrintString`, `print string` and `K2Node_CallFunction` all find a
-  Print String node in any editor language (card 0138)
-- **Use Case**: Quickly locate specific nodes in large graphs without fetching entire blueprint
+  - `searchTerms` (required): Array of keywords or node GUIDs; a node matches when any term matches
+  - `searchType` (optional, default `keyword`): `keyword` or `guid`
+  - `caseSensitive` (optional, default false): For keywords
+  - `maxResults` (optional, default 50): Clamped to 1-200
+- **Matching**: a keyword matches the node's title as the editor shows it and in English, its UK2Node class, its
+  function or variable name (`N2CStableNames::NodeSearchText`) and its menu category, as a substring: `PrintString`,
+  `print string` and `K2Node_CallFunction` all find a Print String node in any editor language (card 0138). A GUID
+  term matches the node GUID with or without hyphens, case-insensitively
+- **Returns**: `metadata` (`blueprintName`, `graphName`, `totalFound`, `totalInGraph`) and `nodes`. Each node is the
+  same N2C JSON get-focused-blueprint returns (`type`, `class`, `title`, `member_parent`, `member_name`, `comment`,
+  `disabled`, `input_pins`, `output_pins`), with `ids` (`short`, `guid`) in place of `id`, and each pin with `ids`
+  (`short`, `guid`, `name`). The whole graph is captured with the default events included (card 0137). With no
+  match: `{"nodes":[],"metadata":{"totalFound":0}}`. The result is marked as untrusted Blueprint data
+  (`untrusted_content`)
 
 ## Node Search and Add Workflow
 
-The search and add tools work together in a two-step process:
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in
+`Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
 
 ### Step 1: Search for Nodes
-The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
-
 ```bash
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
@@ -95,7 +186,7 @@ curl -X POST http://localhost:27000/mcp \
       "name": "search-blueprint-nodes",
       "arguments": {
         "searchTerm": "print string",
-        "contextSensitive": true
+        "maxResults": 5
       }
     },
     "id": 1
@@ -104,7 +195,7 @@ curl -X POST http://localhost:27000/mcp \
 
 ### Step 2: Add Found Node
 ```bash
-# Use the actionIdentifier from search results
+# actionIdentifier copied unchanged from spawnMetadata, \r included (UE 5.8 on Windows)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -115,7 +206,7 @@ curl -X POST http://localhost:27000/mcp \
       "name": "add-bp-node-to-active-graph",
       "arguments": {
         "nodeName": "Print String",
-        "actionIdentifier": "printstring>development>|utilities>printstring>development>|utilities",
+        "actionIdentifier": "printstring\r>printstringlogprint\r>|development\r>printstring\r>printstringlogprint\r>|development",
         "location": {"x": 400, "y": 200}
       }
     },
@@ -123,24 +214,11 @@ curl -X POST http://localhost:27000/mcp \
   }'
 ```
 
-## Pin Connection System
+## Pin Connection Example
 
-### Connection Structure
-Each connection requires:
-- `from`: Source pin specification
-  - `nodeGuid`: GUID of source node
-  - `pinGuid`: GUID of source pin
-  - `pinName` (optional): Fallback name
-  - `pinDirection` (optional): Validation
-- `to`: Target pin specification (same structure)
-
-### Connection Rules
-- **Execution Pins**: One-to-one connections only
-- **Data Output Pins**: Can connect to multiple inputs
-- **Data Input Pins**: Can only have one connection
-
-### Batch Connection Example
 ```bash
+# Event BeginPlay (its GUID from find-nodes-in-graph) -> the new Print String (nodeGuid and pinGuid from step 2).
+# "then" and "execute" are the stable exec pin names; pinGuid is still required but may be any value here.
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -153,88 +231,29 @@ curl -X POST http://localhost:27000/mcp \
         "connections": [
           {
             "from": {
-              "nodeGuid": "AAE5F1A04B2E8F9E003C6B8F12345678",
-              "pinGuid": "BBE5F1A04B2E8F9E003C6B8F12345678"
+              "nodeGuid": "157CF7BA-49F8-CE45-71C9-61AAEA82547F",
+              "pinGuid": "00000000000000000000000000000000",
+              "pinName": "then"
             },
             "to": {
-              "nodeGuid": "CCE5F1A04B2E8F9E003C6B8F12345678",
-              "pinGuid": "DDE5F1A04B2E8F9E003C6B8F12345678"
+              "nodeGuid": "C834682D4F58EDB4003504B4BBAFA0E2",
+              "pinGuid": "0F84CF304BC3158E5EB4BD9B391399C6"
             }
           }
         ],
         "options": {
-          "transactionName": "Wire up print logic",
-          "breakExistingLinks": true
+          "transactionName": "Wire up print logic"
         }
-      }
-    },
-    "id": 1
-  }'
-```
-
-## Setting Pin Values
-
-### Set String Value Example
-```bash
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "set-input-pin-value",
-      "arguments": {
-        "nodeGuid": "AAE5F1A04B2E8F9E003C6B8F12345678",
-        "pinGuid": "BBE5F1A04B2E8F9E003C6B8F12345678",
-        "value": "Hello, World!"
-      }
-    },
-    "id": 1
-  }'
-```
-
-### Set Numeric Value Example
-```bash
-# Integer value
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "set-input-pin-value",
-      "arguments": {
-        "nodeGuid": "AAE5F1A04B2E8F9E003C6B8F12345678",
-        "pinGuid": "CCE5F1A04B2E8F9E003C6B8F12345678",
-        "value": "42"
-      }
-    },
-    "id": 2
-  }'
-
-# Float value
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "set-input-pin-value",
-      "arguments": {
-        "nodeGuid": "AAE5F1A04B2E8F9E003C6B8F12345678",
-        "pinGuid": "DDE5F1A04B2E8F9E003C6B8F12345678",
-        "value": "3.14159"
       }
     },
     "id": 3
   }'
 ```
 
-### Set Boolean Value Example
+## Setting Pin Values
+
 ```bash
+# String
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -244,26 +263,57 @@ curl -X POST http://localhost:27000/mcp \
     "params": {
       "name": "set-input-pin-value",
       "arguments": {
-        "nodeGuid": "AAE5F1A04B2E8F9E003C6B8F12345678",
-        "pinGuid": "EEE5F1A04B2E8F9E003C6B8F12345678",
-        "value": "true"
+        "nodeGuid": "C834682D4F58EDB4003504B4BBAFA0E2",
+        "pinGuid": "3816AA754BFEE034ED699495F9A9C480",
+        "value": "Hello, World!"
       }
     },
-    "id": 4
+    "id": 1
+  }'
+
+# Float, found by pin name
+curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "set-input-pin-value",
+      "arguments": {
+        "nodeGuid": "C834682D4F58EDB4003504B4BBAFA0E2",
+        "pinGuid": "00000000000000000000000000000000",
+        "pinName": "Duration",
+        "value": "3.5"
+      }
+    },
+    "id": 2
+  }'
+
+# Boolean
+curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "set-input-pin-value",
+      "arguments": {
+        "nodeGuid": "C834682D4F58EDB4003504B4BBAFA0E2",
+        "pinGuid": "00000000000000000000000000000000",
+        "pinName": "bPrintToScreen",
+        "value": "false"
+      }
+    },
+    "id": 3
   }'
 ```
-
-### Pin Value Rules
-- Only input pins can have default values set
-- Connected pins ignore default values (disconnect first)
-- Execution pins cannot have default values
-- Container pins (arrays, sets, maps) cannot have inline defaults
-- Reference pins (by-ref parameters) typically cannot have defaults
 
 ## Node Deletion
 
-### Delete Single Node Example
 ```bash
+# One node; add more GUIDs to the array to delete several in one transaction
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -273,58 +323,13 @@ curl -X POST http://localhost:27000/mcp \
     "params": {
       "name": "delete-blueprint-node",
       "arguments": {
-        "nodeGuids": ["AAE5F1A04B2E8F9E003C6B8F12345678"]
+        "nodeGuids": ["C834682D4F58EDB4003504B4BBAFA0E2"]
       }
     },
     "id": 1
   }'
-```
 
-### Delete Multiple Nodes Example
-```bash
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "delete-blueprint-node",
-      "arguments": {
-        "nodeGuids": [
-          "AAE5F1A04B2E8F9E003C6B8F12345678",
-          "BBE5F1A04B2E8F9E003C6B8F12345679",
-          "CCE5F1A04B2E8F9E003C6B8F12345680"
-        ]
-      }
-    },
-    "id": 1
-  }'
-```
-
-### Delete with Connection Preservation
-When deleting nodes in the middle of a flow, preserve connections:
-```bash
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "delete-blueprint-node",
-      "arguments": {
-        "nodeGuids": ["AAE5F1A04B2E8F9E003C6B8F12345678"],
-        "preserveConnections": true
-      }
-    },
-    "id": 1
-  }'
-```
-
-### Force Delete Protected Nodes
-Override protection for system nodes (use with caution):
-```bash
+# Protected nodes (function entry and result) need force; use with caution
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -338,19 +343,12 @@ curl -X POST http://localhost:27000/mcp \
         "force": true
       }
     },
-    "id": 1
+    "id": 2
   }'
 ```
-
-### Node Deletion Rules
-- **Protected Nodes**: Function entry/result nodes cannot be deleted without force
-- **Connection Preservation**: Only works for compatible pin types
-- **Batch Operations**: All deletions occur in a single transaction
-- **Undo Support**: Full undo/redo support via Unreal's transaction system
 
 ## Comment Node Creation
 
-### Create Comment with Default Settings
 ```bash
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
@@ -362,37 +360,10 @@ curl -X POST http://localhost:27000/mcp \
       "name": "create-comment-node",
       "arguments": {
         "nodeGuids": [
-          "AAE5F1A04B2E8F9E003C6B8F12345678",
-          "BBE5F1A04B2E8F9E003C6B8F12345679"
-        ]
-      }
-    },
-    "id": 1
-  }'
-```
-
-### Create Colored Comment with Custom Text
-```bash
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "create-comment-node",
-      "arguments": {
-        "nodeGuids": [
-          "AAE5F1A04B2E8F9E003C6B8F12345678",
-          "BBE5F1A04B2E8F9E003C6B8F12345679",
-          "CCE5F1A04B2E8F9E003C6B8F12345680"
+          "C834682D4F58EDB4003504B4BBAFA0E2",
+          "E53BA7E5495E43514793BAABDBDDDE98"
         ],
         "commentText": "Player Input Handling",
-        "color": {
-          "r": 0.2,
-          "g": 0.8,
-          "b": 0.2
-        },
         "fontSize": 24,
         "moveMode": "group"
       }
@@ -401,23 +372,12 @@ curl -X POST http://localhost:27000/mcp \
   }'
 ```
 
-### Comment Node Workflow
-1. Call `get-focused-blueprint` to get node GUIDs and understand graph structure
-2. Identify nodes to group by their GUIDs
-3. Create comment node with desired settings
-4. Comment automatically sizes and positions around selected nodes
-
-### Comment Node Features
-- **Group Movement**: When `moveMode` is "group", moving the comment moves all contained nodes
-- **No Group Movement**: When `moveMode` is "none", comment acts as visual annotation only
-- **Auto-sizing**: Comment automatically calculates bounds to encompass all specified nodes
-- **Color Coding**: Use colors to categorize different logic sections
-- **Nested Comments**: Comments support depth layering for organization
+The tool's description asks agents not to set `color` unless the user wants one.
 
 ## Finding Nodes in Graph
 
-### Search by Keywords
 ```bash
+# By keywords
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -427,18 +387,14 @@ curl -X POST http://localhost:27000/mcp \
     "params": {
       "name": "find-nodes-in-graph",
       "arguments": {
-        "searchTerms": ["print", "debug"],
-        "searchType": "keyword",
-        "caseSensitive": false,
+        "searchTerms": ["BeginPlay", "print string"],
         "maxResults": 10
       }
     },
     "id": 1
   }'
-```
 
-### Search by Node GUIDs
-```bash
+# By node GUID (with or without hyphens)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -448,40 +404,40 @@ curl -X POST http://localhost:27000/mcp \
     "params": {
       "name": "find-nodes-in-graph",
       "arguments": {
-        "searchTerms": ["AAE5F1A0-4B2E-8F9E-003C-6B8F12345678"],
+        "searchTerms": ["157CF7BA-49F8-CE45-71C9-61AAEA82547F"],
         "searchType": "guid"
       }
     },
-    "id": 1
+    "id": 2
   }'
 ```
 
-### Find Nodes Workflow
-1. Use `find-nodes-in-graph` to search for specific nodes
-2. Get detailed node information including GUIDs and pin IDs
-3. Use node/pin GUIDs with other tools like `connect-pins` or `set-input-pin-value`
-4. More efficient than calling `get-focused-blueprint` for large graphs
-
 ## Common Patterns
 
-### Building a Simple Print Debug Flow
-1. Search for "Event BeginPlay"
-2. Add Event BeginPlay node
-3. Search for "Print String"
-4. Add Print String node
-5. Connect execution pins
-6. Set string value on Print String node
+### A Print on BeginPlay in a new Actor Blueprint
+1. `find-nodes-in-graph` `["BeginPlay"]`: the default Event BeginPlay is there, `"disabled": true`; keep its `ids.guid`
+2. `search-blueprint-nodes` `print string`, then `add-bp-node-to-active-graph` with its `actionIdentifier`
+3. `connect-pins` BeginPlay `then` -> Print String `execute`
+4. `set-input-pin-value` on `InString`
 
 ### Working with Variables
-1. Search for variable getter/setter nodes
-2. Add variable nodes to graph
-3. Connect data pins to function parameters
-4. Chain execution through multiple operations
+Local variables: `create-get-local-function-variable-node` / `create-set-local-function-variable-node` return a node
+GUID and pin GUIDs to wire. Member variables: search for the variable's Get or Set action with
+`search-blueprint-nodes` and add it with `add-bp-node-to-active-graph`, which returns usable GUIDs; the member
+variable node tools cannot be wired yet (card 0155, `../Variables/AGENTS.md`).
+
+## Undo, Compile and Save
+
+- Each editing call is one editor undo step: connect-pins, set-input-pin-value, delete-blueprint-node and
+  create-comment-node open an `FScopedTransaction`; add-bp-node-to-active-graph uses the engine's own "Add Node"
+  transaction (`FBlueprintActionMenuItem::PerformAction`).
+- search-blueprint-nodes and find-nodes-in-graph are read-only.
+- Every successful edit compiles the Blueprint synchronously and marks its package dirty
+  (`FN2CMcpBlueprintUtils::MarkBlueprintAsModifiedAndCompile`); connect-pins compiles once per connection made
+  (card 0151). Nothing is saved: use `save-blueprint`.
 
 ## Implementation Notes
 
-- Node search uses Unreal's action database system
-- Action identifiers use `>` as delimiter for menu paths
-- Node placement respects graph zoom and pan state
-- Pin connections validate type compatibility
-- All operations use transactions for undo support
+- Node search reads the Blueprint action database through `FBlueprintActionMenuBuilder`; add-bp-node-to-active-graph
+  rebuilds the same list for the focused graph and calls `PerformAction` on the matching action
+- Pin connections are checked by the graph schema (`CanCreateConnection`) and made with `TryCreateConnection`

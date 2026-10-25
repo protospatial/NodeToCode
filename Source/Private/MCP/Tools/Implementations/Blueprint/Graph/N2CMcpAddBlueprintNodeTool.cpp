@@ -51,7 +51,7 @@ FMcpToolDefinition FN2CMcpAddBlueprintNodeTool::GetDefinition() const
     // actionIdentifier property (required)
     TSharedPtr<FJsonObject> ActionIdProp = MakeShareable(new FJsonObject);
     ActionIdProp->SetStringField(TEXT("type"), TEXT("string"));
-    ActionIdProp->SetStringField(TEXT("description"), TEXT("The unique action identifier obtained from the spawnMetadata.actionIdentifier field in search-blueprint-nodes results. This MUST be the exact value from the search results."));
+    ActionIdProp->SetStringField(TEXT("description"), TEXT("The unique action identifier obtained from the spawnMetadata.actionIdentifier field in search-blueprint-nodes results. This MUST be the exact value from the search results, including the carriage returns (\\r) before each '>' that it has on Windows."));
     Properties->SetObjectField(TEXT("actionIdentifier"), ActionIdProp);
     
     // location property (optional)

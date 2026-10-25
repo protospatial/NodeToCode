@@ -60,7 +60,7 @@ FMcpToolDefinition FN2CMcpFindNodesInGraphTool::GetDefinition() const
     
     TSharedPtr<FJsonObject> MaxResultsObj = Schema->GetObjectField(TEXT("properties"))->GetObjectField(TEXT("maxResults"));
     MaxResultsObj->SetStringField(TEXT("description"), TEXT("Maximum number of nodes to return"));
-    MaxResultsObj->SetNumberField(TEXT("default"), 10);
+    MaxResultsObj->SetNumberField(TEXT("default"), 50);
     MaxResultsObj->SetNumberField(TEXT("minimum"), 1);
     MaxResultsObj->SetNumberField(TEXT("maximum"), 200);
     

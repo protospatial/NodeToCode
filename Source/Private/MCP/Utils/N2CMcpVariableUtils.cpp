@@ -97,7 +97,7 @@ void FN2CMcpVariableUtils::AddContainerTypeSchemaProperties(TSharedPtr<FJsonObje
 	// mapKeyTypeIdentifier property (for map key type)
 	TSharedPtr<FJsonObject> MapKeyTypeProp = MakeShareable(new FJsonObject);
 	MapKeyTypeProp->SetStringField(TEXT("type"), TEXT("string"));
-	MapKeyTypeProp->SetStringField(TEXT("description"), TEXT("For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', '/Script/CoreUObject.Guid'). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'."));
+	MapKeyTypeProp->SetStringField(TEXT("description"), TEXT("For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor'; bool, text and struct keys are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'."));
 	MapKeyTypeProp->SetStringField(TEXT("default"), TEXT("")); // No default, conditionally required
 	Properties->SetObjectField(TEXT("mapKeyTypeIdentifier"), MapKeyTypeProp);
 }
