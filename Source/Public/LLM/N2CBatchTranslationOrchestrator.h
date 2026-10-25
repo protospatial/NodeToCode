@@ -179,9 +179,6 @@ private:
 	/** Get the base path for translations */
 	FString GetTranslationBasePath() const;
 
-	/** Get file extension for current target language */
-	FString GetFileExtensionForLanguage() const;
-
 	/** Ensure a directory exists */
 	bool EnsureDirectoryExists(const FString& DirectoryPath) const;
 

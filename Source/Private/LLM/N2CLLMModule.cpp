@@ -374,6 +374,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     // Get the target language from settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+    LatestTranslationLanguage = TargetLanguage;
     
     // Save each graph's files
     for (const FN2CGraphTranslation& Graph : Response.Graphs)
@@ -474,23 +475,7 @@ FString UN2CLLMModule::GetTranslationBasePath() const
 
 FString UN2CLLMModule::GetFileExtensionForLanguage(EN2CCodeLanguage Language) const
 {
-    switch (Language)
-    {
-        case EN2CCodeLanguage::Cpp:
-            return TEXT(".cpp");
-        case EN2CCodeLanguage::Python:
-            return TEXT(".py");
-        case EN2CCodeLanguage::JavaScript:
-            return TEXT(".js");
-        case EN2CCodeLanguage::CSharp:
-            return TEXT(".cs");
-        case EN2CCodeLanguage::Swift:
-            return TEXT(".swift");
-        case EN2CCodeLanguage::Pseudocode:
-            return TEXT(".md");
-        default:
-            return TEXT(".txt");
-    }
+    return FN2CPathUtils::GetFileExtensionForLanguage(Language);
 }
 
 bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const

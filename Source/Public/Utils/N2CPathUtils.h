@@ -37,6 +37,34 @@ public:
     static FString GetFileExtensionForLanguage(EN2CCodeLanguage Language);
 
     /**
+     * Every extension a saved implementation file of this language may have, the one GetFileExtensionForLanguage
+     * writes first. Older 2.0 builds' loader looked for Pseudocode as .txt, so .txt follows .md for Pseudocode.
+     */
+    static TArray<FString> GetTranslationFileExtensions(EN2CCodeLanguage Language);
+
+    /**
+     * The language id translation records store (the enum's short name: Cpp, Python, JavaScript, CSharp, Swift,
+     * Pseudocode). Every writer of a translation record uses it, and ParseLanguageId reads it back.
+     */
+    static FString GetLanguageId(EN2CCodeLanguage Language);
+
+    /**
+     * Read a stored language id, ignoring case: the short name GetLanguageId writes, the enum-qualified form older
+     * batch translations stored (EN2CCodeLanguage::Python), the display name (C++, C#) and CPP, which the main
+     * window stored for every language. False for an empty or unknown id (OutLanguage is then Cpp).
+     */
+    static bool ParseLanguageId(const FString& Id, EN2CCodeLanguage& OutLanguage);
+
+    /**
+     * The output path a translation record stores for a graph folder: relative to the project folder when the folder
+     * is inside it, else the absolute path (a custom output directory can be anywhere).
+     */
+    static FString MakeTranslationRecordPath(const FString& GraphDirectory);
+
+    /** The absolute graph folder for a stored output path: relative paths are under the project folder. */
+    static FString ResolveTranslationRecordPath(const FString& RecordPath);
+
+    /**
      * True for paths MCP clients must never read or list because they hold credentials:
      * <ProjectSaved>/NodeToCode/User (where 1.x kept secrets), <UserSettingsDir>/NodeToCode (the per-user secret
      * store, FN2CSecretStore), any secrets.json* file, <Project>/.git, and .env files.

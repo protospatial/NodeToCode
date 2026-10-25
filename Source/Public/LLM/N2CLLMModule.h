@@ -88,6 +88,9 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     FString GetLatestTranslationPath() const { return LatestTranslationPath; }
 
+    /** The language the latest translation's implementation files were saved as */
+    EN2CCodeLanguage GetLatestTranslationLanguage() const { return LatestTranslationLanguage; }
+
     /** Open the latest translation folder in file explorer */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
     void OpenTranslationFolder(bool& Success);
@@ -156,6 +159,9 @@ private:
     /** Path to the latest translation */
     UPROPERTY()
     FString LatestTranslationPath;
+
+    /** Language of the latest saved translation */
+    EN2CCodeLanguage LatestTranslationLanguage = EN2CCodeLanguage::Cpp;
     
     /** Initialization state */
     bool bIsInitialized;
