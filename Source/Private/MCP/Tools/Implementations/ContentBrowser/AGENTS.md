@@ -1,120 +1,181 @@
 # Content Browser Tools
 
-This directory contains MCP tools for interacting with Unreal Engine's Content Browser. These tools enable navigation, asset discovery, and Blueprint opening through the content browser interface.
+This directory contains the MCP tools in the 'Content Browser' category: navigation, asset discovery, opening
+Blueprints, and folder and asset operations. In dynamic tool discovery, enabling 'Content Browser' gives all ten
+tools below, `move-asset` included.
 
 ## Available Tools
 
 ### open-content-browser-path
-- **Description**: Opens a specified path in the focused content browser
+- **Description**: Opens a path in the primary content browser
 - **Parameters**:
-  - `path` (required): Content browser path (e.g., '/Game/Blueprints')
-  - `select_item` (optional): Specific item to select
-  - `create_if_missing` (optional): Create folder if it doesn't exist
-- **Returns**: Navigation status and selected paths
+  - `path` (required): Content browser folder (e.g., '/Game/Blueprints'); see "Content Browser Paths"
+  - `select_item` (optional): Asset to select after navigating, given as `AssetName.AssetName` (object form). A bare
+    `AssetName` is not found (`FN2CMcpContentBrowserUtils::SelectAssetAtPath` looks it up as an object path), and the
+    call still succeeds with `selected_item` empty
+  - `create_if_missing` (optional, default false): Create the folder if it does not exist
+- **Returns**: `success`, `navigated_path` (the normalized path), `selected_item`, `created_folder`,
+  `current_selected_paths` (the browser's selected folders, as `/All/...` virtual paths)
 - **Use Case**: Programmatic content browser navigation
 
 ### read-content-browser-path
-- **Description**: Returns assets and folders at a content browser path
+- **Description**: Lists the assets of every type and the subfolders directly inside a folder (not recursive)
 - **Parameters**:
-  - `path` (required): Content browser path to read
-  - `page` (optional): Page number for pagination
-  - `page_size` (optional): Items per page (1-200)
-  - `filter_type` (optional): Filter by asset type
-  - `filter_name` (optional): Filter by name contains
-  - `sync_browser` (optional): Sync content browser to path
-- **Returns**: Paginated list of assets and folders
+  - `path` (required): Content browser folder to read
+  - `page` (optional, default 1): Page number; a page past the end is an error (`Page N is out of range`)
+  - `page_size` (optional, default 50): Items per page, 1-200; anything else fails with `Invalid arguments`
+  - `filter_type` (optional, default `All`): `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh` or `Folder`.
+    Spell it exactly: `All` and `Folder` are compared case-sensitively when choosing whether folders are listed, so
+    `all` returns the assets without the folders and `folder` returns nothing. Any other value returns nothing.
+    `Blueprint`, `Material`, `Texture` and `StaticMesh` keep assets whose class name contains that word
+    (`Material` leaves out `MaterialFunction`)
+  - `filter_name` (optional): Keep items whose name contains this text (case-insensitive)
+  - `sync_browser` (optional, default true): Sync the primary content browser to the path
+- **Returns**: `items` (each with `path`, `name`, `is_folder`, `type`, `class`, and `native_class` for assets),
+  `total_count`, `page`, `page_size`, `has_more`
 - **Use Case**: Discovering and filtering content
 
 ### open-blueprint-asset
 - **Description**: Opens a Blueprint asset in the Blueprint Editor
 - **Parameters**:
-  - `asset_path` (required): Full asset path
-  - `bring_to_front` (optional): Bring editor to front
-  - `focus_graph` (optional): Specific graph to focus
-- **Returns**: Blueprint information and editor state
+  - `asset_path` (required): Object path (`/Game/Folder/BP_Name.BP_Name`) or package path (`/Game/Folder/BP_Name`).
+    `FN2CMcpOpenBlueprintAssetTool::ValidateBlueprintAssetPath` accepts only paths starting with `/Game/`, `/Engine/`
+    or `/Plugin`, so Blueprints in a plugin mounted at `/<PluginName>/` are refused
+  - `bring_to_front` (optional, default true): Focus the editor window
+  - `focus_graph` (optional): Name of an event, function, macro or delegate graph to focus, matched
+    case-insensitively (`FN2CMcpOpenBlueprintAssetTool::FocusOnGraph`). An Actor's construction script is the function
+    graph `UserConstructionScript`. An unknown name is not an error: the Blueprint opens and `focused_graph` is empty
+- **Returns**: `success`, `asset_path`, `editor_id`, `focused_graph`, `asset_type`, `blueprint_name`, `parent_class`,
+  `graph_counts` (`event_graphs`, `function_graphs`, `macro_graphs`, `delegate_graphs`). A non-Blueprint asset fails
+  with `Asset is not a blueprint`
 - **Use Case**: Opening Blueprints for editing
 
 ### search-content-browser
-- **Description**: Search for assets across the entire content browser by name or type
+- **Description**: Searches assets under `/Game`, plus `/Engine` when `includeEngineContent` is true, by name or type
 - **Parameters**:
-  - `query` (optional): Search query for asset names (partial match, case-insensitive)
-  - `assetType` (optional): Filter by type (All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable)
-  - `includeEngineContent` (optional, default: false): Include Engine content in search
-  - `includePluginContent` (optional, default: true): Include Plugin content in search
-  - `maxResults` (optional, default: 50): Maximum results to return (1-200)
-- **Returns**: Ranked search results with relevance scores
-- **Use Case**: Finding assets across entire project
+  - `query` (optional): Matched against asset names and package paths (partial, case-insensitive); empty lists all
+    assets of the type
+  - `assetType` (optional, default `All`): `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh`, `SkeletalMesh`,
+    `Sound`, `Animation`, `ParticleSystem`, `DataAsset`, `DataTable`, compared case-insensitively. Each maps to exact
+    asset classes in an `FARFilter` (`FN2CMcpSearchContentBrowserTool::SearchAssets`), so `Blueprint` does not
+    include Widget or Animation Blueprints; any other value applies no type filter
+  - `includeEngineContent` (optional, default false): Also search `/Engine`
+  - `includePluginContent` (optional, default true): Has no effect. `SearchAssets` only puts `/Game` (and `/Engine`)
+    in the filter's package paths, so plugin content mounted at `/<PluginName>` is never returned, whatever this is
+    set to. List plugin content with `read-content-browser-path` on `/<PluginName>`
+  - `maxResults` (optional, default 50): Clamped to 1-200
+- **Returns**: `searchInfo` (`query`, `assetType`, `includeEngineContent`, `includePluginContent`, `totalFound`,
+  `resultsReturned`), `assets` sorted by `relevanceScore` (each with `name`, `path`, `type`, `class`, `relevanceScore`
+  and `metadata`: `folder`, `objectPath`, and for Blueprints `parentClass` and `blueprintType` when the registry has
+  them), `tips`
+- **Use Case**: Finding assets across the project
 
 ### copy-asset
-- **Description**: Copy an asset to a new location in the content browser
+- **Description**: Copies an asset to a new asset path
 - **Parameters**:
-  - `sourcePath` (required): Source asset path (supports both package and object path formats)
-  - `destinationPath` (required): Destination asset path where the copy will be created
-  - `overwriteExisting` (optional, default: false): Whether to overwrite if destination exists
-- **Returns**: Copy operation result with new asset details
-- **Use Case**: Duplicating assets, creating variations, organizing content
+  - `sourcePath` (required): Package path or object path, under `/Game/` or `/Engine/`
+  - `destinationPath` (required): Package path of the new asset including its name (e.g.,
+    `/Game/Folder/BP_Copy`); it must start with `/Game/` (`FN2CMcpCopyAssetTool::ValidateDestinationPath`), its name
+    may not contain spaces or dots, and missing folders are created
+  - `overwriteExisting` (optional, default false): With false, an existing destination is reported before copying
+    (`Destination asset already exists`). With true that check is skipped, but `UEditorAssetSubsystem::DuplicateAsset`
+    never replaces an existing asset, so the copy fails (`Failed to copy asset ...`) and the existing asset is left
+    as it was. There is no way to overwrite through this tool
+- **Returns**: `message`, `sourcePath`, `destinationPath`, `assetName`, `assetClass`, `tips`
+- **Use Case**: Duplicating assets, creating variations
 
 ### create-folder
-- **Description**: Create a new folder in the content browser
+- **Description**: Creates a folder in the content browser and navigates to it
 - **Parameters**:
-  - `folderPath` (required): Path where the folder should be created (e.g., '/Game/NewFolder')
-  - `createParents` (optional, default: false): Create missing parent folders if they don't exist
-- **Returns**: Creation result with folder path and navigation status
-- **Use Case**: Organizing content, creating project structure, preparing locations for assets
+  - `folderPath` (required): Folder to create, under `/Game/` (`/Game` itself, `/Engine/...` and plugin mount points
+    are refused by `FN2CMcpCreateFolderTool::ValidateFolderPath`); no `..`, `~`, `*`, `?` or dots in the name
+  - `createParents` (optional, default false): Create missing parent folders; without it a missing parent is an
+    error
+- **Returns**: `message`, `folderPath`, `navigated`, `tips`. An existing folder is an error
+- **Use Case**: Organizing content, preparing locations for assets
 
 ### move-folder
-- **Description**: Move a folder and all its contents to a new location in the content browser
+- **Description**: Moves the assets of a folder (recursively) into `<destinationPath>/<folder name>`
 - **Parameters**:
-  - `sourcePath` (required): Source folder path to move (e.g., '/Game/OldFolder')
-  - `destinationPath` (required): Destination parent path where the folder will be moved (e.g., '/Game/NewLocation')
-  - `showNotification` (optional, default: true): Show a notification after the move operation
-- **Returns**: Move operation result with source/destination paths and number of assets moved
-- **Use Case**: Reorganizing content structure, moving folders between projects/plugins, consolidating assets
+  - `sourcePath` (required): Folder to move, under `/Game/` (not `/Game` itself)
+  - `destinationPath` (required): Parent folder under `/Game/`; created if missing. `<destinationPath>/<folder name>`
+    must not exist yet
+  - `showNotification` (optional, default true): Show an editor notification
+- **Returns**: `message`, `sourcePath`, `destinationPath` (the new folder path), `assetsMoved`, `navigated`, `tips`
+- **Behaviour** (`FN2CMcpMoveFolderTool::MoveFolderContents`): each asset is renamed into the new folder; the source
+  folder is left behind, empty, and a folder with no assets moves nothing (the call still succeeds, with
+  `assetsMoved` 0, and no new folder appears)
+- **Use Case**: Reorganizing content structure
+
+### move-asset
+- **Description**: Moves or renames an asset (`UEditorAssetSubsystem::RenameAsset`, which updates references)
+- **Parameters**:
+  - `sourcePath` (required): Package path `/Game/Folder/Asset` (as `read-content-browser-path` returns it) or object
+    path `/Game/Folder/Asset.Asset`. With an object path, also pass `newName`: without it
+    `FN2CMcpMoveAssetTool::Execute` takes the name from the path including `.Asset`, and the move fails
+  - `destinationPath` (required): Destination folder (e.g., '/Game/Blueprints/Characters'); created if missing
+  - `newName` (optional): New asset name (default: the source's name)
+  - `showNotification` (optional, default true): Show an editor notification
+- **Returns**: `success`, `oldPath`, `newPath` (package paths), `objectPath`, `operation` (`move`, or `rename` when
+  the folder is unchanged), `leftRedirector` (always false), `assetInfo`, `nextSteps`. An existing asset at the
+  destination is an error
+- **Use Case**: Reorganizing project assets, renaming Blueprints and other content
 
 ### rename-asset
-- **Description**: Rename an asset or move it to a new location
+- **Description**: Renames an asset in place, or moves it to a full new asset path
 - **Parameters**:
-  - `sourcePath` (required): Source asset path (supports both package and object path formats)
-  - `newName` (optional): New name for the asset (keeps in same folder)
-  - `destinationPath` (optional): Full destination path to move and rename
-  - `showNotification` (optional, default: true): Show a notification after the rename operation
-- **Returns**: Rename operation result with old/new paths and navigation status
-- **Use Case**: Renaming assets, moving assets to different folders, fixing naming conventions
-- **Note**: Provide either `newName` OR `destinationPath`, not both
+  - `sourcePath` (required): Package or object path under `/Game/` (`/Engine/` assets are refused)
+  - `newName` (optional): New name in the same folder
+  - `destinationPath` (optional): Full new package path including the name, under `/Game/`; missing folders are
+    created
+  - `showNotification` (optional, default true): Show an editor notification
+- **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetSelected`, `wasMoved`, `tips`
+- **Note**: Give exactly one of `newName` and `destinationPath`; both, or neither, is an error
+- **Use Case**: Renaming assets, fixing naming conventions
 
 ### rename-folder
-- **Description**: Rename a folder in the content browser
+- **Description**: Renames a folder by moving its assets (recursively) to a sibling folder
 - **Parameters**:
-  - `sourcePath` (required): Source folder path to rename (e.g., '/Game/OldFolderName')
-  - `newName` (required): New name for the folder
-  - `showNotification` (optional, default: true): Show a notification after the rename operation
-- **Returns**: Rename operation result with old/new paths and number of assets renamed
-- **Use Case**: Fixing folder naming, reorganizing project structure, standardizing naming conventions
+  - `sourcePath` (required): Folder under `/Game/` (not `/Game` itself)
+  - `newName` (required): New folder name (no slashes, dots, spaces, `~`, `*`, `?`, and not a reserved device name)
+  - `showNotification` (optional, default true): Show an editor notification
+- **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetsRenamed`, `navigated`, `tips`
+- **Behaviour** (`FN2CMcpRenameFolderTool::MoveFolderContents`): as for `move-folder`, the old folder is left behind,
+  empty, and a folder with no assets is not renamed although the call succeeds
+- **Use Case**: Fixing folder naming
 
 ## Content Browser Paths
 
 ### Valid Path Roots
+`open-content-browser-path` and `read-content-browser-path` accept any mounted content root:
+`FN2CMcpContentBrowserUtils::ValidateContentPath` normalizes the path, and `FPackageName::IsValidLongPackageName`
+refuses roots that are not mounted (the error lists the mounted ones). That covers:
 - `/Game` - Project content
 - `/Engine` - Engine content
-- `/EnginePresets` - Engine preset content
-- `/Paper2D` - Paper2D plugin content
-- `/NodeToCode` - NodeToCode plugin content
-- `/Plugins` - Other plugin content
+- `/<PluginName>` - Content of an enabled plugin with content, e.g. `/NodeToCode`, `/Paper2D`, `/Niagara`
+
+There is no `/Plugins` root: `/Plugins` is refused (plugin content mounts at `/<PluginName>`; the `/All/Plugins/...`
+paths in `current_selected_paths` are the browser's virtual view, not package paths).
+
+The asset tools are narrower: `copy-asset`, `create-folder`, `move-folder`, `rename-asset` and `rename-folder` write
+only under `/Game/` (their checks also accept a path containing `/Plugins/`, which no mounted root does), and
+`open-blueprint-asset` reads only `/Game/`, `/Engine/` and paths starting with `/Plugin`.
 
 ### Path Format
-- Must start with `/`
-- Use forward slashes
-- No `..` traversal allowed
-- Case-sensitive
+- Package paths start with a root; `NormalizeContentPath` turns backslashes into slashes, drops a trailing slash and
+  adds a missing leading `/` for the navigation and listing tools
+- `..` (and any other dot) is refused by `IsValidLongPackageName` for folder paths
+- Not case-sensitive: package names are matched case-insensitively (`/game/n2cdocprobe` opens `/Game/N2CDocProbe`);
+  `read-content-browser-path` echoes the spelling you sent in each item's `path`
 
 ## Asset Types for Filtering
 
-- `"All"` - All asset types
-- `"Blueprint"` - Blueprint classes
-- `"Material"` - Materials and instances
-- `"Texture"` - Texture assets
-- `"StaticMesh"` - Static mesh assets
+`read-content-browser-path` (`filter_type`, exact spelling):
+- `"All"` - Assets and folders
+- `"Blueprint"`, `"Material"`, `"Texture"`, `"StaticMesh"` - Assets whose class name contains the word
 - `"Folder"` - Folders only
+
+`search-content-browser` (`assetType`, any case) has its own list; see the tool above.
 
 ## Usage Examples
 
@@ -212,7 +273,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# Open and focus specific graph
+# Open and focus the construction script (an Actor's function graph UserConstructionScript)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -223,7 +284,7 @@ curl -X POST http://localhost:27000/mcp \
       "name": "open-blueprint-asset",
       "arguments": {
         "asset_path": "/Game/Blueprints/BP_GameMode.BP_GameMode",
-        "focus_graph": "ConstructionScript"
+        "focus_graph": "UserConstructionScript"
       }
     },
     "id": 2
@@ -289,7 +350,7 @@ read-content-browser-path "/Game/Blueprints" filter_name="Player"
 open-blueprint-asset "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter"
 
 # 5. Focus on specific functionality
-open-blueprint-asset "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter" focus_graph="HandleInput"
+open-blueprint-asset "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter" focus_graph="HandleInput"   # a function graph
 ```
 
 ### Global Asset Search
@@ -365,23 +426,8 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# Copy with overwrite enabled
-curl -X POST http://localhost:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: $SID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "copy-asset",
-      "arguments": {
-        "sourcePath": "/Game/Materials/M_Base.M_Base",
-        "destinationPath": "/Game/Materials/Backup/M_Base_Backup",
-        "overwriteExisting": true
-      }
-    },
-    "id": 2
-  }'
+# A destination that already exists is an error, with or without "overwriteExisting": true;
+# copy to a new name, or rename or delete the existing asset first
 ```
 
 ### Creating Folders
@@ -490,6 +536,84 @@ curl -X POST http://localhost:27000/mcp \
     },
     "id": 3
   }'
+```
+
+### Moving Assets
+```bash
+# Move an asset to a different folder
+curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "move-asset",
+      "arguments": {
+        "sourcePath": "/Game/Characters/BP_Player",
+        "destinationPath": "/Game/Blueprints/Characters"
+      }
+    },
+    "id": 1
+  }'
+
+# Rename an asset (same directory)
+curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "move-asset",
+      "arguments": {
+        "sourcePath": "/Game/Blueprints/BP_OldName",
+        "destinationPath": "/Game/Blueprints",
+        "newName": "BP_NewName"
+      }
+    },
+    "id": 2
+  }'
+
+# Move and rename in one operation (an object path as source needs newName)
+curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "move-asset",
+      "arguments": {
+        "sourcePath": "/Game/Test/BP_TestActor.BP_TestActor",
+        "destinationPath": "/Game/Blueprints/Actors",
+        "newName": "BP_MyActor",
+        "showNotification": false
+      }
+    },
+    "id": 3
+  }'
+```
+
+### Asset Organization Workflow
+```bash
+# 1. Browse the current asset structure
+read-content-browser-path "/Game"
+
+# 2. Create an organized folder structure
+create-folder "/Game/Blueprints/Characters" createParents=true
+create-folder "/Game/Blueprints/Widgets"
+create-folder "/Game/Blueprints/GameModes"
+
+# 3. Move assets to organized locations
+move-asset "/Game/BP_Player" "/Game/Blueprints/Characters"
+move-asset "/Game/BP_Enemy" "/Game/Blueprints/Characters"
+move-asset "/Game/WBP_MainMenu" "/Game/Blueprints/Widgets"
+move-asset "/Game/GM_Main" "/Game/Blueprints/GameModes"
+
+# 4. Rename assets for consistency
+move-asset "/Game/Blueprints/Characters/PlayerCharacter" "/Game/Blueprints/Characters" "BP_PlayerCharacter"
+move-asset "/Game/Blueprints/GameModes/MainMode" "/Game/Blueprints/GameModes" "GM_MainMode"
 ```
 
 ### Renaming Assets
@@ -614,17 +738,19 @@ curl -X POST http://localhost:27000/mcp \
 - Used by: Asset registry, object references
 - Example: `/Game/Blueprints/BP_Player.BP_Player`
 
-**Note**: The copy-asset and move-asset tools accept both formats and will handle conversion automatically.
+**Note**: `copy-asset`, `rename-asset` and `open-blueprint-asset` accept either format for the source. `move-asset`
+accepts either, but needs `newName` with an object path. `open-content-browser-path`'s `select_item` needs the
+object form `AssetName.AssetName`.
 
 ## Implementation Notes
 
-- Content browser operations use `IContentBrowserSingleton`
-- Asset filtering uses `FARFilter` for efficient queries
-- Pagination prevents timeouts with large directories
-- Asset paths must include the asset name twice (UE convention) for object paths
-- All operations require Game Thread execution
-- Copy operations use `UEditorAssetSubsystem::DuplicateAsset`
-- Rename operations use `UEditorAssetSubsystem::RenameAsset`
-- Folder rename is implemented by moving all assets to a new folder path
-- Destination folders are created automatically if they don't exist
-- All asset references are automatically updated when renaming/moving
+- Path checks: `FN2CMcpContentBrowserUtils::ValidateContentPath` (navigation and listing) and each asset tool's own
+  `Validate*` functions (prefix checks on `/Game/`, `/Engine/`, `/Plugins/`)
+- Listing: `FN2CMcpContentBrowserUtils::EnumerateItemsAtPathAsJson` (folders from disk, assets from the asset
+  registry, immediate children only); pagination from `CalculatePagination`
+- Search: one `FARFilter` over `/Game` (and `/Engine`) with exact class paths, then name/path matching and scoring
+- Copy uses `UEditorAssetSubsystem::DuplicateAsset`, which never replaces an existing asset
+- Move and rename use `UEditorAssetSubsystem::RenameAsset` (`move-asset` falls back to `IAssetTools::RenameAssets`),
+  which updates references to the asset
+- Folder move and rename move each asset one by one; the old folder stays, empty, and an empty folder is not moved
+- All operations run on the game thread (`ExecuteOnGameThread`)

@@ -28,11 +28,9 @@ FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("search-content-browser"),
-		TEXT("Search for assets across the entire content browser by name or type")
-	,
-
+		TEXT("Search for assets under /Game (and /Engine when includeEngineContent is true) by name or type. ")
+		TEXT("Plugin content mounted at /<PluginName> is not searched; list it with read-content-browser-path."),
 		TEXT("Content Browser")
-
 	);
 
 	// Build input schema
@@ -44,13 +42,13 @@ FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 	// query property (optional)
 	TSharedPtr<FJsonObject> QueryProp = MakeShareable(new FJsonObject);
 	QueryProp->SetStringField(TEXT("type"), TEXT("string"));
-	QueryProp->SetStringField(TEXT("description"), TEXT("Search query to match against asset names (case-insensitive, partial match). Leave empty to list all assets of the specified type."));
+	QueryProp->SetStringField(TEXT("description"), TEXT("Search query matched against asset names and package paths (case-insensitive, partial match). Leave empty to list all assets of the specified type."));
 	Properties->SetObjectField(TEXT("query"), QueryProp);
 
 	// assetType property (optional)
 	TSharedPtr<FJsonObject> AssetTypeProp = MakeShareable(new FJsonObject);
 	AssetTypeProp->SetStringField(TEXT("type"), TEXT("string"));
-	AssetTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type: All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable"));
+	AssetTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each matches its exact asset classes only (Blueprint does not include Widget or Animation Blueprints); any other value applies no type filter."));
 	AssetTypeProp->SetStringField(TEXT("default"), TEXT("All"));
 	Properties->SetObjectField(TEXT("assetType"), AssetTypeProp);
 
@@ -64,15 +62,15 @@ FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 	// includePluginContent property
 	TSharedPtr<FJsonObject> IncludePluginProp = MakeShareable(new FJsonObject);
 	IncludePluginProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	IncludePluginProp->SetBoolField(TEXT("default"), false);
-	IncludePluginProp->SetStringField(TEXT("description"), TEXT("Include assets from Plugin content"));
+	IncludePluginProp->SetBoolField(TEXT("default"), true);
+	IncludePluginProp->SetStringField(TEXT("description"), TEXT("Has no effect at present: the search only covers /Game and, with includeEngineContent, /Engine, so plugin content mounted at /<PluginName> is never returned. Echoed in searchInfo."));
 	Properties->SetObjectField(TEXT("includePluginContent"), IncludePluginProp);
 
 	// maxResults property
 	TSharedPtr<FJsonObject> MaxResultsProp = MakeShareable(new FJsonObject);
 	MaxResultsProp->SetStringField(TEXT("type"), TEXT("number"));
 	MaxResultsProp->SetNumberField(TEXT("default"), 50);
-	MaxResultsProp->SetStringField(TEXT("description"), TEXT("Maximum number of results to return (1-200)"));
+	MaxResultsProp->SetStringField(TEXT("description"), TEXT("Maximum number of results to return; values outside 1-200 are clamped"));
 	Properties->SetObjectField(TEXT("maxResults"), MaxResultsProp);
 
 	Schema->SetObjectField(TEXT("properties"), Properties);
@@ -176,7 +174,7 @@ FMcpToolCallResult FN2CMcpSearchContentBrowserTool::Execute(const TSharedPtr<FJs
 
 		// Add usage tips
 		TArray<TSharedPtr<FJsonValue>> TipsArray;
-		TipsArray.Add(MakeShareable(new FJsonValueString(TEXT("Use 'open-blueprint' to open found Blueprint assets"))));
+		TipsArray.Add(MakeShareable(new FJsonValueString(TEXT("Use 'open-blueprint-asset' to open found Blueprint assets"))));
 		TipsArray.Add(MakeShareable(new FJsonValueString(TEXT("Use 'move-asset' to reorganize found assets"))));
 		TipsArray.Add(MakeShareable(new FJsonValueString(TEXT("Use 'read-content-browser-path' to explore specific folders"))));
 		Result->SetArrayField(TEXT("tips"), TipsArray);

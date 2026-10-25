@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("read-content-browser-path"),
-		TEXT("Returns blueprint assets and folders at the specified path in the content browser")
+		TEXT("Returns the assets of every type and the subfolders directly inside a content browser folder (not recursive), with paging and type and name filters")
 	,
 		TEXT("Content Browser")
 	);
@@ -30,7 +30,7 @@ FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 	// path property
 	TSharedPtr<FJsonObject> PathProp = MakeShareable(new FJsonObject);
 	PathProp->SetStringField(TEXT("type"), TEXT("string"));
-	PathProp->SetStringField(TEXT("description"), TEXT("Content browser path to read (e.g., '/Game/Blueprints')"));
+	PathProp->SetStringField(TEXT("description"), TEXT("Content browser folder to read (e.g., '/Game/Blueprints', '/Engine/BasicShapes', '/<PluginName>'); it must start with a mounted root and is matched case-insensitively"));
 	Properties->SetObjectField(TEXT("path"), PathProp);
 	
 	// page property
@@ -53,7 +53,7 @@ FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 	// filter_type property
 	TSharedPtr<FJsonObject> FilterTypeProp = MakeShareable(new FJsonObject);
 	FilterTypeProp->SetStringField(TEXT("type"), TEXT("string"));
-	FilterTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type"));
+	FilterTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type; spell the value exactly as listed ('folder' or 'all' in lower case leave the folders out)"));
 	TArray<TSharedPtr<FJsonValue>> FilterTypeEnum;
 	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("All"))));
 	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("Blueprint"))));
