@@ -2,6 +2,7 @@
 
 #include "N2CPythonBridge.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTagManager.h"
 #include "Core/N2CCapture.h"
@@ -600,9 +601,17 @@ FString UN2CPythonBridge::OpenBlueprint(const FString& BlueprintPath, const FStr
 		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: %s"), *OpenError));
 	}
 
+	// The editor must be this Blueprint's before anything is focused in it: an editor of another Blueprint would get
+	// this Blueprint's graph pushed into it (card 0150)
+	const TSharedPtr<FBlueprintEditor> Editor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+	if (!Editor.IsValid() || Editor != StaticCastSharedPtr<FBlueprintEditor>(BlueprintEditor) || Editor->GetBlueprintObj() != Blueprint)
+	{
+		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: the editor found does not edit %s"), *Blueprint->GetPathName()));
+	}
+
 	// Focus specific graph if requested
 	FString FocusedGraphName;
-	if (!FocusGraph.IsEmpty() && BlueprintEditor.IsValid())
+	if (!FocusGraph.IsEmpty())
 	{
 		UEdGraph* TargetGraph = nullptr;
 
@@ -644,16 +653,17 @@ FString UN2CPythonBridge::OpenBlueprint(const FString& BlueprintPath, const FStr
 
 		if (TargetGraph)
 		{
-			BlueprintEditor->JumpToHyperlink(TargetGraph, false);
-			FocusedGraphName = FocusGraph;
+			Editor->JumpToHyperlink(TargetGraph, false);
+			// Read back what the editor now shows rather than echo the request
+			if (Editor->GetFocusedGraph() == TargetGraph)
+			{
+				FocusedGraphName = TargetGraph->GetName();
+			}
 		}
 	}
 
 	// Bring to front
-	if (BlueprintEditor.IsValid())
-	{
-		BlueprintEditor->FocusWindow();
-	}
+	Editor->FocusWindow();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("OpenBlueprint: Opened %s"), *Blueprint->GetName()), EN2CLogSeverity::Info);
 
@@ -724,12 +734,14 @@ FString UN2CPythonBridge::OpenBlueprintFunction(const FString& FunctionName)
 		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: %s"), *OpenError));
 	}
 
-	// Navigate to the function graph
-	if (BlueprintEditor.IsValid())
+	// Navigate to the function graph, only in this Blueprint's own editor (card 0150)
+	const TSharedPtr<FBlueprintEditor> Editor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+	if (!Editor.IsValid() || Editor != StaticCastSharedPtr<FBlueprintEditor>(BlueprintEditor) || Editor->GetBlueprintObj() != Blueprint)
 	{
-		BlueprintEditor->JumpToHyperlink(FunctionGraph, false);
-		BlueprintEditor->FocusWindow();
+		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: the editor found does not edit %s"), *Blueprint->GetPathName()));
 	}
+	Editor->JumpToHyperlink(FunctionGraph, false);
+	Editor->FocusWindow();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("OpenBlueprintFunction: Opened %s in %s"), *FunctionName, *Blueprint->GetName()), EN2CLogSeverity::Info);
 

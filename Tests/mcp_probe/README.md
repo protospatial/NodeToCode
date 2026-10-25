@@ -232,6 +232,13 @@ its environment when no key is saved, so a live check never types or saves a key
   `bEnableMcpServer=False`: the server starts, no Python tool is listed, one warning each), `user` (Saved/Config
   True: run-python, save-python-script and delete-python-script are listed) and `both` (project True, user False:
   none). The host files are put back byte for byte. Report: `logs/live_user_settings_0423.json`.
+- `live_focus_0150.py --engine ... --project ... --label 5.8 [--no-cli]` (no provider key) checks that the focused
+  Blueprint follows what was opened last (card 0150): three in-memory Actor Blueprints under a fresh
+  `/Game/N2CTest/Focus0150_<time>` folder, opened in turn with open-blueprint-asset, re-opened while already open,
+  and opened through the bridge's `open_blueprint`; after each, get-focused-blueprint reads that Blueprint,
+  get-open-blueprint-editors marks only it `isFocused`, and every editor still shows its own graph. Then (without
+  `--no-cli`) `claude -p` with only `mcp__nodetocode__*` opens two of them and reads each; each read must be the one
+  opened just before. The editors are closed and the folder deleted. Report: `logs/live_focus_0150_<label>.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

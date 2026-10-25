@@ -1,29 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CEditorIntegration.h"
-#include "Toolkits/ToolkitManager.h"
-
-namespace
-{
-	/**
-	 * The Blueprint editor open on Asset, or null when the asset's editor is not a Blueprint editor.
-	 * UBlueprint subclasses can have their own toolkits (for example Control Rig with RigVM.UseNewEditor=1),
-	 * so an IAssetEditorInstance for a UBlueprint is not necessarily an FBlueprintEditor.
-	 */
-	FBlueprintEditor* FindBlueprintEditorFor(UObject* Asset)
-	{
-		if (!Asset)
-		{
-			return nullptr;
-		}
-		TSharedPtr<IToolkit> Toolkit = FToolkitManager::Get().FindEditorForAsset(Asset);
-		if (!Toolkit.IsValid() || !Toolkit->IsBlueprintEditor())
-		{
-			return nullptr;
-		}
-		return static_cast<FBlueprintEditor*>(Toolkit.Get());
-	}
-}
+#include "Core/N2CBlueprintEditorTracker.h"
 
 #include "BlueprintEditorModes.h"
 #include "Core/N2CNodeCollector.h"
@@ -58,22 +36,17 @@ FN2CEditorIntegration& FN2CEditorIntegration::Get()
 
 void FN2CEditorIntegration::StoreActiveBlueprintEditor(TWeakPtr<FBlueprintEditor> Editor)
 {
-    ActiveBlueprintEditor = Editor;
+    FN2CBlueprintEditorTracker::Get().NotifyEditorActivated(Editor.Pin());
 }
 
 TSharedPtr<FBlueprintEditor> FN2CEditorIntegration::GetActiveBlueprintEditor() const
 {
-    return ActiveBlueprintEditor.Pin();
+    return FN2CBlueprintEditorTracker::Get().GetFocusedEditor();
 }
 
 UEdGraph* FN2CEditorIntegration::GetFocusedGraphFromActiveEditor() const
 {
-    TSharedPtr<FBlueprintEditor> Editor = GetActiveBlueprintEditor();
-    if (Editor.IsValid())
-    {
-        return Editor->GetFocusedGraph();
-    }
-    return nullptr;
+    return FN2CBlueprintEditorTracker::Get().GetFocusedGraph();
 }
 
 bool FN2CEditorIntegration::CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Node*>& OutNodes) const
@@ -275,20 +248,18 @@ void FN2CEditorIntegration::Initialize()
     // Register tab spawner
     SN2CEditorWindow::RegisterTabSpawner();
 
-    // Subscribe to asset editor opened events
+    // Track the focused Blueprint editor from the user's tab and focus changes (card 0150)
+    FN2CBlueprintEditorTracker::Get().Initialize();
+
+    // Subscribe to asset editor opened events. OnAssetOpenedInEditor fires for every editor opened, also when several
+    // assets open at once (OnAssetEditorOpened is not broadcast then), and passes the editor instance
     if (GEditor)
     {
         UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
         if (ensure(AssetEditorSubsystem))
         {
-            OnAssetEditorOpenedHandle = AssetEditorSubsystem->OnAssetEditorOpened().AddLambda([this](UObject* Asset)
-            {
-                if (IAssetEditorInstance* EditorInstance = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorForAsset(Asset, false))
-                {
-                    HandleAssetEditorOpened(Asset, EditorInstance);
-                }
-            });
-            FN2CLogger::Get().Log(TEXT("N2C Editor Integration: Subscribed to OnAssetEditorOpened via AssetEditorSubsystem"), EN2CLogSeverity::Info);
+            OnAssetEditorOpenedHandle = AssetEditorSubsystem->OnAssetOpenedInEditor().AddRaw(this, &FN2CEditorIntegration::HandleAssetEditorOpened);
+            FN2CLogger::Get().Log(TEXT("N2C Editor Integration: Subscribed to OnAssetOpenedInEditor via AssetEditorSubsystem"), EN2CLogSeverity::Info);
         }
     }
 
@@ -331,16 +302,10 @@ void FN2CEditorIntegration::Initialize()
                         continue;
                     }
 
-                    IAssetEditorInstance* EditorInstance = AssetEditorSubsystem->FindEditorForAsset(Blueprint, false);
-                    if (!EditorInstance)
+                    const TSharedPtr<FBlueprintEditor> RawEditor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+                    if (!RawEditor.IsValid())
                     {
-                        continue;
-                    }
-
-                    FBlueprintEditor* RawEditor = FindBlueprintEditorFor(Blueprint);
-                    if (!RawEditor)
-                    {
-                        continue; // not a Blueprint editor (custom toolkit)
+                        continue; // not open, or not a Blueprint editor (custom toolkit)
                     }
 
                     UEdGraph* FocusedGraph = RawEditor->GetFocusedGraph();
@@ -365,10 +330,8 @@ void FN2CEditorIntegration::Initialize()
                         FString::Printf(TEXT("Overlay polling: re-injecting overlay for graph '%s' (primary hook missed)"), *FocusedGraph->GetName()),
                         EN2CLogSeverity::Warning
                     );
-                    TSharedRef<FBlueprintEditor> EditorShared = StaticCastSharedRef<FBlueprintEditor>(RawEditor->AsShared());
-                    TWeakPtr<FBlueprintEditor> WeakEditor(EditorShared);
-                    StoreActiveBlueprintEditor(EditorShared);
-                    TryWrapFocusedGraphTab(WeakEditor);
+                    // Overlay upkeep only: a background editor's rebuilt tab must not take the focus (card 0150)
+                    TryWrapFocusedGraphTab(TWeakPtr<FBlueprintEditor>(RawEditor));
                 }
             }),
             2.0f, // Check every 2 seconds (safety net - primary hook is OnTabForegrounded)
@@ -422,10 +385,12 @@ void FN2CEditorIntegration::Shutdown()
         UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
         if (AssetEditorSubsystem)
         {
-            AssetEditorSubsystem->OnAssetEditorOpened().Remove(OnAssetEditorOpenedHandle);
+            AssetEditorSubsystem->OnAssetOpenedInEditor().Remove(OnAssetEditorOpenedHandle);
             OnAssetEditorOpenedHandle.Reset();
         }
     }
+
+    FN2CBlueprintEditorTracker::Get().Shutdown();
 
     FN2CLogger::Get().Log(TEXT("N2C Editor Integration shutdown"), EN2CLogSeverity::Info);
 }
@@ -452,20 +417,11 @@ void FN2CEditorIntegration::HandleAssetEditorOpened(UObject* Asset, IAssetEditor
         return; // Not a Blueprint, so ignore
     }
 
-    // Only real Blueprint editors: some UBlueprint subclasses open in their own toolkits
-    FBlueprintEditor* BlueprintEditorPtr = FindBlueprintEditorFor(OpenedBlueprint);
-    if (!BlueprintEditorPtr)
-    {
-        return;
-    }
-
-    // Convert to SharedPtr so it matches our existing RegisterToolbarForEditor() signature
-    TSharedPtr<FBlueprintEditor> BlueprintEditorShared = StaticCastSharedRef<FBlueprintEditor>(BlueprintEditorPtr->AsShared());
+    // Only real Blueprint editors: some UBlueprint subclasses open in their own toolkits. The newly opened editor
+    // becomes the focused one through FN2CBlueprintEditorTracker, which hears the same event
+    TSharedPtr<FBlueprintEditor> BlueprintEditorShared = FN2CBlueprintEditorTracker::GetEditorFor(OpenedBlueprint);
     if (BlueprintEditorShared.IsValid())
     {
-        // Store the active Blueprint editor
-        StoreActiveBlueprintEditor(BlueprintEditorShared);
-
         TWeakPtr<FBlueprintEditor> WeakEditor(BlueprintEditorShared);
 
         // Schedule deferred wrapping of graph tabs with retry logic.
@@ -1165,17 +1121,17 @@ void FN2CEditorIntegration::CleanupStaleWrappers()
 
 }
 
-void FN2CEditorIntegration::OnTabForegrounded(TSharedPtr<SDockTab> PreviouslyActive, TSharedPtr<SDockTab> NewlyForegrounded)
+void FN2CEditorIntegration::OnTabForegrounded(TSharedPtr<SDockTab> NewlyForegrounded, TSharedPtr<SDockTab> Backgrounded)
 {
-    if (!NewlyForegrounded.IsValid())
-    {
-        return;
-    }
-
-    // Early-out: only process graph tabs. This prevents non-graph tab activations
+    // FGlobalTabmanager broadcasts TabForegrounded(NewForegroundTab, BackgroundedTab). The focused Blueprint editor
+    // is tracked by FN2CBlueprintEditorTracker; this handler only keeps the overlays injected.
+    // Early-out: only graph tabs coming to the front or going behind. This prevents non-graph tab activations
     // (Details, Palette, etc.) from scheduling/cancelling timers unnecessarily.
-    TSharedRef<SWidget> TabContent = NewlyForegrounded->GetContent();
-    if (!TabContent->GetTypeAsString().Contains(TEXT("SGraphEditor")))
+    const auto IsGraphTab = [](const TSharedPtr<SDockTab>& Tab)
+    {
+        return Tab.IsValid() && Tab->GetContent()->GetTypeAsString().Contains(TEXT("SGraphEditor"));
+    };
+    if (!IsGraphTab(NewlyForegrounded) && !IsGraphTab(Backgrounded))
     {
         return;
     }
@@ -1217,16 +1173,10 @@ void FN2CEditorIntegration::OnTabForegrounded(TSharedPtr<SDockTab> PreviouslyAct
                         continue;
                     }
 
-                    IAssetEditorInstance* EditorInstance = AssetEditorSubsystem->FindEditorForAsset(Blueprint, false);
-                    if (!EditorInstance)
+                    const TSharedPtr<FBlueprintEditor> RawEditor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+                    if (!RawEditor.IsValid())
                     {
-                        continue;
-                    }
-
-                    FBlueprintEditor* RawEditor = FindBlueprintEditorFor(Blueprint);
-                    if (!RawEditor)
-                    {
-                        continue; // not a Blueprint editor (custom toolkit)
+                        continue; // not open, or not a Blueprint editor (custom toolkit)
                     }
 
                     UEdGraph* FocusedGraph = RawEditor->GetFocusedGraph();
@@ -1246,15 +1196,9 @@ void FN2CEditorIntegration::OnTabForegrounded(TSharedPtr<SDockTab> PreviouslyAct
                         InjectedGraphOverlays.Remove(FocusedGraph->GraphGuid);
                     }
 
-                    // Found an editor with an un-overlaid focused graph - wrap it
-                    TSharedRef<FBlueprintEditor> EditorShared = StaticCastSharedRef<FBlueprintEditor>(RawEditor->AsShared());
-                    TWeakPtr<FBlueprintEditor> WeakEditor(EditorShared);
-
-                    // Update the stored active editor to this one
-                    StoreActiveBlueprintEditor(EditorShared);
-
-                    // Inject the overlay
-                    TryWrapFocusedGraphTab(WeakEditor);
+                    // Found an editor with an un-overlaid focused graph - wrap it. The focused editor is not changed
+                    // here: FN2CBlueprintEditorTracker follows the tab events themselves (card 0150)
+                    TryWrapFocusedGraphTab(TWeakPtr<FBlueprintEditor>(RawEditor));
                 }
             }),
             0.1f, // 100ms delay - gives mode switches time to complete

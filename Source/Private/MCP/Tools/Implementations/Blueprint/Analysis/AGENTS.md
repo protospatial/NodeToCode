@@ -113,9 +113,11 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
 - **Parameters**: None
 - **Returns**: `editors` and `count`. Every entry has `blueprintName`, `assetPath`, `blueprintType`, `graphs`
   (`name`, `type` `Function`/`Event`/`Macro`/`Delegate`, `isEditable`), `isInEditingMode` and `isCompileEnabled`
-  (both always true). Only the active editor's entry (`CollectEditorInfo`) also has `parentClass`, `focusedGraph`,
-  `focusedGraphType`, `hasCompilerResults`, `isDirty` (the Blueprint's compile status is `BS_Dirty`, not unsaved
-  changes) and `graph_counts`
+  (both always true). Every entry whose editor is a Blueprint editor (`FN2CBlueprintEditorTracker::GetEditorFor`,
+  card 0150; before it only the focused editor's) also has `parentClass`, `focusedGraph`, `focusedGraphType`,
+  `hasCompilerResults`, `isDirty` (the Blueprint's compile status is `BS_Dirty`, not unsaved changes),
+  `graph_counts` and `isFocused`: true for exactly one entry, the focused Blueprint the focus-based tools act on
+  (see "Which Blueprint is focused" in `../AGENTS.md`)
 - **Known issue (card 0275):** the event graphs are read from `Blueprint->EventGraphs`, which is empty for a normal
   Blueprint, so `EventGraph` is never in `graphs`, `graph_counts.event_graphs` is 0 and `focusedGraphType` is
   `Unknown` in the EventGraph; editors that are not named `BlueprintEditor` (Widget and Animation Blueprints) are

@@ -26,11 +26,28 @@ All Blueprint tools:
 ## Integration with NodeToCode
 
 These tools integrate with NodeToCode's core functionality:
-- Use `FN2CEditorIntegration` for accessing focused Blueprint context
+- Use `FN2CBlueprintEditorTracker` (`Core/N2CBlueprintEditorTracker.h`) for the focused Blueprint editor and for the
+  editor of a given Blueprint (`GetEditorFor`); `FN2CEditorIntegration::GetActiveBlueprintEditor` and
+  `GetFocusedGraphFromActiveEditor` forward to it
 - Leverage `FN2CNodeCollector` and the capture module (`Core/N2CCapture.h`: `N2C::CaptureNodes`, `N2C::DescribeNode`) for Blueprint serialization
 - Support the N2CJSON format for Blueprint representation
 
 ## Examples
+
+### Which Blueprint is focused
+The focused Blueprint is the Blueprint editor last activated (card 0150, `FN2CBlueprintEditorTracker`):
+- the user brought its asset tab to the front or clicked inside it (a graph, Details, My Blueprint): the global tab
+  manager's `OnTabForegrounded` and `OnActiveTabChanged`;
+- it was opened (by the user, the Content Browser, `open-blueprint-asset`, `open-blueprint-function`, the Python
+  bridge's `open_blueprint`), several at once included (`UAssetEditorSubsystem::OnAssetOpenedInEditor`);
+  `FN2CMcpBlueprintUtils::OpenBlueprintEditor` always returns and focuses the requested Blueprint's own editor;
+- a NodeToCode overlay button or toolbar command was used in it.
+
+Activating anything else (the Content Browser, the level editor, the NodeToCode window) leaves the focus where it was,
+and a tab in an editor whose asset tab is behind another one (a background rebuild) never takes it; the overlay
+injector does not change it either. When the focused editor closes, the focus goes to the Blueprint whose asset tab
+comes to the front, or else to the most recently activated Blueprint editor still open. The graph is the one that
+editor shows. Checked by `NodeToCode.Editor.Focus` (UE 5.8; 5.6 and 5.7 cannot close a headless Blueprint editor).
 
 ### Working with the Focused Blueprint
 Many tools can operate on the currently focused Blueprint without requiring an explicit path:

@@ -68,13 +68,19 @@ public:
     /** Get the default theme for a language */
     FName GetDefaultTheme(EN2CCodeLanguage Language) const;
 
-    /** Called by HandleAssetEditorOpened to update the active editor */
+    /**
+     * Marks Editor as the one the user activated (an overlay button, the toolbar commands). Forwards to
+     * FN2CBlueprintEditorTracker::NotifyEditorActivated.
+     */
     void StoreActiveBlueprintEditor(TWeakPtr<FBlueprintEditor> Editor);
-    
-    /** Retrieves the last stored active Blueprint editor */
+
+    /**
+     * The focused Blueprint editor: the one the user last activated (FN2CBlueprintEditorTracker::GetFocusedEditor,
+     * which falls back to the most recently activated editor still open when that one closes)
+     */
     TSharedPtr<FBlueprintEditor> GetActiveBlueprintEditor() const;
 
-    /** Retrieves the focused graph from the stored active editor */
+    /** The graph the focused Blueprint editor shows (FN2CBlueprintEditorTracker::GetFocusedGraph) */
     UEdGraph* GetFocusedGraphFromActiveEditor() const;
     
     /** Collects K2Nodes from a given UEdGraph */
@@ -217,9 +223,6 @@ public:
     void RegisterBlueprintEditorCallback();
 
 private:
-    /** The currently active Blueprint editor */
-    TWeakPtr<FBlueprintEditor> ActiveBlueprintEditor;
-
     /** Map of wrapped tabs to their wrapper widgets (legacy, kept for compatibility) */
     TMap<TWeakPtr<SDockTab>, TSharedPtr<SN2CGraphEditorWrapper>> WrappedTabs;
 
@@ -247,14 +250,14 @@ private:
     /** Delegate handle for tab foregrounded subscription */
     FDelegateHandle OnTabForegroundedHandle;
 
-    /** Handle for the OnAssetEditorOpened subscription (a lambda, so RemoveAll(this) cannot remove it) */
+    /** Handle for the OnAssetOpenedInEditor subscription */
     FDelegateHandle OnAssetEditorOpenedHandle;
 
     /** Global flag tracking if any translation is in progress */
     bool bIsAnyTranslationInProgress = false;
 
-    /** Handle tab foregrounded to wrap new graph tabs (more reliable than OnActiveTabChanged) */
-    void OnTabForegrounded(TSharedPtr<SDockTab> PreviouslyActive, TSharedPtr<SDockTab> NewlyForegrounded);
+    /** Handle tab foregrounded to keep graph overlays injected (the broadcast passes the new foreground tab first) */
+    void OnTabForegrounded(TSharedPtr<SDockTab> NewlyForegrounded, TSharedPtr<SDockTab> Backgrounded);
 
     /**
      * Find the SOverlay inside an SGraphEditor widget using the known widget tree structure.

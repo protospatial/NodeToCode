@@ -24,7 +24,9 @@ FMcpToolDefinition FN2CMcpOpenBlueprintAssetTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("open-blueprint-asset"),
-		TEXT("Opens a specified blueprint asset in the Blueprint Editor, allowing agents to programmatically open blueprints for viewing or editing")
+		TEXT("Opens a specified blueprint asset in the Blueprint Editor, allowing agents to programmatically open blueprints for viewing or editing. ")
+		TEXT("An already open Blueprint is brought to the front. Either way it becomes the focused Blueprint that ")
+		TEXT("get-focused-blueprint and the other focus-based tools act on")
 	,
 
 		TEXT("Content Browser")
