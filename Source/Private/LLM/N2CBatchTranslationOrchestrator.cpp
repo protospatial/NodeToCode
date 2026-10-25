@@ -1103,7 +1103,7 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("**Blueprints** in Unreal Engine are visual scripting assets that contain one or more **graphs**. ");
 	MarkdownContent += TEXT("Each graph contains **nodes** (representing operations like function calls, variable access, or flow control) ");
 	MarkdownContent += TEXT("connected by **pins** (typed input/output connectors). The N2C JSON preserves this structure:\n\n");
-	MarkdownContent += TEXT("- **Execution Flow**: Nodes connected via `Exec` pins run sequentially. The `flows.execution` array shows this order (e.g., `N1->N2->N3`).\n");
+	MarkdownContent += TEXT("- **Execution Flow**: Nodes connected via `Exec` pins run in the order of their exec wires. The `flows.execution` array has one entry per wire, from the exec output pin to the exec input pin it runs (e.g., `N1.P3->N2.P5`): the source pin tells which output fired (a Branch's True or False, a Switch case, a Sequence's then_0 or then_1, a loop's Loop Body or Completed) and the target pin which input runs (a Gate's Enter, Open or Close, a Timeline's Play or Reverse). Documents with version 1.0.0 list node pairs (`N1->N2`) instead.\n");
 	MarkdownContent += TEXT("- **Data Flow**: Data passes between nodes via typed pins. The `flows.data` object maps each output pin to the input pin it feeds (e.g., `N1.P2` connects to `N2.P1`), or to an array of input pins when one output feeds several (e.g., `N3.P4` feeds `[\"N4.P2\", \"N5.P3\"]`). Every connected data input appears once as a target.\n");
 	MarkdownContent += TEXT("- **Node Types**: Each node has a `type` indicating its purpose (CallFunction, VariableGet, VariableSet, Event, Branch, ForLoop, etc.).\n");
 	MarkdownContent += TEXT("- **Pin Types**: Pins have types like Exec, Boolean, Integer, Float, String, Object, Struct, etc.\n\n");
@@ -1136,7 +1136,7 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("        }\n");
 	MarkdownContent += TEXT("      ],\n");
 	MarkdownContent += TEXT("      \"flows\": {\n");
-	MarkdownContent += TEXT("        \"execution\": [\"N1->N2->N3\"],\n");
+	MarkdownContent += TEXT("        \"execution\": [\"N1.P3->N2.P5\", \"N2.P7->N3.P9\"],\n");
 	MarkdownContent += TEXT("        \"data\": { \"N1.P2\": \"N2.P1\", \"N3.P4\": [\"N4.P2\", \"N5.P3\"] }\n");
 	MarkdownContent += TEXT("      }\n");
 	MarkdownContent += TEXT("    }\n");

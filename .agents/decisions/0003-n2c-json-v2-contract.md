@@ -47,7 +47,14 @@ Option 1, provisionally. The sub-choices of card 0117:
    ref it feeds, or an array of input pin refs when it feeds several (PR #7's model, `FN2CDataFlowTargets`). A graph
    without fan-out gets exactly the 1.0.0 object. Every edge appears once, recorded from its output side through
    every branch of a knot. Not a `{from, to}` list: that would change every graph's JSON.
-3. **Exec edges (card 0136):** pin-qualified pairs such as `"N1.P2->N3.P1"`, one per link, no chain compression.
+3. **Exec edges (card 0136):** pin-qualified pairs such as `"N1.P2->N3.P1"`, one per link, no chain compression:
+   from the exec output pin to the exec input pin it runs, each link once (two outputs into one node are two
+   entries), recorded from the output side through knots. Writers emit only this form
+   (`N2CJsonContract::MakeExecEdge`). Readers of every readable version accept it and the node-only form
+   (`"N1->N2"`, or a chain `"N1->N2->N3"`) of 1.x documents and of 2.0.0 documents saved by development builds
+   between cards 0135 and 0136, and keep node-only entries as they are (they never said which pins a link uses).
+   No version gate: 2.0.0 is not released, so the two 2.0.0 forms differ only in the entry text. The validator
+   checks that a pin-qualified entry runs from an exec output pin to an exec input pin of the named nodes.
 4. **Stable keys (card 0138):** pin `name` = `UEdGraphPin::PinName`, a node `class` field, `member_parent` and
    `member_name` from `FMemberReference`; display text only in named hint fields (node `title`, pin `label`).
 5. **Liveness (card 0137):** `"unused": true` on pure nodes whose outputs are never consumed, `"unreachable": true`
@@ -66,5 +73,7 @@ Option 1, provisionally. The sub-choices of card 0117:
 - `FN2CFlows::Data` is `TMap<FString, FN2CDataFlowTargets>`; Blueprint or Python code that read the old
   `TMap<FString, FString>` must read `Targets` (none in the plugin did).
 - The capture goldens record 2.0.0, and `NodeToCode.Capture.Golden.V1Reader` keeps 1.0.0 documents readable.
+- A 2.x consumer must accept both exec entry forms; `NodeToCode.Capture.Golden.ExecFlows` checks the pin form on
+  every golden, and V1Reader reads a node-only 2.0.0 document.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.

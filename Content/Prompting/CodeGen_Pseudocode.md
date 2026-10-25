@@ -78,7 +78,8 @@
               ],
               "flows": {
                 "execution": [
-                  "N1->N2->N3"
+                  "N1.P3->N2.P5",
+                  "N2.P7->N3.P9"
                 ],
                 "data": {
                   "N1.P2": "N2.P1",
@@ -151,7 +152,7 @@
           - `"is_array"`, `"is_map"`, `"is_set"`: True if the pin is a container type.
     
         - `"flows"`: Within each graph:
-          - `"execution"`: An array of execution flow strings, e.g., `"N1->N2->N3"`.
+          - `"execution"`: An array of exec links, one entry per wire, written `"N1.P3->N2.P5"`: from an exec output pin (`N1.P3`) to the exec input pin it runs (`N2.P5`). The source pin tells which output fired (a Branch's True or False, a Sequence's then_0 or then_1, a ForEachLoop's Loop Body or Completed, a Switch case) and the target pin which input runs (a Gate's Enter, Open or Close, a Timeline's Play or Reverse). Two wires into one node are two entries. Documents with `"version": "1.0.0"` list node pairs instead (`"N1->N2"`), which do not say which pins a wire uses.
           - `"data"`: The data-flow connections: an object keyed by an output pin (`"N1.P2"`). Its value is the input pin that output feeds (`"N2.P1"`), or an array of input pins when one output feeds several inputs (`["N4.P2", "N5.P3"]`): the same value goes to every listed input. Each connected data input appears exactly once as a target, so a pin with `"connected": true` always has its source here.
     
         - `"structs"` (optional): Array of struct objects. Each struct object includes:
@@ -203,7 +204,8 @@
            - `"latent": true` means the node is asynchronous; typically just note in pseudocode that this call continues asynchronously.
     
         3. **Exec Pins for Flow**:
-           - The pins of `"type": "Exec"` define the order in which nodes execute. Mirror these as sequential statements, conditionals, or loops in your pseudocode. For instance, if `N1->N2->N3` is found in `"flows".execution`, your pseudocode must show N1’s actions first, then N2’s, then N3’s.
+           - The pins of `"type": "Exec"` define the order in which nodes execute. Mirror these as sequential statements, conditionals, or loops in your pseudocode. For instance, if `"N1.P3->N2.P5"` and `"N2.P7->N3.P9"` are found in `"flows".execution`, your pseudocode must show N1’s actions first, then N2’s, then N3’s.
+           - Follow each exec link from its source pin. Links from a Branch's True pin go in the if block and links from its False pin in the else block; each Switch case pin's links go in that case; a Sequence runs the chain from then_0 before the chain from then_1; a ForEachLoop's Loop Body chain is the loop body and its Completed chain runs after the loop. The target pin says which input of a node with several exec inputs runs: a Gate's Enter runs through the gate only while it is open, Open and Close change its state; a Timeline's Play and Reverse are different calls.
     
         4. **Data Pins for Values**:
            - If there is a data connection `"N1.P5" -> "N2.P2"`, pass the value produced by `N1` into `N2`. This might be represented by an assignment or direct usage of that value in the next node’s pseudocode.

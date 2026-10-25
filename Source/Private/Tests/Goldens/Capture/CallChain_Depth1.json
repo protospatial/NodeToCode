@@ -4,11 +4,6 @@
 	"translation_depth": 1,
 	"known_defects": [
 		{
-			"finding": "translation-core-2",
-			"card": "0136",
-			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -73,7 +68,7 @@
 				"flows":
 				{
 					"execution": [
-						"N1->N2"
+						"N1.P1->N2.P2"
 					],
 					"data":
 					{
@@ -129,7 +124,7 @@
 				"flows":
 				{
 					"execution": [
-						"N3->N4"
+						"N3.P5->N4.P6"
 					],
 					"data":
 					{

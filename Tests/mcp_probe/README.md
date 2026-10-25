@@ -244,6 +244,12 @@ its environment when no key is saved, so a live check never types or saves a key
     String's In String (through the To String (Vector) node the schema inserts) and into a Set Actor Location run
     after the Print String. The report's `fanout` lists the N2C JSON's array-valued `flows.data` entries, and each
     case keeps its `code` so the translation of the fan-out can be read.
+  - `--branch` (card 0136) puts a Branch on the exec line before the cases: BeginPlay runs a Branch on Has
+    Authority, True runs Collect Garbage and False runs the Print String (the opposite of the nodes' order). The
+    report's `branch` lists the focused graph's `flows.execution` with the node and pin each entry names, and each
+    case keeps its `code` and gets `branch_check`: whether the generated if/else runs CollectGarbage when
+    `HasAuthority()` is true and PrintString when it is false (`ok: null` when the heuristic cannot tell; read the
+    code). With `--branch` a case passes only when `branch_check` is ok.
   - The case list holds current models only (the live entries of `N2CLLMModelRegistry.cpp`): no retired, deprecated
     or "shuts down" IDs are tested. Update it when the registry's lineup changes.
   - Each translation is bounded by `--timeout` (wall clock; the streamed response's half-second progress events keep

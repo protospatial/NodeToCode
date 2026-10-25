@@ -110,9 +110,6 @@ private:
     /** Gives Node and its visible pins their IDs (the first pass over a graph; knots get none). False for a knot or null. */
     bool AssignIDs(UK2Node* Node);
 
-    /** The node's ID, given now (after every captured node) when the node is outside the capture, as an exec target can be */
-    FString GetOrAddNodeID(const UEdGraphNode* Node);
-
     /** Fallback method for processing node properties when no processor is available */
     void FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
@@ -140,10 +137,7 @@ private:
     /** Convert UE pin type to N2C pin type */
     EN2CPinType DeterminePinType(const UEdGraphPin* Pin) const;
 
-    /** Follow pin connections through knot nodes to find the first non-knot target */
-    UEdGraphPin* TraceConnectionThroughKnots(UEdGraphPin* StartPin) const;
-
-    /** Every non-knot pin an output pin reaches, through knots and every branch of their fan-out, in link order */
+    /** Every non-knot pin an output pin (exec or data) reaches, through knots and every branch of their fan-out, in link order */
     TArray<UEdGraphPin*> TraceTargetsThroughKnots(UEdGraphPin* OutputPin) const;
 
     /** Process node type and core properties */

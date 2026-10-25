@@ -3,11 +3,6 @@
 	"description": "Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed from Enabled.",
 	"known_defects": [
 		{
-			"finding": "translation-core-2",
-			"card": "0136",
-			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -107,8 +102,8 @@
 				"flows":
 				{
 					"execution": [
-						"N1->N2",
-						"N2->N3"
+						"N1.P1->N2.P3",
+						"N2.P4->N3.P6"
 					],
 					"data":
 					{

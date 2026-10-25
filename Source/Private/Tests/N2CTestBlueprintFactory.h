@@ -19,6 +19,7 @@ class UK2Node_BreakStruct;
 class UK2Node_CallFunction;
 class UK2Node_Composite;
 class UK2Node_CustomEvent;
+class UK2Node_ExecutionSequence;
 class UK2Node_FunctionEntry;
 class UK2Node_FunctionResult;
 class UK2Node_IfThenElse;
@@ -85,6 +86,8 @@ namespace N2CTest
 		UK2Node_CustomEvent* AddCustomEvent(UEdGraph* Graph, const FName EventName);
 		UK2Node_CallFunction* AddCall(UEdGraph* Graph, UClass* Owner, const FName FunctionName);
 		UK2Node_IfThenElse* AddBranch(UEdGraph* Graph);
+		/** A Sequence node with its two default outputs (then_0, then_1) */
+		UK2Node_ExecutionSequence* AddSequence(UEdGraph* Graph);
 		UK2Node_Knot* AddKnot(UEdGraph* Graph);
 		UK2Node_SwitchInteger* AddSwitchOnInt(UEdGraph* Graph, int32 CaseCount);
 		UK2Node_SwitchEnum* AddSwitchOnEnum(UEdGraph* Graph, UEnum* Enum);

@@ -78,7 +78,8 @@
               ],
               "flows": {
                 "execution": [
-                  "N1->N2->N3"
+                  "N1.P3->N2.P5",
+                  "N2.P7->N3.P9"
                 ],
                 "data": {
                   "N1.P2": "N2.P1",
@@ -151,7 +152,7 @@
           - "is_array", "is_map", "is_set": True if the pin is a container type.
 
         - "flows": Within each graph:
-          - "execution": An array of execution flow strings, e.g. "N1->N2->N3".
+          - "execution": An array of exec links, one entry per wire, written "N1.P3->N2.P5": from an exec output pin ("N1.P3") to the exec input pin it runs ("N2.P5"). The source pin tells which output fired (a Branch's True or False, a Sequence's then_0 or then_1, a ForEachLoop's Loop Body or Completed, a Switch case) and the target pin which input runs (a Gate's Enter, Open or Close, a Timeline's Play or Reverse). Two wires into one node are two entries. Documents with "version": "1.0.0" list node pairs instead ("N1->N2"), which do not say which pins a wire uses.
           - "data": The data-flow connections: an object keyed by an output pin ("N1.P2"). Its value is the input pin that output feeds ("N2.P1"), or an array of input pins when one output feeds several inputs (["N4.P2", "N5.P3"]): the same value goes to every listed input. Each connected data input appears exactly once as a target, so a pin with "connected": true always has its source here.
 
         - "structs": Optional array. Each struct object includes:
@@ -208,13 +209,14 @@
            **All** node-level properties and pin connections described in the N2C JSON must appear in the final code, ensuring you don’t skip or simplify them. If a macro node has exec outputs that branch to multiple subsequent nodes, reflect that branching logic in C++. If a pin has a default value or data link, include it in the resulting code.
 
         3. **Exec Pins for Flow**:
-           - The pins of "type": "Exec" define the flow order. Mirror these as sequential statements or conditionals/loops in your final function. If you see N1->N2->N3 in "flows".execution, that means node N1 executes first, then node N2, then node N3. Convert to something like:
+           - The pins of "type": "Exec" define the flow order. Mirror these as sequential statements or conditionals/loops in your final function. If you see "N1.P3->N2.P5" and "N2.P7->N3.P9" in "flows".execution, that means node N1 executes first, then node N2, then node N3. Convert to something like:
              // Node N1 code
              // ...
              // Node N2 code
              // ...
              // Node N3 code
              // ...
+           - Follow each exec link from its source pin. Links from a Branch's True pin go in the if block and links from its False pin in the else block; each Switch case pin's links go in that case; a Sequence runs the chain from then_0 before the chain from then_1; a ForEachLoop's Loop Body chain is the loop body and its Completed chain runs after the loop. The target pin says which input of a node with several exec inputs runs: a Gate's Enter runs through the gate only while it is open, Open and Close change its state; a Timeline's Play and Reverse are different calls.
 
         4. **Data Pins for Values**:
            - If a pin is data (not "Exec") and has a connection "N1.P5" -> "N2.P2", pass the value from node N1’s pin to the input parameter for node N2. If that value is a literal "default_value", pass it directly. If it’s an object reference, pass the relevant object variable in your code.

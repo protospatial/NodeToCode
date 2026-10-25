@@ -1,0 +1,154 @@
+{
+	"case": "ForEachLoop",
+	"description": "Function Loop(Values: int array): ForEachLoop (StandardMacros) over Values; Loop Body runs CollectGarbage, Completed runs ControlScreensaver.",
+	"known_defects": [
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_ForEachLoop",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_ForEachLoop"
+		},
+		"graphs": [
+			{
+				"name": "Loop",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Loop",
+						"member_parent": "BP_N2CGolden_ForEachLoop",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Values",
+								"type": "Integer",
+								"connected": true,
+								"is_array": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "MacroInstance",
+						"name": "For Each Loop",
+						"member_parent": "StandardMacros",
+						"member_name": "ForEachLoop",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "Exec",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "Array",
+								"type": "Integer",
+								"connected": true,
+								"is_array": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Loop Body",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "Array Element",
+								"type": "Integer"
+							},
+							{
+								"id": "P7",
+								"name": "Array Index",
+								"type": "Integer"
+							},
+							{
+								"id": "P8",
+								"name": "Completed",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "Collect Garbage",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P9",
+								"name": "",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P10",
+								"name": ""
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "CallFunction",
+						"name": "Control Screensaver",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P11",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P13",
+								"name": "Allow Screen Saver",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P12",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P3",
+						"N2.P5->N3.P9",
+						"N2.P8->N4.P11"
+					],
+					"data":
+					{
+						"N1.P2": "N2.P4"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

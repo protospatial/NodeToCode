@@ -18,6 +18,7 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_ExecutionSequence.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
@@ -272,6 +273,18 @@ namespace N2CTest
 		}
 		FGraphNodeCreator<UK2Node_IfThenElse> Creator(*Graph);
 		UK2Node_IfThenElse* Node = Creator.CreateNode();
+		Creator.Finalize();
+		return Node;
+	}
+
+	UK2Node_ExecutionSequence* FTestBlueprint::AddSequence(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+		FGraphNodeCreator<UK2Node_ExecutionSequence> Creator(*Graph);
+		UK2Node_ExecutionSequence* Node = Creator.CreateNode();
 		Creator.Finalize();
 		return Node;
 	}

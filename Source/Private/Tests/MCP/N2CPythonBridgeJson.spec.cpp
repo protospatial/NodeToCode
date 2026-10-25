@@ -280,6 +280,8 @@ void FN2CPythonBridgeJsonSpec::Define()
 					TestEqual(TEXT("nodes"), static_cast<int32>(Data->GetNumberField(TEXT("nodes"))), 4);
 					// The v1 document kept one edge per output: three
 					TestEqual(TEXT("data_edges"), static_cast<int32>(Data->GetNumberField(TEXT("data_edges"))), 3);
+					// Its one node-only exec entry, N1->N4 (card 0136)
+					TestEqual(TEXT("exec_edges"), static_cast<int32>(Data->GetNumberField(TEXT("exec_edges"))), 1);
 					const TSharedPtr<FJsonObject>* N2CJson = nullptr;
 					if (TestTrue(TEXT("n2c_json is an object"), Data->TryGetObjectField(TEXT("n2c_json"), N2CJson)))
 					{
