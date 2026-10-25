@@ -285,11 +285,19 @@ the error, `traceback`, `output`, `stderr` and a `hint`. A timeout, or Python be
 
 ## Python-Only Mode
 
-Setting in Plugin Settings: `bEnablePythonScriptOnlyMode` (default: `true`)
+Setting: Project Settings > Plugins > Node to Code > MCP Server > **Enable Python Script-Only Mode**
+(`UN2CSettings::bEnablePythonScriptOnlyMode`, default `false`; read when the MCP server starts, so it needs an editor
+restart). It takes precedence over Enable Dynamic Tool Discovery (`FN2CMcpHttpServerManager::RegisterMcpTools`; the
+three registration modes are described in `Source/Private/MCP/Tools/AGENTS.md`).
 
 When enabled:
-*   Most C++ MCP tools are disabled
-*   Only essential tools remain: `run-python`, translation tools, LLM provider tools
+*   Only these seven tools are registered (`FN2CMcpToolManager::RegisterToolsByName`): `run-python`,
+    `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`,
+    `save-python-script` and `delete-python-script`
+*   No translation, LLM provider, Blueprint, Content Browser or file tools: `get-focused-blueprint` and
+    `translate-focused-blueprint` answer "Unknown tool"
+*   Without Allow MCP Python Execution (below) only four remain: list, search, get and `get-script-functions`, and
+    the editor logs a warning at start
 *   LLMs write/reuse Python scripts via `run-python` instead of using C++ tools
 *   Designed for use with Context7 MCP for UE Python API documentation
 
@@ -361,4 +369,5 @@ def _make_error(message: str) -> Dict[str, Any]:
 `run-python`, `save-python-script` and `delete-python-script` are only registered when the per-user setting
 **Allow MCP Python Execution** (`UN2CUserSettings::bAllowMcpPythonExecution`, read through
 `UN2CUserSettings::IsMcpPythonExecutionAllowed()`) is on; it is off by default, needs an editor restart, and only the
-user's own Saved/Config value counts (a project's committed config cannot turn it on, card 0423). Python script-only mode without it leaves only the list, search and get script tools.
+user's own Saved/Config value counts (a project's committed config cannot turn it on, card 0423). Python script-only mode without it leaves only the list, search, get and
+`get-script-functions` tools.

@@ -119,9 +119,13 @@ This directory contains MCP tools for interacting with Unreal Engine's Content B
 ## Usage Examples
 
 ### Navigating Content Browser
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # Navigate to Blueprints folder
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -136,6 +140,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Create and navigate to new folder
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -154,6 +160,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # List all Blueprints in a folder
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -169,6 +177,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Search for player-related assets
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -188,6 +198,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Open a Blueprint
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -202,6 +214,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Open and focus specific graph
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -223,6 +237,8 @@ When dealing with large asset folders (e.g., Megascans):
 ```bash
 # Page 1 of results
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -239,6 +255,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Check response for has_more: true, then get page 2
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -278,6 +296,8 @@ open-blueprint-asset "/Game/Blueprints/BP_PlayerCharacter.BP_PlayerCharacter" fo
 ```bash
 # Search for all player-related assets
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -292,6 +312,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Find all Blueprints in the project
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -307,6 +329,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Search for materials including engine content
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -326,6 +350,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Copy a Blueprint to a new location
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -341,6 +367,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Copy with overwrite enabled
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -360,6 +388,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Create a single folder
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -374,6 +404,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Create folder with parent directories
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -389,6 +421,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Create a folder structure for organizing Blueprints
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -407,6 +441,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Move a folder to a new location
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -422,6 +458,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Move without showing notification
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -438,6 +476,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Reorganize Blueprint folders
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -456,6 +496,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Simple rename (keep in same folder)
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -471,6 +513,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Move and rename asset
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -486,6 +530,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Rename without notification
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -505,6 +551,8 @@ curl -X POST http://localhost:27000/mcp \
 ```bash
 # Rename a folder
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -520,6 +568,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Rename Blueprint subfolder
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -535,6 +585,8 @@ curl -X POST http://localhost:27000/mcp \
 
 # Rename without notification
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

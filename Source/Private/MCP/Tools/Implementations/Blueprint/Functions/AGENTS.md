@@ -102,8 +102,12 @@ This directory contains MCP tools for creating, opening, and managing Blueprint 
 - Maps: `container: "map"` with `keyType` specification
 
 ### Example: Complex Function Creation
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -160,6 +164,8 @@ curl -X POST http://localhost:27000/mcp \
 # First, make sure you have a function open in the editor
 # Then add a new input parameter:
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -183,6 +189,8 @@ curl -X POST http://localhost:27000/mcp \
 # First, make sure you have a function open in the editor
 # Then add a new return value:
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -204,6 +212,8 @@ curl -X POST http://localhost:27000/mcp \
 # First, make sure you have a function open in the editor
 # Then remove an existing pin from the entry node (input parameter or return value):
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -223,6 +233,8 @@ curl -X POST http://localhost:27000/mcp \
 # First, make sure you have a function open in the editor
 # Then remove an existing return value:
 curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

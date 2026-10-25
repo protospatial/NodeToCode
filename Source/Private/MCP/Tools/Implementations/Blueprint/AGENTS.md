@@ -35,10 +35,13 @@ These tools integrate with NodeToCode's core functionality:
 ### Working with the Focused Blueprint
 Many tools can operate on the currently focused Blueprint without requiring an explicit path:
 
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # Get the focused Blueprint
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -57,6 +60,7 @@ Tools also support explicit Blueprint paths for automation:
 # List functions in a specific Blueprint
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",

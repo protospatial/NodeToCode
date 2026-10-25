@@ -23,10 +23,13 @@ This directory contains MCP tools for compiling and saving Blueprint assets in U
 ## Common Usage Patterns
 
 ### Compiling the Focused Blueprint
+The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
+
 ```bash
 # Compile the currently focused Blueprint
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -43,6 +46,7 @@ curl -X POST http://localhost:27000/mcp \
 # Compile a Blueprint by path
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -61,6 +65,7 @@ curl -X POST http://localhost:27000/mcp \
 # Compile with garbage collection enabled for thorough validation
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -80,6 +85,7 @@ curl -X POST http://localhost:27000/mcp \
 # Save the currently focused Blueprint
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -96,6 +102,7 @@ curl -X POST http://localhost:27000/mcp \
 # Save a Blueprint by path, only if it has unsaved changes
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -115,6 +122,7 @@ curl -X POST http://localhost:27000/mcp \
 # Force save a Blueprint even if it has no changes
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $SID" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
