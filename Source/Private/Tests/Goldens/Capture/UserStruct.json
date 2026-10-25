@@ -1,0 +1,213 @@
+{
+	"case": "UserStruct",
+	"description": "Function UseItem(Item: S_GoldenItem): S_GoldenItem is a user struct {Owner: Actor object, Count: int, Level: user enum E_GoldenLevel {Low, High}}. Break S_GoldenItem feeds Count to the Count result and Owner, Count and Level to Make S_GoldenItem, which is the Copy result.",
+	"known_defects": [
+		{
+			"finding": "translation-core-8",
+			"card": "0236",
+			"effect": "S_GoldenItem is missing from 'structs': its object member Owner gets no type name, the validator rejects the struct (ERROR 'Member Owner requires a type name') and it is dropped without a warning"
+		},
+		{
+			"finding": "translation-core-24",
+			"card": "0236",
+			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
+		},
+		{
+			"finding": "translation-core-4",
+			"card": "0234",
+			"effect": "Break S_GoldenItem is captured as a Variable named 'None' with member_parent object/Actor (the first member's type) and member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)"
+		},
+		{
+			"finding": "translation-core-1 (PR #7, issue #13)",
+			"card": "0135",
+			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_UserStruct",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_UserStruct"
+		},
+		"graphs": [
+			{
+				"name": "UseItem",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "UseItem",
+						"member_parent": "BP_N2CGolden_UserStruct",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Item",
+								"type": "Struct",
+								"sub_type": "S_GoldenItem",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "Variable",
+						"name": "None",
+						"member_parent": "object/Actor",
+						"member_name": "Var_UseItem_<OBJECT_INDEX>",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "S Golden Item",
+								"type": "Struct",
+								"sub_type": "S_GoldenItem",
+								"connected": true,
+								"is_reference": true,
+								"is_const": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "Owner",
+								"type": "Object",
+								"sub_type": "Actor",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "Count",
+								"type": "Integer",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "Level",
+								"type": "Byte",
+								"sub_type": "E_GoldenLevel",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "MakeStruct",
+						"name": "Make S_GoldenItem",
+						"member_parent": "<PACKAGE>",
+						"member_name": "S_GoldenItem",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P8",
+								"name": "Owner",
+								"type": "Object",
+								"sub_type": "Actor",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "Count",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Level",
+								"type": "Byte",
+								"sub_type": "E_GoldenLevel",
+								"default_value": "NewEnumerator0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": "S Golden Item",
+								"type": "Struct",
+								"sub_type": "S_GoldenItem",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "FunctionResult",
+						"name": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_UserStruct",
+						"input_pins": [
+							{
+								"id": "P11",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P12",
+								"name": "Count",
+								"type": "Integer",
+								"connected": true
+							},
+							{
+								"id": "P13",
+								"name": "Copy",
+								"type": "Struct",
+								"sub_type": "S_GoldenItem",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2"
+					],
+					"data":
+					{
+						"N1.P2": "N3.P3",
+						"N3.P4": "N4.P8",
+						"N3.P5": "N2.P12",
+						"N3.P6": "N4.P10",
+						"N4.P7": "N2.P13"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": [
+			{
+				"name": "E_GoldenLevel",
+				"values": [
+					{
+						"name": "Low"
+					},
+					{
+						"name": "High"
+					}
+				]
+			}
+		]
+	}
+}

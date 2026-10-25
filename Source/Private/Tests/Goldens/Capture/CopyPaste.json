@@ -1,0 +1,133 @@
+{
+	"case": "CopyPaste",
+	"description": "Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed from Enabled.",
+	"known_defects": [
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are keyed by pin GUID, which a paste keeps: every pin of the pasted node gets the same ID (P6), its flows point at that one ID and the validator logs ERROR 'Duplicate pin ID' (expected errors in this case)"
+		},
+		{
+			"finding": "translation-core-1 (PR #7, issue #13)",
+			"card": "0135",
+			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
+		},
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_CopyPaste",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_CopyPaste"
+		},
+		"graphs": [
+			{
+				"name": "CopyPaste",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "CopyPaste",
+						"member_parent": "BP_N2CGolden_CopyPaste",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Enabled",
+								"type": "Boolean",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "Control Screensaver",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "Allow Screen Saver",
+								"type": "Boolean",
+								"default_value": "false",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "Control Screensaver",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "Allow Screen Saver",
+								"type": "Boolean",
+								"default_value": "false",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2",
+						"N2->N3"
+					],
+					"data":
+					{
+						"N1.P2": "N3.P6"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

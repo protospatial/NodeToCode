@@ -1,0 +1,360 @@
+{
+	"case": "Recursion_Depth1",
+	"description": "Max Translation Depth 1. Function Root(Count) calls Child, then itself with Count; Child calls Grandchild; Grandchild calls Root. Captured from Root.",
+	"translation_depth": 1,
+	"known_defects": [
+		{
+			"finding": "translation-core-3 (qw-12)",
+			"card": "0130",
+			"effect": "The depth never grows past the first level: every nested user graph is checked as depth 1, so depth 1 captures Grandchild as well and depth 1 and 2 capture the same graphs"
+		},
+		{
+			"finding": "translation-core-9",
+			"card": "0134",
+			"effect": "Root calls itself before Root is in the graph list, so Root is captured twice; the second copy reuses node IDs N1-N3 and gives every pin the same ID (P10, also Child's entry exec pin), and the validator logs ERROR 'Duplicate pin ID' (expected errors in this case)"
+		},
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_Recursion_Depth1",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_Recursion_Depth1"
+		},
+		"graphs": [
+			{
+				"name": "Root",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Root",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Count",
+								"type": "Integer",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "Child",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "Child",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "Root",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "Root",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P8",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							},
+							{
+								"id": "P9",
+								"name": "Count",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2",
+						"N2->N3"
+					],
+					"data":
+					{
+						"N1.P2": "N3.P9"
+					}
+				}
+			},
+			{
+				"name": "Root",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Root",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Count",
+								"type": "Integer",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "Child",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "Child",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "Root",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "Root",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							},
+							{
+								"id": "P10",
+								"name": "Count",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P10",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2",
+						"N2->N3"
+					],
+					"data":
+					{
+						"N1.P10": "N3.P10"
+					}
+				}
+			},
+			{
+				"name": "Child",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "FunctionEntry",
+						"name": "Child",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P10",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"name": "Grandchild",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "Grandchild",
+						"input_pins": [
+							{
+								"id": "P11",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P13",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P12",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4->N5"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "Grandchild",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N6",
+						"type": "FunctionEntry",
+						"name": "Grandchild",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P14",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N7",
+						"type": "CallFunction",
+						"name": "Root",
+						"member_parent": "BP_N2CGolden_Recursion_Depth1",
+						"member_name": "Root",
+						"input_pins": [
+							{
+								"id": "P15",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P17",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							},
+							{
+								"id": "P18",
+								"name": "Count",
+								"type": "Integer",
+								"default_value": "0"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P16",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N6->N7"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
