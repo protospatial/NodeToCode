@@ -296,6 +296,24 @@ its environment when no key is saved, so a live check never types or saves a key
   - Provider HTTP errors (429, 503, 402) surface in the response as "Failed to parse LLM response" with the raw body;
     the case's `log_errors` hold the HTTP status.
 
+## Epic's registry through MCPClientToolset (UE 5.8, card 0141)
+
+`live_mcpclienttoolset.py --engine G:/UE/UE_5.8 --project <5.8 host> [--no-translate] [--activity-timeout N] [--eager]`
+mounts NodeToCode in Epic's ToolsetRegistry the way `wiki/developers/Using-NodeToCode-with-Unreal-MCP.md` says. For
+the run it enables ModelContextProtocol and MCPClientToolset in the host `.uproject` and writes the MCP Toolset
+Servers entry (Streamable HTTP, Auth None) and Epic's MCP server settings (auto start, its own port) into the host's
+`Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini`; `EditorSession` puts every file back byte for byte
+(`restored`). It then replays MCPClientToolset's own request sequence against `/mcp` (initialize at 2024-11-05, no
+MCP-Protocol-Version header, ids from 0, tools/list without params, tools/call without a progressToken), compares its
+tools/list with a normal 2025-11-25 session, and calls the same tools through Epic's MCP server (`list_toolsets`,
+`describe_toolset NodeToCode`, `call_tool`), recording the shape Epic returns (`{"text": ...}`, `isError` dropped).
+`get-available-translation-targets` and an unfocused `translate-focused-blueprint` need no key; the two real
+translations (direct and through the registry) use only the provider's variable from `.env` (`--no-translate` skips
+them). `--activity-timeout 3` starts the editor with `[HTTP] HttpActivityTimeout=3` to show the registry hop timing
+out (`registry_translate_timed_out`); `--eager` turns Epic's tool search off and calls `NodeToCode.<tool>` as native
+tools. Report: `logs/live_mcpclienttoolset_<label>[_t<N>][_eager].json`. Observed on 5.8 (card 0141): registered on
+every start, 62 tools in both lists, translations in 8 to 12 s with claude-haiku-5-5, the 3 s run timed out at 3.1 s.
+
 ## Migration check
 
 The 1.2.x to 2.0 migration check (card 0079) lives in `Tests/Migration/` and reuses `editor_session.py`,
