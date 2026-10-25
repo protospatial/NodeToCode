@@ -25,7 +25,8 @@ public:
 	/**
 	 * The tool's result for a capture: the N2C JSON with each node's and pin's "id" replaced by "ids" {"short", "guid"}
 	 * (pins also "name"), flows keeping the short IDs, and the capture's top-level "guids" table (graph GUIDs, node ID
-	 * -> NodeGuid, pin ID -> {node, guid}). Empty when the capture cannot be serialized.
+	 * -> NodeGuid, pin ID -> {node, guid}), indented. Empty when the capture cannot be serialized.
+	 * N2CMcpBlueprintExport::ToResultJson(Capture, false): get-blueprint-n2cjson writes the same document (card 0157).
 	 */
 	static FString BuildResultJson(const FN2CCapture& Capture);
 };

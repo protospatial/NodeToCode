@@ -36,7 +36,8 @@ While the editor is open, Node to Code runs an [MCP](https://modelcontextprotoco
 Code's tools to work in your editor:
 
 - read the focused Blueprint, its functions, variables and components (`get-focused-blueprint`,
-  `list-blueprint-functions`, ...);
+  `list-blueprint-functions`, ...), and any Blueprint by asset path without opening it (`list-blueprint-graphs`,
+  `get-blueprint-n2cjson`);
 - add and connect nodes, create functions and variables, compile and save (`add-bp-node-to-active-graph`,
   `connect-pins`, `compile-blueprint`, ...);
 - search and organize the Content Browser, and read project files;

@@ -170,52 +170,7 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
     FN2CLogger::Get().Log(TEXT("Starting node translation"), EN2CLogSeverity::Info);
 
     // Get Blueprint metadata from first node (all nodes are from the same graph)
-    if (UK2Node* FirstNode = CollectedNodes[0])
-    {
-        if (UBlueprint* Blueprint = FirstNode->GetBlueprint())
-        {
-            CapturedBlueprint = Blueprint;
-
-            // Set Blueprint name
-            N2CBlueprint.Metadata.Name = Blueprint->GetName();
-
-            // Set Blueprint class
-            if (UClass* BPClass = FirstNode->GetBlueprintClassFromNode())
-            {
-                N2CBlueprint.Metadata.BlueprintClass = N2CStableNames::ClassName(BPClass);
-            }
-
-            // Determine Blueprint type
-            switch (Blueprint->BlueprintType)
-            {
-                case BPTYPE_Const:
-                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Const;
-                    break;
-                case BPTYPE_MacroLibrary:
-                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::MacroLibrary;
-                    break;
-                case BPTYPE_Interface:
-                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Interface;
-                    break;
-                case BPTYPE_LevelScript:
-                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::LevelScript;
-                    break;
-                case BPTYPE_FunctionLibrary:
-                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::FunctionLibrary;
-                    break;
-                default:
-                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal;
-                    break;
-            }
-
-            // Log Blueprint info
-            FString Context = FString::Printf(TEXT("Blueprint: %s, Type: %s, Class: %s"),
-                *N2CBlueprint.Metadata.Name,
-                *StaticEnum<EN2CBlueprintType>()->GetNameStringByValue(static_cast<int64>(N2CBlueprint.Metadata.BlueprintType)),
-                *N2CBlueprint.Metadata.BlueprintClass);
-            FN2CLogger::Get().Log(TEXT("Blueprint metadata collected"), EN2CLogSeverity::Info, Context);
-        }
-    }
+    CaptureBlueprintMetadata(CollectedNodes[0]);
 
     // The main graph is Graphs[0], named and typed from the first node's graph
     FString MainGraphName;
@@ -271,6 +226,68 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
     N2CLiveness::MarkGraph(CurrentGraph());
     CurrentGraphIndex = INDEX_NONE;
 
+    ProcessQueuedGraphs();
+
+    FString Context = FString::Printf(TEXT("Translated %d nodes in %d graphs"),
+        MainGraphNodeCount,
+        N2CBlueprint.Graphs.Num());
+    FN2CLogger::Get().Log(TEXT("Node translation complete"), EN2CLogSeverity::Info, Context);
+
+    return N2CBlueprint.Graphs.Num() > 0;
+}
+
+void FN2CCaptureContext::CaptureBlueprintMetadata(UK2Node* FirstNode)
+{
+    if (FirstNode)
+    {
+        if (UBlueprint* Blueprint = FirstNode->GetBlueprint())
+        {
+            CapturedBlueprint = Blueprint;
+
+            // Set Blueprint name
+            N2CBlueprint.Metadata.Name = Blueprint->GetName();
+
+            // Set Blueprint class
+            if (UClass* BPClass = FirstNode->GetBlueprintClassFromNode())
+            {
+                N2CBlueprint.Metadata.BlueprintClass = N2CStableNames::ClassName(BPClass);
+            }
+
+            // Determine Blueprint type
+            switch (Blueprint->BlueprintType)
+            {
+                case BPTYPE_Const:
+                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Const;
+                    break;
+                case BPTYPE_MacroLibrary:
+                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::MacroLibrary;
+                    break;
+                case BPTYPE_Interface:
+                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Interface;
+                    break;
+                case BPTYPE_LevelScript:
+                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::LevelScript;
+                    break;
+                case BPTYPE_FunctionLibrary:
+                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::FunctionLibrary;
+                    break;
+                default:
+                    N2CBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal;
+                    break;
+            }
+
+            // Log Blueprint info
+            FString Context = FString::Printf(TEXT("Blueprint: %s, Type: %s, Class: %s"),
+                *N2CBlueprint.Metadata.Name,
+                *StaticEnum<EN2CBlueprintType>()->GetNameStringByValue(static_cast<int64>(N2CBlueprint.Metadata.BlueprintType)),
+                *N2CBlueprint.Metadata.BlueprintClass);
+            FN2CLogger::Get().Log(TEXT("Blueprint metadata collected"), EN2CLogSeverity::Info, Context);
+        }
+    }
+}
+
+void FN2CCaptureContext::ProcessQueuedGraphs()
+{
     // Process any additional graphs that were discovered, shallowest first: every graph at depth N is processed
     // (and queues its own children at N + 1) before any graph at N + 1, so a graph is always reached by its shortest
     // call path and the depth limit counts calls from the captured graph. Within one depth the most recently queued
@@ -295,12 +312,60 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
         }
     }
     CurrentDepth = 0;
+}
 
-    FString Context = FString::Printf(TEXT("Translated %d nodes in %d graphs"),
-        MainGraphNodeCount,
-        N2CBlueprint.Graphs.Num());
-    FN2CLogger::Get().Log(TEXT("Node translation complete"), EN2CLogSeverity::Info, Context);
+bool FN2CCaptureContext::CaptureGraphs(TConstArrayView<UEdGraph*> Graphs)
+{
+    // Metadata from the first node any of the graphs holds, as CaptureNodes takes it from its first node
+    UK2Node* FirstNode = nullptr;
+    for (const UEdGraph* Graph : Graphs)
+    {
+        if (!Graph)
+        {
+            continue;
+        }
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            FirstNode = Cast<UK2Node>(Node);
+            if (FirstNode)
+            {
+                break;
+            }
+        }
+        if (FirstNode)
+        {
+            break;
+        }
+    }
+    if (!FirstNode)
+    {
+        FN2CLogger::Get().LogWarning(TEXT("No nodes to capture in any of the graphs"));
+        return false;
+    }
+    CaptureBlueprintMetadata(FirstNode);
 
+    // Every graph asked for counts as visited before any is processed, so a call from one to another is never
+    // queued as a nested graph: each is captured once, at depth 0, in the order given
+    for (UEdGraph* Graph : Graphs)
+    {
+        if (Graph)
+        {
+            VisitedGraphs.Add(Graph);
+        }
+    }
+    CurrentDepth = 0;
+    for (UEdGraph* Graph : Graphs)
+    {
+        if (Graph)
+        {
+            // A graph with no nodes (after ghost nodes are left out) is dropped by ProcessGraph
+            ProcessGraph(Graph, DetermineGraphType(Graph));
+        }
+    }
+    ProcessQueuedGraphs();
+
+    FN2CLogger::Get().Log(TEXT("Graph capture complete"), EN2CLogSeverity::Info,
+        FString::Printf(TEXT("Captured %d graphs (%d asked for)"), N2CBlueprint.Graphs.Num(), Graphs.Num()));
     return N2CBlueprint.Graphs.Num() > 0;
 }
 

@@ -81,7 +81,8 @@ const FString& FN2CMcpProtocol::GetServerInstructions()
 	static const FString Instructions = TEXT(
 		"NodeToCode works on the Unreal Editor's Blueprints, most tools on the Blueprint focused in the editor. "
 		"Start with get-focused-blueprint to read its graph (open-blueprint-asset or search-content-browser to focus "
-		"another), and translate-focused-blueprint to translate it into code: a long-running call that sends progress "
+		"another; list-blueprint-graphs and get-blueprint-n2cjson read any Blueprint by asset path with no editor open), "
+		"and translate-focused-blueprint to translate it into code: a long-running call that sends progress "
 		"when you pass _meta.progressToken and stops on notifications/cancelled. To edit a graph, search-blueprint-nodes, "
 		"then add-bp-node-to-active-graph and connect-pins, then compile-blueprint. If tools/list shows only "
 		"assess-needed-tools, call it first with the tool categories you need; if it shows only the Python script tools, "

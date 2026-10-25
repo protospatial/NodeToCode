@@ -31,6 +31,13 @@ public:
      */
     bool CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes);
 
+    /**
+     * Captures every graph in Graphs as a top-level graph (depth 0), in that order, then the nested graphs they use
+     * that are not among them, within the depth limit. A graph with no nodes is left out.
+     * @return True if at least one graph was captured
+     */
+    bool CaptureGraphs(TConstArrayView<UEdGraph*> Graphs);
+
     /** Describes one node into OutNodeDef; its flows go to a scratch graph that is discarded */
     bool DescribeNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
@@ -103,6 +110,12 @@ private:
 
     /** Depth of the graph being processed (0 for the captured graph); a graph it uses is at CurrentDepth + 1 */
     int32 CurrentDepth = 0;
+
+    /** Fills N2CBlueprint.Metadata and CapturedBlueprint from the Blueprint FirstNode belongs to */
+    void CaptureBlueprintMetadata(UK2Node* FirstNode);
+
+    /** Captures the queued nested graphs, shallowest first, until the queue is empty */
+    void ProcessQueuedGraphs();
 
     /** Starts writing a new graph at the end of N2CBlueprint.Graphs (Source, when given, is marked visited) */
     void BeginGraph(const FString& Name, EN2CGraphType GraphType, const UEdGraph* Source = nullptr);

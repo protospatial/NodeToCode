@@ -94,7 +94,7 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
     unless the command line has `-N2CMcp`), graceful shutdown on exit
 *   **Tools**: which tools `tools/list` returns depends on the registration mode (default: every tool except
-    `assess-needed-tools`, 62 tools, or 59 without Allow MCP Python Execution); see Tool Registration Modes
+    `assess-needed-tools`, 64 tools, or 61 without Allow MCP Python Execution); see Tool Registration Modes
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
 ### Sessions and versions (MCP 2025-11-25, Streamable HTTP on one `/mcp` endpoint)
@@ -257,11 +257,14 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 
 ### Tool Implementations (`Implementations/`)
 
-63 tools by folder (the category each tool registers under, which dynamic discovery uses, is in the category table
+65 tools by folder (the category each tool registers under, which dynamic discovery uses, is in the category table
 of `Source/Private/MCP/Tools/AGENTS.md`; folders and categories do not map one to one):
 
 **Blueprint/Analysis/** - Blueprint inspection tools:
 *   `get-focused-blueprint` - Get currently focused Blueprint
+*   `get-blueprint-n2cjson` - Any Blueprint's graphs (one, or every graph) as N2C JSON by asset path, no editor
+    needed; a result over about 20000 tokens goes to a file under `Saved/NodeToCode/Exports` (card 0157)
+*   `list-blueprint-graphs` - Every graph of a Blueprint by asset path: name, graphGuid, kind, node count, read-only
 *   `list-blueprint-functions` - List functions in a Blueprint
 *   `list-overridable-functions` - List parent class overridable functions
 *   `get-open-blueprint-editors` - Get all open Blueprint editors
@@ -445,7 +448,7 @@ agent (`Source/Private/MCP/Utils/N2CMcpUntrustedContent.h`):
 - A tool whose definition sets `bReturnsUntrustedContent` has each successful text result marked by
   `FN2CMcpToolManager::ExecuteTool`: a JSON object gets `"untrusted_content": "<the notice>"` as its first key (the
   rest of the text is kept), other text gets the notice as its first paragraph. Set today on get-focused-blueprint,
-  find-nodes-in-graph, get-blueprint-member-variables, get-blueprint-function-local-variables,
+  get-blueprint-n2cjson, list-blueprint-graphs, find-nodes-in-graph, get-blueprint-member-variables, get-blueprint-function-local-variables,
   list-blueprint-functions, list-overridable-functions, search-blueprint-nodes and list-blueprint-tags;
   translate-focused-blueprint (long-running, not through `ExecuteTool`) marks its own translation. A new tool that
   returns Blueprint text sets the flag and is added to the spec's list.
@@ -496,14 +499,14 @@ The server implements these MCP methods:
 2. **Dynamic tool discovery** (`bEnableDynamicToolDiscovery`, default false): `SetDefaultToolSet`, so only
    `assess-needed-tools`. 1 tool.
 3. **All tools** (both false, the shipped default): `RegisterAllToolsExceptAssess`, every registered tool except
-   `assess-needed-tools`. 62 tools.
+   `assess-needed-tools`. 64 tools.
 
 Every path goes through `FN2CMcpToolManager::RegisterTool`, which drops `run-python`, `save-python-script` and
 `delete-python-script` unless the per-user Allow MCP Python Execution is on (see Server switches, below; off by
-default). So with the shipped defaults a fresh install lists 59 tools; Python script-only mode without the switch
+default). So with the shipped defaults a fresh install lists 61 tools; Python script-only mode without the switch
 lists 4 and logs a warning at start. Both mode settings are read only when the server starts, so they need an
 editor restart. `build.ps1 -Smoke` checks each mode
-with Python execution allowed against `Tests/smoke/expected.json` (`default` 62, `dynamic` 1, `python_only` 7). The
+with Python execution allowed against `Tests/smoke/expected.json` (`default` 64, `dynamic` 1, `python_only` 7). The
 full tool and category tables are in `Source/Private/MCP/Tools/AGENTS.md`.
 
 ## Dynamic Tool Management
@@ -546,7 +549,7 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     so both work). In `Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini` the line must be
     `MCPServers=(...)`: a `+MCPServers=(...)` line left the list empty on 5.8 and the subsystem logged nothing.
 *   **Tool profile**: Python script-only mode and dynamic discovery off (the defaults). Tools register as
-    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 62 tools with Allow MCP
+    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 64 tools with Allow MCP
     Python Execution, all in the first `tools/list` (one page, no cursor).
 *   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
     `Accept: application/json, text/event-stream`, `Mcp-Session-Id` from the first response on every later POST,
@@ -687,7 +690,7 @@ picks, the choice is not saved; the warning says to remove it from the project f
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
   `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so dynamic discovery cannot add them either.
-  Without it the default mode lists 59 tools, not 62.
+  Without it the default mode lists 61 tools, not 64.
 
 Both are read once per editor session, so a change needs an editor restart.
 

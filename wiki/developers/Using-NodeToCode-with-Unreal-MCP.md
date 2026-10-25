@@ -48,7 +48,7 @@ The setting is per user and per project. The same entry as a line in
 MCPServers=(Name="NodeToCode",Description="Blueprint translation, graph editing and Python tools for the open Unreal editor",ServerUrl="http://127.0.0.1:27000/mcp",ApiKey="",bEnabled=True,Transport=StreamableHTTP,Auth=None,OAuthClientId="",OAuthScope="")
 ```
 
-Restart the editor. The Output Log shows `MCPClientToolset 'NodeToCode': registered 62 tool(s)` (59 without
+Restart the editor. The Output Log shows `MCPClientToolset 'NodeToCode': registered 64 tool(s)` (61 without
 **Allow MCP Python Execution**) and `MCPClientToolset: registered 'NodeToCode'`. NodeToCode's log shows a session for
 client `UE-ToolsetRegistry` at protocol `2024-11-05`, which NodeToCode accepts.
 
