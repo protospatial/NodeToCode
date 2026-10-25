@@ -107,6 +107,10 @@ the first differing line and writes the whole output to `<Project>/Saved/Automat
   macro) and `EnhancedInputEvent` (the action event of a transient `UInputAction`, made by reflection so the plugin
   needs no EnhancedInput dependency; EnhancedInput is on by default in every host). User structs, enums and input
   actions are created in the test package (`AddUserStruct`, `AddUserEnum`, `AddEnhancedInputAction`), not as assets.
+- **Depth limit (card 0130):** `CallChain_Depth1` and `CallChain_Depth2` (A calls B calls C calls D, captured from A:
+  depth 1 adds B, depth 2 adds B and C, D never) and `ShortestPath_Depth3` (a graph reachable 2 and 3 calls away is
+  taken at depth 2, so its callee at depth 3 is captured and the one at depth 4 is not). Max Translation Depth counts
+  calls from the captured graph, and nested graphs are processed shallowest first (translation-core-3, qw-12).
 - **Max Translation Depth:** a case may set `UN2CSettings::TranslationDepth` for its capture; the spec puts it back
   afterwards and the golden records it as `translation_depth`. The `Hygiene` cases check that the depth is put back
   and that a test package with a user struct, enum and input action is gone after garbage collection (the factory
@@ -117,8 +121,7 @@ the first differing line and writes the whole output to `<Project>/Saved/Automat
   (translation-core-2, 0136), ghost default events (translation-core-18/19, 0137), global pin IDs and traversal-order
   node IDs (translation-core-7, 0134), display-text names (gap-5, 0138), Break Struct captured as a Variable named
   `None` (translation-core-4, 0234), custom events with member_name `None` and Switch nodes named `Switch`
-  (translation-core-16 and -32, 0239). From card 0127: the depth limit never applies past the first level, so depth 1
-  and 2 capture the same graphs (translation-core-3, qw-12, card 0130); a function that calls itself is captured twice
+  (translation-core-16 and -32, 0239). From card 0127: a function that calls itself is captured twice
   with every pin of the copy sharing one ID (translation-core-9, 0134); a pasted node's pins all share one ID because
   pin IDs are keyed by pin GUID (translation-core-7, 0134); a user struct with an object member is dropped from
   `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped

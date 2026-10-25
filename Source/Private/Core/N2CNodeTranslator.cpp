@@ -163,17 +163,30 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
     // Add the main graph to the blueprint
     N2CBlueprint.Graphs.Add(MainGraph);
 
-    // Process any additional graphs that were discovered
+    // Process any additional graphs that were discovered, shallowest first: every graph at depth N is processed
+    // (and queues its own children at N + 1) before any graph at N + 1, so a graph is always reached by its shortest
+    // call path and the depth limit counts calls from the captured graph. Within one depth the most recently queued
+    // graph goes first, as before.
     while (AdditionalGraphsToProcess.Num() > 0)
     {
-        FGraphProcessInfo GraphInfo = AdditionalGraphsToProcess.Pop();
+        int32 NextIndex = AdditionalGraphsToProcess.Num() - 1;
+        for (int32 Index = NextIndex - 1; Index >= 0; --Index)
+        {
+            if (AdditionalGraphsToProcess[Index].Depth < AdditionalGraphsToProcess[NextIndex].Depth)
+            {
+                NextIndex = Index;
+            }
+        }
+        const FGraphProcessInfo GraphInfo = AdditionalGraphsToProcess[NextIndex];
+        AdditionalGraphsToProcess.RemoveAt(NextIndex);
         if (UEdGraph* QueuedGraph = GraphInfo.Graph.Get())
         {
-            // Set the depth to parent depth before processing
-            CurrentDepth = GraphInfo.ParentDepth;
+            // The graph's own depth, so the graphs it queues are checked and queued at depth + 1
+            CurrentDepth = GraphInfo.Depth;
             ProcessGraph(QueuedGraph, DetermineGraphType(QueuedGraph));
         }
     }
+    CurrentDepth = 0;
 
     FString Context = FString::Printf(TEXT("Translated %d nodes in %d graphs"), 
         MainGraph.Nodes.Num(), 
@@ -340,10 +353,10 @@ void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
 
         if (!bAlreadyQueued)
         {
-            FString Context = FString::Printf(TEXT("Adding user-created graph to process: %s (Parent Depth: %d)"), 
-                *Graph->GetName(), CurrentDepth);
+            FString Context = FString::Printf(TEXT("Adding user-created graph to process: %s (Depth: %d)"), 
+                *Graph->GetName(), NextDepth);
             FN2CLogger::Get().Log(Context, EN2CLogSeverity::Debug);
-            AdditionalGraphsToProcess.Add(FGraphProcessInfo(Graph, CurrentDepth));
+            AdditionalGraphsToProcess.Add(FGraphProcessInfo(Graph, NextDepth));
         }
     }
     else

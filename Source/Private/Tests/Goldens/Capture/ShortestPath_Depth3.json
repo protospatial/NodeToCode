@@ -1,0 +1,400 @@
+{
+	"case": "ShortestPath_Depth3",
+	"description": "Max Translation Depth 3. Root calls Near, then Far. Near calls Shared; Far calls Mid, Mid calls Shared; Shared calls Leaf, Leaf calls Beyond. Captured from Root. Shared is 2 calls away through Near (3 through Far), so Leaf (3) is captured and Beyond (4) is not.",
+	"translation_depth": 3,
+	"known_defects": [
+		{
+			"finding": "translation-core-2",
+			"card": "0136",
+			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
+		},
+		{
+			"finding": "translation-core-7",
+			"card": "0134",
+			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
+		},
+		{
+			"finding": "gap-5",
+			"card": "0138",
+			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+		}
+	],
+	"capture":
+	{
+		"version": "1.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_ShortestPath_Depth3",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_ShortestPath_Depth3"
+		},
+		"graphs": [
+			{
+				"name": "Root",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"name": "Root",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"name": "Near",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "Near",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"name": "Far",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "Far",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P7",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1->N2",
+						"N2->N3"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "Far",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "FunctionEntry",
+						"name": "Far",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"name": "Mid",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "Mid",
+						"input_pins": [
+							{
+								"id": "P9",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P11",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P10",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4->N5"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "Near",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N6",
+						"type": "FunctionEntry",
+						"name": "Near",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P12",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N7",
+						"type": "CallFunction",
+						"name": "Shared",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "Shared",
+						"input_pins": [
+							{
+								"id": "P13",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P15",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P14",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N6->N7"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "Shared",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N8",
+						"type": "FunctionEntry",
+						"name": "Shared",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P16",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N9",
+						"type": "CallFunction",
+						"name": "Leaf",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "Leaf",
+						"input_pins": [
+							{
+								"id": "P17",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P19",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P18",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N8->N9"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "Mid",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N10",
+						"type": "FunctionEntry",
+						"name": "Mid",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P20",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N11",
+						"type": "CallFunction",
+						"name": "Shared",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "Shared",
+						"input_pins": [
+							{
+								"id": "P21",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P23",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P22",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N10->N11"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "Leaf",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N12",
+						"type": "FunctionEntry",
+						"name": "Leaf",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P24",
+								"name": "",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N13",
+						"type": "CallFunction",
+						"name": "Beyond",
+						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
+						"member_name": "Beyond",
+						"input_pins": [
+							{
+								"id": "P25",
+								"name": "",
+								"connected": true
+							},
+							{
+								"id": "P27",
+								"name": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P26",
+								"name": ""
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N12->N13"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

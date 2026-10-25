@@ -11,6 +11,8 @@ Depth | Use Case | Considerations
 2 | Include nested functions | Balance of depth/cost
 3+ | Deep system translation | Higher cost, longer processing
 
+Each level counts one more call away from the graph you translate, along the shortest call path (see [Max Translation Depth](Max-Translation-Depth) for an example). Before NodeToCode 2.0, any depth above 1 captured the same graphs as depth 1.
+
 
 ## Depth Configuration Guidelines
 
