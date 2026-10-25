@@ -68,10 +68,12 @@ public:
     static bool GetFocusedEditorGraph(UBlueprint*& OutBlueprint, UEdGraph*& OutGraph, FString& OutErrorMsg);
 
     /**
-     * Opens or focuses a Blueprint editor for the given Blueprint.
-     * This method will reuse existing editors if one is already open for the Blueprint.
+     * Opens or focuses a Blueprint editor for the given Blueprint and makes it the focused Blueprint editor.
+     * This method will reuse existing editors if one is already open for the Blueprint, and never creates a second one.
+     * OutEditor is always the editor of this Blueprint (FN2CBlueprintEditorTracker::GetEditorFor), never whichever
+     * editor was focused before. Fails when the Blueprint opens in an editor that is not a Blueprint editor.
      * @param Blueprint The Blueprint to open in the editor.
-     * @param OutEditor The resulting Blueprint editor instance.
+     * @param OutEditor The resulting Blueprint editor instance (an FBlueprintEditor whose GetBlueprintObj() is Blueprint).
      * @param OutErrorMsg Error message if the editor could not be opened.
      * @return True if the editor was successfully opened or focused, false otherwise.
      */

@@ -55,10 +55,12 @@ Connects plugin logic to the Unreal Editor UI.
 *   **`Source/Public/Core/N2CEditorIntegration.h` / `Source/Private/Core/N2CEditorIntegration.cpp` (`FN2CEditorIntegration`)**: Singleton for Blueprint Editor integration.
     *   Registers toolbar extensions
     *   Maps UI commands (`FN2CToolbarCommand`) to handlers
-    *   Tracks `ActiveBlueprintEditor` and manages graph tab wrapping
+    *   Manages graph tab wrapping (the overlays); its `GetActiveBlueprintEditor` and `GetFocusedGraphFromActiveEditor` forward to the tracker below
     *   Provides `TranslateFocusedBlueprintAsync()` for MCP tools
     *   Manages global translation state across overlays
     *   Delegates: `OnTranslationStateChanged`, `OnOverlayTranslationRequested`
+
+*   **`Source/Public/Core/N2CBlueprintEditorTracker.h` / `Source/Private/Core/N2CBlueprintEditorTracker.cpp` (`FN2CBlueprintEditorTracker`)**: the single definition of the focused Blueprint editor (card 0150): the Blueprint editor last activated through `OnTabForegrounded`, `OnActiveTabChanged` or `OnAssetOpenedInEditor`, with a fallback to the most recently activated editor still open. `GetEditorFor(UBlueprint*)` gives a Blueprint's own editor (checked with `IsBlueprintEditor()`). See "Which Blueprint is focused" in `Source/Private/MCP/Tools/Implementations/Blueprint/AGENTS.md`
 
 *   **`Source/Public/Core/N2CToolbarCommand.h` / `Source/Private/Core/N2CToolbarCommand.cpp` (`FN2CToolbarCommand`)**: `TCommands` subclass defining toolbar UI actions:
     *   `OpenWindowCommand` - Open plugin window

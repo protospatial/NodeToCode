@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Core/N2CBlueprintEditorTracker.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
@@ -52,10 +53,8 @@ FMcpToolCallResult FN2CMcpGetOpenBlueprintEditorsTool::Execute(const TSharedPtr<
 		
 		// Get all currently edited assets
 		TArray<UObject*> EditedAssets = AssetEditorSubsystem->GetAllEditedAssets();
-		
-		// Also try to get Blueprint editors directly from the BlueprintEditorModule
-		FBlueprintEditorModule* BlueprintEditorModule = FModuleManager::GetModulePtr<FBlueprintEditorModule>("Kismet");
-		
+		const TSharedPtr<FBlueprintEditor> FocusedEditor = FN2CBlueprintEditorTracker::Get().GetFocusedEditor();
+
 		// Process assets from AssetEditorSubsystem
 		for (UObject* Asset : EditedAssets)
 		{
@@ -79,29 +78,18 @@ FMcpToolCallResult FN2CMcpGetOpenBlueprintEditorsTool::Execute(const TSharedPtr<
 				continue;
 			}
 			
-			// Try to get the FBlueprintEditor
-			// We need to get this from the BlueprintEditorModule
-			TSharedPtr<FBlueprintEditor> BlueprintEditor;
-			
-			if (BlueprintEditorModule)
-			{
-				// Look for this Blueprint in the module's open editors
-				// Note: GetBlueprintEditors returns TSharedRef<IBlueprintEditor>, but we need FBlueprintEditor
-				// We'll handle this differently by using the editor integration
-				BlueprintEditor = FN2CEditorIntegration::Get().GetActiveBlueprintEditor();
-				if (BlueprintEditor.IsValid() && BlueprintEditor->GetBlueprintObj() != Blueprint)
-				{
-					// This isn't the right editor, clear it
-					BlueprintEditor.Reset();
-				}
-			}
-			
+			// This Blueprint's own editor (card 0150: not only the focused one, which left every other open
+			// Blueprint without its editor state)
+			const TSharedPtr<FBlueprintEditor> BlueprintEditor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+
 			// If we found a valid Blueprint editor, collect its info
 			if (BlueprintEditor.IsValid())
 			{
 				TSharedPtr<FJsonObject> EditorInfo = CollectEditorInfo(BlueprintEditor);
 				if (EditorInfo.IsValid())
 				{
+					// The editor the focus-based tools act on (the one the user last activated)
+					EditorInfo->SetBoolField(TEXT("isFocused"), BlueprintEditor == FocusedEditor);
 					Editors.Add(MakeShareable(new FJsonValueObject(EditorInfo)));
 				}
 			}

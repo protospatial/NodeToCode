@@ -78,8 +78,9 @@ tools. The launcher form also ran translations through `claude -p` on UE 5.6 and
 
 ## Translating with your subscription
 
-Focus a Blueprint graph in the editor and ask the agent, for example: "Use the nodetocode get-focused-blueprint
-tool and translate that graph to Unreal C++." The agent does the translation with your subscription.
+Click into a Blueprint graph and ask the agent, for example: "Use the nodetocode get-focused-blueprint tool and
+translate that graph to Unreal C++." The focused Blueprint is the Blueprint editor you last clicked (its tab or inside
+it) or that the agent last opened with `open-blueprint-asset`. The agent does the translation with your subscription.
 
 The `translate-focused-blueprint` tool is different: it runs NodeToCode's own translation with the provider and
 **API Key** from Project Settings, and is billed to that key. Leave it out if you want to use only your subscription.

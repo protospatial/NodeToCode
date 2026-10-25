@@ -10,6 +10,8 @@
 #include "Engine/UserDefinedEnum.h"
 #include "StructUtils/UserDefinedStruct.h"
 #include "BlueprintEditorModule.h"
+#include "BlueprintEditor.h"
+#include "Core/N2CBlueprintEditorTracker.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node.h"
 #include "EdGraphSchema_K2.h"
@@ -90,24 +92,8 @@ FMcpToolCallResult FN2CMcpSearchVariableTypesTool::Execute(const TSharedPtr<FJso
 {
 	return ExecuteOnGameThread([this, Arguments]() -> FMcpToolCallResult
 	{
-		// Validate Blueprint editor is active
-		FBlueprintEditorModule& BPEditorModule = FModuleManager::LoadModuleChecked<FBlueprintEditorModule>("Kismet");
-		
-		// Get all blueprint editors and find the focused one
-		TArray<TSharedRef<IBlueprintEditor>> BlueprintEditors = BPEditorModule.GetBlueprintEditors();
-		TSharedPtr<IBlueprintEditor> BlueprintEditor;
-		double LatestActivationTime = 0.0;
-		
-		for (const TSharedRef<IBlueprintEditor>& Editor : BlueprintEditors)
-		{
-			double ActivationTime = Editor->GetLastActivationTime();
-			if (ActivationTime > LatestActivationTime)
-			{
-				LatestActivationTime = ActivationTime;
-				BlueprintEditor = Editor;
-			}
-		}
-		
+		// The same focused Blueprint editor every focus-based tool uses (card 0150)
+		const TSharedPtr<FBlueprintEditor> BlueprintEditor = FN2CBlueprintEditorTracker::Get().GetFocusedEditor();
 		if (!BlueprintEditor.IsValid())
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("No active Blueprint editor found"));

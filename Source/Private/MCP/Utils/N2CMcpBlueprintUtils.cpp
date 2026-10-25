@@ -5,6 +5,7 @@
 #include "EdGraph/EdGraph.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Core/N2CBlueprintEditorTracker.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "BlueprintEditor.h" // Required for TSharedPtr<FBlueprintEditor>
 #include "Subsystems/AssetEditorSubsystem.h"
@@ -90,78 +91,57 @@ bool FN2CMcpBlueprintUtils::OpenBlueprintEditor(UBlueprint* Blueprint, TSharedPt
 {
     OutErrorMsg.Empty();
     OutEditor.Reset();
-    
+
     if (!Blueprint)
     {
         OutErrorMsg = TEXT("INVALID_BLUEPRINT: Blueprint is null");
         return false;
     }
-    
+
     // Get the asset editor subsystem
-    UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+    UAssetEditorSubsystem* AssetEditorSubsystem = GEditor ? GEditor->GetEditorSubsystem<UAssetEditorSubsystem>() : nullptr;
     if (!AssetEditorSubsystem)
     {
         OutErrorMsg = TEXT("EDITOR_SUBSYSTEM_ERROR: Could not get AssetEditorSubsystem");
         return false;
     }
-    
-    // First check if there's already an editor open for this Blueprint
-    IAssetEditorInstance* ExistingEditor = AssetEditorSubsystem->FindEditorForAsset(Blueprint, true); // true = focus if open
-    
-    if (ExistingEditor)
+
+    // The editor already open on this Blueprint, brought to the front; otherwise open one (the subsystem reuses an
+    // existing editor and never makes a second one). Either way the editor comes from the Blueprint itself, never from
+    // whichever editor was focused before (card 0150)
+    TSharedPtr<FBlueprintEditor> Editor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+    if (Editor.IsValid())
     {
-        // An editor is already open, we just focused it
-        // Give the editor focus callback time to update
-        FSlateApplication::Get().ProcessApplicationActivationEvent(true);
-        
-        // Try to get the active Blueprint editor from our integration
-        OutEditor = FN2CEditorIntegration::Get().GetActiveBlueprintEditor();
-        
-        if (OutEditor.IsValid())
-        {
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Using existing editor for Blueprint: %s"), *Blueprint->GetName()), EN2CLogSeverity::Debug);
-            return true;
-        }
+        Editor->FocusWindow();
     }
-    
-    // If we get here, either there was no existing editor or we couldn't get a valid reference to it
-    // Use the asset editor subsystem to open the editor, which will reuse existing ones
-    bool bOpened = AssetEditorSubsystem->OpenEditorForAsset(Blueprint);
-    if (!bOpened)
+    else
     {
-        OutErrorMsg = TEXT("OPEN_EDITOR_FAILED: Failed to open editor for Blueprint");
+        if (!AssetEditorSubsystem->OpenEditorForAsset(Blueprint))
+        {
+            OutErrorMsg = TEXT("OPEN_EDITOR_FAILED: Failed to open editor for Blueprint");
+            return false;
+        }
+        Editor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
+    }
+
+    if (!Editor.IsValid())
+    {
+        // Some UBlueprint subclasses open in their own toolkits (Control Rig with RigVM.UseNewEditor=1)
+        OutErrorMsg = FString::Printf(TEXT("NOT_A_BLUEPRINT_EDITOR: %s opened in an editor that is not a Blueprint editor"),
+            *Blueprint->GetName());
         return false;
     }
-    
-    // After opening, we should be able to get the active Blueprint editor
-    OutEditor = FN2CEditorIntegration::Get().GetActiveBlueprintEditor();
-    
-    if (!OutEditor.IsValid())
+    if (Editor->GetBlueprintObj() != Blueprint)
     {
-        // This shouldn't happen, but as a fallback we can try to create a new editor
-        FN2CLogger::Get().LogWarning(TEXT("Could not get active Blueprint editor after opening, creating new instance"));
-        
-        FBlueprintEditorModule& BlueprintEditorModule = FModuleManager::LoadModuleChecked<FBlueprintEditorModule>("Kismet");
-        TSharedRef<IBlueprintEditor> NewEditor = BlueprintEditorModule.CreateBlueprintEditor(
-            EToolkitMode::Standalone, 
-            TSharedPtr<IToolkitHost>(), 
-            Blueprint
-        );
-        OutEditor = NewEditor;
-        
-        // Make sure to update the active editor
-        if (TSharedPtr<FBlueprintEditor> BPEditor = StaticCastSharedPtr<FBlueprintEditor>(OutEditor))
-        {
-            FN2CEditorIntegration::Get().StoreActiveBlueprintEditor(BPEditor);
-        }
-    }
-    
-    if (!OutEditor.IsValid())
-    {
-        OutErrorMsg = TEXT("EDITOR_CREATION_FAILED: Could not create or get Blueprint editor");
+        OutErrorMsg = FString::Printf(TEXT("EDITOR_MISMATCH: the editor found for %s edits %s"), *Blueprint->GetPathName(),
+            Editor->GetBlueprintObj() ? *Editor->GetBlueprintObj()->GetPathName() : TEXT("nothing"));
         return false;
     }
-    
+
+    // Opening (or re-opening) a Blueprint through a tool makes it the focused one, as a click on its tab would
+    FN2CBlueprintEditorTracker::Get().NotifyEditorActivated(Editor);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("OpenBlueprintEditor: %s is open and focused"), *Blueprint->GetName()), EN2CLogSeverity::Debug);
+    OutEditor = Editor;
     return true;
 }
 
