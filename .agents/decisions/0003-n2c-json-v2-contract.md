@@ -79,7 +79,10 @@ Option 1, provisionally. The sub-choices of card 0117:
    `nodetocode.read_n2c_json`) reads 1.x and 2.x into the v2 model, whose version is then 2.0.0; the validator accepts
    both majors. It is kept for the whole 2.x line and may go with 3.0.0. Saved translations are never rewritten.
 7. **Shared spec fragment (card 0132):** `Content/Prompting/Shared/N2CJsonSpec.md`, included by the six CodeGen
-   prompts and the batch spec. Until it exists, each prompt states the version and the `data` shape in the same words.
+   prompts (in place of their `{{N2C_JSON_SPEC}}` placeholder, by `UN2CSystemPromptManager::LoadPrompts`) and the
+   batch export's `Combined_Blueprints.md`. Card 0132 created it, with the output contract beside it in
+   `Shared/N2CResponseFormat.md`; `NodeToCode.LLM.Prompts` checks that it names every key the serializer writes and
+   the current version, so a field change that skips the spec fails a test.
 
 ## Consequences
 

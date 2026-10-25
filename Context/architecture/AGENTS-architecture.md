@@ -169,7 +169,8 @@ Content/
 │   ├── CodeGen_JavaScript.md
 │   ├── CodeGen_CSharp.md
 │   ├── CodeGen_Swift.md
-│   └── CodeGen_Pseudocode.md
+│   ├── CodeGen_Pseudocode.md
+│   └── Shared/                  # N2CJsonSpec.md, N2CResponseFormat.md: included by every CodeGen prompt
 ├── Python/                      # Python scripting support
 │   ├── mcp_bridge/              # MCP bridge for external tools
 │   ├── nodetocode/              # NodeToCode Python module

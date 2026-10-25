@@ -142,6 +142,11 @@ void UN2CSystemPromptManager::LoadPrompts()
     Languages.Add(EN2CCodeLanguage::Swift);
     Languages.Add(EN2CCodeLanguage::Pseudocode);
 
+    // Shared fragments the prompts include by placeholder (one copy of the N2C JSON spec for every language)
+    TMap<FString, FString> Fragments;
+    Fragments.Add(JsonSpecPlaceholder, LoadSharedFragment(JsonSpecFragment));
+    Fragments.Add(ResponseFormatPlaceholder, LoadSharedFragment(ResponseFormatFragment));
+
     // Load base and language-specific prompts
     for (const FString& PromptKey : BasePromptFiles)
     {
@@ -149,7 +154,7 @@ void UN2CSystemPromptManager::LoadPrompts()
         FString PromptContent;
         if (LoadPromptFromFile(GetPromptFilePath(PromptKey), PromptContent))
         {
-            LoadedPrompts.Add(PromptKey, PromptContent);
+            LoadedPrompts.Add(PromptKey, AssemblePrompt(PromptKey, PromptContent, Fragments));
         }
 
         // Load language-specific prompts
@@ -158,7 +163,7 @@ void UN2CSystemPromptManager::LoadPrompts()
             const FString LanguageKey = GetLanguagePromptKey(PromptKey, Language);
             if (LoadPromptFromFile(GetPromptFilePath(LanguageKey), PromptContent))
             {
-                LoadedPrompts.Add(LanguageKey, PromptContent);
+                LoadedPrompts.Add(LanguageKey, AssemblePrompt(LanguageKey, PromptContent, Fragments));
             }
         }
     }
@@ -193,6 +198,54 @@ bool UN2CSystemPromptManager::LoadPromptFromFile(const FString& FilePath, FStrin
 FString UN2CSystemPromptManager::GetPromptFilePath(const FString& PromptKey) const
 {
     return FPaths::Combine(PromptsDirectory, PromptKey + TEXT(".md"));
+}
+
+FString UN2CSystemPromptManager::LoadSharedFragment(const FString& Name)
+{
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("NodeToCode"));
+    if (!Plugin.IsValid())
+    {
+        FN2CLogger::Get().LogError(TEXT("Could not find the NodeToCode plugin to load a shared prompt fragment"), TEXT("SystemPromptManager"));
+        return FString();
+    }
+
+    const FString FilePath = FPaths::Combine(Plugin->GetContentDir(), TEXT("Prompting"), TEXT("Shared"), Name + TEXT(".md"));
+    FString Content;
+    if (!LoadPromptFromFile(FilePath, Content))
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Shared prompt fragment not found: %s. Translation prompts will lack it!"), *FilePath),
+            TEXT("SystemPromptManager"));
+        return FString();
+    }
+
+    // The placeholder sits on its own line in the prompt, so the fragment's own final line break is not needed
+    Content.TrimEndInline();
+    return Content;
+}
+
+FString UN2CSystemPromptManager::AssemblePrompt(const FString& PromptKey, const FString& Template, const TMap<FString, FString>& Fragments)
+{
+    FString Prompt = Template;
+    for (const TPair<FString, FString>& Fragment : Fragments)
+    {
+        // Every CodeGen prompt includes each fragment once; a missing placeholder means a prompt edit dropped it
+        if (!Prompt.Contains(Fragment.Key, ESearchCase::CaseSensitive))
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Prompt %s has no %s placeholder"), *PromptKey, *Fragment.Key),
+                TEXT("SystemPromptManager"));
+            continue;
+        }
+        Prompt.ReplaceInline(*Fragment.Key, *Fragment.Value, ESearchCase::CaseSensitive);
+    }
+    return Prompt;
+}
+
+FString UN2CSystemPromptManager::WrapN2CJson(const FString& N2CJson)
+{
+    // "</" can only occur inside a JSON string (a node comment, a default value). "\/" is JSON's escape for "/", so
+    // the JSON reads the same while no text in it can close the tag, in any letter case.
+    const FString Escaped = N2CJson.Replace(TEXT("</"), TEXT("<\\/"), ESearchCase::CaseSensitive);
+    return FString::Printf(TEXT("<n2c_json>\n%s\n</n2c_json>"), *Escaped);
 }
 
 FString UN2CSystemPromptManager::LoadReferenceSourceFiles() const

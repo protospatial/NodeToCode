@@ -45,6 +45,14 @@ EnabledState is not editable there. NodeToCode.Capture.Golden "DisabledNodes" co
 'liveness_check': the generated code must call CollectGarbage and must not implement BeginPlay, Tick or
 ActorBeginOverlap, call PrintString or call GetActorLocation (comments are ignored). A case with --liveness passes
 only when liveness_check is ok.
+
+--languages (card 0132) runs every case once per target language (cpp, python, javascript, csharp, swift,
+pseudocode; default cpp only), as the translate-focused-blueprint 'language' argument; a record's id then ends in
+'@<language>'. branch_check and liveness_check read C++ (if blocks with braces, PascalCase engine names), so they gate
+only the cpp runs; for the other languages they are kept in the report for reading. Every payload is also checked for
+the shared-spec prompt: the system prompt holds the N2C JSON specification (Content/Prompting/Shared/N2CJsonSpec.md,
+found by its heading) and the response contract (Shared/N2CResponseFormat.md) exactly once and no {{...}}
+placeholder, and the user message holds the N2C JSON inside <n2c_json> tags.
 """
 import argparse
 import json
@@ -522,6 +530,32 @@ def count_key(value, name):
     return 0
 
 
+LANGUAGES = ['cpp', 'python', 'javascript', 'csharp', 'swift', 'pseudocode']
+# First lines of the shared prompt fragments (Content/Prompting/Shared): each must appear once in the system prompt
+SPEC_HEADING = '### N2C JSON\n'
+RESPONSE_FORMAT_HEAD = 'Your whole response is one JSON object, and nothing else'
+
+
+def all_strings(value):
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in all_strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in all_strings(v)]
+    return []
+
+
+def prompt_summary(payload):
+    """How the payload's text carries the shared-spec prompt (card 0132): counts over every string in the body"""
+    texts = all_strings(payload)
+    joined = '\n'.join(texts)
+    return {'spec_heading': joined.count(SPEC_HEADING), 'response_format': joined.count(RESPONSE_FORMAT_HEAD),
+            'placeholders': len(re.findall(r'\{\{N2C_[A-Z_]+\}\}', joined)),
+            'n2c_json_tag': any(t.lstrip().startswith('<n2c_json>') or '\n<n2c_json>\n' in t for t in texts)
+                            and '</n2c_json>' in joined}
+
+
 def summarise(payload):
     gen = payload.get('generationConfig') or {}
     rf = payload.get('response_format') or {}
@@ -542,6 +576,7 @@ def summarise(payload):
         'thinking': payload.get('thinking'),
         'reasoning_effort': payload.get('reasoning_effort'),
         'chars': len(json.dumps(payload)),
+        'prompt': prompt_summary(payload),
     }
 
 
@@ -577,6 +612,10 @@ def check_payload(expect, summary):
     if 'reasoning_effort' in expect:
         rules.append(('reasoning_effort %s' % expect['reasoning_effort'], summary['reasoning_effort'] == expect['reasoning_effort'],
                       summary['reasoning_effort']))
+    p = summary.get('prompt') or {}
+    rules.append(('shared spec and response contract once, no placeholder',
+                  p.get('spec_heading') == 1 and p.get('response_format') == 1 and p.get('placeholders') == 0, p))
+    rules.append(('N2C JSON in <n2c_json> tags', bool(p.get('n2c_json_tag')), p.get('n2c_json_tag')))
     return rules
 
 
@@ -589,13 +628,14 @@ def nodetocode_errors(text):
     return out[:8]
 
 
-def run_case(port, c, rid, timeout, log_reader, keep_code=False):
-    rec = {'id': c['id'], 'provider': c['provider'], 'model': c['model'], 'role': c['role']}
+def run_case(port, c, rid, timeout, log_reader, keep_code=False, language='cpp', tag_language=False):
+    rec = {'id': c['id'] + ('@' + language if tag_language else ''), 'provider': c['provider'], 'model': c['model'],
+           'role': c['role'], 'language': language}
     rec['settings_applied'] = apply_settings(port, c['settings'], rid)
     offset = log_reader.size()
     started_at = time.time()
     events = run_tool_call(port, 'translate-focused-blueprint',
-                           {'provider': c['provider'], 'model': c['model'], 'language': 'cpp'}, rid + 1,
+                           {'provider': c['provider'], 'model': c['model'], 'language': language}, rid + 1,
                            meta={'progressToken': 'matrix-%d' % rid}, timeout=timeout)
     if events:
         final = [d for e, d in events if e == 'response']
@@ -685,6 +725,8 @@ def main():
     ap.add_argument('--liveness', action='store_true',
                     help='translate a graph with ghost default events, a disabled Print String and an unused node '
                          '(instead of the wired BeginPlay), keep each code and check none of them is implemented')
+    ap.add_argument('--languages', nargs='+', choices=LANGUAGES, default=['cpp'],
+                    help='target languages to translate each case into (default: cpp); "all" is not accepted, list them')
     ap.add_argument('--timeout', type=int, default=300,
                     help='seconds per translation; a case that hits it fails as timed out and the rest are skipped, '
                          'since the editor still holds that request')
@@ -749,24 +791,35 @@ def main():
                 print('branch', json.dumps(report['branch'])[:1200], flush=True)
             print('setup', json.dumps(report['setup']), 'wiring', json.dumps(report.get('wiring'))[:400], flush=True)
             reader = LogReader(log_path)
-            for i, c in enumerate(cases):
+            tag_language = args.languages != ['cpp']
+            runs = [(c, language) for c in cases for language in args.languages]
+            for i, (c, language) in enumerate(runs):
+                run_id = c['id'] + ('@' + language if tag_language else '')
                 if any(r.get('timed_out') for r in report['cases']):
-                    report['cases'].append({'id': c['id'], 'provider': c['provider'], 'model': c['model'],
-                                            'role': c['role'], 'ok': False, 'skipped': 'an earlier case timed out'})
+                    report['cases'].append({'id': run_id, 'provider': c['provider'], 'model': c['model'],
+                                            'role': c['role'], 'language': language, 'ok': False,
+                                            'skipped': 'an earlier case timed out'})
                     continue
                 rec = run_case(port, c, 100 + 10 * i, args.timeout, reader,
-                               keep_code=args.fanout or args.branch or args.liveness)
+                               keep_code=args.fanout or args.branch or args.liveness or tag_language,
+                               language=language, tag_language=tag_language)
+                # The branch and liveness heuristics read C++; other languages keep them for reading only
+                gates = language == 'cpp'
                 if args.branch:
                     rec['branch_check'] = check_branch(rec.get('code'))
-                    rec['ok'] = bool(rec['ok'] and rec['branch_check'].get('ok'))
+                    if gates:
+                        rec['ok'] = bool(rec['ok'] and rec['branch_check'].get('ok'))
                     print('  branch_check', json.dumps(rec['branch_check']), flush=True)
                 if args.liveness:
                     rec['liveness_check'] = check_liveness(rec.get('code'))
-                    rec['ok'] = bool(rec['ok'] and rec['liveness_check'].get('ok'))
+                    if gates:
+                        rec['ok'] = bool(rec['ok'] and rec['liveness_check'].get('ok'))
                     print('  liveness_check', json.dumps(rec['liveness_check'])[:1500], flush=True)
                 report['cases'].append(rec)
-                print('%-40s %s  %ss  usage=%s' % (c['id'], 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
-                                                   rec.get('usage')), flush=True)
+                print('%-48s %s  %ss  usage=%s  prompt=%s' % (run_id, 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
+                                                              rec.get('usage'),
+                                                              (rec['payloads'][0].get('prompt') if rec.get('payloads') else None)),
+                      flush=True)
 
     report['config_restored'] = session.restore_ok
     log_text = session.log_text()

@@ -6,7 +6,7 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
-#include "Models/N2CJsonContract.h"
+#include "LLM/N2CSystemPromptManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -1094,90 +1094,10 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("Each graph represents visual scripting logic that can be understood and translated to code.\n\n");
 	MarkdownContent += TEXT("---\n\n");
 
-	// NodeToCode JSON Specification
+	// NodeToCode JSON Specification: the shared fragment every CodeGen prompt includes (card 0132)
 	MarkdownContent += TEXT("## NodeToCode JSON Format Specification\n\n");
-	MarkdownContent += TEXT("The JSON format below (\"N2C JSON\") represents Unreal Engine Blueprint graphs as structured data. ");
-	MarkdownContent += TEXT("This format captures the complete logic of Blueprint visual scripts including nodes, pins, connections, and execution flow.\n\n");
-
-	MarkdownContent += TEXT("### Understanding the Format\n\n");
-	MarkdownContent += TEXT("**Blueprints** in Unreal Engine are visual scripting assets that contain one or more **graphs**. ");
-	MarkdownContent += TEXT("Each graph contains **nodes** (representing operations like function calls, variable access, or flow control) ");
-	MarkdownContent += TEXT("connected by **pins** (typed input/output connectors). The N2C JSON preserves this structure:\n\n");
-	MarkdownContent += TEXT("- **Execution Flow**: Nodes connected via `Exec` pins run in the order of their exec wires. The `flows.execution` array has one entry per wire, from the exec output pin to the exec input pin it runs (e.g., `N1.P3->N2.P5`): the source pin tells which output fired (a Branch's True or False, a Switch case, a Sequence's then_0 or then_1, a loop's Loop Body or Completed) and the target pin which input runs (a Gate's Enter, Open or Close, a Timeline's Play or Reverse). Documents with version 1.0.0 list node pairs (`N1->N2`) instead.\n");
-	MarkdownContent += TEXT("- **Data Flow**: Data passes between nodes via typed pins. The `flows.data` object maps each output pin to the input pin it feeds (e.g., `N1.P2` connects to `N2.P1`), or to an array of input pins when one output feeds several (e.g., `N3.P4` feeds `[\"N4.P2\", \"N5.P3\"]`). Every connected data input appears once as a target.\n");
-	MarkdownContent += TEXT("- **Nodes That Never Run**: A node may carry `\"unused\": true` (a pure node whose outputs nothing that runs reads), `\"unreachable\": true` (a node with exec pins that no event or entry reaches) or `\"disabled\": true` (disabled in the editor, not compiled; when it has one exec input and one exec output, `flows.execution` already links its predecessor straight to its successor). Blueprint never runs these nodes: do not translate them or the values they compute, and list them in the implementation notes. The editor's greyed-out placeholder events (a new Blueprint's unwired BeginPlay, ActorBeginOverlap and Tick) are left out.\n");
-	MarkdownContent += TEXT("- **Return Values**: A function returns only what is wired into the input pins of its `FunctionResult` node(s), or those pins' `default_value`; never a value that is not wired into a `FunctionResult` pin.\n");
-	MarkdownContent += TEXT("- **Node Types**: Each node has a `type` indicating its purpose (CallFunction, VariableGet, VariableSet, Event, Branch, ForLoop, etc.).\n");
-	MarkdownContent += TEXT("- **Names**: Names are identifiers that never change with the editor language: a node's `class` (the UK2Node class, e.g. `K2Node_CallFunction`), `member_parent` (the class or struct that declares the function or variable; a Blueprint by its name) and `member_name` (the function, variable, event or macro exactly as declared), and a pin's `name` (the pin's internal name, e.g. `execute`, `then`, `ReturnValue`). Display text is only a hint, in English: a node's `title` and a pin's `label`, present only when they say more than the identifier. Documents before this format had a node `name` (the display title) and display pin names instead.\n");
-	MarkdownContent += TEXT("- **Pin Types**: Pins have types like Exec, Boolean, Integer, Float, String, Object, Struct, etc.\n\n");
-
-	MarkdownContent += TEXT("### JSON Structure Reference\n\n");
-	MarkdownContent += TEXT("```json\n");
-	MarkdownContent += TEXT("{\n");
-	MarkdownContent += FString::Printf(TEXT("  \"version\": \"%s\",\n"), N2CJsonContract::Version);
-	MarkdownContent += TEXT("  \"metadata\": {\n");
-	MarkdownContent += TEXT("    \"Name\": \"BlueprintName\",\n");
-	MarkdownContent += TEXT("    \"BlueprintType\": \"Normal | Const | MacroLibrary | Interface | LevelScript | FunctionLibrary\",\n");
-	MarkdownContent += TEXT("    \"BlueprintClass\": \"ClassName\"\n");
-	MarkdownContent += TEXT("  },\n");
-	MarkdownContent += TEXT("  \"graphs\": [\n");
-	MarkdownContent += TEXT("    {\n");
-	MarkdownContent += TEXT("      \"name\": \"GraphName\",\n");
-	MarkdownContent += TEXT("      \"graph_type\": \"Function | EventGraph | Macro | Composite | Construction\",\n");
-	MarkdownContent += TEXT("      \"owner_blueprint\": \"OtherBlueprint (optional: only on a graph from another Blueprint)\",\n");
-	MarkdownContent += TEXT("      \"nodes\": [\n");
-	MarkdownContent += TEXT("        {\n");
-	MarkdownContent += TEXT("          \"id\": \"N1\",\n");
-	MarkdownContent += TEXT("          \"type\": \"CallFunction | VariableGet | VariableSet | Event | Branch | ...\",\n");
-	MarkdownContent += TEXT("          \"class\": \"K2Node_CallFunction\",\n");
-	MarkdownContent += TEXT("          \"title\": \"Display title, a hint (optional)\",\n");
-	MarkdownContent += TEXT("          \"member_parent\": \"OwningClass (optional)\",\n");
-	MarkdownContent += TEXT("          \"member_name\": \"FunctionOrVariableName (optional)\",\n");
-	MarkdownContent += TEXT("          \"pure\": false,\n");
-	MarkdownContent += TEXT("          \"latent\": false,\n");
-	MarkdownContent += TEXT("          \"input_pins\": [...],\n");
-	MarkdownContent += TEXT("          \"output_pins\": [...]\n");
-	MarkdownContent += TEXT("        }\n");
-	MarkdownContent += TEXT("      ],\n");
-	MarkdownContent += TEXT("      \"flows\": {\n");
-	MarkdownContent += TEXT("        \"execution\": [\"N1.P3->N2.P5\", \"N2.P7->N3.P9\"],\n");
-	MarkdownContent += TEXT("        \"data\": { \"N1.P2\": \"N2.P1\", \"N3.P4\": [\"N4.P2\", \"N5.P3\"] }\n");
-	MarkdownContent += TEXT("      }\n");
-	MarkdownContent += TEXT("    }\n");
-	MarkdownContent += TEXT("  ],\n");
-	MarkdownContent += TEXT("  \"structs\": [...],\n");
-	MarkdownContent += TEXT("  \"enums\": [...]\n");
-	MarkdownContent += TEXT("}\n");
-	MarkdownContent += TEXT("```\n\n");
-
-	MarkdownContent += TEXT("### Pin Object Structure\n\n");
-	MarkdownContent += TEXT("Each pin in `input_pins` or `output_pins` has:\n\n");
-	MarkdownContent += TEXT("| Field | Description |\n");
-	MarkdownContent += TEXT("|-------|-------------|\n");
-	MarkdownContent += TEXT("| `id` | Pin identifier (e.g., \"P1\") |\n");
-	MarkdownContent += TEXT("| `name` | The pin's internal name, the same in every editor language (`execute`, `then`, `ReturnValue`) |\n");
-	MarkdownContent += TEXT("| `label` | The pin's display label, a hint; only when it says more than `name` |\n");
-	MarkdownContent += TEXT("| `type` | Pin type: Exec, Boolean, Integer, Float, String, Object, Struct, etc. |\n");
-	MarkdownContent += TEXT("| `sub_type` | Additional type info (e.g., struct/class name) |\n");
-	MarkdownContent += TEXT("| `default_value` | Literal value if not connected |\n");
-	MarkdownContent += TEXT("| `connected` | Whether this pin is linked to another |\n");
-	MarkdownContent += TEXT("| `is_reference` | Passed by reference |\n");
-	MarkdownContent += TEXT("| `is_array`, `is_map`, `is_set` | Container type flags |\n\n");
-
-	MarkdownContent += TEXT("### Common Node Types\n\n");
-	MarkdownContent += TEXT("| Type | Description |\n");
-	MarkdownContent += TEXT("|------|-------------|\n");
-	MarkdownContent += TEXT("| `Event` | Entry point (BeginPlay, Tick, custom events) |\n");
-	MarkdownContent += TEXT("| `CallFunction` | Function call on an object or static library |\n");
-	MarkdownContent += TEXT("| `VariableGet` | Read a variable value |\n");
-	MarkdownContent += TEXT("| `VariableSet` | Write a variable value |\n");
-	MarkdownContent += TEXT("| `Branch` | If/else conditional |\n");
-	MarkdownContent += TEXT("| `Sequence` | Execute multiple paths in order |\n");
-	MarkdownContent += TEXT("| `ForLoop` | For loop with index |\n");
-	MarkdownContent += TEXT("| `ForEachLoop` | Iterate over array elements |\n");
-	MarkdownContent += TEXT("| `Cast` | Type cast to specific class |\n");
-	MarkdownContent += TEXT("| `MakeStruct` | Construct a struct value |\n");
-	MarkdownContent += TEXT("| `BreakStruct` | Extract struct members |\n\n");
+	MarkdownContent += UN2CSystemPromptManager::GetN2CJsonSpec();
+	MarkdownContent += TEXT("\n\n");
 
 	MarkdownContent += TEXT("---\n\n");
 

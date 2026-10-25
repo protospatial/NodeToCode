@@ -76,6 +76,12 @@ a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing ca
   model fails until it has a golden. After an intended wire-format change, run
   `.\build.ps1 -UEVersion 5.8 -Test -TestFilter NodeToCode.LLM.Payload.Golden` with `N2C_UPDATE_GOLDENS=1` in the
   environment, then review the golden diff: every change there is a change to what goes on the wire.
+- `NodeToCode.LLM.Prompts` loads every CodeGen prompt through `UN2CSystemPromptManager` and checks that each holds
+  the shared `Content/Prompting/Shared/N2CJsonSpec.md` and `N2CResponseFormat.md` exactly once and no placeholder,
+  that the spec names every key `FN2CSerializer` writes and the current version, that the response contract names
+  every property of `GetN2CResponseSchema`, that the batch export's `Combined_Blueprints.md` holds the same spec, and
+  that `WrapN2CJson` puts the user message in `<n2c_json>` tags no node comment can close. It keeps no golden of the
+  assembled prompts: that would be a second copy of the spec.
 - `NodeToCode.LLM.Parse.Fixtures` runs each provider's parser on the bodies in `Fixtures/LLM/Parser/<provider>/`
   (success, fenced output, truncation, refusal, 400/401/429/503/529 errors, string-typed errors, malformed
   `graph_name`). Error bodies go through `FN2CTranslationError::WrapHttpErrorBody` first, as the HTTP handler sends
