@@ -27,10 +27,11 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
-from live_env_translation import ASSET_DIR, SETUP_PY, STORE_ID, run_tool_call, stored_key_present, tool_text  # noqa: E402
-from live_provider_matrix import CONNECT_PY, run_py  # noqa: E402
+from live_env_translation import ASSET_DIR, STORE_ID, run_tool_call, stored_key_present, tool_text  # noqa: E402
+from probe_blueprint import CONNECT_PY, SETUP_UNWIRED_PY  # noqa: E402
+from live_provider_matrix import run_py  # noqa: E402
 
 # Made-up values, not keys: the provider rejects them
 FAKE_KEY = 'n2c-made-up-test-key-0091-not-a-real-key'
@@ -153,12 +154,12 @@ def main():
     report = {'label': args.label, 'date': time.strftime('%Y-%m-%d'), 'port': port, 'cases': []}
 
     session = EditorSession(args.engine, args.project, port, log_path, allow_python=True, extra_env=env,
-                            extra_args=['-RenderOffScreen'])
+                            extra_args=BLUEPRINT_EDITOR_ARGS)
     with session as s:
         report['started'] = s.start()
         if report['started']:
             name = 'BP_N2CTypedErrors_%s' % time.strftime('%H%M%S')
-            report['setup'] = run_py(port, SETUP_PY % {'dir': ASSET_DIR, 'name': name}, 1)
+            report['setup'] = run_py(port, SETUP_UNWIRED_PY % {'dir': ASSET_DIR, 'name': name}, 1)
             report['wiring'] = run_py(port, CONNECT_PY, 2)
 
             # Batch first: the LLM module initializes from the settings' provider on the first request

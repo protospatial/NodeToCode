@@ -37,7 +37,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
 from live_claude_cli_translate import code_chars_of  # noqa: E402
 from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, call_tool,  # noqa: E402
@@ -299,7 +299,7 @@ def main():
     checks = {}
     extra_paths = []
     with EditorSession(args.engine, args.project, port, log_path, allow_python=True, extra_env=keys,
-                       extra_args=['-RenderOffScreen']) as s:
+                       extra_args=BLUEPRINT_EDITOR_ARGS) as s:
         report['started'] = s.start()
         if report['started']:
             name = 'BP_N2CBridgeProbe_%s' % time.strftime('%H%M%S')

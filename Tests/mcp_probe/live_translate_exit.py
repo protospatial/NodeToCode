@@ -9,7 +9,7 @@ Stdlib only; run with `python -I`:
 It starts a headless editor with only the provider's key (from the repo's .env) added to its environment, makes an
 in-memory probe Blueprint under /Game/N2CTest (as live_env_translation.py does), starts a translation, reads its task
 stream, and about --quit-after seconds in closes the Blueprint editor and asks the editor to quit
-(unreal.SystemLibrary.quit_editor() over run-python, the normal exit path; use --windowed on UE 5.6 and 5.7). It passes when the editor exits by itself with code 0, in under 10 s (not waiting for the LLM),
+(unreal.SystemLibrary.quit_editor() over run-python, the normal exit path; the headless editor runs with -RenderOffScreen, which 5.6 needs for the Blueprint editor). It passes when the editor exits by itself with code 0, in under 10 s (not waiting for the LLM),
 the log
 shows the exit cancelled the running task (OnEnginePreExit) before the module shut down and UObjects were purged, the
 LLM request was cancelled and the task completed exactly once, no LLM response was handled
@@ -25,7 +25,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
 from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, ToolCallStream,  # noqa: E402
                                   call_tool, stored_key_present, task_id_for_token, tool_text)
@@ -39,9 +39,9 @@ QUIT_PY = ('import unreal\n'
 
 
 class WindowedSession(EditorSession):
-    """The editor with a window (no -nullrhi). UE 5.6 and 5.7 cannot do this probe headless, with or without a
-    translation: closing the Blueprint editor under -nullrhi fails GetRestoredDimensions, and on 5.6 exiting with it
-    still open asserts PreviewScene.GetWorld(). Windowed, closing then quitting exits cleanly. UE 5.8 runs headless."""
+    """The editor with a window (no -nullrhi). Under plain -nullrhi UE 5.6 and 5.7 fail this probe: closing the Blueprint
+    editor reaches GetRestoredDimensions, and on 5.6 exiting with it still open asserts PreviewScene.GetWorld(). The
+    headless session now adds -RenderOffScreen, which passes on 5.6 and 5.8 (card 0430); this stays as an option."""
 
     def args(self):
         return [a for a in super().args() if a != '-nullrhi']
@@ -79,7 +79,9 @@ def main():
 
     session_class = WindowedSession if args.windowed else EditorSession
     report['windowed'] = args.windowed
-    with session_class(args.engine, args.project, port, args.log, allow_python=True, extra_env=keys) as s:
+    # Headless, the Blueprint editor needs -RenderOffScreen; windowed it has a real window
+    with session_class(args.engine, args.project, port, args.log, allow_python=True, extra_env=keys,
+                       extra_args=() if args.windowed else BLUEPRINT_EDITOR_ARGS) as s:
         report['started'] = s.start()
         if report['started']:
             name = 'BP_N2CExitProbe_%s' % time.strftime('%H%M%S')

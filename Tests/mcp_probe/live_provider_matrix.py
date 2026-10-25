@@ -13,8 +13,8 @@ the per-user secrets file (the saved key would be used, not the variable). For t
 Debug in the host's Saved/Config layer (restored afterwards), so UN2CLLMPayloadBuilder::Build logs each payload.
 Applying a case's settings saves them to the host's Config/DefaultNodeToCode.ini; EditorSession restores that file
 byte for byte when the editor stops (or deletes it if it did not exist), and the report's config_restored says so.
-It makes one in-memory probe Blueprint (live_env_translation.SETUP_PY: an Actor with a Print String node, never
-saved), then per case: applies the case's settings (DeepSeek model ID and thinking mode, Max Output Tokens) on the settings object, runs
+It makes one in-memory probe Blueprint (probe_blueprint.SETUP_UNWIRED_PY: an Actor with a Print String node, never
+saved; then CONNECT_PY wires BeginPlay to it unless --liveness builds its own graph), then per case: applies the case's settings (DeepSeek model ID and thinking mode, Max Output Tokens) on the settings object, runs
 translate-focused-blueprint over MCP, reads the task stream, restores the settings, and takes that case's slice of
 the editor log: the payload (summarised: model, sampling fields, output budget, response_format, Gemini
 responseSchema, thinking), token usage and any NodeToCode errors. A case passes when the translation parses with
@@ -63,10 +63,11 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
-from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, call_tool,  # noqa: E402
+from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, STORE_ID, call_tool,  # noqa: E402
                                   run_tool_call, stored_key_present, tool_text)
+from probe_blueprint import CONNECT_PY, SETUP_UNWIRED_PY  # noqa: E402
 
 SETTINGS_SECTION = '[/Script/NodeToCode.N2CSettings]'
 
@@ -146,44 +147,6 @@ for prop, value in spec.items():
     applied[prop] = now.name if hasattr(now, "name") and not isinstance(now, (int, float, str)) else now
 result = {"previous": previous, "applied": applied}
 '''
-
-
-# Runs in the editor after SETUP_PY: wires BeginPlay's exec output to the Print String node and sets its text, so
-# the graph has logic to translate (an unconnected Print String can rightly come back with empty code)
-CONNECT_PY = r"""
-import json, unreal
-bridge = unreal.N2CPythonBridge
-found = json.loads(bridge.find_nodes_in_graph(json.dumps(["BeginPlay", "Print String"]), "keyword", False, 20))
-nodes = (found.get("data") or {}).get("nodes") or []
-def label(n):
-    return (str(n.get("nodeName", "")) + " " + str(n.get("nodeClass", ""))).replace(" ", "").lower()
-begin = next((n for n in nodes if "beginplay" in label(n)), None)
-prints = next((n for n in nodes if "printstring" in label(n)), None)
-steps = {"nodes": [label(n) for n in nodes][:10]}
-def pin(n, side, want_exec, name=None):
-    for p in n.get(side) or []:
-        is_exec = str(p.get("type", "")).lower() == "exec"
-        if is_exec == want_exec and (name is None or str(p.get("pinName", "")).lower() == name):
-            return p
-    return None
-if begin and prints:
-    out_pin, in_pin = pin(begin, "outputPins", True), pin(prints, "inputPins", True)
-    if out_pin and in_pin:
-        conn = [{"from": {"nodeGuid": begin["nodeGuid"], "pinGuid": out_pin["pinGuid"]},
-                 "to": {"nodeGuid": prints["nodeGuid"], "pinGuid": in_pin["pinGuid"]}}]
-        res = json.loads(bridge.connect_pins(json.dumps(conn), False))
-        steps["connected"] = res.get("success")
-        if not res.get("success"):
-            steps["connect_result"] = json.dumps(res)[:600]
-    text_pin = pin(prints, "inputPins", False, "instring")
-    if text_pin:
-        steps["text_set"] = json.loads(bridge.set_pin_value(prints["nodeGuid"], text_pin["pinGuid"],
-                                                           "Hello from the provider matrix", "InString")).get("success")
-else:
-    steps["found_head"] = json.dumps(found)[:1200]
-steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success")
-result = steps
-"""
 
 
 # Runs in the editor after CONNECT_PY (--fanout): Get Actor Location -> Print String.In String and
@@ -340,7 +303,7 @@ result = steps
 """
 
 
-# Runs in the editor after SETUP_PY (--liveness, instead of CONNECT_PY): a custom event runs the Print String, then
+# Runs in the editor after SETUP_UNWIRED_PY (--liveness, instead of CONNECT_PY): a custom event runs the Print String, then
 # Collect Garbage; Compile Mode Final Release disables the Development Only Print String; Get Actor Location stays
 # unwired; BeginPlay, ActorBeginOverlap and Tick stay ghosts. Reports the focused graph's nodes, flags and exec flows.
 LIVENESS_PY = r"""
@@ -770,14 +733,14 @@ def main():
     session = EditorSession(args.engine, args.project, port, log_path, allow_python=True, extra_env=keys,
                             # -RenderOffScreen: on UE 5.6 with -nullrhi the opened Blueprint editor's window hits
                             # FGenericWindow::GetRestoredDimensions, which is Fatal unless this flag is on
-                            extra_args=['-LogCmds=LogNodeToCode VeryVerbose', '-RenderOffScreen'])
+                            extra_args=['-LogCmds=LogNodeToCode VeryVerbose', *BLUEPRINT_EDITOR_ARGS])
     with session as s:
         # Payloads are logged at Debug; restored with the other Saved/Config patches when the session stops
         s._patch('NodeToCode.ini', SETTINGS_SECTION, 'MinSeverity', 'Debug')
         report['started'] = s.start()
         if report['started']:
             name = 'BP_N2CProviderMatrix_%s' % time.strftime('%H%M%S')
-            report['setup'] = run_py(port, SETUP_PY % {'dir': ASSET_DIR, 'name': name}, 1)
+            report['setup'] = run_py(port, SETUP_UNWIRED_PY % {'dir': ASSET_DIR, 'name': name}, 1)
             if args.liveness:
                 report['liveness'] = run_py(port, LIVENESS_PY.replace('%(path)s', '%s/%s' % (ASSET_DIR, name)), 2)
                 print('liveness', json.dumps(report['liveness'])[:1600], flush=True)

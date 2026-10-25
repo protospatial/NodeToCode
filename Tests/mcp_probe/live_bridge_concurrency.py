@@ -13,7 +13,8 @@ headless editor without a key. The bridge runs through its launcher with no --po
 their discovery entries, and the bridge and this script never have a provider key in their environment.
 
 1. Concurrency and cancel (bridge started with --project <first project>): translate-focused-blueprint with a
-   progress token, then, while it runs, a quick tools/call (get-available-translation-targets) and a ping, which must
+   progress token (UE 5.8 streams progress; 5.6/5.7 send none and the script waits 2 s instead), then, while it
+   runs, a quick tools/call (get-available-translation-targets) and a ping, which must
    both answer before the translation would; then notifications/cancelled for the translation. Nothing more may
    arrive for its id (no response, no error, no progress), a later request still answers, and the editor log shows
    the provider request cancelled and the response suppressed.
@@ -34,13 +35,15 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
 from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_ID, call_tool,  # noqa: E402
                                   stored_key_present, tool_text)
 
 BRIDGE_DIR = os.path.normpath(os.path.join(HERE, '..', '..', 'Content', 'Python', 'mcp_bridge'))
 LAUNCHER = os.path.join(BRIDGE_DIR, 'launch_bridge.bat' if os.name == 'nt' else 'launch_bridge.sh')
+IN_FLIGHT_GRACE = 1.0
+FIRST_PROGRESS_WAIT = 2.0
 ENGINE_PY = 'import unreal\nresult = unreal.SystemLibrary.get_engine_version()'
 
 
@@ -149,8 +152,10 @@ def concurrency_checks(args, report, checks, stderr_path):
             'name': 'translate-focused-blueprint',
             'arguments': {'provider': args.provider, 'model': args.model, 'language': 'cpp'},
             '_meta': {'progressToken': token}})
+        # UE 5.8 streams progress at once; UE 5.6/5.7 hold the request and send none, so a short wait (instead of 60 s,
+        # by which time the translation of the wired probe graph has finished) keeps the cancel inside the call there
         first = client.wait(lambda m: m.get('method') == 'notifications/progress'
-                            and (m.get('params') or {}).get('progressToken') == token, 60)
+                            and (m.get('params') or {}).get('progressToken') == token, FIRST_PROGRESS_WAIT)
         report['first_progress_at'] = round(first[0] - sent, 2) if first else None
         if args.cancel_after:
             time.sleep(args.cancel_after)
@@ -172,9 +177,15 @@ def concurrency_checks(args, report, checks, stderr_path):
         after = [(at, m) for at, m in client.messages if at >= cancelled_at and (
             m.get('id') == tid or (m.get('params') or {}).get('progressToken') == token)]
         report['messages_for_cancelled_call_after_cancel'] = after[:5]
+        # A progress event the editor sent before it read the cancel can still be in the pipe: the translation reports
+        # progress about once a second, and --cancel-after 1.0 lands next to a tick (card 0430 saw one 30 ms before the
+        # editor logged the cancel). Like live_translate_cancel.py, progress within IN_FLIGHT_GRACE seconds of the
+        # cancel is in flight, not sent after it; any response, or progress later than that, fails.
+        late = [(at, m) for at, m in after if m.get('id') == tid or at > cancelled_at + IN_FLIGHT_GRACE]
+        report['in_flight_progress_after_cancel'] = len(after) - len(late)
         report['translate_answered'] = client.response(tid, 0)
         checks['no_response_for_cancelled_call'] = client.response(tid, 0) is None
-        checks['nothing_after_cancel'] = not after
+        checks['nothing_after_cancel'] = not late
         later = client.call('tools/call', {'name': 'get-available-translation-targets', 'arguments': {}})
         checks['later_request_answers'] = bool(later and 'result' in later)
     finally:
@@ -253,7 +264,7 @@ def main():
     port_a = free_port(args.port)
     second = None
     with EditorSession(args.engine, args.project, port_a, log_a, allow_python=True, extra_env=keys,
-                       extra_args=['-RenderOffScreen']) as a:
+                       extra_args=BLUEPRINT_EDITOR_ARGS) as a:
         report['port_a'] = port_a
         checks['editor_a_started'] = a.start()
         if checks['editor_a_started']:

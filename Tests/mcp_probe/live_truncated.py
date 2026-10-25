@@ -24,10 +24,11 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
-from live_env_translation import ASSET_DIR, SETUP_PY, STORE_ID, run_tool_call, stored_key_present, tool_text  # noqa: E402
-from live_provider_matrix import CONNECT_PY, apply_settings, restore_spec, run_py  # noqa: E402
+from live_env_translation import ASSET_DIR, STORE_ID, run_tool_call, stored_key_present, tool_text  # noqa: E402
+from probe_blueprint import CONNECT_PY, SETUP_UNWIRED_PY  # noqa: E402
+from live_provider_matrix import apply_settings, restore_spec, run_py  # noqa: E402
 
 # Current registry models only (owner instruction 2026-10-23); a cap of 16 output tokens cuts any translation
 CASES = [
@@ -84,7 +85,7 @@ def run_session(session, args, port, cases, report):
         report['started'] = s.start()
         if report['started']:
             name = 'BP_N2CTruncated_%s' % time.strftime('%H%M%S')
-            report['setup'] = run_py(port, SETUP_PY % {'dir': ASSET_DIR, 'name': name}, 1)
+            report['setup'] = run_py(port, SETUP_UNWIRED_PY % {'dir': ASSET_DIR, 'name': name}, 1)
             report['wiring'] = run_py(port, CONNECT_PY, 2)
             for i, c in enumerate(cases):
                 rec = check_case(port, c, 100 + 10 * i, args.timeout)
@@ -128,7 +129,7 @@ def main():
     # Changing a setting through the editor saves it to the host's Config/DefaultNodeToCode.ini (and stamps the
     # settings version, which the settings migration specs then see); EditorSession puts that file back byte for byte
     session = EditorSession(args.engine, args.project, port, log_path, allow_python=True, extra_env=keys,
-                            extra_args=['-RenderOffScreen'])
+                            extra_args=BLUEPRINT_EDITOR_ARGS)
     run_session(session, args, port, cases, report)
     report['config_restored'] = session.restore_ok
 

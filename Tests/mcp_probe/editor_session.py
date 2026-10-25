@@ -31,6 +31,11 @@ import sys
 import time
 import urllib.request
 
+# Extra arguments for a headless session that opens a Blueprint editor (every live script that makes the in-memory
+# probe Blueprint, probe_blueprint.py): on UE 5.6 under -nullrhi the Blueprint editor's window otherwise reaches
+# FGenericWindow::GetRestoredDimensions, which is Fatal. Pass as EditorSession(..., extra_args=BLUEPRINT_EDITOR_ARGS).
+BLUEPRINT_EDITOR_ARGS = ('-RenderOffScreen',)
+
 
 def find_editor(engine_root):
     exe = os.path.join(engine_root, 'Engine', 'Binaries', 'Win64', 'UnrealEditor-Cmd.exe')

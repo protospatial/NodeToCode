@@ -8,8 +8,8 @@ Stdlib only; run with `python -I`:
 
 It reads the provider's key from the repo's .env (env_keys.py), starts a headless editor with only that key added to
 its environment (no key is saved: the per-user secrets file must have none for the provider, or the check would not
-prove the environment path), makes /Game/N2CTest/BP_N2CEnvKeyProbe_<time> in memory (an Actor with a Print String node,
-never saved), opens it, runs translate-focused-blueprint over MCP and reads the call's response (streamed on UE 5.8) until it ends. It passes
+prove the environment path), makes /Game/N2CTest/BP_N2CEnvKeyProbe_<time> in memory (probe_blueprint.py: an Actor whose
+BeginPlay runs a Print String, never saved), opens it (with -RenderOffScreen), runs translate-focused-blueprint over MCP and reads the call's response (streamed on UE 5.8) until it ends. It passes
 when the response parses as a translation with code, Project Settings shows an empty API Key field whose API Key
 Source names the variable, the editor log names the variable, and no key value is in the editor log, the run's report
 or any translation files. Key values are never printed. Report: logs/live_env_translation.json.
@@ -26,9 +26,10 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from editor_session import EditorSession, free_port  # noqa: E402
+from editor_session import BLUEPRINT_EDITOR_ARGS, EditorSession, free_port  # noqa: E402
 from mcp_session import session_headers  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
+from probe_blueprint import SETUP_PY  # noqa: E402,F401  (re-exported: the other live scripts import it from here)
 
 PROVIDER_VARIABLE = {'anthropic': 'ANTHROPIC_API_KEY', 'openai': 'OPENAI_API_KEY', 'gemini': 'GEMINI_API_KEY',
                      'deepseek': 'DEEPSEEK_API_KEY'}
@@ -36,42 +37,8 @@ STORE_ID = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'gemini': 'Gemini', 'd
 ASSET_DIR = '/Game/N2CTest'
 ASSET_NAME = 'BP_N2CEnvKeyProbe'
 
-# Runs in the editor: makes a new probe Blueprint in memory (a fresh name each run, never saved: a Blueprint made in
-# this session is focused as soon as it is opened), opens its EventGraph, adds a Print String node and compiles it
-SETUP_PY = r'''
-import json, unreal
-path = "%(dir)s/%(name)s"
-bridge = unreal.N2CPythonBridge
-steps = {}
-factory = unreal.BlueprintFactory()
-factory.set_editor_property("parent_class", unreal.Actor)
-steps["created"] = unreal.AssetToolsHelpers.get_asset_tools().create_asset("%(name)s", "%(dir)s", unreal.Blueprint, factory) is not None
-steps["opened"] = json.loads(bridge.open_blueprint(path, "EventGraph")).get("success")
-found = json.loads(bridge.search_blueprint_nodes("Print String", True, 5, "", True))
-def walk(v):
-    if isinstance(v, dict):
-        yield v
-        for x in v.values():
-            yield from walk(x)
-    elif isinstance(v, list):
-        for x in v:
-            yield from walk(x)
-def key(d):
-    # N2C JSON 2.0.0 (card 0138): the display title is the optional "title" hint; member_name is the function
-    return str(d.get("title") or d.get("member_name") or d.get("name", d.get("displayName", ""))).replace(" ", "").lower()
-action = next((d for d in walk(found) if key(d).startswith("printstring")
-               and (d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier"))), None)
-if action:
-    ident = action.get("actionIdentifier") or action["spawnMetadata"]["actionIdentifier"]
-    added = json.loads(bridge.add_node_to_graph("Print String", ident, 300.0, 0.0))
-    steps["added_print_string"] = added.get("success")
-    if not added.get("success"):
-        steps["add_error"] = added.get("error")
-else:
-    steps["search_head"] = json.dumps(found)[:1200]
-steps["compiled"] = json.loads(bridge.compile_focused_blueprint()).get("success")
-result = steps
-'''
+# The probe Blueprint (probe_blueprint.py): an Actor whose BeginPlay runs a Print String, in memory, never saved.
+# Re-exported here because the other live scripts import SETUP_PY from this module.
 
 
 # Runs in the editor: what Project Settings shows for the provider's key (the field and its API Key Source line)
@@ -259,7 +226,8 @@ def main():
     translations_dir = os.path.join(os.path.dirname(os.path.abspath(args.project)), 'Saved', 'NodeToCode', 'Translations')
     before = set(os.listdir(translations_dir)) if os.path.isdir(translations_dir) else set()
 
-    with EditorSession(args.engine, args.project, port, args.log, allow_python=True, extra_env=keys) as s:
+    with EditorSession(args.engine, args.project, port, args.log, allow_python=True, extra_env=keys,
+                       extra_args=BLUEPRINT_EDITOR_ARGS) as s:
         report['started'] = s.start()
         if report['started']:
             name = '%s_%s' % (ASSET_NAME, time.strftime('%H%M%S'))
