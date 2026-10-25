@@ -16,7 +16,7 @@ TMap<FString, FString> FN2CMcpAssessNeededToolsTool::GetCategoryDescriptions()
 {
     return {
         { "Tool Management", "Tools for managing the available toolset." },
-        { "Blueprint Discovery", "Tools for searching and listing Blueprints, functions, variables, and nodes." },
+        { "Blueprint Discovery", "Tools for searching and listing Blueprints, functions, variables, and nodes, and reading any Blueprint's graphs as N2C JSON by asset path." },
         { "Blueprint Graph Editing", "Tools for adding, connecting, and deleting nodes in a Blueprint graph." },
         { "Blueprint Function Management", "Tools for creating, deleting, and opening Blueprint functions." },
         { "Blueprint Variable Management", "Tools for creating member and local variables in Blueprints." },

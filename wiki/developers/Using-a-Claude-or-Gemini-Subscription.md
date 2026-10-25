@@ -82,6 +82,12 @@ Click into a Blueprint graph and ask the agent, for example: "Use the nodetocode
 translate that graph to Unreal C++." The focused Blueprint is the Blueprint editor you last clicked (its tab or inside
 it) or that the agent last opened with `open-blueprint-asset`. The agent does the translation with your subscription.
 
+The agent can also read a Blueprint you have not opened: `list-blueprint-graphs` lists its graphs and
+`get-blueprint-n2cjson` returns one graph, or all of them, by asset path, for example "Use nodetocode
+get-blueprint-n2cjson on /Game/Blueprints/BP_Door and explain its OpenDoor function." A large Blueprint is written to a
+file under `Saved/NodeToCode/Exports` and the agent is given its path, since Claude Code cuts tool results at about
+25,000 tokens.
+
 The `translate-focused-blueprint` tool is different: it runs NodeToCode's own translation with the provider and
 **API Key** from Project Settings, and is billed to that key. Leave it out if you want to use only your subscription.
 The translation comes back as the tool's result once it finishes, which can take a few minutes. On UE 5.8 the call

@@ -10,6 +10,7 @@
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonReader.h"
 #include "Serialization/JsonWriter.h"
 #include "K2Node.h"
 #include "Utils/N2CStableNames.h"
@@ -155,20 +156,23 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         MetadataObject->SetNumberField(TEXT("totalInGraph"), AllNodes.Num());
         ResultObject->SetObjectField(TEXT("metadata"), MetadataObject);
         
-        // Process each matching node individually to avoid flow validation issues
+        // The capture is serialized and parsed once per call, and each match is looked up by its ID
+        // (imp-mcp-tools-graph-functions-12: it was serialized and parsed again for every match)
+        const TMap<FString, TSharedPtr<FJsonObject>> NodeJsonById = IndexNodesById(Capture);
         TArray<TSharedPtr<FJsonValue>> NodesArray;
-        for (int32 i = 0; i < MatchingNodes.Num(); ++i)
+        for (UK2Node* Node : MatchingNodes)
         {
-            UK2Node* Node = MatchingNodes[i];
-            // Use the actual node ID from the full translation to maintain consistency
-            const FString* ActualNodeId = Capture.FindNodeID(Node->NodeGuid);
-            FString NodeId = ActualNodeId ? *ActualNodeId : FString::Printf(TEXT("Node_%d"), i + 1);
-
-            TSharedPtr<FJsonObject> NodeJson = ConvertNodeToEnhancedJson(Capture, Node, NodeId);
-            if (NodeJson.IsValid())
+            const FString* NodeId = Capture.FindNodeID(Node->NodeGuid);
+            const TSharedPtr<FJsonObject>* NodeJson = NodeId ? NodeJsonById.Find(*NodeId) : nullptr;
+            if (!NodeJson)
             {
-                NodesArray.Add(MakeShareable(new FJsonValueObject(NodeJson)));
+                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Could not find node %s in the capture"), *Node->GetName()));
+                continue;
             }
+            // A copy, so the index is never changed
+            const TSharedPtr<FJsonObject> NodeCopy = MakeShared<FJsonObject>(**NodeJson);
+            EnhanceNodeWithGuids(NodeCopy, Node->NodeGuid, Capture);
+            NodesArray.Add(MakeShared<FJsonValueObject>(NodeCopy));
         }
         
         ResultObject->SetArrayField(TEXT("nodes"), NodesArray);
@@ -287,68 +291,42 @@ bool FN2CMcpFindNodesInGraphTool::DoesNodeMatchSearch(
     return false;
 }
 
-TSharedPtr<FJsonObject> FN2CMcpFindNodesInGraphTool::ConvertNodeToEnhancedJson(
-    const FN2CCapture& Capture,
-    UK2Node* Node,
-    const FString& NodeId)
+TMap<FString, TSharedPtr<FJsonObject>> FN2CMcpFindNodesInGraphTool::IndexNodesById(const FN2CCapture& Capture)
 {
-    if (!Node)
-    {
-        return nullptr;
-    }
-    
-    // Instead of describing the node again on its own, 
-    // let's extract the node from the full translation we already did
-    
-    // First, serialize the full blueprint structure that we already translated (this call's own capture)
-    FString FullJsonString = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(Capture.Blueprint, false);
-    
-    // Parse the JSON to find our specific node
+    TMap<FString, TSharedPtr<FJsonObject>> Index;
     TSharedPtr<FJsonObject> FullJsonObject;
-    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FullJsonString);
-    
+    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FN2CSerializer::ToJson(Capture.Blueprint, EN2CJsonStyle::Condensed));
     if (!FJsonSerializer::Deserialize(Reader, FullJsonObject) || !FullJsonObject.IsValid())
     {
         FN2CLogger::Get().LogWarning(TEXT("Failed to parse full blueprint JSON"));
-        return nullptr;
+        return Index;
     }
-    
-    // Find the node in the translated data
-    const TArray<TSharedPtr<FJsonValue>>* GraphsArray;
-    if (FullJsonObject->TryGetArrayField(TEXT("graphs"), GraphsArray))
+
+    const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
+    if (!FullJsonObject->TryGetArrayField(TEXT("graphs"), GraphsArray))
     {
-        for (const TSharedPtr<FJsonValue>& GraphValue : *GraphsArray)
+        return Index;
+    }
+    for (const TSharedPtr<FJsonValue>& GraphValue : *GraphsArray)
+    {
+        const TSharedPtr<FJsonObject> GraphObject = GraphValue->AsObject();
+        const TArray<TSharedPtr<FJsonValue>>* NodesArray = nullptr;
+        if (!GraphObject.IsValid() || !GraphObject->TryGetArrayField(TEXT("nodes"), NodesArray))
         {
-            TSharedPtr<FJsonObject> GraphObject = GraphValue->AsObject();
-            if (!GraphObject.IsValid()) continue;
-            
-            const TArray<TSharedPtr<FJsonValue>>* NodesArray;
-            if (GraphObject->TryGetArrayField(TEXT("nodes"), NodesArray))
+            continue;
+        }
+        for (const TSharedPtr<FJsonValue>& NodeValue : *NodesArray)
+        {
+            const TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
+            FString NodeId;
+            if (NodeObject.IsValid() && NodeObject->TryGetStringField(TEXT("id"), NodeId))
             {
-                for (const TSharedPtr<FJsonValue>& NodeValue : *NodesArray)
-                {
-                    TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
-                    if (!NodeObject.IsValid()) continue;
-                    
-                    // Check if this is our node by ID
-                    FString CurrentNodeId;
-                    if (NodeObject->TryGetStringField(TEXT("id"), CurrentNodeId) && CurrentNodeId == NodeId)
-                    {
-                        // Found our node! Create a copy to return
-                        TSharedPtr<FJsonObject> NodeCopy = MakeShareable(new FJsonObject(*NodeObject));
-                        
-                        // Enhance with GUIDs
-                        EnhanceNodeWithGuids(NodeCopy, Node->NodeGuid, Capture);
-                        
-                        return NodeCopy;
-                    }
-                }
+                // IDs are unique across the capture
+                Index.Add(NodeId, NodeObject);
             }
         }
     }
-    
-    FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Could not find node %s in translated data"), *NodeId));
-    return nullptr;
+    return Index;
 }
 
 void FN2CMcpFindNodesInGraphTool::EnhanceNodeWithGuids(

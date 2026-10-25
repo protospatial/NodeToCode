@@ -153,6 +153,15 @@ arguments and the keys of its `data`. Grouped:
     wires it instead of adding a second one: a new Actor Blueprint's untouched EventGraph gives `node_count` 3 and
     those three nodes (card 0433). Translation leaves them out, and translating a graph of only those events fails
     with "Nothing to capture: the graph holds only unwired default events (ghost nodes)"
+*   `get_blueprint_n2cjson(blueprint_path, graph_name='', graph_guid='', depth=-1, to_file=False, compact=True)` -
+    Any Blueprint's graphs by asset path, with no editor open (`UN2CPythonBridge::GetBlueprintN2CJson`, card 0157):
+    `data` has `blueprintPath`, `blueprintName`, `graphCount`, `nodeCount`, `estimatedTokens`, `target` (when a graph
+    was named) and `n2c_json`, the document the MCP get-blueprint-n2cjson tool returns; every graph when no graph is
+    named. There is no size limit here: `to_file=True` writes the document under `Saved/NodeToCode/Exports` and
+    returns `path` and `bytes` instead. Errors start with a code (`ASSET_NOT_FOUND`, `GRAPH_NOT_FOUND`, `EMPTY_GRAPH`)
+*   `list_blueprint_graphs(blueprint_path)` - Every graph of a Blueprint by asset path, as list-blueprint-graphs
+    returns it (`UN2CPythonBridge::ListBlueprintGraphs`): `graphs` with `name`, `graphGuid`, `kind`, `nodeCount`,
+    `readOnly` and, for collapsed graphs, `parentGraph`
 *   `read_n2c_json(text)` - Read N2C JSON 1.x or 2.x (for example a saved `N2C_BP_*.json`) with the plugin's reader
     (`UN2CPythonBridge::ReadN2CJson`); returns its source version, counts (`data_edges`, `exec_edges`) and the document
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
@@ -316,7 +325,8 @@ Bridge class exposing NodeToCode functionality to Python via `unreal.N2CPythonBr
 *   **Location**: `Source/Private/MCP/Python/N2CPythonBridge.h/.cpp`
 *   **UFunction Category**: `NodeToCode|Python`
 *   **Functions**: every public `UFUNCTION` in the header, and each has a `nodetocode` wrapper (call the wrapper,
-    which parses the JSON and checks arguments): `GetFocusedBlueprintJson`, `ReadN2CJson`, `CompileFocusedBlueprint`,
+    which parses the JSON and checks arguments): `GetFocusedBlueprintJson`, `GetBlueprintN2CJson`,
+    `ListBlueprintGraphs`, `ReadN2CJson`, `CompileFocusedBlueprint`,
     `SaveFocusedBlueprint` (`blueprint.py`); `TagFocusedGraph`, `ListTags`, `RemoveTag`, `GetLLMProviders`,
     `GetActiveProvider`, `OpenBlueprint`, `OpenBlueprintFunction` (`bridge.py`); `SearchBlueprintNodes`,
     `AddNodeToGraph`, `ConnectPins`, `SetPinValue`, `DeleteNodes`, `FindNodesInGraph`, `CreateCommentNode`

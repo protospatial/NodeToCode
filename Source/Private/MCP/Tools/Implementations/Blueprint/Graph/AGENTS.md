@@ -221,7 +221,9 @@ Nodes and pins are addressed by GUID:
 - **Returns**: `metadata` (`blueprintName`, `graphName`, `totalFound`, `totalInGraph`) and `nodes`. Each node is the
   same N2C JSON get-focused-blueprint returns (`type`, `class`, `title`, `member_parent`, `member_name`, `comment`,
   `disabled`, `input_pins`, `output_pins`), with `ids` (`short`, `guid`) in place of `id`, and each pin with `ids`
-  (`short`, `guid`, `name`). The whole graph is captured with the default events included (card 0137). With no
+  (`short`, `guid`, `name`). The whole graph is captured with the default events included (card 0137), and
+  serialized and parsed once per call; each match is looked up by its ID (card 0157; before, the whole capture was
+  serialized and parsed again for every match). With no
   match: `{"nodes":[],"metadata":{"totalFound":0}}`. The result is marked as untrusted Blueprint data
   (`untrusted_content`)
 

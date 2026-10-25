@@ -50,6 +50,16 @@ namespace N2C
 		return CaptureNodes(Nodes, Options);
 	}
 
+	TValueOrError<FN2CCapture, FString> CaptureGraphs(TConstArrayView<UEdGraph*> Graphs, const FN2CCaptureOptions& Options)
+	{
+		FN2CCaptureContext Context(Options);
+		if (!Context.CaptureGraphs(Graphs))
+		{
+			return MakeError(FString(TEXT("Nothing to capture: none of the graphs has a node")));
+		}
+		return MakeValue(Context.TakeCapture());
+	}
+
 	TValueOrError<FN2CNodeDefinition, FString> DescribeNode(UK2Node& Node, const FString& NodeID)
 	{
 		FN2CCaptureOptions Options;

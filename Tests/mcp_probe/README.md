@@ -273,6 +273,15 @@ its environment when no key is saved, so a live check never types or saves a key
   to every call. Every call must succeed with a `target` naming the renamed function (`resolvedBy` `explicit`), and
   `list-blueprint-functions` must list the renamed function with the first ID. The folder is deleted. Report:
   `logs/live_graph_target_0152_<label>.json`.
+- `live_blueprint_by_path_0157.py --engine ... --project ... --label 5.8 [--cli-model sonnet]` (no provider key)
+  checks the by-path read tools (card 0157). The probe makes an Actor Blueprint with a function under a fresh
+  `/Game/N2CTest/ByPath0157_<time>` folder (run-python) and closes its editors, so get-open-blueprint-editors lists
+  none. `claude -p` with only `mcp__nodetocode__*` lists its graphs with list-blueprint-graphs and reads the function
+  with get-blueprint-n2cjson by `blueprintPath` and the listed `graphGuid`. Both calls must succeed, start with
+  `untrusted_content`, open no editor (none is open afterwards), and the agent's answer must match them. The probe also
+  reads `/Engine/EngineSky/BP_Sky_Sphere` (every graph) with `toFile` and checks the file parses; a copy is kept as
+  `logs/live_blueprint_by_path_0157_<label>_export.json` for token counts. The folder is deleted. Report:
+  `logs/live_blueprint_by_path_0157_<label>.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

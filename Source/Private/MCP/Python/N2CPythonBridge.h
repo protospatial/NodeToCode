@@ -38,6 +38,34 @@ public:
 	static FString GetFocusedBlueprintJson();
 
 	/**
+	 * Read any Blueprint's graphs as N2C JSON by asset path, with no Blueprint editor open (card 0157): the same
+	 * document as the MCP get-blueprint-n2cjson tool (nodes and pins with ids {short, guid}, flows, the guids table).
+	 *
+	 * @param BlueprintPath Asset path, e.g. /Game/Blueprints/BP_Door
+	 * @param GraphName One graph by name; with GraphGuid also empty, every graph of the Blueprint
+	 * @param GraphGuid One graph by its GraphGuid (wins over GraphName)
+	 * @param Depth Max Translation Depth for this read (0-5); -1 uses the project setting
+	 * @param bToFile Write the document to Saved/NodeToCode/Exports instead of returning it (there is no size limit here)
+	 * @param bCompact Write the file without whitespace (only used with bToFile)
+	 * @return {"success", "data": {"blueprintPath", "blueprintName", "graphCount", "nodeCount", "estimatedTokens",
+	 *         and "n2c_json": {...}, or with bToFile "path" and "bytes"}, "error"}; errors start with a code
+	 *         (ASSET_NOT_FOUND, GRAPH_NOT_FOUND, AMBIGUOUS_GRAPH_NAME, EMPTY_GRAPH, INVALID_ARGUMENT)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	static FString GetBlueprintN2CJson(const FString& BlueprintPath, const FString& GraphName = TEXT(""),
+		const FString& GraphGuid = TEXT(""), int32 Depth = -1, bool bToFile = false, bool bCompact = true);
+
+	/**
+	 * List every graph of a Blueprint by asset path, with no Blueprint editor open (card 0157), as the MCP
+	 * list-blueprint-graphs tool does.
+	 *
+	 * @return {"success", "data": {"blueprintPath", "blueprintName", "graphCount", "graphs": [{"name", "graphGuid",
+	 *         "kind", "nodeCount", "readOnly", "parentGraph" (collapsed graphs)}]}, "error"}
+	 */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	static FString ListBlueprintGraphs(const FString& BlueprintPath);
+
+	/**
 	 * Read N2C JSON text (a saved N2C_BP_*.json, or get_focused_blueprint_json's "n2c_json") with NodeToCode's reader.
 	 * Reads version 1.x (1.2.x and earlier 2.0 builds) and 2.x into the current model; the result is that model
 	 * written as N2C JSON of the current version (a 1.x document comes back as 2.0.0 with the same nodes and flows;

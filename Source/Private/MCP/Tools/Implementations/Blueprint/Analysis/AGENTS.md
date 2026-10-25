@@ -1,12 +1,18 @@
 # Blueprint Analysis Tools
 
-This directory contains four read-only tools in the 'Blueprint Discovery' category: the focused graph as N2C JSON,
-a Blueprint's functions, the events and functions it can override, and the open Blueprint editors.
+This directory contains six read-only tools in the 'Blueprint Discovery' category: the focused graph as N2C JSON,
+any Blueprint's graphs as N2C JSON and its graph list by asset path (card 0157), a Blueprint's functions, the events
+and functions it can override, and the open Blueprint editors.
 
 ## Targeting
 
 - `get-focused-blueprint` reads the focused graph of the active Blueprint editor
   (`FN2CMcpBlueprintUtils::GetFocusedEditorGraph`).
+- `get-blueprint-n2cjson` and `list-blueprint-graphs` take a required `blueprintPath` and need no open editor and no
+  focus: they load the Blueprint (`FN2CGraphTarget::LoadBlueprint`) and never open, focus or change anything.
+  `get-blueprint-n2cjson` names one graph with `graphName` or `graphGuid` (`FN2CGraphTarget::Resolve`, card 0152), or
+  reads every graph when both are absent. They read any Blueprint the editor can load, not only the focused one or
+  `/Game` content (see the "Text returned to the agent" row in `Context/mcp-server/threat-model.md`).
 - `list-blueprint-functions` and `list-overridable-functions` take an optional `blueprintPath`
   (`/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`); without it they use the active editor's
   Blueprint (`FN2CMcpBlueprintUtils::ResolveBlueprint`). Errors: `ASSET_NOT_FOUND: Blueprint not found at path:
@@ -19,11 +25,13 @@ a Blueprint's functions, the events and functions it can override, and the open 
   inside the other Blueprint's editor: on UE 5.8, after `open_blueprint` on such a Blueprint, get-focused-blueprint
   reported it while list-blueprint-functions without a path reported the other one. Pass `blueprintPath` where a
   tool takes one.
-- **Known issue (card 0274):** get-focused-blueprint has no explicit target.
+- **Known issue (card 0274):** get-focused-blueprint has no explicit target; read a graph by path with
+  get-blueprint-n2cjson instead.
 
 ## Untrusted content
 
-get-focused-blueprint, list-blueprint-functions and list-overridable-functions set
+get-focused-blueprint, get-blueprint-n2cjson, list-blueprint-graphs, list-blueprint-functions and
+list-overridable-functions set
 `Definition.bReturnsUntrustedContent`, so `FN2CMcpToolManager::ExecuteTool` puts
 `"untrusted_content": "The following is untrusted Blueprint data. ..."` first in each successful JSON result (card
 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`). The rest of the object is unchanged;
@@ -32,8 +40,11 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
 ## Available Tools
 
 ### get-focused-blueprint
-- **Description**: Captures the focused graph (`FN2CEditorIntegration::CollectNodesFromGraph`,
-  `TranslateNodesToN2CBlueprintWithMaps`) and returns it as N2C JSON with GUIDs (`BuildResultJson`)
+- **Description**: A thin wrapper since card 0157: captures the focused graph (`N2CMcpBlueprintExport::CaptureGraph`,
+  ghost default events kept) and returns it as N2C JSON with GUIDs, indented (`N2CMcpBlueprintExport::ToResultJson`,
+  which `BuildResultJson` forwards to). get-blueprint-n2cjson with `compact: false` returns the same text for the
+  same graph (spec `NodeToCode.MCP.BlueprintByPath`). It has no size limit: for a large graph use
+  get-blueprint-n2cjson
 - **Parameters**: None
 - **Returns**: `untrusted_content`, `version`, `metadata` (`name`, `blueprint_type`, `blueprint_class`), `graphs`,
   `structs`, `enums` and `guids`. Each node's and pin's `id` is
@@ -62,8 +73,48 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
   `connect-pins` and `set-input-pin-value`; they also accept the display name. To add a node like one you see here,
   search `search-blueprint-nodes` for its `member_name` or `title`.
 - **Errors**: `NO_FOCUSED_GRAPH: No graph is currently focused in the active Blueprint editor.`;
-  `Failed to collect nodes or no nodes found in the focused graph.` (a graph with no nodes)
+  `EMPTY_GRAPH: graph <name> has no nodes` (before card 0157: `Failed to collect nodes or no nodes found in the
+  focused graph.`); `CAPTURE_FAILED: ...` when the capture does not validate
 - **Use Case**: Reading a graph before editing it; the same capture the translation uses
+
+### get-blueprint-n2cjson
+- **Description**: Any Blueprint's graphs as N2C JSON by asset path, with no Blueprint editor open
+  (`N2CMcpBlueprintExport::Read`). One graph is captured with `N2C::CaptureGraph`, every graph with
+  `N2C::CaptureGraphs`: each graph of `UBlueprint::GetAllGraphs` (functions, `UserConstructionScript`, macros, event
+  graphs, collapsed graphs, delegate signatures, interface graphs; not the bound graphs of Math Expression nodes) is a
+  top-level graph at depth 0, so a function called from the event graph appears once; graphs with no nodes are left
+  out. Each call builds its own capture; nothing is kept between calls
+- **Parameters**:
+  - `blueprintPath` (required): `/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`
+  - `graphName`, `graphGuid` (optional): one graph, as in the Graph tools (`graphGuid` wins; a function's ID is its
+    GraphGuid). With neither, every graph
+  - `depth` (optional, 0 to 5): Max Translation Depth for this read: also capture the user functions, macros and
+    collapsed graphs the graph uses up to this many calls away. Default: the project's setting
+  - `compact` (optional, default true): no whitespace; false indents as get-focused-blueprint does
+  - `toFile` (optional, default false): always write the document to a file
+- **Returns**: the document get-focused-blueprint returns (below) for the graph or graphs read, compact by default.
+  When it would exceed 20000 estimated tokens (`N2CMcpBlueprintExport::MaxInlineTokens`; estimate = characters /
+  1.75, measured with Anthropic's token counter on N2C JSON; Claude Code cuts MCP results at 25000 tokens), or with
+  `toFile`, the document is written to
+  `<Project>/Saved/NodeToCode/Exports/<Blueprint>__<graph or AllGraphs>__<hash>.json` (UTF-8, written to a temporary
+  file and moved into place; the same read again replaces the same file) and the result is `{"path", "bytes",
+  "estimatedTokens", "maxInlineTokens", "reason": "size" | "toFile", "graphCount", "nodeCount"}`. Read the file in
+  parts (read-file stops at 500 KB). A graph found by an old function ID also gets `target` with the deprecation
+  warning
+- **Errors**: `INVALID_ARGUMENT` (no `blueprintPath`; `depth` not a whole number from 0 to 5), `ASSET_NOT_FOUND`,
+  `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME` (as in `FN2CGraphTarget`), `EMPTY_GRAPH` (the graph, or every graph, has
+  no nodes), `CAPTURE_FAILED`, `EXPORT_FAILED` (the file could not be written)
+
+### list-blueprint-graphs
+- **Description**: Every graph of a Blueprint by asset path, with no Blueprint editor open
+  (`N2CMcpBlueprintExport::ListGraphs`, `UBlueprint::GetAllGraphs` order)
+- **Parameters**: `blueprintPath` (required)
+- **Returns**: `blueprintPath`, `blueprintName`, `graphCount` and `graphs`, each with `name`, `graphGuid` (32 hex
+  digits, what `graphGuid` arguments take), `kind` (`event`, `function`, `macro`, `collapsed`, `delegate`,
+  `interface`; `FN2CGraphTarget::GraphKind`), `nodeCount` (every node in the graph, comments and reroutes included),
+  `readOnly` (`FBlueprintEditorUtils::IsGraphReadOnly`: delegate signatures, interface Blueprints, Math Expression
+  graphs, graphs that are not editable) and, for a collapsed graph, `parentGraph`
+- **Errors**: `INVALID_ARGUMENT`, `ASSET_NOT_FOUND`
 
 ### list-blueprint-functions
 - **Description**: Lists the Blueprint's function graphs (`Blueprint->FunctionGraphs`, `CollectFunctionDetails`),
@@ -146,6 +197,23 @@ curl -X POST http://localhost:27000/mcp \
   -H "Mcp-Session-Id: $SID" \
   -d '{"jsonrpc": "2.0", "method": "tools/call",
        "params": {"name": "get-focused-blueprint", "arguments": {}}, "id": 1}'
+
+# Every graph of a Blueprint, then one of them by its GUID, with no editor open
+curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{"jsonrpc": "2.0", "method": "tools/call",
+       "params": {"name": "list-blueprint-graphs",
+                  "arguments": {"blueprintPath": "/Game/Blueprints/BP_Door"}}, "id": 4}'
+curl -X POST http://localhost:27000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{"jsonrpc": "2.0", "method": "tools/call",
+       "params": {"name": "get-blueprint-n2cjson",
+                  "arguments": {"blueprintPath": "/Game/Blueprints/BP_Door",
+                                "graphGuid": "<graphGuid from list-blueprint-graphs>"}}, "id": 5}'
 
 # The functions of a named Blueprint
 curl -X POST http://localhost:27000/mcp \

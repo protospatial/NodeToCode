@@ -89,6 +89,15 @@ namespace N2C
 		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
 
 	/**
+	 * Captures several graphs of one Blueprint into one result (get-blueprint-n2cjson without a graph, card 0157):
+	 * each is a top-level graph at depth 0, in the order given, so a call from one to another is never captured twice;
+	 * nested graphs outside the list (another Blueprint's functions and macros) follow within Options.Depth. Graphs
+	 * with no nodes are left out; an error when none has any.
+	 */
+	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureGraphs(TConstArrayView<UEdGraph*> Graphs,
+		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
+
+	/**
 	 * Describes one node on its own (the MCP add-node and search tools): a fresh context, no nested-graph discovery
 	 * and no related types, so it never sees or changes any capture. NodeID, when given, replaces the generated ID.
 	 */

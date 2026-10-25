@@ -45,14 +45,8 @@ private:
         bool bCaseSensitive
     );
 
-    /**
-     * Convert a single node to N2C JSON format with GUID enhancement, from Captured (this call's capture of the graph)
-     */
-    TSharedPtr<FJsonObject> ConvertNodeToEnhancedJson(
-        const FN2CCapture& Capture,
-        UK2Node* Node,
-        const FString& NodeId
-    );
+    /** Node ID -> the node's N2C JSON object, from one serialization of the call's capture */
+    static TMap<FString, TSharedPtr<FJsonObject>> IndexNodesById(const FN2CCapture& Capture);
 
     /**
      * Enhance a node JSON object with GUID information

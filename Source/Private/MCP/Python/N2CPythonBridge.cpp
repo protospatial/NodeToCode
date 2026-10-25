@@ -9,6 +9,7 @@
 #include "Core/N2CSerializer.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CPinConnectPolicy.h"
@@ -130,6 +131,67 @@ FString UN2CPythonBridge::GraphToJson(UBlueprint* OwningBlueprint, UEdGraph* Foc
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("GetFocusedBlueprintJson: Retrieved %s with %d nodes"), *BlueprintName, CollectedNodes.Num()), EN2CLogSeverity::Info);
 	return MakeSuccessJson(Data);
+}
+
+FString UN2CPythonBridge::GetBlueprintN2CJson(const FString& BlueprintPath, const FString& GraphName,
+	const FString& GraphGuid, int32 Depth, bool bToFile, bool bCompact)
+{
+	FN2CBlueprintReadRequest Request;
+	Request.BlueprintPath = BlueprintPath;
+	Request.GraphName = GraphName;
+	Request.GraphGuid = GraphGuid;
+	Request.Depth = Depth < 0 ? INDEX_NONE : Depth;
+	Request.bToFile = bToFile;
+	Request.bCompact = bCompact;
+	// A script has no tool-output limit: the document is returned whole unless it asks for a file
+	Request.bSpillLargeToFile = false;
+
+	const FN2CBlueprintReadResult Result = N2CMcpBlueprintExport::Read(Request);
+	if (!Result.IsValid())
+	{
+		return MakeErrorJson(Result.Error);
+	}
+
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("blueprintPath"), Result.Blueprint->GetPathName());
+	Data->SetStringField(TEXT("blueprintName"), Result.Blueprint->GetName());
+	Data->SetNumberField(TEXT("graphCount"), Result.GraphCount);
+	Data->SetNumberField(TEXT("nodeCount"), Result.NodeCount);
+	Data->SetNumberField(TEXT("estimatedTokens"), Result.EstimatedTokens);
+	if (Result.Target.Graph)
+	{
+		Data->SetObjectField(TEXT("target"), Result.Target.ToJson());
+	}
+	if (Result.WroteFile())
+	{
+		Data->SetStringField(TEXT("path"), Result.FilePath);
+		Data->SetNumberField(TEXT("bytes"), static_cast<double>(Result.FileBytes));
+		return MakeSuccessJson(Data);
+	}
+
+	TSharedPtr<FJsonObject> Document;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Result.Json);
+	if (!FJsonSerializer::Deserialize(Reader, Document) || !Document.IsValid())
+	{
+		return MakeErrorJson(TEXT("CAPTURE_FAILED: the document is not a JSON object"));
+	}
+	Data->SetObjectField(TEXT("n2c_json"), Document);
+	return MakeSuccessJson(Data);
+}
+
+FString UN2CPythonBridge::ListBlueprintGraphs(const FString& BlueprintPath)
+{
+	if (BlueprintPath.TrimStartAndEnd().IsEmpty())
+	{
+		return MakeErrorJson(TEXT("INVALID_ARGUMENT: blueprint_path is required, the asset path of a Blueprint such as /Game/Blueprints/BP_Door"));
+	}
+	FString LoadError;
+	UBlueprint* Blueprint = FN2CGraphTarget::LoadBlueprint(BlueprintPath, LoadError);
+	if (!Blueprint)
+	{
+		return MakeErrorJson(LoadError);
+	}
+	return MakeSuccessJson(N2CMcpBlueprintExport::ListGraphs(*Blueprint));
 }
 
 FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)

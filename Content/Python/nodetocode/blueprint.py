@@ -63,6 +63,83 @@ def get_focused_blueprint() -> Dict[str, Any]:
         return make_error_result(str(e))
 
 
+def get_blueprint_n2cjson(blueprint_path: str, graph_name: str = '', graph_guid: str = '', depth: int = -1,
+                          to_file: bool = False, compact: bool = True) -> Dict[str, Any]:
+    """
+    Read any Blueprint's graphs as N2C JSON by asset path, with no Blueprint editor open and without changing focus.
+
+    The same document as the MCP get-blueprint-n2cjson tool: nodes and pins with 'ids' {'short', 'guid'} (pins also
+    'name'), the flows, and the 'guids' table. One graph (graph_name, or graph_guid from list_blueprint_graphs), or
+    with neither every graph of the Blueprint in one document. Unlike the MCP tool, a large document is returned
+    whole; pass to_file=True to have it written to Saved/NodeToCode/Exports instead.
+
+    Args:
+        blueprint_path: Asset path, e.g. '/Game/Blueprints/BP_Door'
+        graph_name: One graph by name (event graph, function, macro, collapsed, delegate or interface graph)
+        graph_guid: One graph by its GraphGuid (wins over graph_name)
+        depth: Also capture the functions, macros and collapsed graphs used up to this many calls away (0-5);
+            -1 uses the project's Max Translation Depth
+        to_file: Write the document to a file and return its path instead
+        compact: Write the file without whitespace (only used with to_file)
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'blueprintPath': str, 'blueprintName': str,
+                'graphCount': int, 'nodeCount': int, 'estimatedTokens': int,
+                'target': dict,        # the graph read, when one was named
+                'n2c_json': dict,      # or, with to_file: 'path': str, 'bytes': int
+            } or None,
+            'error': str or None       # starts with a code: ASSET_NOT_FOUND, GRAPH_NOT_FOUND, EMPTY_GRAPH, ...
+        }
+
+    Example:
+        graphs = list_blueprint_graphs('/Game/Blueprints/BP_Door')['data']['graphs']
+        fn = next(g for g in graphs if g['kind'] == 'function')
+        doc = get_blueprint_n2cjson('/Game/Blueprints/BP_Door', graph_guid=fn['graphGuid'])['data']['n2c_json']
+    """
+    try:
+        if not blueprint_path:
+            return make_error_result('INVALID_ARGUMENT: blueprint_path is required')
+        result_json = unreal.N2CPythonBridge.get_blueprint_n2c_json(
+            blueprint_path, graph_name or '', graph_guid or '', int(depth), bool(to_file), bool(compact))
+        return _parse_bridge_result(result_json)
+    except Exception as e:
+        log_error(f"get_blueprint_n2cjson failed: {e}")
+        return make_error_result(str(e))
+
+
+def list_blueprint_graphs(blueprint_path: str) -> Dict[str, Any]:
+    """
+    List every graph of a Blueprint by asset path, with no Blueprint editor open (as the MCP list-blueprint-graphs
+    tool does).
+
+    Args:
+        blueprint_path: Asset path, e.g. '/Game/Blueprints/BP_Door'
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'blueprintPath': str, 'blueprintName': str, 'graphCount': int,
+                'graphs': [{'name': str, 'graphGuid': str,
+                            'kind': str,         # event, function, macro, collapsed, delegate, interface
+                            'nodeCount': int, 'readOnly': bool,
+                            'parentGraph': str}], # collapsed graphs only
+            } or None,
+            'error': str or None
+        }
+    """
+    try:
+        if not blueprint_path:
+            return make_error_result('INVALID_ARGUMENT: blueprint_path is required')
+        return _parse_bridge_result(unreal.N2CPythonBridge.list_blueprint_graphs(blueprint_path))
+    except Exception as e:
+        log_error(f"list_blueprint_graphs failed: {e}")
+        return make_error_result(str(e))
+
+
 def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
     """
     Read N2C JSON text with NodeToCode's own reader, for example a saved N2C_BP_*.json translation file.
