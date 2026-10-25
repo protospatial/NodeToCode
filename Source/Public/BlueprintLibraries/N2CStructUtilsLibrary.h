@@ -14,18 +14,31 @@
  * This library exposes struct creation and modification functionality to Blueprints and Python,
  * enabling programmatic creation of DataTable row structures without manual editor interaction.
  *
+ * In Python, a function with out parameters returns a tuple: the return value first (when it has one), then the
+ * out parameters in declaration order. So create_user_defined_struct returns (struct, success, error),
+ * add_struct_variable and remove_default_variable return (success, error), and add_struct_variables_batch returns
+ * (count, success, error). scripts/data/struct_creator.py wraps these calls.
+ *
  * Example Python usage:
  * @code
  *     import unreal
  *
- *     # Create a new struct
- *     success, struct, error = unreal.N2CStructUtilsLibrary.create_user_defined_struct(
- *         '/Game/Data', 'F_MyRowStruct')
+ *     lib = unreal.N2CStructUtilsLibrary
  *
- *     # Add variables to the struct
- *     unreal.N2CStructUtilsLibrary.add_struct_variable(struct, 'MyString', 'FString')
- *     unreal.N2CStructUtilsLibrary.add_struct_variable(struct, 'MyFloat', 'float')
- *     unreal.N2CStructUtilsLibrary.add_struct_variable(struct, 'MyInt', 'int32')
+ *     # Create a new struct (the return value comes first, then the out parameters)
+ *     struct, success, error = lib.create_user_defined_struct('/Game/Data', 'F_MyRowStruct')
+ *     if not success:
+ *         raise RuntimeError(error)
+ *
+ *     # Add variables to the struct; each call returns (success, error)
+ *     for name, var_type in [('MyString', 'FString'), ('MyFloat', 'float'), ('MyInt', 'int32')]:
+ *         ok, error = lib.add_struct_variable(struct, name, var_type)
+ *         if not ok:
+ *             raise RuntimeError(error)
+ *
+ *     # A new struct starts with one default member; remove it once the struct has others, then save
+ *     lib.remove_default_variable(struct)
+ *     lib.save_struct(struct)
  * @endcode
  */
 UCLASS()
@@ -98,7 +111,7 @@ public:
 	);
 
 	/**
-	 * Remove the default variable that is created when a struct is first made
+	 * Remove the default variable that is created when a struct is first made (the struct's first member)
 	 * @param Struct The UserDefinedStruct to modify
 	 * @param bSuccess Whether the default variable was successfully removed
 	 * @param ErrorMessage Error message if the operation failed
@@ -116,7 +129,7 @@ public:
 	/**
 	 * Get a list of all variable names in a UserDefinedStruct
 	 * @param Struct The UserDefinedStruct to query
-	 * @return Array of variable names
+	 * @return Array of the members' internal names (the name given, a number and a GUID, e.g. "MyFloat_2_<32 hex digits>")
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Struct", meta = (DisplayName = "Get Struct Variable Names"))
 	static TArray<FString> GetStructVariableNames(UUserDefinedStruct* Struct);

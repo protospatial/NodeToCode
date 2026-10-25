@@ -8,22 +8,29 @@ MCP Bridge and Python script management system for LLM-powered UE automation.
 Content/Python/
 ├── mcp_bridge/
 │   ├── nodetocode_bridge.py    - Stdio-to-HTTP MCP bridge
+│   ├── launch_bridge.bat       - Windows launcher script
 │   ├── launch_bridge.sh        - Mac/Linux launcher script
 │   └── ue_python_finder.py     - UE Python installation finder
 │
 ├── nodetocode/                 - Core Python module (import nodetocode as n2c)
-│   ├── __init__.py             - Module exports
+│   ├── __init__.py             - Module exports (__all__ is the function list)
+│   ├── blueprint.py            - Get, read, compile, save and load Blueprints
+│   ├── graph.py                - Graph editing: search, add, connect, set, delete, find, comment
+│   ├── functions.py            - Function input and return pins
+│   ├── bridge.py               - Tagging, LLM provider info, opening Blueprints and functions
 │   ├── scripts.py              - Script CRUD with dual-path search
-│   ├── bridge.py               - C++ bridge wrappers (tagging, LLM info)
-│   ├── blueprint.py            - Blueprint operations
-│   └── utils.py                - Logging and result formatting
+│   └── utils.py                - Logging, result helpers, the bridge result parser
 │
-└── scripts/                    - Script library (bundled + user)
-    ├── script_registry.json    - Metadata index
-    ├── core/                   - Core utility scripts
-    ├── utilities/              - Project utilities
-    ├── data/                   - Data manipulation scripts
-    └── ui/                     - UI/Widget scripts
+├── scripts/                    - Script library (bundled + user)
+│   ├── script_registry.json    - Metadata index (the list of bundled scripts)
+│   ├── core/                   - Core utility scripts
+│   ├── utilities/              - Project utilities
+│   ├── data/                   - Data manipulation scripts
+│   ├── ui/                     - UI/Widget scripts
+│   └── general/                - Empty; save_script's default category
+│
+└── tests/                      - CPython tests for the stdio bridge (test_mcp_bridge.py) and a graph-editing
+                                  test to run inside the editor (test_graph_editing.py)
 ```
 
 ## MCP Bridge
@@ -103,17 +110,17 @@ Importable module providing Blueprint manipulation and script management. All fu
 ```python
 import nodetocode as n2c
 
-# Blueprint operations
+# Blueprint operations (a Blueprint graph must be focused: open one with n2c.open_blueprint(path))
 bp = n2c.get_focused_blueprint()
 if bp['success']:
-    print(f"Blueprint: {bp['data']['name']}")
+    print(f"Blueprint: {bp['data']['name']}, graph {bp['data']['graph_name']}, {bp['data']['node_count']} nodes")
 
 n2c.compile_blueprint()
 n2c.save_blueprint()
 
 # Script management
-matches = n2c.search_scripts("health system")
-result = n2c.run_script("create_health_system", max_hp=100)
+matches = n2c.search_scripts("blueprint")
+result = n2c.run_script("my_script", max_hp=100)   # a saved script; its `result` is in result['data']['result']
 
 # Tagging system
 n2c.tag_graph("player_controller", category="Systems")
@@ -124,36 +131,76 @@ tags = n2c.list_tags()
 
 | File | Purpose |
 |------|---------|
-| `__init__.py` | Module exports, version info (`__version__ = "1.0.0"`) |
+| `__init__.py` | Module exports (`__all__`), version info (`__version__ = "1.0.0"`) |
+| `blueprint.py` | Blueprint get/read/compile/save/load via `UN2CPythonBridge` |
+| `graph.py` | Graph editing via `UN2CPythonBridge`: node search, add, connect, pin values, delete, find, comments |
+| `functions.py` | Function input and return pins via `UN2CPythonBridge` |
+| `bridge.py` | Tagging, LLM provider info, `open_blueprint` and `open_blueprint_function` |
 | `scripts.py` | Script CRUD with dual-path search (plugin + project) |
-| `bridge.py` | C++ bridge wrappers for tagging and LLM provider info |
-| `blueprint.py` | Blueprint get/compile/save/load via `UN2CPythonBridge` |
-| `utils.py` | Logging (`log_info`, `log_warning`, `log_error`), result helpers |
+| `utils.py` | Logging (`log_info`, `log_warning`, `log_error`), result helpers, `_parse_bridge_result` |
 
 ### Available Functions
 
+The authoritative list is `__all__` in `Content/Python/nodetocode/__init__.py`; each function's docstring gives its
+arguments and the keys of its `data`. Grouped:
+
 **Blueprint Operations:**
-*   `get_focused_blueprint()` - Get N2CJSON for focused Blueprint
+*   `get_focused_blueprint()` - The focused graph as N2C JSON: `data` has `name`, `path`, `graph_name`, `node_count`
+    and `n2c_json` (version 2.0.0, stable names: each node's `class`, `member_parent`, `member_name`, each pin's
+    `name` such as `execute`, `then` or `ReturnValue`; `title` and `label` are English display hints). A new
+    Blueprint's EventGraph that holds only its default (disabled) events fails with "Failed to translate collected
+    nodes into N2CBlueprint structure."
 *   `read_n2c_json(text)` - Read N2C JSON 1.x or 2.x (for example a saved `N2C_BP_*.json`) with the plugin's reader
     (`UN2CPythonBridge::ReadN2CJson`); returns its source version, counts (`data_edges`, `exec_edges`) and the document
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
     a 1.x node's display `name` comes back as `title` (no `class`), its pin names stay the display names it has
-*   `compile_blueprint(path=None)` - Compile Blueprint (focused if no path)
-*   `save_blueprint(path=None, only_if_dirty=True)` - Save to disk
-*   `load_blueprint(path)` - Load Blueprint by asset path
+*   `compile_blueprint(path=None)` - Compile the focused Blueprint (a `path` is ignored for now: open the Blueprint
+    first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`
+*   `save_blueprint(path=None, only_if_dirty=True)` - Save the focused Blueprint (a `path` is ignored the same way);
+    `data`: `blueprint_name`, `was_dirty`, `was_saved`
+*   `load_blueprint(path)` - Load Blueprint by asset path; `data`: `name`, `path`, `class_name`, `parent_class`
+    (the parent's name, such as `Actor`)
+*   `open_blueprint(path, focus_graph="EventGraph")` - Open a Blueprint editor and focus a graph by its exact name
+    (`EventGraph`, `UserConstructionScript`, a function or macro name); an unknown name opens the Blueprint with
+    `focusedGraph` empty
+*   `open_blueprint_function(name)` - Focus a function graph of the open Blueprint
+
+**Graph Editing (the focused graph):**
+*   `search_blueprint_nodes(term, context_sensitive=True, max_results=20, category="", exclude_vm_functions=True)` -
+    Actions to add; each has `name` and `displayName` (both the action's lower-case search text, not a title) and
+    `spawnMetadata.actionIdentifier`
+*   `add_node_to_graph(node_name, action_identifier, location_x=0, location_y=0)` - Add a node (pass a result's
+    `displayName` and `actionIdentifier`); returns `nodeGuid` and `inputPins`/`outputPins` with `pinGuid`, `pinName`
+*   `connect_pins(connections, break_existing_links=False)` - `[{"from": {"nodeGuid", "pinGuid"}, "to": {...}}]`;
+    without `break_existing_links` a connection that would replace a link (a linked data input, also through a
+    conversion node, or a linked exec output) fails and names that link
+*   `set_pin_value(node_guid, pin_guid, value, pin_name="")` - Default value of an unlinked input pin
+*   `delete_nodes(node_guids, preserve_connections=False, force=False)` - Delete nodes
+*   `find_nodes_in_graph(search_terms, search_type="keyword", case_sensitive=False, max_results=50)` - A keyword
+    matches the node's title (as shown and its source text), class or member name; or `search_type="guid"`
+*   `create_comment_node(node_guids, comment_text="Comment", color=None, font_size=18, move_mode="group", padding=50)`
+
+Pick pins by `pinName` (`execute`, `then`, `ReturnValue`, `InString`, ...): it is the stable pin name, while
+`displayName` is the editor's label.
+
+**Function Pins (a function graph focused):**
+*   `add_function_input_pin(name, type, default_value="", is_pass_by_reference=False, tooltip="")`,
+    `add_function_return_pin(name, type, tooltip="")`, `remove_function_entry_pin(name)`,
+    `remove_function_return_pin(name)`
 
 **Script Management:**
 *   `list_scripts(category=None, limit=20)` - List scripts with metadata
 *   `search_scripts(query, limit=10)` - Search by name/description/tags
 *   `get_script(name)` - Get full script code and metadata
 *   `get_script_functions(name)` - AST-based function signature extraction
-*   `run_script(name, **kwargs)` - Execute script with parameters
+*   `run_script(name, **kwargs)` - Execute script with parameters (keyword arguments become locals, and `params`);
+    `data`: `script_name`, `result` (the script's `result` variable), `parameters_used`
 *   `save_script(name, code, description, tags, category, parameters)` - Save new script
 *   `delete_script(name)` - Remove script (project scripts only)
 *   `get_script_stats()` - Library statistics
 
 **NodeToCode-Specific:**
-*   `tag_graph(tag, category, description)` - Tag focused graph
+*   `tag_graph(tag, category="Default", description="")` - Tag focused graph
 *   `list_tags(category=None, tag=None)` - List tags with filters
 *   `remove_tag(graph_guid, tag)` - Remove tag from graph
 *   `get_llm_providers()` - Get available LLM providers
@@ -196,8 +243,8 @@ JSON index for fast script discovery:
   },
   "categories": ["core", "utilities", "data", "ui"],
   "stats": {
-    "total_scripts": 10,
-    "last_updated": "2026-01-06T00:00:00Z"
+    "total_scripts": 13,
+    "last_updated": "2026-01-16T23:30:00Z"
   }
 }
 ```
@@ -219,20 +266,21 @@ Writing and recovery (project registry; same pattern as `FN2CFileUtils`):
     checks that every bundled registry path exists and every bundled `.py` file is registered, so a script added
     under `Content/Python/scripts` needs its registry entry in the same change.
 
-### Bundled Scripts (10 scripts, 4 categories)
+### Bundled Scripts
 
-| Script | Category | Description |
-|--------|----------|-------------|
-| `asset_iterator` | core | Find and iterate assets by type/path/filter |
-| `blueprint_factory` | core | Create Blueprints from any parent class |
-| `variable_batch_creator` | core | Add multiple member variables to Blueprints |
-| `function_scaffolder` | core | Add function graphs with configuration |
-| `component_adder` | core | Add/manage components in Actor Blueprints |
-| `project_folder_scaffold` | utilities | Create standardized folder structures |
-| `asset_duplicator` | utilities | Clone assets with renaming/batch support |
-| `asset_validator` | utilities | Validate naming conventions/compilation |
-| `datatable_populator` | data | Merge rows into DataTables from JSON/CSV (`clear_existing=True` replaces; saves only with `save=True`) |
-| `utility_widget_launcher` | ui | Launch Editor Utility Widgets programmatically |
+The list, with each script's path, description and tags, is `Content/Python/scripts/script_registry.json` (13
+scripts in 4 categories when this was written; `test_registry_integrity.py` keeps it in step with the files), and
+`n2c.list_scripts()` / `get-script-functions` read it at run time. By category:
+
+*   **core**: `asset_iterator`, `blueprint_factory`, `variable_batch_creator`, `function_scaffolder`,
+    `component_adder`, `ue5_compat` (UE5 Python API workarounds; run-python's error `hint` points at it)
+*   **utilities**: `project_folder_scaffold`, `asset_duplicator`, `asset_validator`
+*   **data**: `datatable_populator` (merges rows from JSON/CSV; `clear_existing=True` replaces, saves only with
+    `save=True`), `struct_creator` (UserDefinedStruct row structs through `UN2CStructUtilsLibrary`)
+*   **ui**: `utility_widget_launcher`, `asset_editor_opener`
+
+`blueprint_factory.create_blueprint(name, ...)` uses the name as given; `create_actor_blueprint` and the other
+`create_*_blueprint` helpers add their prefix (`BP_`, `WBP_`, ...) when it is missing.
 
 ## Token-Efficient Function Discovery
 
@@ -250,17 +298,48 @@ Bridge class exposing NodeToCode functionality to Python via `unreal.N2CPythonBr
 
 *   **Location**: `Source/Private/MCP/Python/N2CPythonBridge.h/.cpp`
 *   **UFunction Category**: `NodeToCode|Python`
-*   **Functions**:
-    *   `GetFocusedBlueprintJson()` - Get Blueprint as N2CJSON
-    *   `CompileFocusedBlueprint()` - Compile focused Blueprint
-    *   `SaveFocusedBlueprint(bOnlyIfDirty)` - Save to disk
-    *   `TagFocusedGraph(Tag, Category, Description)` - Apply tag
-    *   `ListTags(Category, Tag)` - List/filter tags
-    *   `RemoveTag(GraphGuid, Tag)` - Remove tag
-    *   `GetLLMProviders()` - Get provider list
-    *   `GetActiveProvider()` - Get current provider
+*   **Functions**: every public `UFUNCTION` in the header, and each has a `nodetocode` wrapper (call the wrapper,
+    which parses the JSON and checks arguments): `GetFocusedBlueprintJson`, `ReadN2CJson`, `CompileFocusedBlueprint`,
+    `SaveFocusedBlueprint` (`blueprint.py`); `TagFocusedGraph`, `ListTags`, `RemoveTag`, `GetLLMProviders`,
+    `GetActiveProvider`, `OpenBlueprint`, `OpenBlueprintFunction` (`bridge.py`); `SearchBlueprintNodes`,
+    `AddNodeToGraph`, `ConnectPins`, `SetPinValue`, `DeleteNodes`, `FindNodesInGraph`, `CreateCommentNode`
+    (`graph.py`); `AddFunctionInputPin`, `AddFunctionReturnPin`, `RemoveFunctionEntryPin`, `RemoveFunctionReturnPin`
+    (`functions.py`). The header comments become the Python docstrings (`help(unreal.N2CPythonBridge.open_blueprint)`).
 
-All functions return JSON strings in format: `{"success": bool, "data": {...}, "error": "..."}`
+All functions return JSON strings in format: `{"success": bool, "data": {...} or null, "error": "..." or null}`,
+built by one helper with `TJsonWriter` (`MakeResultJson`), so every value is escaped; `utils._parse_bridge_result`
+is the one parser.
+
+## Struct Library (UN2CStructUtilsLibrary)
+
+`unreal.N2CStructUtilsLibrary` (`Source/Public/BlueprintLibraries/N2CStructUtilsLibrary.h`) creates
+UserDefinedStruct assets, for example DataTable row structs; `scripts/data/struct_creator.py` wraps it. Its
+functions report through out parameters, and in Python a function with out parameters returns a tuple: the return
+value first (when there is one), then the out parameters in order.
+
+```python
+import unreal
+
+lib = unreal.N2CStructUtilsLibrary
+
+# Create a new struct (the return value comes first, then the out parameters)
+struct, success, error = lib.create_user_defined_struct('/Game/Data', 'F_MyRowStruct')
+if not success:
+    raise RuntimeError(error)
+
+# Add variables to the struct; each call returns (success, error)
+for name, var_type in [('MyString', 'FString'), ('MyFloat', 'float'), ('MyInt', 'int32')]:
+    ok, error = lib.add_struct_variable(struct, name, var_type)
+    if not ok:
+        raise RuntimeError(error)
+
+# A new struct starts with one default member; remove it once the struct has others, then save
+lib.remove_default_variable(struct)
+lib.save_struct(struct)
+```
+
+`add_struct_variables_batch` returns `(count, success, error)`; `get_struct_variable_names` returns the members'
+internal names (`MyFloat_2_<GUID digits>`).
 
 ## MCP Python Tools
 
@@ -284,8 +363,18 @@ Each tool answers with one text item holding JSON `{"success", "data", "error", 
 `nodetocode` function's own `{success, data, error}` dict as it is (not wrapped in another `data`). When `success`
 is false (the script raised or did not compile, or a script function reported an error) the
 CallToolResult also has `isError: true`, so MCP clients see a tool execution failure; run-python's body then keeps
-the error, `traceback`, `output`, `stderr` and a `hint`. A timeout, or Python being unavailable, is an
-`isError` result whose text is a plain message.
+the error, `traceback`, `output`, `stderr` and a `hint`. Python being unavailable is an `isError` result whose text
+is a plain message.
+
+run-python returns what the code assigns to `result` as `data` (it must be JSON-serializable: anything else makes
+the call fail with the `TypeError` as its error); printed text comes back as `output`. Its `timeout` argument
+(default 60, at most 300) is accepted but not enforced: tool calls already run on the game thread, so the code runs
+until it returns and blocks the editor meanwhile (card 0300).
+
+Known limitation: the code goes to `ExecPythonCommandEx` in `ExecuteFile` mode, which treats a command whose first
+`.py` is followed by whitespace or the end of the text as a file to run. So code whose first `.py` is, for example,
+`see struct_creator.py for` in a comment fails with "Could not load Python file ..."; a `.py` followed by a quote,
+`)` or another character (`"struct_creator.py"`) is fine. Keep `.py ` out of comments until that is fixed.
 
 ## Python-Only Mode
 

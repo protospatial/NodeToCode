@@ -197,7 +197,7 @@ def load_blueprint(blueprint_path: str) -> Dict[str, Any]:
                 'name': str,
                 'path': str,
                 'class_name': str,
-                'parent_class': str,
+                'parent_class': str,   # the parent class's name, e.g. 'Actor' ('' if unknown)
             } or None,
             'error': str or None
         }
@@ -215,18 +215,35 @@ def load_blueprint(blueprint_path: str) -> Dict[str, Any]:
         if not blueprint or not isinstance(blueprint, unreal.Blueprint):
             return make_error_result(f'Blueprint not found at path: {blueprint_path}')
 
-        # Get parent class info
-        parent_class_name = ''
-        if blueprint.parent_class:
-            parent_class_name = blueprint.parent_class.get_name()
-
         return make_success_result({
             'name': blueprint.get_name(),
             'path': blueprint.get_path_name(),
             'class_name': blueprint.get_class().get_name(),
-            'parent_class': parent_class_name,
+            'parent_class': _parent_class_name(blueprint),
         })
 
     except Exception as e:
         log_error(f"load_blueprint failed: {e}")
         return make_error_result(str(e))
+
+
+def _parent_class_name(blueprint) -> str:
+    """
+    The name of a Blueprint's parent class ('Actor'), or '' when it cannot be read.
+
+    UBlueprint::ParentClass is not exposed to Python ('blueprint.parent_class' and
+    get_editor_property('parent_class') both fail), so this uses
+    BlueprintEditorLibrary.get_blueprint_parent_class where it exists (UE 5.8) and otherwise the
+    asset's 'ParentClass' registry tag ("/Script/CoreUObject.Class'/Script/Engine.Actor'").
+    """
+    library = getattr(unreal, 'BlueprintEditorLibrary', None)
+    get_parent = getattr(library, 'get_blueprint_parent_class', None) if library else None
+    if get_parent:
+        parent = get_parent(blueprint)
+        return parent.get_name() if parent else ''
+
+    asset_data = unreal.EditorAssetLibrary.find_asset_data(blueprint.get_path_name())
+    tag = str(asset_data.get_tag_value('ParentClass') or '')
+    # "/Script/CoreUObject.Class'/Script/Engine.Actor'" -> "Actor"; a bare "/Script/Engine.Actor" also works
+    path = tag.split("'")[1] if tag.count("'") >= 2 else tag
+    return path.rsplit('.', 1)[-1] if path and path != 'None' else ''

@@ -4,6 +4,7 @@ Python wrappers for NodeToCode-specific C++ bridge functions.
 These expose unique NodeToCode features not available in the standard UE Python API:
 - Custom Blueprint graph tagging system
 - LLM provider information and discovery
+- Opening a Blueprint, or one of its graphs, in the Blueprint editor
 
 Usage:
     import nodetocode as n2c
@@ -198,8 +199,10 @@ def open_blueprint(blueprint_path: str, focus_graph: str = "EventGraph") -> Dict
 
     Args:
         blueprint_path: Asset path of the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
-        focus_graph: Graph name to focus. Defaults to "EventGraph". Can also be
-                     "ConstructionScript" or any function name in the Blueprint.
+        focus_graph: Graph name to focus. Defaults to "EventGraph". It must be the exact name of one of
+                     the Blueprint's event, function or macro graphs: "UserConstructionScript" for the
+                     construction script, or a function name. A name that matches no graph is not an
+                     error: the Blueprint opens and data['focusedGraph'] is "" (check it).
 
     Returns:
         {success, data: {blueprintName, blueprintPath, focusedGraph, eventGraphCount, functionCount}, error}
