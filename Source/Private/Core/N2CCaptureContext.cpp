@@ -3,6 +3,7 @@
 #include "Core/N2CCaptureContext.h"
 
 #include "Core/N2CSettings.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/ScopeExit.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CNodeTypeRegistry.h"
@@ -43,17 +44,77 @@ FN2CCapture FN2CCaptureContext::TakeCapture()
 {
     FN2CCapture Capture;
     Capture.Blueprint = MoveTemp(N2CBlueprint);
-    Capture.NodeIDMap = MoveTemp(NodeIDMap);
-    Capture.PinIDMap = MoveTemp(PinIDMap);
+    Capture.GraphGuids = MoveTemp(GraphGuids);
+    Capture.NodeGuids = MoveTemp(NodeGuids);
+    Capture.Pins = MoveTemp(CapturedPins);
     return Capture;
 }
 
-void FN2CCaptureContext::BeginGraph(const FString& Name, EN2CGraphType GraphType)
+void FN2CCaptureContext::BeginGraph(const FString& Name, EN2CGraphType GraphType, const UEdGraph* Source)
 {
     FN2CGraph& Graph = N2CBlueprint.Graphs.AddDefaulted_GetRef();
     Graph.Name = Name;
     Graph.GraphType = GraphType;
     CurrentGraphIndex = N2CBlueprint.Graphs.Num() - 1;
+    GraphGuids.Add(Source ? Source->GraphGuid : FGuid());
+    FlowsRecorded.Reset();
+
+    if (Source)
+    {
+        // Visited from now on, so a graph that calls itself (directly or through others) is not queued again
+        VisitedGraphs.Add(Source);
+
+        // A nested graph from another Blueprint says whose it is: two Blueprints can have functions of the same name
+        const UBlueprint* Owner = FBlueprintEditorUtils::FindBlueprintForGraph(Source);
+        if (Owner && CapturedBlueprint.IsValid() && Owner != CapturedBlueprint.Get())
+        {
+            Graph.OwnerBlueprint = Owner->GetName();
+        }
+    }
+}
+
+bool FN2CCaptureContext::AssignIDs(UK2Node* Node)
+{
+    // Knot nodes are pass-through connections: flows are traced through them and they get no ID
+    if (!Node || Node->IsA<UK2Node_Knot>())
+    {
+        return false;
+    }
+
+    if (!NodeIDs.Contains(Node))
+    {
+        const FString NodeID = FString::Printf(TEXT("N%d"), NextNodeNumber++);
+        NodeIDs.Add(Node, NodeID);
+        NodeGuids.Add(NodeID, Node->NodeGuid);
+    }
+    const FString NodeID = NodeIDs.FindChecked(Node);
+
+    for (const UEdGraphPin* Pin : Node->Pins)
+    {
+        // Hidden pins are not captured and get no ID
+        if (!Pin || Pin->bHidden || PinIDs.Contains(Pin))
+        {
+            continue;
+        }
+        const FString PinID = FString::Printf(TEXT("P%d"), NextPinNumber++);
+        PinIDs.Add(Pin, PinID);
+        CapturedPins.Add(PinID, FN2CCapturedPin{ NodeID, Node->NodeGuid, Pin->PinId });
+    }
+    return true;
+}
+
+FString FN2CCaptureContext::GetOrAddNodeID(const UEdGraphNode* Node)
+{
+    if (const FString* Existing = NodeIDs.Find(Node))
+    {
+        return *Existing;
+    }
+    const FString NodeID = FString::Printf(TEXT("N%d"), NextNodeNumber++);
+    NodeIDs.Add(Node, NodeID);
+    NodeGuids.Add(NodeID, Node->NodeGuid);
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Node %s outside the capture is an exec target; gave it ID %s"),
+        *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(), *NodeID), EN2CLogSeverity::Debug);
+    return NodeID;
 }
 
 bool FN2CCaptureContext::DescribeNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
@@ -64,16 +125,12 @@ bool FN2CCaptureContext::DescribeNode(UK2Node* Node, FN2CNodeDefinition& OutNode
         return false;
     }
 
-    // Keep a caller-supplied ID; generate one otherwise
+    // Keep a caller-supplied ID; the generated one (N1) otherwise
     const FString CallerID = OutNodeDef.ID;
-    if (OutNodeDef.ID.IsEmpty())
-    {
-        OutNodeDef.ID = GenerateNodeID();
-    }
 
     // Flows go into a scratch graph that this context throws away with everything else it built
     BeginGraph(FString(), EN2CGraphType::EventGraph);
-    const bool bProcessed = ProcessNode(Node, OutNodeDef);
+    const bool bProcessed = AssignIDs(Node) && ProcessNode(Node, OutNodeDef);
     CurrentGraphIndex = INDEX_NONE;
 
     if (!CallerID.IsEmpty())
@@ -98,6 +155,8 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes)
     {
         if (UBlueprint* Blueprint = FirstNode->GetBlueprint())
         {
+            CapturedBlueprint = Blueprint;
+
             // Set Blueprint name
             N2CBlueprint.Metadata.Name = Blueprint->GetName();
 
@@ -142,9 +201,10 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes)
     // The main graph is Graphs[0], named and typed from the first node's graph
     FString MainGraphName;
     EN2CGraphType MainGraphType = EN2CGraphType::EventGraph;
+    UEdGraph* MainGraph = CollectedNodes[0] ? CollectedNodes[0]->GetGraph() : nullptr;
     if (CollectedNodes[0])
     {
-        if (UEdGraph* Graph = CollectedNodes[0]->GetGraph())
+        if (UEdGraph* Graph = MainGraph)
         {
             MainGraphName = Graph->GetName();
             MainGraphType = DetermineGraphType(Graph);
@@ -155,9 +215,16 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes)
             FN2CLogger::Get().Log(TEXT("Graph info"), EN2CLogSeverity::Debug, Context);
         }
     }
-    BeginGraph(MainGraphName, MainGraphType);
+    // The main graph counts as visited before any of its nodes, so a call to itself is not queued
+    BeginGraph(MainGraphName, MainGraphType, MainGraph);
 
-    // Process each node
+    // First pass: every node and pin gets its ID in collection order, so IDs never depend on which links are met first
+    for (UK2Node* Node : CollectedNodes)
+    {
+        AssignIDs(Node);
+    }
+
+    // Second pass: describe each node and record its flows
     for (UK2Node* Node : CollectedNodes)
     {
         if (!Node)
@@ -217,63 +284,15 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> CollectedNodes)
     return N2CBlueprint.Graphs.Num() > 0;
 }
 
-FString FN2CCaptureContext::GenerateNodeID()
-{
-    return FString::Printf(TEXT("N%d"), NodeIDMap.Num() + 1);
-}
-
-FString FN2CCaptureContext::GeneratePinID(int32 PinCount)
-{
-    // Use the total number of pins in the map to ensure global uniqueness
-    return FString::Printf(TEXT("P%d"), PinIDMap.Num() + 1);
-}
-
-bool FN2CCaptureContext::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
-{
-    if (!Node)
-    {
-        FN2CLogger::Get().LogWarning(TEXT("Attempted to process null node"));
-        return false;
-    }
-
-    // Skip knot nodes entirely - they're just pass-through connections
-    if (Node->IsA<UK2Node_Knot>())
-    {
-        FN2CLogger::Get().Log(TEXT("Skipping knot node"), EN2CLogSeverity::Debug);
-        return false;
-    }
-
-    // Check if we already have an ID for this node
-    FString* ExistingID = NodeIDMap.Find(Node->NodeGuid);
-    if (ExistingID)
-    {
-        OutNodeDef.ID = *ExistingID;
-        FString Context = FString::Printf(TEXT("Reusing existing node ID %s for node %s"), 
-            *OutNodeDef.ID,
-            *Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
-        FN2CLogger::Get().Log(Context, EN2CLogSeverity::Debug);
-    }
-    else
-    {
-        // Generate and map new node ID
-        FString NodeID = GenerateNodeID();
-        NodeIDMap.Add(Node->NodeGuid, NodeID);
-        OutNodeDef.ID = NodeID;
-        FString Context = FString::Printf(TEXT("Generated new node ID %s for node %s"), 
-            *NodeID,
-            *Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
-        FN2CLogger::Get().Log(Context, EN2CLogSeverity::Debug);
-    }
-
-    return true;
-}
-
 bool FN2CCaptureContext::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
-    if (!InitializeNodeProcessing(Node, OutNodeDef))
+    // Knots are skipped (they have no ID); every other node got its ID in the first pass over its graph
+    const FString* NodeID = Node ? NodeIDs.Find(Node) : nullptr;
+    if (!NodeID)
     {
         return false;
     }
+    OutNodeDef.ID = *NodeID;
 
     ProcessNodeTypeAndProperties(Node, OutNodeDef);
 
@@ -298,14 +317,11 @@ void FN2CCaptureContext::AddGraphToProcess(UEdGraph* Graph)
         return;
     }
 
-    // Check if we've already processed this graph. The graph being written does not count: it is only "processed"
-    // once it is finished (a graph that calls itself is queued again today, known defect translation-core-9).
-    for (int32 GraphIndex = 0; GraphIndex < N2CBlueprint.Graphs.Num(); ++GraphIndex)
+    // A graph captured or being captured (the one calling it included) is never queued again. By the graph itself,
+    // not its name: two Blueprints can each have a function of the same name.
+    if (VisitedGraphs.Contains(Graph))
     {
-        if (GraphIndex != CurrentGraphIndex && N2CBlueprint.Graphs[GraphIndex].Name == Graph->GetName())
-        {
-            return;
-        }
+        return;
     }
 
     // Check if this is a user-created graph
@@ -394,10 +410,14 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     }
 
     // Write the graph in place at the end of Graphs; it is removed again if it gets no nodes
-    BeginGraph(Graph->GetName(), GraphType);
+    BeginGraph(Graph->GetName(), GraphType, Graph);
     ON_SCOPE_EXIT { CurrentGraphIndex = INDEX_NONE; };
 
-    // Collect and process nodes from this graph
+    // First pass: IDs for every node and pin in graph order; second pass: the nodes and their flows
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        AssignIDs(Cast<UK2Node>(Node));
+    }
     for (UEdGraphNode* Node : Graph->Nodes)
     {
         if (UK2Node* K2Node = Cast<UK2Node>(Node))
@@ -429,6 +449,7 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     }
 
     N2CBlueprint.Graphs.RemoveAt(CurrentGraphIndex);
+    GraphGuids.RemoveAt(CurrentGraphIndex);
     return false;
 }
 
@@ -769,13 +790,12 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
 
         FN2CPinDefinition PinDef;
         
-        // Generate and map pin ID (using local counter for this node)
-        FString PinID = GeneratePinID(OutNodeDef.InputPins.Num() + OutNodeDef.OutputPins.Num());
-        PinIDMap.Add(Pin->PinId, PinID);
+        // The pin's ID from the first pass over its graph
+        const FString PinID = PinIDs.FindRef(Pin);
         PinDef.ID = PinID;
-        
+
         // Debug logging for pin mapping
-        FN2CLogger::Get().Log(FString::Printf(TEXT("ProcessNodePins: Mapped Pin GUID %s to ID %s (Pin Name: %s, Node: %s)"), 
+        FN2CLogger::Get().Log(FString::Printf(TEXT("ProcessNodePins: Pin GUID %s has ID %s (Pin Name: %s, Node: %s)"), 
             *Pin->PinId.ToString(), *PinID, *Pin->GetDisplayName().ToString(), 
             *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()), EN2CLogSeverity::Debug);
         
@@ -904,23 +924,9 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
                 continue;
             }
 
-            // Get or generate IDs for the nodes
-            FString SourceNodeID = NodeIDMap.FindRef(Node->NodeGuid);
-            FString TargetNodeID = NodeIDMap.FindRef(TargetNode->NodeGuid);
-            
-            if (SourceNodeID.IsEmpty())
-            {
-                SourceNodeID = GenerateNodeID();
-                NodeIDMap.Add(Node->NodeGuid, SourceNodeID);
-                FN2CLogger::Get().Log(TEXT("Generated new source node ID"), EN2CLogSeverity::Debug);
-            }
-            
-            if (TargetNodeID.IsEmpty())
-            {
-                TargetNodeID = GenerateNodeID();
-                NodeIDMap.Add(TargetNode->NodeGuid, TargetNodeID);
-                FN2CLogger::Get().Log(TEXT("Generated new target node ID"), EN2CLogSeverity::Debug);
-            }
+            // Both ends have IDs from the first pass, unless the target is outside the capture
+            const FString SourceNodeID = GetOrAddNodeID(Node);
+            const FString TargetNodeID = GetOrAddNodeID(TargetNode);
 
             // Add execution flow
             FString FlowStr = FString::Printf(TEXT("%s->%s"), *SourceNodeID, *TargetNodeID);
@@ -945,15 +951,20 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
                 UEdGraphPin* ActualSourcePin = Pin;
                 UEdGraphPin* ActualTargetPin = TraceConnectionThroughKnots(LinkedPin);
                 
-                if (ActualSourcePin && ActualTargetPin && 
-                    ActualSourcePin->GetOwningNode() && ActualTargetPin->GetOwningNode())
+                // A link is recorded from whichever of its ends is processed second (or on a node linked to itself),
+                // so each link is recorded once and in the order it always was (flows.data keeps one edge per key
+                // until card 0135)
+                const UEdGraphNode* LinkedNode = ActualTargetPin ? ActualTargetPin->GetOwningNode() : nullptr;
+                if (ActualSourcePin && ActualTargetPin &&
+                    ActualSourcePin->GetOwningNode() && LinkedNode &&
+                    (LinkedNode == Node || FlowsRecorded.Contains(LinkedNode)))
                 {
                     // Get node and pin IDs
-                    FString SourceNodeID = NodeIDMap.FindRef(ActualSourcePin->GetOwningNode()->NodeGuid);
-                    FString SourcePinID = PinIDMap.FindRef(ActualSourcePin->PinId);
-                    FString TargetNodeID = NodeIDMap.FindRef(ActualTargetPin->GetOwningNode()->NodeGuid);
-                    FString TargetPinID = PinIDMap.FindRef(ActualTargetPin->PinId);
-                    
+                    FString SourceNodeID = NodeIDs.FindRef(ActualSourcePin->GetOwningNode());
+                    FString SourcePinID = PinIDs.FindRef(ActualSourcePin);
+                    FString TargetNodeID = NodeIDs.FindRef(LinkedNode);
+                    FString TargetPinID = PinIDs.FindRef(ActualTargetPin);
+
                     if (!SourceNodeID.IsEmpty() && !SourcePinID.IsEmpty() && 
                         !TargetNodeID.IsEmpty() && !TargetPinID.IsEmpty())
                     {
@@ -995,6 +1006,8 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
             }
         }
     }
+
+    FlowsRecorded.Add(Node);
 }
 
 FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)

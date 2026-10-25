@@ -111,6 +111,13 @@ the first differing line and writes the whole output to `<Project>/Saved/Automat
   depth 1 adds B, depth 2 adds B and C, D never) and `ShortestPath_Depth3` (a graph reachable 2 and 3 calls away is
   taken at depth 2, so its callee at depth 3 is captured and the one at depth 4 is not). Max Translation Depth counts
   calls from the captured graph, and nested graphs are processed shallowest first (translation-core-3, qw-12).
+- **Identity (card 0134):** `SameNameOwners` (Run calls its own Helper and Init; Helper calls Init of a second
+  Blueprint, `BP_N2CGolden_SameNameOwners_Other`, made in the same package with `AddSiblingBlueprint`; depth 2) keeps
+  both Init graphs, the other Blueprint's with `owner_blueprint`. The `Identity` tests check that a pasted node's
+  pins get IDs of their own and the capture validates (`CopyPaste`), that Root is captured once (`Recursion_Depth1`
+  and `_Depth2`), the owners in `SameNameOwners`, that capturing the unchanged `ShortestPath_Depth3` graph twice gives
+  the same JSON and `guids` table, and that `FN2CCapture::NodeGuids`/`Pins` and get-focused-blueprint's result
+  (`FN2CMcpGetFocusedBlueprintTool::BuildResultJson`) have one entry per node and per pin.
 - **Isolation (card 0133):** captures share no state. `gives each of two interleaved captures its single-run golden`
   starts `CallChain_Depth1` in the middle of `ShortestPath_Depth3` (after its first node, through the test-only
   `FN2CCaptureContext::SetNodeCapturedHookForTests`) and compares both with their goldens; `keeps a capture's result
@@ -124,19 +131,18 @@ the first differing line and writes the whole output to `<Project>/Saved/Automat
   compiler leaves behind; either would keep the package alive).
 - **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
   card that changes them: lossy data edges and knot fan-out (translation-core-1, card 0135), node-pair exec flows
-  (translation-core-2, 0136), ghost default events (translation-core-18/19, 0137), global pin IDs and traversal-order
-  node IDs (translation-core-7, 0134), display-text names (gap-5, 0138), Break Struct captured as a Variable named
-  `None` (translation-core-4, 0234), custom events with member_name `None` and Switch nodes named `Switch`
-  (translation-core-16 and -32, 0239). From card 0127: a function that calls itself is captured twice
-  with every pin of the copy sharing one ID (translation-core-9, 0134); a pasted node's pins all share one ID because
-  pin IDs are keyed by pin GUID (translation-core-7, 0134); a user struct with an object member is dropped from
-  `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped
-  (translation-core-11, 0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236); collapsed
-  graphs and user macros are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not name the captured
-  graph (imp-translation-core-4, 0235) and a macro without `macro` in its name is an EventGraph (translation-core-20,
-  0235); the Enhanced Input event is typed `CallFunction` (translation-core-15, 0234). The list lives in the case
-  table in the spec and is written into the golden. Error log lines that a known defect writes (`Duplicate pin ID`,
-  `Missing name`, `Member Owner requires a type name`) are the case's `ExpectedErrors`: the case fails if they stop
+  (translation-core-2, 0136), ghost default events (translation-core-18/19, 0137), display-text names (gap-5, 0138),
+  Break Struct captured as a Variable named `None` (translation-core-4, 0234), custom events with member_name `None`
+  and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134 fixed and removed the ID defects
+  (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one ID, and node IDs that depended on
+  traversal order; translation-core-9: a function that calls itself was captured twice). From card 0127: a user struct
+  with an object member is dropped from `structs` (translation-core-8, 0236); enum values whose display name contains
+  `max` are dropped (translation-core-11, 0236); a struct or enum met twice logs `Missing name` (translation-core-24,
+  0236); collapsed graphs and user macros are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not
+  name the captured graph (imp-translation-core-4, 0235) and a macro without `macro` in its name is an EventGraph
+  (translation-core-20, 0235); the Enhanced Input event is typed `CallFunction` (translation-core-15, 0234). The list
+  lives in the case table in the spec and is written into the golden. Error log lines that a known defect writes
+  (`Missing name`, `Member Owner requires a type name`) are the case's `ExpectedErrors`: the case fails if they stop
   appearing, so the fixing card updates the case.
 - **Round trip:** `drops exec pins, structs and enums in ToJson -> FromJson -> ToJson today` pins the lossy reader
   (translation-core-25): `FromJson` needs a pin `type` that `ToJson` never writes for exec pins and never reads
@@ -148,16 +154,16 @@ the first differing line and writes the whole output to `<Project>/Saved/Automat
   `<case>.<engine>.json` when that file exists, else `<case>.json`.
 - **Per-engine goldens:** `<case>.<engine>.json` replaces `<case>.json` on that engine only where the engine really
   differs. Today: `Branch`, `CopyPaste`, `EnhancedInputEvent`, `GateMultiExec`, `NestedGraphs_Depth1`,
-  `SwitchOnEnum`, `SwitchOnInt`, `TimelineMultiExec` and `UserEnum` have a `.5.8.json`, because UE 5.8's
-  `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's own name (`CollectGarbage`)
-  where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Calls to the Blueprint's own functions are the same
-  on every engine. Card 0138's stable identifiers remove the difference. To add one, copy `<case>.json` to
-  `<case>.<engine>.json` and regenerate on that engine.
-- **Locale:** `build.ps1 -Test` runs the editor with `-culture=en`; the goldens are recorded that way.
-  `-TestCulture de` runs once in another culture. With `de` (checked on 5.6, 5.7 and 5.8, the same on each) 9 of the
-  16 cases differ, only in display text: the function return node's name (`Add Return Node...`), the ghost events'
-  comment (`This node is disabled ...`) and the entry tunnel's name (`Inputs`); node titles such as Branch and Switch
-  and all pin names stay English. All of it is card 0138's.
+  `SameNameOwners`, `SwitchOnEnum`, `SwitchOnInt`, `TimelineMultiExec` and `UserEnum` have a `.5.8.json`, because UE
+  5.8's `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's own name
+  (`CollectGarbage`) where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Calls to the Blueprint's own
+  functions are the same on every engine. Card 0138's stable identifiers remove the difference. To add one, copy
+  `<case>.json` to `<case>.<engine>.json` and regenerate on that engine.
+- **Locale:** `build.ps1 -Test` runs the editor with `-culture=en`; the goldens are recorded that way. `-TestCulture
+  de` runs once in another culture. With `de` (checked on 5.6, 5.7 and 5.8, the same on each, before card 0134 added
+  `SameNameOwners`) 9 of the 16 cases differ, only in display text: the function return node's name (`Add Return
+  Node...`), the ghost events' comment (`This node is disabled ...`) and the entry tunnel's name (`Inputs`); node
+  titles such as Branch and Switch and all pin names stay English. All of it is card 0138's.
 
 ## Running the tests
 

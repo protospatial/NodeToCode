@@ -13,11 +13,6 @@
 			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
 		},
 		{
-			"finding": "translation-core-7",
-			"card": "0134",
-			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -135,7 +130,7 @@
 						]
 					},
 					{
-						"id": "N6",
+						"id": "N5",
 						"type": "CallFunction",
 						"name": "integer < integer",
 						"member_parent": "KismetMathLibrary",
@@ -166,7 +161,7 @@
 						]
 					},
 					{
-						"id": "N5",
+						"id": "N6",
 						"type": "Branch",
 						"name": "Branch",
 						"input_pins": [
@@ -246,13 +241,13 @@
 				"flows":
 				{
 					"execution": [
-						"N4->N5",
-						"N5->N7",
-						"N5->N8"
+						"N4->N6",
+						"N6->N7",
+						"N6->N8"
 					],
 					"data":
 					{
-						"N6.P13": "N5.P15"
+						"N5.P13": "N6.P15"
 					}
 				}
 			}

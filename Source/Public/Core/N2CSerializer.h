@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/N2CCapture.h"
 #include "Models/N2CBlueprint.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonWriter.h"
@@ -15,6 +16,18 @@ enum class EN2CJsonStyle : uint8
     Pretty,
     /** No whitespace (what is sent to an LLM, token estimates, MCP results) */
     Condensed
+};
+
+/** Whether ToJson(const FN2CCapture&, ...) adds the capture's ID-to-GUID table */
+enum class EN2CJsonGuids : uint8
+{
+    /** The N2C JSON only (LLM prompts never get GUIDs) */
+    None,
+    /**
+     * Adds a top-level "guids" object for agents: "graphs" (each graph's GraphGuid, in "graphs" order), "nodes" (node
+     * ID -> NodeGuid) and "pins" (pin ID -> {"node": node ID, "guid": PinId}), one entry per captured node and pin
+     */
+    Table
 };
 
 /**
@@ -30,6 +43,12 @@ public:
     /** Convert an FN2CBlueprint to JSON string. Stateless: the style is per call. */
     static FString ToJson(const FN2CBlueprint& Blueprint, EN2CJsonStyle Style);
 
+    /** A capture's Blueprint as JSON, with its ID-to-GUID table when Guids is Table */
+    static FString ToJson(const FN2CCapture& Capture, EN2CJsonStyle Style, EN2CJsonGuids Guids);
+
+    /** The "guids" table of a capture (see EN2CJsonGuids::Table) */
+    static TSharedPtr<FJsonObject> GuidTableToJsonObject(const FN2CCapture& Capture);
+
     /** Convert JSON string back to FN2CBlueprint */
     static bool FromJson(const FString& JsonString, FN2CBlueprint& OutBlueprint);
 
@@ -37,6 +56,9 @@ public:
     static TSharedPtr<FJsonObject> NodeToJsonObject(const FN2CNodeDefinition& Node);
 
 private:
+    /** Writes a JSON object in the given style; empty on failure */
+    static FString WriteJson(const TSharedPtr<FJsonObject>& JsonObject, EN2CJsonStyle Style);
+
     /** Internal JSON conversion helpers */
     static TSharedPtr<FJsonObject> BlueprintToJsonObject(const FN2CBlueprint& Blueprint);
     static TSharedPtr<FJsonObject> GraphToJsonObject(const FN2CGraph& Graph);

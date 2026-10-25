@@ -3,11 +3,6 @@
 	"description": "Function CopyPaste(Enabled): the entry runs ControlScreensaver (bAllowScreenSaver from Enabled), which runs a copy-pasted duplicate of itself (pasted as the editor does: new node GUID, pin IDs kept), also fed from Enabled.",
 	"known_defects": [
 		{
-			"finding": "translation-core-7",
-			"card": "0134",
-			"effect": "Pin IDs are keyed by pin GUID, which a paste keeps: every pin of the pasted node gets the same ID (P6), its flows point at that one ID and the validator logs ERROR 'Duplicate pin ID' (expected errors in this case)"
-		},
-		{
 			"finding": "translation-core-1 (PR #7, issue #13)",
 			"card": "0135",
 			"effect": "flows.data is keyed by one end of each link, so an output feeding several inputs keeps only the last edge recorded; the other inputs say connected with no source"
@@ -99,7 +94,7 @@
 								"connected": true
 							},
 							{
-								"id": "P6",
+								"id": "P8",
 								"name": "Allow Screen Saver",
 								"type": "Boolean",
 								"default_value": "false",
@@ -108,7 +103,7 @@
 						],
 						"output_pins": [
 							{
-								"id": "P6",
+								"id": "P7",
 								"name": ""
 							}
 						]
@@ -122,7 +117,7 @@
 					],
 					"data":
 					{
-						"N1.P2": "N3.P6"
+						"N1.P2": "N3.P8"
 					}
 				}
 			}

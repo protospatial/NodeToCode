@@ -126,13 +126,9 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
             return FMcpToolCallResult::CreateTextResult(TEXT("{\"nodes\":[],\"metadata\":{\"totalFound\":0}}"));
         }
         
-        // Process ALL nodes to get complete ID maps (for GUID mappings)
-        FN2CBlueprint TempBlueprint;
-        TMap<FGuid, FString> NodeIDMap;
-        TMap<FGuid, FString> PinIDMap;
-        
-        // We need to translate all nodes to get proper ID mappings, but we'll only return the matching ones
-        if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(AllNodes, TempBlueprint, NodeIDMap, PinIDMap))
+        // Capture ALL nodes so the IDs are the ones get-focused-blueprint gives, but return only the matching ones
+        FN2CCapture Capture;
+        if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(AllNodes, Capture))
         {
             return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to translate nodes for ID mapping."));
         }
@@ -154,10 +150,10 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         {
             UK2Node* Node = MatchingNodes[i];
             // Use the actual node ID from the full translation to maintain consistency
-            FString* ActualNodeId = NodeIDMap.Find(Node->NodeGuid);
+            const FString* ActualNodeId = Capture.FindNodeID(Node->NodeGuid);
             FString NodeId = ActualNodeId ? *ActualNodeId : FString::Printf(TEXT("Node_%d"), i + 1);
-            
-            TSharedPtr<FJsonObject> NodeJson = ConvertNodeToEnhancedJson(TempBlueprint, Node, NodeId, NodeIDMap, PinIDMap);
+
+            TSharedPtr<FJsonObject> NodeJson = ConvertNodeToEnhancedJson(Capture, Node, NodeId);
             if (NodeJson.IsValid())
             {
                 NodesArray.Add(MakeShareable(new FJsonValueObject(NodeJson)));
@@ -284,11 +280,9 @@ bool FN2CMcpFindNodesInGraphTool::DoesNodeMatchSearch(
 }
 
 TSharedPtr<FJsonObject> FN2CMcpFindNodesInGraphTool::ConvertNodeToEnhancedJson(
-    const FN2CBlueprint& Captured,
+    const FN2CCapture& Capture,
     UK2Node* Node,
-    const FString& NodeId,
-    const TMap<FGuid, FString>& NodeIDMap,
-    const TMap<FGuid, FString>& PinIDMap)
+    const FString& NodeId)
 {
     if (!Node)
     {
@@ -299,7 +293,7 @@ TSharedPtr<FJsonObject> FN2CMcpFindNodesInGraphTool::ConvertNodeToEnhancedJson(
     // let's extract the node from the full translation we already did
     
     // First, serialize the full blueprint structure that we already translated (this call's own capture)
-    FString FullJsonString = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(Captured, false);
+    FString FullJsonString = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(Capture.Blueprint, false);
     
     // Parse the JSON to find our specific node
     TSharedPtr<FJsonObject> FullJsonObject;
@@ -336,7 +330,7 @@ TSharedPtr<FJsonObject> FN2CMcpFindNodesInGraphTool::ConvertNodeToEnhancedJson(
                         TSharedPtr<FJsonObject> NodeCopy = MakeShareable(new FJsonObject(*NodeObject));
                         
                         // Enhance with GUIDs
-                        EnhanceNodeWithGuids(NodeCopy, NodeId, Node->NodeGuid, NodeIDMap, PinIDMap);
+                        EnhanceNodeWithGuids(NodeCopy, Node->NodeGuid, Capture);
                         
                         return NodeCopy;
                     }
@@ -351,23 +345,14 @@ TSharedPtr<FJsonObject> FN2CMcpFindNodesInGraphTool::ConvertNodeToEnhancedJson(
 
 void FN2CMcpFindNodesInGraphTool::EnhanceNodeWithGuids(
     TSharedPtr<FJsonObject> NodeObject,
-    const FString& ShortNodeId,
     const FGuid& NodeGuid,
-    const TMap<FGuid, FString>& NodeIDMap,
-    const TMap<FGuid, FString>& PinIDMap)
+    const FN2CCapture& Capture)
 {
     if (!NodeObject.IsValid())
     {
         return;
     }
-    
-    // Create reverse map for pin lookups only
-    TMap<FString, FGuid> ReversePinIDMap;
-    for (const auto& Pair : PinIDMap)
-    {
-        ReversePinIDMap.Add(Pair.Value, Pair.Key);
-    }
-    
+
     // Enhance node ID structure
     FString CurrentNodeId;
     if (NodeObject->TryGetStringField(TEXT("id"), CurrentNodeId))
@@ -407,9 +392,9 @@ void FN2CMcpFindNodesInGraphTool::EnhanceNodeWithGuids(
                     PinIdsObject->SetStringField(TEXT("short"), ShortPinID);
                     
                     // Find and add the GUID if available
-                    if (FGuid* PinGuid = ReversePinIDMap.Find(ShortPinID))
+                    if (const FN2CCapturedPin* Pin = Capture.Pins.Find(ShortPinID))
                     {
-                        PinIdsObject->SetStringField(TEXT("guid"), PinGuid->ToString(EGuidFormats::DigitsWithHyphens));
+                        PinIdsObject->SetStringField(TEXT("guid"), Pin->PinGuid.ToString(EGuidFormats::DigitsWithHyphens));
                     }
                     
                     // Add pin name as fallback identifier

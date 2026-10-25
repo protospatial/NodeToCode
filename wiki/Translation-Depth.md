@@ -13,6 +13,8 @@ Depth | Use Case | Considerations
 
 Each level counts one more call away from the graph you translate, along the shortest call path (see [Max Translation Depth](Max-Translation-Depth) for an example). Before NodeToCode 2.0, any depth above 1 captured the same graphs as depth 1.
 
+Each graph is translated once, however many times it is reached: a function that calls itself, or one that several of your graphs call, appears once. A function from another Blueprint is marked with that Blueprint's name, so two functions with the same name in different Blueprints are both translated (before NodeToCode 2.0 one of them could be left out, and a function that called itself was sent twice).
+
 
 ## Depth Configuration Guidelines
 

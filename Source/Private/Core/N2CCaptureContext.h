@@ -58,11 +58,30 @@ private:
     /** The graph being written (CurrentGraphIndex must be set) */
     FN2CGraph& CurrentGraph() { return N2CBlueprint.Graphs[CurrentGraphIndex]; }
 
-    /** Maps node GUIDs to simplified IDs */
-    TMap<FGuid, FString> NodeIDMap;
+    /**
+     * Node and pin IDs, keyed by the objects themselves: a pin's PinId is only unique on its node (a paste keeps it)
+     * and a node GUID says nothing about which graph a node was captured in
+     */
+    TMap<const UEdGraphNode*, FString> NodeIDs;
+    TMap<const UEdGraphPin*, FString> PinIDs;
 
-    /** Maps pin GUIDs to simplified IDs */
-    TMap<FGuid, FString> PinIDMap;
+    /** The numbers behind the next N<n> and P<n> (separate counters, never a map's size) */
+    int32 NextNodeNumber = 1;
+    int32 NextPinNumber = 1;
+
+    /** What the capture result reports for each ID (FN2CCapture::NodeGuids, Pins, GraphGuids) */
+    TMap<FString, FGuid> NodeGuids;
+    TMap<FString, FN2CCapturedPin> CapturedPins;
+    TArray<FGuid> GraphGuids;
+
+    /** Graphs captured or being captured (the captured graph from the start): each graph is captured at most once */
+    TSet<const UEdGraph*> VisitedGraphs;
+
+    /** The Blueprint the captured graph belongs to; a nested graph of any other Blueprint names its owner */
+    TWeakObjectPtr<UBlueprint> CapturedBlueprint;
+
+    /** Nodes of the current graph whose flows are recorded (a data link is recorded once both ends are) */
+    TSet<const UEdGraphNode*> FlowsRecorded;
 
     /** Tracking sets to prevent duplicate processing */
     TSet<FString> ProcessedStructPaths;
@@ -88,8 +107,14 @@ private:
     /** Depth of the graph being processed (0 for the captured graph); a graph it uses is at CurrentDepth + 1 */
     int32 CurrentDepth = 0;
 
-    /** Starts writing a new graph at the end of N2CBlueprint.Graphs */
-    void BeginGraph(const FString& Name, EN2CGraphType GraphType);
+    /** Starts writing a new graph at the end of N2CBlueprint.Graphs (Source, when given, is marked visited) */
+    void BeginGraph(const FString& Name, EN2CGraphType GraphType, const UEdGraph* Source = nullptr);
+
+    /** Gives Node and its visible pins their IDs (the first pass over a graph; knots get none). False for a knot or null. */
+    bool AssignIDs(UK2Node* Node);
+
+    /** The node's ID, given now (after every captured node) when the node is outside the capture, as an exec target can be */
+    FString GetOrAddNodeID(const UEdGraphNode* Node);
 
     /** Fallback method for processing node properties when no processor is available */
     void FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
@@ -106,13 +131,7 @@ private:
     /** Add a graph to be processed */
     void AddGraphToProcess(UEdGraph* Graph);
 
-    /** Generate a simplified node ID */
-    FString GenerateNodeID();
-
-    /** Generate a simplified pin ID scoped to the containing node */
-    FString GeneratePinID(int32 PinCount);
-
-    /** Convert a UK2Node to FN2CNodeDefinition */
+    /** Convert a UK2Node to FN2CNodeDefinition (its IDs must have been assigned) */
     bool ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Determine node type */
@@ -126,9 +145,6 @@ private:
 
     /** Follow pin connections through knot nodes to find the first non-knot target */
     UEdGraphPin* TraceConnectionThroughKnots(UEdGraphPin* StartPin) const;
-
-    /** Initialize basic node processing and validation */
-    bool InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
     /** Process node type and core properties */
     void ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);

@@ -62,10 +62,7 @@ FString UN2CPythonBridge::GetFocusedBlueprintJson()
 
 	// Translate nodes
 	FN2CBlueprint N2CBlueprintData;
-	TMap<FGuid, FString> NodeIDMapCopy;
-	TMap<FGuid, FString> PinIDMapCopy;
-
-	if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(CollectedNodes, N2CBlueprintData, NodeIDMapCopy, PinIDMapCopy))
+	if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprint(CollectedNodes, N2CBlueprintData))
 	{
 		return MakeErrorJson(TEXT("Failed to translate collected nodes into N2CBlueprint structure."));
 	}

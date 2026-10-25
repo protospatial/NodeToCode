@@ -125,6 +125,7 @@
         - "graphs": Array of graph objects, each containing:
           - "name": The graph’s name.
           - "graph_type": e.g., "Function", "EventGraph", etc.
+          - "owner_blueprint": Present only on a graph from another Blueprint (for example a function of another Blueprint that the translated graph calls): that Blueprint's name. Two graphs can share a name when their owners differ (optional).
           - "nodes": Array of node objects. Each node object includes:
             - "id": Short ID (e.g., "N1").
             - "type": Matches the EN2CNodeType enum (e.g., "CallFunction", "VariableSet", "VariableGet", "Event", etc.).

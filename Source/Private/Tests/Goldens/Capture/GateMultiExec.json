@@ -13,11 +13,6 @@
 			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
 		},
 		{
-			"finding": "translation-core-7",
-			"card": "0134",
-			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
-		},
-		{
 			"finding": "gap-5",
 			"card": "0138",
 			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
@@ -135,7 +130,7 @@
 						]
 					},
 					{
-						"id": "N6",
+						"id": "N5",
 						"type": "CustomEvent",
 						"name": "OnOpen",
 						"member_name": "None",
@@ -154,7 +149,7 @@
 						]
 					},
 					{
-						"id": "N7",
+						"id": "N6",
 						"type": "CustomEvent",
 						"name": "OnClose",
 						"member_name": "None",
@@ -173,7 +168,7 @@
 						]
 					},
 					{
-						"id": "N5",
+						"id": "N7",
 						"type": "MacroInstance",
 						"name": "Gate",
 						"member_parent": "StandardMacros",
@@ -237,10 +232,10 @@
 				"flows":
 				{
 					"execution": [
-						"N4->N5",
-						"N6->N5",
-						"N7->N5",
-						"N5->N8"
+						"N4->N7",
+						"N5->N7",
+						"N6->N7",
+						"N7->N8"
 					],
 					"data":
 					{

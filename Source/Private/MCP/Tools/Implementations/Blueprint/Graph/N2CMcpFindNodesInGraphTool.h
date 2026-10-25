@@ -9,6 +9,7 @@
 
 class UK2Node;
 class FJsonObject;
+struct FN2CCapture;
 
 /**
  * MCP tool that searches for specific nodes in the focused Blueprint graph
@@ -48,11 +49,9 @@ private:
      * Convert a single node to N2C JSON format with GUID enhancement, from Captured (this call's capture of the graph)
      */
     TSharedPtr<FJsonObject> ConvertNodeToEnhancedJson(
-        const FN2CBlueprint& Captured,
+        const FN2CCapture& Capture,
         UK2Node* Node,
-        const FString& NodeId,
-        const TMap<FGuid, FString>& NodeIDMap,
-        const TMap<FGuid, FString>& PinIDMap
+        const FString& NodeId
     );
 
     /**
@@ -60,9 +59,7 @@ private:
      */
     void EnhanceNodeWithGuids(
         TSharedPtr<FJsonObject> NodeObject,
-        const FString& ShortNodeId,
         const FGuid& NodeGuid,
-        const TMap<FGuid, FString>& NodeIDMap,
-        const TMap<FGuid, FString>& PinIDMap
+        const FN2CCapture& Capture
     );
 };

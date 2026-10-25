@@ -309,6 +309,13 @@ struct FN2CGraph
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     EN2CGraphType GraphType;
 
+    /**
+     * The Blueprint this graph belongs to, set only for a nested graph from a Blueprint other than the captured one
+     * (two Blueprints can each have a function of the same name). Written as the optional "owner_blueprint".
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString OwnerBlueprint;
+
     /** Array of all nodes in this graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CNodeDefinition> Nodes;

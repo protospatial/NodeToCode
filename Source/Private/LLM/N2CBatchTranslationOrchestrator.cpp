@@ -1120,6 +1120,7 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("    {\n");
 	MarkdownContent += TEXT("      \"name\": \"GraphName\",\n");
 	MarkdownContent += TEXT("      \"graph_type\": \"Function | EventGraph | Macro | Composite | Construction\",\n");
+	MarkdownContent += TEXT("      \"owner_blueprint\": \"OtherBlueprint (optional: only on a graph from another Blueprint)\",\n");
 	MarkdownContent += TEXT("      \"nodes\": [\n");
 	MarkdownContent += TEXT("        {\n");
 	MarkdownContent += TEXT("          \"id\": \"N1\",\n");

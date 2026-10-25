@@ -4,19 +4,9 @@
 	"translation_depth": 1,
 	"known_defects": [
 		{
-			"finding": "translation-core-9",
-			"card": "0134",
-			"effect": "Root calls itself before Root is in the graph list, so Root is captured twice; the second copy reuses node IDs N1-N3 and gives every pin the same ID (P10, also Child's entry exec pin), and the validator logs ERROR 'Duplicate pin ID' (expected errors in this case)"
-		},
-		{
 			"finding": "translation-core-2",
 			"card": "0136",
 			"effect": "Execution flows are 'N1->N2' node pairs: which exec output and which exec input a link uses is lost, and two outputs into one node collapse to one entry"
-		},
-		{
-			"finding": "translation-core-7",
-			"card": "0134",
-			"effect": "Pin IDs are one global counter (P1..Pn across the graph) keyed by pin GUID, and node IDs depend on traversal order"
 		},
 		{
 			"finding": "gap-5",
@@ -129,104 +119,6 @@
 					"data":
 					{
 						"N1.P2": "N3.P9"
-					}
-				}
-			},
-			{
-				"name": "Root",
-				"graph_type": "Function",
-				"nodes": [
-					{
-						"id": "N1",
-						"type": "FunctionEntry",
-						"name": "Root",
-						"member_parent": "BP_N2CGolden_Recursion_Depth1",
-						"member_name": "None",
-						"input_pins": [],
-						"output_pins": [
-							{
-								"id": "P10",
-								"name": "",
-								"connected": true
-							},
-							{
-								"id": "P10",
-								"name": "Count",
-								"type": "Integer",
-								"connected": true
-							}
-						]
-					},
-					{
-						"id": "N2",
-						"type": "CallFunction",
-						"name": "Child",
-						"member_parent": "BP_N2CGolden_Recursion_Depth1",
-						"member_name": "Child",
-						"input_pins": [
-							{
-								"id": "P10",
-								"name": "",
-								"connected": true
-							},
-							{
-								"id": "P10",
-								"name": "Target",
-								"type": "Object",
-								"sub_type": "self"
-							}
-						],
-						"output_pins": [
-							{
-								"id": "P10",
-								"name": "",
-								"connected": true
-							}
-						]
-					},
-					{
-						"id": "N3",
-						"type": "CallFunction",
-						"name": "Root",
-						"member_parent": "BP_N2CGolden_Recursion_Depth1",
-						"member_name": "Root",
-						"input_pins": [
-							{
-								"id": "P10",
-								"name": "",
-								"connected": true
-							},
-							{
-								"id": "P10",
-								"name": "Target",
-								"type": "Object",
-								"sub_type": "self"
-							},
-							{
-								"id": "P10",
-								"name": "Count",
-								"type": "Integer",
-								"default_value": "0",
-								"connected": true
-							}
-						],
-						"output_pins": [
-							{
-								"id": "P10",
-								"name": ""
-							}
-						]
-					}
-				],
-				"flows":
-				{
-					"execution": [
-						"N1->N2",
-						"N2->N3"
-					],
-					"data":
-					{
-						"N1.P10": "N3.P10"
 					}
 				}
 			},
