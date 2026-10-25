@@ -50,14 +50,14 @@ FMcpToolDefinition FN2CMcpOpenBlueprintFunctionTool::GetDefinition() const
 	// centerView parameter (optional)
 	TSharedPtr<FJsonObject> CenterView = MakeShareable(new FJsonObject);
 	CenterView->SetStringField(TEXT("type"), TEXT("boolean"));
-	CenterView->SetStringField(TEXT("description"), TEXT("Center the graph view on the function entry node"));
+	CenterView->SetStringField(TEXT("description"), TEXT("Accepted but has no effect"));
 	CenterView->SetBoolField(TEXT("default"), true);
 	Properties->SetObjectField(TEXT("centerView"), CenterView);
 	
 	// selectNodes parameter (optional)
 	TSharedPtr<FJsonObject> SelectNodes = MakeShareable(new FJsonObject);
 	SelectNodes->SetStringField(TEXT("type"), TEXT("boolean"));
-	SelectNodes->SetStringField(TEXT("description"), TEXT("Select all nodes in the function"));
+	SelectNodes->SetStringField(TEXT("description"), TEXT("Accepted but has no effect"));
 	SelectNodes->SetBoolField(TEXT("default"), true);
 	Properties->SetObjectField(TEXT("selectNodes"), SelectNodes);
 	
