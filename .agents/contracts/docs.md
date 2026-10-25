@@ -17,6 +17,8 @@ script can; review checks the rest. Keep this page current when the docs' shape 
   next publish. Fixes for 1.2.x readers before the beta are the one exception, made in the wiki repository by
   the owner.
 - **Check:** `python3 tools/docs_check.py` (tree), `--changed dev-2.0..HEAD` (a branch), `--stale` (shots).
+  CI (`.github/workflows/docs-check.yml`) runs `--changed --stale` on every pull request into dev-2.0 and fails
+  on critical findings and PARITY_MISSING; the tree checks join it once their baseline is clean (card 0334).
 
 ## The roots
 

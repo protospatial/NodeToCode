@@ -82,7 +82,10 @@ Signed-off-by: Your Name <you@example.com>
 - `Docs:` names the `wiki/` pages the change updates, or says `Docs: none, <why>`. A change to anything a user or
   an MCP client sees updates its wiki page in the same pull request; the rules for those pages are in
   [`.agents/contracts/docs.md`](.agents/contracts/docs.md), and `python tools/docs_check.py --changed dev-2.0`
-  checks them.
+  checks them. The **Docs check** job (`.github/workflows/docs-check.yml`) runs that check on every pull request
+  into `dev-2.0`: it fails when the change touches the code of an area mapped in `.agents/docs-parity.json`
+  without touching its pages, unless the description or a commit message has a `Docs: none, <why>` line with a
+  real reason (the template's unedited `<why>` does not count). Other warnings show in the job summary.
 
 ## Sign-off (DCO)
 

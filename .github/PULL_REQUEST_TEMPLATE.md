@@ -19,7 +19,9 @@ Never include an API key in the description, a log or a screenshot.
 
 ## Docs
 
-<!-- One line: the wiki pages this updates, or why none are needed. See .agents/contracts/docs.md. -->
+<!-- One line: the wiki pages this updates (Docs: wiki/Some-Page.md), or why none are needed. See
+.agents/contracts/docs.md. The Docs check job fails when the change touches a documented area's code without its
+pages and this line still reads "<why>": replace it with the reason. -->
 
 Docs: none, <why>
 
