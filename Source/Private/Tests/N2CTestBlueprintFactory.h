@@ -32,6 +32,7 @@ class UK2Node_SwitchEnum;
 class UK2Node_SwitchInteger;
 class UK2Node_Timeline;
 class UK2Node_Tunnel;
+class UK2Node_VariableGet;
 class UPackage;
 class UScriptStruct;
 class UUserDefinedEnum;
@@ -112,6 +113,13 @@ namespace N2CTest
 		 * a signature change) so the function and its parameters exist; add the function's inputs before calling this.
 		 */
 		UK2Node_CallFunction* AddSelfCall(UEdGraph* Graph, const FName FunctionName);
+		/** Adds a member variable to this Blueprint and regenerates the skeleton class, so variable nodes resolve it */
+		bool AddMemberVariable(const FName Name, const FEdGraphPinType& Type);
+		/**
+		 * A Get node for the member variable Name: this Blueprint's own (self) when Owner is null, else Owner's (a
+		 * sibling's), read through the node's Target pin
+		 */
+		UK2Node_VariableGet* AddVariableGet(UEdGraph* Graph, const FName Name, FTestBlueprint* Owner = nullptr);
 		/** A new macro graph in this Blueprint (with its entry and exit tunnels), as My Blueprint > Add Macro makes */
 		UEdGraph* AddMacro(const FName Name);
 		UK2Node_MacroInstance* AddMacroInstance(UEdGraph* Graph, UEdGraph* MacroGraph);
@@ -147,6 +155,7 @@ namespace N2CTest
 		bool Link(UEdGraphNode* From, const FName FromPin, UEdGraphNode* To, const FName ToPin);
 
 		static FEdGraphPinType IntPinType();
+		static FEdGraphPinType DoublePinType();
 		static FEdGraphPinType BoolPinType();
 		static FEdGraphPinType TextPinType();
 		static FEdGraphPinType EnumPinType(UEnum* Enum);

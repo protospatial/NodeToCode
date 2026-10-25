@@ -7,7 +7,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     // Handle sequence nodes
     if (Node->IsA<UK2Node_ExecutionSequence>())
     {
-        OutNodeDef.Name = TEXT("Sequence");
+        OutNodeDef.Title = TEXT("Sequence");
         
         // Log sequence details
         FString SequenceInfo = FString::Printf(TEXT("Sequence Node: %s"), *OutNodeDef.ID);
@@ -18,7 +18,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     // Handle branch (if-then-else) nodes
     if (Node->IsA<UK2Node_IfThenElse>())
     {
-        OutNodeDef.Name = TEXT("Branch");
+        OutNodeDef.Title = TEXT("Branch");
         
         // Log branch details
         FString BranchInfo = FString::Printf(TEXT("Branch Node: %s"), *OutNodeDef.ID);
@@ -29,7 +29,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     // Handle select nodes
     if (UK2Node_Select* SelectNode = Cast<UK2Node_Select>(Node))
     {
-        OutNodeDef.Name = TEXT("Select");
+        OutNodeDef.Title = TEXT("Select");
         
         // Get option pins manually since GetOptionPins might not be properly exported
         TArray<UEdGraphPin*> OptionPins;
@@ -55,7 +55,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     // Handle switch nodes
     if (UK2Node_Switch* SwitchNode = Cast<UK2Node_Switch>(Node))
     {
-        OutNodeDef.Name = TEXT("Switch");
+        OutNodeDef.Title = TEXT("Switch");
         
         // Log switch details
         FString SwitchInfo = FString::Printf(TEXT("Switch Node: %s"), *OutNodeDef.ID);
@@ -66,7 +66,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     // Handle multi-gate nodes
     if (UK2Node_MultiGate* MultiGateNode = Cast<UK2Node_MultiGate>(Node))
     {
-        OutNodeDef.Name = TEXT("Multi Gate");
+        OutNodeDef.Title = TEXT("Multi Gate");
         
         // Get output pins manually since GetOutPins might not be properly exported
         TArray<UEdGraphPin*> OutPins;
@@ -89,7 +89,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     // Handle do-once-multi-input nodes
     if (Node->IsA<UK2Node_DoOnceMultiInput>())
     {
-        OutNodeDef.Name = TEXT("Do Once Multi Input");
+        OutNodeDef.Title = TEXT("Do Once Multi Input");
         
         // Log do-once details
         FString DoOnceInfo = FString::Printf(TEXT("Do Once Multi Input Node: %s"), *OutNodeDef.ID);

@@ -57,7 +57,8 @@ def walk(v):
         for x in v:
             yield from walk(x)
 def key(d):
-    return str(d.get("name", d.get("displayName", ""))).replace(" ", "").lower()
+    # N2C JSON 2.0.0 (card 0138): the display title is the optional "title" hint; member_name is the function
+    return str(d.get("title") or d.get("member_name") or d.get("name", d.get("displayName", ""))).replace(" ", "").lower()
 action = next((d for d in walk(found) if key(d).startswith("printstring")
                and (d.get("actionIdentifier") or (d.get("spawnMetadata") or {}).get("actionIdentifier"))), None)
 if action:

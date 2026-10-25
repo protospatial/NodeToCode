@@ -23,6 +23,13 @@ This directory contains MCP tools for inspecting and analyzing Blueprint assets.
   translation, this tool (and find-nodes-in-graph) keeps the editor's unwired default events (ghost BeginPlay,
   ActorBeginOverlap, Tick) as `"disabled": true` nodes (`FN2CCaptureOptions::bIncludeGhostNodes`), so an agent wires
   the existing event instead of adding a duplicate (card 0137).
+  Names are stable identifiers, the same in every editor language and with the friendly-names preference on or off
+  (card 0138): a node has `class` (the UK2Node class, `K2Node_CallFunction`), `member_parent` (the declaring class, a
+  Blueprint by its name) and `member_name` (as declared, `_C` and all), and a pin's `name` (and `ids.name`) is its
+  `PinName` (`execute`, `then`, `self`, `ReturnValue`). Display text is only a hint, in English: a node's `title` and
+  a pin's `label`, each present only when it says more than the identifier. Pass a pin's `name` (or its GUID) to
+  `connect-pins` and `set-input-pin-value`; they also accept the display name. To add a node like one you see here,
+  search `search-blueprint-nodes` for its `member_name` or `title`.
 - **Use Case**: Primary tool for extracting Blueprint data for LLM translation
 
 ### list-blueprint-functions

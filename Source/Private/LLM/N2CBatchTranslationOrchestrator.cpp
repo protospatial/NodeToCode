@@ -1108,6 +1108,7 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("- **Nodes That Never Run**: A node may carry `\"unused\": true` (a pure node whose outputs nothing that runs reads), `\"unreachable\": true` (a node with exec pins that no event or entry reaches) or `\"disabled\": true` (disabled in the editor, not compiled; when it has one exec input and one exec output, `flows.execution` already links its predecessor straight to its successor). Blueprint never runs these nodes: do not translate them or the values they compute, and list them in the implementation notes. The editor's greyed-out placeholder events (a new Blueprint's unwired BeginPlay, ActorBeginOverlap and Tick) are left out.\n");
 	MarkdownContent += TEXT("- **Return Values**: A function returns only what is wired into the input pins of its `FunctionResult` node(s), or those pins' `default_value`; never a value that is not wired into a `FunctionResult` pin.\n");
 	MarkdownContent += TEXT("- **Node Types**: Each node has a `type` indicating its purpose (CallFunction, VariableGet, VariableSet, Event, Branch, ForLoop, etc.).\n");
+	MarkdownContent += TEXT("- **Names**: Names are identifiers that never change with the editor language: a node's `class` (the UK2Node class, e.g. `K2Node_CallFunction`), `member_parent` (the class or struct that declares the function or variable; a Blueprint by its name) and `member_name` (the function, variable, event or macro exactly as declared), and a pin's `name` (the pin's internal name, e.g. `execute`, `then`, `ReturnValue`). Display text is only a hint, in English: a node's `title` and a pin's `label`, present only when they say more than the identifier. Documents before this format had a node `name` (the display title) and display pin names instead.\n");
 	MarkdownContent += TEXT("- **Pin Types**: Pins have types like Exec, Boolean, Integer, Float, String, Object, Struct, etc.\n\n");
 
 	MarkdownContent += TEXT("### JSON Structure Reference\n\n");
@@ -1128,7 +1129,8 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("        {\n");
 	MarkdownContent += TEXT("          \"id\": \"N1\",\n");
 	MarkdownContent += TEXT("          \"type\": \"CallFunction | VariableGet | VariableSet | Event | Branch | ...\",\n");
-	MarkdownContent += TEXT("          \"name\": \"Node Display Name\",\n");
+	MarkdownContent += TEXT("          \"class\": \"K2Node_CallFunction\",\n");
+	MarkdownContent += TEXT("          \"title\": \"Display title, a hint (optional)\",\n");
 	MarkdownContent += TEXT("          \"member_parent\": \"OwningClass (optional)\",\n");
 	MarkdownContent += TEXT("          \"member_name\": \"FunctionOrVariableName (optional)\",\n");
 	MarkdownContent += TEXT("          \"pure\": false,\n");
@@ -1153,7 +1155,8 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 	MarkdownContent += TEXT("| Field | Description |\n");
 	MarkdownContent += TEXT("|-------|-------------|\n");
 	MarkdownContent += TEXT("| `id` | Pin identifier (e.g., \"P1\") |\n");
-	MarkdownContent += TEXT("| `name` | Display name of the pin |\n");
+	MarkdownContent += TEXT("| `name` | The pin's internal name, the same in every editor language (`execute`, `then`, `ReturnValue`) |\n");
+	MarkdownContent += TEXT("| `label` | The pin's display label, a hint; only when it says more than `name` |\n");
 	MarkdownContent += TEXT("| `type` | Pin type: Exec, Boolean, Integer, Float, String, Object, Struct, etc. |\n");
 	MarkdownContent += TEXT("| `sub_type` | Additional type info (e.g., struct/class name) |\n");
 	MarkdownContent += TEXT("| `default_value` | Literal value if not connected |\n");

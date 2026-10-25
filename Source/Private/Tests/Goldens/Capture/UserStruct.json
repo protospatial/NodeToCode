@@ -15,12 +15,7 @@
 		{
 			"finding": "translation-core-4",
 			"card": "0234",
-			"effect": "Break S_GoldenItem is captured as a Variable named 'None' with member_parent object/Actor (the first member's type) and member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)"
-		},
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
+			"effect": "Break S_GoldenItem is captured as a Variable titled 'None' with member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)"
 		}
 	],
 	"capture":
@@ -40,14 +35,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "UseItem",
+						"class": "K2Node_FunctionEntry",
+						"title": "UseItem",
 						"member_parent": "BP_N2CGolden_UserStruct",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -62,14 +58,14 @@
 					{
 						"id": "N2",
 						"type": "Variable",
-						"name": "None",
-						"member_parent": "object/Actor",
+						"class": "K2Node_BreakStruct",
+						"title": "None",
 						"member_name": "Var_UseItem_<OBJECT_INDEX>",
 						"pure": true,
 						"input_pins": [
 							{
 								"id": "P3",
-								"name": "S Golden Item",
+								"name": "S_GoldenItem",
 								"type": "Struct",
 								"sub_type": "S_GoldenItem",
 								"connected": true,
@@ -80,20 +76,23 @@
 						"output_pins": [
 							{
 								"id": "P4",
-								"name": "Owner",
+								"name": "Owner_2_<GUID>",
+								"label": "Owner",
 								"type": "Object",
 								"sub_type": "Actor",
 								"connected": true
 							},
 							{
 								"id": "P5",
-								"name": "Count",
+								"name": "Count_4_<GUID>",
+								"label": "Count",
 								"type": "Integer",
 								"connected": true
 							},
 							{
 								"id": "P6",
-								"name": "Level",
+								"name": "Level_6_<GUID>",
+								"label": "Level",
 								"type": "Byte",
 								"sub_type": "E_GoldenLevel",
 								"connected": true
@@ -103,28 +102,32 @@
 					{
 						"id": "N3",
 						"type": "MakeStruct",
-						"name": "Make S_GoldenItem",
+						"class": "K2Node_MakeStruct",
+						"title": "Make S_GoldenItem",
 						"member_parent": "<PACKAGE>",
 						"member_name": "S_GoldenItem",
 						"pure": true,
 						"input_pins": [
 							{
 								"id": "P8",
-								"name": "Owner",
+								"name": "Owner_2_<GUID>",
+								"label": "Owner",
 								"type": "Object",
 								"sub_type": "Actor",
 								"connected": true
 							},
 							{
 								"id": "P9",
-								"name": "Count",
+								"name": "Count_4_<GUID>",
+								"label": "Count",
 								"type": "Integer",
 								"default_value": "0",
 								"connected": true
 							},
 							{
 								"id": "P10",
-								"name": "Level",
+								"name": "Level_6_<GUID>",
+								"label": "Level",
 								"type": "Byte",
 								"sub_type": "E_GoldenLevel",
 								"default_value": "NewEnumerator0",
@@ -134,7 +137,7 @@
 						"output_pins": [
 							{
 								"id": "P7",
-								"name": "S Golden Item",
+								"name": "S_GoldenItem",
 								"type": "Struct",
 								"sub_type": "S_GoldenItem",
 								"connected": true
@@ -144,12 +147,13 @@
 					{
 						"id": "N4",
 						"type": "FunctionResult",
-						"name": "Add Return Node...",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
 						"member_parent": "BP_N2CGolden_UserStruct",
 						"input_pins": [
 							{
 								"id": "P11",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{

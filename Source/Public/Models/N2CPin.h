@@ -75,9 +75,20 @@ struct FN2CPinDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString ID;
 
-    /** The display name of the pin, e.g. "Exec", "Target", "DeltaTime" */
+    /**
+     * The pin's name, UEdGraphPin::PinName ("execute", "then", "self", "ReturnValue"): a stable identifier, the same in
+     * every editor language and with friendly names on or off (card 0138). A pin read from a 1.x document keeps the
+     * display name that document holds.
+     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Name;
+
+    /**
+     * Hint only (N2C JSON "label"): the pin's display label in source (English) text, empty when it says no more than
+     * Name (N2CJsonContract::IsRedundantHint)
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Label;
 
     /** Type (e.g. Exec, Float, etc.) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
@@ -123,6 +134,7 @@ struct FN2CPinDefinition
     FN2CPinDefinition()
         : ID(TEXT(""))
         , Name(TEXT(""))
+        , Label(TEXT(""))
         , Type(EN2CPinType::Exec)
         , SubType(TEXT(""))
         , DefaultValue(TEXT(""))

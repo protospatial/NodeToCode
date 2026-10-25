@@ -3,11 +3,6 @@
 	"description": "Event graph: custom event OnRun runs CollectGarbage. Apart from it, ControlScreensaver (its Allow Screen Saver from Not of a literal) runs ResetGamepadAssignments with no event before them: both are unreachable and Not, read only by them, is unused. The default ghost events are not captured.",
 	"known_defects": [
 		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		},
-		{
 			"finding": "translation-core-16",
 			"card": "0239",
 			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
@@ -30,18 +25,19 @@
 					{
 						"id": "N1",
 						"type": "CustomEvent",
-						"name": "OnRun",
+						"class": "K2Node_CustomEvent",
+						"title": "OnRun",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "Output Delegate",
+								"name": "OutputDelegate",
 								"type": "Delegate"
 							},
 							{
 								"id": "P2",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -49,27 +45,28 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P3",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P4",
-								"name": ""
+								"name": "then"
 							}
 						]
 					},
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "NOT Boolean",
+						"class": "K2Node_CallFunction",
+						"title": "NOT Boolean",
 						"member_parent": "KismetMathLibrary",
 						"member_name": "Not_PreBool",
 						"pure": true,
@@ -85,7 +82,7 @@
 						"output_pins": [
 							{
 								"id": "P6",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "Boolean",
 								"default_value": "false",
 								"connected": true
@@ -95,18 +92,18 @@
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "Control Screensaver",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"unreachable": true,
 						"input_pins": [
 							{
 								"id": "P7",
-								"name": ""
+								"name": "execute"
 							},
 							{
 								"id": "P9",
-								"name": "Allow Screen Saver",
+								"name": "bAllowScreenSaver",
 								"type": "Boolean",
 								"default_value": "false",
 								"connected": true
@@ -115,7 +112,7 @@
 						"output_pins": [
 							{
 								"id": "P8",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -123,21 +120,21 @@
 					{
 						"id": "N5",
 						"type": "CallFunction",
-						"name": "Reset Gamepad Assignments",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ResetGamepadAssignments",
 						"unreachable": true,
 						"input_pins": [
 							{
 								"id": "P10",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P11",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

@@ -174,13 +174,14 @@ def cleanup(url):
 
 
 def find_action(url, term, node_type, node_name):
-    """(display name, spawnMetadata.actionIdentifier) of the search-blueprint-nodes result for term whose type is
-    node_type and whose member_name (or, without one, name) is node_name. The display name differs between engines
-    ('Print String' on 5.6/5.7, 'PrintString' on 5.8), the member name does not."""
+    """(name to pass as nodeName, spawnMetadata.actionIdentifier) of the search-blueprint-nodes result for term whose
+    type is node_type and whose member_name (or, without one, title) is node_name. N2C JSON 2.0.0 (card 0138) names a
+    node by member_name and class; its display title is the optional "title" hint, so the term searched for is the
+    name passed on (add-bp-node-to-active-graph matches it against the action's search text, which holds both)."""
     data, _, text = tool_json(url, 'search-blueprint-nodes', {'searchTerm': term, 'maxResults': 20})
     for node in (data or {}).get('nodes', []):
-        if node.get('type') == node_type and node.get('member_name', node.get('name')) == node_name:
-            return node['name'], node['spawnMetadata']['actionIdentifier']
+        if node.get('type') == node_type and node.get('member_name', node.get('title')) == node_name:
+            return term, node['spawnMetadata']['actionIdentifier']
     raise RuntimeError('search-blueprint-nodes %r has no %s %s: %s' % (term, node_type, node_name, text[:120]))
 
 
@@ -431,16 +432,16 @@ def conversion_link_case(url, connect, x):
     after, total_after = conversion_nodes(url)
     steps['refused'] = not ok and 'existing link' in text and 'currently linked to' in text
     steps['unchanged'] = (total_after == total and set(after) == set(linked) and after[old] is True
-                          and not pin_linked(url, 'Get Game Time', second, 'out', 'Return Value')
-                          and pin_linked(url, 'Print', printer, 'in', 'In String'))
+                          and not pin_linked(url, 'Get Game Time', second, 'out', 'ReturnValue')
+                          and pin_linked(url, 'Print', printer, 'in', 'InString'))
     refusal = text
 
     ok, text = connect(url, link(second, 'ReturnValue', printer, 'InString'), True)
     replaced, _ = conversion_nodes(url)
     made = [g for g in replaced if g not in after]
     steps['replaced'] = (ok and len(made) == 1 and replaced[made[0]] is True and replaced[old] is False
-                         and pin_linked(url, 'Get Game Time', second, 'out', 'Return Value')
-                         and pin_linked(url, 'Print', printer, 'in', 'In String'))
+                         and pin_linked(url, 'Get Game Time', second, 'out', 'ReturnValue')
+                         and pin_linked(url, 'Print', printer, 'in', 'InString'))
     return all(steps.values()), '%s refusal=%r%s' % (steps, refusal[:140], '' if steps['replaced'] else ' replace: ' + text[:100])
 
 

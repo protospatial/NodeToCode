@@ -182,9 +182,6 @@ private:
     /** Process any struct or enum types used in a node */
     void ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 
-    /** Remove SKEL_ prefix and _C suffix from class names */
-    FString GetCleanClassName(const FString& InName);
-
     /** Log detailed debug information about the node */
     void LogNodeDetails(const FN2CNodeDefinition& NodeDef);
 };

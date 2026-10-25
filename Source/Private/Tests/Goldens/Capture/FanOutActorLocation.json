@@ -1,13 +1,7 @@
 {
 	"case": "FanOutActorLocation",
 	"description": "Function ReportLocation(): the entry runs Print String, then SetActorLocation. GetActorLocation's Return Value feeds both To String (Vector), whose result is Print String's In String, and SetActorLocation's New Location.",
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -25,14 +19,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "ReportLocation",
+						"class": "K2Node_FunctionEntry",
+						"title": "ReportLocation",
 						"member_parent": "BP_N2CGolden_FanOutActorLocation",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -40,14 +35,16 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "Get Actor Location",
+						"class": "K2Node_CallFunction",
+						"title": "Get Actor Location",
 						"member_parent": "Actor",
 						"member_name": "K2_GetActorLocation",
 						"pure": true,
 						"input_pins": [
 							{
 								"id": "P2",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "Actor"
 							}
@@ -55,7 +52,7 @@
 						"output_pins": [
 							{
 								"id": "P3",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "Struct",
 								"sub_type": "Vector",
 								"default_value": "0, 0, 0",
@@ -66,14 +63,15 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "To String (Vector)",
+						"class": "K2Node_CallFunction",
+						"title": "To String (Vector)",
 						"member_parent": "KismetStringLibrary",
 						"member_name": "Conv_VectorToString",
 						"pure": true,
 						"input_pins": [
 							{
 								"id": "P4",
-								"name": "In Vec",
+								"name": "InVec",
 								"type": "Struct",
 								"sub_type": "Vector",
 								"default_value": "0, 0, 0",
@@ -83,7 +81,7 @@
 						"output_pins": [
 							{
 								"id": "P5",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "String",
 								"connected": true
 							}
@@ -92,37 +90,37 @@
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "Print String",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "PrintString",
 						"input_pins": [
 							{
 								"id": "P6",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P8",
-								"name": "In String",
+								"name": "InString",
 								"type": "String",
 								"default_value": "Hello",
 								"connected": true
 							},
 							{
 								"id": "P9",
-								"name": "Print to Screen",
+								"name": "bPrintToScreen",
 								"type": "Boolean",
 								"default_value": "true"
 							},
 							{
 								"id": "P10",
-								"name": "Print to Log",
+								"name": "bPrintToLog",
 								"type": "Boolean",
 								"default_value": "true"
 							},
 							{
 								"id": "P11",
-								"name": "Text Color",
+								"name": "TextColor",
 								"type": "Struct",
 								"sub_type": "LinearColor",
 								"default_value": "(R=0.000000,G=0.660000,B=1.000000,A=1.000000)"
@@ -145,7 +143,7 @@
 						"output_pins": [
 							{
 								"id": "P7",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -153,24 +151,26 @@
 					{
 						"id": "N5",
 						"type": "CallFunction",
-						"name": "Set Actor Location",
+						"class": "K2Node_CallFunction",
+						"title": "Set Actor Location",
 						"member_parent": "Actor",
 						"member_name": "K2_SetActorLocation",
 						"input_pins": [
 							{
 								"id": "P14",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P16",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "Actor"
 							},
 							{
 								"id": "P17",
-								"name": "New Location",
+								"name": "NewLocation",
 								"type": "Struct",
 								"sub_type": "Vector",
 								"default_value": "0, 0, 0",
@@ -178,13 +178,13 @@
 							},
 							{
 								"id": "P18",
-								"name": "Sweep",
+								"name": "bSweep",
 								"type": "Boolean",
 								"default_value": "false"
 							},
 							{
 								"id": "P20",
-								"name": "Teleport",
+								"name": "bTeleport",
 								"type": "Boolean",
 								"default_value": "false"
 							}
@@ -192,17 +192,17 @@
 						"output_pins": [
 							{
 								"id": "P15",
-								"name": ""
+								"name": "then"
 							},
 							{
 								"id": "P19",
-								"name": "Sweep Hit Result",
+								"name": "SweepHitResult",
 								"type": "Struct",
 								"sub_type": "HitResult"
 							},
 							{
 								"id": "P21",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "Boolean",
 								"default_value": "false"
 							}

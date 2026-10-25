@@ -24,6 +24,10 @@ def get_focused_blueprint() -> Dict[str, Any]:
 
     Uses NodeToCode's C++ infrastructure to collect and serialize the Blueprint
     into N2CJSON format, which includes detailed node and connection information.
+    Names in it are stable identifiers, the same in every editor language: each node's
+    'class', 'member_parent' and 'member_name', and each pin's 'name' (its PinName, such
+    as 'execute', 'then' or 'ReturnValue'). A node's 'title' and a pin's 'label' are
+    English display hints, present only when they say more than the identifier.
 
     Returns:
         dict: {
@@ -61,6 +65,8 @@ def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
     model and written back as N2C JSON of the current version (2.0.0), so a 1.x file comes back with the same nodes
     and flows and "version": "2.0.0". Exec flows are "N1.P2->N3.P4" (exec output pin -> exec input pin) in documents
     NodeToCode 2.0 writes; 1.x documents (and early 2.0 development builds) keep their node-only "N1->N2" entries.
+    A 1.x node's display "name" is written back as its "title" (1.x has no "class"), and 1.x pin names, which are
+    display names, stay as they are.
 
     Args:
         n2c_json: The N2C JSON text

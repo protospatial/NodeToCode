@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/Processors/N2CFunctionCallProcessor.h"
+#include "Utils/N2CStableNames.h"
 
 void FN2CFunctionCallProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
@@ -12,8 +13,8 @@ void FN2CFunctionCallProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDef
     
     if (UFunction* Function = FuncNode->GetTargetFunction())
     {
-        OutNodeDef.MemberParent = GetCleanClassName(Function->GetOwnerClass()->GetName());
-        OutNodeDef.MemberName = GetCleanClassName(Function->GetName());
+        OutNodeDef.MemberParent = N2CStableNames::ClassName(Function->GetOwnerClass());
+        OutNodeDef.MemberName = Function->GetName();
         OutNodeDef.bLatent = FuncNode->IsLatentFunction();
         
         // Log function details

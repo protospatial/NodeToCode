@@ -1,13 +1,7 @@
 {
 	"case": "DisabledNodes",
 	"description": "Function Disabled(Value): the entry runs CollectGarbage, then a Print String the user disabled (its In String from To String (Integer) of Value), then ControlScreensaver set to Development Only, then a disabled Branch whose True runs ResetGamepadAssignments. Exec passes through the disabled Print String (one exec input, one exec output) to ControlScreensaver; the disabled Branch ends the chain, so ResetGamepadAssignments is unreachable and To String, read only by the disabled Print String, is unused.",
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -25,14 +19,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "Disabled",
+						"class": "K2Node_FunctionEntry",
+						"title": "Disabled",
 						"member_parent": "BP_N2CGolden_DisabledNodes",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -46,20 +41,20 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P3",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P4",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -67,7 +62,8 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "To String (Integer)",
+						"class": "K2Node_CallFunction",
+						"title": "To String (Integer)",
 						"member_parent": "KismetStringLibrary",
 						"member_name": "Conv_IntToString",
 						"pure": true,
@@ -75,7 +71,7 @@
 						"input_pins": [
 							{
 								"id": "P5",
-								"name": "In Int",
+								"name": "InInt",
 								"type": "Integer",
 								"default_value": "0",
 								"connected": true
@@ -84,7 +80,7 @@
 						"output_pins": [
 							{
 								"id": "P6",
-								"name": "Return Value",
+								"name": "ReturnValue",
 								"type": "String",
 								"connected": true
 							}
@@ -93,38 +89,38 @@
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "Print String",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "PrintString",
 						"disabled": true,
 						"input_pins": [
 							{
 								"id": "P7",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P9",
-								"name": "In String",
+								"name": "InString",
 								"type": "String",
 								"default_value": "Hello",
 								"connected": true
 							},
 							{
 								"id": "P10",
-								"name": "Print to Screen",
+								"name": "bPrintToScreen",
 								"type": "Boolean",
 								"default_value": "true"
 							},
 							{
 								"id": "P11",
-								"name": "Print to Log",
+								"name": "bPrintToLog",
 								"type": "Boolean",
 								"default_value": "true"
 							},
 							{
 								"id": "P12",
-								"name": "Text Color",
+								"name": "TextColor",
 								"type": "Struct",
 								"sub_type": "LinearColor",
 								"default_value": "(R=0.000000,G=0.660000,B=1.000000,A=1.000000)"
@@ -147,7 +143,7 @@
 						"output_pins": [
 							{
 								"id": "P8",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -155,18 +151,18 @@
 					{
 						"id": "N5",
 						"type": "CallFunction",
-						"name": "Control Screensaver",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
 								"id": "P15",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P17",
-								"name": "Allow Screen Saver",
+								"name": "bAllowScreenSaver",
 								"type": "Boolean",
 								"default_value": "false"
 							}
@@ -174,7 +170,7 @@
 						"output_pins": [
 							{
 								"id": "P16",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -182,12 +178,13 @@
 					{
 						"id": "N6",
 						"type": "Branch",
-						"name": "Branch",
+						"class": "K2Node_IfThenElse",
+						"title": "Branch",
 						"disabled": true,
 						"input_pins": [
 							{
 								"id": "P18",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
@@ -200,33 +197,35 @@
 						"output_pins": [
 							{
 								"id": "P20",
-								"name": "True",
+								"name": "then",
+								"label": "true",
 								"connected": true
 							},
 							{
 								"id": "P21",
-								"name": "False"
+								"name": "else",
+								"label": "false"
 							}
 						]
 					},
 					{
 						"id": "N7",
 						"type": "CallFunction",
-						"name": "Reset Gamepad Assignments",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ResetGamepadAssignments",
 						"unreachable": true,
 						"input_pins": [
 							{
 								"id": "P22",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P23",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

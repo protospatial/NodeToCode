@@ -4,6 +4,8 @@
 
 #include "Core/N2CLiveness.h"
 #include "Core/N2CSettings.h"
+#include "Models/N2CJsonContract.h"
+#include "Utils/N2CStableNames.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/ScopeExit.h"
 #include "Models/N2CJsonContract.h"
@@ -180,7 +182,7 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
             // Set Blueprint class
             if (UClass* BPClass = FirstNode->GetBlueprintClassFromNode())
             {
-                N2CBlueprint.Metadata.BlueprintClass = GetCleanClassName(BPClass->GetName());
+                N2CBlueprint.Metadata.BlueprintClass = N2CStableNames::ClassName(BPClass);
             }
 
             // Determine Blueprint type
@@ -712,7 +714,7 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
             // Log successful processing
             FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
             FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully processed node '%s' using %s processor"),
-                *OutNodeDef.Name, *NodeTypeName), EN2CLogSeverity::Debug);
+                *OutNodeDef.Title, *NodeTypeName), EN2CLogSeverity::Debug);
         }
     }
     else
@@ -725,6 +727,13 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
             *NodeTitle, *NodeTypeName));
         
         FallbackProcessNodeProperties(Node, OutNodeDef);
+    }
+
+    // Stable identity (card 0138): the node class; the title stays only as a hint that says more than member_name
+    OutNodeDef.NodeClass = Node->GetClass()->GetName();
+    if (N2CJsonContract::IsRedundantHint(OutNodeDef.Title, OutNodeDef.MemberName))
+    {
+        OutNodeDef.Title.Reset();
     }
 
     // Process any struct or enum types used in this node
@@ -815,8 +824,8 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
 
 void FN2CCaptureContext::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
-    // Set node name
-    OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
+    // The title hint, in source text so it is the same in every editor language
+    OutNodeDef.Title = N2CStableNames::NodeTitle(Node);
 
     // Determine node specific data directly such as
     // MemberParent, MemberName, bLatent, 
@@ -853,8 +862,11 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
             *Pin->PinId.ToString(), *PinID, *Pin->GetDisplayName().ToString(), 
             *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()), EN2CLogSeverity::Debug);
         
-        // Set pin name
-        PinDef.Name = Pin->GetDisplayName().ToString();
+        // The pin's identifier (PinName: "execute", "then", "ReturnValue"), never its display name, which changes with
+        // the editor language and the friendly-names preference and is blank for exec pins (card 0138); the display
+        // label only as a hint, when it says more than the name
+        PinDef.Name = Pin->PinName.ToString();
+        PinDef.Label = N2CStableNames::PinLabel(Pin);
         
         // Determine pin type
         PinDef.Type = DeterminePinType(Pin);
@@ -878,7 +890,7 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
         }
         else if (!Pin->DefaultTextValue.IsEmpty())
         {
-            PinDef.DefaultValue = Pin->DefaultTextValue.ToString();
+            PinDef.DefaultValue = N2CStableNames::SourceText(Pin->DefaultTextValue);
         }
         
         // Set subtype for container/object types
@@ -887,24 +899,24 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
             // For delegate output pin on CreateDelegate node, use function name as subtype
             if (Pin->Direction == EGPD_Output && Pin->PinType.PinCategory == TEXT("delegate"))
             {
-                PinDef.SubType = GetCleanClassName(CreateDelegateNode->GetFunctionName().ToString());
+                PinDef.SubType = CreateDelegateNode->GetFunctionName().ToString();
             }
             
             if (Pin->Direction == EGPD_Input && Pin->PinType.PinCategory == TEXT("object"))
             {
                 if (UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
                 {
-                    PinDef.SubType = GetCleanClassName(ScopeClass->GetName());
+                    PinDef.SubType = N2CStableNames::ClassName(ScopeClass);
                 }
             }
         }
         else if (Pin->PinType.PinSubCategoryObject.IsValid())
         {
-            PinDef.SubType = GetCleanClassName(Pin->PinType.PinSubCategoryObject->GetName());
+            PinDef.SubType = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
         }
         else if (!Pin->PinType.PinSubCategory.IsNone())
         {
-            PinDef.SubType = GetCleanClassName(Pin->PinType.PinSubCategory.ToString());
+            PinDef.SubType = Pin->PinType.PinSubCategory.ToString();
         }
         
         // Add to appropriate pin array
@@ -1083,7 +1095,7 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
     // Log all enum names and values for debugging
     for (int32 i = 0; i < NumEnums; ++i)
     {
-        FString ValueName = Enum->GetDisplayNameTextByIndex(i).ToString();
+        FString ValueName = N2CStableNames::SourceText(Enum->GetDisplayNameTextByIndex(i));
         
         FN2CLogger::Get().Log(
             FString::Printf(TEXT("Enum value #%d: Name='%s'"), 
@@ -1130,25 +1142,6 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
         EN2CLogSeverity::Info);
     
     return Result;
-}
-
-FString FN2CCaptureContext::GetCleanClassName(const FString& InName)
-{
-    FString CleanName = InName;                                                                                                                                                                      
-                                                                                                                                                                                                           
-     // Remove SKEL_ prefix if present                                                                                                                                                                     
-     if (CleanName.StartsWith(TEXT("SKEL_")))                                                                                                                                                              
-     {                                                                                                                                                                                                     
-         CleanName = CleanName.RightChop(5); // Length of "SKEL_"                                                                                                                                          
-     }                                                                                                                                                                                                     
-                                                                                                                                                                                                           
-     // Remove _C suffix if present                                                                                                                                                                        
-     if (CleanName.EndsWith(TEXT("_C")))                                                                                                                                                                   
-     {                                                                                                                                                                                                     
-         CleanName = CleanName.LeftChop(2); // Length of "_C"                                                                                                                                              
-     }                                                                                                                                                                                                     
-                                                                                                                                                                                                           
-     return CleanName;
 }
 
 bool FN2CCaptureContext::IsBlueprintStruct(UScriptStruct* Struct) const
@@ -1426,7 +1419,7 @@ void FN2CCaptureContext::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
         TEXT("  Input Pins: %d\n")
         TEXT("  Output Pins: %d"),
         *NodeDef.ID,
-        *NodeDef.Name,
+        *NodeDef.Title,
         *StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(NodeDef.NodeType)),
         *NodeDef.MemberParent,
         *NodeDef.MemberName,
@@ -1896,7 +1889,7 @@ void FN2CCaptureContext::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
     {
         if (UClass* ComponentClass = AddCompNode->TemplateType)
         {
-            OutNodeDef.MemberParent = GetCleanClassName(ComponentClass->GetName());
+            OutNodeDef.MemberParent = N2CStableNames::ClassName(ComponentClass);
         }
     }
 
@@ -1906,7 +1899,7 @@ void FN2CCaptureContext::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNode
         OutNodeDef.MemberName = TimelineNode->TimelineName.ToString();
         if (UBlueprint* BP = TimelineNode->GetBlueprint())
         {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
+            OutNodeDef.MemberParent = BP->GetName();
         }
     }
 

@@ -1,13 +1,7 @@
 {
 	"case": "BranchSameTarget",
 	"description": "Function BranchSame(Condition): Branch on Condition; True and False both run CollectGarbage.",
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -25,14 +19,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "BranchSame",
+						"class": "K2Node_FunctionEntry",
+						"title": "BranchSame",
 						"member_parent": "BP_N2CGolden_BranchSameTarget",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -46,11 +41,12 @@
 					{
 						"id": "N2",
 						"type": "Branch",
-						"name": "Branch",
+						"class": "K2Node_IfThenElse",
+						"title": "Branch",
 						"input_pins": [
 							{
 								"id": "P3",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
@@ -64,12 +60,14 @@
 						"output_pins": [
 							{
 								"id": "P5",
-								"name": "True",
+								"name": "then",
+								"label": "true",
 								"connected": true
 							},
 							{
 								"id": "P6",
-								"name": "False",
+								"name": "else",
+								"label": "false",
 								"connected": true
 							}
 						]
@@ -77,20 +75,20 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P7",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P8",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

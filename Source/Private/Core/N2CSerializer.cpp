@@ -220,12 +220,20 @@ TSharedPtr<FJsonObject> FN2CSerializer::NodeToJsonObject(const FN2CNodeDefinitio
     JsonObject->SetStringField(TEXT("id"), Node.ID);
     JsonObject->SetStringField(TEXT("type"), 
         StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(Node.NodeType)));
-    JsonObject->SetStringField(TEXT("name"), Node.Name);
+    // Stable identity and the display hint (card 0138): class, then title only when it says more than member_name
+    if (!Node.NodeClass.IsEmpty())
+    {
+        JsonObject->SetStringField(N2CJsonContract::NodeClassField, Node.NodeClass);
+    }
+    if (!Node.Title.IsEmpty())
+    {
+        JsonObject->SetStringField(N2CJsonContract::NodeTitleField, Node.Title);
+    }
     
     // Optional fields - only add if non-empty
-    if (!Node.GetCleanMemberParent().IsEmpty())
+    if (!Node.MemberParent.IsEmpty())
     {
-        JsonObject->SetStringField(TEXT("member_parent"), Node.GetCleanMemberParent());
+        JsonObject->SetStringField(TEXT("member_parent"), Node.MemberParent);
     }
     if (!Node.MemberName.IsEmpty())
     {
@@ -292,7 +300,11 @@ TSharedPtr<FJsonObject> FN2CSerializer::PinToJsonObject(const FN2CPinDefinition&
 
     // Required fields
     JsonObject->SetStringField(TEXT("id"), Pin.ID);
-    JsonObject->SetStringField(TEXT("name"), Pin.Name);
+    JsonObject->SetStringField(N2CJsonContract::PinNameField, Pin.Name);
+    if (!Pin.Label.IsEmpty())
+    {
+        JsonObject->SetStringField(N2CJsonContract::PinLabelField, Pin.Label);
+    }
     
     // Only add type if not Exec
     if (Pin.Type != EN2CPinType::Exec)
@@ -707,17 +719,24 @@ bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject
     }
 
     // Parse basic properties
-    FString ID, TypeString, Name, MemberParent, MemberName, Comment;
+    FString ID, TypeString, MemberParent, MemberName, Comment;
     if (!JsonObject->TryGetStringField(TEXT("id"), ID) ||
-        !JsonObject->TryGetStringField(TEXT("type"), TypeString) ||
-        !JsonObject->TryGetStringField(TEXT("name"), Name))
+        !JsonObject->TryGetStringField(TEXT("type"), TypeString))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required node fields in JSON"));
         return false;
     }
 
     OutNode.ID = ID;
-    OutNode.Name = Name;
+
+    // The title hint: "title" since card 0138, "name" in 1.x documents (display text either way); "class" is 2.x only
+    OutNode.NodeClass.Reset();
+    OutNode.Title.Reset();
+    JsonObject->TryGetStringField(N2CJsonContract::NodeClassField, OutNode.NodeClass);
+    if (!JsonObject->TryGetStringField(N2CJsonContract::NodeTitleField, OutNode.Title))
+    {
+        JsonObject->TryGetStringField(N2CJsonContract::NodeNameFieldV1, OutNode.Title);
+    }
 
     // Optional fields
     JsonObject->TryGetStringField(TEXT("member_parent"), MemberParent);
@@ -824,6 +843,8 @@ bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject,
 
     OutPin.ID = ID;
     OutPin.Name = Name;
+    OutPin.Label.Reset();
+    JsonObject->TryGetStringField(N2CJsonContract::PinLabelField, OutPin.Label);
 
     // ToJson leaves "type" out for exec pins, so a pin without one is Exec
     if (!JsonObject->TryGetStringField(TEXT("type"), TypeString))

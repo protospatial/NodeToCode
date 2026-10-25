@@ -2,13 +2,7 @@
 	"case": "ShortestPath_Depth3",
 	"description": "Max Translation Depth 3. Root calls Near, then Far. Near calls Shared; Far calls Mid, Mid calls Shared; Shared calls Leaf, Leaf calls Beyond. Captured from Root. Shared is 2 calls away through Near (3 through Far), so Leaf (3) is captured and Beyond (4) is not.",
 	"translation_depth": 3,
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,14 +20,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "Root",
+						"class": "K2Node_FunctionEntry",
+						"title": "Root",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -41,18 +36,19 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "Near",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "Near",
 						"input_pins": [
 							{
 								"id": "P2",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P4",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -60,7 +56,7 @@
 						"output_pins": [
 							{
 								"id": "P3",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -68,18 +64,19 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "Far",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "Far",
 						"input_pins": [
 							{
 								"id": "P5",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P7",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -87,7 +84,7 @@
 						"output_pins": [
 							{
 								"id": "P6",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -110,14 +107,15 @@
 					{
 						"id": "N4",
 						"type": "FunctionEntry",
-						"name": "Far",
+						"class": "K2Node_FunctionEntry",
+						"title": "Far",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P8",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -125,18 +123,19 @@
 					{
 						"id": "N5",
 						"type": "CallFunction",
-						"name": "Mid",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "Mid",
 						"input_pins": [
 							{
 								"id": "P9",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P11",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -144,7 +143,7 @@
 						"output_pins": [
 							{
 								"id": "P10",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -166,14 +165,15 @@
 					{
 						"id": "N6",
 						"type": "FunctionEntry",
-						"name": "Near",
+						"class": "K2Node_FunctionEntry",
+						"title": "Near",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P12",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -181,18 +181,19 @@
 					{
 						"id": "N7",
 						"type": "CallFunction",
-						"name": "Shared",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "Shared",
 						"input_pins": [
 							{
 								"id": "P13",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P15",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -200,7 +201,7 @@
 						"output_pins": [
 							{
 								"id": "P14",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -222,14 +223,15 @@
 					{
 						"id": "N8",
 						"type": "FunctionEntry",
-						"name": "Shared",
+						"class": "K2Node_FunctionEntry",
+						"title": "Shared",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P16",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -237,18 +239,19 @@
 					{
 						"id": "N9",
 						"type": "CallFunction",
-						"name": "Leaf",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "Leaf",
 						"input_pins": [
 							{
 								"id": "P17",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P19",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -256,7 +259,7 @@
 						"output_pins": [
 							{
 								"id": "P18",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -278,14 +281,15 @@
 					{
 						"id": "N10",
 						"type": "FunctionEntry",
-						"name": "Mid",
+						"class": "K2Node_FunctionEntry",
+						"title": "Mid",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P20",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -293,18 +297,19 @@
 					{
 						"id": "N11",
 						"type": "CallFunction",
-						"name": "Shared",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "Shared",
 						"input_pins": [
 							{
 								"id": "P21",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P23",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -312,7 +317,7 @@
 						"output_pins": [
 							{
 								"id": "P22",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -334,14 +339,15 @@
 					{
 						"id": "N12",
 						"type": "FunctionEntry",
-						"name": "Leaf",
+						"class": "K2Node_FunctionEntry",
+						"title": "Leaf",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P24",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -349,18 +355,19 @@
 					{
 						"id": "N13",
 						"type": "CallFunction",
-						"name": "Beyond",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_ShortestPath_Depth3",
 						"member_name": "Beyond",
 						"input_pins": [
 							{
 								"id": "P25",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P27",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -368,7 +375,7 @@
 						"output_pins": [
 							{
 								"id": "P26",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

@@ -186,35 +186,25 @@ struct FN2CNodeDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     EN2CNodeType NodeType;
 
-    /** Display name or function name */
+    /**
+     * The UK2Node class (N2C JSON "class", for example "K2Node_CallFunction"): a stable identifier, the same in every
+     * editor language (card 0138). Empty for a node read from a 1.x document or described without a graph node.
+     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    FString Name;
+    FString NodeClass;
 
-    /** Class/scope containing the function/variable */
+    /**
+     * Hint only (N2C JSON "title"): the node's menu title in source (English) text, empty when it says no more than
+     * MemberName (N2CJsonContract::IsRedundantHint). 1.x documents call it "name". Never use it to identify a node.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Title;
+
+    /** Class or struct that declares the function or variable (a Blueprint class by its Blueprint's name) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString MemberParent;
 
-    /** Gets a cleaned version of the MemberParent name without common prefixes/suffixes */
-    FString GetCleanMemberParent() const
-    {
-        FString CleanName = MemberParent;
-        
-        // Remove SKEL_ prefix if present
-        if (CleanName.StartsWith(TEXT("SKEL_")))
-        {
-            CleanName.RightChopInline(5);
-        }
-        
-        // Remove _C suffix if present (indicates Blueprint class)
-        if (CleanName.EndsWith(TEXT("_C")))
-        {
-            CleanName.LeftChopInline(2);
-        }
-        
-        return CleanName;
-    }
-
-    /** Function/variable name being accessed */
+    /** Function, variable, event or macro name as declared (never shortened: a trailing "_C" is part of the name) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString MemberName;
 
@@ -252,7 +242,6 @@ struct FN2CNodeDefinition
     FN2CNodeDefinition()
         : ID(TEXT(""))
         , NodeType(EN2CNodeType::CallFunction)
-        , Name(TEXT(""))
         , MemberParent(TEXT(""))
         , MemberName(TEXT(""))
         , Comment(TEXT(""))

@@ -3,11 +3,6 @@
 	"description": "Function SwitchEnum(Mobility: EComponentMobility): Switch on the engine enum; Static runs CollectGarbage, Movable runs ControlScreensaver, Stationary is unconnected.",
 	"known_defects": [
 		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		},
-		{
 			"finding": "translation-core-32",
 			"card": "0239",
 			"effect": "Switch nodes are named 'Switch', losing the switched type"
@@ -30,14 +25,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "SwitchEnum",
+						"class": "K2Node_FunctionEntry",
+						"title": "SwitchEnum",
 						"member_parent": "BP_N2CGolden_SwitchOnEnum",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -53,11 +49,12 @@
 					{
 						"id": "N2",
 						"type": "SwitchEnum",
-						"name": "Switch",
+						"class": "K2Node_SwitchEnum",
+						"title": "Switch",
 						"input_pins": [
 							{
 								"id": "P3",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
@@ -89,38 +86,38 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "Collect Garbage",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "CollectGarbage",
 						"input_pins": [
 							{
 								"id": "P8",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							}
 						],
 						"output_pins": [
 							{
 								"id": "P9",
-								"name": ""
+								"name": "then"
 							}
 						]
 					},
 					{
 						"id": "N4",
 						"type": "CallFunction",
-						"name": "Control Screensaver",
+						"class": "K2Node_CallFunction",
 						"member_parent": "KismetSystemLibrary",
 						"member_name": "ControlScreensaver",
 						"input_pins": [
 							{
 								"id": "P10",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P12",
-								"name": "Allow Screen Saver",
+								"name": "bAllowScreenSaver",
 								"type": "Boolean",
 								"default_value": "false"
 							}
@@ -128,7 +125,7 @@
 						"output_pins": [
 							{
 								"id": "P11",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

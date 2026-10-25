@@ -11,6 +11,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "K2Node.h"
+#include "Utils/N2CStableNames.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 
@@ -256,13 +257,10 @@ bool FN2CMcpFindNodesInGraphTool::DoesNodeMatchSearch(
     }
     else // keyword search
     {
-        // Get searchable text from the node
-        FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
-        FString NodeClass = Node->GetClass()->GetName();
-        FString MenuCategory = Node->GetMenuCategory().ToString();
-        
-        // Combine searchable text
-        FString SearchableText = FString::Printf(TEXT("%s %s %s"), *NodeTitle, *NodeClass, *MenuCategory);
+        // Get searchable text from the node: its title as the editor shows it and in source (English) text, its class
+        // and the function or variable it names (N2CStableNames::NodeSearchText), so the names get-focused-blueprint
+        // returns ("class", "member_name", "title") match in every editor language (card 0138); and its menu category
+        FString SearchableText = N2CStableNames::NodeSearchText(Node) + TEXT(" ") + Node->GetMenuCategory().ToString();
         
         if (!bCaseSensitive)
         {

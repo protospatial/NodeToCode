@@ -591,9 +591,9 @@ FN2CNodeDefinition FN2CMcpSearchBlueprintNodesTool::CreateNodeDefinitionFromActi
     FN2CNodeDefinition NodeDef;
     NodeDef.ID = NodeId;
     
-    // Get search text as the node name
+    // Get search text as the node title (a hint)
     FString SearchText = Action.IsValid() ? Action->GetFullSearchText() : FString();
-    NodeDef.Name = SearchText;
+    NodeDef.Title = SearchText;
     
     // Try to determine node type from the action
     // This is a simplified approach since we don't have the actual node yet

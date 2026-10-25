@@ -133,7 +133,7 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   makes user types outside the editor's undo history and clears the flags of the `STRUCT_REINST_` copies the struct
   compiler leaves behind; either would keep the package alive).
 - **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
-  card that changes them: display-text names (gap-5, 0138), Break Struct captured as a Variable named `None` (translation-core-4, 0234),
+  card that changes them: Break Struct captured as a Variable titled `None` (translation-core-4, 0234),
   custom events with member_name `None` and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134
   fixed and removed the ID defects (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one
   ID, and node IDs that depended on traversal order; translation-core-9: a function that calls itself was captured
@@ -142,7 +142,11 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   `flows.execution` held "N1->N2" node pairs, so which pin a link used was lost and two outputs into one node were one
   entry). Card 0137 fixed and removed the ghost default events (translation-core-18/19: the greyed-out BeginPlay,
   ActorBeginOverlap and Tick of every Actor Blueprint's event graph were captured as live events N1-N3, so every
-  event-graph golden lost those three nodes and its IDs moved down by three). From card 0127: a user struct with an object member is dropped from
+  event-graph golden lost those three nodes and its IDs moved down by three). Card 0138 fixed and removed the
+  display-text names (gap-5: node names were menu titles and pin names display names, blank for exec pins, so they
+  changed with the editor language, the friendly-names preference and the engine; translation-core-22: a variable's
+  member_parent was its type, `real/double`; translation-core-28: `GetCleanClassName` cut `_C` off member names).
+  From card 0127: a user struct with an object member is dropped from
   `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped (translation-core-11,
   0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236); collapsed graphs and user macros
   are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not name the captured graph
@@ -160,6 +164,15 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   pure nodes nothing live reads carry `"unused": true`, impure nodes no entry reaches `"unreachable": true`, that no
   other case marks a node, that the flags round-trip, and that the validator warns about a connected data input with
   no data flow into it.
+- **Stable names (card 0138):** `StableNames` (function UseNames calls the Blueprint's own `Convert_C` and returns
+  `Health` of a `BP_N2CGolden_Enemy` reference (a sibling Blueprint) plus the Blueprint's own `Temperature_C`). The
+  `StableNames` tests check that `Health` has member_parent `BP_N2CGolden_Enemy` and no type string, that `Convert_C`
+  and `Temperature_C` keep their names, that exec pins are named `execute` and `then`, that every node of every case
+  has a `K2Node_` `class` and no `name`, every pin a non-empty `name`, and every `title` and `label` says more than its
+  identifier; and that every case captures the same JSON with the editor switched to Japanese
+  (`FInternationalization::SetCurrentCulture("ja")`, after checking the engine's Japanese editor text really loads)
+  and the same JSON apart from `title` and `label` with `UEditorStyleSettings::bShowFriendlyNames` flipped. Both are
+  put back afterwards.
 - **Round trip:** every case `survives ToJson -> FromJson -> ToJson unchanged` (card 0135, translation-core-25:
   `FromJson` reads a pin without `type` as Exec, reads `structs` and `enums`, and a fan-out's array).
 - **Data flows (card 0135):** `DataFlows` checks on every case that each connected data input is the target of
@@ -183,18 +196,17 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   `-UpdateGoldens` to check every engine agrees. Engines run 5.6, 5.7, 5.8 in that order and each writes
   `<case>.<engine>.json` when that file exists, else `<case>.json`.
 - **Per-engine goldens:** `<case>.<engine>.json` replaces `<case>.json` on that engine only where the engine really
-  differs. Today: `Branch`, `BranchSameTarget`, `CopyPaste`, `EnhancedInputEvent`, `FanOutActorLocation`,
-  `DisabledNodes`, `ForEachLoop`, `GateMultiExec`, `GhostEvents`, `NestedGraphs_Depth1`, `SameNameOwners`, `Sequence`, `SwitchOnEnum`, `SwitchOnInt`,
-  `TimelineMultiExec`, `UnreachableChain` and `UserEnum` have a
-  `.5.8.json`, because UE 5.8's `UK2Node_CallFunction::GetUserFacingFunctionName` gives the menu title the function's
-  own name (`CollectGarbage`) where 5.6 and 5.7 give its friendly name (`Collect Garbage`). Calls to the Blueprint's own
-  functions are the same on every engine. Card 0138's stable identifiers remove the difference. To add one, copy
-  `<case>.json` to `<case>.<engine>.json` and regenerate on that engine.
-- **Locale:** `build.ps1 -Test` runs the editor with `-culture=en`; the goldens are recorded that way. `-TestCulture
-  de` runs once in another culture. With `de` (checked on 5.6, 5.7 and 5.8, the same on each, before card 0134 added
-  `SameNameOwners`) 9 of the 16 cases differ, only in display text: the function return node's name (`Add Return
-  Node...`), the ghost events' comment (`This node is disabled ...`; no longer captured since card 0137) and the entry tunnel's name (`Inputs`); node
-  titles such as Branch and Switch and all pin names stay English. All of it is card 0138's.
+  differs. Today there are none: every case gives the same JSON on 5.6, 5.7 and 5.8. Until card 0138, 17 cases had a
+  `.5.8.json` only because UE 5.8 titles a function call by the function's own name (`CollectGarbage`) where 5.6 and
+  5.7 use its display spelling (`Collect Garbage`); the title is now a hint, left out when it is only the member name
+  spelled for display, so those files went. To add one, copy `<case>.json` to `<case>.<engine>.json` and regenerate on
+  that engine.
+- **Locale:** `build.ps1 -Test` runs the editor with `-culture=en`; the goldens are recorded that way. Capture
+  output does not depend on the editor language (card 0138): `.\build.ps1 -UEVersion <ver> -Test -TestFilter
+  NodeToCode.Capture -TestCulture de` (and `fr`, and `ja`) must pass against the same goldens, and did on 5.6, 5.7 and
+  5.8 (de and fr on each, ja on 5.8) when card 0138 landed. Identifiers never are display text, and the `title` and
+  `label` hints and text defaults are written in source (English) text. Before card 0138, `de` changed the function
+  return node's name (`Add Return Node...`) and the entry tunnel's name (`Inputs`/`Eingaben`) in 9 of 16 cases.
 
 ## Running the tests
 

@@ -1,0 +1,207 @@
+{
+	"case": "StableNames",
+	"description": "Function UseNames(): the entry runs Convert_C (a function of this Blueprint), then the result, which returns Health + Temperature_C. Health is a variable of BP_N2CGolden_Enemy read through this Blueprint's Enemy reference, Temperature_C a variable of this Blueprint. Names ending in _C keep it, member_parent is the declaring Blueprint (no type string), exec pins are named execute and then.",
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_StableNames",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_StableNames"
+		},
+		"graphs": [
+			{
+				"name": "UseNames",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "UseNames",
+						"member_parent": "BP_N2CGolden_StableNames",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "FunctionResult",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_StableNames",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P3",
+								"name": "Result",
+								"type": "Real",
+								"sub_type": "double",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "BP_N2CGolden_StableNames",
+						"member_name": "Convert_C",
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "self",
+								"label": "Target",
+								"type": "Object",
+								"sub_type": "self"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "VariableGet",
+						"class": "K2Node_VariableGet",
+						"member_parent": "BP_N2CGolden_StableNames",
+						"member_name": "Enemy",
+						"pure": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": "Enemy",
+								"type": "Object",
+								"sub_type": "BP_N2CGolden_Enemy",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "VariableGet",
+						"class": "K2Node_VariableGet",
+						"member_parent": "BP_N2CGolden_Enemy",
+						"member_name": "Health",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P9",
+								"name": "self",
+								"label": "Target",
+								"type": "Object",
+								"sub_type": "BP_N2CGolden_Enemy",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "Health",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "VariableGet",
+						"class": "K2Node_VariableGet",
+						"member_parent": "BP_N2CGolden_StableNames",
+						"member_name": "Temperature_C",
+						"pure": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P10",
+								"name": "Temperature_C",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N7",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"title": "float + float",
+						"member_parent": "KismetMathLibrary",
+						"member_name": "Add_DoubleDouble",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P11",
+								"name": "A",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.0",
+								"connected": true
+							},
+							{
+								"id": "P12",
+								"name": "B",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "1.000000",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P13",
+								"name": "ReturnValue",
+								"type": "Real",
+								"sub_type": "double",
+								"default_value": "0.0",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N3.P4",
+						"N3.P5->N2.P2"
+					],
+					"data":
+					{
+						"N4.P7": "N5.P9",
+						"N5.P8": "N7.P11",
+						"N6.P10": "N7.P12",
+						"N7.P13": "N2.P3"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

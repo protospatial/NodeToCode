@@ -2,13 +2,7 @@
 	"case": "Recursion_Depth1",
 	"description": "Max Translation Depth 1. Function Root(Count) calls Child, then itself with Count; Child calls Grandchild; Grandchild calls Root. Captured from Root.",
 	"translation_depth": 1,
-	"known_defects": [
-		{
-			"finding": "gap-5",
-			"card": "0138",
-			"effect": "Node and pin names are display text (menu titles, friendly pin names, blank exec pin names), not stable identifiers, so they change with editor language and settings"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,14 +20,15 @@
 					{
 						"id": "N1",
 						"type": "FunctionEntry",
-						"name": "Root",
+						"class": "K2Node_FunctionEntry",
+						"title": "Root",
 						"member_parent": "BP_N2CGolden_Recursion_Depth1",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P1",
-								"name": "",
+								"name": "then",
 								"connected": true
 							},
 							{
@@ -47,18 +42,19 @@
 					{
 						"id": "N2",
 						"type": "CallFunction",
-						"name": "Child",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_Recursion_Depth1",
 						"member_name": "Child",
 						"input_pins": [
 							{
 								"id": "P3",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P5",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -66,7 +62,7 @@
 						"output_pins": [
 							{
 								"id": "P4",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -74,18 +70,19 @@
 					{
 						"id": "N3",
 						"type": "CallFunction",
-						"name": "Root",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_Recursion_Depth1",
 						"member_name": "Root",
 						"input_pins": [
 							{
 								"id": "P6",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P8",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							},
@@ -100,7 +97,7 @@
 						"output_pins": [
 							{
 								"id": "P7",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}
@@ -124,14 +121,15 @@
 					{
 						"id": "N4",
 						"type": "FunctionEntry",
-						"name": "Child",
+						"class": "K2Node_FunctionEntry",
+						"title": "Child",
 						"member_parent": "BP_N2CGolden_Recursion_Depth1",
 						"member_name": "None",
 						"input_pins": [],
 						"output_pins": [
 							{
 								"id": "P10",
-								"name": "",
+								"name": "then",
 								"connected": true
 							}
 						]
@@ -139,18 +137,19 @@
 					{
 						"id": "N5",
 						"type": "CallFunction",
-						"name": "Grandchild",
+						"class": "K2Node_CallFunction",
 						"member_parent": "BP_N2CGolden_Recursion_Depth1",
 						"member_name": "Grandchild",
 						"input_pins": [
 							{
 								"id": "P11",
-								"name": "",
+								"name": "execute",
 								"connected": true
 							},
 							{
 								"id": "P13",
-								"name": "Target",
+								"name": "self",
+								"label": "Target",
 								"type": "Object",
 								"sub_type": "self"
 							}
@@ -158,7 +157,7 @@
 						"output_pins": [
 							{
 								"id": "P12",
-								"name": ""
+								"name": "then"
 							}
 						]
 					}

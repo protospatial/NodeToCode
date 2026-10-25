@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/Processors/N2CBaseNodeProcessor.h"
+#include "Utils/N2CStableNames.h"
 
 bool FN2CBaseNodeProcessor::Process(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
@@ -10,8 +11,8 @@ bool FN2CBaseNodeProcessor::Process(UK2Node* Node, FN2CNodeDefinition& OutNodeDe
         return false;
     }
     
-    // Extract common properties
-    OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
+    // Extract common properties. The title is a hint in source text, the same in every editor language (card 0138)
+    OutNodeDef.Title = N2CStableNames::NodeTitle(Node);
     OutNodeDef.bPure = Node->IsNodePure();
     
     // Extract comments if present
@@ -29,23 +30,4 @@ bool FN2CBaseNodeProcessor::Process(UK2Node* Node, FN2CNodeDefinition& OutNodeDe
 void FN2CBaseNodeProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     // Base implementation does nothing - to be overridden by subclasses
-}
-
-FString FN2CBaseNodeProcessor::GetCleanClassName(const FString& InName)
-{
-    FString CleanName = InName;
-    
-    // Remove SKEL_ prefix if present
-    if (CleanName.StartsWith(TEXT("SKEL_")))
-    {
-        CleanName.RightChopInline(5);
-    }
-    
-    // Remove _C suffix if present (indicates Blueprint class)
-    if (CleanName.EndsWith(TEXT("_C")))
-    {
-        CleanName.LeftChopInline(2);
-    }
-    
-    return CleanName;
 }

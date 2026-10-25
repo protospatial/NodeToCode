@@ -10,12 +10,12 @@ void FN2CFunctionEntryProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDe
         OutNodeDef.MemberName = FuncEntryNode->CustomGeneratedFunctionName.ToString();
         if (UBlueprint* BP = FuncEntryNode->GetBlueprint())
         {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
+            OutNodeDef.MemberParent = BP->GetName();
         }
         
         // Log function entry details
         FString EntryInfo = FString::Printf(TEXT("Function Entry: %s, Function: %s, Class: %s"),
-            *OutNodeDef.Name,
+            *OutNodeDef.Title,
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
         FN2CLogger::Get().Log(EntryInfo, EN2CLogSeverity::Debug);
@@ -27,12 +27,12 @@ void FN2CFunctionEntryProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDe
     {
         if (UBlueprint* BP = FuncResultNode->GetBlueprint())
         {
-            OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
+            OutNodeDef.MemberParent = BP->GetName();
         }
         
         // Log function result details
         FString ResultInfo = FString::Printf(TEXT("Function Result: %s, Class: %s"),
-            *OutNodeDef.Name,
+            *OutNodeDef.Title,
             *OutNodeDef.MemberParent);
         FN2CLogger::Get().Log(ResultInfo, EN2CLogSeverity::Debug);
         return;
@@ -43,16 +43,16 @@ void FN2CFunctionEntryProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDe
     {
         if (UEdGraph* MacroGraph = MacroNode->GetMacroGraph())
         {
-            OutNodeDef.MemberName = GetCleanClassName(MacroGraph->GetName());
+            OutNodeDef.MemberName = MacroGraph->GetName();
             if (UBlueprint* BP = Cast<UBlueprint>(MacroGraph->GetOuter()))
             {
-                OutNodeDef.MemberParent = GetCleanClassName(BP->GetName());
+                OutNodeDef.MemberParent = BP->GetName();
             }
         }
         
         // Log macro instance details
         FString MacroInfo = FString::Printf(TEXT("Macro Instance: %s, Macro: %s, Blueprint: %s"),
-            *OutNodeDef.Name,
+            *OutNodeDef.Title,
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
         FN2CLogger::Get().Log(MacroInfo, EN2CLogSeverity::Debug);
