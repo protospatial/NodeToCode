@@ -21,8 +21,7 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0182 (asset-writing tools restricted to /Game and project plugin content), 0281 (folders through
-  `UEditorAssetSubsystem::RenameDirectory`), 0285 (search-content-browser and read-content-browser-path results), 0286 (open-blueprint-asset fails on unknown
+- **Fix cards still owed here:** 0182 (asset-writing tools restricted to /Game and project plugin content), 0285 (search-content-browser and read-content-browser-path results), 0286 (open-blueprint-asset fails on unknown
   graphs).
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
@@ -120,17 +119,17 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Use Case**: Organizing content, preparing locations for assets
 
 ### move-folder
-- **Description**: Moves the assets of a folder (recursively) into `<destinationPath>/<folder name>`
+- **Description**: Moves a folder, its assets and its subfolders (empty ones too) to `<destinationPath>/<folder name>`
 - **Parameters**:
   - `sourcePath` (required): Folder to move, under the write policy's roots (not a root itself: `/Game`,
     `/<PluginName>`)
-  - `destinationPath` (required): Parent folder under the write policy's roots; created if missing. `<destinationPath>/<folder name>`
+  - `destinationPath` (required): Parent folder under the write policy's roots; created right before the move if
+    missing, and removed again if nothing moves. Not the source folder or one of its subfolders, compared
+    case-insensitively (`Cannot move ... into itself or one of its own subfolders`). `<destinationPath>/<folder name>`
     must not exist yet
   - `showNotification` (optional, default true): Show an editor notification
-- **Returns**: `message`, `sourcePath`, `destinationPath` (the new folder path), `assetsMoved`, `navigated`, `tips`
-- **Behaviour** (`FN2CMcpMoveFolderTool::MoveFolderContents`): each asset is renamed into the new folder; the source
-  folder is left behind, empty, and a folder with no assets moves nothing (the call still succeeds, with
-  `assetsMoved` 0, and no new folder appears)
+- **Returns**: `message`, `sourcePath`, `destinationPath` (the new folder path), `assetsMoved` (the number now at the
+  destination), `navigated`, and the folder-move fields (see "Folder moves")
 - **Use Case**: Reorganizing content structure
 
 ### move-asset
@@ -145,8 +144,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   - `newName` (optional): New asset name (default: the asset's name), following "Asset names"
   - `showNotification` (optional, default true): Show an editor notification
 - **Returns**: `success`, `oldPath`, `newPath` (package paths, read back from the asset registry), `objectPath`,
-  `operation` (`move`, or `rename` when the folder is unchanged), `leftRedirector` (always false), `assetInfo`,
-  `nextSteps`. An existing asset at the destination is an error, and so is a case-only rename (see "Asset names").
+  `operation` (`move`, or `rename` when the folder is unchanged), `leftRedirector` (whether the asset registry holds
+  a redirector at the old object path after the move: `FN2CMcpContentBrowserUtils::IsRedirectorAt`), `assetInfo`,
+  `nextSteps` (names the redirector when one was left, and says paths in C++, config or text files are not updated). An existing asset at the destination is an error, and so is a case-only rename (see "Asset names").
   An asset checked out by someone else in source control is refused. A failed move gives the engine's reason
 - **Use Case**: Reorganizing project assets, renaming Blueprints and other content
 
@@ -160,23 +160,46 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
     rename and removed again if it fails
   - `showNotification` (optional, default true): Show an editor notification
 - **Returns**: `message`, `oldPath`, `newPath` (package paths, read back from the asset registry), `oldName`,
-  `newName`, `assetSelected` (whether the content browser selected the renamed asset), `wasMoved`, `tips`. An
-  existing asset at the destination and a case-only rename are errors; a failed rename gives the engine's reason
+  `newName`, `assetSelected` (whether the content browser selected the renamed asset), `wasMoved`, `tips` (whether a
+  redirector was left at the old path, from the asset registry). An existing asset at the destination and a
+  case-only rename are errors; a failed rename gives the engine's reason
 - **Note**: Give exactly one of `newName` and `destinationPath`; both, or neither, is an error
 - **Use Case**: Renaming assets, fixing naming conventions
 
 ### rename-folder
-- **Description**: Renames a folder by moving its assets (recursively) to a sibling folder
+- **Description**: Renames a folder: moves it, its assets and its subfolders (empty ones too) to a sibling folder
 - **Parameters**:
   - `sourcePath` (required): Folder under the write policy's roots (not a root itself: `/Game`, `/<PluginName>`)
   - `newName` (required): New folder name (no slashes, dots, spaces, `~`, `*`, `?`, and not a Windows device name:
     exactly CON, PRN, AUX, NUL, COM1-9 or LPT1-9, so `Components` or `Common` are fine). A case-only rename
     (`blueprints` to `Blueprints`) is an error: folder names are case-insensitive
   - `showNotification` (optional, default true): Show an editor notification
-- **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetsRenamed`, `navigated`, `tips`
-- **Behaviour** (`FN2CMcpRenameFolderTool::MoveFolderContents`): as for `move-folder`, the old folder is left behind,
-  empty, and a folder with no assets is not renamed although the call succeeds
+- **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetsRenamed` (the number now at the new
+  path), `navigated`, and the folder-move fields (see "Folder moves")
 - **Use Case**: Fixing folder naming
+
+## Folder moves
+
+`move-folder` and `rename-folder` both call `FN2CMcpContentBrowserUtils::MoveFolder` (card 0281), which is one
+`UEditorAssetSubsystem::RenameDirectory` call: the engine checks every asset's destination before it moves any, renames
+them all in one `IAssetTools::RenameAssets` batch under a progress dialog, and deletes the source directory once
+nothing is left in it. `MoveFolder` adds what the engine does not do: it refuses a destination equal to or inside the
+source, recreates the subfolders that held no assets at the destination (the engine moves assets, not folders), and
+reads the outcome back from the asset registry. An empty folder moves too: the new folder appears and the old one goes.
+
+Both results carry:
+- `movedAssets`: the new package paths of the assets now at the destination
+- `failedAssets`: package paths of assets still at the source (empty on success)
+- `redirectors`: old object paths where a redirector was left, because a referencing package could not be updated or
+  saved (`FN2CMcpContentBrowserUtils::IsRedirectorAt`)
+- `sourceRemoved`: whether the old folder is gone. It stays when it still holds redirectors, assets that did not move,
+  or files the asset registry does not list
+- `tips`: the outcome in words: redirectors left or none, the source removed or what it still holds, and that paths in
+  C++, config or text files are not updated
+
+When any asset fails to move the call is an error whose text gives the engine's reason, then how many moved, which did
+not (the first five) and the redirectors left. Nothing is rolled back: what moved stays moved, so move the rest with
+`move-asset`. When nothing moved, the folders the call created are removed again.
 
 ## Asset names
 
