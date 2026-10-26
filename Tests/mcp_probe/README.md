@@ -422,6 +422,19 @@ out (`registry_translate_timed_out`); `--eager` turns Epic's tool search off and
 tools. Report: `logs/live_mcpclienttoolset_<label>[_t<N>][_eager].json`. Observed on 5.8 (card 0141): registered on
 every start, 62 tools in both lists, translations in 8 to 12 s with claude-haiku-5-5, the 3 s run timed out at 3.1 s.
 
+## Graph-type coverage (card 0246)
+
+`graph_type_matrix_0246.py --engine ... --project ... --label 5.8 [--translate]` runs one headless editor with the
+engine plugins MoverExamples and Landmass enabled for the session. It reads one real graph of each graph type through
+`list-blueprint-graphs` and `get-blueprint-n2cjson`, and a few through `open-blueprint-asset` plus
+`get-focused-blueprint`. The graph types are event graph, function, macro, collapsed, construction script, interface,
+Widget, Editor Utility, Level and AnimBlueprint graphs, state machines, transition rules, Control Rig and a Material.
+With `--translate` it also translates one graph per type with `translate-batch` (anthropic, `claude-sonnet-5-5`, cpp;
+ANTHROPIC_API_KEY from `.env` in the editor's environment only). It records graph type, node counts, Unknown classes,
+unused flags, links and errors. Captures, translations and the report go to `logs/`. Scratch assets under
+`/Game/N2CTest/Matrix0246_<time>` and the export and batch folders it made are deleted. The results are in
+`Context/translation-pipeline/graph-type-coverage.md`.
+
 ## Migration check
 
 The 1.2.x to 2.0 migration check (card 0079) lives in `Tests/Migration/` and reuses `editor_session.py`,
