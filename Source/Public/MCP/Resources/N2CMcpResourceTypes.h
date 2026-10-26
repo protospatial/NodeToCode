@@ -79,6 +79,12 @@ struct NODETOCODE_API FMcpResourceContents
 	bool IsError() const { return ErrorCode != 0; }
 
 	/**
+	 * Marks this as a failed read: resources/read answers with Code and Message (and the uri in data). Text becomes
+	 * the error as JSON {error, uri}, for callers that embed the contents (the code-generation prompts).
+	 */
+	void SetError(int32 Code, const FString& Message);
+
+	/**
 	 * Checks if this resource contains text data
 	 */
 	bool IsText() const { return !Text.IsEmpty(); }

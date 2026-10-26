@@ -439,7 +439,7 @@ void FN2CMcpProtocolSpec::Define()
 			const TArray<TSharedPtr<FJsonValue>>* Templates = nullptr;
 			if (TestTrue(TEXT("result.resourceTemplates is an array"), Result.IsValid() && Result->TryGetArrayField(TEXT("resourceTemplates"), Templates)))
 			{
-				// Every registered template is listed (nodetocode://blueprint/{name} once the server has registered it)
+				// Every registered template is listed (nodetocode://blueprint/{+path} once the server has registered it)
 				const TArray<FMcpResourceTemplate> Registered = FN2CMcpResourceManager::Get().ListResourceTemplates();
 				TestEqual(TEXT("one entry per registered template"), Templates->Num(), Registered.Num());
 				for (const FMcpResourceTemplate& Template : Registered)

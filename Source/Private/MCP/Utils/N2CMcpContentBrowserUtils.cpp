@@ -21,6 +21,7 @@
 #include "SourceControlHelpers.h"
 #include "Misc/FileHelper.h"
 #include "Misc/OutputDeviceRedirector.h"
+#include "UObject/ObjectRedirector.h"
 
 bool FN2CMcpContentBrowserUtils::ValidateContentPath(const FString& Path, FString& OutErrorMsg)
 {
@@ -1014,6 +1015,226 @@ bool FN2CMcpContentBrowserUtils::IsCheckedOutByAnother(const FString& PackageNam
 	}
 	const FSourceControlStatePtr State = SourceControlModule.GetProvider().GetState(SourceControlFilename(PackageName), EStateCacheUsage::Use);
 	return State.IsValid() && State->IsCheckedOutOther();
+}
+
+bool FN2CMcpContentBrowserUtils::IsSameOrInsideFolder(const FString& Folder, const FString& Ancestor)
+{
+	const FString NormalizedFolder = NormalizeContentPath(Folder);
+	const FString NormalizedAncestor = NormalizeContentPath(Ancestor);
+	return NormalizedFolder.Equals(NormalizedAncestor, ESearchCase::IgnoreCase)
+		|| NormalizedFolder.StartsWith(NormalizedAncestor + TEXT("/"), ESearchCase::IgnoreCase);
+}
+
+bool FN2CMcpContentBrowserUtils::IsRedirectorAt(const FString& ObjectPath)
+{
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+	const FAssetData Asset = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
+	if (Asset.IsValid())
+	{
+		return Asset.IsRedirector();
+	}
+	// A redirector the registry has not been told about yet
+	return FindObject<UObjectRedirector>(nullptr, *ObjectPath) != nullptr;
+}
+
+bool FN2CMcpContentBrowserUtils::MoveFolder(const FString& Source, const FString& Destination, FN2CMcpFolderMoveResult& OutResult)
+{
+	OutResult = FN2CMcpFolderMoveResult();
+	OutResult.Source = NormalizeContentPath(Source);
+	OutResult.Destination = NormalizeContentPath(Destination);
+	const FString From = OutResult.Source;
+	const FString To = OutResult.Destination;
+
+	// The engine does not check this: a folder moved into itself re-nests every asset under it (review fs-9)
+	if (IsSameOrInsideFolder(To, From))
+	{
+		OutResult.Error = FString::Printf(TEXT("Cannot move %s into itself or one of its own subfolders (%s)"), *From, *To);
+		return false;
+	}
+	if (DoesPathExist(To))
+	{
+		OutResult.Error = FString::Printf(TEXT("Destination folder already exists: %s"), *To);
+		return false;
+	}
+	UEditorAssetSubsystem* EditorAssetSubsystem = GEditor ? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>() : nullptr;
+	if (!EditorAssetSubsystem)
+	{
+		OutResult.Error = TEXT("Failed to get EditorAssetSubsystem");
+		return false;
+	}
+
+	// What is there before the move: the assets (a redirector is not an asset here) and every subfolder, empty or not
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+	TArray<FAssetData> SourceAssets;
+	AssetRegistry.GetAssetsByPath(FName(*From), SourceAssets, /*bRecursive*/ true);
+	SourceAssets.RemoveAll([](const FAssetData& Asset) { return Asset.IsRedirector(); });
+	TArray<FString> SubPaths;
+	AssetRegistry.GetSubPaths(From, SubPaths, /*bInRecurse*/ true);
+
+	// The destination's parent, only now, and removed again if nothing moves
+	FString CreatedRoot;
+	FString FolderError;
+	if (!CreateFolderForMutation(FPaths::GetPath(To), CreatedRoot, FolderError))
+	{
+		OutResult.Error = FString::Printf(TEXT("Failed to create the destination's parent folder: %s"), *FolderError);
+		return false;
+	}
+
+	// One engine call: it validates every destination, renames the assets in one batch under a slow task, and deletes
+	// the source directory when nothing is left in it (GIsRunningUnattendedScript keeps dialogs away)
+	bool bEngineOk = false;
+	FString EngineReason;
+	{
+		FN2CMcpEngineErrorCapture Capture;
+		bEngineOk = EditorAssetSubsystem->RenameDirectory(From, To);
+		EngineReason = Capture.GetReason();
+	}
+
+	// Read the outcome back: each asset is at its new path (the engine's <To><subfolder>/<Name>.<Name>) or it is not
+	for (const FAssetData& Asset : SourceAssets)
+	{
+		const FString OldPackage = Asset.PackageName.ToString();
+		const FString AssetName = Asset.AssetName.ToString();
+		const FString SubFolder = FPackageName::GetLongPackagePath(OldPackage).Mid(From.Len());
+		const FString NewPackage = To + SubFolder + TEXT("/") + AssetName;
+		const FAssetData Moved = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(NewPackage + TEXT(".") + AssetName));
+		if (Moved.IsValid() && !Moved.IsRedirector())
+		{
+			OutResult.MovedAssets.Add(Moved.PackageName.ToString());
+		}
+		else
+		{
+			OutResult.FailedAssets.Add(OldPackage);
+		}
+		if (IsRedirectorAt(Asset.GetObjectPathString()))
+		{
+			OutResult.Redirectors.Add(Asset.GetObjectPathString());
+		}
+	}
+
+	if (bEngineOk)
+	{
+		// RenameDirectory moves assets, not folders: recreate the subfolders that held none (review fs-10)
+		for (const FString& SubPath : SubPaths)
+		{
+			const FString NewSubPath = To + SubPath.Mid(From.Len());
+			if (!DoesPathExist(NewSubPath) && !EditorAssetSubsystem->MakeDirectory(NewSubPath))
+			{
+				FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Could not recreate the empty folder %s"), *NewSubPath));
+			}
+		}
+		// The destination folder itself, also when the source held nothing
+		if (!DoesPathExist(To))
+		{
+			EditorAssetSubsystem->MakeDirectory(To);
+		}
+	}
+	else if (OutResult.MovedAssets.IsEmpty())
+	{
+		// Nothing moved: take back the folders this call made (the engine creates the destination before it validates)
+		const FString Made = CreatedRoot.IsEmpty() ? To : CreatedRoot;
+		if (DoesPathExist(Made))
+		{
+			RemoveFolderCreatedForMutation(Made);
+		}
+	}
+
+	OutResult.bSourceRemoved = !DoesPathExist(From);
+	if (!bEngineOk || OutResult.FailedAssets.Num() > 0)
+	{
+		OutResult.Error = EngineReason.IsEmpty()
+			? FString(TEXT("the engine gave no reason (an asset may be in use or locked, or a Play-in-Editor session is running)"))
+			: EngineReason;
+		return false;
+	}
+	return true;
+}
+
+namespace N2CFolderMoveResult
+{
+	static TArray<TSharedPtr<FJsonValue>> ToJsonArray(const TArray<FString>& Strings)
+	{
+		TArray<TSharedPtr<FJsonValue>> Values;
+		for (const FString& String : Strings)
+		{
+			Values.Add(MakeShared<FJsonValueString>(String));
+		}
+		return Values;
+	}
+
+	static FString JoinFew(const TArray<FString>& Strings)
+	{
+		constexpr int32 Shown = 5;
+		TArray<FString> Few;
+		for (int32 Index = 0; Index < FMath::Min(Strings.Num(), Shown); ++Index)
+		{
+			Few.Add(Strings[Index]);
+		}
+		FString Joined = FString::Join(Few, TEXT(", "));
+		if (Strings.Num() > Shown)
+		{
+			Joined += FString::Printf(TEXT(" and %d more"), Strings.Num() - Shown);
+		}
+		return Joined;
+	}
+}
+
+void FN2CMcpFolderMoveResult::WriteTo(FJsonObject& Result) const
+{
+	Result.SetArrayField(TEXT("movedAssets"), N2CFolderMoveResult::ToJsonArray(MovedAssets));
+	Result.SetArrayField(TEXT("failedAssets"), N2CFolderMoveResult::ToJsonArray(FailedAssets));
+	Result.SetArrayField(TEXT("redirectors"), N2CFolderMoveResult::ToJsonArray(Redirectors));
+	Result.SetBoolField(TEXT("sourceRemoved"), bSourceRemoved);
+
+	TArray<TSharedPtr<FJsonValue>> Tips;
+	Tips.Add(MakeShared<FJsonValueString>(TEXT("Use 'read-content-browser-path' to explore the folder at its new path")));
+	if (Redirectors.IsEmpty())
+	{
+		Tips.Add(MakeShared<FJsonValueString>(TEXT("No redirectors were left: references saved in the project's assets point at the new paths. ")
+			TEXT("Paths written in C++, config or text files are not updated")));
+	}
+	else
+	{
+		Tips.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("%d redirector(s) were left at the old paths ('redirectors'): ")
+			TEXT("a referencing package could not be updated or saved. Old references still resolve through them; to remove them, ")
+			TEXT("right-click the old folder in the content browser and choose Update Redirector References. Paths written in C++, ")
+			TEXT("config or text files are not updated"), Redirectors.Num())));
+	}
+	if (bSourceRemoved)
+	{
+		Tips.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("The original folder %s was removed"), *Source)));
+	}
+	else
+	{
+		Tips.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("The original folder %s is still there: it holds %s"), *Source,
+			FailedAssets.Num() > 0 ? TEXT("the assets that did not move")
+			: Redirectors.Num() > 0 ? TEXT("the redirectors left behind")
+			: TEXT("files the asset registry does not list"))));
+	}
+	Result.SetArrayField(TEXT("tips"), Tips);
+}
+
+FString FN2CMcpFolderMoveResult::Describe() const
+{
+	FString Text = Error;
+	if (MovedAssets.Num() > 0 || FailedAssets.Num() > 0)
+	{
+		Text += FString::Printf(TEXT(". Moved %d asset(s) to %s"), MovedAssets.Num(), *Destination);
+		if (FailedAssets.Num() > 0)
+		{
+			Text += FString::Printf(TEXT("; %d did not move and are still under %s: %s"), FailedAssets.Num(), *Source,
+				*N2CFolderMoveResult::JoinFew(FailedAssets));
+		}
+		if (MovedAssets.Num() > 0 && FailedAssets.Num() > 0)
+		{
+			Text += TEXT(". Move the rest with move-asset");
+		}
+	}
+	if (Redirectors.Num() > 0)
+	{
+		Text += FString::Printf(TEXT(". Redirectors left at: %s"), *N2CFolderMoveResult::JoinFew(Redirectors));
+	}
+	return Text;
 }
 
 FN2CMcpEngineErrorCapture::FN2CMcpEngineErrorCapture()

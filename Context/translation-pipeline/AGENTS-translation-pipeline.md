@@ -75,6 +75,14 @@ Private helpers: `ValidatePin`, `GetK2PinMetadata`, `CollectPinDefaultValue`, `C
 
 **`Source/Public/Core/N2CCapture.h` (namespace `N2C`)**
 
+Which graph types capture handles, measured on real assets on UE 5.6 to 5.8 (card 0246, input to decision 0247):
+[graph-type-coverage.md](graph-type-coverage.md). Every K2 graph captures correctly. AnimGraph and state pose graphs
+come out with every node "unused". State machines and Control Rig graphs fail as `EMPTY_GRAPH`, because the collector
+keeps `UK2Node`s only. Every engine `UK2Node` subclass and the N2C type it gets: [k2-node-inventory.md](k2-node-inventory.md)
+(`Scripts/k2_node_inventory.py`). Material capture (epic 0442) is not built yet; every material expression and
+material asset class on each engine, the handling proposed for it and the ENGINE_MINOR_VERSION guards it needs:
+[material-classes.md](material-classes.md) (`Context/translation-pipeline/gen_material_classes.py`, card 0446).
+
 Liveness (card 0137, issue #13): the capture leaves out the editor's ghost nodes (`IsAutomaticallyPlacedGhostNode()`,
 unless `FN2CCaptureOptions::bIncludeGhostNodes`, which the graph-editing MCP tools and the Python bridge's
 `GetFocusedBlueprintJson` set), marks a node whose
