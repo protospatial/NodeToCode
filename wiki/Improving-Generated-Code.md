@@ -236,6 +236,8 @@ Key reference file characteristics:
 #### Add Node Comments
 
 - Add comments directly to nodes (eg "IMPORTANT: <notes>") to help steer the output in relation to that node 
+- Comment boxes are sent too, with the nodes inside them, so a box saying what a group of nodes does helps the LLM name
+  and comment that part of the code
 
 ### 3. Optimize Blueprint Structure
 

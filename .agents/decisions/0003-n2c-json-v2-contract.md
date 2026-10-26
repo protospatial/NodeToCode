@@ -93,6 +93,12 @@ Option 1, provisionally. The sub-choices of card 0117:
 - The capture goldens record 2.0.0, and `NodeToCode.Capture.Golden.V1Reader` keeps 1.0.0 documents readable.
 - A 2.x consumer must accept both exec entry forms; `NodeToCode.Capture.Golden.ExecFlows` checks the pin form on
   every golden, and V1Reader reads a node-only 2.0.0 document.
+- Card 0235 (additive, under 2.0.0 since no release has written it): a graph may carry an optional `comments` array
+  after `flows`, one `{"text", "nodes"}` object per comment box (`N2CJsonContract::CommentsField`; `nodes` lists the
+  IDs of the captured nodes inside the box and is left out when there are none); a `Composite` node's `member_name` is
+  its collapsed graph's name; `graph_type` values are unchanged but now come from the graph's schema (the construction
+  script is `Construction`, a macro `Macro` whatever its name, an anim graph or state machine `Animation`). A reader that
+  predates it keeps `comments` as an unknown field (amendment item 2 below).
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 

@@ -89,6 +89,15 @@ namespace N2CJsonContract
 			|| Hint.Equals(FName::NameToDisplayString(Identifier, true), ESearchCase::CaseSensitive);
 	}
 
+	/**
+	 * A graph's comment boxes (card 0235, additive): "comments" is an optional array after "flows", one object per
+	 * comment box in graph order, {"text": the comment, "nodes": the IDs of the captured nodes inside the box}. "nodes"
+	 * is left out when the box holds no captured node; "comments" is left out when the graph has no comment box.
+	 */
+	inline constexpr const TCHAR* CommentsField = TEXT("comments");
+	inline constexpr const TCHAR* CommentTextField = TEXT("text");
+	inline constexpr const TCHAR* CommentNodesField = TEXT("nodes");
+
 	/** Separates a node ID from a pin ID in a pin ref ("N3.P5") */
 	inline constexpr const TCHAR* PinRefSeparator = TEXT(".");
 
@@ -172,6 +181,8 @@ namespace N2CJsonContract
 		inline constexpr const TCHAR* SkippedGraph = TEXT("SKIPPED_GRAPH");
 		inline constexpr const TCHAR* SkippedNode = TEXT("SKIPPED_NODE");
 		inline constexpr const TCHAR* SkippedPin = TEXT("SKIPPED_PIN");
+		/** A "comments" entry that is not an object (card 0235); the graph and its other comments are kept */
+		inline constexpr const TCHAR* SkippedComment = TEXT("SKIPPED_COMMENT");
 	}
 
 	/** True when FromJson reads this version (majors OldestReadableMajor..Major) */

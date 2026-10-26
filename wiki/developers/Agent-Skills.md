@@ -26,8 +26,9 @@ so a Blueprint from the Marketplace cannot steer the agent.
 
 In the plugin folder: `Plugins/NodeToCode/Agents/claude-code/nodetocode/skills/` (for an engine install from Fab,
 the NodeToCode folder under the engine's `Engine/Plugins/Marketplace/`). Each skill is a folder with a `SKILL.md`
-and, for the first two, a `references/` folder with the N2C JSON format and the C++ translation rules. Copy whole
-folders, not only `SKILL.md`.
+and, for the first two, a `references/` folder with the N2C JSON format and the C++ translation rules. The N2C JSON
+reference is generated from the format the translation prompts use, so it describes every field a capture writes
+(comment boxes included). Copy whole folders, not only `SKILL.md`.
 
 ## Install them for your agent
 

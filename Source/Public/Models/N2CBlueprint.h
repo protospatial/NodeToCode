@@ -320,9 +320,9 @@ enum class EN2CGraphType : uint8
     Composite       UMETA(DisplayName = "Composite"),
     /** A macro graph */
     Macro          UMETA(DisplayName = "Macro"),
-    /** A construction script */
+    /** The construction script (the function graph UEdGraphSchema_K2::FN_UserConstructionScript) */
     Construction    UMETA(DisplayName = "Construction Script"),
-    /** An animation graph */
+    /** An animation graph or an animation state machine graph (GT_Animation, GT_StateMachine) */
     Animation      UMETA(DisplayName = "Animation"),
     /** A struct definition */
     Struct         UMETA(DisplayName = "Struct"),
@@ -333,6 +333,29 @@ enum class EN2CGraphType : uint8
      * its text in FN2CGraph::UnknownGraphType so ToJson writes it back unchanged (card 0445). Never captured.
      */
     Unknown        UMETA(DisplayName = "Unknown")
+};
+
+/**
+ * @struct FN2CCommentBox
+ * @brief A comment box (UEdGraphNode_Comment) of a graph: its text and the captured nodes inside it (card 0235)
+ */
+USTRUCT(BlueprintType)
+struct FN2CCommentBox
+{
+    GENERATED_BODY()
+
+    /** The comment's text, as the user wrote it. Written as "text". */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Text;
+
+    /**
+     * IDs of the graph's captured nodes inside the box (a node whose top-left corner lies within it), in capture order.
+     * Written as "nodes", only when there are any.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FString> NodeIDs;
+
+    bool operator==(const FN2CCommentBox& Other) const { return Text == Other.Text && NodeIDs == Other.NodeIDs; }
 };
 
 /**
@@ -366,6 +389,10 @@ struct FN2CGraph
     /** Execution and data flow connections for this graph */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CFlows Flows;
+
+    /** The graph's comment boxes, in graph order (card 0235). Written as the optional "comments", after "flows". */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CCommentBox> Comments;
 
     /** The "graph_type" text as read when GraphType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
