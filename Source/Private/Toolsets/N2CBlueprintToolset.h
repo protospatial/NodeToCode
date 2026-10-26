@@ -131,11 +131,11 @@ public:
 	 * @param BlueprintAssetPath Blueprint object path, for example /Game/Blueprints/BP_Character.BP_Character.
 	 * @return Success state and the serialized Blueprint JSON, or an error describing why export failed.
 	 */
-	UFUNCTION(Category = "Node to Code", meta = (AICallable))
+	UFUNCTION(BlueprintCallable, Category = "Node to Code", meta = (AICallable))
 	static FN2CBlueprintExportResult ExportBlueprintJson(const FString& BlueprintAssetPath);
 
     /** Read-only graph oracle with native counts and endpoint sets for UEdGraph and RigVM. */
-    UFUNCTION(Category = "Node to Code", meta = (AICallable))
+    UFUNCTION(BlueprintCallable, Category = "Node to Code", meta = (AICallable))
     static FN2CBlueprintGraphTextResult ExportBlueprintGraphText(
         const FString& BlueprintAssetPath, const FString& GraphName, const FString& GraphPath = FString());
 
