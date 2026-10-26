@@ -198,6 +198,31 @@ private:
 };
 
 /**
+ * How one tool presents itself to clients (card 0205): its title, its four behaviour hints and the anthropic/* _meta
+ * entries. The catalog's presentation table holds one for every registered tool and every tool-search meta-tool, and
+ * registration applies it (FN2CToolCatalog::ApplyPresentation) to the definition the tool built, so tools/list, the
+ * catalog's descriptors, describe_toolset and the generated tool reference all carry the same values. Where a tool
+ * sets its own title or hints, the table's win.
+ */
+struct NODETOCODE_API FN2CToolPresentation
+{
+	/** The tool's name */
+	FString Name;
+
+	/** Human-readable name (Tool.title) */
+	FString Title;
+
+	/** All four hints, always set */
+	FMcpToolAnnotations Hints;
+
+	/** _meta["anthropic/maxResultSizeChars"] for a tool whose results can be large; unset: not sent */
+	TOptional<int32> MaxResultSizeChars;
+
+	/** _meta["anthropic/alwaysLoad"]: an entry-point tool a client keeps loaded when it defers tools */
+	bool bAlwaysLoad = false;
+};
+
+/**
  * The tool catalog (card 0339): the one transport-neutral seam every caller of NodeToCode's tools goes through.
  * Describe says what is served, Invoke runs a call. Behind Invoke, in one place: the Play In Editor rule (card 0170),
  * the check of required arguments against the input schema, the untrusted-data marking (card 0124), the execution
@@ -254,6 +279,20 @@ public:
 	 * @return the InvalidArgument error naming the first missing argument, or unset when none is missing
 	 */
 	static TOptional<FN2CToolError> CheckArguments(const FN2CToolDescriptor& Descriptor, const TSharedPtr<FJsonObject>& Arguments);
+
+	/** The presentation table (card 0205): one entry per registered tool and meta-tool, sorted by name */
+	static const TArray<FN2CToolPresentation>& GetPresentations();
+
+	/** The table's entry for a tool, or null when the table has none (a spec probe, a tool added without one) */
+	static const FN2CToolPresentation* FindPresentation(const FString& Name);
+
+	/**
+	 * Sets Definition's title, hints, maxResultSizeChars and alwaysLoad from the table. FN2CMcpToolManager calls it when
+	 * it caches a definition and N2CMcpToolReference when it collects one, before the Play In Editor rule reads the
+	 * hints. A tool with no entry keeps what it set itself.
+	 * @return true when the table has an entry for the tool
+	 */
+	static bool ApplyPresentation(FMcpToolDefinition& Definition);
 
 private:
 	FN2CMcpToolManager& Tools;

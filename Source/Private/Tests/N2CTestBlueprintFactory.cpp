@@ -106,6 +106,12 @@ namespace N2CTest
 		return Sibling->GetBlueprint() ? Sibling : nullptr;
 	}
 
+	FTestBlueprint* FTestBlueprint::AddBlueprintAt(const FString& BlueprintName, const FString& MountRoot)
+	{
+		FTestBlueprint* Other = Siblings.Add_GetRef(MakeUnique<FTestBlueprint>(BlueprintName, MountRoot)).Get();
+		return Other->GetBlueprint() ? Other : nullptr;
+	}
+
 	TArray<FString> FTestBlueprint::Errors() const
 	{
 		TArray<FString> All = ErrorList;

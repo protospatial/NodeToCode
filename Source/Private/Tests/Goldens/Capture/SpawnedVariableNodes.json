@@ -145,7 +145,18 @@
 						"N3.P6": "N2.P4",
 						"N5.P11": "N4.P9"
 					}
-				}
+				},
+				"comments": [
+					{
+						"text": "Spawned nodes",
+						"nodes": [
+							"N2",
+							"N3",
+							"N4",
+							"N5"
+						]
+					}
+				]
 			}
 		],
 		"structs": [],

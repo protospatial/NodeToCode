@@ -5,6 +5,7 @@
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolsets.h"
+#include "MCP/Tools/N2CToolCatalog.h"
 #include "Core/N2CUserSettings.h"
 #include "MCP/Utils/N2CMcpPlaySessionGuard.h"
 #include "Dom/JsonObject.h"
@@ -213,6 +214,11 @@ namespace N2CMcpToolReferencePrivate
 		}
 		const TSharedPtr<FJsonObject> Annotations = Definition.Annotations.ToJson();
 		Json->SetObjectField(TEXT("annotations"), Annotations.IsValid() ? Annotations : MakeShared<FJsonObject>());
+		// The _meta object tools/list sends: the toolset and the anthropic/* entries (card 0205)
+		if (const TSharedPtr<FJsonObject> Meta = Definition.BuildMeta())
+		{
+			Json->SetObjectField(TEXT("_meta"), Meta);
+		}
 
 		TArray<TSharedPtr<FJsonValue>> Arguments;
 		for (const FArgument& Argument : ArgumentsOf(Definition))
@@ -319,6 +325,21 @@ namespace N2CMcpToolReferencePrivate
 			}
 		}
 
+		// The anthropic/* _meta entries (card 0205)
+		TArray<FString> ClientHints;
+		if (Definition.MaxResultSizeChars.IsSet())
+		{
+			ClientHints.Add(FString::Printf(TEXT("text results up to %d characters (`anthropic/maxResultSizeChars`)"), Definition.MaxResultSizeChars.GetValue()));
+		}
+		if (Definition.bAlwaysLoad)
+		{
+			ClientHints.Add(TEXT("kept loaded when a client defers tools (`anthropic/alwaysLoad`)"));
+		}
+		if (ClientHints.Num() > 0)
+		{
+			Md += TEXT("Client hints: ") + FString::Join(ClientHints, TEXT("; ")) + TEXT(".\n\n");
+		}
+
 		const TArray<FArgument> Arguments = ArgumentsOf(Definition);
 		if (Arguments.Num() == 0)
 		{
@@ -363,8 +384,10 @@ TArray<FMcpToolDefinition> N2CMcpToolReference::CollectTools()
 	{
 		if (Tool.IsValid())
 		{
-			// As FN2CMcpToolManager::RegisterTool serves it: the Play In Editor rule is appended to the description
+			// As FN2CMcpToolManager::RegisterTool serves it: the presentation table's title and hints (card 0205), then
+			// the Play In Editor rule appended to the description
 			FMcpToolDefinition Definition = Tool->GetDefinition();
+			FN2CToolCatalog::ApplyPresentation(Definition);
 			FN2CMcpPlaySessionGuard::AddRuleToDescription(Definition);
 			Tools.Add(MoveTemp(Definition));
 		}

@@ -1,0 +1,187 @@
+{
+	"case": "PluginContent_Depth1",
+	"description": "Max Translation Depth 1. BP_N2CGolden_PluginHelper lives under the NodeToCode plugin's mount (/NodeToCode/N2CTest_<guid>, standing in for a content or GameFeature plugin), with the user struct S_GoldenPluginItem {Count: int} and function Helper(Item: S_GoldenPluginItem), whose entry runs CollectGarbage. Function CallPlugin() in /Game: the entry runs Helper with Item from Make S_GoldenPluginItem. Helper is captured with its owner_blueprint and S_GoldenPluginItem is in 'structs'.",
+	"translation_depth": 1,
+	"known_defects": [
+		{
+			"finding": "translation-core-24",
+			"card": "0236",
+			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
+		}
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_PluginContent_Depth1",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_PluginContent_Depth1"
+		},
+		"graphs": [
+			{
+				"name": "CallPlugin",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "CallPlugin",
+						"member_parent": "BP_N2CGolden_PluginContent_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "BP_N2CGolden_PluginHelper",
+						"member_name": "Helper",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "self",
+								"label": "Target",
+								"type": "Object",
+								"sub_type": "BP_N2CGolden_PluginHelper"
+							},
+							{
+								"id": "P5",
+								"name": "Item",
+								"type": "Struct",
+								"sub_type": "S_GoldenPluginItem",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "then"
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MakeStruct",
+						"class": "K2Node_MakeStruct",
+						"title": "Make S_GoldenPluginItem",
+						"member_parent": "/NodeToCode/N2CTest_<GUID>",
+						"member_name": "S_GoldenPluginItem",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Count_2_<GUID>",
+								"label": "Count",
+								"type": "Integer",
+								"default_value": "0"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "S_GoldenPluginItem",
+								"type": "Struct",
+								"sub_type": "S_GoldenPluginItem",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2"
+					],
+					"data":
+					{
+						"N3.P6": "N2.P5"
+					}
+				}
+			},
+			{
+				"name": "Helper",
+				"graph_type": "Function",
+				"owner_blueprint": "BP_N2CGolden_PluginHelper",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Helper",
+						"member_parent": "BP_N2CGolden_PluginHelper",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "Item",
+								"type": "Struct",
+								"sub_type": "S_GoldenPluginItem"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4.P8->N5.P10"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [
+			{
+				"name": "S_GoldenPluginItem",
+				"members": [
+					{
+						"name": "Count",
+						"type": "Int"
+					}
+				]
+			}
+		],
+		"enums": []
+	}
+}

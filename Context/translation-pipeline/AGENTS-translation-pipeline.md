@@ -112,6 +112,20 @@ captured one included, is marked visited when it starts (by pointer), so a funct
 reached twice are captured once, and same-named functions of different Blueprints are both captured; a nested graph
 from another Blueprint sets `FN2CGraph::OwnerBlueprint` (JSON `owner_blueprint`, optional).
 
+Nested graphs and graph kinds (card 0235, translation-core-20 and -21, imp-translation-core-4 and -5):
+`DetermineGraphType` asks the graph's schema (`UEdGraphSchema::GetGraphType`): a collapsed graph (outer
+`UK2Node_Composite`) is `Composite`, `GT_Function` is `Function` or, for `UEdGraphSchema_K2::FN_UserConstructionScript`,
+`Construction`, `GT_Macro` is `Macro`, `GT_Animation` and `GT_StateMachine` are `Animation`, the rest `EventGraph`;
+never the graph's name or its nodes. `AddGraphToProcess` queues a collapsed graph always, at the depth of the graph
+that holds it (it is part of that graph; calls inside it count from there), never a math expression's; a function or
+macro graph only when its Blueprint is user content (`IsUserContent`: the package mount point is `Game`, or a plugin
+that can contain content and is loaded from the project, so content and GameFeature plugins count and engine content,
+engine plugins, `/Script` and `/Temp` do not) and within the depth limit. User structs and enums are emitted by class
+(`UUserDefinedStruct`, `UUserDefinedEnum`), wherever they live. A `Composite` node's `MemberName` is its bound graph's
+name, as a `MacroInstance` node's is its macro's. `CaptureComments` records each `UEdGraphNode_Comment` of a captured
+graph as an `FN2CCommentBox` (JSON `comments`: `text` and `nodes`, the captured nodes whose top-left corner lies in
+the box, in capture order; additive and optional). A null entry in `UEdGraph::Nodes` is skipped everywhere.
+
 Data edges (card 0135, from PR #7 by Yury Rakhuba): each edge is recorded once, from its output pin, after the ID
 pass. `TraceTargetsThroughKnots` follows the output's links depth first in link order, through knots and every branch
 of a knot's fan-out, and returns every non-knot input it reaches; each with an ID is added with `AddUnique` to
@@ -151,7 +165,7 @@ Key responsibilities:
   `IK2Node_EventNodeInterface`, else `Unknown` with the node's `class`, filled by the base processor. Variable nodes
   are then typed by access before scope (`LocalVariableGet`/`LocalVariableSet`, `FunctionParameter`). Plugins add
   mappings with `RegisterNodeClass` or `RegisterNodeType`; `NodeToCode.Capture.Golden.NodeTypes` covers the rules
-- Handles nested graphs with depth tracking
+- Handles nested graphs with depth tracking (collapsed graphs at any depth; user functions and macros, project or plugin content, within the depth)
 - Processes related structs/enums used by nodes
 - Traces connections through knot nodes
 

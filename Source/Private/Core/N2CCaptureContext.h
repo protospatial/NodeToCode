@@ -132,11 +132,26 @@ private:
     /** Validate all flow references after processing */
     bool ValidateFlowReferences(FN2CGraph& Graph);
 
-    /** Determine graph type from UEdGraph */
-    EN2CGraphType DetermineGraphType(UEdGraph* Graph) const;
+    /**
+     * The graph's type from its schema (UEdGraphSchema::GetGraphType): a collapsed graph is Composite, the
+     * UserConstructionScript function Construction, GT_Macro Macro, GT_Animation and GT_StateMachine Animation
+     */
+    static EN2CGraphType DetermineGraphType(const UEdGraph* Graph);
 
-    /** Add a graph to be processed */
+    /**
+     * Queues a nested graph. A collapsed graph is part of the graph that holds it: always queued, at that graph's depth.
+     * A function or macro graph is queued at CurrentDepth + 1 within the depth limit, when its Blueprint is user content.
+     */
     void AddGraphToProcess(UEdGraph* Graph);
+
+    /**
+     * True for an object in the project's own content: /Game, or a plugin the project holds (a content or GameFeature
+     * plugin under the project's Plugins folder). Never engine content, engine plugins, /Script or /Temp.
+     */
+    static bool IsUserContent(const UObject* Object);
+
+    /** Records Graph's comment boxes in the current graph, each with the captured nodes inside it */
+    void CaptureComments(const UEdGraph* Graph);
 
     /** Convert a UK2Node to FN2CNodeDefinition (its IDs must have been assigned) */
     bool ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
@@ -171,11 +186,11 @@ private:
     /** Process execution and data flows for the node */
     void ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs);
 
-    /** Check if a struct is Blueprint-defined */
-    bool IsBlueprintStruct(UScriptStruct* Struct) const;
+    /** A Blueprint-defined struct (UUserDefinedStruct), wherever its asset lives */
+    static bool IsBlueprintStruct(const UScriptStruct* Struct);
 
-    /** Check if an enum is Blueprint-defined */
-    bool IsBlueprintEnum(UEnum* Enum) const;
+    /** A Blueprint-defined enum (UUserDefinedEnum), wherever its asset lives */
+    static bool IsBlueprintEnum(const UEnum* Enum);
 
     /** Process a Blueprint struct into FN2CStruct */
     FN2CStruct ProcessBlueprintStruct(UScriptStruct* Struct);

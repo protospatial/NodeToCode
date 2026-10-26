@@ -16,7 +16,7 @@ namespace
         TEXT("enums"), TEXT("guids") };
     const TCHAR* const MetadataFields[] = { TEXT("name"), TEXT("blueprint_type"), TEXT("blueprint_class") };
     const TCHAR* const GraphFields[] = { TEXT("name"), TEXT("graph_type"), TEXT("owner_blueprint"), TEXT("nodes"),
-        N2CJsonContract::FlowsField };
+        N2CJsonContract::FlowsField, N2CJsonContract::CommentsField };
     const TCHAR* const NodeFields[] = { TEXT("id"), TEXT("type"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField,
         N2CJsonContract::NodeNameFieldV1, TEXT("member_parent"), TEXT("member_name"), TEXT("comment"), TEXT("pure"), TEXT("latent"),
         N2CJsonContract::UnusedField, N2CJsonContract::UnreachableField, N2CJsonContract::DisabledField, TEXT("input_pins"),
@@ -359,6 +359,28 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
 
     // Add flows
     JsonObject->SetObjectField(N2CJsonContract::FlowsField, FlowsToJsonObject(Graph.Flows));
+
+    // Optional (card 0235): the graph's comment boxes, each with the IDs of the nodes inside it
+    if (Graph.Comments.Num() > 0)
+    {
+        TArray<TSharedPtr<FJsonValue>> CommentsArray;
+        for (const FN2CCommentBox& Comment : Graph.Comments)
+        {
+            TSharedPtr<FJsonObject> CommentObject = MakeShared<FJsonObject>();
+            CommentObject->SetStringField(N2CJsonContract::CommentTextField, Comment.Text);
+            if (Comment.NodeIDs.Num() > 0)
+            {
+                TArray<TSharedPtr<FJsonValue>> NodeIDs;
+                for (const FString& NodeID : Comment.NodeIDs)
+                {
+                    NodeIDs.Add(MakeShared<FJsonValueString>(NodeID));
+                }
+                CommentObject->SetArrayField(N2CJsonContract::CommentNodesField, NodeIDs);
+            }
+            CommentsArray.Add(MakeShared<FJsonValueObject>(CommentObject));
+        }
+        JsonObject->SetArrayField(N2CJsonContract::CommentsField, CommentsArray);
+    }
     WriteUnknownFields(JsonObject, Graph.UnknownFields);
 
     return JsonObject;
@@ -872,6 +894,39 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
     if (!ParseFlowsFromJson(*FlowsObject, OutGraph.Flows))
     {
         return false;
+    }
+
+    // Optional (card 0235): comment boxes; an entry that is not an object is skipped with a warning
+    OutGraph.Comments.Reset();
+    const TArray<TSharedPtr<FJsonValue>>* CommentsArray = nullptr;
+    if (JsonObject->TryGetArrayField(N2CJsonContract::CommentsField, CommentsArray))
+    {
+        for (int32 CommentIndex = 0; CommentIndex < CommentsArray->Num(); ++CommentIndex)
+        {
+            const TSharedPtr<FJsonValue>& CommentValue = (*CommentsArray)[CommentIndex];
+            const TSharedPtr<FJsonObject>* CommentObject = nullptr;
+            if (!CommentValue.IsValid() || !CommentValue->TryGetObject(CommentObject))
+            {
+                AddReadWarning(Warnings, N2CJsonContract::ReadWarning::SkippedComment,
+                    FString::Printf(TEXT("%s[%d]"), *JoinPath(Path, N2CJsonContract::CommentsField), CommentIndex), FString(),
+                    TEXT("comment skipped: it is not an object"));
+                continue;
+            }
+            FN2CCommentBox& Comment = OutGraph.Comments.AddDefaulted_GetRef();
+            (*CommentObject)->TryGetStringField(N2CJsonContract::CommentTextField, Comment.Text);
+            const TArray<TSharedPtr<FJsonValue>>* NodeIDs = nullptr;
+            if ((*CommentObject)->TryGetArrayField(N2CJsonContract::CommentNodesField, NodeIDs))
+            {
+                for (const TSharedPtr<FJsonValue>& NodeID : *NodeIDs)
+                {
+                    FString ID;
+                    if (NodeID.IsValid() && NodeID->TryGetString(ID))
+                    {
+                        Comment.NodeIDs.Add(ID);
+                    }
+                }
+            }
+        }
     }
 
     KeepUnknownFields(JsonObject, GraphFields, OutGraph.UnknownFields, Path, Warnings);

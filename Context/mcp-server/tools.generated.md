@@ -55,11 +55,15 @@ Exports many Blueprint graphs as N2C JSON in one call, one file per graph, with 
 
 ### get-blueprint-n2cjson
 
+**Read a Blueprint as N2C JSON**
+
 Reads any Blueprint in the project as NodeToCode's N2C JSON by asset path, with no Blueprint editor open and without changing focus: one graph (graphName or graphGuid, see list-blueprint-graphs) or, with neither, every graph of the Blueprint in one document. The document is the one get-focused-blueprint returns (nodes and pins with ids {short, guid}, flows, the guids table). When it would exceed about 20000 tokens, or with toFile, it is written to a file under Saved/NodeToCode/Exports and the result is {path, bytes, estimatedTokens, reason, graphCount, nodeCount}: read that file in parts.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
 | yes | no | yes | no | no | yes | yes | yes |
+
+Client hints: kept loaded when a client defers tools (`anthropic/alwaysLoad`).
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -72,15 +76,21 @@ Reads any Blueprint in the project as NodeToCode's N2C JSON by asset path, with 
 
 ### get-focused-blueprint
 
+**Read the focused Blueprint graph**
+
 Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
 | yes | no | yes | no | no | yes | yes | yes |
 
+Client hints: text results up to 200000 characters (`anthropic/maxResultSizeChars`); kept loaded when a client defers tools (`anthropic/alwaysLoad`).
+
 No arguments.
 
 ### get-open-blueprint-editors
+
+**List open Blueprint editors**
 
 Returns a list of all currently open Blueprint editors with their asset paths and available graphs
 
@@ -91,6 +101,8 @@ Returns a list of all currently open Blueprint editors with their asset paths an
 No arguments.
 
 ### list-blueprint-functions
+
+**List Blueprint functions**
 
 Lists all functions defined in a Blueprint with their parameters and metadata
 
@@ -108,6 +120,8 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_functions, list_graphs`. L
 
 ### list-blueprint-graphs
 
+**List Blueprint graphs**
+
 Lists every graph of any Blueprint in the project by asset path, with no Blueprint editor open: name, graphGuid (stable across renames; pass it to get-blueprint-n2cjson or the graph tools), kind (event, function, macro, collapsed, delegate, interface), nodeCount, readOnly (shown read-only in the Blueprint editor) and, for a collapsed graph, parentGraph.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
@@ -119,6 +133,8 @@ Lists every graph of any Blueprint in the project by asset path, with no Bluepri
 | `blueprintPath` | `string` | yes |  | Required. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door or /Game/Blueprints/BP_Door.BP_Door. |
 
 ### list-overridable-functions
+
+**List overridable functions**
 
 Lists all functions that can be overridden from parent classes and interfaces
 
@@ -136,6 +152,8 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_functions, list_events`. L
 | `searchTerm` | `string` | no |  | Search term to filter function names |
 
 ### search-blueprint-nodes
+
+**Search Blueprint node actions**
 
 Searches for Blueprint nodes/actions relevant to a given query, in the action list of the target graph (blueprintPath, graphName, graphGuid, or the focused graph): the list the editor's node menu shows with Context Sensitive off. For common math operations, you can simply search for symbols like '+', '-', '*', or '/'. The promotable math nodes (e.g., Add, Subtract, Multiply, Divide) typically have wildcard pins that automatically promote to compatible types (e.g., float, integer, vector), so you usually don't need to search for type-specific versions like 'multiply float by float'. Read-only: it never changes the graph. Each result's spawnMetadata.actionIdentifier is a stable ID (the node spawner's signature, the same in every search) to pass to add-bp-node-to-active-graph unchanged, with spawnMetadata.nodeName as nodeName.
 
@@ -163,11 +181,13 @@ Edit the nodes of a Blueprint graph: find, add and delete nodes, connect pins, s
 
 ### add-bp-node-to-active-graph
 
+**Add a Blueprint node**
+
 Adds a Blueprint node to a graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph (the result's target says which). IMPORTANT: Use search-blueprint-nodes first and pass a result's spawnMetadata.actionIdentifier (a stable ID) and spawnMetadata.nodeName. NEXT STEP: After adding a node, use the 'connect-pins' tool to wire the node's pins to other nodes using the pinGuid values returned in inputPins and outputPins arrays. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node, write_graph_dsl`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -182,11 +202,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node, write_graph_dsl`. 
 
 ### connect-pins
 
+**Connect pins**
+
 Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -198,11 +220,13 @@ Connect pins between nodes of a Blueprint graph (the one blueprintPath plus grap
 
 ### create-comment-node
 
+**Create a comment around nodes**
+
 Creates a comment node around specified Blueprint nodes using their GUIDs, in the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Get node GUIDs from find-nodes-in-graph or get-focused-blueprint first. Do NOT set a color unless the user requests it. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -218,11 +242,13 @@ Creates a comment node around specified Blueprint nodes using their GUIDs, in th
 
 ### delete-blueprint-node
 
+**Delete Blueprint nodes**
+
 Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Supports connection preservation and batch operations. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -234,6 +260,8 @@ Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph bl
 | `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### find-nodes-in-graph
+
+**Find nodes in a graph**
 
 Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.
 
@@ -253,11 +281,13 @@ Searches for specific nodes in a Blueprint graph (the one blueprintPath plus gra
 
 ### set-input-pin-value
 
+**Set an input pin's default value**
+
 Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins). Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.set_pin_value`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -277,11 +307,13 @@ Create, open and delete Blueprint functions, and add or remove their input and r
 
 ### add-function-input-pin
 
+**Add a function input**
+
 Adds a new input parameter to a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.add_function_param`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -298,11 +330,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.add_function_param`. Left to Un
 
 ### add-function-return-pin
 
+**Add a function return value**
+
 Adds a new return value to a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.add_function_param`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -317,11 +351,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.add_function_param`. Left to Un
 
 ### create-blueprint-function
 
+**Create a Blueprint function**
+
 Creates a new Blueprint function with specified parameters and opens it in the editor Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.add_function_graph`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -334,11 +370,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.add_function_graph`. Left to Un
 
 ### delete-blueprint-function
 
+**Delete a Blueprint function**
+
 Deletes a Blueprint function, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint. Supports reference detection and forced deletion. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -350,11 +388,13 @@ Deletes a Blueprint function, named by its functionGuid (or graphName) in bluepr
 
 ### open-blueprint-function
 
+**Open a Blueprint function**
+
 Opens a Blueprint function in the editor and focuses it, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | yes | yes |
+| no | no | yes | no | no | no | yes | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -367,11 +407,13 @@ Opens a Blueprint function in the editor and focuses it, named by its functionGu
 
 ### remove-function-entry-pin
 
+**Remove a function input**
+
 Removes an input parameter from a Blueprint function (a pin on its entry node): the function blueprintPath plus graphName or graphGuid name, else the focused one. Return values are on the result node: remove them with remove-function-return-pin. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.remove_function_param`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -384,11 +426,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.remove_function_param`. Left to
 
 ### remove-function-return-pin
 
+**Remove a function return value**
+
 Removes a return value from a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.remove_function_param`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -405,11 +449,13 @@ Create Blueprint member variables and function local variables, read and set the
 
 ### create-get-local-function-variable-node
 
+**Add a Get node for a local variable**
+
 Create a Get node for a local function variable in the currently focused Blueprint function graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -421,11 +467,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 
 ### create-get-member-variable-node
 
+**Add a Get node for a member variable**
+
 Creates a Get node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -436,11 +484,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 
 ### create-local-variable
 
+**Create a local variable**
+
 Creates a new local variable in the currently focused Blueprint function. The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -453,11 +503,13 @@ Creates a new local variable in the currently focused Blueprint function. The na
 
 ### create-set-local-function-variable-node
 
+**Add a Set node for a local variable**
+
 Create a Set node for a local function variable in the currently focused Blueprint graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -470,11 +522,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 
 ### create-set-member-variable-node
 
+**Add a Set node for a member variable**
+
 Creates a Set node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable that Blueprints may write (BlueprintReadOnly variables are refused). The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -486,11 +540,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 
 ### create-variable
 
+**Create a member variable**
+
 Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -507,6 +563,8 @@ Creates a new member variable in the focused Blueprint (the Blueprint of the act
 
 ### get-blueprint-function-local-variables
 
+**List a function's local variables**
+
 Extract local variables from the currently focused Blueprint function graph
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
@@ -521,6 +579,8 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_variables`. Left to Unreal
 
 ### get-blueprint-member-variables
 
+**List a Blueprint's member variables**
+
 Retrieves all member variables from the currently focused Blueprint, including their types, categories, and properties
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
@@ -532,6 +592,8 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_variables`. Left to Unreal
 No arguments.
 
 ### search-variable-types
+
+**Search variable types**
 
 Searches for available variable types (primitives, classes, structs, enums) by name and returns matches with unique type identifiers
 
@@ -548,11 +610,13 @@ Searches for available variable types (primitives, classes, structs, enums) by n
 
 ### set-local-function-variable-default-value
 
+**Set a local variable's default value**
+
 Set the default value of a local function variable (like editing in the details panel) Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -561,11 +625,13 @@ Set the default value of a local function variable (like editing in the details 
 
 ### set-member-variable-default-value
 
+**Set a member variable's default value**
+
 Sets the default value of a member variable in the focused Blueprint. This modifies the variable's default value property (as shown in the Details panel), not creating any nodes in the graph. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.get_default_object, ObjectTools.set_properties`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -579,6 +645,8 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.get_default_object, ObjectTools
 Tag Blueprint graphs so they can be found and translated as a group, and list or remove those tags.
 
 ### list-blueprint-tags
+
+**List graph tags**
 
 Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, or by tag name (optionally with category), or by category; a graphGuid filter overrides the tag and category filters.
 
@@ -594,11 +662,13 @@ Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, or
 
 ### remove-tag-from-graph
 
+**Remove a tag from a graph**
+
 Removes a specific tag from a Blueprint graph by its GUID and tag name Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -607,11 +677,13 @@ Removes a specific tag from a Blueprint graph by its GUID and tag name Refused w
 
 ### tag-blueprint-graph
 
+**Tag the focused graph**
+
 Tags the currently focused Blueprint graph with a name and category for organization and tracking Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | yes | no | no | no | no | yes |
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -625,11 +697,13 @@ Compile Blueprints and report their errors and warnings, and save Blueprints to 
 
 ### compile-blueprint
 
+**Compile a Blueprint**
+
 Compile a Blueprint and return compilation results including errors and warnings Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.compile_blueprint`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -640,11 +714,13 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.compile_blueprint`. Left to Unr
 
 ### save-blueprint
 
+**Save a Blueprint**
+
 Save a Blueprint asset to disk, writing the package file Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `AssetTools.save_assets`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -659,11 +735,13 @@ Create Blueprint assets from a parent class, and search the classes a Blueprint 
 
 ### create-blueprint-class
 
+**Create a Blueprint class**
+
 Creates a new Blueprint class with the specified parent class and settings, then saves it. A UserWidget parent gives a Widget Blueprint Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.create`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -680,6 +758,8 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create`. Left to Unreal MCP by 
 | `blueprintType` | `string` | no | `"auto"` | Blueprint type, in any case. auto gives interface for the Interface parent, otherwise normal. interface needs parentClassPath '/Script/CoreUObject.Interface', and an interface parent needs interface. Other values are refused. One of: `"auto"`, `"normal"`, `"const"`, `"interface"`. |
 
 ### search-blueprint-classes
+
+**Search parent classes**
 
 Searches for available parent classes for Blueprint creation, similar to the 'Pick Parent Class' dialog. Common parent classes (Actor, Pawn, Character, ActorComponent, UserWidget, ...) come first and are listed whatever the classType and include filters say. totalFound counts every class collected before the search term is applied, not the matches
 
@@ -705,11 +785,13 @@ List, add and delete the components of an Actor Blueprint.
 
 ### add-component-class-to-actor
 
+**Add a component to an Actor Blueprint**
+
 Adds a component of a specified class to an Actor Blueprint, as the Components panel does (one undoable step). A scene component is attached to parentComponent, or to the actor's root component Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `ActorTools.add_component`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -724,11 +806,13 @@ Unreal MCP counterpart (UE 5.8): `ActorTools.add_component`. Left to Unreal MCP 
 
 ### delete-component-in-actor
 
+**Delete a component from an Actor Blueprint**
+
 Deletes a component this Actor Blueprint adds, as the Components panel does (one undoable step): its Get and Set nodes are removed, events bound to it are reported, and its children are deleted too or moved up to its parent Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `ActorTools.remove_component`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -739,6 +823,8 @@ Unreal MCP counterpart (UE 5.8): `ActorTools.remove_component`. Left to Unreal M
 | `blueprintPath` | `string` | no |  | Optional asset path of the Blueprint. If not provided, uses the currently focused Blueprint |
 
 ### list-components-in-actor
+
+**List an Actor Blueprint's components**
 
 Lists the components of an Actor Blueprint as a tree, as the Components panel shows them: native components of its C++ class, components its parent Blueprints add, and its own, with types and relative transforms
 
@@ -760,11 +846,13 @@ Search and browse the project's assets and folders, open them in the editor, and
 
 ### copy-asset
 
+**Copy an asset**
+
 Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /&lt;PluginName&gt;/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy is refused. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `AssetTools.duplicate`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -775,11 +863,13 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.duplicate`. Left to Unreal MCP by d
 
 ### create-folder
 
+**Create a content folder**
+
 Create a new folder in the content browser Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | no | yes | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `AssetTools.create_folder`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -790,11 +880,13 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.create_folder`. Left to Unreal MCP 
 
 ### move-asset
 
+**Move an asset**
+
 Move or rename an asset to a new location in the content browser. Accepts both package paths (/Game/Folder/Asset) and object paths (/Game/Folder/Asset.Asset) Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -807,11 +899,13 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by defaul
 
 ### move-folder
 
+**Move a content folder**
+
 Move a folder and all its contents to a new location in the content browser Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -823,11 +917,13 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by defaul
 
 ### open-blueprint-asset
 
+**Open a Blueprint in its editor**
+
 Opens a specified blueprint asset in the Blueprint Editor, allowing agents to programmatically open blueprints for viewing or editing. An already open Blueprint is brought to the front. Either way it becomes the focused Blueprint that get-focused-blueprint and the other focus-based tools act on
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | yes | yes |
+| no | no | yes | no | no | no | yes | yes |
 
 Unreal MCP counterpart (UE 5.8): `EditorAppToolset.OpenEditorForAsset`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -839,11 +935,13 @@ Unreal MCP counterpart (UE 5.8): `EditorAppToolset.OpenEditorForAsset`. Left to 
 
 ### open-content-browser-path
 
+**Show a folder in the Content Browser**
+
 Opens a specified path in the focused content browser, allowing navigation of the project structure
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | yes | yes |
+| no | no | yes | no | no | no | yes | yes |
 
 Unreal MCP counterpart (UE 5.8): `EditorAppToolset.SetContentBrowserPath`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -854,6 +952,8 @@ Unreal MCP counterpart (UE 5.8): `EditorAppToolset.SetContentBrowserPath`. Left 
 | `create_if_missing` | `boolean` | no | `false` | Whether to create the folder if it doesn't exist; only under /Game or a project plugin's content |
 
 ### read-content-browser-path
+
+**List a content folder**
 
 Returns the assets of every type and the subfolders directly inside a content browser folder (not recursive), with paging and type and name filters
 
@@ -874,11 +974,13 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.list_folders, find_assets`. Left to
 
 ### rename-asset
 
+**Rename an asset**
+
 Rename an asset or move it to a new location Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -891,11 +993,13 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by defaul
 
 ### rename-folder
 
+**Rename a content folder**
+
 Rename a folder in the content browser Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | no | yes |
+| no | yes | no | no | no | no | no | yes |
 
 Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
@@ -906,6 +1010,8 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by defaul
 | `showNotification` | `boolean` | no |  |  |
 
 ### search-content-browser
+
+**Search project assets**
 
 Search for assets under /Game (and /Engine when includeEngineContent is true) by name or type. Plugin content mounted at /&lt;PluginName&gt; is not searched; list it with read-content-browser-path.
 
@@ -929,11 +1035,15 @@ Read text files and list folders inside the project directory.
 
 ### read-file
 
+**Read a project text file**
+
 Reads a text file in the Unreal Engine project, or in the translation output directory when that is outside the project. relativePath is relative to the project folder; an absolute path is accepted only inside those two folders. Only text files are read (source, config, JSON, CSV, Markdown, logs, ...): other types such as .uasset, .uexp, .png or .dll, and files with NUL bytes or invalid UTF-8, are refused. At most 500 KB of text comes back per call, in whole lines: truncated is true when the cap cut the read short, and nextOffset is the offset that continues it. offset and limit read a line range. Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) are never readable.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
 | yes | no | yes | no | no | no | yes | yes |
+
+Client hints: text results up to 200000 characters (`anthropic/maxResultSizeChars`).
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -942,6 +1052,8 @@ Reads a text file in the Unreal Engine project, or in the translation output dir
 | `limit` | `integer` | no |  | Optional. The most lines to return (default: as many as fit in 500 KB) |
 
 ### read-path
+
+**List a project directory**
 
 Lists the files and folders directly inside a directory of the Unreal Engine project (not recursive), or of the translation output directory when that is outside the project. relativePath is relative to the project folder: "" or "." for the project folder, "Config", "Content/Blueprints"; an absolute path is accepted only inside those two folders. Results come in pages, folders first and then files, each sorted by name: total counts every entry, and when truncated is true pass nextCursor as cursor for the next page. filter keeps the names that match a wildcard such as "*.json". Credential folders (Saved/NodeToCode/User, .git) cannot be listed.
 
@@ -962,11 +1074,13 @@ Run Python in the editor with the unreal module (only when the user allows MCP P
 
 ### delete-python-script
 
+**Delete a library script**
+
 Delete a Python script from the script library. This permanently removes both the script file and its registry entry. Use with caution - this action cannot be undone.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | yes | no |
+| no | yes | yes | no | no | no | yes | no |
 
 Served only when the per-user Allow MCP Python Execution is on (off by default).
 
@@ -975,6 +1089,8 @@ Served only when the per-user Allow MCP Python Execution is on (off by default).
 | `name` | `string` | yes |  | The name of the script to delete. Use list-python-scripts or search-python-scripts to find the exact script name. |
 
 ### get-python-script
+
+**Read a library script**
 
 Get a Python script's full code and metadata by name. Returns the script code, description, tags, parameters, and usage stats. Use this to understand implementation details before extending or modifying a script. For just seeing importable functions (more token-efficient), use get-script-functions instead.
 
@@ -988,6 +1104,8 @@ Get a Python script's full code and metadata by name. Returns the script code, d
 
 ### get-script-functions
 
+**List a library script's functions**
+
 Get function signatures from a Python script using AST parsing (~80% more token-efficient than get-python-script). Returns function names, parameters, types, and docstrings WITHOUT full implementation code. Use this after search-python-scripts finds a partial match to see what functions can be imported. Then import in your code: 'from scripts.&lt;category&gt;.&lt;script_name&gt; import function_name'.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
@@ -999,6 +1117,8 @@ Get function signatures from a Python script using AST parsing (~80% more token-
 | `name` | `string` | yes |  | The name of the script to analyze. Use search-python-scripts or list-python-scripts to find available script names. |
 
 ### list-python-scripts
+
+**List library scripts**
 
 List available Python scripts from the script library. Returns script names with metadata (description, tags, usage count). Use alongside search-python-scripts to discover reusable scripts before writing new code (DRY principle). Browse by category to find related utilities that can be imported and composed.
 
@@ -1013,11 +1133,13 @@ List available Python scripts from the script library. Returns script names with
 
 ### run-python
 
+**Run Python in the editor**
+
 Execute Python code in Unreal Engine's Python environment. WORKFLOW: 1) Search existing scripts first (search-python-scripts), 2) Use Context7 MCP to look up UE Python APIs (resolve-library-id with 'unreal-python-stubhub', then query-docs) - never guess signatures, 3) Import saved scripts: 'from scripts.&lt;category&gt;.&lt;name&gt; import func', 4) Use 'import nodetocode as n2c' for Blueprint utilities (get_focused_blueprint, compile_blueprint, save_blueprint, tag_graph), 5) Set 'result' variable to return structured data.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | yes | no |
+| no | yes | no | yes | no | no | yes | no |
 
 Served only when the per-user Allow MCP Python Execution is on (off by default).
 
@@ -1028,11 +1150,13 @@ Served only when the per-user Allow MCP Python Execution is on (off by default).
 
 ### save-python-script
 
+**Save a library script**
+
 Save a Python script to the script library for reuse. Stored in Content/Python/scripts/&lt;category&gt;/ and importable as 'from scripts.&lt;category&gt;.&lt;name&gt; import func'. Write modular scripts with focused functions, clear docstrings, and parameterized inputs. Every saved script grows the reusable toolkit for future tasks.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | no | no | yes | no |
+| no | yes | yes | no | no | no | yes | no |
 
 Served only when the per-user Allow MCP Python Execution is on (off by default).
 
@@ -1045,6 +1169,8 @@ Served only when the per-user Allow MCP Python Execution is on (off by default).
 | `category` | `string` | no |  | Category folder for organization (default: 'general'). Examples: 'gameplay', 'ui', 'utilities', 'animation'. |
 
 ### search-python-scripts
+
+**Search library scripts**
 
 CALL THIS FIRST before writing any Python code. Search for existing scripts to reuse. Returns matching scripts sorted by relevance. If exact match found: execute it with run-python. If partial match found: use get-script-functions to see importable functions, then compose. Only write new code if no relevant scripts exist.
 
@@ -1063,6 +1189,8 @@ Translate the focused Blueprint graph into C++, Python, C#, JavaScript, Swift or
 
 ### get-available-llm-providers
 
+**List LLM providers**
+
 Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
@@ -1073,6 +1201,8 @@ No arguments.
 
 ### get-available-translation-targets
 
+**List translation languages**
+
 Returns the list of programming languages that NodeToCode can translate Blueprints into, including metadata about each language.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
@@ -1082,6 +1212,8 @@ Returns the list of programming languages that NodeToCode can translate Blueprin
 No arguments.
 
 ### get-translation-output-directory
+
+**Show the translation output folder**
 
 Returns the translation output directory configuration from NodeToCode settings. Shows whether a custom directory is set or if the default location is being used. Translations run from the editor's NodeToCode window are saved there; translate-focused-blueprint returns its translation in the tool result and writes no files.
 
@@ -1112,11 +1244,15 @@ Translates many Blueprint graphs with an LLM provider in one call, with no Bluep
 
 ### translate-focused-blueprint
 
+**Translate the focused Blueprint graph**
+
 Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. Nothing is saved to the translation output directory.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
-| unset | unset | unset | unset | yes | yes | yes | yes |
+| no | no | no | yes | yes | yes | yes | yes |
+
+Client hints: text results up to 200000 characters (`anthropic/maxResultSizeChars`).
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -1130,11 +1266,15 @@ With Tool Exposure set to Tool search, `tools/list` holds only these three, name
 
 ### call_tool
 
+**Call a tool**
+
 Call a NodeToCode tool by name with its arguments and return its result. Use list_toolsets and describe_toolset to find tool names and input schemas. Long-running tools report progress and can be cancelled as when called directly.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running |
 |---|---|---|---|---|
-| unset | unset | unset | unset | no |
+| no | yes | no | yes | no |
+
+Client hints: kept loaded when a client defers tools (`anthropic/alwaysLoad`).
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -1144,11 +1284,15 @@ Call a NodeToCode tool by name with its arguments and return its result. Use lis
 
 ### describe_toolset
 
+**Describe a toolset**
+
 Get a toolset's tools: each tool's name, description, input schema and behaviour hints, as JSON. Use list_toolsets for the toolset names.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running |
 |---|---|---|---|---|
 | yes | no | yes | no | no |
+
+Client hints: kept loaded when a client defers tools (`anthropic/alwaysLoad`).
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -1156,10 +1300,14 @@ Get a toolset's tools: each tool's name, description, input schema and behaviour
 
 ### list_toolsets
 
+**List toolsets**
+
 List NodeToCode's toolsets with their names and descriptions. Call describe_toolset on one to see its tools, then call_tool to run a tool.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running |
 |---|---|---|---|---|
 | yes | no | yes | no | no |
+
+Client hints: kept loaded when a client defers tools (`anthropic/alwaysLoad`).
 
 No arguments.

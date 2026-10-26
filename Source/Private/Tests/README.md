@@ -290,14 +290,21 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   member_parent was its type, `real/double`; translation-core-28: `GetCleanClassName` cut `_C` off member names).
   From card 0127: a user struct with an object member is dropped from
   `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped (translation-core-11,
-  0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236); collapsed graphs and user macros
-  are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not name the captured graph
-  (imp-translation-core-4, 0235) and a macro without `macro` in its name is an EventGraph (translation-core-20, 0235).
+  0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236). Card 0235 fixed and removed the
+  nested-graph defects (imp-translation-core-5: collapsed graphs were dropped at depth 0; imp-translation-core-4: the
+  Composite node did not name its graph; translation-core-20: a macro without `macro` in its name was an EventGraph).
   Card 0234 fixed and removed Break Struct captured as a Variable titled `None` with a session-dependent member_name
   (translation-core-4) and the Enhanced Input event typed `CallFunction` (translation-core-15). The list lives in the case table in the
   spec and is written into the golden. Error log lines that a known defect writes (`Missing name`, `Member Owner
   requires a type name`) are the case's `ExpectedErrors`: the case fails if they stop appearing, so the fixing card
   updates the case.
+- **Graph kinds and nested graphs (card 0235):** `ConstructionScript` (the UserConstructionScript is `Construction`),
+  `MacroGraph_Depth1` (a macro named DoDamage is `Macro`), `NestedGraphs_Depth0` (the collapsed graph is captured at
+  depth 0 and its Composite node names it in `member_name`), `PluginContent_Depth1` (a function of a Blueprint under
+  the plugin's own `/NodeToCode` mount, made with `AddBlueprintAt`, is followed and its user struct emitted) and
+  `CommentBoxes` (`comments`: a box around two nodes lists their IDs, an empty box only its text). `Discovery` checks
+  a null entry in `UEdGraph::Nodes` (main, nested and listed graph), an anim graph typed `Animation` by its schema, and
+  that a StandardMacros ForEachLoop (engine content) adds no graph at depth 2.
 - **Node types (card 0234):** `NodeTypes` (Set members in Vector, For Each (Map), For Each (Set), a local
   variable's Get and Set, an unwired To Text (`K2Node_GenericToText`), and two test-only classes from
   `Capture/N2CTestNodeClasses.h`: `K2Node_N2CTestUnmapped`, a UK2Node subclass with no mapping, and

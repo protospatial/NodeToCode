@@ -75,6 +75,13 @@ namespace N2CTest
 		 */
 		FTestBlueprint* AddSiblingBlueprint(const FString& BlueprintName);
 
+		/**
+		 * Another Actor Blueprint named BlueprintName in a transient package of its own under MountRoot (for example
+		 * /NodeToCode, the plugin's own mount, standing in for a content or GameFeature plugin), owned by this one and
+		 * released with it. Null and an error when it cannot be made.
+		 */
+		FTestBlueprint* AddBlueprintAt(const FString& BlueprintName, const FString& MountRoot);
+
 		/** The event graph (holds the default ghost events CreateBlueprint adds to an Actor Blueprint) */
 		UEdGraph* EventGraph() const;
 

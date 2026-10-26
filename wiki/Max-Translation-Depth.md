@@ -10,9 +10,11 @@ Control how deep the translator traverses nested graphs:
 - **2**: Include nested functions
 - **3-5**: Deep system translation
 
-The depth counts calls away from the graph you translate. Only your own graphs (functions, collapsed graphs and macros
-in your project's content) are followed; engine functions are never added. If function A calls B, B calls C and C
-calls D, translating A sends:
+The depth counts calls away from the graph you translate. Only your own functions and macros are followed: those in
+your project's content and in your project's plugins (content and Game Feature plugins included); engine functions
+and macros are never added. Collapsed graphs are part of the graph that holds them, so they are always sent with it,
+at every depth (before NodeToCode 2.0 they were left out at depth 0). If function A calls B, B calls C and C calls D,
+translating A sends:
 
 | Depth | Graphs sent |
 |---|---|

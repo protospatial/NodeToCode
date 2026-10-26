@@ -2,7 +2,7 @@
 ***
 
 ## Setting Appropriate Depth
-The [Max Translation Depth setting](Max-Translation-Depth) affects how Node to Code translates nested user-created graphs like functions, macros, collapsed graphs, and math expressions into code:
+The [Max Translation Depth setting](Max-Translation-Depth) affects how Node to Code translates nested user-created graphs like functions and macros into code. Collapsed graphs are always translated with the graph that holds them, whatever the depth, and math expressions are translated from the node itself:
 
 Depth | Use Case | Considerations
 -- | -- | --

@@ -1,19 +1,8 @@
 {
 	"case": "NestedGraphs_Depth0",
-	"description": "Max Translation Depth 0. Function Nested(): the entry runs a collapsed graph GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs the Blueprint's own macro LocalSteps (In -> ControlScreensaver -> Out).",
+	"description": "Max Translation Depth 0. Function Nested(): the entry runs a collapsed graph GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs the Blueprint's own macro LocalSteps (In -> ControlScreensaver -> Out). The collapsed graph is captured at every depth and its Composite node names it in member_name; the macro graph (a Macro graph, though its name has no 'macro') only from depth 1.",
 	"translation_depth": 0,
-	"known_defects": [
-		{
-			"finding": "imp-translation-core-5",
-			"card": "0235",
-			"effect": "Collapsed graphs and the Blueprint's own macros only count as nested graphs within the depth limit: at depth 0 (the default) GoldenCollapsed and LocalSteps are not captured and only the opaque Composite and MacroInstance nodes remain"
-		},
-		{
-			"finding": "imp-translation-core-4",
-			"card": "0235",
-			"effect": "The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no member_parent or member_name)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -48,7 +37,7 @@
 						"id": "N2",
 						"type": "Composite",
 						"class": "K2Node_Composite",
-						"title": "GoldenCollapsed",
+						"member_name": "GoldenCollapsed",
 						"input_pins": [
 							{
 								"id": "P2",
@@ -90,6 +79,71 @@
 					"execution": [
 						"N1.P1->N2.P2",
 						"N2.P3->N3.P4"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "GoldenCollapsed",
+				"graph_type": "Composite",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "Tunnel",
+						"class": "K2Node_Tunnel",
+						"title": "Inputs",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "In",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "Tunnel",
+						"class": "K2Node_Tunnel",
+						"title": "Outputs",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Out",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					},
+					{
+						"id": "N6",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P8",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": "then",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4.P6->N6.P8",
+						"N6.P9->N5.P7"
 					],
 					"data":
 					{
