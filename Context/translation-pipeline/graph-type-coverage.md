@@ -3,7 +3,8 @@
 What NodeToCode does today with each kind of graph a user can open, measured on real Blueprints on UE 5.6, 5.7 and 5.8
 at `origin/dev-2.0` 6476e20 (cards 0234 and 0235 merged), October 2026. Decision 0247 asks which graph types
 NodeToCode supports, supports in part with a warning, or refuses. This page gives the evidence and a recommendation; the
-owner decides. The node-class half is [k2-node-inventory.md](k2-node-inventory.md).
+owner decides. The node-class half is [k2-node-inventory.md](k2-node-inventory.md); the material half (expression and
+asset classes, decision 0443) is [material-classes.md](material-classes.md).
 
 ## Recommendation in one paragraph
 
@@ -72,7 +73,7 @@ S is under a day, M is 2 to 4 days, L is one to two weeks or more.
 | 19 | State (pose graph inside a state) | `ABP_Manny` Walk / Run | `Animation`, 8 of 8; StateResult, 2 BlendSpacePlayer, BlendListByBool `Unknown`; **all 8 `unused`** | No code: "Every node ... is marked unused" | as row 17 | **wrong** | as row 17 |
 | 20 | Transition rule | `ABP_Manny` Transition (6 nodes) | `Function` (the K2 schema reports GT_Function), 6 of 6; TransitionResult `Unknown`; **all 6 `unused`** | **Wrong code.** Run 1: `bool Transition() const { return false; }`. Run 2: an empty `void Transition()`. The rule is `!ShouldMove \|\| !IsAirborne`; the notes say so but the code does not | Liveness as row 17. TransitionResult is not a boundary. The graph does not say which transition it belongs to (from-state, to-state) | **wrong** | Pure boolean K2 graph: S to make it supported (TransitionResult, StateResult and Root as liveness boundaries, plus the transition's from and to states in the graph name). The structure around it is row 18 |
 | 21 | Control Rig graph (RigVM) | `CR_Mannequin_BasicFootIK` Rig Graph (41 nodes) | **Not captured**: `EMPTY_GRAPH ... has no nodes`. The asset is a `UBlueprint` subclass, so it gets past the asset check; its RigVM nodes are not K2 | `NO_VALID_ITEMS` / `EMPTY_GRAPH` | Misleading error. `list-blueprint-graphs` lists its graphs as event, function and graph | refused (de facto) | Refuse with a typed error: S. Support: L (RigVM is its own graph model; Epic's 5.8 toolsets cover it) |
-| 22 | Material and other non-Blueprint assets | `/Engine/EngineMaterials/DefaultMaterial` | `ASSET_NOT_FOUND: no Blueprint at ...` (by-path tools); the batch tools' descriptions promise `UNSUPPORTED_ASSET_TYPE` (not measured) | n/a | Two different errors for the same case. Materials: decision 0443, inventory 0446 | refused | Materials: see 0443. Niagara and PCG: refuse (Epic's toolsets cover them) |
+| 22 | Material and other non-Blueprint assets | `/Engine/EngineMaterials/DefaultMaterial` | `ASSET_NOT_FOUND: no Blueprint at ...` (by-path tools); the batch tools' descriptions promise `UNSUPPORTED_ASSET_TYPE` (not measured) | n/a | Two different errors for the same case. Materials: decision 0443, inventory [material-classes.md](material-classes.md) (0446) | refused | Materials: see 0443. Niagara and PCG: refuse (Epic's toolsets cover them) |
 
 Not measured as their own rows: Widget animations and the widget designer tree (no graph), StateTree, Niagara and PCG
 assets (none in the mounted plugins; none are `UBlueprint` subclasses, so they get the refusal of row 22). Delegate
@@ -128,6 +129,19 @@ signature graphs are a K2 kind that goldens cover (cards 0234, 0235).
   K2Node_InjectionCallbackProxySetVariable are CallFunction subclasses, so they get the CallFunction type with their
   function's name.
 
+## Material classes (summary of [material-classes.md](material-classes.md), card 0446)
+
+Row 22's material half, from the engine sources only (no editor run). `UMaterialExpression` subclasses: 349 on 5.6,
+354 on 5.7, 364 on 5.8, of which 304, 309 and 314 are in the Engine module and the rest in Landscape and plugins
+(Interchange's MaterialX nodes, and from 5.8 MeshPartition). Under 0443's recommendation, applied provisionally, about
+70 get a hand mapping, about 270 the reflection fallback, and 8 or 9 are refused (deprecated classes and the material
+layer stack). Of the asset classes, UMaterial and UMaterialFunction are captured by exact class; Material Layers, Layer
+Blends and function instances are refused; Material Instance Constants wait on 0470. The page also gives the eight
+ENGINE_MINOR_VERSION guards with file:line on each engine. It corrects the card's research in two places:
+MaterialXSwizzle is not removed by 5.8 (it is `UE_DEPRECATED(5.7)` and still declared), and MaterialXFractal3D is
+replaced by MaterialXFractal on 5.8. Nine classes have value-type overrides that differ between engines, StaticSwitch
+and StaticSwitchParameter among them.
+
 ## Options for decision 0247
 
 | Option | Supported | Partial, with a note | Refused with a typed error | Work it creates | Risk |
@@ -151,7 +165,9 @@ python -I Tests/mcp_probe/graph_type_matrix_0246.py --engine G:/UE/UE_5.8 \
     --project "<Hosts>/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 [--translate]
 python -I Scripts/k2_node_inventory.py --engine 5.6=G:/UE/UE_5.6 --engine 5.7=G:/UE/UE_5.7 --engine 5.8=G:/UE/UE_5.8 \
     --markdown Context/translation-pipeline/k2-node-inventory.md
+python -I Context/translation-pipeline/gen_material_classes.py --engine 5.6=G:/UE/UE_5.6 --engine 5.7=G:/UE/UE_5.7 \
+    --engine 5.8=G:/UE/UE_5.8 [--check]
 ```
 
 The harness takes about 5 minutes per engine, plus about 6 minutes with `--translate`. The inventory reads every engine
-header and takes about 9 minutes for three engines.
+header and takes about 9 minutes for three engines; the material inventory takes about 75 seconds.
