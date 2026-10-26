@@ -205,15 +205,18 @@ TArray<FString> UN2CGraphStateManager::GetAllCategories() const
 
 bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphName,
 	const FSoftObjectPath& Blueprint, const FString& Tag,
-	const FString& Category, const FString& Description)
+	const FString& InCategory, const FString& Description)
 {
+	// A tag is always stored under a real category: an empty one means "Default", never "any category"
+	const FString Category = FN2CTagEntry::NormalizeCategory(InCategory);
+
 	// Get or create the graph state
 	FN2CGraphState& State = GetOrCreateGraphState(GraphGuid, GraphName, Blueprint);
 
 	// Check if this tag already exists
 	for (const FN2CTagEntry& ExistingTag : State.Tags)
 	{
-		if (ExistingTag.MatchesTag(Tag, Category))
+		if (ExistingTag.MatchesTagExactly(Tag, Category))
 		{
 			FN2CLogger::Get().Log(FString::Printf(TEXT("Tag '%s' in category '%s' already exists for graph %s"),
 				*Tag, *Category, *GraphGuid.ToString()),

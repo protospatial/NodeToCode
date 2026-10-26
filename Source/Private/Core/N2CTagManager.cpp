@@ -31,20 +31,10 @@ void UN2CTagManager::Initialize()
 	// Subscribe to graph state manager events and forward them to our delegates
 	GraphTagAddedHandle = UN2CGraphStateManager::Get().OnGraphTagAdded.AddLambda([this](const FN2CGraphState& GraphState)
 	{
-		// Convert to legacy format for each tag in the state
-		for (const FN2CTagEntry& TagEntry : GraphState.Tags)
+		FN2CTaggedBlueprintGraph AddedTag;
+		if (MakeTagAddedEvent(GraphState, AddedTag))
 		{
-			FN2CTaggedBlueprintGraph LegacyTag;
-			LegacyTag.Tag = TagEntry.Tag;
-			LegacyTag.Category = TagEntry.Category;
-			LegacyTag.Description = TagEntry.Description;
-			LegacyTag.GraphGuid = GraphState.GraphGuid;
-			LegacyTag.GraphName = GraphState.GraphName;
-			LegacyTag.OwningBlueprint = GraphState.OwningBlueprint;
-			LegacyTag.Timestamp = TagEntry.Timestamp;
-
-			OnBlueprintTagAdded.Broadcast(LegacyTag);
-			break; // Only broadcast once (for the most recently added tag)
+			OnBlueprintTagAdded.Broadcast(AddedTag);
 		}
 	});
 
@@ -57,6 +47,24 @@ void UN2CTagManager::Initialize()
 	{
 		OnTagsReloaded.Broadcast();
 	});
+}
+
+bool UN2CTagManager::MakeTagAddedEvent(const FN2CGraphState& GraphState, FN2CTaggedBlueprintGraph& OutTag)
+{
+	// AddTag appends the new entry and then broadcasts, so the tag just added is the last one
+	if (GraphState.Tags.Num() == 0)
+	{
+		return false;
+	}
+	const FN2CTagEntry& TagEntry = GraphState.Tags.Last();
+	OutTag.Tag = TagEntry.Tag;
+	OutTag.Category = TagEntry.Category;
+	OutTag.Description = TagEntry.Description;
+	OutTag.GraphGuid = GraphState.GraphGuid;
+	OutTag.GraphName = GraphState.GraphName;
+	OutTag.OwningBlueprint = GraphState.OwningBlueprint;
+	OutTag.Timestamp = TagEntry.Timestamp;
+	return true;
 }
 
 void UN2CTagManager::Shutdown()

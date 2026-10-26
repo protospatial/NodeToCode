@@ -123,9 +123,9 @@ public:
 	 * @param GraphName The human-readable graph name
 	 * @param Blueprint The owning Blueprint asset
 	 * @param Tag The tag name
-	 * @param Category The tag category
+	 * @param Category The tag category; an empty or blank category is stored as "Default"
 	 * @param Description Optional description
-	 * @return True if the tag was added
+	 * @return True if the tag was added, or this exact tag and category was already on the graph
 	 */
 	bool AddTag(const FGuid& GraphGuid, const FString& GraphName,
 		const FSoftObjectPath& Blueprint, const FString& Tag,

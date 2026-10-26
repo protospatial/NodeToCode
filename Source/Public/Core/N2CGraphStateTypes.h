@@ -137,8 +137,14 @@ struct NODETOCODE_API FN2CTagEntry
 	/** Deserialize from JSON */
 	static FN2CTagEntry FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 
-	/** Check if this matches a tag name and category (case-insensitive) */
+	/** Check if this matches a tag name and category (case-insensitive); an empty InCategory matches any category (query and remove) */
 	bool MatchesTag(const FString& InTag, const FString& InCategory) const;
+
+	/** Check if this is exactly this tag name and category (case-insensitive, no wildcard); used for the duplicate check on add */
+	bool MatchesTagExactly(const FString& InTag, const FString& InCategory) const;
+
+	/** The category a new tag is stored under: an empty or blank category becomes "Default" */
+	static FString NormalizeCategory(const FString& InCategory);
 };
 
 /**

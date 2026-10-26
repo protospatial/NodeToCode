@@ -12,19 +12,17 @@ graph's translation and JSON export.
   under its `GraphGuid` (`FN2CMcpTagBlueprintGraphTool::Execute`)
 - **Parameters**:
   - `tag` (required, not empty): The tag name
-  - `category` (optional, default `Default`): Grouping
+  - `category` (optional, default `Default`): Grouping. An empty or blank category is stored as `Default`
+    (`FN2CTagEntry::NormalizeCategory`, also applied by `UN2CGraphStateManager::AddTag` for every caller)
   - `description` (optional): Free text
 - **Returns**: `success`, `message` (`Successfully tagged EventGraph with 'PlayerMovement'`) and `taggedGraph` (`tag`,
   `category`, `description`, `graphGuid` (hyphenated), `graphName`, `blueprintPath`, `timestamp` (UTC, ISO 8601))
-- **Duplicates**: a tag with the same name and category, compared case-insensitively (`FN2CTagEntry::MatchesTag`), is
-  not added again and the call still succeeds. The `taggedGraph` it returns echoes the request (`playermovement` /
-  `feature`, a new timestamp), not the stored tag, which keeps its first spelling and timestamp. The same name in
-  another category is a separate tag
+- **Duplicates**: a tag with the same name and category, compared case-insensitively with no wildcard
+  (`FN2CTagEntry::MatchesTagExactly`), is not added again and the call still succeeds. The `taggedGraph` it returns
+  echoes the request (`playermovement` / `feature`, a new timestamp), not the stored tag, which keeps its first
+  spelling and timestamp. The same name in another category is a separate tag
 - **Errors**: `Missing required parameter: tag` (missing or empty), `NO_FOCUSED_GRAPH: ...`,
   `Current graph is not valid for tagging` (a graph without a `GraphGuid`), `Failed to persist tag`
-- **Known issue (card 0191):** an explicit empty `category` is kept as given, and an empty category matches any
-  category in the duplicate check, so `{"tag": "Combat", "category": ""}` on a graph that has `Combat` in another
-  category adds nothing
 - **Known issue (card 0274):** only the focused graph can be tagged
 
 ### list-blueprint-tags

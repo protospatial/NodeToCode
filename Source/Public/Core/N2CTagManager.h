@@ -140,6 +140,12 @@ public:
 	/** Shuts the singleton down if it exists (module shutdown); does not create it */
 	static void ShutdownInstance();
 
+	/**
+	 * Builds the OnBlueprintTagAdded payload from a graph state the graph state manager broadcast after AddTag:
+	 * the tag just added, which is the graph's last tag. False if the graph has no tags.
+	 */
+	static bool MakeTagAddedEvent(const struct FN2CGraphState& GraphState, FN2CTaggedBlueprintGraph& OutTag);
+
 private:
 	/** Constructor */
 	UN2CTagManager();
