@@ -38,6 +38,8 @@ FMcpToolDefinition FN2CMcpGetBlueprintFunctionLocalVariables::GetDefinition() co
     // Results carry Blueprint text (local variable names, categories and default values): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;
 
+    SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
+
     return Definition;
 }
 

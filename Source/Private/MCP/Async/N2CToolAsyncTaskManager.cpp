@@ -3,6 +3,7 @@
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
+#include "MCP/Utils/N2CMcpPlaySessionGuard.h"
 #include "Utils/N2CLogger.h"
 #include "Async/Async.h"
 #include "Async/TaskGraphInterfaces.h"
@@ -111,6 +112,15 @@ void FN2CToolAsyncTaskManager::InvokeTool(const TSharedRef<IN2CMcpTool>& Tool, c
 	{
 		// Cancelled while queued for the game thread
 		OnTaskCompleted(TaskId, FMcpToolCallResult::CreateErrorResult(Record->CallContext->GetCancelledMessage()));
+		return;
+	}
+
+	// A long-running tool that changes a Blueprint, an asset or a level waits until Play In Editor ends, like a quick
+	// one in FN2CMcpToolManager::ExecuteTool (card 0170); the definition is the one cached at registration when there is one
+	const TSharedPtr<const FMcpToolDefinition> Cached = FN2CMcpToolManager::Get().GetToolDefinition(Record->ToolName);
+	if (TOptional<FMcpToolCallResult> Refused = FN2CMcpPlaySessionGuard::CheckCall(Cached.IsValid() ? *Cached : Tool->GetDefinition()))
+	{
+		OnTaskCompleted(TaskId, Refused.GetValue());
 		return;
 	}
 

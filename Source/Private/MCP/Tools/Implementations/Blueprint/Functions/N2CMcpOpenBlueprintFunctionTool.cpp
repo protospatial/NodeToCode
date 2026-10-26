@@ -68,6 +68,9 @@ FMcpToolDefinition FN2CMcpOpenBlueprintFunctionTool::GetDefinition() const
 	
 	FN2CGraphTarget::AddSchemaProperties(Definition);
 
+	// Not read-only, but it opens and focuses a graph, changing no Blueprint: it keeps working during Play In Editor (card 0170)
+	Definition.bAllowedDuringPlaySession = true;
+
 	return Definition;
 }
 

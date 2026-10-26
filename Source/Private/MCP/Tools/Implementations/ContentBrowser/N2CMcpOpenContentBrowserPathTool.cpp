@@ -54,6 +54,9 @@ FMcpToolDefinition FN2CMcpOpenContentBrowserPathTool::GetDefinition() const
 	
 	Definition.InputSchema = InputSchema;
 	
+	// Not read-only, but it navigates the Content Browser, changing no asset: it keeps working during Play In Editor (card 0170)
+	Definition.bAllowedDuringPlaySession = true;
+
 	return Definition;
 }
 

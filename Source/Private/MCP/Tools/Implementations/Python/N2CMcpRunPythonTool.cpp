@@ -57,6 +57,11 @@ FMcpToolDefinition FN2CMcpRunPythonTool::GetDefinition() const
 
 	Definition.InputSchema = Schema;
 
+	// Arbitrary code the user opted in to: it is how an agent inspects the running game and ends PIE
+	// (LevelEditorSubsystem), so it keeps working during Play In Editor; the guard covers tools whose effect it knows
+	// (card 0170)
+	Definition.bAllowedDuringPlaySession = true;
+
 	return Definition;
 }
 
