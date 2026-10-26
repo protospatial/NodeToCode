@@ -297,6 +297,14 @@ its environment when no key is saved, so a live check never types or saves a key
   interface type with an Actor parent are refused, and run-python reads the assets back (a WidgetBlueprint, an Actor
   Blueprint, nothing for the refused calls). The folder is deleted. Report:
   `logs/live_create_blueprint_0166_<label>.json`.
+- `live_components_0167.py --engine ... --project ... --label 5.8 [--cli-model haiku]` (no provider key) checks the
+  component tools (card 0167) on an Actor Blueprint made in memory in a fresh `/Game/N2CTest/Components0167_<time>`
+  folder. `claude -p` with only `mcp__nodetocode__*` adds CameraBoom, FollowCamera under it, Lens under FollowCamera
+  and a RotatingMovement component, lists them, deletes CameraBoom keeping its children, then FollowCamera with its
+  children. Every call must compile without errors, each `attachedTo` must be the named parent (Lens under
+  FollowCamera, not the root), FollowCamera must move to DefaultSceneRoot and Lens go with FollowCamera. The probe
+  then undoes the two deletes (`TRANSACTION UNDO`), compiling and listing after each, and checks the hierarchy comes
+  back. The folder is deleted. Report: `logs/live_components_0167_<label>.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

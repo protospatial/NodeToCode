@@ -12,6 +12,9 @@
 #include "GameFramework/Actor.h"
 #include "Components/SceneComponent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "ScopedTransaction.h"
+#include "SubobjectData.h"
+#include "SubobjectDataSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -23,7 +26,7 @@ FMcpToolDefinition FN2CMcpAddComponentClassToActorTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("add-component-class-to-actor"),
-        TEXT("Adds a component of a specified class to a Blueprint actor. For scene components, supports parent attachment and relative transform"),
+        TEXT("Adds a component of a specified class to an Actor Blueprint, as the Components panel does (one undoable step). A scene component is attached to parentComponent, or to the actor's root component"),
         TEXT("Blueprint Components")
     );
 
@@ -36,25 +39,25 @@ FMcpToolDefinition FN2CMcpAddComponentClassToActorTool::GetDefinition() const
     // componentClass property
     TSharedPtr<FJsonObject> ComponentClassProp = MakeShareable(new FJsonObject);
     ComponentClassProp->SetStringField(TEXT("type"), TEXT("string"));
-    ComponentClassProp->SetStringField(TEXT("description"), TEXT("Class path of the component to add (e.g., '/Script/Engine.StaticMeshComponent')"));
+    ComponentClassProp->SetStringField(TEXT("description"), TEXT("Class of the component to add: a class path ('/Script/Engine.StaticMeshComponent'), a loaded class name ('StaticMeshComponent'), or a component Blueprint's path"));
     Properties->SetObjectField(TEXT("componentClass"), ComponentClassProp);
 
     // componentName property
     TSharedPtr<FJsonObject> ComponentNameProp = MakeShareable(new FJsonObject);
     ComponentNameProp->SetStringField(TEXT("type"), TEXT("string"));
-    ComponentNameProp->SetStringField(TEXT("description"), TEXT("Optional custom name for the component. Auto-generated if not provided"));
+    ComponentNameProp->SetStringField(TEXT("description"), TEXT("Optional variable name for the component; must not be in use in the Blueprint. Generated from the class name if not provided"));
     Properties->SetObjectField(TEXT("componentName"), ComponentNameProp);
 
     // parentComponent property
     TSharedPtr<FJsonObject> ParentComponentProp = MakeShareable(new FJsonObject);
     ParentComponentProp->SetStringField(TEXT("type"), TEXT("string"));
-    ParentComponentProp->SetStringField(TEXT("description"), TEXT("Name of a component this Blueprint added (not a native or inherited one) to attach to, scene components only. After the compile the new component sits under the Blueprint's root component, so only the root is kept as a parent"));
+    ParentComponentProp->SetStringField(TEXT("description"), TEXT("Name of the scene component to attach to, scene components only: one this Blueprint adds, one a parent Blueprint adds, or a native one ('Mesh' on a Character), as list-components-in-actor names them. Defaults to the actor's root component"));
     Properties->SetObjectField(TEXT("parentComponent"), ParentComponentProp);
 
     // attachSocketName property
     TSharedPtr<FJsonObject> AttachSocketProp = MakeShareable(new FJsonObject);
     AttachSocketProp->SetStringField(TEXT("type"), TEXT("string"));
-    AttachSocketProp->SetStringField(TEXT("description"), TEXT("Socket name to attach to on parent component"));
+    AttachSocketProp->SetStringField(TEXT("description"), TEXT("Socket of the parent component to attach to; must exist on it"));
     Properties->SetObjectField(TEXT("attachSocketName"), AttachSocketProp);
 
     // relativeTransform property
@@ -128,12 +131,15 @@ FMcpToolCallResult FN2CMcpAddComponentClassToActorTool::Execute(const TSharedPtr
 
         FString ComponentName;
         Arguments->TryGetStringField(TEXT("componentName"), ComponentName);
+        ComponentName.TrimStartAndEndInline();
 
         FString ParentComponentName;
         Arguments->TryGetStringField(TEXT("parentComponent"), ParentComponentName);
+        ParentComponentName.TrimStartAndEndInline();
 
         FString AttachSocketName;
         Arguments->TryGetStringField(TEXT("attachSocketName"), AttachSocketName);
+        AttachSocketName.TrimStartAndEndInline();
 
         const TSharedPtr<FJsonObject>* TransformJson = nullptr;
         Arguments->TryGetObjectField(TEXT("relativeTransform"), TransformJson);
@@ -141,7 +147,8 @@ FMcpToolCallResult FN2CMcpAddComponentClassToActorTool::Execute(const TSharedPtr
         FString BlueprintPath;
         Arguments->TryGetStringField(TEXT("blueprintPath"), BlueprintPath);
 
-        // Resolve the Blueprint
+        // ---- Validate everything before changing anything (card 0167) ----
+
         FString ErrorMsg;
         UBlueprint* Blueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(BlueprintPath, ErrorMsg);
         if (!Blueprint)
@@ -149,198 +156,235 @@ FMcpToolCallResult FN2CMcpAddComponentClassToActorTool::Execute(const TSharedPtr
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
 
-        // Verify it's an actor Blueprint
-        if (!Blueprint->ParentClass || !Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
+        FN2CComponentTree Tree;
+        if (!FN2CMcpComponentUtils::BuildComponentTree(Blueprint, Tree, ErrorMsg))
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                TEXT("NOT_ACTOR_BLUEPRINT|Blueprint must derive from Actor to have components"));
+            return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
 
-        // Resolve the component class
-        UClass* ComponentClass = ResolveComponentClass(ComponentClassPath, ErrorMsg);
+        // A Blueprint that supports a construction script but has none: never create one here, and never reach
+        // AddNewSubobject, which check()s for it on UE 5.6 and 5.7 (5.8 returns an error)
+        if (!Blueprint->SimpleConstructionScript)
+        {
+            return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                TEXT("NO_CONSTRUCTION_SCRIPT|Blueprint '%s' has no construction script to add components to"), *Blueprint->GetName()));
+        }
+
+        UClass* ComponentClass = FN2CMcpComponentUtils::ResolveComponentClass(ComponentClassPath, ErrorMsg);
         if (!ComponentClass)
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
+        const bool bIsSceneComponent = ComponentClass->IsChildOf(USceneComponent::StaticClass());
 
-        // Get the Simple Construction Script
-        USimpleConstructionScript* SCS = FN2CMcpComponentUtils::GetBlueprintSCS(Blueprint, ErrorMsg);
-        if (!SCS)
+        if (!ComponentName.IsEmpty())
         {
-            return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+            if (!ParentComponentName.IsEmpty() && FName(*ParentComponentName) == FName(*ComponentName))
+            {
+                return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                    TEXT("PARENT_IS_SELF|parentComponent '%s' is the name of the component being added"), *ParentComponentName));
+            }
+            if (Tree.Find(ComponentName) != INDEX_NONE)
+            {
+                return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                    TEXT("NAME_EXISTS|Component with name '%s' already exists"), *ComponentName));
+            }
+            if (!FN2CMcpComponentUtils::ValidateNewComponentName(Blueprint, ComponentName, ErrorMsg))
+            {
+                return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+            }
         }
 
-        // Create the SCS node
-        USCS_Node* NewNode = FN2CMcpComponentUtils::CreateSCSNode(SCS, ComponentClass, ComponentName, ErrorMsg);
-        if (!NewNode)
+        if (!bIsSceneComponent && (!ParentComponentName.IsEmpty() || !AttachSocketName.IsEmpty()))
         {
-            return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+            return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                TEXT("NOT_SCENE_COMPONENT|'%s' is not a SceneComponent, so it is not attached to anything: leave out ")
+                TEXT("parentComponent and attachSocketName"), *ComponentClass->GetName()));
         }
 
-        // Get the actual component name that was generated
-        FString ActualComponentName = NewNode->GetVariableName().ToString();
-
-        // Handle attachment for scene components
-        bool bIsSceneComponent = ComponentClass->IsChildOf(USceneComponent::StaticClass());
+        // The parent: the one named (this Blueprint's, a parent Blueprint's or a native component), else the root
+        int32 ParentIndex = INDEX_NONE;
         if (bIsSceneComponent)
         {
-            // Find parent node if specified
             if (!ParentComponentName.IsEmpty())
             {
-                USCS_Node* ParentNode = FN2CMcpComponentUtils::FindSCSNodeByName(SCS, ParentComponentName);
-                if (!ParentNode)
+                ParentIndex = Tree.Find(ParentComponentName);
+                if (ParentIndex == INDEX_NONE)
                 {
-                    return FMcpToolCallResult::CreateErrorResult(
-                        FString::Printf(TEXT("PARENT_NOT_FOUND|Parent component '%s' not found"), *ParentComponentName));
-                }
-
-                // Set up attachment
-                if (!FN2CMcpComponentUtils::SetupComponentAttachment(NewNode, ParentNode, AttachSocketName, ErrorMsg))
-                {
-                    return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+                    return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                        TEXT("PARENT_NOT_FOUND|Parent component '%s' not found. Scene components: %s"),
+                        *ParentComponentName, *Tree.SceneComponentNames()));
                 }
             }
-            else if (SCS->GetRootNodes().Num() > 0)
+            else
             {
-                // If no parent specified but there's a root component, attach to it
-                USCS_Node* RootNode = SCS->GetRootNodes()[0];
-                if (RootNode && RootNode != NewNode)
-                {
-                    FN2CMcpComponentUtils::SetupComponentAttachment(NewNode, RootNode, TEXT(""), ErrorMsg);
-                }
+                ParentIndex = Tree.Root;
             }
 
-            // Apply transform if provided
-            if (TransformJson && TransformJson->IsValid())
+            if (Tree.Entries.IsValidIndex(ParentIndex))
             {
-                USceneComponent* SceneTemplate = Cast<USceneComponent>(NewNode->ComponentTemplate);
-                if (SceneTemplate)
+                const FN2CComponentEntry& Parent = Tree.Entries[ParentIndex];
+                const USceneComponent* ParentTemplate = Cast<USceneComponent>(Parent.Template);
+                if (!Parent.bScene || !ParentTemplate)
                 {
-                    FN2CMcpComponentUtils::ApplyTransformToComponent(SceneTemplate, *TransformJson, ErrorMsg);
+                    return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                        TEXT("PARENT_NOT_SCENE|Parent component '%s' is not a SceneComponent"), *Parent.Name.ToString()));
                 }
+                // Both directions, as USubobjectDataSubsystem::FindParentForNewSubobject checks (it would otherwise
+                // attach the component to the scene root without saying so)
+                const USceneComponent* NewDefaults = GetDefault<USceneComponent>(ComponentClass);
+                const FName SocketFName = AttachSocketName.IsEmpty() ? NAME_None : FName(*AttachSocketName);
+                if (!ParentTemplate->CanAttachAsChild(NewDefaults, SocketFName) || !NewDefaults->CanAttachAsChild(ParentTemplate, NAME_None))
+                {
+                    return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                        TEXT("CANNOT_ATTACH|A '%s' cannot be attached to '%s'"), *ComponentClass->GetName(), *Parent.Name.ToString()));
+                }
+                // Some components answer only one of the two (a spring arm lists SpringEndpoint but does not
+                // override DoesSocketExist)
+                const TArray<FName> SocketNames = AttachSocketName.IsEmpty() ? TArray<FName>() : ParentTemplate->GetAllSocketNames();
+                if (!AttachSocketName.IsEmpty() && !ParentTemplate->DoesSocketExist(SocketFName) && !SocketNames.Contains(SocketFName))
+                {
+                    TArray<FString> Sockets;
+                    for (const FName& Socket : SocketNames)
+                    {
+                        Sockets.Add(Socket.ToString());
+                    }
+                    return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                        TEXT("SOCKET_NOT_FOUND|'%s' has no socket '%s'. Its sockets: %s"), *Parent.Name.ToString(),
+                        *AttachSocketName, Sockets.Num() > 0 ? *FString::Join(Sockets, TEXT(", ")) : TEXT("(none)")));
+                }
+            }
+            else if (!AttachSocketName.IsEmpty())
+            {
+                return FMcpToolCallResult::CreateErrorResult(TEXT("PARENT_NOT_FOUND|attachSocketName needs a parent component, and the actor has no root component"));
             }
         }
 
-        // Structural change: mark it, then compile once now (no transaction is open here) so the result reports what
-        // the compiler said (card 0151)
-        FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
-        FN2CCompileDiagnostics Diagnostics;
-        FN2CMcpBlueprintUtils::Compile(Blueprint, Diagnostics);
-        const int32 ErrorCount = Diagnostics.ErrorCount;
-        const int32 WarningCount = Diagnostics.WarningCount;
-        const float CompilationTime = Diagnostics.CompileSeconds;
-        const bool bCompileSuccess = Diagnostics.bSuccess;
+        // ---- Add it through the engine's subobject subsystem, as the Components panel does, in one transaction ----
 
-        // Build result JSON
-        TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
-        Result->SetStringField(TEXT("componentName"), ActualComponentName);
-        Result->SetStringField(TEXT("componentClass"), ComponentClass->GetName());
-        Result->SetStringField(TEXT("componentClassPath"), ComponentClass->GetPathName());
-        Result->SetStringField(TEXT("nodeGuid"), NewNode->VariableGuid.ToString());
-        Result->SetBoolField(TEXT("isSceneComponent"), bIsSceneComponent);
-        
-        if (!ParentComponentName.IsEmpty())
+        FName NewVariableName;
+        FGuid NewNodeGuid;
         {
-            Result->SetStringField(TEXT("attachedTo"), ParentComponentName);
+            FScopedTransaction Transaction(FText::Format(
+                NSLOCTEXT("NodeToCode", "AddComponentTransaction", "Add Component '{0}'"),
+                FText::FromString(ComponentName.IsEmpty() ? ComponentClass->GetName() : ComponentName)));
+
+            TArray<FSubobjectDataHandle> Handles;
+            FSubobjectDataHandle ActorHandle;
+            if (!FN2CMcpComponentUtils::GatherSubobjects(Blueprint, Handles, ActorHandle, ErrorMsg))
+            {
+                Transaction.Cancel();
+                return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+            }
+
+            FSubobjectDataHandle ParentHandle = ActorHandle;
+            if (bIsSceneComponent && Tree.Entries.IsValidIndex(ParentIndex))
+            {
+                ParentHandle = FN2CMcpComponentUtils::FindSubobjectHandle(Handles, Tree.Entries[ParentIndex].Name);
+                if (!ParentHandle.IsValid())
+                {
+                    Transaction.Cancel();
+                    return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                        TEXT("PARENT_NOT_FOUND|Parent component '%s' has no subobject entry (compile the Blueprint and retry)"),
+                        *Tree.Entries[ParentIndex].Name.ToString()));
+                }
+            }
+
+            Blueprint->Modify();
+            if (Blueprint->SimpleConstructionScript)
+            {
+                Blueprint->SimpleConstructionScript->Modify();
+            }
+
+            FAddNewSubobjectParams Params;
+            Params.ParentHandle = ParentHandle;
+            Params.NewClass = ComponentClass;
+            Params.BlueprintContext = Blueprint;
+            // MarkModified below; the relative transform is the one given (or identity), not conformed to the parent
+            Params.bSkipMarkBlueprintModified = true;
+            Params.bConformTransformToParent = false;
+
+            FText FailReason;
+            USubobjectDataSubsystem* Subsystem = USubobjectDataSubsystem::Get();
+            const FSubobjectDataHandle NewHandle = Subsystem->AddNewSubobject(Params, FailReason);
+            const FSubobjectData* NewData = NewHandle.GetData();
+            USCS_Node* NewNode = NewData ? FN2CMcpComponentUtils::FindOwnSCSNodeForTemplate(Blueprint, NewData->GetComponentTemplate()) : nullptr;
+            if (!NewNode)
+            {
+                const FString Reason = FailReason.IsEmpty() ? FString(TEXT("the engine did not add it")) : FailReason.ToString();
+                Transaction.Cancel();
+                return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+                    TEXT("ADD_FAILED|Could not add a '%s': %s"), *ComponentClass->GetName(), *Reason));
+            }
+
+            if (!ComponentName.IsEmpty() && NewNode->GetVariableName() != FName(*ComponentName))
+            {
+                Subsystem->RenameSubobject(NewHandle, FText::FromString(ComponentName));
+            }
             if (!AttachSocketName.IsEmpty())
             {
-                Result->SetStringField(TEXT("attachSocketName"), AttachSocketName);
+                NewNode->Modify();
+                NewNode->AttachToName = FName(*AttachSocketName);
+            }
+            if (bIsSceneComponent && TransformJson && TransformJson->IsValid())
+            {
+                FN2CMcpComponentUtils::ApplyTransformToComponent(Cast<USceneComponent>(NewNode->ComponentTemplate), *TransformJson, ErrorMsg);
+            }
+
+            NewVariableName = NewNode->GetVariableName();
+            NewNodeGuid = NewNode->VariableGuid;
+            FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
+        }
+
+        // Compile once, after the transaction has closed, so the result reports what the compiler said (card 0151)
+        FN2CCompileDiagnostics Diagnostics;
+        FN2CMcpBlueprintUtils::Compile(Blueprint, Diagnostics);
+
+        // Where the component ended up, read back after the compile
+        FN2CComponentTree After;
+        FN2CMcpComponentUtils::BuildComponentTree(Blueprint, After, ErrorMsg);
+        const int32 NewIndex = After.Find(NewVariableName.ToString());
+        const FN2CComponentEntry* NewEntry = After.Entries.IsValidIndex(NewIndex) ? &After.Entries[NewIndex] : nullptr;
+
+        TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+        Result->SetStringField(TEXT("componentName"), NewVariableName.ToString());
+        Result->SetStringField(TEXT("componentClass"), ComponentClass->GetName());
+        Result->SetStringField(TEXT("componentClassPath"), ComponentClass->GetPathName());
+        Result->SetStringField(TEXT("nodeGuid"), NewNodeGuid.ToString());
+        Result->SetBoolField(TEXT("isSceneComponent"), bIsSceneComponent);
+        if (NewEntry && After.Entries.IsValidIndex(NewEntry->Parent))
+        {
+            Result->SetStringField(TEXT("attachedTo"), After.Entries[NewEntry->Parent].Name.ToString());
+            if (!NewEntry->SocketName.IsNone())
+            {
+                Result->SetStringField(TEXT("attachSocketName"), NewEntry->SocketName.ToString());
             }
         }
+        Result->SetBoolField(TEXT("isRootComponent"), NewIndex != INDEX_NONE && NewIndex == After.Root);
 
-        // Add compilation status
-        TSharedPtr<FJsonObject> CompilationStatus = MakeShareable(new FJsonObject);
-        CompilationStatus->SetBoolField(TEXT("success"), bCompileSuccess);
-        CompilationStatus->SetNumberField(TEXT("errorCount"), ErrorCount);
-        CompilationStatus->SetNumberField(TEXT("warningCount"), WarningCount);
-        CompilationStatus->SetNumberField(TEXT("compilationTime"), CompilationTime);
+        TSharedPtr<FJsonObject> CompilationStatus = MakeShared<FJsonObject>();
+        CompilationStatus->SetBoolField(TEXT("success"), Diagnostics.bSuccess);
+        CompilationStatus->SetNumberField(TEXT("errorCount"), Diagnostics.ErrorCount);
+        CompilationStatus->SetNumberField(TEXT("warningCount"), Diagnostics.WarningCount);
+        CompilationStatus->SetNumberField(TEXT("compilationTime"), Diagnostics.CompileSeconds);
         Result->SetObjectField(TEXT("compilationStatus"), CompilationStatus);
 
-        // Add next steps suggestions
         TArray<TSharedPtr<FJsonValue>> NextSteps;
-        NextSteps.Add(MakeShareable(new FJsonValueString(
-            TEXT("Use 'list-components-in-actor' to see the updated component hierarchy"))));
-        
-        if (bIsSceneComponent)
-        {
-            NextSteps.Add(MakeShareable(new FJsonValueString(
-                FString::Printf(TEXT("Use 'create-variable' with typeIdentifier '%s' to create a component reference variable"), 
-                *ComponentClass->GetPathName()))));
-        }
-        
-        NextSteps.Add(MakeShareable(new FJsonValueString(
-            TEXT("Use 'add-bp-node-to-active-graph' to add nodes that interact with this component"))));
-        
+        NextSteps.Add(MakeShared<FJsonValueString>(TEXT("Use 'list-components-in-actor' to see the updated component hierarchy")));
+        NextSteps.Add(MakeShared<FJsonValueString>(FString::Printf(
+            TEXT("The component is a Blueprint variable: search-blueprint-nodes for 'Get %s' to read it in a graph"), *NewVariableName.ToString())));
+        NextSteps.Add(MakeShared<FJsonValueString>(TEXT("Edit > Undo (Ctrl+Z) in the editor removes it again")));
         Result->SetArrayField(TEXT("nextSteps"), NextSteps);
 
-        // Convert to string
         FString OutputString;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
 
-        FN2CLogger::Get().Log(FString::Printf(
-            TEXT("Added component '%s' of class '%s' to Blueprint '%s'"), 
-            *ActualComponentName,
-            *ComponentClass->GetName(),
-            *Blueprint->GetName()), EN2CLogSeverity::Info);
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Added component '%s' of class '%s' to Blueprint '%s'"),
+            *NewVariableName.ToString(), *ComponentClass->GetName(), *Blueprint->GetName()), EN2CLogSeverity::Info);
 
         return FMcpToolCallResult::CreateTextResult(OutputString);
     });
-}
-
-UClass* FN2CMcpAddComponentClassToActorTool::ResolveComponentClass(const FString& ClassPath, FString& OutErrorMsg) const
-{
-    if (ClassPath.IsEmpty())
-    {
-        OutErrorMsg = TEXT("EMPTY_CLASS_PATH|Component class path is empty");
-        return nullptr;
-    }
-
-    // Try to find the class
-    UClass* ComponentClass = nullptr;
-
-    // First try as a direct path
-    ComponentClass = FindObject<UClass>(nullptr, *ClassPath);
-    
-    // If not found, try loading it
-    if (!ComponentClass)
-    {
-        ComponentClass = LoadObject<UClass>(nullptr, *ClassPath);
-    }
-
-    // If still not found, try with different formats
-    if (!ComponentClass)
-    {
-        // Try without /Script/ prefix
-        FString ClassNameOnly = ClassPath;
-        if (ClassPath.StartsWith(TEXT("/Script/")))
-        {
-            ClassNameOnly = ClassPath.RightChop(8);
-            int32 DotIndex;
-            if (ClassNameOnly.FindChar('.', DotIndex))
-            {
-                FString ModuleName = ClassNameOnly.Left(DotIndex);
-                FString ClassName = ClassNameOnly.RightChop(DotIndex + 1);
-                
-                // Try to find by class name
-                ComponentClass = FindObject<UClass>(nullptr, *ClassName);
-            }
-        }
-    }
-
-    if (!ComponentClass)
-    {
-        OutErrorMsg = FString::Printf(TEXT("CLASS_NOT_FOUND|Component class '%s' not found"), *ClassPath);
-        return nullptr;
-    }
-
-    // Validate the class
-    if (!FN2CMcpComponentUtils::ValidateComponentClass(ComponentClass, OutErrorMsg))
-    {
-        return nullptr;
-    }
-
-    return ComponentClass;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpAddComponentClassToActorTool::BuildNumberProperty(const FString& Description, double DefaultValue) const
