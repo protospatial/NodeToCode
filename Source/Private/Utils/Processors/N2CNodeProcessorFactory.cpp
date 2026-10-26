@@ -5,6 +5,7 @@
 #include <Utils/Processors/N2CArrayProcessor.h>
 #include <Utils/Processors/N2CCastProcessor.h>
 
+#include "Utils/Processors/N2CBaseNodeProcessor.h"
 #include "Utils/Processors/N2CFunctionCallProcessor.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/Processors/N2CDelegateProcessor.h"
@@ -65,6 +66,9 @@ void FN2CNodeProcessorFactory::InitializeDefaultProcessors()
     TSharedPtr<FN2CFunctionEntryProcessor> FunctionEntryProcessor = MakeShared<FN2CFunctionEntryProcessor>();
     TSharedPtr<FN2CArrayProcessor> ArrayProcessor = MakeShared<FN2CArrayProcessor>();
     TSharedPtr<FN2CCastProcessor> CastProcessor = MakeShared<FN2CCastProcessor>();
+
+    // A node class with no mapping (card 0234): only what every node has (title, purity, comment, an input action)
+    RegisterProcessor(EN2CNodeType::Unknown, MakeShared<FN2CBaseNodeProcessor>());
     
     // Register function call processors
     RegisterProcessor(EN2CNodeType::CallFunction, FunctionCallProcessor);

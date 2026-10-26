@@ -1,13 +1,7 @@
 {
 	"case": "EnhancedInputEvent",
 	"description": "Event graph: the Enhanced Input action event for a transient UInputAction IA_GoldenJump (Boolean); Triggered runs CollectGarbage, Completed runs ControlScreensaver.",
-	"known_defects": [
-		{
-			"finding": "translation-core-15",
-			"card": "0234",
-			"effect": "The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead of an event"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -24,9 +18,10 @@
 				"nodes": [
 					{
 						"id": "N1",
-						"type": "CallFunction",
+						"type": "InputAction",
 						"class": "K2Node_EnhancedInputAction",
-						"title": "IA_GoldenJump",
+						"member_parent": "<PACKAGE>",
+						"member_name": "IA_GoldenJump",
 						"input_pins": [],
 						"output_pins": [
 							{

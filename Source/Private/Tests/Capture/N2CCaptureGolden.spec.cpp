@@ -31,10 +31,14 @@
 #include "K2Node_FormatText.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_GenericToText.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Knot.h"
 #include "K2Node_MacroInstance.h"
 #include "K2Node_MakeStruct.h"
+#include "K2Node_MapForEach.h"
+#include "K2Node_SetFieldsInStruct.h"
+#include "K2Node_SetForEach.h"
 #include "K2Node_SwitchEnum.h"
 #include "K2Node_SwitchInteger.h"
 #include "K2Node_Timeline.h"
@@ -65,11 +69,13 @@
 #include "Serialization/JsonWriter.h"
 #include "Settings/EditorStyleSettings.h"
 #include "StructUtils/UserDefinedStruct.h"
+#include "Tests/Capture/N2CTestNodeClasses.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/GarbageCollection.h"
 #include "UObject/Package.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
+#include "Utils/N2CNodeTypeRegistry.h"
 #include "Utils/N2CStableNames.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
@@ -202,15 +208,14 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 	}
 
 	/**
-	 * Replaces what changes from run to run with stable tokens: the case's transient package path (<PACKAGE>), any
-	 * GUID (<GUID>), and the UObject index in the Var_<graph>_<index> name FN2CVariableProcessor makes up for a node
-	 * without a variable reference (<OBJECT_INDEX>; translation-core-4, card 0234)
+	 * Replaces what changes from run to run with stable tokens: the case's transient package path (<PACKAGE>) and any
+	 * GUID (<GUID>). Nothing else may change between sessions (the UObject index FN2CVariableProcessor once put in a
+	 * member_name is gone, card 0234, so a golden shows it if it comes back)
 	 */
 	static FString Normalise(const FString& Text, const FString& PackagePath)
 	{
-		FString Out = PackagePath.IsEmpty() ? Text : Text.Replace(*PackagePath, TEXT("<PACKAGE>"), ESearchCase::CaseSensitive);
-		Out = ReplaceMatches(Out, TEXT("[0-9A-Fa-f]{8}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{12}"), TEXT("<GUID>"));
-		return ReplaceMatches(Out, TEXT("\"Var_[A-Za-z0-9_]+_([0-9]+)\""), TEXT("<OBJECT_INDEX>"));
+		const FString Out = PackagePath.IsEmpty() ? Text : Text.Replace(*PackagePath, TEXT("<PACKAGE>"), ESearchCase::CaseSensitive);
+		return ReplaceMatches(Out, TEXT("[0-9A-Fa-f]{8}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{12}"), TEXT("<GUID>"));
 	}
 
 	/** Captures Case's graph; DuringCapture, when set, runs once right after the capture's first node */
@@ -905,6 +910,29 @@ namespace N2CCaptureGolden
 		return BP.AddCall(Graph, UKismetMathLibrary::StaticClass(), Function);
 	}
 
+	/**
+	 * A node of class T made as FGraphNodeCreator makes it (called through UEdGraphNode, since some engine nodes make
+	 * AllocateDefaultPins private); Setup, when set, runs before the node's pins are made
+	 */
+	template <typename T>
+	T* AddNode(UEdGraph* Graph, TFunction<void(T*)> Setup = nullptr)
+	{
+		T* Node = NewObject<T>(Graph, NAME_None, RF_Transactional);
+		Graph->AddNode(Node, /*bUserAction*/ false, /*bSelectNewNode*/ false);
+		if (Setup)
+		{
+			Setup(Node);
+		}
+		UEdGraphNode* GraphNode = Node;
+		GraphNode->CreateNewGuid();
+		GraphNode->PostPlacedNewNode();
+		if (GraphNode->Pins.Num() == 0)
+		{
+			GraphNode->AllocateDefaultPins();
+		}
+		return Node;
+	}
+
 	/** Exec sinks with few pins: CollectGarbage (exec only) and ControlScreensaver (exec and one bool) */
 	UK2Node_CallFunction* AddCollectGarbage(FTestBlueprint& BP, UEdGraph* Graph)
 	{
@@ -1082,9 +1110,6 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)") };
 	const FKnownDefect SwitchName{ TEXT("translation-core-32"), TEXT("0239"),
 		TEXT("Switch nodes are named 'Switch', losing the switched type") };
-	const FKnownDefect BreakAsVariable{ TEXT("translation-core-4"), TEXT("0234"),
-		TEXT("Break Vector (a K2Node_BreakStruct) is captured as a Variable titled 'None', with member_name "
-			"Var_<graph>_<UObject index>, which changes every session (normalised to <OBJECT_INDEX> here)") };
 	const FKnownDefect RepeatMissingName{ TEXT("translation-core-24"), TEXT("0236"),
 		TEXT("A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' "
 			"(expected errors in this case)") };
@@ -1292,7 +1317,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("MakeBreakStruct"),
 		TEXT("Function Structs(Value): Make Vector (X from Value) feeds Break Vector; Break X and Y feed Add (int to "
 			"double through the Make); Add is the result."),
-		{ BreakAsVariable },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UScriptStruct* Vector = TBaseStructure<FVector>::Get();
@@ -1416,10 +1441,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-8"), TEXT("0236"),
 			TEXT("S_GoldenItem is missing from 'structs': its object member Owner gets no type name, the validator rejects "
 				"the struct (ERROR 'Member Owner requires a type name') and it is dropped without a warning") },
-		  RepeatMissingName,
-		  { TEXT("translation-core-4"), TEXT("0234"),
-			TEXT("Break S_GoldenItem is captured as a Variable titled 'None' with member_name Var_<graph>_<UObject "
-				"index> (normalised to <OBJECT_INDEX>)") } },
+		  RepeatMissingName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Level = BP.AddUserEnum(TEXT("E_GoldenLevel"), { TEXT("Low"), TEXT("High") });
@@ -1567,9 +1589,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("EnhancedInputEvent"),
 		TEXT("Event graph: the Enhanced Input action event for a transient UInputAction IA_GoldenJump (Boolean); "
 			"Triggered runs CollectGarbage, Completed runs ControlScreensaver."),
-		{ { TEXT("translation-core-15"), TEXT("0234"),
-			TEXT("The Enhanced Input action event is typed CallFunction, with no member_parent or member_name, instead "
-				"of an event") } },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1578,6 +1598,44 @@ void FN2CCaptureGoldenSpec::AddCases()
 			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
 			BP.Link(Action, TEXT("Triggered"), Collect, UEdGraphSchema_K2::PN_Execute);
 			BP.Link(Action, TEXT("Completed"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	// Card 0234: node types by the nearest mapped ancestor (translation-core-4, -15, -17, -27)
+	Cases.Add({ TEXT("NodeTypes"),
+		TEXT("Function NodeTypes with local Counter (int): Entry runs Set members in Vector, then Set Counter (from Get "
+			"Counter), then a K2Node_N2CTestUnmapped (a UK2Node subclass with no mapping), then a "
+			"K2Node_N2CTestCallFunction (a K2Node_CallFunction subclass with no mapping of its own) calling CollectGarbage."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UBlueprint* Blueprint = BP.GetBlueprint();
+			UEdGraph* Graph = BP.AddFunction(TEXT("NodeTypes"));
+			FBlueprintEditorUtils::AddLocalVariable(Blueprint, Graph, TEXT("Counter"), FTestBlueprint::IntPinType());
+			const FBPVariableDescription* Counter = FN2CMcpVariableUtils::FindLocalVariable(BP.FunctionEntry(Graph), TEXT("Counter"));
+			UFunction* CollectGarbage = UKismetSystemLibrary::StaticClass()->FindFunctionByName(
+				GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, CollectGarbage));
+			if (!Counter || !CollectGarbage)
+			{
+				return nullptr;
+			}
+			FString Error;
+			UK2Node_SetFieldsInStruct* SetMembers = AddNode<UK2Node_SetFieldsInStruct>(Graph,
+				[](UK2Node_SetFieldsInStruct* Node) { Node->StructType = TBaseStructure<FVector>::Get(); });
+			UK2Node_Variable* GetCounter = FN2CMcpNodeSpawn::SpawnLocalVariableNode(Blueprint, Graph, *Counter, false, FVector2D(100, 150), Error);
+			UK2Node_Variable* SetCounter = FN2CMcpNodeSpawn::SpawnLocalVariableNode(Blueprint, Graph, *Counter, true, FVector2D(600, 0), Error);
+			UK2Node_N2CTestUnmapped* Unmapped = AddNode<UK2Node_N2CTestUnmapped>(Graph);
+			UK2Node_N2CTestCallFunction* Call = AddNode<UK2Node_N2CTestCallFunction>(Graph,
+				[CollectGarbage](UK2Node_N2CTestCallFunction* Node) { Node->SetFromFunction(CollectGarbage); });
+			if (!GetCounter || !SetCounter)
+			{
+				return nullptr;
+			}
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, SetMembers, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(SetMembers, UEdGraphSchema_K2::PN_Then, SetCounter, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(GetCounter, TEXT("Counter"), SetCounter, TEXT("Counter"));
+			BP.Link(SetCounter, UEdGraphSchema_K2::PN_Then, Unmapped, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Unmapped, UEdGraphSchema_K2::PN_Then, Call, UEdGraphSchema_K2::PN_Execute);
 			return Graph;
 		} });
 
@@ -1720,6 +1778,170 @@ void FN2CCaptureGoldenSpec::Define()
 			It(TEXT("survives ToJson -> FromJson -> ToJson unchanged"), [this, Case]() { RunRoundTrip(Case); });
 		});
 	}
+
+	// Card 0234: the node type is the nearest mapped ancestor's (translation-core-4, -15, -17, -27, arch-11)
+	Describe(TEXT("NodeTypes"), [this]()
+	{
+		It(TEXT("resolves each node class to its nearest mapped ancestor, and a class with none to Unknown"), [this]()
+		{
+			FN2CNodeTypeRegistry& Registry = FN2CNodeTypeRegistry::Get();
+			const auto TypeName = [](const EN2CNodeType Type)
+			{
+				return StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(Type));
+			};
+			const auto Expect = [this, &Registry, &TypeName](const TCHAR* What, UClass* Class, const EN2CNodeType Expected)
+			{
+				if (TestNotNull(FString(What) + TEXT(" class"), Class))
+				{
+					const UK2Node* Node = CastChecked<UK2Node>(NewObject<UObject>(GetTransientPackage(), Class));
+					TestEqual(What, TypeName(Registry.GetNodeType(Node)), TypeName(Expected));
+				}
+			};
+			Expect(TEXT("BreakStruct (a StructMemberGet, a StructOperation, a Variable)"), UK2Node_BreakStruct::StaticClass(), EN2CNodeType::BreakStruct);
+			Expect(TEXT("SetFieldsInStruct (a MakeStruct)"), UK2Node_SetFieldsInStruct::StaticClass(), EN2CNodeType::SetFieldsInStruct);
+			Expect(TEXT("MakeStruct"), UK2Node_MakeStruct::StaticClass(), EN2CNodeType::MakeStruct);
+			Expect(TEXT("For Each (Map)"), UK2Node_MapForEach::StaticClass(), EN2CNodeType::ForEachLoop);
+			Expect(TEXT("For Each (Set)"), UK2Node_SetForEach::StaticClass(), EN2CNodeType::ForEachLoop);
+			Expect(TEXT("To Text (GenericToText)"), UK2Node_GenericToText::StaticClass(), EN2CNodeType::GenericToText);
+			Expect(TEXT("Enhanced Input action event"),
+				FindObject<UClass>(nullptr, TEXT("/Script/InputBlueprintNodes.K2Node_EnhancedInputAction")), EN2CNodeType::InputAction);
+			Expect(TEXT("Get Input Action Value"),
+				FindObject<UClass>(nullptr, TEXT("/Script/InputBlueprintNodes.K2Node_GetInputActionValue")), EN2CNodeType::GetInputAxisValue);
+			Expect(TEXT("a UK2Node_CallFunction subclass with no mapping of its own"), UK2Node_N2CTestCallFunction::StaticClass(),
+				EN2CNodeType::CallFunction);
+			Expect(TEXT("a UK2Node subclass with no mapped ancestor"), UK2Node_N2CTestUnmapped::StaticClass(), EN2CNodeType::Unknown);
+			TestEqual(TEXT("a null node"), TypeName(Registry.GetNodeType(nullptr)), TypeName(EN2CNodeType::Unknown));
+		});
+
+		It(TEXT("captures Break Struct as BreakStruct named by its struct, the same in every session"), [this]()
+		{
+			for (const TCHAR* CaseName : { TEXT("MakeBreakStruct"), TEXT("UserStruct") })
+			{
+				const FCaptured Captured = CaptureNamed(CaseName);
+				const TSharedPtr<FJsonObject> Break = Captured.Capture.IsValid() ? FindNode(Captured.Capture, TEXT("K2Node_BreakStruct")) : nullptr;
+				if (!Break.IsValid())
+				{
+					continue;
+				}
+				const FString What = FString(CaseName) + TEXT(": Break");
+				TestEqual(What + TEXT(" type"), Break->GetStringField(TEXT("type")), FString(TEXT("BreakStruct")));
+				const FString MemberName = Break->GetStringField(TEXT("member_name"));
+				TestEqual(What + TEXT(" member_name is its struct"), MemberName,
+					FString(FCString::Strcmp(CaseName, TEXT("UserStruct")) == 0 ? TEXT("S_GoldenItem") : TEXT("Vector")));
+				TestFalse(What + TEXT(" member_name has no object index"), MemberName.StartsWith(TEXT("Var_")));
+				FString Title;
+				Break->TryGetStringField(TEXT("title"), Title);
+				TestNotEqual(What + TEXT(" title"), Title, FString(TEXT("None")));
+			}
+		});
+
+		It(TEXT("captures Set members in a struct as SetFieldsInStruct, not titled Make"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("NodeTypes"));
+			const TSharedPtr<FJsonObject> SetMembers = Captured.Capture.IsValid() ? FindNode(Captured.Capture, TEXT("K2Node_SetFieldsInStruct")) : nullptr;
+			if (!SetMembers.IsValid())
+			{
+				return;
+			}
+			TestEqual(TEXT("type"), SetMembers->GetStringField(TEXT("type")), FString(TEXT("SetFieldsInStruct")));
+			TestEqual(TEXT("member_name"), SetMembers->GetStringField(TEXT("member_name")), FString(TEXT("Vector")));
+			FString Title;
+			SetMembers->TryGetStringField(TEXT("title"), Title);
+			TestFalse(TEXT("the title does not say Make: ") + Title, Title.StartsWith(TEXT("Make")));
+		});
+
+		It(TEXT("captures the Enhanced Input action event as an input action event named by its action"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("EnhancedInputEvent"));
+			const TSharedPtr<FJsonObject> Action = Captured.Capture.IsValid() ? FindNode(Captured.Capture, TEXT("K2Node_EnhancedInputAction")) : nullptr;
+			if (!Action.IsValid())
+			{
+				return;
+			}
+			TestEqual(TEXT("type"), Action->GetStringField(TEXT("type")), FString(TEXT("InputAction")));
+			TestEqual(TEXT("member_name"), Action->GetStringField(TEXT("member_name")), FString(TEXT("IA_GoldenJump")));
+		});
+
+		// Not a golden case: the loops' key and value pin labels are display text the engine makes with
+		// FText::FromString, so their capture differs in Japanese (StableNames would fail on an engine quirk)
+		It(TEXT("captures For Each (Map) and For Each (Set) as loops and To Text as GenericToText"), [this]()
+		{
+			const FCaptureCase Loops{ TEXT("NodeTypesLoops"),
+				TEXT("Event graph: Custom event Go runs For Each (Map), whose Completed runs For Each (Set); an unwired To Text."),
+				{},
+				[](N2CTest::FTestBlueprint& BP) -> UEdGraph*
+				{
+					using namespace N2CCaptureGolden;
+					UEdGraph* Graph = BP.EventGraph();
+					UK2Node_CustomEvent* Go = BP.AddCustomEvent(Graph, TEXT("Go"));
+					UK2Node_MapForEach* MapLoop = AddNode<UK2Node_MapForEach>(Graph);
+					UK2Node_SetForEach* SetLoop = AddNode<UK2Node_SetForEach>(Graph);
+					AddNode<UK2Node_GenericToText>(Graph);
+					BP.Link(Go, UEdGraphSchema_K2::PN_Then, MapLoop, UEdGraphSchema_K2::PN_Execute);
+					BP.Link(MapLoop, TEXT("CompletedPin"), SetLoop, UEdGraphSchema_K2::PN_Execute);
+					return Graph;
+				} };
+			const FCaptured Captured = Capture(Loops);
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			for (const TCHAR* Class : { TEXT("K2Node_MapForEach"), TEXT("K2Node_SetForEach") })
+			{
+				if (const TSharedPtr<FJsonObject> Loop = FindNode(Captured.Capture, Class))
+				{
+					TestEqual(FString(Class) + TEXT(" type"), Loop->GetStringField(TEXT("type")), FString(TEXT("ForEachLoop")));
+				}
+			}
+			if (const TSharedPtr<FJsonObject> ToText = FindNode(Captured.Capture, TEXT("K2Node_GenericToText")))
+			{
+				TestEqual(TEXT("To Text's type"), ToText->GetStringField(TEXT("type")), FString(TEXT("GenericToText")));
+			}
+		});
+
+		It(TEXT("gives a local variable's Get and Set different types"), [this]()
+		{
+			for (const TCHAR* CaseName : { TEXT("NodeTypes"), TEXT("SpawnedVariableNodes") })
+			{
+				const FCaptured Captured = CaptureNamed(CaseName);
+				if (!Captured.Capture.IsValid())
+				{
+					continue;
+				}
+				TArray<FString> CounterTypes;
+				for (const TSharedPtr<FJsonValue>& NodeValue : Captured.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject()->GetArrayField(TEXT("nodes")))
+				{
+					const TSharedPtr<FJsonObject> Node = NodeValue->AsObject();
+					FString MemberName;
+					if (Node->TryGetStringField(TEXT("member_name"), MemberName) && MemberName == TEXT("Counter"))
+					{
+						CounterTypes.Add(Node->GetStringField(TEXT("type")));
+					}
+				}
+				CounterTypes.Sort();
+				TestEqual(FString(CaseName) + TEXT(": the types of Get Counter and Set Counter"), FString::Join(CounterTypes, TEXT(", ")),
+					FString(TEXT("LocalVariableGet, LocalVariableSet")));
+			}
+		});
+
+		It(TEXT("captures a node class with no mapping as Unknown with its class, and a CallFunction subclass as CallFunction"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("NodeTypes"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			if (const TSharedPtr<FJsonObject> Unmapped = FindNode(Captured.Capture, TEXT("K2Node_N2CTestUnmapped")))
+			{
+				TestEqual(TEXT("the unmapped node's type"), Unmapped->GetStringField(TEXT("type")), FString(TEXT("Unknown")));
+			}
+			if (const TSharedPtr<FJsonObject> Call = FindNode(Captured.Capture, TEXT("K2Node_N2CTestCallFunction")))
+			{
+				TestEqual(TEXT("the CallFunction subclass's type"), Call->GetStringField(TEXT("type")), FString(TEXT("CallFunction")));
+				TestEqual(TEXT("the CallFunction subclass's member_name"), Call->GetStringField(TEXT("member_name")), FString(TEXT("CollectGarbage")));
+			}
+		});
+	});
 
 	// Card 0135: data edges are lossless (translation-core-1, PR #7, issue #13)
 	Describe(TEXT("DataFlows"), [this]()

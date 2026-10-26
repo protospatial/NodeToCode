@@ -145,7 +145,12 @@ the hints may change).
 Key responsibilities:
 - Manages ID generation (N1, N2, etc. for nodes; P1, P2, etc. for pins)
 - Uses `FN2CNodeProcessorFactory` for node-specific property extraction
-- Determines types via `FN2CNodeTypeRegistry`
+- Determines types via `FN2CNodeTypeRegistry` (card 0234): it walks the node's class up `GetSuperClass()` and the
+  nearest mapped ancestor wins (a class mapping, then the class name without `K2Node_`, at each level), so a plugin
+  node lands on its real base class. No mapped ancestor: `Event` when the class implements
+  `IK2Node_EventNodeInterface`, else `Unknown` with the node's `class`, filled by the base processor. Variable nodes
+  are then typed by access before scope (`LocalVariableGet`/`LocalVariableSet`, `FunctionParameter`). Plugins add
+  mappings with `RegisterNodeClass` or `RegisterNodeType`; `NodeToCode.Capture.Golden.NodeTypes` covers the rules
 - Handles nested graphs with depth tracking
 - Processes related structs/enums used by nodes
 - Traces connections through knot nodes

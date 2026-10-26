@@ -104,6 +104,15 @@ they add something. A variable read from another Blueprint is sent as that Bluep
 code reads it from the right class. If code from a translation names a member that does not exist, compare it with
 the function or variable as it is named in the **My Blueprint** panel (or its C++ declaration), not with the node's title.
 
+### 7. Nodes from Plugins
+
+Each node is sent with its kind and its Unreal node class. A node from a plugin (Enhanced Input, Gameplay Abilities,
+your own editor module) gets the kind of the nearest engine node it is built on, so a plugin's function-call node is
+sent as a function call. A node with no known kind at all is sent as `Unknown` with its class and title, and the LLM
+works out what it does from those and its pins; the result can then be vaguer, so check that part of the code. Enhanced
+Input action events are sent as input events named by their Input Action, and a Break or Set Members node as a struct
+operation on its struct.
+
 ## Understanding the Translation Structure
 
 ### Blueprint to C++ Mapping
