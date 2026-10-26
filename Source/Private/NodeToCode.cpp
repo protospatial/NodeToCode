@@ -23,7 +23,7 @@
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidgetFactory.h"
 #include "Editor/EditorPerformanceSettings.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "MCP/Server/N2CMcpHttpServerManager.h"

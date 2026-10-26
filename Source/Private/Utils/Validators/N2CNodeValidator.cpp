@@ -19,11 +19,20 @@ bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutErr
         return false;
     }
 
-    // A node type this build does not know (a later 2.x document, card 0445) is accepted with a warning
+    // A node type this build does not know (a later 2.x document, card 0445) is accepted with a warning. A captured
+    // node class with no mapping (card 0234: "Unknown" with its "class") is expected, for example a plugin's node
     if (Node.NodeType == EN2CNodeType::Unknown)
     {
-        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node %s has a node type this build does not know: '%s'"),
-            *Node.ID, *Node.UnknownType));
+        if (!Node.UnknownType.IsEmpty())
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node %s has a node type this build does not know: '%s'"),
+                *Node.ID, *Node.UnknownType));
+        }
+        else
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Node %s is of a node class with no N2C type: '%s'"),
+                *Node.ID, *Node.NodeClass), EN2CLogSeverity::Info);
+        }
     }
 
     // Validate node flags

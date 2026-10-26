@@ -233,8 +233,8 @@ every output change they make. Each case builds a graph in code with `N2CTest::F
 package, never saved or registered; under `/Game` because capture only follows functions, macros, structs and enums
 whose path contains `/Game/` or `/Content/`, translation-core-21, card 0235), runs what the editor runs
 (`FN2CNodeCollector::CollectNodesFromGraph`, `N2C::CaptureNodes`, `FN2CSerializer::ToJson`), replaces the package path,
-GUIDs and the session-dependent `Var_<graph>_<index>` member name with `<PACKAGE>`, `<GUID>` and `<OBJECT_INDEX>`, and
-compares the result with `Goldens/Capture/<case>.json`. On a mismatch it reports the first differing line and writes the
+GUIDs with `<PACKAGE>` and `<GUID>` (nothing else may change between sessions: card 0234 removed the `Var_<graph>_<index>`
+member name and its `<OBJECT_INDEX>` token), and compares the result with `Goldens/Capture/<case>.json`. On a mismatch it reports the first differing line and writes the
 whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`.
 
 - **Core shapes (card 0126):** `FanOutData` (one output into three inputs), `Knots` (an exec knot and a two-knot data
@@ -276,8 +276,7 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   makes user types outside the editor's undo history and clears the flags of the `STRUCT_REINST_` copies the struct
   compiler leaves behind; either would keep the package alive).
 - **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
-  card that changes them: Break Struct captured as a Variable titled `None` (translation-core-4, 0234),
-  custom events with member_name `None` and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134
+  card that changes them: custom events with member_name `None` and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134
   fixed and removed the ID defects (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one
   ID, and node IDs that depended on traversal order; translation-core-9: a function that calls itself was captured
   twice). Card 0135 fixed and removed the lossy data edges (translation-core-1: `flows.data` kept one edge per output,
@@ -293,11 +292,21 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   `structs` (translation-core-8, 0236); enum values whose display name contains `max` are dropped (translation-core-11,
   0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236); collapsed graphs and user macros
   are dropped at depth 0 (imp-translation-core-5, 0235), their nodes do not name the captured graph
-  (imp-translation-core-4, 0235) and a macro without `macro` in its name is an EventGraph (translation-core-20, 0235);
-  the Enhanced Input event is typed `CallFunction` (translation-core-15, 0234). The list lives in the case table in the
+  (imp-translation-core-4, 0235) and a macro without `macro` in its name is an EventGraph (translation-core-20, 0235).
+  Card 0234 fixed and removed Break Struct captured as a Variable titled `None` with a session-dependent member_name
+  (translation-core-4) and the Enhanced Input event typed `CallFunction` (translation-core-15). The list lives in the case table in the
   spec and is written into the golden. Error log lines that a known defect writes (`Missing name`, `Member Owner
   requires a type name`) are the case's `ExpectedErrors`: the case fails if they stop appearing, so the fixing card
   updates the case.
+- **Node types (card 0234):** `NodeTypes` (Set members in Vector, For Each (Map), For Each (Set), a local
+  variable's Get and Set, an unwired To Text (`K2Node_GenericToText`), and two test-only classes from
+  `Capture/N2CTestNodeClasses.h`: `K2Node_N2CTestUnmapped`, a UK2Node subclass with no mapping, and
+  `K2Node_N2CTestCallFunction`, a CallFunction subclass with none of its own). The `NodeTypes` tests check the
+  registry's nearest-ancestor rule class by class (Enhanced Input's classes found by name) and, in the captures, that
+  Break Struct is `BreakStruct` named by its struct, Set members is `SetFieldsInStruct` and not titled Make, the
+  Enhanced Input event is `InputAction` named by its action, both map and set loops are `ForEachLoop`, a local
+  variable's Get and Set are `LocalVariableGet` and `LocalVariableSet`, and the unmapped class is `Unknown` with its
+  `class`.
 - **Liveness (card 0137, issue #13):** `Issue13` (the issue's graph: one output into To Text (String) and a Format
   Text whose result nothing reads), `GhostEvents` (the default BeginPlay wired, Overlap and Tick left as ghosts),
   `DisabledNodes` (a disabled Print String between two calls, a Development Only call, a disabled Branch and the call

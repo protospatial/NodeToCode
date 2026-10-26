@@ -23,8 +23,27 @@ bool FN2CBaseNodeProcessor::Process(UK2Node* Node, FN2CNodeDefinition& OutNodeDe
     
     // Extract node-specific properties
     ExtractNodeProperties(Node, OutNodeDef);
+
+    if (OutNodeDef.MemberName.IsEmpty())
+    {
+        ExtractInputActionReference(Node, OutNodeDef);
+    }
     
     return true;
+}
+
+void FN2CBaseNodeProcessor::ExtractInputActionReference(const UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
+{
+    // Enhanced Input's nodes (the action event, Get Input Action Value) name their UInputAction in an object property
+    // "InputAction". Read by reflection, so NodeToCode needs no dependency on the InputBlueprintNodes module.
+    const FObjectPropertyBase* ActionProperty = FindFProperty<FObjectPropertyBase>(Node->GetClass(), TEXT("InputAction"));
+    const UObject* Action = ActionProperty ? ActionProperty->GetObjectPropertyValue_InContainer(Node) : nullptr;
+    if (!Action)
+    {
+        return;
+    }
+    OutNodeDef.MemberName = Action->GetName();
+    OutNodeDef.MemberParent = Action->GetOutermost()->GetName();
 }
 
 void FN2CBaseNodeProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)

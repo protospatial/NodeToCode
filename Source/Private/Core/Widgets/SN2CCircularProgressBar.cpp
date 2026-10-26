@@ -2,7 +2,7 @@
 
 #include "Core/Widgets/SN2CCircularProgressBar.h"
 #include "Rendering/DrawElements.h"
-#include "Core/N2CSettings.h"
+#include "Core/Style/N2CUIColors.h"
 
 void SN2CCircularProgressBar::Construct(const FArguments& InArgs)
 {
@@ -57,7 +57,7 @@ int32 SN2CCircularProgressBar::OnPaint(
 		T,
 		StartAngle,
 		FullEndAngle,
-		UIL(N2CUI().BorderColor),
+		N2C::UI::Linear(N2C::UI::Colors().BorderColor),
 		MyCullingRect
 	);
 
@@ -103,19 +103,19 @@ FCursorReply SN2CCircularProgressBar::OnCursorQuery(const FGeometry& MyGeometry,
 FLinearColor SN2CCircularProgressBar::GetFillColor() const
 {
 	const float P = FMath::Clamp(Percent.Get(), 0.0f, 1.0f);
-	const FN2CUIColors& Colors = N2CUI();
+	const FN2CUIColors& Colors = N2C::UI::Colors();
 
 	if (P <= 0.5f)
 	{
 		// Green to Yellow (0-50%)
 		float T = P * 2.0f; // 0-1 over 0-50%
-		return FLinearColor::LerpUsingHSV(UIL(Colors.AccentGreen), UIL(Colors.AccentYellow), T);
+		return FLinearColor::LerpUsingHSV(N2C::UI::Linear(Colors.AccentGreen), N2C::UI::Linear(Colors.AccentYellow), T);
 	}
 	else
 	{
 		// Yellow to Red (50-100%)
 		float T = (P - 0.5f) * 2.0f; // 0-1 over 50-100%
-		return FLinearColor::LerpUsingHSV(UIL(Colors.AccentYellow), UIL(Colors.AccentRed), T);
+		return FLinearColor::LerpUsingHSV(N2C::UI::Linear(Colors.AccentYellow), N2C::UI::Linear(Colors.AccentRed), T);
 	}
 }
 

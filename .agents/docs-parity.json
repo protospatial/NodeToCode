@@ -28,8 +28,8 @@
     },
     {
       "name": "code-editor",
-      "code": ["Source/Private/Code Editor/**", "Source/Public/Code Editor/**", "Source/Public/Core/N2CDesignTokens.h",
-               "Source/Private/Models/N2CStyle.cpp", "Source/Public/Models/N2CStyle.h"],
+      "code": ["Source/Private/Code Editor/**", "Source/Public/Code Editor/**", "Source/Public/Core/Style/**",
+               "Source/Private/Core/Style/**"],
       "pages": ["wiki/Code-Editor.md", "wiki/Theme-&-Syntax-Highlighting.md"]
     },
     {

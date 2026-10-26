@@ -4,7 +4,7 @@
 #include "Widgets/Text/SMultiLineEditableText.h"
 #include "Code Editor/Syntax/N2CRichTextSyntaxHighlighter.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "Runtime/Launch/Resources/Version.h"
 
 const FName SN2CCodeEditor::CurrentTheme = FName(TEXT("Unreal Engine"));

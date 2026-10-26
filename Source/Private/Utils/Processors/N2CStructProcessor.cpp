@@ -2,108 +2,43 @@
 
 #include "Utils/Processors/N2CStructProcessor.h"
 
+namespace
+{
+    /** member_name is the struct's name and member_parent the path of the package that declares it */
+    void SetStructMember(const UScriptStruct* Struct, FN2CNodeDefinition& OutNodeDef)
+    {
+        OutNodeDef.MemberName = Struct->GetName();
+        const FString FullPath = Struct->GetStructPathName().ToString();
+        int32 DotIndex;
+        OutNodeDef.MemberParent = FullPath.FindChar('.', DotIndex) ? FullPath.Left(DotIndex) : FullPath;
+    }
+}
+
 void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
-    // Handle make struct nodes
-    if (UK2Node_MakeStruct* MakeStructNode = Cast<UK2Node_MakeStruct>(Node))
+    // Every struct node is a struct operation; the most-derived class decides the title (translation-core-27):
+    // SetFieldsInStruct derives from MakeStruct, and BreakStruct from StructMemberGet
+    const UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node);
+    const UScriptStruct* Struct = StructNode ? StructNode->StructType.Get() : nullptr;
+    if (!Struct)
     {
-        if (UScriptStruct* Struct = MakeStructNode->StructType)
-        {
-            OutNodeDef.Title = FString::Printf(TEXT("Make %s"), *Struct->GetName());
-            OutNodeDef.MemberName = Struct->GetName();
+        return;
+    }
+    SetStructMember(Struct, OutNodeDef);
 
-            // Get the path name and extract just the base name before the period
-            const FString FullPath = Struct->GetStructPathName().ToString();
-            int32 DotIndex;                                                                                                                                                                                                                
-            if (FullPath.FindChar('.', DotIndex))                                                                                                                                                                                          
-            {                                                                                                                                                                                                                              
-                OutNodeDef.MemberParent = FullPath.Left(DotIndex);                                                                                                                                                                         
-            }                                                                                                                                                                                                                              
-            else                                                                                                                                                                                                                           
-            {                                                                                                                                                                                                                              
-                OutNodeDef.MemberParent = FullPath;                                                                                                                                                                                        
-            }
-            
-            // Log make struct details
-            FString StructInfo = FString::Printf(TEXT("Make Struct: %s, Type: %s"),
-                *OutNodeDef.Title,
-                *OutNodeDef.MemberName);
-            FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
-            return;
-        }
-    }
-    
-    // Handle break struct nodes
-    if (UK2Node_BreakStruct* BreakStructNode = Cast<UK2Node_BreakStruct>(Node))
+    if (Node->IsA<UK2Node_SetFieldsInStruct>())
     {
-        if (UScriptStruct* Struct = BreakStructNode->StructType)
-        {
-            OutNodeDef.Title = FString::Printf(TEXT("Break %s"), *Struct->GetName());
-            OutNodeDef.MemberName = Struct->GetName();
+        // Keeps the editor's title ("Set members in S_Item"), from the base processor
+    }
+    else if (Node->IsA<UK2Node_MakeStruct>())
+    {
+        OutNodeDef.Title = FString::Printf(TEXT("Make %s"), *Struct->GetName());
+    }
+    else if (Node->IsA<UK2Node_BreakStruct>())
+    {
+        OutNodeDef.Title = FString::Printf(TEXT("Break %s"), *Struct->GetName());
+    }
 
-            // Get the path name and extract just the base name before the period
-            const FString FullPath = Struct->GetStructPathName().ToString();
-            int32 DotIndex;
-            if (FullPath.FindChar('.', DotIndex))
-            {
-                OutNodeDef.MemberParent = FullPath.Left(DotIndex);
-            }
-            else
-            {
-                OutNodeDef.MemberParent = FullPath;
-            }
-            
-            // Log break struct details
-            FString StructInfo = FString::Printf(TEXT("Break Struct: %s, Type: %s"),
-                *OutNodeDef.Title,
-                *OutNodeDef.MemberName);
-            FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
-            return;
-        }
-    }
-    
-    // Handle struct operation nodes
-    if (UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node))
-    {
-        if (UScriptStruct* Struct = StructNode->StructType)
-        {
-            OutNodeDef.MemberParent = Struct->GetName();
-            
-            // Log struct operation details
-            FString StructInfo = FString::Printf(TEXT("Struct Operation: %s, Type: %s"),
-                *OutNodeDef.Title,
-                *OutNodeDef.MemberParent);
-            FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
-            return;
-        }
-    }
-    
-    // Handle set fields in struct nodes
-    if (UK2Node_SetFieldsInStruct* SetFieldsNode = Cast<UK2Node_SetFieldsInStruct>(Node))
-    {
-        if (UScriptStruct* Struct = SetFieldsNode->StructType)
-        {
-            OutNodeDef.Title = FString::Printf(TEXT("Set Fields In %s"), *Struct->GetName());
-            OutNodeDef.MemberName = Struct->GetName();
-
-            // Get the path name and extract just the base name before the period
-            const FString FullPath = Struct->GetStructPathName().ToString();
-            int32 DotIndex;
-            if (FullPath.FindChar('.', DotIndex))
-            {
-                OutNodeDef.MemberParent = FullPath.Left(DotIndex);
-            }
-            else
-            {
-                OutNodeDef.MemberParent = FullPath;
-            }
-            
-            // Log set fields details
-            FString StructInfo = FString::Printf(TEXT("Set Fields In Struct: %s, Type: %s"),
-                *OutNodeDef.Title,
-                *OutNodeDef.MemberName);
-            FN2CLogger::Get().Log(StructInfo, EN2CLogSeverity::Debug);
-            return;
-        }
-    }
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Struct node %s: %s, struct %s"), *Node->GetClass()->GetName(),
+        *OutNodeDef.Title, *OutNodeDef.MemberName), EN2CLogSeverity::Debug);
 }

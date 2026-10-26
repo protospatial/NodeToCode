@@ -9,11 +9,11 @@
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Styling/AppStyle.h"
 #include "Models/N2CLogging.h"
-#include "Core/N2CSettings.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CUIColors.h"
+#include "Core/Style/N2CStyle.h"
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/Widgets/SN2CIconButton.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 
 #define LOCTEXT_NAMESPACE "SN2CBatchProgressModal"
 
@@ -56,7 +56,7 @@ void SN2CBatchProgressModal::Construct(const FArguments& InArgs)
 						SNew(STextBlock)
 						.Text(LOCTEXT("ModalHeader", "Batch Translation in Progress"))
 						.Font(FN2CFonts::LargeBold())
-						.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 					]
 				]
 
@@ -78,14 +78,14 @@ void SN2CBatchProgressModal::Construct(const FArguments& InArgs)
 						[
 							SNew(STextBlock)
 							.Text(LOCTEXT("ProcessingLabel", "Processing: "))
-							.ColorAndOpacity(UIBind(&FN2CUIColors::TextSecondary))
+							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 						]
 						+ SHorizontalBox::Slot()
 						.FillWidth(1.0f)
 						[
 							SAssignNew(CurrentItemText, STextBlock)
 							.Text(LOCTEXT("Waiting", "Waiting..."))
-							.ColorAndOpacity(UIBind(&FN2CUIColors::AccentOrange))
+							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentOrange))
 							.Font(FN2CFonts::Mono())
 						]
 					]
@@ -100,7 +100,7 @@ void SN2CBatchProgressModal::Construct(const FArguments& InArgs)
 						[
 							SNew(SProgressBar)
 							.Percent(this, &SN2CBatchProgressModal::GetProgressBarPercent)
-							.FillColorAndOpacity(UIBind(&FN2CUIColors::AccentOrange))
+							.FillColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentOrange))
 							.BackgroundImage(&N2CStyle::GetDarkPanelBorderBrush())
 						]
 					]
@@ -115,7 +115,7 @@ void SN2CBatchProgressModal::Construct(const FArguments& InArgs)
 						[
 							SAssignNew(ProgressCountText, STextBlock)
 							.Text(LOCTEXT("InitialCount", "0 / 0"))
-							.ColorAndOpacity(UIBind(&FN2CUIColors::TextMuted))
+							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 							.Font(FN2CFonts::Medium())
 						]
 					]
@@ -455,14 +455,14 @@ FSlateColor SN2CBatchProgressModal::GetStatusColor(EN2CBatchProgressItemStatus S
 	switch (Status)
 	{
 	case EN2CBatchProgressItemStatus::Completed:
-		return UIL(N2CUI().AccentGreen);
+		return N2C::UI::Linear(N2C::UI::Colors().AccentGreen);
 	case EN2CBatchProgressItemStatus::InProgress:
-		return UIL(N2CUI().AccentOrange);
+		return N2C::UI::Linear(N2C::UI::Colors().AccentOrange);
 	case EN2CBatchProgressItemStatus::Failed:
-		return UIL(N2CUI().AccentRed);
+		return N2C::UI::Linear(N2C::UI::Colors().AccentRed);
 	case EN2CBatchProgressItemStatus::Pending:
 	default:
-		return UIL(N2CUI().TextMuted);
+		return N2C::UI::Linear(N2C::UI::Colors().TextMuted);
 	}
 }
 
@@ -471,12 +471,12 @@ FSlateColor SN2CBatchProgressModal::GetItemTextColor(EN2CBatchProgressItemStatus
 	switch (Status)
 	{
 	case EN2CBatchProgressItemStatus::InProgress:
-		return UIL(N2CUI().TextPrimary);
+		return N2C::UI::Linear(N2C::UI::Colors().TextPrimary);
 	case EN2CBatchProgressItemStatus::Completed:
 	case EN2CBatchProgressItemStatus::Failed:
 	case EN2CBatchProgressItemStatus::Pending:
 	default:
-		return UIL(N2CUI().TextSecondary);
+		return N2C::UI::Linear(N2C::UI::Colors().TextSecondary);
 	}
 }
 

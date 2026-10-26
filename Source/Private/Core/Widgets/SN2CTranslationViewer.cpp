@@ -4,7 +4,7 @@
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/Widgets/SN2CIconButton.h"
 #include "Core/Widgets/SN2CHeaderBar.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Widgets/Layout/SBorder.h"
@@ -17,11 +17,12 @@
 #include "Widgets/Images/SImage.h"
 #include "Styling/AppStyle.h"
 #include "Styling/SlateIconFinder.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/Style/N2CUIColors.h"
 #include "Utils/N2CPathUtils.h"
 
 #define LOCTEXT_NAMESPACE "SN2CTranslationViewer"
@@ -125,7 +126,7 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 				.AreaTitle(LOCTEXT("NotesHeader", "Translation Notes"))
 				.InitiallyCollapsed(false)
 				.BorderImage(&N2CStyle::GetPanelBorderBrush())
-				.BorderBackgroundColor(UIBind(&FN2CUIColors::BgPanelDarker))
+				.BorderBackgroundColor(N2C::UI::Bind(&FN2CUIColors::BgPanelDarker))
 				.HeaderPadding(FMargin(FN2CSpacing::LG, FN2CSpacing::MD))
 				.Padding(FMargin(0.0f))
 				.BodyContent()
@@ -147,7 +148,7 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 								[
 									SAssignNew(NotesText, STextBlock)
 									.Text(LOCTEXT("NoNotes", "No implementation notes available."))
-									.ColorAndOpacity(UIBind(&FN2CUIColors::TextSecondary))
+									.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 									.AutoWrapText(true)
 								]
 							]
@@ -444,18 +445,18 @@ FSlateColor SN2CTranslationViewer::GetTabTextColor(FString FileType) const
 {
 	if (FileType == ActiveFileType)
 	{
-		return UIL(N2CUI().AccentOrange);
+		return N2C::UI::Linear(N2C::UI::Colors().AccentOrange);
 	}
-	return UIL(N2CUI().TextSecondary);
+	return N2C::UI::Linear(N2C::UI::Colors().TextSecondary);
 }
 
 FSlateColor SN2CTranslationViewer::GetTabBorderColor(FString FileType) const
 {
 	if (FileType == ActiveFileType)
 	{
-		return UIL(N2CUI().AccentOrange);
+		return N2C::UI::Linear(N2C::UI::Colors().AccentOrange);
 	}
-	return UIL(N2CUI().BorderColor);
+	return N2C::UI::Linear(N2C::UI::Colors().BorderColor);
 }
 
 #undef LOCTEXT_NAMESPACE

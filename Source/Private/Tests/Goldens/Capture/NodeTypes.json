@@ -1,0 +1,180 @@
+{
+	"case": "NodeTypes",
+	"description": "Function NodeTypes with local Counter (int): Entry runs Set members in Vector, then Set Counter (from Get Counter), then a K2Node_N2CTestUnmapped (a UK2Node subclass with no mapping), then a K2Node_N2CTestCallFunction (a K2Node_CallFunction subclass with no mapping of its own) calling CollectGarbage.",
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_NodeTypes",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_NodeTypes"
+		},
+		"graphs": [
+			{
+				"name": "NodeTypes",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "NodeTypes",
+						"member_parent": "BP_N2CGolden_NodeTypes",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "SetFieldsInStruct",
+						"class": "K2Node_SetFieldsInStruct",
+						"title": "Set members in Vector",
+						"member_parent": "/Script/CoreUObject",
+						"member_name": "Vector",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "StructRef",
+								"type": "Struct",
+								"sub_type": "Vector",
+								"is_reference": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "StructOut",
+								"type": "Struct",
+								"sub_type": "Vector",
+								"is_reference": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "LocalVariableGet",
+						"class": "K2Node_VariableGet",
+						"member_name": "Counter",
+						"pure": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Counter",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "LocalVariableSet",
+						"class": "K2Node_VariableSet",
+						"member_name": "Counter",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "Counter",
+								"type": "Integer",
+								"default_value": "0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Output_Get",
+								"type": "Integer",
+								"default_value": "0"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "Unknown",
+						"class": "K2Node_N2CTestUnmapped",
+						"title": "K2Node_N2CTestUnmapped",
+						"input_pins": [
+							{
+								"id": "P11",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P12",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "CallFunction",
+						"class": "K2Node_N2CTestCallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P13",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P14",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2",
+						"N2.P3->N4.P7",
+						"N4.P8->N5.P11",
+						"N5.P12->N6.P13"
+					],
+					"data":
+					{
+						"N3.P6": "N4.P9"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

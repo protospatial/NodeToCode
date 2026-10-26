@@ -14,24 +14,19 @@ void FN2CVariableProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinit
     // Get variable reference info
     const FMemberReference& VarRef = VarNode->VariableReference;
 
-    OutNodeDef.Title = VarNode->GetVarNameString();
+    // A node without a variable keeps the base processor's title (the editor's) rather than "None"
+    if (!VarNode->GetVarName().IsNone())
+    {
+        OutNodeDef.Title = VarNode->GetVarNameString();
+    }
 
-    // The variable's name as declared: never shortened, so Temperature_C stays Temperature_C (translation-core-28)
+    // The variable's name as declared: never shortened, so Temperature_C stays Temperature_C (translation-core-28).
+    // A node without a variable reference has no member_name: no name is made up (it used to be Var_<graph>_<UObject
+    // index>, which changed every session; translation-core-4).
     FName MemberName = VarRef.GetMemberName();
     if (!MemberName.IsNone())
     {
         OutNodeDef.MemberName = MemberName.ToString();
-    }
-    else if (UEdGraph* Graph = Node->GetGraph())
-    {
-        // Fallback to a generated name using the graph
-        OutNodeDef.MemberName = FString::Printf(TEXT("Var_%s_%d"),
-            *Graph->GetName(),
-            Node->GetUniqueID());
-    }
-    else
-    {
-        OutNodeDef.MemberName = FString::Printf(TEXT("UnknownVariable"));
     }
 
     // member_parent is the class that declares the variable, as for a function call (translation-core-22): Health of

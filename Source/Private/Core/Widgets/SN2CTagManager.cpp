@@ -6,10 +6,11 @@
 #include "Core/Widgets/SN2CContextWindowVisualizer.h"
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/Widgets/SN2CIconButton.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 #include "Core/N2CTagManager.h"
 #include "Core/N2CSettings.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CUIColors.h"
+#include "Core/Style/N2CStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -140,7 +141,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								SNew(STextBlock)
 								.Text(LOCTEXT("ActionsHeader", "ACTIONS"))
 								.Font(FN2CFonts::SmallBold())
-								.ColorAndOpacity(UIBind(&FN2CUIColors::TextMuted))
+								.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 							]
 							+ SVerticalBox::Slot()
 							.AutoHeight()
@@ -152,14 +153,14 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("SelectionLabel", "Selection: "))
-									.ColorAndOpacity(UIBind(&FN2CUIColors::TextSecondary))
+									.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 								]
 								+ SHorizontalBox::Slot()
 								.AutoWidth()
 								[
 									SAssignNew(SelectionCountText, STextBlock)
 									.Text(LOCTEXT("NoSelection", "0 graphs selected"))
-									.ColorAndOpacity(UIBind(&FN2CUIColors::AccentGold))
+									.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentGold))
 								]
 							]
 						]
@@ -236,7 +237,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 							[
 								SNew(STextBlock)
 								.Text(LOCTEXT("MinifyJsonLabel", "Minify JSON"))
-								.ColorAndOpacity(UIBind(&FN2CUIColors::TextSecondary))
+								.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 							]
 						]
 						// Output path
@@ -247,7 +248,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 						[
 							SNew(STextBlock)
 							.Text(LOCTEXT("OutputLabel", "Output:"))
-							.ColorAndOpacity(UIBind(&FN2CUIColors::TextSecondary))
+							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 						]
 						+ SHorizontalBox::Slot()
 						.FillWidth(1.0f)
