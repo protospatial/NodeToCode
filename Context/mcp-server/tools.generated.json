@@ -158,6 +158,7 @@
 	"tools": [
 		{
 			"name": "add-bp-node-to-active-graph",
+			"title": "Add a Blueprint node",
 			"toolset": "BlueprintGraphTools",
 			"description": "Adds a Blueprint node to a graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph (the result's target says which). IMPORTANT: Use search-blueprint-nodes first and pass a result's spawnMetadata.actionIdentifier (a stable ID) and spawnMetadata.nodeName. NEXT STEP: After adding a node, use the 'connect-pins' tool to wire the node's pins to other nodes using the pinGuid values returned in inputPins and outputPins arrays. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -167,6 +168,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintGraphTools"
 			},
 			"arguments": [
 				{
@@ -259,14 +268,11 @@
 					"nodeName",
 					"actionIdentifier"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintGraphTools"
 			}
 		},
 		{
 			"name": "add-component-class-to-actor",
+			"title": "Add a component to an Actor Blueprint",
 			"toolset": "BlueprintComponentTools",
 			"description": "Adds a component of a specified class to an Actor Blueprint, as the Components panel does (one undoable step). A scene component is attached to parentComponent, or to the actor's root component Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -276,6 +282,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintComponentTools"
 			},
 			"arguments": [
 				{
@@ -426,14 +440,11 @@
 				"required": [
 					"componentClass"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintComponentTools"
 			}
 		},
 		{
 			"name": "add-function-input-pin",
+			"title": "Add a function input",
 			"toolset": "BlueprintFunctionTools",
 			"description": "Adds a new input parameter to a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -443,6 +454,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintFunctionTools"
 			},
 			"arguments": [
 				{
@@ -550,14 +569,11 @@
 					"pinName",
 					"typeIdentifier"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintFunctionTools"
 			}
 		},
 		{
 			"name": "add-function-return-pin",
+			"title": "Add a function return value",
 			"toolset": "BlueprintFunctionTools",
 			"description": "Adds a new return value to a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -567,6 +583,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintFunctionTools"
 			},
 			"arguments": [
 				{
@@ -648,14 +672,11 @@
 					"pinName",
 					"typeIdentifier"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintFunctionTools"
 			}
 		},
 		{
 			"name": "compile-blueprint",
+			"title": "Compile a Blueprint",
 			"toolset": "BlueprintCompileTools",
 			"description": "Compile a Blueprint and return compilation results including errors and warnings Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -665,6 +686,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintCompileTools"
 			},
 			"arguments": [
 				{
@@ -694,14 +723,11 @@
 						"type": "boolean"
 					}
 				}
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintCompileTools"
 			}
 		},
 		{
 			"name": "connect-pins",
+			"title": "Connect pins",
 			"toolset": "BlueprintGraphTools",
 			"description": "Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -710,6 +736,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintGraphTools"
 			},
 			"arguments": [
 				{
@@ -869,14 +903,11 @@
 				"required": [
 					"connections"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintGraphTools"
 			}
 		},
 		{
 			"name": "copy-asset",
+			"title": "Copy an asset",
 			"toolset": "ContentBrowserTools",
 			"description": "Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /<PluginName>/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy fails. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -886,6 +917,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -932,14 +971,11 @@
 					"sourcePath",
 					"destinationPath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "create-blueprint-class",
+			"title": "Create a Blueprint class",
 			"toolset": "BlueprintClassTools",
 			"description": "Creates a new Blueprint class with the specified parent class and settings, then saves it. A UserWidget parent gives a Widget Blueprint Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -949,6 +985,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintClassTools"
 			},
 			"arguments": [
 				{
@@ -1092,14 +1136,11 @@
 					"parentClassPath",
 					"assetPath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintClassTools"
 			}
 		},
 		{
 			"name": "create-blueprint-function",
+			"title": "Create a Blueprint function",
 			"toolset": "BlueprintFunctionTools",
 			"description": "Creates a new Blueprint function with specified parameters and opens it in the editor Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1109,6 +1150,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintFunctionTools"
 			},
 			"arguments": [
 				{
@@ -1226,14 +1275,11 @@
 				"required": [
 					"functionName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintFunctionTools"
 			}
 		},
 		{
 			"name": "create-comment-node",
+			"title": "Create a comment around nodes",
 			"toolset": "BlueprintGraphTools",
 			"description": "Creates a comment node around specified Blueprint nodes using their GUIDs, in the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Get node GUIDs from find-nodes-in-graph or get-focused-blueprint first. Do NOT set a color unless the user requests it. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1242,6 +1288,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintGraphTools"
 			},
 			"arguments": [
 				{
@@ -1382,14 +1436,11 @@
 				"required": [
 					"nodeGuids"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintGraphTools"
 			}
 		},
 		{
 			"name": "create-folder",
+			"title": "Create a content folder",
 			"toolset": "ContentBrowserTools",
 			"description": "Create a new folder in the content browser Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1399,6 +1450,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -1431,14 +1490,11 @@
 				"required": [
 					"folderPath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "create-get-local-function-variable-node",
+			"title": "Add a Get node for a local variable",
 			"toolset": "BlueprintVariableTools",
 			"description": "Create a Get node for a local function variable in the currently focused Blueprint function graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1448,6 +1504,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -1490,14 +1554,11 @@
 				"required": [
 					"variableName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "create-get-member-variable-node",
+			"title": "Add a Get node for a member variable",
 			"toolset": "BlueprintVariableTools",
 			"description": "Creates a Get node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1507,6 +1568,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -1553,14 +1622,11 @@
 				"required": [
 					"variableName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "create-local-variable",
+			"title": "Create a local variable",
 			"toolset": "BlueprintVariableTools",
 			"description": "Creates a new local variable in the currently focused Blueprint function. The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1569,6 +1635,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -1668,14 +1742,11 @@
 					"variableName",
 					"typeIdentifier"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "create-set-local-function-variable-node",
+			"title": "Add a Set node for a local variable",
 			"toolset": "BlueprintVariableTools",
 			"description": "Create a Set node for a local function variable in the currently focused Blueprint graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1685,6 +1756,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -1737,14 +1816,11 @@
 				"required": [
 					"variableName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "create-set-member-variable-node",
+			"title": "Add a Set node for a member variable",
 			"toolset": "BlueprintVariableTools",
 			"description": "Creates a Set node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable that Blueprints may write (BlueprintReadOnly variables are refused). The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1754,6 +1830,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -1811,14 +1895,11 @@
 				"required": [
 					"variableName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "create-variable",
+			"title": "Create a member variable",
 			"toolset": "BlueprintVariableTools",
 			"description": "Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -1827,6 +1908,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -1988,14 +2077,11 @@
 					"variableName",
 					"typeIdentifier"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "delete-blueprint-function",
+			"title": "Delete a Blueprint function",
 			"toolset": "BlueprintFunctionTools",
 			"description": "Deletes a Blueprint function, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint. Supports reference detection and forced deletion. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -2004,6 +2090,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintFunctionTools"
 			},
 			"arguments": [
 				{
@@ -2070,14 +2164,11 @@
 						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				}
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintFunctionTools"
 			}
 		},
 		{
 			"name": "delete-blueprint-node",
+			"title": "Delete Blueprint nodes",
 			"toolset": "BlueprintGraphTools",
 			"description": "Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Supports connection preservation and batch operations. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -2086,6 +2177,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintGraphTools"
 			},
 			"arguments": [
 				{
@@ -2173,14 +2272,11 @@
 				"required": [
 					"nodeGuids"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintGraphTools"
 			}
 		},
 		{
 			"name": "delete-component-in-actor",
+			"title": "Delete a component from an Actor Blueprint",
 			"toolset": "BlueprintComponentTools",
 			"description": "Deletes a component this Actor Blueprint adds, as the Components panel does (one undoable step): its Get and Set nodes are removed, events bound to it are reported, and its children are deleted too or moved up to its parent Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -2190,6 +2286,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintComponentTools"
 			},
 			"arguments": [
 				{
@@ -2237,14 +2341,11 @@
 				"required": [
 					"componentName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintComponentTools"
 			}
 		},
 		{
 			"name": "delete-python-script",
+			"title": "Delete a library script",
 			"toolset": "PythonTools",
 			"description": "Delete a Python script from the script library. This permanently removes both the script file and its registry entry. Use with caution - this action cannot be undone.",
 			"defaultEnabled": false,
@@ -2254,6 +2355,14 @@
 			"worksDuringPlaySession": true,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "PythonTools"
 			},
 			"arguments": [
 				{
@@ -2277,10 +2386,6 @@
 				"required": [
 					"name"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "PythonTools"
 			}
 		},
 		{
@@ -2298,6 +2403,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			},
 			"arguments": [
 				{
@@ -2405,14 +2514,11 @@
 					}
 				},
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "find-nodes-in-graph",
+			"title": "Find nodes in a graph",
 			"toolset": "BlueprintGraphTools",
 			"description": "Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.",
 			"defaultEnabled": true,
@@ -2425,6 +2531,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintGraphTools"
 			},
 			"arguments": [
 				{
@@ -2534,14 +2644,11 @@
 				"required": [
 					"searchTerms"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintGraphTools"
 			}
 		},
 		{
 			"name": "get-available-llm-providers",
+			"title": "List LLM providers",
 			"toolset": "TranslationTools",
 			"description": "Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers.",
 			"defaultEnabled": true,
@@ -2555,6 +2662,10 @@
 				"idempotentHint": true,
 				"openWorldHint": false
 			},
+			"_meta":
+			{
+				"nodetocode/toolset": "TranslationTools"
+			},
 			"arguments": [],
 			"inputSchema":
 			{
@@ -2564,14 +2675,11 @@
 				},
 				"required": [],
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "TranslationTools"
 			}
 		},
 		{
 			"name": "get-available-translation-targets",
+			"title": "List translation languages",
 			"toolset": "TranslationTools",
 			"description": "Returns the list of programming languages that NodeToCode can translate Blueprints into, including metadata about each language.",
 			"defaultEnabled": true,
@@ -2585,6 +2693,10 @@
 				"idempotentHint": true,
 				"openWorldHint": false
 			},
+			"_meta":
+			{
+				"nodetocode/toolset": "TranslationTools"
+			},
 			"arguments": [],
 			"inputSchema":
 			{
@@ -2594,14 +2706,11 @@
 				},
 				"required": [],
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "TranslationTools"
 			}
 		},
 		{
 			"name": "get-blueprint-function-local-variables",
+			"title": "List a function's local variables",
 			"toolset": "BlueprintVariableTools",
 			"description": "Extract local variables from the currently focused Blueprint function graph",
 			"defaultEnabled": true,
@@ -2615,6 +2724,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -2634,14 +2747,11 @@
 						"type": "boolean"
 					}
 				}
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "get-blueprint-member-variables",
+			"title": "List a Blueprint's member variables",
 			"toolset": "BlueprintVariableTools",
 			"description": "Retrieves all member variables from the currently focused Blueprint, including their types, categories, and properties",
 			"defaultEnabled": true,
@@ -2656,6 +2766,10 @@
 				"idempotentHint": true,
 				"openWorldHint": false
 			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
+			},
 			"arguments": [],
 			"inputSchema":
 			{
@@ -2665,14 +2779,11 @@
 				},
 				"required": [],
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "get-blueprint-n2cjson",
+			"title": "Read a Blueprint as N2C JSON",
 			"toolset": "BlueprintDiscoveryTools",
 			"description": "Reads any Blueprint in the project as NodeToCode's N2C JSON by asset path, with no Blueprint editor open and without changing focus: one graph (graphName or graphGuid, see list-blueprint-graphs) or, with neither, every graph of the Blueprint in one document. The document is the one get-focused-blueprint returns (nodes and pins with ids {short, guid}, flows, the guids table). When it would exceed about 20000 tokens, or with toFile, it is written to a file under Saved/NodeToCode/Exports and the result is {path, bytes, estimatedTokens, reason, graphCount, nodeCount}: read that file in parts.",
 			"defaultEnabled": true,
@@ -2685,6 +2796,11 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools",
+				"anthropic/alwaysLoad": true
 			},
 			"arguments": [
 				{
@@ -2769,14 +2885,11 @@
 				"required": [
 					"blueprintPath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "get-focused-blueprint",
+			"title": "Read the focused Blueprint graph",
 			"toolset": "BlueprintDiscoveryTools",
 			"description": "Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.",
 			"defaultEnabled": true,
@@ -2790,6 +2903,12 @@
 				"idempotentHint": true,
 				"openWorldHint": false
 			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools",
+				"anthropic/maxResultSizeChars": 200000,
+				"anthropic/alwaysLoad": true
+			},
 			"arguments": [],
 			"inputSchema":
 			{
@@ -2799,14 +2918,11 @@
 				},
 				"required": [],
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "get-open-blueprint-editors",
+			"title": "List open Blueprint editors",
 			"toolset": "BlueprintDiscoveryTools",
 			"description": "Returns a list of all currently open Blueprint editors with their asset paths and available graphs",
 			"defaultEnabled": true,
@@ -2820,6 +2936,10 @@
 				"idempotentHint": true,
 				"openWorldHint": false
 			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools"
+			},
 			"arguments": [],
 			"inputSchema":
 			{
@@ -2829,14 +2949,11 @@
 				},
 				"required": [],
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "get-python-script",
+			"title": "Read a library script",
 			"toolset": "PythonTools",
 			"description": "Get a Python script's full code and metadata by name. Returns the script code, description, tags, parameters, and usage stats. Use this to understand implementation details before extending or modifying a script. For just seeing importable functions (more token-efficient), use get-script-functions instead.",
 			"defaultEnabled": true,
@@ -2849,6 +2966,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "PythonTools"
 			},
 			"arguments": [
 				{
@@ -2872,14 +2993,11 @@
 				"required": [
 					"name"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "PythonTools"
 			}
 		},
 		{
 			"name": "get-script-functions",
+			"title": "List a library script's functions",
 			"toolset": "PythonTools",
 			"description": "Get function signatures from a Python script using AST parsing (~80% more token-efficient than get-python-script). Returns function names, parameters, types, and docstrings WITHOUT full implementation code. Use this after search-python-scripts finds a partial match to see what functions can be imported. Then import in your code: 'from scripts.<category>.<script_name> import function_name'.",
 			"defaultEnabled": true,
@@ -2892,6 +3010,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "PythonTools"
 			},
 			"arguments": [
 				{
@@ -2915,14 +3037,11 @@
 				"required": [
 					"name"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "PythonTools"
 			}
 		},
 		{
 			"name": "get-translation-output-directory",
+			"title": "Show the translation output folder",
 			"toolset": "TranslationTools",
 			"description": "Returns the translation output directory configuration from NodeToCode settings. Shows whether a custom directory is set or if the default location is being used. Translations run from the editor's NodeToCode window are saved there; translate-focused-blueprint returns its translation in the tool result and writes no files.",
 			"defaultEnabled": true,
@@ -2936,6 +3055,10 @@
 				"idempotentHint": true,
 				"openWorldHint": false
 			},
+			"_meta":
+			{
+				"nodetocode/toolset": "TranslationTools"
+			},
 			"arguments": [],
 			"inputSchema":
 			{
@@ -2945,14 +3068,11 @@
 				},
 				"required": [],
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "TranslationTools"
 			}
 		},
 		{
 			"name": "list-blueprint-functions",
+			"title": "List Blueprint functions",
 			"toolset": "BlueprintDiscoveryTools",
 			"description": "Lists all functions defined in a Blueprint with their parameters and metadata",
 			"defaultEnabled": true,
@@ -2966,6 +3086,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			},
 			"arguments": [
 				{
@@ -3013,14 +3137,11 @@
 					}
 				},
 				"required": []
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "list-blueprint-graphs",
+			"title": "List Blueprint graphs",
 			"toolset": "BlueprintDiscoveryTools",
 			"description": "Lists every graph of any Blueprint in the project by asset path, with no Blueprint editor open: name, graphGuid (stable across renames; pass it to get-blueprint-n2cjson or the graph tools), kind (event, function, macro, collapsed, delegate, interface), nodeCount, readOnly (shown read-only in the Blueprint editor) and, for a collapsed graph, parentGraph.",
 			"defaultEnabled": true,
@@ -3033,6 +3154,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			},
 			"arguments": [
 				{
@@ -3056,14 +3181,11 @@
 				"required": [
 					"blueprintPath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "list-blueprint-tags",
+			"title": "List graph tags",
 			"toolset": "BlueprintTagTools",
 			"description": "Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, or by tag name (optionally with category), or by category; a graphGuid filter overrides the tag and category filters.",
 			"defaultEnabled": true,
@@ -3076,6 +3198,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintTagTools"
 			},
 			"arguments": [
 				{
@@ -3115,14 +3241,11 @@
 						"type": "string"
 					}
 				}
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintTagTools"
 			}
 		},
 		{
 			"name": "list-components-in-actor",
+			"title": "List an Actor Blueprint's components",
 			"toolset": "BlueprintComponentTools",
 			"description": "Lists the components of an Actor Blueprint as a tree, as the Components panel shows them: native components of its C++ class, components its parent Blueprints add, and its own, with types and relative transforms",
 			"defaultEnabled": true,
@@ -3136,6 +3259,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintComponentTools"
 			},
 			"arguments": [
 				{
@@ -3195,14 +3322,11 @@
 					}
 				},
 				"required": []
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintComponentTools"
 			}
 		},
 		{
 			"name": "list-overridable-functions",
+			"title": "List overridable functions",
 			"toolset": "BlueprintDiscoveryTools",
 			"description": "Lists all functions that can be overridden from parent classes and interfaces",
 			"defaultEnabled": true,
@@ -3216,6 +3340,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			},
 			"arguments": [
 				{
@@ -3272,14 +3400,11 @@
 					}
 				},
 				"required": []
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "list-python-scripts",
+			"title": "List library scripts",
 			"toolset": "PythonTools",
 			"description": "List available Python scripts from the script library. Returns script names with metadata (description, tags, usage count). Use alongside search-python-scripts to discover reusable scripts before writing new code (DRY principle). Browse by category to find related utilities that can be imported and composed.",
 			"defaultEnabled": true,
@@ -3292,6 +3417,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "PythonTools"
 			},
 			"arguments": [
 				{
@@ -3324,14 +3453,11 @@
 					}
 				},
 				"required": []
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "PythonTools"
 			}
 		},
 		{
 			"name": "move-asset",
+			"title": "Move an asset",
 			"toolset": "ContentBrowserTools",
 			"description": "Move or rename an asset to a new location in the content browser. Accepts both package paths (/Game/Folder/Asset) and object paths (/Game/Folder/Asset.Asset) Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -3341,6 +3467,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -3400,14 +3534,11 @@
 					"sourcePath",
 					"destinationPath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "move-folder",
+			"title": "Move a content folder",
 			"toolset": "ContentBrowserTools",
 			"description": "Move a folder and all its contents to a new location in the content browser Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -3417,6 +3548,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -3460,14 +3599,11 @@
 					"sourcePath",
 					"destinationPath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "open-blueprint-asset",
+			"title": "Open a Blueprint in its editor",
 			"toolset": "ContentBrowserTools",
 			"description": "Opens a specified blueprint asset in the Blueprint Editor, allowing agents to programmatically open blueprints for viewing or editing. An already open Blueprint is brought to the front. Either way it becomes the focused Blueprint that get-focused-blueprint and the other focus-based tools act on",
 			"defaultEnabled": true,
@@ -3477,6 +3613,14 @@
 			"worksDuringPlaySession": true,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -3526,14 +3670,11 @@
 				"required": [
 					"asset_path"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "open-blueprint-function",
+			"title": "Open a Blueprint function",
 			"toolset": "BlueprintFunctionTools",
 			"description": "Opens a Blueprint function in the editor and focuses it, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint",
 			"defaultEnabled": true,
@@ -3542,6 +3683,14 @@
 			"worksDuringPlaySession": true,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintFunctionTools"
 			},
 			"arguments": [
 				{
@@ -3621,14 +3770,11 @@
 						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				}
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintFunctionTools"
 			}
 		},
 		{
 			"name": "open-content-browser-path",
+			"title": "Show a folder in the Content Browser",
 			"toolset": "ContentBrowserTools",
 			"description": "Opens a specified path in the focused content browser, allowing navigation of the project structure",
 			"defaultEnabled": true,
@@ -3638,6 +3784,14 @@
 			"worksDuringPlaySession": true,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -3687,14 +3841,11 @@
 				"required": [
 					"path"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "read-content-browser-path",
+			"title": "List a content folder",
 			"toolset": "ContentBrowserTools",
 			"description": "Returns the assets of every type and the subfolders directly inside a content browser folder (not recursive), with paging and type and name filters",
 			"defaultEnabled": true,
@@ -3708,6 +3859,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -3815,14 +3970,11 @@
 				"required": [
 					"path"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "read-file",
+			"title": "Read a project text file",
 			"toolset": "FileSystemTools",
 			"description": "Reads a text file in the Unreal Engine project, or in the translation output directory when that is outside the project. relativePath is relative to the project folder; an absolute path is accepted only inside those two folders. Only text files are read (source, config, JSON, CSV, Markdown, logs, ...): other types such as .uasset, .uexp, .png or .dll, and files with NUL bytes or invalid UTF-8, are refused. At most 500 KB of text comes back per call, in whole lines: truncated is true when the cap cut the read short, and nextOffset is the offset that continues it. offset and limit read a line range. Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) are never readable.",
 			"defaultEnabled": true,
@@ -3835,6 +3987,11 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "FileSystemTools",
+				"anthropic/maxResultSizeChars": 200000
 			},
 			"arguments": [
 				{
@@ -3882,14 +4039,11 @@
 				"required": [
 					"relativePath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "FileSystemTools"
 			}
 		},
 		{
 			"name": "read-path",
+			"title": "List a project directory",
 			"toolset": "FileSystemTools",
 			"description": "Lists the files and folders directly inside a directory of the Unreal Engine project (not recursive), or of the translation output directory when that is outside the project. relativePath is relative to the project folder: \"\" or \".\" for the project folder, \"Config\", \"Content/Blueprints\"; an absolute path is accepted only inside those two folders. Results come in pages, folders first and then files, each sorted by name: total counts every entry, and when truncated is true pass nextCursor as cursor for the next page. filter keeps the names that match a wildcard such as \"*.json\". Credential folders (Saved/NodeToCode/User, .git) cannot be listed.",
 			"defaultEnabled": true,
@@ -3902,6 +4056,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "FileSystemTools"
 			},
 			"arguments": [
 				{
@@ -3962,14 +4120,11 @@
 				"required": [
 					"relativePath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "FileSystemTools"
 			}
 		},
 		{
 			"name": "remove-function-entry-pin",
+			"title": "Remove a function input",
 			"toolset": "BlueprintFunctionTools",
 			"description": "Removes an input parameter from a Blueprint function (a pin on its entry node): the function blueprintPath plus graphName or graphGuid name, else the focused one. Return values are on the result node: remove them with remove-function-return-pin. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -3979,6 +4134,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintFunctionTools"
 			},
 			"arguments": [
 				{
@@ -4034,14 +4197,11 @@
 				"required": [
 					"pinName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintFunctionTools"
 			}
 		},
 		{
 			"name": "remove-function-return-pin",
+			"title": "Remove a function return value",
 			"toolset": "BlueprintFunctionTools",
 			"description": "Removes a return value from a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -4051,6 +4211,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintFunctionTools"
 			},
 			"arguments": [
 				{
@@ -4106,14 +4274,11 @@
 				"required": [
 					"pinName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintFunctionTools"
 			}
 		},
 		{
 			"name": "remove-tag-from-graph",
+			"title": "Remove a tag from a graph",
 			"toolset": "BlueprintTagTools",
 			"description": "Removes a specific tag from a Blueprint graph by its GUID and tag name Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -4122,6 +4287,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintTagTools"
 			},
 			"arguments": [
 				{
@@ -4155,14 +4328,11 @@
 					"graphGuid",
 					"tag"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintTagTools"
 			}
 		},
 		{
 			"name": "rename-asset",
+			"title": "Rename an asset",
 			"toolset": "ContentBrowserTools",
 			"description": "Rename an asset or move it to a new location Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -4172,6 +4342,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -4224,14 +4402,11 @@
 				"required": [
 					"sourcePath"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "rename-folder",
+			"title": "Rename a content folder",
 			"toolset": "ContentBrowserTools",
 			"description": "Rename a folder in the content browser Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -4241,6 +4416,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": false,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -4284,14 +4467,11 @@
 					"sourcePath",
 					"newName"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "run-python",
+			"title": "Run Python in the editor",
 			"toolset": "PythonTools",
 			"description": "Execute Python code in Unreal Engine's Python environment. WORKFLOW: 1) Search existing scripts first (search-python-scripts), 2) Use Context7 MCP to look up UE Python APIs (resolve-library-id with 'unreal-python-stubhub', then query-docs) - never guess signatures, 3) Import saved scripts: 'from scripts.<category>.<name> import func', 4) Use 'import nodetocode as n2c' for Blueprint utilities (get_focused_blueprint, compile_blueprint, save_blueprint, tag_graph), 5) Set 'result' variable to return structured data.",
 			"defaultEnabled": false,
@@ -4301,6 +4481,14 @@
 			"worksDuringPlaySession": true,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": false,
+				"openWorldHint": true
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "PythonTools"
 			},
 			"arguments": [
 				{
@@ -4335,14 +4523,11 @@
 				"required": [
 					"code"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "PythonTools"
 			}
 		},
 		{
 			"name": "save-blueprint",
+			"title": "Save a Blueprint",
 			"toolset": "BlueprintCompileTools",
 			"description": "Save a Blueprint asset to disk, writing the package file Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -4352,6 +4537,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintCompileTools"
 			},
 			"arguments": [
 				{
@@ -4381,14 +4574,11 @@
 						"type": "boolean"
 					}
 				}
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintCompileTools"
 			}
 		},
 		{
 			"name": "save-python-script",
+			"title": "Save a library script",
 			"toolset": "PythonTools",
 			"description": "Save a Python script to the script library for reuse. Stored in Content/Python/scripts/<category>/ and importable as 'from scripts.<category>.<name> import func'. Write modular scripts with focused functions, clear docstrings, and parameterized inputs. Every saved script grows the reusable toolkit for future tasks.",
 			"defaultEnabled": false,
@@ -4398,6 +4588,14 @@
 			"worksDuringPlaySession": true,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "PythonTools"
 			},
 			"arguments": [
 				{
@@ -4471,14 +4669,11 @@
 					"code",
 					"description"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "PythonTools"
 			}
 		},
 		{
 			"name": "search-blueprint-classes",
+			"title": "Search parent classes",
 			"toolset": "BlueprintClassTools",
 			"description": "Searches for available parent classes for Blueprint creation, similar to the 'Pick Parent Class' dialog. Common parent classes (Actor, Pawn, Character, ActorComponent, UserWidget, ...) come first and are listed whatever the classType and include filters say. totalFound counts every class collected before the search term is applied, not the matches",
 			"defaultEnabled": true,
@@ -4492,6 +4687,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintClassTools"
 			},
 			"arguments": [
 				{
@@ -4609,14 +4808,11 @@
 				"required": [
 					"searchTerm"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintClassTools"
 			}
 		},
 		{
 			"name": "search-blueprint-nodes",
+			"title": "Search Blueprint node actions",
 			"toolset": "BlueprintDiscoveryTools",
 			"description": "Searches for Blueprint nodes/actions relevant to a given query, in the action list of the target graph (blueprintPath, graphName, graphGuid, or the focused graph): the list the editor's node menu shows with Context Sensitive off. For common math operations, you can simply search for symbols like '+', '-', '*', or '/'. The promotable math nodes (e.g., Add, Subtract, Multiply, Divide) typically have wildcard pins that automatically promote to compatible types (e.g., float, integer, vector), so you usually don't need to search for type-specific versions like 'multiply float by float'. Read-only: it never changes the graph. Each result's spawnMetadata.actionIdentifier is a stable ID (the node spawner's signature, the same in every search) to pass to add-bp-node-to-active-graph unchanged, with spawnMetadata.nodeName as nodeName.",
 			"defaultEnabled": true,
@@ -4630,6 +4826,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			},
 			"arguments": [
 				{
@@ -4762,14 +4962,11 @@
 				"required": [
 					"searchTerm"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintDiscoveryTools"
 			}
 		},
 		{
 			"name": "search-content-browser",
+			"title": "Search project assets",
 			"toolset": "ContentBrowserTools",
 			"description": "Search for assets under /Game (and /Engine when includeEngineContent is true) by name or type. Plugin content mounted at /<PluginName> is not searched; list it with read-content-browser-path.",
 			"defaultEnabled": true,
@@ -4783,6 +4980,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "ContentBrowserTools"
 			},
 			"arguments": [
 				{
@@ -4856,14 +5057,11 @@
 					}
 				},
 				"required": []
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "ContentBrowserTools"
 			}
 		},
 		{
 			"name": "search-python-scripts",
+			"title": "Search library scripts",
 			"toolset": "PythonTools",
 			"description": "CALL THIS FIRST before writing any Python code. Search for existing scripts to reuse. Returns matching scripts sorted by relevance. If exact match found: execute it with run-python. If partial match found: use get-script-functions to see importable functions, then compose. Only write new code if no relevant scripts exist.",
 			"defaultEnabled": true,
@@ -4876,6 +5074,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "PythonTools"
 			},
 			"arguments": [
 				{
@@ -4910,14 +5112,11 @@
 				"required": [
 					"query"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "PythonTools"
 			}
 		},
 		{
 			"name": "search-variable-types",
+			"title": "Search variable types",
 			"toolset": "BlueprintVariableTools",
 			"description": "Searches for available variable types (primitives, classes, structs, enums) by name and returns matches with unique type identifiers",
 			"defaultEnabled": true,
@@ -4930,6 +5129,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -5008,14 +5211,11 @@
 				"required": [
 					"searchTerm"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "set-input-pin-value",
+			"title": "Set an input pin's default value",
 			"toolset": "BlueprintGraphTools",
 			"description": "Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins). Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -5025,6 +5225,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintGraphTools"
 			},
 			"arguments": [
 				{
@@ -5112,14 +5320,11 @@
 					"pinGuid",
 					"value"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintGraphTools"
 			}
 		},
 		{
 			"name": "set-local-function-variable-default-value",
+			"title": "Set a local variable's default value",
 			"toolset": "BlueprintVariableTools",
 			"description": "Set the default value of a local function variable (like editing in the details panel) Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -5128,6 +5333,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -5161,14 +5374,11 @@
 					"variableName",
 					"defaultValue"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "set-member-variable-default-value",
+			"title": "Set a member variable's default value",
 			"toolset": "BlueprintVariableTools",
 			"description": "Sets the default value of a member variable in the focused Blueprint. This modifies the variable's default value property (as shown in the Details panel), not creating any nodes in the graph. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -5178,6 +5388,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintVariableTools"
 			},
 			"arguments": [
 				{
@@ -5211,14 +5429,11 @@
 					"variableName",
 					"defaultValue"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintVariableTools"
 			}
 		},
 		{
 			"name": "tag-blueprint-graph",
+			"title": "Tag the focused graph",
 			"toolset": "BlueprintTagTools",
 			"description": "Tags the currently focused Blueprint graph with a name and category for organization and tracking Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
@@ -5227,6 +5442,14 @@
 			"worksDuringPlaySession": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": true,
+				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "BlueprintTagTools"
 			},
 			"arguments": [
 				{
@@ -5269,10 +5492,6 @@
 				"required": [
 					"tag"
 				]
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "BlueprintTagTools"
 			}
 		},
 		{
@@ -5290,6 +5509,10 @@
 				"destructiveHint": false,
 				"idempotentHint": false,
 				"openWorldHint": true
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "TranslationTools"
 			},
 			"arguments": [
 				{
@@ -5393,14 +5616,11 @@
 					}
 				},
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "TranslationTools"
 			}
 		},
 		{
 			"name": "translate-focused-blueprint",
+			"title": "Translate the focused Blueprint graph",
 			"toolset": "TranslationTools",
 			"description": "Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. Nothing is saved to the translation output directory.",
 			"defaultEnabled": true,
@@ -5409,6 +5629,15 @@
 			"worksDuringPlaySession": true,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": false,
+				"idempotentHint": false,
+				"openWorldHint": true
+			},
+			"_meta":
+			{
+				"nodetocode/toolset": "TranslationTools",
+				"anthropic/maxResultSizeChars": 200000
 			},
 			"arguments": [
 				{
@@ -5451,21 +5680,26 @@
 						"description": "Optional: Target language ID as get-available-translation-targets lists it (e.g., 'cpp', 'python'; case-insensitive). Uses settings default if empty; an unknown ID is an error."
 					}
 				}
-			},
-			"_meta":
-			{
-				"nodetocode/toolset": "TranslationTools"
 			}
 		}
 	],
 	"toolSearchTools": [
 		{
 			"name": "call_tool",
+			"title": "Call a tool",
 			"description": "Call a NodeToCode tool by name with its arguments and return its result. Use list_toolsets and describe_toolset to find tool names and input schemas. Long-running tools report progress and can be cancelled as when called directly.",
 			"longRunning": false,
 			"returnsUntrustedContent": false,
 			"annotations":
 			{
+				"readOnlyHint": false,
+				"destructiveHint": true,
+				"idempotentHint": false,
+				"openWorldHint": true
+			},
+			"_meta":
+			{
+				"anthropic/alwaysLoad": true
 			},
 			"arguments": [
 				{
@@ -5511,14 +5745,11 @@
 				"required": [
 					"tool_name"
 				]
-			},
-			"_meta":
-			{
-				"anthropic/alwaysLoad": true
 			}
 		},
 		{
 			"name": "describe_toolset",
+			"title": "Describe a toolset",
 			"description": "Get a toolset's tools: each tool's name, description, input schema and behaviour hints, as JSON. Use list_toolsets for the toolset names.",
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -5528,6 +5759,10 @@
 				"destructiveHint": false,
 				"idempotentHint": true,
 				"openWorldHint": false
+			},
+			"_meta":
+			{
+				"anthropic/alwaysLoad": true
 			},
 			"arguments": [
 				{
@@ -5551,14 +5786,11 @@
 				"required": [
 					"toolset_name"
 				]
-			},
-			"_meta":
-			{
-				"anthropic/alwaysLoad": true
 			}
 		},
 		{
 			"name": "list_toolsets",
+			"title": "List toolsets",
 			"description": "List NodeToCode's toolsets with their names and descriptions. Call describe_toolset on one to see its tools, then call_tool to run a tool.",
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -5569,6 +5801,10 @@
 				"idempotentHint": true,
 				"openWorldHint": false
 			},
+			"_meta":
+			{
+				"anthropic/alwaysLoad": true
+			},
 			"arguments": [],
 			"inputSchema":
 			{
@@ -5578,10 +5814,6 @@
 				},
 				"required": [],
 				"additionalProperties": false
-			},
-			"_meta":
-			{
-				"anthropic/alwaysLoad": true
 			}
 		}
 	]
