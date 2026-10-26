@@ -330,6 +330,12 @@ its environment when no key is saved, so a live check never types or saves a key
   FollowCamera, not the root), FollowCamera must move to DefaultSceneRoot and Lens go with FollowCamera. The probe
   then undoes the two deletes (`TRANSACTION UNDO`), compiling and listing after each, and checks the hierarchy comes
   back. The folder is deleted. Report: `logs/live_components_0167_<label>.json`.
+- `live_tool_reference_0179.py --engine ... --project ...` (no provider key) checks the generated tool reference
+  (card 0179) against the live server: it starts a headless editor with `-N2CMcp` twice, with Allow MCP Python
+  Execution on and then off, and reads `tools/list`. With it on the names must be exactly the tools of
+  `Context/mcp-server/tools.generated.json`, and each listed tool's title, description, schemas, annotations and
+  `_meta` must equal the reference's; with it off the names must be exactly the tools the reference marks
+  `defaultEnabled`. Prints one JSON line; the editor logs go to `logs/live_tool_reference_0179_python_{on,off}.log`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

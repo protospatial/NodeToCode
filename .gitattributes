@@ -1,3 +1,7 @@
 # Shell scripts run under bash on every platform (the Claude Code plugin hook, the bridge launcher): keep LF in
 # checkouts, git archive and release packages so Git Bash on Windows can run them
 *.sh text eol=lf
+
+# The generated MCP tool reference (card 0179) is LF on every platform, so N2CToolReference -Check and the
+# NodeToCode.MCP.ToolReference spec compare it byte for byte
+Context/mcp-server/tools.generated.* text eol=lf
