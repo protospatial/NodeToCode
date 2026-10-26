@@ -13,14 +13,11 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_Event.h"
 #include "EdGraphSchema_K2.h"
-#include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "UObject/UnrealType.h"
 #include "UObject/TextProperty.h"
-#include "StructUtils/UserDefinedStruct.h"
-#include "Engine/UserDefinedEnum.h"
 
 REGISTER_MCP_TOOL(FN2CMcpListOverridableFunctionsTool)
 

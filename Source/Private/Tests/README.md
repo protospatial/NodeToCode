@@ -139,6 +139,12 @@ id and card) makes it an `xIt`; `N2C_RUN_KNOWN_DEFECTS=1` runs those too. Flags,
 `NodeToCode.MCP.VariableFlags`; the node tools' wiring and undo are `NodeToCode.MCP.SpawnedNodes`; the resolver's
 error codes, prefixes and ambiguity are `NodeToCode.MCP.TypeResolver`.
 
+`NodeToCode.MCP.CreateBlueprintClass` (`MCP/N2CCreateBlueprintClass.spec.cpp`, card 0166) runs create-blueprint-class
+for real: it saves Blueprints under `/Game/__N2CTest` (an existing folder, a UserWidget parent giving a
+`UWidgetBlueprint`, a Blueprint interface, `ifExists` error and unique) and checks that refused calls (an AnimInstance
+parent, wrong type and parent pairs, unknown types, invalid names) create neither the folder nor an asset. Each case
+deletes the folder and everything in it before and after it runs.
+
 ## LLM payload goldens and parser fixtures
 
 - `NodeToCode.LLM.Payload.Golden` builds every provider's request (body, endpoint and headers, with a placeholder
