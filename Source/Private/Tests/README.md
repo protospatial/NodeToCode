@@ -215,9 +215,18 @@ known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN
   Windows Credential Manager as the editor does: every provider's key through a restart, the largest key it takes,
   two stores loaded before either saves (neither undoes the other), twelve writers on several threads, entries it does
   not know (`Mistral`, `OpenAI.Conflict.1`) kept and never read as a provider's key, and the environment fallback
-  (never saved). Each case uses the target prefix `NodeToCodeTest/<guid>/`, removes it, and checks that the user's
-  own `NodeToCode/*` entries are unchanged. `NodeToCode.Secrets.Store` and `.Environment` are the file backend's
-  versions; `.CredentialManager` covers the backend's blob format and the `secrets.json` migration's failure paths.
+  (never saved). Card 0496 cases: a write or removal Windows reports done but does not keep is repeated until it
+  reads back (`AfterWriteForTests` undoes it, as another process's concurrent write can), one it never keeps fails
+  after `MaxWriteAttempts`, and a known key a listing leaves out is kept while `ReadKey` still finds it. Each case uses
+  the target prefix `NodeToCodeTest/<guid>/` and checks that the user's own `NodeToCode/*` entries are unchanged.
+  `NodeToCode.Secrets.Store` and `.Environment` are the file backend's versions; `.CredentialManager` covers the
+  backend's blob format and the `secrets.json` migration's failure paths.
+- Test credentials (card 0497): every spec that writes Credential Manager entries (`.Keychain`, `.CredentialManager`,
+  `NodeToCode.Settings.Migration`) takes its prefix from `N2CTest::MakeTestCredentialPrefix()` and in AfterEach
+  calls `N2CTest::RemoveTestCredentials(Prefix)` (`Core/N2CTestCredentials.h`), which deletes by name, reads each
+  delete back and lists again until nothing is left, and fails the case if anything is. Its first BeforeEach in an
+  editor run calls `SweepStaleTestCredentialsOnce()`, which deletes `NodeToCodeTest/*` entries last written more than
+  an hour ago (an aborted or killed run in any checkout). Never write a credential outside `NodeToCodeTest/`.
 - `NodeToCode.Settings.Migration` (`Core/N2CSettingsMigration.spec.cpp`) upgrades `Fixtures/Settings/Legacy12x`, a
   1.2.x project: `DefaultNodeToCode.ini` with every config key of main's `UN2CSettings`, the `DefaultEngine.ini`
   1.2.x wrote, and a 1.2.x project `secrets.json`. Every key has a fate in the spec's table (kept, migrated, model ID,

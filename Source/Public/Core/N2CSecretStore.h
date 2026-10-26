@@ -42,6 +42,13 @@ public:
      * not as it was when it was loaded. OutKeys receives the store's contents after the write.
      */
     virtual bool StoreKey(const FString& ProviderId, const FString& Key, TMap<FString, FString>& OutKeys) = 0;
+
+    /**
+     * Reads one stored key. FN2CSecretStore asks this for a key it knew that a LoadAll after a save did not list, before
+     * it forgets that key. The default looks the id up in LoadAll.
+     * @return true when the store holds an entry for ProviderId (OutKey receives it); false when it has none or could not be read
+     */
+    virtual bool ReadKey(const FString& ProviderId, FString& OutKey);
 };
 
 /**
@@ -149,10 +156,26 @@ public:
     virtual FString GetDisplayName() const override;
     virtual bool LoadAll(TMap<FString, FString>& OutKeys) override;
     virtual bool StoreKey(const FString& ProviderId, const FString& Key, TMap<FString, FString>& OutKeys) override;
+    virtual bool ReadKey(const FString& ProviderId, FString& OutKey) override;
 
     /** "<TargetPrefix><ProviderId>" */
     FString GetTargetName(const FString& ProviderId) const;
     const FString& GetTargetPrefix() const { return TargetPrefix; }
+
+    /**
+     * Times StoreKey writes (or deletes) an entry before it gives up. Windows can report a CredWriteW or CredDeleteW as
+     * done and not keep it when another process changes credentials at the same moment (card 0496: two processes, one
+     * write each at a time, lost about 1 write in 100), so every write is read back with CredReadW and repeated until
+     * it reads back. Every call also holds the session-wide mutex "Local\NodeToCode.CredentialManager", so two
+     * NodeToCode threads or processes never call Credential Manager at the same time.
+     */
+    static constexpr int32 MaxWriteAttempts = 5;
+
+    /**
+     * Tests only: runs after each CredWriteW or CredDeleteW that Windows reported as done, before it is read back, with
+     * the target name and whether it was a delete. A test uses it to undo the change, as a concurrent process can.
+     */
+    TFunction<void(const FString& Target, bool bDelete)> AfterWriteForTests;
 
 private:
     FString TargetPrefix;
@@ -274,6 +297,12 @@ public:
 private:
     /** The first set environment variable for ProviderId: its value, and its name in OutVariableName */
     FString FindEnvironmentKey(const FString& ProviderId, FString& OutVariableName) const;
+
+    /**
+     * For each key this store knew that Loaded (the backend's listing) lacks, except JustWritten, asks the backend for
+     * that one entry (ReadKey) and keeps it when it is still there. Called with Mutex held.
+     */
+    void KeepListedOrConfirmedKeys(TMap<FString, FString>& Loaded, const FString& JustWritten);
 
     mutable FCriticalSection Mutex;
     TUniquePtr<IN2CSecretBackend> Backend;

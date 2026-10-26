@@ -8,7 +8,35 @@
 #include "Core/N2CSecretStore.h"
 #include "Async/ParallelFor.h"
 #include "Misc/Guid.h"
+#include "Tests/Core/N2CTestCredentials.h"
 #include "Tests/N2CTestHelpers.h"
+
+namespace N2CSecretStoreKeychainSpec
+{
+	/**
+	 * Credential Manager whose listings leave out one entry, as a CredEnumerateW taken while another process writes
+	 * can (card 0496); reading that entry by name still finds it
+	 */
+	class FListingMissesBackend : public FN2CCredentialManagerBackend
+	{
+	public:
+		using FN2CCredentialManagerBackend::FN2CCredentialManagerBackend;
+		FString Hidden;
+
+		virtual bool LoadAll(TMap<FString, FString>& OutKeys) override
+		{
+			const bool bRead = FN2CCredentialManagerBackend::LoadAll(OutKeys);
+			OutKeys.Remove(Hidden);
+			return bRead;
+		}
+		virtual bool StoreKey(const FString& ProviderId, const FString& Key, TMap<FString, FString>& OutKeys) override
+		{
+			const bool bStored = FN2CCredentialManagerBackend::StoreKey(ProviderId, Key, OutKeys);
+			OutKeys.Remove(Hidden);
+			return bStored;
+		}
+	};
+}
 
 /**
  * The secret store as the editor runs it on Windows: FN2CSecretStore over Windows Credential Manager (card 0161).
@@ -32,7 +60,12 @@ BEGIN_DEFINE_SPEC(FN2CSecretStoreKeychainSpec, "NodeToCode.Secrets.Keychain", N2
 	/** A store over this case's entries; its environment is FakeEnvironment, looked up at call time */
 	TUniquePtr<FN2CSecretStore> MakeStore()
 	{
-		return MakeUnique<FN2CSecretStore>(MakeVault(), [this](const FString& Name)
+		return MakeStore(MakeVault());
+	}
+
+	TUniquePtr<FN2CSecretStore> MakeStore(TUniquePtr<IN2CSecretBackend> Vault)
+	{
+		return MakeUnique<FN2CSecretStore>(MoveTemp(Vault), [this](const FString& Name)
 		{
 			const FString* Value = FakeEnvironment.Find(Name);
 			return Value ? *Value : FString();
@@ -57,19 +90,6 @@ BEGIN_DEFINE_SPEC(FN2CSecretStoreKeychainSpec, "NodeToCode.Secrets.Keychain", N2
 		return true;
 	}
 
-	void RemoveTestEntries() const
-	{
-		FN2CCredentialManagerBackend Vault(Prefix);
-		TMap<FString, FString> Keys;
-		if (Vault.LoadAll(Keys))
-		{
-			for (const TPair<FString, FString>& Entry : Keys)
-			{
-				TMap<FString, FString> Unused;
-				Vault.StoreKey(Entry.Key, FString(), Unused);
-			}
-		}
-	}
 
 END_DEFINE_SPEC(FN2CSecretStoreKeychainSpec)
 
@@ -77,7 +97,8 @@ void FN2CSecretStoreKeychainSpec::Define()
 {
 	BeforeEach([this]()
 	{
-		Prefix = FString::Printf(TEXT("NodeToCodeTest/%s/"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+		N2CTest::SweepStaleTestCredentialsOnce();
+		Prefix = N2CTest::MakeTestCredentialPrefix();
 		FakeEnvironment.Reset();
 		OwnerEntriesBefore.Reset();
 		bOwnerEntriesRead = FN2CCredentialManagerBackend::IsSupported() && FN2CCredentialManagerBackend().LoadAll(OwnerEntriesBefore);
@@ -89,8 +110,7 @@ void FN2CSecretStoreKeychainSpec::Define()
 		{
 			return;
 		}
-		RemoveTestEntries();
-		TestEqual(TEXT("no test entry is left"), Entries().Num(), 0);
+		TestEqual(TEXT("no test entry is left"), N2CTest::RemoveTestCredentials(Prefix), 0);
 		if (bOwnerEntriesRead)
 		{
 			TMap<FString, FString> OwnerEntriesAfter;
@@ -203,6 +223,84 @@ void FN2CSecretStoreKeychainSpec::Define()
 			TestEqual(FString::Printf(TEXT("the shared store holds writer %d's key"), Index), Shared.GetStoredApiKey(FString::Printf(TEXT("Writer%02d"), Index)),
 				FString::Printf(TEXT("n2c-test-writer-%02d"), Index));
 		}
+	});
+
+	It(TEXT("writes a key again when Windows reports it saved but does not keep it"), [this]()
+	{
+		if (!RequireVault()) { return; }
+		// Another process's write at the same moment can undo this one (card 0496); here the first two are undone
+		TUniquePtr<FN2CCredentialManagerBackend> Vault = MakeVault();
+		int32 Writes = 0;
+		Vault->AfterWriteForTests = [this, &Writes](const FString& Target, bool bDelete)
+		{
+			if (!bDelete && ++Writes <= 2)
+			{
+				TMap<FString, FString> Unused;
+				MakeVault()->StoreKey(Target.RightChop(Prefix.Len()), FString(), Unused);
+			}
+		};
+		FN2CCredentialManagerBackend* Hooked = Vault.Get();
+		TUniquePtr<FN2CSecretStore> Store = MakeStore(MoveTemp(Vault));
+		TestTrue(TEXT("the save reports success"), Store->SetApiKey(EN2CLLMProvider::OpenAI, TEXT("n2c-test-lost-openai")));
+		// At least the two undone writes and the one that held (another process's write can undo one more)
+		TestTrue(FString::Printf(TEXT("written until it held (%d writes)"), Writes), Writes >= 3);
+		TestEqual(TEXT("Credential Manager holds it"), Entries().FindRef(TEXT("OpenAI")), FString(TEXT("n2c-test-lost-openai")));
+		TestEqual(TEXT("a restarted store reads it"), MakeStore()->GetApiKey(EN2CLLMProvider::OpenAI), FString(TEXT("n2c-test-lost-openai")));
+
+		// A removal Windows undoes is repeated too
+		int32 Deletes = 0;
+		Hooked->AfterWriteForTests = [this, &Deletes](const FString& Target, bool bDelete)
+		{
+			if (bDelete && ++Deletes == 1)
+			{
+				TMap<FString, FString> Unused;
+				MakeVault()->StoreKey(Target.RightChop(Prefix.Len()), TEXT("n2c-test-lost-openai"), Unused);
+			}
+		};
+		TestTrue(TEXT("the clear reports success"), Store->SetApiKey(EN2CLLMProvider::OpenAI, FString()));
+		TestTrue(FString::Printf(TEXT("removed until it held (%d removals)"), Deletes), Deletes >= 2);
+		TestFalse(TEXT("the entry is gone"), Entries().Contains(TEXT("OpenAI")));
+		Hooked->AfterWriteForTests = nullptr;
+	});
+
+	It(TEXT("reports a save that Windows never keeps as failed"), [this]()
+	{
+		if (!RequireVault()) { return; }
+		TUniquePtr<FN2CCredentialManagerBackend> Vault = MakeVault();
+		int32 Writes = 0;
+		Vault->AfterWriteForTests = [this, &Writes](const FString& Target, bool bDelete)
+		{
+			++Writes;
+			TMap<FString, FString> Unused;
+			MakeVault()->StoreKey(Target.RightChop(Prefix.Len()), FString(), Unused);
+		};
+		TMap<FString, FString> After;
+		AddExpectedError(TEXT("did not keep it"), EAutomationExpectedErrorFlags::Contains, 1);
+		TestFalse(TEXT("the save fails"), Vault->StoreKey(TEXT("OpenAI"), TEXT("n2c-test-never-kept"), After));
+		TestEqual(TEXT("after MaxWriteAttempts writes"), Writes, FN2CCredentialManagerBackend::MaxWriteAttempts);
+		Vault->AfterWriteForTests = nullptr;
+	});
+
+	It(TEXT("keeps a known key that a listing after a save leaves out while it is still stored"), [this]()
+	{
+		if (!RequireVault()) { return; }
+		TUniquePtr<N2CSecretStoreKeychainSpec::FListingMissesBackend> Vault = MakeUnique<N2CSecretStoreKeychainSpec::FListingMissesBackend>(Prefix);
+		N2CSecretStoreKeychainSpec::FListingMissesBackend* Listing = Vault.Get();
+		TUniquePtr<FN2CSecretStore> Store = MakeStore(MoveTemp(Vault));
+		TestTrue(TEXT("OpenAI saves"), Store->SetApiKey(EN2CLLMProvider::OpenAI, TEXT("n2c-test-listed-openai")));
+
+		// The next listings miss OpenAI's entry, which is still stored
+		Listing->Hidden = TEXT("OpenAI");
+		TestTrue(TEXT("Gemini saves"), Store->SetApiKey(EN2CLLMProvider::Gemini, TEXT("n2c-test-listed-gemini")));
+		TestEqual(TEXT("the store still has OpenAI's key"), Store->GetStoredApiKey(EN2CLLMProvider::OpenAI), FString(TEXT("n2c-test-listed-openai")));
+		Store->Reload();
+		TestEqual(TEXT("and after a reload"), Store->GetStoredApiKey(EN2CLLMProvider::OpenAI), FString(TEXT("n2c-test-listed-openai")));
+
+		// A key another editor removed is dropped
+		TMap<FString, FString> Unused;
+		MakeVault()->StoreKey(TEXT("OpenAI"), FString(), Unused);
+		TestTrue(TEXT("Anthropic saves"), Store->SetApiKey(EN2CLLMProvider::Anthropic, TEXT("n2c-test-listed-anthropic")));
+		TestEqual(TEXT("a removed key is dropped"), Store->GetStoredApiKey(EN2CLLMProvider::OpenAI), FString());
 	});
 
 	It(TEXT("keeps entries it does not know through saves and clears, and never reads them as a provider's key"), [this]()

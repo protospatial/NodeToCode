@@ -11,6 +11,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "Tests/Core/N2CTestCredentials.h"
 #include "Tests/N2CTestHelpers.h"
 #include "Utils/N2CFileUtils.h"
 
@@ -86,20 +87,6 @@ BEGIN_DEFINE_SPEC(FN2CCredentialManagerSpec, "NodeToCode.Secrets.CredentialManag
 		return MakeUnique<FN2CSecretStore>(MakeVault(), [](const FString&) { return FString(); });
 	}
 
-	/** Removes every entry under this case's prefix */
-	void RemoveTestEntries() const
-	{
-		FN2CCredentialManagerBackend Vault(Prefix);
-		TMap<FString, FString> Keys;
-		if (Vault.LoadAll(Keys))
-		{
-			for (const TPair<FString, FString>& Entry : Keys)
-			{
-				TMap<FString, FString> Unused;
-				Vault.StoreKey(Entry.Key, FString(), Unused);
-			}
-		}
-	}
 
 	void WriteFile(const FString& Path, const FString& Text)
 	{
@@ -113,7 +100,8 @@ void FN2CCredentialManagerSpec::Define()
 {
 	BeforeEach([this]()
 	{
-		Prefix = FString::Printf(TEXT("NodeToCodeTest/%s/"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+		N2CTest::SweepStaleTestCredentialsOnce();
+		Prefix = N2CTest::MakeTestCredentialPrefix();
 		Scratch = MakeUnique<N2CTest::FScratchDir>(TEXT("N2CCredentialManager"));
 		UserFile = *Scratch / TEXT("User/NodeToCode/secrets.json");
 		LegacyFile = *Scratch / TEXT("Project/Saved/NodeToCode/User/secrets.json");
@@ -123,7 +111,7 @@ void FN2CCredentialManagerSpec::Define()
 	{
 		if (FN2CCredentialManagerBackend::IsSupported())
 		{
-			RemoveTestEntries();
+			TestEqual(TEXT("no test credential is left"), N2CTest::RemoveTestCredentials(Prefix), 0);
 		}
 		Scratch.Reset();
 	});
