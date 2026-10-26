@@ -45,13 +45,13 @@ The plugin serves as a translation layer between Unreal Engine's visual Blueprin
     - Captures node and pin metadata alongside comments that have been added to them
 
 2. **JSON Serialization**
-    - Converts the collected node and pin data into a custom schema that is about 50-70% smaller than UE's standard Blueprint text format
+    - Converts the collected node and pin data into a compact custom schema that uses far fewer tokens than UE's standard Blueprint text format
     - Organizes execution and data flows
     - Includes relevant type information
     - Preserves node relationships and graph hierarchies
 
 3. **LLM Processing**
-    - Sends the serialized data to your configured [LLM provider](Provider-Configuration) (Anthropic, OpenAI, Gemini, DeepSeek, or Ollama), enforcing a structured output according to the aforementioned schema
+    - Sends the serialized data to your configured [LLM provider](Provider-Configuration) (Anthropic, OpenAI, Gemini, DeepSeek, Ollama or LM Studio), enforcing a structured output according to the aforementioned schema
     - Includes any [reference source files](Reference-Source-Files) files you've configured in the plugin settings.
     - Waits for the LLM to process and return the translation in the structured output required for successful deserialization
 

@@ -68,18 +68,8 @@ session, `/mcp` lists the nodetocode tools, such as `get-focused-blueprint` and 
   it in every folder.
 - If `ANTHROPIC_API_KEY` is set in your environment, Claude Code can use that key instead of your subscription.
   Run `/status` to see which one it uses.
-- For a client that only runs stdio servers, the plugin ships a bridge with no dependencies besides Python 3 in
-  `Content/Python/mcp_bridge/`. Its launcher (`launch_bridge.bat`, or `launch_bridge.sh` on macOS and Linux) runs it
-  under the Python of your newest Unreal Engine install (any version), or Python 3 from your PATH:
-  `claude mcp add nodetocode -- "<plugin folder>/Content/Python/mcp_bridge/launch_bridge.bat"`
-  (or `-- python <plugin folder>/Content/Python/mcp_bridge/nodetocode_bridge.py`). It keeps `café` or `日本` intact,
-  passes on UE 5.8's translation progress, runs calls side by side and forwards Stop at once. It finds the editor
-  through the file its MCP server writes in `%LOCALAPPDATA%\NodeToCode\servers\`, and can start before the editor.
-  With several editors open, add `--project <name or .uproject path>` (or set `NODETOCODE_PROJECT`), else it answers
-  with an error listing them; `--port 27000` or `--url http://127.0.0.1:27000/mcp` names the editor directly.
-
-Tested on Windows with Claude Code 2.1.300 and UE 5.8: the HTTP form and both bridge forms connected and listed 59
-tools. The launcher form also ran translations through `claude -p` on UE 5.6 and 5.8.
+- For the stdio bridge, Cursor, VS Code, Claude Desktop and the other clients, and what each one should list, see
+  [Connecting an MCP Client](Connecting-an-MCP-Client).
 
 ## Translating with your subscription
 
@@ -120,22 +110,10 @@ Untested: neither CLI was run against NodeToCode when this page was written. Bot
 
 ## Codex CLI
 
-Sign in to Codex with your ChatGPT plan, then add this to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.nodetocode]
-url = "http://127.0.0.1:27000/mcp"
-```
-
-`codex mcp list` should list `nodetocode`, and `/mcp` in the Codex TUI shows its tools. Untested: this form comes
-from OpenAI's Codex docs and was not run against NodeToCode when this page was written.
+Sign in to Codex with your ChatGPT plan, then add NodeToCode as
+[Connecting an MCP Client](Connecting-an-MCP-Client#codex) shows (`codex mcp add nodetocode --url
+http://127.0.0.1:27000/mcp`). Untested: Codex was not run against NodeToCode when this page was written.
 
 ## If the agent does not connect
 
-| What you see | What to do |
-|---|---|
-| Failed to connect, or the agent sees another project | Open the editor first, check **Enable MCP Server**, and use the URL in **Server Status** (a second editor moves to the next free port) |
-| Connected, but the agent sees no Blueprint | Click into a Blueprint graph so it has focus, then ask again |
-| Requests rejected with 403 | Use `127.0.0.1` or `localhost` in the URL; the server refuses other host names |
-| `Request body too large` (413) | The server takes requests up to 8 MiB; split the work into smaller tool calls |
-| `Session not found` (404) after the editor restarted | Each agent gets its own session and a restarted editor forgets them: reconnect the agent (Claude Code: `/mcp`, **Reconnect**) |
+See [If the client does not connect](Connecting-an-MCP-Client#if-the-client-does-not-connect).

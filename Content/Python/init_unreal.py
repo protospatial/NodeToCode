@@ -1,10 +1,12 @@
 # Copyright (c) 2026 Nick McClure (Protospatial)
 # SPDX-License-Identifier: Apache-2.0
-"""NodeToCode's editor startup script (card 0175).
+"""NodeToCode's editor startup script (cards 0175 and 0177).
 
-On UE 5.8 or later with Epic's ToolsetRegistry plugin enabled, it registers the NodeToCodeTools toolset (Unreal MCP
-and the in-editor assistant then list it) and its Python tests, as Epic's EditorToolset does. Anywhere else it does
-nothing and logs nothing. It never raises: a failure is one warning, and the rest of the editor starts as usual.
+On UE 5.8 or later with Epic's ToolsetRegistry plugin enabled, it registers NodeToCode's Agent Skills (Epic's
+AgentSkillToolset then lists and serves them), the NodeToCodeTools toolset (Unreal MCP and the in-editor assistant
+then list it) and its Python tests, as Epic's EditorToolset does. Anywhere else it does nothing and logs nothing. It
+never raises: a failure of either part is one warning, the other part still registers, and the rest of the editor
+starts as usual.
 """
 
 import unreal
@@ -31,6 +33,10 @@ def _n2c_toolset_registry_available():
     return True
 
 
+def _n2c_register_skills():
+    from nodetocode import skills  # noqa: F401 - importing registers each @agent_skill class
+
+
 def _n2c_register_toolsets():
     from nodetocode import toolsets
     from nodetocode.toolsets import tests
@@ -43,6 +49,10 @@ def _n2c_register_toolsets():
 
 
 if _n2c_toolset_registry_available():
+    try:
+        _n2c_register_skills()
+    except Exception as e:  # never break editor startup
+        unreal.log_warning(f'NodeToCode: Agent Skills not registered: {e}')
     try:
         _n2c_register_toolsets()
     except Exception as e:  # never break editor startup

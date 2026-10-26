@@ -4,6 +4,11 @@ This directory contains seven read-only tools in the `BlueprintDiscoveryTools` t
 any Blueprint's graphs as N2C JSON and its graph list by asset path (card 0157), many graphs exported to files in one
 call (card 0169), a Blueprint's functions, the events and functions it can override, and the open Blueprint editors.
 
+**Freeze status (dec-5):** these are comprehension and export tools and are not frozen, except
+`list-blueprint-functions` and `list-overridable-functions`: Epic's EditorToolset has them on UE 5.8
+(`N2CMcpEpicOverlap::Tools`), so they take bug fixes only (card 0289 is owed). See "Frozen tool families (dec-5)"
+in `Source/Private/MCP/Tools/AGENTS.md`.
+
 ## Targeting
 
 - `get-focused-blueprint` reads the focused graph of the active Blueprint editor

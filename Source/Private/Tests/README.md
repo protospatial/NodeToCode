@@ -15,6 +15,7 @@ Source/Private/Tests/
                           picked (never a random port in a range: another checkout's editor may hold it)
   N2CTestBlueprintFactory.h/.cpp  N2CTest::FTestBlueprint: builds Blueprint graphs in code for capture specs
   N2CToolSpecHarness.h/.cpp       the MCP tool spec harness: scratch Blueprints, tool calls, results, graph invariants
+  N2CTestContentFolder.h  N2CTest::DeleteContentFolder: removes a saved /Game/__N2CTest... scratch folder completely
   Capture/  Core/  LLM/  MCP/     specs by area: <Area>/N2C<Thing>.spec.cpp
   N2C*Tests.cpp           older IMPLEMENT_SIMPLE_AUTOMATION_TEST regression tests (NodeToCode.Robustness.*,
                           NodeToCode.Security.PathUtils.*, NodeToCode.MCP.Transport.*); kept as they are
@@ -70,6 +71,13 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: the four maps | mcp-tools-variables-8 (card 0283) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
+| `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
+| `NodeToCode.MCP.Structure` | search-blueprint-classes lists a loaded Blueprint class once, as a Blueprint class | mcp-tools-bp-structure-12 (card 0288) |
+| `NodeToCode.MCP.Content` | move-asset moves an asset by object path into another folder, keeping its name | mcp-tools-contentbrowser-fs-3 (card 0284) |
+| `NodeToCode.MCP.Content` | a project plugin's content mount: create-folder, rename-asset, move-folder and rename-folder accept the plugin's content | mcp-tools-contentbrowser-fs-7 (card 0182) |
+| `NodeToCode.MCP.Content` | folders: move-folder and rename-folder move an empty folder and remove the source | mcp-tools-contentbrowser-fs-10 (card 0281) |
+| `NodeToCode.MCP.Content` | folders: move-folder keeps an empty subfolder | mcp-tools-contentbrowser-fs-10 (card 0281) |
+| `NodeToCode.MCP.Content` | folders: move-folder refuses to move a folder into itself or its own subfolder, changing nothing | mcp-tools-contentbrowser-fs-9 (card 0281) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -153,6 +161,25 @@ classes resolve by short name and component Blueprint path, `Mesh` on a Characte
 children, a delete promotes children and removes Get nodes, a bound event is reported without opening an editor,
 DefaultSceneRoot and native and inherited components are refused, and each edit is one undo step that Undo then Redo
 restore exactly (graphs and SCS tree).
+
+`NodeToCode.MCP.Structure` (`MCP/N2CMcpStructureTools.spec.cpp`, card 0163) runs the structure tools end to end, the
+way an agent chains them: create-folder, then create-blueprint-class of an Actor, a Widget (a `UWidgetBlueprint`) and
+an Interface Blueprint into that existing folder; a SpringArm and a Camera under it on a created Blueprint, in the
+SpringArm's `ChildNodes` after three compiles; a delete of a mid-hierarchy component whose children are promoted with
+their own children and whose SCS `AllNodes` stays equal to the nodes reachable from the roots; list-components-in-actor
+on a child of a Character Blueprint (native, inherited and own components once each, under their parents, `totalCount`
+counting all); and search-blueprint-classes without duplicates. Its Blueprints are saved under
+`/Game/__N2CTestStructure`.
+
+`NodeToCode.MCP.Content` (`MCP/N2CMcpContentTools.spec.cpp`, card 0163) runs move-asset and rename-asset with package
+and object paths, moves into and out of a project plugin's content mount, move-folder and rename-folder of empty and
+populated folders, and move-folder into itself. The test plugin is `<Project>/Plugins/N2CTestContent` (content only,
+explicitly loaded), written, mounted at `/N2CTestContent` and removed again by the case. Its assets are saved under
+`/Game/__N2CTest`.
+
+Both delete their folders (assets, the redirectors a move leaves, files and registry paths;
+`N2CTest::DeleteContentFolder` in `N2CTestContentFolder.h`) before and after every case, also a failed one. Their
+known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN_DEFECTS=1`.
 
 ## Secrets, settings migration and StructUtils
 

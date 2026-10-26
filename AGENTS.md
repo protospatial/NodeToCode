@@ -10,6 +10,11 @@ This file provides guidance to AI coding agents when working with code in this r
 
 @Source/Private/MCP/Tools/AGENTS.md
 
+The Blueprint and asset CRUD tool families (Graph, Functions, Variables, Components, Classes, Compilation, Content
+Browser, the tools Epic's EditorToolset duplicates, and `UN2CStructUtilsLibrary`) are **frozen: bug fixes only**
+(dec-5, `.agents/decisions/0007-crud-tool-families-fix-then-freeze.md`, applied provisionally). Do not add tools or
+capability to them; see "Frozen tool families (dec-5)" in `Source/Private/MCP/Tools/AGENTS.md`.
+
 ## Unreal Engine Source Path
 
 Run `Content/Scripts/detect-ue-path.sh` (Mac/Linux) or `Content\Scripts\detect-ue-path.bat` (Windows) to detect your UE installation and update this file.
@@ -34,6 +39,12 @@ This is where source files for Unreal Engine 5 can be found and searched through
   `Tests/python/test_agent_skills.py`, so by `build.ps1 -Test`) fails on a stale copy or mirror, invalid frontmatter,
   a `SKILL.md` over 500 lines, or a skill naming an MCP tool the plugin does not register: renaming or removing a
   tool means updating the skills in the same change. User page: `wiki/developers/Agent-Skills.md`.
+- On UE 5.8 the skills are also registered in Epic's skill registry (card 0177): the script writes
+  `Content/Python/nodetocode/skills/<name>.md` (body without frontmatter, `references/` appended) and `skills.json`
+  (descriptions), and `Content/Python/nodetocode/skills/__init__.py` has one `@agent_skill` class per skill; a new skill
+  needs its class there. `--check` also fails when a skill names a `NodeToCodeTools.<tool>` that toolset lacks, an Epic
+  tool missing from `wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md`, or a NodeToCode tool UE 5.8 leaves to
+  Unreal MCP without naming its Epic counterpart in the same file.
 - The Claude Code plugin around them (`Agents/claude-code/nodetocode/`: `.claude-plugin/plugin.json`, `.mcp.json`,
   `hooks/`, `commands/translate.md`; the local marketplace `Agents/claude-code/.claude-plugin/marketplace.json`; the
   draft entry for other marketplaces `Agents/claude-code/marketplace-entry.json`) is checked by the same script and
@@ -185,7 +196,7 @@ Context/
 | Plugin initialization, settings | `Context/architecture/` |
 | Node collection, translation | `Context/translation-pipeline/` |
 | Adding LLM providers/models | `Context/llm-providers/` |
-| MCP tools development | `Context/mcp-server/` + `@Source/Private/MCP/Tools/AGENTS.md` |
+| MCP tools development | `Context/mcp-server/` (generated tool reference: `tools.generated.md`) + `@Source/Private/MCP/Tools/AGENTS.md` |
 | Python automation | `Context/python-scripting/` |
 | Code editor styling | `Context/code-editor/` |
 | Git workflow, IDE config | `Context/development-workflow/` |

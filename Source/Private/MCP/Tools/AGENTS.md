@@ -182,6 +182,66 @@ curl -X POST http://127.0.0.1:27000/mcp -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"call_tool","arguments":{"toolset_name":"BlueprintCompileTools","tool_name":"compile-blueprint","arguments":{}}}}'
 ```
 
+## Frozen tool families (dec-5)
+
+### Status: frozen, bug fixes only (dec-5)
+
+Decision record [0007](../../../../.agents/decisions/0007-crud-tool-families-fix-then-freeze.md) (proposed; owner decision card 0140 applied
+provisionally as the review's option 2, with card 0089 applied provisionally as option (b)). NodeToCode's
+Blueprint and asset CRUD tools take bug fixes only: on UE 5.8 Epic's EditorToolset is the better default for CRUD
+(the server leaves the 34 overlapping tools to Unreal MCP, card 0174), and on 5.6 and 5.7 these tools stay as
+they are, fixed but not grown.
+
+**What is frozen** is read from the code, not from a hand list:
+
+1. Every tool of these toolsets, as `N2CMcpToolsets.h` declares them: `BlueprintGraphTools` (`Blueprint/Graph/`),
+   `BlueprintFunctionTools` (`Blueprint/Functions/`), `BlueprintVariableTools` (`Blueprint/Variables/`),
+   `BlueprintCompileTools` (`Blueprint/Compilation/`), `BlueprintClassTools` (`Blueprint/Classes/`),
+   `BlueprintComponentTools` (`Blueprint/Components/`) and `ContentBrowserTools` (`ContentBrowser/`). Read-only tools
+   in them are frozen too (`find-nodes-in-graph`, `search-variable-types`, `list-components-in-actor`).
+2. Every tool in `N2CMcpEpicOverlap::Tools` (`Source/Public/MCP/Tools/N2CMcpEpicOverlap.h`), whatever its toolset.
+   Outside the toolsets above that is `list-blueprint-functions`, `list-overridable-functions` and
+   `search-blueprint-nodes` (`BlueprintDiscoveryTools`). A tool added to that table later is frozen from then on.
+3. `UN2CStructUtilsLibrary` (`Source/Private/BlueprintLibraries/N2CStructUtilsLibrary.cpp`), outside MCP.
+
+**Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except point 2:
+`get-focused-blueprint`, `get-blueprint-n2cjson`, `list-blueprint-graphs`, `export-n2cjson-batch`,
+`get-open-blueprint-editors`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and `PythonTools`.
+Material read and translate tools (epic 0442) are comprehension or translation; a Material edit family would be new
+CRUD and is out of scope.
+
+**A bug fix** is a change that fixes a crash or hang (a modal dialog in an unattended call counts), data loss,
+Blueprint or project corruption (wrong pin types, lost flags, orphaned or renamed graphs, content written outside the
+project), or a result that misreports what happened (success for an edit that did not happen, wrong counts,
+duplicates, a wrong type in a read). Also accepted, since they add no capability: explicit targeting arguments on
+existing tools (review next-6; `blueprintPath`, `graphName` and `graphGuid`, card 0152, and card 0274 for the rest),
+security hardening of what a tool may write, building on the supported engines, tests, docs that match the code,
+and removing dead code.
+
+**Not accepted:** a new tool in a frozen toolset, a new tool that Epic's EditorToolset also has, a new argument,
+mode or result field that adds capability, and moving a frozen tool into an unfrozen toolset to get around this.
+On UE 5.8 such work belongs to Epic's EditorToolset; on 5.6 and 5.7 it waits for the owner. New comprehension,
+export or translation work goes in the unfrozen toolsets.
+
+**Fix cards still owed in frozen families** (backlog when this was written; the disabled known-defect cases of
+`N2CMcpContentTools.spec.cpp`, `N2CMcpStructureTools.spec.cpp` and `N2CMcpVariableTools.spec.cpp` name some):
+
+| Family | Cards |
+|---|---|
+| `BlueprintGraphTools` | 0276 (connect-pins replace and conversion links), 0278 (set-input-pin-value verdict), 0279 (delete-blueprint-node), 0295 (notification brushes, dead code) |
+| `BlueprintFunctionTools` | 0280 (create- and delete-blueprint-function touch unrelated graphs), 0295 |
+| `BlueprintVariableTools` | 0283 (member defaults through the CDO), 0291 (search-variable-types), 0295, 0274 (targets) |
+| `BlueprintCompileTools` | 0290 (save-blueprint without modal dialogs), 0274 (targets) |
+| `BlueprintClassTools` | 0288 (search-blueprint-classes duplicates and counts) |
+| `BlueprintComponentTools` | 0287 (list-components-in-actor duplicates and type filter), 0274 (targets) |
+| `ContentBrowserTools` | 0182 (writes limited to /Game and project plugins), 0281 (folder moves), 0284 (asset path handling), 0285 (search and read results), 0286 (open-blueprint-asset on unknown graphs) |
+| Epic-overlap tools in `BlueprintDiscoveryTools` | 0289 (list-blueprint-functions and list-overridable-functions) |
+| `UN2CStructUtilsLibrary` | 0282 (unnamed fields, deleted fields) |
+
+Card 0292 (class, soft and interface references in the variable tools) is new capability on a frozen family and
+waits for the owner. Each frozen folder's `AGENTS.md` repeats its status under "Status: frozen, bug fixes only
+(dec-5)".
+
 ## Long-Running Tools and Async Execution
 
 NodeToCode runs long-running tools (LLM translation) on the game thread without blocking it and answers the client's
@@ -362,7 +422,8 @@ The deprecated `nodetocode/cancelTask` (`"params": {"progressToken": "unique-pro
 
 ## Creating a New MCP Tool
 
-Follow these steps to add a new MCP tool:
+Follow these steps to add a new MCP tool. First check "Frozen tool families (dec-5)" above: a frozen toolset,
+or a tool Epic's EditorToolset also has, takes no new tools.
 
 ### 1. Create the Tool Header File
 
@@ -452,7 +513,11 @@ FMcpToolCallResult FN2CMcpYourToolName::Execute(const TSharedPtr<FJsonObject>& A
 ```
 
 A new tool changes the mode 3 count: update `Tests/smoke/expected.json` (`default`), the tables in this file and
-the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change. Renaming or removing a tool also means
+the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change. Any change to a tool's definition (a new,
+renamed or removed tool, its description, arguments, annotations or toolset) also means regenerating the tool
+reference, `Context/mcp-server/tools.generated.json` and `tools.generated.md`: `python -I
+Scripts/generate_tool_reference.py --engine <UE root> --project <host .uproject>` after building; `build.ps1 -Test`
+fails while they are stale (`Tests/python/test_tool_reference.py`, `NodeToCode.MCP.ToolReference`). Renaming or removing a tool also means
 updating the Agent Skills that name it (`Agents/claude-code/nodetocode/skills/`, then `python -I
 Agents/sync_skills.py`); `Tests/python/test_agent_skills.py` fails while a skill names a tool that is not registered.
 
