@@ -1,0 +1,91 @@
+{
+	"case": "BitmaskPin",
+	"description": "Function Bits with member Flags (int, marked Bitmask in its details): Get Flags is the Value result.",
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_BitmaskPin",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_BitmaskPin"
+		},
+		"graphs": [
+			{
+				"name": "Bits",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Bits",
+						"member_parent": "BP_N2CGolden_BitmaskPin",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "FunctionResult",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_BitmaskPin",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P3",
+								"name": "Value",
+								"type": "Integer",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					},
+					{
+						"id": "N3",
+						"type": "VariableGet",
+						"class": "K2Node_VariableGet",
+						"member_parent": "BP_N2CGolden_BitmaskPin",
+						"member_name": "Flags",
+						"pure": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "Flags",
+								"type": "Bitmask",
+								"sub_type": "bitmask",
+								"default_value": "0",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2"
+					],
+					"data":
+					{
+						"N3.P4": "N2.P3"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

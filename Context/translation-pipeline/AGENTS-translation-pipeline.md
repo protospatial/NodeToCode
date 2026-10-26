@@ -164,6 +164,14 @@ names are also written in source text. `NodeToCode.Capture.Golden.StableNames` c
 captures every case again with the editor in Japanese (it must match exactly) and with friendly names flipped (only
 the hints may change).
 
+Pin types (card 0238, translation-core-13 and -31): `N2CStableNames::PinType` maps one terminal type (category,
+subcategory, type object) to the pin `type`, checking the subcategories the K2 schema shares between categories first
+(`self` is Self, `bitmask` Bitmask, `index` Index), and typing a byte with a `UEnum` Enum, since the schema gives every
+enum pin `PC_Byte`; `PinSubType` gives `sub_type`. For a map pin the main type is the key, and `PinValueType` gives
+`value_type` and `value_sub_type` (`FN2CPinDefinition::ValueType`, `ValueSubType`); `ProcessRelatedTypes` lists user
+structs and enums found on either side, and Make Map is named "<key> to <value>". `NodeToCode.Capture.Golden.PinTypes`
+and the MapPins and BitmaskPin goldens check it.
+
 Key responsibilities:
 - Manages ID generation (N1, N2, etc. for nodes; P1, P2, etc. for pins)
 - Uses `FN2CNodeProcessorFactory` for node-specific property extraction
@@ -214,7 +222,8 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
   feeds, or an array of them when it feeds several, so a graph without fan-out gets the same object as 1.0.0. Every
   data edge appears once. `flows.execution` has one "N3.P5->N4.P1" entry per exec link, exec output pin to exec
   input pin (card 0136). Names are stable identifiers: node `class`, `member_parent`, `member_name`, pin `name` =
-  `PinName`, with the display hints `title` (nodes; 1.x calls it `name`) and `label` (pins) (card 0138). Additive
+  `PinName`, with the display hints `title` (nodes; 1.x calls it `name`) and `label` (pins) (card 0138). Map pins
+  carry `value_type` and `value_sub_type`, and enum pins are `Enum`, not `Byte` (card 0238). Additive
   optional fields bump the minor; a breaking change bumps the major.
 - **1.0.0** (1.2.x and earlier 2.0 builds): one string per output, so a fan-out kept one edge, node-only exec
   entries ("N1->N2"), and display text for names: a node `name` (read as the title) and display pin names (read as

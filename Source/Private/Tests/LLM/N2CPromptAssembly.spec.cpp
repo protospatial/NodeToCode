@@ -154,6 +154,8 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		Pin.bIsArray = true;
 		Pin.bIsMap = true;
 		Pin.bIsSet = true;
+		Pin.ValueType = EN2CPinType::Struct;
+		Pin.ValueSubType = TEXT("S_Thing");
 
 		FN2CNodeDefinition Node;
 		Node.ID = TEXT("N1");

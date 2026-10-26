@@ -55,7 +55,7 @@
 								"id": "P5",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							},
 							{
