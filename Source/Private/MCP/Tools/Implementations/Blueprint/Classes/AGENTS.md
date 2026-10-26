@@ -35,41 +35,54 @@ asset from one.
   valid parents such as `UserWidget` are only found with `includeAbstract` true unless they are common classes.
 
 ### create-blueprint-class
-- **Description**: Creates a Blueprint asset with `FKismetEditorUtilities::CreateBlueprint` (always a `UBlueprint`
-  with a `UBlueprintGeneratedClass`), compiles it, saves its package to disk and, by default, opens it
-  (`FN2CMcpCreateBlueprintClassTool::Execute`)
+- **Description**: Creates a Blueprint asset, compiles it, saves its package to disk and, by default, opens it
+  (`FN2CMcpCreateBlueprintClassTool::Execute`). Every argument is checked before anything is created, so a refused
+  call leaves no folder and no asset. The asset is made by `IAssetTools::CreateAsset` with a `UBlueprintFactory`: the factory asks the Kismet compiler which Blueprint class the parent needs,
+  so a `UserWidget` parent gives a `UWidgetBlueprint` (with its widget tree), and the asset registry and the editor's
+  asset-created hooks see the new asset (card 0166). As in the Content Browser, creating the asset is not an undo
+  step: undoing a transaction that created a Blueprint destroys it in memory while its saved package stays on disk
 - **Parameters**:
-  - `blueprintName` (required): Asset name. `BP_` is put in front unless the name already starts with it
-    (`ValidateAndPrepareAssetPath`): `MyPlayerCharacter` becomes `BP_MyPlayerCharacter`, `BP_Prefixed` stays
+  - `blueprintName` (required): Asset name, checked with `FKismetNameValidator` (at most 100 characters, no `.`), as
+    an object, package and file name (no spaces, `/` or other reserved characters, no device names) and against
+    `IAssetTools::IsNameAllowed` (`ValidateBlueprintName`)
+  - `addPrefix` (optional, default true): Put `BP_` in front of the name unless it already starts with it
+    (`MyPlayerCharacter` becomes `BP_MyPlayerCharacter`, `BP_Prefixed` stays); false uses the name as given
   - `parentClassPath` (required): Object path of the parent class, found with `FindObject` then `LoadObject`
-    (`ValidateParentClass`): `/Script/Engine.Character`, or a Blueprint class as
+    (`ValidateParentClass`): `/Script/Engine.Character`, `/Script/UMG.UserWidget` for a Widget Blueprint,
+    `/Script/CoreUObject.Interface` for a Blueprint interface, or a Blueprint class as
     `/Game/Folder/BP_Base.BP_Base_C` (the export-text `classPath` search-blueprint-classes returns for a Blueprint
     asset is accepted too). A bare name (`Actor`) is not found. The class must pass
-    `FKismetEditorUtilities::CanCreateBlueprintOfClass`
-  - `assetPath` (required): Content folder for the new asset. The folder must not exist yet: the tool creates it
-    with `FN2CMcpContentBrowserUtils::CreateContentFolder`, which fails for an existing folder
+    `FKismetEditorUtilities::CanCreateBlueprintOfClass`. An `AnimInstance` parent is refused: an Animation Blueprint
+    needs a target skeleton, which the tool cannot set
+  - `assetPath` (required): Content folder for the new asset, checked with
+    `FN2CMcpContentBrowserUtils::ValidateContentPath`. An existing folder (`/Game` included) is used; a missing one is
+    created (`EnsureDirectoryExists`) once every check has passed
+  - `ifExists` (optional, default `error`, any case): What an existing asset of that name in the folder does. `error`
+    fails; `unique` picks a free name with `IAssetTools::CreateUniqueAssetName` (`BP_Door` becomes `BP_Door1`) and
+    returns it as `blueprintName`. An existing asset is never overwritten. Other values are refused
+  - `blueprintType` (optional, default `auto`, any case): `auto` gives `Interface` for an interface parent and
+    `Normal` otherwise; `normal`, `const` and `interface` are used as given. `interface` needs the parent
+    `/Script/CoreUObject.Interface`, and an interface parent needs `interface` (or `auto`). Other values are refused
+    (`ResolveBlueprintType`)
   - `openInEditor` (optional, default true): Open the new Blueprint after saving
   - `openInFullEditor` (optional, default true): true calls `FKismetEditorUtilities::BringKismetToFocusAttentionOnObject`,
     false `UAssetEditorSubsystem::OpenEditorForAsset` (`OpenBlueprintInEditor`)
   - `description` (optional): Stored as the Blueprint's `BlueprintDescription`
-  - `generateConstructionScript` (optional, default true): Has no effect. `ApplyBlueprintSettings` only makes sure an
-    Actor Blueprint has a `SimpleConstructionScript`, which `CreateBlueprint` already gave it, and an Actor Blueprint
-    gets its `UserConstructionScript` graph either way
-  - `blueprintType` (optional, default `auto`): `normal`, `const` or `interface` are used as given, whatever the
-    parent; any other value, `auto` included, gives `Interface` for an interface parent and `Normal` otherwise
-    (`DetermineBlueprintType`)
-- **Returns**: `success`, `blueprintName` (the final name), `packagePath`, `assetPath` (object path),
-  `blueprintInfo` (`className`, `parentClass` as the class's short name, `blueprintType`, `generatedClass`) and
-  `nextSteps`:
+- **Returns**: `success`, `saved`, `blueprintName` (the final name), `packagePath`, `assetPath` (object path),
+  `blueprintInfo` (`className`, `assetClass` as the Blueprint asset's class, `Blueprint` or `WidgetBlueprint`,
+  `parentClass` as the class's short name, `blueprintType`, `generatedClass`), `nextSteps`, and the `compile` object
+  of the one compile the call runs:
 
   ```json
   {
     "success": true,
+    "saved": true,
     "blueprintName": "BP_MyPlayerCharacter",
     "packagePath": "/Game/Blueprints/Characters/BP_MyPlayerCharacter",
     "assetPath": "/Game/Blueprints/Characters/BP_MyPlayerCharacter.BP_MyPlayerCharacter",
     "blueprintInfo": {
       "className": "BP_MyPlayerCharacter",
+      "assetClass": "Blueprint",
       "parentClass": "Character",
       "blueprintType": "Normal",
       "generatedClass": "/Game/Blueprints/Characters/BP_MyPlayerCharacter.BP_MyPlayerCharacter_C"
@@ -77,13 +90,19 @@ asset from one.
     "nextSteps": ["Use 'create-blueprint-function' to add functions", "..."]
   }
   ```
+
+  When the package cannot be saved (a read-only file, a source control lock) the result is an error (`isError`) with
+  the same fields, `success` and `saved` false, no `nextSteps`, and `error` saying the Blueprint exists in memory only;
+  the Blueprint is not opened.
 - **Errors**: `Missing required parameter: <name>`, `Parent class not found: <path>`,
   `Cannot create Blueprint from class: <path>. Class may not be Blueprintable.`,
-  `Failed to create directory: Path already exists: <folder>`
-- **Known issue (card 0166):** an existing folder, `/Game` included, is refused, so a second Blueprint cannot go into
-  the folder of the first; a `UserWidget` or `AnimInstance` parent gives a plain Blueprint, not a Widget or Animation
-  Blueprint; `interface` is applied to any parent and unknown `blueprintType` values fall back without an error; a
-  failed save is only logged and the call still reports success; there is no undo transaction
+  `Cannot create an Animation Blueprint from <path>: ...`, `Unknown blueprintType '<value>': ...`,
+  `blueprintType interface needs parentClassPath '/Script/CoreUObject.Interface', not <path>`,
+  `The interface parent <path> needs blueprintType interface (or auto), not <value>`, `Unknown ifExists '<value>': ...`,
+  `Invalid blueprintName '<name>': <reason>`, `Invalid assetPath: <reason>`,
+  `An asset already exists at <object path>. Pass ifExists 'unique' ...`
+- **Spec**: `NodeToCode.MCP.CreateBlueprintClass` (`Source/Private/Tests/MCP/N2CCreateBlueprintClass.spec.cpp`)
+  saves real Blueprints under `/Game/__N2CTest` and deletes the folder after each case
 - **Known issue (card 0182):** `assetPath` is not limited to `/Game` and project plugin content
 
 ## Result Shape (search-blueprint-classes)
@@ -164,7 +183,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# Step 2: create the Blueprint from the classPath found, in a folder that does not exist yet
+# Step 2: create the Blueprint from the classPath found (the folder may exist already)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
@@ -187,8 +206,8 @@ curl -X POST http://localhost:27000/mcp \
 
 Other parents use the same call: `/Script/Engine.Actor` for an Actor Blueprint, `/Script/Engine.ActorComponent` for a
 component Blueprint (it can then be added to an Actor with `add-component-class-to-actor` and its generated class
-path), or a Blueprint's generated class (`/Game/Blueprints/BP_Base.BP_Base_C`) for a child Blueprint. Do not use
-`/Script/UMG.UserWidget` expecting a Widget Blueprint (card 0166).
+path), a Blueprint's generated class (`/Game/Blueprints/BP_Base.BP_Base_C`) for a child Blueprint, or
+`/Script/UMG.UserWidget` for a Widget Blueprint.
 
 ```bash
 # Component classes for add-component-class-to-actor

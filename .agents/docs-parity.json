@@ -72,6 +72,11 @@
       "code": ["Source/Private/MCP/Server/N2CMcpHttpServerManager.cpp", "Source/Public/Core/N2CUserSettings.h",
                "Content/Python/mcp_bridge/**"],
       "pages": ["wiki/developers/Using-a-Claude-or-Gemini-Subscription.md", "wiki/developers/Using-NodeToCode-with-Unreal-MCP.md"]
+    },
+    {
+      "name": "agent-skills",
+      "code": ["Agents/**", ".agents/skills/**"],
+      "pages": ["wiki/developers/Agent-Skills.md"]
     }
   ],
   "accept": []

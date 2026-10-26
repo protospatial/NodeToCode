@@ -289,6 +289,14 @@ its environment when no key is saved, so a live check never types or saves a key
   reads `/Engine/EngineSky/BP_Sky_Sphere` (every graph) with `toFile` and checks the file parses; a copy is kept as
   `logs/live_blueprint_by_path_0157_<label>_export.json` for token counts. The folder is deleted. Report:
   `logs/live_blueprint_by_path_0157_<label>.json`.
+- `live_create_blueprint_0166.py --engine ... --project ... --label 5.8 [--cli-model haiku]` (no provider key) checks
+  create-blueprint-class (card 0166). `claude -p` with only `mcp__nodetocode__*` creates a Widget Blueprint from
+  `/Script/UMG.UserWidget` in a fresh `/Game/N2CTest/Create0166_<time>` folder and repeats the call: the first must
+  succeed with `saved` true and `assetClass` `WidgetBlueprint`, the second must fail because the asset exists. The
+  probe then creates an Actor Blueprint in that existing folder and checks that an AnimInstance parent and the
+  interface type with an Actor parent are refused, and run-python reads the assets back (a WidgetBlueprint, an Actor
+  Blueprint, nothing for the refused calls). The folder is deleted. Report:
+  `logs/live_create_blueprint_0166_<label>.json`.
 - `live_gate_0377.py --engine ... --project ... --label 5.8 [--provider anthropic --model claude-haiku-5-5]` runs gate
   0377 in a windowed `UnrealEditor.exe` (not `-Cmd`, not `-unattended`; log via `-abslog`), with the provider, model
   and Min Severity Debug written into the host's `Saved/Config` NodeToCode.ini for the session: (1) a

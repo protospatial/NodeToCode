@@ -4,11 +4,17 @@
 
 #include "CoreMinimal.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
+#include "Engine/Blueprint.h"
 
 /**
  * MCP tool for creating new Blueprint classes with specified parent classes.
  * Integrates with search-blueprint-classes tool results to provide a complete
  * Blueprint creation workflow.
+ *
+ * Every argument is checked before anything is created; the asset is then made by IAssetTools::CreateAsset with a
+ * UBlueprintFactory (so the parent class picks the Blueprint class: a UserWidget parent gives a Widget Blueprint),
+ * compiled and saved. Creation is not an undo step, as in the Content Browser: undoing it would destroy the Blueprint
+ * in memory and leave its saved package on disk.
  */
 class FN2CMcpCreateBlueprintClassTool : public FN2CMcpToolBase
 {
@@ -28,42 +34,39 @@ private:
 	bool ValidateParentClass(const FString& ClassPath, UClass*& OutClass, FString& OutErrorMessage) const;
 
 	/**
-	 * Validates and prepares the asset path for Blueprint creation
-	 * @param AssetPath The desired asset path for the Blueprint
-	 * @param BlueprintName The desired Blueprint name
+	 * Resolves the blueprintType argument (auto, normal, const or interface, any case) against the parent class.
+	 * Refuses an unknown value, the interface type with a parent other than UInterface, and a normal or const type
+	 * with an interface parent.
+	 */
+	bool ResolveBlueprintType(const FString& TypeText, const UClass* ParentClass, EBlueprintType& OutType,
+		FString& OutErrorMessage) const;
+
+	/**
+	 * Checks the asset name the way the editor checks a Blueprint name (FKismetNameValidator) and an asset name
+	 * (object name characters, long package name characters, a name the file system can save)
+	 */
+	bool ValidateBlueprintName(const FString& AssetName, FString& OutErrorMessage) const;
+
+	/**
+	 * Validates the folder and works out the package and asset names. Creates nothing.
+	 * @param AssetPath The content folder for the Blueprint (it may already exist)
+	 * @param AssetName The validated asset name
+	 * @param bUniqueIfExists When an asset of that name exists: true picks a free name, false fails
+	 * @param OutFolder The normalized folder
 	 * @param OutPackageName The resulting package name
-	 * @param OutAssetName The resulting asset name (may be modified for uniqueness)
+	 * @param OutAssetName The resulting asset name (AssetName, or a free name when bUniqueIfExists)
 	 * @param OutErrorMessage Error message if validation fails
-	 * @return True if the path is valid
+	 * @return True if the asset can be created there
 	 */
-	bool ValidateAndPrepareAssetPath(const FString& AssetPath, const FString& BlueprintName, 
-		FString& OutPackageName, FString& OutAssetName, FString& OutErrorMessage) const;
+	bool ValidateAndPrepareAssetPath(const FString& AssetPath, const FString& AssetName, bool bUniqueIfExists,
+		FString& OutFolder, FString& OutPackageName, FString& OutAssetName, FString& OutErrorMessage) const;
 
 	/**
-	 * Determines the appropriate Blueprint type based on the parent class
-	 * @param ParentClass The parent class
-	 * @return The Blueprint type (Normal, Interface, Const, etc.)
-	 */
-	EBlueprintType DetermineBlueprintType(const UClass* ParentClass) const;
-
-	/**
-	 * Creates the Blueprint asset
-	 * @param ParentClass The parent class
-	 * @param PackageName The package name
-	 * @param AssetName The asset name
-	 * @param BlueprintType The Blueprint type
-	 * @param OutErrorMessage Error message if creation fails
+	 * Creates the Blueprint asset through IAssetTools::CreateAsset and UBlueprintFactory, outside any transaction
 	 * @return The created Blueprint, or nullptr on failure
 	 */
-	class UBlueprint* CreateBlueprintAsset(UClass* ParentClass, const FString& PackageName, 
-		const FString& AssetName, EBlueprintType BlueprintType, FString& OutErrorMessage) const;
-
-	/**
-	 * Applies initial settings to the newly created Blueprint
-	 * @param Blueprint The Blueprint to configure
-	 * @param Arguments The tool arguments containing optional settings
-	 */
-	void ApplyBlueprintSettings(class UBlueprint* Blueprint, const TSharedPtr<FJsonObject>& Arguments) const;
+	class UBlueprint* CreateBlueprintAsset(UClass* ParentClass, const FString& Folder, const FString& AssetName,
+		EBlueprintType BlueprintType, const FString* Description, FString& OutErrorMessage) const;
 
 	/**
 	 * Opens the Blueprint in the editor
@@ -73,12 +76,13 @@ private:
 	void OpenBlueprintInEditor(class UBlueprint* Blueprint, bool bOpenInFullEditor) const;
 
 	/**
-	 * Builds the JSON result for successful Blueprint creation
+	 * Builds the JSON result for a created Blueprint
 	 * @param Blueprint The created Blueprint
 	 * @param PackageName The package name
 	 * @param AssetName The asset name
+	 * @param bSaved Whether its package was saved
 	 * @return JSON object with creation details
 	 */
-	TSharedPtr<FJsonObject> BuildSuccessResult(const class UBlueprint* Blueprint, 
-		const FString& PackageName, const FString& AssetName) const;
+	TSharedPtr<FJsonObject> BuildResult(const class UBlueprint* Blueprint, const FString& PackageName,
+		const FString& AssetName, bool bSaved) const;
 };
