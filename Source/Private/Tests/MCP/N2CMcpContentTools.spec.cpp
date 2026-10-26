@@ -26,7 +26,7 @@
  * under /Game/__N2CTest (and the test plugin's /N2CTestContent mount), which is deleted before and after every case,
  * also when one fails. Name rules are NodeToCode.Names; the file jail is NodeToCode.PathPolicy; the content write
  * policy (/Game and project plugins only, card 0182) is "the write path policy" here. Cases that fail until their E12
- * card lands are KnownDefectIt (N2C_RUN_KNOWN_DEFECTS=1 runs them). Review ids: imp-mcp-tools-contentbrowser-fs-1,
+ * card lands are KnownDefectIt (N2C_RUN_KNOWN_DEFECTS=1 runs them); folder moves are card 0281's. Review ids: imp-mcp-tools-contentbrowser-fs-1,
  * -9, mcp-tools-contentbrowser-fs-3, -5, -6, -7, -8, -9, -10, -12, -13, -21, -23, -28, mcp-tools-bp-structure-30.
  */
 namespace N2CContentToolsSpec
@@ -167,6 +167,47 @@ BEGIN_DEFINE_SPEC(FN2CContentToolsSpec, "NodeToCode.MCP.Content", N2C_TEST_FLAGS
 		}
 	}
 
+	/**
+	 * A move-folder or rename-folder result reports the real outcome (card 0281): movedAssets are the new packages,
+	 * nothing failed, redirectors are exactly the old object paths that hold a redirector now, and sourceRemoved says
+	 * whether the old folder still exists
+	 */
+	void ExpectFolderMoveResult(const FJsonObject& Json, const TArray<FString>& OldObjectPaths, TArray<FString> NewPackages, const FString& OldFolder)
+	{
+		TArray<FString> Moved;
+		TArray<FString> Failed;
+		TArray<FString> Redirectors;
+		Json.TryGetStringArrayField(TEXT("movedAssets"), Moved);
+		Json.TryGetStringArrayField(TEXT("failedAssets"), Failed);
+		Json.TryGetStringArrayField(TEXT("redirectors"), Redirectors);
+		Moved.Sort();
+		NewPackages.Sort();
+		TestEqual(TEXT("movedAssets"), FString::Join(Moved, TEXT(", ")), FString::Join(NewPackages, TEXT(", ")));
+		TestEqual(TEXT("failedAssets is empty"), Failed.Num(), 0);
+		TArray<FString> ActualRedirectors;
+		for (const FString& OldObjectPath : OldObjectPaths)
+		{
+			if (FN2CMcpContentBrowserUtils::IsRedirectorAt(OldObjectPath))
+			{
+				ActualRedirectors.Add(OldObjectPath);
+			}
+		}
+		Redirectors.Sort();
+		ActualRedirectors.Sort();
+		TestEqual(TEXT("redirectors are the registry's"), FString::Join(Redirectors, TEXT(", ")), FString::Join(ActualRedirectors, TEXT(", ")));
+		TestEqual(TEXT("sourceRemoved"), Json.GetBoolField(TEXT("sourceRemoved")), !N2CTest::ContentFolderExists(OldFolder));
+		const TArray<TSharedPtr<FJsonValue>>* Tips = nullptr;
+		FString TipText;
+		if (Json.TryGetArrayField(TEXT("tips"), Tips))
+		{
+			for (const TSharedPtr<FJsonValue>& Tip : *Tips)
+			{
+				TipText += Tip->AsString() + TEXT("\n");
+			}
+		}
+		TestEqual(TEXT("the tips say whether the source was removed"), TipText.Contains(TEXT(" was removed")), Json.GetBoolField(TEXT("sourceRemoved")));
+	}
+
 	/** Writes and mounts the test plugin; false (and an error) when the engine refuses */
 	bool MountPlugin()
 	{
@@ -250,6 +291,8 @@ void FN2CContentToolsSpec::Define()
 				ExpectMoved(TEXT("move"), Asset, From, Folder / TEXT("Moved/BP_N2CMoveByPackage.BP_N2CMoveByPackage"));
 				TestEqual(TEXT("newPath"), Json->GetStringField(TEXT("newPath")), Folder / TEXT("Moved/BP_N2CMoveByPackage"));
 				TestEqual(TEXT("operation"), Json->GetStringField(TEXT("operation")), FString(TEXT("move")));
+				TestEqual(TEXT("leftRedirector is what the registry holds at the old path"), Json->GetBoolField(TEXT("leftRedirector")),
+					FN2CMcpContentBrowserUtils::IsRedirectorAt(From));
 			}
 		});
 
@@ -789,13 +832,14 @@ void FN2CContentToolsSpec::Define()
 				ExpectMoved(TEXT("subfolder asset"), DeepAsset, Deep, Folder / TEXT("Target/Source/Deep/BP_N2CFolderDeep.BP_N2CFolderDeep"));
 				TestEqual(TEXT("assetsMoved"), static_cast<int32>(Json->GetNumberField(TEXT("assetsMoved"))), 2);
 				TestEqual(TEXT("destinationPath"), Json->GetStringField(TEXT("destinationPath")), Folder / TEXT("Target/Source"));
+				ExpectFolderMoveResult(*Json, { Top, Deep }, { Folder / TEXT("Target/Source/BP_N2CFolderTop"),
+					Folder / TEXT("Target/Source/Deep/BP_N2CFolderDeep") }, Folder / TEXT("Source"));
 			}
 		});
 
-		// Known defect mcp-tools-contentbrowser-fs-10: move-folder and rename-folder move only assets, so an empty
-		// folder stays where it was and nothing appears at the destination, and the tools report success. Enable
-		// (KnownDefectIt -> It) with card 0281 (UEditorAssetSubsystem::RenameDirectory).
-		KnownDefectIt(TEXT("move-folder and rename-folder move an empty folder and remove the source"), [this]()
+		// mcp-tools-contentbrowser-fs-10 (card 0281): move-folder and rename-folder moved only assets, so an empty
+		// folder stayed where it was, nothing appeared at the destination, and the tools reported success
+		It(TEXT("move-folder and rename-folder move an empty folder and remove the source"), [this]()
 		{
 			if (!MakeFolder(Folder / TEXT("Empty")) || !MakeFolder(Folder / TEXT("Target")) || !MakeFolder(Folder / TEXT("Blank")))
 			{
@@ -815,27 +859,53 @@ void FN2CContentToolsSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-contentbrowser-fs-10: an empty subfolder of a moved folder is not recreated at the
-		// destination. Enable (KnownDefectIt -> It) with card 0281.
-		KnownDefectIt(TEXT("move-folder keeps an empty subfolder"), [this]()
+		// mcp-tools-contentbrowser-fs-10 (card 0281): an empty subfolder of a moved folder was not recreated at the
+		// destination, and the emptied source folder stayed
+		It(TEXT("move-folder keeps an empty subfolder and removes the source"), [this]()
 		{
 			const FString Kept = MakeAsset(TEXT("BP_N2CFolderKept"), Folder / TEXT("Source"));
-			if (Kept.IsEmpty() || !MakeFolder(Folder / TEXT("Source/EmptySub")) || !MakeFolder(Folder / TEXT("Target")))
+			const FString Other = MakeAsset(TEXT("BP_N2CFolderOther"), Folder / TEXT("Source"));
+			if (Kept.IsEmpty() || Other.IsEmpty() || !MakeFolder(Folder / TEXT("Source/EmptySub/Deeper")) || !MakeFolder(Folder / TEXT("Target")))
 			{
 				return;
 			}
-			if (ExpectOk(TEXT("move-folder"), TEXT("move-folder"),
-				Args({ { TEXT("sourcePath"), Folder / TEXT("Source") }, { TEXT("destinationPath"), Folder / TEXT("Target") } })).IsValid())
+			const TSharedPtr<FJsonObject> Json = ExpectOk(TEXT("move-folder"), TEXT("move-folder"),
+				Args({ { TEXT("sourcePath"), Folder / TEXT("Source") }, { TEXT("destinationPath"), Folder / TEXT("Target") } }));
+			if (Json.IsValid())
 			{
 				TestNotNull(TEXT("the asset moved"), BlueprintAtPath(Folder / TEXT("Target/Source/BP_N2CFolderKept.BP_N2CFolderKept")));
+				TestNotNull(TEXT("the other asset moved"), BlueprintAtPath(Folder / TEXT("Target/Source/BP_N2CFolderOther.BP_N2CFolderOther")));
 				TestTrue(TEXT("the empty subfolder is at the destination"), N2CTest::ContentFolderExists(Folder / TEXT("Target/Source/EmptySub")));
+				TestTrue(TEXT("and its empty subfolder"), N2CTest::ContentFolderExists(Folder / TEXT("Target/Source/EmptySub/Deeper")));
+				TestFalse(TEXT("the source folder is gone"), N2CTest::ContentFolderExists(Folder / TEXT("Source")));
+				TestFalse(TEXT("the source folder is gone from disk"), N2CTest::ContentFolderOnDisk(Folder / TEXT("Source")));
+				ExpectFolderMoveResult(*Json, { Kept, Other }, { Folder / TEXT("Target/Source/BP_N2CFolderKept"),
+					Folder / TEXT("Target/Source/BP_N2CFolderOther") }, Folder / TEXT("Source"));
 			}
 		});
 
-		// Known defect mcp-tools-contentbrowser-fs-9: move-folder never compares the destination with the source, so a
-		// folder moved into itself or its own subfolder re-nests every asset under it. Enable (KnownDefectIt -> It)
-		// with card 0281.
-		KnownDefectIt(TEXT("move-folder refuses to move a folder into itself or its own subfolder, changing nothing"), [this]()
+		It(TEXT("rename-folder keeps an empty subfolder and reports what moved"), [this]()
+		{
+			const FString Asset = MakeAsset(TEXT("BP_N2CRenamedFolderAsset"), Folder / TEXT("Before/Sub"));
+			if (Asset.IsEmpty() || !MakeFolder(Folder / TEXT("Before/EmptySub")))
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Json = ExpectOk(TEXT("rename-folder"), TEXT("rename-folder"),
+				Args({ { TEXT("sourcePath"), Folder / TEXT("Before") }, { TEXT("newName"), TEXT("After") } }));
+			if (Json.IsValid())
+			{
+				TestNotNull(TEXT("the asset moved"), BlueprintAtPath(Folder / TEXT("After/Sub/BP_N2CRenamedFolderAsset.BP_N2CRenamedFolderAsset")));
+				TestTrue(TEXT("the empty subfolder is at the new name"), N2CTest::ContentFolderExists(Folder / TEXT("After/EmptySub")));
+				TestFalse(TEXT("the old name is gone"), N2CTest::ContentFolderExists(Folder / TEXT("Before")));
+				TestEqual(TEXT("assetsRenamed"), static_cast<int32>(Json->GetNumberField(TEXT("assetsRenamed"))), 1);
+				ExpectFolderMoveResult(*Json, { Asset }, { Folder / TEXT("After/Sub/BP_N2CRenamedFolderAsset") }, Folder / TEXT("Before"));
+			}
+		});
+
+		// mcp-tools-contentbrowser-fs-9 (card 0281): move-folder never compared the destination with the source, so a
+		// folder moved into itself or its own subfolder re-nested every asset under it
+		It(TEXT("move-folder refuses to move a folder into itself or its own subfolder, changing nothing"), [this]()
 		{
 			const FString Outer = MakeAsset(TEXT("BP_N2CNestOuter"), Folder / TEXT("Nest"));
 			const FString Inner = MakeAsset(TEXT("BP_N2CNestInner"), Folder / TEXT("Nest/Inner"));
@@ -853,6 +923,7 @@ void FN2CContentToolsSpec::Define()
 			TestNotNull(TEXT("outer asset in place"), BlueprintAtPath(Outer));
 			TestNotNull(TEXT("inner asset in place"), BlueprintAtPath(Inner));
 			TestFalse(TEXT("no Nest/Nest folder"), N2CTest::ContentFolderExists(Folder / TEXT("Nest/Nest")));
+			TestFalse(TEXT("no Nest/Inner/Nest folder"), N2CTest::ContentFolderExists(Folder / TEXT("Nest/Inner/Nest")));
 		});
 	});
 }
