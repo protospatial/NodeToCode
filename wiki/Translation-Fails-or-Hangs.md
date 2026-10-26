@@ -5,7 +5,7 @@
 
 When using cloud-based LLM providers (Anthropic, OpenAI, DeepSeek), you may encounter these standard HTTP error responses:
 
-**Tip:** Check the [Output Log](https://dev.epicgames.com/documentation/en-us/unreal-engine/logging-in-unreal-engine) with [MinSeverity](Logging-Configuration) set to `Debug` to see detailed error responses.
+**Tip:** The [Output Log](https://dev.epicgames.com/documentation/en-us/unreal-engine/logging-in-unreal-engine) shows each error's HTTP status and the provider's message. To see the provider's full error response too, set [MinSeverity](Logging-Configuration) to `Debug` and turn on [payload logging](Logging-Configuration#what-the-log-never-holds) with `n2c.LogLLMPayloads 1`.
 
 
 | Code | Type | Description | Resolution |

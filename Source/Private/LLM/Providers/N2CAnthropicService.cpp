@@ -19,7 +19,7 @@ void UN2CAnthropicService::GetConfiguration(
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = Config.ApiKey;
+    OutAuthToken = TEXT("");  // the key goes in x-api-key only (GetProviderHeaders), never also as a Bearer token
     OutSupportsSystemPrompts = true;  // Anthropic supports system prompts
 }
 
@@ -33,9 +33,9 @@ void UN2CAnthropicService::GetProviderHeaders(TMap<FString, FString>& OutHeaders
 
 FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
-    // Log original content (no escaping needed for logging system)
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM System Message:\n\n%s"), *SystemMessage), EN2CLogSeverity::Debug);
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM User Message:\n\n%s"), *UserMessage), EN2CLogSeverity::Debug);
+    // Prompts are logged in full only with n2c.LogLLMPayloads 1, else their sizes
+    FN2CLogger::Get().LogLLMContent(TEXT("LLM System Message"), TEXT("LLM system message"), SystemMessage);
+    FN2CLogger::Get().LogLLMContent(TEXT("LLM User Message"), TEXT("LLM user message"), UserMessage);
 
     // Create and configure payload builder
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();

@@ -53,7 +53,7 @@ bool UN2CDeepSeekResponseParser::ParseLLMResponse(
         return false;
     }
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response Message Content: %s"), *MessageContent), EN2CLogSeverity::Debug);
+    FN2CLogger::Get().LogLLMContent(TEXT("LLM Response Message Content"), TEXT("LLM response message content"), MessageContent);
 
     // Parse the extracted content as our expected JSON format
     return Super::ParseLLMResponse(MessageContent, OutResponse);

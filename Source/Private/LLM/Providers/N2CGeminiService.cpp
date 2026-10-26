@@ -33,7 +33,7 @@ void UN2CGeminiService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) c
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 
     if (!Config.ApiKey.IsEmpty())
-{
+    {
         OutHeaders.Add(TEXT("x-goog-api-key"), Config.ApiKey);
     }
 }

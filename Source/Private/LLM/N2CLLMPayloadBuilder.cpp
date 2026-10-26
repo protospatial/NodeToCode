@@ -581,8 +581,8 @@ FString UN2CLLMPayloadBuilder::Build()
     const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Payload);
     FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer);
 
-    // Log the payload for debugging
-    FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Request Payload:\n\n%s"), *Payload), EN2CLogSeverity::Debug);
+    // The body holds the Blueprint logic: logged in full only with n2c.LogLLMPayloads 1, else its size
+    FN2CLogger::Get().LogLLMContent(TEXT("LLM Request Payload"), TEXT("LLM request body"), Payload);
 
     return Payload;
 }
