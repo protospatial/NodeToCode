@@ -3,6 +3,30 @@
 This directory contains the MCP tools in the `BlueprintVariableTools` toolset: creating member and local
 variables, reading them, setting their defaults, placing Get and Set nodes, and searching variable types.
 
+## Status: frozen, bug fixes only (dec-5)
+
+Every tool here (`BlueprintVariableTools`) is frozen, the read-only `search-variable-types` and the two list
+tools included. Decision record [0006](../../../../../../../.agents/decisions/0006-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
+provisionally as the review's option 2, with card 0089 applied provisionally as option (b).
+
+- **Accepted:** bug fixes, meaning a change that fixes a crash or hang (a modal dialog in an unattended call
+  counts), data loss, Blueprint or project corruption, or a result that misreports what happened (success for an
+  edit that did not happen, wrong counts, duplicates, a wrong type in a read). Also accepted, since they add no
+  capability: explicit targeting arguments on existing tools (review next-6), security hardening, building on the
+  supported engines, tests, docs that match the code, and removing dead code.
+- **Not accepted:** new tools in this family, and new arguments, modes or result fields that
+  add capability. On UE 5.8 that work belongs to Epic's EditorToolset (`BlueprintTools.list_variables`, `create_node`, `ObjectTools.set_properties`); on 5.6 and 5.7 it waits for the
+  owner.
+- **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
+  tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
+  `PythonTools`.
+- **Fix cards still owed here:** 0283 (member variable defaults through the CDO), 0291 (search-variable-types: CoreUObject struct path, counts),
+  0295 (notification brushes, dead code), and 0274 (explicit targets, admitted as next-6). Card 0292 (class,
+  soft and interface references) is new capability and waits for the owner.
+
+The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
+`Source/Private/MCP/Tools/AGENTS.md`.
+
 ## Targeting: the focused Blueprint only
 
 Every tool here works on the Blueprint, or the graph, of the active Blueprint editor. Member-variable tools resolve

@@ -10,6 +10,11 @@ This file provides guidance to AI coding agents when working with code in this r
 
 @Source/Private/MCP/Tools/AGENTS.md
 
+The Blueprint and asset CRUD tool families (Graph, Functions, Variables, Components, Classes, Compilation, Content
+Browser, the tools Epic's EditorToolset duplicates, and `UN2CStructUtilsLibrary`) are **frozen: bug fixes only**
+(dec-5, `.agents/decisions/0006-crud-tool-families-fix-then-freeze.md`, applied provisionally). Do not add tools or
+capability to them; see "Frozen tool families (dec-5)" in `Source/Private/MCP/Tools/AGENTS.md`.
+
 ## Unreal Engine Source Path
 
 Run `Content/Scripts/detect-ue-path.sh` (Mac/Linux) or `Content\Scripts\detect-ue-path.bat` (Windows) to detect your UE installation and update this file.

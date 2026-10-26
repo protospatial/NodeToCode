@@ -4,6 +4,31 @@ This directory contains the MCP tools in the `ContentBrowserTools` toolset: navi
 Blueprints, and folder and asset operations. In dynamic tool discovery, enabling 'Content Browser' gives all ten
 tools below, `move-asset` included.
 
+## Status: frozen, bug fixes only (dec-5)
+
+Every tool here (`ContentBrowserTools`) is frozen. Decision record [0006](../../../../../../.agents/decisions/0006-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
+provisionally as the review's option 2, with card 0089 applied provisionally as option (b).
+
+- **Accepted:** bug fixes, meaning a change that fixes a crash or hang (a modal dialog in an unattended call
+  counts), data loss, Blueprint or project corruption, or a result that misreports what happened (success for an
+  edit that did not happen, wrong counts, duplicates, a wrong type in a read). Also accepted, since they add no
+  capability: explicit targeting arguments on existing tools (review next-6), security hardening, building on the
+  supported engines, tests, docs that match the code, and removing dead code.
+- **Not accepted:** new tools in this family, and new arguments, modes or result fields that
+  add capability. On UE 5.8 that work belongs to Epic's EditorToolset (`AssetTools.find_assets`, `list_folders`, `create_folder`, `move`, `duplicate`, and
+  `EditorAppToolset`); on 5.6 and 5.7 it waits for the
+  owner.
+- **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
+  tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
+  `PythonTools`.
+- **Fix cards still owed here:** 0182 (asset-writing tools restricted to /Game and project plugin content), 0281 (folders through
+  `UEditorAssetSubsystem::RenameDirectory`), 0284 (move-, rename- and copy-asset path handling), 0285
+  (search-content-browser and read-content-browser-path results), 0286 (open-blueprint-asset fails on unknown
+  graphs).
+
+The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
+`Source/Private/MCP/Tools/AGENTS.md`.
+
 ## Available Tools
 
 ### open-content-browser-path
