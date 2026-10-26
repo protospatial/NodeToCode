@@ -38,7 +38,7 @@ Blueprint's contents.
 4. **Large documents.** When a read would exceed about 20000 tokens (or you pass `toFile: true`) the result is
    `{"path", "bytes", "estimatedTokens", "reason", "graphCount", "nodeCount"}` and the document is in a file under
    `Saved/NodeToCode/Exports/`. Read one graph at a time instead, or read that file in parts (`read-file` takes the
-   project-relative path and stops at 500 KB).
+   project-relative path and returns 500 KB of whole lines per call; pass its `nextOffset` as `offset` to continue).
 
 Use `get-focused-blueprint` only when the user means the graph open in front of them ("this graph"). Focus can
 belong to another Blueprint than the one you think; a path read cannot.
