@@ -62,6 +62,12 @@ namespace N2CTest
 		FTestBlueprint(const FTestBlueprint&) = delete;
 		FTestBlueprint& operator=(const FTestBlueprint&) = delete;
 
+		/**
+		 * An Actor Blueprint named BlueprintName in a package the caller made and keeps (the perf fixture generator saves
+		 * it as an asset): the destructor leaves the package and the Blueprint's flags alone. Errors() says what failed.
+		 */
+		static TUniquePtr<FTestBlueprint> InPackage(const FString& BlueprintName, UPackage* InPackage);
+
 		UBlueprint* GetBlueprint() const { return Blueprint; }
 		/** The transient package's path, for tests that normalise it out of captured text */
 		FString GetPackagePath() const;
@@ -149,10 +155,14 @@ namespace N2CTest
 		 *  so the plugin needs no EnhancedInput dependency); null and an error when the EnhancedInput plugin is off */
 		UEdGraphNode* AddEnhancedInputAction(UEdGraph* Graph, const FName ActionName);
 
-		/** A user-defined enum in this package with one enumerator per display name (NewEnumerator0..n) */
-		UUserDefinedEnum* AddUserEnum(const FName Name, const TArray<FString>& DisplayNames);
-		/** A user-defined struct in this package with these members, in order */
-		UUserDefinedStruct* AddUserStruct(const FName Name, const TArray<TPair<FString, FEdGraphPinType>>& Members);
+		/**
+		 * A user-defined enum in this package (or in Into, a package the caller keeps) with one enumerator per display
+		 * name (NewEnumerator0..n)
+		 */
+		UUserDefinedEnum* AddUserEnum(const FName Name, const TArray<FString>& DisplayNames, UPackage* Into = nullptr);
+		/** A user-defined struct in this package (or in Into, a package the caller keeps) with these members, in order */
+		UUserDefinedStruct* AddUserStruct(const FName Name, const TArray<TPair<FString, FEdGraphPinType>>& Members,
+			UPackage* Into = nullptr);
 
 		/** The node's visible pin with this name (and direction, unless EGPD_MAX); null and an error when missing */
 		UEdGraphPin* Pin(UEdGraphNode* Node, const FName PinName, EEdGraphPinDirection Direction = EGPD_MAX);
@@ -177,6 +187,8 @@ namespace N2CTest
 
 		UPackage* Package = nullptr;
 		bool bOwnsPackage = true;
+		/** InPackage: the Blueprint is the caller's asset, so the destructor clears none of its flags */
+		bool bKeepBlueprint = false;
 		UBlueprint* Blueprint = nullptr;
 		TArray<FString> ErrorList;
 		TArray<TUniquePtr<FTestBlueprint>> Siblings;

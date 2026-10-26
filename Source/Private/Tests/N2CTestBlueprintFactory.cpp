@@ -95,6 +95,13 @@ namespace N2CTest
 		}
 	}
 
+	TUniquePtr<FTestBlueprint> FTestBlueprint::InPackage(const FString& BlueprintName, UPackage* InPackage)
+	{
+		TUniquePtr<FTestBlueprint> Kept(new FTestBlueprint(BlueprintName, InPackage));
+		Kept->bKeepBlueprint = true;
+		return Kept;
+	}
+
 	FTestBlueprint* FTestBlueprint::AddSiblingBlueprint(const FString& BlueprintName)
 	{
 		if (!Package)
@@ -126,7 +133,7 @@ namespace N2CTest
 	{
 		// Siblings first (they live in this package and do not own it)
 		Siblings.Reset();
-		if (Blueprint)
+		if (Blueprint && !bKeepBlueprint)
 		{
 			Blueprint->ClearFlags(RF_Standalone | RF_Public);
 			if (Blueprint->GeneratedClass)
@@ -662,14 +669,15 @@ namespace N2CTest
 		return Node;
 	}
 
-	UUserDefinedEnum* FTestBlueprint::AddUserEnum(const FName Name, const TArray<FString>& DisplayNames)
+	UUserDefinedEnum* FTestBlueprint::AddUserEnum(const FName Name, const TArray<FString>& DisplayNames, UPackage* Into)
 	{
-		if (!Package)
+		UPackage* Outer = Into ? Into : Package;
+		if (!Outer)
 		{
 			return nullptr;
 		}
 		FNoTransactions NoTransactions;
-		UUserDefinedEnum* Enum = Cast<UUserDefinedEnum>(FEnumEditorUtils::CreateUserDefinedEnum(Package, Name,
+		UUserDefinedEnum* Enum = Cast<UUserDefinedEnum>(FEnumEditorUtils::CreateUserDefinedEnum(Outer, Name,
 			RF_Public | RF_Standalone | RF_Transactional));
 		if (!Enum)
 		{
@@ -687,15 +695,17 @@ namespace N2CTest
 		return Enum;
 	}
 
-	UUserDefinedStruct* FTestBlueprint::AddUserStruct(const FName Name, const TArray<TPair<FString, FEdGraphPinType>>& Members)
+	UUserDefinedStruct* FTestBlueprint::AddUserStruct(const FName Name, const TArray<TPair<FString, FEdGraphPinType>>& Members,
+		UPackage* Into)
 	{
-		if (!Package || Members.Num() == 0)
+		UPackage* Outer = Into ? Into : Package;
+		if (!Outer || Members.Num() == 0)
 		{
 			return nullptr;
 		}
 		FNoTransactions NoTransactions;
 		// CreateUserDefinedStruct adds one bool member; it becomes the first member
-		UUserDefinedStruct* Struct = FStructureEditorUtils::CreateUserDefinedStruct(Package, Name,
+		UUserDefinedStruct* Struct = FStructureEditorUtils::CreateUserDefinedStruct(Outer, Name,
 			RF_Public | RF_Standalone | RF_Transactional);
 		if (!Struct || FStructureEditorUtils::GetVarDesc(Struct).Num() != 1)
 		{

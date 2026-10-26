@@ -21,6 +21,7 @@ Source/Private/Tests/
                           NodeToCode.Security.PathUtils.*, NodeToCode.MCP.Transport.*); kept as they are
   Fixtures/<Area>/        checked-in inputs a spec reads (N2CTest::FixturesDir(Area))
   Goldens/<Area>/         checked-in expected outputs a spec compares against (N2CTest::GoldensDir(Area))
+  Perf/                   the perf fixture generator and NodeToCode.Perf.Fixtures (assets in Tests/NodeToCodeTestContent)
 ```
 
 - New tests are Automation Specs (`BEGIN_DEFINE_SPEC`) named `NodeToCode.<Area>.<Thing>`, for example
@@ -379,6 +380,22 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   5.8 (de and fr on each, ja on 5.8) when card 0138 landed. Identifiers never are display text, and the `title` and
   `label` hints and text defaults are written in source (English) text. Before card 0138, `de` changed the function
   return node's name (`Add Return Node...`) and the entry tunnel's name (`Inputs`/`Eingaben`) in 9 of 16 cases.
+
+## Perf fixtures
+
+`NodeToCode.Perf.Fixtures` (`Perf/N2CPerfFixtures.spec.cpp`, card 0359) loads `BP_N2CPerf_100`, `_1k` and `_5k` from
+the content-only test plugin `Tests/NodeToCodeTestContent` (mounted at `/NodeToCodeTestContent`; `build.ps1` links it
+into each host's `Plugins/`, and no package contains it). Each case checks the K2 node count over all graphs (within
+5% of 100, 1000 and 5000) and the shape (functions, macros, collapsed graph, an event graph of about 2000 nodes in the
+5k fixture), exports every graph to N2C JSON v2 the way get-blueprint-n2cjson does, validates it before and after
+`FromJson`, and logs capture time, bytes and estimated tokens per node as info. The 5k fixture's call chain
+`F_Chain_0`..`F_Chain_5` captures exactly one more chain graph per Max Translation Depth step from 0 to 5. Each export
+expects the `Missing name` error of known defect translation-core-24 (card 0236), which removes the expectation.
+
+The fixtures are generated in C++ (`Perf/N2CPerfFixtures.cpp`, with `FTestBlueprint::InPackage` so the Blueprints can
+be saved) from a fixed seed per fixture. Regenerate on UE 5.6 only, since a 5.8 package does not load in 5.6:
+`$env:N2C_GENERATE_PERF_FIXTURES = '1'; .\build.ps1 -UEVersion 5.6 -Test -TestFilter NodeToCode.Perf` (then remove
+the variable and commit the `.uasset` files).
 
 ## Running the tests
 

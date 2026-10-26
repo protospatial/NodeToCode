@@ -19,7 +19,9 @@ PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every s
   checks each against `Engine/Build/Build.version`.
 - Creates (on first use) a minimal C++ host project per engine, `<HostsRoot>/NodeToCodeHost_5_X` (default `../Hosts`
   next to the checkout), whose `Plugins/NodeToCode/{Source,Content,Resources,ThirdParty}` are junctions (symbolic
-  links on Mac and Linux) back into the checkout; `Binaries/` and `Intermediate/` stay per host.
+  links on Mac and Linux) back into the checkout; `Binaries/` and `Intermediate/` stay per host. The host's
+  `Plugins/NodeToCodeTestContent` links to `Tests/NodeToCodeTestContent`, the content-only plugin with the automation
+  tests' assets (the perf fixtures, `NodeToCode.Perf.Fixtures`), which is never packaged.
 - Builds the host's editor target through `Engine/Build/BatchFiles/Build.bat` (UBT), then optionally runs
   `Tests/smoke/smoke_check.py` (`-Smoke`: one headless editor per MCP registration mode, log, config, tool-count and
   probe checks against `Tests/smoke/expected.json` and `Tests/mcp_probe/expected.json`) or the automation tests
