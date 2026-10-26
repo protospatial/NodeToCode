@@ -3,64 +3,106 @@
 #include "N2CMcpCreateBlueprintClassTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
+#include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpContentBrowserUtils.h"
-#include "Engine/Blueprint.h"
-#include "Engine/BlueprintGeneratedClass.h"
-#include "Kismet2/KismetEditorUtilities.h"
-#include "Kismet2/BlueprintEditorUtils.h"
-#include "AssetRegistry/AssetRegistryModule.h"
+#include "Animation/AnimInstance.h"
 #include "AssetToolsModule.h"
-#include "IAssetTools.h"
-#include "Factories/BlueprintFactory.h"
-#include "Framework/Notifications/NotificationManager.h"
-#include "Widgets/Notifications/SNotificationList.h"
 #include "Dom/JsonObject.h"
+#include "Editor.h"
+#include "Engine/Blueprint.h"
+#include "Factories/BlueprintFactory.h"
+#include "FileHelpers.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "IAssetTools.h"
+#include "Kismet2/Kismet2NameValidators.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/FileHelper.h"
+#include "Misc/PackageName.h"
 #include "Serialization/JsonSerializer.h"
-#include "UObject/Package.h"
-#include "PackageTools.h"
-#include "FileHelpers.h"
-#include "Engine/SimpleConstructionScript.h"
-#include "GameFramework/Actor.h"
-#include "Components/ActorComponent.h"
-#include "Blueprint/UserWidget.h"
-#include "UnrealEd.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "FileHelpers.h"
+#include "UObject/Interface.h"
+#include "UObject/Package.h"
 #include "Utils/N2CLogger.h"
+#include "Widgets/Notifications/SNotificationList.h"
 
 REGISTER_MCP_TOOL(FN2CMcpCreateBlueprintClassTool)
+
+namespace
+{
+	IAssetTools& GetAssetTools()
+	{
+		return FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	}
+
+	FString BlueprintTypeToString(EBlueprintType Type)
+	{
+		switch (Type)
+		{
+			case BPTYPE_Normal: return TEXT("Normal");
+			case BPTYPE_Const: return TEXT("Const");
+			case BPTYPE_Interface: return TEXT("Interface");
+			case BPTYPE_FunctionLibrary: return TEXT("FunctionLibrary");
+			case BPTYPE_MacroLibrary: return TEXT("MacroLibrary");
+			default: return TEXT("Unknown");
+		}
+	}
+
+	/** An asset (saved, or only in memory) already has this package and object path */
+	bool DoesAssetExist(const FString& PackageName, const FString& ObjectPath)
+	{
+		return FPackageName::DoesPackageExist(PackageName) || FindObject<UObject>(nullptr, *ObjectPath) != nullptr;
+	}
+}
 
 FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("create-blueprint-class"),
-		TEXT("Creates a new Blueprint class with the specified parent class and settings"),
+		TEXT("Creates a new Blueprint class with the specified parent class and settings, then saves it. A UserWidget parent gives a Widget Blueprint"),
 		TEXT("Blueprint Classes")
 	);
 
 	// Build input schema manually
 	TSharedPtr<FJsonObject> Schema = MakeShareable(new FJsonObject);
 	Schema->SetStringField(TEXT("type"), TEXT("object"));
-	
+
 	TSharedPtr<FJsonObject> Properties = MakeShareable(new FJsonObject);
-	
+
 	// blueprintName property
 	TSharedPtr<FJsonObject> BlueprintNameProp = MakeShareable(new FJsonObject);
 	BlueprintNameProp->SetStringField(TEXT("type"), TEXT("string"));
-	BlueprintNameProp->SetStringField(TEXT("description"), TEXT("Name for the new Blueprint; BP_ is put in front unless the name already starts with it"));
+	BlueprintNameProp->SetStringField(TEXT("description"), TEXT("Name for the new Blueprint asset. With addPrefix (the default) BP_ is put in front unless the name already starts with it"));
 	Properties->SetObjectField(TEXT("blueprintName"), BlueprintNameProp);
 
 	// parentClassPath property
 	TSharedPtr<FJsonObject> ParentClassPathProp = MakeShareable(new FJsonObject);
 	ParentClassPathProp->SetStringField(TEXT("type"), TEXT("string"));
-	ParentClassPathProp->SetStringField(TEXT("description"), TEXT("Path to the parent class (e.g., '/Script/Engine.Actor')"));
+	ParentClassPathProp->SetStringField(TEXT("description"), TEXT("Path to the parent class (e.g., '/Script/Engine.Actor', '/Script/UMG.UserWidget' for a Widget Blueprint, '/Script/CoreUObject.Interface' for a Blueprint interface). AnimInstance parents are refused"));
 	Properties->SetObjectField(TEXT("parentClassPath"), ParentClassPathProp);
 
 	// assetPath property
 	TSharedPtr<FJsonObject> AssetPathProp = MakeShareable(new FJsonObject);
 	AssetPathProp->SetStringField(TEXT("type"), TEXT("string"));
-	AssetPathProp->SetStringField(TEXT("description"), TEXT("Content folder for the new Blueprint (e.g., '/Game/Blueprints/Doors'). The folder must not exist yet: the tool creates it and refuses an existing one"));
+	AssetPathProp->SetStringField(TEXT("description"), TEXT("Content folder for the new Blueprint (e.g., '/Game/Blueprints/Doors'). An existing folder is used; a missing one is created"));
 	Properties->SetObjectField(TEXT("assetPath"), AssetPathProp);
+
+	// ifExists property
+	TSharedPtr<FJsonObject> IfExistsProp = MakeShareable(new FJsonObject);
+	IfExistsProp->SetStringField(TEXT("type"), TEXT("string"));
+	TArray<TSharedPtr<FJsonValue>> IfExistsEnum;
+	IfExistsEnum.Add(MakeShareable(new FJsonValueString(TEXT("error"))));
+	IfExistsEnum.Add(MakeShareable(new FJsonValueString(TEXT("unique"))));
+	IfExistsProp->SetArrayField(TEXT("enum"), IfExistsEnum);
+	IfExistsProp->SetStringField(TEXT("default"), TEXT("error"));
+	IfExistsProp->SetStringField(TEXT("description"), TEXT("When an asset of that name already exists in the folder: error fails, unique picks a free name (BP_Door1) and returns it as blueprintName"));
+	Properties->SetObjectField(TEXT("ifExists"), IfExistsProp);
+
+	// addPrefix property
+	TSharedPtr<FJsonObject> AddPrefixProp = MakeShareable(new FJsonObject);
+	AddPrefixProp->SetStringField(TEXT("type"), TEXT("boolean"));
+	AddPrefixProp->SetBoolField(TEXT("default"), true);
+	AddPrefixProp->SetStringField(TEXT("description"), TEXT("Put BP_ in front of blueprintName unless it already starts with it; false uses blueprintName as given"));
+	Properties->SetObjectField(TEXT("addPrefix"), AddPrefixProp);
 
 	// openInEditor property
 	TSharedPtr<FJsonObject> OpenInEditorProp = MakeShareable(new FJsonObject);
@@ -82,13 +124,6 @@ FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 	DescriptionProp->SetStringField(TEXT("description"), TEXT("Description/tooltip for the Blueprint"));
 	Properties->SetObjectField(TEXT("description"), DescriptionProp);
 
-	// generateConstructionScript property
-	TSharedPtr<FJsonObject> GenerateConstructionScriptProp = MakeShareable(new FJsonObject);
-	GenerateConstructionScriptProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	GenerateConstructionScriptProp->SetBoolField(TEXT("default"), true);
-	GenerateConstructionScriptProp->SetStringField(TEXT("description"), TEXT("Has no effect: an Actor Blueprint always gets its construction script"));
-	Properties->SetObjectField(TEXT("generateConstructionScript"), GenerateConstructionScriptProp);
-
 	// blueprintType property
 	TSharedPtr<FJsonObject> BlueprintTypeProp = MakeShareable(new FJsonObject);
 	BlueprintTypeProp->SetStringField(TEXT("type"), TEXT("string"));
@@ -99,20 +134,20 @@ FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 	BlueprintTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("interface"))));
 	BlueprintTypeProp->SetArrayField(TEXT("enum"), BlueprintTypeEnum);
 	BlueprintTypeProp->SetStringField(TEXT("default"), TEXT("auto"));
-	BlueprintTypeProp->SetStringField(TEXT("description"), TEXT("Blueprint type. normal, const and interface are used as given, whatever the parent; auto (and any other value) gives interface for an interface parent, otherwise normal"));
+	BlueprintTypeProp->SetStringField(TEXT("description"), TEXT("Blueprint type, in any case. auto gives interface for the Interface parent, otherwise normal. interface needs parentClassPath '/Script/CoreUObject.Interface', and an interface parent needs interface. Other values are refused"));
 	Properties->SetObjectField(TEXT("blueprintType"), BlueprintTypeProp);
 
 	Schema->SetObjectField(TEXT("properties"), Properties);
-	
+
 	// Required fields
 	TArray<TSharedPtr<FJsonValue>> RequiredArray;
 	RequiredArray.Add(MakeShareable(new FJsonValueString(TEXT("blueprintName"))));
 	RequiredArray.Add(MakeShareable(new FJsonValueString(TEXT("parentClassPath"))));
 	RequiredArray.Add(MakeShareable(new FJsonValueString(TEXT("assetPath"))));
 	Schema->SetArrayField(TEXT("required"), RequiredArray);
-	
+
 	Definition.InputSchema = Schema;
-	
+
 	return Definition;
 }
 
@@ -120,24 +155,27 @@ FMcpToolCallResult FN2CMcpCreateBlueprintClassTool::Execute(const TSharedPtr<FJs
 {
 	return ExecuteOnGameThread([this, Arguments]() -> FMcpToolCallResult
 	{
-		// Parse arguments
+		// ---- Arguments: everything is checked before anything is created ----
 		FString BlueprintName;
 		if (!Arguments->TryGetStringField(TEXT("blueprintName"), BlueprintName))
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Missing required parameter: blueprintName"));
 		}
+		BlueprintName.TrimStartAndEndInline();
 
 		FString ParentClassPath;
 		if (!Arguments->TryGetStringField(TEXT("parentClassPath"), ParentClassPath))
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Missing required parameter: parentClassPath"));
 		}
+		ParentClassPath.TrimStartAndEndInline();
 
 		FString AssetPath;
 		if (!Arguments->TryGetStringField(TEXT("assetPath"), AssetPath))
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Missing required parameter: assetPath"));
 		}
+		AssetPath.TrimStartAndEndInline();
 
 		bool bOpenInEditor = true;
 		Arguments->TryGetBoolField(TEXT("openInEditor"), bOpenInEditor);
@@ -145,7 +183,30 @@ FMcpToolCallResult FN2CMcpCreateBlueprintClassTool::Execute(const TSharedPtr<FJs
 		bool bOpenInFullEditor = true;
 		Arguments->TryGetBoolField(TEXT("openInFullEditor"), bOpenInFullEditor);
 
-		// Validate parent class
+		bool bAddPrefix = true;
+		Arguments->TryGetBoolField(TEXT("addPrefix"), bAddPrefix);
+
+		FString IfExists = TEXT("error");
+		Arguments->TryGetStringField(TEXT("ifExists"), IfExists);
+		IfExists.TrimStartAndEndInline();
+		bool bUniqueIfExists = false;
+		if (IfExists.Equals(TEXT("unique"), ESearchCase::IgnoreCase))
+		{
+			bUniqueIfExists = true;
+		}
+		else if (!IfExists.IsEmpty() && !IfExists.Equals(TEXT("error"), ESearchCase::IgnoreCase))
+		{
+			return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("Unknown ifExists '%s': use error or unique"), *IfExists));
+		}
+
+		FString Description;
+		const bool bHasDescription = Arguments->TryGetStringField(TEXT("description"), Description);
+
+		FString BlueprintTypeText = TEXT("auto");
+		Arguments->TryGetStringField(TEXT("blueprintType"), BlueprintTypeText);
+
+		// Parent class and type
 		UClass* ParentClass = nullptr;
 		FString ErrorMessage;
 		if (!ValidateParentClass(ParentClassPath, ParentClass, ErrorMessage))
@@ -153,81 +214,94 @@ FMcpToolCallResult FN2CMcpCreateBlueprintClassTool::Execute(const TSharedPtr<FJs
 			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
 
-		// Validate and prepare asset path
-		FString PackageName, AssetName;
-		if (!ValidateAndPrepareAssetPath(AssetPath, BlueprintName, PackageName, AssetName, ErrorMessage))
+		EBlueprintType BlueprintType = BPTYPE_Normal;
+		if (!ResolveBlueprintType(BlueprintTypeText, ParentClass, BlueprintType, ErrorMessage))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
 
-		// Determine Blueprint type
-		FString BlueprintTypeStr = TEXT("auto");
-		Arguments->TryGetStringField(TEXT("blueprintType"), BlueprintTypeStr);
-		
-		EBlueprintType BlueprintType;
-		if (BlueprintTypeStr == TEXT("normal"))
+		// Name
+		if (BlueprintName.IsEmpty())
 		{
-			BlueprintType = BPTYPE_Normal;
+			return FMcpToolCallResult::CreateErrorResult(TEXT("blueprintName must not be empty"));
 		}
-		else if (BlueprintTypeStr == TEXT("const"))
+		FString AssetName = BlueprintName;
+		if (bAddPrefix && !AssetName.StartsWith(TEXT("BP_")))
 		{
-			BlueprintType = BPTYPE_Const;
+			AssetName = FString::Printf(TEXT("BP_%s"), *AssetName);
 		}
-		else if (BlueprintTypeStr == TEXT("interface"))
+		if (!ValidateBlueprintName(AssetName, ErrorMessage))
 		{
-			BlueprintType = BPTYPE_Interface;
-		}
-		else // auto
-		{
-			BlueprintType = DetermineBlueprintType(ParentClass);
+			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
 
-		// Create the Blueprint
-		UBlueprint* NewBlueprint = CreateBlueprintAsset(ParentClass, PackageName, AssetName, BlueprintType, ErrorMessage);
+		// Folder, package and existing assets
+		FString Folder, PackageName;
+		if (!ValidateAndPrepareAssetPath(AssetPath, AssetName, bUniqueIfExists, Folder, PackageName, AssetName, ErrorMessage))
+		{
+			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
+		}
+
+		// ---- Create ----
+		UBlueprint* NewBlueprint = CreateBlueprintAsset(ParentClass, Folder, AssetName, BlueprintType,
+			bHasDescription ? &Description : nullptr, ErrorMessage);
 		if (!NewBlueprint)
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
 
-		// Apply additional settings
-		ApplyBlueprintSettings(NewBlueprint, Arguments);
+		// Compile once, so the description reaches the class and the result carries
+		// the compiler's diagnostics
+		FN2CCompileDiagnostics Diagnostics;
+		FN2CMcpBlueprintUtils::Compile(NewBlueprint, Diagnostics);
 
 		// Save the asset
 		TArray<UPackage*> PackagesToSave;
 		PackagesToSave.Add(NewBlueprint->GetOutermost());
-		if (!UEditorLoadingAndSavingUtils::SavePackages(PackagesToSave, false))
+		const bool bSaved = UEditorLoadingAndSavingUtils::SavePackages(PackagesToSave, false);
+
+		TSharedPtr<FJsonObject> Result = BuildResult(NewBlueprint, PackageName, AssetName, bSaved);
+		if (!bSaved)
 		{
-			FN2CLogger::Get().LogWarning(TEXT("Failed to save Blueprint package"));
+			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("create-blueprint-class: failed to save %s"), *PackageName));
+			Result->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("The Blueprint was created in memory but its package could not be saved: %s. Save it from the editor, or check that the file is writable and not locked by source control"),
+				*PackageName));
 		}
-
-		// Open in editor if requested
-		if (bOpenInEditor)
+		else
 		{
-			OpenBlueprintInEditor(NewBlueprint, bOpenInFullEditor);
+			// Open in editor if requested
+			if (bOpenInEditor)
+			{
+				OpenBlueprintInEditor(NewBlueprint, bOpenInFullEditor);
+			}
+
+			// Show notification
+			FNotificationInfo Info(FText::Format(
+				NSLOCTEXT("NodeToCode", "BlueprintCreated", "Blueprint '{0}' created successfully"),
+				FText::FromString(AssetName)
+			));
+			Info.ExpireDuration = 3.0f;
+			FSlateNotificationManager::Get().AddNotification(Info);
 		}
-
-		// Show notification
-		FNotificationInfo Info(FText::Format(
-			NSLOCTEXT("NodeToCode", "BlueprintCreated", "Blueprint '{0}' created successfully"),
-			FText::FromString(AssetName)
-		));
-		Info.ExpireDuration = 3.0f;
-		FSlateNotificationManager::Get().AddNotification(Info);
-
-		// Build success result
-		TSharedPtr<FJsonObject> Result = BuildSuccessResult(NewBlueprint, PackageName, AssetName);
 
 		// Convert result to string
 		FString OutputString;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
 		FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
 
-		return FMcpToolCallResult::CreateTextResult(OutputString);
+		return FMcpToolCallResult::CreateTextResult(OutputString, /*bInIsError*/ !bSaved);
 	});
 }
 
 bool FN2CMcpCreateBlueprintClassTool::ValidateParentClass(const FString& ClassPath, UClass*& OutClass, FString& OutErrorMessage) const
 {
+	if (ClassPath.IsEmpty())
+	{
+		OutErrorMessage = TEXT("parentClassPath must not be empty");
+		return false;
+	}
+
 	// Try to find the class
 	OutClass = FindObject<UClass>(nullptr, *ClassPath);
 	if (!OutClass)
@@ -249,138 +323,197 @@ bool FN2CMcpCreateBlueprintClassTool::ValidateParentClass(const FString& ClassPa
 		return false;
 	}
 
-	return true;
-}
-
-bool FN2CMcpCreateBlueprintClassTool::ValidateAndPrepareAssetPath(const FString& AssetPath, const FString& BlueprintName, 
-	FString& OutPackageName, FString& OutAssetName, FString& OutErrorMessage) const
-{
-	// Normalize the asset path
-	FString NormalizedPath = FN2CMcpContentBrowserUtils::NormalizeContentPath(AssetPath);
-
-	// Ensure the directory exists
-	FString DirectoryError;
-	if (!FN2CMcpContentBrowserUtils::CreateContentFolder(NormalizedPath, DirectoryError))
+	// An Animation Blueprint needs a target skeleton, which this tool has no argument for: without one the asset is
+	// created broken
+	if (OutClass->IsChildOf(UAnimInstance::StaticClass()))
 	{
-		OutErrorMessage = FString::Printf(TEXT("Failed to create directory: %s"), *DirectoryError);
-		return false;
-	}
-
-	// Add BP_ prefix if not already present
-	OutAssetName = BlueprintName;
-	if (!OutAssetName.StartsWith(TEXT("BP_")))
-	{
-		OutAssetName = FString::Printf(TEXT("BP_%s"), *OutAssetName);
-	}
-
-	// Build the full package path
-	FString BasePackageName = NormalizedPath / OutAssetName;
-
-	// Get unique asset name
-	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
-	IAssetTools& AssetTools = AssetToolsModule.Get();
-	
-	FString UnusedSuffix;
-	AssetTools.CreateUniqueAssetName(BasePackageName, UnusedSuffix, OutPackageName, OutAssetName);
-
-	// Check if asset already exists
-	if (FPackageName::DoesPackageExist(OutPackageName))
-	{
-		OutErrorMessage = FString::Printf(TEXT("Asset already exists at: %s"), *OutPackageName);
+		OutErrorMessage = FString::Printf(
+			TEXT("Cannot create an Animation Blueprint from %s: an AnimInstance parent needs a target skeleton, which create-blueprint-class cannot set. Create Animation Blueprints in the Content Browser"),
+			*ClassPath);
+		OutClass = nullptr;
 		return false;
 	}
 
 	return true;
 }
 
-EBlueprintType FN2CMcpCreateBlueprintClassTool::DetermineBlueprintType(const UClass* ParentClass) const
+bool FN2CMcpCreateBlueprintClassTool::ResolveBlueprintType(const FString& TypeText, const UClass* ParentClass,
+	EBlueprintType& OutType, FString& OutErrorMessage) const
 {
-	if (!ParentClass)
+	const FString Type = TypeText.TrimStartAndEnd();
+	const bool bInterfaceParent = ParentClass && ParentClass->HasAnyClassFlags(CLASS_Interface);
+
+	if (Type.IsEmpty() || Type.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
 	{
-		return BPTYPE_Normal;
+		OutType = bInterfaceParent ? BPTYPE_Interface : BPTYPE_Normal;
+	}
+	else if (Type.Equals(TEXT("normal"), ESearchCase::IgnoreCase))
+	{
+		OutType = BPTYPE_Normal;
+	}
+	else if (Type.Equals(TEXT("const"), ESearchCase::IgnoreCase))
+	{
+		OutType = BPTYPE_Const;
+	}
+	else if (Type.Equals(TEXT("interface"), ESearchCase::IgnoreCase))
+	{
+		OutType = BPTYPE_Interface;
+	}
+	else
+	{
+		OutErrorMessage = FString::Printf(TEXT("Unknown blueprintType '%s': use auto, normal, const or interface"), *TypeText);
+		return false;
 	}
 
-	// Check if it's an interface
-	if (ParentClass->HasAnyClassFlags(CLASS_Interface))
+	if (OutType == BPTYPE_Interface && ParentClass != UInterface::StaticClass())
 	{
-		return BPTYPE_Interface;
+		OutErrorMessage = FString::Printf(
+			TEXT("blueprintType interface needs parentClassPath '/Script/CoreUObject.Interface', not %s"),
+			ParentClass ? *ParentClass->GetPathName() : TEXT("None"));
+		return false;
+	}
+	if (OutType != BPTYPE_Interface && bInterfaceParent)
+	{
+		OutErrorMessage = FString::Printf(
+			TEXT("The interface parent %s needs blueprintType interface (or auto), not %s"),
+			*ParentClass->GetPathName(), *TypeText);
+		return false;
 	}
 
-	// Default to normal Blueprint
-	return BPTYPE_Normal;
+	return true;
 }
 
-UBlueprint* FN2CMcpCreateBlueprintClassTool::CreateBlueprintAsset(UClass* ParentClass, const FString& PackageName, 
-	const FString& AssetName, EBlueprintType BlueprintType, FString& OutErrorMessage) const
+bool FN2CMcpCreateBlueprintClassTool::ValidateBlueprintName(const FString& AssetName, FString& OutErrorMessage) const
 {
-	// Create the package
-	UPackage* Package = CreatePackage(*PackageName);
-	if (!Package)
+	// The editor's Blueprint name rules (length, characters, None). FKismetNameValidator dereferences the Blueprint it
+	// is given, and a new asset has none yet: the class default UBlueprint is an empty scope, so only the name itself
+	// is checked
+	FKismetNameValidator NameValidator(GetDefault<UBlueprint>());
+	const EValidatorResult NameResult = NameValidator.IsValid(AssetName);
+	if (NameResult != EValidatorResult::Ok)
 	{
-		OutErrorMessage = TEXT("Failed to create package");
-		return nullptr;
+		OutErrorMessage = FString::Printf(TEXT("Invalid blueprintName '%s': %s"), *AssetName,
+			*INameValidatorInterface::GetErrorString(AssetName, NameResult));
+		return false;
 	}
 
-	// Create the Blueprint
-	UBlueprint* NewBlueprint = FKismetEditorUtilities::CreateBlueprint(
-		ParentClass,
-		Package,
-		*AssetName,
-		BlueprintType,
-		UBlueprint::StaticClass(),
-		UBlueprintGeneratedClass::StaticClass()
-	);
-
-	if (!NewBlueprint)
+	// The asset name is also an object name and the last part of a package name and a file name
+	FText Reason;
+	const FString InvalidCharacters = FString(INVALID_OBJECTNAME_CHARACTERS) + INVALID_LONGPACKAGE_CHARACTERS;
+	if (!FName::IsValidXName(AssetName, InvalidCharacters, &Reason))
 	{
-		OutErrorMessage = TEXT("Failed to create Blueprint");
-		return nullptr;
+		OutErrorMessage = FString::Printf(TEXT("Invalid blueprintName '%s': %s"), *AssetName, *Reason.ToString());
+		return false;
+	}
+	if (!FFileHelper::IsFilenameValidForSaving(AssetName, Reason))
+	{
+		OutErrorMessage = FString::Printf(TEXT("Invalid blueprintName '%s': %s"), *AssetName, *Reason.ToString());
+		return false;
+	}
+	if (!GetAssetTools().IsNameAllowed(AssetName, &Reason))
+	{
+		OutErrorMessage = FString::Printf(TEXT("blueprintName '%s' is not allowed: %s"), *AssetName, *Reason.ToString());
+		return false;
 	}
 
-	// Mark package as dirty
-	Package->MarkPackageDirty();
-
-	// Compile the Blueprint
-	FKismetEditorUtilities::CompileBlueprint(NewBlueprint);
-
-	// Register with asset registry
-	FAssetRegistryModule::AssetCreated(NewBlueprint);
-
-	return NewBlueprint;
+	return true;
 }
 
-void FN2CMcpCreateBlueprintClassTool::ApplyBlueprintSettings(UBlueprint* Blueprint, const TSharedPtr<FJsonObject>& Arguments) const
+bool FN2CMcpCreateBlueprintClassTool::ValidateAndPrepareAssetPath(const FString& AssetPath, const FString& AssetName,
+	bool bUniqueIfExists, FString& OutFolder, FString& OutPackageName, FString& OutAssetName, FString& OutErrorMessage) const
 {
-	if (!Blueprint)
+	OutFolder = FN2CMcpContentBrowserUtils::NormalizeContentPath(AssetPath);
+
+	FString PathError;
+	if (!FN2CMcpContentBrowserUtils::ValidateContentPath(OutFolder, PathError))
 	{
-		return;
+		OutErrorMessage = FString::Printf(TEXT("Invalid assetPath: %s"), *PathError);
+		return false;
 	}
 
-	// Set description if provided
-	FString Description;
-	if (Arguments->TryGetStringField(TEXT("description"), Description))
+	OutAssetName = AssetName;
+	OutPackageName = OutFolder / OutAssetName;
+
+	FText Reason;
+	if (!FPackageName::IsValidLongPackageName(OutPackageName, /*bIncludeReadOnlyRoots*/ false, &Reason))
 	{
-		Blueprint->BlueprintDescription = Description;
+		OutErrorMessage = FString::Printf(TEXT("Invalid package name %s: %s"), *OutPackageName, *Reason.ToString());
+		return false;
 	}
 
-	// Generate construction script for Actor-based Blueprints
-	bool bGenerateConstructionScript = true;
-	Arguments->TryGetBoolField(TEXT("generateConstructionScript"), bGenerateConstructionScript);
-
-	if (bGenerateConstructionScript && Blueprint->ParentClass && Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
+	// IAssetTools::CreateAsset would ask in a modal dialog whether to overwrite an existing asset: decide here instead
+	FString ObjectPath = OutPackageName + TEXT(".") + OutAssetName;
+	if (DoesAssetExist(OutPackageName, ObjectPath))
 	{
-		// Ensure the Blueprint has a SimpleConstructionScript
-		if (!Blueprint->SimpleConstructionScript)
+		if (!bUniqueIfExists)
 		{
-			Blueprint->SimpleConstructionScript = NewObject<USimpleConstructionScript>(Blueprint);
+			OutErrorMessage = FString::Printf(
+				TEXT("An asset already exists at %s. Pass ifExists 'unique' for a free name, or choose another blueprintName"),
+				*ObjectPath);
+			return false;
 		}
 
-		// The construction script is automatically created with the Blueprint
-		// Additional setup can be done here if needed
+		GetAssetTools().CreateUniqueAssetName(OutFolder / AssetName, FString(), OutPackageName, OutAssetName);
+		ObjectPath = OutPackageName + TEXT(".") + OutAssetName;
+		if (DoesAssetExist(OutPackageName, ObjectPath))
+		{
+			OutErrorMessage = FString::Printf(TEXT("Could not find a free name for %s in %s"), *AssetName, *OutFolder);
+			return false;
+		}
+		FString UniqueNameError;
+		if (!ValidateBlueprintName(OutAssetName, UniqueNameError))
+		{
+			OutErrorMessage = UniqueNameError;
+			return false;
+		}
 	}
 
-	// Refresh the Blueprint
-	FBlueprintEditorUtils::RefreshAllNodes(Blueprint);
+	if (!GetAssetTools().IsObjectPathAllowed(OutPackageName, &Reason))
+	{
+		OutErrorMessage = FString::Printf(TEXT("Creating %s is not allowed: %s"), *OutPackageName, *Reason.ToString());
+		return false;
+	}
+
+	return true;
+}
+
+UBlueprint* FN2CMcpCreateBlueprintClassTool::CreateBlueprintAsset(UClass* ParentClass, const FString& Folder,
+	const FString& AssetName, EBlueprintType BlueprintType, const FString* Description, FString& OutErrorMessage) const
+{
+	// The folder may exist already; a missing one is created
+	FString DirectoryError;
+	if (!FN2CMcpContentBrowserUtils::EnsureDirectoryExists(Folder, DirectoryError))
+	{
+		OutErrorMessage = FString::Printf(TEXT("Failed to create folder %s: %s"), *Folder, *DirectoryError);
+		return nullptr;
+	}
+
+	// No transaction, as when the Content Browser creates an asset: undoing a transaction that created the Blueprint
+	// destroys it in memory (an ensure in the Blueprint compilation manager) while its saved package stays on disk
+	// (card 0166, NodeToCode.MCP.CreateBlueprintClass)
+
+	// UBlueprintFactory asks the Kismet compiler which Blueprint and generated class the parent needs
+	// (GetBlueprintTypesForClass), so a UserWidget parent gives a UWidgetBlueprint; IAssetTools registers the asset
+	// and runs the editor's asset-created hooks
+	UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
+	Factory->ParentClass = ParentClass;
+	Factory->BlueprintType = BlueprintType;
+	Factory->bSkipClassPicker = true;
+
+	UObject* NewAsset = GetAssetTools().CreateAsset(AssetName, Folder, UBlueprint::StaticClass(), Factory, FName(TEXT("NodeToCode")));
+	UBlueprint* NewBlueprint = Cast<UBlueprint>(NewAsset);
+	if (!NewBlueprint)
+	{
+		OutErrorMessage = FString::Printf(TEXT("Failed to create Blueprint %s in %s"), *AssetName, *Folder);
+		return nullptr;
+	}
+
+	if (Description)
+	{
+		NewBlueprint->BlueprintDescription = *Description;
+	}
+
+	return NewBlueprint;
 }
 
 void FN2CMcpCreateBlueprintClassTool::OpenBlueprintInEditor(UBlueprint* Blueprint, bool bOpenInFullEditor) const
@@ -402,12 +535,13 @@ void FN2CMcpCreateBlueprintClassTool::OpenBlueprintInEditor(UBlueprint* Blueprin
 	}
 }
 
-TSharedPtr<FJsonObject> FN2CMcpCreateBlueprintClassTool::BuildSuccessResult(const UBlueprint* Blueprint, 
-	const FString& PackageName, const FString& AssetName) const
+TSharedPtr<FJsonObject> FN2CMcpCreateBlueprintClassTool::BuildResult(const UBlueprint* Blueprint,
+	const FString& PackageName, const FString& AssetName, bool bSaved) const
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 
-	Result->SetBoolField(TEXT("success"), true);
+	Result->SetBoolField(TEXT("success"), bSaved);
+	Result->SetBoolField(TEXT("saved"), bSaved);
 	Result->SetStringField(TEXT("blueprintName"), AssetName);
 	Result->SetStringField(TEXT("packagePath"), PackageName);
 	Result->SetStringField(TEXT("assetPath"), Blueprint->GetPathName());
@@ -415,18 +549,9 @@ TSharedPtr<FJsonObject> FN2CMcpCreateBlueprintClassTool::BuildSuccessResult(cons
 	// Add Blueprint info
 	TSharedPtr<FJsonObject> BlueprintInfo = MakeShareable(new FJsonObject);
 	BlueprintInfo->SetStringField(TEXT("className"), Blueprint->GetName());
+	BlueprintInfo->SetStringField(TEXT("assetClass"), Blueprint->GetClass()->GetName());
 	BlueprintInfo->SetStringField(TEXT("parentClass"), Blueprint->ParentClass ? Blueprint->ParentClass->GetName() : TEXT("None"));
-	BlueprintInfo->SetStringField(TEXT("blueprintType"), [](EBlueprintType Type) -> FString
-	{
-		switch (Type)
-		{
-			case BPTYPE_Normal: return TEXT("Normal");
-			case BPTYPE_Const: return TEXT("Const");
-			case BPTYPE_Interface: return TEXT("Interface");
-			case BPTYPE_FunctionLibrary: return TEXT("FunctionLibrary");
-			default: return TEXT("Unknown");
-		}
-	}(Blueprint->BlueprintType));
+	BlueprintInfo->SetStringField(TEXT("blueprintType"), BlueprintTypeToString(Blueprint->BlueprintType));
 
 	// Add generated class info
 	if (Blueprint->GeneratedClass)
@@ -436,13 +561,16 @@ TSharedPtr<FJsonObject> FN2CMcpCreateBlueprintClassTool::BuildSuccessResult(cons
 
 	Result->SetObjectField(TEXT("blueprintInfo"), BlueprintInfo);
 
-	// Add helpful next steps
-	TArray<TSharedPtr<FJsonValue>> NextSteps;
-	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'create-blueprint-function' to add functions"))));
-	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'create-variable' to add member variables"))));
-	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'add-bp-node-to-active-graph' to add nodes"))));
-	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'translate-focused-blueprint' to generate code"))));
-	Result->SetArrayField(TEXT("nextSteps"), NextSteps);
+	if (bSaved)
+	{
+		// Add helpful next steps
+		TArray<TSharedPtr<FJsonValue>> NextSteps;
+		NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'create-blueprint-function' to add functions"))));
+		NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'create-variable' to add member variables"))));
+		NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'add-bp-node-to-active-graph' to add nodes"))));
+		NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'translate-focused-blueprint' to generate code"))));
+		Result->SetArrayField(TEXT("nextSteps"), NextSteps);
+	}
 
 	return Result;
 }
