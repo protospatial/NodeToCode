@@ -11,6 +11,10 @@ import unreal
 
 _N2C_MIN_ENGINE = (5, 8)
 
+# Seconds each toolset Python test may run. The runner's default is 5, and a test still running then is reported as a
+# success; the translation tests await a stub provider for a few seconds and fail themselves well before this.
+_N2C_TEST_TIMEOUT_SECONDS = 60.0
+
 
 def _n2c_toolset_registry_available():
     """True on UE 5.8+ when the ToolsetRegistry plugin is loaded (its classes and its Python package exist)."""
@@ -34,7 +38,8 @@ def _n2c_register_toolsets():
     toolsets._registration.register()
     tests._test_runner = unreal.PythonTestRunner.create(
         'NodeToCode.Toolsets.PythonTests',
-        unreal.PythonTestRunnerSearchOptions(root_module=tests.__name__))
+        unreal.PythonTestRunnerSearchOptions(root_module=tests.__name__),
+        _N2C_TEST_TIMEOUT_SECONDS)
 
 
 if _n2c_toolset_registry_available():

@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Nick McClure (Protospatial)
 # SPDX-License-Identifier: Apache-2.0
-"""NodeToCodeTools (card 0175), run in the editor as NodeToCode.Toolsets.PythonTests.*"""
+"""NodeToCodeTools (cards 0175 and 0176), run in the editor as NodeToCode.Toolsets.PythonTests.*"""
 
 import json
 import os
@@ -27,6 +27,12 @@ EXPECTED_TOOLS = {
     'list_tags': {'category': 'string', 'tag': 'string'},
     'list_translation_targets': {},
     'list_llm_providers': {},
+    'translate_graph': {'blueprint_path': 'string', 'graph_name': 'string', 'target_language': 'string',
+                        'provider': 'string', 'model': 'string'},
+    'translate_graphs_by_tag': {'tag': 'string', 'category': 'string', 'target_language': 'string',
+                                'provider': 'string', 'model': 'string'},
+    'get_batch_status': {'batch_id': 'string'},
+    'cancel_batch': {'batch_id': 'string'},
 }
 
 
@@ -54,7 +60,7 @@ class NodeToCodeToolsRegistrationTestCase(ToolCallTestCase):
     def test_untrusted_notice_is_the_first_key(self):
         schema = json.loads(unreal.ToolsetRegistry.get_toolset_json_schema(NodeToCodeTools))
         for tool in schema['tools']:
-            if tool['name'].endswith(('.list_tags', '.export_n2c_json_by_tag')):
+            if tool['name'].endswith(('.list_tags', '.export_n2c_json_by_tag', '.get_batch_status')):
                 result = tool['outputSchema']['properties']['returnValue']['properties']
                 self.assertEqual(next(iter(result)), 'untrusted_content', tool['name'])
 

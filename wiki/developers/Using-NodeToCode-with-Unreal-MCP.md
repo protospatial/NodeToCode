@@ -90,4 +90,4 @@ focused Blueprint editor and a provider key, as with any other client
 ## Without the second server
 
 On UE 5.8 NodeToCode also registers its own toolset, **NodeToCodeTools**, in the registry: its Blueprint
-comprehension tools need no MCP Toolset Servers entry and no NodeToCode server. See [NodeToCodeTools](NodeToCodeTools).
+comprehension and translation tools need no MCP Toolset Servers entry and no NodeToCode server. See [NodeToCodeTools](NodeToCodeTools).
