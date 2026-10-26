@@ -550,7 +550,7 @@ void FN2CMcpProtocolCoreSpec::Define()
 		// Transports, listening for messages from the server: the server "MUST either return Content-Type:
 		// text/event-stream in response to this HTTP GET, or else return HTTP 405 Method Not Allowed" (finding
 		// mcp-transport-18)
-		It(TEXT("answer GET and other verbs with 405 and Allow: POST, DELETE"), [this]()
+		It(TEXT("answer GET and other verbs with 405, Allow: POST, DELETE and no body"), [this]()
 		{
 			FN2CMcpProtocol Core;
 			const FString SessionId = Open(Core);
@@ -562,6 +562,9 @@ void FN2CMcpProtocolCoreSpec::Define()
 				Core.Handle(Inbound, Responder);
 				TestEqual(FString::Printf(TEXT("%s: status"), Verb), Responder->LastReply().Status, 405);
 				TestEqual(FString::Printf(TEXT("%s: Allow"), Verb), ReplyHeader(Responder->LastReply(), TEXT("Allow")), FString(TEXT("POST, DELETE")));
+				// No body (card 0493): UE's HTTPServer writes headers and body in two sends, and clients abort this GET
+				// when they close, so a body's send fails on the reset socket and logs socket_send_failure
+				TestTrue(FString::Printf(TEXT("%s: no body"), Verb), Responder->LastReply().Body.IsEmpty());
 			}
 			TestNotNull(TEXT("session still live"), Core.FindSession(SessionId));
 		});

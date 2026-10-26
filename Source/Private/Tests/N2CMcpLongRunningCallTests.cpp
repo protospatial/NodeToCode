@@ -206,6 +206,7 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 		{
 			TestEqual(TEXT("GET: 405"), static_cast<int32>(Capture->Responses[0]->Code), 405);
 			TestEqual(TEXT("GET: Allow"), HeaderValue(*Capture->Responses[0], TEXT("Allow")), FString(TEXT("POST, DELETE")));
+			TestEqual(TEXT("GET: no body (one send, card 0493)"), Capture->Responses[0]->Body.Num(), 0);
 		}
 	}
 

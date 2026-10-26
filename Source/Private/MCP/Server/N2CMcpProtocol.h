@@ -47,7 +47,7 @@ struct FN2CMcpReply
 	 */
 	int32 Status = 200;
 
-	/** The JSON-RPC message or batch (condensed JSON), or empty for no body (202, 204) */
+	/** The JSON-RPC message or batch (condensed JSON), or empty for no body (202, 204, 405) */
 	FString Body;
 
 	/** The Mcp-Session-Id to send with the answer, or empty for none */
@@ -132,7 +132,7 @@ struct FN2CMcpCatalogs
  * 2025-06-18, 2025-03-26 or 2024-11-05 (the requested one when supported, else the newest) and creates a session with
  * a new random Mcp-Session-Id. Every other POST must name a live session: none gives 400, an unknown or ended one 404.
  * An MCP-Protocol-Version header with an unsupported value gives 400; a missing one is accepted (2025-03-26 clients do
- * not send it) and the session's negotiated version applies. GET and other verbs give 405 (Allow: POST, DELETE);
+ * not send it) and the session's negotiated version applies. GET and other verbs give 405 (Allow: POST, DELETE, no body);
  * DELETE ends the session and cancels its running calls. Client responses and notifications get 202 with no body.
  * JSON-RPC batches are accepted only on sessions negotiated at 2025-03-26 (batching was added there and removed in
  * 2025-06-18) and get 400 with -32600 otherwise.
