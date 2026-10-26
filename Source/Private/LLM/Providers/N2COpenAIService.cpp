@@ -31,11 +31,9 @@ bool UN2COpenAIService::RequiresResponsesAPI() const
 
 void UN2COpenAIService::GetConfiguration(
     FString& OutEndpoint,
-    FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = TEXT("");  // GetProviderHeaders sends the one Authorization header
     
     // System prompt support comes from the registry by model ID; IDs it does not know (for example an MCP
     // model override) are assumed to accept developer/system messages
@@ -45,7 +43,7 @@ void UN2COpenAIService::GetConfiguration(
 
 void UN2COpenAIService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
-    OutHeaders.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
+    // The key goes in Authorization: Bearer, added per request from the resolved credential (FN2CCredential)
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
     
     // Add organization header if available

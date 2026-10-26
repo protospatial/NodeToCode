@@ -5,10 +5,13 @@
 #include "CoreMinimal.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
 #include "LLM/N2CLLMTypes.h"
+#include "LLM/N2CCredentialSource.h"
 
 /**
  * MCP tool that returns the list of configured LLM providers available for Blueprint translation.
- * Checks which providers have valid API keys set and includes local providers.
+ * A cloud provider is listed when the credential source requests use (IN2CCredentialSource) has a key for it, saved in
+ * Project Settings or from an environment variable; each entry says where the key comes from, never the key. Local
+ * providers are always listed.
  */
 class FN2CMcpGetAvailableLLMProvidersTool : public FN2CMcpToolBase
 {
@@ -28,8 +31,19 @@ public:
      * @return Array of model JSON objects
      */
     TArray<TSharedPtr<FJsonValue>> GetAvailableModels(EN2CLLMProvider Provider) const;
-    
+
+    /** Read keys' origins from Source instead of IN2CCredentialSource::Get() (the credential source spec) */
+    void SetCredentialSource(TSharedPtr<const IN2CCredentialSource> Source) { CredentialSource = MoveTemp(Source); }
+
 private:
+    /** Set by SetCredentialSource; unset means IN2CCredentialSource::Get() */
+    TSharedPtr<const IN2CCredentialSource> CredentialSource;
+
+    TSharedRef<const IN2CCredentialSource> GetCredentialSource() const
+    {
+        return CredentialSource.IsValid() ? CredentialSource.ToSharedRef() : IN2CCredentialSource::Get();
+    }
+
     /**
      * Check if a provider is configured (has API key for cloud providers, always true for local)
      * @param Provider The LLM provider to check

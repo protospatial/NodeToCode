@@ -148,7 +148,7 @@ request cancel, `ExecuteOnGameThread` timeout, logger concurrency, LLM service G
 
 ## Live provider checks
 
-The editor uses `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`) from
+The editor uses `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) or `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`) from
 its environment when no key is saved, so a live check never types or saves a key:
 
 - `env_keys.py`: `load_provider_keys()` parses the repo's gitignored `.env` into a dict for a child process

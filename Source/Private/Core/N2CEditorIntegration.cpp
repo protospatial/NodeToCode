@@ -669,8 +669,7 @@ FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateJsonAsync(
     FN2CLLMConfig RequestConfig = UN2CLLMModule::MakeConfigFromSettings();
 
     const EN2CLLMProvider FinalProvider = Overrides.Provider.Get(RequestConfig.Provider);
-    RequestConfig.Provider = FinalProvider;
-    RequestConfig.ApiKey = Settings->GetActiveApiKeyForProvider(FinalProvider); // Get API key for the potentially overridden provider
+    RequestConfig.Provider = FinalProvider; // its service resolves the key for this provider when the request is sent
 
     // The override model, or the final provider's selected model with its thinking mode
     Settings->ResolveRequestModel(FinalProvider, ModelIdOverride, RequestConfig);

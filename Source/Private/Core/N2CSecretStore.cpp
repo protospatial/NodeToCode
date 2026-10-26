@@ -404,7 +404,8 @@ TArray<FString> FN2CSecretStore::GetEnvironmentVariableNames(const FString& Prov
 {
     if (ProviderId == TEXT("OpenAI")) { return { TEXT("OPENAI_API_KEY") }; }
     if (ProviderId == TEXT("Anthropic")) { return { TEXT("ANTHROPIC_API_KEY") }; }
-    if (ProviderId == TEXT("Gemini")) { return { TEXT("GEMINI_API_KEY") }; }
+    // GOOGLE_API_KEY is the name Google's own SDKs also read
+    if (ProviderId == TEXT("Gemini")) { return { TEXT("GEMINI_API_KEY"), TEXT("GOOGLE_API_KEY") }; }
     // DEEPSEEK_API is the name some local .env files use
     if (ProviderId == TEXT("DeepSeek")) { return { TEXT("DEEPSEEK_API_KEY"), TEXT("DEEPSEEK_API") }; }
     return {};

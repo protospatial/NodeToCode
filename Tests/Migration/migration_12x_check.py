@@ -206,7 +206,7 @@ def run_start(engine, uproject, log_path, mcp, env_extra=None, timeout=900):
     if os.path.exists(log_path):
         os.remove(log_path)
     env = dict(os.environ)
-    for k in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'DEEPSEEK_API'):
+    for k in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'DEEPSEEK_API_KEY', 'DEEPSEEK_API'):
         env.pop(k, None)
     env.update(env_extra or {})
     command = ' '.join(quote(a) for a in args) if os.name == 'nt' else args

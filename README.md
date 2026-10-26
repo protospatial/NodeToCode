@@ -90,10 +90,10 @@ Keys entered in Project Settings are saved outside your project, in a per-user f
 |---|---|
 | Anthropic | `ANTHROPIC_API_KEY` |
 | OpenAI | `OPENAI_API_KEY` |
-| Gemini | `GEMINI_API_KEY` |
+| Gemini | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) |
 | DeepSeek | `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`) |
 
-A key in Project Settings wins over the variable. Details:
+A key in Project Settings wins over the variable.Details:
 [API Keys from Environment Variables](wiki/Initial-Configuration.md#api-keys-from-environment-variables).
 
 ## Connect an MCP client

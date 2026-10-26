@@ -125,9 +125,12 @@ enum class EN2CApiKeySource : uint8
  * else keeps a copy that it later writes back, so one key edit cannot undo another.
  *
  * When the store has no key for a provider, GetApiKey falls back to the provider's environment variable
- * (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY or DEEPSEEK_API), so CI, build machines and
+ * (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY or GOOGLE_API_KEY, DEEPSEEK_API_KEY or DEEPSEEK_API), so CI, build machines and
  * agents can supply keys without typing them into a field. A stored key always wins. Environment keys are never
  * written to the store, and logs name the variable, never its value.
+ *
+ * Requests do not read keys here directly: they resolve them through IN2CCredentialSource (LLM/N2CCredentialSource.h),
+ * whose process default reads this store when each request is sent.
  */
 class NODETOCODE_API FN2CSecretStore
 {

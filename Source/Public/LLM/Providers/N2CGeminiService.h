@@ -21,7 +21,7 @@ class NODETOCODE_API UN2CGeminiService : public UN2CBaseLLMService
 
 public:
     // Provider-specific implementations
-    virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken, bool& OutSupportsSystemPrompts) override;
+    virtual void GetConfiguration(FString& OutEndpoint, bool& OutSupportsSystemPrompts) override;
     virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Gemini; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override;
 

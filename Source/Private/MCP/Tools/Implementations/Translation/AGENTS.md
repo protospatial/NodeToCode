@@ -14,10 +14,12 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 
 ### get-available-llm-providers
 - **Description**: Returns the providers that can translate now: Ollama and LM Studio always, a cloud provider when
-  `FN2CSecretStore::Get().HasApiKey()` finds a saved key or one in the editor's environment
+  the credential source requests resolve their key from (`IN2CCredentialSource::Get()->Has()`) finds a saved key or
+  one in the editor's environment
 - **Parameters**: None
 - **Returns**: `providers`, `currentProvider` (the settings' provider ID), `configuredProviderCount`. Each provider has
-  `id`, `displayName`, `configured` (always true), `isLocal`, `currentModel` (the model ID the settings select),
+  `id`, `displayName`, `configured` (always true), `isLocal`, `keySource` (`saved`, `environment` with
+  `keyVariable` naming the variable, or `none`; never the key), `currentModel` (the model ID the settings select),
   `supportsStructuredOutput`, `supportsSystemPrompts`; cloud providers add `availableModels` (the provider's live
   rows of the model catalog, `FN2CModelCatalog`: `id`, `name`, plus `deprecated`/`shutdownDate`,
   `supportsSystemPrompts` for OpenAI and `reasoningEffort` where they apply), local ones `endpoint`
@@ -190,7 +192,10 @@ metadata file. The extension follows the Target Language in settings at save tim
 ### API Keys
 - Cloud providers require API keys configured in settings
 - Keys are stored as plaintext JSON in the per-user `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json` (`FN2CSecretStore`), outside the project; the MCP file tools (read-file, read-path) refuse that folder, the old project folder `Saved/NodeToCode/User`, and any `secrets.json*` file
-- `get-available-llm-providers` reports a cloud provider as configured when `FN2CSecretStore::Get().HasApiKey()` is true
+- Every request resolves its key when it is sent, from `IN2CCredentialSource::Get()` (the saved key, else the
+  environment variable), so a changed key applies to the next request and no config holds a key
+- `get-available-llm-providers` reports a cloud provider as configured when that source `Has()` a key, and where it
+  comes from in `keySource`
 - Local providers don't require API keys
 
 ### Model Selection

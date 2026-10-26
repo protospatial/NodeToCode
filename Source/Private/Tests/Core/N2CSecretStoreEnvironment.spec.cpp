@@ -7,6 +7,8 @@
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
 #include "LLM/N2CBaseLLMService.h"
+#include "LLM/N2CCredentialSource.h"
+#include "LLM/N2CHttpHandlerBase.h"
 #include "LLM/Providers/N2CAnthropicService.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -22,7 +24,7 @@
 
 /**
  * When the secret store has no key for a provider, requests use the provider's environment variable
- * (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY or DEEPSEEK_API); a stored key always wins,
+ * (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY or GOOGLE_API_KEY, DEEPSEEK_API_KEY or DEEPSEEK_API); a stored key always wins,
  * an environment key is never written to the store, and logs and the settings panel name the variable, never its value.
  * Every store here works in its own temporary folder; the process environment is restored after each case.
  */
@@ -112,7 +114,8 @@ void FN2CSecretStoreEnvironmentSpec::Define()
 	{
 		TestEqual(TEXT("OpenAI"), FN2CSecretStore::GetEnvironmentVariableNames(EN2CLLMProvider::OpenAI), TArray<FString>{ TEXT("OPENAI_API_KEY") });
 		TestEqual(TEXT("Anthropic"), FN2CSecretStore::GetEnvironmentVariableNames(EN2CLLMProvider::Anthropic), TArray<FString>{ TEXT("ANTHROPIC_API_KEY") });
-		TestEqual(TEXT("Gemini"), FN2CSecretStore::GetEnvironmentVariableNames(EN2CLLMProvider::Gemini), TArray<FString>{ TEXT("GEMINI_API_KEY") });
+		TestEqual(TEXT("Gemini, then Google's SDK name"), FN2CSecretStore::GetEnvironmentVariableNames(EN2CLLMProvider::Gemini),
+			TArray<FString>{ TEXT("GEMINI_API_KEY"), TEXT("GOOGLE_API_KEY") });
 		TestEqual(TEXT("DeepSeek, then the .env alias"), FN2CSecretStore::GetEnvironmentVariableNames(EN2CLLMProvider::DeepSeek),
 			TArray<FString>{ TEXT("DEEPSEEK_API_KEY"), TEXT("DEEPSEEK_API") });
 		TestEqual(TEXT("Ollama"), FN2CSecretStore::GetEnvironmentVariableNames(EN2CLLMProvider::Ollama).Num(), 0);
@@ -196,22 +199,30 @@ void FN2CSecretStoreEnvironmentSpec::Define()
 		const bool bHasStored = !Stored.TrimStartAndEnd().IsEmpty();
 		const FString Expected = bHasStored ? Stored : FakeKey;
 
-		const FString ApiKey = GetDefault<UN2CSettings>()->GetActiveApiKeyForProvider(EN2CLLMProvider::Anthropic);
-		TestEqual(TEXT("the settings return the key requests use"), ApiKey, Expected);
-
-		UN2CAnthropicService* Service = NewObject<UN2CAnthropicService>(GetTransientPackage());
-		FN2CLLMConfig Config;
-		Config.Provider = EN2CLLMProvider::Anthropic;
-		Config.Model = TEXT("claude-haiku-5-5");
-		Config.ApiKey = ApiKey;
-		Service->Initialize(Config);
-		TMap<FString, FString> Headers;
-		Service->GetProviderHeaders(Headers);
-		const FString* Header = Headers.Find(TEXT("x-api-key"));
-		if (TestNotNull(TEXT("the request sends x-api-key"), Header))
+		// The credential source every request resolves its key from
+		FString ApiKey;
+		IN2CCredentialSource::Get()->Resolve(EN2CLLMProvider::Anthropic, [this, &ApiKey, &Expected, bHasStored](FN2CCredentialResult Result)
 		{
-			TestEqual(TEXT("x-api-key carries the environment key (or the stored one)"), *Header, Expected);
-		}
+			if (!TestTrue(TEXT("the credential resolves"), Result.HasValue()))
+			{
+				return;
+			}
+			const FN2CCredential& Credential = Result.GetValue();
+			ApiKey = Credential.Value;
+			TestEqual(TEXT("the source gives the key requests use"), Credential.Value, Expected);
+			TestEqual(TEXT("and says where it comes from"), Credential.Origin, bHasStored ? EN2CApiKeySource::Store : EN2CApiKeySource::Environment);
+
+			TMap<FString, FString> Headers;
+			for (const TPair<FString, FString>& Header : UN2CHttpHandlerBase::BuildRequestHeaders({}, Credential))
+			{
+				Headers.Add(Header.Key, Header.Value);
+			}
+			const FString* Header = Headers.Find(TEXT("x-api-key"));
+			if (TestNotNull(TEXT("the request sends x-api-key"), Header))
+			{
+				TestEqual(TEXT("x-api-key carries the environment key (or the stored one)"), *Header, Expected);
+			}
+		});
 		TestTrue(TEXT("no missing-key error"), UN2CBaseLLMService::GetMissingApiKeyError(EN2CLLMProvider::Anthropic, ApiKey).IsEmpty());
 
 		const FString Source = UN2CSettings::DescribeApiKeySource(EN2CLLMProvider::Anthropic);

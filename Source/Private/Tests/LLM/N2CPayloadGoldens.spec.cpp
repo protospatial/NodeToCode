@@ -35,8 +35,8 @@
  * Golden request payloads for every provider and every model the registry still serves (retired entries excluded),
  * plus an explicit Max Output Tokens budget and an unregistered model ID per cloud provider. Each case builds the
  * body through the provider's service (FormatRequestPayload via BuildRequestPayloadForTesting; nothing is sent),
- * takes the endpoint from GetConfiguration and the headers the HTTP handler would send (Content-Type, a Bearer
- * Authorization when the service returns an auth token and sets no credential header itself, then GetProviderHeaders), and compares all three with
+ * takes the endpoint from GetConfiguration and the headers the HTTP handler would send (UN2CHttpHandlerBase::
+ * BuildRequestHeaders: Content-Type, GetProviderHeaders, then the credential's one header), and compares all three with
  * Goldens/LLM/Payload/<provider>.json.
  *
  * Each case also checks the payload rules the live provider matrix (Tests/mcp_probe/live_provider_matrix.py, gate
@@ -207,22 +207,18 @@ BEGIN_DEFINE_SPEC(FN2CPayloadGoldensSpec, "NodeToCode.LLM.Payload.Golden", N2C_T
 		Config.Model = Case.Model;
 		Config.ReasoningEffort = Case.ReasoningEffort;
 		Config.MaxOutputTokens = Case.MaxOutputTokens;
-		Config.ApiKey = (Provider == EN2CLLMProvider::Ollama) ? FString() : FString(TestKey);
 		Service->Initialize(Config);
 
-		FString AuthToken;
 		bool bSupportsSystemPrompts = true;
-		Service->GetConfiguration(Built.Endpoint, AuthToken, bSupportsSystemPrompts);
+		Service->GetConfiguration(Built.Endpoint, bSupportsSystemPrompts);
 
-		// As UN2CHttpHandlerBase::PostLLMRequest sets them; header names are case-insensitive, so they are lowercased
+		// As UN2CHttpHandlerBase::PostLLMRequest sets them, with the placeholder key as the resolved credential (none
+		// for Ollama); header names are case-insensitive, so they are lowercased
 		TMap<FString, FString> ProviderHeaders;
 		Service->GetProviderHeaders(ProviderHeaders);
-		Built.Headers.Add(TEXT("content-type"), TEXT("application/json"));
-		if (!AuthToken.IsEmpty() && !UN2CHttpHandlerBase::HasCredentialHeader(ProviderHeaders))
-		{
-			Built.Headers.Add(TEXT("authorization"), FString::Printf(TEXT("Bearer %s"), *AuthToken));
-		}
-		for (const TPair<FString, FString>& Header : ProviderHeaders)
+		const FN2CCredential Credential = FN2CCredential::Make(Provider,
+			Provider == EN2CLLMProvider::Ollama ? FString() : FString(TestKey));
+		for (const TPair<FString, FString>& Header : UN2CHttpHandlerBase::BuildRequestHeaders(ProviderHeaders, Credential))
 		{
 			Built.Headers.Add(Header.Key.ToLower(), Header.Value);
 		}

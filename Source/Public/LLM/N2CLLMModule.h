@@ -28,19 +28,20 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module", meta = (DisplayName = "Get N2C LLM Module"))
     static UN2CLLMModule* GetBP() { return Get(); }
 
-    /** Initialize module: reads provider, model and key from the settings and creates the service */
+    /** Initialize module: reads provider and model from the settings and creates the service (keys are read per request) */
     bool Initialize();
 
     /**
-     * The request configuration the settings give now: provider, API key, model with its thinking mode, output
-     * budget and HTTP activity timeout. Every request starts from this snapshot, so a settings change (Project
-     * Settings, the context window's quick picker) applies to the next request, including the next batch item.
+     * The request configuration the settings give now: provider, model with its thinking mode, output budget and HTTP
+     * activity timeout. Every request starts from this snapshot, so a settings change (Project Settings, the context
+     * window's quick picker) applies to the next request, including the next batch item. The API key is not part of
+     * it: the service resolves it from the credential source when each request is sent.
      */
     static FN2CLLMConfig MakeConfigFromSettings();
 
     /**
-     * Re-reads the settings (MakeConfigFromSettings) and, when the provider, model, key, thinking mode, output budget
-     * or activity timeout differ from the current configuration, or the module is not initialized, rebuilds the
+     * Re-reads the settings (MakeConfigFromSettings) and, when the provider, model, thinking mode, output budget or
+     * activity timeout differ from the current configuration, or the module is not initialized, rebuilds the
      * active service so its headers and endpoint come from the new values. Requests already in flight keep the
      * service they were sent on. ProcessN2CJson calls it before every request. Returns false if no service could be
      * created.

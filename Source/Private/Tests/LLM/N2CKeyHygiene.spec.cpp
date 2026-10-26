@@ -18,6 +18,7 @@
 #include "HttpServerResponse.h"
 #include "IHttpRouter.h"
 #include "LLM/N2CBaseLLMService.h"
+#include "LLM/N2CCredentialSource.h"
 #include "LLM/N2CResponseParserBase.h"
 #include "LLM/Providers/N2CAnthropicService.h"
 #include "LLM/Providers/N2CDeepSeekService.h"
@@ -297,10 +298,11 @@ BEGIN_DEFINE_SPEC(FN2CKeyHygieneSpec, "NodeToCode.LLM.KeyHygiene", N2C_TEST_FLAG
 		case EN2CLLMProvider::LMStudio: Service = NewObject<UN2CLMStudioService>(GetTransientPackage()); break;
 		default: return nullptr;
 		}
+		// The key reaches the request only through the credential source, resolved when it is sent
+		Service->SetCredentialSource(MakeShared<FN2CFixedCredentialSource>(Provider, FakeKey));
 		FN2CLLMConfig Config;
 		Config.Provider = Provider;
 		Config.Model = Model;
-		Config.ApiKey = FakeKey;
 		Config.ApiEndpoint = Endpoint;
 		Config.TimeoutSeconds = 30.0f;
 		Config.ActivityTimeoutSeconds = 30.0f;
