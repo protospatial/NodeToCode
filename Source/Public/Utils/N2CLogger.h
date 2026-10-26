@@ -12,6 +12,33 @@
 #include "HAL/CriticalSection.h"
 #include <atomic>
 
+class FArchive;
+
+/**
+ * Logs a printf-style message at Severity (Debug, Info, Warning, Error, Fatal) only when that severity is enabled: below
+ * the logger's minimum severity neither the format nor its arguments are evaluated, so a call such as
+ * N2C_LOG(Debug, TEXT("Node %s"), *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()) costs one atomic load.
+ * Format must be a TEXT() literal.
+ */
+#define N2C_LOG(Severity, Format, ...) \
+    do \
+    { \
+        if (FN2CLogger::IsEnabled(EN2CLogSeverity::Severity)) \
+        { \
+            FN2CLogger::Get().Log(FString::Printf(Format, ##__VA_ARGS__), EN2CLogSeverity::Severity); \
+        } \
+    } while (0)
+
+/** N2C_LOG with a context string (appended as " - <Context>"), which is also evaluated only when Severity is enabled */
+#define N2C_LOG_CONTEXT(Severity, Context, Format, ...) \
+    do \
+    { \
+        if (FN2CLogger::IsEnabled(EN2CLogSeverity::Severity)) \
+        { \
+            FN2CLogger::Get().Log(FString::Printf(Format, ##__VA_ARGS__), EN2CLogSeverity::Severity, Context); \
+        } \
+    } while (0)
+
 /**
  * @class FN2CLogger
  * @brief Central logging system for Node to Code operations
@@ -21,6 +48,17 @@ class FN2CLogger
 public:
     /** Get the singleton instance */
     static FN2CLogger& Get();
+
+    /**
+     * True when a message at Severity would be logged (Severity is at or above the minimum severity). Check it before
+     * building a costly message, or use N2C_LOG, which does.
+     */
+    static bool IsEnabled(EN2CLogSeverity Severity)
+    {
+        return Severity >= Get().MinSeverity.load(std::memory_order_relaxed);
+    }
+
+    ~FN2CLogger();
 
     /** Log a message with severity */
     void Log(const FString& Message, 
@@ -66,10 +104,10 @@ public:
     /** Set minimum severity level for logging */
     void SetMinSeverity(EN2CLogSeverity Severity);
 
-    /** Enable/disable file logging */
+    /** Enable/disable file logging (UTF-8 lines appended to the log file path; disabling closes the file) */
     void EnableFileLogging(bool bEnable);
 
-    /** Set the file logging path */
+    /** Set the file logging path (default <Project>/Saved/NodeToCode.log); closes the file open at the old path */
     void SetLogFilePath(const FString& Path);
 
     /** Configure the UE log category verbosity */
@@ -103,8 +141,11 @@ private:
     /** Private constructor for singleton */
     FN2CLogger();
 
-    /** Write to log file if enabled */
+    /** Appends one line to the log file as UTF-8 through LogFile, opening it on first use. Caller holds Lock. */
     void WriteToFile(const FString& Message);
+
+    /** Closes LogFile (flushing it), so the next line reopens the file at LogFilePath. Caller holds Lock. */
+    void CloseLogFile();
 
     /** Format error for output */
     FString FormatError(const FN2CError& Error) const;
@@ -130,4 +171,7 @@ private:
 
     /** Path for log file */
     FString LogFilePath;
+
+    /** The log file, open for append while file logging is on: one writer for the session, not one open per line */
+    TUniquePtr<FArchive> LogFile;
 };

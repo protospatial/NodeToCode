@@ -10,8 +10,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         OutNodeDef.Title = TEXT("Sequence");
         
         // Log sequence details
-        FString SequenceInfo = FString::Printf(TEXT("Sequence Node: %s"), *OutNodeDef.ID);
-        FN2CLogger::Get().Log(SequenceInfo, EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Sequence Node: %s"), *OutNodeDef.ID);
         return;
     }
     
@@ -21,8 +20,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         OutNodeDef.Title = TEXT("Branch");
         
         // Log branch details
-        FString BranchInfo = FString::Printf(TEXT("Branch Node: %s"), *OutNodeDef.ID);
-        FN2CLogger::Get().Log(BranchInfo, EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Branch Node: %s"), *OutNodeDef.ID);
         return;
     }
     
@@ -45,10 +43,9 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         }
         
         // Log select details
-        FString SelectInfo = FString::Printf(TEXT("Select Node: %s, Options: %d"), 
+        N2C_LOG(Debug, TEXT("Select Node: %s, Options: %d"),
             *OutNodeDef.ID,
             OptionPins.Num());
-        FN2CLogger::Get().Log(SelectInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -58,8 +55,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         OutNodeDef.Title = TEXT("Switch");
         
         // Log switch details
-        FString SwitchInfo = FString::Printf(TEXT("Switch Node: %s"), *OutNodeDef.ID);
-        FN2CLogger::Get().Log(SwitchInfo, EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Switch Node: %s"), *OutNodeDef.ID);
         return;
     }
     
@@ -79,10 +75,9 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         }
         
         // Log multi-gate details
-        FString GateInfo = FString::Printf(TEXT("Multi Gate Node: %s, Outputs: %d"), 
+        N2C_LOG(Debug, TEXT("Multi Gate Node: %s, Outputs: %d"),
             *OutNodeDef.ID,
             OutPins.Num());
-        FN2CLogger::Get().Log(GateInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -92,8 +87,7 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
         OutNodeDef.Title = TEXT("Do Once Multi Input");
         
         // Log do-once details
-        FString DoOnceInfo = FString::Printf(TEXT("Do Once Multi Input Node: %s"), *OutNodeDef.ID);
-        FN2CLogger::Get().Log(DoOnceInfo, EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Do Once Multi Input Node: %s"), *OutNodeDef.ID);
         return;
     }
 }

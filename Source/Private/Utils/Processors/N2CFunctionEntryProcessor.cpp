@@ -14,11 +14,10 @@ void FN2CFunctionEntryProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDe
         }
         
         // Log function entry details
-        FString EntryInfo = FString::Printf(TEXT("Function Entry: %s, Function: %s, Class: %s"),
+        N2C_LOG(Debug, TEXT("Function Entry: %s, Function: %s, Class: %s"),
             *OutNodeDef.Title,
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(EntryInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -31,10 +30,9 @@ void FN2CFunctionEntryProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDe
         }
         
         // Log function result details
-        FString ResultInfo = FString::Printf(TEXT("Function Result: %s, Class: %s"),
+        N2C_LOG(Debug, TEXT("Function Result: %s, Class: %s"),
             *OutNodeDef.Title,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(ResultInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -51,11 +49,10 @@ void FN2CFunctionEntryProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDe
         }
         
         // Log macro instance details
-        FString MacroInfo = FString::Printf(TEXT("Macro Instance: %s, Macro: %s, Blueprint: %s"),
+        N2C_LOG(Debug, TEXT("Macro Instance: %s, Macro: %s, Blueprint: %s"),
             *OutNodeDef.Title,
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(MacroInfo, EN2CLogSeverity::Debug);
         return;
     }
 }

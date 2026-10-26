@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Server/N2CMcpProtocol.h"
+#include "MCP/Server/N2CMcpRequestTrace.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -260,9 +261,12 @@ void FN2CMcpProtocol::HandleDelete(const FN2CMcpInbound& Inbound, const TSharedR
 	Responder->Reply(Reply);
 }
 
-void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder)
+void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& TransportResponder)
 {
 	using namespace N2CMcpProtocolPrivate;
+
+	// One Info line per request when it is answered: method, tool, status, isError, duration, traceparent (card 0193)
+	const TSharedRef<FN2CMcpTracingResponder> Responder = MakeShared<FN2CMcpTracingResponder>(Inbound, TransportResponder);
 
 	// Refuse an oversized body before anything reads it (card 0425). The HTTP transport checks the same limit before
 	// copying the engine's buffer into Inbound; this covers any other transport and the specs.
@@ -296,6 +300,7 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 	// dispatch; null means -32700 Parse error.
 	TSharedPtr<FJsonValue> JsonValue;
 	ParseBody(Inbound.Body, JsonValue);
+	Responder->Describe(JsonValue);
 	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP request: %d body bytes, %s"), Inbound.Body.Num(),
 		JsonValue.IsValid() ? (JsonValue->Type == EJson::Array ? TEXT("batch") : TEXT("single message")) : TEXT("not valid JSON")),
 		EN2CLogSeverity::Debug);

@@ -18,10 +18,9 @@ void FN2CFunctionCallProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDef
         OutNodeDef.bLatent = FuncNode->IsLatentFunction();
         
         // Log function details
-        FString FunctionInfo = FString::Printf(TEXT("Function call: %s::%s, Latent: %s"),
+        N2C_LOG(Debug, TEXT("Function call: %s::%s, Latent: %s"),
             *OutNodeDef.MemberParent,
             *OutNodeDef.MemberName,
             OutNodeDef.bLatent ? TEXT("true") : TEXT("false"));
-        FN2CLogger::Get().Log(FunctionInfo, EN2CLogSeverity::Debug);
     }
 }

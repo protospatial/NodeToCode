@@ -5,12 +5,11 @@
 bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
 {
     // Log basic pin info
-    FString PinInfo = FString::Printf(TEXT("Validating Pin: ID=%s, Name=%s, Type=%s, SubType=%s"),
+    N2C_LOG(Debug, TEXT("Validating Pin: ID=%s, Name=%s, Type=%s, SubType=%s"),
         *Pin.ID,
         *Pin.Name,
         *StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)),
         *Pin.SubType);
-    FN2CLogger::Get().Log(PinInfo, EN2CLogSeverity::Debug);
 
     // Validate required fields
     if (!ValidateRequired(Pin, OutError))
@@ -31,7 +30,7 @@ bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
     }
 
     // Log pin flags
-    FString FlagInfo = FString::Printf(TEXT("Pin %s flags: Connected=%d, IsRef=%d, IsConst=%d, IsArray=%d, IsMap=%d, IsSet=%d"),
+    N2C_LOG(Debug, TEXT("Pin %s flags: Connected=%d, IsRef=%d, IsConst=%d, IsArray=%d, IsMap=%d, IsSet=%d"),
         *Pin.ID,
         Pin.bConnected ? 1 : 0,
         Pin.bIsReference ? 1 : 0,
@@ -39,9 +38,8 @@ bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
         Pin.bIsArray ? 1 : 0,
         Pin.bIsMap ? 1 : 0,
         Pin.bIsSet ? 1 : 0);
-    FN2CLogger::Get().Log(FlagInfo, EN2CLogSeverity::Debug);
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("Pin %s validation successful"), *Pin.ID), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Pin %s validation successful"), *Pin.ID);
     return true;
 }
 
@@ -58,7 +56,7 @@ bool FN2CPinValidator::ValidateRequired(const FN2CPinDefinition& Pin, FString& O
     // Allow empty names for all pins
     if (Pin.Name.IsEmpty())
     {
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Pin %s has empty name"), *Pin.ID), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Pin %s has empty name"), *Pin.ID);
     }
 
     return true;
@@ -155,8 +153,8 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
 
         default:
             // Log other types
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Pin %s has standard type %s"), 
-                *Pin.ID, *StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type))), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("Pin %s has standard type %s"),
+                *Pin.ID, *StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)));
             break;
     }
 
@@ -185,7 +183,7 @@ bool FN2CPinValidator::ValidateContainerFlags(const FN2CPinDefinition& Pin, FStr
     if (Pin.bIsConst && Pin.bIsReference)
     {
         // Log this case but don't fail validation
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Pin %s is both const and reference - this is valid for certain engine types"), *Pin.ID), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Pin %s is both const and reference - this is valid for certain engine types"), *Pin.ID);
     }
 
     return true;

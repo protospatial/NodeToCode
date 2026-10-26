@@ -32,3 +32,19 @@ class UK2Node_N2CTestCallFunction : public UK2Node_CallFunction
 {
 	GENERATED_BODY()
 };
+
+/**
+ * A UK2Node_CallFunction subclass that counts its GetNodeTitle calls (card 0193, NodeToCode.Logging): capture at Info
+ * severity must not call it only to build Debug log lines. Captured as "CallFunction", like UK2Node_N2CTestCallFunction.
+ */
+UCLASS(Transient)
+class UK2Node_N2CTestTitleCounter : public UK2Node_CallFunction
+{
+	GENERATED_BODY()
+
+public:
+	virtual FText GetNodeTitle(ENodeTitleType::Type TitleType) const override;
+
+	/** GetNodeTitle calls on every instance since the test last reset it (game thread only) */
+	static int32 TitleCalls;
+};

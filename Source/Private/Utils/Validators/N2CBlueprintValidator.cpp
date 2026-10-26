@@ -156,12 +156,15 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
     }
 
     // Log all node IDs for debugging
-    FString NodeIdList = TEXT("Valid Node IDs in graph ") + Graph.Name + TEXT(": ");
-    for (const FString& Id : NodeIds)
+    if (FN2CLogger::IsEnabled(EN2CLogSeverity::Debug))
     {
-        NodeIdList += Id + TEXT(", ");
+        FString NodeIdList = TEXT("Valid Node IDs in graph ") + Graph.Name + TEXT(": ");
+        for (const FString& Id : NodeIds)
+        {
+            NodeIdList += Id + TEXT(", ");
+        }
+        FN2CLogger::Get().Log(NodeIdList, EN2CLogSeverity::Debug);
     }
-    FN2CLogger::Get().Log(NodeIdList, EN2CLogSeverity::Debug);
 
     // Validate flow references
     if (!ValidateFlowReferences(Graph, OutError))
@@ -183,8 +186,8 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
         }
     }
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("Graph %s validation successful: %d nodes, %d execution flows, %d data flows"), 
-        *Graph.Name, Graph.Nodes.Num(), Graph.Flows.Execution.Num(), Graph.Flows.Data.Num()), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Graph %s validation successful: %d nodes, %d execution flows, %d data flows"),
+        *Graph.Name, Graph.Nodes.Num(), Graph.Flows.Execution.Num(), Graph.Flows.Data.Num());
 
     return true;
 }

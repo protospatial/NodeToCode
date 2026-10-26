@@ -13,10 +13,9 @@ void FN2CCastProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition&
             OutNodeDef.MemberName = N2CStableNames::ClassName(TargetType);
             
             // Log cast details
-            FString CastInfo = FString::Printf(TEXT("Dynamic Cast: %s, Target Type: %s"),
+            N2C_LOG(Debug, TEXT("Dynamic Cast: %s, Target Type: %s"),
                 *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
-            FN2CLogger::Get().Log(CastInfo, EN2CLogSeverity::Debug);
         }
         return;
     }
@@ -29,10 +28,9 @@ void FN2CCastProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition&
             OutNodeDef.MemberName = N2CStableNames::ClassName(TargetType);
             
             // Log class cast details
-            FString CastInfo = FString::Printf(TEXT("Class Dynamic Cast: %s, Target Type: %s"),
+            N2C_LOG(Debug, TEXT("Class Dynamic Cast: %s, Target Type: %s"),
                 *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
-            FN2CLogger::Get().Log(CastInfo, EN2CLogSeverity::Debug);
         }
         return;
     }
@@ -45,10 +43,9 @@ void FN2CCastProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition&
             OutNodeDef.MemberName = Enum->GetName();
             
             // Log byte to enum cast details
-            FString CastInfo = FString::Printf(TEXT("Byte To Enum Cast: %s, Enum Type: %s"),
+            N2C_LOG(Debug, TEXT("Byte To Enum Cast: %s, Enum Type: %s"),
                 *OutNodeDef.Title,
                 *OutNodeDef.MemberName);
-            FN2CLogger::Get().Log(CastInfo, EN2CLogSeverity::Debug);
         }
         return;
     }
