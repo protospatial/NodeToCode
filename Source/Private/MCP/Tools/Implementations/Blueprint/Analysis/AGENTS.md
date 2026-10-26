@@ -6,7 +6,7 @@ call (card 0169), a Blueprint's functions, the events and functions it can overr
 
 **Freeze status (dec-5):** these are comprehension and export tools and are not frozen, except
 `list-blueprint-functions` and `list-overridable-functions`: Epic's EditorToolset has them on UE 5.8
-(`N2CMcpEpicOverlap::Tools`), so they take bug fixes only (card 0289 is owed). See "Frozen tool families (dec-5)"
+(`N2CMcpEpicOverlap::Tools`), so they take bug fixes only (card 0289 made theirs). See "Frozen tool families (dec-5)"
 in `Source/Private/MCP/Tools/AGENTS.md`.
 
 ## Targeting
@@ -154,47 +154,56 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
 - **Errors**: `INVALID_ARGUMENT`, `ASSET_NOT_FOUND`
 
 ### list-blueprint-functions
-- **Description**: Lists the Blueprint's function graphs (`Blueprint->FunctionGraphs`, `CollectFunctionDetails`),
-  `UserConstructionScript` included
+- **Description**: Lists what the Blueprint defines that runs as a function (`CollectFunctionInformation`): its
+  function graphs (`Blueprint->FunctionGraphs`, overrides and `UserConstructionScript` included), the function graphs
+  of the interfaces it implements (`ImplementedInterfaces[].Graphs`), and every event node
+  (`FBlueprintEditorUtils::GetAllNodesOfClass<UK2Node_Event>`): custom events, override and interface events, and
+  component or actor bound events (card 0289)
 - **Parameters**:
-  - `blueprintPath` (optional): See "Targeting"
-  - `includeInherited` (optional, default false), `includeOverridden` (optional, default false): Read and ignored;
-    the result is the same with either set
-- **Returns**: `functions`, `functionCount`, `blueprintName`, `blueprintPath` (object path), `parentClass`. Each
-  function has `name`, `type` (`Function`), `guid` (32 hex digits, see "Function IDs"), `inputs` (the entry node's
-  output pins) and `outputs` (the result node's input pins), each `{"name", "type": {"category", "container",
-  "isReference", "isConst", "isWeakPointer"}}` plus `subCategory`, `objectType`/`objectPath` and a map's `keyType`
-  when they apply (`ConvertPinTypeToJson`; inputs also `defaultValue` when set), `flags` (`isPure`, `isCallInEditor`, `isStatic`, `isConst`, `isPrivate`, `isProtected`,
+  - `blueprintPath` (optional): See "Targeting". Card 0289 removed `includeInherited` and `includeOverridden`, which
+    were read and ignored; a client that still sends them gets the same result (unknown arguments are not refused)
+- **Returns**: `functions`, `functionCount`, `blueprintName`, `blueprintPath` (object path), `parentClass`. A function
+  graph has `name`, `type` (`Function`, or `InterfaceFunction` with `interface` naming the interface), `guid` (32 hex
+  digits, see "Function IDs"), `inputs` (the entry node's output pins) and `outputs` (the result node's input pins),
+  each `{"name", "type": {"category", "container", "isReference", "isConst", "isWeakPointer"}}` plus `subCategory`,
+  `objectType`/`objectPath` and a map's `keyType` when they apply (`ConvertPinTypeToJson`; inputs also
+  `defaultValue` when set), `flags` (`isPure`, `isCallInEditor`, `isStatic`, `isConst`, `isPrivate`, `isProtected`,
   `isReliable`, `isServer`, `isClient`, `isMulticast`, `accessSpecifier`, `metadata` with `category`, `keywords`,
-  `tooltip`, `compactTitle` when set) and `graphInfo` (`graphName`, `nodeCount`)
-- **Known issue (card 0289):** `includeInherited` and `includeOverridden` do nothing; custom events are never listed
-  (the event-graph scan looks for `UK2Node_FunctionEntry`, which event graphs do not hold); interface function graphs
-  are not listed
+  `tooltip`, `compactTitle` when set) and `graphInfo` (`graphName`, `nodeCount`). An event has `name` (the custom
+  event's name or the overridden function's, `ReceiveBeginPlay`), `type` (`CustomEvent`, `Event` for an override or
+  interface event, `BoundEvent`), `guid` (the node's GUID), `graphName`, `isEnabled` (false for a default event the
+  editor placed greyed out, which does not run until it is used), `declaredIn` (for `Event`: the class or interface
+  that declared it), `inputs` (its data output pins), `outputs` (empty) and `flags` (`isReliable`, `isServer`,
+  `isClient`, `isMulticast`)
 
 ### list-overridable-functions
-- **Description**: Lists the `BlueprintImplementableEvent` and `BlueprintNativeEvent` functions of the parent classes
-  (up to, not including, `UObject`) and of the interfaces the Blueprint itself implements (`CollectOverridableFunctions`),
-  sorted by name
+- **Description**: Lists what the Blueprint can override, as the editor's Override menu decides it
+  (`CollectOverridableFunctions`, card 0289): every function of the parent class and its supers that
+  `UEdGraphSchema_K2::CanKismetOverrideFunction` accepts (a BlueprintEvent that is not a delegate, not
+  `BlueprintInternalUseOnly`, and not deprecated unless the editor shows deprecated functions), unless the class hides
+  it or the Blueprint type refuses it; and every such function of the interfaces the Blueprint and its parent classes
+  implement (`FBlueprintEditorUtils::FindImplementedInterfaces` with `bGetAllInterfaces`). One entry per name, sorted
+  by name, described by the function that first declared it (a Blueprint parent's event stub leads to the native event)
 - **Parameters**:
   - `blueprintPath` (optional): See "Targeting"
-  - `includeImplemented` (optional, default false): Also list the ones the Blueprint already has. An event node in
-    the Blueprint counts as an implementation (`FBlueprintEditorUtils::FindOverrideForFunction`), the editor's ghost
-    default events included, so on a new Actor Blueprint `ReceiveBeginPlay`, `ReceiveTick`, `ReceiveActorBeginOverlap`
-    and `UserConstructionScript` are only listed with `includeImplemented` true (19 functions by default, 23 with it,
-    on UE 5.8)
+  - `includeImplemented` (optional, default false): Also list the ones the Blueprint already has: an event node
+    (`FBlueprintEditorUtils::FindOverrideForFunction` with the declaring class, so a child of a Blueprint that also
+    overrides the event is found), a function graph or an interface function graph of that name. The editor's ghost
+    default events count, so on a new Actor Blueprint `ReceiveBeginPlay`, `ReceiveTick` and
+    `ReceiveActorBeginOverlap` are only listed with `includeImplemented` true (19 functions by default, 22
+    with it, on UE 5.8; `UserConstructionScript` is `BlueprintInternalUseOnly` and no longer listed)
   - `filterByCategory` (optional): Keeps functions whose `category` contains the text, case-insensitive: `Input`
     matches `Mouse Input` and `Touch Input`
   - `searchTerm` (optional): Keeps functions whose `name` contains the text, case-insensitive (`damage` finds
     `ReceiveAnyDamage`, `ReceivePointDamage`, `ReceiveRadialDamage`)
 - **Returns**: `functions`, `functionCount` (after the filters), `blueprintName`, `blueprintPath`, `parentClass`,
-  `implementedInterfaces`. Each function has `name` (the C++ name, `K2_OnBecomeViewTarget`), `displayName`,
-  `isImplemented`, `sourceType` (`ParentClass` or `Interface`), `sourceName` (the declaring class),
-  `functionType`, `implementationType`, `category` (`Default` when the function has none), `inputs`, `outputs`
-  (`{"name", "type": {"cppType", "type", "category", ...}}`), `metadata` (`tooltip`, `displayName`, `keywords`, ...)
-  and `flags`
-- **Known issue (card 0289):** `functionType` is `Function` for any BlueprintCallable event, not by whether it can be
-  placed as an event; interfaces implemented by the parent class are skipped; a function implemented in an interface
-  graph is reported as not implemented
+  `implementedInterfaces` (the Blueprint's own). Each function has `name` (the C++ name, `K2_OnBecomeViewTarget`),
+  `displayName`, `isImplemented`, `sourceType` (`ParentClass` or `Interface`), `sourceName` (the declaring class or
+  interface), `functionType` (`Event`: implement it as an event node; `Function`: as a function graph;
+  `UEdGraphSchema_K2::FunctionCanBePlacedAsEvent`, so a function with outputs or `const` is a `Function`),
+  `isCallable` (BlueprintCallable), `implementationType`, `category` (`Default` when the function has none),
+  `inputs`, `outputs` (`{"name", "type": {"cppType", "type", "category", ...}}`), `metadata` (`tooltip`,
+  `displayName`, `keywords`, ...) and `flags`
 
 ### get-open-blueprint-editors
 - **Description**: Lists the Blueprint assets open in a `BlueprintEditor` asset editor (`GetAllEditedAssets`)
