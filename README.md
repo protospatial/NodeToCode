@@ -100,45 +100,22 @@ A key in Project Settings wins over the variable.Details:
 
 ## Connect an MCP client
 
-Open your project in the editor first; the server runs only while the editor is open. It listens on this machine
-only (`127.0.0.1` / `localhost`) and refuses requests whose `Host` or `Origin` is not local, so the client must run
-on the same computer. **Enable MCP Server** (on by default) is in **Project Settings → Plugins → Node to Code
-(User)**, and **Server Port** (27000) in **Project Settings → Plugins → Node to Code**, under **MCP Server**.
-If another program (another editor, say) already uses the port, the server takes the next free one, shows a
-notification with its URL and lists it as **Server Status** under **MCP Server**; changing **Server Port** moves the
-server at once, without restarting the editor.
-
-**Claude Code over HTTP**, from your project's folder:
+Open your project in the editor first; the server runs only while the editor is open, and answers only on this
+machine (`127.0.0.1` / `localhost`). For Claude Code, from your project's folder:
 
 ```
 claude mcp add --transport http nodetocode http://127.0.0.1:27000/mcp
 claude mcp list
 ```
 
-**Claude Code over stdio**, through the bridge (use your plugin folder's path):
+Or install the [Claude Code plugin](wiki/developers/Claude-Code-Plugin.md), which adds the server and NodeToCode's
+Agent Skills in one step. Setup for Cursor, VS Code, Codex, Claude Desktop (through the stdio bridge) and Epic's MCP
+Client Toolset, and what to do when a client does not connect:
+[Connecting an MCP Client](wiki/developers/Connecting-an-MCP-Client.md). A client sees 63 tools by default (66 with
+**Allow MCP Python Execution**); to serve fewer, or only three search tools for a client with a tool limit, see
+[Choosing a Tool Mode](wiki/developers/Choosing-a-Tool-Mode.md).
 
-```
-claude mcp add nodetocode -- "<plugin folder>/Content/Python/mcp_bridge/launch_bridge.bat"
-```
-
-The bridge finds the running editor through the discovery file its MCP server writes, so it follows a port change
-and can start before the editor. With several editors open, add `--project <project name or .uproject path>` (or
-set `NODETOCODE_PROJECT`); `--port 27000` names a port instead.
-
-**Any client that reads a JSON config**, for example `claude -p --mcp-config nodetocode.json`:
-
-```json
-{
-  "mcpServers": {
-    "nodetocode": { "type": "http", "url": "http://127.0.0.1:27000/mcp" }
-  }
-}
-```
-
-`translate-focused-blueprint` answers on the same request once the translation finishes, which can take a few
-minutes. On UE 5.8 it also reports progress while it runs; on 5.6 and 5.7 it returns only the result.
-
-Setup for Codex CLI, Antigravity CLI and Gemini CLI, and troubleshooting:
+Using a Claude, ChatGPT or Google AI subscription through its vendor's agent:
 [Using a Claude or Gemini Subscription](wiki/developers/Using-a-Claude-or-Gemini-Subscription.md).
 Security model of the server: [SECURITY.md](SECURITY.md#the-mcp-server-20).
 

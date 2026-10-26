@@ -68,6 +68,8 @@
 <details>
 <summary>🤖 Agents & MCP</summary>
 
+* [Connecting an MCP Client](Connecting-an-MCP-Client)
+* [Choosing a Tool Mode](Choosing-a-Tool-Mode)
 * [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription)
 * [Using NodeToCode with Unreal MCP (UE 5.8)](Using-NodeToCode-with-Unreal-MCP)
 * [NodeToCodeTools in Unreal MCP (UE 5.8)](NodeToCodeTools)
