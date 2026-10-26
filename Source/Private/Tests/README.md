@@ -156,6 +156,25 @@ children, a delete promotes children and removes Get nodes, a bound event is rep
 DefaultSceneRoot and native and inherited components are refused, and each edit is one undo step that Undo then Redo
 restore exactly (graphs and SCS tree).
 
+## Secrets, settings migration and StructUtils
+
+- `NodeToCode.Secrets.Keychain` (`Core/N2CSecretStoreKeychain.spec.cpp`, card 0162) runs `FN2CSecretStore` over
+  Windows Credential Manager as the editor does: every provider's key through a restart, the largest key it takes,
+  two stores loaded before either saves (neither undoes the other), twelve writers on several threads, entries it does
+  not know (`Mistral`, `OpenAI.Conflict.1`) kept and never read as a provider's key, and the environment fallback
+  (never saved). Each case uses the target prefix `NodeToCodeTest/<guid>/`, removes it, and checks that the user's
+  own `NodeToCode/*` entries are unchanged. `NodeToCode.Secrets.Store` and `.Environment` are the file backend's
+  versions; `.CredentialManager` covers the backend's blob format and the `secrets.json` migration's failure paths.
+- `NodeToCode.Settings.Migration` (`Core/N2CSettingsMigration.spec.cpp`) upgrades `Fixtures/Settings/Legacy12x`, a
+  1.2.x project: `DefaultNodeToCode.ini` with every config key of main's `UN2CSettings`, the `DefaultEngine.ini`
+  1.2.x wrote, and a 1.2.x project `secrets.json`. Every key has a fate in the spec's table (kept, migrated, model ID,
+  pricing, theme); each value is checked after the upgrade and again after a restart, and every key lands in the
+  per-user store. A key added to the fixture without a fate fails the spec.
+- `NodeToCode.StructUtils` (`Core/N2CStructUtils.spec.cpp`) calls `UN2CStructUtilsLibrary` with bad package paths and
+  names (refused, nothing created), a taken name (refused, the struct there kept), the variable listing, and a save
+  to a read-only file (returns false, auth-settings-module-20). Its structs live under
+  `/Game/__N2CTestStructUtils_<guid>`, deleted after each case.
+
 ## LLM payload goldens and parser fixtures
 
 - `NodeToCode.LLM.Payload.Golden` builds every provider's request (body, endpoint and headers, with a placeholder
