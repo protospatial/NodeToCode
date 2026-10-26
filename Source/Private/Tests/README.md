@@ -11,6 +11,8 @@ the headless editor helper are Python and live in `Tests/mcp_probe/`; the smoke 
 Source/Private/Tests/
   README.md               this file
   N2CTestHelpers.h        shared helpers (N2CTest namespace) and N2C_TEST_FLAGS
+  N2CTestHttpStub.h       N2CTest::StartStubRouter: an HTTPServer router for a local stub endpoint on a port the OS
+                          picked (never a random port in a range: another checkout's editor may hold it)
   N2CTestBlueprintFactory.h/.cpp  N2CTest::FTestBlueprint: builds Blueprint graphs in code for capture specs
   N2CToolSpecHarness.h/.cpp       the MCP tool spec harness: scratch Blueprints, tool calls, results, graph invariants
   Capture/  Core/  LLM/  MCP/     specs by area: <Area>/N2C<Thing>.spec.cpp

@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CTestHttpStub.h"
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "Core/N2CSettings.h"
 #include "HAL/PlatformProcess.h"
@@ -141,8 +142,9 @@ namespace N2CMcpServerLifecycleSpec
 
 		bool Start()
 		{
-			Port = FreePorts(1);
-			Router = Port > 0 ? FHttpServerModule::Get().GetHttpRouter(Port, /*bFailOnBindFailure=*/true) : nullptr;
+			uint32 Picked = 0;
+			Router = N2CTest::StartStubRouter(Picked);
+			Port = Router.IsValid() ? static_cast<int32>(Picked) : -1;
 			if (!Router.IsValid())
 			{
 				return false;
