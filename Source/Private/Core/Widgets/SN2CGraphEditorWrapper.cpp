@@ -97,6 +97,7 @@ void SN2CGraphEditorWrapper::Construct(const FArguments& InArgs)
 			.BlueprintPath(BlueprintPath)
 			.GraphName(GraphName)
 			.BlueprintEditor(BlueprintEditor)
+			.Graph(Graph.Get())
 		]
 	];
 
