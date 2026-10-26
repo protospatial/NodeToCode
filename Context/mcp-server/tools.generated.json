@@ -3063,7 +3063,7 @@
 			"name": "list-blueprint-functions",
 			"title": "List Blueprint functions",
 			"toolset": "BlueprintDiscoveryTools",
-			"description": "Lists all functions defined in a Blueprint with their parameters and metadata",
+			"description": "Lists what a Blueprint defines that runs as a function: its function graphs (overrides included), its interface function graphs, its custom events and its override and interface events, with their parameters and metadata",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.list_functions, list_graphs",
 			"longRunning": false,
@@ -3086,20 +3086,6 @@
 					"type": "string",
 					"required": false,
 					"description": "Asset path of the Blueprint (e.g., '/Game/Blueprints/MyActor.MyActor'). If not provided, uses focused Blueprint."
-				},
-				{
-					"name": "includeInherited",
-					"type": "boolean",
-					"required": false,
-					"default": false,
-					"description": "Read but has no effect yet: only the Blueprint's own function graphs are listed"
-				},
-				{
-					"name": "includeOverridden",
-					"type": "boolean",
-					"required": false,
-					"default": false,
-					"description": "Read but has no effect yet: only the Blueprint's own function graphs are listed"
 				}
 			],
 			"inputSchema":
@@ -3111,18 +3097,6 @@
 					{
 						"type": "string",
 						"description": "Asset path of the Blueprint (e.g., '/Game/Blueprints/MyActor.MyActor'). If not provided, uses focused Blueprint."
-					},
-					"includeInherited":
-					{
-						"type": "boolean",
-						"description": "Read but has no effect yet: only the Blueprint's own function graphs are listed",
-						"default": false
-					},
-					"includeOverridden":
-					{
-						"type": "boolean",
-						"description": "Read but has no effect yet: only the Blueprint's own function graphs are listed",
-						"default": false
 					}
 				},
 				"required": []
@@ -3317,7 +3291,7 @@
 			"name": "list-overridable-functions",
 			"title": "List overridable functions",
 			"toolset": "BlueprintDiscoveryTools",
-			"description": "Lists all functions that can be overridden from parent classes and interfaces",
+			"description": "Lists the functions a Blueprint can override from its parent classes and its interfaces (its own and its parents'), as the editor's Override menu does. functionType says how to implement one: Event as an event node in an event graph, Function as a function graph; isImplemented counts event nodes, function graphs and interface graphs",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.list_functions, list_events",
 			"longRunning": false,

@@ -104,7 +104,7 @@ No arguments.
 
 **List Blueprint functions**
 
-Lists all functions defined in a Blueprint with their parameters and metadata
+Lists what a Blueprint defines that runs as a function: its function graphs (overrides included), its interface function graphs, its custom events and its override and interface events, with their parameters and metadata
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -115,8 +115,6 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_functions, list_graphs`. L
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `blueprintPath` | `string` | no |  | Asset path of the Blueprint (e.g., '/Game/Blueprints/MyActor.MyActor'). If not provided, uses focused Blueprint. |
-| `includeInherited` | `boolean` | no | `false` | Read but has no effect yet: only the Blueprint's own function graphs are listed |
-| `includeOverridden` | `boolean` | no | `false` | Read but has no effect yet: only the Blueprint's own function graphs are listed |
 
 ### list-blueprint-graphs
 
@@ -136,7 +134,7 @@ Lists every graph of any Blueprint in the project by asset path, with no Bluepri
 
 **List overridable functions**
 
-Lists all functions that can be overridden from parent classes and interfaces
+Lists the functions a Blueprint can override from its parent classes and its interfaces (its own and its parents'), as the editor's Override menu does. functionType says how to implement one: Event as an event node in an event graph, Function as a function graph; isImplemented counts event nodes, function graphs and interface graphs
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
