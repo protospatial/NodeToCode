@@ -15,6 +15,7 @@
 #include "K2Node.h"
 #include "Misc/Paths.h"
 #include "Utils/N2CPathUtils.h"
+#include "Utils/N2CGraphUtils.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonWriter.h"
@@ -427,6 +428,16 @@ bool UN2CBatchTranslationOrchestrator::ResolveBlueprintsAndGraphs()
 			UBlueprint* Owner = Given ? Given->GetTypedOuter<UBlueprint>() : nullptr;
 			if (Owner && Owner->GetPathName() == Item.TagInfo.BlueprintPath)
 			{
+				FString Reason;
+				if (!FN2CGraphUtils::CanTranslateGraph(Given, &Reason))
+				{
+					Item.Status = EN2CBatchItemStatus::Failed;
+					Item.ErrorMessage = Reason;
+					CurrentResult.FailureCount++;
+					CurrentResult.FailedGraphNames.Add(Item.TagInfo.GraphName);
+					FN2CLogger::Get().LogError(Item.ErrorMessage, TEXT("BatchOrchestrator"));
+					continue;
+				}
 				Item.CachedBlueprint = Owner;
 				Item.CachedGraph = Given;
 				bAnyResolved = true;
@@ -473,11 +484,22 @@ bool UN2CBatchTranslationOrchestrator::ResolveBlueprintsAndGraphs()
 			continue;
 		}
 
-		UEdGraph* Graph = FindGraphByGuid(Blueprint, GraphGuid);
+		// Every graph of the Blueprint: interface implementations and collapsed graphs too (card 0251)
+		UEdGraph* Graph = FN2CGraphUtils::FindGraphByGuid(Blueprint, GraphGuid);
+		FString Reason;
 		if (!Graph)
 		{
+			Reason = FString::Printf(TEXT("Graph not found: no graph %s has GUID %s. The graph may have been deleted; remove the tag."),
+				*FN2CGraphUtils::DescribeGraph(Item.TagInfo.GraphName, Item.TagInfo.BlueprintPath), *Item.TagInfo.GraphGuid);
+		}
+		else
+		{
+			FN2CGraphUtils::CanTranslateGraph(Graph, &Reason);
+		}
+		if (!Reason.IsEmpty())
+		{
 			Item.Status = EN2CBatchItemStatus::Failed;
-			Item.ErrorMessage = FString::Printf(TEXT("Graph not found with GUID: %s"), *Item.TagInfo.GraphGuid);
+			Item.ErrorMessage = Reason;
 			CurrentResult.FailureCount++;
 			CurrentResult.FailedGraphNames.Add(Item.TagInfo.GraphName);
 			FN2CLogger::Get().LogError(Item.ErrorMessage, TEXT("BatchOrchestrator"));
@@ -518,63 +540,6 @@ UBlueprint* UN2CBatchTranslationOrchestrator::LoadBlueprintFromPath(const FStrin
 	}
 
 	return Blueprint;
-}
-
-UEdGraph* UN2CBatchTranslationOrchestrator::FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid)
-{
-	if (!Blueprint || !GraphGuid.IsValid())
-	{
-		return nullptr;
-	}
-
-	// Search in UbergraphPages (event graphs)
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Search in FunctionGraphs
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Search in MacroGraphs
-	for (UEdGraph* Graph : Blueprint->MacroGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Search in DelegateSignatureGraphs
-	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Then every other graph: collapsed graphs and interface implementations
-	TArray<UEdGraph*> AllGraphs;
-	Blueprint->GetAllGraphs(AllGraphs);
-	for (UEdGraph* Graph : AllGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	return nullptr;
 }
 
 FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint, FN2CBlueprint& OutCapture)
@@ -1101,16 +1066,24 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 			continue;
 		}
 
-		UEdGraph* Graph = FindGraphByGuid(Blueprint, GraphGuid);
+		UEdGraph* Graph = FN2CGraphUtils::FindGraphByGuid(Blueprint, GraphGuid);
+		FString Reason;
 		if (!Graph)
 		{
+			Reason = FString::Printf(TEXT("Graph not found: no graph %s has GUID %s. The graph may have been deleted; remove the tag."),
+				*FN2CGraphUtils::DescribeGraph(Item.TagInfo.GraphName, Item.TagInfo.BlueprintPath), *Item.TagInfo.GraphGuid);
+		}
+		else
+		{
+			FN2CGraphUtils::CanTranslateGraph(Graph, &Reason);
+		}
+		if (!Reason.IsEmpty())
+		{
 			Item.Status = EN2CBatchItemStatus::Failed;
-			Item.ErrorMessage = TEXT("Graph not found");
+			Item.ErrorMessage = Reason;
 			Result.FailureCount++;
 			Result.FailedGraphNames.Add(Item.TagInfo.GraphName);
-			FN2CLogger::Get().LogError(
-				FString::Printf(TEXT("Graph not found with GUID: %s"), *Item.TagInfo.GraphGuid),
-				TEXT("BatchOrchestrator"));
+			FN2CLogger::Get().LogError(Item.ErrorMessage, TEXT("BatchOrchestrator"));
 			continue;
 		}
 

@@ -8,6 +8,7 @@
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMTypes.h"
 #include "Utils/N2CLogger.h"
+#include "Utils/N2CGraphUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "K2Node.h"
@@ -201,42 +202,11 @@ int32 FN2CTokenEstimationService::GetTokenEstimateRecursive(
 
 void FN2CTokenEstimationService::FindReferencedGraphs(const FN2CTagInfo& GraphInfo, TArray<FN2CTagInfo>& OutReferencedGraphs)
 {
-	// Load the Blueprint
-	UBlueprint* Blueprint = Cast<UBlueprint>(FSoftObjectPath(GraphInfo.BlueprintPath).TryLoad());
-	if (!Blueprint)
-	{
-		return;
-	}
-
-	// Find the graph by GUID
-	FGuid GraphGuid;
-	if (!FGuid::Parse(GraphInfo.GraphGuid, GraphGuid))
-	{
-		return;
-	}
-
-	UEdGraph* FoundGraph = nullptr;
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			FoundGraph = Graph;
-			break;
-		}
-	}
-
-	if (!FoundGraph)
-	{
-		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-		{
-			if (Graph && Graph->GraphGuid == GraphGuid)
-			{
-				FoundGraph = Graph;
-				break;
-			}
-		}
-	}
-
+	// The same resolver as SerializeGraphToJson (a failure is logged there)
+	UBlueprint* Blueprint = nullptr;
+	FString ResolveError;
+	UEdGraph* FoundGraph = FN2CGraphUtils::ResolveTaggedGraph(GraphInfo.BlueprintPath, GraphInfo.GraphGuid,
+		GraphInfo.GraphName, Blueprint, ResolveError);
 	if (!FoundGraph)
 	{
 		return;
@@ -484,53 +454,19 @@ void FN2CTokenEstimationService::OnBlueprintCompiled()
 
 FString FN2CTokenEstimationService::SerializeGraphToJson(const FN2CTagInfo& GraphInfo)
 {
-	// Load the Blueprint
-	UBlueprint* Blueprint = Cast<UBlueprint>(FSoftObjectPath(GraphInfo.BlueprintPath).TryLoad());
-	if (!Blueprint)
+	// The same resolver as translation: every graph of the Blueprint, interface implementations and collapsed graphs too
+	UBlueprint* Blueprint = nullptr;
+	FString ResolveError;
+	UEdGraph* FoundGraph = FN2CGraphUtils::ResolveTaggedGraph(GraphInfo.BlueprintPath, GraphInfo.GraphGuid,
+		GraphInfo.GraphName, Blueprint, ResolveError);
+	if (FoundGraph && !FN2CGraphUtils::CanTranslateGraph(FoundGraph, &ResolveError))
 	{
-		FN2CLogger::Get().LogWarning(
-			FString::Printf(TEXT("Failed to load Blueprint: %s"), *GraphInfo.BlueprintPath),
-			TEXT("TokenEstimationService"));
-		return FString();
+		FoundGraph = nullptr;
 	}
-
-	// Find the graph by GUID
-	FGuid GraphGuid;
-	if (!FGuid::Parse(GraphInfo.GraphGuid, GraphGuid))
-	{
-		FN2CLogger::Get().LogWarning(
-			FString::Printf(TEXT("Invalid graph GUID: %s"), *GraphInfo.GraphGuid),
-			TEXT("TokenEstimationService"));
-		return FString();
-	}
-
-	UEdGraph* FoundGraph = nullptr;
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			FoundGraph = Graph;
-			break;
-		}
-	}
-
 	if (!FoundGraph)
 	{
-		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-		{
-			if (Graph && Graph->GraphGuid == GraphGuid)
-			{
-				FoundGraph = Graph;
-				break;
-			}
-		}
-	}
-
-	if (!FoundGraph)
-	{
-		FN2CLogger::Get().LogWarning(
-			FString::Printf(TEXT("Graph not found in Blueprint: %s"), *GraphInfo.GraphName),
-			TEXT("TokenEstimationService"));
+		// No notification: the estimate refreshes on its own, and the overlay of such a graph has its actions disabled
+		FN2CLogger::Get().LogWarning(ResolveError, TEXT("TokenEstimationService"));
 		return FString();
 	}
 

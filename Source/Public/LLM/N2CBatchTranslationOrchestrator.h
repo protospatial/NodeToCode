@@ -37,8 +37,8 @@ struct NODETOCODE_API FN2CBatchTranslationOptions
 
 	/**
 	 * Optional, parallel to the tag infos: the graph each item names, already resolved by the caller (a graph whose
-	 * GraphGuid another graph of its Blueprint shares, or one FindGraphByGuid does not search). An entry that is
-	 * stale or does not belong to the item's Blueprint is ignored and the item is resolved by GUID.
+	 * GraphGuid another graph of its Blueprint shares). An entry that is stale or does not belong to the item's
+	 * Blueprint is ignored and the item is resolved by GUID.
 	 */
 	TArray<TWeakObjectPtr<UEdGraph>> Graphs;
 };
@@ -202,14 +202,6 @@ private:
 	 * @return Loaded blueprint or nullptr
 	 */
 	UBlueprint* LoadBlueprintFromPath(const FString& BlueprintPath);
-
-	/**
-	 * Find a graph within a blueprint by its GUID
-	 * @param Blueprint The blueprint to search
-	 * @param GraphGuid The GUID of the graph to find
-	 * @return The graph if found, nullptr otherwise
-	 */
-	UEdGraph* FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid);
 
 	/**
 	 * Collect nodes from a graph and serialize to JSON
