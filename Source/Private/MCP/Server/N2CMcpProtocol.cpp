@@ -1049,8 +1049,11 @@ bool FN2CMcpProtocol::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, cons
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Tool not found: %s"), *ToolName));
 		const TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("name"), ToolName);
+		// A tool left to Unreal MCP on UE 5.8 (card 0174) says which Epic tool to call instead
+		const FString Hint = Catalogs.Tools->LeftToUnrealMcpHint(ToolName);
 		OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::InvalidParams,
-			FString::Printf(TEXT("Unknown tool: %s"), *ToolName), MakeShared<FJsonValueObject>(Data));
+			Hint.IsEmpty() ? FString::Printf(TEXT("Unknown tool: %s"), *ToolName) : FString::Printf(TEXT("Unknown tool: %s. %s"), *ToolName, *Hint),
+			MakeShared<FJsonValueObject>(Data));
 		return true;
 	}
 

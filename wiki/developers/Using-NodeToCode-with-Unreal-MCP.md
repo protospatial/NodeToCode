@@ -18,6 +18,7 @@ In **Project Settings → Plugins → Node to Code → MCP Server**:
 | Setting | Use | Why |
 |---|---|---|
 | **Tool Profile** | Default toolsets (default) | Python scripting only lists only the Python tools: no translation or Blueprint tools |
+| **Overlapping Tools** | Automatic (default) | With **EditorToolset** enabled too, the 34 tools Epic's toolsets also have are left to them; see [NodeToCode and Epic Tool Mapping](NodeToCode-and-Epic-Tool-Mapping) |
 | **Tool Exposure** | List every tool (default) | Tool search lists only `list_toolsets`, `describe_toolset` and `call_tool`, which Epic's registry would show nested inside its own tool search |
 | **Server Port** | 27000, or a port only this project uses | The entry below names one fixed URL |
 | **Port Fallback Range** | 1 | With more, a taken port moves the server and the entry points at the wrong server (or at another editor's NodeToCode) |
@@ -49,7 +50,8 @@ MCPServers=(Name="NodeToCode",Description="Blueprint translation, graph editing 
 ```
 
 Restart the editor. The Output Log shows `MCPClientToolset 'NodeToCode': registered 66 tool(s)` (63 without
-**Allow MCP Python Execution**) and `MCPClientToolset: registered 'NodeToCode'`. NodeToCode's log shows a session for
+**Allow MCP Python Execution**; 32 and 29 when **EditorToolset** is enabled too and the overlapping tools are left to
+Epic's) and `MCPClientToolset: registered 'NodeToCode'`. NodeToCode's log shows a session for
 client `UE-ToolsetRegistry` at protocol `2024-11-05`, which NodeToCode accepts.
 
 ## 4. Call the tools through Unreal MCP

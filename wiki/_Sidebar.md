@@ -71,6 +71,7 @@
 * [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription)
 * [Using NodeToCode with Unreal MCP (UE 5.8)](Using-NodeToCode-with-Unreal-MCP)
 * [NodeToCodeTools in Unreal MCP (UE 5.8)](NodeToCodeTools)
+* [NodeToCode and Epic Tool Mapping (UE 5.8)](NodeToCode-and-Epic-Tool-Mapping)
 * [Agent Skills](Agent-Skills)
 * [Claude Code Plugin](Claude-Code-Plugin)
 </details>

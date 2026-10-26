@@ -1291,7 +1291,8 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
         // The MCP tool settings are read when the server starts
         if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpToolProfile)
             || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpCustomToolsets)
-            || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpToolExposure))
+            || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpToolExposure)
+            || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpOverlappingTools))
         {
             ShowRestartEditorNotification();
         }
