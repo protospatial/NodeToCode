@@ -6,7 +6,7 @@
 #include "MCP/Tools/N2CMcpToolBase.h"
 
 /**
- * MCP tool that lists all functions in a Blueprint.
+ * MCP tool that lists a Blueprint's function graphs, interface function graphs, custom events and override events.
  * Can list functions from the focused Blueprint or a specific Blueprint by path.
  */
 class FN2CMcpListBlueprintFunctionsTool : public FN2CMcpToolBase
@@ -37,6 +37,13 @@ private:
 	 * @return JSON object containing function details
 	 */
 	TSharedPtr<FJsonObject> CollectFunctionDetails(const class UEdGraph* FunctionGraph) const;
+
+	/**
+	 * Collects information about one event node: a custom event, an override or interface event, or a bound event.
+	 * @param EventNode The event node
+	 * @return JSON object with the event's details
+	 */
+	TSharedPtr<FJsonObject> CollectEventDetails(const class UK2Node_Event* EventNode) const;
 
 	/**
 	 * Extracts parameter information from function entry and result nodes.

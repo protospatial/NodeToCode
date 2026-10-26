@@ -22,6 +22,19 @@ Before the toolbar actions become available, ensure:
 > [!NOTE]
 > If the toolbar button appears grayed out, make sure that you have a graph focused.
 
+## Which graphs can be translated
+
+NodeToCode reads Blueprint graphs: event graphs, functions, macros, collapsed graphs and interface functions a
+Blueprint implements, wherever they are nested. You can tag, copy as JSON and translate any of them, from the graph
+overlay or from the NodeToCode window.
+
+Graphs that are not Blueprint graphs, such as an Animation Blueprint's state machines, cannot be translated. On such a
+graph the overlay's Copy JSON, Translate and tag buttons are grayed out, and their tooltip says why.
+
+If a tagged graph cannot be found any more (its Blueprint was moved or deleted, or the graph was removed), translating,
+exporting or double-clicking its row shows a notification naming the graph and its Blueprint. Remove the tag and tag
+the graph again.
+
 ## Starting a Translation
 
 Once you've located the toolbar:

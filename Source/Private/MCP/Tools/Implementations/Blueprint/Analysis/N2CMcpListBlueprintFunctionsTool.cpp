@@ -14,6 +14,8 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_Event.h"
+#include "K2Node_CustomEvent.h"
 #include "EdGraphSchema_K2.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
@@ -26,7 +28,7 @@ FMcpToolDefinition FN2CMcpListBlueprintFunctionsTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("list-blueprint-functions"),
-		TEXT("Lists all functions defined in a Blueprint with their parameters and metadata"),
+		TEXT("Lists what a Blueprint defines that runs as a function: its function graphs (overrides included), its interface function graphs, its custom events and its override and interface events, with their parameters and metadata"),
 		N2CMcpToolsets::BlueprintDiscovery
 	);
 
@@ -42,20 +44,6 @@ FMcpToolDefinition FN2CMcpListBlueprintFunctionsTool::GetDefinition() const
 	BlueprintPathProp->SetStringField(TEXT("description"), TEXT("Asset path of the Blueprint (e.g., '/Game/Blueprints/MyActor.MyActor'). If not provided, uses focused Blueprint."));
 	Properties->SetObjectField(TEXT("blueprintPath"), BlueprintPathProp);
 
-	// includeInherited property (optional)
-	TSharedPtr<FJsonObject> IncludeInheritedProp = MakeShareable(new FJsonObject);
-	IncludeInheritedProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	IncludeInheritedProp->SetStringField(TEXT("description"), TEXT("Read but has no effect yet: only the Blueprint's own function graphs are listed"));
-	IncludeInheritedProp->SetBoolField(TEXT("default"), false);
-	Properties->SetObjectField(TEXT("includeInherited"), IncludeInheritedProp);
-
-	// includeOverridden property (optional)
-	TSharedPtr<FJsonObject> IncludeOverriddenProp = MakeShareable(new FJsonObject);
-	IncludeOverriddenProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	IncludeOverriddenProp->SetStringField(TEXT("description"), TEXT("Read but has no effect yet: only the Blueprint's own function graphs are listed"));
-	IncludeOverriddenProp->SetBoolField(TEXT("default"), false);
-	Properties->SetObjectField(TEXT("includeOverridden"), IncludeOverriddenProp);
-	
 	Schema->SetObjectField(TEXT("properties"), Properties);
 	
 	// No required fields
@@ -82,8 +70,6 @@ FMcpToolCallResult FN2CMcpListBlueprintFunctionsTool::Execute(const TSharedPtr<F
 		
 		// Optional parameters
 		FString BlueprintPath = ArgParser.GetOptionalString(TEXT("blueprintPath"));
-		bool bIncludeInherited = ArgParser.GetOptionalBool(TEXT("includeInherited"), false);
-		bool bIncludeOverridden = ArgParser.GetOptionalBool(TEXT("includeOverridden"), false);
 		
 		// Resolve target Blueprint
 		FString ResolveError;
@@ -133,37 +119,34 @@ TSharedPtr<FJsonObject> FN2CMcpListBlueprintFunctionsTool::CollectFunctionInform
 		}
 	}
 	
-	// Collect event graphs (which may contain custom events)
-	for (const UEdGraph* Graph : Blueprint->UbergraphPages)
+	// Interface function graphs: the Blueprint's own interfaces keep them here, not in FunctionGraphs (card 0289)
+	for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
 	{
-		if (Graph)
+		for (const UEdGraph* Graph : InterfaceDesc.Graphs)
 		{
-			// Look for custom event nodes in the graph
-			for (const UEdGraphNode* Node : Graph->Nodes)
+			TSharedPtr<FJsonObject> FunctionInfo = Graph ? CollectFunctionDetails(Graph) : nullptr;
+			if (FunctionInfo.IsValid())
 			{
-				if (const UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node))
+				FunctionInfo->SetStringField(TEXT("type"), TEXT("InterfaceFunction"));
+				if (InterfaceDesc.Interface)
 				{
-					// This is a custom event entry point
-					TSharedPtr<FJsonObject> EventInfo = MakeShareable(new FJsonObject);
-					EventInfo->SetStringField(TEXT("name"), EntryNode->GetNodeTitle(ENodeTitleType::MenuTitle).ToString());
-					EventInfo->SetStringField(TEXT("type"), TEXT("CustomEvent"));
-					EventInfo->SetStringField(TEXT("guid"), FGuid::NewGuid().ToString()); // Events don't have persistent GUIDs
-					EventInfo->SetStringField(TEXT("graphName"), Graph->GetName());
-					
-					// Get parameters
-					TArray<TSharedPtr<FJsonValue>> InputParams;
-					TArray<TSharedPtr<FJsonValue>> OutputParams;
-					ExtractFunctionParameters(EntryNode, nullptr, InputParams, OutputParams);
-					
-					EventInfo->SetArrayField(TEXT("inputs"), InputParams);
-					EventInfo->SetArrayField(TEXT("outputs"), OutputParams);
-					
-					// Get flags
-					EventInfo->SetObjectField(TEXT("flags"), GetFunctionFlags(EntryNode));
-					
-					FunctionsArray.Add(MakeShareable(new FJsonValueObject(EventInfo)));
+					FunctionInfo->SetStringField(TEXT("interface"), InterfaceDesc.Interface->GetName());
 				}
+				FunctionsArray.Add(MakeShareable(new FJsonValueObject(FunctionInfo)));
 			}
+		}
+	}
+
+	// Events in every graph: custom events, and override and interface events (card 0289: this used to look for
+	// function entry nodes in the event graphs, which never hold any, so no event was ever listed)
+	TArray<UK2Node_Event*> EventNodes;
+	FBlueprintEditorUtils::GetAllNodesOfClass<UK2Node_Event>(Blueprint, EventNodes);
+	for (const UK2Node_Event* EventNode : EventNodes)
+	{
+		TSharedPtr<FJsonObject> EventInfo = EventNode ? CollectEventDetails(EventNode) : nullptr;
+		if (EventInfo.IsValid())
+		{
+			FunctionsArray.Add(MakeShareable(new FJsonValueObject(EventInfo)));
 		}
 	}
 	
@@ -171,6 +154,55 @@ TSharedPtr<FJsonObject> FN2CMcpListBlueprintFunctionsTool::CollectFunctionInform
 	Result->SetNumberField(TEXT("functionCount"), FunctionsArray.Num());
 	
 	return Result;
+}
+
+TSharedPtr<FJsonObject> FN2CMcpListBlueprintFunctionsTool::CollectEventDetails(const UK2Node_Event* EventNode) const
+{
+	const bool bCustom = EventNode->IsA<UK2Node_CustomEvent>();
+	const UFunction* Signature = bCustom ? nullptr : EventNode->FindEventSignatureFunction();
+
+	TSharedPtr<FJsonObject> EventInfo = MakeShareable(new FJsonObject);
+	EventInfo->SetStringField(TEXT("name"), EventNode->GetFunctionName().ToString());
+	// CustomEvent; Event for an override or interface event; BoundEvent for a component or actor delegate event
+	EventInfo->SetStringField(TEXT("type"), bCustom ? TEXT("CustomEvent") : EventNode->bOverrideFunction ? TEXT("Event") : TEXT("BoundEvent"));
+	// The node's own GUID: stable across loads (events used to get a new random GUID on every call)
+	EventInfo->SetStringField(TEXT("guid"), EventNode->NodeGuid.ToString());
+	const UEdGraph* Graph = EventNode->GetGraph();
+	EventInfo->SetStringField(TEXT("graphName"), Graph ? Graph->GetName() : FString());
+	// A default event the editor placed and greyed out (BeginPlay, Tick, ...) exists but does not run until it is used
+	EventInfo->SetBoolField(TEXT("isEnabled"), EventNode->IsNodeEnabled() && !EventNode->IsAutomaticallyPlacedGhostNode());
+	if (EventNode->bOverrideFunction && Signature && Signature->GetOwnerClass())
+	{
+		// The class or interface that declared the event this node implements
+		EventInfo->SetStringField(TEXT("declaredIn"), Signature->GetOwnerClass()->GetName());
+	}
+
+	// Parameters: the event's data outputs (an event has no outputs of its own)
+	TArray<TSharedPtr<FJsonValue>> InputParams;
+	for (const UEdGraphPin* Pin : EventNode->Pins)
+	{
+		if (Pin && Pin->Direction == EGPD_Output && !UEdGraphSchema_K2::IsExecPin(*Pin) && Pin->PinName != UK2Node_Event::DelegateOutputName)
+		{
+			TSharedPtr<FJsonObject> ParamInfo = MakeShareable(new FJsonObject);
+			ParamInfo->SetStringField(TEXT("name"), Pin->PinName.ToString());
+			ParamInfo->SetObjectField(TEXT("type"), ConvertPinTypeToJson(Pin->PinType));
+			InputParams.Add(MakeShareable(new FJsonValueObject(ParamInfo)));
+		}
+	}
+	EventInfo->SetArrayField(TEXT("inputs"), InputParams);
+	EventInfo->SetArrayField(TEXT("outputs"), TArray<TSharedPtr<FJsonValue>>());
+
+	// Replication: a custom event's own net flags, another event's from its signature function
+	const uint32 NetFlags = bCustom ? CastChecked<UK2Node_CustomEvent>(EventNode)->GetNetFlags()
+		: Signature ? static_cast<uint32>(Signature->FunctionFlags) : EventNode->FunctionFlags;
+	TSharedPtr<FJsonObject> Flags = MakeShareable(new FJsonObject);
+	Flags->SetBoolField(TEXT("isReliable"), (NetFlags & FUNC_NetReliable) != 0);
+	Flags->SetBoolField(TEXT("isServer"), (NetFlags & FUNC_NetServer) != 0);
+	Flags->SetBoolField(TEXT("isClient"), (NetFlags & FUNC_NetClient) != 0);
+	Flags->SetBoolField(TEXT("isMulticast"), (NetFlags & FUNC_NetMulticast) != 0);
+	EventInfo->SetObjectField(TEXT("flags"), Flags);
+
+	return EventInfo;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpListBlueprintFunctionsTool::CollectFunctionDetails(const UEdGraph* FunctionGraph) const

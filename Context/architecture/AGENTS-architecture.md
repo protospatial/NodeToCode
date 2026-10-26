@@ -160,6 +160,8 @@ All presentation tokens live in `Source/Public/Core/Style/` (implementations in 
 
 *   **`Source/Public/Utils/N2CPinTypeCompatibility.h` / `Source/Private/Utils/N2CPinTypeCompatibility.cpp` (`FN2CPinTypeCompatibility`)**: Static utility for checking pin connection compatibility.
 
+*   **`Source/Public/Utils/N2CGraphUtils.h` / `Source/Private/Utils/N2CGraphUtils.cpp` (`FN2CGraphUtils`)**: The editor's one resolver for tagged graphs (card 0251). `FindGraphByGuid` searches every graph of the Blueprint (`UBlueprint::GetAllGraphs` through `FN2CGraphTarget::FindGraphsByGuid`, so interface implementations and collapsed graphs too); `ResolveTaggedGraph` loads a tag's Blueprint and finds its graph, with a message naming the graph and Blueprint when it cannot. `CanTranslateGraph` is the rule for which graphs translation can read: a Blueprint (K2) schema graph its Blueprint lists, which leaves out AnimBP state machines and other non-K2 graphs. The main window (translate, double-click, JSON export), the batch orchestrator and token estimation all use it; the graph overlay disables Copy JSON, Translate, adding a tag and the context estimate on a graph it refuses, with the reason as the tooltip, and a caller that cannot resolve a graph shows a notification (`NotifyFailure`) instead of returning silently.
+
 ### Validation Utilities (`Source/*/Utils/Validators/`)
 
 *   **`N2CBlueprintValidator`**: Validates Blueprint data integrity.

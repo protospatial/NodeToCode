@@ -13,6 +13,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_Event.h"
 #include "EdGraphSchema_K2.h"
+#include "ObjectEditorUtils.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -25,7 +26,7 @@ FMcpToolDefinition FN2CMcpListOverridableFunctionsTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("list-overridable-functions"),
-		TEXT("Lists all functions that can be overridden from parent classes and interfaces"),
+		TEXT("Lists the functions a Blueprint can override from its parent classes and its interfaces (its own and its parents'), as the editor's Override menu does. functionType says how to implement one: Event as an event node in an event graph, Function as a function graph; isImplemented counts event nodes, function graphs and interface graphs"),
 		N2CMcpToolsets::BlueprintDiscovery
 	);
 
@@ -185,118 +186,85 @@ TSharedPtr<FJsonObject> FN2CMcpListOverridableFunctionsTool::CollectOverridableF
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 	TArray<TSharedPtr<FJsonValue>> FunctionsArray;
-	
+
 	if (!Blueprint || !Blueprint->ParentClass)
 	{
 		Result->SetArrayField(TEXT("functions"), FunctionsArray);
 		Result->SetNumberField(TEXT("functionCount"), 0);
 		return Result;
 	}
-	
-	// Track processed functions to avoid duplicates
+
+	// One entry per function name, the first (most derived) declaration found, as the editor's Override menu lists them
 	TSet<FName> ProcessedFunctions;
-	
-	// Process parent class hierarchy
-	UClass* CurrentClass = Blueprint->ParentClass;
-	while (CurrentClass)
+
+	// Adds one candidate. Function is the declaration found; it is described, and its implementation looked up, by the
+	// function that first declared it (card 0289): a Blueprint parent that overrides an event carries a stub UFunction
+	// whose owner is that parent's class, while the child's event node names the class that declared the event.
+	auto AddCandidate = [&](const UFunction* Function)
 	{
-		// Don't go beyond UObject
-		if (CurrentClass == UObject::StaticClass())
+		if (!Function || ProcessedFunctions.Contains(Function->GetFName()))
 		{
-			break;
+			return;
 		}
-		
-		// Iterate through all functions in the class
-		for (TFieldIterator<UFunction> FuncIt(CurrentClass, EFieldIteratorFlags::ExcludeSuper); FuncIt; ++FuncIt)
+		ProcessedFunctions.Add(Function->GetFName());
+		const UFunction* Declaration = GetDeclaringFunction(Function);
+		const bool bIsImplemented = IsFunctionImplemented(Blueprint, Declaration);
+		if (bIsImplemented && !bIncludeImplemented)
 		{
-			UFunction* Function = *FuncIt;
-			if (!Function || ProcessedFunctions.Contains(Function->GetFName()))
-			{
-				continue;
-			}
-			
-			// Check if this function can be overridden
-			if (CanOverrideFunction(Function))
-			{
-				bool bIsImplemented = IsFunctionImplemented(Blueprint, Function);
-				
-				// Skip implemented functions if not requested
-				if (bIsImplemented && !bIncludeImplemented)
-				{
-					continue;
-				}
-				
-				ProcessedFunctions.Add(Function->GetFName());
-				
-				TSharedPtr<FJsonObject> FunctionInfo = CreateFunctionInfo(
-					Function, 
-					bIsImplemented,
-					TEXT("ParentClass"),
-					CurrentClass->GetName()
-				);
-				
-				if (FunctionInfo.IsValid())
-				{
-					FunctionsArray.Add(MakeShareable(new FJsonValueObject(FunctionInfo)));
-				}
-			}
+			return;
 		}
-		
-		CurrentClass = CurrentClass->GetSuperClass();
-	}
-	
-	// Process implemented interfaces
-	for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+		// Where it was declared: an interface (a Blueprint parent's implementation of an interface function leads back
+		// to the interface too) or a class
+		const UClass* DeclaringClass = Declaration->GetOwnerClass();
+		const bool bFromInterface = DeclaringClass && DeclaringClass->HasAnyClassFlags(CLASS_Interface);
+		TSharedPtr<FJsonObject> FunctionInfo = CreateFunctionInfo(Declaration, bIsImplemented,
+			bFromInterface ? TEXT("Interface") : TEXT("ParentClass"), DeclaringClass ? DeclaringClass->GetName() : FString());
+		if (FunctionInfo.IsValid())
+		{
+			FunctionsArray.Add(MakeShareable(new FJsonValueObject(FunctionInfo)));
+		}
+	};
+
+	// Interfaces first: the Blueprint's own and those its parent classes implement (FindImplementedInterfaces with
+	// bGetAllInterfaces; card 0289), each with the interfaces it extends. First, because a Blueprint parent that
+	// implements an interface carries a UFunction of each interface event that has no super function, which the class
+	// walk below would otherwise list as the parent's own
+	TArray<UClass*> Interfaces;
+	FBlueprintEditorUtils::FindImplementedInterfaces(Blueprint, /*bGetAllInterfaces=*/true, Interfaces);
+	for (UClass* InterfaceClass : Interfaces)
 	{
-		UClass* InterfaceClass = InterfaceDesc.Interface;
 		if (!InterfaceClass)
 		{
 			continue;
 		}
-		
-		// Iterate through all functions in the interface
-		for (TFieldIterator<UFunction> FuncIt(InterfaceClass); FuncIt; ++FuncIt)
+		for (TFieldIterator<UFunction> FuncIt(InterfaceClass, EFieldIteratorFlags::IncludeSuper); FuncIt; ++FuncIt)
 		{
-			UFunction* Function = *FuncIt;
-			if (!Function || ProcessedFunctions.Contains(Function->GetFName()))
+			const UFunction* Function = *FuncIt;
+			if (UEdGraphSchema_K2::CanKismetOverrideFunction(Function))
 			{
-				continue;
-			}
-			
-			// All interface functions with BlueprintImplementableEvent or BlueprintNativeEvent can be implemented
-			if (Function->HasAnyFunctionFlags(FUNC_BlueprintEvent))
-			{
-				bool bIsImplemented = IsFunctionImplemented(Blueprint, Function);
-				
-				// Skip implemented functions if not requested
-				if (bIsImplemented && !bIncludeImplemented)
-				{
-					continue;
-				}
-				
-				ProcessedFunctions.Add(Function->GetFName());
-				
-				TSharedPtr<FJsonObject> FunctionInfo = CreateFunctionInfo(
-					Function,
-					bIsImplemented,
-					TEXT("Interface"),
-					InterfaceClass->GetName()
-				);
-				
-				if (FunctionInfo.IsValid())
-				{
-					FunctionsArray.Add(MakeShareable(new FJsonValueObject(FunctionInfo)));
-				}
+				AddCandidate(Function);
 			}
 		}
 	}
-	
+
+	// The parent class and its supers, as SMyBlueprint's Override menu walks them: every function the K2 schema lets a
+	// Blueprint override, unless the class hides it or the Blueprint type refuses it
+	UClass* ParentClass = Blueprint->ParentClass;
+	for (TFieldIterator<UFunction> FuncIt(ParentClass, EFieldIteratorFlags::IncludeSuper); FuncIt; ++FuncIt)
+	{
+		const UFunction* Function = *FuncIt;
+		if (CanOverrideFunction(Blueprint, Function))
+		{
+			AddCandidate(Function);
+		}
+	}
+
 	// Sort functions by name for consistent output
 	FunctionsArray.Sort([](const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJsonValue>& B)
 	{
 		const TSharedPtr<FJsonObject>* ObjA = nullptr;
 		const TSharedPtr<FJsonObject>* ObjB = nullptr;
-		
+
 		if (A->TryGetObject(ObjA) && B->TryGetObject(ObjB) && ObjA && ObjB)
 		{
 			FString NameA, NameB;
@@ -304,79 +272,72 @@ TSharedPtr<FJsonObject> FN2CMcpListOverridableFunctionsTool::CollectOverridableF
 			(*ObjB)->TryGetStringField(TEXT("name"), NameB);
 			return NameA < NameB;
 		}
-		
+
 		return false;
 	});
-	
+
 	Result->SetArrayField(TEXT("functions"), FunctionsArray);
 	Result->SetNumberField(TEXT("functionCount"), FunctionsArray.Num());
-	
+
 	return Result;
 }
 
-bool FN2CMcpListOverridableFunctionsTool::CanOverrideFunction(const UFunction* Function) const
+const UFunction* FN2CMcpListOverridableFunctionsTool::GetDeclaringFunction(const UFunction* Function)
 {
-	if (!Function)
+	const UFunction* Declaration = Function;
+	while (Declaration && Declaration->GetSuperFunction())
 	{
-		return false;
+		Declaration = Declaration->GetSuperFunction();
 	}
-	
-	// Function must be marked as BlueprintEvent (BlueprintImplementableEvent or BlueprintNativeEvent)
-	if (!Function->HasAnyFunctionFlags(FUNC_BlueprintEvent))
-	{
-		return false;
-	}
-	
-	// Skip functions that are final
-	if (Function->HasAnyFunctionFlags(FUNC_Final))
-	{
-		return false;
-	}
-	
-	// Skip deprecated functions
-	if (Function->HasMetaData(TEXT("DeprecatedFunction")) || Function->HasMetaData(TEXT("Deprecated")))
-	{
-		return false;
-	}
-	
-	// Skip editor-only functions in game blueprints
-	if (Function->HasAnyFunctionFlags(FUNC_EditorOnly))
-	{
-		// Could add logic here to check if the blueprint is editor-only
-		// For now, we'll include them and let the user decide
-	}
-	
-	return true;
+	return Declaration;
 }
 
-bool FN2CMcpListOverridableFunctionsTool::IsFunctionImplemented(const UBlueprint* Blueprint, const UFunction* Function) const
+bool FN2CMcpListOverridableFunctionsTool::CanOverrideFunction(const UBlueprint* Blueprint, const UFunction* Function) const
 {
-	if (!Blueprint || !Function)
+	// The engine's own rule (a BlueprintEvent that is not a delegate, not BlueprintInternalUseOnly, and not deprecated
+	// unless the editor exposes deprecated functions), plus the two checks SMyBlueprint applies to its Override menu
+	return Blueprint && Function
+		&& UEdGraphSchema_K2::CanKismetOverrideFunction(Function)
+		&& !FObjectEditorUtils::IsFunctionHiddenFromClass(Function, Blueprint->ParentClass)
+		&& Blueprint->AllowFunctionOverride(Function);
+}
+
+bool FN2CMcpListOverridableFunctionsTool::IsFunctionImplemented(const UBlueprint* Blueprint, const UFunction* Declaration) const
+{
+	if (!Blueprint || !Declaration)
 	{
 		return false;
 	}
-	
-	// Check if there's an override for this function
-	UK2Node_Event* EventNode = FBlueprintEditorUtils::FindOverrideForFunction(
-		const_cast<UBlueprint*>(Blueprint), 
-		Function->GetOwnerClass(), 
-		Function->GetFName()
-	);
-	
-	if (EventNode)
+
+	// An event node: FindOverrideForFunction matches nodes whose event class is a child of the class passed, so it must
+	// be the declaring class (an event node in a child of a Blueprint parent names the native declaring class)
+	if (FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, Declaration->GetOwnerClass(), Declaration->GetFName()))
 	{
 		return true;
 	}
-	
-	// Also check function graphs
+
+	// A function graph: an override of a function with outputs, or of an inherited interface function
+	const FName Name = Declaration->GetFName();
 	for (const UEdGraph* Graph : Blueprint->FunctionGraphs)
 	{
-		if (Graph && Graph->GetFName() == Function->GetFName())
+		if (Graph && Graph->GetFName() == Name)
 		{
 			return true;
 		}
 	}
-	
+
+	// An interface function graph: the Blueprint's own interfaces keep their function graphs here, not in FunctionGraphs
+	for (const FBPInterfaceDescription& InterfaceDesc : Blueprint->ImplementedInterfaces)
+	{
+		for (const UEdGraph* Graph : InterfaceDesc.Graphs)
+		{
+			if (Graph && Graph->GetFName() == Name)
+			{
+				return true;
+			}
+		}
+	}
+
 	return false;
 }
 
@@ -400,13 +361,12 @@ TSharedPtr<FJsonObject> FN2CMcpListOverridableFunctionsTool::CreateFunctionInfo(
 	FunctionInfo->SetStringField(TEXT("sourceType"), SourceType);
 	FunctionInfo->SetStringField(TEXT("sourceName"), SourceName);
 	
-	// Function type
-	FString FunctionType = TEXT("Event");
-	if (Function->HasAnyFunctionFlags(FUNC_BlueprintCallable))
-	{
-		FunctionType = TEXT("Function");
-	}
-	FunctionInfo->SetStringField(TEXT("functionType"), FunctionType);
+	// How the override is made: an event node when the K2 schema lets the function be placed as an event (no outputs,
+	// not const or static, no ForceAsFunction), else a function graph. Whether Blueprints may call it is a separate
+	// question (card 0289: functionType used to follow BlueprintCallable)
+	FunctionInfo->SetStringField(TEXT("functionType"),
+		UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Function) ? TEXT("Event") : TEXT("Function"));
+	FunctionInfo->SetBoolField(TEXT("isCallable"), Function->HasAnyFunctionFlags(FUNC_BlueprintCallable));
 	
 	// Implementation type
 	FString ImplementationType = TEXT("BlueprintImplementableEvent");

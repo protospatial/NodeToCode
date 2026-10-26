@@ -31,6 +31,7 @@
 #include "Editor.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Utils/N2CPathUtils.h"
+#include "Utils/N2CGraphUtils.h"
 
 #define LOCTEXT_NAMESPACE "SN2CMainWindow"
 
@@ -350,15 +351,62 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 
 	// Start the batch translation. It returns false without calling OnBatchComplete when the module is busy,
 	// fails to initialize or no item resolves, so roll the UI state back here.
-	if (!UN2CBatchTranslationOrchestrator::Get().StartBatchTranslation(SelectedGraphs))
+	UN2CBatchTranslationOrchestrator& Orchestrator = UN2CBatchTranslationOrchestrator::Get();
+	FString StartError;
+	if (!Orchestrator.StartBatchTranslationWithOptions(SelectedGraphs, FN2CBatchTranslationOptions(), StartError))
 	{
-		UE_LOG(LogNodeToCode, Error, TEXT("[SN2CMainWindow] Batch translation did not start (busy, LLM module failed to initialize, or no graph could be resolved)"));
+		UE_LOG(LogNodeToCode, Error, TEXT("[SN2CMainWindow] Batch translation did not start: %s"), *StartError);
 		FN2CEditorIntegration::Get().SetTranslationInProgress(false);
 		HideBatchProgress();
-		FNotificationInfo Info(NSLOCTEXT("NodeToCode", "BatchDidNotStart", "Batch translation did not start. Check the provider settings and the Output Log."));
-		Info.ExpireDuration = 6.0f;
-		FSlateNotificationManager::Get().AddNotification(Info);
+		if (StartError.StartsWith(TEXT("NO_VALID_ITEMS")))
+		{
+			// No selected graph resolved: say which and why (each message names its graph and Blueprint)
+			NotifyUnresolvedBatchItems(Orchestrator.GetBatchItems(), TEXT("Batch translation did not start."));
+		}
+		else
+		{
+			FNotificationInfo Info(NSLOCTEXT("NodeToCode", "BatchDidNotStart", "Batch translation did not start. Check the provider settings and the Output Log."));
+			Info.ExpireDuration = 6.0f;
+			FSlateNotificationManager::Get().AddNotification(Info);
+		}
+		return;
 	}
+
+	// Graphs that did not resolve fail before any request: mark them in the modal and say why
+	const TArray<FN2CBatchTranslationItem>& Items = Orchestrator.GetBatchItems();
+	if (BatchProgressModal.IsValid())
+	{
+		for (const FN2CBatchTranslationItem& Item : Items)
+		{
+			if (Item.Status == EN2CBatchItemStatus::Failed && !Item.CachedGraph.IsValid())
+			{
+				BatchProgressModal->MarkItemComplete(Item.TagInfo.GraphName, false, Item.ErrorMessage);
+			}
+		}
+	}
+	NotifyUnresolvedBatchItems(Items, TEXT("Some graphs were skipped."));
+}
+
+void SN2CMainWindow::NotifyUnresolvedBatchItems(const TArray<FN2CBatchTranslationItem>& Items, const FString& Lead)
+{
+	TArray<FString> Messages;
+	for (const FN2CBatchTranslationItem& Item : Items)
+	{
+		if (Item.Status == EN2CBatchItemStatus::Failed && !Item.CachedGraph.IsValid() && !Item.ErrorMessage.IsEmpty())
+		{
+			Messages.Add(Item.ErrorMessage);
+		}
+	}
+	if (Messages.Num() == 0)
+	{
+		return;
+	}
+	FString Text = Lead + TEXT(" ") + Messages[0];
+	if (Messages.Num() > 1)
+	{
+		Text += FString::Printf(TEXT(" (and %d more: see the Output Log)"), Messages.Num() - 1);
+	}
+	FN2CGraphUtils::NotifyFailure(Text);
 }
 
 void SN2CMainWindow::HandleExportJsonRequested()
@@ -420,24 +468,19 @@ void SN2CMainWindow::TranslateSingleGraph(const FN2CTagInfo& Graph)
 
 void SN2CMainWindow::ExportSingleGraphToJson(const FN2CTagInfo& Graph)
 {
-	// Load the blueprint
-	FSoftObjectPath BlueprintPath(Graph.BlueprintPath);
-	UBlueprint* Blueprint = Cast<UBlueprint>(BlueprintPath.TryLoad());
-	if (!Blueprint)
-	{
-		return;
-	}
-
-	// Find the graph
-	FGuid GraphGuid;
-	if (!FGuid::Parse(Graph.GraphGuid, GraphGuid))
-	{
-		return;
-	}
-
-	UEdGraph* EdGraph = FindGraphByGuid(Blueprint, GraphGuid);
+	// Every graph of the Blueprint (interface implementations and collapsed graphs too); a failure is shown, not dropped
+	UBlueprint* Blueprint = nullptr;
+	FString Error;
+	UEdGraph* EdGraph = FN2CGraphUtils::ResolveTaggedGraph(Graph.BlueprintPath, Graph.GraphGuid, Graph.GraphName, Blueprint, Error);
 	if (!EdGraph)
 	{
+		FN2CGraphUtils::NotifyFailure(Error);
+		return;
+	}
+	FString Reason;
+	if (!FN2CGraphUtils::CanTranslateGraph(EdGraph, &Reason))
+	{
+		FN2CGraphUtils::NotifyFailure(Reason);
 		return;
 	}
 
@@ -461,24 +504,12 @@ void SN2CMainWindow::ExportSingleGraphToJson(const FN2CTagInfo& Graph)
 
 void SN2CMainWindow::NavigateToGraph(const FN2CTagInfo& Graph)
 {
-	// Load the blueprint
-	FSoftObjectPath BlueprintPath(Graph.BlueprintPath);
-	UBlueprint* Blueprint = Cast<UBlueprint>(BlueprintPath.TryLoad());
-	if (!Blueprint)
-	{
-		return;
-	}
-
-	// Find the graph
-	FGuid GraphGuid;
-	if (!FGuid::Parse(Graph.GraphGuid, GraphGuid))
-	{
-		return;
-	}
-
-	UEdGraph* EdGraph = FindGraphByGuid(Blueprint, GraphGuid);
+	UBlueprint* Blueprint = nullptr;
+	FString Error;
+	UEdGraph* EdGraph = FN2CGraphUtils::ResolveTaggedGraph(Graph.BlueprintPath, Graph.GraphGuid, Graph.GraphName, Blueprint, Error);
 	if (!EdGraph)
 	{
+		FN2CGraphUtils::NotifyFailure(Error);
 		return;
 	}
 
@@ -488,52 +519,6 @@ void SN2CMainWindow::NavigateToGraph(const FN2CTagInfo& Graph)
 	// Open the specific graph tab in the Blueprint editor
 	// Use FKismetEditorUtilities to open and focus the graph
 	FKismetEditorUtilities::BringKismetToFocusAttentionOnObject(EdGraph);
-}
-
-UEdGraph* SN2CMainWindow::FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid)
-{
-	if (!Blueprint)
-	{
-		return nullptr;
-	}
-
-	// Search UbergraphPages
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Search FunctionGraphs
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Search MacroGraphs
-	for (UEdGraph* Graph : Blueprint->MacroGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Search DelegateSignatureGraphs
-	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	return nullptr;
 }
 
 // ==================== Batch Translation Callbacks ====================
@@ -613,22 +598,19 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 	PendingSingleTranslateGraph.BlueprintPath = BlueprintPath;
 	bIsSingleTranslationInProgress = true;
 
-	// Load the blueprint and graph
-	FSoftObjectPath BPPath(BlueprintPath);
-	UBlueprint* Blueprint = Cast<UBlueprint>(BPPath.TryLoad());
-	if (!Blueprint)
+	// Load the blueprint and graph: every graph of the Blueprint (interface implementations and collapsed graphs too).
+	// A graph that is missing or that capture cannot read is shown to the user, not dropped.
+	UBlueprint* Blueprint = nullptr;
+	FString ResolveError;
+	UEdGraph* EdGraph = FN2CGraphUtils::ResolveTaggedGraph(BlueprintPath, GraphGuid.ToString(EGuidFormats::DigitsWithHyphens),
+		GraphName, Blueprint, ResolveError);
+	if (EdGraph && !FN2CGraphUtils::CanTranslateGraph(EdGraph, &ResolveError))
 	{
-		UE_LOG(LogNodeToCode, Error, TEXT("[SN2CMainWindow] Failed to load Blueprint: %s"), *BlueprintPath);
-		FN2CEditorIntegration::Get().SetTranslationInProgress(false);
-		bIsSingleTranslationInProgress = false;
-		HideBatchProgress();
-		return;
+		EdGraph = nullptr;
 	}
-
-	UEdGraph* EdGraph = FindGraphByGuid(Blueprint, GraphGuid);
 	if (!EdGraph)
 	{
-		UE_LOG(LogNodeToCode, Error, TEXT("[SN2CMainWindow] Failed to find graph with GUID: %s"), *GraphGuid.ToString());
+		FN2CGraphUtils::NotifyFailure(ResolveError);
 		FN2CEditorIntegration::Get().SetTranslationInProgress(false);
 		bIsSingleTranslationInProgress = false;
 		HideBatchProgress();

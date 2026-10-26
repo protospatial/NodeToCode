@@ -33,17 +33,22 @@ private:
 	TSharedPtr<FJsonObject> CollectOverridableFunctions(const class UBlueprint* Blueprint, bool bIncludeImplemented) const;
 
 	/**
-	 * Checks if a function can be overridden in Blueprints.
+	 * Checks if a function can be overridden in Blueprints, as the editor's Override menu decides it.
+	 * @param Blueprint The Blueprint that would override it
 	 * @param Function The function to check
 	 * @return True if the function can be overridden
 	 */
-	bool CanOverrideFunction(const class UFunction* Function) const;
+	bool CanOverrideFunction(const class UBlueprint* Blueprint, const class UFunction* Function) const;
+
+	/** The function that first declared Function: its super function chain's end (a Blueprint parent's event stub leads
+	 * to the native event, an interface implementation to the interface function) */
+	static const class UFunction* GetDeclaringFunction(const class UFunction* Function);
 
 	/**
 	 * Checks if a function is already implemented in the Blueprint.
 	 * @param Blueprint The Blueprint to check
-	 * @param Function The function to check for
-	 * @return True if the function is already implemented
+	 * @param Function The declaring function (GetDeclaringFunction) to check for
+	 * @return True if an event node, a function graph or an interface graph implements it
 	 */
 	bool IsFunctionImplemented(const class UBlueprint* Blueprint, const class UFunction* Function) const;
 

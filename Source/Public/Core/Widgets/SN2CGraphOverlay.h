@@ -8,6 +8,7 @@
 #include "Models/N2CTaggedBlueprintGraph.h"
 
 class FBlueprintEditor;
+class UEdGraph;
 class SN2CCircularProgressBar;
 
 /**
@@ -24,6 +25,7 @@ public:
 		: _GraphGuid()
 		, _BlueprintPath()
 		, _GraphName()
+		, _Graph(nullptr)
 	{}
 		/** GUID of the graph this overlay is for */
 		SLATE_ARGUMENT(FGuid, GraphGuid)
@@ -33,6 +35,11 @@ public:
 		SLATE_ARGUMENT(FString, GraphName)
 		/** Weak reference to the Blueprint editor */
 		SLATE_ARGUMENT(TWeakPtr<FBlueprintEditor>, BlueprintEditor)
+		/**
+		 * The graph itself, to decide whether translation can read it (FN2CGraphUtils::CanTranslateGraph); when null
+		 * the graph is resolved from BlueprintPath and GraphGuid
+		 */
+		SLATE_ARGUMENT(UEdGraph*, Graph)
 	SLATE_END_ARGS()
 
 	/** Constructs this widget */
@@ -59,6 +66,14 @@ private:
 	TWeakPtr<FBlueprintEditor> BlueprintEditor;
 	bool bIsTranslating = false;
 	int32 CachedTagCount = 0;
+
+	/**
+	 * Whether capture can read this graph (card 0251). When false (an AnimBP state machine or another non-Blueprint
+	 * graph, or a graph its Blueprint cannot find again by GUID) Copy JSON, Translate and adding a tag are disabled,
+	 * the context ring shows no estimate, and every tooltip gives UnsupportedReason.
+	 */
+	bool bCanTranslate = true;
+	FText UnsupportedReason;
 
 	// Combo box options (must persist for SComboBox)
 	TArray<TSharedPtr<FString>> TagOptions;
@@ -103,6 +118,10 @@ private:
 	FText GetCopyJsonTooltip() const;
 	FText GetTranslateTooltip() const;
 	FText GetTagButtonTooltip() const;
+	/** Translate, Copy JSON and adding a tag: not while translating, not on a graph capture cannot read */
+	bool IsTranslateEnabled() const { return bCanTranslate && !bIsTranslating; }
+	/** The tag button stays usable on an unsupported graph that has tags, so they can be removed */
+	bool IsTagButtonEnabled() const { return bCanTranslate || CachedTagCount > 0; }
 	FSlateColor GetTagButtonColor() const;
 
 	// Context usage helpers
