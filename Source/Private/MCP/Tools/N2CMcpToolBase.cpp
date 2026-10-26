@@ -110,7 +110,8 @@ FMcpToolCallResult FN2CMcpToolBase::ExecuteOnGameThread(TFunction<FMcpToolCallRe
 
 TSharedPtr<FJsonObject> FN2CMcpToolBase::BuildInputSchema(
 	const TMap<FString, FString>& Properties,
-	const TArray<FString>& Required)
+	const TArray<FString>& Required,
+	const TMap<FString, FString>& Descriptions)
 {
 	TSharedPtr<FJsonObject> Schema = MakeShareable(new FJsonObject);
 	Schema->SetStringField(TEXT("type"), TEXT("object"));
@@ -121,6 +122,13 @@ TSharedPtr<FJsonObject> FN2CMcpToolBase::BuildInputSchema(
 	{
 		TSharedPtr<FJsonObject> PropSchema = MakeShareable(new FJsonObject);
 		PropSchema->SetStringField(TEXT("type"), Prop.Value);
+		if (const FString* Description = Descriptions.Find(Prop.Key))
+		{
+			if (!Description->IsEmpty())
+			{
+				PropSchema->SetStringField(TEXT("description"), *Description);
+			}
+		}
 		PropertiesObj->SetObjectField(Prop.Key, PropSchema);
 	}
 	Schema->SetObjectField(TEXT("properties"), PropertiesObj);
@@ -134,6 +142,12 @@ TSharedPtr<FJsonObject> FN2CMcpToolBase::BuildInputSchema(
 			RequiredArray.Add(MakeShareable(new FJsonValueString(ReqProp)));
 		}
 		Schema->SetArrayField(TEXT("required"), RequiredArray);
+	}
+
+	// A tool without arguments says so: a client then sends none
+	if (Properties.Num() == 0)
+	{
+		Schema->SetBoolField(TEXT("additionalProperties"), false);
 	}
 	
 	return Schema;
@@ -151,15 +165,19 @@ TSharedPtr<FJsonObject> FN2CMcpToolBase::BuildEmptyObjectSchema()
 	// Empty required array
 	TArray<TSharedPtr<FJsonValue>> RequiredArray;
 	Schema->SetArrayField(TEXT("required"), RequiredArray);
+
+	// No arguments at all
+	Schema->SetBoolField(TEXT("additionalProperties"), false);
 	
 	return Schema;
 }
 
-void FN2CMcpToolBase::AddReadOnlyAnnotation(FMcpToolDefinition& Definition)
+void FN2CMcpToolBase::SetAnnotations(FMcpToolDefinition& Definition, bool bReadOnly, bool bDestructive, bool bIdempotent, bool bOpenWorld)
 {
-	if (!Definition.Annotations.IsValid())
-	{
-		Definition.Annotations = MakeShareable(new FJsonObject);
-	}
-	Definition.Annotations->SetBoolField(TEXT("readOnlyHint"), true);
+	Definition.Annotations = FMcpToolAnnotations(bReadOnly, bDestructive, bIdempotent, bOpenWorld);
+}
+
+void FN2CMcpToolBase::SetAnnotations(FMcpToolDefinition& Definition, const FMcpToolAnnotations& Annotations)
+{
+	Definition.Annotations = Annotations;
 }

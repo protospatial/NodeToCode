@@ -25,8 +25,8 @@ FMcpToolDefinition FN2CMcpGetFocusedBlueprintTool::GetDefinition() const
 	// This tool takes no input parameters
 	Definition.InputSchema = BuildEmptyObjectSchema();
 	
-	// Add read-only annotation
-	AddReadOnlyAnnotation(Definition);
+	// Read-only: reads editor or project state and changes nothing
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 	
 	// Results carry Blueprint text (node comments, titles and string literals): marked as untrusted data (card 0124)
 	Definition.bReturnsUntrustedContent = true;

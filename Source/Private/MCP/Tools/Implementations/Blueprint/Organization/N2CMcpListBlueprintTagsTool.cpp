@@ -29,8 +29,8 @@ FMcpToolDefinition FN2CMcpListBlueprintTagsTool::GetDefinition() const
 	
 	Definition.InputSchema = BuildInputSchema(Properties, Required);
 	
-	// Add read-only annotation
-	AddReadOnlyAnnotation(Definition);
+	// Read-only: reads editor or project state and changes nothing
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 	
 	// Results carry Blueprint text (tag names and categories users typed): marked as untrusted data (card 0124)
 	Definition.bReturnsUntrustedContent = true;

@@ -67,7 +67,7 @@ FMcpToolDefinition FN2CMcpGetBlueprintN2CJsonTool::GetDefinition() const
 	}
 	Definition.InputSchema = Schema;
 
-	AddReadOnlyAnnotation(Definition);
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
 	// Results carry Blueprint text (node comments, titles, names and string literals): marked as untrusted data (card 0124)
 	Definition.bReturnsUntrustedContent = true;
