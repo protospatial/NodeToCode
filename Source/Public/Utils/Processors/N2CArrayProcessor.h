@@ -19,7 +19,7 @@ class NODETOCODE_API FN2CArrayProcessor : public FN2CBaseNodeProcessor
 {
 public:
     /** Constructor */
-    FN2CArrayProcessor() {}
+    FN2CArrayProcessor() { N2C_LOG_FUNCTION_ENTRY(); }
     
     /** Destructor */
     virtual ~FN2CArrayProcessor() {

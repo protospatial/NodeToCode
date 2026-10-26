@@ -61,6 +61,7 @@ public:
     /** Map N2C severity to UE verbosity */
     static ELogVerbosity::Type SeverityToVerbosity(EN2CLogSeverity Severity)
     {
+        N2C_LOG_FUNCTION_ENTRY();
         switch (Severity)
         {
             case EN2CLogSeverity::Debug:

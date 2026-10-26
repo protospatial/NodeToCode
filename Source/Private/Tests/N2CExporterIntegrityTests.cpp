@@ -106,6 +106,7 @@ UEdGraphPin* AddTestPin(
     const FName Name,
     const bool bHidden = false)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!IsValid(Node))
     {
         return nullptr;

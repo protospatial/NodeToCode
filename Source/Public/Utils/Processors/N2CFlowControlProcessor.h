@@ -20,7 +20,7 @@ class NODETOCODE_API FN2CFlowControlProcessor : public FN2CBaseNodeProcessor
 {
 public:
     /** Constructor */
-    FN2CFlowControlProcessor() {}
+    FN2CFlowControlProcessor() { N2C_LOG_FUNCTION_ENTRY(); }
     
     /** Destructor */
     virtual ~FN2CFlowControlProcessor() {

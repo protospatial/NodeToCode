@@ -20,7 +20,7 @@ class NODETOCODE_API FN2CDelegateProcessor : public FN2CBaseNodeProcessor
 {
 public:
     /** Constructor */
-    FN2CDelegateProcessor() {}
+    FN2CDelegateProcessor() { N2C_LOG_FUNCTION_ENTRY(); }
     
     /** Destructor */
     virtual ~FN2CDelegateProcessor() {

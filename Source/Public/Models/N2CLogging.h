@@ -73,5 +73,6 @@ struct FN2CError
         , Category(EN2CErrorCategory::Internal)
         , Timestamp(FDateTime::Now())
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 };

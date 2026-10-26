@@ -18,7 +18,7 @@ class NODETOCODE_API FN2CEventProcessor : public FN2CBaseNodeProcessor
 {
 public:
     /** Constructor */
-    FN2CEventProcessor() {}
+    FN2CEventProcessor() { N2C_LOG_FUNCTION_ENTRY(); }
     
     /** Destructor */
     virtual ~FN2CEventProcessor() {

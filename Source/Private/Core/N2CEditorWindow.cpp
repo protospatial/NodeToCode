@@ -56,6 +56,7 @@ void RefreshN2CRawResponseViewer(
     const TSharedRef<FN2CRawResponseViewerState>& State,
     int32 PreferredRequestId = INDEX_NONE)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
     if (!LLMModule)
     {

@@ -72,7 +72,9 @@ private:
         FGraphProcessInfo(UEdGraph* InGraph, int32 InParentDepth)
             : Graph(InGraph)
             , ParentDepth(InParentDepth)
-        {}
+        {
+            N2C_LOG_FUNCTION_ENTRY();
+        }
     };
 
     /** Queue of graphs to process with their parent depths */

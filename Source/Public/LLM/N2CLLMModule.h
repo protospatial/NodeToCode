@@ -36,7 +36,7 @@ public:
 
     /** Blueprint accessible getter for the singleton instance */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module", meta = (DisplayName = "Get N2C LLM Module"))
-    static UN2CLLMModule* GetBP() { return Get(); }
+    static UN2CLLMModule* GetBP() { N2C_LOG_FUNCTION_ENTRY(); return Get(); }
 
     /** Initialize module */
     bool Initialize();
@@ -49,7 +49,7 @@ public:
 
     /** Get the current configuration */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
-    const FN2CLLMConfig& GetConfig() const { return Config; }
+    const FN2CLLMConfig& GetConfig() const { N2C_LOG_FUNCTION_ENTRY(); return Config; }
 
     /**
      * Apply a transient provider/model choice for the current translation operation.
@@ -61,6 +61,7 @@ public:
         const FString& Model,
         const FString& CustomProviderName = FString())
     {
+        N2C_LOG_FUNCTION_ENTRY();
         Config.Provider = Provider;
         Config.ApiEndpoint.Empty();
         Config.ApiKey = ApiKey;
@@ -71,11 +72,11 @@ public:
 
     /** Check if module is initialized */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
-    bool IsInitialized() const { return bIsInitialized; }
+    bool IsInitialized() const { N2C_LOG_FUNCTION_ENTRY(); return bIsInitialized; }
 
     /** Get the active LLM service */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
-    TScriptInterface<IN2CLLMService> GetActiveService() const { return ActiveService; }
+    TScriptInterface<IN2CLLMService> GetActiveService() const { N2C_LOG_FUNCTION_ENTRY(); return ActiveService; }
 
     /** Delegate for notifying when translation response is received */
     UPROPERTY(BlueprintAssignable, Category = "Node to Code | LLM Module")
@@ -87,19 +88,23 @@ public:
 
     /** Get the current system status */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
-    EN2CSystemStatus GetSystemStatus() const { return CurrentStatus; }
+    EN2CSystemStatus GetSystemStatus() const { N2C_LOG_FUNCTION_ENTRY(); return CurrentStatus; }
 
     /** Number of requests that have been sent but have not fully finished processing. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
-    int32 GetInFlightRequestCount() const { return InFlightRequestCount; }
+    int32 GetInFlightRequestCount() const { N2C_LOG_FUNCTION_ENTRY(); return InFlightRequestCount; }
 
     /** True while any request or its completion work is still in progress. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
-    bool IsWorkInProgress() const { return InFlightRequestCount > 0 || CurrentStatus == EN2CSystemStatus::Initializing; }
+    bool IsWorkInProgress() const
+    {
+        N2C_LOG_FUNCTION_ENTRY();
+        return InFlightRequestCount > 0 || CurrentStatus == EN2CSystemStatus::Initializing;
+    }
 
     /** Number of raw provider responses retained for the current translation session. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
-    int32 GetRawResponseCount() const { return SessionRawResponses.Num(); }
+    int32 GetRawResponseCount() const { N2C_LOG_FUNCTION_ENTRY(); return SessionRawResponses.Num(); }
 
     /** Raw provider requests/responses retained for the current translation session. */
     const TArray<FN2CRawResponseRecord>& GetRawResponseHistory() const {
@@ -124,7 +129,7 @@ public:
 
     /** Get the path to the latest translation */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
-    FString GetLatestTranslationPath() const { return LatestTranslationPath; }
+    FString GetLatestTranslationPath() const { N2C_LOG_FUNCTION_ENTRY(); return LatestTranslationPath; }
 
     /** Base directory containing all saved translation batches. */
     FString GetTranslationBaseDirectory() const {

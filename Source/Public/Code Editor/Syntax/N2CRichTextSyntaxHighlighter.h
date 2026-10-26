@@ -3,6 +3,7 @@
 #pragma once
 
 #include "N2CSyntaxDefinition.h"
+#include "Models/N2CLogging.h"
 #include "Framework/Text/SyntaxHighlighterTextLayoutMarshaller.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 
@@ -29,6 +30,7 @@ public:
             , CurlyBracesTextStyle(FN2CCodeEditorStyle::GetLanguageStyle(InLanguageId, InThemeName, TEXT("CurlyBraces")))
             , SquareBracketsTextStyle(FN2CCodeEditorStyle::GetLanguageStyle(InLanguageId, InThemeName, TEXT("SquareBrackets")))
         {
+            N2C_LOG_FUNCTION_ENTRY();
         }
 
         FTextBlockStyle NormalTextStyle;
@@ -56,6 +58,7 @@ private:
     /** Check if a string represents a numeric value */
     bool IsNumeric(const FString& Text) const
     {
+        N2C_LOG_FUNCTION_ENTRY();
         // Handle hexadecimal numbers
         if (Text.StartsWith(TEXT("0x")) || Text.StartsWith(TEXT("0X")))
         {

@@ -34,6 +34,7 @@ TSharedRef<SWidget> MakeLabeledRow(
     const TSharedRef<SWidget>& ValueWidget,
     const FText& ToolTip = FText::GetEmpty())
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .FillWidth(0.35f)

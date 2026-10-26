@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Models/N2CLogging.h"
 #include "N2CLLMPricing.generated.h"
 
 /** Pricing information for OpenAI models */
@@ -20,9 +21,9 @@ struct FN2COpenAIPricing
     float OutputCost = 0.0f;
     
 
-    FN2COpenAIPricing() {}
+    FN2COpenAIPricing() { N2C_LOG_FUNCTION_ENTRY(); }
     FN2COpenAIPricing(float InInput, float InOutput) 
-        : InputCost(InInput), OutputCost(InOutput) {}
+        : InputCost(InInput), OutputCost(InOutput) { N2C_LOG_FUNCTION_ENTRY(); }
 };
 
 /** Pricing information for Anthropic models */
@@ -39,9 +40,9 @@ struct FN2CAnthropicPricing
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Pricing")
     float OutputCost = 0.0f;
 
-    FN2CAnthropicPricing() {}
+    FN2CAnthropicPricing() { N2C_LOG_FUNCTION_ENTRY(); }
     FN2CAnthropicPricing(float InInput, float InOutput) 
-        : InputCost(InInput), OutputCost(InOutput) {}
+        : InputCost(InInput), OutputCost(InOutput) { N2C_LOG_FUNCTION_ENTRY(); }
 };
 
 /** Pricing information for OpenAI models */
@@ -59,9 +60,9 @@ struct FN2CGeminiPricing
     float OutputCost = 0.0f;
     
 
-    FN2CGeminiPricing() {}
+    FN2CGeminiPricing() { N2C_LOG_FUNCTION_ENTRY(); }
     FN2CGeminiPricing(float InInput, float InOutput) 
-        : InputCost(InInput), OutputCost(InOutput) {}
+        : InputCost(InInput), OutputCost(InOutput) { N2C_LOG_FUNCTION_ENTRY(); }
 };
 
 /** Pricing information for DeepSeek models */
@@ -78,7 +79,7 @@ struct FN2CDeepSeekPricing
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Pricing")
     float OutputCost = 0.0f;
 
-    FN2CDeepSeekPricing() {}
+    FN2CDeepSeekPricing() { N2C_LOG_FUNCTION_ENTRY(); }
     FN2CDeepSeekPricing(float InInput, float InOutput) 
-        : InputCost(InInput), OutputCost(InOutput) {}
+        : InputCost(InInput), OutputCost(InOutput) { N2C_LOG_FUNCTION_ENTRY(); }
 };

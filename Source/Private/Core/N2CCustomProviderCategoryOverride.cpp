@@ -2,6 +2,7 @@
 
 #include "Core/N2CSettings.h"
 #include "UObject/UnrealType.h"
+#include "Utils/N2CLogger.h"
 
 namespace
 {
@@ -9,6 +10,7 @@ struct FN2CCustomProviderCategoryOverride
 {
     FN2CCustomProviderCategoryOverride()
     {
+        N2C_LOG_FUNCTION_ENTRY();
         if (FProperty* AnchorProperty = FindFProperty<FProperty>(
                 UN2CSettings::StaticClass(),
                 GET_MEMBER_NAME_CHECKED(UN2CSettings, bCustomProvidersUIAnchor)))

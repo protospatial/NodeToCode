@@ -6,6 +6,7 @@
 // Override engine event BeginPlay, call Super::BeginPlay()
 void AN2C_EventStyleGuideActor::BeginPlay()
 {
+    UE_LOG(LogTemp, VeryVerbose, TEXT("%s"), ANSI_TO_TCHAR(__FUNCTION__));
     Super::BeginPlay();
 
     // Example logic: Trigger event dispatcher once
@@ -16,6 +17,7 @@ void AN2C_EventStyleGuideActor::BeginPlay()
 // Override engine event Tick, call Super::Tick(DeltaTime)
 void AN2C_EventStyleGuideActor::Tick(float DeltaTime)
 {
+    UE_LOG(LogTemp, VeryVerbose, TEXT("%s"), ANSI_TO_TCHAR(__FUNCTION__));
     Super::Tick(DeltaTime);
 
     // Example logic: Increment counter
@@ -25,6 +27,7 @@ void AN2C_EventStyleGuideActor::Tick(float DeltaTime)
 // Custom event implementation, maintain one-to-one correspondence with Blueprint "Custom Event"
 void AN2C_EventStyleGuideActor::MyCustomEvent()
 {
+    UE_LOG(LogTemp, VeryVerbose, TEXT("%s"), ANSI_TO_TCHAR(__FUNCTION__));
     // Example logic: Broadcast event
     OnSomethingHappened.Broadcast(InternalCounter);
 }

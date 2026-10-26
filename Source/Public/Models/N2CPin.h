@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Utils/N2CLogger.h"
 #include "N2CPin.generated.h"
@@ -128,5 +129,6 @@ struct FN2CPinDefinition
         , SubType(TEXT(""))
         , DefaultValue(TEXT(""))
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 };

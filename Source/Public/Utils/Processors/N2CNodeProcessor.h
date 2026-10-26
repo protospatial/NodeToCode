@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Models/N2CNode.h"
+#include "Models/N2CLogging.h"
 #include "K2Node.h"
 
 /**
@@ -17,7 +18,7 @@ class NODETOCODE_API IN2CNodeProcessor
 {
 public:
     /** Virtual destructor */
-    virtual ~IN2CNodeProcessor() {}
+    virtual ~IN2CNodeProcessor() { N2C_LOG_FUNCTION_ENTRY(); }
     
     /**
      * Process a node and extract its properties

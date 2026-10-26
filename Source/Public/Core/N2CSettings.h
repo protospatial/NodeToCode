@@ -64,7 +64,7 @@ struct FN2CCodeEditorThemes
 
     FN2CCodeEditorThemes()
     {
-
+        N2C_LOG_FUNCTION_ENTRY();
         FN2CCodeEditorColors Spacedust;
         Spacedust.Background    = FColor(0xff0b1a20); // Estimated dark teal/blue background (#0B1A20)
         Spacedust.NormalText    = FColor(0xfff0f1ce); // Light but not pure white (#F0F1CE)
@@ -560,6 +560,7 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services | Pricing")
     float GetCurrentInputCost() const
     {
+        N2C_LOG_FUNCTION_ENTRY();
         switch (Provider)
         {
             case EN2CLLMProvider::OpenAI:
@@ -592,6 +593,7 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services | Pricing")
     float GetCurrentOutputCost() const
     {
+        N2C_LOG_FUNCTION_ENTRY();
         switch (Provider)
         {
             case EN2CLLMProvider::OpenAI:
@@ -667,6 +669,7 @@ public:
         meta = (DisplayName = "Get Node to Code Settings"))
     static UN2CSettings* GetN2CSettings() 
     {
+        N2C_LOG_FUNCTION_ENTRY();
         return GetMutableDefault<UN2CSettings>();
     }
 

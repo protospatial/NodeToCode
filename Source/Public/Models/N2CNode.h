@@ -258,6 +258,7 @@ struct FN2CNodeDefinition
         , bPure(false)
         , bLatent(false)
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 
     /** Validates the node definition and its enums */

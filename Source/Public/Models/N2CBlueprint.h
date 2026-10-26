@@ -25,7 +25,7 @@ struct FN2CVersion
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Value;
 
-    FN2CVersion() : Value(TEXT("1.0.0")) {}
+    FN2CVersion() : Value(TEXT("1.0.0")) { N2C_LOG_FUNCTION_ENTRY(); }
 };
 
 /**
@@ -69,7 +69,7 @@ struct FN2CMetadata
     /** The Blueprint class this graph belongs to */                                                                                                                                                                                 UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")                                                                                                                                                             
     FString BlueprintClass; 
 
-    FN2CMetadata() : Name(TEXT("")), BlueprintType(EN2CBlueprintType::Normal), BlueprintClass(TEXT("")) {}
+    FN2CMetadata() : Name(TEXT("")), BlueprintType(EN2CBlueprintType::Normal), BlueprintClass(TEXT("")) { N2C_LOG_FUNCTION_ENTRY(); }
 };
 
 /**
@@ -91,6 +91,7 @@ struct FN2CFlows
 
     FN2CFlows()
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 };
 
@@ -353,6 +354,7 @@ struct FN2CStructMember
         , DefaultValue(TEXT(""))
         , Comment(TEXT(""))
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 };
 
@@ -386,6 +388,7 @@ struct FN2CStruct
         : Name(TEXT(""))
         , Comment(TEXT(""))
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 
     /** Validates the struct definition */
@@ -462,6 +465,7 @@ struct FN2CVariable
         , DefaultValue(TEXT(""))
         , Comment(TEXT(""))
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 };
 
@@ -495,6 +499,7 @@ struct FN2CComponentOverride
         , ComponentClassName(TEXT(""))
         , AttachParentName(TEXT(""))
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 };
 
@@ -551,6 +556,7 @@ struct FN2CEnumValue
         : Name(TEXT(""))
         , Comment(TEXT(""))
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 };
 
@@ -587,6 +593,7 @@ struct FN2CEnum
         : Name(TEXT(""))
         , Comment(TEXT(""))
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 
     /** Validates the enum definition */
@@ -693,6 +700,7 @@ struct FN2CGraph
     FN2CGraph()
         : GraphType(EN2CGraphType::EventGraph)
     {
+        N2C_LOG_FUNCTION_ENTRY();
     }
 
     /** Validates the graph structure */
@@ -750,6 +758,7 @@ struct FN2CBlueprint
 
     FN2CBlueprint()
     {
+        N2C_LOG_FUNCTION_ENTRY();
         // Version is automatically initialized to "1.0.0" by FN2CVersion constructor
     }
 
