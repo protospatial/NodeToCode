@@ -174,6 +174,12 @@ public:
         const FString& BlueprintAssetPath, const TArray<FString>& FunctionGraphNames,
         bool bExternalReferencesReviewed);
 
+    /** Guard one reviewed Blueprint event path so local-only controller work skips remote server copies. */
+    UFUNCTION(Category = "Node to Code", meta = (AICallable))
+    static FN2CBlueprintMutationResult GuardBlueprintEventWithLocalController(
+        const FString& BlueprintAssetPath, const FString& GraphName,
+        const FString& EventFunctionName, bool bExternalReferencesReviewed);
+
     static FN2CBlueprintMemberRemovalResult RemoveUnusedBlueprintMemberVariableFromBlueprint(
         UBlueprint* Blueprint, const FName VariableName,
         bool bExternalReferencesReviewed, bool bDefaultDataConfirmedEmpty);

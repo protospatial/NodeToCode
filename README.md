@@ -70,6 +70,8 @@ To trace native plugin function entry names in the Unreal Output Log, run `Log L
 
 `NodeToCode.N2CBlueprintToolset.MigrateBlueprintBooleanMemberToNativeParent` rebinds a reviewed local Boolean's graph nodes to an inherited native Boolean property, preserves its class-default value and graph links, removes the duplicate local member when present, then compiles and saves the Blueprint.
 
+`NodeToCode.N2CBlueprintToolset.GuardBlueprintEventWithLocalController` places a reviewed Pawn/Controller Blueprint event's existing execution path behind the matching local-control predicate (`IsLocallyControlled` or `IsLocalController`). It compiles and saves the asset so server-side copies skip local-only input setup.
+
 ## 👥 Value for Your Entire Team
 
 - **Blueprint Creators:** Communicate systems clearly and gradually learn C++ through your own work

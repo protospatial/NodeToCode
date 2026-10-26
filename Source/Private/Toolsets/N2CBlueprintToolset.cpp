@@ -15,8 +15,13 @@
 #include "Engine/MemberReference.h"
 #include "Engine/Level.h"
 #include "Engine/LevelScriptBlueprint.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/Pawn.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_DynamicCast.h"
+#include "K2Node_Event.h"
+#include "K2Node_IfThenElse.h"
+#include "K2Node_Self.h"
 #include "K2Node_Variable.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/CompilerResultsLog.h"
@@ -1628,6 +1633,274 @@ FN2CBlueprintMutationResult UN2CBlueprintToolset::RemoveBlueprintFunctionGraphs(
     {
         return Fail(SaveError);
     }
+    Result.bSuccess = true;
+    Result.bSaved = true;
+    return Result;
+}
+
+FN2CBlueprintMutationResult UN2CBlueprintToolset::GuardBlueprintEventWithLocalController(
+    const FString& BlueprintAssetPath, const FString& GraphName,
+    const FString& EventFunctionName, const bool bExternalReferencesReviewed)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    FN2CBlueprintMutationResult Result;
+    Result.AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
+    auto Fail = [&Result](const FString& Message)
+    {
+        Result.Error = Message;
+        return Result;
+    };
+
+    if (!IsInGameThread())
+    {
+        return Fail(TEXT("Blueprint local-controller guards must be created on the Unreal game thread."));
+    }
+    if (!bExternalReferencesReviewed)
+    {
+        return Fail(TEXT("Review the event's controller and input callers before adding a local-controller guard."));
+    }
+
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Result.AssetObjectPath);
+    if (!IsValid(Blueprint) || !IsValid(Blueprint->GeneratedClass))
+    {
+        return Fail(TEXT("The caller Blueprint must load and have a generated class."));
+    }
+
+    const FName RequestedGraphName(*GraphName.TrimStartAndEnd());
+    const FName RequestedEventName(*EventFunctionName.TrimStartAndEnd());
+    UEdGraph* TargetGraph = nullptr;
+    TArray<UEdGraph*> Graphs;
+    Blueprint->GetAllGraphs(Graphs);
+    for (UEdGraph* Graph : Graphs)
+    {
+        if (IsValid(Graph) && Graph->GetFName() == RequestedGraphName)
+        {
+            TargetGraph = Graph;
+            break;
+        }
+    }
+    if (!IsValid(TargetGraph) || RequestedEventName.IsNone())
+    {
+        return Fail(TEXT("The named Blueprint graph or event function was not found."));
+    }
+
+    UK2Node_Event* EventNode = nullptr;
+    for (UEdGraphNode* Node : TargetGraph->Nodes)
+    {
+        UK2Node_Event* Candidate = Cast<UK2Node_Event>(Node);
+        if (IsValid(Candidate) &&
+            Candidate->EventReference.GetMemberName() == RequestedEventName)
+        {
+            if (EventNode)
+            {
+                return Fail(FString::Printf(
+                    TEXT("Event '%s' occurs more than once in graph '%s'."),
+                    *RequestedEventName.ToString(), *TargetGraph->GetName()));
+            }
+            EventNode = Candidate;
+        }
+    }
+    if (!IsValid(EventNode))
+    {
+        return Fail(FString::Printf(
+            TEXT("Event '%s' was not found in graph '%s'."),
+            *RequestedEventName.ToString(), *TargetGraph->GetName()));
+    }
+
+    const bool bPawnBlueprint =
+        Blueprint->GeneratedClass->IsChildOf(APawn::StaticClass());
+    UClass* PredicateClass = bPawnBlueprint
+        ? APawn::StaticClass()
+        : (Blueprint->GeneratedClass->IsChildOf(AController::StaticClass())
+               ? AController::StaticClass()
+               : nullptr);
+    const FName PredicateName = bPawnBlueprint
+        ? FName(TEXT("IsLocallyControlled"))
+        : FName(TEXT("IsLocalController"));
+    UFunction* PredicateFunction = IsValid(PredicateClass)
+        ? PredicateClass->FindFunctionByName(PredicateName)
+        : nullptr;
+    if (!IsValid(PredicateFunction) ||
+        !PredicateFunction->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+    {
+        return Fail(TEXT("The Blueprint must derive from APawn or AController with a Blueprint-callable local-control predicate."));
+    }
+
+    UEdGraphPin* EventExecPin =
+        EventNode->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output);
+    if (!EventExecPin)
+    {
+        return Fail(FString::Printf(
+            TEXT("Event '%s' has no execution output."),
+            *RequestedEventName.ToString()));
+    }
+    if (EventExecPin->LinkedTo.Num() == 1)
+    {
+        UK2Node_IfThenElse* ExistingBranch = Cast<UK2Node_IfThenElse>(
+            EventExecPin->LinkedTo[0]->GetOwningNode());
+        UEdGraphPin* ExistingCondition = IsValid(ExistingBranch)
+            ? ExistingBranch->FindPin(UEdGraphSchema_K2::PN_Condition, EGPD_Input)
+            : nullptr;
+        UK2Node_CallFunction* ExistingGuard =
+            ExistingCondition && ExistingCondition->LinkedTo.Num() == 1
+                ? Cast<UK2Node_CallFunction>(
+                      ExistingCondition->LinkedTo[0]->GetOwningNode())
+                : nullptr;
+        if (IsValid(ExistingGuard) &&
+            ExistingGuard->GetTargetFunction() == PredicateFunction)
+        {
+            Result.bSuccess = true;
+            Result.bAlreadyImplemented = true;
+            return Result;
+        }
+    }
+
+    TArray<UEdGraphPin*> OriginalTargets = EventExecPin->LinkedTo;
+    if (OriginalTargets.IsEmpty())
+    {
+        return Fail(FString::Printf(
+            TEXT("Event '%s' has no execution path to guard."),
+            *RequestedEventName.ToString()));
+    }
+    for (UEdGraphPin* Target : OriginalTargets)
+    {
+        if (!Target || Target->Direction != EGPD_Input ||
+            Target->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+        {
+            return Fail(TEXT("All current event execution links must target exec input pins."));
+        }
+    }
+
+    const UEdGraphSchema* Schema = TargetGraph->GetSchema();
+    if (!Schema)
+    {
+        return Fail(TEXT("The target graph has no K2 schema."));
+    }
+
+    UK2Node_Self* SelfNode = NewObject<UK2Node_Self>(TargetGraph);
+    UK2Node_CallFunction* PredicateNode =
+        NewObject<UK2Node_CallFunction>(TargetGraph);
+    UK2Node_IfThenElse* BranchNode =
+        NewObject<UK2Node_IfThenElse>(TargetGraph);
+    PredicateNode->SetFromFunction(PredicateFunction);
+    PredicateNode->AllocateDefaultPins();
+    BranchNode->AllocateDefaultPins();
+    SelfNode->AllocateDefaultPins();
+
+    UEdGraphPin* SelfOutput =
+        SelfNode->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Output);
+    UEdGraphPin* PredicateSelf =
+        PredicateNode->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input);
+    UEdGraphPin* PredicateResult =
+        PredicateNode->FindPin(FName(TEXT("ReturnValue")), EGPD_Output);
+    UEdGraphPin* BranchExec =
+        BranchNode->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input);
+    UEdGraphPin* BranchCondition =
+        BranchNode->FindPin(UEdGraphSchema_K2::PN_Condition, EGPD_Input);
+    UEdGraphPin* BranchTrue =
+        BranchNode->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output);
+
+    if (!SelfOutput || !PredicateSelf || !PredicateResult || !BranchExec ||
+        !BranchCondition || !BranchTrue)
+    {
+        return Fail(TEXT("The local-control call or execution branch has an unexpected pin layout."));
+    }
+
+    if (Schema->CanCreateConnection(SelfOutput, PredicateSelf).Response !=
+            CONNECT_RESPONSE_MAKE ||
+        Schema->CanCreateConnection(PredicateResult, BranchCondition).Response !=
+            CONNECT_RESPONSE_MAKE)
+    {
+        return Fail(TEXT("The local-control predicate cannot connect to this event's self context."));
+    }
+
+    Blueprint->Modify();
+    TargetGraph->Modify();
+    EventNode->Modify();
+    TargetGraph->AddNode(SelfNode, true, false);
+    TargetGraph->AddNode(PredicateNode, true, false);
+    TargetGraph->AddNode(BranchNode, true, false);
+    SelfNode->CreateNewGuid();
+    PredicateNode->CreateNewGuid();
+    BranchNode->CreateNewGuid();
+    SelfNode->PostPlacedNewNode();
+    PredicateNode->PostPlacedNewNode();
+    BranchNode->PostPlacedNewNode();
+    SelfNode->NodePosX = EventNode->NodePosX + 192;
+    SelfNode->NodePosY = EventNode->NodePosY + 160;
+    PredicateNode->NodePosX = EventNode->NodePosX + 192;
+    PredicateNode->NodePosY = EventNode->NodePosY;
+    BranchNode->NodePosX = EventNode->NodePosX + 448;
+    BranchNode->NodePosY = EventNode->NodePosY;
+
+    for (UEdGraphPin* Target : OriginalTargets)
+    {
+        EventExecPin->BreakLinkTo(Target);
+    }
+
+    auto Rollback = [&]()
+    {
+        if (EventExecPin)
+        {
+            EventExecPin->BreakAllPinLinks();
+        }
+        TargetGraph->RemoveNode(SelfNode);
+        TargetGraph->RemoveNode(PredicateNode);
+        TargetGraph->RemoveNode(BranchNode);
+        for (UEdGraphPin* Target : OriginalTargets)
+        {
+            if (Target && Target->GetOwningNode())
+            {
+                Schema->TryCreateConnection(EventExecPin, Target);
+            }
+        }
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    };
+
+    bool bCanConnect =
+        Schema->CanCreateConnection(EventExecPin, BranchExec).Response ==
+            CONNECT_RESPONSE_MAKE &&
+        Schema->CanCreateConnection(PredicateResult, BranchCondition).Response ==
+            CONNECT_RESPONSE_MAKE;
+    for (UEdGraphPin* Target : OriginalTargets)
+    {
+        bCanConnect &= Schema->CanCreateConnection(BranchTrue, Target).Response ==
+                       CONNECT_RESPONSE_MAKE;
+    }
+    if (!bCanConnect)
+    {
+        Rollback();
+        return Fail(TEXT("The local-control branch cannot preserve an existing event exec link."));
+    }
+
+    bool bConnected =
+        Schema->TryCreateConnection(SelfOutput, PredicateSelf) &&
+        Schema->TryCreateConnection(EventExecPin, BranchExec) &&
+        Schema->TryCreateConnection(PredicateResult, BranchCondition);
+    for (UEdGraphPin* Target : OriginalTargets)
+    {
+        bConnected &= Schema->TryCreateConnection(BranchTrue, Target);
+    }
+
+    if (!bConnected)
+    {
+        Rollback();
+        return Fail(TEXT("Unreal could not wire the local-controller guard; original event links were restored."));
+    }
+
+    Result.bModifiedInMemory = true;
+    Result.ChangeCount = 3;
+    Result.Changes.Add(FString::Printf(
+        TEXT("%s: guarded %s with %s"), *GraphName, *EventFunctionName,
+        *PredicateName.ToString()));
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    FString SaveError;
+    if (!CompileAndSaveBlueprint(Blueprint, SaveError))
+    {
+        Rollback();
+        return Fail(SaveError);
+    }
+
     Result.bSuccess = true;
     Result.bSaved = true;
     return Result;
