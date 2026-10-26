@@ -16,17 +16,15 @@ UN2CResponseParserBase* UN2CDeepSeekService::CreateResponseParser()
 
 void UN2CDeepSeekService::GetConfiguration(
     FString& OutEndpoint,
-    FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = TEXT("");  // GetProviderHeaders sends the one Authorization header
     OutSupportsSystemPrompts = true;  // DeepSeek always supports system prompts
 }
 
 void UN2CDeepSeekService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
-    OutHeaders.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
+    // The key goes in Authorization: Bearer, added per request from the resolved credential (FN2CCredential)
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 }
 

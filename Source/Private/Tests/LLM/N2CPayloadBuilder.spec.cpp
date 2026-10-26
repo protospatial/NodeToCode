@@ -8,6 +8,7 @@
 #include "LLM/N2CModelCatalog.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CBaseLLMService.h"
+#include "LLM/N2CHttpHandlerBase.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
 #include "LLM/Providers/N2CAnthropicService.h"
@@ -394,21 +395,26 @@ TestNoSampling(TEXT("Gemini unregistered root"), Root);
 			FN2CLLMConfig Config;
 			Config.Provider = EN2CLLMProvider::Gemini;
 			Config.Model = TEXT("gemini-3-flash-preview");
-			Config.ApiKey = FakeKey;
 			Service->Initialize(Config);
 
-			FString Endpoint, AuthToken;
+			FString Endpoint;
 			bool bSupportsSystemPrompts = false;
-			Service->GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
+			Service->GetConfiguration(Endpoint, bSupportsSystemPrompts);
+			TMap<FString, FString> ProviderHeaders;
+			Service->GetProviderHeaders(ProviderHeaders);
+			TestFalse(TEXT("Gemini's own headers carry no key"), UN2CHttpHandlerBase::HasCredentialHeader(ProviderHeaders));
 			TMap<FString, FString> Headers;
-			Service->GetProviderHeaders(Headers);
+			for (const TPair<FString, FString>& Header : UN2CHttpHandlerBase::BuildRequestHeaders(ProviderHeaders,
+				FN2CCredential::Make(EN2CLLMProvider::Gemini, FakeKey)))
+			{
+				Headers.Add(Header.Key, Header.Value);
+			}
 
 			TestEqual(TEXT("Gemini endpoint is <endpoint><model>:generateContent"), Endpoint,
 				FString(TEXT("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent")));
 			TestFalse(TEXT("Gemini endpoint has no query string"), Endpoint.Contains(TEXT("?")));
 			TestFalse(TEXT("Gemini endpoint does not contain the key"), Endpoint.Contains(FakeKey));
-			TestTrue(TEXT("Gemini sends no Bearer token for an API key"), AuthToken.IsEmpty());
-			const FString* HeaderKey = Headers.Find(TEXT("x-goog-api-key"));
+const FString* HeaderKey = Headers.Find(TEXT("x-goog-api-key"));
 			if (TestNotNull(TEXT("Gemini has an x-goog-api-key header"), HeaderKey))
 			{
 				TestEqual(TEXT("x-goog-api-key carries the key"), *HeaderKey, FakeKey);

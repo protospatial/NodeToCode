@@ -25,7 +25,7 @@ public:
     virtual bool Initialize(const FN2CLLMConfig& InConfig) override;
     
     // Provider-specific implementations
-    virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken, bool& OutSupportsSystemPrompts) override;
+    virtual void GetConfiguration(FString& OutEndpoint, bool& OutSupportsSystemPrompts) override;
     virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Ollama; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override;
 

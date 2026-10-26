@@ -61,11 +61,9 @@ UN2CResponseParserBase* UN2COllamaService::CreateResponseParser()
 
 void UN2COllamaService::GetConfiguration(
     FString& OutEndpoint,
-    FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = Config.ApiKey;
     
     // Get system prompt support from settings
     OutSupportsSystemPrompts = OllamaConfig.bUseSystemPrompts;

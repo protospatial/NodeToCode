@@ -20,7 +20,7 @@ FMcpToolDefinition FN2CMcpGetAvailableLLMProvidersTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("get-available-llm-providers"),
-        TEXT("Returns the list of configured LLM providers available for Blueprint translation, including which have valid API keys."),
+        TEXT("Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers."),
         TEXT("Translation")
     );
     
@@ -111,8 +111,8 @@ bool FN2CMcpGetAvailableLLMProvidersTool::IsProviderConfigured(EN2CLLMProvider P
         return true;
     }
     
-    // Cloud providers need an API key, saved or from an environment variable
-    return FN2CSecretStore::Get().HasApiKey(Provider);
+    // Cloud providers need an API key, saved or from an environment variable: what requests would resolve
+    return GetCredentialSource()->Has(Provider);
 }
 
 FString FN2CMcpGetAvailableLLMProvidersTool::GetProviderDisplayName(EN2CLLMProvider Provider) const
@@ -158,7 +158,24 @@ TSharedPtr<FJsonObject> FN2CMcpGetAvailableLLMProvidersTool::BuildProviderInfo(E
     // Set local vs cloud
     bool bIsLocal = (Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::LMStudio);
     ProviderObject->SetBoolField(TEXT("isLocal"), bIsLocal);
-    
+
+    // Where the key requests use comes from, never the key: "saved" (Project Settings), "environment" (with the
+    // variable's name) or "none" (a local provider without one)
+    FString KeyVariable;
+    switch (GetCredentialSource()->GetOrigin(Provider, &KeyVariable))
+    {
+    case EN2CApiKeySource::Store:
+        ProviderObject->SetStringField(TEXT("keySource"), TEXT("saved"));
+        break;
+    case EN2CApiKeySource::Environment:
+        ProviderObject->SetStringField(TEXT("keySource"), TEXT("environment"));
+        ProviderObject->SetStringField(TEXT("keyVariable"), KeyVariable);
+        break;
+    default:
+        ProviderObject->SetStringField(TEXT("keySource"), TEXT("none"));
+        break;
+    }
+
     // Set current model
     FString CurrentModel = GetCurrentModel(Provider);
     if (!CurrentModel.IsEmpty())

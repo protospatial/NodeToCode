@@ -391,9 +391,9 @@ void FN2CModelRegistrySpec::Define()
 				Config.Provider = EN2CLLMProvider::OpenAI;
 				Config.Model = Id;
 				Service->Initialize(Config);
-				FString Endpoint, AuthToken;
+				FString Endpoint;
 				bool bSupportsSystemPrompts = false;
-				Service->GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
+				Service->GetConfiguration(Endpoint, bSupportsSystemPrompts);
 				const FN2CModelMetadata* Meta = FN2CLLMModelRegistry::Get().GetModelMetadataById(Id);
 				TestEqual(FString::Printf(TEXT("%s system prompt support"), Id), bSupportsSystemPrompts, Meta ? Meta->bSupportsSystemPrompts : true);
 			}

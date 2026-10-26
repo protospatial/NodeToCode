@@ -77,7 +77,7 @@ def run_cli(port, log_dir, model, timeout):
     with open(mcp_config, 'w', encoding='utf-8') as f:
         json.dump({'mcpServers': {'nodetocode': {'type': 'http', 'url': 'http://127.0.0.1:%d/mcp' % port}}}, f)
     env = {k: v for k, v in os.environ.items()
-           if k not in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'DEEPSEEK_API')}
+           if k not in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'DEEPSEEK_API_KEY', 'DEEPSEEK_API')}
     cmd = [shutil.which('claude') or 'claude', '-p', CLI_PROMPT, '--mcp-config', mcp_config, '--strict-mcp-config',
            '--allowedTools', 'mcp__nodetocode__*', '--output-format', 'stream-json', '--verbose', '--model', model]
     t0 = time.time()

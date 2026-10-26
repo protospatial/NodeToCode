@@ -16,13 +16,11 @@ UN2CResponseParserBase* UN2CGeminiService::CreateResponseParser()
 
 void UN2CGeminiService::GetConfiguration(
     FString& OutEndpoint,
-    FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
-    // Generative Language API. The key goes in the x-goog-api-key header (GetProviderHeaders), never in the
+    // Generative Language API. The key goes in the x-goog-api-key header (FN2CCredential, per request), never in the
     // URL: UE's HTTP module logs full URLs on timeouts and failures.
     OutEndpoint = FString::Printf(TEXT("%s%s:generateContent"), *Config.ApiEndpoint, *Config.Model);
-    OutAuthToken = TEXT("");  // Gemini takes the key in x-goog-api-key, not a Bearer header
 
     // Default to supporting system prompts since all Gemini models currently support system prompts
     OutSupportsSystemPrompts = true;
@@ -30,12 +28,8 @@ void UN2CGeminiService::GetConfiguration(
 
 void UN2CGeminiService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    // The key goes in x-goog-api-key, added per request from the resolved credential (FN2CCredential)
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
-
-    if (!Config.ApiKey.IsEmpty())
-    {
-        OutHeaders.Add(TEXT("x-goog-api-key"), Config.ApiKey);
-    }
 }
 
 FString UN2CGeminiService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const

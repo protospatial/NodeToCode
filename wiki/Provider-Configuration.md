@@ -156,6 +156,8 @@ For cloud providers, NodeToCode sends a temperature only to models that accept o
    - Each request carries the key in one header only (Anthropic `x-api-key`, Gemini `x-goog-api-key`, OpenAI,
      DeepSeek and LM Studio `Authorization`), never in the URL, and the key is kept out of the
      [log](Logging-Configuration#what-the-log-never-holds) and error messages
+   - The key is looked up (the saved key, else the environment variable) when each request is sent and is not kept
+     in the request configuration, so Blueprint or Python code reading the LLM module's configuration sees no key
    - Configure through [Plugin Settings](Initial-Configuration#accessing-plugin-settings), or for build machines
      and CI through [environment variables](Initial-Configuration#api-keys-from-environment-variables)
 
