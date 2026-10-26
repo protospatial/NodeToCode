@@ -5,6 +5,11 @@
 # The tree checks (summaries, page budget, links) run with --tree once their baseline warnings are fixed
 # (card 0334); until then only the changed files and stale shots are checked. Which warnings block is set by
 # BLOCKING_WARNINGS in .github/scripts/docs_check_pr.py.
+# The docs-lint job (card 0180) runs Scripts/docs_lint.py: the agent docs against the committed MCP tool reference
+# (Context/mcp-server/tools.generated.*: tool names, arguments, counts, links, repo paths), the reference against the
+# tool sources (REGISTER_MCP_TOOL names and count, toolsets, plain-literal descriptions), and the links between the
+# wiki/ pages. It needs no Unreal Engine either; what only an editor can check (input schemas, run-time descriptions)
+# is Scripts/generate_tool_reference.py --check and NodeToCode.MCP.ToolReference under build.ps1 -Test.
 name: Docs check
 
 on:
@@ -36,3 +41,16 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: python -I .github/scripts/docs_check_pr.py --base "$BASE_REF"
+
+  docs-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Lint the docs against the tool reference
+        run: python -I Scripts/docs_lint.py

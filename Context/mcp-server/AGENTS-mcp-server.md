@@ -30,6 +30,17 @@ tool's full `inputSchema`, `outputSchema` and `_meta` for scripts and the docs l
   junction points at. `--check` (`-Check`) writes nothing and exits 1 when a file is missing or stale.
 - Stale files fail `build.ps1 -Test`: `Tests/python/test_tool_reference.py` (tool names and the
   `REGISTER_MCP_TOOL` count, no editor) and `NodeToCode.MCP.ToolReference` (both files byte for byte).
+- Docs lint (card 0180): `python -I Scripts/docs_lint.py` checks the agent docs (`AGENTS.md`, `README.md`,
+  `Context/**`, every `Source/**/AGENTS.md`, `wiki/developers/`) against these files, and these files against the
+  tool sources, with no editor. It runs on every pull request into dev-2.0 (job `docs-lint` in
+  `.github/workflows/docs-check.yml`) and in `build.ps1 -Test` (`Tests/python/test_docs_lint.py`). It fails on a
+  backticked tool-like name that is not registered, an argument in a tool's **Parameters** list that is not in its
+  `inputSchema`, an "N tools" count the reference does not give, a tool missing from the list below or with no doc
+  section, a broken relative link or repo path, a broken link between `wiki/` pages (`--wiki <folder>` checks another
+  copy of the user pages, such as a clone of the published wiki), and a reference whose tool names, count, toolsets
+  or plain-literal descriptions differ from the sources. Exceptions go in `Scripts/docs_lint_allow.txt`, each with a
+  reason. CI cannot see a changed input schema, annotation or run-time description without an editor: only
+  `generate_tool_reference.py --check` and `NodeToCode.MCP.ToolReference` (`build.ps1 -Test`) catch those.
   `Tests/mcp_probe/live_tool_reference_0179.py` compares the reference with a live `tools/list`.
 - All data is read through `N2CMcpToolReference::CollectTools()` (`Source/Public/MCP/Tools/N2CMcpToolReference.h`),
   the one function to repoint when the tool catalog seam replaces the registry.
@@ -281,8 +292,9 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 
 ### Tool Implementations (`Implementations/`)
 
-67 tools by folder (the category each tool registers under, which dynamic discovery uses, is in the category table
-of `Source/Private/MCP/Tools/AGENTS.md`; folders and categories do not map one to one):
+66 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
+(folders and toolsets do not map one to one), and every tool's schema is in [tools.generated.md](tools.generated.md);
+`Scripts/docs_lint.py` fails when this list misses a registered tool:
 
 **Blueprint/Analysis/** - Blueprint inspection tools:
 *   `get-focused-blueprint` - Get currently focused Blueprint
@@ -324,7 +336,7 @@ of `Source/Private/MCP/Tools/AGENTS.md`; folders and categories do not map one t
 *   `set-input-pin-value` - Set literal value on input pin
 *   `delete-blueprint-node` - Delete a node from graph
 *   `create-comment-node` - Create a comment box
-*   `find-nodes-in-graph` - Find nodes in current graph (sets no category, so dynamic discovery cannot enable it)
+*   `find-nodes-in-graph` - Find nodes in current graph
 
 **Blueprint/Organization/** - Tagging and organization:
 *   `tag-blueprint-graph` - Apply tag to a graph
@@ -500,7 +512,7 @@ The server implements these MCP methods:
 
 ### Tool Methods
 *   `tools/list`: Enumerate available tools with schemas, sorted by name; each entry carries `title` and `annotations`
-    (the four hints) where set, and `_meta` (`nodetocode/category`, optional `anthropic/maxResultSizeChars` and
+    (the four hints) where set, and `_meta` (`nodetocode/toolset`, optional `anthropic/maxResultSizeChars` and
     `anthropic/alwaysLoad`). Definitions are built once at registration (card 0164)
 *   `tools/call`: Execute tools with arguments
 
@@ -722,7 +734,7 @@ picks, the choice is not saved; the warning says to remove it from the project f
 
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
-  `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so dynamic discovery cannot add them either.
+  `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so tool search cannot reach them either.
   Without it the default mode lists 63 tools, not 66.
 
 Both are read once per editor session, so a change needs an editor restart.

@@ -456,7 +456,9 @@ the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change. Any ch
 renamed or removed tool, its description, arguments, annotations or toolset) also means regenerating the tool
 reference, `Context/mcp-server/tools.generated.json` and `tools.generated.md`: `python -I
 Scripts/generate_tool_reference.py --engine <UE root> --project <host .uproject>` after building; `build.ps1 -Test`
-fails while they are stale (`Tests/python/test_tool_reference.py`, `NodeToCode.MCP.ToolReference`). Renaming or removing a tool also means
+fails while they are stale (`Tests/python/test_tool_reference.py`, `NodeToCode.MCP.ToolReference`), and so does
+`python -I Scripts/docs_lint.py` (CI, on every pull request) while a doc names a tool, argument or count the reference
+does not have. Renaming or removing a tool also means
 updating the Agent Skills that name it (`Agents/claude-code/nodetocode/skills/`, then `python -I
 Agents/sync_skills.py`); `Tests/python/test_agent_skills.py` fails while a skill names a tool that is not registered.
 
@@ -660,7 +662,7 @@ curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 
 ## Best Practices
 
-1. **Tool Naming**: Use kebab-case for tool names (e.g., `get-blueprint-info`)
+1. **Tool Naming**: Use kebab-case for tool names (e.g., `get-blueprint-n2cjson`)
 2. **Error Handling**: Always validate input parameters and return clear error messages
 3. **Logging**: Use `FN2CLogger` for debugging and error reporting
 4. **Thread Safety**: If your tool doesn't need Editor APIs, avoid requiring Game Thread execution

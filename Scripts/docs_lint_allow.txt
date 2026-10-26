@@ -1,0 +1,18 @@
+# Allowlist for Scripts/docs_lint.py. One entry per line: `<token>  # <reason>` (any doc) or
+# `<path>::<token>  # <reason>` (one doc). The reason is required; an entry that matches nothing fails the lint.
+
+# Paths in a user's project, not in this repository
+Config/DefaultNodeToCode.ini  # a host project's Config folder, where NodeToCode's settings are saved
+Config/DefaultEngine.ini  # a host project's engine config
+Config/DefaultEditorPerProjectUserSettings.ini  # a host project's shared editor-user config (card 0423)
+wiki/developers/Agent-Skills.md::.github/skills/  # a user's workspace folder Copilot reads skills from
+wiki/developers/Using-a-Claude-or-Gemini-Subscription.md::.agents/mcp_config.json  # Antigravity's per-workspace MCP config in a user's workspace
+Context/development-workflow/AGENTS-development-workflow.md::../Hosts  # build.ps1's hosts folder, next to the checkout
+Context/architecture/AGENTS-architecture.md::Content/UI  # names the folder 2.0 removed
+
+# Attack inputs in the threat model, not paths
+Context/mcp-server/threat-model.md::../../../../Source/Evil  # a traversal attempt the file tools refuse
+Context/mcp-server/threat-model.md::Source/Evil  # a traversal target the file tools refuse
+
+# Counts recorded as evidence at the time of a check
+Context/mcp-server/threat-model.md::59 tools  # live checks 0090 and 0423 ran with 59 default tools (62 with Python execution)
