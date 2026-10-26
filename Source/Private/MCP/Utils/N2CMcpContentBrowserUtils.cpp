@@ -923,7 +923,7 @@ bool FN2CMcpContentBrowserUtils::ValidateNewAssetName(const FString& Name, FStri
 	const FString InvalidCharacters = FString(INVALID_OBJECTNAME_CHARACTERS) + INVALID_LONGPACKAGE_CHARACTERS;
 	if (!FName::IsValidXName(Name, InvalidCharacters, &Reason))
 	{
-		OutErrorMsg = FString::Printf(TEXT("Invalid asset name '%s': %s. Give the name only, with no '.', '/', '\\' or spaces"),
+		OutErrorMsg = FString::Printf(TEXT("Invalid asset name '%s' (%s). Give the name only, with no '.', '/', '\\' or spaces"),
 			*Name, *Reason.ToString());
 		return false;
 	}
