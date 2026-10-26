@@ -1,0 +1,12 @@
+{
+  "name": "nodetocode",
+  "source": {
+    "source": "git-subdir",
+    "url": "https://github.com/protospatial/NodeToCode.git",
+    "path": "Agents/claude-code/nodetocode",
+    "ref": "main"
+  },
+  "description": "Read, translate and migrate Unreal Engine Blueprints through NodeToCode's MCP server: three Agent Skills, /nodetocode:translate and a session-start connection check. Needs the NodeToCode plugin (UE 5.6 to 5.8) in the project.",
+  "category": "development",
+  "homepage": "https://github.com/protospatial/NodeToCode/wiki/Claude-Code-Plugin"
+}

@@ -99,6 +99,8 @@ __pycache__/
 /.claude
 /.idea
 .mcp.json
+# ...except the Claude Code plugin's MCP config (card 0172), which ships
+!/Agents/claude-code/nodetocode/.mcp.json
 /build.sh
 # Machine-specific build.ps1 settings (engine paths, hosts root); build.ps1 itself is tracked
 /build.local.ps1

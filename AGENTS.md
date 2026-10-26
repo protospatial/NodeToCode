@@ -34,6 +34,12 @@ This is where source files for Unreal Engine 5 can be found and searched through
   `Tests/python/test_agent_skills.py`, so by `build.ps1 -Test`) fails on a stale copy or mirror, invalid frontmatter,
   a `SKILL.md` over 500 lines, or a skill naming an MCP tool the plugin does not register: renaming or removing a
   tool means updating the skills in the same change. User page: `wiki/developers/Agent-Skills.md`.
+- The Claude Code plugin around them (`Agents/claude-code/nodetocode/`: `.claude-plugin/plugin.json`, `.mcp.json`,
+  `hooks/`, `commands/translate.md`; the local marketplace `Agents/claude-code/.claude-plugin/marketplace.json`; the
+  draft entry for other marketplaces `Agents/claude-code/marketplace-entry.json`) is checked by the same script and
+  `Tests/python/test_claude_plugin.py`: its `version` must equal `NodeToCode.uplugin`'s `VersionName` (bump both), and
+  its command may name registered tools only. Run `claude plugin validate --strict` on both folders after a change;
+  live check: `Tests/mcp_probe/live_claude_plugin_0172.py`. User page: `wiki/developers/Claude-Code-Plugin.md`.
 
 ## TESTING COMPILATION
 
