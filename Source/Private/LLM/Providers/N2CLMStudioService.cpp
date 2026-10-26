@@ -68,7 +68,7 @@ void UN2CLMStudioService::GetConfiguration(
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = Config.ApiKey;
+    OutAuthToken = TEXT("");  // GetProviderHeaders sends the one Authorization header, when a key is set
     
     // LM Studio supports system prompts
     OutSupportsSystemPrompts = true;

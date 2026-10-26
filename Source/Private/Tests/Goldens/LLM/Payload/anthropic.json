@@ -5,7 +5,6 @@
 		"headers":
 		{
 			"anthropic-version": "2023-06-01",
-			"authorization": "Bearer n2c-placeholder-key-0125",
 			"content-type": "application/json",
 			"x-api-key": "n2c-placeholder-key-0125"
 		},
@@ -34,7 +33,6 @@
 		"headers":
 		{
 			"anthropic-version": "2023-06-01",
-			"authorization": "Bearer n2c-placeholder-key-0125",
 			"content-type": "application/json",
 			"x-api-key": "n2c-placeholder-key-0125"
 		},
@@ -63,7 +61,6 @@
 		"headers":
 		{
 			"anthropic-version": "2023-06-01",
-			"authorization": "Bearer n2c-placeholder-key-0125",
 			"content-type": "application/json",
 			"x-api-key": "n2c-placeholder-key-0125"
 		},
@@ -91,7 +88,6 @@
 		"headers":
 		{
 			"anthropic-version": "2023-06-01",
-			"authorization": "Bearer n2c-placeholder-key-0125",
 			"content-type": "application/json",
 			"x-api-key": "n2c-placeholder-key-0125"
 		},
@@ -119,7 +115,6 @@
 		"headers":
 		{
 			"anthropic-version": "2023-06-01",
-			"authorization": "Bearer n2c-placeholder-key-0125",
 			"content-type": "application/json",
 			"x-api-key": "n2c-placeholder-key-0125"
 		},
@@ -147,7 +142,6 @@
 		"headers":
 		{
 			"anthropic-version": "2023-06-01",
-			"authorization": "Bearer n2c-placeholder-key-0125",
 			"content-type": "application/json",
 			"x-api-key": "n2c-placeholder-key-0125"
 		},
@@ -175,7 +169,6 @@
 		"headers":
 		{
 			"anthropic-version": "2023-06-01",
-			"authorization": "Bearer n2c-placeholder-key-0125",
 			"content-type": "application/json",
 			"x-api-key": "n2c-placeholder-key-0125"
 		},

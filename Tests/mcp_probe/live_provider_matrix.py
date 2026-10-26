@@ -10,7 +10,10 @@ Stdlib only; run with `python -I`:
 
 It reads the keys from the repo's .env (env_keys.py) and refuses to run if a key for a selected provider is saved in
 the per-user secrets file (the saved key would be used, not the variable). For the session it sets Min Severity to
-Debug in the host's Saved/Config layer (restored afterwards), so UN2CLLMPayloadBuilder::Build logs each payload.
+Debug in the host's Saved/Config layer (restored afterwards) and turns n2c.LogLLMPayloads on (card 0159: payloads are
+logged only with it, and it is never saved), so UN2CLLMPayloadBuilder::Build logs each payload. After the cases it
+turns n2c.LogLLMPayloads off and translates the first case once more ('payloads_off'): that request's log slice must
+have no 'LLM Request Payload', prompt or response content line, only sizes.
 Applying a case's settings saves them to the host's Config/DefaultNodeToCode.ini; EditorSession restores that file
 byte for byte when the editor stops (or deletes it if it did not exist), and the report's config_restored says so.
 It makes one in-memory probe Blueprint (probe_blueprint.SETUP_UNWIRED_PY: an Actor with a Print String node, never
@@ -19,8 +22,9 @@ translate-focused-blueprint over MCP, reads the task stream, restores the settin
 the editor log: the payload (summarised: model, sampling fields, output budget, response_format, Gemini
 responseSchema, thinking), token usage and any NodeToCode errors. A case passes when the translation parses with
 code and every payload rule for it holds. Key values are never printed; the editor log, Saved/Logs, the plugin's
-own log file, new translation folders and the report are scanned with find_leaks, and the Saved/Logs files for
-'key='. Report: logs/live_provider_matrix_<label>.json.
+own log file, new translation folders and the report are scanned with find_leaks, and the logs for a key in URL form
+('?key=' or '&key=') or 'key=' followed by a key-shaped value (KEY_EQ; generated code's Print String 'key=' argument
+does not count). Report: logs/live_provider_matrix_<label>.json.
 
 --fanout (card 0135) adds a data fan-out to the probe graph before the cases run: Get Actor Location's Return Value
 feeds both Print String's In String (through the conversion node the schema inserts) and a Set Actor Location that
@@ -693,6 +697,29 @@ def restore_spec(previous):
     return out
 
 
+# A key in a URL ('?key=...', '&key=...') or 'key=' with a key-shaped value: Google 'AIza...', OpenAI/Anthropic/DeepSeek
+# 'sk-...', or any 32+ character token. Print String's key='None' or key=-1 in generated code does not match.
+KEY_EQ = re.compile(rb'[?&]key=|\bkey=[\'"]?(?:AIza[0-9A-Za-z_\-]{20,}|sk-[0-9A-Za-z_\-]{16,}|[0-9A-Za-z_\-]{32,})',
+                    re.IGNORECASE)
+
+
+def key_eq_in(data):
+    """True when raw log bytes (UTF-8, or UTF-16LE with its NULs dropped) hold a KEY_EQ match"""
+    return bool(KEY_EQ.search(data) or KEY_EQ.search(data.replace(b'\x00', b'')))
+
+
+# Content lines that n2c.LogLLMPayloads 0 must keep out of the log (their size-only lines read differently)
+CONTENT_LABELS = ('LLM Request Payload:', 'LLM System Message:', 'LLM User Message:', 'LLM Response Message Content:',
+                  'LM Studio Response Message Content:', 'LLM Response:', 'JSON Output:', 'HTTP error body:')
+
+
+def set_payload_logging(port, on, rid):
+    """Sets n2c.LogLLMPayloads in the editor and returns its value read back"""
+    return run_py(port, 'import unreal\nunreal.SystemLibrary.execute_console_command(None, "n2c.LogLLMPayloads %d")\n'
+                        'result = {"now": unreal.SystemLibrary.get_console_variable_bool_value("n2c.LogLLMPayloads")}'
+                  % (1 if on else 0), rid)
+
+
 def extract_payloads(text):
     """Every 'LLM Request Payload:' JSON object in a log slice"""
     payloads = []
@@ -1085,6 +1112,7 @@ def main():
                 report['gate'] = run_py(port, GATE_PY, 5)
                 print('gate', json.dumps(report['gate'])[:1600], flush=True)
             print('setup', json.dumps(report['setup']), 'wiring', json.dumps(report.get('wiring'))[:400], flush=True)
+            report['payload_logging_on'] = set_payload_logging(port, True, 6)
             reader = LogReader(log_path)
             tag_language = args.languages != ['cpp']
             runs = [(c, language) for c in cases for language in args.languages]
@@ -1126,6 +1154,21 @@ def main():
                 report['viewer'] = run_viewer(port, cases[0], args.languages, reader, translations_dir,
                                               args.timeout)
 
+            # Card 0159: with n2c.LogLLMPayloads back at its default 0 (Min Severity still Debug), one more
+            # translation logs sizes only, no payload, prompt or answer
+            if report['cases'] and not any(r.get('timed_out') for r in report['cases']):
+                report['payload_logging_off'] = set_payload_logging(port, False, 7)
+                offset = reader.size()
+                rec = run_case(port, cases[0], 800, args.timeout, reader, language=args.languages[0])
+                slice_text = reader.read_from(offset)
+                content_lines = [label for label in CONTENT_LABELS if label in slice_text]
+                rec['content_lines'] = content_lines
+                rec['size_lines'] = len(re.findall(r'characters \(not logged; n2c\.LogLLMPayloads 1 logs it\)', slice_text))
+                rec['ok'] = bool(rec['translated'] and not content_lines and rec['size_lines'] > 0)
+                report['payloads_off'] = rec
+                print('%-48s %s  content_lines=%s size_lines=%s' % ('payloads_off ' + rec['id'],
+                      'PASS' if rec['ok'] else 'FAIL', content_lines, rec['size_lines']), flush=True)
+
     report['config_restored'] = session.restore_ok
     log_text = session.log_text()
     report['log_names_variables'] = {v: ('the %s environment variable is used' % v) in log_text for v in sorted(keys)}
@@ -1139,14 +1182,14 @@ def main():
                 data = open(p, 'rb').read()
             except OSError:
                 continue
-            if b'key=' in data or 'key='.encode('utf-16-le') in data:
+            if key_eq_in(data):
                 key_eq.append(p)
     for p in (log_path, plugin_log):
         try:
             data = open(p, 'rb').read()
         except OSError:
             continue
-        if b'key=' in data or 'key='.encode('utf-16-le') in data:
+        if key_eq_in(data):
             key_eq.append(p)
     report['key_eq_in_logs'] = key_eq
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -1155,12 +1198,14 @@ def main():
     report['leaks'] = [{'path': p, 'variable': n} for p, n in leaks]
     report['ok'] = bool(report['started'] and report['cases'] and all(c['ok'] for c in report['cases'])
                         and all(v.get('ok') for v in (report.get('viewer') or {}).get('runs', [{'ok': True}]))
+                        and (report.get('payloads_off') or {}).get('ok', False)
                         and not leaks and not key_eq and report['config_restored'])
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=1)
     print(json.dumps({'ok': report['ok'], 'report': report_path, 'leaks': report['leaks'], 'key_eq_in_logs': key_eq,
                       'not_verified': report['not_verified'],
                       'failed': [c['id'] for c in report['cases'] if not c['ok']],
+                      'payloads_off': {k: (report.get('payloads_off') or {}).get(k) for k in ('ok', 'content_lines', 'size_lines')},
                       'viewer_failed': [v.get('language') for v in (report.get('viewer') or {}).get('runs', [])
                                         if not v.get('ok')]}, indent=1))
     return 0 if report['ok'] else 1
