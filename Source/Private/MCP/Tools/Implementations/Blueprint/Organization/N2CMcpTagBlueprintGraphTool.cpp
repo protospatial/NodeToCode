@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateTypes.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Utils/N2CLogger.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
@@ -50,8 +51,9 @@ FMcpToolCallResult FN2CMcpTagBlueprintGraphTool::Execute(const TSharedPtr<FJsonO
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Missing required parameter: tag"));
 		}
 		
-		FString Category = TEXT("Default");
+		FString Category;
 		Arguments->TryGetStringField(TEXT("category"), Category);
+		Category = FN2CTagEntry::NormalizeCategory(Category); // an explicit "" means Default, not "any category"
 		
 		FString Description;
 		Arguments->TryGetStringField(TEXT("description"), Description);

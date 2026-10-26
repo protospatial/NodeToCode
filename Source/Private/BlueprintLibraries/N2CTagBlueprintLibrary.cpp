@@ -76,7 +76,7 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagFocusedBlueprintGraph(
 	
 	// Create the tagged graph struct
 	FSoftObjectPath BlueprintPath(OwningBlueprint);
-	FString FinalCategory = Category.IsEmpty() ? TEXT("Default") : Category;
+	const FString FinalCategory = FN2CTagEntry::NormalizeCategory(Category);
 	FN2CTaggedBlueprintGraph TaggedGraph(
 		Tag,
 		FinalCategory,
@@ -185,7 +185,7 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagBlueprintGraph(
 	
 	// Create the tagged graph struct
 	FSoftObjectPath BlueprintPath(BlueprintAsset);
-	FString FinalCategory = Category.IsEmpty() ? TEXT("Default") : Category;
+	const FString FinalCategory = FN2CTagEntry::NormalizeCategory(Category);
 	FN2CTaggedBlueprintGraph TaggedGraph(
 		Tag,
 		FinalCategory,

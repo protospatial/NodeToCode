@@ -147,6 +147,16 @@ bool FN2CTagEntry::MatchesTag(const FString& InTag, const FString& InCategory) c
 	return bTagMatches && bCategoryMatches;
 }
 
+bool FN2CTagEntry::MatchesTagExactly(const FString& InTag, const FString& InCategory) const
+{
+	return Tag.Equals(InTag, ESearchCase::IgnoreCase) && Category.Equals(InCategory, ESearchCase::IgnoreCase);
+}
+
+FString FN2CTagEntry::NormalizeCategory(const FString& InCategory)
+{
+	return InCategory.TrimStartAndEnd().IsEmpty() ? FString(TEXT("Default")) : InCategory;
+}
+
 // ============================================================================
 // FN2CGraphState
 // ============================================================================
