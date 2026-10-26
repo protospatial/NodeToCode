@@ -6,12 +6,42 @@
 #include "UObject/NoExportTypes.h"
 #include "Models/N2CBatchTranslationTypes.h"
 #include "LLM/N2CLLMRequestHandle.h"
+#include "LLM/N2CLLMTypes.h"
+#include "Code Editor/Models/N2CCodeLanguage.h"
 #include "N2CBatchTranslationOrchestrator.generated.h"
 
 struct FN2CBlueprint;
 
 class UBlueprint;
 class UEdGraph;
+
+/**
+ * How one batch is translated (StartBatchTranslationWithOptions). The default is the editor's batch: every item's
+ * request reads the provider, model and target language from the settings when it is sent, and is saved as an editor
+ * translation too (UN2CLLMModule::ProcessN2CJson).
+ */
+struct NODETOCODE_API FN2CBatchTranslationOptions
+{
+	/**
+	 * True: every item goes through UN2CLLMModule::ProcessN2CJsonWithOverrides with RequestConfig and Language (the
+	 * translate-batch MCP tool's provider, model and language), and its files are saved with that language, provider
+	 * and model. Nothing else is saved and OnTranslationResponseReceived is not broadcast.
+	 */
+	bool bUseRequestConfig = false;
+
+	/** The request configuration (provider, model, thinking mode, budgets) when bUseRequestConfig */
+	FN2CLLMConfig RequestConfig;
+
+	/** The target language when bUseRequestConfig */
+	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
+
+	/**
+	 * Optional, parallel to the tag infos: the graph each item names, already resolved by the caller (a graph whose
+	 * GraphGuid another graph of its Blueprint shares, or one FindGraphByGuid does not search). An entry that is
+	 * stale or does not belong to the item's Blueprint is ignored and the item is resolved by GUID.
+	 */
+	TArray<TWeakObjectPtr<UEdGraph>> Graphs;
+};
 
 /**
  * @class UN2CBatchTranslationOrchestrator
@@ -40,6 +70,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Batch Translation")
 	bool StartBatchTranslation(const TArray<FN2CTagInfo>& TagInfos);
+
+	/**
+	 * StartBatchTranslation with options (provider, model and language for every item; pre-resolved graphs) and the
+	 * reason when it cannot start: "BATCH_IN_PROGRESS: ...", "LLM_BUSY: ...", "INVALID_ARGUMENT: ..." or
+	 * "NO_VALID_ITEMS: ..." (each item's own failure is in GetBatchItems()). GetBatchSerial() is the started batch's
+	 * serial. A batch whose every item fails before a request is sent completes (OnBatchComplete) before this returns.
+	 */
+	bool StartBatchTranslationWithOptions(const TArray<FN2CTagInfo>& TagInfos, const FN2CBatchTranslationOptions& Options,
+		FString& OutError);
 
 	/**
 	 * Cancel the current batch translation. The in-flight item's LLM request is cancelled at once (its HTTP request
@@ -84,6 +123,18 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "NodeToCode|Batch Translation")
 	const FN2CBatchTranslationResult& GetCurrentResult() const { return CurrentResult; }
+
+	/**
+	 * The items of the current batch, or of the last one once it completed (until the next starts): status, error,
+	 * response and output folder of each. Valid inside OnBatchComplete.
+	 */
+	const TArray<FN2CBatchTranslationItem>& GetBatchItems() const { return BatchItems; }
+
+	/** Increases with every batch started: tells a caller's batch from one started later */
+	int32 GetBatchSerial() const { return BatchSerial; }
+
+	/** The folder an item's files are saved in (the batch output folder and the item's OutputFolderName) */
+	FString GetItemOutputDirectory(const FN2CBatchTranslationItem& Item) const;
 
 	/** Delegate fired when each item completes translation (Blueprint-compatible) */
 	UPROPERTY(BlueprintAssignable, Category = "NodeToCode|Batch Translation")
@@ -225,4 +276,15 @@ private:
 
 	/** Increases with every batch, so a late result from an earlier batch is never applied to this one */
 	int32 BatchSerial = 0;
+
+	/** The options the current batch was started with */
+	FN2CBatchTranslationOptions BatchOptions;
+
+	/** Gives every item a distinct OutputFolderName within the batch */
+	void AssignOutputFolders();
+
+	/** The language, provider and model an item of this batch is saved with (the options, or the settings now) */
+	EN2CCodeLanguage GetSaveLanguage() const;
+	FString GetSaveProvider() const;
+	FString GetSaveModel() const;
 };

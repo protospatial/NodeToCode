@@ -544,7 +544,8 @@ void SN2CMainWindow::OnBatchItemComplete(const FN2CTagInfo& TagInfo, const FN2CT
 	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] OnBatchItemComplete: %s (success=%s, item %d/%d)"),
 		*TagInfo.GraphName, bSuccess ? TEXT("true") : TEXT("false"), ItemIndex + 1, TotalCount);
 
-	if (BatchProgressModal.IsValid())
+	// Only a batch this window shows (an MCP translate-batch runs without the window's progress)
+	if (BatchProgressModal.IsValid() && bShowBatchProgress)
 	{
 		BatchProgressModal->MarkItemComplete(TagInfo.GraphName, bSuccess,
 			bSuccess ? FString() : Response.Error.ToDisplayString());
@@ -574,7 +575,7 @@ void SN2CMainWindow::OnBatchProgress(int32 CurrentIndex, int32 TotalCount, const
 	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] OnBatchProgress: %s (item %d/%d)"),
 		*GraphName, CurrentIndex + 1, TotalCount);
 
-	if (BatchProgressModal.IsValid())
+	if (BatchProgressModal.IsValid() && bShowBatchProgress)
 	{
 		BatchProgressModal->SetProgress(CurrentIndex, TotalCount, GraphName);
 	}

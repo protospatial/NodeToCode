@@ -18,6 +18,7 @@
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
+#include "Misc/PackageName.h"
 
 UN2CBatchTranslationOrchestrator& UN2CBatchTranslationOrchestrator::Get()
 {
@@ -32,9 +33,19 @@ UN2CBatchTranslationOrchestrator& UN2CBatchTranslationOrchestrator::Get()
 
 bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTagInfo>& TagInfos)
 {
+	FString Error;
+	return StartBatchTranslationWithOptions(TagInfos, FN2CBatchTranslationOptions(), Error);
+}
+
+bool UN2CBatchTranslationOrchestrator::StartBatchTranslationWithOptions(const TArray<FN2CTagInfo>& TagInfos,
+	const FN2CBatchTranslationOptions& Options, FString& OutError)
+{
+	OutError.Reset();
+
 	// Validate input
 	if (TagInfos.IsEmpty())
 	{
+		OutError = TEXT("INVALID_ARGUMENT: the batch has no items");
 		FN2CLogger::Get().LogError(TEXT("Cannot start batch translation with empty TagInfos array"), TEXT("BatchOrchestrator"));
 		return false;
 	}
@@ -42,6 +53,8 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTa
 	// Check if already in progress
 	if (bBatchInProgress)
 	{
+		OutError = FString::Printf(TEXT("BATCH_IN_PROGRESS: a batch translation is already running (item %d of %d); wait for it or cancel it"),
+			CurrentItemIndex + 1, BatchItems.Num());
 		FN2CLogger::Get().LogWarning(TEXT("Batch translation already in progress"), TEXT("BatchOrchestrator"));
 		return false;
 	}
@@ -50,6 +63,7 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTa
 	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
 	if (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing)
 	{
+		OutError = TEXT("LLM_BUSY: another translation is in flight; start the batch when it has finished");
 		FN2CLogger::Get().LogWarning(TEXT("LLM module is already processing a translation"), TEXT("BatchOrchestrator"));
 		return false;
 	}
@@ -57,11 +71,13 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTa
 	// Initialize the LLM module, or pick up settings changed since it was (each item's request does this again)
 	if (LLMModule && !LLMModule->RefreshFromSettings())
 	{
+		OutError = TEXT("LLM_UNAVAILABLE: the LLM module could not be initialized for the provider in the settings");
 		FN2CLogger::Get().LogError(TEXT("Failed to initialize LLM module for batch translation"), TEXT("BatchOrchestrator"));
 		return false;
 	}
 
 	// Initialize batch state
+	BatchOptions = Options;
 	bBatchInProgress = true;
 	bCancellationRequested = false;
 	CurrentItemIndex = -1;
@@ -81,6 +97,7 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTa
 		BatchItems.Add(Item);
 	}
 	CurrentResult.TotalCount = BatchItems.Num();
+	AssignOutputFolders();
 
 	FN2CLogger::Get().Log(
 		FString::Printf(TEXT("Starting batch translation with %d items"), BatchItems.Num()),
@@ -108,6 +125,13 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslation(const TArray<FN2CTa
 
 	if (!bHasValidItems)
 	{
+		TArray<FString> Reasons;
+		for (const FN2CBatchTranslationItem& Item : BatchItems)
+		{
+			Reasons.AddUnique(Item.ErrorMessage);
+		}
+		OutError = FString::Printf(TEXT("NO_VALID_ITEMS: none of the %d items could be resolved (%s)"), BatchItems.Num(),
+			*FString::Join(Reasons, TEXT("; ")));
 		FN2CLogger::Get().LogError(TEXT("No valid items to process in batch"), TEXT("BatchOrchestrator"));
 		CleanupBatch();
 		return false;
@@ -256,14 +280,20 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 		const int32 Serial = BatchSerial;
 		const int32 ItemIndex = CurrentItemIndex;
 		TWeakObjectPtr<UN2CBatchTranslationOrchestrator> WeakThis(this);
-		FN2CLLMRequestHandleRef Request = LLMModule->ProcessN2CJson(JsonPayload, CapturedBlueprint, FOnLLMResponseReceived(),
-			FOnN2CTranslationParsed::CreateLambda([WeakThis, Serial, ItemIndex](const FN2CTranslationResponse& Response, bool bSuccess)
+		const FOnN2CTranslationParsed OnParsed = FOnN2CTranslationParsed::CreateLambda(
+			[WeakThis, Serial, ItemIndex](const FN2CTranslationResponse& Response, bool bSuccess)
 			{
 				if (UN2CBatchTranslationOrchestrator* StrongThis = WeakThis.Get())
 				{
 					StrongThis->HandleItemResult(Serial, ItemIndex, Response, bSuccess);
 				}
-			}));
+			});
+		// A batch with its own provider, model and language (translate-batch) sends every item with them; the
+		// editor's batch reads the settings per item and saves an editor translation too
+		FN2CLLMRequestHandleRef Request = BatchOptions.bUseRequestConfig
+			? LLMModule->ProcessN2CJsonWithOverrides(JsonPayload, BatchOptions.RequestConfig, BatchOptions.Language,
+				FOnLLMResponseReceived(), OnParsed)
+			: LLMModule->ProcessN2CJson(JsonPayload, CapturedBlueprint, FOnLLMResponseReceived(), OnParsed);
 
 		// An error found before sending completes inside the call (and may already have moved on to the next item,
 		// which then holds CurrentRequest): keep only a request that is really in flight for this item
@@ -382,8 +412,24 @@ bool UN2CBatchTranslationOrchestrator::ResolveBlueprintsAndGraphs()
 {
 	bool bAnyResolved = false;
 
-	for (FN2CBatchTranslationItem& Item : BatchItems)
+	for (int32 ItemIndex = 0; ItemIndex < BatchItems.Num(); ++ItemIndex)
 	{
+		FN2CBatchTranslationItem& Item = BatchItems[ItemIndex];
+
+		// A graph the caller resolved already, when it still belongs to the Blueprint at the item's path
+		if (BatchOptions.Graphs.IsValidIndex(ItemIndex))
+		{
+			UEdGraph* Given = BatchOptions.Graphs[ItemIndex].Get();
+			UBlueprint* Owner = Given ? Given->GetTypedOuter<UBlueprint>() : nullptr;
+			if (Owner && Owner->GetPathName() == Item.TagInfo.BlueprintPath)
+			{
+				Item.CachedBlueprint = Owner;
+				Item.CachedGraph = Given;
+				bAnyResolved = true;
+				continue;
+			}
+		}
+
 		// Load blueprint (using cache if already loaded)
 		UBlueprint* Blueprint = nullptr;
 		if (TWeakObjectPtr<UBlueprint>* CachedBP = BlueprintCache.Find(Item.TagInfo.BlueprintPath))
@@ -513,6 +559,17 @@ UEdGraph* UN2CBatchTranslationOrchestrator::FindGraphByGuid(UBlueprint* Blueprin
 		}
 	}
 
+	// Then every other graph: collapsed graphs and interface implementations
+	TArray<UEdGraph*> AllGraphs;
+	Blueprint->GetAllGraphs(AllGraphs);
+	for (UEdGraph* Graph : AllGraphs)
+	{
+		if (Graph && Graph->GraphGuid == GraphGuid)
+		{
+			return Graph;
+		}
+	}
+
 	return nullptr;
 }
 
@@ -587,8 +644,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		return;
 	}
 
-	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+	const EN2CCodeLanguage TargetLanguage = GetSaveLanguage();
 
 	// Save each graph's files
 	for (const FN2CGraphTranslation& Graph : Item.TranslationResponse.Graphs)
@@ -611,8 +667,8 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 			continue;
 		}
 
-		// Create directory for this graph
-		FString GraphDir = FPaths::Combine(BatchOutputPath, Stem);
+		// Create directory for this graph: the item's own folder, so two items with the same graph name keep theirs
+		FString GraphDir = FPaths::Combine(BatchOutputPath, Item.OutputFolderName.IsEmpty() ? Stem : Item.OutputFolderName);
 		if (!FN2CPathUtils::IsUnderDirectoryResolved(GraphDir, BatchOutputPath))
 		{
 			FN2CLogger::Get().LogWarning(
@@ -717,8 +773,8 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 			Summary.bHasNotes = !Graph.Code.ImplementationNotes.IsEmpty();
 
 			// Get provider info
-			FString Provider = Settings ? UEnum::GetValueAsString(Settings->Provider) : TEXT("Unknown");
-			FString Model = Settings ? Settings->GetActiveModel() : TEXT("Unknown");
+			const FString Provider = GetSaveProvider();
+			const FString Model = GetSaveModel();
 
 			// The shared language id and record path, which UN2CGraphStateManager::LoadTranslation reads back
 			UN2CGraphStateManager::Get().RecordSavedTranslation(
@@ -768,11 +824,11 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 
 	// Settings
 	TSharedPtr<FJsonObject> SettingsJson = MakeShared<FJsonObject>();
-	if (Settings)
+	if (Settings || BatchOptions.bUseRequestConfig)
 	{
-		SettingsJson->SetStringField(TEXT("provider"), UEnum::GetValueAsString(Settings->Provider));
-		SettingsJson->SetStringField(TEXT("model"), Settings->GetActiveModel());
-		SettingsJson->SetStringField(TEXT("language"), UEnum::GetValueAsString(Settings->TargetLanguage));
+		SettingsJson->SetStringField(TEXT("provider"), GetSaveProvider());
+		SettingsJson->SetStringField(TEXT("model"), GetSaveModel());
+		SettingsJson->SetStringField(TEXT("language"), UEnum::GetValueAsString(GetSaveLanguage()));
 	}
 	SummaryJson->SetObjectField(TEXT("settings"), SettingsJson);
 
@@ -786,6 +842,11 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 		ItemJson->SetStringField(TEXT("tag"), Item.TagInfo.Tag);
 		ItemJson->SetStringField(TEXT("category"), Item.TagInfo.Category);
 		ItemJson->SetStringField(TEXT("status"), UEnum::GetValueAsString(Item.Status));
+		ItemJson->SetStringField(TEXT("graphGuid"), Item.TagInfo.GraphGuid);
+		if (Item.Status == EN2CBatchItemStatus::Completed)
+		{
+			ItemJson->SetStringField(TEXT("outputFolder"), Item.OutputFolderName);
+		}
 
 		if (Item.Status == EN2CBatchItemStatus::Completed)
 		{
@@ -829,6 +890,76 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 			FString::Printf(TEXT("Failed to save batch summary: %s"), *SummaryPath),
 			TEXT("BatchOrchestrator"));
 	}
+}
+
+void UN2CBatchTranslationOrchestrator::AssignOutputFolders()
+{
+	TSet<FString> Used;
+	auto Claim = [&Used](const FString& Candidate)
+	{
+		const FString Key = Candidate.ToLower(); // folder names must differ by more than case
+		if (Candidate.IsEmpty() || Used.Contains(Key))
+		{
+			return false;
+		}
+		Used.Add(Key);
+		return true;
+	};
+
+	for (FN2CBatchTranslationItem& Item : BatchItems)
+	{
+		const FString GraphStem = FN2CPathUtils::GetTranslationFileStem(Item.TagInfo.GraphName);
+		const FString BlueprintStem = FN2CPathUtils::MakeSafeFileStem(FPackageName::ObjectPathToObjectName(Item.TagInfo.BlueprintPath));
+
+		FString Folder = GraphStem;
+		if (!Claim(Folder))
+		{
+			const FString Qualified = BlueprintStem.IsEmpty() ? GraphStem : BlueprintStem + TEXT("__") + GraphStem;
+			Folder = Qualified;
+			for (int32 Suffix = 2; !Claim(Folder); ++Suffix)
+			{
+				Folder = FString::Printf(TEXT("%s_%d"), *Qualified, Suffix);
+			}
+		}
+		Item.OutputFolderName = Folder;
+	}
+}
+
+FString UN2CBatchTranslationOrchestrator::GetItemOutputDirectory(const FN2CBatchTranslationItem& Item) const
+{
+	const FString Folder = Item.OutputFolderName.IsEmpty() ? FN2CPathUtils::GetTranslationFileStem(Item.TagInfo.GraphName)
+		: Item.OutputFolderName;
+	return BatchOutputPath.IsEmpty() || Folder.IsEmpty() ? FString() : FPaths::Combine(BatchOutputPath, Folder);
+}
+
+EN2CCodeLanguage UN2CBatchTranslationOrchestrator::GetSaveLanguage() const
+{
+	if (BatchOptions.bUseRequestConfig)
+	{
+		return BatchOptions.Language;
+	}
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	return Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+}
+
+FString UN2CBatchTranslationOrchestrator::GetSaveProvider() const
+{
+	if (BatchOptions.bUseRequestConfig)
+	{
+		return UEnum::GetValueAsString(BatchOptions.RequestConfig.Provider);
+	}
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	return Settings ? UEnum::GetValueAsString(Settings->Provider) : FString(TEXT("Unknown"));
+}
+
+FString UN2CBatchTranslationOrchestrator::GetSaveModel() const
+{
+	if (BatchOptions.bUseRequestConfig)
+	{
+		return BatchOptions.RequestConfig.Model;
+	}
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	return Settings ? Settings->GetActiveModel() : FString(TEXT("Unknown"));
 }
 
 FString UN2CBatchTranslationOrchestrator::GetTranslationBasePath() const

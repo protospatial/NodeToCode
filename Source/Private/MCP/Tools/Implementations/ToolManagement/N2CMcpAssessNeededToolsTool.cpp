@@ -16,14 +16,14 @@ TMap<FString, FString> FN2CMcpAssessNeededToolsTool::GetCategoryDescriptions()
 {
     return {
         { "Tool Management", "Tools for managing the available toolset." },
-        { "Blueprint Discovery", "Tools for searching and listing Blueprints, functions, variables, and nodes, and reading any Blueprint's graphs as N2C JSON by asset path." },
+        { "Blueprint Discovery", "Tools for searching and listing Blueprints, functions, variables, and nodes, and reading any Blueprint's graphs as N2C JSON by asset path, one at a time or many to files." },
         { "Blueprint Graph Editing", "Tools for adding, connecting, and deleting nodes in a Blueprint graph." },
         { "Blueprint Function Management", "Tools for creating, deleting, and opening Blueprint functions." },
         { "Blueprint Variable Management", "Tools for creating member and local variables in Blueprints." },
         { "Blueprint Organization", "Tools for applying and managing tags on Blueprint graphs." },
         { "Content Browser", "Tools for interacting with the Unreal Engine Content Browser." },
         { "File System", "Tools for reading files and directories from the project's file system." },
-        { "Translation", "Tools for translating Blueprints to code and managing LLM providers." }
+        { "Translation", "Tools for translating Blueprints to code (the focused graph, or many graphs by asset path or tag) and managing LLM providers." }
     };
 }
 

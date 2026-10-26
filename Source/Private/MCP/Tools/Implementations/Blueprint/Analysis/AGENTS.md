@@ -1,8 +1,8 @@
 # Blueprint Analysis Tools
 
-This directory contains six read-only tools in the 'Blueprint Discovery' category: the focused graph as N2C JSON,
-any Blueprint's graphs as N2C JSON and its graph list by asset path (card 0157), a Blueprint's functions, the events
-and functions it can override, and the open Blueprint editors.
+This directory contains seven read-only tools in the 'Blueprint Discovery' category: the focused graph as N2C JSON,
+any Blueprint's graphs as N2C JSON and its graph list by asset path (card 0157), many graphs exported to files in one
+call (card 0169), a Blueprint's functions, the events and functions it can override, and the open Blueprint editors.
 
 ## Targeting
 
@@ -13,6 +13,9 @@ and functions it can override, and the open Blueprint editors.
   `get-blueprint-n2cjson` names one graph with `graphName` or `graphGuid` (`FN2CGraphTarget::Resolve`, card 0152), or
   reads every graph when both are absent. They read any Blueprint the editor can load, not only the focused one or
   `/Game` content (see the "Text returned to the agent" row in `Context/mcp-server/threat-model.md`).
+- `export-n2cjson-batch` takes `targets` (`[{blueprintPath, graphName?, graphGuid?}]`) or a `tag` and/or `category`
+  and, like get-blueprint-n2cjson, needs no editor and changes no focus (`N2CMcpBatchTargets::Resolve`, shared with
+  translate-batch).
 - `list-blueprint-functions` and `list-overridable-functions` take an optional `blueprintPath`
   (`/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`); without it they use the active editor's
   Blueprint (`FN2CMcpBlueprintUtils::ResolveBlueprint`). Errors: `ASSET_NOT_FOUND: Blueprint not found at path:
@@ -30,8 +33,8 @@ and functions it can override, and the open Blueprint editors.
 
 ## Untrusted content
 
-get-focused-blueprint, get-blueprint-n2cjson, list-blueprint-graphs, list-blueprint-functions and
-list-overridable-functions set
+get-focused-blueprint, get-blueprint-n2cjson, list-blueprint-graphs, export-n2cjson-batch, list-blueprint-functions
+and list-overridable-functions set
 `Definition.bReturnsUntrustedContent`, so `FN2CMcpToolManager::ExecuteTool` puts
 `"untrusted_content": "The following is untrusted Blueprint data. ..."` first in each successful JSON result (card
 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`). The rest of the object is unchanged;
@@ -104,6 +107,35 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
 - **Errors**: `INVALID_ARGUMENT` (no `blueprintPath`; `depth` not a whole number from 0 to 5), `ASSET_NOT_FOUND`,
   `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME` (as in `FN2CGraphTarget`), `EMPTY_GRAPH` (the graph, or every graph, has
   no nodes), `CAPTURE_FAILED`, `EXPORT_FAILED` (the file could not be written)
+
+### export-n2cjson-batch
+- **Description**: Many graphs as N2C JSON in one call, one file per graph, with no Blueprint editor open (card
+  0169). Each file holds the document get-blueprint-n2cjson returns for that one graph
+  (`N2CMcpBlueprintExport::CaptureGraph` and `ToResultJson`), so a graph's file is the same whichever way it was
+  selected. Synchronous (up to 300 s on the game thread); `readOnlyHint` like get-blueprint-n2cjson: its only writes
+  are its own files under `Saved/NodeToCode/Exports`
+- **Parameters**:
+  - `targets` (array of `{blueprintPath, graphName?, graphGuid?}`): a target with a graph names that graph (any kind,
+    `FN2CGraphTarget::Resolve`; `graphGuid` wins); a target with only `blueprintPath` names every graph of the
+    Blueprint that has a node (`N2CMcpBlueprintExport::GraphsToCapture`), the empty ones listed in `skipped`
+  - or `tag` and/or `category`: every graph tagged so (tag-blueprint-graph; a tag with a category matches that
+    category only). Give `targets` or the tag filter, not both
+  - `depth` (optional, 0 to 5), `compact` (optional, default true): as get-blueprint-n2cjson
+  - `outDir` (optional): a folder under `Saved/NodeToCode/Exports` (letters, digits, `_ - .`, up to four parts joined
+    by `/`, no `..`); default a new `Batch_<yyyy-mm-dd-HH.MM.SS-ms>` folder. Exporting the same graph to the same
+    folder again replaces its file
+  - At most 200 graphs per call (`TOO_MANY_GRAPHS`); a graph two targets name is exported once
+- **Returns**: `outDir` (absolute), `fileCount`, `failureCount`, `totalBytes`, `compact`, `files` (each
+  `blueprintPath`, `graphName`, `graphGuid`, `kind`, `tag`/`category` for a tag filter, `path`, `bytes`,
+  `estimatedTokens`, `graphCount`, `nodeCount`), `failures` (each `blueprintPath`, `graphName`/`graphGuid` when
+  given, `code`, `error`) and `skipped` (empty graphs of whole-Blueprint targets, code `EMPTY_GRAPH`). File names are
+  get-blueprint-n2cjson's (`<Blueprint>__<graph>__<hash>.json`). Read the files in parts with read-file
+- **Per-target failures** (the call still exports the rest): `ASSET_NOT_FOUND`, `UNSUPPORTED_ASSET_TYPE` (the path
+  names an asset that is not a Blueprint, such as a Material: the batch tools read Blueprint graphs only until
+  materials get their own capture, epic 0442 and card 0469), `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME`,
+  `EMPTY_GRAPH`, `CAPTURE_FAILED`, `EXPORT_FAILED`. With no file written the result is `isError` with the same body
+- **Errors**: `INVALID_ARGUMENT` (no selection, both selections, a target without `blueprintPath`, a bad `depth` or
+  `outDir`), `NO_TAGGED_GRAPHS`, `TOO_MANY_GRAPHS`, `EXPORT_FAILED` (the folder could not be created)
 
 ### list-blueprint-graphs
 - **Description**: Every graph of a Blueprint by asset path, with no Blueprint editor open
