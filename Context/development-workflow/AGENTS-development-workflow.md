@@ -25,13 +25,20 @@ PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every s
   probe checks against `Tests/smoke/expected.json` and `Tests/mcp_probe/expected.json`) or the automation tests
   with an exported report (`-Test`).
 - Writes timestamped logs to `BuildLogs/` (`-LogRoot` to move them) and exits non-zero on any failure.
+- Skips a version only when an UnrealEditor is open on this run's own host (its full `.uproject` path, slashes and
+  case normalized, is on the editor's command line; Live Coding blocks an external build). An editor on another
+  checkout's host of the same version does not count.
+- Safe to run from several checkouts at once: UBT logs to `BuildLogs/UBT_<ver>_<stamp>.txt` (`-Log=`) instead of
+  the shared per-user `UnrealBuildTool/Log.txt`, and a build that fails at once because another UBT holds a shared
+  file (`IOException` in `BackupLogFile`, e.g. UE 5.8's `UnrealBuildTool/Trace.uba`) is retried up to 3 times after
+  a random 3-15 s wait.
 
 Machine-specific settings (engine paths, hosts root) go in `build.local.ps1` next to the script; it is gitignored and
 dot-sourced when present.
 
 ### BuildLogs Directory
 
-Logs are named `Build_<ver>_<stamp>.log`, `Smoke_<ver>_<stamp>.log` (editor logs `Smoke_<ver>_<stamp>_<mode>.log`),
+Logs are named `Build_<ver>_<stamp>.log` (UBT's own log `UBT_<ver>_<stamp>.txt`, a retried attempt's build log `Build_<ver>_<stamp>_try<n>.log`), `Smoke_<ver>_<stamp>.log` (editor logs `Smoke_<ver>_<stamp>_<mode>.log`),
 `Tests_<ver>_<stamp>.log` (with the automation
 report in `Tests_<ver>_<stamp>/`) and `Package_<ver>_<stamp>.log`. The directory is git-ignored and accumulates logs
 over time.

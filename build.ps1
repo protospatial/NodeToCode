@@ -33,6 +33,12 @@
         $LogRoot      = '<folder for logs>'
     Parameters given on the command line win over build.local.ps1.
 
+    UnrealBuildTool logs to BuildLogs/UBT_<ver>_<stamp>.txt (-Log=), not the shared per-user UnrealBuildTool/Log.txt,
+    so builds from several checkouts can start together. A build that still fails at once on a shared file another
+    UBT holds (IOException in BackupLogFile, e.g. UE 5.8's UnrealBuildTool/Trace.uba) is retried up to 3 times after a
+    random 3-15 s wait; the failed attempt's log is kept as Build_<ver>_<stamp>_try<n>.log. A version is skipped only
+    when an UnrealEditor is open on this run's own host .uproject (full path compared), not another checkout's host.
+
     Release packages come from Scripts\package-release.ps1, not from -Package (a quick local BuildPlugin check).
 
     -Smoke runs Tests/smoke/smoke_check.py with the engine's own Python. It starts the host editor headless with
@@ -332,13 +338,48 @@ Startup=AutomaticButHidden
     Copy-Item (Join-Path $PluginRoot 'NodeToCode.uplugin') (Join-Path $h.PluginDir 'NodeToCode.uplugin') -Force
 }
 
+# Path key for comparing paths: forward slashes, repeated slashes collapsed (a leading '//' UNC prefix kept), and
+# lower case where the file system is case-insensitive (Windows, and macOS by default)
+function ConvertTo-PathKey([string]$path) {
+    $p = $path.Replace('\', '/')
+    $unc = $p.StartsWith('//')
+    $p = [regex]::Replace($p, '/{2,}', '/')
+    if ($unc) { $p = '/' + $p }
+    if ($OnWindows -or $OnMac) { $p = $p.ToLowerInvariant() }
+    return $p
+}
+
+# True when a process command line names this exact .uproject path: the full, normalized path, bounded by the
+# start or end of the line, a quote, whitespace, '=' or a NUL (Linux argv separator). Matching only the file name
+# would make every lane's host of one version (same NodeToCodeHost_5_x.uproject name) look open.
+function Test-CommandLineHasPath([string]$commandLine, [string]$path) {
+    if (-not $commandLine -or -not $path) { return $false }
+    $pattern = '(?:^|["''\s=\x00])' + [regex]::Escape((ConvertTo-PathKey $path)) + '(?:$|["''\s\x00])'
+    return [regex]::IsMatch((ConvertTo-PathKey $commandLine), $pattern)
+}
+
+# UnrealEditor processes opened on this run's host (Live Coding in them blocks an external build). Other lanes' or
+# checkouts' hosts of the same version have the same file name in another folder and do not count.
 function Test-EditorRunning($h) {
+    $uproject = [IO.Path]::GetFullPath($h.UProject)
     if ($OnWindows) {
         $procs = Get-CimInstance Win32_Process -Filter "Name LIKE 'UnrealEditor%'" -ErrorAction SilentlyContinue
-        return @($procs | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$($h.Name).uproject*" })
+        return @($procs | Where-Object { Test-CommandLineHasPath $_.CommandLine $uproject })
     }
-    return @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'UnrealEditor*' -and $_.Path } |
-        Where-Object { (Get-Content "/proc/$($_.Id)/cmdline" -Raw -ErrorAction SilentlyContinue) -like "*$($h.Name).uproject*" })
+    return @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'UnrealEditor*' } | Where-Object {
+        $cmd = if ($OnMac) { (& ps -o 'args=' -p $_.Id 2>$null) -join ' ' }
+               else { Get-Content "/proc/$($_.Id)/cmdline" -Raw -ErrorAction SilentlyContinue }
+        Test-CommandLineHasPath $cmd $uproject })
+}
+
+# UBT writes its log to -Log=<file> (UE 5.6-5.8) instead of the shared %LOCALAPPDATA%/UnrealBuildTool/Log.txt, which
+# two builds started together (parallel checkouts) both try to back up and open. UE 5.8 still backs up a shared
+# UnrealBuildTool/Trace.uba at startup whatever -Log says, so a build that dies on that is retried.
+$UbtSharedFileRetries = 3
+function Test-UbtSharedFileCollision([string]$log) {
+    if (-not (Test-Path $log)) { return $false }
+    $text = [IO.File]::ReadAllText($log).Replace("`0", '')
+    return ($text -match 'IOException' -and $text -match 'BackupLogFile')
 }
 
 # ---------------------------------------------------------------------------
@@ -551,8 +592,17 @@ foreach ($ver in $targets) {
     }
 
     $log = Join-Path $LogRoot "Build_${ver}_$stamp.log"
-    $code = Invoke-Logged (Get-EngineTool $engine 'Build') @(
-        $h.Target, $Platform, $Config, "-Project=$($h.UProject)", '-WaitMutex', '-FromMsBuild', '-NoHotReloadFromIDE') $log
+    for ($attempt = 1; ; $attempt++) {
+        $ubtLog = Join-Path $LogRoot ("UBT_${ver}_$stamp" + $(if ($attempt -gt 1) { "_$attempt" } else { '' }) + '.txt')
+        $code = Invoke-Logged (Get-EngineTool $engine 'Build') @(
+            $h.Target, $Platform, $Config, "-Project=$($h.UProject)", '-WaitMutex', '-FromMsBuild', '-NoHotReloadFromIDE',
+            "-Log=$ubtLog") $log
+        if ($code -eq 0 -or $attempt -gt $UbtSharedFileRetries -or -not (Test-UbtSharedFileCollision $log)) { break }
+        $wait = Get-Random -Minimum 3 -Maximum 16
+        Write-Host "UBT could not back up a log file another build holds (IOException in BackupLogFile); retry $attempt of $UbtSharedFileRetries in ${wait}s" -ForegroundColor Yellow
+        Move-Item -Force $log ($log -replace '\.log$', "_try$attempt.log")
+        Start-Sleep -Seconds $wait
+    }
     $secs = [int]$sw.Elapsed.TotalSeconds
     if ($code -ne 0) { Show-Failure $log; $results[$ver] = "FAILED ($code, ${secs}s)"; continue }
     $warn = @(Select-String -Path $log -Pattern 'NodeToCode.*\bwarning\b').Count
