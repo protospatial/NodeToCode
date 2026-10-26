@@ -27,6 +27,9 @@ folders, not only `SKILL.md`.
 
 ## Install them for your agent
 
+For Claude Code, the [Claude Code plugin](Claude-Code-Plugin) installs the skills together with the connection to
+NodeToCode's MCP server and a `/nodetocode:translate` command; copying is not needed then.
+
 Copy the three folders into the skills folder your agent reads, at your project's root (for every agent working in
 that project) or in your home folder (for every project).
 

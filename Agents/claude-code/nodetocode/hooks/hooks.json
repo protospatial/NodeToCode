@@ -1,0 +1,17 @@
+{
+  "description": "Says at session start which route reaches NodeToCode's MCP tools (this plugin's server, another port, or Epic's Unreal MCP on UE 5.8)",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

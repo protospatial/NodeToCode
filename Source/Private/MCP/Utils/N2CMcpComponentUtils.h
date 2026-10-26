@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "SubobjectDataHandle.h"
 
 class UBlueprint;
 class USimpleConstructionScript;
@@ -13,151 +14,119 @@ class USceneComponent;
 class UClass;
 
 /**
- * Utility class for MCP tools that work with Blueprint components
+ * One component of an Actor Blueprint as the actor is built: a native component of the C++ parent class (on the class
+ * default object), a component a parent Blueprint adds (its SCS), or one this Blueprint adds (its own SCS).
+ */
+struct FN2CComponentEntry
+{
+    /** The variable name agents use: the SCS node's variable name, or a native component's property name */
+    FName Name;
+    /** The template's object name (a native component's subobject name, CharacterMesh0 for a Character's Mesh) */
+    FName ObjectName;
+    UClass* Class = nullptr;
+    /** The component template; for an inherited SCS node, this Blueprint's override of it when there is one */
+    const UActorComponent* Template = nullptr;
+    /** The SCS node, null for a native component */
+    USCS_Node* Node = nullptr;
+    /** The Blueprint whose SCS holds Node */
+    UBlueprint* OwnerBlueprint = nullptr;
+    bool bNative = false;
+    /** Native or added by a parent Blueprint */
+    bool bInherited = false;
+    bool bScene = false;
+    /** The SCS's DefaultSceneRoot node (the placeholder root the engine adds and removes) */
+    bool bDefaultSceneRoot = false;
+    /** Index of the component this one is attached to, INDEX_NONE at the top level */
+    int32 Parent = INDEX_NONE;
+    FName SocketName;
+    TArray<int32> Children;
+};
+
+/** The component hierarchy of an Actor Blueprint, read without changing anything */
+struct FN2CComponentTree
+{
+    TArray<FN2CComponentEntry> Entries;
+    /** Components attached to nothing (the root, and components that are not scene components) */
+    TArray<int32> TopLevel;
+    /** The actor's root component, INDEX_NONE when it has none */
+    int32 Root = INDEX_NONE;
+
+    /** A component by variable name, else by template object name; INDEX_NONE when there is none */
+    int32 Find(const FString& Name) const;
+    /** Every component under Index, parents before their children */
+    void GetDescendants(int32 Index, TArray<int32>& OutDescendants) const;
+    /** The names of the scene components, for error messages */
+    FString SceneComponentNames() const;
+};
+
+/**
+ * Utility class for MCP tools that work with Blueprint components. Reads go through FN2CComponentTree (never changes
+ * the Blueprint); add and delete go through the engine's USubobjectDataSubsystem, as the Blueprint editor's
+ * Components panel does (card 0167).
  */
 class NODETOCODE_API FN2CMcpComponentUtils
 {
 public:
     /**
-     * Gets the Simple Construction Script from a Blueprint, creating one if necessary
-     * @param Blueprint The Blueprint to get the SCS from
-     * @param OutErrorMsg Error message if operation fails
-     * @return The SCS or nullptr on failure
+     * Checks that the Blueprint can have components: an Actor Blueprint that supports a construction script (not a
+     * level script, macro library, function library, interface or const Blueprint). Never creates anything.
      */
-    static USimpleConstructionScript* GetBlueprintSCS(UBlueprint* Blueprint, FString& OutErrorMsg);
+    static bool CheckComponentBlueprint(UBlueprint* Blueprint, FString& OutErrorMsg);
+
+    /** Builds the component hierarchy (native, inherited and own components) without changing the Blueprint */
+    static bool BuildComponentTree(UBlueprint* Blueprint, FN2CComponentTree& OutTree, FString& OutErrorMsg);
 
     /**
-     * Finds an SCS node by component name
-     * @param SCS The Simple Construction Script to search
-     * @param ComponentName The name of the component to find
-     * @return The SCS node or nullptr if not found
+     * The list-components-in-actor result: {components (a tree in "children"), totalCount (every component listed),
+     * rootComponent}. A component left out by bIncludeInherited or the type filter has its listed descendants moved up
+     * to where it would have been.
      */
-    static USCS_Node* FindSCSNodeByName(USimpleConstructionScript* SCS, const FString& ComponentName);
+    static TSharedPtr<FJsonObject> BuildComponentHierarchy(const FN2CComponentTree& Tree, bool bIncludeInherited,
+        const FString& ComponentTypeFilter);
+
+    /** One component as JSON (without children) */
+    static TSharedPtr<FJsonObject> ComponentToJson(const FN2CComponentTree& Tree, int32 Index);
 
     /**
-     * Creates a new SCS node for a component class
-     * @param SCS The Simple Construction Script to add the node to
-     * @param ComponentClass The class of component to create
-     * @param ComponentName Optional custom name (will be generated if empty)
-     * @param OutErrorMsg Error message if operation fails
-     * @return The created SCS node or nullptr on failure
+     * Resolves a component class from an object path (/Script/Engine.StaticMeshComponent, a Blueprint's generated
+     * class or the Blueprint's own path, to which _C is added) or a short name (StaticMeshComponent,
+     * UStaticMeshComponent, BP_Health), native classes first, and validates it.
      */
-    static USCS_Node* CreateSCSNode(USimpleConstructionScript* SCS, UClass* ComponentClass, 
-        const FString& ComponentName, FString& OutErrorMsg);
+    static UClass* ResolveComponentClass(const FString& ClassPath, FString& OutErrorMsg);
 
-    /**
-     * Validates that a component class can be instantiated in a Blueprint
-     * @param ComponentClass The class to validate
-     * @param OutErrorMsg Error message if validation fails
-     * @return True if the class is valid for Blueprint use
-     */
+    /** The class is an ActorComponent that can be added to a Blueprint */
     static bool ValidateComponentClass(UClass* ComponentClass, FString& OutErrorMsg);
 
-    /**
-     * Generates a unique component name based on the class
-     * @param SCS The SCS to check for name conflicts
-     * @param ComponentClass The class to base the name on
-     * @return A unique component name
-     */
-    static FString GenerateUniqueComponentName(USimpleConstructionScript* SCS, UClass* ComponentClass);
+    /** The name is free for a new component variable of this Blueprint (NAME_EXISTS or INVALID_NAME otherwise) */
+    static bool ValidateNewComponentName(UBlueprint* Blueprint, const FString& Name, FString& OutErrorMsg);
 
     /**
-     * Sets up attachment between two SCS nodes
-     * @param ChildNode The node to attach
-     * @param ParentNode The node to attach to
-     * @param SocketName Optional socket name for attachment
-     * @param OutErrorMsg Error message if operation fails
-     * @return True if attachment was successful
+     * Gathers the Blueprint's subobject handles from USubobjectDataSubsystem (the actor first). Can create
+     * inherited-component override templates, as opening the Blueprint editor does, so call it inside the edit's
+     * transaction.
      */
-    static bool SetupComponentAttachment(USCS_Node* ChildNode, USCS_Node* ParentNode, 
-        const FString& SocketName, FString& OutErrorMsg);
+    static bool GatherSubobjects(UBlueprint* Blueprint, TArray<FSubobjectDataHandle>& OutHandles,
+        FSubobjectDataHandle& OutActorHandle, FString& OutErrorMsg);
+
+    /** The gathered component handle with this variable name, or an invalid handle */
+    static FSubobjectDataHandle FindSubobjectHandle(const TArray<FSubobjectDataHandle>& Handles, FName VariableName);
+
+    /** The SCS node of the Blueprint (its own SCS) whose template is Template, or null */
+    static USCS_Node* FindOwnSCSNodeForTemplate(UBlueprint* Blueprint, const UActorComponent* Template);
 
     /**
-     * Builds a hierarchical JSON representation of the component tree
-     * @param Blueprint The Blueprint containing the components
-     * @param RootNodes The root nodes to start from
-     * @param bIncludeInherited Whether to include inherited components
-     * @param ComponentTypeFilter Filter for component types ("all", "scene", "actor", "primitive")
-     * @return JSON object representing the component hierarchy
+     * Applies a transform to a scene component template (Modify first, so an open transaction records it)
+     * @param TransformJson JSON object containing location, rotation, and scale; each part optional
      */
-    static TSharedPtr<FJsonObject> BuildComponentHierarchy(UBlueprint* Blueprint,
-        const TArray<USCS_Node*>& RootNodes, bool bIncludeInherited, const FString& ComponentTypeFilter);
-
-    /**
-     * Converts a single SCS node to JSON representation
-     * @param Node The SCS node to convert
-     * @param bIsInherited Whether this node is from a parent class
-     * @return JSON object representing the node
-     */
-    static TSharedPtr<FJsonObject> SCSNodeToJson(USCS_Node* Node, bool bIsInherited);
-
-    /**
-     * Gets inherited SCS nodes from parent Blueprints
-     * @param Blueprint The Blueprint to get inherited nodes from
-     * @param OutInheritedNodes Array to fill with inherited nodes
-     */
-    static void GetInheritedSCSNodes(UBlueprint* Blueprint, TArray<USCS_Node*>& OutInheritedNodes);
-
-    /**
-     * Applies a transform to a scene component template
-     * @param SceneComponent The component to apply the transform to
-     * @param TransformJson JSON object containing location, rotation, and scale
-     * @param OutErrorMsg Error message if operation fails
-     * @return True if transform was applied successfully
-     */
-    static bool ApplyTransformToComponent(USceneComponent* SceneComponent, 
+    static bool ApplyTransformToComponent(USceneComponent* SceneComponent,
         const TSharedPtr<FJsonObject>& TransformJson, FString& OutErrorMsg);
 
-    /**
-     * Checks if a component class passes the type filter
-     * @param ComponentClass The class to check
-     * @param TypeFilter The filter ("all", "scene", "actor", "primitive")
-     * @return True if the class passes the filter
-     */
+    /** Checks if a component class passes the type filter ("all", "scene", "actor", "primitive") */
     static bool PassesComponentTypeFilter(UClass* ComponentClass, const FString& TypeFilter);
 
-    /**
-     * Deletes a component node from the SCS
-     * @param SCS The Simple Construction Script containing the node
-     * @param NodeToDelete The node to delete
-     * @param bDeleteChildren Whether to delete child nodes as well
-     * @param OutErrorMsg Error message if operation fails
-     * @return True if deletion was successful
-     */
-    static bool DeleteSCSNode(USimpleConstructionScript* SCS, USCS_Node* NodeToDelete, 
-        bool bDeleteChildren, FString& OutErrorMsg);
-
-    /**
-     * Gets all child nodes of a component recursively
-     * @param Node The parent node
-     * @param OutChildren Array to fill with all child nodes
-     */
-    static void GetAllChildNodes(USCS_Node* Node, TArray<USCS_Node*>& OutChildren);
-
-    /**
-     * Checks if a node can be safely deleted
-     * @param Node The node to check
-     * @param bIsInherited Whether the node is from a parent Blueprint
-     * @param OutErrorMsg Error message if node cannot be deleted
-     * @return True if the node can be deleted
-     */
-    static bool CanDeleteNode(USCS_Node* Node, bool bIsInherited, FString& OutErrorMsg);
-
 private:
-    /**
-     * Recursively builds JSON for a node and its children
-     * @param Node The node to process
-     * @param bIsInherited Whether this node is inherited
-     * @param ComponentTypeFilter Type filter to apply
-     * @param OutJsonArray Array to add the JSON objects to
-     */
-    static void BuildNodeHierarchyRecursive(USCS_Node* Node, bool bIsInherited, 
-        const FString& ComponentTypeFilter, TArray<TSharedPtr<FJsonValue>>& OutJsonArray);
+    static void AppendHierarchyRecursive(const FN2CComponentTree& Tree, int32 Index, bool bIncludeInherited,
+        const FString& ComponentTypeFilter, TArray<TSharedPtr<FJsonValue>>& OutJsonArray, int32& InOutCount);
 
-    /**
-     * Gets the transform of a component as JSON
-     * @param Component The component to get the transform from
-     * @return JSON object with location, rotation, and scale
-     */
-    static TSharedPtr<FJsonObject> GetComponentTransformJson(USceneComponent* Component);
+    static TSharedPtr<FJsonObject> GetComponentTransformJson(const USceneComponent* Component);
 };
