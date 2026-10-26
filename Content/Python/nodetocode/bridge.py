@@ -188,6 +188,22 @@ def get_active_provider() -> Dict[str, Any]:
         return make_error_result(str(e))
 
 
+def get_translation_targets() -> Dict[str, Any]:
+    """
+    Get the languages NodeToCode translates Blueprints into, as the MCP get-available-translation-targets tool lists them.
+
+    Returns:
+        {success, data: {languages: [{id, displayName, description, fileExtensions, category, features,
+         syntaxHighlightingSupported}], defaultLanguage, currentLanguage, languageCount}, error}
+    """
+    try:
+        result = unreal.N2CPythonBridge.get_translation_targets()
+        return _parse_bridge_result(result)
+    except Exception as e:
+        log_error(f"get_translation_targets failed: {e}")
+        return make_error_result(str(e))
+
+
 # ============== Blueprint Editor Navigation ==============
 
 def open_blueprint(blueprint_path: str, focus_graph: str = "EventGraph") -> Dict[str, Any]:

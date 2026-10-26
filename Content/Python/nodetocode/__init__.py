@@ -107,6 +107,7 @@ Available Functions (the authoritative list is __all__ below):
     - remove_tag(graph_guid, tag) - Remove a tag from a graph
     - get_llm_providers() - Get all available LLM providers
     - get_active_provider() - Get current LLM provider info
+    - get_translation_targets() - Get the languages NodeToCode translates into
 
     Utilities:
     - get_editor_subsystem(class) - Get an editor subsystem
@@ -149,6 +150,7 @@ from .bridge import (
     remove_tag,
     get_llm_providers,
     get_active_provider,
+    get_translation_targets,
     open_blueprint,
     open_blueprint_function,
 )
@@ -225,6 +227,7 @@ __all__ = [
     'remove_tag',
     'get_llm_providers',
     'get_active_provider',
+    'get_translation_targets',
     'open_blueprint',
     'open_blueprint_function',
     # Utilities

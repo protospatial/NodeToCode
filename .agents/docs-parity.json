@@ -85,6 +85,11 @@
                "Agents/claude-code/nodetocode/hooks/**", "Agents/claude-code/nodetocode/commands/**",
                "Agents/claude-code/nodetocode/README.md"],
       "pages": ["wiki/developers/Claude-Code-Plugin.md"]
+    },
+    {
+      "name": "ue58-toolset",
+      "code": ["Content/Python/init_unreal.py", "Content/Python/nodetocode/toolsets/**"],
+      "pages": ["wiki/developers/NodeToCodeTools.md"]
     }
   ],
   "accept": []
