@@ -10,3 +10,4 @@ One record per decision, numbered in the order they were made. A record is amend
 - [0004 — Provider architecture: a data-driven model catalog with string IDs and wire-dialect adapters](0004-provider-architecture-catalog-and-dialects.md) — proposed (2026-10-25), provisional pending the owner's confirmation on card 0115
 - [0005 — MCP tool exposure: declared toolsets, settings profiles and an opt-in tool search](0005-mcp-tool-exposure-toolsets-and-tool-search.md) — proposed (2026-10-25), provisional pending the owner's confirmation on card 0106
 - [0006 — User docs location: the GitHub wiki stays the target, its source lives in wiki/ in the repo](0006-user-docs-location-wiki-in-repo.md) — decided (2026-10-22), by the owner on card 0123
+- [0007 — CRUD tool families: fix crash and corruption defects, then freeze](0007-crud-tool-families-fix-then-freeze.md) — proposed (2026-10-26), provisional pending the owner's confirmation on card 0140

@@ -5,6 +5,28 @@ components of an Actor Blueprint. Add and delete go through the engine's `USubob
 editor's Components panel does (card 0167); the list tool reads the hierarchy without changing anything
 (`FN2CMcpComponentUtils::BuildComponentTree`).
 
+## Status: frozen, bug fixes only (dec-5)
+
+Every tool here (`BlueprintComponentTools`) is frozen. Decision record [0007](../../../../../../../.agents/decisions/0007-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
+provisionally as the review's option 2, with card 0089 applied provisionally as option (b).
+
+- **Accepted:** bug fixes, meaning a change that fixes a crash or hang (a modal dialog in an unattended call
+  counts), data loss, Blueprint or project corruption, or a result that misreports what happened (success for an
+  edit that did not happen, wrong counts, duplicates, a wrong type in a read). Also accepted, since they add no
+  capability: explicit targeting arguments on existing tools (review next-6), security hardening, building on the
+  supported engines, tests, docs that match the code, and removing dead code.
+- **Not accepted:** new tools in this family, and new arguments, modes or result fields that
+  add capability. On UE 5.8 that work belongs to Epic's EditorToolset (`ActorTools.add_component`, `remove_component`, `get_components`); on 5.6 and 5.7 it waits for the
+  owner.
+- **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
+  tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
+  `PythonTools`.
+- **Fix cards still owed here:** 0287 (list-components-in-actor duplicates, missing native components, the type filter), and 0274 (explicit
+  targets, admitted as next-6).
+
+The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
+`Source/Private/MCP/Tools/AGENTS.md`.
+
 ## What the Tools See
 
 - **Every component of the actor**, as the Components panel shows them: the native components of the C++ parent class

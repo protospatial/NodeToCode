@@ -16,6 +16,8 @@
 * [Initial Configuration](Initial-Configuration)
 * [LM Studio Quick Start](LM-Studio-Quick-Start)
 * [Plugin Updates](Plugin-Updates)
+* [Upgrading from 1.x](Upgrading-from-Version-1)
+* [Security Model](Security-Model)
 </details>
 
 <details>
@@ -68,6 +70,8 @@
 <details>
 <summary>🤖 Agents & MCP</summary>
 
+* [Connecting an MCP Client](Connecting-an-MCP-Client)
+* [Choosing a Tool Mode](Choosing-a-Tool-Mode)
 * [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription)
 * [Using NodeToCode with Unreal MCP (UE 5.8)](Using-NodeToCode-with-Unreal-MCP)
 * [NodeToCodeTools in Unreal MCP (UE 5.8)](NodeToCodeTools)
