@@ -54,8 +54,14 @@ public:
 	/** Get the singleton instance */
 	static FN2CMcpToolManager& Get();
 
+	/** The tools Configure picks from: every tool of FN2CMcpToolRegistry, unless a spec gives its own */
+	using FToolSource = TFunction<TArray<TSharedPtr<IN2CMcpTool>>()>;
+
 	/** A manager that serves nothing until Configure or RegisterTool (the server uses Get) */
 	FN2CMcpToolManager();
+
+	/** A manager whose Configure picks from InToolSource instead of the registry (specs) */
+	explicit FN2CMcpToolManager(FToolSource InToolSource);
 	~FN2CMcpToolManager() = default;
 
 	FN2CMcpToolManager(const FN2CMcpToolManager&) = delete;
@@ -64,7 +70,8 @@ public:
 	/**
 	 * Serves the tools of the registry whose toolset Config enables (a tool with no toolset is never served) and sets
 	 * the exposure. Replaces whatever was served before; broadcasts OnToolListChanged when tools/list changes after an
-	 * earlier Configure.
+	 * earlier Configure. The new set is built without the lock (no tool code runs under it) and swapped in under it,
+	 * so a tool may call Configure while it runs.
 	 * @return the names in Config.Toolsets that no declared toolset has (they enable nothing)
 	 */
 	TArray<FString> Configure(const FN2CMcpToolConfig& Config);
@@ -108,7 +115,8 @@ public:
 	TSharedPtr<const FMcpToolDefinition> GetToolDefinition(const FString& ToolName) const;
 
 	/**
-	 * Execute a served tool or meta-tool by name (call_tool runs the tool it names)
+	 * Execute a served tool or meta-tool by name (call_tool runs the tool it names) and return its result as MCP
+	 * content: FN2CToolCatalog::InvokeNow through the MCP adapter (FN2CToolOutcome::ToCallToolResult)
 	 * @param ToolName The name of the tool to execute
 	 * @param Arguments The JSON arguments to pass to the tool
 	 * @return The result of the tool execution
@@ -161,6 +169,9 @@ public:
 	FSimpleMulticastDelegate& OnToolListChanged() { return ToolListChanged; }
 
 private:
+	/** Describe, Find and Invoke read the active set through FindEntry and CollectDefinitions */
+	friend class FN2CToolCatalog;
+
 	/** One served tool and its definition, built once when it was registered */
 	struct FRegisteredTool
 	{
@@ -170,6 +181,22 @@ private:
 
 	/** The served tool or meta-tool of that name (copied under the lock); an empty entry when there is none */
 	FRegisteredTool FindEntry(const FString& ToolName) const;
+
+	/**
+	 * The cached definitions, sorted by name (ordinal): what tools/list holds (bListed), else every served tool
+	 * (never the meta-tools). Copied under the lock.
+	 */
+	TArray<TSharedPtr<const FMcpToolDefinition>> CollectDefinitions(bool bListed) const;
+
+	/** The names tools/list holds, sorted (call with ToolsLock held) */
+	TArray<FString> ListedNamesLocked() const;
+
+	/**
+	 * Builds a tool's entry from its definition: adds the Play In Editor rule to the description and refuses an empty
+	 * or meta-tool name and a Python execution tool the user has not allowed. Takes no lock and calls no tool code.
+	 * @return false when the tool is not served (logged)
+	 */
+	static bool MakeEntry(const TSharedPtr<IN2CMcpTool>& Tool, const FMcpToolDefinition& Definition, FRegisteredTool& OutEntry);
 
 	/** The enabled toolsets that have a served tool (call with ToolsLock held) */
 	TArray<const FN2CMcpToolset*> ListedToolsetsLocked() const;
@@ -197,6 +224,9 @@ private:
 
 	/** Whether Configure ran (the first one never broadcasts) */
 	bool bConfigured = false;
+
+	/** Where Configure finds the tools; unset: FN2CMcpToolRegistry */
+	FToolSource ToolSource;
 
 	/** Mutex for thread-safe access */
 	mutable FCriticalSection ToolsLock;
