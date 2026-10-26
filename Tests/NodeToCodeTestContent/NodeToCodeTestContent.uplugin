@@ -1,0 +1,13 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "NodeToCode Test Content",
+	"Description": "Test-only content for NodeToCode's automation tests (the perf fixtures). Never shipped: build.ps1 links it into its host projects; RunUAT BuildPlugin does not package it.",
+	"Category": "Testing",
+	"CreatedBy": "Protospatial",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"Installed": false,
+	"EnabledByDefault": true
+}

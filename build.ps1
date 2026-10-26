@@ -13,6 +13,8 @@
       * there is exactly one copy of the source (this checkout), and edits anywhere land here;
       * Binaries and Intermediate stay per host, so each engine builds incrementally without clobbering
         another engine's DLLs.
+    The host's Plugins\NodeToCodeTestContent is a junction to Tests\NodeToCodeTestContent, a content-only plugin with
+    the automation tests' checked-in assets (the perf fixtures, NodeToCode.Perf.Fixtures); it is never packaged.
     NodeToCode.uplugin is a file, so it is copied into each host on every run instead.
 
     Engines are found, per version, in this order:
@@ -104,6 +106,7 @@ $SupportedVersions = @('5.6', '5.7', '5.8')
 $PluginRoot = $PSScriptRoot
 $WorkRoot   = Split-Path $PluginRoot -Parent
 $LinkedDirs = @('Source', 'Content', 'Resources', 'ThirdParty')
+$TestContentPlugin = 'NodeToCodeTestContent' # Tests/<name>, linked whole into each host's Plugins folder
 $OnWindows  = ($PSVersionTable.PSEdition -ne 'Core') -or $IsWindows
 $OnMac      = (-not $OnWindows) -and $IsMacOS
 $Platform   = if ($OnWindows) { 'Win64' } elseif ($OnMac) { 'Mac' } else { 'Linux' }
@@ -331,17 +334,26 @@ Startup=AutomaticButHidden
     # Plugin: real dir, linked source folders, per-host Binaries/Intermediate
     New-Item -ItemType Directory -Force $h.PluginDir | Out-Null
     foreach ($d in $LinkedDirs) {
-        $link   = Join-Path $h.PluginDir $d
-        $target = ([IO.Path]::GetFullPath((Join-Path $PluginRoot $d))).TrimEnd('\', '/')
-        $item   = Get-Item $link -Force -ErrorAction SilentlyContinue
-        if ($item) {
-            if ((Get-LinkTarget $item) -eq $target) { continue }
-            throw "$link exists but is not a link to $target (it may belong to another checkout): remove it, or use -HostsRoot."
-        }
-        $type = if ($OnWindows) { 'Junction' } else { 'SymbolicLink' }
-        New-Item -ItemType $type -Path $link -Target $target | Out-Null
+        Set-HostLink (Join-Path $h.PluginDir $d) (Join-Path $PluginRoot $d)
     }
     Copy-Item (Join-Path $PluginRoot 'NodeToCode.uplugin') (Join-Path $h.PluginDir 'NodeToCode.uplugin') -Force
+
+    # The test-only content plugin (the perf fixtures, card 0359), linked whole: it loads from this checkout and is
+    # never part of the NodeToCode plugin folder, so RunUAT BuildPlugin and the release packages never contain it
+    Set-HostLink (Join-Path $h.Dir (Join-Path 'Plugins' $TestContentPlugin)) (Join-Path $PluginRoot (Join-Path 'Tests' $TestContentPlugin))
+}
+
+# A junction (a symbolic link on Mac and Linux) at $link to the folder $target. Nothing to do when it already is one;
+# an error when $link is anything else (it may belong to another checkout).
+function Set-HostLink([string]$link, [string]$target) {
+    $target = ([IO.Path]::GetFullPath($target)).TrimEnd('\', '/')
+    $item   = Get-Item $link -Force -ErrorAction SilentlyContinue
+    if ($item) {
+        if ((Get-LinkTarget $item) -eq $target) { return }
+        throw "$link exists but is not a link to $target (it may belong to another checkout): remove it, or use -HostsRoot."
+    }
+    $type = if ($OnWindows) { 'Junction' } else { 'SymbolicLink' }
+    New-Item -ItemType $type -Path $link -Target $target | Out-Null
 }
 
 # Path key for comparing paths: forward slashes, repeated slashes collapsed (a leading '//' UNC prefix kept), and

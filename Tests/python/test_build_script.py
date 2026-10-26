@@ -126,3 +126,52 @@ def test_ubt_shared_file_collision_is_detected(tmp_path):
                           capture_output=True, text=True, env=env, timeout=120)
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout) == [want for _, want in UBT_LOGS]
+
+
+LINK_SCRIPT = r'''
+$ErrorActionPreference = 'Stop'
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:N2C_BUILD_PS1, [ref]$null, [ref]$null)
+foreach ($name in @('Get-LinkTarget', 'Set-HostLink')) {
+    $fn = $ast.Find({ param($a) $a -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -eq $name }, $true)
+    if (-not $fn) { throw "build.ps1 has no function $name" }
+    . ([scriptblock]::Create($fn.Extent.Text))
+}
+$OnWindows = ($PSVersionTable.PSEdition -ne 'Core') -or $IsWindows
+$root = $env:N2C_ROOT
+$target = Join-Path $root 'Tests/NodeToCodeTestContent'
+$link = Join-Path $root 'Host/Plugins/NodeToCodeTestContent'
+New-Item -ItemType Directory -Force $target, (Split-Path $link -Parent) | Out-Null
+Set-HostLink $link $target
+Set-HostLink $link $target
+$made = (Get-LinkTarget (Get-Item $link -Force)) -eq ([IO.Path]::GetFullPath($target)).TrimEnd('\', '/')
+$plain = Join-Path $root 'Host/Plugins/Other'
+New-Item -ItemType Directory -Force $plain | Out-Null
+$refused = $false
+try { Set-HostLink $plain $target } catch { $refused = $_.Exception.Message -like '*is not a link to*' }
+ConvertTo-Json -Compress @($made, $refused)
+'''
+
+
+def test_host_link_is_made_once_and_refuses_a_folder(tmp_path):
+    """build.ps1's Set-HostLink, which links the plugin folders and Tests/NodeToCodeTestContent (card 0359) into a host:
+    makes the link, leaves it alone on the next run, and refuses to replace anything that is not that link"""
+    script_file = tmp_path / 'link.ps1'
+    script_file.write_text(LINK_SCRIPT, encoding='utf-8')
+    env = dict(os.environ, N2C_BUILD_PS1=BUILD_PS1, N2C_ROOT=str(tmp_path / 'root'))
+    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-File', str(script_file)],
+                          capture_output=True, text=True, env=env, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == [True, True]
+
+
+def test_host_links_the_test_content_plugin():
+    """Initialize-HostProject links Tests/NodeToCodeTestContent into the host's Plugins folder (card 0359), and the
+    plugin it links is content only, so the perf fixtures load in every host and never ship"""
+    with open(BUILD_PS1, encoding='utf-8') as f:
+        text = f.read()
+    assert "$TestContentPlugin = 'NodeToCodeTestContent'" in text
+    assert "Set-HostLink (Join-Path $h.Dir (Join-Path 'Plugins' $TestContentPlugin))" in text
+    with open(os.path.join(REPO_ROOT, 'Tests', 'NodeToCodeTestContent', 'NodeToCodeTestContent.uplugin'), encoding='utf-8') as f:
+        descriptor = json.load(f)
+    assert descriptor['CanContainContent'] is True
+    assert not descriptor.get('Modules')

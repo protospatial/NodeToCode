@@ -62,6 +62,9 @@ C++ host project, `<HostsRoot>/NodeToCodeHost_5_X` (default `..\Hosts`, next to 
 creates on first use. The host's `Plugins/NodeToCode/{Source,Content,Resources,ThirdParty}` are junctions (symbolic
 links on Mac and Linux) back into this checkout, and `NodeToCode.uplugin` is copied in on every run, so there is one
 copy of the source while `Binaries/` and `Intermediate/` stay per host and every engine builds incrementally.
+The host's `Plugins/NodeToCodeTestContent` is a junction to `Tests/NodeToCodeTestContent`, a content-only plugin with
+the tests' checked-in assets (the perf fixtures `BP_N2CPerf_100`, `_1k` and `_5k`, card 0359; its README gives the
+regeneration command). It is outside the NodeToCode plugin's folders, so no package ever contains it.
 
 Requirements: the UE 5.6, 5.7 and 5.8 engines, and for `-Smoke` Node.js 22.19 or newer with `npx` on `PATH` (it
 fetches the pinned MCP conformance suite and MCP Inspector from npm; checked with Node 24.11.1 and npm 11.6.2). For
