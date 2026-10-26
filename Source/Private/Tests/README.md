@@ -69,6 +69,7 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists a loaded Blueprint class once, as a Blueprint class | mcp-tools-bp-structure-12 (card 0288) |
+| `NodeToCode.State` | malformed input: a graphs field that is not an array, a graph entry that is not an object, a graphGuid that does not parse | editor-integration-12 (card 0499) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -185,6 +186,28 @@ prompts: `FN2CMcpSaveBlueprint::Decide` with the states Perforce and Git report 
 Both delete their folders (assets, the redirectors a move leaves, files and registry paths;
 `N2CTest::DeleteContentFolder` in `N2CTestContentFolder.h`) before and after every case, also a failed one. Their
 known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN_DEFECTS=1`.
+
+## Graph state and the editor integration
+
+- `NodeToCode.State` (`Core/N2CGraphState.spec.cpp`, card 0203) runs each case on an isolated
+  `UN2CGraphStateManager::CreateIsolated` manager whose state file is in a scratch folder, never on the singleton or
+  the host's `Saved/NodeToCode`. It checks that `FN2CGraphStateFile` survives ToJson -> FromJson -> ToJson with every
+  field set and that a second manager reads back what the first saved. Malformed state files (cut off, not JSON, a
+  trailing comma, an array, a file another process holds open) are kept in place or as one `.corrupt-` copy, an error
+  is reported, and two tag changes afterwards write nothing. `ClearAllTags` removes neighbouring tag-only graphs in
+  one pass, one save and one reload broadcast, and keeps translations and exports. `LoadTranslation` and
+  `LoadN2CJson` find a translation of every `EN2CCodeLanguage` written the way the batch writes it, in a folder inside
+  the project (a relative record), outside it (an absolute record) and under a Custom Translation Output Directory
+  inside and outside the project, and the folder's only implementation file (the real writers and older records are
+  `NodeToCode.LLM.TranslationLoad`'s). A Blueprint and its copy with one graph GUID keep separate
+  tags, translations and exports through a reload.
+- `NodeToCode.Windowed.Integration` (`Core/N2CEditorIntegration.spec.cpp`, card 0203) needs a rendering editor and
+  only reports a skip under `-nullrhi`, so `build.ps1 -Test` does not run it. It opens two Blueprints as the Content
+  Browser does, then moves between them and into a function graph. After each move it waits for the editor's own
+  timers and checks `GetActiveBlueprintEditor()`, get-focused-blueprint and a live overlay on the graph shown. Run it
+  in a windowed editor: `UnrealEditor.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode.Windowed"
+  -TestExit="Automation Test Queue Empty"` (its MCP server takes the settings' port, 27000 by default). The headless version of
+  the focus rules is `NodeToCode.Editor.Focus` (UE 5.8).
 
 ## Secrets, settings migration and StructUtils
 
