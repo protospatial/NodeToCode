@@ -23,8 +23,9 @@ run from a plain user request that does not name the skill or the tools:
   a .h and a .cpp whose code has BeginPlay with Super::BeginPlay, Health, 50 and both messages but not the canary
   (the unreachable node is left out), translates directly (no translate-focused-blueprint) and changes no asset.
 - to_cpp_tool: "convert <path> to C++ with the NodeToCode plugin's built-in translator (anthropic, claude-haiku-5-5)". Passes when the agent loads
-  blueprint-to-cpp, calls open-blueprint-asset on the path before translate-focused-blueprint with language cpp,
-  and the translation succeeds.
+  blueprint-to-cpp and translates with language cpp either by path (translate-batch with a target on the path, card
+  0177's route) or by opening the path with open-blueprint-asset before translate-focused-blueprint, and the
+  translation succeeds.
 - migration: "migrate <path> to C++". Passes when the agent loads blueprint-migration, reads by path, calls no tool
   that changes the Blueprint or any asset (no delete, save, move, rename, copy, compile or run-python), writes no
   source file, and stops at gate 1 asking for approval.
@@ -72,7 +73,7 @@ READ_TOOLS = {'search-content-browser', 'list-blueprint-graphs', 'get-blueprint-
               'get-available-translation-targets', 'get-translation-output-directory', 'search-blueprint-nodes',
               'search-blueprint-classes', 'search-variable-types', 'get-blueprint-function-local-variables'}
 # Tools that leave the project as it was apart from an open editor
-SOFT_TOOLS = {'open-blueprint-asset', 'open-content-browser-path', 'translate-focused-blueprint'}
+SOFT_TOOLS = {'open-blueprint-asset', 'open-content-browser-path', 'translate-focused-blueprint', 'translate-batch'}
 
 CREATE_PY = r'''
 import unreal
@@ -297,7 +298,7 @@ def check_scenario(name, run, path, out_dir):
         checks['code_matches'] = all(s in code for s in ('BeginPlay', 'Super::BeginPlay', 'Health', '50', 'Low health',
                                                          'Healthy'))
         checks['unreachable_left_out'] = CANARY not in code
-        checks['translated_directly'] = 'translate-focused-blueprint' not in tools
+        checks['translated_directly'] = not {'translate-focused-blueprint', 'translate-batch'} & set(tools)
         checks['no_asset_change'] = not changing
         run['files'] = [os.path.relpath(f, out_dir) for f in files]
     elif name == 'to_cpp_tool':
@@ -305,9 +306,16 @@ def check_scenario(name, run, path, out_dir):
                   and str(c['input'].get('asset_path', '')).split('.')[0] == path]
         translated = [i for i, c in enumerate(mcp) if c['tool'][4:] == 'translate-focused-blueprint'
                       and str(c['input'].get('language', '')).lower() == 'cpp']
+        batched = [i for i, c in enumerate(mcp) if c['tool'][4:] == 'translate-batch'
+                   and str(c['input'].get('language', '')).lower() == 'cpp'
+                   and any(str(t.get('blueprintPath', '')).split('.')[0] == path
+                           for t in (c['input'].get('targets') or []) if isinstance(t, dict))]
         checks['read_by_path'] = True  # this route reads through the translate tool itself
-        checks['opened_before_translate'] = bool(opened and translated and opened[0] < translated[0])
+        checks['translated_by_path_or_opened_first'] = bool(batched) or \
+            bool(opened and translated and opened[0] < translated[0])
         ok = [mcp[i] for i in translated if not mcp[i]['error'] and '"graphs"' in mcp[i]['text']]
+        ok += [mcp[i] for i in batched
+               if not mcp[i]['error'] and re.search(r'"succeeded"\s*:\s*[1-9]', mcp[i]['text'])]
         checks['translation_ok'] = bool(ok)
         checks['no_asset_change'] = not changing
     elif name == 'migration':
