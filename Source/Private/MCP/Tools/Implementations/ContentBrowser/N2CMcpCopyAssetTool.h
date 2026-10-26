@@ -17,7 +17,6 @@ public:
     virtual bool RequiresGameThread() const override { return true; }
 
 private:
-    bool ValidateSourceAsset(const FString& AssetPath, FString& OutNormalizedPath, FString& OutErrorMessage) const;
-    bool ValidateDestinationPath(const FString& DestinationPath, FString& OutNormalizedPath, FString& OutErrorMessage) const;
-    FString ConvertToPackagePath(const FString& AssetPath) const;
+    /** The destination package path and its folder, validated (write policy, name, nothing there yet); creates nothing */
+    bool ValidateDestinationPath(const FString& DestinationPath, FString& OutFolder, FString& OutPackage, FString& OutErrorMessage) const;
 };

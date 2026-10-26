@@ -190,7 +190,10 @@ FN2CMcpToolManager::FN2CMcpToolManager()
 	{
 		FRegisteredTool& Entry = MetaTools.Add(Tool->GetDefinition().Name);
 		Entry.Tool = Tool;
-		Entry.Definition = MakeShared<FMcpToolDefinition>(Tool->GetDefinition());
+		FMcpToolDefinition Definition = Tool->GetDefinition();
+		// Title and hints from the catalog's presentation table (card 0205)
+		FN2CToolCatalog::ApplyPresentation(Definition);
+		Entry.Definition = MakeShared<FMcpToolDefinition>(MoveTemp(Definition));
 	}
 }
 
@@ -330,6 +333,9 @@ bool FN2CMcpToolManager::MakeEntry(const TSharedPtr<IN2CMcpTool>& Tool, const FM
 {
 	// The definition is built once, here, and served to tools/list and every tools/call from then on
 	const TSharedRef<FMcpToolDefinition> Cached = MakeShared<FMcpToolDefinition>(Definition);
+	// Title, hints and the anthropic/* _meta from the catalog's presentation table (card 0205); before the PIE rule,
+	// which reads the read-only hint
+	FN2CToolCatalog::ApplyPresentation(*Cached);
 	// A tool refused during Play In Editor says so in its description (card 0170)
 	FN2CMcpPlaySessionGuard::AddRuleToDescription(*Cached);
 	const FString& ToolName = Cached->Name;

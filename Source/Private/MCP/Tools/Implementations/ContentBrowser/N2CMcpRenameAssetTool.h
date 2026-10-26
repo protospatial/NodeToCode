@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
 
+struct FAssetData;
+
 /**
  * @class FN2CMcpRenameAssetTool
  * @brief MCP tool for renaming assets in the content browser
@@ -33,29 +35,24 @@ public:
 
 private:
     /**
-     * Validates the source asset path and checks if it exists
-     * @param AssetPath The asset path to validate
-     * @param OutNormalizedPath The normalized path
+     * Validates the source asset path (write policy) and resolves the asset from the registry
+     * @param AssetPath The asset path to validate, package or object path
+     * @param OutAsset The asset
      * @param OutErrorMessage Error message if validation fails
      * @return True if validation succeeds
      */
-    bool ValidateSourceAsset(const FString& AssetPath, FString& OutNormalizedPath, FString& OutErrorMessage) const;
+    bool ValidateSourceAsset(const FString& AssetPath, FAssetData& OutAsset, FString& OutErrorMessage) const;
 
     /**
-     * Validates the destination path or new name
-     * @param SourcePath The normalized source path
-     * @param NewNameOrPath The new name or full destination path
-     * @param OutDestinationPath The full destination path
+     * Validates the new name or the full destination path, and that nothing is there yet; creates nothing
+     * @param SourceAsset The asset to rename
+     * @param NewName The new name (or empty)
+     * @param DestinationPath The full destination package path (or empty)
+     * @param OutFolder The destination folder
+     * @param OutAssetName The new asset name, validated
      * @param OutErrorMessage Error message if validation fails
      * @return True if validation succeeds
      */
-    bool ValidateDestination(const FString& SourcePath, const FString& NewNameOrPath, 
-        FString& OutDestinationPath, FString& OutErrorMessage) const;
-
-    /**
-     * Converts an asset path to package path format
-     * @param AssetPath The asset path to convert
-     * @return The package path
-     */
-    FString ConvertToPackagePath(const FString& AssetPath) const;
+    bool ValidateDestination(const FAssetData& SourceAsset, const FString& NewName, const FString& DestinationPath,
+        FString& OutFolder, FString& OutAssetName, FString& OutErrorMessage) const;
 };

@@ -22,8 +22,7 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
 - **Fix cards still owed here:** 0182 (asset-writing tools restricted to /Game and project plugin content), 0281 (folders through
-  `UEditorAssetSubsystem::RenameDirectory`), 0284 (move-, rename- and copy-asset path handling), 0285
-  (search-content-browser and read-content-browser-path results), 0286 (open-blueprint-asset fails on unknown
+  `UEditorAssetSubsystem::RenameDirectory`), 0285 (search-content-browser and read-content-browser-path results), 0286 (open-blueprint-asset fails on unknown
   graphs).
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
@@ -35,9 +34,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Description**: Opens a path in the primary content browser
 - **Parameters**:
   - `path` (required): Content browser folder (e.g., '/Game/Blueprints'); see "Content Browser Paths"
-  - `select_item` (optional): Asset to select after navigating, given as `AssetName.AssetName` (object form). A bare
-    `AssetName` is not found (`FN2CMcpContentBrowserUtils::SelectAssetAtPath` looks it up as an object path), and the
-    call still succeeds with `selected_item` empty
+  - `select_item` (optional): Asset in that folder to select after navigating, as `AssetName` or
+    `AssetName.AssetName` (`FN2CMcpContentBrowserUtils::SelectAssetAtPath` finds it in the asset registry either way).
+    An asset that is not there is not an error: the call succeeds with `selected_item` empty
   - `create_if_missing` (optional, default false): Create the folder if it does not exist
 - **Returns**: `success`, `navigated_path` (the normalized path), `selected_item`, `created_folder`,
   `current_selected_paths` (the browser's selected folders, as `/All/...` virtual paths)
@@ -100,13 +99,13 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Parameters**:
   - `sourcePath` (required): Package path or object path under any mounted root (copying only reads it)
   - `destinationPath` (required): Package path of the new asset including its name (e.g.,
-    `/Game/Folder/BP_Copy`); the write policy (`FN2CMcpContentBrowserUtils::IsWritableContentPath`, see "Where tools may write") applies, its name
-    may not contain spaces or dots, and missing folders are created
-  - `overwriteExisting` (optional, default false): With false, an existing destination is reported before copying
-    (`Destination asset already exists`). With true that check is skipped, but `UEditorAssetSubsystem::DuplicateAsset`
-    never replaces an existing asset, so the copy fails (`Failed to copy asset ...`) and the existing asset is left
-    as it was. There is no way to overwrite through this tool
-- **Returns**: `message`, `sourcePath`, `destinationPath`, `assetName`, `assetClass`, `tips`
+    `/Game/Folder/BP_Copy`); the write policy (`FN2CMcpContentBrowserUtils::IsWritableContentPath`, see "Where tools may write") applies, and its name
+    follows "Asset names". An existing asset there is an error (`Destination asset already exists`): the copy never
+    replaces one. Missing folders are created right before the copy and removed again if it fails
+  - There is no `overwriteExisting` (removed by card 0284: it never overwrote). An argument the schema does not list
+    is ignored
+- **Returns**: `message`, `sourcePath`, `destinationPath` (package paths, the copy read back from the asset
+  registry), `assetName`, `assetClass`, `tips`. A failed copy gives the engine's reason
 - **Use Case**: Duplicating assets, creating variations
 
 ### create-folder
@@ -138,26 +137,31 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Description**: Moves or renames an asset (`UEditorAssetSubsystem::RenameAsset`, which updates references)
 - **Parameters**:
   - `sourcePath` (required): Package path `/Game/Folder/Asset` (as `read-content-browser-path` returns it) or object
-    path `/Game/Folder/Asset.Asset`. With an object path, also pass `newName`: without it
-    `FN2CMcpMoveAssetTool::Execute` takes the name from the path including `.Asset`, and the move fails
-  - `destinationPath` (required): Destination folder (e.g., '/Game/Blueprints/Characters'); created if missing.
-    The write policy applies to it and to `sourcePath`, since a move rewrites both packages
-  - `newName` (optional): New asset name (default: the source's name)
+    path `/Game/Folder/Asset.Asset` (as `search-content-browser`'s `metadata.objectPath`); the asset is looked up in the
+    asset registry (`FN2CMcpContentBrowserUtils::ResolveAsset`) and its name taken from there
+  - `destinationPath` (required): Destination folder (e.g., '/Game/Blueprints/Characters'); created right before the
+    move if missing, and removed again if the move fails. The write policy applies to it and to `sourcePath`, since a
+    move rewrites both packages
+  - `newName` (optional): New asset name (default: the asset's name), following "Asset names"
   - `showNotification` (optional, default true): Show an editor notification
-- **Returns**: `success`, `oldPath`, `newPath` (package paths), `objectPath`, `operation` (`move`, or `rename` when
-  the folder is unchanged), `leftRedirector` (always false), `assetInfo`, `nextSteps`. An existing asset at the
-  destination is an error
+- **Returns**: `success`, `oldPath`, `newPath` (package paths, read back from the asset registry), `objectPath`,
+  `operation` (`move`, or `rename` when the folder is unchanged), `leftRedirector` (always false), `assetInfo`,
+  `nextSteps`. An existing asset at the destination is an error, and so is a case-only rename (see "Asset names").
+  An asset checked out by someone else in source control is refused. A failed move gives the engine's reason
 - **Use Case**: Reorganizing project assets, renaming Blueprints and other content
 
 ### rename-asset
 - **Description**: Renames an asset in place, or moves it to a full new asset path
 - **Parameters**:
   - `sourcePath` (required): Package or object path under the write policy's roots (`/Engine/` assets are refused)
-  - `newName` (optional): New name in the same folder
-  - `destinationPath` (optional): Full new package path including the name, under the write policy's roots; missing
-    folders are created
+  - `newName` (optional): New name in the same folder, following "Asset names" (`BP_New.Final` is refused)
+  - `destinationPath` (optional): Full new package path including the name (`/Game/Folder/BP_New`, or the object form
+    `/Game/Folder/BP_New.BP_New`), under the write policy's roots; missing folders are created right before the
+    rename and removed again if it fails
   - `showNotification` (optional, default true): Show an editor notification
-- **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetSelected`, `wasMoved`, `tips`
+- **Returns**: `message`, `oldPath`, `newPath` (package paths, read back from the asset registry), `oldName`,
+  `newName`, `assetSelected` (whether the content browser selected the renamed asset), `wasMoved`, `tips`. An
+  existing asset at the destination and a case-only rename are errors; a failed rename gives the engine's reason
 - **Note**: Give exactly one of `newName` and `destinationPath`; both, or neither, is an error
 - **Use Case**: Renaming assets, fixing naming conventions
 
@@ -166,12 +170,23 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Parameters**:
   - `sourcePath` (required): Folder under the write policy's roots (not a root itself: `/Game`, `/<PluginName>`)
   - `newName` (required): New folder name (no slashes, dots, spaces, `~`, `*`, `?`, and not a Windows device name:
-    exactly CON, PRN, AUX, NUL, COM1-9 or LPT1-9, so `Components` or `Common` are fine)
+    exactly CON, PRN, AUX, NUL, COM1-9 or LPT1-9, so `Components` or `Common` are fine). A case-only rename
+    (`blueprints` to `Blueprints`) is an error: folder names are case-insensitive
   - `showNotification` (optional, default true): Show an editor notification
 - **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetsRenamed`, `navigated`, `tips`
 - **Behaviour** (`FN2CMcpRenameFolderTool::MoveFolderContents`): as for `move-folder`, the old folder is left behind,
   empty, and a folder with no assets is not renamed although the call succeeds
 - **Use Case**: Fixing folder naming
+
+## Asset names
+
+`move-asset`'s and `rename-asset`'s `newName` and the name at the end of `copy-asset`'s and `rename-asset`'s
+`destinationPath` are checked as given before any path is built or folder created
+(`FN2CMcpContentBrowserUtils::ValidateNewAssetName`): not empty, none of the characters object and package names
+refuse (`.`, `/`, `\`, spaces, `:`, `"`, `'`, `,`, `|`, `&`, `!`, `~`, `@`, `#`, brackets and the like), not a Windows
+device name, and a valid file name. Package names are case-insensitive, so a rename that changes only the case
+(`BP_player` to `BP_Player`) is refused with a `Case-only renames are not supported` error: rename to another name
+first, then to the new spelling.
 
 ## Content Browser Paths
 
@@ -471,8 +486,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# A destination that already exists is an error, with or without "overwriteExisting": true;
-# copy to a new name, or rename or delete the existing asset first
+# A destination that already exists is an error: copy to a new name, or rename or delete the existing asset first
 ```
 
 ### Creating Folders
@@ -783,9 +797,8 @@ curl -X POST http://localhost:27000/mcp \
 - Used by: Asset registry, object references
 - Example: `/Game/Blueprints/BP_Player.BP_Player`
 
-**Note**: `copy-asset`, `rename-asset` and `open-blueprint-asset` accept either format for the source. `move-asset`
-accepts either, but needs `newName` with an object path. `open-content-browser-path`'s `select_item` needs the
-object form `AssetName.AssetName`.
+**Note**: `copy-asset`, `rename-asset`, `move-asset` and `open-blueprint-asset` accept either format for the source.
+`open-content-browser-path`'s `select_item` accepts `AssetName` or `AssetName.AssetName`.
 
 ## Implementation Notes
 
@@ -796,7 +809,13 @@ object form `AssetName.AssetName`.
   registry, immediate children only); pagination from `CalculatePagination`
 - Search: one `FARFilter` over `/Game` (and `/Engine`) with exact class paths, then name/path matching and scoring
 - Copy uses `UEditorAssetSubsystem::DuplicateAsset`, which never replaces an existing asset
-- Move and rename use `UEditorAssetSubsystem::RenameAsset` (`move-asset` falls back to `IAssetTools::RenameAssets`),
-  which updates references to the asset
+- Move and rename use `UEditorAssetSubsystem::RenameAsset`, which updates references to the asset and keeps modal
+  dialogs away (`GIsRunningUnattendedScript`); there is no `IAssetTools::RenameAssets` fallback (card 0284)
+- Copy, move and rename resolve the source in the asset registry (`FN2CMcpContentBrowserUtils::ResolveAsset`), run
+  every check before creating anything, create a missing destination folder only right before the change
+  (`CreateFolderForMutation`) and remove it if the change fails (`RemoveFolderCreatedForMutation`, never a folder
+  holding an asset), report what the registry holds afterwards, and give the engine's logged reason on failure
+  (`FN2CMcpEngineErrorCapture`). move-asset asks source control about the package's file
+  (`USourceControlHelpers::PackageFilename`)
 - Folder move and rename move each asset one by one; the old folder stays, empty, and an empty folder is not moved
 - All operations run on the game thread (`ExecuteOnGameThread`)

@@ -346,7 +346,7 @@ void SN2CContextWindowVisualizer::OnProviderSelectionChanged(TSharedPtr<FString>
 	RebuildModelSelectionWidget();
 
 	// Save and notify
-	SaveSettings();
+	SaveSettings({ GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) });
 	Settings->NotifyModelSettingsChanged();
 }
 
@@ -370,8 +370,11 @@ void SN2CContextWindowVisualizer::OnModelSelectionChanged(TSharedPtr<FString> Ne
 		}
 	}
 
-	// Save and notify
-	SaveSettings();
+	// Save and notify: SelectModel sets the model ID, clears the custom ID and may set the DeepSeek thinking mode
+	SaveSettings({
+		UN2CSettings::GetModelIdPropertyName(Settings->Provider),
+		UN2CSettings::GetCustomModelIdPropertyName(Settings->Provider),
+		GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekReasoningEffort) });
 	Settings->NotifyModelSettingsChanged();
 }
 
@@ -385,20 +388,23 @@ void SN2CContextWindowVisualizer::OnLocalModelTextCommitted(const FText& NewText
 	UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 	const FString ModelName = NewText.ToString();
 
+	FName Changed;
 	switch (Settings->Provider)
 	{
 	case EN2CLLMProvider::Ollama:
 		Settings->OllamaModel = ModelName;
+		Changed = GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaModel);
 		break;
 	case EN2CLLMProvider::LMStudio:
 		Settings->LMStudioModel = ModelName;
+		Changed = GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel);
 		break;
 	default:
 		break;
 	}
 
 	// Save and notify
-	SaveSettings();
+	SaveSettings({ Changed });
 	Settings->NotifyModelSettingsChanged();
 }
 
@@ -473,11 +479,11 @@ FReply SN2CContextWindowVisualizer::OnSettingsClicked()
 	return FReply::Handled();
 }
 
-void SN2CContextWindowVisualizer::SaveSettings()
+void SN2CContextWindowVisualizer::SaveSettings(TConstArrayView<FName> PropertyNames)
 {
-	UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-	const FString ConfigPath = Settings->GetDefaultConfigFilename();
-	Settings->SaveConfig();
+	// Not SaveConfig(): that writes the Saved/Config layer, which loads after Config/DefaultNodeToCode.ini and so
+	// overrode later Project Settings edits at the next start (card 0186)
+	GetMutableDefault<UN2CSettings>()->SaveToProjectConfig(PropertyNames);
 }
 
 // ==================== Display Text Getters ====================

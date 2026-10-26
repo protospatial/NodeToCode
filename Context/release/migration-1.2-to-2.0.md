@@ -103,8 +103,8 @@ properties with no editor flags (`SettingsVersion`) are not visible to Python; r
 | S21 | `CSharpThemes` | As S18 | As S18 | - | As S18 |
 | S22 | `SwiftThemes` | As S18 | As S18 | - | As S18 |
 | S23 | `PseudocodeThemes` | As S18 | As S18 | - | As S18 |
-| S24 | `EstimatedReferenceTokens` (int, recomputed) | Same; the constructor computes it, but before LoadConfig, so the saved number is what loads (as in 1.2.x) | Unchanged: the saved number shows until a reference file is edited. **Finding (0079):** not recomputed on load in either version | Card 0186 (load order) | Equals the sum of the files' lengths / 4 (today: the saved number, reported KNOWN by the 0079 check) |
-| S25 | `ReferenceSourceFilePaths` (file paths) | Same; the constructor's missing-file check runs before LoadConfig, so it sees an empty list (as in 1.2.x) | Unchanged: every saved path loads, a missing one included, and each translation then warns "Failed to load reference source file". **Finding (0079):** the matrix said missing paths are dropped with a warning; they are not, in either version | Card 0186 (load order) | Existing paths equal the fixture's; a missing path is kept (reported KNOWN by the 0079 check) |
+| S24 | `EstimatedReferenceTokens` (int, recomputed) | Same; recomputed from the files once the config has loaded (card 0186; 1.2.x computed it in the constructor, before LoadConfig, so the saved number loaded) | Recomputed at the first start; the saved number is ignored | Card 0186 done | Equals the sum of the files' lengths / 4 |
+| S25 | `ReferenceSourceFilePaths` (file paths) | Same; the missing-file check runs once the config has loaded (card 0186; in 1.2.x it ran in the constructor and saw an empty list) | Existing paths load; a missing one is left out with one "Reference source file not found" warning per start, and stays in the ini so a teammate's checkout keeps it | Card 0186 done | Existing paths equal the fixture's; the missing path is dropped with the warning |
 | S26 | `CustomTranslationOutputDirectory` (directory) | Same; used by the single (toolbar) and batch output paths. MCP `translate-focused-blueprint` returns the code and saves no folder | Unchanged | - | Value equals the fixture's; a translation lands there |
 
 New 2.0 keys in the same section (absent from a 1.2.x ini, so the default applies):
@@ -242,6 +242,8 @@ Run on 2026-10-23 at dev-2.0 8c9a3c1: UE 5.6, 5.7 and 5.8 each 79 PASS, 0 FAIL, 
 second time with `--live` (81 PASS: S26 and F2 with a claude-haiku-5-5 batch translation). Results were the same
 on every engine and in both 5.8 runs. Card 0135 (N2C JSON 2.0.0, 2026-10-24, UE 5.8): F2 now also reads the 1.2.3
 fixture's two saved `N2C_BP_*.json` files with `ReadN2CJson`; 80 PASS, 4 KNOWN, 9 SKIP, and 82 PASS with `--live`.
+Card 0186 (settings load order, 2026-10-26, UE 5.8): S24 and S25 pass; 84 PASS, 0 FAIL, 0 KNOWN, 9 SKIP. A missing
+reference file is reported at every start while it stays missing; the idempotence row does not count that warning.
 
 | Row | 1.2.3 fixture | 1.2.x-main fixture | Result |
 |---|---|---|---|
@@ -259,8 +261,8 @@ fixture's two saved `N2C_BP_*.json` files with `ReadN2CJson`; 80 PASS, 4 KNOWN, 
 | S14 | User's DeepSeek_V3 0.2/0.5 kept, R1's 1.2.x price dropped | Same | Pass |
 | S15 to S17 | Kept | Kept | Pass |
 | S18 to S23 | Keys left in the ini, one warning names all six, 2.0 theme in use | Same | Pass |
-| S24 | Saved 999 loads instead of 57 | Same | **Finding**, card 0186 (KNOWN) |
-| S25 | Missing `Removed.h` is kept, no load-time warning | Same | **Finding**, card 0186 (KNOWN) |
+| S24 | Recomputed: 57 (the saved 999 is ignored) | Same | Pass (card 0186) |
+| S25 | Missing `Removed.h` dropped with a warning at each start; kept in the ini | Same | Pass (card 0186) |
 | S26 | Value kept | Value kept; `--live` batch translation landed there | Pass |
 | N1 to N7 | Defaults; `SettingsVersion=3` written on start 1 | Same | Pass |
 | K1 | Project file and `User` folder removed, per-user file `Version` 1 with the four keys, Project Settings shows them, log names both paths, no key in logs | Moved too | Pass |

@@ -13,6 +13,11 @@ Reference source files provide essential context to improve translation quality 
         <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_CodeGeneration.png" alt="Node to Code code generation settings" width="500">
     </p>
 
+`Estimated Reference File Tokens` shows the files' size in tokens (characters / 4) and is worked out again each
+time the editor starts. A listed file that no longer exists is left out of translations, with a
+`Reference source file not found` warning in the Output Log; it stays in the settings file, so restoring the file
+brings it back. Remove it from the list to stop the warning.
+
 ## Selection Guidelines
 
 ### Primary References
