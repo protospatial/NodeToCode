@@ -5,8 +5,8 @@
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpContentBrowserUtils.h"
 #include "Subsystems/EditorAssetSubsystem.h"
-#include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/AssetData.h"
+#include "Misc/PackageName.h"
 #include "Editor.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -19,7 +19,7 @@ FMcpToolDefinition FN2CMcpCopyAssetTool::GetDefinition() const
         TEXT("copy-asset"),
         TEXT("Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /<PluginName>/); ")
         TEXT("the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. ")
-        TEXT("An existing asset at the destination is never replaced: the copy fails."),
+        TEXT("An existing asset at the destination is never replaced: the copy is refused."),
         N2CMcpToolsets::ContentBrowser
     );
 
@@ -27,7 +27,6 @@ FMcpToolDefinition FN2CMcpCopyAssetTool::GetDefinition() const
     TMap<FString, FString> Properties;
     Properties.Add(TEXT("sourcePath"), TEXT("string"));
     Properties.Add(TEXT("destinationPath"), TEXT("string"));
-    Properties.Add(TEXT("overwriteExisting"), TEXT("boolean"));
 
     TArray<FString> Required;
     Required.Add(TEXT("sourcePath"));
@@ -48,8 +47,7 @@ FMcpToolDefinition FN2CMcpCopyAssetTool::GetDefinition() const
             }
         };
         Describe(TEXT("sourcePath"), TEXT("Asset to copy: package path '/Game/Folder/Asset' or object path '/Game/Folder/Asset.Asset'"));
-        Describe(TEXT("destinationPath"), TEXT("Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain spaces or dots"));
-        Describe(TEXT("overwriteExisting"), TEXT("Default false: an existing destination asset is reported before copying. true skips that check, but the copy still fails, because it never replaces an existing asset"));
+        Describe(TEXT("destinationPath"), TEXT("Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain '.', '/', '\\' or spaces"));
     }
 
     return Definition;
@@ -72,46 +70,20 @@ FMcpToolCallResult FN2CMcpCopyAssetTool::Execute(const TSharedPtr<FJsonObject>& 
             return FMcpToolCallResult::CreateErrorResult(TEXT("Missing required parameter: destinationPath"));
         }
 
-        bool bOverwriteExisting = false;
-        Arguments->TryGetBoolField(TEXT("overwriteExisting"), bOverwriteExisting);
-
         // Validate source asset
-        FString NormalizedSourcePath;
+        FAssetData SourceAsset;
         FString ValidationError;
-        if (!ValidateSourceAsset(SourcePath, NormalizedSourcePath, ValidationError))
+        if (!FN2CMcpContentBrowserUtils::ResolveAsset(SourcePath, SourceAsset, ValidationError))
         {
-            return FMcpToolCallResult::CreateErrorResult(ValidationError);
+            return FMcpToolCallResult::CreateErrorResult(TEXT("sourcePath: ") + ValidationError);
         }
 
-        // Validate destination path
-        FString NormalizedDestPath;
-        if (!ValidateDestinationPath(DestinationPath, NormalizedDestPath, ValidationError))
+        // Validate destination path, name and that nothing is there; nothing is created yet
+        FString DestinationFolder;
+        FString DestinationPackage;
+        if (!ValidateDestinationPath(DestinationPath, DestinationFolder, DestinationPackage, ValidationError))
         {
             return FMcpToolCallResult::CreateErrorResult(ValidationError);
-        }
-
-        // Check if destination already exists
-        if (!bOverwriteExisting)
-        {
-            FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-            IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-            // Convert to object path to check if asset exists
-            FString DestObjectPath = NormalizedDestPath;
-            if (!NormalizedDestPath.Contains(TEXT(".")))
-            {
-                FString AssetName = FPaths::GetBaseFilename(NormalizedDestPath);
-                DestObjectPath = NormalizedDestPath + TEXT(".") + AssetName;
-            }
-
-            FAssetData ExistingAsset = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(DestObjectPath));
-            if (ExistingAsset.IsValid())
-            {
-                return FMcpToolCallResult::CreateErrorResult(
-                    FString::Printf(TEXT("Destination asset already exists: %s. Copy to another name, or rename or delete the existing asset first."), 
-                        *NormalizedDestPath)
-                );
-            }
         }
 
         // Perform the copy operation
@@ -121,32 +93,54 @@ FMcpToolCallResult FN2CMcpCopyAssetTool::Execute(const TSharedPtr<FJsonObject>& 
             return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to get EditorAssetSubsystem"));
         }
 
-        // Convert paths to package paths for the API
-        FString SourcePackagePath = ConvertToPackagePath(NormalizedSourcePath);
-        FString DestPackagePath = ConvertToPackagePath(NormalizedDestPath);
+        const FString SourceObjectPath = SourceAsset.GetObjectPathString();
+        const FString DestObjectPath = DestinationPackage + TEXT(".") + FPackageName::GetShortName(DestinationPackage);
+
+        // The destination folder, only now, and removed again if the copy fails (card 0284)
+        FString CreatedFolder;
+        FString FolderError;
+        if (!FN2CMcpContentBrowserUtils::CreateFolderForMutation(DestinationFolder, CreatedFolder, FolderError))
+        {
+            return FMcpToolCallResult::CreateErrorResult(
+                FString::Printf(TEXT("Failed to create destination directory '%s': %s"), *DestinationFolder, *FolderError));
+        }
 
         // Log the operation
         FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Copying asset from %s to %s"), *SourcePackagePath, *DestPackagePath),
+            FString::Printf(TEXT("Copying asset from %s to %s"), *SourceObjectPath, *DestObjectPath),
             EN2CLogSeverity::Info
         );
 
-        // Duplicate the asset
-        UObject* DuplicatedAsset = EditorAssetSubsystem->DuplicateAsset(SourcePackagePath, DestPackagePath);
+        // Duplicate the asset, then read the copy back from the registry
+        UObject* DuplicatedAsset = nullptr;
+        FString EngineReason;
+        {
+            FN2CMcpEngineErrorCapture Capture;
+            DuplicatedAsset = EditorAssetSubsystem->DuplicateAsset(SourceObjectPath, DestObjectPath);
+            EngineReason = Capture.GetReason();
+        }
+        FAssetData CopiedAsset;
+        FString ReadBackError;
+        if (DuplicatedAsset && !FN2CMcpContentBrowserUtils::ResolveAsset(DestObjectPath, CopiedAsset, ReadBackError))
+        {
+            DuplicatedAsset = nullptr;
+            EngineReason = TEXT("the engine reported success, but no asset is at the destination");
+        }
         if (!DuplicatedAsset)
         {
+            FN2CMcpContentBrowserUtils::RemoveFolderCreatedForMutation(CreatedFolder);
             return FMcpToolCallResult::CreateErrorResult(
-                FString::Printf(TEXT("Failed to copy asset from %s to %s. Make sure the destination folder exists and you have write permissions."), 
-                    *SourcePackagePath, *DestPackagePath)
+                FString::Printf(TEXT("Failed to copy asset from %s to %s: %s"), *SourceObjectPath, *DestObjectPath,
+                    EngineReason.IsEmpty() ? TEXT("the engine gave no reason") : *EngineReason)
             );
         }
 
         // Build success response
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
         Result->SetStringField(TEXT("message"), TEXT("Asset copied successfully"));
-        Result->SetStringField(TEXT("sourcePath"), SourcePackagePath);
-        Result->SetStringField(TEXT("destinationPath"), DestPackagePath);
-        Result->SetStringField(TEXT("assetName"), DuplicatedAsset->GetName());
+        Result->SetStringField(TEXT("sourcePath"), SourceAsset.PackageName.ToString());
+        Result->SetStringField(TEXT("destinationPath"), CopiedAsset.PackageName.ToString());
+        Result->SetStringField(TEXT("assetName"), CopiedAsset.AssetName.ToString());
         Result->SetStringField(TEXT("assetClass"), DuplicatedAsset->GetClass()->GetName());
 
         // Add tips
@@ -163,50 +157,7 @@ FMcpToolCallResult FN2CMcpCopyAssetTool::Execute(const TSharedPtr<FJsonObject>& 
     });
 }
 
-bool FN2CMcpCopyAssetTool::ValidateSourceAsset(const FString& AssetPath, FString& OutNormalizedPath, FString& OutErrorMessage) const
-{
-    if (AssetPath.IsEmpty())
-    {
-        OutErrorMessage = TEXT("Source asset path cannot be empty");
-        return false;
-    }
-
-    // Normalize the path
-    OutNormalizedPath = AssetPath;
-    OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
-
-    // Copying only reads the source, so an asset under any mounted root will do (/Game, /Engine, a plugin's
-    // /<PluginName>): the asset registry lookup below decides
-
-    // Check if asset exists using AssetRegistry
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-    IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-    // Try both package path and object path formats
-    FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(OutNormalizedPath));
-    if (!AssetData.IsValid())
-    {
-        // Try with object path format
-        FString ObjectPath = OutNormalizedPath;
-        if (!OutNormalizedPath.Contains(TEXT(".")))
-        {
-            FString AssetName = FPaths::GetBaseFilename(OutNormalizedPath);
-            ObjectPath = OutNormalizedPath + TEXT(".") + AssetName;
-        }
-        
-        AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
-        if (!AssetData.IsValid())
-        {
-            OutErrorMessage = FString::Printf(TEXT("Source asset not found. Tried paths: %s and %s. Expected format: /Game/Folder/AssetName or /Game/Folder/AssetName.AssetName"), 
-                *OutNormalizedPath, *ObjectPath);
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool FN2CMcpCopyAssetTool::ValidateDestinationPath(const FString& DestinationPath, FString& OutNormalizedPath, FString& OutErrorMessage) const
+bool FN2CMcpCopyAssetTool::ValidateDestinationPath(const FString& DestinationPath, FString& OutFolder, FString& OutPackage, FString& OutErrorMessage) const
 {
     if (DestinationPath.IsEmpty())
     {
@@ -215,63 +166,42 @@ bool FN2CMcpCopyAssetTool::ValidateDestinationPath(const FString& DestinationPat
     }
 
     // Normalize the path
-    OutNormalizedPath = DestinationPath;
-    OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
+    OutPackage = FN2CMcpContentBrowserUtils::NormalizeContentPath(DestinationPath);
 
     // Only where MCP tools may write: /Game and the project's plugins (card 0182)
-    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutNormalizedPath, OutErrorMessage))
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutPackage, OutErrorMessage))
     {
         return false;
     }
 
     // Extract directory path
-    FString DirectoryPath = FPaths::GetPath(OutNormalizedPath);
-    if (DirectoryPath.IsEmpty())
+    OutFolder = FPaths::GetPath(OutPackage);
+    if (OutFolder.IsEmpty() || !FN2CMcpContentBrowserUtils::ValidateContentPath(OutFolder, OutErrorMessage))
     {
-        OutErrorMessage = TEXT("Invalid destination path format");
+        OutErrorMessage = FString::Printf(TEXT("Invalid destination path '%s': %s"), *DestinationPath,
+            OutErrorMessage.IsEmpty() ? TEXT("give the new asset's package path, e.g. /Game/Folder/BP_Copy") : *OutErrorMessage);
         return false;
     }
 
-    // Ensure destination directory exists
-    FString CreationError;
-    if (!FN2CMcpContentBrowserUtils::EnsureDirectoryExists(DirectoryPath, CreationError))
+    // Validate asset name, as given, before anything is created
+    if (!FN2CMcpContentBrowserUtils::ValidateNewAssetName(FPaths::GetCleanFilename(OutPackage), OutErrorMessage))
     {
-        OutErrorMessage = FString::Printf(TEXT("Failed to ensure destination directory exists '%s': %s"), *DirectoryPath, *CreationError);
+        return false;
+    }
+    FText Reason;
+    if (!FPackageName::IsValidLongPackageName(OutPackage, /*bIncludeReadOnlyRoots*/ false, &Reason))
+    {
+        OutErrorMessage = FString::Printf(TEXT("Invalid destination '%s': %s"), *OutPackage, *Reason.ToString());
         return false;
     }
 
-    // Validate asset name
-    FString AssetName = FPaths::GetBaseFilename(OutNormalizedPath);
-    if (AssetName.IsEmpty())
+    // Check if destination already exists: the copy never replaces it (UEditorAssetSubsystem::DuplicateAsset refuses)
+    if (FN2CMcpContentBrowserUtils::DoesAssetPackageExist(OutPackage))
     {
-        OutErrorMessage = TEXT("Destination asset name cannot be empty");
-        return false;
-    }
-
-    // Check for invalid characters in asset name
-    if (AssetName.Contains(TEXT(" ")) || AssetName.Contains(TEXT(".")) || AssetName.Contains(TEXT("/")))
-    {
-        OutErrorMessage = TEXT("Asset name cannot contain spaces, dots, or slashes");
+        OutErrorMessage = FString::Printf(TEXT("Destination asset already exists: %s. Copy to another name, or rename or delete the existing asset first."),
+            *OutPackage);
         return false;
     }
 
     return true;
-}
-
-FString FN2CMcpCopyAssetTool::ConvertToPackagePath(const FString& AssetPath) const
-{
-    // If it's already a package path (no dot), return as is
-    if (!AssetPath.Contains(TEXT(".")))
-    {
-        return AssetPath;
-    }
-
-    // Extract package path from object path
-    int32 DotIndex;
-    if (AssetPath.FindChar(TEXT('.'), DotIndex))
-    {
-        return AssetPath.Left(DotIndex);
-    }
-
-    return AssetPath;
 }

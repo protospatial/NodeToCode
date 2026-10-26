@@ -848,7 +848,7 @@ Search and browse the project's assets and folders, open them in the editor, and
 
 **Copy an asset**
 
-Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /&lt;PluginName&gt;/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy fails. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /&lt;PluginName&gt;/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy is refused. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -859,8 +859,7 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.duplicate`. Left to Unreal MCP by d
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `sourcePath` | `string` | yes |  | Asset to copy: package path '/Game/Folder/Asset' or object path '/Game/Folder/Asset.Asset' |
-| `destinationPath` | `string` | yes |  | Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain spaces or dots |
-| `overwriteExisting` | `boolean` | no |  | Default false: an existing destination asset is reported before copying. true skips that check, but the copy still fails, because it never replaces an existing asset |
+| `destinationPath` | `string` | yes |  | Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain '.', '/', '\' or spaces |
 
 ### create-folder
 
@@ -895,7 +894,7 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by defaul
 |---|---|---|---|---|
 | `sourcePath` | `string` | yes |  | Path to the asset to move. Accepts both formats: '/Game/Folder/Asset' or '/Game/Folder/Asset.Asset' |
 | `destinationPath` | `string` | yes |  | Destination directory path (e.g., '/Game/Blueprints/Characters') |
-| `newName` | `string` | no |  | New name for the asset (optional, keeps original name if not provided) |
+| `newName` | `string` | no |  | New name for the asset, a name only: no '.', '/', '\' or spaces (optional, keeps the asset's name if not provided) |
 | `showNotification` | `boolean` | no | `true` | Show a notification after the move operation |
 
 ### move-folder
