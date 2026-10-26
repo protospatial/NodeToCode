@@ -28,6 +28,15 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Prompting")
     FString GetLanguageSpecificPrompt(const FString& BasePromptKey, EN2CCodeLanguage Language) const;
 
+    /**
+     * The key of a language's prompt in a prompt family: <BasePromptKey>_<PromptKey> from the target-language table
+     * (CodeGen_CPP, CodeGen_Python, ...), or BasePromptKey for a value the table does not describe
+     */
+    static FString GetLanguagePromptKey(const FString& BasePromptKey, EN2CCodeLanguage Language);
+
+    /** Whether a prompt was loaded under this key (no fallback, no warning) */
+    bool HasPrompt(const FString& PromptKey) const;
+
     /** Merge system and user prompts if needed */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Prompting")
     FString MergePrompts(const FString& SystemPrompt, const FString& UserMessage) const;
@@ -85,8 +94,6 @@ private:
     /** Format a single source file for inclusion */
     FString FormatSourceFileContent(const FString& FilePath, const FString& Content) const;
 
-    /** Get language-specific prompt key */
-    FString GetLanguagePromptKey(const FString& BasePromptKey, EN2CCodeLanguage Language) const;
 
     /** Map of loaded prompts */
     TMap<FString, FString> LoadedPrompts;

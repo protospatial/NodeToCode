@@ -23,10 +23,10 @@ struct FN2CMcpPromptLanguage
 class NODETOCODE_API FN2CMcpBlueprintPrompts
 {
 public:
-	/** cpp, python, csharp, javascript, swift and pseudocode, in that order */
+	/** The target-language table's rows (Core/N2CTargetLanguage.h), in enum order: cpp first */
 	static const TArray<FN2CMcpPromptLanguage>& Languages();
 
-	/** "cpp, python, csharp, javascript, swift, pseudocode" for argument descriptions and errors */
+	/** "cpp, python, javascript, csharp, swift, pseudocode" for argument descriptions and errors */
 	static FString LanguageIdList();
 
 	/**

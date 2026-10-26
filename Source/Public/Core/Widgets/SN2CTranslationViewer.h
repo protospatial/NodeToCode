@@ -101,6 +101,9 @@ private:
 	/** The implementation tab's label: the current language's file extension (.cpp, .py, .js, .cs, .swift, .md) */
 	FText GetImplementationTabLabel() const;
 
+	/** The declaration tab's label: the language's declaration extension from the target-language table (.h) */
+	FText GetDeclarationTabLabel() const;
+
 	/** The .h tab shows only when the translation has a declaration */
 	EVisibility GetHeaderTabVisibility() const;
 

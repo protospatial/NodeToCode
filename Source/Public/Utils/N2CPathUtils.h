@@ -30,7 +30,8 @@ public:
     static bool ValidatePathWithinBounds(const FString& BasePath, const FString& PathToValidate, FString& OutNormalizedPath);
     
     /**
-     * Get the appropriate file extension for a code language
+     * Get the appropriate file extension for a code language. This and the three language helpers below read the
+     * target-language table (Core/N2CTargetLanguage.h, N2C::GetLanguage and N2C::FindLanguage).
      * @param Language The target code language
      * @return The file extension including the dot (e.g., ".cpp")
      */

@@ -11,6 +11,7 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CTargetLanguage.h"
 #include "Core/Widgets/SN2CGraphEditorWrapper.h"
 #include "Core/Widgets/SN2CGraphOverlay.h"
 #include "LLM/N2CLLMModule.h"
@@ -703,6 +704,17 @@ namespace N2CTranslationOverridesPrivate
         return Ids;
     }
 
+    /** The target-language table's MCP ids (cpp, python, ..., pseudocode), with their enum values */
+    static TArray<TPair<FString, int64>> ListLanguageIds()
+    {
+        TArray<TPair<FString, int64>> Ids;
+        for (const FN2CTargetLanguage& Language : N2C::GetLanguages())
+        {
+            Ids.Emplace(Language.GetMcpId(), static_cast<int64>(Language.Enum));
+        }
+        return Ids;
+    }
+
     /** The value whose ID equals Id ignoring case, or INDEX_NONE */
     static int64 FindId(const TArray<TPair<FString, int64>>& Ids, const FString& Id)
     {
@@ -735,7 +747,7 @@ TArray<FString> FN2CEditorIntegration::GetTranslationProviderIds()
 
 TArray<FString> FN2CEditorIntegration::GetTranslationLanguageIds()
 {
-    return N2CTranslationOverridesPrivate::Keys(N2CTranslationOverridesPrivate::ListIds(StaticEnum<EN2CCodeLanguage>()));
+    return N2CTranslationOverridesPrivate::Keys(N2CTranslationOverridesPrivate::ListLanguageIds());
 }
 
 bool FN2CEditorIntegration::ResolveTranslationOverrides(const FString& ProviderId, const FString& ModelId, const FString& LanguageId,
@@ -759,7 +771,7 @@ bool FN2CEditorIntegration::ResolveTranslationOverrides(const FString& ProviderI
 
     if (!LanguageId.TrimStartAndEnd().IsEmpty())
     {
-        const TArray<TPair<FString, int64>> Ids = ListIds(StaticEnum<EN2CCodeLanguage>());
+        const TArray<TPair<FString, int64>> Ids = ListLanguageIds();
         const int64 Value = FindId(Ids, LanguageId);
         if (Value == INDEX_NONE)
         {

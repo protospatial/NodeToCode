@@ -6,6 +6,7 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CTargetLanguage.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
@@ -644,7 +645,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		return;
 	}
 
-	const EN2CCodeLanguage TargetLanguage = GetSaveLanguage();
+	const FN2CTargetLanguage& Language = N2C::GetLanguage(GetSaveLanguage());
 
 	// Save each graph's files
 	for (const FN2CGraphTranslation& Graph : Item.TranslationResponse.Graphs)
@@ -684,10 +685,10 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 			continue;
 		}
 
-		// Save declaration file (C++ only)
-		if (TargetLanguage == EN2CCodeLanguage::Cpp && !Graph.Code.GraphDeclaration.IsEmpty())
+		// Save the declaration file, for a language that has one (C++)
+		if (Language.bHasDeclarationFile && !Graph.Code.GraphDeclaration.IsEmpty())
 		{
-			FString HeaderPath = FPaths::Combine(GraphDir, Stem + TEXT(".h"));
+			FString HeaderPath = FPaths::Combine(GraphDir, Stem + Language.DeclarationExtension);
 			if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
 			{
 				FN2CLogger::Get().LogWarning(
@@ -699,7 +700,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		// Save implementation file with appropriate extension
 		if (!Graph.Code.GraphImplementation.IsEmpty())
 		{
-			FString Extension = FN2CPathUtils::GetFileExtensionForLanguage(TargetLanguage);
+			FString Extension = Language.ImplementationExtension;
 			FString ImplPath = FPaths::Combine(GraphDir, Stem + Extension);
 			if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
 			{
@@ -784,7 +785,7 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 				GraphDir,
 				Provider,
 				Model,
-				TargetLanguage,
+				Language.Enum,
 				Summary
 			);
 
@@ -828,7 +829,7 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 	{
 		SettingsJson->SetStringField(TEXT("provider"), GetSaveProvider());
 		SettingsJson->SetStringField(TEXT("model"), GetSaveModel());
-		SettingsJson->SetStringField(TEXT("language"), UEnum::GetValueAsString(GetSaveLanguage()));
+		SettingsJson->SetStringField(TEXT("language"), N2C::GetLanguage(GetSaveLanguage()).Id); // Python, not EN2CCodeLanguage::Python
 	}
 	SummaryJson->SetObjectField(TEXT("settings"), SettingsJson);
 

@@ -5,6 +5,7 @@
 #include "Models/N2CBlueprint.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CTargetLanguage.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CLLMProviderRegistry.h"
@@ -273,7 +274,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     // Get system prompt with language specification
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     FString SystemPrompt = PromptManager->GetLanguageSpecificPrompt(
-        TEXT("CodeGen"),
+        N2C::BlueprintPromptFamily,
         Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp
     );
 
@@ -508,10 +509,11 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
             continue;
         }
         
-        // Save declaration file (C++ only)
-        if (TargetLanguage == EN2CCodeLanguage::Cpp && !Graph.Code.GraphDeclaration.IsEmpty())
+        // Save the declaration file, for a language that has one (C++)
+        const FN2CTargetLanguage& Language = N2C::GetLanguage(TargetLanguage);
+        if (Language.bHasDeclarationFile && !Graph.Code.GraphDeclaration.IsEmpty())
         {
-            FString HeaderPath = FPaths::Combine(GraphDir, Stem + TEXT(".h"));
+            FString HeaderPath = FPaths::Combine(GraphDir, Stem + Language.DeclarationExtension);
             if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
             {
                 FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save header file: %s"), *HeaderPath));
@@ -521,7 +523,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
         // Save implementation file with appropriate extension
         if (!Graph.Code.GraphImplementation.IsEmpty())
         {
-            FString Extension = GetFileExtensionForLanguage(TargetLanguage);
+            FString Extension = Language.ImplementationExtension;
             FString ImplPath = FPaths::Combine(GraphDir, Stem + Extension);
             if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
             {
@@ -584,7 +586,7 @@ FString UN2CLLMModule::GetTranslationBasePath() const
 
 FString UN2CLLMModule::GetFileExtensionForLanguage(EN2CCodeLanguage Language) const
 {
-    return FN2CPathUtils::GetFileExtensionForLanguage(Language);
+    return N2C::GetLanguage(Language).ImplementationExtension;
 }
 
 bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const
@@ -704,7 +706,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     // references it, so hold it strongly while it builds the prompt; it is collected after this call.
     TStrongObjectPtr<UN2CSystemPromptManager> TempPromptManager(NewObject<UN2CSystemPromptManager>(this));
     TempPromptManager->Initialize(RequestConfig); // Initialize with the request-specific config
-    FString SystemPrompt = TempPromptManager->GetLanguageSpecificPrompt(TEXT("CodeGen"), RequestLanguage);
+    FString SystemPrompt = TempPromptManager->GetLanguageSpecificPrompt(N2C::BlueprintPromptFamily, RequestLanguage);
 
     TempPromptManager.Reset();
 
