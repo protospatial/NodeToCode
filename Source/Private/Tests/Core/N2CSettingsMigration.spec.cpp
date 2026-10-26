@@ -9,6 +9,7 @@
 #include "Core/N2CSettings.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CModelCatalog.h"
+#include "Tests/Core/N2CTestCredentials.h"
 #include "Tests/N2CTestHelpers.h"
 #include "HAL/FileManager.h"
 #include "Misc/ConfigCacheIni.h"
@@ -176,22 +177,9 @@ BEGIN_DEFINE_SPEC(FN2CSettingsMigrationSpec, "NodeToCode.Settings.Migration", N2
 		return MakeUnique<FN2CSecretFileBackend>(*Scratch / TEXT("Target/NodeToCode/secrets.json"));
 	}
 
-	void RemoveVaultEntries() const
+	void RemoveVaultEntries()
 	{
-		if (!FN2CCredentialManagerBackend::IsSupported())
-		{
-			return;
-		}
-		FN2CCredentialManagerBackend Vault(VaultPrefix);
-		TMap<FString, FString> Entries;
-		if (Vault.LoadAll(Entries))
-		{
-			for (const TPair<FString, FString>& Entry : Entries)
-			{
-				TMap<FString, FString> Unused;
-				Vault.StoreKey(Entry.Key, FString(), Unused);
-			}
-		}
+		TestEqual(TEXT("no test credential is left"), N2CTest::RemoveTestCredentials(VaultPrefix), 0);
 	}
 
 	/** Checks every value the fixture holds as 2.0 reads it (after the upgrade, and after a restart) */
@@ -261,7 +249,8 @@ void FN2CSettingsMigrationSpec::Define()
 		EngineIni = *Scratch / TEXT("Project/Config/DefaultEngine.ini");
 		UserSecrets = *Scratch / TEXT("User/NodeToCode/secrets.json");
 		ProjectSecrets = *Scratch / TEXT("Project/Saved/NodeToCode/User/secrets.json");
-		VaultPrefix = FString::Printf(TEXT("NodeToCodeTest/%s/"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+		N2CTest::SweepStaleTestCredentialsOnce();
+		VaultPrefix = N2CTest::MakeTestCredentialPrefix();
 	});
 
 	AfterEach([this]()

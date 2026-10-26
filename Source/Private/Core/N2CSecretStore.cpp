@@ -60,6 +60,25 @@ namespace
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// IN2CSecretBackend
+
+bool IN2CSecretBackend::ReadKey(const FString& ProviderId, FString& OutKey)
+{
+    OutKey.Reset();
+    TMap<FString, FString> All;
+    if (!LoadAll(All))
+    {
+        return false;
+    }
+    if (const FString* Found = All.Find(ProviderId))
+    {
+        OutKey = *Found;
+        return true;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // FN2CSecretFileBackend
 
 FN2CSecretFileBackend::FN2CSecretFileBackend(const FString& InFilePath, const FString& InLegacyFilePath)
@@ -433,6 +452,63 @@ namespace
         const FUTF8ToTCHAR Converted(reinterpret_cast<const ANSICHAR*>(Blob), static_cast<int32>(Size));
         return FString(Converted.Length(), Converted.Get());
     }
+
+    /**
+     * Holds "Local\NodeToCode.CredentialManager", one mutex for every thread of every NodeToCode process in this
+     * Windows session, so NodeToCode never runs two Credential Manager calls at once (card 0496: concurrent calls from
+     * several processes lose writes even after they read back). Recursive on one thread. Waits up to 10 s, then goes on
+     * unlocked with a warning rather than blocking a save forever.
+     */
+    class FCredentialManagerLock
+    {
+    public:
+        FCredentialManagerLock()
+        {
+            static HANDLE Mutex = ::CreateMutexW(nullptr, 0, TEXT("Local\\NodeToCode.CredentialManager"));
+            if (!Mutex)
+            {
+                return;
+            }
+            const DWORD Result = ::WaitForSingleObject(Mutex, 10000);
+            if (Result == WAIT_OBJECT_0 || Result == WAIT_ABANDONED)
+            {
+                Held = Mutex;
+            }
+            else
+            {
+                FN2CLogger::Get().LogWarning(TEXT("Another NodeToCode process held the Credential Manager lock for 10 s; going on without it"), LogContext);
+            }
+        }
+        ~FCredentialManagerLock()
+        {
+            if (Held)
+            {
+                ::ReleaseMutex(Held);
+            }
+        }
+        FCredentialManagerLock(const FCredentialManagerLock&) = delete;
+        FCredentialManagerLock& operator=(const FCredentialManagerLock&) = delete;
+    private:
+        HANDLE Held = nullptr;
+    };
+
+    enum class ECredentialRead : uint8 { Found, Missing, Failed };
+
+    /** One generic credential by its target name, with CredReadW */
+    ECredentialRead ReadCredential(const FString& Target, FString& OutKey, DWORD& OutError)
+    {
+        OutKey.Reset();
+        OutError = 0;
+        PCREDENTIALW Credential = nullptr;
+        if (!::CredReadW(*Target, CRED_TYPE_GENERIC, 0, &Credential))
+        {
+            OutError = ::GetLastError();
+            return OutError == ERROR_NOT_FOUND ? ECredentialRead::Missing : ECredentialRead::Failed;
+        }
+        OutKey = DecodeBlob(Credential->CredentialBlob, Credential->CredentialBlobSize);
+        ::CredFree(Credential);
+        return ECredentialRead::Found;
+    }
 }
 #endif
 
@@ -465,6 +541,7 @@ bool FN2CCredentialManagerBackend::LoadAll(TMap<FString, FString>& OutKeys)
 {
     OutKeys.Reset();
 #if PLATFORM_WINDOWS
+    FCredentialManagerLock Lock;
     const FString Filter = TargetPrefix + TEXT("*");
     DWORD Count = 0;
     PCREDENTIALW* Credentials = nullptr;
@@ -508,44 +585,84 @@ bool FN2CCredentialManagerBackend::StoreKey(const FString& ProviderId, const FSt
     {
         return false;
     }
+    FCredentialManagerLock Lock;
     const FString Target = GetTargetName(ProviderId);
-    if (Key.IsEmpty())
+    const bool bDelete = Key.IsEmpty();
+    const FTCHARToUTF8 Utf8(*Key);
+    if (!bDelete && Utf8.Length() > MaxKeyBytes)
     {
-        if (!::CredDeleteW(*Target, CRED_TYPE_GENERIC, 0) && ::GetLastError() != ERROR_NOT_FOUND)
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("The %s API key is %d bytes long; Windows Credential Manager takes at most %d, so it was not saved."),
+            *ProviderId, Utf8.Length(), MaxKeyBytes), LogContext);
+        return false;
+    }
+    FString Comment = FString::Printf(TEXT("NodeToCode %s API key (Project Settings > Plugins > Node to Code)"), *ProviderId);
+    FString UserName = CredentialUserName;
+    FString TargetName = Target;
+
+    // Windows can report a write or delete as done and not keep it when another process changes credentials at the same
+    // moment (card 0496), so each one is read back and repeated until it holds
+    bool bHeld = false;
+    for (int32 Attempt = 1; Attempt <= MaxWriteAttempts && !bHeld; ++Attempt)
+    {
+        if (bDelete)
         {
-            FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not remove %s from Windows Credential Manager (Windows error %u)"),
-                *Target, static_cast<uint32>(::GetLastError())), LogContext);
+            if (!::CredDeleteW(*Target, CRED_TYPE_GENERIC, 0))
+            {
+                const DWORD Error = ::GetLastError();
+                if (Error != ERROR_NOT_FOUND)
+                {
+                    FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not remove %s from Windows Credential Manager (Windows error %u)"),
+                        *Target, static_cast<uint32>(Error)), LogContext);
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            CREDENTIALW Credential = {};
+            Credential.Type = CRED_TYPE_GENERIC;
+            Credential.TargetName = TargetName.GetCharArray().GetData();
+            Credential.Comment = Comment.GetCharArray().GetData();
+            Credential.UserName = UserName.GetCharArray().GetData();
+            Credential.CredentialBlobSize = static_cast<DWORD>(Utf8.Length());
+            Credential.CredentialBlob = reinterpret_cast<LPBYTE>(const_cast<ANSICHAR*>(Utf8.Get()));
+            // This user on this machine only: the key does not roam with the profile
+            Credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+            if (!::CredWriteW(&Credential, 0))
+            {
+                FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not save %s to Windows Credential Manager (Windows error %u)"),
+                    *Target, static_cast<uint32>(::GetLastError())), LogContext);
+                return false;
+            }
+        }
+        if (AfterWriteForTests)
+        {
+            AfterWriteForTests(Target, bDelete);
+        }
+
+        FString ReadBack;
+        DWORD Error = 0;
+        const ECredentialRead Read = ReadCredential(Target, ReadBack, Error);
+        if (Read == ECredentialRead::Failed)
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("%s was written, but Windows Credential Manager could not read it back (Windows error %u)"),
+                *Target, static_cast<uint32>(Error)), LogContext);
             return false;
+        }
+        bHeld = bDelete ? Read == ECredentialRead::Missing : (Read == ECredentialRead::Found && ReadBack == Key);
+        if (!bHeld && Attempt < MaxWriteAttempts)
+        {
+            // The target name only: the value is a secret
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Windows Credential Manager did not keep the %s of %s (attempt %d of %d); trying again."),
+                bDelete ? TEXT("removal") : TEXT("new value"), *Target, Attempt, MaxWriteAttempts), EN2CLogSeverity::Info, LogContext);
+            FPlatformProcess::Sleep(0.02f * Attempt);
         }
     }
-    else
+    if (!bHeld)
     {
-        const FTCHARToUTF8 Utf8(*Key);
-        if (Utf8.Length() > MaxKeyBytes)
-        {
-            FN2CLogger::Get().LogError(FString::Printf(TEXT("The %s API key is %d bytes long; Windows Credential Manager takes at most %d, so it was not saved."),
-                *ProviderId, Utf8.Length(), MaxKeyBytes), LogContext);
-            return false;
-        }
-        FString Comment = FString::Printf(TEXT("NodeToCode %s API key (Project Settings > Plugins > Node to Code)"), *ProviderId);
-        FString UserName = CredentialUserName;
-        FString TargetName = Target;
-
-        CREDENTIALW Credential = {};
-        Credential.Type = CRED_TYPE_GENERIC;
-        Credential.TargetName = TargetName.GetCharArray().GetData();
-        Credential.Comment = Comment.GetCharArray().GetData();
-        Credential.UserName = UserName.GetCharArray().GetData();
-        Credential.CredentialBlobSize = static_cast<DWORD>(Utf8.Length());
-        Credential.CredentialBlob = reinterpret_cast<LPBYTE>(const_cast<ANSICHAR*>(Utf8.Get()));
-        // This user on this machine only: the key does not roam with the profile
-        Credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-        if (!::CredWriteW(&Credential, 0))
-        {
-            FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not save %s to Windows Credential Manager (Windows error %u)"),
-                *Target, static_cast<uint32>(::GetLastError())), LogContext);
-            return false;
-        }
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Windows Credential Manager reported %s as %s %d times but did not keep it."),
+            *Target, bDelete ? TEXT("removed") : TEXT("saved"), MaxWriteAttempts), LogContext);
+        return false;
     }
 
     if (!LoadAll(OutKeys))
@@ -553,10 +670,41 @@ bool FN2CCredentialManagerBackend::StoreKey(const FString& ProviderId, const FSt
         FN2CLogger::Get().LogError(FString::Printf(TEXT("%s was written, but Windows Credential Manager could not be read back"), *Target), LogContext);
         return false;
     }
+    // The entry was just read back by name; a listing taken while another process writes can still miss it
+    if (bDelete)
+    {
+        OutKeys.Remove(ProviderId);
+    }
+    else
+    {
+        OutKeys.Add(ProviderId, Key);
+    }
     return true;
 #else
     OutKeys.Reset();
     FN2CLogger::Get().LogError(TEXT("Windows Credential Manager is not available on this platform"), LogContext);
+    return false;
+#endif
+}
+
+bool FN2CCredentialManagerBackend::ReadKey(const FString& ProviderId, FString& OutKey)
+{
+    OutKey.Reset();
+#if PLATFORM_WINDOWS
+    if (ProviderId.IsEmpty())
+    {
+        return false;
+    }
+    FCredentialManagerLock Lock;
+    DWORD Error = 0;
+    const ECredentialRead Read = ReadCredential(GetTargetName(ProviderId), OutKey, Error);
+    if (Read == ECredentialRead::Failed)
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not read %s from Windows Credential Manager (Windows error %u)"),
+            *GetTargetName(ProviderId), static_cast<uint32>(Error)), LogContext);
+    }
+    return Read == ECredentialRead::Found;
+#else
     return false;
 #endif
 }
@@ -906,6 +1054,7 @@ bool FN2CSecretStore::SetApiKey(const FString& ProviderId, const FString& Key)
     if (Backend->StoreKey(ProviderId, Key, Stored))
     {
         // The backend re-read the store, so this also picks up keys another editor saved meanwhile
+        KeepListedOrConfirmedKeys(Stored, ProviderId);
         Keys = MoveTemp(Stored);
         FN2CLogger::Get().Log(FString::Printf(TEXT("Saved the %s API key to %s"), *ProviderId, *Backend->Describe()),
             EN2CLogSeverity::Info, LogContext);
@@ -933,6 +1082,26 @@ void FN2CSecretStore::Reload()
 {
     FScopeLock Lock(&Mutex);
     TMap<FString, FString> Loaded;
-    Backend->LoadAll(Loaded);
+    if (Backend->LoadAll(Loaded))
+    {
+        KeepListedOrConfirmedKeys(Loaded, FString());
+    }
     Keys = MoveTemp(Loaded);
+}
+
+void FN2CSecretStore::KeepListedOrConfirmedKeys(TMap<FString, FString>& Loaded, const FString& JustWritten)
+{
+    for (const TPair<FString, FString>& Known : Keys)
+    {
+        if (Known.Key == JustWritten || Loaded.Contains(Known.Key))
+        {
+            continue;
+        }
+        // Gone from the listing: removed by another editor, or missed by a listing taken while another process wrote
+        FString Current;
+        if (Backend->ReadKey(Known.Key, Current))
+        {
+            Loaded.Add(Known.Key, Current);
+        }
+    }
 }
