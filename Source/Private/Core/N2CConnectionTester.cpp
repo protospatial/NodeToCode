@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CConnectionTester.h"
 
 #include "Core/N2CCustomProviderSettings.h"
@@ -14,6 +15,7 @@ namespace
 {
 void AddBearerHeaderIfPresent(TMap<FString, FString>& Headers, const FString& ApiKey)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!ApiKey.IsEmpty())
     {
         Headers.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *ApiKey));
@@ -23,6 +25,7 @@ void AddBearerHeaderIfPresent(TMap<FString, FString>& Headers, const FString& Ap
 
 void FN2CConnectionTester::TestProvider(EN2CLLMProvider Provider, const UN2CSettings& Settings)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString ProviderName;
     FString Url;
     TMap<FString, FString> Headers;
@@ -104,6 +107,7 @@ void FN2CConnectionTester::TestCustomProvider(
     const FString& ProviderName,
     const UN2CCustomProviderSettings& Settings)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FN2CCustomProviderDefinition* Provider = Settings.GetProvider(ProviderName);
     if (!Provider)
     {
@@ -133,6 +137,7 @@ void FN2CConnectionTester::TestCustomProvider(
 
 FString FN2CConnectionTester::NormalizeBaseUrl(const FString& Endpoint, const FString& KnownSuffix)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString BaseUrl = Endpoint.TrimStartAndEnd();
     while (BaseUrl.EndsWith(TEXT("/")))
     {
@@ -156,6 +161,7 @@ void FN2CConnectionTester::SendGetRequest(
     const FString& Url,
     const TMap<FString, FString>& Headers)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Url.IsEmpty())
     {
         ShowResult(FString::Printf(TEXT("%s endpoint is empty."), *ProviderName), false);
@@ -213,6 +219,7 @@ void FN2CConnectionTester::SendGetRequest(
 
 void FN2CConnectionTester::ShowResult(const FString& Message, bool bSuccess)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FNotificationInfo Info(FText::FromString(TEXT("Node to Code Connection Check")));
     Info.Text = FText::FromString(Message);
     Info.bFireAndForget = true;

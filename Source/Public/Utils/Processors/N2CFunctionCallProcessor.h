@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Utils/Processors/N2CBaseNodeProcessor.h"
 #include "K2Node_CallFunction.h"
@@ -17,7 +18,9 @@ public:
     FN2CFunctionCallProcessor() {}
     
     /** Destructor */
-    virtual ~FN2CFunctionCallProcessor() {}
+    virtual ~FN2CFunctionCallProcessor() {
+      N2C_LOG_FUNCTION_ENTRY();
+      }
     
 protected:
     /**

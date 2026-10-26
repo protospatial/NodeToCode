@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "N2CLLMTypes.h"
 #include "N2CSystemPromptManager.generated.h"
@@ -36,7 +37,9 @@ public:
     bool PrependSourceFilesToUserMessage(FString& UserMessage) const;
 
     /** Suppress reference-file insertion while reformatting an already-prepared request. */
-    void SetSkipReferenceSourceFiles(bool bSkip) { bSkipReferenceSourceFiles = bSkip; }
+    void SetSkipReferenceSourceFiles(bool bSkip) {
+      N2C_LOG_FUNCTION_ENTRY();
+      bSkipReferenceSourceFiles = bSkip; }
 
     /** Initialize with configuration */
     void Initialize(const FN2CLLMConfig& Config);

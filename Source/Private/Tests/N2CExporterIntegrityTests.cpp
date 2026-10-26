@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
 #include "Toolsets/N2CBlueprintToolset.h"
@@ -40,6 +41,7 @@ namespace
 {
 UBlueprint* MakeTestBlueprint(const FName Name)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FName UniqueName = MakeUniqueObjectName(GetTransientPackage(), UBlueprint::StaticClass(), Name);
     UBlueprint* Blueprint = NewObject<UBlueprint>(GetTransientPackage(), UniqueName, RF_Transient);
     Blueprint->BlueprintType = BPTYPE_Normal;
@@ -48,6 +50,7 @@ UBlueprint* MakeTestBlueprint(const FName Name)
 
 UEdGraph* MakeBlueprintGraph(UBlueprint* Blueprint, const FName Name, const bool bEventGraph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!IsValid(Blueprint))
     {
         return nullptr;
@@ -70,6 +73,7 @@ UEdGraph* MakeBlueprintGraph(UBlueprint* Blueprint, const FName Name, const bool
 template <typename TNode>
 TNode* AddNode(UEdGraph* Graph, const FName Name)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!IsValid(Graph))
     {
         return nullptr;
@@ -84,6 +88,7 @@ TNode* AddNode(UEdGraph* Graph, const FName Name)
 
 UN2CTestGraphNode* AddTestNode(UEdGraph* Graph, const FName Name)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CTestGraphNode* Node = AddNode<UN2CTestGraphNode>(Graph, Name);
     if (Node)
     {
@@ -116,6 +121,7 @@ UEdGraphPin* AddTestPin(
 
 UEdGraphPin* FindPin(UEdGraphNode* Node, const FName PinName, const EEdGraphPinDirection Direction)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!IsValid(Node))
     {
         return nullptr;
@@ -125,11 +131,13 @@ UEdGraphPin* FindPin(UEdGraphNode* Node, const FName PinName, const EEdGraphPinD
 
 FString EndpointKey(const FGuid& NodeGuid, const FGuid& PinGuid)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return NodeGuid.ToString() + TEXT(":") + PinGuid.ToString();
 }
 
 FString UndirectedEdgeKey(const FString& Left, const FString& Right)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Left.Compare(Right, ESearchCase::CaseSensitive) <= 0
         ? Left + TEXT("<->") + Right
         : Right + TEXT("<->") + Left;
@@ -137,6 +145,7 @@ FString UndirectedEdgeKey(const FString& Left, const FString& Right)
 
 TSet<FString> NativeLinkedToEdges(const UEdGraph* Graph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSet<FString> Edges;
     if (!IsValid(Graph))
     {
@@ -188,6 +197,7 @@ const FN2CGraph* TranslateGraph(
     const FName GraphName,
     const FN2CBlueprint*& OutBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CNodeTranslator& Translator = FN2CNodeTranslator::Get();
     if (!Test.TestTrue(TEXT("Blueprint translates"), Translator.GenerateFromBlueprint(Blueprint, false)))
     {
@@ -214,6 +224,7 @@ void TestExportMatchesNativeGraph(
     const FN2CGraph*& OutGraph,
     const FN2CBlueprint*& OutBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutGraph = TranslateGraph(Test, Blueprint, GraphName, OutBlueprint);
     if (!OutGraph)
     {
@@ -312,6 +323,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeDirectLinkIntegrityTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UBlueprint* Blueprint = MakeTestBlueprint(TEXT("N2CDirectLinkFixture"));
     UEdGraph* Graph = MakeBlueprintGraph(Blueprint, TEXT("EventGraph"), true);
     if (!TestNotNull(TEXT("Fixture Blueprint exists"), Blueprint) ||
@@ -553,6 +565,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeBlueprintGraphCoverageTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UBlueprint* Blueprint = MakeTestBlueprint(TEXT("N2CGraphCoverageFixture"));
     UEdGraph* EventGraph = MakeBlueprintGraph(Blueprint, TEXT("EventGraph"), true);
     AddTestNode(EventGraph, TEXT("EventNode"));
@@ -656,6 +669,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeEmptyGraphIntegrityTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UBlueprint* EmptyBlueprint = MakeTestBlueprint(TEXT("N2CNoLinkFixture"));
     UEdGraph* EmptyGraph = MakeBlueprintGraph(EmptyBlueprint, TEXT("EventGraph"), true);
     UN2CTestGraphNode* Isolated = AddTestNode(EmptyGraph, TEXT("Isolated"));
@@ -707,6 +721,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeLegacyExecPinRoundTripTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UBlueprint* Blueprint = MakeTestBlueprint(TEXT("N2CLegacyExecFixture"));
     UEdGraph* Graph = MakeBlueprintGraph(Blueprint, TEXT("EventGraph"), true);
     UN2CTestGraphNode* Source = AddTestNode(Graph, TEXT("Source"));
@@ -939,6 +954,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeNativeGraphNodeExportTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UBlueprint* Blueprint = MakeTestBlueprint(TEXT("N2CNativeGraphNodeFixture"));
     UEdGraph* Graph = MakeBlueprintGraph(Blueprint, TEXT("AnimGraph"), false);
     UN2CTestNativeGraphNode* Source = AddNode<UN2CTestNativeGraphNode>(Graph, TEXT("NativeSource"));
@@ -997,6 +1013,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeCommentOnlyGraphRoundTripTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UBlueprint* Blueprint = MakeTestBlueprint(TEXT("N2CCommentOnlyFixture"));
     UEdGraph* Graph = MakeBlueprintGraph(Blueprint, TEXT("CommentOnlyGraph"), false);
     UEdGraphNode_Comment* Comment = NewObject<UEdGraphNode_Comment>(Graph, TEXT("Comment"), RF_Transient);
@@ -1047,6 +1064,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeAnimBlueprintNodeExportTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString AssetPath = TEXT("/Game/Characters/Mannequins/Animations/ABP_Manny.ABP_Manny");
     UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
     if (!TestNotNull(TEXT("AnimBlueprint fixture loads read-only"), Blueprint))
@@ -1146,6 +1164,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeWidgetTreeExportTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString AssetPath = TEXT("/Game/Blueprints/Widgets/BPW_HUD.BPW_HUD");
     UWidgetBlueprint* WidgetBlueprint = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
     if (!TestNotNull(TEXT("WidgetBlueprint fixture loads read-only"), WidgetBlueprint))
@@ -1203,6 +1222,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNodeToCodeRigVMGraphExportTest::RunTest(const FString& Parameters)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString AssetPath = TEXT("/Game/Characters/Mannequins/Rigs/CR_Mannequin_Body.CR_Mannequin_Body");
     UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
     if (!TestNotNull(TEXT("FactoryGame Control Rig fixture loads read-only"), Blueprint))

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CMiniMaxService.h"
 #include "LLM/Providers/N2CMiniMaxResponseParser.h"
 
@@ -9,6 +10,7 @@
 
 bool UN2CMiniMaxService::Initialize(const FN2CLLMConfig& InConfig)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create a copy of the input config
     FN2CLLMConfig UpdatedConfig = InConfig;
 
@@ -57,6 +59,7 @@ bool UN2CMiniMaxService::Initialize(const FN2CLLMConfig& InConfig)
 
 UN2CResponseParserBase* UN2CMiniMaxService::CreateResponseParser()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CMiniMaxResponseParser* Parser = NewObject<UN2CMiniMaxResponseParser>(this);
     return Parser;
 }
@@ -66,6 +69,7 @@ void UN2CMiniMaxService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutEndpoint = Config.ApiEndpoint;
     OutAuthToken = Config.ApiKey;
 
@@ -75,6 +79,7 @@ void UN2CMiniMaxService::GetConfiguration(
 
 void UN2CMiniMaxService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 
     // Add authorization header with MiniMax API key
@@ -86,6 +91,7 @@ void UN2CMiniMaxService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) 
 
 FString UN2CMiniMaxService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create and configure payload builder for MiniMax
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
     PayloadBuilder->Initialize(Config.Model);

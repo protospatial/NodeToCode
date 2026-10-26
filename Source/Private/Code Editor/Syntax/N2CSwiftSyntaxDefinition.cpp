@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CSwiftSyntaxDefinition.h"
 
 FN2CSwiftSyntaxDefinition::FN2CSwiftSyntaxDefinition()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Swift Keywords
     Keywords = {
         TEXT("as"), TEXT("break"), TEXT("case"), TEXT("catch"), TEXT("class"), TEXT("continue"),
@@ -47,6 +49,7 @@ FN2CSwiftSyntaxDefinition::FN2CSwiftSyntaxDefinition()
 
 void FN2CSwiftSyntaxDefinition::GetCommentDelimiters(FString& OutLineComment, FString& OutBlockCommentStart, FString& OutBlockCommentEnd) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutLineComment = LineCommentDelimiter;
     OutBlockCommentStart = BlockCommentStart;
     OutBlockCommentEnd = BlockCommentEnd;

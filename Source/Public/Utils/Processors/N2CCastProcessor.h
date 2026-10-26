@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Utils/Processors/N2CBaseNodeProcessor.h"
 #include "K2Node_DynamicCast.h"
@@ -19,7 +20,9 @@ public:
     FN2CCastProcessor() {}
     
     /** Destructor */
-    virtual ~FN2CCastProcessor() {}
+    virtual ~FN2CCastProcessor() {
+      N2C_LOG_FUNCTION_ENTRY();
+      }
     
 protected:
     /**

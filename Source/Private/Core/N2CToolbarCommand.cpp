@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CToolbarCommand.h"
 
 #include "Styling/AppStyle.h"
@@ -32,10 +33,13 @@ FN2CToolbarCommand::FN2CToolbarCommand()
         FAppStyle::GetAppStyleSetName() // Icon style
     )
 {
-}
+
+  N2C_LOG_FUNCTION_ENTRY();
+  }
 
 void FN2CToolbarCommand::RegisterCommands()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().Log(TEXT("Registering N2C toolbar commands"), EN2CLogSeverity::Debug);
     
     UI_COMMAND(

@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Processors/N2CDelegateProcessor.h"
 
 void FN2CDelegateProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Handle base multicast delegate nodes
     if (UK2Node_BaseMCDelegate* DelegateNode = Cast<UK2Node_BaseMCDelegate>(Node))
     {

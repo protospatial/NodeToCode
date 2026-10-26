@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "K2Node.h"
 #include "N2CTestGraphNode.generated.h"
@@ -16,6 +17,7 @@ public:
 
     virtual FText GetNodeTitle(ENodeTitleType::Type TitleType) const override
     {
+        N2C_LOG_FUNCTION_ENTRY();
         return FText::FromName(TestTitle.IsNone() ? GetFName() : TestTitle);
     }
 };
@@ -33,6 +35,7 @@ public:
 
     virtual FText GetNodeTitle(ENodeTitleType::Type TitleType) const override
     {
+        N2C_LOG_FUNCTION_ENTRY();
         return FText::FromName(TestTitle.IsNone() ? GetFName() : TestTitle);
     }
 };

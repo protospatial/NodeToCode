@@ -54,6 +54,7 @@ public:
     /** Configure the UE log category verbosity */
     static void ConfigureLogCategoryVerbosity(ELogVerbosity::Type Verbosity)
     {
+        N2C_LOG_FUNCTION_ENTRY();
         LogNodeToCode.SetVerbosity(Verbosity);
     }
 

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CRequestSettings.h"
 
 #include "Core/N2CCustomProviderSettings.h"
@@ -23,6 +24,7 @@ struct FRetryProviderChoice
 
 FString ProviderDisplayName(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
     {
         return ProviderEnum->GetDisplayNameTextByValue(static_cast<int64>(Provider)).ToString();
@@ -32,6 +34,7 @@ FString ProviderDisplayName(EN2CLLMProvider Provider)
 
 FString ChoiceDisplayName(const FN2CResolvedRequestProvider& Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Result;
     if (!Provider.CustomProviderName.IsEmpty())
     {
@@ -60,6 +63,7 @@ bool IsDefaultChoice(
     const FString& DefaultCustomProviderName,
     const FString& DefaultModel)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Provider.Provider != DefaultProvider)
     {
         return false;
@@ -76,6 +80,7 @@ bool IsDefaultChoice(
 
 void SortChoices(TArray<TSharedPtr<FRetryProviderChoice>>& Choices)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Choices.Sort([](
         const TSharedPtr<FRetryProviderChoice>& Left,
         const TSharedPtr<FRetryProviderChoice>& Right)
@@ -108,6 +113,7 @@ bool FN2CRequestRuntime::ResolveProviderForRetry(
     const TArray<EN2CLLMProvider>& AvailableProviders,
     FN2CResolvedRequestProvider& OutProvider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     using namespace N2CRetryProviderPickerPrivate;
 
     if (!FSlateApplication::IsInitialized())

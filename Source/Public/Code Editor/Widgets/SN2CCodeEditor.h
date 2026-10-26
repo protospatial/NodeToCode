@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
@@ -112,7 +113,9 @@ private:
     DECLARE_DELEGATE_OneParam(FOnTextChanged, const FText&);
 
     /** Set the callback for text changes */
-    void SetOnTextChanged(const FOnTextChanged& InHandler) { OnTextChangedHandler = InHandler; }
+    void SetOnTextChanged(const FOnTextChanged& InHandler) {
+      N2C_LOG_FUNCTION_ENTRY();
+      OnTextChangedHandler = InHandler; }
 
 private:
     /** Handler for text changes */
@@ -125,6 +128,7 @@ public:
     /** Convert language enum to string */
     static FString GetLanguageString(EN2CCodeLanguage Language)
     {
+        N2C_LOG_FUNCTION_ENTRY();
         switch (Language)
         {
             case EN2CCodeLanguage::Cpp:

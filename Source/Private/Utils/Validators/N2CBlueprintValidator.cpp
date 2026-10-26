@@ -1,16 +1,19 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
 namespace
 {
 bool IsCommentNodeClass(const FString& NodeClass)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return NodeClass.EndsWith(TEXT("EdGraphNode_Comment"), ESearchCase::CaseSensitive);
 }
 
 bool IsProvenNonExecutableGraph(const FN2CGraph& Graph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Graph.bNoExecutableNodes || Graph.Nodes.Num() > 0 ||
         !Graph.Pins.IsEmpty() || !Graph.Connections.IsEmpty() ||
         !Graph.ConnectionErrors.IsEmpty() || Graph.UnresolvedConnectionCount > 0 ||
@@ -37,6 +40,7 @@ bool IsProvenNonExecutableGraph(const FN2CGraph& Graph)
 
 bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Validate required fields
     if (!ValidateRequired(Blueprint, OutError))
     {
@@ -66,6 +70,7 @@ bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, FString& O
 
 bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check version
     if (Blueprint.Version.Value.IsEmpty() || Blueprint.Version.Value != TEXT("1.0.0"))
     {
@@ -102,6 +107,7 @@ bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, FS
 
 bool FN2CBlueprintValidator::ValidateGraphs(const FN2CBlueprint& Blueprint, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Preserve legitimate empty/comment-only graphs, but never let an unknown
     // untranslated graph stand in for executable Blueprint content.
     bool bHasNonSkeletonGraph = false;
@@ -141,6 +147,7 @@ bool FN2CBlueprintValidator::ValidateGraphs(const FN2CBlueprint& Blueprint, FStr
 
 bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Graph.Name.IsEmpty())
     {
         OutError = TEXT("Empty graph name");
@@ -230,6 +237,7 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
 
 bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Build lookup maps for validation
     TSet<FString> NodeIds;
     TMap<FString, TSet<FString>> NodePinIds;
@@ -305,6 +313,7 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
 
 bool FN2CBlueprintValidator::ValidateStructs(const FN2CBlueprint& Blueprint, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     for (const FN2CStruct& Struct : Blueprint.Structs)
     {
         if (!ValidateStruct(Struct, OutError))
@@ -319,6 +328,7 @@ bool FN2CBlueprintValidator::ValidateStructs(const FN2CBlueprint& Blueprint, FSt
 
 bool FN2CBlueprintValidator::ValidateStruct(const FN2CStruct& Struct, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // A struct needs a name at minimum
     if (Struct.Name.IsEmpty())
     {
@@ -357,6 +367,7 @@ bool FN2CBlueprintValidator::ValidateStruct(const FN2CStruct& Struct, FString& O
 
 bool FN2CBlueprintValidator::ValidateEnums(const FN2CBlueprint& Blueprint, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     for (const FN2CEnum& Enum : Blueprint.Enums)
     {
         if (!ValidateEnum(Enum, OutError))
@@ -371,6 +382,7 @@ bool FN2CBlueprintValidator::ValidateEnums(const FN2CBlueprint& Blueprint, FStri
 
 bool FN2CBlueprintValidator::ValidateEnum(const FN2CEnum& Enum, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // An enum needs a name at minimum
     if (Enum.Name.IsEmpty())
     {

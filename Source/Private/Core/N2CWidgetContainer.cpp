@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CWidgetContainer.h"
 #include "Editor.h"
 #include "Utils/N2CLogger.h"
@@ -8,6 +9,7 @@ UN2CWidgetContainer* UN2CWidgetContainer::Instance = nullptr;
 
 UN2CWidgetContainer* UN2CWidgetContainer::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Instance && !GExitPurge)
     {
         Instance = NewObject<UN2CWidgetContainer>(
@@ -25,6 +27,7 @@ UN2CWidgetContainer* UN2CWidgetContainer::Get()
 
 void UN2CWidgetContainer::Reset()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Instance)
     {
         if (!Instance->IsValidLowLevel())
@@ -38,6 +41,7 @@ void UN2CWidgetContainer::Reset()
 
 void UN2CWidgetContainer::BeginDestroy()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Log destruction for debugging
     FN2CLogger::Get().Log(TEXT("NodeToCode widget container being destroyed"), EN2CLogSeverity::Debug);
 
@@ -52,6 +56,7 @@ void UN2CWidgetContainer::BeginDestroy()
 
 UWorld* UN2CWidgetContainer::GetWorld() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // If we have a valid editor instance, return its world context
     if (GEditor)
     {

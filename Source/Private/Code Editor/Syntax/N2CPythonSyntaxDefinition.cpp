@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CPythonSyntaxDefinition.h"
 
 FN2CPythonSyntaxDefinition::FN2CPythonSyntaxDefinition()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Python Keywords
     Keywords = {
         TEXT("False"), TEXT("None"), TEXT("True"), TEXT("and"), TEXT("as"),
@@ -44,6 +46,7 @@ FN2CPythonSyntaxDefinition::FN2CPythonSyntaxDefinition()
 
 void FN2CPythonSyntaxDefinition::GetCommentDelimiters(FString& OutLineComment, FString& OutBlockCommentStart, FString& OutBlockCommentEnd) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutLineComment = LineCommentDelimiter;
     OutBlockCommentStart = BlockCommentStart;
     OutBlockCommentEnd = BlockCommentEnd;

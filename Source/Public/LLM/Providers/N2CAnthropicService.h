@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/Providers/N2CAnthropicResponseParser.h"
@@ -22,14 +23,18 @@ class NODETOCODE_API UN2CAnthropicService : public UN2CBaseLLMService
 public:
     // Provider-specific implementations
     virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken, bool& OutSupportsSystemPrompts) override;
-    virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Anthropic; }
+    virtual EN2CLLMProvider GetProviderType() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return EN2CLLMProvider::Anthropic; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override;
 
 protected:
     // Provider-specific implementations
     virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const override;
     virtual UN2CResponseParserBase* CreateResponseParser() override;
-    virtual FString GetDefaultEndpoint() const override { return TEXT("https://api.anthropic.com/v1/messages"); }
+    virtual FString GetDefaultEndpoint() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return TEXT("https://api.anthropic.com/v1/messages"); }
 
 private:
     /** API version header value */

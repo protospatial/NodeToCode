@@ -1,11 +1,13 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CResponseParserBase.h"
 #include "Utils/N2CLogger.h"
 #include "Serialization/JsonSerializer.h"
 
 void UN2CResponseParserBase::Initialize()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Base initialization - can be extended by derived classes
 }
 
@@ -13,6 +15,7 @@ bool UN2CResponseParserBase::ParseLLMResponse(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check for empty or obviously invalid responses
     if (InJson.IsEmpty() || InJson.Len() < 10)
     {
@@ -77,6 +80,7 @@ bool UN2CResponseParserBase::TryParseJson(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Parse JSON string with additional safety
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InJson);
@@ -141,6 +145,7 @@ bool UN2CResponseParserBase::TryParseJson(
 
 int32 UN2CResponseParserBase::FindTruncationPointWithStrings(const FString& InJson) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Advanced recovery: track brace depth AND string state to find valid truncation points
     // even when JSON is mid-string-literal at the cut boundary.
     //
@@ -230,6 +235,7 @@ bool UN2CResponseParserBase::TryRecoverTruncatedJson(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Recovery strategy: truncate at the last complete "graphs" array entry
     // that has both a valid graph_name and graphImplementation.
     // This handles the case where MiniMax truncates mid-JSON without
@@ -425,11 +431,13 @@ bool UN2CResponseParserBase::TryRecoverTruncatedJson(
 
 FString UN2CResponseParserBase::RemoveNewlines(const FString& Input) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Input.Replace(TEXT("\n"), TEXT(""));
 }
 
 bool UN2CResponseParserBase::ValidateResponseFormat(const TSharedPtr<FJsonObject>& JsonObject) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject->HasField(TEXT("graphs")))
     {
         FN2CLogger::Get().LogError(TEXT("Response missing 'graphs' field"), TEXT("ResponseParser"));
@@ -443,6 +451,7 @@ void UN2CResponseParserBase::ExtractGraphData(
     const TSharedPtr<FJsonObject>& GraphObject,
     FN2CGraphTranslation& OutGraph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Extract basic graph information
     OutGraph.GraphName = GraphObject->GetStringField(TEXT("graph_name"));
     OutGraph.GraphType = GraphObject->GetStringField(TEXT("graph_type"));
@@ -467,6 +476,7 @@ void UN2CResponseParserBase::ExtractCodeData(
     const TSharedPtr<FJsonObject>& CodeObject,
     FN2CGeneratedCode& OutCode)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutCode.GraphDeclaration = CodeObject->GetStringField(TEXT("graphDeclaration"));
     OutCode.GraphImplementation = CodeObject->GetStringField(TEXT("graphImplementation"));
     OutCode.ImplementationNotes = CodeObject->GetStringField(TEXT("implementationNotes"));
@@ -477,6 +487,7 @@ bool UN2CResponseParserBase::HandleCommonErrorResponse(
     const FString& ErrorFieldName,
     FString& OutErrorMessage)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const TSharedPtr<FJsonObject> ErrorObject = JsonObject->GetObjectField(ErrorFieldName);
     if (!ErrorObject.IsValid())
     {
@@ -515,6 +526,7 @@ bool UN2CResponseParserBase::ExtractStandardMessageContent(
     const FString& ContentFieldName,
     FString& OutContent)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Get array field (choices, candidates, etc.)
     const TArray<TSharedPtr<FJsonValue>>* ItemsArray;
     if (!JsonObject->TryGetArrayField(ArrayFieldName, ItemsArray) || ItemsArray->Num() == 0)
@@ -581,6 +593,7 @@ bool UN2CResponseParserBase::ExtractStandardMessageContent(
 
 bool UN2CResponseParserBase::ProcessJsonContentWithMarkers(FString& Content)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check if content is wrapped in ```json markers and remove them
     if (Content.StartsWith(TEXT("```json")) && Content.EndsWith(TEXT("```")))
     {

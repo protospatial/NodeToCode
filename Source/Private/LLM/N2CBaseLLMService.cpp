@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CBaseLLMService.h"
 
 #include "Core/N2CRequestSettings.h"
@@ -13,6 +14,7 @@
 
 bool UN2CBaseLLMService::Initialize(const FN2CLLMConfig& InConfig)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Config = InConfig;
     
     // Use default endpoint if none provided
@@ -38,6 +40,7 @@ bool UN2CBaseLLMService::Initialize(const FN2CLLMConfig& InConfig)
 
 void UN2CBaseLLMService::InitializeComponents()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create HTTP handler
     HttpHandler = NewObject<UN2CHttpHandler>(this);
     if (!HttpHandler)
@@ -70,6 +73,7 @@ void UN2CBaseLLMService::ResendFormattedRequest(
     const FString& FormattedPayload,
     const FOnLLMResponseReceived& OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!bIsInitialized || !HttpHandler)
     {
         FN2CLogger::Get().LogError(TEXT("Cannot replay request because the service is not initialized"), TEXT("BaseLLMService"));
@@ -94,6 +98,7 @@ FString UN2CBaseLLMService::BuildFormattedRequestPayload(
     const FString& JsonPayload,
     const FString& SystemMessage)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const UN2CSettings* RequestSettings = GetDefault<UN2CSettings>();
 
     // Compose request-wide custom instructions only after the concrete provider service has been
@@ -224,6 +229,7 @@ void UN2CBaseLLMService::SendRequest(
     const FString& SystemMessage,
     const FOnLLMResponseReceived& OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!bIsInitialized)
     {
         FN2CLogger::Get().LogError(TEXT("Service not initialized"), TEXT("BaseLLMService"));

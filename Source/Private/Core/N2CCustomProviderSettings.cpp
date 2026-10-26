@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CCustomProviderSettings.h"
 
 #include "HAL/FileManager.h"
@@ -10,11 +11,13 @@
 
 const FN2CCustomProviderDefinition* UN2CCustomProviderSettings::GetActiveProvider() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return GetProvider(ActiveProviderName);
 }
 
 FN2CCustomProviderDefinition* UN2CCustomProviderSettings::GetProvider(const FString& ProviderName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Providers.FindByPredicate([&ProviderName](const FN2CCustomProviderDefinition& Provider)
     {
         return Provider.Name.Equals(ProviderName, ESearchCase::IgnoreCase);
@@ -23,6 +26,7 @@ FN2CCustomProviderDefinition* UN2CCustomProviderSettings::GetProvider(const FStr
 
 const FN2CCustomProviderDefinition* UN2CCustomProviderSettings::GetProvider(const FString& ProviderName) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Providers.FindByPredicate([&ProviderName](const FN2CCustomProviderDefinition& Provider)
     {
         return Provider.Name.Equals(ProviderName, ESearchCase::IgnoreCase);
@@ -31,6 +35,7 @@ const FN2CCustomProviderDefinition* UN2CCustomProviderSettings::GetProvider(cons
 
 FString UN2CCustomProviderSettings::MakeUniqueProviderName(const FString& BaseName) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Candidate = BaseName.TrimStartAndEnd();
     if (Candidate.IsEmpty())
     {
@@ -55,6 +60,7 @@ FString UN2CCustomProviderSettings::MakeUniqueProviderName(const FString& BaseNa
 
 const FN2CCustomProviderDefinition* UN2CCustomProviderSettings::FindFirstCustomEndpointProvider() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Providers.FindByPredicate([](const FN2CCustomProviderDefinition& Provider)
     {
         return Provider.ProfileSource == EN2CCustomProviderProfileSource::CustomEndpoint;
@@ -63,6 +69,7 @@ const FN2CCustomProviderDefinition* UN2CCustomProviderSettings::FindFirstCustomE
 
 bool UN2CCustomProviderSettings::AddProvider(const FString& ProviderName, EN2CCustomProviderApiType ApiType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString TrimmedName = ProviderName.TrimStartAndEnd();
     if (TrimmedName.IsEmpty() || GetProvider(TrimmedName))
     {
@@ -83,6 +90,7 @@ bool UN2CCustomProviderSettings::AddBuiltInProviderProfile(
     const FString& Model,
     FString& OutProfileName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutProfileName.Empty();
 
     if (BuiltInProvider == EN2CLLMProvider::Custom)
@@ -138,6 +146,7 @@ bool UN2CCustomProviderSettings::DuplicateProvider(
     const FString& ProviderName,
     FString& OutDuplicateName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutDuplicateName.Empty();
 
     const FN2CCustomProviderDefinition* SourceProvider = GetProvider(ProviderName);
@@ -175,6 +184,7 @@ bool UN2CCustomProviderSettings::RenameProvider(
     const FString& ProviderName,
     const FString& NewProviderName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString TrimmedName = NewProviderName.TrimStartAndEnd();
     FN2CCustomProviderDefinition* Provider = GetProvider(ProviderName);
     if (!Provider || TrimmedName.IsEmpty())
@@ -217,6 +227,7 @@ bool UN2CCustomProviderSettings::RenameProvider(
 
 bool UN2CCustomProviderSettings::RemoveProvider(const FString& ProviderName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const int32 ProviderIndex = Providers.IndexOfByPredicate(
         [&ProviderName](const FN2CCustomProviderDefinition& Provider)
         {
@@ -254,6 +265,7 @@ bool UN2CCustomProviderSettings::RemoveProvider(const FString& ProviderName)
 
 bool UN2CCustomProviderSettings::SetActiveProvider(const FString& ProviderName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FN2CCustomProviderDefinition* Provider = GetProvider(ProviderName);
     if (!Provider || Provider->ProfileSource != EN2CCustomProviderProfileSource::CustomEndpoint)
     {
@@ -267,11 +279,13 @@ bool UN2CCustomProviderSettings::SetActiveProvider(const FString& ProviderName)
 
 void UN2CCustomProviderSettings::SaveDefinitions()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TryUpdateDefaultConfigFile(FString(), true);
 }
 
 FString UN2CCustomProviderSettings::GetBuiltInModelOverride(EN2CLLMProvider Provider) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Provider == EN2CLLMProvider::Custom)
     {
         return FString();
@@ -285,6 +299,7 @@ void UN2CCustomProviderSettings::SetBuiltInModelOverride(
     EN2CLLMProvider Provider,
     const FString& Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Provider == EN2CLLMProvider::Custom)
     {
         return;
@@ -305,6 +320,7 @@ void UN2CCustomProviderSettings::SetBuiltInModelOverride(
 
 FString UN2CCustomProviderSettings::GetApiKey(const FString& ProviderName) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FN2CCustomProviderDefinition* Provider = GetProvider(ProviderName);
     if (Provider && Provider->ProfileSource == EN2CCustomProviderProfileSource::BuiltInProvider)
     {
@@ -317,6 +333,7 @@ FString UN2CCustomProviderSettings::GetApiKey(const FString& ProviderName) const
 
 void UN2CCustomProviderSettings::SetApiKey(const FString& ProviderName, const FString& ApiKey)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FN2CCustomProviderDefinition* Provider = GetProvider(ProviderName);
     if (Provider && Provider->ProfileSource == EN2CCustomProviderProfileSource::BuiltInProvider)
     {
@@ -345,12 +362,14 @@ void UN2CCustomProviderSettings::SetApiKey(const FString& ProviderName, const FS
 
 FString UN2CCustomProviderSettings::GetSecretsFilePath()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FPaths::ConvertRelativePathToFull(
         FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User"), TEXT("custom_provider_secrets.json")));
 }
 
 void UN2CCustomProviderSettings::EnsureSecretsDirectoryExists()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString SecretsDir = FPaths::GetPath(GetSecretsFilePath());
     if (!IFileManager::Get().DirectoryExists(*SecretsDir))
     {
@@ -360,6 +379,7 @@ void UN2CCustomProviderSettings::EnsureSecretsDirectoryExists()
 
 void UN2CCustomProviderSettings::LoadApiKeys() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (bApiKeysLoaded)
     {
         return;
@@ -408,6 +428,7 @@ void UN2CCustomProviderSettings::LoadApiKeys() const
 
 void UN2CCustomProviderSettings::SaveApiKeys() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     EnsureSecretsDirectoryExists();
 
     TArray<TSharedPtr<FJsonValue>> ProvidersArray;

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
 
@@ -7,6 +8,7 @@ namespace
 {
 TSharedPtr<FJsonObject> StringMapToJsonObject(const TMap<FString, FString>& Values)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> Object = MakeShared<FJsonObject>();
     for (const TPair<FString, FString>& Pair : Values)
     {
@@ -20,6 +22,7 @@ bool ParseStringMapField(
     const TCHAR* FieldName,
     TMap<FString, FString>& OutValues)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Owner->HasField(FieldName))
     {
         return true;
@@ -51,6 +54,7 @@ int32 FN2CSerializer::IndentLevel = 1;
 
 FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Validate Blueprint before serialization
     if (!Blueprint.IsValid())
     {
@@ -95,6 +99,7 @@ FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint)
 
 bool FN2CSerializer::FromJson(const FString& JsonString, FN2CBlueprint& OutBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Parse JSON string
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
@@ -111,16 +116,19 @@ bool FN2CSerializer::FromJson(const FString& JsonString, FN2CBlueprint& OutBluep
 
 void FN2CSerializer::SetPrettyPrint(bool bEnabled)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     bPrettyPrint = bEnabled;
 }
 
 void FN2CSerializer::SetIndentLevel(int32 Level)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     IndentLevel = FMath::Max(0, Level);
 }
 
 TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprint& Blueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
 
     // Add version
@@ -239,6 +247,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
 
 TSharedPtr<FJsonObject> FN2CSerializer::GraphPinToJsonObject(const FN2CGraphPin& Pin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
     JsonObject->SetStringField(TEXT("node_guid"), Pin.NodeGuid);
     JsonObject->SetStringField(TEXT("pin_guid"), Pin.PinGuid);
@@ -307,6 +316,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphPinToJsonObject(const FN2CGraphPin&
 
 TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
     JsonObject->SetStringField(TEXT("name"), Graph.Name);
     JsonObject->SetStringField(TEXT("graph_type"),
@@ -394,6 +404,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
 
 TSharedPtr<FJsonObject> FN2CSerializer::NodeToJsonObject(const FN2CNodeDefinition& Node)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
 
     // Required fields
@@ -467,6 +478,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::NodeToJsonObject(const FN2CNodeDefinitio
 
 TSharedPtr<FJsonObject> FN2CSerializer::PinToJsonObject(const FN2CPinDefinition& Pin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
 
     // Required fields
@@ -520,6 +532,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::PinToJsonObject(const FN2CPinDefinition&
 
 TSharedPtr<FJsonObject> FN2CSerializer::FlowsToJsonObject(const FN2CFlows& Flows)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
 
     // Add execution flows array
@@ -543,6 +556,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::FlowsToJsonObject(const FN2CFlows& Flows
 
 TSharedPtr<FJsonObject> FN2CSerializer::StructToJsonObject(const FN2CStruct& Struct)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
     
     // Add basic struct info
@@ -632,6 +646,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::StructToJsonObject(const FN2CStruct& Str
 
 TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
     
     // Add basic enum info
@@ -679,6 +694,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
 
 TSharedPtr<FJsonObject> FN2CSerializer::VariableToJsonObject(const FN2CVariable& Var)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
 
     JsonObject->SetStringField(TEXT("name"), Var.Name);
@@ -743,6 +759,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::VariableToJsonObject(const FN2CVariable&
 
 TSharedPtr<FJsonObject> FN2CSerializer::NativeObjectToJsonObject(const FN2CNativeObject& Object)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> JsonObject = MakeShared<FJsonObject>();
     JsonObject->SetStringField(TEXT("kind"), Object.Kind);
     JsonObject->SetStringField(TEXT("name"), Object.Name);
@@ -756,6 +773,7 @@ TSharedPtr<FJsonObject> FN2CSerializer::NativeObjectToJsonObject(const FN2CNativ
 
 bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CBlueprint& OutBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1023,6 +1041,7 @@ bool FN2CSerializer::ParseNativeObjectFromJson(
     const TSharedPtr<FJsonObject>& JsonObject,
     FN2CNativeObject& OutObject)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid() ||
         !JsonObject->TryGetStringField(TEXT("kind"), OutObject.Kind) || OutObject.Kind.IsEmpty() ||
         !JsonObject->TryGetStringField(TEXT("name"), OutObject.Name) ||
@@ -1047,6 +1066,7 @@ bool FN2CSerializer::ParseNativeObjectFromJson(
 
 bool FN2CSerializer::ParseVariableFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CVariable& OutVar)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1106,6 +1126,7 @@ bool FN2CSerializer::ParseVariableFromJson(const TSharedPtr<FJsonObject>& JsonOb
 
 bool FN2CSerializer::ParseGraphPinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraphPin& OutPin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1238,6 +1259,7 @@ bool FN2CSerializer::ParseGraphPinFromJson(const TSharedPtr<FJsonObject>& JsonOb
 
 bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CGraph& OutGraph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1657,6 +1679,7 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
 
 bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CNodeDefinition& OutNode)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1756,6 +1779,7 @@ bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject
 
 bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CPinDefinition& OutPin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1818,6 +1842,7 @@ bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject,
 
 bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CFlows& OutFlows)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1867,6 +1892,7 @@ bool FN2CSerializer::ParseFlowsFromJson(const TSharedPtr<FJsonObject>& JsonObjec
 
 bool FN2CSerializer::ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CStruct& OutStruct)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;
@@ -1982,6 +2008,7 @@ bool FN2CSerializer::ParseStructFromJson(const TSharedPtr<FJsonObject>& JsonObje
 
 bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject, FN2CEnum& OutEnum)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!JsonObject.IsValid())
     {
         return false;

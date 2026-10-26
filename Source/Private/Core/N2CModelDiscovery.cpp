@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CModelDiscovery.h"
 
 #include "Core/N2CSettings.h"
@@ -24,6 +25,7 @@ constexpr double ModelCacheLifetimeSeconds = 300.0;
 
 FString TrimTrailingSlashes(FString Url)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     while (Url.EndsWith(TEXT("/")))
     {
         Url.LeftChopInline(1, EAllowShrinking::No);
@@ -33,6 +35,7 @@ FString TrimTrailingSlashes(FString Url)
 
 FString GetOpenAICompatibleRoot(const FString& ConfiguredEndpoint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Root = TrimTrailingSlashes(ConfiguredEndpoint.TrimStartAndEnd());
     const TCHAR* CompletionSuffix = TEXT("/chat/completions");
     if (Root.EndsWith(CompletionSuffix, ESearchCase::IgnoreCase))
@@ -44,6 +47,7 @@ FString GetOpenAICompatibleRoot(const FString& ConfiguredEndpoint)
 
 FString GetLMStudioRoot(const FString& ConfiguredEndpoint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Root = TrimTrailingSlashes(ConfiguredEndpoint.TrimStartAndEnd());
     const TCHAR* KnownSuffixes[] =
     {
@@ -65,6 +69,7 @@ FString GetLMStudioRoot(const FString& ConfiguredEndpoint)
 
 FString GetMiniMaxModelsEndpoint(const FString& ConfiguredEndpoint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Root = TrimTrailingSlashes(ConfiguredEndpoint.TrimStartAndEnd());
     return Root.EndsWith(TEXT("/v1"), ESearchCase::IgnoreCase)
         ? Root + TEXT("/models")
@@ -73,6 +78,7 @@ FString GetMiniMaxModelsEndpoint(const FString& ConfiguredEndpoint)
 
 FString BuildCacheKey(const FN2CResolvedRequestProvider& Provider, const FString& Url)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FString::Printf(
         TEXT("%d|%s|%u"),
         static_cast<int32>(Provider.Provider),
@@ -82,6 +88,7 @@ FString BuildCacheKey(const FN2CResolvedRequestProvider& Provider, const FString
 
 bool IsLocalEndpoint(const FString& Url)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Url.Contains(TEXT("://127."), ESearchCase::IgnoreCase) ||
            Url.Contains(TEXT("://localhost"), ESearchCase::IgnoreCase) ||
            Url.Contains(TEXT("://[::1]"), ESearchCase::IgnoreCase);
@@ -89,6 +96,7 @@ bool IsLocalEndpoint(const FString& Url)
 
 void AddUniqueModel(TArray<FString>& Models, const FString& Candidate)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Model = Candidate.TrimStartAndEnd();
     if (Model.StartsWith(TEXT("models/"), ESearchCase::IgnoreCase))
     {
@@ -110,6 +118,7 @@ void AddUniqueModel(TArray<FString>& Models, const FString& Candidate)
 
 bool IsLikelyOpenAITextGenerationModel(const FString& ModelId)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString Lower = ModelId.ToLower();
     const TCHAR* ExcludedFragments[] =
     {
@@ -139,6 +148,7 @@ bool ParseOpenAIStyleModels(
     TArray<FString>& OutModels,
     bool bFilterOpenAIModels)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const TArray<TSharedPtr<FJsonValue>>* Data = nullptr;
     if (!Root.IsValid() || !Root->TryGetArrayField(TEXT("data"), Data) || !Data)
     {
@@ -160,6 +170,7 @@ bool ParseOpenAIStyleModels(
 
 bool ParseGeminiModels(const TSharedPtr<FJsonObject>& Root, TArray<FString>& OutModels)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const TArray<TSharedPtr<FJsonValue>>* Models = nullptr;
     if (!Root.IsValid() || !Root->TryGetArrayField(TEXT("models"), Models) || !Models)
     {
@@ -206,6 +217,7 @@ bool ParseGeminiModels(const TSharedPtr<FJsonObject>& Root, TArray<FString>& Out
 
 bool ParseOllamaModels(const TSharedPtr<FJsonObject>& Root, TArray<FString>& OutModels)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const TArray<TSharedPtr<FJsonValue>>* Models = nullptr;
     if (!Root.IsValid() || !Root->TryGetArrayField(TEXT("models"), Models) || !Models)
     {
@@ -230,6 +242,7 @@ bool ParseOllamaModels(const TSharedPtr<FJsonObject>& Root, TArray<FString>& Out
 
 bool ParseLMStudioModels(const TSharedPtr<FJsonObject>& Root, TArray<FString>& OutModels)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const TArray<TSharedPtr<FJsonValue>>* Models = nullptr;
     if (!Root.IsValid() || !Root->TryGetArrayField(TEXT("models"), Models) || !Models)
     {
@@ -268,6 +281,7 @@ bool ParseModelsResponse(
     TArray<FString>& OutModels,
     FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> Root;
     const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Body);
     if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
@@ -320,6 +334,7 @@ bool BuildRequest(
     TMap<FString, FString>& OutHeaders,
     FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (!Settings)
     {
@@ -386,6 +401,7 @@ bool StartModelListRequest(
     const TMap<FString, FString>& Headers,
     FN2CModelDiscovery::FOnModelsResolved OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString CacheKey = BuildCacheKey(Provider, Url);
     const double NowSeconds = FPlatformTime::Seconds();
     if (const FCachedModelList* Cached = ModelCache.Find(CacheKey))
@@ -475,6 +491,7 @@ bool StartModelListRequest(
 
 bool FN2CModelDiscovery::SupportsProvider(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Provider != EN2CLLMProvider::Custom;
 }
 
@@ -482,6 +499,7 @@ bool FN2CModelDiscovery::FetchAvailableModels(
     const FN2CResolvedRequestProvider& Provider,
     FOnModelsResolved OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!SupportsProvider(Provider.Provider))
     {
         return false;
@@ -514,6 +532,7 @@ bool FN2CModelDiscovery::FetchOpenAICompatibleModels(
     const FString& ApiKey,
     FOnModelsResolved OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString Root = N2CModelDiscoveryPrivate::GetOpenAICompatibleRoot(ApiBaseEndpoint);
     if (Root.IsEmpty())
     {

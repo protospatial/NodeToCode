@@ -1,7 +1,8 @@
-﻿// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
+// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/Object.h"  // Add this for UObject support
@@ -38,7 +39,8 @@ public:
     float HttpActivityTimeout = 3600.0f;
     
     virtual void OverridePerObjectConfigSection(FString& SectionName) override 
-    { 
+    {
+        N2C_LOG_FUNCTION_ENTRY();
         SectionName = TEXT("HTTP"); 
     }
 };

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "N2CPin.h"
 #include "Utils/N2CLogger.h"
@@ -198,6 +199,7 @@ struct FN2CNodeDefinition
     /** Gets a cleaned version of the MemberParent name without common prefixes/suffixes */
     FString GetCleanMemberParent() const
     {
+        N2C_LOG_FUNCTION_ENTRY();
         FString CleanName = MemberParent;
         
         // Remove SKEL_ prefix if present

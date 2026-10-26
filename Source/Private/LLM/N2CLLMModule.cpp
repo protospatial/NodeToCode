@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CLLMModule.h"
 
 #include "Containers/Ticker.h"
@@ -39,6 +40,7 @@ void MergeTranslationResponse(
     FN2CTranslationResponse& Target,
     const FN2CTranslationResponse& Source)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     for (const FN2CGraphTranslation& Graph : Source.Graphs)
     {
         const int32 ExistingIndex = Target.Graphs.IndexOfByPredicate(
@@ -65,6 +67,7 @@ void MergeTranslationResponse(
 
 int32 EstimateNativeBatchTokens(const FN2CPendingNativeBatchRequest& Request)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // This is deliberately conservative and provider-agnostic. It is only an
     // admission heuristic; provider-side capacity remains authoritative.
     return FMath::Max(1, (Request.FormattedPayload.Len() + NativeBatchEstimatedCharsPerToken - 1) /
@@ -73,6 +76,7 @@ int32 EstimateNativeBatchTokens(const FN2CPendingNativeBatchRequest& Request)
 
 int64 EstimateNativeBatchTokens(const TArray<FN2CPendingNativeBatchRequest>& Requests)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     int64 Total = 0;
     for (const FN2CPendingNativeBatchRequest& Request : Requests)
     {
@@ -84,6 +88,7 @@ int64 EstimateNativeBatchTokens(const TArray<FN2CPendingNativeBatchRequest>& Req
 TArray<TArray<FN2CPendingNativeBatchRequest>> BuildNativeBatchChunks(
     TArray<FN2CPendingNativeBatchRequest> Requests)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<TArray<FN2CPendingNativeBatchRequest>> Chunks;
     TArray<FN2CPendingNativeBatchRequest> CurrentChunk;
     int64 CurrentEstimatedTokens = 0;
@@ -113,6 +118,7 @@ TArray<TArray<FN2CPendingNativeBatchRequest>> BuildNativeBatchChunks(
 
 bool IsNativeBatchAdmissionCapacityFailure(const FString& Reason)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString LowerReason = Reason.ToLower();
     return (LowerReason.Contains(TEXT("enqueued")) && LowerReason.Contains(TEXT("token"))) ||
            LowerReason.Contains(TEXT("capacity")) ||
@@ -128,6 +134,7 @@ bool IsNativeBatchAdmissionCapacityFailure(const FString& Reason)
 
 bool IsNativeBatchAdmissionCapacityResponse(const FString& RawResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString LowerResponse = RawResponse.ToLower();
     return LowerResponse.Contains(TEXT("batch_error")) &&
            IsNativeBatchAdmissionCapacityFailure(LowerResponse);
@@ -136,6 +143,7 @@ bool IsNativeBatchAdmissionCapacityResponse(const FString& RawResponse)
 TArray<TArray<FN2CPendingNativeBatchRequest>> SplitNativeBatchChunk(
     TArray<FN2CPendingNativeBatchRequest> Requests)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<TArray<FN2CPendingNativeBatchRequest>> Chunks;
     if (Requests.Num() < 2)
     {
@@ -193,6 +201,7 @@ bool QueueSmallerNativeBatchChunks(
     TArray<FN2CPendingNativeBatchRequest>& Requests,
     const FString& Reason)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Requests.Num() < 2)
     {
         return false;
@@ -228,6 +237,7 @@ bool QueueSmallerNativeBatchChunks(
 
 UN2CLLMModule* UN2CLLMModule::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static UN2CLLMModule* Instance = nullptr;
     if (!Instance)
     {
@@ -241,6 +251,7 @@ UN2CLLMModule* UN2CLLMModule::Get()
 
 bool UN2CLLMModule::Initialize()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     CurrentStatus = EN2CSystemStatus::Initializing;
     bIsInitialized = false;
     ResetRequestSession();
@@ -274,6 +285,7 @@ bool UN2CLLMModule::Initialize()
 
 void UN2CLLMModule::ResetRequestSession()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     InFlightRequestCount = 0;
     NextRequestId = 1;
     bSessionHadError = false;
@@ -297,11 +309,13 @@ void UN2CLLMModule::ResetRequestSession()
 
 void UN2CLLMModule::AppendSessionResponse(const FN2CTranslationResponse& Response)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     N2CLLMModuleSessionPrivate::MergeTranslationResponse(SessionTranslationResponse, Response);
 }
 
 FN2CTranslationResponse UN2CLLMModule::BuildGraphAggregateResponse() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CTranslationResponse Aggregate;
     Aggregate.Usage.InputTokens = 0;
     Aggregate.Usage.OutputTokens = 0;
@@ -323,6 +337,7 @@ FN2CTranslationResponse UN2CLLMModule::BuildGraphAggregateResponse() const
 
 void UN2CLLMModule::RebuildSessionResponseFromGraphRequests()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     SessionTranslationResponse = BuildGraphAggregateResponse();
 }
 
@@ -331,6 +346,7 @@ bool UN2CLLMModule::TryQueueNativeBatchRequest(
     const FString& SystemPrompt,
     const FOnLLMResponseReceived& OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (CurrentBatchRootPath.IsEmpty() ||
         !FN2CNativeBatchProcessor::SupportsProvider(Config.Provider) ||
@@ -385,6 +401,7 @@ bool UN2CLLMModule::TryQueueNativeBatchRequest(
 
 void UN2CLLMModule::FlushNativeBatchRequests()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     bNativeBatchFlushScheduled = false;
 
     TArray<FN2CPendingNativeBatchRequest> Pending = MoveTemp(PendingNativeBatchRequests);
@@ -589,6 +606,7 @@ void UN2CLLMModule::DispatchPendingBatchIndividually(
     TArray<FN2CPendingNativeBatchRequest> Requests,
     const FString& Reason)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().LogWarning(
         FString::Printf(TEXT("Using ordinary parallel requests instead of native batch: %s"), *Reason),
         TEXT("NativeBatch"));
@@ -633,6 +651,7 @@ void UN2CLLMModule::HandleCompletedBatchItem(
     const FString& Response,
     const FOnLLMResponseReceived& OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CTranslationResponse TranslationResponse;
     TranslationResponse.Usage.InputTokens = 0;
     TranslationResponse.Usage.OutputTokens = 0;
@@ -710,6 +729,7 @@ void UN2CLLMModule::HandleCompletedBatchItem(
 
 void UN2CLLMModule::FinishRequest(bool bSuccess)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     InFlightRequestCount = FMath::Max(0, InFlightRequestCount - 1);
 
     // Error state follows the current replaceable history rather than being permanently sticky.
@@ -734,6 +754,7 @@ void UN2CLLMModule::FinishRequest(bool bSuccess)
 
 void UN2CLLMModule::StartQueuedConsolidationIfReady()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (InFlightRequestCount != 0 || PendingConsolidationRetryRequestId == INDEX_NONE)
     {
         return;
@@ -754,6 +775,7 @@ void UN2CLLMModule::StartQueuedConsolidationIfReady()
 
 FString UN2CLLMModule::FormatRawResponseForDisplay(const FString& RawResponse) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (RawResponse.IsEmpty())
     {
         return RawResponse;
@@ -777,6 +799,7 @@ void UN2CLLMModule::ProcessN2CJson(
     const FString& JsonInput,
     const FOnLLMResponseReceived& OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!bIsInitialized)
     {
         CurrentStatus = EN2CSystemStatus::Error;
@@ -885,6 +908,7 @@ bool UN2CLLMModule::ResendRawRequest(
     int32 RequestId,
     TFunction<void(bool)> OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const int32 ExistingIndex = SessionRawResponses.IndexOfByPredicate(
         [RequestId](const FN2CRawResponseRecord& Record)
         {
@@ -1067,6 +1091,7 @@ bool UN2CLLMModule::StartFinalConsolidation(
     int32 ExistingRequestId,
     TFunction<void(bool)> OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!ActiveService.GetInterface())
     {
         FN2CLogger::Get().LogError(
@@ -1286,6 +1311,7 @@ bool UN2CLLMModule::StartFinalConsolidation(
 
 bool UN2CLLMModule::InitializeComponents()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     PromptManager = NewObject<UN2CSystemPromptManager>(this);
     if (!PromptManager)
     {
@@ -1298,6 +1324,7 @@ bool UN2CLLMModule::InitializeComponents()
 
 void UN2CLLMModule::OpenTranslationFolder(bool& Success)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString PathToOpen = LatestTranslationPath;
     if (PathToOpen.IsEmpty())
     {
@@ -1322,6 +1349,7 @@ void UN2CLLMModule::OpenTranslationFolder(bool& Success)
 
 void UN2CLLMModule::BeginBatchTranslation(const FString& BlueprintName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString BlueprintNameToUse = BlueprintName.IsEmpty() ? TEXT("UnknownBlueprint") : BlueprintName;
     CurrentBatchRootPath = GenerateTranslationRootPath(BlueprintNameToUse);
     FN2CLogger::Get().Log(
@@ -1331,6 +1359,7 @@ void UN2CLLMModule::BeginBatchTranslation(const FString& BlueprintName)
 
 void UN2CLLMModule::EndBatchTranslation()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CurrentBatchRootPath.IsEmpty())
     {
         FN2CLogger::Get().Log(TEXT("Batch translation ended"), EN2CLogSeverity::Info);
@@ -1361,6 +1390,7 @@ void UN2CLLMModule::EndBatchTranslation()
 
 void UN2CLLMModule::PersistRequestHistory() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString HistoryRoot = !CurrentBatchRootPath.IsEmpty()
         ? CurrentBatchRootPath
         : LatestTranslationPath;
@@ -1382,6 +1412,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(
     const FN2CTranslationResponse& Response,
     const FN2CBlueprint& Blueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString BlueprintName = Blueprint.Metadata.Name;
     if (BlueprintName.IsEmpty())
     {
@@ -1487,6 +1518,7 @@ bool UN2CLLMModule::SaveTranslationToDisk(
 
 void UN2CLLMModule::SaveRawResponseToDisk(const FString& RawResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (RawResponse.IsEmpty())
     {
         return;
@@ -1524,6 +1556,7 @@ void UN2CLLMModule::SaveGraphFilesWithBatchFeatures(
     const FString& RootPath,
     EN2CCodeLanguage TargetLanguage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const bool bIsCpp = TargetLanguage == EN2CCodeLanguage::Cpp;
 
     auto SanitizeNameForFilesystem = [](const FString& InName)
@@ -1621,6 +1654,7 @@ void UN2CLLMModule::SaveGraphFilesOriginal(
     const FString& RootPath,
     EN2CCodeLanguage TargetLanguage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     for (const FN2CGraphTranslation& Graph : Response.Graphs)
     {
         if (Graph.GraphName.IsEmpty())
@@ -1669,6 +1703,7 @@ void UN2CLLMModule::SaveGraphFilesOriginal(
 
 FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d-%H.%M.%S"));
     return FPaths::Combine(
         GetTranslationBasePath(),
@@ -1677,6 +1712,7 @@ FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName)
 
 FString UN2CLLMModule::GetTranslationBasePath() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (Settings && !Settings->CustomTranslationOutputDirectory.Path.IsEmpty())
     {
@@ -1688,6 +1724,7 @@ FString UN2CLLMModule::GetTranslationBasePath() const
 
 FString UN2CLLMModule::GetFileExtensionForLanguage(EN2CCodeLanguage Language) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Language)
     {
         case EN2CCodeLanguage::Cpp: return TEXT(".cpp");
@@ -1702,6 +1739,7 @@ FString UN2CLLMModule::GetFileExtensionForLanguage(EN2CCodeLanguage Language) co
 
 bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (FPaths::DirectoryExists(DirectoryPath))
     {
         return true;
@@ -1722,6 +1760,7 @@ bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const
 
 bool UN2CLLMModule::CreateServiceForProvider(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CLLMProviderRegistry* Registry = UN2CLLMProviderRegistry::Get();
     if (!Registry->IsProviderRegistered(Provider))
     {
@@ -1752,6 +1791,7 @@ bool UN2CLLMModule::CreateServiceForProvider(EN2CLLMProvider Provider)
 
 void UN2CLLMModule::InitializeProviderRegistry()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CLLMProviderRegistry* Registry = UN2CLLMProviderRegistry::Get();
     Registry->RegisterProvider(EN2CLLMProvider::OpenAI, UN2COpenAIService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::Anthropic, UN2CAnthropicService::StaticClass());

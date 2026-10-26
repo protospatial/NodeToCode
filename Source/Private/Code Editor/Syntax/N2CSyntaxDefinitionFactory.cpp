@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Syntax/N2CCPPSyntaxDefinition.h"
 #include "Code Editor/Syntax/N2CPythonSyntaxDefinition.h"
@@ -10,12 +11,14 @@
 
 FN2CSyntaxDefinitionFactory& FN2CSyntaxDefinitionFactory::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FN2CSyntaxDefinitionFactory Instance;
     return Instance;
 }
 
 TSharedPtr<FN2CSyntaxDefinition> FN2CSyntaxDefinitionFactory::CreateDefinition(EN2CCodeLanguage Language)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Language)
     {
         case EN2CCodeLanguage::Cpp:

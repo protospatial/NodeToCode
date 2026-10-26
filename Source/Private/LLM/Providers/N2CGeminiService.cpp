@@ -1,11 +1,13 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CGeminiService.h"
 
 #include "LLM/N2CSystemPromptManager.h"
 
 UN2CResponseParserBase* UN2CGeminiService::CreateResponseParser()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CGeminiResponseParser* Parser = NewObject<UN2CGeminiResponseParser>(this);
     return Parser;
 }
@@ -15,6 +17,7 @@ void UN2CGeminiService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Build full endpoint (Gemini typically uses "model_name:generateContent")
     OutEndpoint = FString::Printf(TEXT("%s%s:generateContent?key=%s"),
                                   *Config.ApiEndpoint, *Config.Model, *Config.ApiKey);
@@ -26,11 +29,13 @@ void UN2CGeminiService::GetConfiguration(
 
 void UN2CGeminiService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 }
 
 FString UN2CGeminiService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create and configure payload builder
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
     PayloadBuilder->Initialize(Config.Model);

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CAnthropicResponseParser.h"
 #include "Utils/N2CLogger.h"
 #include "Serialization/JsonSerializer.h"
@@ -8,6 +9,7 @@ bool UN2CAnthropicResponseParser::ParseLLMResponse(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Parse JSON string
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InJson);
@@ -63,6 +65,7 @@ bool UN2CAnthropicResponseParser::ExtractAnthropicMessageContent(
     const TSharedPtr<FJsonObject>& JsonObject,
     FString& OutContent)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Get content array from response
     const TArray<TSharedPtr<FJsonValue>>* ContentArray;
     if (!JsonObject->TryGetArrayField(TEXT("content"), ContentArray) || ContentArray->Num() == 0)

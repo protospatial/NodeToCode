@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CUserSecrets.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -10,6 +11,7 @@
 
 UN2CUserSecrets::UN2CUserSecrets()
 {
+  N2C_LOG_FUNCTION_ENTRY();
 #if WITH_EDITOR
     // User secrets should never render as plain text if this object is inspected in an editor
     // details view. PasswordField only affects presentation; persistence remains handled by the
@@ -39,12 +41,14 @@ UN2CUserSecrets::UN2CUserSecrets()
 
 FString UN2CUserSecrets::GetSecretsFilePath()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FPaths::ConvertRelativePathToFull(
         FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User"), TEXT("secrets.json")));
 }
 
 void UN2CUserSecrets::EnsureSecretsDirectoryExists()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString SecretsDir = FPaths::ConvertRelativePathToFull(
         FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User")));
     
@@ -59,6 +63,7 @@ void UN2CUserSecrets::EnsureSecretsDirectoryExists()
 
 void UN2CUserSecrets::LoadSecrets()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString SecretsFilePath = GetSecretsFilePath();
     
     // Check if the file exists
@@ -104,6 +109,7 @@ void UN2CUserSecrets::LoadSecrets()
 
 void UN2CUserSecrets::SaveSecrets()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Ensure the directory exists
     EnsureSecretsDirectoryExists();
     

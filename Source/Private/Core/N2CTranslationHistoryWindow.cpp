@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CTranslationHistoryWindow.h"
 
 #include "Core/N2CTranslationHistory.h"
@@ -42,6 +43,7 @@ struct FViewerState
 
 FString ProviderDisplayName(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
     {
         return ProviderEnum->GetDisplayNameTextByValue(static_cast<int64>(Provider)).ToString();
@@ -51,6 +53,7 @@ FString ProviderDisplayName(EN2CLLMProvider Provider)
 
 void RefreshRequests(const TSharedRef<FViewerState>& State)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     State->Requests.Reset();
     State->SelectedRequest.Reset();
     State->StatusText.Empty();
@@ -94,6 +97,7 @@ void RefreshRequests(const TSharedRef<FViewerState>& State)
 
 void RefreshBatches(const TSharedRef<FViewerState>& State)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString PreviouslySelectedPath = State->SelectedBatch.IsValid()
         ? State->SelectedBatch->Batch.DirectoryPath
         : FString();
@@ -137,6 +141,7 @@ void RefreshBatches(const TSharedRef<FViewerState>& State)
 
 void FN2CTranslationHistoryWindow::Open()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!FSlateApplication::IsInitialized())
     {
         return;

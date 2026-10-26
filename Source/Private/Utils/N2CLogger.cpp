@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/N2CLogger.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -8,6 +9,7 @@
 
 FN2CLogger& FN2CLogger::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FN2CLogger Instance;
     return Instance;
 }
@@ -17,10 +19,13 @@ FN2CLogger::FN2CLogger()
     , bFileLoggingEnabled(false)
     , LogFilePath(FPaths::ProjectSavedDir() / TEXT("NodeToCode.log"))
 {
-}
+
+  N2C_LOG_FUNCTION_ENTRY();
+  }
 
 void FN2CLogger::Log(const FString& Message, EN2CLogSeverity Severity, const FString& Context)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Severity < MinSeverity)
     {
         return;
@@ -89,21 +94,25 @@ void FN2CLogger::Log(const FString& Message, EN2CLogSeverity Severity, const FSt
 
 void FN2CLogger::LogError(const FString& Message, const FString& Context)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Log(Message, EN2CLogSeverity::Error, Context);
 }
 
 void FN2CLogger::LogWarning(const FString& Message, const FString& Context)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Log(Message, EN2CLogSeverity::Warning, Context);
 }
 
 TArray<FN2CError> FN2CLogger::GetErrors() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return LoggedErrors;
 }
 
 TArray<FN2CError> FN2CLogger::GetErrorsBySeverity(EN2CLogSeverity Severity) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<FN2CError> FilteredErrors;
     for (const FN2CError& Error : LoggedErrors)
     {
@@ -117,11 +126,13 @@ TArray<FN2CError> FN2CLogger::GetErrorsBySeverity(EN2CLogSeverity Severity) cons
 
 void FN2CLogger::ClearErrors()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     LoggedErrors.Empty();
 }
 
 void FN2CLogger::SetMinSeverity(EN2CLogSeverity Severity)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     MinSeverity = Severity;
     
     // Update UE log category verbosity to match
@@ -130,16 +141,19 @@ void FN2CLogger::SetMinSeverity(EN2CLogSeverity Severity)
 
 void FN2CLogger::EnableFileLogging(bool bEnable)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     bFileLoggingEnabled = bEnable;
 }
 
 void FN2CLogger::SetLogFilePath(const FString& Path)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     LogFilePath = Path;
 }
 
 void FN2CLogger::WriteToFile(const FString& Message)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!bFileLoggingEnabled)
     {
         return;
@@ -165,6 +179,7 @@ void FN2CLogger::WriteToFile(const FString& Message)
 
 FString FN2CLogger::FormatError(const FN2CError& Error) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString SeverityStr;
     switch (Error.Severity)
     {

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
 
 #include "BlueprintEditorModes.h"
@@ -26,12 +27,14 @@
 
 FN2CEditorIntegration& FN2CEditorIntegration::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FN2CEditorIntegration Instance;
     return Instance;
 }
 
 void FN2CEditorIntegration::ExecuteTranslateEntireBlueprintForEditor(TWeakPtr<FBlueprintEditor> InEditor)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check if translation is already in progress
     UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
     if (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing)
@@ -326,6 +329,7 @@ void FN2CEditorIntegration::ExecuteTranslateEntireBlueprintForEditor(TWeakPtr<FB
 
 void FN2CEditorIntegration::ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> InEditor)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().Log(TEXT("ExecuteCopyJsonForEditor called"), EN2CLogSeverity::Debug);
 
     // Get the editor pointer
@@ -439,6 +443,7 @@ void FN2CEditorIntegration::ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> 
 
 void FN2CEditorIntegration::ExecuteCopyEntireBlueprintJsonForEditor(TWeakPtr<FBlueprintEditor> InEditor)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().Log(TEXT("ExecuteCopyEntireBlueprintJsonForEditor called"), EN2CLogSeverity::Debug);
 
     TSharedPtr<FBlueprintEditor> Editor = InEditor.Pin();
@@ -500,6 +505,7 @@ void FN2CEditorIntegration::ExecuteCopyEntireBlueprintJsonForEditor(TWeakPtr<FBl
 
 void FN2CEditorIntegration::Initialize()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Register commands
     FN2CToolbarCommand::Register();
 
@@ -528,6 +534,7 @@ void FN2CEditorIntegration::Initialize()
 
 void FN2CEditorIntegration::Shutdown()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Unregister tab spawner
     SN2CEditorWindow::UnregisterTabSpawner();
 
@@ -550,6 +557,7 @@ void FN2CEditorIntegration::Shutdown()
 
 TSharedPtr<FBlueprintEditor> FN2CEditorIntegration::GetBlueprintEditorFromTab() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Mark as deprecated
     FN2CLogger::Get().LogWarning(TEXT("GetBlueprintEditorFromTab is deprecated - editors should be accessed directly"));
     return nullptr;
@@ -557,6 +565,7 @@ TSharedPtr<FBlueprintEditor> FN2CEditorIntegration::GetBlueprintEditorFromTab() 
 
 void FN2CEditorIntegration::HandleAssetEditorOpened(UObject* Asset, IAssetEditorInstance* EditorInstance)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Asset || !EditorInstance)
     {
         return;
@@ -607,6 +616,7 @@ void FN2CEditorIntegration::HandleAssetEditorOpened(UObject* Asset, IAssetEditor
 
 void FN2CEditorIntegration::RegisterToolbarForEditor(TSharedPtr<FBlueprintEditor> InEditor)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().Log(TEXT("Starting toolbar registration for editor"), EN2CLogSeverity::Info);
 
     if (!InEditor.IsValid())
@@ -794,6 +804,7 @@ void FN2CEditorIntegration::RegisterToolbarForEditor(TSharedPtr<FBlueprintEditor
 
 TArray<FName> FN2CEditorIntegration::GetAvailableThemes(EN2CCodeLanguage Language) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<FName> ThemeNames;
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -821,11 +832,13 @@ TArray<FName> FN2CEditorIntegration::GetAvailableThemes(EN2CCodeLanguage Languag
 
 FName FN2CEditorIntegration::GetDefaultTheme(EN2CCodeLanguage Language) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return TEXT("Unreal Engine");
 }
 
 void FN2CEditorIntegration::ExecuteCollectNodesForEditor(TWeakPtr<FBlueprintEditor> InEditor)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check if translation is already in progress
     UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
     if (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing)

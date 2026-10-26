@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/N2CNodeTypeRegistry.h"
 #include "Utils/N2CLogger.h"
 
@@ -115,22 +116,26 @@
 
 FN2CNodeTypeRegistry& FN2CNodeTypeRegistry::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FN2CNodeTypeRegistry Instance;
     return Instance;
 }
 
 FN2CNodeTypeRegistry::FN2CNodeTypeRegistry()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     InitializeDefaultMappings();
 }
 
 void FN2CNodeTypeRegistry::RegisterNodeType(const FName& ClassName, EN2CNodeType NodeType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ClassNameMappings.Add(ClassName, NodeType);
 }
 
 void FN2CNodeTypeRegistry::RegisterNodeClass(const UClass* Class, EN2CNodeType NodeType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Class)
     {
         ClassMappings.Add(Class, NodeType);
@@ -139,6 +144,7 @@ void FN2CNodeTypeRegistry::RegisterNodeClass(const UClass* Class, EN2CNodeType N
 
 EN2CNodeType FN2CNodeTypeRegistry::GetNodeType(const UK2Node* Node)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         return EN2CNodeType::CallFunction; // Default
@@ -182,6 +188,7 @@ EN2CNodeType FN2CNodeTypeRegistry::GetNodeType(const UK2Node* Node)
 
 FString FN2CNodeTypeRegistry::GetBaseNodeType(const FString& ClassName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static const FString Prefix = TEXT("K2Node_");
     if (ClassName.StartsWith(Prefix))
     {
@@ -192,6 +199,7 @@ FString FN2CNodeTypeRegistry::GetBaseNodeType(const FString& ClassName)
 
 void FN2CNodeTypeRegistry::InitializeDefaultMappings()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Function Calls
     RegisterNodeType(FName(TEXT("CallFunction")), EN2CNodeType::CallFunction);
     RegisterNodeType(FName(TEXT("CallArrayFunction")), EN2CNodeType::CallArrayFunction);
@@ -327,6 +335,7 @@ void FN2CNodeTypeRegistry::InitializeDefaultMappings()
 
 bool FN2CNodeTypeRegistry::MapFromInheritance(const UK2Node* Node, EN2CNodeType& OutType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Handle common base classes
     if (Node->IsA<UK2Node_CallFunction>())
     {
@@ -965,6 +974,7 @@ bool FN2CNodeTypeRegistry::MapFromInheritance(const UK2Node* Node, EN2CNodeType&
 
 EN2CNodeType FN2CNodeTypeRegistry::DetermineVariableNodeType(const UK2Node_Variable* Node)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         return EN2CNodeType::Variable;

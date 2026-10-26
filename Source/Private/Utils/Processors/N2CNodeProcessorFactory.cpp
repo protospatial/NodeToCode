@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Processors/N2CNodeProcessorFactory.h"
 
 #include <Utils/Processors/N2CArrayProcessor.h>
@@ -18,17 +19,20 @@ class FN2CStructProcessor;
 
 FN2CNodeProcessorFactory& FN2CNodeProcessorFactory::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FN2CNodeProcessorFactory Instance;
     return Instance;
 }
 
 FN2CNodeProcessorFactory::FN2CNodeProcessorFactory()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     InitializeDefaultProcessors();
 }
 
 void FN2CNodeProcessorFactory::RegisterProcessor(EN2CNodeType NodeType, TSharedPtr<IN2CNodeProcessor> Processor)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Processor.IsValid())
     {
         Processors.Add(NodeType, Processor);
@@ -37,6 +41,7 @@ void FN2CNodeProcessorFactory::RegisterProcessor(EN2CNodeType NodeType, TSharedP
 
 TSharedPtr<IN2CNodeProcessor> FN2CNodeProcessorFactory::GetProcessor(EN2CNodeType NodeType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Try to find a specific processor for this node type
     if (TSharedPtr<IN2CNodeProcessor>* FoundProcessor = Processors.Find(NodeType))
     {
@@ -55,6 +60,7 @@ TSharedPtr<IN2CNodeProcessor> FN2CNodeProcessorFactory::GetProcessor(EN2CNodeTyp
 
 void FN2CNodeProcessorFactory::InitializeDefaultProcessors()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create shared instances of each processor type
     TSharedPtr<FN2CFunctionCallProcessor> FunctionCallProcessor = MakeShared<FN2CFunctionCallProcessor>();
     TSharedPtr<FN2CVariableProcessor> VariableProcessor = MakeShared<FN2CVariableProcessor>();

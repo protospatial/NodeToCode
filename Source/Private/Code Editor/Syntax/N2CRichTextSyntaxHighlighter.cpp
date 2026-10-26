@@ -1,11 +1,13 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CRichTextSyntaxHighlighter.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Syntax/N2CWhiteSpaceRun.h"
 
 TSharedRef<FN2CRichTextSyntaxHighlighter> FN2CRichTextSyntaxHighlighter::Create(EN2CCodeLanguage Language, const FName& ThemeName, const FTextBlockStyle& BaseStyle)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Get the syntax definition for this language
     TSharedPtr<FN2CSyntaxDefinition> SyntaxDef = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(Language);
     check(SyntaxDef.IsValid());
@@ -77,10 +79,13 @@ TSharedRef<FN2CRichTextSyntaxHighlighter> FN2CRichTextSyntaxHighlighter::Create(
 
 FN2CRichTextSyntaxHighlighter::~FN2CRichTextSyntaxHighlighter()
 {
-}
+
+  N2C_LOG_FUNCTION_ENTRY();
+  }
 
 void FN2CRichTextSyntaxHighlighter::ParseTokens(const FString& SourceString, FTextLayout& TargetTextLayout, TArray<ISyntaxTokenizer::FTokenizedLine> TokenizedLines)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     enum class EParseState : uint8
     {
         None,
@@ -267,4 +272,6 @@ FN2CRichTextSyntaxHighlighter::FN2CRichTextSyntaxHighlighter(
     , SyntaxTextStyle(InSyntaxTextStyle)
     , SyntaxDefinition(InSyntaxDef)
 {
-}
+
+  N2C_LOG_FUNCTION_ENTRY();
+  }

@@ -1,16 +1,19 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CNodeCollector.h"
 #include "Utils/N2CLogger.h"
 
 FN2CNodeCollector& FN2CNodeCollector::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FN2CNodeCollector Instance;
     return Instance;
 }
 
 bool FN2CNodeCollector::CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Node*>& OutNodes)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Graph)
     {
         FN2CLogger::Get().LogWarning(TEXT("Invalid graph provided to CollectNodesFromGraph"));
@@ -50,6 +53,7 @@ bool FN2CNodeCollector::CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Node*>&
 
 bool FN2CNodeCollector::CollectPinsFromNode(UK2Node* Node, TArray<UEdGraphPin*>& OutInputPins, TArray<UEdGraphPin*>& OutOutputPins)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         FN2CLogger::Get().LogWarning(TEXT("Invalid node provided to CollectPinsFromNode"));
@@ -110,6 +114,7 @@ bool FN2CNodeCollector::CollectPinsFromNode(UK2Node* Node, TArray<UEdGraphPin*>&
 
 bool FN2CNodeCollector::ValidatePin(UEdGraphPin* Pin) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Pin)
     {
         return false;
@@ -132,6 +137,7 @@ bool FN2CNodeCollector::ValidatePin(UEdGraphPin* Pin) const
 
 void FN2CNodeCollector::GetK2PinMetadata(UK2Node* K2Node, UEdGraphPin* Pin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!K2Node || !Pin)
     {
         return;
@@ -171,6 +177,7 @@ void FN2CNodeCollector::GetK2PinMetadata(UK2Node* K2Node, UEdGraphPin* Pin)
 
 void FN2CNodeCollector::CollectPinDefaultValue(UEdGraphPin* Pin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Pin)
     {
         return;
@@ -206,6 +213,7 @@ void FN2CNodeCollector::CollectPinDefaultValue(UEdGraphPin* Pin)
 
 void FN2CNodeCollector::CollectPinConnections(UEdGraphPin* Pin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Pin)
     {
         return;

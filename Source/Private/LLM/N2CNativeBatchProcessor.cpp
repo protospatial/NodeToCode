@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CNativeBatchProcessor.h"
 
 #include "Containers/Ticker.h"
@@ -25,6 +26,7 @@ constexpr int32 MaxStructuredErrors = 8;
 
 FString SerializeObject(const TSharedPtr<FJsonObject>& Object)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Object.IsValid())
     {
         return TEXT("{}");
@@ -39,6 +41,7 @@ FString SerializeObject(const TSharedPtr<FJsonObject>& Object)
 
 TSharedPtr<FJsonObject> ParseObject(const FString& Json)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> Object;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
     if (!FJsonSerializer::Deserialize(Reader, Object))
@@ -50,6 +53,7 @@ TSharedPtr<FJsonObject> ParseObject(const FString& Json)
 
 FString TruncateDiagnostic(const FString& Text)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Diagnostic = Text.TrimStartAndEnd();
     if (Diagnostic.Len() > MaxDiagnosticCharacters)
     {
@@ -60,6 +64,7 @@ FString TruncateDiagnostic(const FString& Text)
 
 FString DescribeErrorFields(const TSharedPtr<FJsonObject>& ErrorObject)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!ErrorObject.IsValid())
     {
         return FString();
@@ -113,6 +118,7 @@ FString DescribeErrorFields(const TSharedPtr<FJsonObject>& ErrorObject)
 
 FString DescribeProviderErrorObject(const TSharedPtr<FJsonObject>& Root)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Root.IsValid())
     {
         return FString();
@@ -140,6 +146,7 @@ FString DescribeProviderErrorObject(const TSharedPtr<FJsonObject>& Root)
 
 FString DescribeHttpFailure(const FString& Body)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const TSharedPtr<FJsonObject> Root = ParseObject(Body);
     const FString Structured = DescribeProviderErrorObject(Root);
     if (!Structured.IsEmpty())
@@ -153,6 +160,7 @@ FString DescribeHttpFailure(const FString& Body)
 
 FString DescribeOpenAIBatchErrors(const TSharedPtr<FJsonObject>& Batch)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Batch.IsValid())
     {
         return FString();
@@ -198,6 +206,7 @@ FString DescribeOpenAIBatchErrors(const TSharedPtr<FJsonObject>& Batch)
 
 FString MakeErrorResponse(const FString& Message)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> Error = MakeShared<FJsonObject>();
     Error->SetStringField(TEXT("message"), Message);
     Error->SetStringField(TEXT("type"), TEXT("batch_error"));
@@ -209,17 +218,20 @@ FString MakeErrorResponse(const FString& Message)
 
 bool IsSuccessCode(int32 StatusCode)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return StatusCode >= 200 && StatusCode < 300;
 }
 
 float AddPositiveJitter(float Seconds)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const float UnitJitter = static_cast<float>(FPlatformTime::Cycles64() % 1000ULL) / 1000.0f;
     return Seconds + Seconds * JitterFraction * UnitJitter;
 }
 
 float RetryDelay(const FHttpResponsePtr& Response, int32 RetryCount)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Response.IsValid())
     {
         const FString RetryAfter = Response->GetHeader(TEXT("Retry-After")).TrimStartAndEnd();
@@ -256,6 +268,7 @@ float RetryDelay(const FHttpResponsePtr& Response, int32 RetryCount)
 
 TSharedPtr<FJsonObject> WrapErrorObject(const TSharedPtr<FJsonObject>& ErrorObject)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
     if (ErrorObject.IsValid())
     {
@@ -267,6 +280,7 @@ TSharedPtr<FJsonObject> WrapErrorObject(const TSharedPtr<FJsonObject>& ErrorObje
 
 bool FN2CNativeBatchProcessor::SupportsProvider(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Provider == EN2CLLMProvider::OpenAI ||
            Provider == EN2CLLMProvider::Anthropic ||
            Provider == EN2CLLMProvider::Gemini;
@@ -279,6 +293,7 @@ TSharedRef<FN2CNativeBatchProcessor> FN2CNativeBatchProcessor::Create(
     FOnBatchComplete OnBatchComplete,
     FOnBatchUnavailable OnBatchUnavailable)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return MakeShareable(new FN2CNativeBatchProcessor(
         Config,
         MoveTemp(Requests),
@@ -299,10 +314,13 @@ FN2CNativeBatchProcessor::FN2CNativeBatchProcessor(
     , OnBatchComplete(MoveTemp(InOnBatchComplete))
     , OnBatchUnavailable(MoveTemp(InOnBatchUnavailable))
 {
-}
+
+  N2C_LOG_FUNCTION_ENTRY();
+  }
 
 void FN2CNativeBatchProcessor::Start()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Requests.Num() < 2 || !SupportsProvider(Config.Provider))
     {
         FallbackBeforeStart(TEXT("Native batch API is not applicable to this request set"));
@@ -328,11 +346,13 @@ void FN2CNativeBatchProcessor::Start()
 
 FString FN2CNativeBatchProcessor::MakeCustomId(int32 RequestId) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FString::Printf(TEXT("n2c-%d"), RequestId);
 }
 
 const FN2CNativeBatchRequest* FN2CNativeBatchProcessor::FindRequestByCustomId(const FString& CustomId) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return Requests.FindByPredicate(
         [this, &CustomId](const FN2CNativeBatchRequest& Request)
         {
@@ -349,6 +369,7 @@ void FN2CNativeBatchProcessor::SendHttp(
     TFunction<void(int32, const FString&, const FHttpResponsePtr&)> OnComplete,
     int32 RetryCount)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
     Request->SetURL(Url);
     Request->SetVerb(Verb);
@@ -424,6 +445,7 @@ void FN2CNativeBatchProcessor::SendHttp(
 
 void FN2CNativeBatchProcessor::SchedulePoll(TFunction<void()> PollFunction, float DelaySeconds)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const TSharedRef<FN2CNativeBatchProcessor> Self = AsShared();
     FTSTicker::GetCoreTicker().AddTicker(
         TEXT("NodeToCode.NativeBatchPoll"),
@@ -437,6 +459,7 @@ void FN2CNativeBatchProcessor::SchedulePoll(TFunction<void()> PollFunction, floa
 
 void FN2CNativeBatchProcessor::FallbackBeforeStart(const FString& Reason)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (bFinished)
     {
         return;
@@ -455,6 +478,7 @@ void FN2CNativeBatchProcessor::CompleteItemByCustomId(
     const FString& CustomId,
     const FString& RawResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FN2CNativeBatchRequest* Request = FindRequestByCustomId(CustomId);
     if (!Request || CompletedRequestIds.Contains(Request->RequestId))
     {
@@ -491,6 +515,7 @@ void FN2CNativeBatchProcessor::CompleteItemByIndex(
     int32 RequestIndex,
     const FString& RawResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Requests.IsValidIndex(RequestIndex))
     {
         CompleteItemByCustomId(MakeCustomId(Requests[RequestIndex].RequestId), RawResponse);
@@ -499,6 +524,7 @@ void FN2CNativeBatchProcessor::CompleteItemByIndex(
 
 void FN2CNativeBatchProcessor::CompleteMissingItems(const FString& ErrorMessage)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().LogError(
         FString::Printf(TEXT("Native batch failure for model '%s': %s"), *Config.Model, *ErrorMessage),
         TEXT("NativeBatch"));
@@ -515,6 +541,7 @@ void FN2CNativeBatchProcessor::CompleteMissingItems(const FString& ErrorMessage)
 
 void FN2CNativeBatchProcessor::FinishBatch()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (bFinished)
     {
         return;
@@ -528,6 +555,7 @@ void FN2CNativeBatchProcessor::FinishBatch()
 
 void FN2CNativeBatchProcessor::StartOpenAIBatch()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString JsonLines;
     for (const FN2CNativeBatchRequest& Request : Requests)
     {
@@ -632,6 +660,7 @@ void FN2CNativeBatchProcessor::StartOpenAIBatch()
 
 void FN2CNativeBatchProcessor::PollOpenAIBatch(const FString& BatchId)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TMap<FString, FString> Headers;
     Headers.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
 
@@ -740,6 +769,7 @@ void FN2CNativeBatchProcessor::PollOpenAIBatch(const FString& BatchId)
 
 void FN2CNativeBatchProcessor::ProcessOpenAIResults(const FString& JsonLines)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<FString> Lines;
     JsonLines.ParseIntoArrayLines(Lines, true);
     for (const FString& Line : Lines)
@@ -787,6 +817,7 @@ void FN2CNativeBatchProcessor::ProcessOpenAIResults(const FString& JsonLines)
 
 void FN2CNativeBatchProcessor::StartAnthropicBatch()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<TSharedPtr<FJsonValue>> Values;
     for (const FN2CNativeBatchRequest& Request : Requests)
     {
@@ -850,6 +881,7 @@ void FN2CNativeBatchProcessor::StartAnthropicBatch()
 
 void FN2CNativeBatchProcessor::PollAnthropicBatch(const FString& BatchId)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TMap<FString, FString> Headers;
     Headers.Add(TEXT("x-api-key"), Config.ApiKey);
     Headers.Add(TEXT("anthropic-version"), TEXT("2023-06-01"));
@@ -922,6 +954,7 @@ void FN2CNativeBatchProcessor::PollAnthropicBatch(const FString& BatchId)
 
 void FN2CNativeBatchProcessor::ProcessAnthropicResults(const FString& JsonLines)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<FString> Lines;
     JsonLines.ParseIntoArrayLines(Lines, true);
     for (const FString& Line : Lines)
@@ -978,6 +1011,7 @@ void FN2CNativeBatchProcessor::ProcessAnthropicResults(const FString& JsonLines)
 
 void FN2CNativeBatchProcessor::StartGeminiBatch()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<TSharedPtr<FJsonValue>> WrappedRequests;
     int64 ApproximateCharacters = 0;
 
@@ -1065,6 +1099,7 @@ void FN2CNativeBatchProcessor::StartGeminiBatch()
 
 void FN2CNativeBatchProcessor::PollGeminiBatch(const FString& BatchName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TMap<FString, FString> Headers;
     Headers.Add(TEXT("x-goog-api-key"), Config.ApiKey);
 
@@ -1151,6 +1186,7 @@ void FN2CNativeBatchProcessor::PollGeminiBatch(const FString& BatchName)
 
 void FN2CNativeBatchProcessor::ProcessGeminiResults(const TSharedPtr<FJsonObject>& BatchObject)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!BatchObject.IsValid())
     {
         CompleteMissingItems(TEXT("Gemini batch completed without a batch resource"));

@@ -374,7 +374,9 @@ public:
     UN2CSettings();
 
     // Begin UDeveloperSettings Interface
-    virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
+    virtual FName GetCategoryName() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return TEXT("Plugins"); }
     virtual FText GetSectionText() const override;
     // End UDeveloperSettings Interface
 
@@ -509,7 +511,9 @@ public:
     FString GetActiveModel() const;
 
     /** Get the minimum severity level for logging */
-    EN2CLogSeverity GetMinLogSeverity() const { return MinSeverity; }
+    EN2CLogSeverity GetMinLogSeverity() const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return MinSeverity; }
 
     /** Style themes for C++ code */
     UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming | Language Specific Themes",
@@ -619,6 +623,7 @@ public:
     /** Calculate and store token estimate for reference files */
     int32 GetReferenceFilesTokenEstimate() const
     {
+        N2C_LOG_FUNCTION_ENTRY();
         int32 TotalTokens = 0;
         for (const FFilePath& Path : ReferenceSourceFilePaths)
         {

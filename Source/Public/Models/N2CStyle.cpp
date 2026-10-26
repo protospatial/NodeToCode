@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "N2CStyle.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Framework/Application/SlateApplication.h"
@@ -8,6 +9,7 @@ TSharedPtr<FSlateStyleSet> N2CStyle::StyleInstance = nullptr;
 
 void N2CStyle::Initialize()
 {
+	N2C_LOG_FUNCTION_ENTRY();
 	if (!StyleInstance.IsValid())
 	{
 		StyleInstance = Create();
@@ -17,6 +19,7 @@ void N2CStyle::Initialize()
 
 void N2CStyle::Shutdown()
 {
+	N2C_LOG_FUNCTION_ENTRY();
 	if (StyleInstance.IsValid())
 	{
 		FSlateStyleRegistry::UnRegisterSlateStyle(*StyleInstance.Get());
@@ -26,6 +29,7 @@ void N2CStyle::Shutdown()
 
 const ISlateStyle& N2CStyle::Get()
 {
+	N2C_LOG_FUNCTION_ENTRY();
 	if (!StyleInstance.IsValid())
 	{
 		Initialize();
@@ -35,18 +39,21 @@ const ISlateStyle& N2CStyle::Get()
 
 FString N2CStyle::InContent(const FString& RelativePath, const ANSICHAR* Extension)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FString Content = IPluginManager::Get().FindPlugin(TEXT("NodeToCode"))->GetBaseDir() / TEXT("Resources");
     return (Content / RelativePath) + Extension;
 }
 
 const FName& N2CStyle::GetStyleSetName() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FName StyleName(TEXT("NodeToCodeStyle"));
     return StyleName;
 }
 
 TSharedRef<FSlateStyleSet> N2CStyle::Create()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FName StyleSetName(TEXT("NodeToCodeStyle"));
     TSharedRef<FSlateStyleSet> Style = MakeShareable(new FSlateStyleSet(StyleSetName));
     

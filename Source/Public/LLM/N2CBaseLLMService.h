@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "LLM/IN2CLLMService.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
@@ -26,11 +27,17 @@ public:
     virtual bool Initialize(const FN2CLLMConfig& InConfig) override;
     virtual void SendRequest(const FString& JsonPayload, const FString& SystemMessage,
                            const FOnLLMResponseReceived& OnComplete) override;
-    virtual bool IsInitialized() const override { return bIsInitialized; }
-    virtual UN2CResponseParserBase* GetResponseParser() const override { return ResponseParser; }
+    virtual bool IsInitialized() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return bIsInitialized; }
+    virtual UN2CResponseParserBase* GetResponseParser() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return ResponseParser; }
 
     /** Exact provider-specific POST body most recently produced by SendRequest. */
-    const FString& GetLastFormattedRequestPayload() const { return LastFormattedRequestPayload; }
+    const FString& GetLastFormattedRequestPayload() const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return LastFormattedRequestPayload; }
 
     /** Build the same final provider request body used by SendRequest without dispatching it. */
     FString BuildFormattedRequestPayload(
@@ -52,18 +59,30 @@ public:
     
     // Provider-specific methods (must be implemented by derived classes)
     virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken,
-                              bool& OutSupportsSystemPrompts) override { OutEndpoint = TEXT(""); OutAuthToken = TEXT(""); OutSupportsSystemPrompts = false; }
-    virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Anthropic; }
-    virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override { }
+                              bool& OutSupportsSystemPrompts) override {
+                                N2C_LOG_FUNCTION_ENTRY();
+                                OutEndpoint = TEXT(""); OutAuthToken = TEXT(""); OutSupportsSystemPrompts = false; }
+    virtual EN2CLLMProvider GetProviderType() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return EN2CLLMProvider::Anthropic; }
+    virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      }
 
 protected:
     // Common functionality for derived classes
     virtual void InitializeComponents();
     
     // Virtual methods for provider-specific implementations
-    virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const { return TEXT("{}"); }
-    virtual UN2CResponseParserBase* CreateResponseParser() { return nullptr; }
-    virtual FString GetDefaultEndpoint() const { return TEXT(""); }
+    virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return TEXT("{}"); }
+    virtual UN2CResponseParserBase* CreateResponseParser() {
+      N2C_LOG_FUNCTION_ENTRY();
+      return nullptr; }
+    virtual FString GetDefaultEndpoint() const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return TEXT(""); }
 
     // Common protected members
     FN2CLLMConfig Config;

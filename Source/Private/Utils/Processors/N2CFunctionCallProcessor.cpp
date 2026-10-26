@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Processors/N2CFunctionCallProcessor.h"
 
 void FN2CFunctionCallProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UK2Node_CallFunction* FuncNode = Cast<UK2Node_CallFunction>(Node);
     if (!FuncNode)
     {

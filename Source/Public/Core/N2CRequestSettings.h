@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
 #include "LLM/N2CLLMTypes.h"
@@ -76,6 +77,7 @@ public:
     /** Whether native batch processing is enabled for the selected built-in provider. */
     bool IsBatchProcessingEnabledForProvider(EN2CLLMProvider Provider) const
     {
+        N2C_LOG_FUNCTION_ENTRY();
         switch (Provider)
         {
             case EN2CLLMProvider::Anthropic:
@@ -152,12 +154,14 @@ public:
     /** Ad hoc instructions entered in the provider picker for the current translation operation. */
     static const FString& GetAdHocInstructions()
     {
+        N2C_LOG_FUNCTION_ENTRY();
         return AdHocInstructions;
     }
 
     /** Files attached in the provider picker for the current translation operation. */
     static const TArray<FString>& GetAdditionalContextFilePaths()
     {
+        N2C_LOG_FUNCTION_ENTRY();
         return AdditionalContextFilePaths;
     }
 

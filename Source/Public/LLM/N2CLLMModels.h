@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "N2CLLMPricing.h"
 #include "N2CLLMModels.generated.h"
@@ -75,6 +76,7 @@ struct FN2CLLMModelUtils
     /** System prompt support checks */
     static bool SupportsSystemPrompts(EN2COpenAIModel Model)
     {
+        N2C_LOG_FUNCTION_ENTRY();
         switch (Model)
         {
             case EN2COpenAIModel::GPT_o1_Preview:
@@ -86,7 +88,9 @@ struct FN2CLLMModelUtils
         }
     }
 
-    static bool SupportsSystemPrompts(EN2CAnthropicModel Model) { return true; }  // All Claude models support system prompts
+    static bool SupportsSystemPrompts(EN2CAnthropicModel Model) {
+      N2C_LOG_FUNCTION_ENTRY();
+      return true; }  // All Claude models support system prompts
 
 private:
     /** Static pricing maps */

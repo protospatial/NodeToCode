@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Processors/N2CEventProcessor.h"
 
 void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Handle standard event nodes
     if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
     {

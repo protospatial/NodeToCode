@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
+// Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "NodeToCode.h"
 
@@ -31,6 +31,7 @@ DEFINE_LOG_CATEGORY(LogNodeToCode);
 
 void FNodeToCodeModule::StartupModule()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UToolsetRegistry::RegisterToolsetClass(UN2CBlueprintToolset::StaticClass());
 
     // Initialize logging
@@ -111,6 +112,7 @@ void FNodeToCodeModule::StartupModule()
 
 void FNodeToCodeModule::ShutdownModule()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UToolsetRegistry::UnregisterToolsetClass(UN2CBlueprintToolset::StaticClass());
 
     if (FModuleManager::Get().IsModuleLoaded(TEXT("PropertyEditor")))
@@ -148,6 +150,7 @@ void FNodeToCodeModule::ShutdownModule()
 
 void FNodeToCodeModule::ConfigureHttpTimeouts()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().Log(TEXT("Checking HTTP timeout settings for Ollama support..."), EN2CLogSeverity::Info);
     
     // Get the project's DefaultEngine.ini path
@@ -195,6 +198,7 @@ void FNodeToCodeModule::ConfigureHttpTimeouts()
 
 void FNodeToCodeModule::ShowRestartRequiredNotification()
 {
+  N2C_LOG_FUNCTION_ENTRY();
 #if WITH_EDITOR
     if (!GIsEditor)
     {

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CGeminiResponseParser.h"
 #include "Utils/N2CLogger.h"
 #include "Serialization/JsonSerializer.h"
@@ -8,6 +9,7 @@ bool UN2CGeminiResponseParser::ParseLLMResponse(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Parse JSON string
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InJson);
@@ -66,6 +68,7 @@ bool UN2CGeminiResponseParser::ExtractGeminiMessageContent(
     const TSharedPtr<FJsonObject>& JsonObject,
     FString& OutContent)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Get candidates array
     const TArray<TSharedPtr<FJsonValue>>* CandidatesArray;
     if (!JsonObject->TryGetArrayField(TEXT("candidates"), CandidatesArray) || CandidatesArray->Num() == 0)

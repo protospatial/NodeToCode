@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CTranslationHistory.h"
 
 #include "HAL/FileManager.h"
@@ -16,6 +17,7 @@ const TCHAR* HistoryFileName = TEXT("N2C_RequestHistory.json");
 
 TSharedPtr<FJsonObject> RecordToJson(const FN2CRawResponseRecord& Record)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> Object = MakeShared<FJsonObject>();
     Object->SetNumberField(TEXT("request_id"), Record.RequestId);
     Object->SetStringField(TEXT("request_label"), Record.RequestLabel);
@@ -36,6 +38,7 @@ TSharedPtr<FJsonObject> RecordToJson(const FN2CRawResponseRecord& Record)
 
 bool JsonToRecord(const TSharedPtr<FJsonObject>& Object, FN2CRawResponseRecord& OutRecord)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Object.IsValid())
     {
         return false;
@@ -77,11 +80,13 @@ bool JsonToRecord(const TSharedPtr<FJsonObject>& Object, FN2CRawResponseRecord& 
 
 FString FN2CTranslationHistory::GetHistoryFilePath(const FString& BatchDirectory)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FPaths::Combine(BatchDirectory, N2CTranslationHistoryPrivate::HistoryFileName);
 }
 
 bool FN2CTranslationHistory::SaveRequestHistory(const FString& BatchDirectory, const TArray<FN2CRawResponseRecord>& Records)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (BatchDirectory.IsEmpty() || !IFileManager::Get().DirectoryExists(*BatchDirectory))
     {
         return false;
@@ -109,6 +114,7 @@ bool FN2CTranslationHistory::SaveRequestHistory(const FString& BatchDirectory, c
 
 bool FN2CTranslationHistory::LoadRequestHistory(const FString& BatchDirectory, TArray<FN2CRawResponseRecord>& OutRecords)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutRecords.Reset();
     FString Json;
     if (!FFileHelper::LoadFileToString(Json, *GetHistoryFilePath(BatchDirectory)))
@@ -143,6 +149,7 @@ bool FN2CTranslationHistory::LoadRequestHistory(const FString& BatchDirectory, T
 
 void FN2CTranslationHistory::EnumerateBatches(const FString& BaseDirectory, TArray<FN2CTranslationBatchInfo>& OutBatches)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutBatches.Reset();
     if (!IFileManager::Get().DirectoryExists(*BaseDirectory))
     {

@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Processors/N2CBaseNodeProcessor.h"
 
 bool FN2CBaseNodeProcessor::Process(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         FN2CLogger::Get().LogError(TEXT("Null node provided to processor"));
@@ -28,11 +30,13 @@ bool FN2CBaseNodeProcessor::Process(UK2Node* Node, FN2CNodeDefinition& OutNodeDe
 
 void FN2CBaseNodeProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Base implementation does nothing - to be overridden by subclasses
 }
 
 FString FN2CBaseNodeProcessor::GetCleanClassName(const FString& InName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString CleanName = InName;
     
     // Remove SKEL_ prefix if present

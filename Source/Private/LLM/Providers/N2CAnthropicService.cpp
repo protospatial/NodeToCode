@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CAnthropicService.h"
 
 #include "LLM/N2CSystemPromptManager.h"
@@ -7,6 +8,7 @@
 
 UN2CResponseParserBase* UN2CAnthropicService::CreateResponseParser()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CAnthropicResponseParser* Parser = NewObject<UN2CAnthropicResponseParser>(this);
     return Parser;
 }
@@ -16,6 +18,7 @@ void UN2CAnthropicService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutEndpoint = Config.ApiEndpoint;
     OutAuthToken = Config.ApiKey;
     OutSupportsSystemPrompts = true;  // Anthropic supports system prompts
@@ -23,6 +26,7 @@ void UN2CAnthropicService::GetConfiguration(
 
 void UN2CAnthropicService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutHeaders.Add(TEXT("x-api-key"), Config.ApiKey);
     OutHeaders.Add(TEXT("anthropic-version"), ApiVersion);
     OutHeaders.Add(TEXT("content-type"), TEXT("application/json"));
@@ -30,6 +34,7 @@ void UN2CAnthropicService::GetProviderHeaders(TMap<FString, FString>& OutHeaders
 
 FString UN2CAnthropicService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Log original content (no escaping needed for logging system)
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM System Message:\n\n%s"), *SystemMessage), EN2CLogSeverity::Debug);
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM User Message:\n\n%s"), *UserMessage), EN2CLogSeverity::Debug);

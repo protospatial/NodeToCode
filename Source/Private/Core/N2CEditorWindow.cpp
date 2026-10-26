@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CEditorWindow.h"
 #include "Core/N2CRequestSettings.h"
 #include "Core/N2CTranslationHistoryWindow.h"
@@ -43,6 +44,7 @@ struct FN2CRawResponseViewerState
 
 FString GetRawResponseProviderDisplayName(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
     {
         return ProviderEnum->GetDisplayNameTextByValue(static_cast<int64>(Provider)).ToString();
@@ -103,6 +105,7 @@ void RefreshN2CRawResponseViewer(
 
 FReply OpenRawResponseViewer()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
     if (!LLMModule || !FSlateApplication::IsInitialized())
     {
@@ -410,6 +413,7 @@ TWeakPtr<SDockTab> SN2CEditorWindow::ActiveTab;
 
 void SN2CEditorWindow::RegisterTabSpawner()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         TabId,
         FOnSpawnTab::CreateStatic(&SN2CEditorWindow::SpawnTab))
@@ -422,12 +426,14 @@ void SN2CEditorWindow::RegisterTabSpawner()
 
 void SN2CEditorWindow::UnregisterTabSpawner()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TabId);
     FN2CLogger::Get().Log(TEXT("Unregistered Node to Code tab spawner"), EN2CLogSeverity::Info);
 }
 
 TSharedRef<SDockTab> SN2CEditorWindow::SpawnTab(const FSpawnTabArgs& Args)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (TSharedPtr<SDockTab> ExistingTab = ActiveTab.Pin())
     {
         ExistingTab->DrawAttention();
@@ -446,6 +452,7 @@ TSharedRef<SDockTab> SN2CEditorWindow::SpawnTab(const FSpawnTabArgs& Args)
 
 void SN2CEditorWindow::OnTabClosed(TSharedRef<SDockTab> ClosedTab)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (ActiveTab.Pin() == ClosedTab)
     {
         ActiveTab.Reset();
@@ -454,6 +461,7 @@ void SN2CEditorWindow::OnTabClosed(TSharedRef<SDockTab> ClosedTab)
 
 void SN2CEditorWindow::Construct(const FArguments& InArgs)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString AssetPath = TEXT("/Script/Blutility.EditorUtilityWidgetBlueprint'/NodeToCode/UI/NodeToCodeUI.NodeToCodeUI'");
     UEditorUtilityWidgetBlueprint* EditorBP = LoadObject<UEditorUtilityWidgetBlueprint>(nullptr, *AssetPath);
     if (!EditorBP)

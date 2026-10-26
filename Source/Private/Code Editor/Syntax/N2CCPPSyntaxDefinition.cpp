@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CCPPSyntaxDefinition.h"
 
 FN2CCPPSyntaxDefinition::FN2CCPPSyntaxDefinition()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // C++ Keywords
     Keywords = {
         TEXT("alignas"), TEXT("alignof"), TEXT("and"), TEXT("and_eq"), TEXT("asm"),
@@ -56,6 +58,7 @@ FN2CCPPSyntaxDefinition::FN2CCPPSyntaxDefinition()
 
 void FN2CCPPSyntaxDefinition::GetCommentDelimiters(FString& OutLineComment, FString& OutBlockCommentStart, FString& OutBlockCommentEnd) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutLineComment = LineCommentDelimiter;
     OutBlockCommentStart = BlockCommentStart;
     OutBlockCommentEnd = BlockCommentEnd;

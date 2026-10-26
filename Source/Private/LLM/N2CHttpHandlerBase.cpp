@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CHttpHandlerBase.h"
 #include "Utils/N2CLogger.h"
 #include "Containers/Ticker.h"
@@ -20,6 +21,7 @@ constexpr float MinimumRetryDelaySeconds = 0.10f;
 
 float AddPositiveJitter(float DelaySeconds)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const uint64 Cycles = FPlatformTime::Cycles64();
     const float UnitJitter = static_cast<float>(Cycles % 1000ULL) / 1000.0f;
     return DelaySeconds + (DelaySeconds * JitterFraction * UnitJitter);
@@ -27,6 +29,7 @@ float AddPositiveJitter(float DelaySeconds)
 
 bool TryParsePositiveSeconds(const FString& Value, float& OutSeconds)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const float ParsedSeconds = FCString::Atof(*Value);
     if (ParsedSeconds <= 0.0f)
     {
@@ -39,6 +42,7 @@ bool TryParsePositiveSeconds(const FString& Value, float& OutSeconds)
 
 bool TryParseRetrySecondsFromProviderMessage(const FString& ResponseBody, float& OutSeconds)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString Marker = TEXT("Please try again in ");
     const int32 MarkerIndex = ResponseBody.Find(Marker, ESearchCase::IgnoreCase);
     if (MarkerIndex == INDEX_NONE)
@@ -59,6 +63,7 @@ bool TryParseRetrySecondsFromProviderMessage(const FString& ResponseBody, float&
 
 void UN2CHttpHandlerBase::Initialize(const FN2CLLMConfig& InConfig)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Config = InConfig;
     RequestTimeout = Config.TimeoutSeconds;
     PendingRequestQueue.Reset();
@@ -74,6 +79,7 @@ void UN2CHttpHandlerBase::PostLLMRequest(
     const FString& Payload,
     const FOnLLMResponseReceived& OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!ValidateRequest(Endpoint, Payload))
     {
         FN2CLogger::Get().LogError(TEXT("Invalid request parameters"), TEXT("HttpHandler"));
@@ -104,6 +110,7 @@ void UN2CHttpHandlerBase::PostLLMRequest(
 
 void UN2CHttpHandlerBase::PumpRequestQueue()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (PendingRequestQueue.IsEmpty())
     {
         return;
@@ -135,6 +142,7 @@ void UN2CHttpHandlerBase::PumpRequestQueue()
 
 void UN2CHttpHandlerBase::DispatchQueuedRequest(const TSharedRef<FN2CQueuedHttpRequest>& QueuedRequest)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
     Request->SetURL(QueuedRequest->Endpoint);
     Request->SetVerb(TEXT("POST"));
@@ -211,6 +219,7 @@ void UN2CHttpHandlerBase::HandleRequestAttemptComplete(
     FHttpResponsePtr Response,
     bool bWasSuccessful)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ActiveRequestCount = FMath::Max(0, ActiveRequestCount - 1);
 
     const int32 ResponseCode = Response.IsValid() ? Response->GetResponseCode() : 0;
@@ -272,6 +281,7 @@ void UN2CHttpHandlerBase::HandleRequestAttemptComplete(
 
 void UN2CHttpHandlerBase::ScheduleQueuePump(float DelaySeconds)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (bQueuePumpScheduled)
     {
         return;
@@ -298,6 +308,7 @@ float UN2CHttpHandlerBase::CalculateRateLimitRetryDelay(
     const FString& ResponseBody,
     int32 RateLimitRetryCount) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     using namespace N2CHttpRateLimitRetryPrivate;
 
     if (Response.IsValid())
@@ -358,12 +369,14 @@ float UN2CHttpHandlerBase::CalculateRateLimitRetryDelay(
 
 bool UN2CHttpHandlerBase::IsPermanentRateLimitFailure(const FString& ResponseBody) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return ResponseBody.Contains(TEXT("Request too large"), ESearchCase::IgnoreCase) ||
            ResponseBody.Contains(TEXT("must be reduced"), ESearchCase::IgnoreCase);
 }
 
 bool UN2CHttpHandlerBase::ValidateRequest(const FString& Endpoint, const FString& Payload) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Endpoint.IsEmpty())
     {
         FN2CLogger::Get().LogError(TEXT("Empty endpoint URL"), TEXT("HttpHandler"));
@@ -385,6 +398,7 @@ void UN2CHttpHandlerBase::OnRequestComplete(
     bool bWasSuccessful,
     FOnLLMResponseReceived OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!bWasSuccessful || !Response.IsValid())
     {
         FString ErrorMsg = TEXT("{\"error\": \"Request failed\"}");

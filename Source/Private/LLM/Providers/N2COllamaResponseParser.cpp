@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2COllamaResponseParser.h"
 
 #include "Utils/N2CLogger.h"
@@ -9,6 +10,7 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Parse JSON string
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InJson);
@@ -69,6 +71,7 @@ bool UN2COllamaResponseParser::ExtractOllamaMessageContent(
     const TSharedPtr<FJsonObject>& JsonObject,
     FString& OutContent)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Get message object from response
     const TSharedPtr<FJsonObject> MessageObject = JsonObject->GetObjectField(TEXT("message"));
     if (!MessageObject.IsValid())

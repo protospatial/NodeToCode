@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CBatchTranslationConsolidator.h"
 
 #include "Core/N2CSerializer.h"
@@ -16,6 +17,7 @@ namespace N2CBatchTranslationConsolidatorPrivate
 {
 FString SanitizeFileBaseName(const FString& InName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Result = InName.TrimStartAndEnd();
     if (Result.IsEmpty())
     {
@@ -40,6 +42,7 @@ FString SanitizeFileBaseName(const FString& InName)
 
 TSharedPtr<FJsonObject> MakeTranslationObject(const FN2CGraphTranslation& Graph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FJsonObject> GraphObject = MakeShared<FJsonObject>();
     GraphObject->SetStringField(TEXT("graph_name"), Graph.GraphName);
     GraphObject->SetStringField(TEXT("graph_type"), Graph.GraphType);
@@ -60,6 +63,7 @@ bool FN2CBatchTranslationConsolidator::BuildRequestPayload(
     const FN2CBlueprint& Blueprint,
     FString& OutPayload)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutPayload.Empty();
 
     if (SessionResponse.Graphs.IsEmpty())
@@ -129,6 +133,7 @@ bool FN2CBatchTranslationConsolidator::BuildRequestPayload(
 
 FString FN2CBatchTranslationConsolidator::GetSystemPrompt()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return TEXT(
         "You are the final integration and reconciliation pass for Node to Code.\n"
         "You are given one complete Unreal Engine Blueprint source representation and multiple "
@@ -183,6 +188,7 @@ bool FN2CBatchTranslationConsolidator::ValidateFinalResponse(
     const FN2CTranslationResponse& Response,
     FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutError.Empty();
 
     if (Response.Graphs.Num() != 1)
@@ -227,6 +233,7 @@ bool FN2CBatchTranslationConsolidator::SaveCppFiles(
     const FN2CTranslationResponse& ConsolidatedResponse,
     const FString& RootPath)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString ValidationError;
     if (!ValidateFinalResponse(ConsolidatedResponse, ValidationError))
     {

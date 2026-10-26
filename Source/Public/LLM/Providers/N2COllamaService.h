@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "N2COllamaResponseParser.h"
@@ -26,14 +27,18 @@ public:
     
     // Provider-specific implementations
     virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken, bool& OutSupportsSystemPrompts) override;
-    virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Ollama; }
+    virtual EN2CLLMProvider GetProviderType() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return EN2CLLMProvider::Ollama; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override;
 
 protected:
     // Provider-specific implementations
     virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const override;
     virtual UN2CResponseParserBase* CreateResponseParser() override;
-    virtual FString GetDefaultEndpoint() const override { return TEXT("http://localhost:11434/api/chat"); }
+    virtual FString GetDefaultEndpoint() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return TEXT("http://localhost:11434/api/chat"); }
 
 private:
     /** Ollama configuration settings */

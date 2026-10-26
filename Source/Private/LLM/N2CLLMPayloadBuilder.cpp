@@ -1,11 +1,13 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
 #include "Utils/N2CLogger.h"
 #include "Serialization/JsonSerializer.h"
 
 void UN2CLLMPayloadBuilder::Initialize(const FString& InModelName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create root JSON object
     RootObject = MakeShared<FJsonObject>();
     MessagesArray.Empty();
@@ -21,12 +23,14 @@ void UN2CLLMPayloadBuilder::Initialize(const FString& InModelName)
 
 void UN2CLLMPayloadBuilder::SetModel(const FString& InModelName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ModelName = InModelName;
     RootObject->SetStringField(TEXT("model"), ModelName);
 }
 
 void UN2CLLMPayloadBuilder::SetTemperature(float Value)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (ProviderType)
     {
         case EN2CLLMProvider::Gemini:
@@ -68,6 +72,7 @@ void UN2CLLMPayloadBuilder::SetTemperature(float Value)
 
 void UN2CLLMPayloadBuilder::SetMaxTokens(int32 Value)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Different providers use different field names for max tokens
     switch (ProviderType)
     {
@@ -122,6 +127,7 @@ void UN2CLLMPayloadBuilder::SetMaxTokens(int32 Value)
 
 void UN2CLLMPayloadBuilder::AddSystemMessage(const FString& Content)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Content.IsEmpty())
     {
         return;
@@ -162,6 +168,7 @@ void UN2CLLMPayloadBuilder::AddSystemMessage(const FString& Content)
 
 void UN2CLLMPayloadBuilder::AddUserMessage(const FString& Content)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Content.IsEmpty())
     {
         return;
@@ -226,6 +233,7 @@ void UN2CLLMPayloadBuilder::AddUserMessage(const FString& Content)
 
 void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>& Schema)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Schema.IsValid())
     {
         return;
@@ -322,6 +330,7 @@ void UN2CLLMPayloadBuilder::SetJsonResponseFormat(const TSharedPtr<FJsonObject>&
 
 void UN2CLLMPayloadBuilder::ConfigureForOpenAI()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ProviderType = EN2CLLMProvider::OpenAI;
     
     // Clear messages array and recreate it
@@ -339,6 +348,7 @@ void UN2CLLMPayloadBuilder::ConfigureForOpenAI()
 
 void UN2CLLMPayloadBuilder::ConfigureForAnthropic()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ProviderType = EN2CLLMProvider::Anthropic;
     
     // Clear messages array and recreate it
@@ -347,6 +357,7 @@ void UN2CLLMPayloadBuilder::ConfigureForAnthropic()
 
 void UN2CLLMPayloadBuilder::ConfigureForGemini()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ProviderType = EN2CLLMProvider::Gemini;
     
     // Create generationConfig object if it doesn't exist
@@ -377,6 +388,7 @@ void UN2CLLMPayloadBuilder::ConfigureForGemini()
 
 void UN2CLLMPayloadBuilder::ConfigureForDeepSeek()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ProviderType = EN2CLLMProvider::DeepSeek;
     
     // Clear messages array and recreate it
@@ -385,6 +397,7 @@ void UN2CLLMPayloadBuilder::ConfigureForDeepSeek()
 
 void UN2CLLMPayloadBuilder::ConfigureForOllama(const FN2COllamaConfig& OllamaConfig)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ProviderType = EN2CLLMProvider::Ollama;
     
     // Clear messages array and recreate it
@@ -411,6 +424,7 @@ void UN2CLLMPayloadBuilder::ConfigureForOllama(const FN2COllamaConfig& OllamaCon
 
 void UN2CLLMPayloadBuilder::ConfigureForLMStudio()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ProviderType = EN2CLLMProvider::LMStudio;
     
     // Clear messages array and recreate it
@@ -429,6 +443,7 @@ void UN2CLLMPayloadBuilder::ConfigureForLMStudio()
 
 void UN2CLLMPayloadBuilder::ConfigureForMiniMax()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ProviderType = EN2CLLMProvider::MiniMax;
 
     // Clear messages array and recreate it
@@ -446,6 +461,7 @@ void UN2CLLMPayloadBuilder::ConfigureForMiniMax()
 
 FString UN2CLLMPayloadBuilder::Build()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Serialize JSON to string
     FString Payload;
     const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Payload);
@@ -459,6 +475,7 @@ FString UN2CLLMPayloadBuilder::Build()
 
 TSharedPtr<FJsonObject> UN2CLLMPayloadBuilder::GetN2CResponseSchema()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Define the JSON schema for N2C translation responses
     const FString JsonSchema = TEXT(R"(
       {

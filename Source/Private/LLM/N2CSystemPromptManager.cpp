@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CSystemPromptManager.h"
 
 #include "Core/N2CSettings.h"
@@ -8,12 +9,14 @@
 
 void UN2CSystemPromptManager::Initialize(const FN2CLLMConfig& Config)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     bSupportsSystemPrompts = Config.bUseSystemPrompts;
     LoadPrompts();
 }
 
 FString UN2CSystemPromptManager::GetSystemPrompt(const FString& PromptKey) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const FString* Prompt = LoadedPrompts.Find(PromptKey))
     {
         return *Prompt;
@@ -28,12 +31,14 @@ FString UN2CSystemPromptManager::GetSystemPrompt(const FString& PromptKey) const
 
 FString UN2CSystemPromptManager::MergePrompts(const FString& SystemPrompt, const FString& UserMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // For LLMs that don't support separate system prompts, prepend it to the user message
     return FString::Printf(TEXT("##### NODE TO CODE JSON #####\n%s\n\n##### YOUR TASK #####\n\n%s"), *UserMessage, *SystemPrompt);
 }
 
 bool UN2CSystemPromptManager::PrependSourceFilesToUserMessage(FString& UserMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (bSkipReferenceSourceFiles)
     {
         return true;
@@ -80,6 +85,7 @@ bool UN2CSystemPromptManager::PrependSourceFilesToUserMessage(FString& UserMessa
 
 FString UN2CSystemPromptManager::GetLanguageSpecificPrompt(const FString& BasePromptKey, EN2CCodeLanguage Language) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FString LanguageKey = GetLanguagePromptKey(BasePromptKey, Language);
     if (const FString* Prompt = LoadedPrompts.Find(LanguageKey))
     {
@@ -97,6 +103,7 @@ FString UN2CSystemPromptManager::GetLanguageSpecificPrompt(const FString& BasePr
 
 FString UN2CSystemPromptManager::GetLanguagePromptKey(const FString& BasePromptKey, EN2CCodeLanguage Language) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Language)
     {
         case EN2CCodeLanguage::Cpp:
@@ -118,6 +125,7 @@ FString UN2CSystemPromptManager::GetLanguagePromptKey(const FString& BasePromptK
 
 void UN2CSystemPromptManager::LoadPrompts()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Get plugin base directory using plugin manager
     TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("NodeToCode"));
     if (!Plugin.IsValid())
@@ -178,6 +186,7 @@ void UN2CSystemPromptManager::LoadPrompts()
 
 bool UN2CSystemPromptManager::LoadPromptFromFile(const FString& FilePath, FString& OutContent)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (FPaths::FileExists(FilePath))
     {
         if (FFileHelper::LoadFileToString(OutContent, *FilePath))
@@ -197,11 +206,13 @@ bool UN2CSystemPromptManager::LoadPromptFromFile(const FString& FilePath, FStrin
 
 FString UN2CSystemPromptManager::GetPromptFilePath(const FString& PromptKey) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FPaths::Combine(PromptsDirectory, PromptKey + TEXT(".md"));
 }
 
 FString UN2CSystemPromptManager::LoadReferenceSourceFiles() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (!Settings || Settings->ReferenceSourceFilePaths.Num() == 0)
     {
@@ -234,6 +245,7 @@ FString UN2CSystemPromptManager::LoadReferenceSourceFiles() const
 
 FString UN2CSystemPromptManager::FormatSourceFileContent(const FString& FilePath, const FString& Content) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Extract filename from path
     FString Filename = FPaths::GetCleanFilename(FilePath);
     

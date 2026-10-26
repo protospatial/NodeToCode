@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2COpenAIResponseParser.h"
 #include "Utils/N2CLogger.h"
 #include "Serialization/JsonSerializer.h"
@@ -8,6 +9,7 @@ namespace
 {
 bool NormalizeEscapedCodeFormatting(FString& InOutCode)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!InOutCode.Contains(TEXT("\\n")) && !InOutCode.Contains(TEXT("\\r")))
     {
         return false;
@@ -120,6 +122,7 @@ bool NormalizeEscapedCodeFormatting(FString& InOutCode)
 
 void NormalizeEscapedPlainTextFormatting(FString& InOutText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     InOutText.ReplaceInline(TEXT("\\r\\n"), TEXT("\n"), ESearchCase::CaseSensitive);
     InOutText.ReplaceInline(TEXT("\\n"), TEXT("\n"), ESearchCase::CaseSensitive);
     InOutText.ReplaceInline(TEXT("\\r"), TEXT("\r"), ESearchCase::CaseSensitive);
@@ -128,6 +131,7 @@ void NormalizeEscapedPlainTextFormatting(FString& InOutText)
 
 int32 NormalizeOverEscapedGeneratedCode(FN2CTranslationResponse& Response)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     int32 NormalizedGraphs = 0;
     for (FN2CGraphTranslation& Graph : Response.Graphs)
     {
@@ -149,6 +153,7 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
     const FString& InJson,
     FN2CTranslationResponse& OutResponse)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Parse JSON string
     TSharedPtr<FJsonObject> JsonObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InJson);

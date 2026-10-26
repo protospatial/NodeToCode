@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CLLMModule.h"
 
 #include "Containers/Ticker.h"
@@ -15,6 +16,7 @@ namespace N2CRetryServicePrivate
 {
 void AppendText(FString& Target, const FString& Text)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (Text.IsEmpty())
     {
         return;
@@ -28,6 +30,7 @@ void AppendText(FString& Target, const FString& Text)
 
 FString ExtractMessageContent(const TSharedPtr<FJsonObject>& Message)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Message.IsValid())
     {
         return FString();
@@ -69,6 +72,7 @@ FString ExtractMessageContent(const TSharedPtr<FJsonObject>& Message)
 
 FString ExtractPartsText(const TSharedPtr<FJsonObject>& Object)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Object.IsValid())
     {
         return FString();
@@ -101,6 +105,7 @@ bool ExtractPreparedMessagesFromWireRequest(
     FString& OutUserMessage,
     FString& OutSystemMessage)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutUserMessage = Record.SourceRequestPayload;
     OutSystemMessage = Record.SourceSystemPrompt;
     if (!OutUserMessage.IsEmpty())
@@ -190,6 +195,7 @@ bool ExtractPreparedMessagesFromWireRequest(
 TScriptInterface<IN2CLLMService> UN2CLLMModule::CreateTransientService(
     const FN2CLLMConfig& ServiceConfig)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TScriptInterface<IN2CLLMService> Service =
         UN2CLLMProviderRegistry::Get()->CreateProviderDirect(ServiceConfig.Provider, this);
     if (!Service.GetInterface())
@@ -217,6 +223,7 @@ TScriptInterface<IN2CLLMService> UN2CLLMModule::CreateTransientService(
 
 void UN2CLLMModule::ReleaseTransientService(UObject* ServiceObject)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     RetryServiceObjects.RemoveAll(
         [ServiceObject](const TObjectPtr<UN2CBaseLLMService>& Item)
         {
@@ -229,6 +236,7 @@ bool UN2CLLMModule::ResendRawRequest(
     const FN2CLLMConfig& RetryConfig,
     TFunction<void(bool)> OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const int32 ExistingIndex = SessionRawResponses.IndexOfByPredicate(
         [RequestId](const FN2CRawResponseRecord& Record)
         {
@@ -445,6 +453,7 @@ bool UN2CLLMModule::StartFinalConsolidationWithConfig(
     const FN2CLLMConfig& RequestConfig,
     TFunction<void(bool)> OnComplete)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     auto FailStart = [this, ExistingRequestId, &OnComplete](const FString& Message)
     {
         FN2CLogger::Get().LogError(Message, TEXT("BatchConsolidation"));

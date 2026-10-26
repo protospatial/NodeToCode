@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Utils/Processors/N2CBaseNodeProcessor.h"
 #include "K2Node_MakeStruct.h"
@@ -20,7 +21,9 @@ public:
     FN2CStructProcessor() {}
     
     /** Destructor */
-    virtual ~FN2CStructProcessor() {}
+    virtual ~FN2CStructProcessor() {
+      N2C_LOG_FUNCTION_ENTRY();
+      }
     
 protected:
     /**

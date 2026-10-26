@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CBaseLLMService.h"
 
 #include "LLM/N2CSystemPromptManager.h"
@@ -8,6 +9,7 @@ FString UN2CBaseLLMService::BuildFormattedRequestPayloadFromPreparedMessages(
     const FString& UserMessage,
     const FString& SystemMessage)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // The prepared user content was extracted from the original wire request and already contains
     // the exact reference-source block that was sent then. Suppress automatic insertion while the
     // new provider envelope is built so a cross-provider retry neither duplicates nor silently

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Widgets/Text/SMultiLineEditableText.h"
 #include "Code Editor/Syntax/N2CRichTextSyntaxHighlighter.h"
@@ -7,6 +8,7 @@
 
 void SN2CCodeEditor::Construct(const FArguments& InArgs)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     CurrentLanguage = InArgs._Language;
     CurrentTheme = InArgs._ThemeName.IsNone() ? FName(TEXT("Midnight Code")) : InArgs._ThemeName;
     TabSize = 4; // Default tab size
@@ -87,11 +89,13 @@ void SN2CCodeEditor::Construct(const FArguments& InArgs)
 
 FText SN2CCodeEditor::GetText() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return EditableText.IsValid() ? EditableText->GetText() : FText::GetEmpty();
 }
 
 void SN2CCodeEditor::SetText(const FText& NewText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         EditableText->SetText(NewText);
@@ -100,6 +104,7 @@ void SN2CCodeEditor::SetText(const FText& NewText)
 
 void SN2CCodeEditor::SetLanguage(EN2CCodeLanguage NewLanguage)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Store current text
     FText CurrentText;
     if (EditableText.IsValid())
@@ -156,6 +161,7 @@ void SN2CCodeEditor::SetLanguage(EN2CCodeLanguage NewLanguage)
 
 void SN2CCodeEditor::CreateSyntaxHighlighter(EN2CCodeLanguage Language)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create base style with current font size
     FTextBlockStyle BaseStyle = FN2CCodeEditorStyle::Get().GetWidgetStyle<FTextBlockStyle>("N2CCodeEditor.TextEditor.NormalText");
     BaseStyle.SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
@@ -165,6 +171,7 @@ void SN2CCodeEditor::CreateSyntaxHighlighter(EN2CCodeLanguage Language)
 
 void SN2CCodeEditor::SetTheme(const FName& NewTheme)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CurrentTheme != NewTheme)
     {
         CurrentTheme = NewTheme;
@@ -182,6 +189,7 @@ void SN2CCodeEditor::SetTheme(const FName& NewTheme)
 
 void SN2CCodeEditor::OnTextChanged(const FText& NewText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (OnTextChangedHandler.IsBound())
     {
         OnTextChangedHandler.Execute(NewText);
@@ -190,6 +198,7 @@ void SN2CCodeEditor::OnTextChanged(const FText& NewText)
 
 void SN2CCodeEditor::InsertTextAtCursor(const FString& InText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         EditableText->InsertTextAtCursor(InText);
@@ -198,6 +207,7 @@ void SN2CCodeEditor::InsertTextAtCursor(const FString& InText)
 
 void SN2CCodeEditor::ReplaceSelectedText(const FString& NewText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         EditableText->InsertTextAtCursor(NewText);
@@ -206,6 +216,7 @@ void SN2CCodeEditor::ReplaceSelectedText(const FString& NewText)
 
 void SN2CCodeEditor::DeleteSelectedText()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         EditableText->DeleteSelectedText();
@@ -214,6 +225,7 @@ void SN2CCodeEditor::DeleteSelectedText()
 
 FText SN2CCodeEditor::GetSelectedText() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         return EditableText->GetSelectedText();
@@ -223,6 +235,7 @@ FText SN2CCodeEditor::GetSelectedText() const
 
 void SN2CCodeEditor::SetCursorPosition(int32 Line, int32 Column)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         EditableText->GoTo(FTextLocation(Line, Column));
@@ -232,6 +245,7 @@ void SN2CCodeEditor::SetCursorPosition(int32 Line, int32 Column)
 
 void SN2CCodeEditor::GetCursorPosition(int32& OutLine, int32& OutColumn) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         FTextLocation Location = EditableText->GetCursorLocation();
@@ -247,6 +261,7 @@ void SN2CCodeEditor::GetCursorPosition(int32& OutLine, int32& OutColumn) const
 
 void SN2CCodeEditor::SelectText(int32 StartLine, int32 StartColumn, int32 EndLine, int32 EndColumn)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         EditableText->SelectText(
@@ -258,6 +273,7 @@ void SN2CCodeEditor::SelectText(int32 StartLine, int32 StartColumn, int32 EndLin
 
 void SN2CCodeEditor::GetSelection(int32& OutStartIndex, int32& OutEndIndex) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         FTextSelection Selection = EditableText->GetSelection();
@@ -277,6 +293,7 @@ void SN2CCodeEditor::GetSelection(int32& OutStartIndex, int32& OutEndIndex) cons
 
 void SN2CCodeEditor::SetFontSize(int32 NewSize)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FontSize = NewSize;
     
     if (EditableText.IsValid())
@@ -348,6 +365,7 @@ void SN2CCodeEditor::SetFontSize(int32 NewSize)
 
 void SN2CCodeEditor::SetWordWrap(bool bEnable)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (EditableText.IsValid())
     {
         EditableText->SetWrappingPolicy(bEnable ? ETextWrappingPolicy::DefaultWrapping : ETextWrappingPolicy::AllowPerCharacterWrapping);
@@ -356,6 +374,7 @@ void SN2CCodeEditor::SetWordWrap(bool bEnable)
 
 void SN2CCodeEditor::SetTabSize(int32 NewSize)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Store the new tab size
     TabSize = NewSize;
 

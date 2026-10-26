@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "LLM/N2CLLMTypes.h"
@@ -101,7 +102,9 @@ public:
     int32 GetRawResponseCount() const { return SessionRawResponses.Num(); }
 
     /** Raw provider requests/responses retained for the current translation session. */
-    const TArray<FN2CRawResponseRecord>& GetRawResponseHistory() const { return SessionRawResponses; }
+    const TArray<FN2CRawResponseRecord>& GetRawResponseHistory() const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return SessionRawResponses; }
 
     /** Replay a captured provider request and replace that request's existing history/result in place. */
     bool ResendRawRequest(
@@ -115,14 +118,18 @@ public:
         TFunction<void(bool)> OnComplete = TFunction<void(bool)>());
 
     /** Aggregate parsed response for the current translation session. */
-    const FN2CTranslationResponse& GetSessionTranslationResponse() const { return SessionTranslationResponse; }
+    const FN2CTranslationResponse& GetSessionTranslationResponse() const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return SessionTranslationResponse; }
 
     /** Get the path to the latest translation */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     FString GetLatestTranslationPath() const { return LatestTranslationPath; }
 
     /** Base directory containing all saved translation batches. */
-    FString GetTranslationBaseDirectory() const { return GetTranslationBasePath(); }
+    FString GetTranslationBaseDirectory() const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return GetTranslationBasePath(); }
 
     /** Open the latest translation folder in file explorer */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")

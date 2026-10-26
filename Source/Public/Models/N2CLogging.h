@@ -12,6 +12,9 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogNodeToCode, Log, All);
 
+#define N2C_LOG_FUNCTION_ENTRY() \
+    UE_LOG(LogNodeToCode, VeryVerbose, TEXT("%s"), ANSI_TO_TCHAR(__FUNCTION__))
+
 /** Severity levels for logging */
 UENUM(BlueprintType)
 enum class EN2CLogSeverity : uint8

@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CJavaScriptSyntaxDefinition.h"
 
 FN2CJavaScriptSyntaxDefinition::FN2CJavaScriptSyntaxDefinition()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // JavaScript Keywords
     Keywords = {
         TEXT("break"), TEXT("case"), TEXT("catch"), TEXT("class"), TEXT("const"),
@@ -45,6 +47,7 @@ FN2CJavaScriptSyntaxDefinition::FN2CJavaScriptSyntaxDefinition()
 
 void FN2CJavaScriptSyntaxDefinition::GetCommentDelimiters(FString& OutLineComment, FString& OutBlockCommentStart, FString& OutBlockCommentEnd) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutLineComment = LineCommentDelimiter;
     OutBlockCommentStart = BlockCommentStart;
     OutBlockCommentEnd = BlockCommentEnd;

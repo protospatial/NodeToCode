@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Utils/Processors/N2CNodeProcessor.h"
 #include "Utils/N2CLogger.h"
@@ -19,7 +20,9 @@ public:
     FN2CBaseNodeProcessor() {}
     
     /** Destructor */
-    virtual ~FN2CBaseNodeProcessor() {}
+    virtual ~FN2CBaseNodeProcessor() {
+      N2C_LOG_FUNCTION_ENTRY();
+      }
     
     /**
      * Process a node and extract its properties

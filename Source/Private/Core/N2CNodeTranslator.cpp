@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CNodeTranslator.h"
 
 #include "Core/N2CSettings.h"
@@ -46,6 +47,7 @@ namespace
 {
 TMap<FString, FString> ExportRigVMNativeProperties(const UObject* Object)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TMap<FString, FString> Properties;
     if (!Object)
     {
@@ -80,6 +82,7 @@ TMap<FString, FString> ExportRigVMNativeProperties(const UObject* Object)
 
 FString RigVMPinDirectionToString(const ERigVMPinDirection Direction)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Direction)
     {
         case ERigVMPinDirection::Input: return TEXT("Input");
@@ -91,6 +94,7 @@ FString RigVMPinDirectionToString(const ERigVMPinDirection Direction)
 
 EN2CPinType DetermineRigVMPinType(const URigVMPin* Pin)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Pin)
     {
         return EN2CPinType::Custom;
@@ -135,6 +139,7 @@ EN2CPinType DetermineRigVMPinType(const URigVMPin* Pin)
 
 EN2CStructMemberType RigVMVariableType(const FString& CPPType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CPPType == TEXT("bool")) return EN2CStructMemberType::Bool;
     if (CPPType == TEXT("int32") || CPPType == TEXT("int")) return EN2CStructMemberType::Int;
     if (CPPType == TEXT("float") || CPPType == TEXT("double")) return EN2CStructMemberType::Float;
@@ -149,6 +154,7 @@ EN2CStructMemberType RigVMVariableType(const FString& CPPType)
 
 FN2CVariable RigVMVariableToNodeToCode(const FRigVMGraphVariableDescription& Description)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CVariable Variable;
     Variable.Name = Description.Name.ToString();
     Variable.Type = RigVMVariableType(Description.CPPType);
@@ -172,6 +178,7 @@ FN2CVariable RigVMVariableToNodeToCode(const FRigVMGraphVariableDescription& Des
 
 TMap<FString, FString> ExportNativeProperties(const UObject* Object)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TMap<FString, FString> Properties;
     if (!Object)
     {
@@ -202,6 +209,7 @@ TMap<FString, FString> ExportNativeProperties(const UObject* Object)
 
 TMap<FString, FString> ExportNativeProperties(const UStruct* Struct, const void* ValueContainer)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TMap<FString, FString> Properties;
     if (!Struct || !ValueContainer)
     {
@@ -232,6 +240,7 @@ TMap<FString, FString> ExportNativeProperties(const UStruct* Struct, const void*
 
 FString RigElementKeyToExportPath(const FRigElementKey& Key)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Key.IsValid())
     {
         return FString();
@@ -242,6 +251,7 @@ FString RigElementKeyToExportPath(const FRigElementKey& Key)
 
 FString ExportStructValue(const UScriptStruct* Struct, const void* Value)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Struct || !Value)
     {
         return FString();
@@ -253,6 +263,7 @@ FString ExportStructValue(const UScriptStruct* Struct, const void* Value)
 
 void AddObjectMetadata(TMap<FString, FString>& OutProperties, const UObject* Object)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const TMap<FName, FString>* Metadata = FMetaData::GetMapForObject(Object))
     {
         for (const TPair<FName, FString>& Entry : *Metadata)
@@ -264,6 +275,7 @@ void AddObjectMetadata(TMap<FString, FString>& OutProperties, const UObject* Obj
 
 const TCHAR* EnumUnderlyingTypeName(const UEnum::EUnderlyingType Type)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Type)
     {
         case UEnum::EUnderlyingType::int8: return TEXT("int8");
@@ -280,6 +292,7 @@ const TCHAR* EnumUnderlyingTypeName(const UEnum::EUnderlyingType Type)
 
 void AddControlRigHierarchyExport(FN2CBlueprint& Blueprint, IControlRigEditorAssetInterface* RigAsset)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!RigAsset)
     {
         return;
@@ -417,6 +430,7 @@ void AddControlRigHierarchyExport(FN2CBlueprint& Blueprint, IControlRigEditorAss
 
 void AddWidgetTreeExport(FN2CBlueprint& Blueprint, UWidgetBlueprint* WidgetBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!WidgetBlueprint)
     {
         return;
@@ -510,6 +524,7 @@ void AddWidgetTreeExport(FN2CBlueprint& Blueprint, UWidgetBlueprint* WidgetBluep
 
 void AddBlueprintAssetProperties(FN2CBlueprint& Blueprint, UBlueprint* SourceBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!SourceBlueprint)
     {
         return;
@@ -532,6 +547,7 @@ void AddBlueprintAssetProperties(FN2CBlueprint& Blueprint, UBlueprint* SourceBlu
 
 void AddGeneratedClassDefaults(FN2CBlueprint& Blueprint, UBlueprint* SourceBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!SourceBlueprint || !SourceBlueprint->GeneratedClass)
     {
         return;
@@ -586,12 +602,14 @@ void AddGeneratedClassDefaults(FN2CBlueprint& Blueprint, UBlueprint* SourceBluep
 
 FN2CNodeTranslator& FN2CNodeTranslator::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static FN2CNodeTranslator Instance;
     return Instance;
 }
 
 bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNodes)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Clear any existing data
     N2CBlueprint = FN2CBlueprint();
     NodeIDMap.Empty();
@@ -714,6 +732,7 @@ bool FN2CNodeTranslator::GenerateN2CStruct(const TArray<UK2Node*>& CollectedNode
 
 bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIncludeVariables)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     N2CBlueprint = FN2CBlueprint();
     NodeIDMap.Empty();
     PinIDMap.Empty();
@@ -892,6 +911,7 @@ bool FN2CNodeTranslator::GenerateFromBlueprint(UBlueprint* InBlueprint, bool bIn
 
 void FN2CNodeTranslator::CollectComponentOverrides(UBlueprint* InBlueprint)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!InBlueprint)
     {
         return;
@@ -1067,6 +1087,7 @@ void FN2CNodeTranslator::CollectComponentOverrides(UBlueprint* InBlueprint)
 
 void FN2CNodeTranslator::ConvertVariableDescription(const FBPVariableDescription& Desc, FN2CVariable& OutVar)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutVar = FN2CVariable();
     OutVar.Name = Desc.VarName.ToString();
     OutVar.DisplayName = Desc.FriendlyName;
@@ -1230,6 +1251,7 @@ void FN2CNodeTranslator::ConvertVariableDescription(const FBPVariableDescription
 
 void FN2CNodeTranslator::CollectLocalVariables(UK2Node_FunctionEntry* EntryNode, TArray<FN2CVariable>& OutVariables)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!EntryNode)
     {
         return;
@@ -1247,16 +1269,19 @@ void FN2CNodeTranslator::CollectLocalVariables(UK2Node_FunctionEntry* EntryNode,
 
 FString FN2CNodeTranslator::GenerateNodeID()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FString::Printf(TEXT("N%d"), NodeIDMap.Num() + 1);
 }
 
 FString FN2CNodeTranslator::GeneratePinID(int32 PinCount)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return FString::Printf(TEXT("P%d"), PinCount + 1);
 }
 
 bool FN2CNodeTranslator::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         FN2CLogger::Get().LogWarning(TEXT("Attempted to process null node"));
@@ -1293,6 +1318,7 @@ bool FN2CNodeTranslator::InitializeNodeProcessing(UK2Node* Node, FN2CNodeDefinit
 
 bool FN2CNodeTranslator::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!InitializeNodeProcessing(Node, OutNodeDef))
     {
         return false;
@@ -1312,6 +1338,7 @@ bool FN2CNodeTranslator::ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeD
 
 bool FN2CNodeTranslator::ProcessNativeGraphNode(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         return false;
@@ -1343,6 +1370,7 @@ bool FN2CNodeTranslator::ProcessNativeGraphNode(UEdGraphNode* Node, FN2CNodeDefi
 
 void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Graph)
     {
         return;
@@ -1440,6 +1468,7 @@ void FN2CNodeTranslator::AddGraphToProcess(UEdGraph* Graph)
 
 bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Graph)
     {
         FN2CLogger::Get().LogWarning(TEXT("Attempted to process null graph"));
@@ -1540,6 +1569,7 @@ bool FN2CNodeTranslator::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
 
 bool FN2CNodeTranslator::ProcessRigVMGraph(URigVMGraph* SourceGraph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!SourceGraph)
     {
         return false;
@@ -1844,6 +1874,7 @@ bool FN2CNodeTranslator::ProcessRigVMGraph(URigVMGraph* SourceGraph)
 }
 EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Graph)
     {
         return EN2CGraphType::EventGraph;
@@ -1888,11 +1919,13 @@ EN2CGraphType FN2CNodeTranslator::DetermineGraphType(UEdGraph* Graph) const
 
 void FN2CNodeTranslator::DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutType = FN2CNodeTypeRegistry::Get().GetNodeType(Node);
 }
 
 EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Pin) return EN2CPinType::Wildcard;
 
     const FName& PinCategory = Pin->PinType.PinCategory;
@@ -1967,6 +2000,7 @@ EN2CPinType FN2CNodeTranslator::DeterminePinType(const UEdGraphPin* Pin) const
 
 void FN2CNodeTranslator::CollectDirectConnections(UEdGraph* Graph, FN2CGraph& OutGraph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutGraph.Pins.Empty();
     OutGraph.Connections.Empty();
     OutGraph.ConnectionErrors.Empty();
@@ -2225,6 +2259,7 @@ void FN2CNodeTranslator::CollectDirectConnections(UEdGraph* Graph, FN2CGraph& Ou
 
 UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartPin) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!StartPin)
     {
         return nullptr;
@@ -2273,6 +2308,7 @@ UEdGraphPin* FN2CNodeTranslator::TraceConnectionThroughKnots(UEdGraphPin* StartP
 
 bool FN2CNodeTranslator::ValidateFlowReferences(FN2CGraph& Graph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Use the blueprint validator to validate the graph
     FN2CBlueprintValidator Validator;
     FString ErrorMessage;
@@ -2281,6 +2317,7 @@ bool FN2CNodeTranslator::ValidateFlowReferences(FN2CGraph& Graph)
 
 void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Determine node type
     DetermineNodeType(Node, OutNodeDef.NodeType);
 
@@ -2405,6 +2442,7 @@ void FN2CNodeTranslator::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
 
 void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Set node name
     OutNodeDef.Name = Node->GetNodeTitle(ENodeTitleType::MenuTitle).ToString();
 
@@ -2421,6 +2459,7 @@ void FN2CNodeTranslator::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDe
 
 void FN2CNodeTranslator::ProcessNodePins(UEdGraphNode* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Process input pins
     for (UEdGraphPin* Pin : Node->Pins)
     {
@@ -2523,6 +2562,7 @@ void FN2CNodeTranslator::ProcessNodePins(UEdGraphNode* Node, FN2CNodeDefinition&
 
 void FN2CNodeTranslator::ProcessNodeFlows(UEdGraphNode* Node, const TArray<UEdGraphPin*>& ExecInputs, const TArray<UEdGraphPin*>& ExecOutputs)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Record execution flows
     FString ExecDebug = FString::Printf(TEXT("Node %s has %d exec outputs"), 
         *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
@@ -2656,6 +2696,7 @@ void FN2CNodeTranslator::ProcessNodeFlows(UEdGraphNode* Node, const TArray<UEdGr
 
 FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CEnum Result;
     
     if (!Enum)
@@ -2788,6 +2829,7 @@ FN2CEnum FN2CNodeTranslator::ProcessBlueprintEnum(UEnum* Enum)
 
 FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString CleanName = InName;                                                                                                                                                                      
                                                                                                                                                                                                            
      // Remove SKEL_ prefix if present                                                                                                                                                                     
@@ -2807,6 +2849,7 @@ FString FN2CNodeTranslator::GetCleanClassName(const FString& InName)
 
 bool FN2CNodeTranslator::IsBlueprintStruct(UScriptStruct* Struct) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Struct)
     {
         return false;
@@ -2820,6 +2863,7 @@ bool FN2CNodeTranslator::IsBlueprintStruct(UScriptStruct* Struct) const
 
 bool FN2CNodeTranslator::IsBlueprintEnum(UEnum* Enum) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Enum)
     {
         return false;
@@ -2833,6 +2877,7 @@ bool FN2CNodeTranslator::IsBlueprintEnum(UEnum* Enum) const
 
 EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(FProperty* Property) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Property)
     {
         FN2CLogger::Get().LogWarning(TEXT("ConvertPropertyToStructMemberType: Null property provided"));
@@ -2944,6 +2989,7 @@ EN2CStructMemberType FN2CNodeTranslator::ConvertPropertyToStructMemberType(FProp
 
 void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         return;
@@ -3067,6 +3113,7 @@ void FN2CNodeTranslator::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
 
 void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Log detailed node info
     FString NodeInfo = FString::Printf(TEXT("Node Details:\n")
         TEXT("  ID: %s\n")
@@ -3148,6 +3195,7 @@ void FN2CNodeTranslator::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
 
 FString FN2CNodeTranslator::CleanPropertyName(const FString& RawName) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString CleanName = RawName;
 
     // Look for pattern: _##_GUID where ## is 1-3 digits
@@ -3174,6 +3222,7 @@ FString FN2CNodeTranslator::CleanPropertyName(const FString& RawName) const
 
 FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CStructMember Member;
 
     if (!Property)
@@ -3494,6 +3543,7 @@ FN2CStructMember FN2CNodeTranslator::ProcessStructMember(FProperty* Property)
 
 FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CStruct Result;
     
     if (!Struct)
@@ -3625,6 +3675,7 @@ FN2CStruct FN2CNodeTranslator::ProcessBlueprintStruct(UScriptStruct* Struct)
 
 void FN2CNodeTranslator::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Node)
     {
         return;

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Models/N2CBlueprint.h"
 #include "EdGraph/EdGraphNode.h"
@@ -38,7 +39,9 @@ public:
      * @brief Get the generated Blueprint structure
      * @return The translated Blueprint structure
      */
-    const FN2CBlueprint& GetN2CBlueprint() const { return N2CBlueprint; }
+    const FN2CBlueprint& GetN2CBlueprint() const {
+      N2C_LOG_FUNCTION_ENTRY();
+      return N2CBlueprint; }
 
 private:
     /** Constructor */

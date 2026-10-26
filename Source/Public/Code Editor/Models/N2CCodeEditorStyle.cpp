@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "N2CCodeEditorStyle.h"
 
 #include "N2CCodeLanguage.h"
@@ -17,6 +18,7 @@ TSharedPtr<FSlateStyleSet> FN2CCodeEditorStyle::StyleSet = nullptr;
 
 void FN2CCodeEditorStyle::Initialize()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Ensure we don't double-initialize
     if (StyleSet.IsValid())
     {
@@ -52,6 +54,7 @@ void FN2CCodeEditorStyle::Initialize()
 
 void FN2CCodeEditorStyle::InitializeLanguageStyles()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     InitializeCPPStyles();
     InitializePythonStyles();
     InitializeJavaScriptStyles();
@@ -62,6 +65,7 @@ void FN2CCodeEditorStyle::InitializeLanguageStyles()
 
 void FN2CCodeEditorStyle::InitializeCPPStyles()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FTextBlockStyle BaseStyle = CreateDefaultTextStyle(TEXT("CPP"));
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -101,6 +105,7 @@ void FN2CCodeEditorStyle::InitializeCPPStyles()
 
 void FN2CCodeEditorStyle::InitializePythonStyles()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FTextBlockStyle BaseStyle = CreateDefaultTextStyle(TEXT("Python"));
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -140,6 +145,7 @@ void FN2CCodeEditorStyle::InitializePythonStyles()
 
 void FN2CCodeEditorStyle::InitializeJavaScriptStyles()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FTextBlockStyle BaseStyle = CreateDefaultTextStyle(TEXT("JavaScript"));
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -179,6 +185,7 @@ void FN2CCodeEditorStyle::InitializeJavaScriptStyles()
 
 void FN2CCodeEditorStyle::InitializeCSharpStyles()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FTextBlockStyle BaseStyle = CreateDefaultTextStyle(TEXT("CSharp"));
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -218,6 +225,7 @@ void FN2CCodeEditorStyle::InitializeCSharpStyles()
 
 void FN2CCodeEditorStyle::InitializeSwiftStyles()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FTextBlockStyle BaseStyle = CreateDefaultTextStyle(TEXT("Swift"));
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -257,6 +265,7 @@ void FN2CCodeEditorStyle::InitializeSwiftStyles()
 
 void FN2CCodeEditorStyle::InitializePseudocodeStyles()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FTextBlockStyle BaseStyle = CreateDefaultTextStyle(TEXT("Pseudocode"));
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -298,6 +307,7 @@ void FN2CCodeEditorStyle::InitializePseudocodeStyles()
 
 FTextBlockStyle FN2CCodeEditorStyle::CreateDefaultTextStyle(const FName& TypeName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Get current font size from settings if available, otherwise use default
     int32 FontSize = 12;
 
@@ -311,6 +321,7 @@ FTextBlockStyle FN2CCodeEditorStyle::CreateDefaultTextStyle(const FName& TypeNam
 
 void FN2CCodeEditorStyle::Shutdown()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (StyleSet.IsValid())
     {
         // Ensure no references remain before unregistering
@@ -321,18 +332,21 @@ void FN2CCodeEditorStyle::Shutdown()
 
 const ISlateStyle& FN2CCodeEditorStyle::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     check(StyleSet.IsValid());
     return *StyleSet.Get();
 }
 
 const FName& FN2CCodeEditorStyle::GetStyleSetName()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     check(StyleSet.IsValid());
     return StyleSet->GetStyleSetName();
 }
 
 const FTextBlockStyle& FN2CCodeEditorStyle::GetLanguageStyle(const FName& LanguageId, const FName& ThemeName, const FName& StyleId)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     check(StyleSet.IsValid());
     const FName FullStyleId = FName(*FString::Printf(TEXT("N2CCodeEditor.%s.%s.%s"), 
         *LanguageId.ToString(), *ThemeName.ToString(), *StyleId.ToString()));
@@ -356,6 +370,7 @@ const FTextBlockStyle& FN2CCodeEditorStyle::GetLanguageStyle(const FName& Langua
 
 FString FN2CCodeEditorStyle::GetLanguageString(EN2CCodeLanguage Language)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Language)
     {
         case EN2CCodeLanguage::Cpp:

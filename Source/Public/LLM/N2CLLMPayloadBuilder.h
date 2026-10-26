@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 #include "N2CLLMTypes.h"
@@ -34,7 +35,9 @@ public:
     
     /** Response format */
     void SetJsonResponseFormat(const TSharedPtr<FJsonObject>& Schema);
-    void SetStructuredOutput(const TSharedPtr<FJsonObject>& Schema) { SetJsonResponseFormat(Schema); }
+    void SetStructuredOutput(const TSharedPtr<FJsonObject>& Schema) {
+      N2C_LOG_FUNCTION_ENTRY();
+      SetJsonResponseFormat(Schema); }
     
     /** Provider-specific extensions */
     void ConfigureForOpenAI();

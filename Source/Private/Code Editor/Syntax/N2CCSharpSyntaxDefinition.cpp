@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CCSharpSyntaxDefinition.h"
 
 FN2CCSharpSyntaxDefinition::FN2CCSharpSyntaxDefinition()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // C# Keywords
     Keywords = {
         TEXT("abstract"), TEXT("as"), TEXT("base"), TEXT("bool"), TEXT("break"), TEXT("byte"),
@@ -54,6 +56,7 @@ void FN2CCSharpSyntaxDefinition::GetCommentDelimiters(
     FString& OutBlockCommentStart,
     FString& OutBlockCommentEnd) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutLineComment = LineCommentDelimiter;
     OutBlockCommentStart = BlockCommentStart;
     OutBlockCommentEnd = BlockCommentEnd;

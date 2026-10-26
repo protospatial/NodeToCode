@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CLLMPricing.h"
 
@@ -42,6 +43,7 @@ const TMap<EN2CDeepSeekModel, FN2CDeepSeekPricing> FN2CLLMModelUtils::DeepSeekPr
 
 FString FN2CLLMModelUtils::GetOpenAIModelValue(EN2COpenAIModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Model)
     {
         case EN2COpenAIModel::GPT4o_2024_08_06:
@@ -69,6 +71,7 @@ FString FN2CLLMModelUtils::GetOpenAIModelValue(EN2COpenAIModel Model)
 
 FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Model)
     {
         case EN2CAnthropicModel::Claude4_Opus:
@@ -88,6 +91,7 @@ FString FN2CLLMModelUtils::GetAnthropicModelValue(EN2CAnthropicModel Model)
 
 FString FN2CLLMModelUtils::GetGeminiModelValue(EN2CGeminiModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Model)
     {
     case EN2CGeminiModel::Gemini_2_5_Flash:
@@ -114,6 +118,7 @@ FString FN2CLLMModelUtils::GetGeminiModelValue(EN2CGeminiModel Model)
 
 FString FN2CLLMModelUtils::GetDeepSeekModelValue(EN2CDeepSeekModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Model)
     {
         case EN2CDeepSeekModel::DeepSeek_R1:
@@ -127,6 +132,7 @@ FString FN2CLLMModelUtils::GetDeepSeekModelValue(EN2CDeepSeekModel Model)
 
 FN2COpenAIPricing FN2CLLMModelUtils::GetOpenAIPricing(EN2COpenAIModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const FN2COpenAIPricing* Found = OpenAIPricing.Find(Model))
     {
         return *Found;
@@ -136,6 +142,7 @@ FN2COpenAIPricing FN2CLLMModelUtils::GetOpenAIPricing(EN2COpenAIModel Model)
 
 FN2CAnthropicPricing FN2CLLMModelUtils::GetAnthropicPricing(EN2CAnthropicModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const FN2CAnthropicPricing* Found = AnthropicPricing.Find(Model))
     {
         return *Found;
@@ -145,6 +152,7 @@ FN2CAnthropicPricing FN2CLLMModelUtils::GetAnthropicPricing(EN2CAnthropicModel M
 
 FN2CDeepSeekPricing FN2CLLMModelUtils::GetDeepSeekPricing(EN2CDeepSeekModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const FN2CDeepSeekPricing* Found = DeepSeekPricing.Find(Model))
     {
         return *Found;
@@ -154,6 +162,7 @@ FN2CDeepSeekPricing FN2CLLMModelUtils::GetDeepSeekPricing(EN2CDeepSeekModel Mode
 
 FN2CGeminiPricing FN2CLLMModelUtils::GetGeminiPricing(EN2CGeminiModel Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const FN2CGeminiPricing* Found = GeminiPricing.Find(Model))
     {
         return *Found;

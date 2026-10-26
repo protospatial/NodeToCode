@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidget.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Core/N2CSettings.h"
@@ -12,10 +13,13 @@ UN2CCodeEditorWidget::UN2CCodeEditorWidget()
     , bWordWrap(false)
     , TabSize(4)
 {
-}
+
+  N2C_LOG_FUNCTION_ENTRY();
+  }
 
 TSharedRef<SWidget> UN2CCodeEditorWidget::RebuildWidget()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     CodeEditorWidget = SNew(SN2CCodeEditor)
         .Text(Text)
         .Language(Language)
@@ -34,6 +38,7 @@ TSharedRef<SWidget> UN2CCodeEditorWidget::RebuildWidget()
 
 void UN2CCodeEditorWidget::SynchronizeProperties()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Super::SynchronizeProperties();
 
     if (CodeEditorWidget.IsValid())
@@ -45,6 +50,7 @@ void UN2CCodeEditorWidget::SynchronizeProperties()
 
 FText UN2CCodeEditorWidget::GetText() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         return CodeEditorWidget->GetText();
@@ -54,6 +60,7 @@ FText UN2CCodeEditorWidget::GetText() const
 
 void UN2CCodeEditorWidget::SetText(const FText& NewText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Text = NewText;
     if (CodeEditorWidget.IsValid())
     {
@@ -63,6 +70,7 @@ void UN2CCodeEditorWidget::SetText(const FText& NewText)
 
 void UN2CCodeEditorWidget::SetLanguage(EN2CCodeLanguage NewLanguage)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Language = NewLanguage;
     if (CodeEditorWidget.IsValid())
     {
@@ -72,12 +80,14 @@ void UN2CCodeEditorWidget::SetLanguage(EN2CCodeLanguage NewLanguage)
 
 void UN2CCodeEditorWidget::HandleTextChanged(const FText& NewText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Text = NewText;
     OnTextChanged.Broadcast(NewText);
 }
 
 void UN2CCodeEditorWidget::InsertTextAtCursor(const FString& InText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         CodeEditorWidget->InsertTextAtCursor(InText);
@@ -86,6 +96,7 @@ void UN2CCodeEditorWidget::InsertTextAtCursor(const FString& InText)
 
 void UN2CCodeEditorWidget::ReplaceSelectedText(const FString& NewText)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         CodeEditorWidget->ReplaceSelectedText(NewText);
@@ -94,6 +105,7 @@ void UN2CCodeEditorWidget::ReplaceSelectedText(const FString& NewText)
 
 void UN2CCodeEditorWidget::DeleteSelectedText()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         CodeEditorWidget->DeleteSelectedText();
@@ -102,6 +114,7 @@ void UN2CCodeEditorWidget::DeleteSelectedText()
 
 FText UN2CCodeEditorWidget::GetSelectedText() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         return CodeEditorWidget->GetSelectedText();
@@ -111,6 +124,7 @@ FText UN2CCodeEditorWidget::GetSelectedText() const
 
 void UN2CCodeEditorWidget::SetCursorPosition(int32 Line, int32 Column)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         CodeEditorWidget->SetCursorPosition(Line, Column);
@@ -119,6 +133,7 @@ void UN2CCodeEditorWidget::SetCursorPosition(int32 Line, int32 Column)
 
 void UN2CCodeEditorWidget::GetCursorPosition(int32& OutLine, int32& OutColumn) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         CodeEditorWidget->GetCursorPosition(OutLine, OutColumn);
@@ -132,6 +147,7 @@ void UN2CCodeEditorWidget::GetCursorPosition(int32& OutLine, int32& OutColumn) c
 
 void UN2CCodeEditorWidget::SelectText(int32 StartLine, int32 StartColumn, int32 EndLine, int32 EndColumn)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         CodeEditorWidget->SelectText(StartLine, StartColumn, EndLine, EndColumn);
@@ -140,6 +156,7 @@ void UN2CCodeEditorWidget::SelectText(int32 StartLine, int32 StartColumn, int32 
 
 void UN2CCodeEditorWidget::GetSelection(int32& OutStartIndex, int32& OutEndIndex) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CodeEditorWidget.IsValid())
     {
         CodeEditorWidget->GetSelection(OutStartIndex, OutEndIndex);
@@ -153,6 +170,7 @@ void UN2CCodeEditorWidget::GetSelection(int32& OutStartIndex, int32& OutEndIndex
 
 void UN2CCodeEditorWidget::SetFontSize(int32 NewSize)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FontSize = FMath::Clamp(NewSize, 8, 72);
     if (CodeEditorWidget.IsValid())
     {
@@ -162,6 +180,7 @@ void UN2CCodeEditorWidget::SetFontSize(int32 NewSize)
 
 void UN2CCodeEditorWidget::SetWordWrap(bool bEnable)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     bWordWrap = bEnable;
     if (CodeEditorWidget.IsValid())
     {
@@ -171,6 +190,7 @@ void UN2CCodeEditorWidget::SetWordWrap(bool bEnable)
 
 void UN2CCodeEditorWidget::SetTheme(const FName& NewTheme)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ThemeName = NewTheme;
     if (CodeEditorWidget.IsValid())
     {
@@ -182,6 +202,7 @@ void UN2CCodeEditorWidget::SetTheme(const FName& NewTheme)
 
 void UN2CCodeEditorWidget::SetTabSize(int32 NewSize)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TabSize = FMath::Clamp(NewSize, 1, 8);
     if (CodeEditorWidget.IsValid())
     {
@@ -191,6 +212,7 @@ void UN2CCodeEditorWidget::SetTabSize(int32 NewSize)
 
 void UN2CCodeEditorWidget::ReleaseSlateResources(bool bReleaseChildren)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Super::ReleaseSlateResources(bReleaseChildren);
     
     // Release the Slate widget
@@ -200,6 +222,7 @@ void UN2CCodeEditorWidget::ReleaseSlateResources(bool bReleaseChildren)
 #undef LOCTEXT_NAMESPACE
 TArray<FName> UN2CCodeEditorWidget::GetAvailableThemes() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<FName> ThemeNames;
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
@@ -230,6 +253,7 @@ TArray<FName> UN2CCodeEditorWidget::GetAvailableThemes() const
 
 FN2CCodeEditorColors UN2CCodeEditorWidget::GetThemeFromName(const FName Name) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     
     switch (Language)
@@ -256,5 +280,6 @@ FN2CCodeEditorColors UN2CCodeEditorWidget::GetThemeFromName(const FName Name) co
 
 FName UN2CCodeEditorWidget::GetCurrentTheme() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return ThemeName;
 }

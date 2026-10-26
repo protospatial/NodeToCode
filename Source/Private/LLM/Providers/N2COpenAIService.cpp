@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2COpenAIService.h"
 
 #include "LLM/N2CLLMModels.h"
@@ -7,6 +8,7 @@
 
 UN2CResponseParserBase* UN2COpenAIService::CreateResponseParser()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2COpenAIResponseParser* Parser = NewObject<UN2COpenAIResponseParser>(this);
     return Parser;
 }
@@ -16,6 +18,7 @@ void UN2COpenAIService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutEndpoint = Config.ApiEndpoint;
     OutAuthToken = Config.ApiKey;
     
@@ -36,6 +39,7 @@ void UN2COpenAIService::GetConfiguration(
 
 void UN2COpenAIService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutHeaders.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
     
@@ -48,6 +52,7 @@ void UN2COpenAIService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) c
 
 FString UN2COpenAIService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check if model supports system prompts
     bool bSupportsSystemPrompts = false;
     for (int32 i = 0; i < static_cast<int32>(EN2COpenAIModel::GPT_o1_Mini) + 1; i++)

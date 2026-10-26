@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CRequestSettings.h"
 
 #include "Core/N2CCustomProviderSettings.h"
@@ -40,6 +41,7 @@ struct FN2CProviderPickerState
 
 FString GetProviderDisplayName(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
     {
         return ProviderEnum->GetDisplayNameTextByValue(static_cast<int64>(Provider)).ToString();
@@ -53,6 +55,7 @@ FString GetRequestConfiguredBuiltInModel(
     const UN2CCustomProviderSettings* CustomSettings,
     EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CustomSettings)
     {
         const FString Override = CustomSettings->GetBuiltInModelOverride(Provider);
@@ -87,6 +90,7 @@ TSharedPtr<FN2CProviderChoice> MakeProviderChoice(
     const FN2CResolvedRequestProvider& Provider,
     const FString& Model)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedPtr<FN2CProviderChoice> Choice = MakeShared<FN2CProviderChoice>();
     Choice->ResolvedProvider = Provider;
     Choice->ResolvedProvider.Model = Model;
@@ -125,6 +129,7 @@ TSharedPtr<FN2CProviderChoice> MakeProviderChoice(
 
 void SortProviderChoices(TArray<TSharedPtr<FN2CProviderChoice>>& Choices)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Choices.Sort([](
         const TSharedPtr<FN2CProviderChoice>& Left,
         const TSharedPtr<FN2CProviderChoice>& Right)
@@ -174,6 +179,7 @@ FString UN2CRequestSettings::GetEffectiveCustomInstructions(
     EN2CLLMProvider Provider,
     const FString& Model) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString GlobalInstructions;
     if (bEnableGlobalCustomInstructions)
     {
@@ -228,6 +234,7 @@ bool FN2CRequestRuntime::ResolveProviderConfig(
     const FString& CustomProviderName,
     FN2CResolvedRequestProvider& OutProvider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutProvider = FN2CResolvedRequestProvider();
     OutProvider.Provider = Provider;
 
@@ -342,6 +349,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
     const TArray<EN2CLLMProvider>& AvailableProviders,
     FN2CResolvedRequestProvider& OutProvider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     SelectedCustomProviderName.Empty();
     AdHocInstructions.Empty();
     AdditionalContextFilePaths.Reset();
@@ -774,6 +782,7 @@ bool FN2CRequestRuntime::ResolveProviderForRequest(
 
 FString FN2CRequestRuntime::ConsumeSelectedCustomProviderName()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Result = SelectedCustomProviderName;
     SelectedCustomProviderName.Empty();
     return Result;

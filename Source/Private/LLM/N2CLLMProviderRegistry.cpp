@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/N2CLLMProviderRegistry.h"
 
 #include "Core/N2CRequestSettings.h"
@@ -8,6 +9,7 @@
 
 UN2CLLMProviderRegistry* UN2CLLMProviderRegistry::Get()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     static UN2CLLMProviderRegistry* Instance = nullptr;
     if (!Instance)
     {
@@ -19,6 +21,7 @@ UN2CLLMProviderRegistry* UN2CLLMProviderRegistry::Get()
 
 void UN2CLLMProviderRegistry::RegisterProvider(EN2CLLMProvider ProviderType, TSubclassOf<UN2CBaseLLMService> ProviderClass)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!ProviderClass)
     {
         FN2CLogger::Get().LogError(
@@ -42,6 +45,7 @@ TScriptInterface<IN2CLLMService> UN2CLLMProviderRegistry::CreateProvider(
     EN2CLLMProvider ProviderType,
     UObject* Outer)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     EN2CLLMProvider EffectiveProvider = ProviderType;
 
     // Translation requests are created with the LLM module as their outer. Resolve a transient
@@ -76,6 +80,7 @@ TScriptInterface<IN2CLLMService> UN2CLLMProviderRegistry::CreateProviderDirect(
     EN2CLLMProvider ProviderType,
     UObject* Outer)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TScriptInterface<IN2CLLMService> Result;
 
     TSubclassOf<UN2CBaseLLMService>* ProviderClassPtr = ProviderClasses.Find(ProviderType);
@@ -108,11 +113,13 @@ TScriptInterface<IN2CLLMService> UN2CLLMProviderRegistry::CreateProviderDirect(
 
 bool UN2CLLMProviderRegistry::IsProviderRegistered(EN2CLLMProvider ProviderType) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return ProviderClasses.Contains(ProviderType);
 }
 
 TArray<EN2CLLMProvider> UN2CLLMProviderRegistry::GetRegisteredProviders() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<EN2CLLMProvider> Result;
     ProviderClasses.GetKeys(Result);
     return Result;

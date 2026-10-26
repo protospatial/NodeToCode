@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CDeepSeekService.h"
 
 #include "Core/N2CSettings.h"
@@ -9,6 +10,7 @@
 
 UN2CResponseParserBase* UN2CDeepSeekService::CreateResponseParser()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CDeepSeekResponseParser* Parser = NewObject<UN2CDeepSeekResponseParser>(this);
     return Parser;
 }
@@ -18,6 +20,7 @@ void UN2CDeepSeekService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutEndpoint = Config.ApiEndpoint;
     OutAuthToken = Config.ApiKey;
     OutSupportsSystemPrompts = true;  // DeepSeek always supports system prompts
@@ -25,12 +28,14 @@ void UN2CDeepSeekService::GetConfiguration(
 
 void UN2CDeepSeekService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutHeaders.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 }
 
 FString UN2CDeepSeekService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Load settings
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
     if (!Settings)

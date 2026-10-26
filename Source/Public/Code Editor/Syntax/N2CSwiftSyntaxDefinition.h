@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "N2CSyntaxDefinition.h"
 
 class FN2CSwiftSyntaxDefinition : public FN2CSyntaxDefinition
@@ -9,12 +10,26 @@ class FN2CSwiftSyntaxDefinition : public FN2CSyntaxDefinition
 public:
     FN2CSwiftSyntaxDefinition();
     
-    virtual const TArray<FString>& GetKeywords() const override { return Keywords; }
-    virtual const TArray<FString>& GetOperators() const override { return Operators; }
+    virtual const TArray<FString>& GetKeywords() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return Keywords; }
+    virtual const TArray<FString>& GetOperators() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return Operators; }
     virtual void GetCommentDelimiters(FString& OutLineComment, FString& OutBlockCommentStart, FString& OutBlockCommentEnd) const override;
-    virtual const TArray<TCHAR>& GetStringDelimiters() const override { return StringDelimiters; }
-    virtual const TArray<FString>& GetParentheses() const override { return Parentheses; }
-    virtual const TArray<FString>& GetCurlyBraces() const override { return CurlyBraces; }
-    virtual const TArray<FString>& GetSquareBrackets() const override { return SquareBrackets; }
-    virtual EN2CCodeLanguage GetLanguage() const override { return EN2CCodeLanguage::Swift; }
+    virtual const TArray<TCHAR>& GetStringDelimiters() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return StringDelimiters; }
+    virtual const TArray<FString>& GetParentheses() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return Parentheses; }
+    virtual const TArray<FString>& GetCurlyBraces() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return CurlyBraces; }
+    virtual const TArray<FString>& GetSquareBrackets() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return SquareBrackets; }
+    virtual EN2CCodeLanguage GetLanguage() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return EN2CCodeLanguage::Swift; }
 };

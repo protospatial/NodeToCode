@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CUserSecrets.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
@@ -21,6 +22,7 @@
 
 UN2CSettings::UN2CSettings()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CLogger::Get().Log(TEXT("N2CSettings constructor called"), EN2CLogSeverity::Info);
 
 #if WITH_EDITOR
@@ -89,11 +91,13 @@ UN2CSettings::UN2CSettings()
 
 FText UN2CSettings::GetSectionText() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return LOCTEXT("SettingsSection", "Node to Code");
 }
 
 FString UN2CSettings::GetActiveApiKey() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!UserSecrets)
     {
         // Create and load secrets if not already done
@@ -124,6 +128,7 @@ FString UN2CSettings::GetActiveApiKey() const
 
 FString UN2CSettings::GetActiveModel() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Provider)
     {
         case EN2CLLMProvider::OpenAI:
@@ -147,6 +152,7 @@ FString UN2CSettings::GetActiveModel() const
 
 void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Super::PreEditChange(PropertyAboutToChange);
     
     // Store the property being changed for use in PostEditChangeProperty
@@ -155,6 +161,7 @@ void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
 
 bool UN2CSettings::IsColorProperty(const FProperty* Property) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Property)
     {
         return false;
@@ -173,6 +180,7 @@ bool UN2CSettings::IsColorProperty(const FProperty* Property) const
 
 void UN2CSettings::CopyToClipboard(const FString& Text)
 {
+  N2C_LOG_FUNCTION_ENTRY();
     #if PLATFORM_MAC
     
     FPlatformApplicationMisc::ClipboardCopy(*Text);
@@ -187,6 +195,7 @@ void UN2CSettings::CopyToClipboard(const FString& Text)
 
 void UN2CSettings::InitializePricing()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Initialize default pricing
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT4o_2024_08_06, FN2COpenAIPricing(2.5f, 10.0f));
     OpenAIModelPricing.Add(EN2COpenAIModel::GPT4o_Mini_2024_07_18, FN2COpenAIPricing(0.15f, 0.6f));
@@ -219,6 +228,7 @@ void UN2CSettings::InitializePricing()
 
 void UN2CSettings::ValidateReferenceSourcePaths()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TArray<FFilePath> ValidPaths;
     for (const FFilePath& Path : ReferenceSourceFilePaths)
     {
@@ -248,6 +258,7 @@ void UN2CSettings::ValidateReferenceSourcePaths()
 
 void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     Super::PostEditChangeProperty(PropertyChangedEvent);
 
     // Update token estimate when reference files change
@@ -365,6 +376,7 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 #undef LOCTEXT_NAMESPACE
 const FN2CCodeEditorColors* UN2CSettings::GetThemeColors(EN2CCodeLanguage Language, const FName& ThemeName) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const FN2CCodeEditorThemes* Themes = nullptr;
     switch (Language)
     {

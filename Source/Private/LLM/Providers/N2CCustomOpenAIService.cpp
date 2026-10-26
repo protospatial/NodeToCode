@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CCustomOpenAIService.h"
 
 #include "Core/N2CCustomProviderSettings.h"
@@ -11,6 +12,7 @@
 
 bool UN2CCustomOpenAIService::Initialize(const FN2CLLMConfig& InConfig)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     const UN2CCustomProviderSettings* Settings = GetDefault<UN2CCustomProviderSettings>();
 
     // Consume the legacy runtime selection even when the config already carries a profile name so
@@ -82,6 +84,7 @@ void UN2CCustomOpenAIService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutEndpoint = Config.ApiEndpoint;
     OutAuthToken = Config.ApiKey;
     OutSupportsSystemPrompts = Config.bUseSystemPrompts;
@@ -89,11 +92,13 @@ void UN2CCustomOpenAIService::GetConfiguration(
 
 void UN2CCustomOpenAIService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 }
 
 FString UN2CCustomOpenAIService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
     PayloadBuilder->Initialize(Config.Model);
     PayloadBuilder->ConfigureForOpenAI();
@@ -120,5 +125,6 @@ FString UN2CCustomOpenAIService::FormatRequestPayload(const FString& UserMessage
 
 UN2CResponseParserBase* UN2CCustomOpenAIService::CreateResponseParser()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return NewObject<UN2COpenAIResponseParser>(this);
 }

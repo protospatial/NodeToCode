@@ -1,10 +1,12 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Models/N2CBlueprint.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
 bool FN2CGraph::IsValid() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Use the validator to check the graph
     FN2CBlueprintValidator Validator;
     FString ErrorMessage;
@@ -13,6 +15,7 @@ bool FN2CGraph::IsValid() const
 
 bool FN2CBlueprint::IsValid() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Use the validator to check the blueprint
     FN2CBlueprintValidator Validator;
     FString ErrorMessage;
@@ -21,6 +24,7 @@ bool FN2CBlueprint::IsValid() const
 
 bool FN2CStruct::IsValid() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CBlueprintValidator Validator;
     FString ErrorMessage;
     return Validator.ValidateStruct(*this, ErrorMessage);
@@ -28,6 +32,7 @@ bool FN2CStruct::IsValid() const
 
 bool FN2CEnum::IsValid() const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CBlueprintValidator Validator;
     FString ErrorMessage;
     return Validator.ValidateEnum(*this, ErrorMessage);

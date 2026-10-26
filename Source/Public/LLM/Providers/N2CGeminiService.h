@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Models/N2CLogging.h"
 #include "CoreMinimal.h"
 #include "LLM/N2CBaseLLMService.h"
 #include "N2CGeminiResponseParser.h"
@@ -22,12 +23,16 @@ class NODETOCODE_API UN2CGeminiService : public UN2CBaseLLMService
 public:
     // Provider-specific implementations
     virtual void GetConfiguration(FString& OutEndpoint, FString& OutAuthToken, bool& OutSupportsSystemPrompts) override;
-    virtual EN2CLLMProvider GetProviderType() const override { return EN2CLLMProvider::Gemini; }
+    virtual EN2CLLMProvider GetProviderType() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return EN2CLLMProvider::Gemini; }
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const override;
 
 protected:
     // Provider-specific implementations
     virtual FString FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const override;
     virtual UN2CResponseParserBase* CreateResponseParser() override;
-    virtual FString GetDefaultEndpoint() const override { return TEXT("https://generativelanguage.googleapis.com/v1beta/models/"); }
+    virtual FString GetDefaultEndpoint() const override {
+      N2C_LOG_FUNCTION_ENTRY();
+      return TEXT("https://generativelanguage.googleapis.com/v1beta/models/"); }
 };

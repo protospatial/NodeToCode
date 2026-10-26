@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Validators/N2CNodeValidator.h"
 
 bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Log node basic info
     FString NodeInfo = FString::Printf(TEXT("Validating Node: ID=%s, Name=%s, Type=%s, MemberParent=%s, MemberName=%s"),
         *Node.ID,
@@ -37,6 +39,7 @@ bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutErr
 
 bool FN2CNodeValidator::ValidateRequired(const FN2CNodeDefinition& Node, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check required fields
     if (Node.ID.IsEmpty())
     {
@@ -57,6 +60,7 @@ bool FN2CNodeValidator::ValidateRequired(const FN2CNodeDefinition& Node, FString
 
 bool FN2CNodeValidator::ValidateFlags(const FN2CNodeDefinition& Node, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Validate pure/latent combinations
     if (Node.bPure && Node.bLatent)
     {
@@ -78,6 +82,7 @@ bool FN2CNodeValidator::ValidateFlags(const FN2CNodeDefinition& Node, FString& O
 
 bool FN2CNodeValidator::ValidatePins(const FN2CNodeDefinition& Node, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Log pin counts
     FString PinInfo = FString::Printf(TEXT("Node %s (%s) has %d input pins and %d output pins"),
         *Node.ID,
@@ -137,6 +142,7 @@ bool FN2CNodeValidator::ValidatePins(const FN2CNodeDefinition& Node, FString& Ou
 
 bool FN2CNodeValidator::HasExecPins(const FN2CNodeDefinition& Node) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     bool hasExecInput = false;
     bool hasExecOutput = false;
 

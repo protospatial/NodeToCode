@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2COllamaService.h"
 
 #include "Core/N2CSettings.h"
@@ -9,6 +10,7 @@
 bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
 {
 
+    N2C_LOG_FUNCTION_ENTRY();
     // Create a copy of the input config
     FN2CLLMConfig UpdatedConfig = InConfig;
     
@@ -53,6 +55,7 @@ bool UN2COllamaService::Initialize(const FN2CLLMConfig& InConfig)
 
 UN2CResponseParserBase* UN2COllamaService::CreateResponseParser()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     UN2COllamaResponseParser* Parser = NewObject<UN2COllamaResponseParser>(this);
     return Parser;
 }
@@ -63,6 +66,7 @@ void UN2COllamaService::GetConfiguration(
     FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutEndpoint = Config.ApiEndpoint;
     OutAuthToken = Config.ApiKey;
     
@@ -72,11 +76,13 @@ void UN2COllamaService::GetConfiguration(
 
 void UN2COllamaService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 }
 
 FString UN2COllamaService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Create and configure payload builder
     UN2CLLMPayloadBuilder* PayloadBuilder = NewObject<UN2CLLMPayloadBuilder>();
     PayloadBuilder->Initialize(Config.Model);

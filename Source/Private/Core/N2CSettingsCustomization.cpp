@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Core/N2CSettingsCustomization.h"
 
 #include "Core/N2CConnectionTester.h"
@@ -55,6 +56,7 @@ TSharedRef<SWidget> MakeLabeledRow(
 
 FString GetSettingsProviderDisplayName(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (const UEnum* ProviderEnum = StaticEnum<EN2CLLMProvider>())
     {
         return ProviderEnum->GetDisplayNameTextByValue(static_cast<int64>(Provider)).ToString();
@@ -66,6 +68,7 @@ FString GetSettingsBuiltInFallbackModel(
     const UN2CSettings& Settings,
     EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Provider)
     {
         case EN2CLLMProvider::OpenAI:
@@ -92,6 +95,7 @@ FString GetSettingsConfiguredBuiltInModel(
     const UN2CCustomProviderSettings* CustomSettings,
     EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (CustomSettings)
     {
         const FString Override = CustomSettings->GetBuiltInModelOverride(Provider);
@@ -107,6 +111,7 @@ FString GetSettingsProviderApiKey(
     const UN2CSettings& Settings,
     EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Provider)
     {
         case EN2CLLMProvider::OpenAI:
@@ -139,11 +144,13 @@ struct FSettingsModelDiscoveryDialogState
 
 TSharedRef<IDetailCustomization> FN2CSettingsCustomization::MakeInstance()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     return MakeShared<FN2CSettingsCustomization>();
 }
 
 void FN2CSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ActiveDetailBuilder = &DetailBuilder;
 
     const TArray<TWeakObjectPtr<UN2CSettings>> SettingsObjects =
@@ -202,6 +209,7 @@ void FN2CSettingsCustomization::CustomizeProviderProperty(
     IDetailLayoutBuilder& DetailBuilder,
     const TSharedRef<IPropertyHandle>& ProviderHandle)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     IDetailPropertyRow* PropertyRow = DetailBuilder.EditDefaultProperty(ProviderHandle);
     if (!PropertyRow)
     {
@@ -344,6 +352,7 @@ void FN2CSettingsCustomization::AddConnectionButtonToProperty(
     FName PropertyName,
     EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedRef<IPropertyHandle> PropertyHandle = DetailBuilder.GetProperty(PropertyName);
     if (!PropertyHandle->IsValidHandle())
     {
@@ -460,6 +469,7 @@ void FN2CSettingsCustomization::AddConnectionButtonToProperty(
 
 void FN2CSettingsCustomization::DiscoverModelsForProvider(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Settings.IsValid() || !CustomProviderSettings.IsValid() ||
         !FN2CModelDiscovery::SupportsProvider(Provider))
     {
@@ -705,6 +715,7 @@ void FN2CSettingsCustomization::DiscoverModelsForProvider(EN2CLLMProvider Provid
 
 void FN2CSettingsCustomization::DiscoverModelsForProfile(const FString& ProviderName)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Settings.IsValid() || !CustomProviderSettings.IsValid())
     {
         return;
@@ -990,6 +1001,7 @@ void FN2CSettingsCustomization::DiscoverModelsForProfile(const FString& Provider
 
 void FN2CSettingsCustomization::SaveBuiltInProviderProfile(EN2CLLMProvider Provider)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!Settings.IsValid() || !CustomProviderSettings.IsValid())
     {
         return;
@@ -1029,6 +1041,7 @@ void FN2CSettingsCustomization::SaveBuiltInProviderProfile(EN2CLLMProvider Provi
 
 void FN2CSettingsCustomization::CustomizeCustomProvidersProperty(IDetailLayoutBuilder& DetailBuilder)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     TSharedRef<IPropertyHandle> AnchorHandle = DetailBuilder.GetProperty(
         GET_MEMBER_NAME_CHECKED(UN2CSettings, bCustomProvidersUIAnchor));
     if (!AnchorHandle->IsValidHandle())
@@ -1075,6 +1088,7 @@ void FN2CSettingsCustomization::CustomizeCustomProvidersProperty(IDetailLayoutBu
 
 TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 ProviderIndex)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!CustomProviderSettings.IsValid() ||
         !CustomProviderSettings->Providers.IsValidIndex(ProviderIndex))
     {
@@ -1466,6 +1480,7 @@ TSharedRef<SWidget> FN2CSettingsCustomization::BuildCustomProviderArea(int32 Pro
 
 void FN2CSettingsCustomization::ForceRefresh()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (ActiveDetailBuilder)
     {
         ActiveDetailBuilder->ForceRefreshDetails();
@@ -1474,6 +1489,7 @@ void FN2CSettingsCustomization::ForceRefresh()
 
 void FN2CSettingsCustomization::RebuildActiveProviderOptions()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     ActiveProviderOptions.Reset();
     if (!CustomProviderSettings.IsValid())
     {
@@ -1491,6 +1507,7 @@ void FN2CSettingsCustomization::RebuildActiveProviderOptions()
 
 void FN2CSettingsCustomization::AddPendingProvider()
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (!CustomProviderSettings.IsValid() || !NewProviderNameTextBox.IsValid())
     {
         return;

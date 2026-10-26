@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Toolsets/N2CBlueprintToolset.h"
 
 #include "Core/N2CNodeTranslator.h"
@@ -20,6 +21,7 @@ namespace
 {
 UBlueprint* LoadBlueprintOrLevelScriptReadOnly(const FString& AssetPath)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     if (UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath))
     {
         return Blueprint;
@@ -38,6 +40,7 @@ UBlueprint* LoadBlueprintOrLevelScriptReadOnly(const FString& AssetPath)
 
 FString RigVMPinDirectionToString(const ERigVMPinDirection Direction)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     switch (Direction)
     {
         case ERigVMPinDirection::Input: return TEXT("Input");
@@ -49,6 +52,7 @@ FString RigVMPinDirectionToString(const ERigVMPinDirection Direction)
 
 FString ExportRigVMGraphModelText(const URigVMGraph* Graph)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FString Text = FString::Printf(TEXT("RigVM graph %s [%s]\n"),
         *Graph->GetGraphName(), *Graph->GetPathName());
     for (const FRigVMGraphVariableDescription& Variable : Graph->GetLocalVariables())
@@ -88,6 +92,7 @@ FString ExportRigVMGraphModelText(const URigVMGraph* Graph)
 
 FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FString& BlueprintAssetPath)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CBlueprintExportResult Result;
     const FString AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
     Result.AssetObjectPath = AssetObjectPath;
@@ -187,6 +192,7 @@ FN2CBlueprintExportResult UN2CBlueprintToolset::ExportBlueprintJson(const FStrin
 FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
     const FString& BlueprintAssetPath, const FString& GraphName, const FString& GraphPath)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     FN2CBlueprintGraphTextResult Result;
     if (!IsInGameThread())
     {

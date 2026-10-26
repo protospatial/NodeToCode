@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/N2CPinTypeCompatibility.h"
 
 bool FN2CPinTypeCompatibility::AreTypesCompatible(EN2CPinType Type1, EN2CPinType Type2)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Special handling for wildcards
     if (Type1 == EN2CPinType::Wildcard || Type2 == EN2CPinType::Wildcard)
     {
@@ -47,6 +49,7 @@ bool FN2CPinTypeCompatibility::AreTypesCompatible(EN2CPinType Type1, EN2CPinType
 
 bool FN2CPinTypeCompatibility::ArePinsCompatible(const FN2CPinDefinition& Pin1, const FN2CPinDefinition& Pin2)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // First check basic type compatibility
     if (!AreTypesCompatible(Pin1.Type, Pin2.Type))
     {
@@ -74,6 +77,7 @@ bool FN2CPinTypeCompatibility::ArePinsCompatible(const FN2CPinDefinition& Pin1, 
 
 bool FN2CPinTypeCompatibility::AreContainerTypesCompatible(const FN2CPinDefinition& Pin1, const FN2CPinDefinition& Pin2)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Container flags must match
     if (Pin1.bIsArray != Pin2.bIsArray || Pin1.bIsMap != Pin2.bIsMap || Pin1.bIsSet != Pin2.bIsSet)
     {
@@ -96,6 +100,7 @@ bool FN2CPinTypeCompatibility::AreContainerTypesCompatible(const FN2CPinDefiniti
 
 bool FN2CPinTypeCompatibility::AreObjectTypesCompatible(const FN2CPinDefinition& Pin1, const FN2CPinDefinition& Pin2)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // SubTypes must match for object types
     if (Pin1.SubType != Pin2.SubType)
     {

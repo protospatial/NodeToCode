@@ -1,9 +1,11 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
+#include "Models/N2CLogging.h"
 #include "Utils/Validators/N2CPinValidator.h"
 
 bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Log basic pin info
     FString PinInfo = FString::Printf(TEXT("Validating Pin: ID=%s, Name=%s, Type=%s, SubType=%s"),
         *Pin.ID,
@@ -47,6 +49,7 @@ bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
 
 bool FN2CPinValidator::ValidateRequired(const FN2CPinDefinition& Pin, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Check required fields
     if (Pin.ID.IsEmpty())
     {
@@ -66,6 +69,7 @@ bool FN2CPinValidator::ValidateRequired(const FN2CPinDefinition& Pin, FString& O
 
 bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Validate type-specific requirements
     switch (Pin.Type)
     {
@@ -159,6 +163,7 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
 
 bool FN2CPinValidator::ValidateContainerFlags(const FN2CPinDefinition& Pin, FString& OutError)
 {
+    N2C_LOG_FUNCTION_ENTRY();
     // Validate container flags - only one container type allowed
     if ((Pin.bIsArray && Pin.bIsMap) || (Pin.bIsArray && Pin.bIsSet) || (Pin.bIsMap && Pin.bIsSet))
     {
