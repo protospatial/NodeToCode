@@ -90,6 +90,15 @@ FMcpToolCallResult FN2CMcpRenameFolderTool::Execute(const TSharedPtr<FJsonObject
         // Build the new folder path
         FString NewFolderPath = ParentPath / NewName;
 
+        // A case-only rename: folder and package names are case-insensitive, so the folder would meet itself (card 0284)
+        if (NewFolderPath.Equals(NormalizedSourcePath, ESearchCase::IgnoreCase))
+        {
+            return FMcpToolCallResult::CreateErrorResult(NewFolderPath.Equals(NormalizedSourcePath, ESearchCase::CaseSensitive)
+                ? FString::Printf(TEXT("The folder is already named '%s'"), *NewName)
+                : FString::Printf(TEXT("Case-only renames are not supported ('%s' to '%s'): folder names are case-insensitive. ")
+                    TEXT("Rename to another name first, then to the new spelling."), *OldFolderName, *NewName));
+        }
+
         // Check if destination already exists
         if (FN2CMcpContentBrowserUtils::DoesPathExist(NewFolderPath))
         {

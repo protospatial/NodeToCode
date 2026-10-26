@@ -16,6 +16,11 @@
 #include "Dom/JsonObject.h"
 #include "Core/N2CUserSettings.h"
 #include "Interfaces/IPluginManager.h"
+#include "ISourceControlModule.h"
+#include "ISourceControlProvider.h"
+#include "SourceControlHelpers.h"
+#include "Misc/FileHelper.h"
+#include "Misc/OutputDeviceRedirector.h"
 
 bool FN2CMcpContentBrowserUtils::ValidateContentPath(const FString& Path, FString& OutErrorMsg)
 {
@@ -123,44 +128,21 @@ bool FN2CMcpContentBrowserUtils::NavigateToPath(const FString& Path)
 
 bool FN2CMcpContentBrowserUtils::SelectAssetAtPath(const FString& AssetPath)
 {
-	// Get the asset registry
-	FAssetRegistryModule& AssetRegistryModule = 
-		FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	
-	// Convert path to object path if needed
-	FString ObjectPath = AssetPath;
-	if (!ObjectPath.Contains(TEXT(".")))
+	// A package path (/Game/A/BP) or an object path (/Game/A/BP.BP): the registry's asset either way (card 0284; a
+	// package path used to be looked up as an object path, which finds no asset)
+	FAssetData AssetData;
+	FString ErrorMsg;
+	if (!ResolveAsset(AssetPath, AssetData, ErrorMsg))
 	{
-		// If no class is specified, try to find the asset
-		FAssetData AssetData = AssetRegistryModule.Get().GetAssetByObjectPath(FSoftObjectPath(AssetPath));
-		if (AssetData.IsValid())
-		{
-			ObjectPath = AssetData.GetSoftObjectPath().ToString();
-		}
-		else
-		{
-			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Asset not found at path: %s"), *AssetPath));
-			return false;
-		}
-	}
-	
-	// Get the asset data
-	FAssetData AssetData = AssetRegistryModule.Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
-	if (!AssetData.IsValid())
-	{
-		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Invalid asset at path: %s"), *ObjectPath));
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("SelectAssetAtPath: %s"), *ErrorMsg));
 		return false;
 	}
-	
-	// Sync to the asset
-	TArray<FAssetData> AssetsToSync;
-	AssetsToSync.Add(AssetData);
-	
-	FContentBrowserModule& ContentBrowserModule = 
+
+	FContentBrowserModule& ContentBrowserModule =
 		FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
-	ContentBrowserModule.Get().SyncBrowserToAssets(AssetsToSync);
-	
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Selected asset: %s"), *AssetPath), EN2CLogSeverity::Info);
+	ContentBrowserModule.Get().SyncBrowserToAssets(TArray<FAssetData>{ AssetData });
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Selected asset: %s"), *AssetData.GetObjectPathString()), EN2CLogSeverity::Info);
 	return true;
 }
 
@@ -872,4 +854,199 @@ bool FN2CMcpContentBrowserUtils::EnsureDirectoryExists(const FString& Path, FStr
 	
 	// Try to create the folder
 	return CreateContentFolder(Path, OutErrorMsg);
+}
+
+bool FN2CMcpContentBrowserUtils::ResolveAsset(const FString& Path, FAssetData& OutAsset, FString& OutErrorMsg)
+{
+	OutAsset = FAssetData();
+	if (Path.IsEmpty())
+	{
+		OutErrorMsg = TEXT("Asset path cannot be empty");
+		return false;
+	}
+	const FString Normalized = NormalizeContentPath(Path);
+
+	// Split /Game/A/BP.BP into the package and the object name; a package path has no object name
+	FString PackageName = Normalized;
+	FString ObjectName;
+	int32 DotIndex = INDEX_NONE;
+	if (Normalized.FindChar(TEXT('.'), DotIndex))
+	{
+		PackageName = Normalized.Left(DotIndex);
+		ObjectName = Normalized.Mid(DotIndex + 1);
+	}
+	const TCHAR* Expected = TEXT("Expected /Game/Folder/AssetName or /Game/Folder/AssetName.AssetName");
+	FText Reason;
+	if (!FPackageName::IsValidLongPackageName(PackageName, /*bIncludeReadOnlyRoots*/ true, &Reason))
+	{
+		OutErrorMsg = FString::Printf(TEXT("Invalid asset path '%s': %s. %s"), *Path, *Reason.ToString(), Expected);
+		return false;
+	}
+
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+	TArray<FAssetData> Assets;
+	AssetRegistry.GetAssetsByPackageName(FName(*PackageName), Assets);
+
+	// The object asked for, else the asset named like its package, else the package's only asset
+	const FString WantedName = ObjectName.IsEmpty() ? FPackageName::GetShortName(PackageName) : ObjectName;
+	const FAssetData* Found = Assets.FindByPredicate([&WantedName](const FAssetData& Asset)
+	{
+		return Asset.AssetName.ToString().Equals(WantedName, ESearchCase::IgnoreCase);
+	});
+	if (!Found && ObjectName.IsEmpty() && Assets.Num() == 1)
+	{
+		Found = &Assets[0];
+	}
+	if (!Found)
+	{
+		OutErrorMsg = FString::Printf(TEXT("Asset not found: %s. %s"), *Normalized, Expected);
+		return false;
+	}
+	if (Found->IsRedirector())
+	{
+		OutErrorMsg = FString::Printf(TEXT("%s is a redirector a move left behind, not an asset: use the asset's new path"), *Normalized);
+		return false;
+	}
+	OutAsset = *Found;
+	return true;
+}
+
+bool FN2CMcpContentBrowserUtils::ValidateNewAssetName(const FString& Name, FString& OutErrorMsg)
+{
+	if (Name.IsEmpty())
+	{
+		OutErrorMsg = TEXT("The asset name cannot be empty");
+		return false;
+	}
+	// The asset name is the object name, and the last part of the package name and of the file name
+	FText Reason;
+	const FString InvalidCharacters = FString(INVALID_OBJECTNAME_CHARACTERS) + INVALID_LONGPACKAGE_CHARACTERS;
+	if (!FName::IsValidXName(Name, InvalidCharacters, &Reason))
+	{
+		OutErrorMsg = FString::Printf(TEXT("Invalid asset name '%s': %s. Give the name only, with no '.', '/', '\\' or spaces"),
+			*Name, *Reason.ToString());
+		return false;
+	}
+	if (IsReservedDeviceName(Name))
+	{
+		OutErrorMsg = FString::Printf(TEXT("Invalid asset name '%s': a Windows device name"), *Name);
+		return false;
+	}
+	if (!FFileHelper::IsFilenameValidForSaving(Name, Reason))
+	{
+		OutErrorMsg = FString::Printf(TEXT("Invalid asset name '%s': %s"), *Name, *Reason.ToString());
+		return false;
+	}
+	return true;
+}
+
+bool FN2CMcpContentBrowserUtils::DoesAssetPackageExist(const FString& PackageName)
+{
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+	TArray<FAssetData> Assets;
+	AssetRegistry.GetAssetsByPackageName(FName(*PackageName), Assets);
+	return Assets.Num() > 0 || FPackageName::DoesPackageExist(PackageName);
+}
+
+bool FN2CMcpContentBrowserUtils::CreateFolderForMutation(const FString& Folder, FString& OutCreatedRoot, FString& OutErrorMsg)
+{
+	OutCreatedRoot.Reset();
+	const FString Normalized = NormalizeContentPath(Folder);
+	if (!ValidateContentPath(Normalized, OutErrorMsg) || !IsWritableContentPath(Normalized, OutErrorMsg))
+	{
+		return false;
+	}
+	if (DoesPathExist(Normalized))
+	{
+		return true;
+	}
+
+	// The highest missing folder: MakeDirectory creates the whole chain, so a failed call removes the whole chain
+	FString Highest = Normalized;
+	for (FString Parent = FPaths::GetPath(Normalized); !Parent.IsEmpty() && !IsContentMountRoot(Parent) && !DoesPathExist(Parent);
+		Parent = FPaths::GetPath(Parent))
+	{
+		Highest = Parent;
+	}
+	if (!CreateContentFolder(Normalized, OutErrorMsg))
+	{
+		return false;
+	}
+	OutCreatedRoot = Highest;
+	return true;
+}
+
+void FN2CMcpContentBrowserUtils::RemoveFolderCreatedForMutation(const FString& CreatedRoot)
+{
+	if (CreatedRoot.IsEmpty())
+	{
+		return;
+	}
+	UEditorAssetSubsystem* EditorAssetSubsystem = GEditor ? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>() : nullptr;
+	if (!EditorAssetSubsystem)
+	{
+		return;
+	}
+	// DeleteDirectory deletes the assets inside: never let it
+	if (EditorAssetSubsystem->DoesDirectoryContainAssets(CreatedRoot, /*bRecursive*/ true))
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Kept %s: a failed operation created it, but it holds assets now"), *CreatedRoot));
+		return;
+	}
+	if (EditorAssetSubsystem->DeleteDirectory(CreatedRoot))
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Removed %s, created for an operation that failed"), *CreatedRoot), EN2CLogSeverity::Info);
+	}
+}
+
+FString FN2CMcpContentBrowserUtils::SourceControlFilename(const FString& PackageName)
+{
+	// Providers take file names: a long package name passed as is counts as an absolute path, of a file that does not exist
+	return USourceControlHelpers::PackageFilename(PackageName);
+}
+
+bool FN2CMcpContentBrowserUtils::IsCheckedOutByAnother(const FString& PackageName)
+{
+	ISourceControlModule& SourceControlModule = ISourceControlModule::Get();
+	if (!SourceControlModule.IsEnabled() || !SourceControlModule.GetProvider().IsAvailable())
+	{
+		return false;
+	}
+	const FSourceControlStatePtr State = SourceControlModule.GetProvider().GetState(SourceControlFilename(PackageName), EStateCacheUsage::Use);
+	return State.IsValid() && State->IsCheckedOutOther();
+}
+
+FN2CMcpEngineErrorCapture::FN2CMcpEngineErrorCapture()
+{
+	GLog->AddOutputDevice(this);
+}
+
+FN2CMcpEngineErrorCapture::~FN2CMcpEngineErrorCapture()
+{
+	GLog->RemoveOutputDevice(this);
+}
+
+void FN2CMcpEngineErrorCapture::Serialize(const TCHAR* Message, ELogVerbosity::Type Verbosity, const FName& Category)
+{
+	const ELogVerbosity::Type Level = static_cast<ELogVerbosity::Type>(Verbosity & ELogVerbosity::VerbosityMask);
+	if (Level == ELogVerbosity::Error || Level == ELogVerbosity::Fatal)
+	{
+		Errors.Add(Message);
+	}
+	else if (Level == ELogVerbosity::Warning)
+	{
+		Warnings.Add(Message);
+	}
+}
+
+FString FN2CMcpEngineErrorCapture::GetReason()
+{
+	GLog->Flush();
+	TArray<FString> Lines = Errors;
+	Lines.Append(Warnings);
+	if (Lines.Num() > 3)
+	{
+		Lines.SetNum(3);
+	}
+	return FString::Join(Lines, TEXT(" "));
 }

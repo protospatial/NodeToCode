@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Misc/OutputDevice.h"
 
 struct FAssetData;
 struct FContentBrowserItem;
@@ -195,7 +196,60 @@ public:
 	 */
 	static bool EnsureDirectoryExists(const FString& Path, FString& OutErrorMsg);
 
+	/**
+	 * The asset at Path, from the asset registry (card 0284). Path is an object path (/Game/A/BP.BP) or a package path
+	 * (/Game/A/BP); a package path gives the package's asset named like the package, or its only asset. A redirector
+	 * is not an asset here. Callers take every name and path after this from OutAsset, never from Path.
+	 * @return False with a reason when there is no such asset
+	 */
+	static bool ResolveAsset(const FString& Path, FAssetData& OutAsset, FString& OutErrorMsg);
+
+	/**
+	 * The rules for the name of an asset a tool creates, renames or copies to (card 0284): not empty, and none of the
+	 * characters object names and package names refuse (INVALID_OBJECTNAME_CHARACTERS, INVALID_LONGPACKAGE_CHARACTERS:
+	 * '.', '/', '\\', spaces, ...), and a name a file can have. Check the raw name before composing any path with it.
+	 */
+	static bool ValidateNewAssetName(const FString& Name, FString& OutErrorMsg);
+
+	/** True when the package PackageName (/Game/A/BP) exists, in the asset registry or on disk, compared case-insensitively */
+	static bool DoesAssetPackageExist(const FString& PackageName);
+
+	/**
+	 * Creates Folder and its missing parents right before a mutation (card 0284). OutCreatedRoot is the highest folder
+	 * this call created, empty when Folder already existed: pass it to RemoveFolderCreatedForMutation if the mutation fails.
+	 */
+	static bool CreateFolderForMutation(const FString& Folder, FString& OutCreatedRoot, FString& OutErrorMsg);
+
+	/** After a failed mutation: deletes CreatedRoot (from CreateFolderForMutation) unless it holds an asset. Empty does nothing. */
+	static void RemoveFolderCreatedForMutation(const FString& CreatedRoot);
+
+	/** The file source control knows the package by (USourceControlHelpers::PackageFilename): /Game/A/BP gives <Project>/Content/A/BP.uasset */
+	static FString SourceControlFilename(const FString& PackageName);
+
+	/** True when source control is on and PackageName is checked out by someone else */
+	static bool IsCheckedOutByAnother(const FString& PackageName);
+
 private:
 	// Prevent instantiation
 	FN2CMcpContentBrowserUtils() = delete;
+};
+
+/**
+ * Collects the warnings and errors the engine logs while it lives (UEditorAssetSubsystem and the asset tools say why a
+ * rename or duplicate failed only in the log), so a tool can return the engine's reason instead of a guess (card 0284).
+ * Game thread only.
+ */
+class FN2CMcpEngineErrorCapture : public FOutputDevice
+{
+public:
+	FN2CMcpEngineErrorCapture();
+	virtual ~FN2CMcpEngineErrorCapture() override;
+	virtual void Serialize(const TCHAR* Message, ELogVerbosity::Type Verbosity, const FName& Category) override;
+
+	/** The captured lines, errors first, joined; empty when the engine said nothing */
+	FString GetReason();
+
+private:
+	TArray<FString> Errors;
+	TArray<FString> Warnings;
 };
