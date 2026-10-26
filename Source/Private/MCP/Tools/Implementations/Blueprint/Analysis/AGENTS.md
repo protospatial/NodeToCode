@@ -107,7 +107,7 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
   `<Project>/Saved/NodeToCode/Exports/<Blueprint>__<graph or AllGraphs>__<hash>.json` (UTF-8, written to a temporary
   file and moved into place; the same read again replaces the same file) and the result is `{"path", "bytes",
   "estimatedTokens", "maxInlineTokens", "reason": "size" | "toFile", "graphCount", "nodeCount"}`. Read the file in
-  parts (read-file stops at 500 KB). A graph found by an old function ID also gets `target` with the deprecation
+  parts (read-file returns 500 KB of whole lines per call; `nextOffset` continues it). A graph found by an old function ID also gets `target` with the deprecation
   warning
 - **Errors**: `INVALID_ARGUMENT` (no `blueprintPath`; `depth` not a whole number from 0 to 5), `ASSET_NOT_FOUND`,
   `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME` (as in `FN2CGraphTarget`), `EMPTY_GRAPH` (the graph, or every graph, has

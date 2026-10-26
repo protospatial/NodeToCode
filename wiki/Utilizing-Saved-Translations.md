@@ -4,6 +4,8 @@
 ## Automatic Translation Saving
 Translations run from the editor are automatically saved locally to your project's Saved path (or the custom output directory in settings) when a translation successfully completes. A translation an MCP client requests with `translate-focused-blueprint` is not saved: the client receives it as the tool's result. This allows you to easily revisit previous translations or share translation files with other people, LLMs, and applications.
 
+An MCP client can read saved translations with the `read-path` and `read-file` tools. Folders in the default location are given relative to the project, for example `Saved/NodeToCode/Translations`. A custom output directory outside the project is given by its absolute path, which `get-translation-output-directory` returns as `absolutePath`. The tools refuse a custom directory that is a drive root or that contains your project or your home folder. `read-file` returns at most 500 KB of a file per call and can continue from a line number.
+
 ### Translation File Structure Visualization
 
 The following file structure is created in the user's project:

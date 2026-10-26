@@ -3813,7 +3813,7 @@
 		{
 			"name": "read-file",
 			"toolset": "FileSystemTools",
-			"description": "Reads the contents of a file within the Unreal Engine project. Use empty string \"\" for project root, NOT \".\" or \"/\". Enforces security boundaries to prevent directory traversal outside the project. Supports text files up to 500KB in size. Binary files like .uasset and .umap are not supported.",
+			"description": "Reads a text file in the Unreal Engine project, or in the translation output directory when that is outside the project. relativePath is relative to the project folder; an absolute path is accepted only inside those two folders. Only text files are read (source, config, JSON, CSV, Markdown, logs, ...): other types such as .uasset, .uexp, .png or .dll, and files with NUL bytes or invalid UTF-8, are refused. At most 500 KB of text comes back per call, in whole lines: truncated is true when the cap cut the read short, and nextOffset is the offset that continues it. offset and limit read a line range. Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) are never readable.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -3830,7 +3830,19 @@
 					"name": "relativePath",
 					"type": "string",
 					"required": true,
-					"description": ""
+					"description": "The file, relative to the project folder (for example \"Config/DefaultEngine.ini\"); an absolute path must be inside the project or the translation output directory"
+				},
+				{
+					"name": "offset",
+					"type": "integer",
+					"required": false,
+					"description": "Optional. The line number to start at, 1-based (default 1)"
+				},
+				{
+					"name": "limit",
+					"type": "integer",
+					"required": false,
+					"description": "Optional. The most lines to return (default: as many as fit in 500 KB)"
 				}
 			],
 			"inputSchema":
@@ -3840,7 +3852,20 @@
 				{
 					"relativePath":
 					{
-						"type": "string"
+						"type": "string",
+						"description": "The file, relative to the project folder (for example \"Config/DefaultEngine.ini\"); an absolute path must be inside the project or the translation output directory"
+					},
+					"offset":
+					{
+						"type": "integer",
+						"description": "Optional. The line number to start at, 1-based (default 1)",
+						"minimum": 1
+					},
+					"limit":
+					{
+						"type": "integer",
+						"description": "Optional. The most lines to return (default: as many as fit in 500 KB)",
+						"minimum": 1
 					}
 				},
 				"required": [
@@ -3855,7 +3880,7 @@
 		{
 			"name": "read-path",
 			"toolset": "FileSystemTools",
-			"description": "Lists all files and folders in a directory within the Unreal Engine project. Use empty string \"\" for project root, NOT \".\" or \"/\". Examples: \"\" for root, \"Config\" for Config folder, \"Content/Blueprints\" for nested paths. Enforces security boundaries to prevent directory traversal outside the project.",
+			"description": "Lists the files and folders directly inside a directory of the Unreal Engine project (not recursive), or of the translation output directory when that is outside the project. relativePath is relative to the project folder: \"\" or \".\" for the project folder, \"Config\", \"Content/Blueprints\"; an absolute path is accepted only inside those two folders. Results come in pages, folders first and then files, each sorted by name: total counts every entry, and when truncated is true pass nextCursor as cursor for the next page. filter keeps the names that match a wildcard such as \"*.json\". Credential folders (Saved/NodeToCode/User, .git) cannot be listed.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -3872,7 +3897,26 @@
 					"name": "relativePath",
 					"type": "string",
 					"required": true,
-					"description": ""
+					"description": "The directory, relative to the project folder (\"\" for the project folder); an absolute path must be inside the project or the translation output directory"
+				},
+				{
+					"name": "pageSize",
+					"type": "integer",
+					"required": false,
+					"default": 200,
+					"description": "Optional. Entries per page, 1 to 1000 (default 200)"
+				},
+				{
+					"name": "cursor",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The nextCursor of the previous page; leave it out for the first page"
+				},
+				{
+					"name": "filter",
+					"type": "string",
+					"required": false,
+					"description": "Optional. A wildcard the names must match, * and ? (for example \"*.json\"), ignoring case; it applies to folders and files"
 				}
 			],
 			"inputSchema":
@@ -3882,7 +3926,26 @@
 				{
 					"relativePath":
 					{
-						"type": "string"
+						"type": "string",
+						"description": "The directory, relative to the project folder (\"\" for the project folder); an absolute path must be inside the project or the translation output directory"
+					},
+					"pageSize":
+					{
+						"type": "integer",
+						"description": "Optional. Entries per page, 1 to 1000 (default 200)",
+						"minimum": 1,
+						"maximum": 1000,
+						"default": 200
+					},
+					"cursor":
+					{
+						"type": "string",
+						"description": "Optional. The nextCursor of the previous page; leave it out for the first page"
+					},
+					"filter":
+					{
+						"type": "string",
+						"description": "Optional. A wildcard the names must match, * and ? (for example \"*.json\"), ignoring case; it applies to folders and files"
 					}
 				},
 				"required": [

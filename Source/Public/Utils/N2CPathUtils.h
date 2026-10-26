@@ -90,4 +90,31 @@ public:
 
     /** True when Path, after resolving links, is Root itself or inside it. */
     static bool IsUnderDirectoryResolved(const FString& Path, const FString& Root);
+
+    /**
+     * The folders the MCP file tools (read-file, read-path) may read: the project folder, then the translation output
+     * folder (GetTranslationsBasePath, made absolute) when it is outside the project. That second root is left out
+     * when it is a drive or file-system root, or holds the project folder or the user's home folder, so a broad
+     * setting cannot open the whole disk. IsDeniedForAgentAccess applies inside every root.
+     */
+    static TArray<FString> GetAgentReadRoots();
+
+    /**
+     * Resolve a path an MCP client gave read-file or read-path. "", ".", "./" and "/" name the project folder; any
+     * other relative path is joined to it ("/Config" too); an absolute path (a drive letter, a UNC path, or on Mac
+     * and Linux a path from / that lies inside a root) must lie inside one of GetAgentReadRoots. The result passes
+     * ValidatePathWithinBounds against its root (.. collapsed, links resolved) and IsDeniedForAgentAccess.
+     * @param RequestedPath The path from the client
+     * @param OutAbsolutePath The resolved absolute path when it succeeds
+     * @param OutError Why it failed: "Access denied: Path traversal detected", "Access denied: absolute paths ...",
+     *        or "Access denied: this path holds credentials ..."
+     * @return True when the path may be read
+     */
+    static bool ResolveAgentReadPath(const FString& RequestedPath, FString& OutAbsolutePath, FString& OutError);
+
+    /**
+     * The path the MCP file tools report for an absolute path: relative to the project folder with forward slashes
+     * ("" for the project folder itself), or the absolute path when it is outside the project (the translation root).
+     */
+    static FString MakeAgentDisplayPath(const FString& AbsolutePath);
 };
