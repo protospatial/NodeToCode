@@ -98,14 +98,15 @@ def patch_uproject(session, project, plugins):
 
 
 def add_array(session, path, section, key, values):
-    """Writes key as an array (!key=ClearArray, then +key=value lines) into section of the project's
-    Config/DefaultNodeToCode.ini; restored at stop(). (On UE 5.8 the same lines in the Saved/Config layer loaded as an
-    empty array.)"""
-    session.patch_file(path, section, '!' + key, 'ClearArray')
+    """Writes key as an array into section of the host's Saved/Config/<Platform>/NodeToCode.ini, as the editor writes
+    that layer: one plain key=value line per element; restored at stop(). The engine reads the Saved layer without the
+    array commands of Config/Default*.ini (!key=ClearArray, +key=value), so a +key line there is another key and the
+    array loads empty (card 0479, NodeToCode.Settings.ConfigLayers)."""
+    session.patch_file(path, section, key, values[0])
     text = open(path, 'rb').read().decode('utf-8-sig')
     lines = text.splitlines()
-    at = next(i for i, l in enumerate(lines) if l.strip() == '!%s=ClearArray' % key) + 1
-    lines[at:at] = ['+%s=%s' % (key, v) for v in values]
+    at = next(i for i, l in enumerate(lines) if l.strip() == '%s=%s' % (key, values[0])) + 1
+    lines[at:at] = ['%s=%s' % (key, v) for v in values[1:]]
     open(path, 'w', encoding='utf-8', newline='\n').write('\n'.join(lines) + '\n')
 
 
@@ -132,7 +133,7 @@ def run_scenario(args, name, spec, log_dir, overlap):
         for key, value in settings.items():
             s.patch_file(ini, SETTINGS_SECTION, key, value)
         if custom:
-            add_array(s, s.project_config_path(), SETTINGS_SECTION, 'McpCustomToolsets', custom)
+            add_array(s, ini, SETTINGS_SECTION, 'McpCustomToolsets', custom)
         if 'MCPClientToolset' in plugins:
             user_ini = os.path.join(s._saved_config_dir(), 'EditorPerProjectUserSettings.ini')
             s.patch_file(user_ini, SERVERS_SECTION, 'MCPServers',
