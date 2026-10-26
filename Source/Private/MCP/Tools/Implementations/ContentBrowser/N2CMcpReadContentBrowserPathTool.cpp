@@ -88,8 +88,8 @@ FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 	
 	Definition.InputSchema = InputSchema;
 	
-	// Add read-only annotation
-	AddReadOnlyAnnotation(Definition);
+	// Read-only: reads editor or project state and changes nothing
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 	
 	return Definition;
 }

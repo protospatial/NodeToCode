@@ -43,7 +43,7 @@ FMcpToolDefinition FN2CMcpListPythonScriptsTool::GetDefinition() const
 
 	Definition.InputSchema = Schema;
 
-	AddReadOnlyAnnotation(Definition);
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
 	return Definition;
 }

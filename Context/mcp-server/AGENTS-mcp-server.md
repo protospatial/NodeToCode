@@ -241,7 +241,7 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 
 *   `IN2CMcpTool.h`: Tool interface contract
 *   `N2CMcpToolBase.h/.cpp`: Base class with common functionality
-*   `N2CMcpToolTypes.h/.cpp`: Tool definition and result structures
+*   `N2CMcpToolTypes.h/.cpp`: Tool definition (title, `FMcpToolAnnotations`, output schema, `_meta`) and result structures
 *   `N2CMcpToolManager.h/.cpp`: the active tool set (what `tools/list` returns) and tool execution
 *   `N2CMcpToolRegistry.h/.cpp`: Automatic registration system (every compiled tool)
 *   `N2CToolCallContext.h/.cpp`: progress and cancellation for one long-running call
@@ -469,7 +469,9 @@ The server implements these MCP methods:
 *   `ping`: Keep-alive testing
 
 ### Tool Methods
-*   `tools/list`: Enumerate available tools with schemas
+*   `tools/list`: Enumerate available tools with schemas, sorted by name; each entry carries `title` and `annotations`
+    (the four hints) where set, and `_meta` (`nodetocode/category`, optional `anthropic/maxResultSizeChars` and
+    `anthropic/alwaysLoad`). Definitions are built once at registration (card 0164)
 *   `tools/call`: Execute tools with arguments
 
 ### Resource Methods

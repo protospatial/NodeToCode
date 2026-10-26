@@ -24,8 +24,8 @@ FMcpToolDefinition FN2CMcpGetTranslationOutputDirectoryTool::GetDefinition() con
     // This tool takes no input parameters
     Definition.InputSchema = BuildEmptyObjectSchema();
     
-    // Add read-only annotation
-    AddReadOnlyAnnotation(Definition);
+    // Read-only: reads editor or project state and changes nothing
+    SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
     
     return Definition;
 }

@@ -29,7 +29,7 @@ FMcpToolDefinition FN2CMcpListBlueprintGraphsTool::GetDefinition() const
 	Definition.InputSchema->GetObjectField(TEXT("properties"))->GetObjectField(TEXT("blueprintPath"))->SetStringField(
 		TEXT("description"), TEXT("Required. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door or /Game/Blueprints/BP_Door.BP_Door."));
 
-	AddReadOnlyAnnotation(Definition);
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
 	// Results carry names from the project's Blueprints (graph, function and macro names): marked as untrusted data (card 0124)
 	Definition.bReturnsUntrustedContent = true;
