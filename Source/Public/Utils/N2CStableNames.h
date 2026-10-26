@@ -10,6 +10,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Models/N2CPin.h"
 
 class UClass;
 class UObject;
@@ -27,6 +28,19 @@ namespace N2CStableNames
 
 	/** The name of a pin's type object (PinSubCategoryObject): ClassName for a class, the object's own name otherwise */
 	NODETOCODE_API FString TypeObjectName(const UObject* Object);
+
+	/**
+	 * The N2C JSON pin "type" of one terminal type: a pin's own (its PinCategory, PinSubCategory and
+	 * PinSubCategoryObject; for a map pin they describe the key) or a map pin's value type (PinValueType's
+	 * TerminalCategory, TerminalSubCategory and TerminalSubCategoryObject). The subcategories the K2 schema puts on
+	 * several categories come first: "self" (a Target pin) is Self, "bitmask" (an int or byte marked Bitmask) Bitmask and
+	 * "index" (a Select node's index) Index. A byte with a UEnum is Enum, since the schema gives every enum pin PC_Byte
+	 * (card 0238, translation-core-31). An unknown category is Wildcard.
+	 */
+	NODETOCODE_API EN2CPinType PinType(const FName& Category, const FName& SubCategory, const UObject* SubCategoryObject);
+
+	/** The N2C JSON "sub_type" of one terminal type: TypeObjectName of its type object, else its subcategory, else empty */
+	NODETOCODE_API FString PinSubType(const FName& SubCategory, const UObject* SubCategoryObject);
 
 	/** Text in its source culture (FText::BuildSourceString), so it reads the same whatever the editor language */
 	NODETOCODE_API FString SourceText(const FText& Text);

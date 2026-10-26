@@ -3,6 +3,20 @@
 #include "Utils/Processors/N2CArrayProcessor.h"
 #include "Utils/N2CStableNames.h"
 
+namespace
+{
+    /** One side of a map as N2C JSON names it: its struct, enum or class when it has one, else its type */
+    FString TerminalTypeName(const FName& Category, const FName& SubCategory, const UObject* SubCategoryObject)
+    {
+        if (SubCategoryObject)
+        {
+            return N2CStableNames::TypeObjectName(SubCategoryObject);
+        }
+        return StaticEnum<EN2CPinType>()->GetNameStringByValue(
+            static_cast<int64>(N2CStableNames::PinType(Category, SubCategory, SubCategoryObject)));
+    }
+}
+
 void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     // Handle make array nodes
@@ -41,22 +55,12 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         {
             if (Pin && Pin->Direction == EGPD_Output)
             {
-                FString KeyType, ValueType;
-                
-                // Try to get key and value types
-                if (Pin->PinType.PinValueType.TerminalCategory != NAME_None)
-                {
-                    KeyType = Pin->PinType.PinValueType.TerminalCategory.ToString();
-                }
-                
-                if (Pin->PinType.PinSubCategory != NAME_None)
-                {
-                    ValueType = Pin->PinType.PinSubCategory.ToString();
-                }
-                else if (Pin->PinType.PinSubCategoryObject.IsValid())
-                {
-                    ValueType = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
-                }
+                // The main pin type is the key and PinValueType the value (card 0238, translation-core-13)
+                const FEdGraphPinType& Type = Pin->PinType;
+                const FString KeyType = TerminalTypeName(Type.PinCategory, Type.PinSubCategory,
+                    Type.PinSubCategoryObject.Get());
+                const FString ValueType = TerminalTypeName(Type.PinValueType.TerminalCategory,
+                    Type.PinValueType.TerminalSubCategory, Type.PinValueType.TerminalSubCategoryObject.Get());
                 
                 OutNodeDef.MemberName = FString::Printf(TEXT("%s to %s"), *KeyType, *ValueType);
                 

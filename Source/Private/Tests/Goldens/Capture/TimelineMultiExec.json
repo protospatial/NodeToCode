@@ -116,7 +116,7 @@
 							{
 								"id": "P14",
 								"name": "Direction",
-								"type": "Byte",
+								"type": "Enum",
 								"sub_type": "ETimelineDirection"
 							}
 						]

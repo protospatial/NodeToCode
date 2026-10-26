@@ -49,7 +49,7 @@
 								"id": "P4",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],
@@ -77,7 +77,7 @@
 								"id": "P7",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],
@@ -136,7 +136,7 @@
 								"id": "P11",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],
@@ -194,7 +194,7 @@
 								"id": "P15",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],
@@ -252,7 +252,7 @@
 								"id": "P19",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],
@@ -310,7 +310,7 @@
 								"id": "P23",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],
@@ -368,7 +368,7 @@
 								"id": "P27",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],

@@ -98,6 +98,14 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* CommentTextField = TEXT("text");
 	inline constexpr const TCHAR* CommentNodesField = TEXT("nodes");
 
+	/**
+	 * A map pin's value type (card 0238, additive): on a pin with "is_map", "type" and "sub_type" are the key's and
+	 * "value_type" and "value_sub_type" the value's (FEdGraphPinType::PinValueType), in the same spellings. Written
+	 * after the pin's flags, on map pins only; "value_sub_type" only when the value has a struct, enum, class or object.
+	 */
+	inline constexpr const TCHAR* PinValueTypeField = TEXT("value_type");
+	inline constexpr const TCHAR* PinValueSubTypeField = TEXT("value_sub_type");
+
 	/** Separates a node ID from a pin ID in a pin ref ("N3.P5") */
 	inline constexpr const TCHAR* PinRefSeparator = TEXT(".");
 

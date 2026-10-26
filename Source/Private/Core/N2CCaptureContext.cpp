@@ -647,74 +647,8 @@ EN2CPinType FN2CCaptureContext::DeterminePinType(const UEdGraphPin* Pin) const
 {
     if (!Pin) return EN2CPinType::Wildcard;
 
-    const FName& PinCategory = Pin->PinType.PinCategory;
-    
-    // Handle execution pins
-    if (PinCategory == UEdGraphSchema_K2::PC_Exec)
-        return EN2CPinType::Exec;
-        
-    // Handle basic types
-    if (PinCategory == UEdGraphSchema_K2::PC_Boolean)
-        return EN2CPinType::Boolean;
-    if (PinCategory == UEdGraphSchema_K2::PC_Byte)
-        return EN2CPinType::Byte;
-    if (PinCategory == UEdGraphSchema_K2::PC_Int)
-        return EN2CPinType::Integer;
-    if (PinCategory == UEdGraphSchema_K2::PC_Int64)
-        return EN2CPinType::Integer64;
-    if (PinCategory == UEdGraphSchema_K2::PC_Float)
-        return EN2CPinType::Float;
-    if (PinCategory == UEdGraphSchema_K2::PC_Double)
-        return EN2CPinType::Double;
-    if (PinCategory == UEdGraphSchema_K2::PC_Real)
-        return EN2CPinType::Real;
-    if (PinCategory == UEdGraphSchema_K2::PC_String)
-        return EN2CPinType::String;
-    if (PinCategory == UEdGraphSchema_K2::PC_Name)
-        return EN2CPinType::Name;
-    if (PinCategory == UEdGraphSchema_K2::PC_Text)
-        return EN2CPinType::Text;
-        
-    // Handle object types
-    if (PinCategory == UEdGraphSchema_K2::PC_Object)
-        return EN2CPinType::Object;
-    if (PinCategory == UEdGraphSchema_K2::PC_Class)
-        return EN2CPinType::Class;
-    if (PinCategory == UEdGraphSchema_K2::PC_Interface)
-        return EN2CPinType::Interface;
-    if (PinCategory == UEdGraphSchema_K2::PC_Struct)
-        return EN2CPinType::Struct;
-    if (PinCategory == UEdGraphSchema_K2::PC_Enum)
-        return EN2CPinType::Enum;
-        
-    // Handle delegate types
-    if (PinCategory == UEdGraphSchema_K2::PC_Delegate)
-        return EN2CPinType::Delegate;
-    if (PinCategory == UEdGraphSchema_K2::PC_MCDelegate)
-        return EN2CPinType::MulticastDelegate;
-        
-    // Handle field path and special types
-    if (PinCategory == UEdGraphSchema_K2::PC_FieldPath)
-        return EN2CPinType::FieldPath;
-    if (PinCategory == UEdGraphSchema_K2::PC_Wildcard)
-        return EN2CPinType::Wildcard;
-        
-    // Handle soft references
-    if (PinCategory == UEdGraphSchema_K2::PC_SoftObject)
-        return EN2CPinType::SoftObject;
-    if (PinCategory == UEdGraphSchema_K2::PC_SoftClass)
-        return EN2CPinType::SoftClass;
-
-    // Handle special subcategories
-    if (Pin->PinType.PinSubCategory == UEdGraphSchema_K2::PSC_Bitmask)
-        return EN2CPinType::Bitmask;
-    if (Pin->PinType.PinSubCategory == UEdGraphSchema_K2::PSC_Self)
-        return EN2CPinType::Self;
-    if (Pin->PinType.PinSubCategory == UEdGraphSchema_K2::PSC_Index)
-        return EN2CPinType::Index;
-
-    // Default to wildcard for unknown types
-    return EN2CPinType::Wildcard;
+    // The pin's own type (a map pin's key); subcategories before categories, a byte with a UEnum is Enum (card 0238)
+    return N2CStableNames::PinType(Pin->PinType.PinCategory, Pin->PinType.PinSubCategory, Pin->PinType.PinSubCategoryObject.Get());
 }
 
 TArray<UEdGraphPin*> FN2CCaptureContext::TraceTargetsThroughKnots(UEdGraphPin* OutputPin) const
@@ -1033,13 +967,18 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
                 }
             }
         }
-        else if (Pin->PinType.PinSubCategoryObject.IsValid())
+        else
         {
-            PinDef.SubType = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
+            PinDef.SubType = N2CStableNames::PinSubType(Pin->PinType.PinSubCategory, Pin->PinType.PinSubCategoryObject.Get());
         }
-        else if (!Pin->PinType.PinSubCategory.IsNone())
+
+        // A map pin's own type is its key; its value type is PinValueType (card 0238, translation-core-13)
+        if (PinDef.bIsMap)
         {
-            PinDef.SubType = Pin->PinType.PinSubCategory.ToString();
+            const FEdGraphTerminalType& Value = Pin->PinType.PinValueType;
+            PinDef.ValueType = N2CStableNames::PinType(Value.TerminalCategory, Value.TerminalSubCategory,
+                Value.TerminalSubCategoryObject.Get());
+            PinDef.ValueSubType = N2CStableNames::PinSubType(Value.TerminalSubCategory, Value.TerminalSubCategoryObject.Get());
         }
         
         // Add to appropriate pin array
@@ -1418,49 +1357,51 @@ void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
         }
     }
     
-    // Check struct references in pins
-    for (UEdGraphPin* Pin : Node->Pins)
+    // The user structs and enums the pins hold: each pin's own type (a map's key) and a map pin's value type
+    // (PinValueType, card 0238, translation-core-13), so a struct or enum used only as a map value is listed too
+    const auto AddRelatedType = [this](const FName& Category, const UObject* TypeObject, const TCHAR* Where)
     {
-        if (!Pin)
-            continue;
-            
-        // Check for struct types
-        if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct)
+        if (Category == UEdGraphSchema_K2::PC_Struct)
         {
-            UScriptStruct* Struct = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
+            UScriptStruct* Struct = Cast<UScriptStruct>(const_cast<UObject*>(TypeObject));
             if (Struct && IsBlueprintStruct(Struct))
             {
                 FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
                 if (StructDef.IsValid())
                 {
                     N2CBlueprint.Structs.Add(StructDef);
-                    
-                    FN2CLogger::Get().Log(
-                        FString::Printf(TEXT("Added Blueprint struct %s from pin type"), 
-                        *StructDef.Name),
+                    FN2CLogger::Get().Log(FString::Printf(TEXT("Added Blueprint struct %s from %s"), *StructDef.Name, Where),
                         EN2CLogSeverity::Info);
                 }
             }
         }
-        
-        // Check for enum types
-        else if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte ||
-                 Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
+        else if (Category == UEdGraphSchema_K2::PC_Byte || Category == UEdGraphSchema_K2::PC_Enum)
         {
-            UEnum* Enum = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
+            UEnum* Enum = Cast<UEnum>(const_cast<UObject*>(TypeObject));
             if (Enum && IsBlueprintEnum(Enum))
             {
                 FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
                 if (EnumDef.IsValid())
                 {
                     N2CBlueprint.Enums.Add(EnumDef);
-                    
-                    FN2CLogger::Get().Log(
-                        FString::Printf(TEXT("Added Blueprint enum %s from pin type"), 
-                        *EnumDef.Name),
+                    FN2CLogger::Get().Log(FString::Printf(TEXT("Added Blueprint enum %s from %s"), *EnumDef.Name, Where),
                         EN2CLogSeverity::Info);
                 }
             }
+        }
+    };
+
+    for (const UEdGraphPin* Pin : Node->Pins)
+    {
+        if (!Pin)
+        {
+            continue;
+        }
+        AddRelatedType(Pin->PinType.PinCategory, Pin->PinType.PinSubCategoryObject.Get(), TEXT("pin type"));
+        if (Pin->PinType.IsMap())
+        {
+            const FEdGraphTerminalType& Value = Pin->PinType.PinValueType;
+            AddRelatedType(Value.TerminalCategory, Value.TerminalSubCategoryObject.Get(), TEXT("map value type"));
         }
     }
 }

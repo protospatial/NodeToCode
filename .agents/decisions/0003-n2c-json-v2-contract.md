@@ -99,6 +99,14 @@ Option 1, provisionally. The sub-choices of card 0117:
   its collapsed graph's name; `graph_type` values are unchanged but now come from the graph's schema (the construction
   script is `Construction`, a macro `Macro` whatever its name, an anim graph or state machine `Animation`). A reader that
   predates it keeps `comments` as an unknown field (amendment item 2 below).
+- Card 0238 (additive and corrective, under 2.0.0 since no release has written it): a map pin keeps its key in `type` and
+  `sub_type` and gains `value_type` and `value_sub_type` (`N2CJsonContract::PinValueTypeField`, `PinValueSubTypeField`),
+  written after its flags on map pins only; user structs and enums used only as map values are listed. Pin `type` values
+  change where the subcategory decides them: an enum pin is `Enum` (was `Byte`; a byte without an enum stays `Byte`), a
+  Target pin `Self` (was `Object` with `sub_type` "self", which it keeps), a bitmask int or byte `Bitmask`, a Select
+  index `Index`. Make Map's `member_name` is "<key> to <value>" in pin type spellings. A reader that predates it keeps
+  the two fields as unknown fields; this reader keeps a map pin without them as it is and an unknown `value_type` with
+  an `UNKNOWN_PIN_TYPE` warning.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 

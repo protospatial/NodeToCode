@@ -89,7 +89,7 @@
 								"id": "P6",
 								"name": "Level_6_<GUID>",
 								"label": "Level",
-								"type": "Byte",
+								"type": "Enum",
 								"sub_type": "E_GoldenLevel",
 								"connected": true
 							}
@@ -124,7 +124,7 @@
 								"id": "P10",
 								"name": "Level_6_<GUID>",
 								"label": "Level",
-								"type": "Byte",
+								"type": "Enum",
 								"sub_type": "E_GoldenLevel",
 								"default_value": "NewEnumerator0",
 								"connected": true

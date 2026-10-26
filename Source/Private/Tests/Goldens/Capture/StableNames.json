@@ -70,7 +70,7 @@
 								"id": "P6",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],

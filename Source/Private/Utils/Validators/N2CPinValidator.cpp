@@ -173,6 +173,14 @@ bool FN2CPinValidator::ValidateContainerFlags(const FN2CPinDefinition& Pin, FStr
         // Continue despite warning - LLM will need to determine the most appropriate container type
     }
 
+    // Only a map has a value type (card 0238): "type" is then its key's
+    if (Pin.HasValueType() && !Pin.bIsMap)
+    {
+        OutError = FString::Printf(TEXT("Pin validation warning: Pin %s has a value_type but is not a map"), *Pin.ID);
+        FN2CLogger::Get().LogWarning(OutError);
+        // Continue despite warning
+    }
+
     // Const and reference validation - allow for certain types
     if (Pin.bIsConst && Pin.bIsReference)
     {
