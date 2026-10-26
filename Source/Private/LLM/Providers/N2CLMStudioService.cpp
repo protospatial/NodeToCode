@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CLMStudioService.h"
+#include "Models/N2CLogging.h"
 
 #include "Core/N2CSettings.h"
 #include "LLM/N2CSystemPromptManager.h"

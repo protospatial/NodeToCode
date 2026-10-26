@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
+#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CCPPSyntaxDefinition.h"
 #include "Code Editor/Syntax/N2CPythonSyntaxDefinition.h"
 #include "Code Editor/Syntax/N2CJavaScriptSyntaxDefinition.h"

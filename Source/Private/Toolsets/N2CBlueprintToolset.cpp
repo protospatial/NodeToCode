@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Toolsets/N2CBlueprintToolset.h"
+#include "Models/N2CLogging.h"
 
 #include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
@@ -11,6 +11,8 @@
 #include "Engine/World.h"
 #include "Engine/Level.h"
 #include "Engine/LevelScriptBlueprint.h"
+#include "K2Node_Variable.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "RigVMEditorAsset.h"
 #include "RigVMModel/RigVMGraph.h"
 #include "RigVMModel/RigVMNode.h"
@@ -413,5 +415,129 @@ FN2CBlueprintGraphTextResult UN2CBlueprintToolset::ExportBlueprintGraphText(
     {
         Result.Error = TEXT("UnrealEd returned empty graph text for a graph containing native nodes.");
     }
+    return Result;
+}
+
+FN2CBlueprintMemberRemovalResult
+UN2CBlueprintToolset::RemoveUnusedBlueprintMemberVariable(
+    const FString& BlueprintAssetPath, const FString& VariableName,
+    const bool bExternalReferencesReviewed,
+    const bool bDefaultDataConfirmedEmpty)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    const FString AssetPath = BlueprintAssetPath.TrimStartAndEnd();
+    if (!IsInGameThread())
+    {
+        FN2CBlueprintMemberRemovalResult Result;
+        Result.AssetObjectPath = AssetPath;
+        Result.VariableName = VariableName;
+        Result.Error = TEXT("Blueprint variable removal must run on the Unreal game thread.");
+        return Result;
+    }
+
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+    if (!Blueprint)
+    {
+        FN2CBlueprintMemberRemovalResult Result;
+        Result.AssetObjectPath = AssetPath;
+        Result.VariableName = VariableName;
+        Result.Error = FString::Printf(TEXT("Could not load Blueprint at '%s'."), *AssetPath);
+        return Result;
+    }
+
+    return RemoveUnusedBlueprintMemberVariableFromBlueprint(
+        Blueprint, FName(*VariableName), bExternalReferencesReviewed,
+        bDefaultDataConfirmedEmpty);
+}
+
+FN2CBlueprintMemberRemovalResult
+UN2CBlueprintToolset::RemoveUnusedBlueprintMemberVariableFromBlueprint(
+    UBlueprint* Blueprint, const FName VariableName,
+    const bool bExternalReferencesReviewed,
+    const bool bDefaultDataConfirmedEmpty)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    FN2CBlueprintMemberRemovalResult Result;
+    Result.AssetObjectPath = GetPathNameSafe(Blueprint);
+    Result.VariableName = VariableName.ToString();
+    Result.bExternalReferencesReviewed = bExternalReferencesReviewed;
+
+    auto Fail = [&Result](const TCHAR* Message)
+    {
+        Result.Error = Message;
+        return Result;
+    };
+
+    if (!IsValid(Blueprint) || VariableName.IsNone())
+    {
+        return Fail(TEXT("A valid Blueprint and local member-variable name are required."));
+    }
+    if (!bExternalReferencesReviewed || !bDefaultDataConfirmedEmpty)
+    {
+        return Fail(TEXT("Review external Blueprint callers and confirm the variable has no stored default data before removal."));
+    }
+    const int32 VariableIndex =
+        FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, VariableName);
+    if (VariableIndex == INDEX_NONE)
+    {
+        return Fail(TEXT("The named member variable is not declared in this Blueprint."));
+    }
+
+    const FBPVariableDescription& Variable = Blueprint->NewVariables[VariableIndex];
+    if (!Variable.DefaultValue.IsEmpty())
+    {
+        return Fail(TEXT("The Blueprint variable has a non-empty default value; migrate it before removal."));
+    }
+    Result.bDefaultValueEmpty = true;
+
+    TArray<UEdGraph*> Graphs;
+    Blueprint->GetAllGraphs(Graphs);
+    for (const UEdGraph* Graph : Graphs)
+    {
+        if (!IsValid(Graph))
+        {
+            continue;
+        }
+        for (const UEdGraphNode* Node : Graph->Nodes)
+        {
+            const UK2Node_Variable* VariableNode = Cast<UK2Node_Variable>(Node);
+            if (!IsValid(VariableNode))
+            {
+                continue;
+            }
+
+            const FMemberReference& Reference = VariableNode->VariableReference;
+            const bool bMatchesGuid = Reference.GetMemberGuid().IsValid() &&
+                Reference.GetMemberGuid() == Variable.VarGuid;
+            const bool bMatchesSelfName =
+                Reference.GetMemberName() == VariableName &&
+                Reference.IsSelfContext() && !Reference.IsLocalScope();
+            const bool bMatchesClassName = IsValid(Blueprint->GeneratedClass) &&
+                Reference.GetMemberName() == VariableName &&
+                Reference.GetMemberParentClass() == Blueprint->GeneratedClass &&
+                !Reference.IsLocalScope();
+            if (bMatchesGuid || bMatchesSelfName || bMatchesClassName)
+            {
+                ++Result.GraphReferenceCount;
+            }
+        }
+    }
+    if (Result.GraphReferenceCount > 0)
+    {
+        Result.Error = FString::Printf(
+            TEXT("The member variable is still referenced by %d Blueprint graph node(s)."),
+            Result.GraphReferenceCount);
+        return Result;
+    }
+
+    Blueprint->Modify();
+    FBlueprintEditorUtils::RemoveMemberVariable(Blueprint, VariableName);
+    if (FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, VariableName) != INDEX_NONE)
+    {
+        return Fail(TEXT("Unreal Editor did not remove the member variable."));
+    }
+
+    Result.bSuccess = true;
+    Result.bModifiedInMemory = true;
     return Result;
 }

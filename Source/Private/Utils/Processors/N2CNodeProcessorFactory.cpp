@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Utils/Processors/N2CNodeProcessorFactory.h"
+#include "Models/N2CLogging.h"
 
 #include <Utils/Processors/N2CArrayProcessor.h>
 #include <Utils/Processors/N2CCastProcessor.h>

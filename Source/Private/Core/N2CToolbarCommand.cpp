@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Core/N2CToolbarCommand.h"
+#include "Models/N2CLogging.h"
 
 #include "Styling/AppStyle.h"
 #include "Framework/Commands/UICommandList.h"

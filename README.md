@@ -57,9 +57,15 @@
 ### Verbose native traces
 
 To trace native plugin function entry names in the Unreal Output Log, run `Log LogNodeToCode VeryVerbose` in the editor console. Set the category back to `Log` when finished.
+
+### Guarded Blueprint variable removal
+
+`NodeToCode.N2CBlueprintToolset.RemoveUnusedBlueprintMemberVariable` removes one local Blueprint member only after external callers/default data have been reviewed and no local graph node references it. It changes the loaded Blueprint in memory; compile and explicitly save the asset through Unreal Python or the editor after reviewing the result.
+
 ## 👥 Value for Your Entire Team
 
 - **Blueprint Creators:** Communicate systems clearly and gradually learn C++ through your own work
+
 - **C++ Programmers:** Understand designer intent without deciphering complex visual graphs
 - **Project Leads:** Improve team communication and maintain better system documentation
 - **Educators & Students:** Bridge the visual-to-code learning gap with real examples

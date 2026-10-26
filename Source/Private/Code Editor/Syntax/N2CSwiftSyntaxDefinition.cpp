@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Code Editor/Syntax/N2CSwiftSyntaxDefinition.h"
+#include "Models/N2CLogging.h"
 
 FN2CSwiftSyntaxDefinition::FN2CSwiftSyntaxDefinition()
 {

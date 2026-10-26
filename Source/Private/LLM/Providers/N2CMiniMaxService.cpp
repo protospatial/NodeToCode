@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CMiniMaxService.h"
+#include "Models/N2CLogging.h"
 #include "LLM/Providers/N2CMiniMaxResponseParser.h"
 
 #include "Core/N2CSettings.h"

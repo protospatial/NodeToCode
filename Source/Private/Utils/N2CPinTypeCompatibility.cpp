@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Utils/N2CPinTypeCompatibility.h"
+#include "Models/N2CLogging.h"
 
 bool FN2CPinTypeCompatibility::AreTypesCompatible(EN2CPinType Type1, EN2CPinType Type2)
 {

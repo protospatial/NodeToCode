@@ -2,8 +2,8 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "Models/N2CLogging.h"
 #include "Core/N2CNodeTranslator.h"
+#include "Models/N2CLogging.h"
 #include "Core/N2CSerializer.h"
 #include "Toolsets/N2CBlueprintToolset.h"
 #include "RigVMEditorAsset.h"
@@ -27,6 +27,8 @@
 #include "K2Node_ExecutionSequence.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Knot.h"
+#include "K2Node_VariableGet.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Math/Vector.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Base64.h"
@@ -1541,6 +1543,75 @@ bool FNodeToCodeRigVMGraphExportTest::RunTest(const FString& Parameters)
         TestTrue(FString::Printf(TEXT("RigVM raw link endpoint is preserved: %s"), *Edge),
             ExportedModelEdges.Contains(Edge));
     }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNodeToCodeGuardedMemberRemovalTest,
+    "NodeToCode.Exporter.GuardedMemberRemoval",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNodeToCodeGuardedMemberRemovalTest::RunTest(const FString& Parameters)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    const FName VariableName(TEXT("UnusedInventory"));
+    FEdGraphPinType VariableType;
+    VariableType.PinCategory = UEdGraphSchema_K2::PC_Int;
+
+    UBlueprint* UnusedBlueprint = MakeTestBlueprint(TEXT("N2CUnusedVariableFixture"));
+    if (!TestNotNull(TEXT("Unused-variable Blueprint is created"), UnusedBlueprint) ||
+        !TestTrue(TEXT("Unused member is declared"), FBlueprintEditorUtils::AddMemberVariable(
+            UnusedBlueprint, VariableName, VariableType)))
+    {
+        return false;
+    }
+
+    const FN2CBlueprintMemberRemovalResult Removed =
+        UN2CBlueprintToolset::RemoveUnusedBlueprintMemberVariableFromBlueprint(
+            UnusedBlueprint, VariableName, true, true);
+    TestTrue(TEXT("An audited unreferenced member is removed"), Removed.bSuccess);
+    TestTrue(TEXT("The in-memory Blueprint is marked modified"), Removed.bModifiedInMemory);
+    TestEqual(TEXT("Removal reports no graph references"), Removed.GraphReferenceCount, 0);
+    TestEqual(TEXT("Removed member is absent from the Blueprint"),
+        FBlueprintEditorUtils::FindNewVariableIndex(UnusedBlueprint, VariableName), INDEX_NONE);
+
+    UBlueprint* ReferencedBlueprint = MakeTestBlueprint(TEXT("N2CReferencedVariableFixture"));
+    if (!TestNotNull(TEXT("Referenced-variable Blueprint is created"), ReferencedBlueprint) ||
+        !TestTrue(TEXT("Referenced member is declared"), FBlueprintEditorUtils::AddMemberVariable(
+            ReferencedBlueprint, VariableName, VariableType)))
+    {
+        return false;
+    }
+    const int32 ReferencedVariableIndex =
+        FBlueprintEditorUtils::FindNewVariableIndex(ReferencedBlueprint, VariableName);
+    if (!TestTrue(TEXT("Referenced member description exists"),
+                  ReferencedBlueprint->NewVariables.IsValidIndex(ReferencedVariableIndex)))
+    {
+        return false;
+    }
+    UEdGraph* Graph = MakeBlueprintGraph(
+        ReferencedBlueprint, FName(TEXT("VariableReference")), true);
+    UK2Node_VariableGet* VariableNode =
+        NewObject<UK2Node_VariableGet>(Graph, TEXT("InventoryReference"), RF_Transient);
+    Graph->AddNode(VariableNode, false, false);
+    VariableNode->CreateNewGuid();
+    VariableNode->VariableReference.SetSelfMember(
+        VariableName, ReferencedBlueprint->NewVariables[ReferencedVariableIndex].VarGuid);
+
+    const FN2CBlueprintMemberRemovalResult Refused =
+        UN2CBlueprintToolset::RemoveUnusedBlueprintMemberVariableFromBlueprint(
+            ReferencedBlueprint, VariableName, true, true);
+    TestFalse(TEXT("A graph-referenced member is not removed"), Refused.bSuccess);
+    TestEqual(TEXT("The reference count is returned"), Refused.GraphReferenceCount, 1);
+    TestTrue(TEXT("The referenced member remains declared"),
+        FBlueprintEditorUtils::FindNewVariableIndex(ReferencedBlueprint, VariableName) != INDEX_NONE);
+
+    const FN2CBlueprintMemberRemovalResult Unreviewed =
+        UN2CBlueprintToolset::RemoveUnusedBlueprintMemberVariableFromBlueprint(
+            ReferencedBlueprint, VariableName, false, true);
+    TestFalse(TEXT("Removal requires external-reference review"), Unreviewed.bSuccess);
+    TestTrue(TEXT("An unaudited member remains declared"),
+        FBlueprintEditorUtils::FindNewVariableIndex(ReferencedBlueprint, VariableName) != INDEX_NONE);
     return true;
 }
 

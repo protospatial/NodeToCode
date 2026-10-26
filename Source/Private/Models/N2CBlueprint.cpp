@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Models/N2CBlueprint.h"
+#include "Models/N2CLogging.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
 bool FN2CGraph::IsValid() const

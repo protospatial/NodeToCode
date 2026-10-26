@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Core/N2CConnectionTester.h"
+#include "Models/N2CLogging.h"
 
 #include "Core/N2CCustomProviderSettings.h"
 #include "Core/N2CSettings.h"

@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidgetFactory.h"
+#include "Models/N2CLogging.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 
 #define LOCTEXT_NAMESPACE "N2CCodeEditorWidgetFactory"

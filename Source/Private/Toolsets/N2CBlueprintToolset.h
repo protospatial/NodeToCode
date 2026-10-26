@@ -59,7 +59,30 @@ struct FN2CBlueprintGraphTextResult
     FString Error;
 };
 
-/** Exposes read-only NodeToCode Blueprint inspection tools to Unreal MCP clients. */
+USTRUCT(BlueprintType)
+struct FN2CBlueprintMemberRemovalResult
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bSuccess = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bModifiedInMemory = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bExternalReferencesReviewed = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bDefaultValueEmpty = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString AssetObjectPath;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString VariableName;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    int32 GraphReferenceCount = 0;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString Error;
+};
+
+/** Exposes NodeToCode Blueprint inspection and guarded member removal to Unreal MCP clients. */
 UCLASS(BlueprintType, Hidden)
 class UN2CBlueprintToolset : public UToolsetDefinition
 {
@@ -79,4 +102,20 @@ public:
     UFUNCTION(Category = "Node to Code", meta = (AICallable))
     static FN2CBlueprintGraphTextResult ExportBlueprintGraphText(
         const FString& BlueprintAssetPath, const FString& GraphName, const FString& GraphPath = FString());
+
+    /**
+     * Removes one local Blueprint variable only when its default data is empty, its external callers
+     * have been reviewed, and no local graph node references it. This changes the in-memory Blueprint;
+     * compile and explicitly save the asset after reviewing the result.
+     * @param bExternalReferencesReviewed True only after checking package referencers for variable use.
+     * @param bDefaultDataConfirmedEmpty True only after confirming the variable has no serialized data.
+     */
+    UFUNCTION(Category = "Node to Code", meta = (AICallable))
+    static FN2CBlueprintMemberRemovalResult RemoveUnusedBlueprintMemberVariable(
+        const FString& BlueprintAssetPath, const FString& VariableName,
+        bool bExternalReferencesReviewed, bool bDefaultDataConfirmedEmpty);
+
+    static FN2CBlueprintMemberRemovalResult RemoveUnusedBlueprintMemberVariableFromBlueprint(
+        UBlueprint* Blueprint, const FName VariableName,
+        bool bExternalReferencesReviewed, bool bDefaultDataConfirmedEmpty);
 };

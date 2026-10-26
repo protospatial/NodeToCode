@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CLogging.h"
 #include "Utils/N2CNodeTypeRegistry.h"
+#include "Models/N2CLogging.h"
 #include "Utils/N2CLogger.h"
 
 // Include all K2Node types
