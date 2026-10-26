@@ -36,7 +36,8 @@
     UnrealBuildTool logs to BuildLogs/UBT_<ver>_<stamp>.txt (-Log=), not the shared per-user UnrealBuildTool/Log.txt,
     so builds from several checkouts can start together. A build that still fails at once on a shared file another
     UBT holds (a sharing-violation IOException, e.g. on UE 5.8's UnrealBuildTool/Trace.uba or a BuildRules DLL) is
-    retried up to 3 times after a random 3-15 s wait; the failed attempt's log is kept as Build_<ver>_<stamp>_try<n>.log.
+    retried up to 20 times after a random 5-30 s wait (an attempt that hits it fails in about a second); the failed
+    attempt's log is kept as Build_<ver>_<stamp>_try<n>.log.
     A version is skipped only when an UnrealEditor is open on this run's own host .uproject (full path compared), not
     another checkout's host.
 
@@ -378,7 +379,10 @@ function Test-EditorRunning($h) {
 # shared whatever -Log says (UE 5.8 backs up UnrealBuildTool/Trace.uba at startup; every version compiles
 # UnrealEngine/Intermediate/Build/BuildRules/*Rules.dll there), so a build that UBT aborts because another process
 # holds a file (an unhandled sharing-violation IOException, not a compile error) is retried.
-$UbtSharedFileRetries = 3
+# Installed UE 5.6-5.8 all compile the one <LocalAppData>/UnrealEngine/Intermediate/Build/BuildRules/MarketplaceRules.dll,
+# each recompiling the other versions' copy, and a running UBT keeps it loaded for its whole build: the wait can be as
+# long as another checkout's build of another version, so the window is minutes (about 6 on average), not seconds.
+$UbtSharedFileRetries = 20
 function Test-UbtSharedFileCollision([string]$log) {
     if (-not (Test-Path $log)) { return $false }
     $text = [IO.File]::ReadAllText($log).Replace("`0", '')
@@ -601,7 +605,7 @@ foreach ($ver in $targets) {
             $h.Target, $Platform, $Config, "-Project=$($h.UProject)", '-WaitMutex', '-FromMsBuild', '-NoHotReloadFromIDE',
             "-Log=$ubtLog") $log
         if ($code -eq 0 -or $attempt -gt $UbtSharedFileRetries -or -not (Test-UbtSharedFileCollision $log)) { break }
-        $wait = Get-Random -Minimum 3 -Maximum 16
+        $wait = Get-Random -Minimum 5 -Maximum 31
         Write-Host "UBT stopped on a shared file another build holds (IOException: being used by another process); retry $attempt of $UbtSharedFileRetries in ${wait}s" -ForegroundColor Yellow
         Move-Item -Force $log ($log -replace '\.log$', "_try$attempt.log")
         Start-Sleep -Seconds $wait

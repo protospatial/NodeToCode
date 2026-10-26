@@ -31,7 +31,10 @@ PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every s
 - Safe to run from several checkouts at once: UBT logs to `BuildLogs/UBT_<ver>_<stamp>.txt` (`-Log=`) instead of
   the shared per-user `UnrealBuildTool/Log.txt`, and a build that fails at once because another UBT holds a shared
   file (a sharing-violation `IOException`, e.g. on UE 5.8's `UnrealBuildTool/Trace.uba` or a
-  `BuildRules/*Rules.dll`) is retried up to 3 times after a random 3-15 s wait.
+  `BuildRules/*Rules.dll`) is retried up to 20 times after a random 5-30 s wait. Installed 5.6, 5.7 and 5.8 share
+  one per-user `UnrealEngine/Intermediate/Build/BuildRules/MarketplaceRules.dll` and each recompiles the others' copy,
+  which a running UBT keeps loaded for its whole build, so two checkouts building different versions at once wait
+  for each other here.
 
 Machine-specific settings (engine paths, hosts root) go in `build.local.ps1` next to the script; it is gitignored and
 dot-sourced when present.
