@@ -714,7 +714,7 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.compile_blueprint`. Left to Unr
 
 **Save a Blueprint**
 
-Save a Blueprint asset to disk, writing the package file Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Save a Blueprint asset to disk, writing the package file. Never prompts: a file under source control is checked out first, and a file that cannot be written returns CHECKOUT_REQUIRED, CHECKED_OUT_BY_OTHER or READ_ONLY. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
