@@ -30,6 +30,7 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Description**: Compiles a Blueprint using the same functionality as the Compile button in the Blueprint editor
 - **Parameters**:
   - `blueprintPath` (optional): Asset path of the Blueprint to compile. If not provided, uses the currently focused Blueprint
+  - `forceRecompile` (optional): seeded fake argument (card 0180 check)
   - `skipGarbageCollection` (optional): Skip garbage collection during compilation for performance (default: true)
 - **Returns**: Comprehensive compilation results including errors, warnings, status changes, and timing
 - **Use Case**: Automated Blueprint validation, CI/CD pipelines, batch compilation

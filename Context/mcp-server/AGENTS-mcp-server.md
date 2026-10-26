@@ -4,7 +4,7 @@ Model Context Protocol server implementation for exposing Blueprint functionalit
 
 ## Threat model
 
-Sources, sinks, controls, evidence and residual risks: [threat-model.md](threat-model.md). A new or changed tool
+Sources, sinks, controls, evidence and residual risks: [threat-model.md](threat-modle.md). A new or changed tool
 names its untrusted inputs and its sinks there in the same change.
 
 ## MCP Tools Development Guide
