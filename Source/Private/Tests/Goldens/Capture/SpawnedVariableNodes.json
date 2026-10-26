@@ -68,7 +68,7 @@
 					},
 					{
 						"id": "N3",
-						"type": "LocalFunctionVariable",
+						"type": "LocalVariableGet",
 						"class": "K2Node_VariableGet",
 						"member_name": "Counter",
 						"pure": true,
@@ -85,7 +85,7 @@
 					},
 					{
 						"id": "N4",
-						"type": "LocalFunctionVariable",
+						"type": "LocalVariableSet",
 						"class": "K2Node_VariableSet",
 						"member_name": "Counter",
 						"input_pins": [

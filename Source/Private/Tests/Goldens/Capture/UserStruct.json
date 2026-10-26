@@ -11,11 +11,6 @@
 			"finding": "translation-core-24",
 			"card": "0236",
 			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
-		},
-		{
-			"finding": "translation-core-4",
-			"card": "0234",
-			"effect": "Break S_GoldenItem is captured as a Variable titled 'None' with member_name Var_<graph>_<UObject index> (normalised to <OBJECT_INDEX>)"
 		}
 	],
 	"capture":
@@ -57,10 +52,11 @@
 					},
 					{
 						"id": "N2",
-						"type": "Variable",
+						"type": "BreakStruct",
 						"class": "K2Node_BreakStruct",
-						"title": "None",
-						"member_name": "Var_UseItem_<OBJECT_INDEX>",
+						"title": "Break S_GoldenItem",
+						"member_parent": "<PACKAGE>",
+						"member_name": "S_GoldenItem",
 						"pure": true,
 						"input_pins": [
 							{

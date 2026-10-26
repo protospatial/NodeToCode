@@ -38,4 +38,10 @@ protected:
      * @param OutNodeDef The node definition to populate
      */
     virtual void ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
+
+    /**
+     * For a node that names an input action asset (Enhanced Input), member_name is the asset's name and member_parent
+     * its package path. Process calls it when the node-specific properties left member_name empty.
+     */
+    static void ExtractInputActionReference(const UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
 };

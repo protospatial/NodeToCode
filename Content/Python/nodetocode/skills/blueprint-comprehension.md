@@ -38,7 +38,7 @@ Blueprint's contents.
 4. **Large documents.** When a read would exceed about 20000 tokens (or you pass `toFile: true`) the result is
    `{"path", "bytes", "estimatedTokens", "reason", "graphCount", "nodeCount"}` and the document is in a file under
    `Saved/NodeToCode/Exports/`. Read one graph at a time instead, or read that file in parts (`read-file` takes the
-   project-relative path and stops at 500 KB).
+   project-relative path and returns 500 KB of whole lines per call; pass its `nextOffset` as `offset` to continue).
 
 Use `get-focused-blueprint` only when the user means the graph open in front of them ("this graph"). Focus can
 belong to another Blueprint than the one you think; a path read cannot.
@@ -229,7 +229,7 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
   - "owner_blueprint" (optional): present only on a graph from another Blueprint (for example a function of another Blueprint that the translated graph calls): that Blueprint's name. Two graphs can share a name when their owners differ.
   - "nodes": the graph's nodes. Each node has:
     - "id": a short ID, e.g. "N1", unique in the document.
-    - "type": the node's kind, e.g. "CallFunction", "VariableGet", "VariableSet", "Event", "CustomEvent", "FunctionEntry", "FunctionResult", "Branch", "Sequence", "SwitchEnum", "DynamicCast", "MakeStruct", "BreakStruct", "MacroInstance" (a macro such as ForEachLoop, named by "member_name"), "Timeline".
+    - "type": the node's kind, e.g. "CallFunction", "VariableGet", "VariableSet", "Event", "CustomEvent", "FunctionEntry", "FunctionResult", "Branch", "Sequence", "SwitchEnum", "DynamicCast", "MakeStruct", "BreakStruct", "MacroInstance" (a macro such as ForEachLoop, named by "member_name"), "Timeline". A function's local variables are "LocalVariableGet" and "LocalVariableSet", its parameters "FunctionParameter"; "InputAction" is an input action event (for Enhanced Input, "member_name" is the Input Action asset); For Each (Map) and For Each (Set) are "ForEachLoop". "Unknown" is a node class with no type of its own (often a plugin's node): read "class" and "title" to tell what it does.
     - "class": the Unreal node class, e.g. "K2Node_CallFunction", "K2Node_IfThenElse", "K2Node_VariableGet".
     - "title" (optional): the node's title as the editor shows it, in English. A hint only, left out when it says no more than "member_name" (for example a call to PrintString has none): identify nodes by "type", "class" and "member_name".
     - "member_parent" (optional): for function, variable, event and macro nodes, the class, struct or macro library that declares the member. A Blueprint class is given by its Blueprint's name (e.g. "BP_Enemy"); a variable's type is on its pins.
