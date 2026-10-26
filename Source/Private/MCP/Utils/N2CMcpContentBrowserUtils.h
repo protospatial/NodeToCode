@@ -229,9 +229,57 @@ public:
 	/** True when source control is on and PackageName is checked out by someone else */
 	static bool IsCheckedOutByAnother(const FString& PackageName);
 
+	/** True when Folder is Ancestor or inside it, comparing normalized package paths case-insensitively (card 0281) */
+	static bool IsSameOrInsideFolder(const FString& Folder, const FString& Ancestor);
+
+	/**
+	 * True when the asset registry (or memory) holds a UObjectRedirector at ObjectPath (/Game/A/BP.BP): what a move or
+	 * rename leaves behind when a referencing package could not be fixed up or saved (card 0281)
+	 */
+	static bool IsRedirectorAt(const FString& ObjectPath);
+
+	/**
+	 * Moves the folder Source, its assets and its subfolders (empty ones too) to Destination, the new folder path,
+	 * through UEditorAssetSubsystem::RenameDirectory (card 0281): every destination is validated first, the assets
+	 * move in one IAssetTools::RenameAssets batch, and the source folder is deleted once nothing is left in it.
+	 * Refuses a Destination equal to or inside Source, and an existing Destination. What happened is read back from
+	 * the asset registry into OutResult, also on failure.
+	 * @return True when every asset moved
+	 */
+	static bool MoveFolder(const FString& Source, const FString& Destination, struct FN2CMcpFolderMoveResult& OutResult);
+
 private:
 	// Prevent instantiation
 	FN2CMcpContentBrowserUtils() = delete;
+};
+
+/** What FN2CMcpContentBrowserUtils::MoveFolder did, read back from the asset registry (card 0281) */
+struct FN2CMcpFolderMoveResult
+{
+	/** The folders, normalized */
+	FString Source;
+	FString Destination;
+
+	/** New package paths of the assets now at the destination */
+	TArray<FString> MovedAssets;
+
+	/** Package paths of the assets that are still at the source */
+	TArray<FString> FailedAssets;
+
+	/** Old object paths where a UObjectRedirector was left */
+	TArray<FString> Redirectors;
+
+	/** The source folder no longer exists */
+	bool bSourceRemoved = false;
+
+	/** Why the move failed or stopped: the tool's own check, or the engine's logged reason */
+	FString Error;
+
+	/** movedAssets, failedAssets, redirectors and sourceRemoved, plus tips that describe this outcome, onto Result */
+	void WriteTo(FJsonObject& Result) const;
+
+	/** One line for an error result: the reason, then what moved, what did not and the redirectors left */
+	FString Describe() const;
 };
 
 /**

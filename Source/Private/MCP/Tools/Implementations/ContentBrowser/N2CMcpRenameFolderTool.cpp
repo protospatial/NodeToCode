@@ -4,10 +4,6 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpContentBrowserUtils.h"
-#include "Subsystems/EditorAssetSubsystem.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetRegistry/AssetData.h"
-#include "Editor.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -108,22 +104,17 @@ FMcpToolCallResult FN2CMcpRenameFolderTool::Execute(const TSharedPtr<FJsonObject
             );
         }
 
-        // Count assets before renaming
-        int32 AssetCount = CountAssetsInFolder(NormalizedSourcePath);
-
-        // Log the operation
         FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Renaming folder '%s' to '%s' (%d assets)"), 
-                *OldFolderName, *NewName, AssetCount),
+            FString::Printf(TEXT("Renaming folder '%s' to '%s'"), *NormalizedSourcePath, *NewName),
             EN2CLogSeverity::Info
         );
 
-        // Move the folder contents (which effectively renames the folder)
-        FString MoveError;
-        if (!MoveFolderContents(NormalizedSourcePath, NewFolderPath, MoveError))
+        // One UEditorAssetSubsystem::RenameDirectory call, read back from the asset registry (card 0281)
+        FN2CMcpFolderMoveResult Move;
+        if (!FN2CMcpContentBrowserUtils::MoveFolder(NormalizedSourcePath, NewFolderPath, Move))
         {
             return FMcpToolCallResult::CreateErrorResult(
-                FString::Printf(TEXT("Failed to rename folder: %s"), *MoveError)
+                FString::Printf(TEXT("Failed to rename folder: %s"), *Move.Describe())
             );
         }
 
@@ -134,31 +125,25 @@ FMcpToolCallResult FN2CMcpRenameFolderTool::Execute(const TSharedPtr<FJsonObject
                 NSLOCTEXT("NodeToCode", "FolderRenamed", "Renamed folder '{0}' to '{1}' ({2} assets)"),
                 FText::FromString(OldFolderName),
                 FText::FromString(NewName),
-                FText::AsNumber(AssetCount)
+                FText::AsNumber(Move.MovedAssets.Num())
             ));
             Info.ExpireDuration = 3.0f;
             FSlateNotificationManager::Get().AddNotification(Info);
         }
 
         // Navigate to the renamed folder
-        FN2CMcpContentBrowserUtils::NavigateToPath(NewFolderPath);
+        const bool bNavigated = FN2CMcpContentBrowserUtils::NavigateToPath(Move.Destination);
 
-        // Build success response
+        // Build success response from what the registry holds now
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
         Result->SetStringField(TEXT("message"), TEXT("Folder renamed successfully"));
-        Result->SetStringField(TEXT("oldPath"), NormalizedSourcePath);
-        Result->SetStringField(TEXT("newPath"), NewFolderPath);
+        Result->SetStringField(TEXT("oldPath"), Move.Source);
+        Result->SetStringField(TEXT("newPath"), Move.Destination);
         Result->SetStringField(TEXT("oldName"), OldFolderName);
         Result->SetStringField(TEXT("newName"), NewName);
-        Result->SetNumberField(TEXT("assetsRenamed"), AssetCount);
-        Result->SetBoolField(TEXT("navigated"), true);
-
-        // Add tips
-        TArray<TSharedPtr<FJsonValue>> Tips;
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("All asset references have been automatically updated"))));
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("Use 'read-content-browser-path' to explore the renamed folder"))));
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("The original folder location has been removed"))));
-        Result->SetArrayField(TEXT("tips"), Tips);
+        Result->SetNumberField(TEXT("assetsRenamed"), Move.MovedAssets.Num());
+        Result->SetBoolField(TEXT("navigated"), bNavigated);
+        Move.WriteTo(*Result);
 
         FString ResultString;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
@@ -242,92 +227,4 @@ bool FN2CMcpRenameFolderTool::ValidateNewName(const FString& NewName, FString& O
     }
 
     return true;
-}
-
-bool FN2CMcpRenameFolderTool::MoveFolderContents(const FString& SourcePath, const FString& DestinationPath, 
-    FString& OutErrorMessage) const
-{
-    // Collect all assets in the source folder
-    TArray<FAssetData> AssetsToMove;
-    CollectAllAssetsInFolder(SourcePath, AssetsToMove);
-
-    // Get editor asset subsystem
-    UEditorAssetSubsystem* EditorAssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
-    if (!EditorAssetSubsystem)
-    {
-        OutErrorMessage = TEXT("Failed to get EditorAssetSubsystem");
-        return false;
-    }
-
-    // Move each asset
-    int32 SuccessCount = 0;
-    TArray<FString> FailedAssets;
-
-    for (const FAssetData& AssetData : AssetsToMove)
-    {
-        // Calculate relative path from source folder
-        FString AssetPath = AssetData.PackageName.ToString();
-        FString RelativePath = AssetPath.RightChop(SourcePath.Len());
-        
-        // Build destination path for this asset
-        FString NewAssetPath = DestinationPath + RelativePath;
-        
-        // Get the object path format for the source
-        FString SourceObjectPath = AssetData.GetObjectPathString();
-        
-        // Build the object path format for the destination
-        FString AssetName = FPaths::GetBaseFilename(NewAssetPath);
-        FString DestObjectPath = NewAssetPath + TEXT(".") + AssetName;
-
-        // Rename (move) the asset
-        if (EditorAssetSubsystem->RenameAsset(SourceObjectPath, DestObjectPath))
-        {
-            SuccessCount++;
-        }
-        else
-        {
-            FailedAssets.Add(AssetPath);
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("Failed to move asset: %s"), *AssetPath),
-                EN2CLogSeverity::Warning
-            );
-        }
-    }
-
-    // Report results
-    if (FailedAssets.Num() > 0)
-    {
-        OutErrorMessage = FString::Printf(TEXT("Failed to move %d out of %d assets. First failed asset: %s"), 
-            FailedAssets.Num(), AssetsToMove.Num(), *FailedAssets[0]);
-        return false;
-    }
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Successfully renamed folder by moving %d assets from %s to %s"), 
-            SuccessCount, *SourcePath, *DestinationPath),
-        EN2CLogSeverity::Info
-    );
-
-    return true;
-}
-
-int32 FN2CMcpRenameFolderTool::CountAssetsInFolder(const FString& FolderPath) const
-{
-    TArray<FAssetData> Assets;
-    CollectAllAssetsInFolder(FolderPath, Assets);
-    return Assets.Num();
-}
-
-void FN2CMcpRenameFolderTool::CollectAllAssetsInFolder(const FString& FolderPath, TArray<FAssetData>& OutAssets) const
-{
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-    IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-    // Create filter for the folder
-    FARFilter Filter;
-    Filter.bRecursivePaths = true;
-    Filter.PackagePaths.Add(FName(*FolderPath));
-
-    // Get all assets in the folder and subfolders
-    AssetRegistry.GetAssets(Filter, OutAssets);
 }

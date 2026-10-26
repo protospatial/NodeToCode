@@ -179,7 +179,18 @@ FMcpToolCallResult FN2CMcpRenameAssetTool::Execute(const TSharedPtr<FJsonObject>
 
         // Add tips
         TArray<TSharedPtr<FJsonValue>> Tips;
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("All references to this asset have been automatically updated"))));
+        // What the move left behind, as the registry holds it now (card 0281, review fs-24)
+        if (FN2CMcpContentBrowserUtils::IsRedirectorAt(SourceObjectPath))
+        {
+            Tips.Add(MakeShareable(new FJsonValueString(FString::Printf(TEXT("A redirector was left at %s: a referencing package could not be ")
+                TEXT("updated or saved. Old references still resolve through it; to remove it, right-click its folder in the content browser ")
+                TEXT("and choose Update Redirector References"), *OldPackage))));
+        }
+        else
+        {
+            Tips.Add(MakeShareable(new FJsonValueString(TEXT("No redirector was left: references saved in the project's assets point at the new path"))));
+        }
+        Tips.Add(MakeShareable(new FJsonValueString(TEXT("Paths written in C++, config or text files are not updated"))));
         if (bWasMoved)
         {
             Tips.Add(MakeShareable(new FJsonValueString(TEXT("Use 'read-content-browser-path' to explore the new location"))));

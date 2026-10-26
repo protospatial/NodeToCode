@@ -71,9 +71,6 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists a loaded Blueprint class once, as a Blueprint class | mcp-tools-bp-structure-12 (card 0288) |
-| `NodeToCode.MCP.Content` | folders: move-folder and rename-folder move an empty folder and remove the source | mcp-tools-contentbrowser-fs-10 (card 0281) |
-| `NodeToCode.MCP.Content` | folders: move-folder keeps an empty subfolder | mcp-tools-contentbrowser-fs-10 (card 0281) |
-| `NodeToCode.MCP.Content` | folders: move-folder refuses to move a folder into itself or its own subfolder, changing nothing | mcp-tools-contentbrowser-fs-9 (card 0281) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -169,7 +166,9 @@ counting all); and search-blueprint-classes without duplicates. Its Blueprints a
 
 `NodeToCode.MCP.Content` (`MCP/N2CMcpContentTools.spec.cpp`, card 0163) runs move-asset and rename-asset with package
 and object paths, moves into and out of a project plugin's content mount, move-folder and rename-folder of empty and
-populated folders, and move-folder into itself. "asset names and paths" (card 0284) checks that names are validated as
+populated folders, and move-folder into itself. The folder cases (card 0281) check that empty folders and empty
+subfolders move, the source folder is removed, a folder moved into itself or its subfolder is refused, and the result's
+`movedAssets`, `failedAssets`, `redirectors` and `sourceRemoved` match the asset registry. "asset names and paths" (card 0284) checks that names are validated as
 given (`BP_New.Final` refused), failed copies leave no folder, case-only renames are refused, and results are read
 back from the asset registry. The test plugin is `<Project>/Plugins/N2CTestContent` (content only,
 explicitly loaded), written, mounted at `/N2CTestContent` and removed again by the case. Its assets are saved under
