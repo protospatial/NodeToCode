@@ -20,7 +20,7 @@ FMcpToolDefinition FN2CMcpListComponentsInActorTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("list-components-in-actor"),
-        TEXT("Lists all components in a Blueprint actor with their hierarchy, types, and properties"),
+        TEXT("Lists the components of an Actor Blueprint as a tree, as the Components panel shows them: native components of its C++ class, components its parent Blueprints add, and its own, with types and relative transforms"),
         TEXT("Blueprint Components")
     );
 
@@ -40,7 +40,7 @@ FMcpToolDefinition FN2CMcpListComponentsInActorTool::GetDefinition() const
     TSharedPtr<FJsonObject> IncludeInheritedProp = MakeShareable(new FJsonObject);
     IncludeInheritedProp->SetStringField(TEXT("type"), TEXT("boolean"));
     IncludeInheritedProp->SetBoolField(TEXT("default"), true);
-    IncludeInheritedProp->SetStringField(TEXT("description"), TEXT("Include components added by parent Blueprints. Native components of a C++ parent are never listed"));
+    IncludeInheritedProp->SetStringField(TEXT("description"), TEXT("Include the native components of the C++ parent class and the components parent Blueprints add. When false, only this Blueprint's own components are listed"));
     Properties->SetObjectField(TEXT("includeInherited"), IncludeInheritedProp);
 
     // componentTypeFilter property
@@ -92,37 +92,13 @@ FMcpToolCallResult FN2CMcpListComponentsInActorTool::Execute(const TSharedPtr<FJ
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
 
-        // Verify it's an actor Blueprint
-        if (!Blueprint->ParentClass || !Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
+        // Read the hierarchy: native, inherited and own components, never creating anything (card 0167)
+        FN2CComponentTree Tree;
+        if (!FN2CMcpComponentUtils::BuildComponentTree(Blueprint, Tree, ErrorMsg))
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                TEXT("NOT_ACTOR_BLUEPRINT|Blueprint must derive from Actor to have components"));
+            return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
-
-        // Get the Simple Construction Script
-        USimpleConstructionScript* SCS = FN2CMcpComponentUtils::GetBlueprintSCS(Blueprint, ErrorMsg);
-        if (!SCS)
-        {
-            // It's okay if there's no SCS - it might just not have any components
-            TSharedPtr<FJsonObject> EmptyResult = MakeShareable(new FJsonObject);
-            TArray<TSharedPtr<FJsonValue>> EmptyArray;
-            EmptyResult->SetArrayField(TEXT("components"), EmptyArray);
-            EmptyResult->SetNumberField(TEXT("totalCount"), 0);
-            EmptyResult->SetStringField(TEXT("rootComponent"), TEXT(""));
-            
-            FString OutputString;
-            TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-            FJsonSerializer::Serialize(EmptyResult.ToSharedRef(), Writer);
-            
-            return FMcpToolCallResult::CreateTextResult(OutputString);
-        }
-
-        // Get root nodes
-        const TArray<USCS_Node*>& RootNodes = SCS->GetRootNodes();
-        
-        // Build component hierarchy
-        TSharedPtr<FJsonObject> Result = FN2CMcpComponentUtils::BuildComponentHierarchy(
-            Blueprint, RootNodes, bIncludeInherited, ComponentTypeFilter);
+        TSharedPtr<FJsonObject> Result = FN2CMcpComponentUtils::BuildComponentHierarchy(Tree, bIncludeInherited, ComponentTypeFilter);
 
         // Add Blueprint info
         Result->SetStringField(TEXT("blueprintName"), Blueprint->GetName());

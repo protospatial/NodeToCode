@@ -2,103 +2,464 @@
 
 #include "N2CMcpComponentUtils.h"
 #include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "Engine/InheritableComponentHandler.h"
 #include "Components/ActorComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "GameFramework/Actor.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/ComponentEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Kismet2/Kismet2NameValidators.h"
+#include "SubobjectData.h"
+#include "SubobjectDataSubsystem.h"
+#include "UObject/UObjectGlobals.h"
+#include "Misc/PackageName.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 
-USimpleConstructionScript* FN2CMcpComponentUtils::GetBlueprintSCS(UBlueprint* Blueprint, FString& OutErrorMsg)
+// ---- FN2CComponentTree ----
+
+int32 FN2CComponentTree::Find(const FString& Name) const
+{
+    if (Name.IsEmpty())
+    {
+        return INDEX_NONE;
+    }
+    const FName Wanted(*Name);
+    for (int32 Index = 0; Index < Entries.Num(); ++Index)
+    {
+        if (Entries[Index].Name == Wanted)
+        {
+            return Index;
+        }
+    }
+    for (int32 Index = 0; Index < Entries.Num(); ++Index)
+    {
+        if (Entries[Index].ObjectName == Wanted)
+        {
+            return Index;
+        }
+    }
+    return INDEX_NONE;
+}
+
+void FN2CComponentTree::GetDescendants(int32 Index, TArray<int32>& OutDescendants) const
+{
+    if (!Entries.IsValidIndex(Index))
+    {
+        return;
+    }
+    for (const int32 Child : Entries[Index].Children)
+    {
+        OutDescendants.Add(Child);
+        GetDescendants(Child, OutDescendants);
+    }
+}
+
+FString FN2CComponentTree::SceneComponentNames() const
+{
+    TArray<FString> Names;
+    for (const FN2CComponentEntry& Entry : Entries)
+    {
+        if (Entry.bScene)
+        {
+            Names.Add(Entry.Name.ToString());
+        }
+    }
+    return Names.Num() > 0 ? FString::Join(Names, TEXT(", ")) : FString(TEXT("(none)"));
+}
+
+// ---- Reading ----
+
+bool FN2CMcpComponentUtils::CheckComponentBlueprint(UBlueprint* Blueprint, FString& OutErrorMsg)
 {
     if (!Blueprint)
     {
         OutErrorMsg = TEXT("NO_BLUEPRINT|Blueprint is null");
-        return nullptr;
+        return false;
+    }
+    if (!Blueprint->ParentClass || !Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
+    {
+        OutErrorMsg = TEXT("NOT_ACTOR_BLUEPRINT|Blueprint must derive from Actor to have components");
+        return false;
+    }
+    // Level scripts, macro and function libraries, interfaces and const Blueprints have no construction script; the
+    // engine never gives them an SCS and neither do these tools (card 0167)
+    if (FBlueprintEditorUtils::IsLevelScriptBlueprint(Blueprint) || !FBlueprintEditorUtils::SupportsConstructionScript(Blueprint))
+    {
+        OutErrorMsg = FString::Printf(TEXT("NO_CONSTRUCTION_SCRIPT|Blueprint '%s' cannot have components: it is a level script, ")
+            TEXT("macro library, function library, interface or const Blueprint"), *Blueprint->GetName());
+        return false;
+    }
+    return true;
+}
+
+namespace N2CComponentTreePrivate
+{
+    int32 AddEntry(FN2CComponentTree& Tree, FN2CComponentEntry&& Entry)
+    {
+        const int32 Parent = Entry.Parent;
+        const int32 Index = Tree.Entries.Add(MoveTemp(Entry));
+        if (Tree.Entries.IsValidIndex(Parent))
+        {
+            Tree.Entries[Parent].Children.Add(Index);
+        }
+        else
+        {
+            Tree.TopLevel.Add(Index);
+        }
+        return Index;
     }
 
-    // Get or create the Simple Construction Script
-    USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript;
-    if (!SCS)
+    void AddSCSNodeRecursive(FN2CComponentTree& Tree, USCS_Node* Node, int32 Parent, UBlueprint* OwnerBlueprint,
+        UBlueprint* ForBlueprint, bool bInherited)
     {
-        // Create a new SCS if one doesn't exist
-        SCS = NewObject<USimpleConstructionScript>(Blueprint);
-        Blueprint->SimpleConstructionScript = SCS;
-        
+        if (!Node)
+        {
+            return;
+        }
+        FN2CComponentEntry Entry;
+        Entry.Name = Node->GetVariableName();
+        Entry.Class = Node->ComponentClass;
+        Entry.Node = Node;
+        Entry.OwnerBlueprint = OwnerBlueprint;
+        Entry.bInherited = bInherited;
+        Entry.Template = Node->ComponentTemplate;
+        if (bInherited && ForBlueprint)
+        {
+            // This Blueprint's override of an inherited component (its changed defaults), read only: never created here
+            if (const UInheritableComponentHandler* Handler = ForBlueprint->GetInheritableComponentHandler(false))
+            {
+                if (const UActorComponent* Override = Handler->GetOverridenComponentTemplate(FComponentKey(Node)))
+                {
+                    Entry.Template = Override;
+                }
+            }
+        }
+        Entry.ObjectName = Node->ComponentTemplate ? Node->ComponentTemplate->GetFName() : Entry.Name;
+        Entry.bScene = Entry.Class && Entry.Class->IsChildOf(USceneComponent::StaticClass());
+        const USimpleConstructionScript* SCS = Node->GetSCS();
+        Entry.bDefaultSceneRoot = SCS && SCS->GetDefaultSceneRootNode() == Node;
+        Entry.Parent = Parent;
+        Entry.SocketName = Node->AttachToName;
+        const int32 Index = AddEntry(Tree, MoveTemp(Entry));
+        for (USCS_Node* Child : Node->GetChildNodes())
+        {
+            AddSCSNodeRecursive(Tree, Child, Index, OwnerBlueprint, ForBlueprint, bInherited);
+        }
+    }
+}
+
+bool FN2CMcpComponentUtils::BuildComponentTree(UBlueprint* Blueprint, FN2CComponentTree& OutTree, FString& OutErrorMsg)
+{
+    using namespace N2CComponentTreePrivate;
+    OutTree = FN2CComponentTree();
+    if (!CheckComponentBlueprint(Blueprint, OutErrorMsg))
+    {
+        return false;
+    }
+
+    // Native components: the C++ classes' default subobjects, on the class default object (SCS components never are)
+    const AActor* CDO = Blueprint->GeneratedClass ? Cast<AActor>(Blueprint->GeneratedClass->GetDefaultObject()) : nullptr;
+    if (CDO)
+    {
+        TInlineComponentArray<UActorComponent*> Components;
+        CDO->GetComponents(Components);
+        const USceneComponent* NativeRoot = CDO->GetRootComponent();
+        TMap<const UActorComponent*, int32> NativeIndex;
+        for (UActorComponent* Component : Components)
+        {
+            if (!Component)
+            {
+                continue;
+            }
+            FN2CComponentEntry Entry;
+            const FName VariableName = FComponentEditorUtils::FindVariableNameGivenComponentInstance(Component);
+            Entry.ObjectName = Component->GetFName();
+            Entry.Name = VariableName.IsNone() ? Entry.ObjectName : VariableName;
+            Entry.Class = Component->GetClass();
+            Entry.Template = Component;
+            Entry.bNative = true;
+            Entry.bInherited = true;
+            Entry.bScene = Component->IsA<USceneComponent>();
+            NativeIndex.Add(Component, OutTree.Entries.Add(MoveTemp(Entry)));
+        }
+        // Attach them as the class default object has them; a scene component without a parent sits under the root
+        for (const TPair<const UActorComponent*, int32>& Pair : NativeIndex)
+        {
+            FN2CComponentEntry& Entry = OutTree.Entries[Pair.Value];
+            if (const USceneComponent* Scene = Cast<USceneComponent>(Pair.Key))
+            {
+                if (Scene == NativeRoot)
+                {
+                    continue;
+                }
+                const int32* ParentIndex = Scene->GetAttachParent() ? NativeIndex.Find(Scene->GetAttachParent()) : nullptr;
+                if (!ParentIndex && NativeRoot)
+                {
+                    ParentIndex = NativeIndex.Find(NativeRoot);
+                }
+                if (ParentIndex)
+                {
+                    Entry.Parent = *ParentIndex;
+                    Entry.SocketName = Scene->GetAttachSocketName();
+                }
+            }
+        }
+        for (const TPair<const UActorComponent*, int32>& Pair : NativeIndex)
+        {
+            const int32 Parent = OutTree.Entries[Pair.Value].Parent;
+            if (OutTree.Entries.IsValidIndex(Parent))
+            {
+                OutTree.Entries[Parent].Children.Add(Pair.Value);
+            }
+            else
+            {
+                OutTree.TopLevel.Add(Pair.Value);
+            }
+        }
+        if (const int32* RootIndex = NativeRoot ? NativeIndex.Find(NativeRoot) : nullptr)
+        {
+            OutTree.Root = *RootIndex;
+        }
+    }
+
+    // SCS components, the oldest parent Blueprint first, as USimpleConstructionScript::ExecuteScriptOnActor builds
+    // them: a root node names its parent (a native or inherited component) or goes under the actor's root
+    TArray<UBlueprint*> Hierarchy;
+    if (Blueprint->GeneratedClass)
+    {
+        UBlueprint::GetBlueprintHierarchyFromClass(Blueprint->GeneratedClass, Hierarchy);
+    }
+    if (Hierarchy.Num() == 0 || Hierarchy[0] != Blueprint)
+    {
+        Hierarchy.Insert(Blueprint, 0);
+    }
+    for (int32 Level = Hierarchy.Num() - 1; Level >= 0; --Level)
+    {
+        UBlueprint* LevelBlueprint = Hierarchy[Level];
+        USimpleConstructionScript* SCS = LevelBlueprint ? LevelBlueprint->SimpleConstructionScript.Get() : nullptr;
         if (!SCS)
         {
-            OutErrorMsg = TEXT("SCS_CREATE_FAILED|Failed to create Simple Construction Script");
-            return nullptr;
+            continue;
         }
-    }
-
-    return SCS;
-}
-
-USCS_Node* FN2CMcpComponentUtils::FindSCSNodeByName(USimpleConstructionScript* SCS, const FString& ComponentName)
-{
-    if (!SCS || ComponentName.IsEmpty())
-    {
-        return nullptr;
-    }
-
-    // Search all nodes
-    const TArray<USCS_Node*>& AllNodes = SCS->GetAllNodes();
-    for (USCS_Node* Node : AllNodes)
-    {
-        if (Node && Node->GetVariableName() == *ComponentName)
+        const int32 RootAtStart = OutTree.Root;
+        for (USCS_Node* RootNode : SCS->GetRootNodes())
         {
-            return Node;
+            if (!RootNode)
+            {
+                continue;
+            }
+            // The DefaultSceneRoot is not built when the actor already has a root
+            if (RootNode == SCS->GetDefaultSceneRootNode() && RootAtStart != INDEX_NONE)
+            {
+                continue;
+            }
+            const bool bScene = RootNode->ComponentClass && RootNode->ComponentClass->IsChildOf(USceneComponent::StaticClass());
+            int32 Parent = INDEX_NONE;
+            if (!RootNode->ParentComponentOrVariableName.IsNone())
+            {
+                // A native parent is named by its object name, an inherited one by its variable name
+                for (int32 Index = 0; Index < OutTree.Entries.Num(); ++Index)
+                {
+                    const FN2CComponentEntry& Candidate = OutTree.Entries[Index];
+                    if (RootNode->bIsParentComponentNative
+                        ? (Candidate.bNative && Candidate.ObjectName == RootNode->ParentComponentOrVariableName)
+                        : (!Candidate.bNative && Candidate.Name == RootNode->ParentComponentOrVariableName))
+                    {
+                        Parent = Index;
+                        break;
+                    }
+                }
+            }
+            if (Parent == INDEX_NONE && bScene)
+            {
+                Parent = RootAtStart;
+            }
+            const int32 Before = OutTree.Entries.Num();
+            AddSCSNodeRecursive(OutTree, RootNode, Parent, LevelBlueprint, Blueprint, Level > 0);
+            if (bScene && Parent == INDEX_NONE && OutTree.Root == INDEX_NONE && OutTree.Entries.Num() > Before)
+            {
+                OutTree.Root = Before;
+            }
         }
     }
-
-    return nullptr;
+    return true;
 }
 
-USCS_Node* FN2CMcpComponentUtils::CreateSCSNode(USimpleConstructionScript* SCS, UClass* ComponentClass, 
-    const FString& ComponentName, FString& OutErrorMsg)
+TSharedPtr<FJsonObject> FN2CMcpComponentUtils::BuildComponentHierarchy(const FN2CComponentTree& Tree, bool bIncludeInherited,
+    const FString& ComponentTypeFilter)
 {
-    if (!SCS)
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    TArray<TSharedPtr<FJsonValue>> ComponentsArray;
+    int32 Count = 0;
+    for (const int32 Index : Tree.TopLevel)
     {
-        OutErrorMsg = TEXT("NO_SCS|Simple Construction Script is null");
+        AppendHierarchyRecursive(Tree, Index, bIncludeInherited, ComponentTypeFilter, ComponentsArray, Count);
+    }
+    Result->SetArrayField(TEXT("components"), ComponentsArray);
+    Result->SetNumberField(TEXT("totalCount"), Count);
+    Result->SetStringField(TEXT("rootComponent"), Tree.Entries.IsValidIndex(Tree.Root) ? Tree.Entries[Tree.Root].Name.ToString() : FString());
+    return Result;
+}
+
+void FN2CMcpComponentUtils::AppendHierarchyRecursive(const FN2CComponentTree& Tree, int32 Index, bool bIncludeInherited,
+    const FString& ComponentTypeFilter, TArray<TSharedPtr<FJsonValue>>& OutJsonArray, int32& InOutCount)
+{
+    if (!Tree.Entries.IsValidIndex(Index))
+    {
+        return;
+    }
+    const FN2CComponentEntry& Entry = Tree.Entries[Index];
+    const bool bShow = (bIncludeInherited || !Entry.bInherited) && PassesComponentTypeFilter(Entry.Class, ComponentTypeFilter);
+    if (!bShow)
+    {
+        // Left out: its listed descendants take its place
+        for (const int32 Child : Entry.Children)
+        {
+            AppendHierarchyRecursive(Tree, Child, bIncludeInherited, ComponentTypeFilter, OutJsonArray, InOutCount);
+        }
+        return;
+    }
+    TSharedPtr<FJsonObject> Json = ComponentToJson(Tree, Index);
+    TArray<TSharedPtr<FJsonValue>> ChildrenArray;
+    ++InOutCount;
+    for (const int32 Child : Entry.Children)
+    {
+        AppendHierarchyRecursive(Tree, Child, bIncludeInherited, ComponentTypeFilter, ChildrenArray, InOutCount);
+    }
+    Json->SetArrayField(TEXT("children"), ChildrenArray);
+    OutJsonArray.Add(MakeShared<FJsonValueObject>(Json));
+}
+
+TSharedPtr<FJsonObject> FN2CMcpComponentUtils::ComponentToJson(const FN2CComponentTree& Tree, int32 Index)
+{
+    if (!Tree.Entries.IsValidIndex(Index))
+    {
+        return nullptr;
+    }
+    const FN2CComponentEntry& Entry = Tree.Entries[Index];
+    TSharedPtr<FJsonObject> NodeJson = MakeShared<FJsonObject>();
+    NodeJson->SetStringField(TEXT("name"), Entry.Name.ToString());
+    if (Entry.Class)
+    {
+        NodeJson->SetStringField(TEXT("className"), Entry.Class->GetName());
+        NodeJson->SetStringField(TEXT("classPath"), Entry.Class->GetPathName());
+    }
+    NodeJson->SetStringField(TEXT("nodeGuid"), Entry.Node ? Entry.Node->VariableGuid.ToString() : FString());
+    NodeJson->SetBoolField(TEXT("isSceneComponent"), Entry.bScene);
+    NodeJson->SetBoolField(TEXT("isRootComponent"), Index == Tree.Root);
+    if (Tree.Entries.IsValidIndex(Entry.Parent))
+    {
+        NodeJson->SetStringField(TEXT("parentComponent"), Tree.Entries[Entry.Parent].Name.ToString());
+    }
+    else
+    {
+        NodeJson->SetField(TEXT("parentComponent"), MakeShared<FJsonValueNull>());
+    }
+    NodeJson->SetStringField(TEXT("attachSocketName"), Entry.SocketName.ToString());
+    if (const USceneComponent* SceneComp = Cast<USceneComponent>(Entry.Template))
+    {
+        NodeJson->SetObjectField(TEXT("transform"), GetComponentTransformJson(SceneComp));
+    }
+    NodeJson->SetBoolField(TEXT("isInherited"), Entry.bInherited);
+    NodeJson->SetBoolField(TEXT("isNative"), Entry.bNative);
+    if (Entry.bNative && Entry.ObjectName != Entry.Name)
+    {
+        NodeJson->SetStringField(TEXT("objectName"), Entry.ObjectName.ToString());
+    }
+    if (Entry.bInherited && !Entry.bNative && Entry.OwnerBlueprint)
+    {
+        NodeJson->SetStringField(TEXT("inheritedFrom"), Entry.OwnerBlueprint->GetName());
+    }
+    NodeJson->SetArrayField(TEXT("children"), TArray<TSharedPtr<FJsonValue>>());
+    return NodeJson;
+}
+
+// ---- Classes and names ----
+
+UClass* FN2CMcpComponentUtils::ResolveComponentClass(const FString& InClassPath, FString& OutErrorMsg)
+{
+    const FString ClassPath = InClassPath.TrimStartAndEnd();
+    if (ClassPath.IsEmpty())
+    {
+        OutErrorMsg = TEXT("EMPTY_CLASS_PATH|Component class path is empty");
         return nullptr;
     }
 
+    auto FindByPath = [](const FString& Path) -> UClass*
+    {
+        if (UClass* Found = FindObject<UClass>(nullptr, *Path))
+        {
+            return Found;
+        }
+        // Native classes are always loaded; only content paths are worth a load
+        if (Path.StartsWith(TEXT("/")) && !Path.StartsWith(TEXT("/Script/")))
+        {
+            return LoadObject<UClass>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+        }
+        return nullptr;
+    };
+
+    UClass* ComponentClass = nullptr;
+    FString ShortName = ClassPath;
+    if (ClassPath.Contains(TEXT("/")) || ClassPath.Contains(TEXT(".")))
+    {
+        ComponentClass = FindByPath(ClassPath);
+        if (!ComponentClass && !ClassPath.EndsWith(TEXT("_C")))
+        {
+            // A Blueprint's own path: /Game/BP_Health.BP_Health, or the package path /Game/BP_Health
+            FString WithClass = ClassPath;
+            if (!ClassPath.Contains(TEXT(".")))
+            {
+                WithClass = ClassPath + TEXT(".") + FPackageName::GetShortName(ClassPath);
+            }
+            ComponentClass = FindByPath(WithClass + TEXT("_C"));
+        }
+        int32 Dot = INDEX_NONE;
+        ShortName = ClassPath.FindLastChar(TEXT('.'), Dot) ? ClassPath.RightChop(Dot + 1) : FPackageName::GetShortName(ClassPath);
+    }
+
+    if (!ComponentClass && !ShortName.IsEmpty())
+    {
+        // A short name, or the class part of a path that did not resolve (a module typo): native classes first,
+        // then the name without its U prefix and a Blueprint's generated class
+        TArray<FString> Candidates;
+        Candidates.Add(ShortName);
+        if (ShortName.Len() > 1 && ShortName[0] == TEXT('U') && FChar::IsUpper(ShortName[1]))
+        {
+            Candidates.Add(ShortName.RightChop(1));
+        }
+        if (!ShortName.EndsWith(TEXT("_C")))
+        {
+            Candidates.Add(ShortName + TEXT("_C"));
+        }
+        for (const FString& Candidate : Candidates)
+        {
+            ComponentClass = FindFirstObject<UClass>(*Candidate, EFindFirstObjectOptions::NativeFirst);
+            if (ComponentClass)
+            {
+                break;
+            }
+        }
+    }
+
+    if (!ComponentClass)
+    {
+        OutErrorMsg = FString::Printf(TEXT("CLASS_NOT_FOUND|Component class '%s' not found. Use a class path such as ")
+            TEXT("'/Script/Engine.StaticMeshComponent', a loaded class name such as 'StaticMeshComponent', or a ")
+            TEXT("component Blueprint's path"), *ClassPath);
+        return nullptr;
+    }
     if (!ValidateComponentClass(ComponentClass, OutErrorMsg))
     {
         return nullptr;
     }
-
-    // Generate name if not provided
-    FString FinalComponentName = ComponentName;
-    if (FinalComponentName.IsEmpty())
-    {
-        FinalComponentName = GenerateUniqueComponentName(SCS, ComponentClass);
-    }
-    else
-    {
-        // Ensure the name is unique
-        if (FindSCSNodeByName(SCS, FinalComponentName))
-        {
-            OutErrorMsg = FString::Printf(TEXT("NAME_EXISTS|Component with name '%s' already exists"), *FinalComponentName);
-            return nullptr;
-        }
-    }
-
-    // Create the SCS node
-    USCS_Node* NewNode = SCS->CreateNode(ComponentClass, *FinalComponentName);
-    if (!NewNode)
-    {
-        OutErrorMsg = TEXT("NODE_CREATE_FAILED|Failed to create SCS node");
-        return nullptr;
-    }
-
-    // Add to the SCS
-    SCS->AddNode(NewNode);
-
-    return NewNode;
+    return ComponentClass;
 }
 
 bool FN2CMcpComponentUtils::ValidateComponentClass(UClass* ComponentClass, FString& OutErrorMsg)
@@ -108,252 +469,107 @@ bool FN2CMcpComponentUtils::ValidateComponentClass(UClass* ComponentClass, FStri
         OutErrorMsg = TEXT("INVALID_CLASS|Component class is null");
         return false;
     }
-
-    // Check if it's actually a component class
     if (!ComponentClass->IsChildOf(UActorComponent::StaticClass()))
     {
-        OutErrorMsg = FString::Printf(TEXT("NOT_COMPONENT|Class '%s' is not an ActorComponent"), 
-            *ComponentClass->GetName());
+        OutErrorMsg = FString::Printf(TEXT("NOT_COMPONENT|Class '%s' is not an ActorComponent"), *ComponentClass->GetName());
         return false;
     }
-
-    // Check if the class can be instantiated
-    if (ComponentClass->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+    if (ComponentClass->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists)
+        || FKismetEditorUtilities::IsClassABlueprintSkeleton(ComponentClass)
+        || (ComponentClass->ClassWithin && ComponentClass->ClassWithin != UObject::StaticClass()))
     {
-        OutErrorMsg = FString::Printf(TEXT("CANNOT_INSTANTIATE|Class '%s' cannot be instantiated (abstract, deprecated, or has newer version)"), 
-            *ComponentClass->GetName());
+        OutErrorMsg = FString::Printf(TEXT("CANNOT_INSTANTIATE|Class '%s' cannot be instantiated (abstract, deprecated, ")
+            TEXT("has newer version, a skeleton class, or limited to an outer by Within)"), *ComponentClass->GetName());
         return false;
     }
-
-    // Components don't need to be explicitly blueprintable - just check if they can be instantiated
-
     return true;
 }
 
-FString FN2CMcpComponentUtils::GenerateUniqueComponentName(USimpleConstructionScript* SCS, UClass* ComponentClass)
+bool FN2CMcpComponentUtils::ValidateNewComponentName(UBlueprint* Blueprint, const FString& Name, FString& OutErrorMsg)
 {
-    if (!SCS || !ComponentClass)
+    if (!FName::IsValidXName(Name, INVALID_OBJECTNAME_CHARACTERS))
     {
-        return TEXT("Component");
+        OutErrorMsg = FString::Printf(TEXT("INVALID_NAME|'%s' is not a valid component name (no spaces or any of %s)"),
+            *Name, INVALID_OBJECTNAME_CHARACTERS);
+        return false;
     }
-
-    // Get base name from class
-    FString BaseName = ComponentClass->GetName();
-    
-    // Remove common prefixes
-    if (BaseName.StartsWith(TEXT("U")))
+    FKismetNameValidator Validator(Blueprint);
+    const EValidatorResult Result = Validator.IsValid(Name);
+    if (Result == EValidatorResult::Ok)
     {
-        BaseName = BaseName.RightChop(1);
+        return true;
     }
-    
-    // Remove "Component" suffix if present
-    if (BaseName.EndsWith(TEXT("Component")))
-    {
-        BaseName = BaseName.LeftChop(9);
-    }
-
-    // Ensure we have a valid base name
-    if (BaseName.IsEmpty())
-    {
-        BaseName = TEXT("Component");
-    }
-
-    // Find a unique name
-    FString UniqueName = BaseName;
-    int32 Counter = 1;
-    
-    while (FindSCSNodeByName(SCS, UniqueName))
-    {
-        UniqueName = FString::Printf(TEXT("%s%d"), *BaseName, Counter++);
-    }
-
-    return UniqueName;
+    const bool bTaken = Result == EValidatorResult::AlreadyInUse || Result == EValidatorResult::ExistingName
+        || Result == EValidatorResult::LocallyInUse;
+    OutErrorMsg = FString::Printf(TEXT("%s|%s"), bTaken ? TEXT("NAME_EXISTS") : TEXT("INVALID_NAME"),
+        *INameValidatorInterface::GetErrorString(Name, Result));
+    return false;
 }
 
-bool FN2CMcpComponentUtils::SetupComponentAttachment(USCS_Node* ChildNode, USCS_Node* ParentNode, 
-    const FString& SocketName, FString& OutErrorMsg)
+// ---- Subobject data ----
+
+bool FN2CMcpComponentUtils::GatherSubobjects(UBlueprint* Blueprint, TArray<FSubobjectDataHandle>& OutHandles,
+    FSubobjectDataHandle& OutActorHandle, FString& OutErrorMsg)
 {
-    if (!ChildNode)
+    OutHandles.Reset();
+    OutActorHandle = FSubobjectDataHandle::InvalidHandle;
+    USubobjectDataSubsystem* Subsystem = USubobjectDataSubsystem::Get();
+    if (!Subsystem)
     {
-        OutErrorMsg = TEXT("NO_CHILD|Child node is null");
+        OutErrorMsg = TEXT("NO_SUBOBJECT_SUBSYSTEM|The engine's SubobjectDataSubsystem is not available");
         return false;
     }
-
-    if (!ParentNode)
+    Subsystem->K2_GatherSubobjectDataForBlueprint(Blueprint, OutHandles);
+    for (const FSubobjectDataHandle& Handle : OutHandles)
     {
-        OutErrorMsg = TEXT("NO_PARENT|Parent node is null");
-        return false;
-    }
-
-    // Verify both are scene components
-    USceneComponent* ChildTemplate = Cast<USceneComponent>(ChildNode->ComponentTemplate);
-    USceneComponent* ParentTemplate = Cast<USceneComponent>(ParentNode->ComponentTemplate);
-
-    if (!ChildTemplate)
-    {
-        OutErrorMsg = TEXT("CHILD_NOT_SCENE|Child component is not a SceneComponent");
-        return false;
-    }
-
-    if (!ParentTemplate)
-    {
-        OutErrorMsg = TEXT("PARENT_NOT_SCENE|Parent component is not a SceneComponent");
-        return false;
-    }
-
-    // Check for circular attachment
-    FName ParentName = ParentNode->ParentComponentOrVariableName;
-    USCS_Node* CurrentParent = ParentName.IsNone() ? 
-        nullptr : FindSCSNodeByName(ChildNode->GetSCS(), ParentName.ToString());
-    
-    while (CurrentParent)
-    {
-        if (CurrentParent == ChildNode)
+        const FSubobjectData* Data = Handle.GetData();
+        if (Data && Data->IsActor())
         {
-            OutErrorMsg = TEXT("CIRCULAR_ATTACHMENT|Circular attachment detected");
-            return false;
+            OutActorHandle = Handle;
+            break;
         }
-        ParentName = CurrentParent->ParentComponentOrVariableName;
-        CurrentParent = ParentName.IsNone() ? 
-            nullptr : FindSCSNodeByName(ChildNode->GetSCS(), ParentName.ToString());
     }
-
-    // Set up the attachment
-    ChildNode->SetParent(ParentNode);
-    
-    if (!SocketName.IsEmpty())
+    if (!OutActorHandle.IsValid())
     {
-        ChildNode->AttachToName = *SocketName;
+        OutErrorMsg = FString::Printf(TEXT("NO_SUBOBJECT_DATA|Could not read the components of '%s' (compile it and retry)"),
+            Blueprint ? *Blueprint->GetName() : TEXT("<null>"));
+        return false;
     }
-
     return true;
 }
 
-TSharedPtr<FJsonObject> FN2CMcpComponentUtils::BuildComponentHierarchy(UBlueprint* Blueprint,
-    const TArray<USCS_Node*>& RootNodes, bool bIncludeInherited, const FString& ComponentTypeFilter)
+FSubobjectDataHandle FN2CMcpComponentUtils::FindSubobjectHandle(const TArray<FSubobjectDataHandle>& Handles, FName VariableName)
 {
-    TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
-    TArray<TSharedPtr<FJsonValue>> ComponentsArray;
-
-    // Build hierarchy for each root node
-    for (USCS_Node* RootNode : RootNodes)
+    for (const FSubobjectDataHandle& Handle : Handles)
     {
-        if (RootNode)
+        const FSubobjectData* Data = Handle.GetData();
+        if (Data && Data->IsComponent() && Data->GetVariableName() == VariableName)
         {
-            BuildNodeHierarchyRecursive(RootNode, false, ComponentTypeFilter, ComponentsArray);
+            return Handle;
         }
     }
-
-    // Add inherited components if requested
-    if (bIncludeInherited && Blueprint)
-    {
-        TArray<USCS_Node*> InheritedNodes;
-        GetInheritedSCSNodes(Blueprint, InheritedNodes);
-        
-        for (USCS_Node* InheritedNode : InheritedNodes)
-        {
-            BuildNodeHierarchyRecursive(InheritedNode, true, ComponentTypeFilter, ComponentsArray);
-        }
-    }
-
-    Result->SetArrayField(TEXT("components"), ComponentsArray);
-    Result->SetNumberField(TEXT("totalCount"), ComponentsArray.Num());
-
-    // Find root component name
-    FString RootComponentName;
-    if (RootNodes.Num() > 0 && RootNodes[0])
-    {
-        RootComponentName = RootNodes[0]->GetVariableName().ToString();
-    }
-    Result->SetStringField(TEXT("rootComponent"), RootComponentName);
-
-    return Result;
+    return FSubobjectDataHandle::InvalidHandle;
 }
 
-TSharedPtr<FJsonObject> FN2CMcpComponentUtils::SCSNodeToJson(USCS_Node* Node, bool bIsInherited)
+USCS_Node* FN2CMcpComponentUtils::FindOwnSCSNodeForTemplate(UBlueprint* Blueprint, const UActorComponent* Template)
 {
-    if (!Node)
+    if (!Blueprint || !Blueprint->SimpleConstructionScript || !Template)
     {
         return nullptr;
     }
-
-    TSharedPtr<FJsonObject> NodeJson = MakeShareable(new FJsonObject);
-
-    // Basic info
-    NodeJson->SetStringField(TEXT("name"), Node->GetVariableName().ToString());
-    
-    UClass* ComponentClass = Node->ComponentClass;
-    if (ComponentClass)
+    for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
     {
-        NodeJson->SetStringField(TEXT("className"), ComponentClass->GetName());
-        NodeJson->SetStringField(TEXT("classPath"), ComponentClass->GetPathName());
-    }
-
-    // Node GUID
-    NodeJson->SetStringField(TEXT("nodeGuid"), Node->VariableGuid.ToString());
-
-    // Component type info
-    bool bIsSceneComponent = Node->ComponentTemplate && Node->ComponentTemplate->IsA<USceneComponent>();
-    NodeJson->SetBoolField(TEXT("isSceneComponent"), bIsSceneComponent);
-    NodeJson->SetBoolField(TEXT("isRootComponent"), Node->ParentComponentOrVariableName.IsNone());
-
-    // Parent info
-    if (!Node->ParentComponentOrVariableName.IsNone())
-    {
-        NodeJson->SetStringField(TEXT("parentComponent"), Node->ParentComponentOrVariableName.ToString());
-    }
-    else
-    {
-        NodeJson->SetField(TEXT("parentComponent"), MakeShareable(new FJsonValueNull));
-    }
-
-    // Socket attachment
-    NodeJson->SetStringField(TEXT("attachSocketName"), Node->AttachToName.ToString());
-
-    // Transform for scene components
-    if (bIsSceneComponent)
-    {
-        USceneComponent* SceneComp = Cast<USceneComponent>(Node->ComponentTemplate);
-        if (SceneComp)
+        if (Node && Node->ComponentTemplate == Template)
         {
-            NodeJson->SetObjectField(TEXT("transform"), GetComponentTransformJson(SceneComp));
+            return Node;
         }
     }
-
-    NodeJson->SetBoolField(TEXT("isInherited"), bIsInherited);
-
-    // Children array (will be populated by BuildNodeHierarchyRecursive)
-    TArray<TSharedPtr<FJsonValue>> ChildrenArray;
-    NodeJson->SetArrayField(TEXT("children"), ChildrenArray);
-
-    return NodeJson;
+    return nullptr;
 }
 
-void FN2CMcpComponentUtils::GetInheritedSCSNodes(UBlueprint* Blueprint, TArray<USCS_Node*>& OutInheritedNodes)
-{
-    if (!Blueprint)
-    {
-        return;
-    }
+// ---- Transforms and filters ----
 
-    // Get parent Blueprint
-    UBlueprint* ParentBP = nullptr;
-    if (Blueprint->ParentClass)
-    {
-        ParentBP = Cast<UBlueprint>(Blueprint->ParentClass->ClassGeneratedBy);
-    }
-
-    if (ParentBP && ParentBP->SimpleConstructionScript)
-    {
-        const TArray<USCS_Node*>& ParentNodes = ParentBP->SimpleConstructionScript->GetAllNodes();
-        OutInheritedNodes.Append(ParentNodes);
-
-        // Recursively get inherited nodes from grandparents
-        GetInheritedSCSNodes(ParentBP, OutInheritedNodes);
-    }
-}
-
-bool FN2CMcpComponentUtils::ApplyTransformToComponent(USceneComponent* SceneComponent, 
+bool FN2CMcpComponentUtils::ApplyTransformToComponent(USceneComponent* SceneComponent,
     const TSharedPtr<FJsonObject>& TransformJson, FString& OutErrorMsg)
 {
     if (!SceneComponent)
@@ -361,14 +577,12 @@ bool FN2CMcpComponentUtils::ApplyTransformToComponent(USceneComponent* SceneComp
         OutErrorMsg = TEXT("NO_COMPONENT|Scene component is null");
         return false;
     }
-
     if (!TransformJson.IsValid())
     {
-        // No transform to apply
         return true;
     }
+    SceneComponent->Modify();
 
-    // Apply location
     const TSharedPtr<FJsonObject>* LocationObj;
     if (TransformJson->TryGetObjectField(TEXT("location"), LocationObj))
     {
@@ -376,11 +590,9 @@ bool FN2CMcpComponentUtils::ApplyTransformToComponent(USceneComponent* SceneComp
         (*LocationObj)->TryGetNumberField(TEXT("x"), X);
         (*LocationObj)->TryGetNumberField(TEXT("y"), Y);
         (*LocationObj)->TryGetNumberField(TEXT("z"), Z);
-        
         SceneComponent->SetRelativeLocation(FVector(X, Y, Z));
     }
 
-    // Apply rotation
     const TSharedPtr<FJsonObject>* RotationObj;
     if (TransformJson->TryGetObjectField(TEXT("rotation"), RotationObj))
     {
@@ -388,11 +600,9 @@ bool FN2CMcpComponentUtils::ApplyTransformToComponent(USceneComponent* SceneComp
         (*RotationObj)->TryGetNumberField(TEXT("pitch"), Pitch);
         (*RotationObj)->TryGetNumberField(TEXT("yaw"), Yaw);
         (*RotationObj)->TryGetNumberField(TEXT("roll"), Roll);
-        
         SceneComponent->SetRelativeRotation(FRotator(Pitch, Yaw, Roll));
     }
 
-    // Apply scale
     const TSharedPtr<FJsonObject>* ScaleObj;
     if (TransformJson->TryGetObjectField(TEXT("scale"), ScaleObj))
     {
@@ -400,10 +610,8 @@ bool FN2CMcpComponentUtils::ApplyTransformToComponent(USceneComponent* SceneComp
         (*ScaleObj)->TryGetNumberField(TEXT("x"), X);
         (*ScaleObj)->TryGetNumberField(TEXT("y"), Y);
         (*ScaleObj)->TryGetNumberField(TEXT("z"), Z);
-        
         SceneComponent->SetRelativeScale3D(FVector(X, Y, Z));
     }
-
     return true;
 }
 
@@ -413,214 +621,50 @@ bool FN2CMcpComponentUtils::PassesComponentTypeFilter(UClass* ComponentClass, co
     {
         return true;
     }
-
     if (TypeFilter == TEXT("scene"))
     {
         return ComponentClass->IsChildOf(USceneComponent::StaticClass());
     }
-    else if (TypeFilter == TEXT("actor"))
+    if (TypeFilter == TEXT("actor"))
     {
-        return ComponentClass->IsChildOf(UActorComponent::StaticClass()) && 
-               !ComponentClass->IsChildOf(USceneComponent::StaticClass());
+        return ComponentClass->IsChildOf(UActorComponent::StaticClass())
+            && !ComponentClass->IsChildOf(USceneComponent::StaticClass());
     }
-    else if (TypeFilter == TEXT("primitive"))
+    if (TypeFilter == TEXT("primitive"))
     {
         return ComponentClass->IsChildOf(UPrimitiveComponent::StaticClass());
     }
-
     return true;
 }
 
-void FN2CMcpComponentUtils::BuildNodeHierarchyRecursive(USCS_Node* Node, bool bIsInherited, 
-    const FString& ComponentTypeFilter, TArray<TSharedPtr<FJsonValue>>& OutJsonArray)
-{
-    if (!Node || !Node->ComponentClass)
-    {
-        return;
-    }
-
-    // Check type filter
-    if (!PassesComponentTypeFilter(Node->ComponentClass, ComponentTypeFilter))
-    {
-        return;
-    }
-
-    // Convert node to JSON
-    TSharedPtr<FJsonObject> NodeJson = SCSNodeToJson(Node, bIsInherited);
-    if (!NodeJson.IsValid())
-    {
-        return;
-    }
-
-    // Process children
-    TArray<TSharedPtr<FJsonValue>> ChildrenArray;
-    TArray<USCS_Node*> ChildNodes = Node->GetChildNodes();
-    
-    for (USCS_Node* ChildNode : ChildNodes)
-    {
-        BuildNodeHierarchyRecursive(ChildNode, bIsInherited, ComponentTypeFilter, ChildrenArray);
-    }
-
-    NodeJson->SetArrayField(TEXT("children"), ChildrenArray);
-    
-    // Add to output array
-    OutJsonArray.Add(MakeShareable(new FJsonValueObject(NodeJson)));
-}
-
-TSharedPtr<FJsonObject> FN2CMcpComponentUtils::GetComponentTransformJson(USceneComponent* Component)
+TSharedPtr<FJsonObject> FN2CMcpComponentUtils::GetComponentTransformJson(const USceneComponent* Component)
 {
     if (!Component)
     {
         return nullptr;
     }
+    TSharedPtr<FJsonObject> TransformJson = MakeShared<FJsonObject>();
 
-    TSharedPtr<FJsonObject> TransformJson = MakeShareable(new FJsonObject);
-
-    // Location
-    FVector Location = Component->GetRelativeLocation();
-    TSharedPtr<FJsonObject> LocationJson = MakeShareable(new FJsonObject);
+    const FVector Location = Component->GetRelativeLocation();
+    TSharedPtr<FJsonObject> LocationJson = MakeShared<FJsonObject>();
     LocationJson->SetNumberField(TEXT("x"), Location.X);
     LocationJson->SetNumberField(TEXT("y"), Location.Y);
     LocationJson->SetNumberField(TEXT("z"), Location.Z);
     TransformJson->SetObjectField(TEXT("location"), LocationJson);
 
-    // Rotation
-    FRotator Rotation = Component->GetRelativeRotation();
-    TSharedPtr<FJsonObject> RotationJson = MakeShareable(new FJsonObject);
+    const FRotator Rotation = Component->GetRelativeRotation();
+    TSharedPtr<FJsonObject> RotationJson = MakeShared<FJsonObject>();
     RotationJson->SetNumberField(TEXT("pitch"), Rotation.Pitch);
     RotationJson->SetNumberField(TEXT("yaw"), Rotation.Yaw);
     RotationJson->SetNumberField(TEXT("roll"), Rotation.Roll);
     TransformJson->SetObjectField(TEXT("rotation"), RotationJson);
 
-    // Scale
-    FVector Scale = Component->GetRelativeScale3D();
-    TSharedPtr<FJsonObject> ScaleJson = MakeShareable(new FJsonObject);
+    const FVector Scale = Component->GetRelativeScale3D();
+    TSharedPtr<FJsonObject> ScaleJson = MakeShared<FJsonObject>();
     ScaleJson->SetNumberField(TEXT("x"), Scale.X);
     ScaleJson->SetNumberField(TEXT("y"), Scale.Y);
     ScaleJson->SetNumberField(TEXT("z"), Scale.Z);
     TransformJson->SetObjectField(TEXT("scale"), ScaleJson);
 
     return TransformJson;
-}
-
-bool FN2CMcpComponentUtils::DeleteSCSNode(USimpleConstructionScript* SCS, USCS_Node* NodeToDelete, 
-    bool bDeleteChildren, FString& OutErrorMsg)
-{
-    if (!SCS)
-    {
-        OutErrorMsg = TEXT("NO_SCS|Simple Construction Script is null");
-        return false;
-    }
-
-    if (!NodeToDelete)
-    {
-        OutErrorMsg = TEXT("NO_NODE|Node to delete is null");
-        return false;
-    }
-
-    // Check if node can be deleted
-    bool bIsInherited = false;
-    const TArray<USCS_Node*>& AllNodes = SCS->GetAllNodes();
-    if (!AllNodes.Contains(NodeToDelete))
-    {
-        // Check if it's an inherited node
-        UBlueprint* Blueprint = Cast<UBlueprint>(SCS->GetOuter());
-        if (Blueprint)
-        {
-            TArray<USCS_Node*> InheritedNodes;
-            GetInheritedSCSNodes(Blueprint, InheritedNodes);
-            bIsInherited = InheritedNodes.Contains(NodeToDelete);
-        }
-    }
-
-    if (!CanDeleteNode(NodeToDelete, bIsInherited, OutErrorMsg))
-    {
-        return false;
-    }
-
-    // Handle children
-    TArray<USCS_Node*> ChildNodes = NodeToDelete->GetChildNodes();
-    if (!bDeleteChildren && ChildNodes.Num() > 0)
-    {
-        // Reparent children to the parent of the node being deleted
-        USCS_Node* ParentNode = nullptr;
-        if (!NodeToDelete->ParentComponentOrVariableName.IsNone())
-        {
-            ParentNode = FindSCSNodeByName(SCS, NodeToDelete->ParentComponentOrVariableName.ToString());
-        }
-
-        for (USCS_Node* ChildNode : ChildNodes)
-        {
-            if (ParentNode)
-            {
-                ChildNode->SetParent(ParentNode);
-            }
-            else
-            {
-                // Make it a root node
-                ChildNode->SetParent(static_cast<USCS_Node*>(nullptr));
-            }
-        }
-    }
-    else if (bDeleteChildren)
-    {
-        // Recursively delete all children
-        TArray<USCS_Node*> AllChildren;
-        GetAllChildNodes(NodeToDelete, AllChildren);
-
-        // Delete from deepest to shallowest
-        for (int32 i = AllChildren.Num() - 1; i >= 0; i--)
-        {
-            SCS->RemoveNode(AllChildren[i]);
-        }
-    }
-
-    // Remove the node from SCS
-    SCS->RemoveNode(NodeToDelete);
-
-    return true;
-}
-
-void FN2CMcpComponentUtils::GetAllChildNodes(USCS_Node* Node, TArray<USCS_Node*>& OutChildren)
-{
-    if (!Node)
-    {
-        return;
-    }
-
-    TArray<USCS_Node*> DirectChildren = Node->GetChildNodes();
-    for (USCS_Node* Child : DirectChildren)
-    {
-        OutChildren.Add(Child);
-        // Recursively get children of children
-        GetAllChildNodes(Child, OutChildren);
-    }
-}
-
-bool FN2CMcpComponentUtils::CanDeleteNode(USCS_Node* Node, bool bIsInherited, FString& OutErrorMsg)
-{
-    if (!Node)
-    {
-        OutErrorMsg = TEXT("NO_NODE|Node is null");
-        return false;
-    }
-
-    if (bIsInherited)
-    {
-        OutErrorMsg = TEXT("INHERITED_NODE|Cannot delete components inherited from parent Blueprint");
-        return false;
-    }
-
-    // Check if it's the default scene root
-    if (Node->ComponentTemplate && Node->ComponentTemplate->GetFName() == TEXT("DefaultSceneRoot"))
-    {
-        // Only prevent deletion if it has children
-        if (Node->GetChildNodes().Num() > 0)
-        {
-            OutErrorMsg = TEXT("DEFAULT_ROOT_WITH_CHILDREN|Cannot delete DefaultSceneRoot when it has child components");
-            return false;
-        }
-    }
-
-    return true;
 }
