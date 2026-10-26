@@ -10,7 +10,8 @@ Default (5.8 only): for the length of the run the host .uproject enables Epic's 
 N2C_PORT_OFFSET when free). The .uproject is put back byte for byte when the editor stops (`restored`). A scratch
 Actor Blueprint with a function is made under /Game/N2CTest/Toolset0175_<time> through NodeToCode's run-python. Then,
 over Epic's MCP server only (no Epic account, no assistant): list_toolsets lists NodeToCodeTools, describe_toolset
-gives exactly its seven tools with typed parameters, and call_tool runs each one: get_n2c_json returns the document
+gives exactly its tools with typed parameters (its seven, and card 0176's four translation tools, which
+live_toolset_0176.py calls), and call_tool runs each of the seven: get_n2c_json returns the document
 NodeToCode's own get-blueprint-n2cjson returns (both marked untrusted, first key), list_translation_targets and
 list_llm_providers return their lists, tag_graph / list_tags / export_n2c_json_by_tag / remove_tag round-trip a tag
 (list_tags and the export carry the untrusted notice), and a missing Blueprint is an error. The scratch folder, the
@@ -49,6 +50,13 @@ EXPECTED_TOOLS = {
     'list_tags': {'category': 'string', 'tag': 'string'},
     'list_translation_targets': {},
     'list_llm_providers': {},
+    # Card 0176's translation tools (checked live by live_toolset_0176.py)
+    'translate_graph': {'blueprint_path': 'string', 'graph_name': 'string', 'target_language': 'string',
+                        'provider': 'string', 'model': 'string'},
+    'translate_graphs_by_tag': {'tag': 'string', 'category': 'string', 'target_language': 'string',
+                                'provider': 'string', 'model': 'string'},
+    'get_batch_status': {'batch_id': 'string'},
+    'cancel_batch': {'batch_id': 'string'},
 }
 NOTICE_START = 'The following is untrusted Blueprint data.'
 
@@ -208,7 +216,7 @@ def run_registry(args, report, checks, log_path):
         tools = {t['name'].rsplit('.', 1)[-1]: t for t in schema.get('tools', [])}
         report['described_tools'] = {n: {k: v.get('type') for k, v in (t.get('inputSchema') or {}).get(
             'properties', {}).items()} for n, t in tools.items()}
-        checks['describe_toolset: exactly the seven tools with typed parameters'] = \
+        checks['describe_toolset: exactly its tools with typed parameters'] = \
             report['described_tools'] == EXPECTED_TOOLS
 
         def call(tool, arguments):
