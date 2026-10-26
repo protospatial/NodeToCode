@@ -39,6 +39,12 @@ public:
 	 */
 	void UpdateForSelection(const TArray<FN2CTagInfo>& SelectedGraphs);
 
+	/**
+	 * Saves settings the quick picker changed (provider, model) through UN2CSettings::SaveToProjectConfig, the path
+	 * Project Settings edits take, so a later Project Settings edit is not overridden at the next start
+	 */
+	static void SaveSettings(TConstArrayView<FName> PropertyNames);
+
 private:
 	/** Get total token count display text */
 	FText GetTokenCountText() const;
@@ -92,9 +98,6 @@ private:
 
 	/** Handle settings button click */
 	FReply OnSettingsClicked();
-
-	/** Save settings to config file */
-	void SaveSettings();
 
 	// UI Elements
 	TSharedPtr<STextBlock> ModelNameText;

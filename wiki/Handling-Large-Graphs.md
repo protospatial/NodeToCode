@@ -28,6 +28,9 @@ The context window bar in the Node to Code window estimates a graph's size and i
 [Model Price Overrides](Provider-Configuration#model-price-overrides). For a **Custom Model ID** it shows the ID,
 assumes a 128K context and costs nothing unless you add a price override.
 
+The provider and model you pick beside the bar are saved to the project's settings (`Config/DefaultNodeToCode.ini`),
+the same place Project Settings saves them, so whichever you changed last is used after a restart.
+
 ## Translation Approaches
 
 1. **Incremental Translation**
