@@ -44,6 +44,25 @@ public:
     /** Clear all logged errors */
     void ClearErrors();
 
+    /**
+     * Whether n2c.LogLLMPayloads is on (default off, never saved to config). Only then are LLM request payloads,
+     * system and user messages, the N2C JSON sent and model responses written to the log, at Debug severity.
+     */
+    static bool ShouldLogLLMPayloads();
+
+    /**
+     * Logs LLM request or response text at Debug. With n2c.LogLLMPayloads on: "<Label>: <Content>". Otherwise
+     * only "<What>: <n> characters (not logged; n2c.LogLLMPayloads 1 logs it)", so a log users attach to an issue
+     * carries no Blueprint logic, prompt or generated code.
+     */
+    void LogLLMContent(const TCHAR* Label, const TCHAR* What, const FString& Content, const FString& Context = TEXT(""));
+
+    /** Text with every occurrence of Secret replaced by "[redacted]" (Secret shorter than 8 characters is left alone) */
+    static FString RedactSecret(const FString& Text, const FString& Secret);
+
+    /** Current minimum severity */
+    EN2CLogSeverity GetMinSeverity() const { return MinSeverity.load(); }
+
     /** Set minimum severity level for logging */
     void SetMinSeverity(EN2CLogSeverity Severity);
 

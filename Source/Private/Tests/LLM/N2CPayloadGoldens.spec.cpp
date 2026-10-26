@@ -11,6 +11,7 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "LLM/N2CBaseLLMService.h"
+#include "LLM/N2CHttpHandlerBase.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
 #include "LLM/Providers/N2CAnthropicService.h"
@@ -35,7 +36,7 @@
  * plus an explicit Max Output Tokens budget and an unregistered model ID per cloud provider. Each case builds the
  * body through the provider's service (FormatRequestPayload via BuildRequestPayloadForTesting; nothing is sent),
  * takes the endpoint from GetConfiguration and the headers the HTTP handler would send (Content-Type, a Bearer
- * Authorization when the service returns an auth token, then GetProviderHeaders), and compares all three with
+ * Authorization when the service returns an auth token and sets no credential header itself, then GetProviderHeaders), and compares all three with
  * Goldens/LLM/Payload/<provider>.json.
  *
  * Each case also checks the payload rules the live provider matrix (Tests/mcp_probe/live_provider_matrix.py, gate
@@ -217,7 +218,7 @@ BEGIN_DEFINE_SPEC(FN2CPayloadGoldensSpec, "NodeToCode.LLM.Payload.Golden", N2C_T
 		TMap<FString, FString> ProviderHeaders;
 		Service->GetProviderHeaders(ProviderHeaders);
 		Built.Headers.Add(TEXT("content-type"), TEXT("application/json"));
-		if (!AuthToken.IsEmpty())
+		if (!AuthToken.IsEmpty() && !UN2CHttpHandlerBase::HasCredentialHeader(ProviderHeaders))
 		{
 			Built.Headers.Add(TEXT("authorization"), FString::Printf(TEXT("Bearer %s"), *AuthToken));
 		}
@@ -536,6 +537,7 @@ BEGIN_DEFINE_SPEC(FN2CPayloadGoldensSpec, "NodeToCode.LLM.Payload.Golden", N2C_T
 		}
 		case EN2CLLMProvider::Anthropic:
 			TestEqual(What + TEXT(": x-api-key"), Built.Headers.FindRef(TEXT("x-api-key")), FString(TestKey));
+			TestFalse(What + TEXT(": no Authorization header (the key goes in x-api-key only)"), Built.Headers.Contains(TEXT("authorization")));
 			TestEqual(What + TEXT(": anthropic-version"), Built.Headers.FindRef(TEXT("anthropic-version")), FString(TEXT("2023-06-01")));
 			TestFalse(What + TEXT(": no response_format (the Messages API has none)"), Root->HasField(TEXT("response_format")));
 			break;

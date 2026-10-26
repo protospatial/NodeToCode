@@ -81,6 +81,7 @@ Manages interactions with LLMs.
         *   `UN2COllamaService` - Local Ollama API (with custom `FN2COllamaConfig`)
         *   `UN2CLMStudioService` - Local LM Studio API (OpenAI-compatible)
     *   Each implements provider-specific API endpoint, auth, headers, and payload formatting.
+    *   Credentials (card 0159): the key goes in exactly one header, set by `GetProviderHeaders` (Anthropic `x-api-key`, Gemini `x-goog-api-key`, OpenAI/DeepSeek/LM Studio `Authorization: Bearer`); those services return an empty auth token from `GetConfiguration`, and `UN2CHttpHandlerBase` adds its own Bearer header only when the provider set no credential header (Ollama). Never put a key in an endpoint URL or a log line. Request bodies, prompts, the N2C JSON and responses are logged through `FN2CLogger::LogLLMContent`, which writes the text only while the console variable `n2c.LogLLMPayloads` is 1 (default 0, never saved) and otherwise only its size; an HTTP error body passes through `FN2CLogger::RedactSecret` before it is logged or reported. `NodeToCode.LLM.KeyHygiene` checks all of it against a local stub.
 *   **`N2CLLMProviderRegistry.h/.cpp` (`UN2CLLMProviderRegistry`)**: Singleton factory for creating LLM service instances. Methods: `RegisterProvider()`, `CreateProvider()`, `IsProviderRegistered()`, `GetRegisteredProviders()`.
 *   **`N2CLLMPayloadBuilder.h/.cpp` (`UN2CLLMPayloadBuilder`)**: Utility for building provider-specific JSON request payloads. Key methods:
     *   `Initialize()`, `SetModel()`, `SetTemperature()`, `SetMaxTokens()`

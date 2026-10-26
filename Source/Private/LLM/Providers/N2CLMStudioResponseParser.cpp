@@ -99,11 +99,8 @@ bool UN2CLMStudioResponseParser::ParseLLMResponse(
         return false;
     }
 
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("LM Studio Response Message Content: %s"), *MessageContent), 
-        EN2CLogSeverity::Debug,
-        TEXT("LMStudioResponseParser")
-    );
+    FN2CLogger::Get().LogLLMContent(TEXT("LM Studio Response Message Content"), TEXT("LM Studio response message content"),
+        MessageContent, TEXT("LMStudioResponseParser"));
 
     // Parse the extracted content as our expected JSON format
     // The base class will handle parsing the structured N2C JSON response

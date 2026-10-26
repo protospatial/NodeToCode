@@ -541,8 +541,7 @@ void FN2CEditorIntegration::TranslateBlueprintNodesForEditor(TWeakPtr<FBlueprint
     }
 
     // Log the JSON output
-    FN2CLogger::Get().Log(TEXT("JSON Output:"), EN2CLogSeverity::Debug);
-    FN2CLogger::Get().Log(JsonOutput, EN2CLogSeverity::Debug);
+    FN2CLogger::Get().LogLLMContent(TEXT("JSON Output"), TEXT("N2C JSON for translation"), JsonOutput);
 
     if (LLMModule->Initialize())
     {
@@ -551,7 +550,7 @@ void FN2CEditorIntegration::TranslateBlueprintNodesForEditor(TWeakPtr<FBlueprint
         LLMModule->ProcessN2CJson(JsonOutput, Captured, FOnLLMResponseReceived::CreateLambda(
             [](const FString& Response)
             {
-                FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Response:\n\n%s"), *Response), EN2CLogSeverity::Debug);
+                FN2CLogger::Get().LogLLMContent(TEXT("LLM Response"), TEXT("LLM response"), Response);
             
                 // Create translation response struct
                 FN2CTranslationResponse TranslationResponse;

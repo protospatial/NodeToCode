@@ -36,8 +36,9 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     Request->SetVerb(TEXT("POST"));
     Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 
-    // Add authorization if provided
-    if (!AuthToken.IsEmpty())
+    // A Bearer token only for a provider that sets no credential header of its own (Ollama): each request carries
+    // its key in exactly one header (Anthropic x-api-key, Gemini x-goog-api-key, the others Authorization)
+    if (!AuthToken.IsEmpty() && !HasCredentialHeader(ExtraHeaders))
     {
         Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *AuthToken));
     }
@@ -94,7 +95,8 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
         return Handle;
     }
 
-    FN2CLogger::Get().Log(TEXT("HTTP request sent successfully"), EN2CLogSeverity::Info, TEXT("HttpHandler"));
+    FN2CLogger::Get().Log(FString::Printf(TEXT("HTTP request sent to %s (%s), %d characters"),
+        *UEnum::GetDisplayValueAsText(Config.Provider).ToString(), *Config.Model, Payload.Len()), EN2CLogSeverity::Info, TEXT("HttpHandler"));
     return Handle;
 }
 
@@ -141,21 +143,45 @@ void UN2CHttpHandlerBase::OnRequestComplete(
     const int32 ResponseCode = Response->GetResponseCode();
     const FString ResponseContent = Response->GetContentAsString();
 
+    // Provider, model, status and size only; the body is the model's answer (or the provider's error), logged in
+    // full only with n2c.LogLLMPayloads 1
+    const FString ProviderName = UEnum::GetDisplayValueAsText(Config.Provider).ToString();
+
     // Successful responses (200-299) go to the parser as they are
     if (ResponseCode >= 200 && ResponseCode < 300)
     {
+        FN2CLogger::Get().Log(FString::Printf(TEXT("Response from %s (%s): HTTP %d, %d characters"), *ProviderName,
+            *Config.Model, ResponseCode, ResponseContent.Len()), EN2CLogSeverity::Info, TEXT("HttpHandler"));
         OnComplete.ExecuteIfBound(ResponseContent);
         return;
     }
 
+    // An error body that echoes the key (a misbehaving proxy, a provider debug echo) must not carry it into the log,
+    // the typed error, a saved translation folder or BatchSummary.json
+    const FString SafeContent = FN2CLogger::RedactSecret(ResponseContent, Config.ApiKey);
+
     // 4xx and 5xx: the provider's JSON error gains the status; any other body (an HTML proxy page, plain text) is
     // wrapped as escaped JSON, so the parser always gets valid JSON and can report the status and the real message
-    FN2CLogger::Get().LogError(
-        FString::Printf(TEXT("HTTP %d error. Response: %s"), ResponseCode, *ResponseContent.Left(2000)),
-        TEXT("HttpHandler")
-    );
+    // (the parser logs that message as the translation error)
+    FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP %d error from %s (%s), %d characters"), ResponseCode,
+        *ProviderName, *Config.Model, ResponseContent.Len()), TEXT("HttpHandler"));
+    FN2CLogger::Get().LogLLMContent(TEXT("HTTP error body"), TEXT("HTTP error body"), SafeContent.Left(2000), TEXT("HttpHandler"));
 
-    OnComplete.ExecuteIfBound(FN2CTranslationError::WrapHttpErrorBody(ResponseCode, ResponseContent));
+    OnComplete.ExecuteIfBound(FN2CTranslationError::WrapHttpErrorBody(ResponseCode, SafeContent));
+}
+
+bool UN2CHttpHandlerBase::HasCredentialHeader(const TMap<FString, FString>& Headers)
+{
+    for (const TPair<FString, FString>& Header : Headers)
+    {
+        if (Header.Key.Equals(TEXT("Authorization"), ESearchCase::IgnoreCase)
+            || Header.Key.Equals(TEXT("x-api-key"), ESearchCase::IgnoreCase)
+            || Header.Key.Equals(TEXT("x-goog-api-key"), ESearchCase::IgnoreCase))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool UN2CHttpHandlerBase::IsTimeoutFailure(const FHttpRequestPtr& Request, FString& OutMessage) const

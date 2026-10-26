@@ -5,6 +5,56 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/OutputDeviceConsole.h"
+#include "HAL/IConsoleManager.h"
+
+namespace N2CLoggerPrivate
+{
+    /** Off by default and not read from or saved to config: set it in the console for one session */
+    static TAutoConsoleVariable<bool> CVarLogLLMPayloads(
+        TEXT("n2c.LogLLMPayloads"),
+        false,
+        TEXT("1 writes NodeToCode's LLM request payloads, system and user messages and model responses to the log at ")
+        TEXT("Debug severity (Min Severity Debug). They hold your Blueprint logic and generated code: turn it off before ")
+        TEXT("sharing a log. 0 (default) logs only their sizes."),
+        FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* Variable)
+        {
+            if (Variable && Variable->GetBool())
+            {
+                UE_LOG(LogNodeToCode, Warning, TEXT("n2c.LogLLMPayloads is on: LLM request payloads, prompts and model responses (your Blueprint logic and generated code) are written to the log at Debug severity. Set it to 0 before sharing a log."));
+            }
+        }),
+        ECVF_Default);
+}
+
+bool FN2CLogger::ShouldLogLLMPayloads()
+{
+    return N2CLoggerPrivate::CVarLogLLMPayloads.GetValueOnAnyThread();
+}
+
+void FN2CLogger::LogLLMContent(const TCHAR* Label, const TCHAR* What, const FString& Content, const FString& Context)
+{
+    if (Get().MinSeverity > EN2CLogSeverity::Debug)
+    {
+        return;
+    }
+    if (ShouldLogLLMPayloads())
+    {
+        Log(FString::Printf(TEXT("%s:\n\n%s"), Label, *Content), EN2CLogSeverity::Debug, Context);
+        return;
+    }
+    Log(FString::Printf(TEXT("%s: %d characters (not logged; n2c.LogLLMPayloads 1 logs it)"), What, Content.Len()),
+        EN2CLogSeverity::Debug, Context);
+}
+
+FString FN2CLogger::RedactSecret(const FString& Text, const FString& Secret)
+{
+    // A very short value would also match ordinary text; real keys are far longer
+    if (Secret.Len() < 8 || !Text.Contains(Secret, ESearchCase::CaseSensitive))
+    {
+        return Text;
+    }
+    return Text.Replace(*Secret, TEXT("[redacted]"), ESearchCase::CaseSensitive);
+}
 
 FN2CLogger& FN2CLogger::Get()
 {

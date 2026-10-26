@@ -153,6 +153,9 @@ For cloud providers, NodeToCode sends a temperature only to models that accept o
    - Never commit API keys to version control. Node to Code keeps them in your user folder, outside the project
      (see [where keys are saved](Initial-Configuration#plugins-config-files--source-control))
    - Regularly rotate keys for security
+   - Each request carries the key in one header only (Anthropic `x-api-key`, Gemini `x-goog-api-key`, OpenAI,
+     DeepSeek and LM Studio `Authorization`), never in the URL, and the key is kept out of the
+     [log](Logging-Configuration#what-the-log-never-holds) and error messages
    - Configure through [Plugin Settings](Initial-Configuration#accessing-plugin-settings), or for build machines
      and CI through [environment variables](Initial-Configuration#api-keys-from-environment-variables)
 
