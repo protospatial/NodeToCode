@@ -483,7 +483,9 @@ FMcpToolCallResult FN2CMcpYourToolName::Execute(const TSharedPtr<FJsonObject>& A
 ```
 
 A new tool changes the mode 3 count: update `Tests/smoke/expected.json` (`default`), the tables in this file and
-the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change.
+the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change. Renaming or removing a tool also means
+updating the Agent Skills that name it (`Agents/claude-code/nodetocode/skills/`, then `python -I
+Agents/sync_skills.py`); `Tests/python/test_agent_skills.py` fails while a skill names a tool that is not registered.
 
 A tool whose result carries text from the project's Blueprints (comments, titles, names, tooltips, descriptions,
 string literals) sets `Definition.bReturnsUntrustedContent = true`; `FN2CMcpToolManager::ExecuteTool` then marks its
