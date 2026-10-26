@@ -67,6 +67,12 @@ public:
 	bool UnregisterStaticResource(const FString& Uri);
 
 	/**
+	 * Unregisters every dynamic resource template with this URI template
+	 * @return true if one was registered
+	 */
+	bool UnregisterDynamicResource(const FString& UriTemplate);
+
+	/**
 	 * Lists all available resources
 	 * @param Cursor Optional cursor for pagination (not implemented in MVP)
 	 * @return Array of resource definitions
@@ -129,7 +135,8 @@ private:
 	FN2CMcpResourceManager& operator=(const FN2CMcpResourceManager&) = delete;
 
 	/**
-	 * Checks if a URI matches a template pattern
+	 * Checks if a URI matches a template pattern: the whole URI, {var} as one non-empty segment and {+var} as the rest
+	 * of the path, values percent-decoded (FN2CMcpUriTemplate)
 	 * @param Uri The URI to check
 	 * @param Template The template pattern
 	 * @param OutParams Extracted parameters from the template

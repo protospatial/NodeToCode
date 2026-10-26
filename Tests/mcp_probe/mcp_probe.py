@@ -301,7 +301,7 @@ def probe_p7(port):
 
 def probe_p9(port):
     """Capabilities, error codes and cancellation (card 0110, MCP 2025-11-25): initialize advertises no logging and
-    returns instructions; resources/templates/list lists nodetocode://blueprint/{name} and resources/list no longer
+    returns instructions; resources/templates/list lists nodetocode://blueprint/{+path} (card 0208) and resources/list no longer
     carries resourceTemplates; an unknown tool and an unknown prompt are -32602, a missing required prompt argument
     (python-scripting's task) is -32602, an unknown resource uri is -32002 with the uri in data; notifications/cancelled
     for an id with no running call is accepted with 202 and no body. The live cancel of a running call is
@@ -343,7 +343,7 @@ def probe_p9(port):
 
     templates = (rpc(2, 'resources/templates/list').get('result') or {}).get('resourceTemplates')
     checks['templates_list'] = isinstance(templates, list) and any(
-        t.get('uriTemplate') == 'nodetocode://blueprint/{name}' for t in templates if isinstance(t, dict))
+        t.get('uriTemplate') == 'nodetocode://blueprint/{+path}' for t in templates if isinstance(t, dict))
     listed = rpc(3, 'resources/list').get('result') or {}
     checks['resources_list_without_templates'] = isinstance(listed.get('resources'), list) and 'resourceTemplates' not in listed
 
