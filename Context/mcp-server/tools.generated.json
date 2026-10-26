@@ -3887,7 +3887,7 @@
 						"StaticMesh",
 						"Folder"
 					],
-					"description": "Filter by asset type; spell the value exactly as listed ('folder' or 'all' in lower case leave the folders out)"
+					"description": "Filter by asset type, in any case: All (folders and assets), Folder (folders only), or Blueprint, Material, Texture, StaticMesh (assets whose class name contains the word). Any other value is an error"
 				},
 				{
 					"name": "filter_name",
@@ -3900,8 +3900,8 @@
 					"name": "sync_browser",
 					"type": "boolean",
 					"required": false,
-					"default": true,
-					"description": "Whether to sync the primary content browser to this path"
+					"default": false,
+					"description": "Also show this folder in the primary content browser, without focusing it"
 				}
 			],
 			"inputSchema":
@@ -3932,7 +3932,7 @@
 					"filter_type":
 					{
 						"type": "string",
-						"description": "Filter by asset type; spell the value exactly as listed ('folder' or 'all' in lower case leave the folders out)",
+						"description": "Filter by asset type, in any case: All (folders and assets), Folder (folders only), or Blueprint, Material, Texture, StaticMesh (assets whose class name contains the word). Any other value is an error",
 						"enum": [
 							"All",
 							"Blueprint",
@@ -3952,8 +3952,8 @@
 					"sync_browser":
 					{
 						"type": "boolean",
-						"description": "Whether to sync the primary content browser to this path",
-						"default": true
+						"description": "Also show this folder in the primary content browser, without focusing it",
+						"default": false
 					}
 				},
 				"required": [
@@ -4957,7 +4957,7 @@
 			"name": "search-content-browser",
 			"title": "Search project assets",
 			"toolset": "ContentBrowserTools",
-			"description": "Search for assets under /Game (and /Engine when includeEngineContent is true) by name or type. Plugin content mounted at /<PluginName> is not searched; list it with read-content-browser-path.",
+			"description": "Search for assets by name or type under /Game, the content of the project's plugins (includePluginContent), and /Engine and engine plugins' content when includeEngineContent is true. Returns the best matches first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "AssetTools.find_assets",
 			"longRunning": false,
@@ -4986,28 +4986,28 @@
 					"type": "string",
 					"required": false,
 					"default": "All",
-					"description": "Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each matches its exact asset classes only (Blueprint does not include Widget or Animation Blueprints); any other value applies no type filter."
+					"description": "Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each includes its subclasses (Blueprint includes Widget and Animation Blueprints, Sound includes Sound Waves and Sound Cues); any other value is an error."
 				},
 				{
 					"name": "includeEngineContent",
 					"type": "boolean",
 					"required": false,
 					"default": false,
-					"description": "Include assets from Engine content"
+					"description": "Also search /Engine, and with includePluginContent the content of engine plugins"
 				},
 				{
 					"name": "includePluginContent",
 					"type": "boolean",
 					"required": false,
 					"default": true,
-					"description": "Has no effect at present: the search only covers /Game and, with includeEngineContent, /Engine, so plugin content mounted at /<PluginName> is never returned. Echoed in searchInfo."
+					"description": "Also search the content of enabled plugins, mounted at /<PluginName>: the project's plugins, and engine plugins too when includeEngineContent is true"
 				},
 				{
 					"name": "maxResults",
 					"type": "number",
 					"required": false,
 					"default": 50,
-					"description": "Maximum number of results to return; values outside 1-200 are clamped"
+					"description": "Maximum number of results to return; values outside 1-200 are clamped. searchInfo.totalFound counts every match and searchInfo.truncated says whether some were left out"
 				}
 			],
 			"inputSchema":
@@ -5023,26 +5023,26 @@
 					"assetType":
 					{
 						"type": "string",
-						"description": "Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each matches its exact asset classes only (Blueprint does not include Widget or Animation Blueprints); any other value applies no type filter.",
+						"description": "Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each includes its subclasses (Blueprint includes Widget and Animation Blueprints, Sound includes Sound Waves and Sound Cues); any other value is an error.",
 						"default": "All"
 					},
 					"includeEngineContent":
 					{
 						"type": "boolean",
 						"default": false,
-						"description": "Include assets from Engine content"
+						"description": "Also search /Engine, and with includePluginContent the content of engine plugins"
 					},
 					"includePluginContent":
 					{
 						"type": "boolean",
 						"default": true,
-						"description": "Has no effect at present: the search only covers /Game and, with includeEngineContent, /Engine, so plugin content mounted at /<PluginName> is never returned. Echoed in searchInfo."
+						"description": "Also search the content of enabled plugins, mounted at /<PluginName>: the project's plugins, and engine plugins too when includeEngineContent is true"
 					},
 					"maxResults":
 					{
 						"type": "number",
 						"default": 50,
-						"description": "Maximum number of results to return; values outside 1-200 are clamped"
+						"description": "Maximum number of results to return; values outside 1-200 are clamped. searchInfo.totalFound counts every match and searchInfo.truncated says whether some were left out"
 					}
 				},
 				"required": []

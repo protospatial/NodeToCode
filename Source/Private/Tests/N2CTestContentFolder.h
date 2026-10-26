@@ -8,6 +8,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CoreMinimal.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Editor.h"
@@ -27,6 +28,13 @@
  */
 namespace N2CTest
 {
+	/** ForEachObjectWithPackage without nested objects: 5.8 takes EGetObjectsFlags and deprecates the bool */
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8)
+	inline constexpr EGetObjectsFlags TopLevelObjectsOnly = EGetObjectsFlags::None;
+#else
+	inline constexpr bool TopLevelObjectsOnly = false;
+#endif
+
 	/** The folder exists for the content browser (the asset registry knows the path, or it is on disk) */
 	inline bool ContentFolderExists(const FString& Folder)
 	{
@@ -66,7 +74,7 @@ namespace N2CTest
 					Assets.Add(Object);
 				}
 				return true;
-			}, /*bIncludeNestedObjects*/ false);
+			}, N2CTest::TopLevelObjectsOnly);
 		}
 		if (Assets.Num() > 0)
 		{

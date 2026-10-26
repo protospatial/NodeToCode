@@ -21,7 +21,8 @@ public:
 	
 private:
 	/**
-	 * Parse and validate tool arguments
+	 * Parse and validate tool arguments. OutFilterType is filter_type in its listed spelling (matched case-insensitively,
+	 * card 0285); an unknown value, like any other bad argument, returns false with OutError naming the valid ones.
 	 */
 	bool ParseArguments(const TSharedPtr<FJsonObject>& Arguments,
 		FString& OutPath,
@@ -29,7 +30,8 @@ private:
 		int32& OutPageSize,
 		FString& OutFilterType,
 		FString& OutFilterName,
-		bool& OutSyncBrowser) const;
+		bool& OutSyncBrowser,
+		FString& OutError) const;
 	
 	/**
 	 * Build the result JSON object

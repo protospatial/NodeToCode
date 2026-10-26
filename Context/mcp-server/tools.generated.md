@@ -968,9 +968,9 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.list_folders, find_assets`. Left to
 | `path` | `string` | yes |  | Content browser folder to read (e.g., '/Game/Blueprints', '/Engine/BasicShapes', '/&lt;PluginName&gt;'); it must start with a mounted root and is matched case-insensitively |
 | `page` | `integer` | no | `1` | Page number for pagination (1-based) |
 | `page_size` | `integer` | no | `50` | Number of items per page |
-| `filter_type` | `string` | no | `"All"` | Filter by asset type; spell the value exactly as listed ('folder' or 'all' in lower case leave the folders out). One of: `"All"`, `"Blueprint"`, `"Material"`, `"Texture"`, `"StaticMesh"`, `"Folder"`. |
+| `filter_type` | `string` | no | `"All"` | Filter by asset type, in any case: All (folders and assets), Folder (folders only), or Blueprint, Material, Texture, StaticMesh (assets whose class name contains the word). Any other value is an error. One of: `"All"`, `"Blueprint"`, `"Material"`, `"Texture"`, `"StaticMesh"`, `"Folder"`. |
 | `filter_name` | `string` | no | `""` | Filter by name contains (case-insensitive) |
-| `sync_browser` | `boolean` | no | `true` | Whether to sync the primary content browser to this path |
+| `sync_browser` | `boolean` | no | `false` | Also show this folder in the primary content browser, without focusing it |
 
 ### rename-asset
 
@@ -1013,7 +1013,7 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.move`. Left to Unreal MCP by defaul
 
 **Search project assets**
 
-Search for assets under /Game (and /Engine when includeEngineContent is true) by name or type. Plugin content mounted at /&lt;PluginName&gt; is not searched; list it with read-content-browser-path.
+Search for assets by name or type under /Game, the content of the project's plugins (includePluginContent), and /Engine and engine plugins' content when includeEngineContent is true. Returns the best matches first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -1024,10 +1024,10 @@ Unreal MCP counterpart (UE 5.8): `AssetTools.find_assets`. Left to Unreal MCP by
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `query` | `string` | no |  | Search query matched against asset names and package paths (case-insensitive, partial match). Leave empty to list all assets of the specified type. |
-| `assetType` | `string` | no | `"All"` | Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each matches its exact asset classes only (Blueprint does not include Widget or Animation Blueprints); any other value applies no type filter. |
-| `includeEngineContent` | `boolean` | no | `false` | Include assets from Engine content |
-| `includePluginContent` | `boolean` | no | `true` | Has no effect at present: the search only covers /Game and, with includeEngineContent, /Engine, so plugin content mounted at /&lt;PluginName&gt; is never returned. Echoed in searchInfo. |
-| `maxResults` | `number` | no | `50` | Maximum number of results to return; values outside 1-200 are clamped |
+| `assetType` | `string` | no | `"All"` | Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each includes its subclasses (Blueprint includes Widget and Animation Blueprints, Sound includes Sound Waves and Sound Cues); any other value is an error. |
+| `includeEngineContent` | `boolean` | no | `false` | Also search /Engine, and with includePluginContent the content of engine plugins |
+| `includePluginContent` | `boolean` | no | `true` | Also search the content of enabled plugins, mounted at /&lt;PluginName&gt;: the project's plugins, and engine plugins too when includeEngineContent is true |
+| `maxResults` | `number` | no | `50` | Maximum number of results to return; values outside 1-200 are clamped. searchInfo.totalFound counts every match and searchInfo.truncated says whether some were left out |
 
 ## FileSystemTools
 

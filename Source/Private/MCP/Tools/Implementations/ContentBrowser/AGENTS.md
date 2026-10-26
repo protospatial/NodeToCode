@@ -21,7 +21,7 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0182 (asset-writing tools restricted to /Game and project plugin content), 0285 (search-content-browser and read-content-browser-path results), 0286 (open-blueprint-asset fails on unknown
+- **Fix cards still owed here:** 0286 (open-blueprint-asset fails on unknown
   graphs).
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
@@ -47,15 +47,20 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   - `path` (required): Content browser folder to read
   - `page` (optional, default 1): Page number; a page past the end is an error (`Page N is out of range`)
   - `page_size` (optional, default 50): Items per page, 1-200; anything else fails with `Invalid arguments`
-  - `filter_type` (optional, default `All`): `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh` or `Folder`.
-    Spell it exactly: `All` and `Folder` are compared case-sensitively when choosing whether folders are listed, so
-    `all` returns the assets without the folders and `folder` returns nothing. Any other value returns nothing.
-    `Blueprint`, `Material`, `Texture` and `StaticMesh` keep assets whose class name contains that word
-    (`Material` leaves out `MaterialFunction`)
+  - `filter_type` (optional, default `All`): `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh` or `Folder`, in
+    any case (card 0285: `ParseArguments` matches it once and keeps the listed spelling). `All` lists folders and
+    assets, `Folder` only folders. `Blueprint`, `Material`, `Texture` and `StaticMesh` keep assets whose class name
+    contains that word (`Material` leaves out `MaterialFunction`). Any other value is an error that lists these
   - `filter_name` (optional): Keep items whose name contains this text (case-insensitive)
-  - `sync_browser` (optional, default true): Sync the primary content browser to the path
-- **Returns**: `items` (each with `path`, `name`, `is_folder`, `type`, `class`, and `native_class` for assets),
-  `total_count`, `page`, `page_size`, `has_more`
+  - `sync_browser` (optional, default false): Also show the folder in the primary content browser. It never focuses
+    the content browser (`NavigateToPath(Path, /*bFocusContentBrowser*/ false)`), so a listing does not pull the
+    user's window forward
+- **Returns**: `items`, then `totalCount`, `page`, `pageSize`, `hasMore` (camelCase since card 0285). Each item has
+  `path`, `name`, `isFolder`, `type` and `class`, and assets `nativeClass` when their class is loaded. Folders come
+  first, then assets, each sorted by name, so pages are stable. Folders are the asset registry's direct sub-paths
+  (`IAssetRegistry::GetSubPaths`, `FN2CMcpContentBrowserUtils::EnumerateItemsAtPathAsJson`): empty folders made by
+  the editor are listed, and `__ExternalActors__` and `__ExternalObjects__` (World Partition's per-actor packages,
+  hidden by the content browser) are not
 - **Use Case**: Discovering and filtering content
 
 ### open-blueprint-asset
@@ -74,23 +79,32 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Use Case**: Opening Blueprints for editing
 
 ### search-content-browser
-- **Description**: Searches assets under `/Game`, plus `/Engine` when `includeEngineContent` is true, by name or type
+- **Description**: Searches assets by name or type under `/Game`, the content of the project's plugins, and `/Engine`
+  and engine plugins' content when `includeEngineContent` is true
 - **Parameters**:
   - `query` (optional): Matched against asset names and package paths (partial, case-insensitive); empty lists all
     assets of the type
   - `assetType` (optional, default `All`): `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh`, `SkeletalMesh`,
-    `Sound`, `Animation`, `ParticleSystem`, `DataAsset`, `DataTable`, compared case-insensitively. Each maps to exact
-    asset classes in an `FARFilter` (`FN2CMcpSearchContentBrowserTool::SearchAssets`), so `Blueprint` does not
-    include Widget or Animation Blueprints; any other value applies no type filter
-  - `includeEngineContent` (optional, default false): Also search `/Engine`
-  - `includePluginContent` (optional, default true): Has no effect. `SearchAssets` only puts `/Game` (and `/Engine`)
-    in the filter's package paths, so plugin content mounted at `/<PluginName>` is never returned, whatever this is
-    set to. List plugin content with `read-content-browser-path` on `/<PluginName>`
+    `Sound`, `Animation`, `ParticleSystem`, `DataAsset`, `DataTable`, compared case-insensitively. Each maps to one
+    class (`UBlueprint`, `UMaterialInterface`, `UTexture`, `UStaticMesh`, `USkeletalMesh`, `USoundBase`,
+    `UAnimSequence`, `UParticleSystem`, `UDataAsset`, `UDataTable`) matched with `bRecursiveClasses`, so subclasses
+    count: `Blueprint` includes Widget and Animation Blueprints, `Sound` Sound Waves and Sound Cues, `DataAsset` every
+    data asset class (card 0285). Any other value is an error that lists the valid ones
+  - `includeEngineContent` (optional, default false): Also search `/Engine`, and with `includePluginContent` the
+    content of engine plugins
+  - `includePluginContent` (optional, default true): Also search the mount (`/<PluginName>`) of every enabled plugin
+    with content (`IPluginManager::GetEnabledPluginsWithContent`) loaded from the project; engine plugins (engine,
+    Fab) only with `includeEngineContent` (`FN2CMcpSearchContentBrowserTool::GetSearchRoots`)
   - `maxResults` (optional, default 50): Clamped to 1-200
-- **Returns**: `searchInfo` (`query`, `assetType`, `includeEngineContent`, `includePluginContent`, `totalFound`,
-  `resultsReturned`), `assets` sorted by `relevanceScore` (each with `name`, `path`, `type`, `class`, `relevanceScore`
-  and `metadata`: `folder`, `objectPath`, and for Blueprints `parentClass` and `blueprintType` when the registry has
-  them), `tips`
+- **Returns**: `searchInfo` (`query`, `assetType` in its listed spelling, `includeEngineContent`,
+  `includePluginContent`, `totalFound`: every match, `resultsReturned`, `truncated`: whether matches were left out),
+  `assets` best first (each with `name`, `path`, `type`, `class`, `relevanceScore` and `metadata`: `folder`,
+  `objectPath`, and for Blueprints of any kind `parentClass` and `blueprintType` when the registry has them), `tips`
+  (the first says how many matches were left out, when some were). `relevanceScore` is 1 for an exact name, 0.8 a
+  name prefix, 0.6 part of the name, 0.4 part of the package path; equal scores are ordered by package path. Only the
+  best `maxResults` are kept while the registry is enumerated (a bounded heap), nothing is sorted beyond them.
+  `type` is the `assetType` whose filter finds the asset (`Blueprint` for a Widget Blueprint), else the class name
+  as its class path holds it (`UserDefinedEnum`). Per-actor `__External*` packages are left out
 - **Use Case**: Finding assets across the project
 
 ### copy-asset
@@ -249,11 +263,11 @@ anywhere the editor can. Spec: `NodeToCode.MCP.Content` ("the write path policy"
   adds a missing leading `/` for the navigation and listing tools
 - `..` (and any other dot) is refused by `IsValidLongPackageName` for folder paths
 - Not case-sensitive: package names are matched case-insensitively (`/game/n2cdocprobe` opens `/Game/N2CDocProbe`);
-  `read-content-browser-path` echoes the spelling you sent in each item's `path`
+  `read-content-browser-path` returns each item's `path` as the asset registry spells it, whatever case you sent
 
 ## Asset Types for Filtering
 
-`read-content-browser-path` (`filter_type`, exact spelling):
+`read-content-browser-path` (`filter_type`, any case; anything else is an error):
 - `"All"` - Assets and folders
 - `"Blueprint"`, `"Material"`, `"Texture"`, `"StaticMesh"` - Assets whose class name contains the word
 - `"Folder"` - Folders only
@@ -397,7 +411,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# Check response for has_more: true, then get page 2
+# Check response for hasMore: true, then get page 2
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \

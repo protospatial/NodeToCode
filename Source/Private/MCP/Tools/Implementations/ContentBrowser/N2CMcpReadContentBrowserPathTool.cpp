@@ -11,6 +11,12 @@
 // Auto-register this tool
 REGISTER_MCP_TOOL(FN2CMcpReadContentBrowserPathTool)
 
+namespace N2CReadContentBrowserPath
+{
+	/** filter_type's values, in the spelling the schema lists and the filters compare against */
+	const TCHAR* const FilterTypes[] = { TEXT("All"), TEXT("Blueprint"), TEXT("Material"), TEXT("Texture"), TEXT("StaticMesh"), TEXT("Folder") };
+}
+
 FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
@@ -53,14 +59,12 @@ FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 	// filter_type property
 	TSharedPtr<FJsonObject> FilterTypeProp = MakeShareable(new FJsonObject);
 	FilterTypeProp->SetStringField(TEXT("type"), TEXT("string"));
-	FilterTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type; spell the value exactly as listed ('folder' or 'all' in lower case leave the folders out)"));
+	FilterTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type, in any case: All (folders and assets), Folder (folders only), or Blueprint, Material, Texture, StaticMesh (assets whose class name contains the word). Any other value is an error"));
 	TArray<TSharedPtr<FJsonValue>> FilterTypeEnum;
-	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("All"))));
-	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("Blueprint"))));
-	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("Material"))));
-	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("Texture"))));
-	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("StaticMesh"))));
-	FilterTypeEnum.Add(MakeShareable(new FJsonValueString(TEXT("Folder"))));
+	for (const TCHAR* FilterType : N2CReadContentBrowserPath::FilterTypes)
+	{
+		FilterTypeEnum.Add(MakeShareable(new FJsonValueString(FilterType)));
+	}
 	FilterTypeProp->SetArrayField(TEXT("enum"), FilterTypeEnum);
 	FilterTypeProp->SetStringField(TEXT("default"), TEXT("All"));
 	Properties->SetObjectField(TEXT("filter_type"), FilterTypeProp);
@@ -75,8 +79,8 @@ FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 	// sync_browser property
 	TSharedPtr<FJsonObject> SyncBrowserProp = MakeShareable(new FJsonObject);
 	SyncBrowserProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	SyncBrowserProp->SetStringField(TEXT("description"), TEXT("Whether to sync the primary content browser to this path"));
-	SyncBrowserProp->SetBoolField(TEXT("default"), true);
+	SyncBrowserProp->SetStringField(TEXT("description"), TEXT("Also show this folder in the primary content browser, without focusing it"));
+	SyncBrowserProp->SetBoolField(TEXT("default"), false);
 	Properties->SetObjectField(TEXT("sync_browser"), SyncBrowserProp);
 	
 	InputSchema->SetObjectField(TEXT("properties"), Properties);
@@ -105,11 +109,12 @@ FMcpToolCallResult FN2CMcpReadContentBrowserPathTool::Execute(const TSharedPtr<F
 		int32 PageSize = 50;
 		FString FilterType = TEXT("All");
 		FString FilterName;
-		bool bSyncBrowser = true;
+		bool bSyncBrowser = false;
+		FString ArgumentError;
 		
-		if (!ParseArguments(Arguments, Path, Page, PageSize, FilterType, FilterName, bSyncBrowser))
+		if (!ParseArguments(Arguments, Path, Page, PageSize, FilterType, FilterName, bSyncBrowser, ArgumentError))
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Invalid arguments"));
+			return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Invalid arguments: %s"), *ArgumentError));
 		}
 		
 		// 2. Normalize and validate path
@@ -131,8 +136,9 @@ FMcpToolCallResult FN2CMcpReadContentBrowserPathTool::Execute(const TSharedPtr<F
 		
 		// 4. Enumerate items at path as JSON
 		TArray<TSharedPtr<FJsonObject>> AllJsonItems;
-		bool bIncludeFolders = FilterType.Equals(TEXT("All")) || FilterType.Equals(TEXT("Folder"));
-		bool bIncludeFiles = !FilterType.Equals(TEXT("Folder"));
+		// FilterType is in its listed spelling (ParseArguments), so these agree with FilterJsonItemsByType
+		const bool bIncludeFolders = FilterType == TEXT("All") || FilterType == TEXT("Folder");
+		const bool bIncludeFiles = FilterType != TEXT("Folder");
 		
 		if (!FN2CMcpContentBrowserUtils::EnumerateItemsAtPathAsJson(Path, bIncludeFolders, bIncludeFiles, AllJsonItems))
 		{
@@ -160,10 +166,10 @@ FMcpToolCallResult FN2CMcpReadContentBrowserPathTool::Execute(const TSharedPtr<F
 				TEXT("Page %d is out of range: %d items at page_size %d"), Page, TotalCount, PageSize));
 		}
 		
-		// 8. Sync content browser if requested
+		// 8. Sync content browser if requested, without taking focus: a listing is a read (card 0285)
 		if (bSyncBrowser)
 		{
-			FN2CMcpContentBrowserUtils::NavigateToPath(Path);
+			FN2CMcpContentBrowserUtils::NavigateToPath(Path, /*bFocusContentBrowser*/ false);
 		}
 		
 		// 9. Build result JSON
@@ -198,11 +204,13 @@ bool FN2CMcpReadContentBrowserPathTool::ParseArguments(const TSharedPtr<FJsonObj
 	int32& OutPageSize,
 	FString& OutFilterType,
 	FString& OutFilterName,
-	bool& OutSyncBrowser) const
+	bool& OutSyncBrowser,
+	FString& OutError) const
 {
 	// Required: path
 	if (!Arguments->TryGetStringField(TEXT("path"), OutPath))
 	{
+		OutError = TEXT("missing required parameter 'path'");
 		FN2CLogger::Get().LogWarning(TEXT("read-content-browser-path: Missing required parameter 'path'"));
 		return false;
 	}
@@ -214,6 +222,7 @@ bool FN2CMcpReadContentBrowserPathTool::ParseArguments(const TSharedPtr<FJsonObj
 	}
 	else if (OutPage < 1)
 	{
+		OutError = TEXT("page must be 1 or more");
 		FN2CLogger::Get().LogWarning(TEXT("read-content-browser-path: Page must be >= 1"));
 		return false;
 	}
@@ -225,14 +234,36 @@ bool FN2CMcpReadContentBrowserPathTool::ParseArguments(const TSharedPtr<FJsonObj
 	}
 	else if (OutPageSize < 1 || OutPageSize > 200)
 	{
+		OutError = TEXT("page_size must be between 1 and 200");
 		FN2CLogger::Get().LogWarning(TEXT("read-content-browser-path: Page size must be between 1 and 200"));
 		return false;
 	}
 	
-	// Optional: filter_type (default "All")
-	if (!Arguments->TryGetStringField(TEXT("filter_type"), OutFilterType))
+	// Optional: filter_type (default "All"), matched case-insensitively and kept in its listed spelling, so every later
+	// comparison agrees (card 0285: "folder" used to list nothing, "all" dropped the folders)
+	FString RequestedFilterType;
+	if (!Arguments->TryGetStringField(TEXT("filter_type"), RequestedFilterType) || RequestedFilterType.IsEmpty())
 	{
-		OutFilterType = TEXT("All");
+		RequestedFilterType = TEXT("All");
+	}
+	OutFilterType.Reset();
+	for (const TCHAR* FilterType : N2CReadContentBrowserPath::FilterTypes)
+	{
+		if (RequestedFilterType.Equals(FilterType, ESearchCase::IgnoreCase))
+		{
+			OutFilterType = FilterType;
+			break;
+		}
+	}
+	if (OutFilterType.IsEmpty())
+	{
+		FString Valid;
+		for (const TCHAR* FilterType : N2CReadContentBrowserPath::FilterTypes)
+		{
+			Valid += (Valid.IsEmpty() ? TEXT("") : TEXT(", ")) + FString(FilterType);
+		}
+		OutError = FString::Printf(TEXT("unknown filter_type '%s'; use one of %s"), *RequestedFilterType, *Valid);
+		return false;
 	}
 	
 	// Optional: filter_name (default empty)
@@ -241,10 +272,10 @@ bool FN2CMcpReadContentBrowserPathTool::ParseArguments(const TSharedPtr<FJsonObj
 		OutFilterName = TEXT("");
 	}
 	
-	// Optional: sync_browser (default true)
+	// Optional: sync_browser (default false: an agent's listing does not move the user's content browser)
 	if (!Arguments->TryGetBoolField(TEXT("sync_browser"), OutSyncBrowser))
 	{
-		OutSyncBrowser = true;
+		OutSyncBrowser = false;
 	}
 	
 	return true;
@@ -273,10 +304,10 @@ TSharedPtr<FJsonObject> FN2CMcpReadContentBrowserPathTool::BuildResultJson(
 	
 	// Set result fields
 	ResultJson->SetArrayField(TEXT("items"), ItemsArray);
-	ResultJson->SetNumberField(TEXT("total_count"), TotalCount);
+	ResultJson->SetNumberField(TEXT("totalCount"), TotalCount);
 	ResultJson->SetNumberField(TEXT("page"), Page);
-	ResultJson->SetNumberField(TEXT("page_size"), PageSize);
-	ResultJson->SetBoolField(TEXT("has_more"), bHasMore);
+	ResultJson->SetNumberField(TEXT("pageSize"), PageSize);
+	ResultJson->SetBoolField(TEXT("hasMore"), bHasMore);
 	
 	return ResultJson;
 }

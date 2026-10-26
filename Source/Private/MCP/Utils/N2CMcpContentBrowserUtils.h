@@ -6,7 +6,6 @@
 #include "Misc/OutputDevice.h"
 
 struct FAssetData;
-struct FContentBrowserItem;
 class FJsonObject;
 
 /**
@@ -68,9 +67,11 @@ public:
 	/**
 	 * Navigates the primary content browser to the specified path
 	 * @param Path The path to navigate to
+	 * @param bFocusContentBrowser Also bring the content browser forward and focus it; false moves it without taking
+	 *        focus (read-content-browser-path's sync_browser, card 0285)
 	 * @return True if navigation was initiated (doesn't guarantee UI update)
 	 */
-	static bool NavigateToPath(const FString& Path);
+	static bool NavigateToPath(const FString& Path, bool bFocusContentBrowser = true);
 	
 	/**
 	 * Selects an asset in the content browser
@@ -101,39 +102,12 @@ public:
 	 * @return True if the path may be read
 	 */
 	static bool IsPathAllowed(const FString& Path);
-	
+
 	/**
-	 * Enumerates items at a content browser path
-	 * @param Path The path to enumerate
-	 * @param bIncludeFolders Whether to include folders in results
-	 * @param bIncludeFiles Whether to include files/assets in results
-	 * @param OutItems Array to fill with content browser items
-	 * @return True if enumeration succeeded
+	 * True for a path inside a World Partition / one-file-per-actor folder (__ExternalActors__, __ExternalObjects__):
+	 * per-actor packages the content browser hides, which listings and searches leave out (card 0285)
 	 */
-	static bool EnumerateItemsAtPath(const FString& Path, bool bIncludeFolders, bool bIncludeFiles, TArray<struct FContentBrowserItem>& OutItems);
-	
-	/**
-	 * Filters content browser items by type
-	 * @param Items Input array of items to filter
-	 * @param FilterType Type filter (All, Blueprint, Material, Texture, StaticMesh, Folder)
-	 * @param OutFilteredItems Output array of filtered items
-	 */
-	static void FilterItemsByType(const TArray<struct FContentBrowserItem>& Items, const FString& FilterType, TArray<struct FContentBrowserItem>& OutFilteredItems);
-	
-	/**
-	 * Filters content browser items by name
-	 * @param Items Input array of items to filter
-	 * @param NameFilter Case-insensitive substring to match
-	 * @param OutFilteredItems Output array of filtered items
-	 */
-	static void FilterItemsByName(const TArray<struct FContentBrowserItem>& Items, const FString& NameFilter, TArray<struct FContentBrowserItem>& OutFilteredItems);
-	
-	/**
-	 * Converts a content browser item to JSON representation
-	 * @param Item The item to convert
-	 * @return JSON object representing the item
-	 */
-	static TSharedPtr<FJsonObject> ConvertItemToJson(const struct FContentBrowserItem& Item);
+	static bool IsExternalPackagePath(const FString& PackagePath);
 	
 	/**
 	 * Applies pagination to an array
@@ -148,22 +122,24 @@ public:
 	static bool CalculatePagination(int32 TotalItems, int32 Page, int32 PageSize, int32& OutStartIndex, int32& OutEndIndex, bool& OutHasMore);
 	
 	/**
-	 * Create a JSON object for a folder (fallback when ContentBrowserItem is not available)
-	 * @param FolderPath Virtual path to the folder
-	 * @param FolderName Display name of the folder
+	 * A read-content-browser-path item for a folder: path, name, isFolder true, type and class "Folder"
+	 * @param FolderPath Package path of the folder (/Game/Folder)
+	 * @param FolderName The folder's name
 	 * @return JSON object representing the folder
 	 */
 	static TSharedPtr<FJsonObject> CreateFolderJson(const FString& FolderPath, const FString& FolderName);
 	
 	/**
-	 * Create a JSON object for an asset (fallback when ContentBrowserItem is not available)
+	 * A read-content-browser-path item for an asset: path (package), name, isFolder false, type (class name), class, nativeClass
 	 * @param AssetData Asset data from the asset registry
 	 * @return JSON object representing the asset
 	 */
 	static TSharedPtr<FJsonObject> CreateAssetJson(const struct FAssetData& AssetData);
 	
 	/**
-	 * Enumerates items at a content browser path and returns them as JSON objects
+	 * Enumerates items at a content browser path and returns them as JSON objects: the folders the asset registry
+	 * holds directly under Path (IAssetRegistry::GetSubPaths, without __External* folders), then the assets in Path,
+	 * each sorted by name. Each item has path, name, isFolder, type and class (and nativeClass for a loaded class).
 	 * @param Path The path to enumerate
 	 * @param bIncludeFolders Whether to include folders in results
 	 * @param bIncludeFiles Whether to include files/assets in results
