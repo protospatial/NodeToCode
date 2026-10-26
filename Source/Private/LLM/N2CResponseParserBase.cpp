@@ -10,9 +10,16 @@ void UN2CResponseParserBase::Initialize()
 }
 
 bool UN2CResponseParserBase::ParseLLMResponse(
-    const FString& InJson,
+    const FString& InContent,
     FN2CTranslationResponse& OutResponse)
 {
+    // The answer text may sit in a ``` fence, with or without a json tag, or after a sentence: keep only the object
+    FString InJson = InContent;
+    if (ProcessJsonContentWithMarkers(InJson))
+    {
+        FN2CLogger::Get().Log(TEXT("Took the JSON object out of the text around it (code fence or prose)"), EN2CLogSeverity::Debug, TEXT("ResponseParser"));
+    }
+
     // Check for empty or obviously invalid responses
     if (InJson.IsEmpty() || InJson.Len() < 10)
     {
@@ -76,15 +83,16 @@ bool UN2CResponseParserBase::ParseLLMResponse(
     OutResponse.Graphs.Empty();
     for (const auto& GraphValue : *GraphsArray)
     {
-        TSharedPtr<FJsonObject> GraphObject = GraphValue->AsObject();
-        if (!GraphObject.IsValid())
+        // TryGetObject: AsObject() on a non-object logs a LogJson warning and returns a shared empty object, never null
+        const TSharedPtr<FJsonObject>* GraphObjectPtr = nullptr;
+        if (!GraphValue.IsValid() || !GraphValue->TryGetObject(GraphObjectPtr) || !GraphObjectPtr || !GraphObjectPtr->IsValid())
         {
             FN2CLogger::Get().LogWarning(TEXT("Invalid graph object in array"), TEXT("ResponseParser"));
             continue;
         }
 
         FN2CGraphTranslation Graph;
-        ExtractGraphData(GraphObject, Graph);
+        ExtractGraphData(*GraphObjectPtr, Graph);
         OutResponse.Graphs.Add(Graph);
     }
 
@@ -116,16 +124,16 @@ void UN2CResponseParserBase::ExtractGraphData(
     const TSharedPtr<FJsonObject>& GraphObject,
     FN2CGraphTranslation& OutGraph)
 {
-    // Extract basic graph information
-    OutGraph.GraphName = GraphObject->GetStringField(TEXT("graph_name"));
-    OutGraph.GraphType = GraphObject->GetStringField(TEXT("graph_type"));
-    OutGraph.GraphClass = GraphObject->GetStringField(TEXT("graph_class"));
+    // Extract basic graph information (missing or null fields read as empty, numbers as text, without LogJson warnings)
+    OutGraph.GraphName = ReadTextField(GraphObject, TEXT("graph_name"));
+    OutGraph.GraphType = ReadTextField(GraphObject, TEXT("graph_type"));
+    OutGraph.GraphClass = ReadTextField(GraphObject, TEXT("graph_class"));
 
     // Extract code data
-    const TSharedPtr<FJsonObject> CodeObject = GraphObject->GetObjectField(TEXT("code"));
-    if (CodeObject.IsValid())
+    const TSharedPtr<FJsonObject>* CodeObject = nullptr;
+    if (GraphObject->TryGetObjectField(TEXT("code"), CodeObject) && CodeObject && CodeObject->IsValid())
     {
-        ExtractCodeData(CodeObject, OutGraph.Code);
+        ExtractCodeData(*CodeObject, OutGraph.Code);
     }
     else
     {
@@ -140,9 +148,75 @@ void UN2CResponseParserBase::ExtractCodeData(
     const TSharedPtr<FJsonObject>& CodeObject,
     FN2CGeneratedCode& OutCode)
 {
-    OutCode.GraphDeclaration = CodeObject->GetStringField(TEXT("graphDeclaration"));
-    OutCode.GraphImplementation = CodeObject->GetStringField(TEXT("graphImplementation"));
-    OutCode.ImplementationNotes = CodeObject->GetStringField(TEXT("implementationNotes"));
+    OutCode.GraphDeclaration = ReadTextField(CodeObject, TEXT("graphDeclaration"));
+    OutCode.GraphImplementation = ReadTextField(CodeObject, TEXT("graphImplementation"));
+    OutCode.ImplementationNotes = ReadTextField(CodeObject, TEXT("implementationNotes"));
+}
+
+FString UN2CResponseParserBase::ReadTextField(const TSharedPtr<FJsonObject>& Object, const FString& FieldName)
+{
+    // GetStringField logs a LogJson warning for a missing or null field; TryGetString also reads a number or bool as text
+    FString Text;
+    const TSharedPtr<FJsonValue> Field = Object.IsValid() ? Object->TryGetField(FieldName) : nullptr;
+    if (Field.IsValid() && !Field->IsNull() && Field->Type != EJson::Object && Field->Type != EJson::Array)
+    {
+        Field->TryGetString(Text);
+    }
+    return Text;
+}
+
+void UN2CResponseParserBase::ReadOpenAICompatibleUsage(const TSharedPtr<FJsonObject>& UsageObject, FN2CTranslationUsage& OutUsage)
+{
+    if (!UsageObject.IsValid())
+    {
+        return;
+    }
+    // Chat Completions: prompt_tokens, completion_tokens; Responses API: input_tokens, output_tokens. Both totals
+    // already include cached input and reasoning output, which the *_details objects break out.
+    int32 Value = 0;
+    if (UsageObject->TryGetNumberField(TEXT("prompt_tokens"), Value) || UsageObject->TryGetNumberField(TEXT("input_tokens"), Value))
+    {
+        OutUsage.InputTokens = Value;
+    }
+    Value = 0;
+    if (UsageObject->TryGetNumberField(TEXT("completion_tokens"), Value) || UsageObject->TryGetNumberField(TEXT("output_tokens"), Value))
+    {
+        OutUsage.OutputTokens = Value;
+    }
+
+    const TSharedPtr<FJsonObject>* Details = nullptr;
+    for (const TCHAR* Name : { TEXT("prompt_tokens_details"), TEXT("input_tokens_details") })
+    {
+        Value = 0;
+        if (UsageObject->TryGetObjectField(Name, Details) && Details && Details->IsValid()
+            && (*Details)->TryGetNumberField(TEXT("cached_tokens"), Value) && Value > 0)
+        {
+            OutUsage.CacheReadInputTokens = Value;
+        }
+    }
+    // DeepSeek (api-docs.deepseek.com/api/create-chat-completion): prompt_tokens = prompt_cache_hit_tokens + prompt_cache_miss_tokens
+    Value = 0;
+    if (OutUsage.CacheReadInputTokens == 0 && UsageObject->TryGetNumberField(TEXT("prompt_cache_hit_tokens"), Value) && Value > 0)
+    {
+        OutUsage.CacheReadInputTokens = Value;
+    }
+    for (const TCHAR* Name : { TEXT("completion_tokens_details"), TEXT("output_tokens_details") })
+    {
+        Value = 0;
+        if (UsageObject->TryGetObjectField(Name, Details) && Details && Details->IsValid()
+            && (*Details)->TryGetNumberField(TEXT("reasoning_tokens"), Value) && Value > 0)
+        {
+            OutUsage.ReasoningTokens = Value;
+        }
+    }
+}
+
+void UN2CResponseParserBase::LogUsage(const FN2CTranslationUsage& Usage, const FString& Category)
+{
+    FN2CLogger::Get().Log(FString::Printf(
+        TEXT("LLM Token Usage - Input: %d (cache read %d, cache write %d) Output: %d (reasoning %d)"),
+        Usage.InputTokens, Usage.CacheReadInputTokens, Usage.CacheWriteInputTokens, Usage.OutputTokens, Usage.ReasoningTokens),
+        EN2CLogSeverity::Info, Category);
 }
 
 bool UN2CResponseParserBase::HandleCommonErrorResponse(
@@ -262,18 +336,96 @@ bool UN2CResponseParserBase::ExtractStandardMessageContent(
     return true;
 }
 
+int32 UN2CResponseParserBase::FindJsonObjectEnd(const FString& Text, int32 OpenBrace)
+{
+    if (!Text.IsValidIndex(OpenBrace) || Text[OpenBrace] != TEXT('{'))
+    {
+        return INDEX_NONE;
+    }
+    int32 Depth = 0;
+    bool bInString = false;
+    bool bEscaped = false;
+    for (int32 Index = OpenBrace; Index < Text.Len(); ++Index)
+    {
+        const TCHAR Char = Text[Index];
+        if (bInString)
+        {
+            if (bEscaped)
+            {
+                bEscaped = false;
+            }
+            else if (Char == TEXT('\\'))
+            {
+                bEscaped = true;
+            }
+            else if (Char == TEXT('"'))
+            {
+                bInString = false;
+            }
+            continue;
+        }
+        if (Char == TEXT('"'))
+        {
+            bInString = true;
+        }
+        else if (Char == TEXT('{') || Char == TEXT('['))
+        {
+            ++Depth;
+        }
+        else if (Char == TEXT('}') || Char == TEXT(']'))
+        {
+            if (--Depth == 0)
+            {
+                return Char == TEXT('}') ? Index : INDEX_NONE;
+            }
+        }
+    }
+    return INDEX_NONE;
+}
+
 bool UN2CResponseParserBase::ProcessJsonContentWithMarkers(FString& Content)
 {
-    // Check if content is wrapped in ```json markers and remove them
-    if (Content.StartsWith(TEXT("```json")) && Content.EndsWith(TEXT("```")))
+    const FString Text = Content.TrimStartAndEnd();
+
+    // Where the object starts: at once, else after the first ``` fence (its tag, json, JSON or none, is skipped with
+    // everything else before the brace), else at the first brace after leading prose
+    int32 ObjectStart = INDEX_NONE;
+    bool bFenced = false;
+    if (Text.StartsWith(TEXT("{")))
     {
-        // Remove the ```json prefix and ``` suffix
-        Content = Content.RightChop(7); // Skip past "```json"
-        Content = Content.LeftChop(3);  // Remove trailing "```"
-        Content = Content.TrimStartAndEnd(); // Remove any extra whitespace
-        return true;
+        ObjectStart = 0;
     }
-    return false;
+    else
+    {
+        const int32 Fence = Text.Find(TEXT("```"), ESearchCase::CaseSensitive);
+        bFenced = Fence != INDEX_NONE;
+        ObjectStart = Text.Find(TEXT("{"), ESearchCase::CaseSensitive, ESearchDir::FromStart, bFenced ? Fence + 3 : 0);
+    }
+    if (ObjectStart == INDEX_NONE)
+    {
+        // No object at all: leave the text to the JSON reader, which reports it
+        Content = Text;
+        return false;
+    }
+
+    // The object ends at its matching brace (a string-aware scan, so braces and fences inside the generated code do
+    // not count); a closing fence or a sentence after it is dropped
+    const int32 ObjectEnd = FindJsonObjectEnd(Text, ObjectStart);
+    if (ObjectEnd != INDEX_NONE)
+    {
+        Content = Text.Mid(ObjectStart, ObjectEnd - ObjectStart + 1);
+        return ObjectStart > 0 || ObjectEnd < Text.Len() - 1;
+    }
+
+    // No matching brace: the answer looks cut off. Keep it from the brace on, without a closing fence, so the JSON
+    // reader reports the cut
+    FString Rest = Text.Mid(ObjectStart);
+    if (bFenced && Rest.EndsWith(TEXT("```")))
+    {
+        Rest = Rest.LeftChop(3).TrimEnd();
+    }
+    Content = Rest;
+    return ObjectStart > 0;
 }
 
 void UN2CResponseParserBase::SetStopReasonError(FN2CTranslationResponse& OutResponse, EN2CTranslationErrorKind Kind,
@@ -413,10 +565,7 @@ bool UN2CResponseParserBase::ExtractChatCompletionContent(
         return false;
     }
 
-    if (ProcessJsonContentWithMarkers(RawContent))
-    {
-        FN2CLogger::Get().Log(TEXT("Stripped JSON markers from response"), EN2CLogSeverity::Debug);
-    }
+    // Fences and text around the JSON are removed by ParseLLMResponse
     OutContent = RawContent;
     return true;
 }

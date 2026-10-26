@@ -56,15 +56,22 @@ bool UN2CGeminiResponseParser::ParseLLMResponse(
     const TSharedPtr<FJsonObject>* UsagePtr = nullptr;
     if (ResponseObject->TryGetObjectField(TEXT("usageMetadata"), UsagePtr) && UsagePtr && UsagePtr->IsValid())
     {
+        // Thinking is billed as output but counted apart from the answer in thoughtsTokenCount; promptTokenCount
+        // already includes cachedContentTokenCount (ai.google.dev/api/generate-content#UsageMetadata)
         int32 PromptTokens = 0;
-        int32 CompletionTokens = 0;
+        int32 CandidateTokens = 0;
+        int32 ThoughtTokens = 0;
+        int32 CachedTokens = 0;
         (*UsagePtr)->TryGetNumberField(TEXT("promptTokenCount"), PromptTokens);
-        (*UsagePtr)->TryGetNumberField(TEXT("candidatesTokenCount"), CompletionTokens);
+        (*UsagePtr)->TryGetNumberField(TEXT("candidatesTokenCount"), CandidateTokens);
+        (*UsagePtr)->TryGetNumberField(TEXT("thoughtsTokenCount"), ThoughtTokens);
+        (*UsagePtr)->TryGetNumberField(TEXT("cachedContentTokenCount"), CachedTokens);
 
         OutResponse.Usage.InputTokens = PromptTokens;
-        OutResponse.Usage.OutputTokens = CompletionTokens;
-
-        FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
+        OutResponse.Usage.OutputTokens = CandidateTokens + ThoughtTokens;
+        OutResponse.Usage.ReasoningTokens = ThoughtTokens;
+        OutResponse.Usage.CacheReadInputTokens = CachedTokens;
+        LogUsage(OutResponse.Usage, TEXT("GeminiResponseParser"));
     }
 
     // A blocked prompt or a candidate's finishReason decides before the content does
@@ -204,9 +211,7 @@ bool UN2CGeminiResponseParser::ExtractGeminiMessageContent(
         return false;
     }
 
-    // Process content for JSON markers
-    Joined = Joined.TrimStartAndEnd();
-    ProcessJsonContentWithMarkers(Joined);
-    OutContent = Joined;
+    // Fences and text around the JSON are removed by ParseLLMResponse
+    OutContent = Joined.TrimStartAndEnd();
     return true;
 }

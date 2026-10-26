@@ -34,15 +34,22 @@ bool UN2CAnthropicResponseParser::ParseLLMResponse(
     const TSharedPtr<FJsonObject>* UsagePtr = nullptr;
     if (JsonObject->TryGetObjectField(TEXT("usage"), UsagePtr) && UsagePtr && UsagePtr->IsValid())
     {
+        // input_tokens counts only the input after the last cache breakpoint; the cached part is billed separately
+        // as cache_read_input_tokens and cache_creation_input_tokens (docs: build-with-claude/prompt-caching)
         int32 InputTokens = 0;
         int32 OutputTokens = 0;
+        int32 CacheRead = 0;
+        int32 CacheWrite = 0;
         (*UsagePtr)->TryGetNumberField(TEXT("input_tokens"), InputTokens);
         (*UsagePtr)->TryGetNumberField(TEXT("output_tokens"), OutputTokens);
+        (*UsagePtr)->TryGetNumberField(TEXT("cache_read_input_tokens"), CacheRead);
+        (*UsagePtr)->TryGetNumberField(TEXT("cache_creation_input_tokens"), CacheWrite);
 
-        OutResponse.Usage.InputTokens = InputTokens;
+        OutResponse.Usage.InputTokens = InputTokens + CacheRead + CacheWrite;
         OutResponse.Usage.OutputTokens = OutputTokens;
-
-        FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), InputTokens, OutputTokens), EN2CLogSeverity::Info);
+        OutResponse.Usage.CacheReadInputTokens = CacheRead;
+        OutResponse.Usage.CacheWriteInputTokens = CacheWrite;
+        LogUsage(OutResponse.Usage, TEXT("AnthropicResponseParser"));
     }
 
     // The stop reason decides before the content does (docs: build-with-claude/handling-stop-reasons)
@@ -175,9 +182,7 @@ bool UN2CAnthropicResponseParser::ExtractAnthropicMessageContent(
         return false;
     }
 
-    // Process content for JSON markers
-    Joined = Joined.TrimStartAndEnd();
-    ProcessJsonContentWithMarkers(Joined);
-    OutContent = Joined;
+    // Fences and text around the JSON are removed by ParseLLMResponse
+    OutContent = Joined.TrimStartAndEnd();
     return true;
 }

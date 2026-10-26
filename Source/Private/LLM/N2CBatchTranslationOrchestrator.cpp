@@ -343,6 +343,9 @@ void UN2CBatchTranslationOrchestrator::HandleItemResult(int32 Serial, int32 Item
 		CurrentResult.SuccessCount++;
 		CurrentResult.TotalInputTokens += Response.Usage.InputTokens;
 		CurrentResult.TotalOutputTokens += Response.Usage.OutputTokens;
+		CurrentResult.TotalCacheReadInputTokens += Response.Usage.CacheReadInputTokens;
+		CurrentResult.TotalCacheWriteInputTokens += Response.Usage.CacheWriteInputTokens;
+		CurrentResult.TotalReasoningTokens += Response.Usage.ReasoningTokens;
 
 		// Save individual translation files
 		SaveItemTranslation(Item);
@@ -821,6 +824,9 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 	StatsJson->SetNumberField(TEXT("durationSeconds"), CurrentResult.TotalTimeSeconds);
 	StatsJson->SetNumberField(TEXT("totalInputTokens"), CurrentResult.TotalInputTokens);
 	StatsJson->SetNumberField(TEXT("totalOutputTokens"), CurrentResult.TotalOutputTokens);
+	StatsJson->SetNumberField(TEXT("totalCacheReadInputTokens"), CurrentResult.TotalCacheReadInputTokens);
+	StatsJson->SetNumberField(TEXT("totalCacheWriteInputTokens"), CurrentResult.TotalCacheWriteInputTokens);
+	StatsJson->SetNumberField(TEXT("totalReasoningTokens"), CurrentResult.TotalReasoningTokens);
 	SummaryJson->SetObjectField(TEXT("statistics"), StatsJson);
 
 	// Settings
@@ -854,6 +860,9 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 			TSharedPtr<FJsonObject> TokensJson = MakeShared<FJsonObject>();
 			TokensJson->SetNumberField(TEXT("input"), Item.TranslationResponse.Usage.InputTokens);
 			TokensJson->SetNumberField(TEXT("output"), Item.TranslationResponse.Usage.OutputTokens);
+			TokensJson->SetNumberField(TEXT("cacheReadInput"), Item.TranslationResponse.Usage.CacheReadInputTokens);
+			TokensJson->SetNumberField(TEXT("cacheWriteInput"), Item.TranslationResponse.Usage.CacheWriteInputTokens);
+			TokensJson->SetNumberField(TEXT("reasoning"), Item.TranslationResponse.Usage.ReasoningTokens);
 			ItemJson->SetObjectField(TEXT("tokensUsed"), TokensJson);
 		}
 

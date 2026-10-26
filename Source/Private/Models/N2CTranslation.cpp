@@ -115,6 +115,32 @@ namespace N2CTranslationErrorPrivate
     }
 }
 
+bool FN2CTranslationUsage::HasAny() const
+{
+    return InputTokens > 0 || OutputTokens > 0 || CacheReadInputTokens > 0 || CacheWriteInputTokens > 0 || ReasoningTokens > 0;
+}
+
+TSharedRef<FJsonObject> FN2CTranslationUsage::ToJson() const
+{
+    TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+    Json->SetNumberField(TEXT("input_tokens"), InputTokens);
+    Json->SetNumberField(TEXT("output_tokens"), OutputTokens);
+    Json->SetNumberField(TEXT("cache_read_input_tokens"), CacheReadInputTokens);
+    Json->SetNumberField(TEXT("cache_write_input_tokens"), CacheWriteInputTokens);
+    Json->SetNumberField(TEXT("reasoning_tokens"), ReasoningTokens);
+    return Json;
+}
+
+FN2CTranslationUsage& FN2CTranslationUsage::operator+=(const FN2CTranslationUsage& Other)
+{
+    InputTokens += Other.InputTokens;
+    OutputTokens += Other.OutputTokens;
+    CacheReadInputTokens += Other.CacheReadInputTokens;
+    CacheWriteInputTokens += Other.CacheWriteInputTokens;
+    ReasoningTokens += Other.ReasoningTokens;
+    return *this;
+}
+
 FString FN2CTranslationError::KindToString(EN2CTranslationErrorKind InKind)
 {
     return StaticEnum<EN2CTranslationErrorKind>()->GetNameStringByValue(static_cast<int64>(InKind));
