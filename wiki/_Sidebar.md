@@ -70,6 +70,7 @@
 
 * [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription)
 * [Using NodeToCode with Unreal MCP (UE 5.8)](Using-NodeToCode-with-Unreal-MCP)
+* [Agent Skills](Agent-Skills)
 </details>
 
 <details>

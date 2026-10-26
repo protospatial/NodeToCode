@@ -25,6 +25,16 @@ This is where source files for Unreal Engine 5 can be found and searched through
   through it, never by hand) in the same change, and the commit or PR body says `Docs: <pages>` or
   `Docs: none, <why>`. The writer contract is `.agents/contracts/docs.md`; `tools/docs_check.py --changed` checks it.
 
+## Agent Skills
+
+- The user-facing Agent Skills (blueprint-comprehension, blueprint-to-cpp, blueprint-migration) are written once in
+  `Agents/claude-code/nodetocode/skills/<name>/` and ship in the plugin package (`Config/FilterPlugin.ini`). After
+  editing one, or `Content/Prompting/Shared/N2CJsonSpec.md` (copied into their `references/`), run
+  `python -I Agents/sync_skills.py`: it regenerates the copies and the `.agents/skills/` mirror. `--check` (run by
+  `Tests/python/test_agent_skills.py`, so by `build.ps1 -Test`) fails on a stale copy or mirror, invalid frontmatter,
+  a `SKILL.md` over 500 lines, or a skill naming an MCP tool the plugin does not register: renaming or removing a
+  tool means updating the skills in the same change. User page: `wiki/developers/Agent-Skills.md`.
+
 ## TESTING COMPILATION
 
 NodeToCode 2.0 supports UE 5.6 (the floor) through UE 5.8 (the ceiling). Any C++ change must build on 5.6, 5.7
