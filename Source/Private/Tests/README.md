@@ -176,6 +176,11 @@ refuses an unknown `filter_type`, and defaults `sync_browser` to false. The test
 explicitly loaded), written, mounted at `/N2CTestContent` and removed again by the case. Its assets are saved under
 `/Game/__N2CTest`.
 
+`NodeToCode.MCP.SaveBlueprint` (`MCP/N2CMcpSaveBlueprint.spec.cpp`, card 0290) checks that save-blueprint never
+prompts: `FN2CMcpSaveBlueprint::Decide` with the states Perforce and Git report (check out, `CHECKED_OUT_BY_OTHER`,
+`CHECKOUT_REQUIRED`, `READ_ONLY`, save), and a real Blueprint under `/Game/__N2CTestSave` whose file is read-only:
+`READ_ONLY`, the package still dirty and the file unchanged, then saved once writable, with a `sourceControl` object.
+
 Both delete their folders (assets, the redirectors a move leaves, files and registry paths;
 `N2CTest::DeleteContentFolder` in `N2CTestContentFolder.h`) before and after every case, also a failed one. Their
 known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN_DEFECTS=1`.

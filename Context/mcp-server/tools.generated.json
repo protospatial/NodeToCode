@@ -4492,7 +4492,7 @@
 			"name": "save-blueprint",
 			"title": "Save a Blueprint",
 			"toolset": "BlueprintCompileTools",
-			"description": "Save a Blueprint asset to disk, writing the package file Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Save a Blueprint asset to disk, writing the package file. Never prompts: a file under source control is checked out first, and a file that cannot be written returns CHECKOUT_REQUIRED, CHECKED_OUT_BY_OTHER or READ_ONLY. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "AssetTools.save_assets",
 			"longRunning": false,

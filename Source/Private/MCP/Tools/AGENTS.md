@@ -270,7 +270,7 @@ export or translation work goes in the unfrozen toolsets.
 | `BlueprintGraphTools` | 0276 (connect-pins replace and conversion links), 0278 (set-input-pin-value verdict), 0279 (delete-blueprint-node), 0295 (notification brushes, dead code) |
 | `BlueprintFunctionTools` | 0280 (create- and delete-blueprint-function touch unrelated graphs), 0295 |
 | `BlueprintVariableTools` | 0283 (member defaults through the CDO), 0291 (search-variable-types), 0295, 0274 (targets) |
-| `BlueprintCompileTools` | 0290 (save-blueprint without modal dialogs), 0274 (targets) |
+| `BlueprintCompileTools` | 0274 (targets); 0290 is done |
 | `BlueprintClassTools` | 0288 (search-blueprint-classes duplicates and counts) |
 | `BlueprintComponentTools` | 0287 (list-components-in-actor duplicates and type filter), 0274 (targets) |
 | `ContentBrowserTools` | 0286 (open-blueprint-asset on unknown graphs); 0182, 0281, 0284 and 0285 are done |

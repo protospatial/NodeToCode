@@ -18,8 +18,8 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0290 (save-blueprint checks files out without modal dialogs), and 0274 (explicit targets, admitted as
-  next-6).
+- **Fix cards still owed here:** 0274 (explicit targets, admitted as next-6). Done: 0290 (save-blueprint checks files
+  out without modal dialogs).
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.
@@ -39,7 +39,11 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Parameters**:
   - `blueprintPath` (optional): Asset path of the Blueprint to save. If not provided, uses the currently focused Blueprint
   - `saveOnlyIfDirty` (optional): Only save if the Blueprint has unsaved changes (default: true)
-- **Returns**: Save operation results including success status, package information, and timestamp
+- **Returns**: Save operation results including success status, package information, timestamp and, when it saved,
+  a `sourceControl` object (card 0290)
+- **Never prompts** (card 0290): a file under source control that needs a checkout is checked out first, without a
+  dialog; a file that cannot be written is refused with `CHECKOUT_REQUIRED`, `CHECKED_OUT_BY_OTHER` or `READ_ONLY`
+  (see Save Blueprint Errors)
 - **Refused** (`SAVE_REFUSED:`): a Blueprint outside `/Game` and the project's plugins (`/Engine`, an engine or Fab
   plugin, `/NodeToCode`), checked with `FN2CMcpContentBrowserUtils::IsWritableContentPath` before the dirty check,
   unless the user's **Allow MCP Writes Outside Project** is on (card 0182)
@@ -219,9 +223,22 @@ The save-blueprint tool returns save operation results:
     "isDirty": false,
     "fileName": "/Users/username/Project/Content/Blueprints/BP_PlayerCharacter.uasset"
   },
-  "timestamp": "2025-01-22 10:30:45.123"
+  "timestamp": "2025-01-22 10:30:45.123",
+  "sourceControl": {
+    "enabled": true,
+    "provider": "Perforce",
+    "status": "checkedOut",
+    "checkedOutNow": true,
+    "readOnly": false
+  }
 }
 ```
+
+`sourceControl.status` is `none` (no provider enabled and connected), `checkedOut`, `markedForAdd` (a new file the
+save marked for add), `notControlled`, `notCheckedOut` (a writable file the provider does not have checked out, saved
+as the editor saves it), `checkedOutByOther` or `unknown`. `checkedOutNow` is true when this call checked the file out,
+and the message then reads "Blueprint checked out and saved successfully". The already-saved result below has no
+`sourceControl` object: it does not ask the provider.
 
 For already saved Blueprints (when `saveOnlyIfDirty` is true):
 ```json
@@ -264,7 +281,15 @@ The save-blueprint tool provides specific error codes:
 
 - `ASSET_NOT_FOUND`: The specified Blueprint path is invalid
 - `NO_ACTIVE_BLUEPRINT`: No Blueprint path provided and no Blueprint is focused
-- `SAVE_FAILED`: The save operation failed (e.g., file system error, permissions)
+- `CHECKOUT_REQUIRED`: The file is under source control, not checked out, and this call could not check it out: it is
+  not at the latest revision, it is marked for delete, the provider will not check it out, or the checkout failed
+  (the provider's reason follows). Check it out in the editor and call again
+- `CHECKED_OUT_BY_OTHER`: Another user has the file checked out (the message names them when the provider says)
+- `READ_ONLY`: The file is read-only on disk and no checkout makes it writable (no provider connected, or the file is
+  not in the depot). The tool never makes a file writable itself
+- `SAVE_FAILED`: The editor's save failed (e.g., file system error, permissions); the Output Log (`LogSavePackage`) has
+  the reason
+- `SAVE_REFUSED`: A Blueprint outside `/Game` and the project's plugins (card 0182)
 - `INTERNAL_ERROR`: Blueprint has no package or other unexpected error
 
 ## Implementation Notes
@@ -277,7 +302,12 @@ The save-blueprint tool provides specific error codes:
 - Supports performance optimization through garbage collection control
 
 ### Save Blueprint
-- Uses `FEditorFileUtils::SavePackages()` - the standard editor save API
+- Reads the file's state (read-only flag; with a provider enabled and connected, a forced status update), decides with
+  the editor's own rule for when a package needs a checkout (`FEditorFileUtils::AddCheckoutPackageItems`), checks out
+  with a synchronous `FCheckOut`, then saves with `UEditorLoadingAndSavingUtils::SavePackages`, the editor's
+  non-interactive save. It used `FEditorFileUtils::PromptForCheckoutAndSave` with `bAlreadyCheckedOut=false`, which
+  shows the modal 'Check Out Assets' or make-writable dialog and then a retry dialog on the game thread: an unattended
+  MCP call hung until someone clicked (card 0290). `NodeToCode.MCP.SaveBlueprint` covers the rule and a read-only file
 - Checks package dirty state to avoid unnecessary saves (configurable)
 - Returns detailed package information including file system path
 - Executes on the Game Thread as required for asset operations
