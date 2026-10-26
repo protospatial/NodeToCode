@@ -75,8 +75,16 @@
     },
     {
       "name": "agent-skills",
-      "code": ["Agents/**", ".agents/skills/**"],
+      "code": ["Agents/sync_skills.py", "Agents/claude-code/nodetocode/skills/**", ".agents/skills/**"],
       "pages": ["wiki/developers/Agent-Skills.md"]
+    },
+    {
+      "name": "claude-code-plugin",
+      "code": ["Agents/claude-code/.claude-plugin/**", "Agents/claude-code/marketplace-entry.json",
+               "Agents/claude-code/nodetocode/.claude-plugin/**", "Agents/claude-code/nodetocode/.mcp.json",
+               "Agents/claude-code/nodetocode/hooks/**", "Agents/claude-code/nodetocode/commands/**",
+               "Agents/claude-code/nodetocode/README.md"],
+      "pages": ["wiki/developers/Claude-Code-Plugin.md"]
     }
   ],
   "accept": []

@@ -1,0 +1,22 @@
+{
+  "name": "nodetocode",
+  "displayName": "NodeToCode",
+  "version": "2.0.0-beta.1",
+  "description": "Read, translate and migrate Unreal Engine Blueprints from Claude Code: NodeToCode's MCP server (the open editor's Blueprints as N2C JSON, translation, graph editing), three Agent Skills, a /nodetocode:translate command and a session-start check that says how to reach the editor.",
+  "author": {
+    "name": "protospatial",
+    "url": "https://protospatial.com"
+  },
+  "homepage": "https://github.com/protospatial/NodeToCode/wiki/Claude-Code-Plugin",
+  "repository": "https://github.com/protospatial/NodeToCode",
+  "license": "Apache-2.0",
+  "keywords": ["unreal-engine", "blueprint", "blueprints", "c++", "mcp", "ue5", "nodetocode"],
+  "userConfig": {
+    "mcp_url": {
+      "type": "string",
+      "title": "NodeToCode MCP URL",
+      "description": "The editor's NodeToCode MCP endpoint: http://127.0.0.1:<Server Port>/mcp (Project Settings > Plugins > Node to Code > MCP Server). Change it only when the server uses another port.",
+      "default": "http://127.0.0.1:27000/mcp"
+    }
+  }
+}

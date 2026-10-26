@@ -18,7 +18,7 @@ or modifies the asset.
 
 | Route | Engines | How you call a tool |
 |---|---|---|
-| NodeToCode's own MCP server | 5.6, 5.7, 5.8 | By its name, `get-blueprint-n2cjson`; Claude Code shows it as `mcp__nodetocode__get-blueprint-n2cjson` |
+| NodeToCode's own MCP server | 5.6, 5.7, 5.8 | By its name, `get-blueprint-n2cjson`; Claude Code shows it as `mcp__nodetocode__get-blueprint-n2cjson`, or `mcp__plugin_nodetocode_nodetocode__get-blueprint-n2cjson` from the nodetocode plugin |
 | Epic's Unreal MCP, with NodeToCode mounted by the MCP Client Toolset plugin | 5.8 | `call_tool` with `{"toolset_name": "NodeToCode", "tool_name": "get-blueprint-n2cjson", "arguments": {...}}`. The text comes back wrapped once more as `{"text": "<NodeToCode's result>"}`, and a NodeToCode error arrives as ordinary text, so read the text, not only the error flag |
 
 If neither route lists NodeToCode's tools, say so and stop: the editor is closed, the server is off (**Project
