@@ -11,6 +11,29 @@ names its untrusted inputs and its sinks there in the same change.
 
 For creating new MCP tools, see: `@Source/Private/MCP/Tools/AGENTS.md`
 
+## Tool reference (generated)
+
+[tools.generated.md](tools.generated.md) lists every registered tool by toolset with its description, arguments
+(name, type, required, default, description), annotations, the long-running flag, whether it runs during Play In
+Editor, whether the default settings serve it and its Unreal MCP counterpart on UE 5.8 (card 0174), plus the tool-search meta-tools; [tools.generated.json](tools.generated.json) holds the same data with each
+tool's full `inputSchema`, `outputSchema` and `_meta` for scripts and the docs lint. Where this file or a tools
+`AGENTS.md` disagrees with them, they are right: they are built from the tool definitions and
+`Source/Public/MCP/Tools/N2CMcpToolsets.h`, never by hand (card 0179).
+
+- Generate: build a host (`build.ps1`), then `python -I Scripts/generate_tool_reference.py --engine <UE root>
+  --project <host .uproject>`. It runs the commandlet `UnrealEditor-Cmd <project> -run=NodeToCode.N2CToolReference
+  -unattended -nullrhi [-Output=<folder>] [-Check]` (`Source/Private/MCP/Tools/N2CToolReferenceCommandlet.h`; the
+  `NodeToCode.` prefix makes the engine load the PostEngineInit module before it looks the commandlet up). The text
+  is the same on UE 5.6, 5.7 and 5.8 and from run to run: tools sorted by name, toolsets in declaration order, LF,
+  no timestamps or paths.
+- `--output <folder>` (`-Output=`) writes elsewhere; the default is this folder of the checkout the plugin's `Source`
+  junction points at. `--check` (`-Check`) writes nothing and exits 1 when a file is missing or stale.
+- Stale files fail `build.ps1 -Test`: `Tests/python/test_tool_reference.py` (tool names and the
+  `REGISTER_MCP_TOOL` count, no editor) and `NodeToCode.MCP.ToolReference` (both files byte for byte).
+  `Tests/mcp_probe/live_tool_reference_0179.py` compares the reference with a live `tools/list`.
+- All data is read through `N2CMcpToolReference::CollectTools()` (`Source/Public/MCP/Tools/N2CMcpToolReference.h`),
+  the one function to repoint when the tool catalog seam replaces the registry.
+
 ## Directory Structure
 
 ```

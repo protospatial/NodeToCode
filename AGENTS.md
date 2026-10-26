@@ -185,7 +185,7 @@ Context/
 | Plugin initialization, settings | `Context/architecture/` |
 | Node collection, translation | `Context/translation-pipeline/` |
 | Adding LLM providers/models | `Context/llm-providers/` |
-| MCP tools development | `Context/mcp-server/` + `@Source/Private/MCP/Tools/AGENTS.md` |
+| MCP tools development | `Context/mcp-server/` (generated tool reference: `tools.generated.md`) + `@Source/Private/MCP/Tools/AGENTS.md` |
 | Python automation | `Context/python-scripting/` |
 | Code editor styling | `Context/code-editor/` |
 | Git workflow, IDE config | `Context/development-workflow/` |

@@ -452,7 +452,11 @@ FMcpToolCallResult FN2CMcpYourToolName::Execute(const TSharedPtr<FJsonObject>& A
 ```
 
 A new tool changes the mode 3 count: update `Tests/smoke/expected.json` (`default`), the tables in this file and
-the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change. Renaming or removing a tool also means
+the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change. Any change to a tool's definition (a new,
+renamed or removed tool, its description, arguments, annotations or toolset) also means regenerating the tool
+reference, `Context/mcp-server/tools.generated.json` and `tools.generated.md`: `python -I
+Scripts/generate_tool_reference.py --engine <UE root> --project <host .uproject>` after building; `build.ps1 -Test`
+fails while they are stale (`Tests/python/test_tool_reference.py`, `NodeToCode.MCP.ToolReference`). Renaming or removing a tool also means
 updating the Agent Skills that name it (`Agents/claude-code/nodetocode/skills/`, then `python -I
 Agents/sync_skills.py`); `Tests/python/test_agent_skills.py` fails while a skill names a tool that is not registered.
 
