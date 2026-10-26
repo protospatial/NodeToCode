@@ -44,7 +44,8 @@ ProjectRoot/
    - Swift: `.swift`
    - Pseudocode: `.md`
 
-7. **Header Files**: Header files (`.h`) are only generated for C++ translations
+7. **Header Files**: Header files (`.h`) are only generated for C++ translations, and the translation viewer only reads one for a C++ translation (a `.h` left in the folder by an earlier C++ translation does not appear in a Python translation)
+8. **Batch summary**: a batch translation's `BatchSummary.json` records the target language under `settings` > `language` as its id: `Cpp`, `Python`, `JavaScript`, `CSharp`, `Swift` or `Pseudocode` (earlier 2.0 builds wrote `EN2CCodeLanguage::Python`)
 
 ### Tags and translation history file
 
