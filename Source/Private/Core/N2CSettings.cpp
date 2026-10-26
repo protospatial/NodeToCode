@@ -43,13 +43,8 @@ UN2CSettings::UN2CSettings()
     // Validate reference source paths on startup
     ValidateReferenceSourcePaths();
     
-    // The key fields only mirror the process-wide secret store for the details panel; edits go back through it
-    // (the stored keys only: a key from an environment variable is used for requests but never shown or saved)
-    const FN2CSecretStore& Secrets = FN2CSecretStore::Get();
-    OpenAI_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::OpenAI);
-    Anthropic_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::Anthropic);
-    Gemini_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::Gemini);
-    DeepSeek_API_Key_UI = Secrets.GetStoredApiKey(EN2CLLMProvider::DeepSeek);
+    // The API Key fields are write-only and start empty: an entered key goes to the process-wide secret store and the
+    // field is cleared (PostEditChangeProperty). The status rows say where each provider's key comes from.
     RefreshApiKeySources();
     
     // Initialize token estimate
@@ -1209,28 +1204,26 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
     {
         const FName PropertyName = Property->GetFName();
         
-        // Handle API key changes
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_API_Key_UI))
+        // An entered API key is saved to the secret store and the field emptied at once, so no reflected property keeps
+        // it (the fields are Transient and never written to a config file). An empty entry changes nothing: Remove
+        // Saved Key, or SetApiKey with an empty key, removes a saved key.
+        FString* const KeyFields[] = { &OpenAI_API_Key_UI, &Anthropic_API_Key_UI, &Gemini_API_Key_UI, &DeepSeek_API_Key_UI };
+        const FName KeyFieldNames[] = {
+            GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAI_API_Key_UI), GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI),
+            GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI), GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI) };
+        const EN2CLLMProvider KeyProviders[] = { EN2CLLMProvider::OpenAI, EN2CLLMProvider::Anthropic, EN2CLLMProvider::Gemini, EN2CLLMProvider::DeepSeek };
+        for (int32 Index = 0; Index < UE_ARRAY_COUNT(KeyFields); ++Index)
         {
-            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::OpenAI, OpenAI_API_Key_UI);
-            RefreshApiKeySources();
-            return;
-        }
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Anthropic_API_Key_UI))
-        {
-            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::Anthropic, Anthropic_API_Key_UI);
-            RefreshApiKeySources();
-            return;
-        }
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Gemini_API_Key_UI))
-        {
-            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::Gemini, Gemini_API_Key_UI);
-            RefreshApiKeySources();
-            return;
-        }
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeek_API_Key_UI))
-        {
-            FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::DeepSeek, DeepSeek_API_Key_UI);
+            if (PropertyName != KeyFieldNames[Index])
+            {
+                continue;
+            }
+            const FString Entered = KeyFields[Index]->TrimStartAndEnd();
+            KeyFields[Index]->Reset();
+            if (!Entered.IsEmpty())
+            {
+                FN2CSecretStore::Get().SetApiKey(KeyProviders[Index], Entered);
+            }
             RefreshApiKeySources();
             return;
         }
@@ -1343,16 +1336,46 @@ FString UN2CSettings::DescribeApiKeySource(EN2CLLMProvider InProvider)
     switch (IN2CCredentialSource::Get()->GetOrigin(InProvider, &VariableName))
     {
         case EN2CApiKeySource::Store:
-            return TEXT("Saved key (the API Key field)");
+        {
+            const FN2CSecretStore& Secrets = FN2CSecretStore::Get();
+            const FString Stored = Secrets.GetStoredApiKey(InProvider).TrimStartAndEnd();
+            // The last four characters only, and only of a key long enough that they give nothing useful away
+            const FString Ending = Stored.Len() >= 16 ? FString::Printf(TEXT(" (ends ...%s)"), *Stored.Right(4)) : FString();
+            return FString::Printf(TEXT("Stored in %s%s"), *Secrets.GetStoreDisplayName(), *Ending);
+        }
         case EN2CApiKeySource::Environment:
-            return FString::Printf(TEXT("Environment variable %s (value not shown). A key entered in the API Key field takes priority."),
+            return FString::Printf(TEXT("From environment variable %s (value not shown). A key entered in the API Key field takes priority."),
                 *VariableName);
         case EN2CApiKeySource::None:
         default:
-            return FString::Printf(TEXT("No key. Enter one in the API Key field, or set %s in the editor's environment."),
+            return FString::Printf(TEXT("Not set. Enter a key in the API Key field, or set %s in the editor's environment."),
                 *FString::Join(Variables, TEXT(" or ")));
     }
 }
+
+bool UN2CSettings::SetApiKey(EN2CLLMProvider InProvider, const FString& Key)
+{
+    if (FN2CSecretStore::GetProviderId(InProvider).IsEmpty())
+    {
+        return false;
+    }
+    const bool bSaved = FN2CSecretStore::Get().SetApiKey(InProvider, Key.TrimStartAndEnd());
+    if (UN2CSettings* Settings = GetMutableDefault<UN2CSettings>())
+    {
+        Settings->RefreshApiKeySources();
+    }
+    return bSaved;
+}
+
+bool UN2CSettings::HasApiKey(EN2CLLMProvider InProvider)
+{
+    return IN2CCredentialSource::Get()->Has(InProvider);
+}
+
+void UN2CSettings::RemoveSavedAnthropicKey() { SetApiKey(EN2CLLMProvider::Anthropic, FString()); }
+void UN2CSettings::RemoveSavedOpenAIKey() { SetApiKey(EN2CLLMProvider::OpenAI, FString()); }
+void UN2CSettings::RemoveSavedGeminiKey() { SetApiKey(EN2CLLMProvider::Gemini, FString()); }
+void UN2CSettings::RemoveSavedDeepSeekKey() { SetApiKey(EN2CLLMProvider::DeepSeek, FString()); }
 
 void UN2CSettings::RefreshApiKeySources()
 {

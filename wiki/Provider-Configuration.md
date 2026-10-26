@@ -10,7 +10,7 @@ your Node to Code version. Node to Code then has no context size or price for it
 [Model Price Overrides](#model-price-overrides) to see costs.
 
 ### [Anthropic](LLM-Provider-Documentation-&-Resources#anthropic-claude)
-- **API Key**: Enter your Claude API key
+- **API Key**: Enter your Claude API key and press Enter; it is saved to Windows Credential Manager and the field empties. **API Key Status** shows where the key in use comes from
 - **Model**:
   - **Claude Sonnet 5.5**, `claude-sonnet-5-5` (default, recommended)
   - **Claude Opus 5.5**, `claude-opus-5-5` (most capable)
@@ -20,7 +20,7 @@ your Node to Code version. Node to Code then has no context size or price for it
 - **Max Output Tokens**: 0 (Auto) by default, see [Output Token Budget](#output-token-budget)
 
 ### [OpenAI](LLM-Provider-Documentation-&-Resources#openai)
-- **API Key**: Enter your OpenAI API key
+- **API Key**: Enter your OpenAI API key and press Enter; it is saved to Windows Credential Manager and the field empties. **API Key Status** shows where the key in use comes from
 - **Model**:
   - **GPT-6.1 Sol**, `gpt-6.1-sol` (default, recommended)
   - **GPT-6 Astra**, `gpt-6-astra` (most capable)
@@ -31,7 +31,7 @@ your Node to Code version. Node to Code then has no context size or price for it
 - **Max Output Tokens**: 0 (Auto) by default, see [Output Token Budget](#output-token-budget)
 
 ### [Google's Gemini](LLM-Provider-Documentation-&-Resources#gemini)
-- **API Key**: Enter your Gemini API key
+- **API Key**: Enter your Gemini API key and press Enter; it is saved to Windows Credential Manager and the field empties. **API Key Status** shows where the key in use comes from
 - **Model**:
   - **Gemini 3.8 Flash**, `gemini-3.8-flash` (default, recommended)
   - **Gemini 4 Argon**, `gemini-4-argon` (most capable)
@@ -50,7 +50,7 @@ model when the editor starts, saves it to the project's config and writes one wa
 **Custom Model ID** is never changed.
 
 ### [DeepSeek](LLM-Provider-Documentation-&-Resources#deepseek)
-- **API Key**: Enter your DeepSeek API key
+- **API Key**: Enter your DeepSeek API key and press Enter; it is saved to Windows Credential Manager and the field empties. **API Key Status** shows where the key in use comes from
 - **Model**: `deepseek-flash` (default, recommended) or `deepseek-v4-pro` (most capable)
 - **Thinking**: `high` (default) thinks at high effort; `none` turns thinking off and asks for JSON output, faster
   and cheaper; `low` and `max` are the other efforts DeepSeek offers
@@ -150,14 +150,18 @@ For cloud providers, NodeToCode sends a temperature only to models that accept o
 ## Best Practices
 
 1. **API Key Security**
-   - Never commit API keys to version control. Node to Code keeps them in your user folder, outside the project
-     (see [where keys are saved](Initial-Configuration#plugins-config-files--source-control))
+   - Never commit API keys to version control. Node to Code keeps them outside the project, in Windows Credential
+     Manager on Windows (see [where API keys are stored](Initial-Configuration#where-api-keys-are-stored), which also
+     says how to remove them)
+   - The **API Key** fields are masked and write-only: a key you enter is saved and the field empties, and **API Key
+     Status** shows where the key in use comes from
    - Regularly rotate keys for security
    - Each request carries the key in one header only (Anthropic `x-api-key`, Gemini `x-goog-api-key`, OpenAI,
      DeepSeek and LM Studio `Authorization`), never in the URL, and the key is kept out of the
      [log](Logging-Configuration#what-the-log-never-holds) and error messages
    - The key is looked up (the saved key, else the environment variable) when each request is sent and is not kept
-     in the request configuration, so Blueprint or Python code reading the LLM module's configuration sees no key
+     in the request configuration, so Blueprint or Python code reading the LLM module's configuration or the settings
+     sees no key
    - Configure through [Plugin Settings](Initial-Configuration#accessing-plugin-settings), or for build machines
      and CI through [environment variables](Initial-Configuration#api-keys-from-environment-variables)
 

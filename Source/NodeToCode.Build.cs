@@ -65,6 +65,13 @@ public class NodeToCode : ModuleRules
 			}
 		);
 
+		// Windows Credential Manager (CredReadW, CredWriteW, CredDeleteW, CredEnumerateW) holds the API keys on Windows
+		// (FN2CCredentialManagerBackend, card 0161). Other platforms keep the per-user secrets file and link nothing extra.
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			PublicSystemLibraries.Add("Advapi32.lib");
+		}
+
 		// --- httplib.h Integration (unused today, see the include path above) ---
 		// httplib.h (cpp-httplib, version and hash in ThirdParty/cpp-httplib/README.md) is header-only and requires C++11 at a minimum.
 		// httplib.h handles its own Windows socket library linking via #pragma comment(lib, "ws2_32.lib").

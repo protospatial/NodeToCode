@@ -8,9 +8,9 @@ The MCP server listens at **`http://127.0.0.1:27000/mcp`** while the editor is o
 ## API keys
 
 To translate inside the editor, set the **API Key** for your provider in **Project Settings → Plugins → Node to
-Code** (see [Provider Configuration](Provider-Configuration)). Keys are saved in `secrets.json` in your user folder,
-outside every project (see [Initial Configuration](Initial-Configuration#plugins-config-files--source-control)), so
-they are not in anything you commit, and the MCP file tools refuse to read that file.
+Code** (see [Provider Configuration](Provider-Configuration)). On Windows keys are saved in Windows Credential
+Manager, outside every project (see [where API keys are stored](Initial-Configuration#where-api-keys-are-stored)), so
+they are not in anything you commit, and no MCP tool, Blueprint or Python call returns them.
 
 | Provider | Get a key at | Notes |
 |---|---|---|
@@ -30,7 +30,8 @@ Pro/Max** or **Google Account** selected:
 
 - The setting is ignored and the provider uses its **API Key**. The Output Log says so once per editor session, and
   the old entry is dropped the next time you save **Project Settings → Plugins → Node to Code**.
-- Saved sign-in tokens are deleted from `secrets.json` the first time the editor loads it. API keys are kept.
+- Saved sign-in tokens are deleted from `secrets.json` the first time the editor loads it. API keys are kept (on
+  Windows they move to Credential Manager).
 - A translation with no API key set stops before anything is sent, and the error names the key to set.
 
 ## Before you connect an agent

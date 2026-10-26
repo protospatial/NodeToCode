@@ -1,21 +1,24 @@
 """Card 0160 live check: a key saved through Project Settings reaches the next request of a running editor, through
 the secret store and the per-request credential source, with no restart.
 
-Stdlib only; run with `python -I`, under the `user-secrets` lock (it edits the per-user secrets file and puts it back):
+Stdlib only; run with `python -I`, under the `user-secrets` lock (it edits the per-user secrets file and, on Windows,
+the NodeToCode/* Credential Manager entries, and puts both back):
 
     python -I live_credential_source_0160.py --engine G:/UE/UE_5.8 \
         --project "<Hosts>/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--provider anthropic --model claude-haiku-5-5]
 
 Steps, in one headless editor whose environment has none of the provider variables:
-1. The per-user secrets file is backed up byte for byte (with its .bak), and the provider's key is removed from it.
+1. The per-user secrets file is backed up byte for byte (with its .bak), and the provider's key is removed from it; on
+   Windows the NodeToCode/* Credential Manager entries are snapshotted in memory and the provider's entry is removed.
 2. translate-focused-blueprint must fail before sending: an error that names the Project Settings field and the
    variable, and no 'HTTP request sent' line for the provider in the log. get-available-llm-providers must not list it.
 3. Editor Python sets the provider's API Key field on the settings object with PostEditChangeProperty, as typing it in
-   Project Settings does (FN2CSecretStore::SetApiKey saves it). The value comes from a non-provider variable of the
+   Project Settings does (FN2CSecretStore::SetApiKey saves it and the field empties, card 0161). The value comes from a non-provider variable of the
    editor's environment (N2C_0160_STORED_KEY), so it is never in a command, a log or this report.
 4. get-available-llm-providers must list the provider with keySource 'saved'; the same editor's next
    translate-focused-blueprint must succeed, with a 'Sending request ... (saved key)' log line.
-5. The editor stops and the secrets file and its .bak are restored byte for byte (secrets_restored).
+5. The editor stops and the secrets file and its .bak are restored byte for byte, and the Credential Manager entries
+   to the snapshot (secrets_restored).
 Key values are never printed; the editor log, the report and new translation folders are scanned with find_leaks.
 Report: logs/live_credential_source_0160.json.
 """
@@ -32,6 +35,9 @@ from env_keys import PROVIDER_VARIABLES, find_leaks, load_provider_keys  # noqa:
 from live_env_translation import PROVIDER_VARIABLE, STORE_ID, call_tool, run_tool_call, tool_text  # noqa: E402
 from probe_blueprint import SETUP_PY  # noqa: E402
 
+if os.name == 'nt':
+    import wincred  # noqa: E402
+
 ASSET_DIR = '/Game/N2CTest'
 ASSET_NAME = 'BP_N2CStoredKeyProbe'
 STORED_KEY_VARIABLE = 'N2C_0160_STORED_KEY'
@@ -46,7 +52,7 @@ import unreal
 settings = unreal.get_default_object(unreal.N2CSettings)
 prop = "%(prefix)s_api_key_ui"
 settings.set_editor_property(prop, os.environ.get("%(variable)s", ""), unreal.PropertyAccessChangeNotifyMode.ALWAYS)
-result = {"field_set": settings.get_editor_property(prop) != "",
+result = {"field_emptied": settings.get_editor_property(prop) == "",
           "api_key_source": settings.get_editor_property("%(prefix)s_api_key_source")}
 '''
 
@@ -141,6 +147,7 @@ def main():
 
     path = secrets_path()
     saved_file, saved_bak = read_bytes(path), read_bytes(path + '.bak')
+    saved_entries = wincred.snapshot(wincred.PREFIX) if os.name == 'nt' else None
     report = {'provider': args.provider, 'model': args.model, 'variable': variable}
     os.makedirs(os.path.dirname(args.log), exist_ok=True)
     translations_dir = os.path.join(os.path.dirname(os.path.abspath(args.project)), 'Saved', 'NodeToCode', 'Translations')
@@ -152,6 +159,8 @@ def main():
             data.pop('%s_API_Key' % store_id, None)
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4)
+        if saved_entries is not None:
+            wincred.delete(wincred.PREFIX + store_id)
 
         port = free_port(args.port)
         report['port'] = port
@@ -182,7 +191,8 @@ def main():
         # Step 5: the secrets file as it was
         restore(path, saved_file)
         restore(path + '.bak', saved_bak)
-    report['secrets_restored'] = read_bytes(path) == saved_file and read_bytes(path + '.bak') == saved_bak
+        entries_restored = wincred.restore_snapshot(wincred.PREFIX, saved_entries) if saved_entries is not None else True
+    report['secrets_restored'] = read_bytes(path) == saved_file and read_bytes(path + '.bak') == saved_bak and entries_restored
 
     provider_name = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'gemini': 'Gemini', 'deepseek': 'DeepSeek'}[args.provider]
     sends = [l for l in log_text.splitlines() if 'Sending request to' in l and provider_name in l]
@@ -208,7 +218,9 @@ def main():
                              and 'API Key' in before_text and variable in before_text,
         'nothing_sent_without_key': report['log']['http_sent_lines'] == 1,
         'not_listed_without_key': args.provider not in (before_state.get('providers') or {}),
-        'key_saved_through_settings': bool((report.get('set_key') or {}).get('field_set')) and report['log']['saved_line'],
+        'key_saved_through_settings': bool((report.get('set_key') or {}).get('field_emptied'))
+                                      and str((report.get('set_key') or {}).get('api_key_source', '')).startswith('Stored in')
+                                      and report['log']['saved_line'],
         'listed_as_saved': ((after_state.get('providers') or {}).get(args.provider) or {}).get('keySource') == 'saved',
         'next_request_succeeds': (after_state.get('translate') or {}).get('is_error') is False,
         'request_used_saved_key': any('(saved key)' in l for l in report['log']['sending_lines']),

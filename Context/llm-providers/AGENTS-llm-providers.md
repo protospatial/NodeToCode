@@ -179,10 +179,10 @@ Some models have limited or no system prompt support:
 2.  **Plugin Settings (`N2CSettings.h/.cpp`):**
     *   Add `<Provider>ModelId` (with `GetOptions` to a new `Get<Provider>ModelOptions`, defaulting to its `N2CDefaultModelIds` value), `<Provider>CustomModelId` and the API Key UI string. Prices need nothing: `ModelPricing` is keyed by model ID.
     *   Add the provider to `N2CModelIds::Selections` in `N2CSettings.cpp` (it drives `GetActiveModelForProvider`, the pricing getters and `MigrateRetiredModelSelections`) and to `GetModelIdPropertyName` / `GetCustomModelIdPropertyName`.`InitializePricing()` is kept but empty: default prices come from the catalog.
-    *   In `PostEditChangeProperty()`, save the new API key UI string with `FN2CSecretStore::Get().SetApiKey(EN2CLLMProvider::NewProvider, ...)`, and fill the UI string from `GetApiKey` in the constructor.
+    *   Declare the API key UI string like the others (`EditAnywhere, Transient`, `PasswordField = true`, no Blueprint access) with an `_API_Key_Source` status row, add it to the key-field table in `PostEditChangeProperty()` (saves through `FN2CSecretStore::Get().SetApiKey` and empties the field), to `RefreshApiKeySources`, and add a `RemoveSaved<Provider>Key` `CallInEditor` function. Never fill the field from the store.
 
 3.  **Secret store (`N2CSecretStore.h/.cpp`):**
-    *   Add the provider to `FN2CSecretStore::GetProviderId()`. Its key is stored as `<ProviderId>_API_Key`; nothing else in the store changes.
+    *   Add the provider to `FN2CSecretStore::GetProviderId()`. Its key is stored as Credential Manager entry `NodeToCode/<ProviderId>` on Windows (`<ProviderId>_API_Key` in the per-user file elsewhere); nothing else in the store changes.
 
 4.  **Service Implementation (`Source/Public/LLM/Providers/` and `Source/Private/LLM/Providers/`):**
     *   Create `N2CNewProviderService.h` (in Public) and `.cpp` (in Private) inheriting `UN2CBaseLLMService`.
