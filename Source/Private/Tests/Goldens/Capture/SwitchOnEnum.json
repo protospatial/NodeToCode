@@ -39,7 +39,7 @@
 							{
 								"id": "P2",
 								"name": "Mobility",
-								"type": "Byte",
+								"type": "Enum",
 								"sub_type": "EComponentMobility",
 								"default_value": "Static",
 								"connected": true
@@ -60,7 +60,7 @@
 							{
 								"id": "P4",
 								"name": "Selection",
-								"type": "Byte",
+								"type": "Enum",
 								"sub_type": "EComponentMobility",
 								"default_value": "Static",
 								"connected": true

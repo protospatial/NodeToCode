@@ -141,7 +141,8 @@ FMcpToolCallResult FN2CMcpMoveAssetTool::Execute(const TSharedPtr<FJsonObject>& 
 		}
 
 		// Build success response from what the registry holds now
-		bool bLeftRedirector = false; // We could check this in the future
+		// A redirector at the old object path, as the registry holds it now (card 0281, review fs-24)
+		const bool bLeftRedirector = FN2CMcpContentBrowserUtils::IsRedirectorAt(SourceAsset.GetObjectPathString());
 		TSharedPtr<FJsonObject> Result = BuildSuccessResponse(OldPackage, MovedAsset, bIsRename, bLeftRedirector);
 
 		// Convert result to string
@@ -299,7 +300,13 @@ TSharedPtr<FJsonObject> FN2CMcpMoveAssetTool::BuildSuccessResponse(const FString
 
 	// Add helpful next steps
 	TArray<TSharedPtr<FJsonValue>> NextSteps;
-	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Update any references to the old path in your code"))));
+	if (bLeftRedirector)
+	{
+		NextSteps.Add(MakeShareable(new FJsonValueString(FString::Printf(TEXT("A redirector was left at %s: a referencing package could not be ")
+			TEXT("updated or saved. Old references still resolve through it; to remove it, right-click its folder in the content browser and ")
+			TEXT("choose Update Redirector References"), *OldPackage))));
+	}
+	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Paths written in C++, config or text files are not updated: change any that name the old path"))));
 	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Use 'read-content-browser-path' to verify the asset at the new location"))));
 	NextSteps.Add(MakeShareable(new FJsonValueString(TEXT("Consider moving related assets to maintain organization"))));
 	Result->SetArrayField(TEXT("nextSteps"), NextSteps);

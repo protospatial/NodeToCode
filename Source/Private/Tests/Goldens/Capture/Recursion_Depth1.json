@@ -55,7 +55,7 @@
 								"id": "P5",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],
@@ -83,7 +83,7 @@
 								"id": "P8",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							},
 							{
@@ -150,7 +150,7 @@
 								"id": "P13",
 								"name": "self",
 								"label": "Target",
-								"type": "Object",
+								"type": "Self",
 								"sub_type": "self"
 							}
 						],

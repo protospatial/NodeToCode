@@ -95,7 +95,7 @@ struct FN2CPinDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Label;
 
-    /** Type (e.g. Exec, Float, etc.) */
+    /** Type (e.g. Exec, Float, etc.); a map pin's key type, with ValueType its value's */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     EN2CPinType Type;
 
@@ -135,6 +135,25 @@ struct FN2CPinDefinition
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     bool bIsSet = false;
+
+    /**
+     * A map pin's value type (N2C JSON "value_type", card 0238): for a map, Type and SubType describe the key and these
+     * the value (FEdGraphPinType::PinValueType). Unknown with an empty UnknownValueType means none, as on every pin that
+     * is not a map and on a map read from a document written before card 0238; "value_type" is then left out.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CPinType ValueType = EN2CPinType::Unknown;
+
+    /** A map pin's value struct, enum, class or object type (N2C JSON "value_sub_type"), like SubType for the key */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ValueSubType;
+
+    /** The "value_type" text as read when it names a type this build does not know (card 0445's policy) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownValueType;
+
+    /** True when the pin has a value type to write: a map pin captured since card 0238, or read with one */
+    bool HasValueType() const { return ValueType != EN2CPinType::Unknown || !UnknownValueType.IsEmpty(); }
 
     /** The "type" text as read when Type is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")

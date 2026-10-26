@@ -251,7 +251,7 @@ void FN2CMcpUntrustedContentSpec::Define()
 			for (const FMcpPromptResult& Result : {FN2CMcpCodeGenerationPrompt().GetPrompt(Arguments), FN2CMcpRefactorPrompt().GetPrompt(Arguments)})
 			{
 				TestEqual(TEXT("-32602"), Result.ErrorCode, static_cast<int32>(JsonRpcErrorCodes::InvalidParams));
-				TestTrue(TEXT("names the allowed values"), Result.ErrorMessage.Contains(TEXT("cpp, python, csharp, javascript, swift, pseudocode")));
+				TestTrue(TEXT("names the allowed values"), Result.ErrorMessage.Contains(TEXT("cpp, python, javascript, csharp, swift, pseudocode")));
 				TestEqual(TEXT("no messages"), Result.Messages.Num(), 0);
 			}
 			TestTrue(TEXT("generate-code describes the allowed values"),

@@ -35,6 +35,7 @@
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Knot.h"
 #include "K2Node_MacroInstance.h"
+#include "K2Node_MakeMap.h"
 #include "K2Node_MakeStruct.h"
 #include "K2Node_MapForEach.h"
 #include "K2Node_SetFieldsInStruct.h"
@@ -128,6 +129,11 @@
  * Macro, Animation), a collapsed graph is captured at every depth and its Composite node names it, a function and a
  * user struct in plugin content are followed, engine content never is, comment boxes list the nodes inside them, and
  * a null entry in a graph's Nodes array is skipped.
+ *
+ * "PinTypes" and the cases MapPins and BitmaskPin check pin types (card 0238, translation-core-13 and -31): a map pin is
+ * typed by its key with its value in "value_type" and "value_sub_type", a struct or enum used only as a map value is
+ * listed, Make Map is named key then value, an enum pin is Enum (not Byte) with its enum as sub_type, a bitmask int is
+ * Bitmask and a Target pin Self; the subcategory is checked before the category, and the value fields round-trip.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -779,6 +785,74 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		return Node->TryGetBoolField(Field, bValue) && bValue;
 	}
 
+	/** The pin named PinName in Node's PinsField ("input_pins" or "output_pins"); null and an error when none */
+	TSharedPtr<FJsonObject> FindPinObject(const TSharedPtr<FJsonObject>& Node, const TCHAR* PinsField, const FString& PinName)
+	{
+		if (Node.IsValid())
+		{
+			for (const TSharedPtr<FJsonValue>& PinValue : Node->GetArrayField(PinsField))
+			{
+				if (PinValue->AsObject()->GetStringField(N2CJsonContract::PinNameField) == PinName)
+				{
+					return PinValue->AsObject();
+				}
+			}
+		}
+		AddError(FString::Printf(TEXT("no pin '%s' in %s"), *PinName, PinsField));
+		return nullptr;
+	}
+
+	/** A pin's string field, empty when it is absent */
+	static FString PinField(const TSharedPtr<FJsonObject>& Pin, const TCHAR* Field)
+	{
+		FString Value;
+		if (Pin.IsValid())
+		{
+			Pin->TryGetStringField(Field, Value);
+		}
+		return Value;
+	}
+
+	/** Checks a pin's type, sub_type, value_type and value_sub_type (an empty expectation means the field is absent) */
+	void ExpectPinTypes(const FString& What, const TSharedPtr<FJsonObject>& Pin, const FString& Type, const FString& SubType,
+		const FString& ValueType = FString(), const FString& ValueSubType = FString())
+	{
+		if (!Pin.IsValid())
+		{
+			return;
+		}
+		TestEqual(What + TEXT(" type"), PinField(Pin, TEXT("type")), Type);
+		TestEqual(What + TEXT(" sub_type"), PinField(Pin, TEXT("sub_type")), SubType);
+		TestEqual(What + TEXT(" value_type"), PinField(Pin, N2CJsonContract::PinValueTypeField), ValueType);
+		TestEqual(What + TEXT(" value_sub_type"), PinField(Pin, N2CJsonContract::PinValueSubTypeField), ValueSubType);
+	}
+
+	/** The "name" of each entry of the capture's top-level array Field ("structs" or "enums") */
+	static TArray<FString> TopLevelNames(const TSharedPtr<FJsonObject>& Capture, const TCHAR* Field)
+	{
+		TArray<FString> Names;
+		const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+		if (Capture.IsValid() && Capture->TryGetArrayField(Field, Entries))
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : *Entries)
+			{
+				Names.Add(Entry->AsObject()->GetStringField(TEXT("name")));
+			}
+		}
+		return Names;
+	}
+
+	/** A one-graph document whose node N1 has one map output pin P1 (key Name); PinExtra is appended inside the pin */
+	static FString MapPinDocument(const FString& PinExtra)
+	{
+		return FString::Printf(TEXT("{\"version\":\"%s\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",")
+			TEXT("\"blueprint_class\":\"BP\"},\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[")
+			TEXT("{\"id\":\"N1\",\"type\":\"VariableGet\",\"class\":\"K2Node_VariableGet\",\"member_parent\":\"BP\",")
+			TEXT("\"member_name\":\"Counts\",\"pure\":true,\"input_pins\":[],\"output_pins\":[")
+			TEXT("{\"id\":\"P1\",\"name\":\"Counts\",\"type\":\"Name\",\"is_map\":true%s}]}],")
+			TEXT("\"flows\":{\"execution\":[],\"data\":{}}}],\"structs\":[],\"enums\":[]}"), N2CJsonContract::Version, *PinExtra);
+	}
+
 	/** The node of the capture's first graph whose member_name (or else name) is Key; null and an error when none */
 	TSharedPtr<FJsonObject> FindNode(const TSharedPtr<FJsonObject>& Capture, const FString& Key)
 	{
@@ -911,6 +985,22 @@ END_DEFINE_SPEC(FN2CCaptureGoldenSpec)
 namespace N2CCaptureGolden
 {
 	using N2CTest::FTestBlueprint;
+
+	/** A map pin type: Key's category, subcategory and object describe the key, PinValueType the value (as the editor) */
+	FEdGraphPinType MapPinType(const FEdGraphPinType& Key, const FEdGraphPinType& Value)
+	{
+		FEdGraphPinType Type = Key;
+		Type.ContainerType = EPinContainerType::Map;
+		Type.PinValueType = FEdGraphTerminalType::FromPinType(Value);
+		return Type;
+	}
+
+	FEdGraphPinType NamePinType()
+	{
+		FEdGraphPinType Type;
+		Type.PinCategory = UEdGraphSchema_K2::PC_Name;
+		return Type;
+	}
 
 	UK2Node_CallFunction* AddMath(FTestBlueprint& BP, UEdGraph* Graph, const FName Function)
 	{
@@ -1509,6 +1599,65 @@ void FN2CCaptureGoldenSpec::AddCases()
 		} });
 	Cases.Last().ExpectedErrors = { TEXT("Missing name") };
 
+	// Card 0238: map value types, enum and bitmask pins (translation-core-13, translation-core-31)
+
+	Cases.Add({ TEXT("MapPins"),
+		TEXT("Function Maps with members Counts (Name to int), Items (Name to user struct S_GoldenMapItem {Count: int}) "
+			"and Weapons (Name to user enum E_GoldenWeaponType {Sword, Bow}); S_GoldenMapItem and E_GoldenWeaponType are "
+			"used only as map values. Get Counts, Get Items and Get Weapons are the results of the same names; a Make Map "
+			"(Name to int) is the Made result."),
+		{ RepeatMissingName },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UUserDefinedEnum* Weapon = BP.AddUserEnum(TEXT("E_GoldenWeaponType"), { TEXT("Sword"), TEXT("Bow") });
+			UUserDefinedStruct* Item = BP.AddUserStruct(TEXT("S_GoldenMapItem"), { { TEXT("Count"), FTestBlueprint::IntPinType() } });
+			if (!Weapon || !Item
+				|| !BP.AddMemberVariable(TEXT("Counts"), MapPinType(NamePinType(), FTestBlueprint::IntPinType()))
+				|| !BP.AddMemberVariable(TEXT("Items"), MapPinType(NamePinType(), FTestBlueprint::StructPinType(Item)))
+				|| !BP.AddMemberVariable(TEXT("Weapons"), MapPinType(NamePinType(), FTestBlueprint::EnumPinType(Weapon))))
+			{
+				return nullptr;
+			}
+			UEdGraph* Graph = BP.AddFunction(TEXT("Maps"));
+			BP.AddFunctionOutput(Graph, TEXT("Counts"), MapPinType(NamePinType(), FTestBlueprint::IntPinType()));
+			BP.AddFunctionOutput(Graph, TEXT("Items"), MapPinType(NamePinType(), FTestBlueprint::StructPinType(Item)));
+			BP.AddFunctionOutput(Graph, TEXT("Weapons"), MapPinType(NamePinType(), FTestBlueprint::EnumPinType(Weapon)));
+			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Made"),
+				MapPinType(NamePinType(), FTestBlueprint::IntPinType()));
+			for (const TCHAR* Member : { TEXT("Counts"), TEXT("Items"), TEXT("Weapons") })
+			{
+				BP.Link(BP.AddVariableGet(Graph, Member), Member, Result, Member);
+			}
+			FGraphNodeCreator<UK2Node_MakeMap> Creator(*Graph);
+			UK2Node_MakeMap* MakeMap = Creator.CreateNode();
+			Creator.Finalize();
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(MakeMap->GetOutputPin(), BP.Pin(Result, TEXT("Made"), EGPD_Input));
+			return Graph;
+		} });
+	Cases.Last().ExpectedErrors = { TEXT("Missing name") };
+
+	Cases.Add({ TEXT("BitmaskPin"),
+		TEXT("Function Bits with member Flags (int, marked Bitmask in its details): Get Flags is the Value result."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UBlueprint* Blueprint = BP.GetBlueprint();
+			if (!BP.AddMemberVariable(TEXT("Flags"), FTestBlueprint::IntPinType()))
+			{
+				return nullptr;
+			}
+			// As the variable's Bitmask checkbox does (FBlueprintVarActionDetails::OnBitmaskChanged)
+			FBlueprintEditorUtils::SetBlueprintVariableMetaData(Blueprint, TEXT("Flags"), nullptr, FBlueprintMetadata::MD_Bitmask, TEXT(""));
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+			UEdGraph* Graph = BP.AddFunction(TEXT("Bits"));
+			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Value"), FTestBlueprint::IntPinType());
+			UK2Node_VariableGet* GetFlags = BP.AddVariableGet(Graph, TEXT("Flags"));
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(GetFlags, TEXT("Flags"), Result, TEXT("Value"));
+			return Graph;
+		} });
+
 	for (const int32 Depth : { 1, 2 })
 	{
 		FCaptureCase& Recursion = Cases.Add_GetRef({ FString::Printf(TEXT("Recursion_Depth%d"), Depth),
@@ -2050,6 +2199,147 @@ void FN2CCaptureGoldenSpec::Define()
 	// Card 0135: data edges are lossless (translation-core-1, PR #7, issue #13)
 	// Card 0235: graph types from the schema, nested-graph discovery (translation-core-20, -21); golden cases
 	// ConstructionScript, MacroGraph_Depth1, NestedGraphs_Depth0/1, PluginContent_Depth1 and CommentBoxes
+	// Card 0238: pin types from the K2 schema's subcategories, enums and map value types (translation-core-13, -31)
+	Describe(TEXT("PinTypes"), [this]()
+	{
+		It(TEXT("types a map pin by its key and gives its value type"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("MapPins"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			ExpectPinTypes(TEXT("TMap<FName, int32> Counts:"), FindPinObject(FindNode(Captured.Capture, TEXT("Counts")), TEXT("output_pins"),
+				TEXT("Counts")), TEXT("Name"), FString(), TEXT("Integer"));
+			ExpectPinTypes(TEXT("TMap<FName, S_GoldenMapItem> Items:"), FindPinObject(FindNode(Captured.Capture, TEXT("Items")),
+				TEXT("output_pins"), TEXT("Items")), TEXT("Name"), FString(), TEXT("Struct"), TEXT("S_GoldenMapItem"));
+			ExpectPinTypes(TEXT("TMap<FName, E_GoldenWeaponType> Weapons:"), FindPinObject(FindNode(Captured.Capture, TEXT("Weapons")),
+				TEXT("output_pins"), TEXT("Weapons")), TEXT("Name"), FString(), TEXT("Enum"), TEXT("E_GoldenWeaponType"));
+		});
+
+		It(TEXT("lists a struct and an enum used only as map values"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("MapPins"));
+			TestTrue(TEXT("structs lists S_GoldenMapItem"), TopLevelNames(Captured.Capture, TEXT("structs")).Contains(TEXT("S_GoldenMapItem")));
+			TestTrue(TEXT("enums lists E_GoldenWeaponType"), TopLevelNames(Captured.Capture, TEXT("enums")).Contains(TEXT("E_GoldenWeaponType")));
+		});
+
+		It(TEXT("names a Make Map by its key type, then its value type"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("MapPins"));
+			const TSharedPtr<FJsonObject> MakeMap = Captured.Capture.IsValid() ? FindNode(Captured.Capture, TEXT("K2Node_MakeMap")) : nullptr;
+			if (MakeMap.IsValid())
+			{
+				TestEqual(TEXT("member_name"), MakeMap->GetStringField(TEXT("member_name")), FString(TEXT("Name to Integer")));
+				ExpectPinTypes(TEXT("Make Map's output:"), FindPinObject(MakeMap, TEXT("output_pins"), TEXT("Map")), TEXT("Name"), FString(),
+					TEXT("Integer"));
+			}
+		});
+
+		It(TEXT("types an enum pin Enum with its enum as sub_type, for a user and an engine enum"), [this]()
+		{
+			const FCaptured User = CaptureNamed(TEXT("UserEnum"));
+			if (User.Capture.IsValid())
+			{
+				ExpectPinTypes(TEXT("Switch on E_GoldenLimit's Selection:"), FindPinObject(FindNode(User.Capture, TEXT("K2Node_SwitchEnum")),
+					TEXT("input_pins"), TEXT("Selection")), TEXT("Enum"), TEXT("E_GoldenLimit"));
+				ExpectPinTypes(TEXT("the Limit parameter:"), FindPinObject(FindNode(User.Capture, TEXT("K2Node_FunctionEntry")),
+					TEXT("output_pins"), TEXT("Limit")), TEXT("Enum"), TEXT("E_GoldenLimit"));
+			}
+			const FCaptured Engine = CaptureNamed(TEXT("SwitchOnEnum"));
+			if (Engine.Capture.IsValid())
+			{
+				ExpectPinTypes(TEXT("Switch on EComponentMobility's Selection:"), FindPinObject(FindNode(Engine.Capture, TEXT("K2Node_SwitchEnum")),
+					TEXT("input_pins"), TEXT("Selection")), TEXT("Enum"), TEXT("EComponentMobility"));
+			}
+		});
+
+		It(TEXT("types a bitmask int pin Bitmask, and a plain int Integer"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("BitmaskPin"));
+			if (Captured.Capture.IsValid())
+			{
+				ExpectPinTypes(TEXT("Get Flags:"), FindPinObject(FindNode(Captured.Capture, TEXT("Flags")), TEXT("output_pins"), TEXT("Flags")),
+					TEXT("Bitmask"), TEXT("bitmask"));
+				ExpectPinTypes(TEXT("the Value result:"), FindPinObject(FindNode(Captured.Capture, TEXT("K2Node_FunctionResult")),
+					TEXT("input_pins"), TEXT("Value")), TEXT("Integer"), FString());
+			}
+		});
+
+		It(TEXT("types a call's Target pin Self"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("CallChain_Depth1"));
+			if (Captured.Capture.IsValid())
+			{
+				ExpectPinTypes(TEXT("the call to B's Target:"), FindPinObject(FindNode(Captured.Capture, TEXT("B")), TEXT("input_pins"),
+					UEdGraphSchema_K2::PN_Self.ToString()), TEXT("Self"), TEXT("self"));
+			}
+		});
+
+		It(TEXT("checks a type's subcategory before its category"), [this]()
+		{
+			using N2CStableNames::PinType;
+			UEnum* Mobility = StaticEnum<EComponentMobility::Type>();
+			const FName None;
+			const auto Name = [](EN2CPinType Type) { return StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Type)); };
+			TestEqual(TEXT("byte with an enum"), Name(PinType(UEdGraphSchema_K2::PC_Byte, None, Mobility)), Name(EN2CPinType::Enum));
+			TestEqual(TEXT("byte"), Name(PinType(UEdGraphSchema_K2::PC_Byte, None, nullptr)), Name(EN2CPinType::Byte));
+			TestEqual(TEXT("enum"), Name(PinType(UEdGraphSchema_K2::PC_Enum, None, Mobility)), Name(EN2CPinType::Enum));
+			TestEqual(TEXT("bitmask int"), Name(PinType(UEdGraphSchema_K2::PC_Int, UEdGraphSchema_K2::PSC_Bitmask, nullptr)), Name(EN2CPinType::Bitmask));
+			TestEqual(TEXT("bitmask byte with its flags enum"), Name(PinType(UEdGraphSchema_K2::PC_Byte, UEdGraphSchema_K2::PSC_Bitmask, Mobility)),
+				Name(EN2CPinType::Bitmask));
+			TestEqual(TEXT("self object"), Name(PinType(UEdGraphSchema_K2::PC_Object, UEdGraphSchema_K2::PSC_Self, nullptr)), Name(EN2CPinType::Self));
+			TestEqual(TEXT("self class"), Name(PinType(UEdGraphSchema_K2::PC_Class, UEdGraphSchema_K2::PSC_Self, nullptr)), Name(EN2CPinType::Self));
+			TestEqual(TEXT("index wildcard"), Name(PinType(UEdGraphSchema_K2::PC_Wildcard, UEdGraphSchema_K2::PSC_Index, nullptr)), Name(EN2CPinType::Index));
+			TestEqual(TEXT("object"), Name(PinType(UEdGraphSchema_K2::PC_Object, None, AActor::StaticClass())), Name(EN2CPinType::Object));
+			TestEqual(TEXT("real"), Name(PinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Double, nullptr)), Name(EN2CPinType::Real));
+			TestEqual(TEXT("an unknown category"), Name(PinType(TEXT("no_such_category"), None, nullptr)), Name(EN2CPinType::Wildcard));
+		});
+
+		It(TEXT("reads value_type and value_sub_type and writes them back the same"), [this]()
+		{
+			const FString Text = MapPinDocument(TEXT(",\"value_type\":\"Struct\",\"value_sub_type\":\"S_Item\""));
+			FN2CBlueprint Blueprint;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint, Warnings))
+				&& TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1) && TestEqual(TEXT("nodes"), Blueprint.Graphs[0].Nodes.Num(), 1))
+			{
+				const FN2CPinDefinition& Pin = Blueprint.Graphs[0].Nodes[0].OutputPins[0];
+				TestTrue(TEXT("ValueType is Struct"), Pin.ValueType == EN2CPinType::Struct);
+				TestEqual(TEXT("ValueSubType"), Pin.ValueSubType, FString(TEXT("S_Item")));
+				TestEqual(TEXT("no warnings"), Warnings.Num(), 0);
+				TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
+			}
+		});
+
+		It(TEXT("reads a map pin without a value type (written before card 0238) and writes none"), [this]()
+		{
+			const FString Text = MapPinDocument(FString());
+			FN2CBlueprint Blueprint;
+			if (TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint)) && TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1))
+			{
+				TestFalse(TEXT("no value type"), Blueprint.Graphs[0].Nodes[0].OutputPins[0].HasValueType());
+				TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
+			}
+		});
+
+		It(TEXT("keeps a value_type it does not know, with a warning"), [this]()
+		{
+			const FString Text = MapPinDocument(TEXT(",\"value_type\":\"Hologram\""));
+			FN2CBlueprint Blueprint;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Blueprint, Warnings)) && TestEqual(TEXT("graphs"), Blueprint.Graphs.Num(), 1))
+			{
+				TestEqual(TEXT("one warning"), Warnings.Num(), 1);
+				if (Warnings.Num() == 1)
+				{
+					TestEqual(TEXT("its code"), Warnings[0].Code, FString(N2CJsonContract::ReadWarning::UnknownPinType));
+				}
+				TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
+			}
+		});
+	});
+
 	Describe(TEXT("Discovery"), [this]()
 	{
 		It(TEXT("captures a graph whose Nodes array holds a null entry as the main graph and as a nested and a listed one"), [this]()

@@ -11,6 +11,7 @@
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTagManager.h"
+#include "Core/N2CTargetLanguage.h"
 #include "Editor/EditorEngine.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
@@ -109,17 +110,20 @@ void FNodeToCodeModule::StartupModule()
     FN2CCodeEditorWidgetFactory::Register();
     FN2CLogger::Get().Log(TEXT("Widget factory registered"), EN2CLogSeverity::Debug);
     
-    // Verify syntax factory is working
-    auto CPPSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::Cpp);
-    auto PythonSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::Python);
-    auto JSSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::JavaScript);
-    auto CSharpSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::CSharp);
-    auto SwiftSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::Swift);
-    auto PseudocodeSyntax = FN2CSyntaxDefinitionFactory::Get().CreateDefinition(EN2CCodeLanguage::Pseudocode);
-
-    if (!CPPSyntax || !PythonSyntax || !JSSyntax || !CSharpSyntax || !SwiftSyntax || !PseudocodeSyntax)
+    // Verify the syntax factory has a definition for every target language
+    TArray<FString> MissingSyntax;
+    for (const FN2CTargetLanguage& Language : N2C::GetLanguages())
     {
-        FN2CLogger::Get().LogError(TEXT("Failed to initialize syntax definitions"), TEXT("NodeToCode"));
+        if (!FN2CSyntaxDefinitionFactory::Get().CreateDefinition(Language.Enum))
+        {
+            MissingSyntax.Add(Language.Id);
+        }
+    }
+
+    if (MissingSyntax.Num() > 0)
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to initialize syntax definitions for: %s"),
+            *FString::Join(MissingSyntax, TEXT(", "))), TEXT("NodeToCode"));
     }
     else 
     {

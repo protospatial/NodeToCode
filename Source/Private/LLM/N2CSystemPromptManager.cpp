@@ -3,6 +3,7 @@
 #include "LLM/N2CSystemPromptManager.h"
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CTargetLanguage.h"
 #include "Utils/N2CLogger.h"
 #include "Interfaces/IPluginManager.h"
 
@@ -90,25 +91,15 @@ FString UN2CSystemPromptManager::GetLanguageSpecificPrompt(const FString& BasePr
     return GetSystemPrompt(BasePromptKey);
 }
 
-FString UN2CSystemPromptManager::GetLanguagePromptKey(const FString& BasePromptKey, EN2CCodeLanguage Language) const
+FString UN2CSystemPromptManager::GetLanguagePromptKey(const FString& BasePromptKey, EN2CCodeLanguage Language)
 {
-    switch (Language)
-    {
-        case EN2CCodeLanguage::Cpp:
-            return FString::Printf(TEXT("%s_CPP"), *BasePromptKey);
-        case EN2CCodeLanguage::Python:
-            return FString::Printf(TEXT("%s_Python"), *BasePromptKey);
-        case EN2CCodeLanguage::JavaScript:
-            return FString::Printf(TEXT("%s_JavaScript"), *BasePromptKey);
-        case EN2CCodeLanguage::CSharp:
-            return FString::Printf(TEXT("%s_CSharp"), *BasePromptKey);
-        case EN2CCodeLanguage::Swift:
-            return FString::Printf(TEXT("%s_Swift"), *BasePromptKey);
-    case EN2CCodeLanguage::Pseudocode:
-        return FString::Printf(TEXT("%s_Pseudocode"), *BasePromptKey);
-        default:
-            return BasePromptKey;
-    }
+    const FN2CTargetLanguage* Row = N2C::FindLanguageRow(Language);
+    return Row ? FString::Printf(TEXT("%s_%s"), *BasePromptKey, Row->PromptKey) : BasePromptKey;
+}
+
+bool UN2CSystemPromptManager::HasPrompt(const FString& PromptKey) const
+{
+    return LoadedPrompts.Contains(PromptKey);
 }
 
 void UN2CSystemPromptManager::LoadPrompts()
@@ -129,18 +120,9 @@ void UN2CSystemPromptManager::LoadPrompts()
         FN2CLogger::Get().LogError(TEXT("Could not find NodeToCode Docs/Prompting directory! Translation will likely fail!"));
     }
 
-    // Base prompts
-    TArray<FString> BasePromptFiles;
-    BasePromptFiles.Add(TEXT("CodeGen"));
-
-    // Languages to load prompts for
-    TArray<EN2CCodeLanguage> Languages;
-    Languages.Add(EN2CCodeLanguage::Cpp);
-    Languages.Add(EN2CCodeLanguage::Python);
-    Languages.Add(EN2CCodeLanguage::JavaScript);
-    Languages.Add(EN2CCodeLanguage::CSharp);
-    Languages.Add(EN2CCodeLanguage::Swift);
-    Languages.Add(EN2CCodeLanguage::Pseudocode);
+    // Prompt families, one per translation source kind (only Blueprint graphs today). Each family has an optional base
+    // prompt, <Family>.md, and one prompt per target language, <Family>_<PromptKey>.md, for every row of the table.
+    const TArray<FString> BasePromptFiles = { N2C::BlueprintPromptFamily };
 
     // Shared fragments the prompts include by placeholder (one copy of the N2C JSON spec for every language)
     TMap<FString, FString> Fragments;
@@ -158,9 +140,9 @@ void UN2CSystemPromptManager::LoadPrompts()
         }
 
         // Load language-specific prompts
-        for (EN2CCodeLanguage Language : Languages)
+        for (const FN2CTargetLanguage& Language : N2C::GetLanguages())
         {
-            const FString LanguageKey = GetLanguagePromptKey(PromptKey, Language);
+            const FString LanguageKey = GetLanguagePromptKey(PromptKey, Language.Enum);
             if (LoadPromptFromFile(GetPromptFilePath(LanguageKey), PromptContent))
             {
                 LoadedPrompts.Add(LanguageKey, AssemblePrompt(LanguageKey, PromptContent, Fragments));
@@ -171,7 +153,7 @@ void UN2CSystemPromptManager::LoadPrompts()
     if (LoadedPrompts.Num() == 0)
     {
         FN2CLogger::Get().LogError(TEXT("Failed to load any CodeGen system prompt files from Docs/Prompting. Translation will fail!"), TEXT("SystemPromptManager"));
-        LoadedPrompts.Add(TEXT("CodeGen"), TEXT("You are an expert developer specializing in Unreal Engine Blueprint to code conversion."));
+        LoadedPrompts.Add(N2C::BlueprintPromptFamily, TEXT("You are an expert developer specializing in Unreal Engine Blueprint to code conversion."));
     }
     
 }

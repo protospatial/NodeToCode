@@ -23,7 +23,7 @@ namespace
         TEXT("output_pins") };
     const TCHAR* const PinFields[] = { TEXT("id"), N2CJsonContract::PinNameField, N2CJsonContract::PinLabelField, TEXT("type"),
         TEXT("sub_type"), TEXT("default_value"), TEXT("connected"), TEXT("is_reference"), TEXT("is_const"), TEXT("is_array"),
-        TEXT("is_map"), TEXT("is_set") };
+        TEXT("is_map"), TEXT("is_set"), N2CJsonContract::PinValueTypeField, N2CJsonContract::PinValueSubTypeField };
 
     void AddReadWarning(TArray<FN2CJsonReadWarning>& Warnings, const TCHAR* Code, const FString& Path, const FString& Value,
         const FString& Message)
@@ -522,6 +522,16 @@ TSharedPtr<FJsonObject> FN2CSerializer::PinToJsonObject(const FN2CPinDefinition&
     if (Pin.bIsSet)
     {
         JsonObject->SetBoolField(TEXT("is_set"), true);
+    }
+
+    // A map's value type (card 0238): "type" and "sub_type" above are its key's
+    if (Pin.HasValueType())
+    {
+        JsonObject->SetStringField(N2CJsonContract::PinValueTypeField, WriteKind(Pin.ValueType, Pin.UnknownValueType));
+        if (!Pin.ValueSubType.IsEmpty())
+        {
+            JsonObject->SetStringField(N2CJsonContract::PinValueSubTypeField, Pin.ValueSubType);
+        }
     }
     WriteUnknownFields(JsonObject, Pin.UnknownFields);
 
@@ -1087,6 +1097,19 @@ bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject,
     OutPin.bIsArray = bIsArray;
     OutPin.bIsMap = bIsMap;
     OutPin.bIsSet = bIsSet;
+
+    // A map's value type (card 0238); a document written before it has none, and keeps none
+    OutPin.ValueType = EN2CPinType::Unknown;
+    OutPin.UnknownValueType.Reset();
+    OutPin.ValueSubType.Reset();
+    FString ValueTypeString;
+    if (JsonObject->TryGetStringField(N2CJsonContract::PinValueTypeField, ValueTypeString))
+    {
+        OutPin.ValueType = ReadKind<EN2CPinType>(ValueTypeString, OutPin.UnknownValueType,
+            N2CJsonContract::ReadWarning::UnknownPinType, JoinPath(Path, N2CJsonContract::PinValueTypeField),
+            TEXT("map value type"), Warnings);
+    }
+    JsonObject->TryGetStringField(N2CJsonContract::PinValueSubTypeField, OutPin.ValueSubType);
 
     KeepUnknownFields(JsonObject, PinFields, OutPin.UnknownFields, Path, Warnings);
     return true;

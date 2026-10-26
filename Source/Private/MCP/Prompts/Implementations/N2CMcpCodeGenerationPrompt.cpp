@@ -3,6 +3,7 @@
 #include "MCP/Prompts/Implementations/N2CMcpCodeGenerationPrompt.h"
 #include "LLM/N2CLLMTypes.h"
 #include "LLM/N2CSystemPromptManager.h"
+#include "Core/N2CTargetLanguage.h"
 #include "MCP/Resources/N2CMcpResourceManager.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
@@ -41,14 +42,16 @@ namespace
 
 const TArray<FN2CMcpPromptLanguage>& FN2CMcpBlueprintPrompts::Languages()
 {
-	static const TArray<FN2CMcpPromptLanguage> All = {
-		{TEXT("cpp"), TEXT("C++"), EN2CCodeLanguage::Cpp},
-		{TEXT("python"), TEXT("Python"), EN2CCodeLanguage::Python},
-		{TEXT("csharp"), TEXT("C#"), EN2CCodeLanguage::CSharp},
-		{TEXT("javascript"), TEXT("JavaScript"), EN2CCodeLanguage::JavaScript},
-		{TEXT("swift"), TEXT("Swift"), EN2CCodeLanguage::Swift},
-		{TEXT("pseudocode"), TEXT("Pseudocode"), EN2CCodeLanguage::Pseudocode},
-	};
+	// The target-language table's rows, with the ids the MCP tools use
+	static const TArray<FN2CMcpPromptLanguage> All = []
+	{
+		TArray<FN2CMcpPromptLanguage> Rows;
+		for (const FN2CTargetLanguage& Language : N2C::GetLanguages())
+		{
+			Rows.Add({Language.GetMcpId(), Language.DisplayName, Language.Enum});
+		}
+		return Rows;
+	}();
 	return All;
 }
 
@@ -91,7 +94,7 @@ FString FN2CMcpBlueprintPrompts::CodeGenInstructions(EN2CCodeLanguage Language)
 	// and response format (card 0132)
 	const TStrongObjectPtr<UN2CSystemPromptManager> Manager(NewObject<UN2CSystemPromptManager>(GetTransientPackage()));
 	Manager->Initialize(FN2CLLMConfig());
-	return Manager->GetLanguageSpecificPrompt(TEXT("CodeGen"), Language);
+	return Manager->GetLanguageSpecificPrompt(N2C::BlueprintPromptFamily, Language);
 }
 
 void FN2CMcpBlueprintPrompts::AppendBlueprint(FMcpPromptResult& Result, const FMcpResourceContents& Blueprint)

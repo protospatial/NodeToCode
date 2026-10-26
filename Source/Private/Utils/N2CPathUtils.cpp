@@ -3,7 +3,7 @@
 #include "Utils/N2CPathUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Core/N2CSettings.h"
-#include "Code Editor/Models/N2CCodeLanguage.h"
+#include "Core/N2CTargetLanguage.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -69,92 +69,24 @@ bool FN2CPathUtils::ValidatePathWithinBounds(const FString& BasePath, const FStr
 
 FString FN2CPathUtils::GetFileExtensionForLanguage(EN2CCodeLanguage Language)
 {
-    switch (Language)
-    {
-        case EN2CCodeLanguage::Cpp:
-            return TEXT(".cpp");
-        case EN2CCodeLanguage::Python:
-            return TEXT(".py");
-        case EN2CCodeLanguage::JavaScript:
-            return TEXT(".js");
-        case EN2CCodeLanguage::CSharp:
-            return TEXT(".cs");
-        case EN2CCodeLanguage::Swift:
-            return TEXT(".swift");
-        case EN2CCodeLanguage::Pseudocode:
-            return TEXT(".md");
-        default:
-            return TEXT(".txt");
-    }
+    return N2C::GetLanguage(Language).ImplementationExtension;
 }
 
 TArray<FString> FN2CPathUtils::GetTranslationFileExtensions(EN2CCodeLanguage Language)
 {
-    TArray<FString> Extensions;
-    Extensions.Add(GetFileExtensionForLanguage(Language));
-    if (Language == EN2CCodeLanguage::Pseudocode)
-    {
-        Extensions.AddUnique(TEXT(".txt"));
-    }
-    return Extensions;
+    return N2C::GetLanguage(Language).GetImplementationExtensions();
 }
 
 FString FN2CPathUtils::GetLanguageId(EN2CCodeLanguage Language)
 {
-    switch (Language)
-    {
-        case EN2CCodeLanguage::Cpp:
-            return TEXT("Cpp");
-        case EN2CCodeLanguage::Python:
-            return TEXT("Python");
-        case EN2CCodeLanguage::JavaScript:
-            return TEXT("JavaScript");
-        case EN2CCodeLanguage::CSharp:
-            return TEXT("CSharp");
-        case EN2CCodeLanguage::Swift:
-            return TEXT("Swift");
-        case EN2CCodeLanguage::Pseudocode:
-            return TEXT("Pseudocode");
-        default:
-            return TEXT("Cpp");
-    }
+    return N2C::GetLanguage(Language).Id;
 }
 
 bool FN2CPathUtils::ParseLanguageId(const FString& Id, EN2CCodeLanguage& OutLanguage)
 {
-    OutLanguage = EN2CCodeLanguage::Cpp;
-    FString Name = Id.TrimStartAndEnd();
-    int32 Separator = INDEX_NONE;
-    if (Name.FindLastChar(TEXT(':'), Separator))
-    {
-        Name.RightChopInline(Separator + 1); // EN2CCodeLanguage::Python -> Python
-    }
-    if (Name.IsEmpty())
-    {
-        return false;
-    }
-
-    static const EN2CCodeLanguage All[] = { EN2CCodeLanguage::Cpp, EN2CCodeLanguage::Python, EN2CCodeLanguage::JavaScript,
-        EN2CCodeLanguage::CSharp, EN2CCodeLanguage::Swift, EN2CCodeLanguage::Pseudocode };
-    for (EN2CCodeLanguage Language : All)
-    {
-        if (Name.Equals(GetLanguageId(Language), ESearchCase::IgnoreCase))
-        {
-            OutLanguage = Language;
-            return true;
-        }
-    }
-    if (Name.Equals(TEXT("C++"), ESearchCase::IgnoreCase))
-    {
-        OutLanguage = EN2CCodeLanguage::Cpp;
-        return true;
-    }
-    if (Name.Equals(TEXT("C#"), ESearchCase::IgnoreCase))
-    {
-        OutLanguage = EN2CCodeLanguage::CSharp;
-        return true;
-    }
-    return false;
+    const FN2CTargetLanguage* Row = N2C::FindLanguage(Id);
+    OutLanguage = Row ? Row->Enum : EN2CCodeLanguage::Cpp;
+    return Row != nullptr;
 }
 
 FString FN2CPathUtils::MakeTranslationRecordPath(const FString& GraphDirectory)

@@ -23,7 +23,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Core/N2CSettings.h"
 #include "Core/Style/N2CUIColors.h"
-#include "Utils/N2CPathUtils.h"
+#include "Core/N2CTargetLanguage.h"
 
 #define LOCTEXT_NAMESPACE "SN2CTranslationViewer"
 
@@ -76,7 +76,7 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
 						[
-							CreateFileTab(FText::FromString(TEXT(".h")), TEXT("h"), HeaderTabButton)
+							CreateFileTab(TAttribute<FText>::CreateSP(this, &SN2CTranslationViewer::GetDeclarationTabLabel), TEXT("h"), HeaderTabButton)
 						]
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
@@ -428,7 +428,14 @@ FString SN2CTranslationViewer::GetContentForActiveTab() const
 
 FText SN2CTranslationViewer::GetImplementationTabLabel() const
 {
-	return FText::FromString(FN2CPathUtils::GetFileExtensionForLanguage(CurrentLanguage));
+	return FText::FromString(N2C::GetLanguage(CurrentLanguage).ImplementationExtension);
+}
+
+FText SN2CTranslationViewer::GetDeclarationTabLabel() const
+{
+	// The tab shows only when a declaration was loaded, which only a language with a declaration file has
+	const TCHAR* Extension = N2C::GetLanguage(CurrentLanguage).DeclarationExtension;
+	return FText::FromString(*Extension ? Extension : TEXT(".h"));
 }
 
 EVisibility SN2CTranslationViewer::GetHeaderTabVisibility() const

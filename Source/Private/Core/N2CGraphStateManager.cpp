@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CGraphStateManager.h"
+#include "Core/N2CTargetLanguage.h"
 #include "Utils/N2CLogger.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -564,14 +565,17 @@ bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTra
 	// Absolute, or relative to the project folder
 	const FString FullPath = FN2CPathUtils::ResolveTranslationRecordPath(State->Translation.OutputPath);
 
-	// The recorded language picks the extension; an unknown id reads as C++ (what older builds did)
-	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
-	if (!FN2CPathUtils::ParseLanguageId(State->Translation.Language, Language) && !State->Translation.Language.IsEmpty())
+	// The recorded language picks the extensions (target-language table); an unknown id reads as C++ (what older
+	// builds did)
+	const FN2CTargetLanguage* Row = N2C::FindLanguage(State->Translation.Language);
+	if (!Row && !State->Translation.Language.IsEmpty())
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Unknown translation language '%s' for graph %s, loading it as C++"),
 			*State->Translation.Language, *State->GraphName));
 	}
-	const TArray<FString> Extensions = FN2CPathUtils::GetTranslationFileExtensions(Language);
+	const FN2CTargetLanguage& TargetLanguage = Row ? *Row : N2C::GetLanguage(EN2CCodeLanguage::Cpp);
+	const EN2CCodeLanguage Language = TargetLanguage.Enum;
+	const TArray<FString> Extensions = TargetLanguage.GetImplementationExtensions();
 
 	// Same stem the save path used (identical to the raw name for names without path characters)
 	FString Stem = FN2CPathUtils::GetTranslationFileStem(State->GraphName);
@@ -606,12 +610,15 @@ bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTra
 	{
 		ImplementationPath = FPaths::Combine(FullPath, Stem + Extensions[0]);
 	}
-	const FString DeclarationPath = FPaths::Combine(FullPath, Stem + TEXT(".h"));
+	// Only a language with a declaration file reads one: a .h left in the folder by an earlier C++ translation is
+	// not this translation's
+	const FString DeclarationPath = TargetLanguage.bHasDeclarationFile
+		? FPaths::Combine(FullPath, Stem + TargetLanguage.DeclarationExtension) : FString();
 	const FString NotesPath = FPaths::Combine(FullPath, Stem + TEXT("_Notes.txt"));
 
 	// Load declaration (header) if it exists
 	FString Declaration;
-	if (FPaths::FileExists(DeclarationPath))
+	if (!DeclarationPath.IsEmpty() && FPaths::FileExists(DeclarationPath))
 	{
 		FFileHelper::LoadFileToString(Declaration, *DeclarationPath);
 	}

@@ -4,10 +4,6 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpContentBrowserUtils.h"
-#include "Subsystems/EditorAssetSubsystem.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetRegistry/AssetData.h"
-#include "Editor.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -80,29 +76,24 @@ FMcpToolCallResult FN2CMcpMoveFolderTool::Execute(const TSharedPtr<FJsonObject>&
         // Extract folder name from source path
         FString FolderName = FPaths::GetCleanFilename(NormalizedSourcePath);
 
-        // Validate destination path
+        // Validate destination path; nothing is created yet
         FString FullDestinationPath;
-        if (!ValidateDestinationPath(DestinationPath, FolderName, FullDestinationPath, ValidationError))
+        if (!ValidateDestinationPath(DestinationPath, NormalizedSourcePath, FolderName, FullDestinationPath, ValidationError))
         {
             return FMcpToolCallResult::CreateErrorResult(ValidationError);
         }
 
-        // Count assets before moving
-        int32 AssetCount = CountAssetsInFolder(NormalizedSourcePath);
-
-        // Log the operation
         FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Moving folder '%s' with %d assets to '%s'"), 
-                *NormalizedSourcePath, AssetCount, *FullDestinationPath),
+            FString::Printf(TEXT("Moving folder '%s' to '%s'"), *NormalizedSourcePath, *FullDestinationPath),
             EN2CLogSeverity::Info
         );
 
-        // Move the folder and its contents
-        FString MoveError;
-        if (!MoveFolderContents(NormalizedSourcePath, FullDestinationPath, MoveError))
+        // One UEditorAssetSubsystem::RenameDirectory call, read back from the asset registry (card 0281)
+        FN2CMcpFolderMoveResult Move;
+        if (!FN2CMcpContentBrowserUtils::MoveFolder(NormalizedSourcePath, FullDestinationPath, Move))
         {
             return FMcpToolCallResult::CreateErrorResult(
-                FString::Printf(TEXT("Failed to move folder: %s"), *MoveError)
+                FString::Printf(TEXT("Failed to move folder: %s"), *Move.Describe())
             );
         }
 
@@ -112,30 +103,24 @@ FMcpToolCallResult FN2CMcpMoveFolderTool::Execute(const TSharedPtr<FJsonObject>&
             FNotificationInfo Info(FText::Format(
                 NSLOCTEXT("NodeToCode", "FolderMoved", "Moved folder '{0}' to '{1}' ({2} assets)"),
                 FText::FromString(FolderName),
-                FText::FromString(DestinationPath),
-                FText::AsNumber(AssetCount)
+                FText::FromString(Move.Destination),
+                FText::AsNumber(Move.MovedAssets.Num())
             ));
             Info.ExpireDuration = 3.0f;
             FSlateNotificationManager::Get().AddNotification(Info);
         }
 
         // Navigate to the new location
-        FN2CMcpContentBrowserUtils::NavigateToPath(FullDestinationPath);
+        const bool bNavigated = FN2CMcpContentBrowserUtils::NavigateToPath(Move.Destination);
 
-        // Build success response
+        // Build success response from what the registry holds now
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
         Result->SetStringField(TEXT("message"), TEXT("Folder moved successfully"));
-        Result->SetStringField(TEXT("sourcePath"), NormalizedSourcePath);
-        Result->SetStringField(TEXT("destinationPath"), FullDestinationPath);
-        Result->SetNumberField(TEXT("assetsMoved"), AssetCount);
-        Result->SetBoolField(TEXT("navigated"), true);
-
-        // Add tips
-        TArray<TSharedPtr<FJsonValue>> Tips;
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("Use 'read-content-browser-path' to explore the moved folder"))));
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("All asset references are automatically updated"))));
-        Tips.Add(MakeShareable(new FJsonValueString(TEXT("The original folder location has been removed"))));
-        Result->SetArrayField(TEXT("tips"), Tips);
+        Result->SetStringField(TEXT("sourcePath"), Move.Source);
+        Result->SetStringField(TEXT("destinationPath"), Move.Destination);
+        Result->SetNumberField(TEXT("assetsMoved"), Move.MovedAssets.Num());
+        Result->SetBoolField(TEXT("navigated"), bNavigated);
+        Move.WriteTo(*Result);
 
         FString ResultString;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultString);
@@ -177,7 +162,7 @@ bool FN2CMcpMoveFolderTool::ValidateFolderPath(const FString& Path, FString& Out
     }
 
     // Check for invalid characters
-    if (OutNormalizedPath.Contains(TEXT("..")) || 
+    if (OutNormalizedPath.Contains(TEXT("..")) ||
         OutNormalizedPath.Contains(TEXT("~")) ||
         OutNormalizedPath.Contains(TEXT("*")) ||
         OutNormalizedPath.Contains(TEXT("?")))
@@ -189,7 +174,7 @@ bool FN2CMcpMoveFolderTool::ValidateFolderPath(const FString& Path, FString& Out
     return true;
 }
 
-bool FN2CMcpMoveFolderTool::ValidateDestinationPath(const FString& DestinationPath, const FString& FolderName, 
+bool FN2CMcpMoveFolderTool::ValidateDestinationPath(const FString& DestinationPath, const FString& SourcePath, const FString& FolderName,
     FString& OutFullPath, FString& OutErrorMessage) const
 {
     if (DestinationPath.IsEmpty())
@@ -208,14 +193,29 @@ bool FN2CMcpMoveFolderTool::ValidateDestinationPath(const FString& DestinationPa
         NormalizedDestPath = NormalizedDestPath.LeftChop(1);
     }
 
-    // Only where MCP tools may write: /Game and the project's plugins (card 0182)
-    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(NormalizedDestPath, OutErrorMessage))
+    // Only where MCP tools may write: /Game and the project's plugins (card 0182); and a valid folder path
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(NormalizedDestPath, OutErrorMessage)
+        || !FN2CMcpContentBrowserUtils::ValidateContentPath(NormalizedDestPath, OutErrorMessage))
     {
+        return false;
+    }
+
+    // Not into the folder itself or one of its subfolders, in any case (card 0281, review fs-9)
+    if (FN2CMcpContentBrowserUtils::IsSameOrInsideFolder(NormalizedDestPath, SourcePath))
+    {
+        OutErrorMessage = FString::Printf(TEXT("Cannot move %s into itself or one of its own subfolders (%s)"), *SourcePath, *NormalizedDestPath);
         return false;
     }
 
     // Build the full destination path
     OutFullPath = NormalizedDestPath / FolderName;
+
+    // Already there: the folder's parent is the destination
+    if (OutFullPath.Equals(SourcePath, ESearchCase::IgnoreCase))
+    {
+        OutErrorMessage = FString::Printf(TEXT("%s is already in %s"), *SourcePath, *NormalizedDestPath);
+        return false;
+    }
 
     // Check if destination already exists
     if (FN2CMcpContentBrowserUtils::DoesPathExist(OutFullPath))
@@ -224,102 +224,5 @@ bool FN2CMcpMoveFolderTool::ValidateDestinationPath(const FString& DestinationPa
         return false;
     }
 
-    // Ensure destination parent directory exists
-    FString CreationError;
-    if (!FN2CMcpContentBrowserUtils::EnsureDirectoryExists(NormalizedDestPath, CreationError))
-    {
-        OutErrorMessage = FString::Printf(TEXT("Failed to ensure destination directory exists '%s': %s"), 
-            *NormalizedDestPath, *CreationError);
-        return false;
-    }
-
     return true;
-}
-
-bool FN2CMcpMoveFolderTool::MoveFolderContents(const FString& SourcePath, const FString& DestinationPath, 
-    FString& OutErrorMessage) const
-{
-    // Collect all assets in the source folder
-    TArray<FAssetData> AssetsToMove;
-    CollectAllAssetsInFolder(SourcePath, AssetsToMove);
-
-    // Get editor asset subsystem
-    UEditorAssetSubsystem* EditorAssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
-    if (!EditorAssetSubsystem)
-    {
-        OutErrorMessage = TEXT("Failed to get EditorAssetSubsystem");
-        return false;
-    }
-
-    // Move each asset
-    int32 SuccessCount = 0;
-    TArray<FString> FailedAssets;
-
-    for (const FAssetData& AssetData : AssetsToMove)
-    {
-        // Calculate relative path from source folder
-        FString AssetPath = AssetData.PackageName.ToString();
-        FString RelativePath = AssetPath.RightChop(SourcePath.Len());
-        
-        // Build destination path for this asset
-        FString NewAssetPath = DestinationPath + RelativePath;
-        
-        // Get the object path format for the source
-        FString SourceObjectPath = AssetData.GetObjectPathString();
-        
-        // Build the object path format for the destination
-        FString AssetName = FPaths::GetBaseFilename(NewAssetPath);
-        FString DestObjectPath = NewAssetPath + TEXT(".") + AssetName;
-
-        // Move the asset
-        if (EditorAssetSubsystem->RenameAsset(SourceObjectPath, DestObjectPath))
-        {
-            SuccessCount++;
-        }
-        else
-        {
-            FailedAssets.Add(AssetPath);
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("Failed to move asset: %s"), *AssetPath),
-                EN2CLogSeverity::Warning
-            );
-        }
-    }
-
-    // Report results
-    if (FailedAssets.Num() > 0)
-    {
-        OutErrorMessage = FString::Printf(TEXT("Failed to move %d out of %d assets. First failed asset: %s"), 
-            FailedAssets.Num(), AssetsToMove.Num(), *FailedAssets[0]);
-        return false;
-    }
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Successfully moved %d assets from %s to %s"), 
-            SuccessCount, *SourcePath, *DestinationPath),
-        EN2CLogSeverity::Info
-    );
-
-    return true;
-}
-
-int32 FN2CMcpMoveFolderTool::CountAssetsInFolder(const FString& FolderPath) const
-{
-    TArray<FAssetData> Assets;
-    CollectAllAssetsInFolder(FolderPath, Assets);
-    return Assets.Num();
-}
-
-void FN2CMcpMoveFolderTool::CollectAllAssetsInFolder(const FString& FolderPath, TArray<FAssetData>& OutAssets) const
-{
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-    IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-    // Create filter for the folder
-    FARFilter Filter;
-    Filter.bRecursivePaths = true;
-    Filter.PackagePaths.Add(FName(*FolderPath));
-
-    // Get all assets in the folder and subfolders
-    AssetRegistry.GetAssets(Filter, OutAssets);
 }
