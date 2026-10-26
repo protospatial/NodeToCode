@@ -60,7 +60,8 @@ Source/
 │   │   ├── N2CToolCallContext.h          # Progress and cancellation for one call
 │   │   ├── N2CMcpToolBase.h              # Tool base class
 │   │   ├── N2CMcpToolTypes.h             # Tool definitions
-│   │   ├── N2CMcpToolManager.h           # Tool execution
+│   │   ├── N2CToolCatalog.h              # Describe and Invoke: the one seam every caller uses
+│   │   ├── N2CMcpToolManager.h           # The active tool set (Configure) and the tool-search meta-tools
 │   │   └── N2CMcpToolRegistry.h          # Auto-registration
 │   ├── Resources/                        # Resource system
 │   │   ├── N2CMcpResourceTypes.h         # Resource definitions
@@ -277,7 +278,13 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 *   `IN2CMcpTool.h`: Tool interface contract
 *   `N2CMcpToolBase.h/.cpp`: Base class with common functionality
 *   `N2CMcpToolTypes.h/.cpp`: Tool definition (title, `FMcpToolAnnotations`, output schema, `_meta`) and result structures
-*   `N2CMcpToolManager.h/.cpp`: the active tool set (what `tools/list` returns) and tool execution
+*   `N2CToolCatalog.h/.cpp`: the tool catalog (card 0339), the transport-neutral seam: `Describe(Filter)` returns
+    `FN2CToolDescriptor`s (name, title, description, toolset, input and output schema, hints, execution policy) and
+    `Invoke(Name, Arguments, Context)` returns a `TFuture<FN2CToolOutcome>` (a JSON value or a typed error). `tools/list`,
+    `tools/call`, the long-running call and `call_tool` all go through it. Details: "The tool catalog" in
+    `Source/Private/MCP/Tools/AGENTS.md`
+*   `N2CMcpToolManager.h/.cpp`: the active tool set (what `tools/list` returns, built by `Configure`) and the
+    tool-search meta-tools; `ExecuteTool` is the catalog's `InvokeNow` as MCP content
 *   `N2CMcpToolRegistry.h/.cpp`: Automatic registration system (every compiled tool)
 *   `N2CToolCallContext.h/.cpp`: progress and cancellation for one long-running call
 
@@ -288,7 +295,8 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 *   At server start `FN2CMcpHttpServerManager::RegisterMcpTools()` copies tools from the registry into the active
     set: the tools of the toolsets Tool Profile enables (see Tool Profiles and Toolsets below)
 *   Game Thread execution support with timeouts
-*   Input schema validation framework
+*   Required arguments checked against each tool's input schema by the catalog before the tool runs: a missing (or
+    null) one is an isError result `INVALID_ARGUMENT: Missing required parameter: <name>`
 
 ### Tool Implementations (`Implementations/`)
 
@@ -488,11 +496,12 @@ Text a tool or resource takes from a project's Blueprints (comments, titles, nam
 categories, string literals) can come from a Fab asset or a teammate, so the server marks it as data for the
 agent (`Source/Private/MCP/Utils/N2CMcpUntrustedContent.h`):
 - A tool whose definition sets `bReturnsUntrustedContent` has each successful text result marked by
-  `FN2CMcpToolManager::ExecuteTool`: a JSON object gets `"untrusted_content": "<the notice>"` as its first key (the
+  the catalog's call pipeline (`FN2CToolCatalog::InvokeTool`, which `tools/call` and `FN2CMcpToolManager::ExecuteTool`
+  use): a JSON object gets `"untrusted_content": "<the notice>"` as its first key (the
   rest of the text is kept), other text gets the notice as its first paragraph. Set today on get-focused-blueprint,
   get-blueprint-n2cjson, list-blueprint-graphs, export-n2cjson-batch, find-nodes-in-graph, get-blueprint-member-variables, get-blueprint-function-local-variables,
   list-blueprint-functions, list-overridable-functions, search-blueprint-nodes and list-blueprint-tags;
-  translate-focused-blueprint and translate-batch (long-running, not through `ExecuteTool`) mark their own results. A new tool that
+  translate-focused-blueprint and translate-batch (long-running, so not marked by the catalog) mark their own results. A new tool that
   returns Blueprint text sets the flag and is added to the spec's list.
 - `nodetocode://blueprint/current` returns its N2C JSON marked the same way and carries
   `annotations.audience: ["assistant"]`.

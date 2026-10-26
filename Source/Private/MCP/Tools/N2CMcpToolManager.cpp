@@ -3,10 +3,10 @@
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
+#include "MCP/Tools/N2CToolCatalog.h"
 #include "MCP/Tools/N2CMcpEpicOverlap.h"
 #include "Utils/N2CLogger.h"
 #include "Core/N2CUserSettings.h"
-#include "MCP/Utils/N2CMcpUntrustedContent.h"
 #include "MCP/Utils/N2CMcpPlaySessionGuard.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -194,6 +194,12 @@ FN2CMcpToolManager::FN2CMcpToolManager()
 	}
 }
 
+FN2CMcpToolManager::FN2CMcpToolManager(FToolSource InToolSource)
+	: FN2CMcpToolManager()
+{
+	ToolSource = MoveTemp(InToolSource);
+}
+
 TArray<FString> FN2CMcpToolManager::Configure(const FN2CMcpToolConfig& Config)
 {
 	TArray<FString> Unknown;
@@ -211,51 +217,64 @@ TArray<FString> FN2CMcpToolManager::Configure(const FN2CMcpToolConfig& Config)
 	}
 
 	TArray<FString> ListedBefore;
+	{
+		FScopeLock Lock(&ToolsLock);
+		ListedBefore = ListedNamesLocked();
+	}
+
+	// The new set is built without the lock: GetDefinition is tool code, and a tool may call Configure (or read the
+	// manager from another thread) while it runs. It is swapped in under the lock below.
+	TMap<FString, FRegisteredTool> Served;
+	TMap<FString, const FN2CMcpToolset*> Left;
+	const TArray<TSharedPtr<IN2CMcpTool>> Candidates = ToolSource ? ToolSource() : FN2CMcpToolRegistry::Get().GetTools();
+	for (const TSharedPtr<IN2CMcpTool>& Tool : Candidates)
+	{
+		if (!Tool.IsValid())
+		{
+			continue;
+		}
+		const FMcpToolDefinition Definition = Tool->GetDefinition();
+		if (!Definition.Toolset)
+		{
+			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("MCP tool '%s' names no toolset, so it is never served"), *Definition.Name));
+		}
+		else if (!Enabled.Contains(Definition.Toolset))
+		{
+			continue;
+		}
+		else if (Config.bLeaveOverlappingToUnrealMcp && N2CMcpEpicOverlap::FindEpicCounterpart(Definition.Name))
+		{
+			// Epic's EditorToolset does the same through Unreal MCP in this editor (card 0174)
+			Left.Add(Definition.Name, Definition.Toolset);
+		}
+		else
+		{
+			FRegisteredTool Entry;
+			if (!MakeEntry(Tool, Definition, Entry))
+			{
+				continue;
+			}
+			const FString ToolName = Entry.Definition->Name;
+			if (Served.Contains(ToolName))
+			{
+				FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Tool '%s' is already registered"), *ToolName));
+				continue;
+			}
+			FN2CLogger::Get().Log(FString::Printf(TEXT("Registered active MCP tool: %s"), *ToolName), EN2CLogSeverity::Debug);
+			Served.Add(ToolName, MoveTemp(Entry));
+		}
+	}
+
 	bool bBroadcast = false;
 	{
 		FScopeLock Lock(&ToolsLock);
-		for (const FMcpToolDefinition& Definition : GetAllToolDefinitions())
-		{
-			ListedBefore.Add(Definition.Name);
-		}
-
 		EnabledToolsets = Enabled;
 		Exposure = Config.Exposure;
 		bLeaveOverlappingToUnrealMcp = Config.bLeaveOverlappingToUnrealMcp;
-		LeftToUnrealMcp.Empty();
-		RegisteredTools.Empty();
-		for (const TSharedPtr<IN2CMcpTool>& Tool : FN2CMcpToolRegistry::Get().GetTools())
-		{
-			if (!Tool.IsValid())
-			{
-				continue;
-			}
-			const FMcpToolDefinition Definition = Tool->GetDefinition();
-			if (!Definition.Toolset)
-			{
-				FN2CLogger::Get().LogWarning(FString::Printf(TEXT("MCP tool '%s' names no toolset, so it is never served"), *Definition.Name));
-			}
-			else if (!EnabledToolsets.Contains(Definition.Toolset))
-			{
-				continue;
-			}
-			else if (bLeaveOverlappingToUnrealMcp && N2CMcpEpicOverlap::FindEpicCounterpart(Definition.Name))
-			{
-				// Epic's EditorToolset does the same through Unreal MCP in this editor (card 0174)
-				LeftToUnrealMcp.Add(Definition.Name, Definition.Toolset);
-			}
-			else
-			{
-				RegisterTool(Tool);
-			}
-		}
+		LeftToUnrealMcp = MoveTemp(Left);
+		RegisteredTools = MoveTemp(Served);
 
-		TArray<FString> ListedAfter;
-		for (const FMcpToolDefinition& Definition : GetAllToolDefinitions())
-		{
-			ListedAfter.Add(Definition.Name);
-		}
-		bBroadcast = bConfigured && ListedAfter != ListedBefore;
+		bBroadcast = bConfigured && ListedNamesLocked() != ListedBefore;
 		bConfigured = true;
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP tools: %d tools served from toolsets %s%s; tools/list shows %s"),
@@ -307,19 +326,13 @@ FString FN2CMcpToolManager::LeftToUnrealMcpHint(const FString& ToolName) const
 	return N2CMcpToolSearch::LeftToUnrealMcpText(ToolName);
 }
 
-bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
+bool FN2CMcpToolManager::MakeEntry(const TSharedPtr<IN2CMcpTool>& Tool, const FMcpToolDefinition& Definition, FRegisteredTool& OutEntry)
 {
-	if (!Tool.IsValid())
-	{
-		FN2CLogger::Get().LogWarning(TEXT("Cannot register null tool"));
-		return false;
-	}
-
 	// The definition is built once, here, and served to tools/list and every tools/call from then on
-	const TSharedRef<FMcpToolDefinition> Definition = MakeShared<FMcpToolDefinition>(Tool->GetDefinition());
+	const TSharedRef<FMcpToolDefinition> Cached = MakeShared<FMcpToolDefinition>(Definition);
 	// A tool refused during Play In Editor says so in its description (card 0170)
-	FN2CMcpPlaySessionGuard::AddRuleToDescription(*Definition);
-	const FString& ToolName = Definition->Name;
+	FN2CMcpPlaySessionGuard::AddRuleToDescription(*Cached);
+	const FString& ToolName = Cached->Name;
 	if (ToolName.IsEmpty())
 	{
 		FN2CLogger::Get().LogWarning(TEXT("Cannot register tool with empty name"));
@@ -339,6 +352,26 @@ bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
 		return false;
 	}
 
+	OutEntry.Tool = Tool;
+	OutEntry.Definition = Cached;
+	return true;
+}
+
+bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
+{
+	if (!Tool.IsValid())
+	{
+		FN2CLogger::Get().LogWarning(TEXT("Cannot register null tool"));
+		return false;
+	}
+
+	FRegisteredTool Entry;
+	if (!MakeEntry(Tool, Tool->GetDefinition(), Entry))
+	{
+		return false;
+	}
+	const FString ToolName = Entry.Definition->Name;
+
 	FScopeLock Lock(&ToolsLock);
 
 	if (RegisteredTools.Contains(ToolName))
@@ -347,9 +380,7 @@ bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
 		return false;
 	}
 
-	FRegisteredTool& Entry = RegisteredTools.Add(ToolName);
-	Entry.Tool = Tool;
-	Entry.Definition = Definition;
+	RegisteredTools.Add(ToolName, MoveTemp(Entry));
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Registered active MCP tool: %s"), *ToolName), EN2CLogSeverity::Debug);
 	return true;
@@ -370,23 +401,41 @@ bool FN2CMcpToolManager::UnregisterTool(const FString& ToolName)
 
 TArray<FMcpToolDefinition> FN2CMcpToolManager::GetAllToolDefinitions() const
 {
-	FScopeLock Lock(&ToolsLock);
-
-	const TMap<FString, FRegisteredTool>& Listed = Exposure == EN2CMcpToolExposure::ToolSearch ? MetaTools : RegisteredTools;
 	TArray<FMcpToolDefinition> Definitions;
-	Definitions.Reserve(Listed.Num());
-	for (const auto& Pair : Listed)
+	for (const TSharedPtr<const FMcpToolDefinition>& Definition : CollectDefinitions(true))
 	{
-		Definitions.Add(*Pair.Value.Definition);
+		Definitions.Add(*Definition);
+	}
+	return Definitions;
+}
+
+TArray<TSharedPtr<const FMcpToolDefinition>> FN2CMcpToolManager::CollectDefinitions(bool bListed) const
+{
+	TArray<TSharedPtr<const FMcpToolDefinition>> Definitions;
+	{
+		FScopeLock Lock(&ToolsLock);
+		const TMap<FString, FRegisteredTool>& Source = bListed && Exposure == EN2CMcpToolExposure::ToolSearch ? MetaTools : RegisteredTools;
+		Definitions.Reserve(Source.Num());
+		for (const auto& Pair : Source)
+		{
+			Definitions.Add(Pair.Value.Definition);
+		}
 	}
 
 	// TMap order is not stable across registrations: sort by name (ordinal), so tools/list is deterministic
-	Definitions.Sort([](const FMcpToolDefinition& A, const FMcpToolDefinition& B)
+	Definitions.Sort([](const TSharedPtr<const FMcpToolDefinition>& A, const TSharedPtr<const FMcpToolDefinition>& B)
 	{
-		return A.Name.Compare(B.Name, ESearchCase::CaseSensitive) < 0;
+		return A->Name.Compare(B->Name, ESearchCase::CaseSensitive) < 0;
 	});
-
 	return Definitions;
+}
+
+TArray<FString> FN2CMcpToolManager::ListedNamesLocked() const
+{
+	TArray<FString> Names;
+	(Exposure == EN2CMcpToolExposure::ToolSearch ? MetaTools : RegisteredTools).GetKeys(Names);
+	Names.Sort([](const FString& A, const FString& B) { return A.Compare(B, ESearchCase::CaseSensitive) < 0; });
+	return Names;
 }
 
 FN2CMcpToolManager::FRegisteredTool FN2CMcpToolManager::FindEntry(const FString& ToolName) const
@@ -410,48 +459,8 @@ TSharedPtr<const FMcpToolDefinition> FN2CMcpToolManager::GetToolDefinition(const
 
 FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments)
 {
-	// Copies of the shared pointers, taken under the lock; the tool runs without it, so call_tool (and anything the
-	// tool waits for on the game thread) can use the manager
-	const FRegisteredTool Entry = FindEntry(ToolName);
-	if (!Entry.Tool.IsValid() || !Entry.Definition.IsValid())
-	{
-		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Tool '%s' not found"), *ToolName));
-		return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Tool '%s' not found"), *ToolName));
-	}
-
-	// A long-running tool is answered on its own tools/call request (FN2CMcpProtocol, also through call_tool); it
-	// reaches this synchronous path only inside a JSON-RPC batch, which is answered as a whole and cannot wait for it.
-	if (Entry.Definition->bIsLongRunning)
-	{
-		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("%s was called inside a JSON-RPC batch; it only runs as a single request."), *ToolName));
-		return FMcpToolCallResult::CreateErrorResult(FString::Printf(
-			TEXT("%s cannot run inside a JSON-RPC batch. Send it as a single tools/call request."), *ToolName));
-	}
-
-	// Tools that change a Blueprint, an asset or a level wait until Play In Editor ends (card 0170); call_tool is
-	// allowed itself and comes back here for the tool it calls, which is judged by its own definition
-	if (TOptional<FMcpToolCallResult> Refused = FN2CMcpPlaySessionGuard::CheckCall(*Entry.Definition))
-	{
-		return MoveTemp(Refused.GetValue());
-	}
-
-	FN2CLogger::Get().Log(FString::Printf(TEXT("Executing MCP tool: %s"), *ToolName), EN2CLogSeverity::Debug);
-
-	try
-	{
-		FMcpToolCallResult Result = Entry.Tool->Execute(Arguments);
-		if (Entry.Definition->bReturnsUntrustedContent)
-		{
-			// Blueprint text (comments, tooltips, string literals) is data for the agent, never instructions (card 0124)
-			FN2CMcpUntrustedContent::MarkToolResult(Result);
-		}
-		return Result;
-	}
-	catch (...)
-	{
-		FN2CLogger::Get().LogError(FString::Printf(TEXT("Exception thrown while executing tool '%s'"), *ToolName));
-		return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Internal error executing tool '%s'"), *ToolName));
-	}
+	// The catalog's one call pipeline (Play In Editor rule, required arguments, untrusted marking), as MCP content
+	return FN2CToolCatalog(*this).InvokeNow(ToolName, Arguments).ToCallToolResult();
 }
 
 TSharedPtr<IN2CMcpTool> FN2CMcpToolManager::FindTool(const FString& ToolName) const

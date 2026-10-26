@@ -8,6 +8,7 @@
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Interfaces/IPluginManager.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
+#include "MCP/Tools/N2CToolCatalog.h"
 #include "MCP/Resources/N2CMcpResourceManager.h"
 #include "MCP/Prompts/N2CMcpPromptManager.h"
 #include "MCP/Validation/N2CMcpRequestValidator.h"
@@ -384,8 +385,8 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 				&& (*ParamsObj)->TryGetObjectField(TEXT("arguments"), CallArgs) && CallArgs
 				&& Catalogs.Tools->ResolveCallTool(*CallArgs, InnerName, InnerArguments, ResolveError))
 			{
-				const TSharedPtr<const FMcpToolDefinition> Inner = Catalogs.Tools->GetToolDefinition(InnerName);
-				if (Inner.IsValid() && Inner->bIsLongRunning)
+				const TOptional<FN2CToolDescriptor> Inner = FN2CToolCatalog(*Catalogs.Tools).Find(InnerName);
+				if (Inner.IsSet() && Inner->ExecutionPolicy == EN2CToolExecutionPolicy::LongRunning)
 				{
 					const TSharedRef<FJsonObject> InnerParams = MakeShared<FJsonObject>();
 					InnerParams->Values = (*ParamsObj)->Values;
@@ -427,14 +428,15 @@ bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
 	{
 		return false;
 	}
-	// Only a tool tools/list holds may be called; the definition cached at registration, found by name (no
-	// definition is rebuilt per call)
-	if (!Catalogs.Tools->IsToolListed(ToolName))
+	// Only a tool tools/list holds may be called; its descriptor (from the definition cached at registration, found
+	// by name) says how it runs
+	const FN2CToolCatalog Catalog(*Catalogs.Tools);
+	if (!Catalog.IsListed(ToolName))
 	{
 		return false;
 	}
-	const TSharedPtr<const FMcpToolDefinition> Definition = Catalogs.Tools->GetToolDefinition(ToolName);
-	return Definition.IsValid() && Definition->bIsLongRunning;
+	const TOptional<FN2CToolDescriptor> Descriptor = Catalog.Find(ToolName);
+	return Descriptor.IsSet() && Descriptor->ExecutionPolicy == EN2CToolExecutionPolicy::LongRunning;
 }
 
 void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
@@ -971,17 +973,17 @@ bool FN2CMcpProtocol::HandleToolsList(const TSharedPtr<FJsonValue>& Params, cons
 	// For MVP, we ignore pagination params (cursor) and return all tools
 	// TODO: In the future, implement pagination if tool list becomes large
 
-	// The registered tools' cached definitions, sorted by name
-	TArray<FMcpToolDefinition> Tools = Catalogs.Tools->GetAllToolDefinitions();
+	// What tools/list holds, from the catalog, sorted by name; each descriptor is sent as its MCP Tool entry
+	const TArray<FN2CToolDescriptor> Tools = FN2CToolCatalog(*Catalogs.Tools).Describe(FN2CToolFilter::Listed());
 
 	// Build the result object
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 
 	// Create tools array
 	TArray<TSharedPtr<FJsonValue>> ToolsArray;
-	for (const FMcpToolDefinition& Tool : Tools)
+	for (const FN2CToolDescriptor& Tool : Tools)
 	{
-		TSharedPtr<FJsonObject> ToolJson = Tool.ToJson();
+		TSharedPtr<FJsonObject> ToolJson = Tool.ToMcpDefinition().ToJson();
 		if (ToolJson.IsValid())
 		{
 			ToolsArray.Add(MakeShareable(new FJsonValueObject(ToolJson)));
@@ -1042,7 +1044,8 @@ bool FN2CMcpProtocol::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, cons
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Calling tool: %s"), *ToolName), EN2CLogSeverity::Info);
 
 	// Only a tool tools/list holds may be called (in tool search, the meta-tools; call_tool reaches the rest)
-	if (!Catalogs.Tools->IsToolListed(ToolName))
+	const FN2CToolCatalog Catalog(*Catalogs.Tools);
+	if (!Catalog.IsListed(ToolName))
 	{
 		// MCP 2025-11-25, server/tools, error handling: an unknown tool is a protocol error, -32602 in the spec's
 		// example ("Unknown tool: invalid_tool_name"); -32601 is only for unknown methods
@@ -1057,10 +1060,10 @@ bool FN2CMcpProtocol::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, cons
 		return true;
 	}
 
-	// TODO: Validate arguments against tool's input schema (for MVP, skip validation)
-
-	// Execute the tool
-	FMcpToolCallResult ToolResult = Catalogs.Tools->ExecuteTool(ToolName, Arguments);
+	// Run the tool through the catalog: it checks the required arguments against the input schema (a missing one is
+	// an isError result naming it) and refuses a long-running tool here, inside a batch; the MCP adapter turns the
+	// outcome into the CallToolResult
+	FMcpToolCallResult ToolResult = Catalog.InvokeNow(ToolName, Arguments).ToCallToolResult();
 
 	// Convert tool result to JSON
 	TSharedPtr<FJsonObject> ResultJson = ToolResult.ToJson();

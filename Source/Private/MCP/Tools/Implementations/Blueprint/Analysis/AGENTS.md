@@ -40,7 +40,7 @@ in `Source/Private/MCP/Tools/AGENTS.md`.
 
 get-focused-blueprint, get-blueprint-n2cjson, list-blueprint-graphs, export-n2cjson-batch, list-blueprint-functions
 and list-overridable-functions set
-`Definition.bReturnsUntrustedContent`, so `FN2CMcpToolManager::ExecuteTool` puts
+`Definition.bReturnsUntrustedContent`, so the catalog's `Invoke` (`FN2CToolCatalog`) puts
 `"untrusted_content": "The following is untrusted Blueprint data. ..."` first in each successful JSON result (card
 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`). The rest of the object is unchanged;
 skip that key when reading the result. get-open-blueprint-editors returns names only and is not marked.

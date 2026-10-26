@@ -9,6 +9,7 @@ tool needs no change to existing code.
 ```
 Source/Public/MCP/Tools/          - Framework headers
 ├── IN2CMcpTool.h                 - Tool interface (GetDefinition, Execute, InvokeAsync, RequiresGameThread)
+├── N2CToolCatalog.h              - The tool catalog: Describe and Invoke, the seam every caller uses
 ├── N2CToolCallContext.h          - Progress and cancellation for one long-running call
 ├── N2CMcpToolBase.h              - Base class for all tools (schema and game-thread helpers)
 ├── N2CMcpToolRegistry.h          - Auto-registration (REGISTER_MCP_TOOL)
@@ -17,6 +18,7 @@ Source/Public/MCP/Tools/          - Framework headers
 
 Source/Private/MCP/Tools/         - This directory
 ├── AGENTS.md                     - This documentation
+├── N2CToolCatalog.cpp
 ├── N2CToolCallContext.cpp
 ├── N2CMcpToolBase.cpp
 ├── N2CMcpToolRegistry.cpp
@@ -57,8 +59,44 @@ Source/Private/MCP/Tools/         - This directory
 
 4. **`FN2CMcpToolManager`** - Runtime tool management
    - Serves the tools of the enabled toolsets and fixes what `tools/list` returns, once at server start (below)
-   - Handles tool execution lifecycle
-   - Runs long-running tools through `FN2CToolAsyncTaskManager` (progress via `FN2CToolCallContext`)
+   - Holds the tool-search meta-tools; `ExecuteTool` runs a tool through the catalog and returns MCP content
+
+5. **`FN2CToolCatalog`** - The one seam every caller of a tool goes through (below)
+   - `Describe(Filter)` and `Invoke(Name, Arguments, Context)`, transport-neutral
+   - `tools/list`, `tools/call`, `call_tool` and long-running calls (`FN2CToolAsyncTaskManager`) all use it
+
+### The tool catalog (card 0339)
+
+`FN2CToolCatalog` (`Source/Public/MCP/Tools/N2CToolCatalog.h`) is how anything calls a NodeToCode tool. The MCP
+protocol core uses it for `tools/list` and `tools/call`; a UE 5.8 ToolsetRegistry, Python or test adapter uses the
+same two calls. `FN2CToolCatalog::Get()` is the catalog over the server's tool manager; a spec builds one over its own
+`FN2CMcpToolManager` (which can take its own tool source instead of the registry).
+
+- **`Describe(Filter)`** returns `FN2CToolDescriptor`s sorted by name: `Name`, `Title`, `Description`, `Toolset`,
+  `InputSchema`, `OutputSchema`, `Hints` (read-only, destructive, idempotent, open world), `ExecutionPolicy`
+  (`Immediate` or `LongRunning`) and the server-side flags. `FN2CToolFilter::Listed()` is what `tools/list` holds,
+  `Served()` every served tool; a filter can also keep one toolset or the read-only tools. `Find(Name)` is one
+  descriptor in O(1). `tools/list` sends `ToMcpDefinition()` of each, which is exactly the definition cached at
+  registration, so the tool reference and `tools/list` do not change.
+- **`Invoke(Name, Arguments, Context)`** returns a `TFuture<FN2CToolOutcome>`: a JSON `Value` or a typed `Error`
+  (`UnknownTool`, `InvalidArgument` with the argument in `Field`, `PlaySessionActive`, `NotRunnableHere`, `Cancelled`,
+  `ToolFailed`, `Internal`), never MCP content. `ToValueString()` gives it as one plain string (UE 5.8's
+  ToolsetRegistry wraps that with `MakeTextResult`). An `Immediate` tool runs before `Invoke` returns; a `LongRunning`
+  one starts and sets the future later, with progress and cancellation through the `FN2CToolCallContext`.
+  `InvokeNow` is for callers that need the outcome at once (a JSON-RPC batch, `call_tool`) and refuses a long-running
+  tool with the batch error.
+- **One pipeline** (`FN2CToolCatalog::InvokeTool`): the Play In Editor rule, then the input schema's `required`
+  arguments (absent or null is missing: `INVALID_ARGUMENT: Missing required parameter: <name>`, and the tool does not
+  run), then the tool by its execution policy, then the untrusted-data mark. A tool's own argument checks stay; the
+  catalog only checks presence.
+- **Legacy shim:** every `IN2CMcpTool` is reached with no change. `FN2CToolOutcome::FromCallToolResult` reads the value
+  (`structuredContent`, else the text, parsed when it is one JSON object or array) or the error from the tool's
+  `FMcpToolCallResult` and keeps that result, so `ToCallToolResult()` (the MCP adapter) sends exactly what the tool
+  built. A native outcome (`MakeValue`, `MakeError`) becomes a text result, with `structuredContent` for an object.
+- **Locking:** the manager's `Configure` builds the new tool set without its lock and swaps it in under it, and no
+  tool code (`GetDefinition`, `Execute`, `InvokeAsync`) runs under the lock, so a tool may call `Configure` while it
+  runs. A `tools/list` change goes out through `FN2CMcpToolManager::OnToolListChanged`, which the protocol core
+  subscribes to. `NodeToCode.Tools.Catalog` checks all of this.
 
 ### Registration System
 
@@ -524,14 +562,14 @@ updating the Agent Skills that name it (`Agents/claude-code/nodetocode/skills/`,
 Agents/sync_skills.py`); `Tests/python/test_agent_skills.py` fails while a skill names a tool that is not registered.
 
 A tool whose result carries text from the project's Blueprints (comments, titles, names, tooltips, descriptions,
-string literals) sets `Definition.bReturnsUntrustedContent = true`; `FN2CMcpToolManager::ExecuteTool` then marks its
+string literals) sets `Definition.bReturnsUntrustedContent = true`; the catalog's `Invoke` then marks its
 successful results as untrusted data (card 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`).
 Add its name to the list in `Source/Private/Tests/MCP/N2CMcpUntrustedContent.spec.cpp`.
 
 Play In Editor (card 0170, `MCP/Utils/N2CMcpPlaySessionGuard.h`): while a PIE or Simulate session runs, every tool
 that is not read-only (`Annotations.IsReadOnly()`; an unset `readOnlyHint` counts as changing things) answers
-`PIE_ACTIVE: ...` instead of running, through `FN2CMcpToolManager::ExecuteTool` and, for long-running tools,
-`FN2CToolAsyncTaskManager`; registration adds the rule to such a tool's description. So a tool that only reads sets
+`PIE_ACTIVE: ...` instead of running, through the catalog's `Invoke` (for quick tools and, through
+`FN2CToolAsyncTaskManager`, long-running ones); registration adds the rule to such a tool's description. So a tool that only reads sets
 `SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly())`, and a tool that writes but never changes a Blueprint,
 an asset or a level (editor navigation, translation output files, the script library, run-python) sets
 `Definition.bAllowedDuringPlaySession = true`. Everything else is refused during PIE, which is what a new editing tool
@@ -728,7 +766,7 @@ curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 3. **Logging**: Use `FN2CLogger` for debugging and error reporting
 4. **Thread Safety**: If your tool doesn't need Editor APIs, avoid requiring Game Thread execution
 5. **Documentation**: Include clear descriptions in your tool definition
-6. **Input Validation**: Check all required parameters before processing
+6. **Input Validation**: List required parameters in the schema's `required` (the catalog refuses a call that lacks one) and check their values in the tool
 7. **Tool Dependencies**: If tools work together (like search and add nodes), clearly document the workflow
 8. **Toolset**: Pass the declared toolset (`N2CMcpToolsets::...`) that fits the tool; declare a new one only for a new domain
 
