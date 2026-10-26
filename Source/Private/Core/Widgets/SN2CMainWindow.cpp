@@ -439,10 +439,11 @@ void SN2CMainWindow::HandleRemoveSelectedRequested()
 		FN2CGraphStateBulkUpdate Bulk(StateManager);
 		for (const FN2CTagInfo& Graph : SelectedGraphs)
 		{
-			FGuid GraphGuid;
-			if (FGuid::Parse(Graph.GraphGuid, GraphGuid))
+			// The row's own Blueprint: a duplicated Blueprint's graph has the same GUID (card 0192)
+			const FN2CGraphKey Key = FN2CGraphKey::FromStrings(Graph.BlueprintPath, Graph.GraphGuid);
+			if (Key.IsValid())
 			{
-				StateManager.RemoveTag(GraphGuid, Graph.Tag, Graph.Category);
+				StateManager.RemoveTag(Key, Graph.Tag, Graph.Category);
 			}
 		}
 	}

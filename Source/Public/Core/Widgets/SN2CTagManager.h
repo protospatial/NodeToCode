@@ -133,6 +133,9 @@ private:
 	/** Handle remove selected button click */
 	FReply HandleRemoveSelectedClicked();
 
+	/** Prune Missing: removes the graph state of Blueprints that were deleted (after a confirmation) */
+	FReply HandlePruneMissingClicked();
+
 	/** Handle browse button click */
 	FReply HandleBrowseClicked();
 
@@ -190,7 +193,7 @@ private:
 	void HandleTagAdded(const struct FN2CTaggedBlueprintGraph& TagInfo);
 
 	/** Handle tag removed event */
-	void HandleTagRemoved(const FGuid& GraphGuid, const FString& RemovedTag);
+	void HandleTagRemoved(const struct FN2CGraphKey& Graph, const FString& RemovedTag);
 
 public:
 	/** Destructor - cleans up delegate bindings */

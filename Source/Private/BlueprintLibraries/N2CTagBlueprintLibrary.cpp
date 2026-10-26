@@ -424,5 +424,12 @@ bool UN2CTagBlueprintLibrary::LoadTranslation(const FString& GraphGuid, FN2CGrap
 
 bool UN2CTagBlueprintLibrary::LoadTranslationFromTagInfo(const FN2CTagInfo& TagInfo, FN2CGraphTranslation& OutTranslation)
 {
-	return LoadTranslation(TagInfo.GraphGuid, OutTranslation);
+	// The tag's own Blueprint, so a duplicated Blueprint's graph (same GUID) loads its own translation
+	const FN2CGraphKey Key = FN2CGraphKey::FromStrings(TagInfo.BlueprintPath, TagInfo.GraphGuid);
+	if (!Key.IsValid())
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("LoadTranslationFromTagInfo: Invalid GUID format: %s"), *TagInfo.GraphGuid));
+		return false;
+	}
+	return UN2CGraphStateManager::Get().LoadTranslation(Key, OutTranslation);
 }

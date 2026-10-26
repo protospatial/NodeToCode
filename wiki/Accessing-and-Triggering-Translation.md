@@ -31,9 +31,13 @@ overlay or from the NodeToCode window.
 Graphs that are not Blueprint graphs, such as an Animation Blueprint's state machines, cannot be translated. On such a
 graph the overlay's Copy JSON, Translate and tag buttons are grayed out, and their tooltip says why.
 
-If a tagged graph cannot be found any more (its Blueprint was moved or deleted, or the graph was removed), translating,
+Tags and translation records belong to one Blueprint's graph. A copy of a Blueprint made in the Content Browser starts
+with no tags of its own, even though its graphs keep the original's internal IDs, and each open copy gets its own
+overlay. Renaming or moving a tagged Blueprint in the editor takes its tags along.
+
+If a tagged graph cannot be found any more (its Blueprint was deleted, or the graph was removed), translating,
 exporting or double-clicking its row shows a notification naming the graph and its Blueprint. Remove the tag and tag
-the graph again.
+the graph again. The NodeToCode window's **Prune Missing** button removes the tags of every deleted Blueprint at once.
 
 ## Starting a Translation
 

@@ -2,6 +2,10 @@
 
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CTargetLanguage.h"
+#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "Async/Async.h"
 #include "Utils/N2CLogger.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -41,6 +45,9 @@ void UN2CGraphStateManager::Initialize()
 {
 	FN2CLogger::Get().Log(TEXT("Initializing Graph State Manager"), EN2CLogSeverity::Info);
 
+	// Renames, moves and deletes from here on update the entries (card 0192)
+	FollowAssetRegistry();
+
 	if (LoadStateInternal() != ELoadResult::Missing)
 	{
 		// Loaded, or set aside / unreadable: either way the legacy tags must not replace it
@@ -66,6 +73,8 @@ void UN2CGraphStateManager::Initialize()
 void UN2CGraphStateManager::Shutdown()
 {
 	FN2CLogger::Get().Log(TEXT("Shutting down Graph State Manager"), EN2CLogSeverity::Info);
+
+	StopFollowingAssetRegistry();
 
 	if (bIsDirty)
 	{
@@ -101,28 +110,64 @@ UN2CGraphStateManager* UN2CGraphStateManager::CreateIsolated(const FString& Stat
 // Graph State Queries
 // ============================================================================
 
-FN2CGraphState* UN2CGraphStateManager::FindGraphState(const FGuid& GraphGuid)
+int32 UN2CGraphStateManager::FindGraphStateIndex(const FN2CGraphKey& Key) const
 {
-	for (FN2CGraphState& State : StateFile.Graphs)
+	if (!Key.IsValid())
 	{
-		if (State.GraphGuid == GraphGuid)
+		return INDEX_NONE;
+	}
+
+	if (Key.HasBlueprint())
+	{
+		// Entries are normalised when loaded and created, and the key normalises in its constructor
+		return StateFile.Graphs.IndexOfByPredicate([&Key](const FN2CGraphState& State)
 		{
-			return &State;
+			return State.GraphGuid == Key.GraphGuid && State.OwningBlueprint == Key.Blueprint;
+		});
+	}
+
+	// GUID only: an answer only while it is unambiguous
+	int32 Found = INDEX_NONE;
+	for (int32 Index = 0; Index < StateFile.Graphs.Num(); ++Index)
+	{
+		if (StateFile.Graphs[Index].GraphGuid == Key.GraphGuid)
+		{
+			if (Found != INDEX_NONE)
+			{
+				FN2CLogger::Get().LogWarning(FString::Printf(
+					TEXT("Graph %s is in more than one Blueprint (a duplicated Blueprint keeps its graph GUIDs): name the Blueprint to pick one"),
+					*Key.ToString()));
+				return INDEX_NONE;
+			}
+			Found = Index;
 		}
 	}
-	return nullptr;
+	return Found;
 }
 
-const FN2CGraphState* UN2CGraphStateManager::FindGraphState(const FGuid& GraphGuid) const
+FN2CGraphState* UN2CGraphStateManager::FindGraphState(const FN2CGraphKey& Key)
 {
+	const int32 Index = FindGraphStateIndex(Key);
+	return Index == INDEX_NONE ? nullptr : &StateFile.Graphs[Index];
+}
+
+const FN2CGraphState* UN2CGraphStateManager::FindGraphState(const FN2CGraphKey& Key) const
+{
+	const int32 Index = FindGraphStateIndex(Key);
+	return Index == INDEX_NONE ? nullptr : &StateFile.Graphs[Index];
+}
+
+TArray<FN2CGraphKey> UN2CGraphStateManager::FindKeysForGuid(const FGuid& GraphGuid) const
+{
+	TArray<FN2CGraphKey> Keys;
 	for (const FN2CGraphState& State : StateFile.Graphs)
 	{
 		if (State.GraphGuid == GraphGuid)
 		{
-			return &State;
+			Keys.Add(State.GetKey());
 		}
 	}
-	return nullptr;
+	return Keys;
 }
 
 TArray<FN2CGraphState> UN2CGraphStateManager::GetGraphsWithTag(const FString& Tag, const FString& Category) const
@@ -220,7 +265,7 @@ bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphN
 		if (ExistingTag.MatchesTagExactly(Tag, Category))
 		{
 			FN2CLogger::Get().Log(FString::Printf(TEXT("Tag '%s' in category '%s' already exists for graph %s"),
-				*Tag, *Category, *GraphGuid.ToString()),
+				*Tag, *Category, *State.GetKey().ToString()),
 				EN2CLogSeverity::Warning);
 			if (bIsDirty)
 			{
@@ -242,12 +287,12 @@ bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphN
 	MarkDirty();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Added tag '%s' in category '%s' to graph %s"),
-		*Tag, *Category, *GraphGuid.ToString()),
+		*Tag, *Category, *State.GetKey().ToString()),
 		EN2CLogSeverity::Info);
 
 	// Fire delegates
 	BroadcastTagAdded(State);
-	BroadcastStateChanged(GraphGuid);
+	BroadcastStateChanged(State.GetKey());
 
 	// Auto-save
 	SaveState();
@@ -262,13 +307,15 @@ bool UN2CGraphStateManager::AddTag(const FN2CTaggedBlueprintGraph& TaggedGraph)
 		TaggedGraph.Category, TaggedGraph.Description);
 }
 
-bool UN2CGraphStateManager::RemoveTag(const FGuid& GraphGuid, const FString& Tag, const FString& Category)
+bool UN2CGraphStateManager::RemoveTag(const FN2CGraphKey& Key, const FString& Tag, const FString& Category)
 {
-	FN2CGraphState* State = FindGraphState(GraphGuid);
-	if (!State)
+	const int32 Index = FindGraphStateIndex(Key);
+	if (Index == INDEX_NONE)
 	{
 		return false;
 	}
+	FN2CGraphState* State = &StateFile.Graphs[Index];
+	const FN2CGraphKey GraphKey = State->GetKey();
 
 	bool bRemoved = false;
 	for (int32 i = State->Tags.Num() - 1; i >= 0; --i)
@@ -286,18 +333,15 @@ bool UN2CGraphStateManager::RemoveTag(const FGuid& GraphGuid, const FString& Tag
 		MarkDirty();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Removed tag '%s' in category '%s' from graph %s"),
-			*Tag, *Category, *GraphGuid.ToString()),
+			*Tag, *Category, *GraphKey.ToString()),
 			EN2CLogSeverity::Info);
 
 		// Fire delegates
-		BroadcastTagRemoved(GraphGuid, Tag);
-		BroadcastStateChanged(GraphGuid);
+		BroadcastTagRemoved(GraphKey, Tag);
+		BroadcastStateChanged(GraphKey);
 
 		// Clean up empty graph states (no tags, no translation, no export)
-		if (State->Tags.Num() == 0 && !State->HasTranslation() && !State->HasJsonExport())
-		{
-			RemoveGraphState(GraphGuid);
-		}
+		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
 		SaveState();
 	}
@@ -305,13 +349,15 @@ bool UN2CGraphStateManager::RemoveTag(const FGuid& GraphGuid, const FString& Tag
 	return bRemoved;
 }
 
-int32 UN2CGraphStateManager::RemoveTagByName(const FGuid& GraphGuid, const FString& Tag)
+int32 UN2CGraphStateManager::RemoveTagByName(const FN2CGraphKey& Key, const FString& Tag)
 {
-	FN2CGraphState* State = FindGraphState(GraphGuid);
-	if (!State)
+	const int32 Index = FindGraphStateIndex(Key);
+	if (Index == INDEX_NONE)
 	{
 		return 0;
 	}
+	FN2CGraphState* State = &StateFile.Graphs[Index];
+	const FN2CGraphKey GraphKey = State->GetKey();
 
 	int32 RemovedCount = 0;
 	for (int32 i = State->Tags.Num() - 1; i >= 0; --i)
@@ -328,17 +374,14 @@ int32 UN2CGraphStateManager::RemoveTagByName(const FGuid& GraphGuid, const FStri
 		MarkDirty();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Removed %d instances of tag '%s' from graph %s"),
-			RemovedCount, *Tag, *GraphGuid.ToString()),
+			RemovedCount, *Tag, *GraphKey.ToString()),
 			EN2CLogSeverity::Info);
 
-		BroadcastTagRemoved(GraphGuid, Tag);
-		BroadcastStateChanged(GraphGuid);
+		BroadcastTagRemoved(GraphKey, Tag);
+		BroadcastStateChanged(GraphKey);
 
 		// Clean up empty graph states
-		if (State->Tags.Num() == 0 && !State->HasTranslation() && !State->HasJsonExport())
-		{
-			RemoveGraphState(GraphGuid);
-		}
+		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
 		SaveState();
 	}
@@ -346,20 +389,22 @@ int32 UN2CGraphStateManager::RemoveTagByName(const FGuid& GraphGuid, const FStri
 	return RemovedCount;
 }
 
-int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(FGuid GraphGuid)
+int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(const FN2CGraphKey& Key)
 {
-	FN2CGraphState* State = FindGraphState(GraphGuid);
-	if (!State)
+	const int32 Index = FindGraphStateIndex(Key);
+	if (Index == INDEX_NONE)
 	{
 		return 0;
 	}
+	FN2CGraphState* State = &StateFile.Graphs[Index];
+	const FN2CGraphKey GraphKey = State->GetKey();
 
 	int32 RemovedCount = State->Tags.Num();
 
 	// Fire delegate for each removed tag
 	for (const FN2CTagEntry& Tag : State->Tags)
 	{
-		BroadcastTagRemoved(GraphGuid, Tag.Tag);
+		BroadcastTagRemoved(GraphKey, Tag.Tag);
 	}
 
 	State->Tags.Empty();
@@ -369,16 +414,13 @@ int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(FGuid GraphGuid)
 		MarkDirty();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Removed %d tags from graph %s"),
-			RemovedCount, *GraphGuid.ToString()),
+			RemovedCount, *GraphKey.ToString()),
 			EN2CLogSeverity::Info);
 
-		BroadcastStateChanged(GraphGuid);
+		BroadcastStateChanged(GraphKey);
 
 		// Clean up empty graph states
-		if (!State->HasTranslation() && !State->HasJsonExport())
-		{
-			RemoveGraphState(GraphGuid);
-		}
+		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
 		SaveState();
 	}
@@ -415,15 +457,15 @@ int32 UN2CGraphStateManager::ClearAllTags()
 	return RemovedCount;
 }
 
-bool UN2CGraphStateManager::GraphHasTag(const FGuid& GraphGuid, const FString& Tag, const FString& Category) const
+bool UN2CGraphStateManager::GraphHasTag(const FN2CGraphKey& Key, const FString& Tag, const FString& Category) const
 {
-	const FN2CGraphState* State = FindGraphState(GraphGuid);
+	const FN2CGraphState* State = FindGraphState(Key);
 	return State && State->HasTag(Tag, Category);
 }
 
-TArray<FN2CTagEntry> UN2CGraphStateManager::GetTagsForGraph(const FGuid& GraphGuid) const
+TArray<FN2CTagEntry> UN2CGraphStateManager::GetTagsForGraph(const FN2CGraphKey& Key) const
 {
-	const FN2CGraphState* State = FindGraphState(GraphGuid);
+	const FN2CGraphState* State = FindGraphState(Key);
 	if (State)
 	{
 		return State->Tags;
@@ -458,20 +500,21 @@ TArray<FN2CTaggedBlueprintGraph> UN2CGraphStateManager::GetAllTagsLegacy() const
 // Translation State Operations
 // ============================================================================
 
-void UN2CGraphStateManager::SetTranslationState(const FGuid& GraphGuid, const FN2CTranslationState& State)
+void UN2CGraphStateManager::SetTranslationState(const FN2CGraphKey& Key, const FN2CTranslationState& State)
 {
-	FN2CGraphState* GraphState = FindGraphState(GraphGuid);
+	FN2CGraphState* GraphState = FindGraphState(Key);
 	if (GraphState)
 	{
 		GraphState->Translation = State;
 		MarkDirty();
+		const FN2CGraphKey GraphKey = GraphState->GetKey();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Updated translation state for graph %s"),
-			*GraphGuid.ToString()),
+			*GraphKey.ToString()),
 			EN2CLogSeverity::Info);
 
-		BroadcastTranslationUpdated(GraphGuid);
-		BroadcastStateChanged(GraphGuid);
+		BroadcastTranslationUpdated(GraphKey);
+		BroadcastStateChanged(GraphKey);
 
 		SaveState();
 	}
@@ -495,11 +538,11 @@ void UN2CGraphStateManager::SetTranslationState(const FGuid& GraphGuid, const FS
 	MarkDirty();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Set translation state for graph %s: %s"),
-		*GraphGuid.ToString(), *OutputPath),
+		*State.GetKey().ToString(), *OutputPath),
 		EN2CLogSeverity::Info);
 
-	BroadcastTranslationUpdated(GraphGuid);
-	BroadcastStateChanged(GraphGuid);
+	BroadcastTranslationUpdated(State.GetKey());
+	BroadcastStateChanged(State.GetKey());
 
 	SaveState();
 }
@@ -513,51 +556,50 @@ void UN2CGraphStateManager::RecordSavedTranslation(const FGuid& GraphGuid, const
 		Provider, Model, FN2CPathUtils::GetLanguageId(Language), Summary);
 }
 
-void UN2CGraphStateManager::ClearTranslationState(const FGuid& GraphGuid)
+void UN2CGraphStateManager::ClearTranslationState(const FN2CGraphKey& Key)
 {
-	FN2CGraphState* State = FindGraphState(GraphGuid);
+	const int32 Index = FindGraphStateIndex(Key);
+	FN2CGraphState* State = Index == INDEX_NONE ? nullptr : &StateFile.Graphs[Index];
 	if (State && State->Translation.bExists)
 	{
 		State->Translation = FN2CTranslationState();
 		MarkDirty();
+		const FN2CGraphKey GraphKey = State->GetKey();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Cleared translation state for graph %s"),
-			*GraphGuid.ToString()),
+			*GraphKey.ToString()),
 			EN2CLogSeverity::Info);
 
-		BroadcastTranslationUpdated(GraphGuid);
-		BroadcastStateChanged(GraphGuid);
+		BroadcastTranslationUpdated(GraphKey);
+		BroadcastStateChanged(GraphKey);
 
 		// Clean up empty graph states
-		if (State->Tags.Num() == 0 && !State->HasJsonExport())
-		{
-			RemoveGraphState(GraphGuid);
-		}
+		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
 		SaveState();
 	}
 }
 
-bool UN2CGraphStateManager::HasTranslation(const FGuid& GraphGuid) const
+bool UN2CGraphStateManager::HasTranslation(const FN2CGraphKey& Key) const
 {
-	const FN2CGraphState* State = FindGraphState(GraphGuid);
+	const FN2CGraphState* State = FindGraphState(Key);
 	return State && State->HasTranslation();
 }
 
-bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTranslation& OutTranslation) const
+bool UN2CGraphStateManager::LoadTranslation(const FN2CGraphKey& Key, FN2CGraphTranslation& OutTranslation) const
 {
 	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
-	return LoadTranslation(GraphGuid, OutTranslation, Language);
+	return LoadTranslation(Key, OutTranslation, Language);
 }
 
-bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTranslation& OutTranslation, EN2CCodeLanguage& OutLanguage) const
+bool UN2CGraphStateManager::LoadTranslation(const FN2CGraphKey& Key, FN2CGraphTranslation& OutTranslation, EN2CCodeLanguage& OutLanguage) const
 {
 	OutLanguage = EN2CCodeLanguage::Cpp;
-	const FN2CGraphState* State = FindGraphState(GraphGuid);
+	const FN2CGraphState* State = FindGraphState(Key);
 	if (!State || !State->HasTranslation())
 	{
 		FN2CLogger::Get().Log(FString::Printf(TEXT("No translation found for graph %s"),
-			*GraphGuid.ToString()),
+			*Key.ToString()),
 			EN2CLogSeverity::Warning);
 		return false;
 	}
@@ -655,13 +697,13 @@ bool UN2CGraphStateManager::LoadTranslation(const FGuid& GraphGuid, FN2CGraphTra
 	return true;
 }
 
-bool UN2CGraphStateManager::LoadN2CJson(const FGuid& GraphGuid, FString& OutJsonContent) const
+bool UN2CGraphStateManager::LoadN2CJson(const FN2CGraphKey& Key, FString& OutJsonContent) const
 {
-	const FN2CGraphState* State = FindGraphState(GraphGuid);
+	const FN2CGraphState* State = FindGraphState(Key);
 	if (!State || !State->HasTranslation())
 	{
 		FN2CLogger::Get().Log(FString::Printf(TEXT("No translation found for graph %s when loading JSON"),
-			*GraphGuid.ToString()),
+			*Key.ToString()),
 			EN2CLogSeverity::Warning);
 		return false;
 	}
@@ -712,19 +754,19 @@ bool UN2CGraphStateManager::LoadN2CJson(const FGuid& GraphGuid, FString& OutJson
 // JSON Export State Operations
 // ============================================================================
 
-void UN2CGraphStateManager::SetJsonExportState(const FGuid& GraphGuid, const FN2CJsonExportState& State)
+void UN2CGraphStateManager::SetJsonExportState(const FN2CGraphKey& Key, const FN2CJsonExportState& State)
 {
-	FN2CGraphState* GraphState = FindGraphState(GraphGuid);
+	FN2CGraphState* GraphState = FindGraphState(Key);
 	if (GraphState)
 	{
 		GraphState->JsonExport = State;
 		MarkDirty();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Updated JSON export state for graph %s"),
-			*GraphGuid.ToString()),
+			*GraphState->GetKey().ToString()),
 			EN2CLogSeverity::Info);
 
-		BroadcastStateChanged(GraphGuid);
+		BroadcastStateChanged(GraphState->GetKey());
 
 		SaveState();
 	}
@@ -743,41 +785,40 @@ void UN2CGraphStateManager::SetJsonExportState(const FGuid& GraphGuid, const FSt
 	MarkDirty();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Set JSON export state for graph %s: %s"),
-		*GraphGuid.ToString(), *OutputPath),
+		*State.GetKey().ToString(), *OutputPath),
 		EN2CLogSeverity::Info);
 
-	BroadcastStateChanged(GraphGuid);
+	BroadcastStateChanged(State.GetKey());
 
 	SaveState();
 }
 
-void UN2CGraphStateManager::ClearJsonExportState(const FGuid& GraphGuid)
+void UN2CGraphStateManager::ClearJsonExportState(const FN2CGraphKey& Key)
 {
-	FN2CGraphState* State = FindGraphState(GraphGuid);
+	const int32 Index = FindGraphStateIndex(Key);
+	FN2CGraphState* State = Index == INDEX_NONE ? nullptr : &StateFile.Graphs[Index];
 	if (State && State->JsonExport.bExists)
 	{
 		State->JsonExport = FN2CJsonExportState();
 		MarkDirty();
+		const FN2CGraphKey GraphKey = State->GetKey();
 
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Cleared JSON export state for graph %s"),
-			*GraphGuid.ToString()),
+			*GraphKey.ToString()),
 			EN2CLogSeverity::Info);
 
-		BroadcastStateChanged(GraphGuid);
+		BroadcastStateChanged(GraphKey);
 
 		// Clean up empty graph states
-		if (State->Tags.Num() == 0 && !State->HasTranslation())
-		{
-			RemoveGraphState(GraphGuid);
-		}
+		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
 		SaveState();
 	}
 }
 
-bool UN2CGraphStateManager::HasJsonExport(const FGuid& GraphGuid) const
+bool UN2CGraphStateManager::HasJsonExport(const FN2CGraphKey& Key) const
 {
-	const FN2CGraphState* State = FindGraphState(GraphGuid);
+	const FN2CGraphState* State = FindGraphState(Key);
 	return State && State->HasJsonExport();
 }
 
@@ -788,54 +829,88 @@ bool UN2CGraphStateManager::HasJsonExport(const FGuid& GraphGuid) const
 FN2CGraphState& UN2CGraphStateManager::GetOrCreateGraphState(const FGuid& GraphGuid,
 	const FString& GraphName, const FSoftObjectPath& Blueprint)
 {
-	// Try to find existing state
-	FN2CGraphState* ExistingState = FindGraphState(GraphGuid);
-	if (ExistingState)
+	const FN2CGraphKey Key(Blueprint, GraphGuid);
+
+	// The entry for this Blueprint's graph. Its Blueprint is never rewritten here: a duplicated Blueprint's graph has
+	// the original's GUID and must get an entry of its own (renames arrive through HandleBlueprintRenamed)
+	int32 Index = FindGraphStateIndex(Key);
+
+	if (Index == INDEX_NONE && Key.HasBlueprint())
 	{
-		// Update graph name and blueprint path if they changed
-		if (ExistingState->GraphName != GraphName || ExistingState->OwningBlueprint != Blueprint)
+		// An entry whose Blueprint went missing (deleted, or renamed while the editor was closed) and whose graph
+		// turns up under another path: the tags follow the graph
+		Index = StateFile.Graphs.IndexOfByPredicate([&Key](const FN2CGraphState& State)
 		{
-			ExistingState->GraphName = GraphName;
-			ExistingState->OwningBlueprint = Blueprint;
+			return State.bMissing && State.GraphGuid == Key.GraphGuid;
+		});
+		if (Index != INDEX_NONE)
+		{
+			FN2CGraphState& Adopted = StateFile.Graphs[Index];
+			FN2CLogger::Get().Log(FString::Printf(TEXT("Graph %s was missing from %s and is now in %s: its state follows it"),
+				*GraphName, *Adopted.OwningBlueprint.ToString(), *Key.Blueprint.ToString()), EN2CLogSeverity::Info);
+			Adopted.OwningBlueprint = Key.Blueprint;
+			Adopted.bMissing = false;
 			MarkDirty();
 		}
-		return *ExistingState;
+	}
+
+	if (Index != INDEX_NONE)
+	{
+		FN2CGraphState& ExistingState = StateFile.Graphs[Index];
+		if (ExistingState.GraphName != GraphName && !GraphName.IsEmpty())
+		{
+			ExistingState.GraphName = GraphName;
+			MarkDirty();
+		}
+		return ExistingState;
 	}
 
 	// Create new state
 	FN2CGraphState NewState;
 	NewState.GraphGuid = GraphGuid;
 	NewState.GraphName = GraphName;
-	NewState.OwningBlueprint = Blueprint;
+	NewState.OwningBlueprint = Key.Blueprint;
 
-	int32 Index = StateFile.Graphs.Add(NewState);
+	Index = StateFile.Graphs.Add(NewState);
 	MarkDirty();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Created graph state for %s (%s)"),
-		*GraphName, *GraphGuid.ToString()),
+		*GraphName, *Key.ToString()),
 		EN2CLogSeverity::Info);
 
 	return StateFile.Graphs[Index];
 }
 
-bool UN2CGraphStateManager::RemoveGraphState(FGuid GraphGuid)
+bool UN2CGraphStateManager::RemoveGraphState(const FN2CGraphKey& Key)
 {
-	for (int32 i = StateFile.Graphs.Num() - 1; i >= 0; --i)
+	const int32 Index = FindGraphStateIndex(Key);
+	if (Index == INDEX_NONE)
 	{
-		if (StateFile.Graphs[i].GraphGuid == GraphGuid)
-		{
-			FString GraphName = StateFile.Graphs[i].GraphName;
-			StateFile.Graphs.RemoveAt(i);
-			MarkDirty();
-
-			FN2CLogger::Get().Log(FString::Printf(TEXT("Removed graph state for %s (%s)"),
-				*GraphName, *GraphGuid.ToString()),
-				EN2CLogSeverity::Info);
-
-			return true;
-		}
+		return false;
 	}
-	return false;
+
+	const FString GraphName = StateFile.Graphs[Index].GraphName;
+	const FString Removed = StateFile.Graphs[Index].GetKey().ToString();
+	StateFile.Graphs.RemoveAt(Index);
+	MarkDirty();
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Removed graph state for %s (%s)"), *GraphName, *Removed),
+		EN2CLogSeverity::Info);
+	return true;
+}
+
+bool UN2CGraphStateManager::RemoveIfEmpty(int32 Index)
+{
+	if (!StateFile.Graphs.IsValidIndex(Index))
+	{
+		return false;
+	}
+	const FN2CGraphState& State = StateFile.Graphs[Index];
+	if (State.Tags.Num() > 0 || State.HasTranslation() || State.HasJsonExport())
+	{
+		return false;
+	}
+	return RemoveGraphState(State.GetKey());
 }
 
 void UN2CGraphStateManager::ClearAllState()
@@ -909,34 +984,34 @@ void UN2CGraphStateManager::BroadcastTagAdded(const FN2CGraphState& State)
 	OnGraphTagAdded.Broadcast(State);
 }
 
-void UN2CGraphStateManager::BroadcastTagRemoved(const FGuid& GraphGuid, const FString& Tag)
+void UN2CGraphStateManager::BroadcastTagRemoved(const FN2CGraphKey& Key, const FString& Tag)
 {
 	if (IsInBulkUpdate())
 	{
 		bBulkChanged = true;
 		return;
 	}
-	OnGraphTagRemoved.Broadcast(GraphGuid, Tag);
+	OnGraphTagRemoved.Broadcast(Key, Tag);
 }
 
-void UN2CGraphStateManager::BroadcastStateChanged(const FGuid& GraphGuid)
+void UN2CGraphStateManager::BroadcastStateChanged(const FN2CGraphKey& Key)
 {
 	if (IsInBulkUpdate())
 	{
 		bBulkChanged = true;
 		return;
 	}
-	OnGraphStateChanged.Broadcast(GraphGuid);
+	OnGraphStateChanged.Broadcast(Key);
 }
 
-void UN2CGraphStateManager::BroadcastTranslationUpdated(const FGuid& GraphGuid)
+void UN2CGraphStateManager::BroadcastTranslationUpdated(const FN2CGraphKey& Key)
 {
 	if (IsInBulkUpdate())
 	{
 		bBulkChanged = true;
 		return;
 	}
-	OnGraphTranslationUpdated.Broadcast(GraphGuid);
+	OnGraphTranslationUpdated.Broadcast(Key);
 }
 
 // ============================================================================
@@ -1083,13 +1158,82 @@ UN2CGraphStateManager::ELoadResult UN2CGraphStateManager::LoadStateInternal()
 		return ELoadResult::Corrupt;
 	}
 
+	const int32 FileVersion = Loaded.GetMajorVersion();
+	if (FileVersion > FN2CGraphStateFile::CurrentMajorVersion)
+	{
+		// Written by a newer NodeToCode: reading it with this one's rules could lose what it holds, and saving would
+		// replace it with an older format. Keep it as it is and save nothing until it is reloaded or reset
+		bSavingBlocked = true;
+		QuarantinedFilePath.Reset();
+		FN2CLogger::Get().LogError(FString::Printf(
+			TEXT("The graph state file %s is version %s, newer than this NodeToCode reads (%d). It was not loaded, and tag changes are not saved over it. Update NodeToCode, or move the file aside and reload the tags."),
+			*FilePath, *Loaded.Version, FN2CGraphStateFile::CurrentMajorVersion));
+		return ELoadResult::TooNew;
+	}
+
+	const bool bMigrated = MigrateStateFile(Loaded);
+
 	StateFile = MoveTemp(Loaded);
 	bIsDirty = false;
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Loaded %d graph states from %s"),
 		StateFile.Graphs.Num(), *FilePath),
 		EN2CLogSeverity::Info);
 
+	if (bMigrated)
+	{
+		// The previous version stays in the .bak the atomic save keeps
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Migrated the graph state file from version %d to %s"),
+			FileVersion, *StateFile.Version), EN2CLogSeverity::Info);
+		MarkDirty();
+		SaveState();
+	}
+
 	return ELoadResult::Loaded;
+}
+
+bool UN2CGraphStateManager::MigrateStateFile(FN2CGraphStateFile& File)
+{
+	const int32 FileVersion = File.GetMajorVersion();
+	if (FileVersion >= FN2CGraphStateFile::CurrentMajorVersion)
+	{
+		return false;
+	}
+
+	// 2 -> 3: entries are keyed by {OwningBlueprint, GraphGuid}. Each keeps the Blueprint it names now (paths were
+	// normalised as they were read). Version 2 kept one entry per GUID, so no two entries share a key; if a hand-edited
+	// file has two, the later one's tags are merged into the first
+	TMap<FN2CGraphKey, int32> Seen;
+	TArray<FN2CGraphState> Kept;
+	Kept.Reserve(File.Graphs.Num());
+	for (FN2CGraphState& State : File.Graphs)
+	{
+		const FN2CGraphKey Key = State.GetKey();
+		if (const int32* Existing = Seen.Find(Key))
+		{
+			FN2CGraphState& Into = Kept[*Existing];
+			for (const FN2CTagEntry& Tag : State.Tags)
+			{
+				if (!Into.Tags.ContainsByPredicate([&Tag](const FN2CTagEntry& Have) { return Have.MatchesTagExactly(Tag.Tag, Tag.Category); }))
+				{
+					Into.Tags.Add(Tag);
+				}
+			}
+			if (!Into.HasTranslation() && State.HasTranslation())
+			{
+				Into.Translation = State.Translation;
+			}
+			if (!Into.HasJsonExport() && State.HasJsonExport())
+			{
+				Into.JsonExport = State.JsonExport;
+			}
+			continue;
+		}
+		Seen.Add(Key, Kept.Num());
+		Kept.Add(MoveTemp(State));
+	}
+	File.Graphs = MoveTemp(Kept);
+	File.Version = FString::Printf(TEXT("%d.0"), FN2CGraphStateFile::CurrentMajorVersion);
+	return true;
 }
 
 void UN2CGraphStateManager::ReportCorruptFile(const FString& FilePath, bool bMoved)
@@ -1208,4 +1352,297 @@ void UN2CGraphStateManager::MigrateFromLegacyTags()
 		FN2CLogger::Get().LogWarning(FString::Printf(
 			TEXT("Could not rename the migrated legacy tags file %s; delete it so it is not migrated again"), *LegacyPath));
 	}
+}
+
+// ============================================================================
+// Blueprint rename, move and delete
+// ============================================================================
+
+void UN2CGraphStateManager::FollowAssetRegistry()
+{
+	if (AssetRenamedHandle.IsValid() || !FModuleManager::Get().IsModuleLoaded(TEXT("AssetRegistry")))
+	{
+		return;
+	}
+	IAssetRegistry& AssetRegistry = FModuleManager::GetModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+
+	// The registry may raise these off the game thread (its background scan); the state is game-thread only
+	const auto OnGameThread = [](TWeakObjectPtr<UN2CGraphStateManager> WeakThis, TFunction<void(UN2CGraphStateManager&)> Work)
+	{
+		if (IsInGameThread())
+		{
+			if (UN2CGraphStateManager* Manager = WeakThis.Get())
+			{
+				Work(*Manager);
+			}
+			return;
+		}
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Work = MoveTemp(Work)]()
+		{
+			if (UN2CGraphStateManager* Manager = WeakThis.Get())
+			{
+				Work(*Manager);
+			}
+		});
+	};
+
+	TWeakObjectPtr<UN2CGraphStateManager> WeakThis(this);
+	AssetRenamedHandle = AssetRegistry.OnAssetRenamed().AddLambda([WeakThis, OnGameThread](const FAssetData& Asset, const FString& OldObjectPath)
+	{
+		const FSoftObjectPath NewPath = Asset.GetSoftObjectPath();
+		const FSoftObjectPath OldPath(OldObjectPath);
+		OnGameThread(WeakThis, [NewPath, OldPath](UN2CGraphStateManager& Manager)
+		{
+			Manager.HandleBlueprintRenamed(OldPath, NewPath);
+		});
+	});
+	AssetRemovedHandle = AssetRegistry.OnAssetRemoved().AddLambda([WeakThis, OnGameThread](const FAssetData& Asset)
+	{
+		// The redirector a rename leaves behind is not the Blueprint
+		if (Asset.IsRedirector())
+		{
+			return;
+		}
+		const FSoftObjectPath Path = Asset.GetSoftObjectPath();
+		OnGameThread(WeakThis, [Path](UN2CGraphStateManager& Manager)
+		{
+			Manager.HandleBlueprintRemoved(Path);
+		});
+	});
+	AssetAddedHandle = AssetRegistry.OnAssetAdded().AddLambda([WeakThis, OnGameThread](const FAssetData& Asset)
+	{
+		if (Asset.IsRedirector())
+		{
+			return;
+		}
+		const FSoftObjectPath Path = Asset.GetSoftObjectPath();
+		OnGameThread(WeakThis, [Path](UN2CGraphStateManager& Manager)
+		{
+			Manager.HandleBlueprintAdded(Path);
+		});
+	});
+}
+
+void UN2CGraphStateManager::StopFollowingAssetRegistry()
+{
+	if (!AssetRenamedHandle.IsValid() && !AssetRemovedHandle.IsValid() && !AssetAddedHandle.IsValid())
+	{
+		return;
+	}
+	if (FAssetRegistryModule* Module = FModuleManager::GetModulePtr<FAssetRegistryModule>(TEXT("AssetRegistry")))
+	{
+		IAssetRegistry& AssetRegistry = Module->Get();
+		AssetRegistry.OnAssetRenamed().Remove(AssetRenamedHandle);
+		AssetRegistry.OnAssetRemoved().Remove(AssetRemovedHandle);
+		AssetRegistry.OnAssetAdded().Remove(AssetAddedHandle);
+	}
+	AssetRenamedHandle.Reset();
+	AssetRemovedHandle.Reset();
+	AssetAddedHandle.Reset();
+}
+
+void UN2CGraphStateManager::BeginDestroy()
+{
+	StopFollowingAssetRegistry();
+	Super::BeginDestroy();
+}
+
+int32 UN2CGraphStateManager::HandleBlueprintRenamed(const FSoftObjectPath& InOldPath, const FSoftObjectPath& InNewPath)
+{
+	const FSoftObjectPath OldPath = FN2CGraphKey::NormalizeBlueprintPath(InOldPath);
+	const FSoftObjectPath NewPath = FN2CGraphKey::NormalizeBlueprintPath(InNewPath);
+	if (OldPath.IsNull() || NewPath.IsNull() || OldPath == NewPath)
+	{
+		return 0;
+	}
+
+	int32 Moved = 0;
+	{
+		FN2CGraphStateBulkUpdate Bulk(*this);
+		for (int32 Index = StateFile.Graphs.Num() - 1; Index >= 0; --Index)
+		{
+			FN2CGraphState& State = StateFile.Graphs[Index];
+			if (State.OwningBlueprint != OldPath)
+			{
+				continue;
+			}
+
+			// Already an entry at the new path (a copy saved over the target, or a stale entry): merge into it
+			const int32 Target = FindGraphStateIndex(FN2CGraphKey(NewPath, State.GraphGuid));
+			if (Target != INDEX_NONE)
+			{
+				FN2CGraphState& Into = StateFile.Graphs[Target];
+				for (const FN2CTagEntry& Tag : State.Tags)
+				{
+					if (!Into.Tags.ContainsByPredicate([&Tag](const FN2CTagEntry& Have) { return Have.MatchesTagExactly(Tag.Tag, Tag.Category); }))
+					{
+						Into.Tags.Add(Tag);
+					}
+				}
+				if (!Into.HasTranslation() && State.HasTranslation())
+				{
+					Into.Translation = State.Translation;
+				}
+				if (!Into.HasJsonExport() && State.HasJsonExport())
+				{
+					Into.JsonExport = State.JsonExport;
+				}
+				Into.bMissing = false;
+				StateFile.Graphs.RemoveAt(Index);
+			}
+			else
+			{
+				State.OwningBlueprint = NewPath;
+				State.bMissing = false;
+			}
+			++Moved;
+			MarkDirty();
+		}
+		if (Moved > 0)
+		{
+			SaveState();
+		}
+	}
+
+	if (Moved > 0)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Blueprint %s is now %s: %d graph state %s followed it"),
+			*OldPath.ToString(), *NewPath.ToString(), Moved, Moved == 1 ? TEXT("entry") : TEXT("entries")),
+			EN2CLogSeverity::Info);
+		OnBlueprintPathChanged.Broadcast(OldPath, NewPath);
+	}
+	return Moved;
+}
+
+int32 UN2CGraphStateManager::HandleBlueprintRemoved(const FSoftObjectPath& InPath)
+{
+	const FSoftObjectPath Path = FN2CGraphKey::NormalizeBlueprintPath(InPath);
+	if (Path.IsNull())
+	{
+		return 0;
+	}
+
+	int32 Marked = 0;
+	{
+		FN2CGraphStateBulkUpdate Bulk(*this);
+		for (FN2CGraphState& State : StateFile.Graphs)
+		{
+			if (!State.bMissing && State.OwningBlueprint == Path)
+			{
+				State.bMissing = true;
+				++Marked;
+				MarkDirty();
+			}
+		}
+		if (Marked > 0)
+		{
+			SaveState();
+		}
+	}
+
+	if (Marked > 0)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Blueprint %s was deleted: %d graph state %s marked missing (Tag Manager > Prune Missing removes them)"),
+			*Path.ToString(), Marked, Marked == 1 ? TEXT("entry is") : TEXT("entries are")), EN2CLogSeverity::Info);
+	}
+	return Marked;
+}
+
+int32 UN2CGraphStateManager::HandleBlueprintAdded(const FSoftObjectPath& InPath)
+{
+	const FSoftObjectPath Path = FN2CGraphKey::NormalizeBlueprintPath(InPath);
+	if (Path.IsNull())
+	{
+		return 0;
+	}
+
+	int32 Unmarked = 0;
+	{
+		FN2CGraphStateBulkUpdate Bulk(*this);
+		for (FN2CGraphState& State : StateFile.Graphs)
+		{
+			if (State.bMissing && State.OwningBlueprint == Path)
+			{
+				State.bMissing = false;
+				++Unmarked;
+				MarkDirty();
+			}
+		}
+		if (Unmarked > 0)
+		{
+			SaveState();
+		}
+	}
+	return Unmarked;
+}
+
+int32 UN2CGraphStateManager::RefreshMissing()
+{
+	IAssetRegistry* AssetRegistry = nullptr;
+	if (FAssetRegistryModule* Module = FModuleManager::GetModulePtr<FAssetRegistryModule>(TEXT("AssetRegistry")))
+	{
+		AssetRegistry = &Module->Get();
+	}
+	if (!AssetRegistry)
+	{
+		return GetMissingCount();
+	}
+
+	int32 Missing = 0;
+	{
+		FN2CGraphStateBulkUpdate Bulk(*this);
+		bool bChanged = false;
+		for (FN2CGraphState& State : StateFile.Graphs)
+		{
+			if (State.OwningBlueprint.IsNull())
+			{
+				continue; // nothing to look up; never pruned
+			}
+			// A deleted Blueprint can linger in memory until garbage collection: IsValid skips it
+			const bool bExists = IsValid(State.OwningBlueprint.ResolveObject())
+				|| AssetRegistry->GetAssetByObjectPath(State.OwningBlueprint).IsValid();
+			if (State.bMissing == bExists)
+			{
+				State.bMissing = !bExists;
+				bChanged = true;
+				MarkDirty();
+			}
+			Missing += State.bMissing ? 1 : 0;
+		}
+		if (bChanged)
+		{
+			SaveState();
+		}
+	}
+	return Missing;
+}
+
+int32 UN2CGraphStateManager::PruneMissing()
+{
+	RefreshMissing();
+
+	int32 Removed = 0;
+	{
+		FN2CGraphStateBulkUpdate Bulk(*this);
+		Removed = StateFile.Graphs.RemoveAll([](const FN2CGraphState& State) { return State.bMissing; });
+		if (Removed > 0)
+		{
+			MarkDirty();
+			SaveState();
+		}
+	}
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Pruned %d graph state %s whose Blueprint no longer exists"),
+		Removed, Removed == 1 ? TEXT("entry") : TEXT("entries")), EN2CLogSeverity::Info);
+	return Removed;
+}
+
+int32 UN2CGraphStateManager::GetMissingCount() const
+{
+	int32 Missing = 0;
+	for (const FN2CGraphState& State : StateFile.Graphs)
+	{
+		Missing += State.bMissing ? 1 : 0;
+	}
+	return Missing;
 }

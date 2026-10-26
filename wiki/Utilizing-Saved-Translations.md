@@ -58,6 +58,12 @@ it, and stops saving tag changes until you restart the editor or reload the tags
 recover, fix that file (or copy the `.bak`) to `BlueprintGraphState.json` and restart the editor. After an upgrade
 from 1.x, the old `Tags/BlueprintTags.json` is migrated once and renamed to `BlueprintTags.json.migrated`.
 
+Each entry names its Blueprint and graph together, so a Blueprint and its Content Browser copies keep separate tags.
+The file is version 3. A version 2 file from an earlier 2.0 build is upgraded the first time the editor starts, and
+the version 2 copy stays in the `.bak`. A file written by a newer NodeToCode is left as it is and nothing is saved over
+it. Renaming or moving a Blueprint in the editor updates its entries. Deleting one marks its entries missing, and the
+**Prune Missing** button in the NodeToCode window removes them after asking. The translation files on disk stay.
+
 Each record names the graph's folder (relative to the project, or absolute when a custom output directory is outside
 it) and the target language, so the translation viewer reopens a saved translation in any of the six languages. Records
 written by earlier 2.0 builds still open, including Pseudocode files those builds expected as `.txt`.

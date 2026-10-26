@@ -5,6 +5,9 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "Misc/PackageName.h"
 
 // ============================================================================
 // FN2CTranslationSummary
@@ -158,8 +161,80 @@ FString FN2CTagEntry::NormalizeCategory(const FString& InCategory)
 }
 
 // ============================================================================
+// FN2CGraphKey
+// ============================================================================
+
+FN2CGraphKey::FN2CGraphKey(const FSoftObjectPath& InBlueprint, const FGuid& InGraphGuid)
+	: Blueprint(NormalizeBlueprintPath(InBlueprint))
+	, GraphGuid(InGraphGuid)
+{
+}
+
+FN2CGraphKey::FN2CGraphKey(const FGuid& InGraphGuid)
+	: GraphGuid(InGraphGuid)
+{
+}
+
+FN2CGraphKey FN2CGraphKey::FromStrings(const FString& BlueprintPath, const FString& GraphGuid)
+{
+	FGuid Guid;
+	if (!FGuid::Parse(GraphGuid.TrimStartAndEnd(), Guid))
+	{
+		return FN2CGraphKey();
+	}
+	return FN2CGraphKey(NormalizeBlueprintPath(BlueprintPath), Guid);
+}
+
+FN2CGraphKey FN2CGraphKey::FromGraph(const UEdGraph* Graph)
+{
+	if (!Graph)
+	{
+		return FN2CGraphKey();
+	}
+	const UBlueprint* Owner = Graph->GetTypedOuter<UBlueprint>();
+	return FN2CGraphKey(Owner ? FSoftObjectPath(Owner) : FSoftObjectPath(), Graph->GraphGuid);
+}
+
+FSoftObjectPath FN2CGraphKey::NormalizeBlueprintPath(const FSoftObjectPath& Path)
+{
+	if (Path.IsNull() || !Path.GetAssetName().IsEmpty() || !Path.GetSubPathString().IsEmpty())
+	{
+		return Path;
+	}
+	// A package path: the asset is named after the package
+	const FString PackageName = Path.GetLongPackageName();
+	return FSoftObjectPath(PackageName + TEXT(".") + FPackageName::GetShortName(PackageName));
+}
+
+FSoftObjectPath FN2CGraphKey::NormalizeBlueprintPath(const FString& Path)
+{
+	FString Trimmed = Path.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
+	{
+		return FSoftObjectPath();
+	}
+	if (Trimmed.EndsWith(TEXT("'")))
+	{
+		// Export text: Blueprint'/Game/BP.BP'
+		Trimmed = FPackageName::ExportTextPathToObjectPath(Trimmed);
+	}
+	return NormalizeBlueprintPath(FSoftObjectPath(Trimmed));
+}
+
+FString FN2CGraphKey::ToString() const
+{
+	const FString Guid = GraphGuid.ToString(EGuidFormats::DigitsWithHyphens);
+	return HasBlueprint() ? FString::Printf(TEXT("%s:%s"), *Blueprint.ToString(), *Guid) : Guid;
+}
+
+// ============================================================================
 // FN2CGraphState
 // ============================================================================
+
+FN2CGraphKey FN2CGraphState::GetKey() const
+{
+	return FN2CGraphKey(OwningBlueprint, GraphGuid);
+}
 
 TSharedPtr<FJsonObject> FN2CGraphState::ToJson() const
 {
@@ -182,6 +257,12 @@ TSharedPtr<FJsonObject> FN2CGraphState::ToJson() const
 	// JSON export state
 	JsonObject->SetObjectField(TEXT("jsonExport"), JsonExport.ToJson());
 
+	// Written only while set, so a v3 file without deletions looks like any other
+	if (bMissing)
+	{
+		JsonObject->SetBoolField(TEXT("missing"), true);
+	}
+
 	return JsonObject;
 }
 
@@ -201,8 +282,10 @@ FN2CGraphState FN2CGraphState::FromJson(const TSharedPtr<FJsonObject>& JsonObjec
 		FString BlueprintPath;
 		if (JsonObject->TryGetStringField(TEXT("owningBlueprint"), BlueprintPath))
 		{
-			State.OwningBlueprint = FSoftObjectPath(BlueprintPath);
+			State.OwningBlueprint = FN2CGraphKey::NormalizeBlueprintPath(BlueprintPath);
 		}
+
+		JsonObject->TryGetBoolField(TEXT("missing"), State.bMissing);
 
 		// Tags array
 		const TArray<TSharedPtr<FJsonValue>>* TagsArray;
@@ -264,6 +347,21 @@ TArray<FN2CTagEntry> FN2CGraphState::GetTagsInCategory(const FString& InCategory
 // FN2CGraphStateFile
 // ============================================================================
 
+int32 FN2CGraphStateFile::GetMajorVersion() const
+{
+	FString Major = Version.TrimStartAndEnd();
+	int32 Dot = INDEX_NONE;
+	if (Major.FindChar(TEXT('.'), Dot))
+	{
+		Major.LeftInline(Dot);
+	}
+	if (Major.IsEmpty() || !Major.IsNumeric())
+	{
+		return 1;
+	}
+	return FMath::Max(1, FCString::Atoi(*Major));
+}
+
 FString FN2CGraphStateFile::ToJsonString(bool bPrettyPrint) const
 {
 	TSharedPtr<FJsonObject> RootObject = MakeShared<FJsonObject>();
@@ -305,6 +403,8 @@ bool FN2CGraphStateFile::FromJsonString(const FString& JsonString, FN2CGraphStat
 		return false;
 	}
 
+	// A file without a version is older than any versioned one
+	OutFile.Version.Reset();
 	RootObject->TryGetStringField(TEXT("version"), OutFile.Version);
 
 	FString LastSavedStr;

@@ -185,6 +185,12 @@ public:
      */
     void CleanupStaleWrappers();
 
+    /**
+     * Whether this graph object has a live N2C overlay. Overlays are tracked per UEdGraph, not per GraphGuid: copies of
+     * a Blueprint made in the Content Browser keep the original's graph GUIDs, and each copy's graph needs its own.
+     */
+    bool HasLiveOverlay(const UEdGraph* Graph) const;
+
     // ==================== Global Translation State ====================
 
     /**
@@ -226,8 +232,14 @@ private:
     /** Map of wrapped tabs to their wrapper widgets (legacy, kept for compatibility) */
     TMap<TWeakPtr<SDockTab>, TSharedPtr<SN2CGraphEditorWrapper>> WrappedTabs;
 
-    /** Map of graph GUIDs to their overlay widgets (weak ptrs detect destruction on graph switch) */
-    TMap<FGuid, TWeakPtr<SN2CGraphOverlay>> InjectedGraphOverlays;
+    /**
+     * Each graph's overlay widget, keyed by the graph object (not its GUID, which a duplicated Blueprint shares). Weak
+     * on both sides: a closed Blueprint's graph or a rebuilt tab's overlay leaves a stale entry, removed on the next look.
+     */
+    TMap<TWeakObjectPtr<UEdGraph>, TWeakPtr<SN2CGraphOverlay>> InjectedGraphOverlays;
+
+    /** True if Graph has a live overlay; drops its entry when the overlay is gone */
+    bool CheckLiveOverlay(UEdGraph* Graph);
 
     /** Timer handle for initial graph tab wrapping on editor open (with retry) */
     FTimerHandle InitialWrapTimerHandle;

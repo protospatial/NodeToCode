@@ -118,11 +118,11 @@ void SN2CTaggedGraphsList::SetGraphs(const TArray<FN2CTagInfo>& InTagInfos)
 		Item->bIsSelected = false;
 		Item->bIsStarred = false;
 
-		// Check if a translation exists for this graph
-		FGuid GraphGuid;
-		if (FGuid::Parse(TagInfo.GraphGuid, GraphGuid) && GraphGuid.IsValid())
+		// Check if a translation exists for this graph (of this Blueprint: copies share graph GUIDs)
+		const FN2CGraphKey Key = FN2CGraphKey::FromStrings(TagInfo.BlueprintPath, TagInfo.GraphGuid);
+		if (Key.IsValid())
 		{
-			Item->bHasTranslation = UN2CGraphStateManager::Get().HasTranslation(GraphGuid);
+			Item->bHasTranslation = UN2CGraphStateManager::Get().HasTranslation(Key);
 		}
 		else
 		{
