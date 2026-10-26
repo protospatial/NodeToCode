@@ -3,6 +3,28 @@
 This directory contains the MCP tools in the `BlueprintFunctionTools` toolset: creating, opening and deleting
 Blueprint functions and editing their parameters and return values.
 
+## Status: frozen, bug fixes only (dec-5)
+
+Every tool here (`BlueprintFunctionTools`) is frozen. Decision record [0007](../../../../../../../.agents/decisions/0007-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
+provisionally as the review's option 2, with card 0089 applied provisionally as option (b).
+
+- **Accepted:** bug fixes, meaning a change that fixes a crash or hang (a modal dialog in an unattended call
+  counts), data loss, Blueprint or project corruption, or a result that misreports what happened (success for an
+  edit that did not happen, wrong counts, duplicates, a wrong type in a read). Also accepted, since they add no
+  capability: explicit targeting arguments on existing tools (review next-6), security hardening, building on the
+  supported engines, tests, docs that match the code, and removing dead code.
+- **Not accepted:** new tools in this family, and new arguments, modes or result fields that
+  add capability. On UE 5.8 that work belongs to Epic's EditorToolset (`BlueprintTools.add_function_graph`, `add_function_param`, `remove_function_param`); on 5.6 and 5.7 it waits for the
+  owner.
+- **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
+  tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
+  `PythonTools`.
+- **Fix cards still owed here:** 0280 (create- and delete-blueprint-function must not rename or delete unrelated graphs and nodes), 0295
+  (delete-blueprint-function's notification brush).
+
+The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
+`Source/Private/MCP/Tools/AGENTS.md`.
+
 ## Where Parameters Live
 
 A Blueprint function graph has one `UK2Node_FunctionEntry` and one or more `UK2Node_FunctionResult` (Return) nodes.
