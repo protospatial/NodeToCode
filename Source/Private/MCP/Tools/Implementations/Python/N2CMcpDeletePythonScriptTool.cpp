@@ -14,7 +14,7 @@ FMcpToolDefinition FN2CMcpDeletePythonScriptTool::GetDefinition() const
 		TEXT("Delete a Python script from the script library. "
 			 "This permanently removes both the script file and its registry entry. "
 			 "Use with caution - this action cannot be undone."),
-		TEXT("Python")
+		N2CMcpToolsets::Python
 	);
 
 	// Build input schema

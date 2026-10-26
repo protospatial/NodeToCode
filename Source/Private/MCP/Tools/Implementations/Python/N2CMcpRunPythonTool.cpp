@@ -24,7 +24,7 @@ FMcpToolDefinition FN2CMcpRunPythonTool::GetDefinition() const
 			 "3) Import saved scripts: 'from scripts.<category>.<name> import func', "
 			 "4) Use 'import nodetocode as n2c' for Blueprint utilities (get_focused_blueprint, compile_blueprint, save_blueprint, tag_graph), "
 			 "5) Set 'result' variable to return structured data."),
-		TEXT("Python")
+		N2CMcpToolsets::Python
 	);
 
 	// Build input schema with code (required) and timeout (optional)

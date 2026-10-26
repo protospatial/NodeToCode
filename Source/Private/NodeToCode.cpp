@@ -145,9 +145,9 @@ void FNodeToCodeModule::StartupModule()
     {
         McpSkipReason = TEXT("running unattended (pass -N2CMcp to start it anyway)");
     }
-    if (McpSkipReason.IsEmpty() && McpSettings && McpSettings->bEnablePythonScriptOnlyMode && !UN2CUserSettings::IsMcpPythonExecutionAllowed())
+    if (McpSkipReason.IsEmpty() && McpSettings && McpSettings->McpToolProfile == EN2CMcpToolProfile::PythonScripting && !UN2CUserSettings::IsMcpPythonExecutionAllowed())
     {
-        FN2CLogger::Get().LogWarning(TEXT("Python script-only mode is on but Allow MCP Python Execution is off: only the list, search and get script tools are available"));
+        FN2CLogger::Get().LogWarning(TEXT("Tool Profile is Python Scripting Only but Allow MCP Python Execution is off: only the list, search and get script tools are available"));
     }
 
     if (!McpSkipReason.IsEmpty())

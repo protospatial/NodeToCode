@@ -28,7 +28,7 @@ FMcpToolDefinition FN2CMcpSearchVariableTypesTool::GetDefinition() const
 		TEXT("search-variable-types"),
 		TEXT("Searches for available variable types (primitives, classes, structs, enums) by name and returns matches with unique type identifiers")
 	,
-		TEXT("Blueprint Variable Management")
+		N2CMcpToolsets::BlueprintVariable
 	);
 
 	// Build input schema manually (similar to search blueprint nodes tool)

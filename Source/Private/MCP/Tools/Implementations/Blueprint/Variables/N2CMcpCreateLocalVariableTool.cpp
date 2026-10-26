@@ -38,7 +38,7 @@ FMcpToolDefinition FN2CMcpCreateLocalVariableTool::GetDefinition() const
 		TEXT("create-local-variable"),
 		TEXT("Creates a new local variable in the currently focused Blueprint function. The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
 	,
-		TEXT("Blueprint Variable Management")
+		N2CMcpToolsets::BlueprintVariable
 	);
 
 	// Build input schema

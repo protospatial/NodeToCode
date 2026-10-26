@@ -25,7 +25,7 @@ FMcpToolDefinition FN2CMcpGetOpenBlueprintEditorsTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("get-open-blueprint-editors"),
 		TEXT("Returns a list of all currently open Blueprint editors with their asset paths and available graphs"),
-		TEXT("Blueprint Discovery")
+		N2CMcpToolsets::BlueprintDiscovery
 	);
 	
 	// No input parameters required for this tool

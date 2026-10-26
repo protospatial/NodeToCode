@@ -27,7 +27,7 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("connect-pins"),
 		TEXT("Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error."),
-		TEXT("Blueprint Graph Editing")
+		N2CMcpToolsets::BlueprintGraph
 	);
 
 	// Build input schema

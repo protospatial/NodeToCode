@@ -30,12 +30,12 @@ Source/Private/MCP/Tools/         - This directory
     ├── Translation/              - Code translation tools
     ├── FileSystem/               - File and directory reads
     ├── ContentBrowser/           - Content Browser navigation and asset operations
-    ├── Python/                   - run-python and the script library tools
-    └── ToolManagement/           - assess-needed-tools (dynamic tool discovery)
+    └── Python/                   - run-python and the script library tools
 ```
 
 `Blueprint/`, each of its subfolders, `Translation/`, `FileSystem/` and `ContentBrowser/` have their own `AGENTS.md`;
-`Python/` is described in `Context/python-scripting/AGENTS-python-scripting.md` and `ToolManagement/` below.
+`Python/` is described in `Context/python-scripting/AGENTS-python-scripting.md`. The toolsets are declared in
+`Source/Public/MCP/Tools/N2CMcpToolsets.h` and the tool-search meta-tools live in `N2CMcpToolManager.cpp` (below).
 
 ## Framework Overview
 
@@ -56,7 +56,7 @@ Source/Private/MCP/Tools/         - This directory
    - Thread-safe tool lookup
 
 4. **`FN2CMcpToolManager`** - Runtime tool management
-   - Holds the active tool set that `tools/list` returns, filled at server start by the registration mode (below)
+   - Serves the tools of the enabled toolsets and fixes what `tools/list` returns, once at server start (below)
    - Handles tool execution lifecycle
    - Runs long-running tools through `FN2CToolAsyncTaskManager` (progress via `FN2CToolCallContext`)
 
@@ -72,57 +72,107 @@ REGISTER_MCP_TOOL(FN2CMcpYourToolName)
 This macro:
 - Creates a static initializer that runs before main()
 - Adds the tool class to the global registry (`FN2CMcpToolRegistry`)
-- Makes the tool available to the registration modes; whether `tools/list` shows it depends on the mode
+- Makes the tool available to the tool profiles; it is served when its toolset is enabled
 
-## Tool Registration Modes
+## Tool Profiles, Exposure and Toolsets
 
-When the MCP server starts, `FN2CMcpHttpServerManager::RegisterMcpTools()` fills the active tool set from the
-registry according to two settings in Project Settings > Plugins > Node to Code > MCP Server (`UN2CSettings`,
-project config `DefaultNodeToCode.ini`). The first that applies wins:
+Decision record `.agents/decisions/0005-mcp-tool-exposure-toolsets-and-tool-search.md` (proposed, card 0106; applied by
+card 0165). When the MCP server starts, `FN2CMcpHttpServerManager::RegisterMcpTools()` reads three settings in Project
+Settings > Plugins > Node to Code > MCP Server (`UN2CSettings`, project config `DefaultNodeToCode.ini`) and calls
+`FN2CMcpToolManager::Configure` once. `tools/list` then stays the same for as long as the server runs: no tool call
+changes it, every client sees the same list, and the server never sends `notifications/tools/list_changed`.
 
-| Order | Mode | Setting | Tools registered | `tools/list` count |
-|---|---|---|---|---|
-| 1 | Python script-only | **Enable Python Script-Only Mode** (`bEnablePythonScriptOnlyMode`, default off) | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` (`FN2CMcpToolManager::RegisterToolsByName`). No translation, Blueprint, Content Browser or file tools | 7 |
-| 2 | Dynamic tool discovery | **Enable Dynamic Tool Discovery** (`bEnableDynamicToolDiscovery`, default off) | `assess-needed-tools` only (`SetDefaultToolSet`); it enables tool categories on request | 1 |
-| 3 | All tools (the shipped default) | both off | every registered tool except `assess-needed-tools` (`RegisterAllToolsExceptAssess`) | 66 |
-
-- **The default** is mode 3: both settings default to false in `N2CSettings.h`, so a fresh install lists every
-  tool, `get-focused-blueprint` and `translate-focused-blueprint` included.
-- **Python execution switch:** every path goes through `FN2CMcpToolManager::RegisterTool`, which skips `run-python`,
-  `save-python-script` and `delete-python-script` (`UN2CUserSettings::IsPythonExecutionTool`) unless the per-user
-  **Allow MCP Python Execution** is on (`UN2CUserSettings::IsMcpPythonExecutionAllowed()`, default off; only the
-  user's own Saved/Config value counts, card 0423). With it off (the default) the counts are 63 for mode 3, 1 for
-  mode 2 (and those three tools cannot be enabled by `assess-needed-tools`), and 4 for mode 1 (list, search, get and
-  get-script-functions; the editor logs a warning at start).
-- **Restart required:** the mode is read only when the server starts (editor start, or the server restart a Server
-  Port change causes). Changing either setting takes effect after an editor restart.
-- **Checked by:** `build.ps1 -Smoke` starts one editor per mode with Python execution allowed and compares
-  `tools/list` with `Tests/smoke/expected.json` (`default` 66, `dynamic` 1, `python_only` 7). A card that adds or
-  removes a tool updates those counts and the tables in this file.
-
-### Tool Categories
-
-`FMcpToolDefinition::Category` (the third constructor argument, or `Definition.Category`) groups tools for dynamic
-discovery; `tools/list` sends it as `_meta["nodetocode/category"]`. The category strings at HEAD, with their tools and folders:
-
-| Category | Tools | Folder |
+| Setting | Values | Default |
 |---|---|---|
-| `Tool Management` | `assess-needed-tools` | `ToolManagement/` |
-| `Blueprint Discovery` | `get-focused-blueprint`, `get-blueprint-n2cjson`, `list-blueprint-graphs`, `export-n2cjson-batch`, `get-open-blueprint-editors`, `list-blueprint-functions`, `list-overridable-functions`, `search-blueprint-nodes` | `Blueprint/Analysis/`, `Blueprint/Graph/` |
-| `Blueprint Graph Editing` | `add-bp-node-to-active-graph`, `connect-pins`, `create-comment-node`, `delete-blueprint-node`, `set-input-pin-value` | `Blueprint/Graph/` |
-| `Blueprint Function Management` | `create-blueprint-function`, `delete-blueprint-function`, `open-blueprint-function`, `add-function-input-pin`, `add-function-return-pin`, `remove-function-entry-pin`, `remove-function-return-pin` | `Blueprint/Functions/` |
-| `Blueprint Variable Management` | `create-variable`, `create-local-variable`, `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`, `create-get-member-variable-node`, `create-set-member-variable-node`, `create-get-local-function-variable-node`, `create-set-local-function-variable-node`, `set-member-variable-default-value`, `set-local-function-variable-default-value` | `Blueprint/Variables/` |
-| `Blueprint Organization` | `tag-blueprint-graph`, `list-blueprint-tags`, `remove-tag-from-graph` | `Blueprint/Organization/` |
-| `Blueprint Compilation` | `compile-blueprint`, `save-blueprint` | `Blueprint/Compilation/` |
-| `Blueprint Classes` | `search-blueprint-classes`, `create-blueprint-class` | `Blueprint/Classes/` |
-| `Blueprint Components` | `list-components-in-actor`, `add-component-class-to-actor`, `delete-component-in-actor` | `Blueprint/Components/` |
-| `Content Browser` | `open-content-browser-path`, `read-content-browser-path`, `search-content-browser`, `open-blueprint-asset`, `create-folder`, `move-folder`, `rename-folder`, `move-asset`, `copy-asset`, `rename-asset` | `ContentBrowser/` |
-| `File System` | `read-path`, `read-file` | `FileSystem/` |
-| `Translation` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory` | `Translation/` |
-| `Python` | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | `Python/` |
-| (none) | `find-nodes-in-graph` sets no category, so `assess-needed-tools` cannot enable it | `Blueprint/Graph/` |
+| **Tool Profile** (`McpToolProfile`) | `DefaultToolsets` (every toolset declared default-enabled), `PythonScripting` (`PythonTools` only), `Custom` (the names in Custom Toolsets) | `DefaultToolsets` |
+| **Custom Toolsets** (`McpCustomToolsets`) | toolset names, offered from the declarations; an unknown name logs a warning listing the valid ones | empty |
+| **Tool Exposure** (`McpToolExposure`) | `ListAllTools` (`tools/list` holds every served tool), `ToolSearch` (`tools/list` holds only `list_toolsets`, `describe_toolset` and `call_tool`) | `ListAllTools` |
 
-That is 67 tools; mode 3 lists 66 of them (all but `assess-needed-tools`). Category strings are matched exactly.
+| Profile | Exposure | `tools/list` | count |
+|---|---|---|---|
+| Default toolsets (the shipped default) | List every tool | every tool, `get-focused-blueprint` and `translate-focused-blueprint` included | 66 |
+| Default toolsets | Tool search | `call_tool`, `describe_toolset`, `list_toolsets` | 3 |
+| Python scripting only | List every tool | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | 7 |
+
+- **Python execution switch:** `FN2CMcpToolManager::RegisterTool` skips `run-python`, `save-python-script` and
+  `delete-python-script` (`UN2CUserSettings::IsPythonExecutionTool`) unless the per-user **Allow MCP Python
+  Execution** is on (`UN2CUserSettings::IsMcpPythonExecutionAllowed()`, default off; only the user's own Saved/Config
+  value counts, card 0423). With it off (the default) the counts are 63 and 4 instead of 66 and 7, `PythonTools`
+  still holds the four script library readers, and `call_tool` cannot reach the skipped tools either.
+- **Restart required:** the settings are read only when the server starts (editor start, or the server restart a
+  Server Port change causes); Project Settings shows a restart notice when one changes.
+- **Settings saved before card 0165:** `UN2CSettings::MigrateLegacyMcpToolModes` (run from `MigrateSavedSettings` on
+  every load, in memory) maps `bEnablePythonScriptOnlyMode=True` to Tool Profile = Python scripting only and
+  `bEnableDynamicToolDiscovery=True` to Tool Exposure = Tool search (not when script-only mode was on too: it took
+  precedence and listed the Python tools directly). A Tool Profile or Tool Exposure key already saved wins. The old
+  keys stay in the file until Project Settings saves the section. `assess-needed-tools` is gone: a client that calls
+  it gets "Unknown tool".
+- **Checked by:** `build.ps1 -Smoke` starts one editor per mode with Python execution allowed and compares
+  `tools/list` with `Tests/smoke/expected.json` (`default` 66, `tool_search` 3, `python_only` 7). The `tool_search`
+  mode is set with the old `bEnableDynamicToolDiscovery=True` key, so it also checks the migration, and it calls every
+  meta-tool and checks `tools/list` is unchanged. `NodeToCode.MCP.Toolsets` and `NodeToCode.Registry` cover the same
+  in specs. A card that adds or removes a tool updates those counts and the tables in this file.
+
+### Toolsets
+
+Every toolset is declared once, in `Source/Public/MCP/Tools/N2CMcpToolsets.h` (`N2CMcpToolsets`, with a name, a
+description and whether the default profile enables it), and every tool names one by identity as the third argument
+of its `FMcpToolDefinition`: `FMcpToolDefinition(TEXT("compile-blueprint"), TEXT("..."), N2CMcpToolsets::BlueprintCompile)`.
+A tool with no toolset is never served (`NodeToCode.Registry` fails on one), and a toolset with no tool fails the
+same spec. `tools/list` sends the toolset as `_meta["nodetocode/toolset"]`. Names are PascalCase and end in `Tools`,
+like Epic's toolset classes on UE 5.8 (`BlueprintTools`, `MaterialTools`); a 5.8 registry adapter publishes them as
+`NodeToCode.<Name>`. The toolsets at HEAD, all enabled by the default profile:
+
+| Toolset | Tools | Folder |
+|---|---|---|
+| `BlueprintDiscoveryTools` | `get-focused-blueprint`, `get-blueprint-n2cjson`, `list-blueprint-graphs`, `export-n2cjson-batch`, `get-open-blueprint-editors`, `list-blueprint-functions`, `list-overridable-functions`, `search-blueprint-nodes` | `Blueprint/Analysis/`, `Blueprint/Graph/` |
+| `BlueprintGraphTools` | `add-bp-node-to-active-graph`, `connect-pins`, `create-comment-node`, `delete-blueprint-node`, `set-input-pin-value`, `find-nodes-in-graph` | `Blueprint/Graph/` |
+| `BlueprintFunctionTools` | `create-blueprint-function`, `delete-blueprint-function`, `open-blueprint-function`, `add-function-input-pin`, `add-function-return-pin`, `remove-function-entry-pin`, `remove-function-return-pin` | `Blueprint/Functions/` |
+| `BlueprintVariableTools` | `create-variable`, `create-local-variable`, `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`, `create-get-member-variable-node`, `create-set-member-variable-node`, `create-get-local-function-variable-node`, `create-set-local-function-variable-node`, `set-member-variable-default-value`, `set-local-function-variable-default-value` | `Blueprint/Variables/` |
+| `BlueprintTagTools` | `tag-blueprint-graph`, `list-blueprint-tags`, `remove-tag-from-graph` | `Blueprint/Organization/` |
+| `BlueprintCompileTools` | `compile-blueprint`, `save-blueprint` | `Blueprint/Compilation/` |
+| `BlueprintClassTools` | `search-blueprint-classes`, `create-blueprint-class` | `Blueprint/Classes/` |
+| `BlueprintComponentTools` | `list-components-in-actor`, `add-component-class-to-actor`, `delete-component-in-actor` | `Blueprint/Components/` |
+| `ContentBrowserTools` | `open-content-browser-path`, `read-content-browser-path`, `search-content-browser`, `open-blueprint-asset`, `create-folder`, `move-folder`, `rename-folder`, `move-asset`, `copy-asset`, `rename-asset` | `ContentBrowser/` |
+| `FileSystemTools` | `read-path`, `read-file` | `FileSystem/` |
+| `PythonTools` | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | `Python/` |
+| `TranslationTools` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory` | `Translation/` |
+
+That is 66 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
+to `N2CMcpToolsets::All`; write its description for a model that sees nothing else of it (the domain and the kinds of
+operation, 1-3 sentences, no tool names). The Material graph cards (epic 0442) add `MaterialTools` there with their
+first tool.
+
+### Tool search: list_toolsets, describe_toolset, call_tool
+
+With Tool Exposure = Tool search, `tools/list` holds three meta-tools named and shaped like UE 5.8's tool search
+(`ModelContextProtocolToolSearch.h`), built by `FN2CMcpToolManager` itself (not registry tools, no toolset), each sent
+with `_meta["anthropic/alwaysLoad"]`. They reach exactly the tools the profile serves and never change `tools/list`.
+
+| Meta-tool | Arguments | Result |
+|---|---|---|
+| `list_toolsets` | none | one line per enabled toolset with a served tool: `- <Name>: <Description>` (Epic's format) |
+| `describe_toolset` | `toolset_name` | JSON text `{"name", "description", "tools": [<tools/list entries>]}` |
+| `call_tool` | `tool_name`, optional `toolset_name`, optional `arguments` (object) | the named tool's own result |
+
+- An unknown toolset name, or one the profile does not enable, is an `isError` result naming the valid toolsets; a
+  tool outside the named toolset is an `isError` listing that toolset's tools. `call_tool` refuses the meta-tools.
+- `call_tool` on a long-running tool (`translate-focused-blueprint`) runs it on the same request as a direct call
+  would (`FN2CMcpProtocol` resolves it with `FN2CMcpToolManager::ResolveCallTool`): progress with the call's
+  `_meta.progressToken`, `notifications/cancelled` stops it.
+- `tools/call` accepts only names `tools/list` holds (`FN2CMcpToolManager::IsToolListed`): in tool search the other
+  tools answer -32602 "Unknown tool" and are reached through `call_tool`.
+
+```bash
+# After the initialize in "Calling the Server with curl", with Tool Exposure = Tool search
+curl -X POST http://127.0.0.1:27000/mcp -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"describe_toolset","arguments":{"toolset_name":"BlueprintCompileTools"}}}'
+
+curl -X POST http://127.0.0.1:27000/mcp -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"call_tool","arguments":{"toolset_name":"BlueprintCompileTools","tool_name":"compile-blueprint","arguments":{}}}}'
+```
 
 ## Long-Running Tools and Async Execution
 
@@ -302,102 +352,13 @@ curl -X POST http://127.0.0.1:27000/mcp \
 The deprecated `nodetocode/cancelTask` (`"params": {"progressToken": "unique-progress-token-123"}`) still answers
 `{"status":"cancellation_initiated"}`, and the call then answers with the cancelled error result.
 
-## Dynamic Tool Management
-
-Dynamic tool discovery keeps the first `tools/list` small: with **Enable Dynamic Tool Discovery** on (and Python
-script-only mode off, which takes precedence) the server starts with `assess-needed-tools` only. It is off by
-default.
-
-### How It Works
-
-1. **Initial State**: only `assess-needed-tools` is registered when the server starts.
-
-2. **Tool Assessment**: The LLM client calls `assess-needed-tools` with a list of required tool categories:
-   ```json
-   {
-     "categories": ["Blueprint Discovery", "Blueprint Graph Editing"]
-   }
-   ```
-
-3. **Registration**: `FN2CMcpToolManager::UpdateActiveTools` replaces the active set with `assess-needed-tools` plus
-   every tool whose category is in the list (exact strings from the category table above; unknown strings match
-   nothing). The set is one global list, shared by every session on the editor. An empty list resets it to
-   `assess-needed-tools` only.
-
-4. **No notification**: the server cannot tell the client the list changed. It has no server-to-client channel
-   (GET `/mcp` is 405, and the port+1 notification server was removed in card 0113), so `initialize` advertises
-   `tools.listChanged: false` and no `notifications/tools/list_changed` is sent. With this mode on, the editor logs
-   a warning saying so at server start. Card 0165 replaces the mode with toolsets that never change mid-session.
-
-5. **Client Refresh**: The client must call `tools/list` again to get the updated tool set.
-
-### Configuration
-
-To enable dynamic tool discovery:
-1. Open Project Settings → Plugins → Node to Code
-2. Under "MCP Server", check "Enable Dynamic Tool Discovery" (and leave "Enable Python Script-Only Mode" off)
-3. Restart the editor for the change to take effect
-
-**Note**: the mode only works with clients that call `tools/list` again after `assess-needed-tools` (or that the
-user can tell to refresh); a client that lists tools once per session never sees the enabled tools.
-
-### Categories in `assess-needed-tools`
-
-The tool's description (`FN2CMcpAssessNeededToolsTool::GetCategoryDescriptions`) names nine categories: Tool
-Management, Blueprint Discovery, Blueprint Graph Editing, Blueprint Function Management, Blueprint Variable
-Management, Blueprint Organization, Content Browser, File System and Translation. The matching uses the category
-strings themselves, so `Blueprint Compilation`, `Blueprint Classes`, `Blueprint Components` and `Python` also work
-when a client sends them, although the description does not list them.
-
-### Example Workflow
-
-When dynamic tool discovery is enabled (after the `initialize` in "Calling the Server with curl"):
-
-```bash
-# 1. Initial connection - only assess-needed-tools is available
-curl -X POST http://127.0.0.1:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: $SID" \
-  -H "MCP-Protocol-Version: 2025-11-25" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-
-# 2. Assess needed tools for a task
-curl -X POST http://127.0.0.1:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: $SID" \
-  -H "MCP-Protocol-Version: 2025-11-25" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "assess-needed-tools",
-      "arguments": {
-        "categories": ["Blueprint Discovery", "Blueprint Graph Editing"]
-      }
-    },
-    "id": 2
-  }'
-
-# 3. No notification arrives (tools.listChanged is false): list the tools again
-
-# 4. Get updated tool list (assess-needed-tools plus the 12 tools of the two categories)
-curl -X POST http://127.0.0.1:27000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: $SID" \
-  -H "MCP-Protocol-Version: 2025-11-25" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 3}'
-```
-
 ## Creating a New MCP Tool
 
 Follow these steps to add a new MCP tool:
 
 ### 1. Create the Tool Header File
 
-Create a new header file in the appropriate subdirectory under `Source/Private/MCP/Tools/Implementations/`. Choose the subdirectory based on your tool's category:
+Create a new header file in the appropriate subdirectory under `Source/Private/MCP/Tools/Implementations/`. Choose the subdirectory based on your tool's toolset:
 - `Blueprint/Analysis/` - For Blueprint inspection tools
 - `Blueprint/Functions/` - For function management tools
 - `Blueprint/Variables/` - For variable creation tools
@@ -410,7 +371,6 @@ Create a new header file in the appropriate subdirectory under `Source/Private/M
 - `FileSystem/` - For file operations
 - `ContentBrowser/` - For content browser operations
 - `Python/` - For Python script tools
-- `ToolManagement/` - For dynamic tool discovery
 
 ```cpp
 // N2CMcpYourToolName.h
@@ -448,7 +408,7 @@ FMcpToolDefinition FN2CMcpYourToolName::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("your-tool-name"),
         TEXT("Description of what your tool does"),
-        TEXT("Blueprint Discovery") // An existing category string (see Tool Categories), so dynamic discovery finds it
+        N2CMcpToolsets::BlueprintDiscovery // Its declared toolset (see Toolsets); a tool with none is never served
     );
     
     // Define input schema
@@ -519,8 +479,8 @@ public:
 ### 4. Build and Test
 
 1. Build the plugin (`.\build.ps1 -All`, see the repo `AGENTS.md`)
-2. The tool registers itself when the plugin loads; it is listed in the default mode (and in dynamic discovery once
-   its category is enabled)
+2. The tool registers itself when the plugin loads; it is served when the tool profile enables its toolset (the
+   default profile enables all of them), and listed directly or reached through `call_tool` per Tool Exposure
 3. Test with an MCP client or with curl, after the `initialize` in "Calling the Server with curl" below:
 
 ```bash
@@ -592,8 +552,8 @@ for a tool that set `readOnlyHint` true.
 ### Tool metadata
 `FMcpToolDefinition` (`N2CMcpToolTypes.h`) is one `tools/list` entry (MCP 2025-11-25 `Tool`): `Name`, `Title` (sent
 as `title`; clients fall back to the name), `Description`, `InputSchema`, `OutputSchema` (when set, every successful
-result must carry a matching `FMcpToolCallResult::StructuredContent`), `Annotations`, and `_meta`: `Category` is sent
-as `_meta["nodetocode/category"]` (not a top-level field), `MaxResultSizeChars` as `_meta["anthropic/maxResultSizeChars"]`,
+result must carry a matching `FMcpToolCallResult::StructuredContent`), `Annotations`, and `_meta`: `Toolset` is sent
+as `_meta["nodetocode/toolset"]` (the toolset's name, not a top-level field), `MaxResultSizeChars` as `_meta["anthropic/maxResultSizeChars"]`,
 `bAlwaysLoad` as `_meta["anthropic/alwaysLoad"]: true`, and `Meta` holds any other `_meta` entries.
 `bIsLongRunning` and `bReturnsUntrustedContent` stay on the server.
 
@@ -686,13 +646,15 @@ curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 5. **Documentation**: Include clear descriptions in your tool definition
 6. **Input Validation**: Check all required parameters before processing
 7. **Tool Dependencies**: If tools work together (like search and add nodes), clearly document the workflow
-8. **Category**: Use an existing category string, so dynamic discovery can enable the tool
+8. **Toolset**: Pass the declared toolset (`N2CMcpToolsets::...`) that fits the tool; declare a new one only for a new domain
 
 ## Troubleshooting
 
 ### Tool Not Appearing in tools/list
-- Check the registration mode: Python script-only mode lists 7 tools (4 without Allow MCP Python Execution) and
-  dynamic discovery lists only `assess-needed-tools` until a category is enabled
+- Check the tool profile and exposure: Python scripting only lists 7 tools (4 without Allow MCP Python Execution),
+  a Custom profile serves only its toolsets, and Tool search lists only `list_toolsets`, `describe_toolset` and
+  `call_tool` (the tool is in `describe_toolset` of its toolset)
+- Check the tool passes a toolset to `FMcpToolDefinition` (the log warns "names no toolset, so it is never served")
 - `run-python`, `save-python-script` and `delete-python-script` need the per-user Allow MCP Python Execution
 - Ensure the `REGISTER_MCP_TOOL` macro is in the .cpp file
 - Check that the .cpp file is included in the build

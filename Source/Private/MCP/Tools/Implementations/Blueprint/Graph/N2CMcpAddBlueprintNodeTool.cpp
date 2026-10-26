@@ -36,7 +36,7 @@ FMcpToolDefinition FN2CMcpAddBlueprintNodeTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("add-bp-node-to-active-graph"),
         TEXT("Adds a Blueprint node to a graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph (the result's target says which). IMPORTANT: Use search-blueprint-nodes first and pass a result's spawnMetadata.actionIdentifier (a stable ID) and spawnMetadata.nodeName. NEXT STEP: After adding a node, use the 'connect-pins' tool to wire the node's pins to other nodes using the pinGuid values returned in inputPins and outputPins arrays."),
-        TEXT("Blueprint Graph Editing")
+        N2CMcpToolsets::BlueprintGraph
     );
     
     // Build input schema

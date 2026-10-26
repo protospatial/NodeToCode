@@ -59,7 +59,7 @@ FMcpToolDefinition FN2CMcpCreateBlueprintClassTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("create-blueprint-class"),
 		TEXT("Creates a new Blueprint class with the specified parent class and settings, then saves it. A UserWidget parent gives a Widget Blueprint"),
-		TEXT("Blueprint Classes")
+		N2CMcpToolsets::BlueprintClass
 	);
 
 	// Build input schema manually

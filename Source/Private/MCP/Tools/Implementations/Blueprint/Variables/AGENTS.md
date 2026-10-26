@@ -1,6 +1,6 @@
 # Blueprint Variable Tools
 
-This directory contains the MCP tools in the 'Blueprint Variable Management' category: creating member and local
+This directory contains the MCP tools in the `BlueprintVariableTools` toolset: creating member and local
 variables, reading them, setting their defaults, placing Get and Set nodes, and searching variable types.
 
 ## Targeting: the focused Blueprint only

@@ -27,7 +27,7 @@ FMcpToolDefinition FN2CMcpOpenBlueprintFunctionTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("open-blueprint-function"),
 		TEXT("Opens a Blueprint function in the editor and focuses it, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint"),
-		TEXT("Blueprint Function Management")
+		N2CMcpToolsets::BlueprintFunction
 	);
 	
 	// Define input schema

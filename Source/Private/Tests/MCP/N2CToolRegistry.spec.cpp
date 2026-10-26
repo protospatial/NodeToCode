@@ -9,58 +9,15 @@
 #include "Internationalization/Regex.h"
 
 /**
- * Static checks over every MCP tool compiled into the module (FN2CMcpToolRegistry, whatever the registration mode):
- * names are unique and valid, every inputSchema is a JSON Schema object whose required fields exist in its
- * properties, and the categories match what assess-needed-tools advertises, since dynamic tool discovery enables
- * tools by exact category name. Review ids: imp-dx-docs-release-3 (c), mcp-tools-python-translation-resources-14.
+ * Static checks over every MCP tool compiled into the module (FN2CMcpToolRegistry, whatever the tool profile): names
+ * are unique and valid, every inputSchema is a JSON Schema object whose required fields exist in its properties, and
+ * every tool belongs to a declared toolset (N2CMcpToolsets), since the tool profile serves tools by toolset and tool
+ * search reaches them through it. Review ids: imp-dx-docs-release-3 (c), mcp-tools-python-translation-resources-14,
+ * dx-docs-release-6 (card 0165).
  */
 BEGIN_DEFINE_SPEC(FN2CToolRegistrySpec, "NodeToCode.Registry", N2C_TEST_FLAGS)
 
 	TArray<FMcpToolDefinition> Definitions;
-
-	/**
-	 * The categories assess-needed-tools offers a client: the enum on categories.items when the schema has one,
-	 * otherwise the "- **Name**: ..." lines of its description.
-	 */
-	TSet<FString> AdvertisedCategories()
-	{
-		TSet<FString> Categories;
-		const FMcpToolDefinition* Assess = Definitions.FindByPredicate(
-			[](const FMcpToolDefinition& Def) { return Def.Name == TEXT("assess-needed-tools"); });
-		if (!TestNotNull(TEXT("assess-needed-tools is registered"), Assess))
-		{
-			return Categories;
-		}
-
-		const TSharedPtr<FJsonObject>* Properties = nullptr;
-		const TSharedPtr<FJsonObject>* CategoriesProp = nullptr;
-		const TSharedPtr<FJsonObject>* Items = nullptr;
-		const TArray<TSharedPtr<FJsonValue>>* Enum = nullptr;
-		if (Assess->InputSchema.IsValid() && Assess->InputSchema->TryGetObjectField(TEXT("properties"), Properties)
-			&& (*Properties)->TryGetObjectField(TEXT("categories"), CategoriesProp)
-			&& (*CategoriesProp)->TryGetObjectField(TEXT("items"), Items)
-			&& (*Items)->TryGetArrayField(TEXT("enum"), Enum))
-		{
-			for (const TSharedPtr<FJsonValue>& Value : *Enum)
-			{
-				Categories.Add(Value->AsString());
-			}
-			return Categories;
-		}
-
-		const FRegexPattern Bullet(TEXT("^\\s*-\\s*\\*\\*(.+?)\\*\\*\\s*:"));
-		TArray<FString> Lines;
-		Assess->Description.ParseIntoArrayLines(Lines);
-		for (const FString& Line : Lines)
-		{
-			FRegexMatcher Matcher(Bullet, Line);
-			if (Matcher.FindNext())
-			{
-				Categories.Add(Matcher.GetCaptureGroup(1).TrimStartAndEnd());
-			}
-		}
-		return Categories;
-	}
 
 	/** Checks one (sub)schema of type object: properties is an object and every required name is in it. Recurses. */
 	void CheckObjectSchema(const FString& Where, const TSharedPtr<FJsonObject>& Schema)
@@ -169,43 +126,44 @@ void FN2CToolRegistrySpec::Define()
 		}
 	});
 
-	It(TEXT("advertises only categories that have tools"), [this]()
+	It(TEXT("gives every tool a declared toolset"), [this]()
 	{
-		TSet<FString> Used;
 		for (const FMcpToolDefinition& Def : Definitions)
 		{
-			Used.Add(Def.Category);
-		}
-		const TSet<FString> Advertised = AdvertisedCategories();
-		TestTrue(FString::Printf(TEXT("assess-needed-tools advertises categories (%d)"), Advertised.Num()), Advertised.Num() > 0);
-		for (const FString& Category : Advertised)
-		{
-			TestTrue(FString::Printf(TEXT("advertised category '%s' has at least one tool"), *Category), Used.Contains(Category));
-		}
-	});
-
-	// Known defect mcp-tools-python-translation-resources-14: assess-needed-tools lists 9 hard-coded categories, so
-	// Python, Blueprint Classes, Blueprint Compilation and Blueprint Components can never be enabled in dynamic mode.
-	// Enable (xIt -> It) when the list is built from the registry.
-	xIt(TEXT("advertises the category of every tool through assess-needed-tools"), [this]()
-	{
-		const TSet<FString> Advertised = AdvertisedCategories();
-		for (const FMcpToolDefinition& Def : Definitions)
-		{
-			if (!Def.Category.IsEmpty())
+			TestTrue(FString::Printf(TEXT("'%s' has a toolset"), *Def.Name), Def.Toolset != nullptr);
+			if (Def.Toolset)
 			{
-				TestTrue(FString::Printf(TEXT("'%s' category '%s' is advertised"), *Def.Name, *Def.Category), Advertised.Contains(Def.Category));
+				TestTrue(FString::Printf(TEXT("'%s' toolset '%s' is declared"), *Def.Name, Def.Toolset->Name),
+					N2CMcpToolsets::Find(Def.Toolset->Name) == Def.Toolset);
 			}
 		}
 	});
 
-	// Known defect mcp-tools-python-translation-resources-14: find-nodes-in-graph is built with the two-argument
-	// constructor and has no category, so no assess-needed-tools request can enable it. Enable (xIt -> It) with the fix.
-	xIt(TEXT("gives every tool a category"), [this]()
+	It(TEXT("puts find-nodes-in-graph in the graph-editing toolset"), [this]()
 	{
-		for (const FMcpToolDefinition& Def : Definitions)
+		const FMcpToolDefinition* FindNodes = Definitions.FindByPredicate(
+			[](const FMcpToolDefinition& Def) { return Def.Name == TEXT("find-nodes-in-graph"); });
+		if (TestNotNull(TEXT("find-nodes-in-graph is registered"), FindNodes))
 		{
-			TestFalse(FString::Printf(TEXT("'%s' has a category"), *Def.Name), Def.Category.IsEmpty());
+			TestTrue(TEXT("find-nodes-in-graph is in BlueprintGraphTools"), FindNodes->Toolset == &N2CMcpToolsets::BlueprintGraph);
+		}
+	});
+
+	It(TEXT("declares each toolset once, with a name, a description and at least one tool"), [this]()
+	{
+		const FRegexPattern ValidName(TEXT("^[A-Z][A-Za-z0-9]*Tools$"));
+		TSet<FString> Seen;
+		for (const FN2CMcpToolset* Toolset : N2CMcpToolsets::All)
+		{
+			const FString Name = Toolset->Name;
+			FRegexMatcher Matcher(ValidName, Name);
+			TestTrue(FString::Printf(TEXT("'%s' is PascalCase ending in Tools"), *Name), Matcher.FindNext());
+			bool bDuplicate = false;
+			Seen.Add(Name.ToLower(), &bDuplicate);
+			TestFalse(FString::Printf(TEXT("'%s' is declared once"), *Name), bDuplicate);
+			TestFalse(FString::Printf(TEXT("'%s' has a description"), *Name), FString(Toolset->Description).TrimStartAndEnd().IsEmpty());
+			TestTrue(FString::Printf(TEXT("'%s' has a tool"), *Name), Definitions.ContainsByPredicate(
+				[Toolset](const FMcpToolDefinition& Def) { return Def.Toolset == Toolset; }));
 		}
 	});
 }

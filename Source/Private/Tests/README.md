@@ -60,8 +60,6 @@ case back on. Currently disabled:
 |------|------|---------|
 | `NodeToCode.Names` | rename-folder accepts ordinary names that start with a device name's letters | mcp-tools-contentbrowser-fs-11 |
 | `NodeToCode.Names` | create-folder refuses COM1-9 and LPT1-9 like rename-folder does | mcp-tools-contentbrowser-fs-11 |
-| `NodeToCode.Registry` | advertises the category of every tool through assess-needed-tools | mcp-tools-python-translation-resources-14 |
-| `NodeToCode.Registry` | gives every tool a category (find-nodes-in-graph has none) | mcp-tools-python-translation-resources-14 |
 | `NodeToCode.LLM.Parse.Fixtures` | Anthropic: a sentence before the fenced answer is skipped | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | OpenAI: an answer in a bare fence parses | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | Gemini: output tokens include thoughtsTokenCount | llm-layer-27 (card 0185) |

@@ -409,13 +409,14 @@ Known limitation: the code goes to `ExecPythonCommandEx` in `ExecuteFile` mode, 
 
 ## Python-Only Mode
 
-Setting: Project Settings > Plugins > Node to Code > MCP Server > **Enable Python Script-Only Mode**
-(`UN2CSettings::bEnablePythonScriptOnlyMode`, default `false`; read when the MCP server starts, so it needs an editor
-restart). It takes precedence over Enable Dynamic Tool Discovery (`FN2CMcpHttpServerManager::RegisterMcpTools`; the
-three registration modes are described in `Source/Private/MCP/Tools/AGENTS.md`).
+Setting: Project Settings > Plugins > Node to Code > MCP Server > **Tool Profile** = **Python scripting only**
+(`UN2CSettings::McpToolProfile = EN2CMcpToolProfile::PythonScripting`, default `DefaultToolsets`; read when the MCP
+server starts, so it needs an editor restart). It serves the `PythonTools` toolset only; Tool Exposure still applies
+(profiles, toolsets and tool search are described in `Source/Private/MCP/Tools/AGENTS.md`). A config that saved the
+former **Enable Python Script-Only Mode** (`bEnablePythonScriptOnlyMode=True`) loads as this profile (card 0165).
 
 When enabled:
-*   Only these seven tools are registered (`FN2CMcpToolManager::RegisterToolsByName`): `run-python`,
+*   Only the `PythonTools` toolset's seven tools are served (`FN2CMcpToolManager::Configure`): `run-python`,
     `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`,
     `save-python-script` and `delete-python-script`
 *   No translation, LLM provider, Blueprint, Content Browser or file tools: `get-focused-blueprint` and
@@ -499,5 +500,5 @@ def _make_error(message: str) -> Dict[str, Any]:
 `run-python`, `save-python-script` and `delete-python-script` are only registered when the per-user setting
 **Allow MCP Python Execution** (`UN2CUserSettings::bAllowMcpPythonExecution`, read through
 `UN2CUserSettings::IsMcpPythonExecutionAllowed()`) is on; it is off by default, needs an editor restart, and only the
-user's own Saved/Config value counts (a project's committed config cannot turn it on, card 0423). Python script-only mode without it leaves only the list, search, get and
+user's own Saved/Config value counts (a project's committed config cannot turn it on, card 0423). The Python scripting only profile without it leaves only the list, search, get and
 `get-script-functions` tools.

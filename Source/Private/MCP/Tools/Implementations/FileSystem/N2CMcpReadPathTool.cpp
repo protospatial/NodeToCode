@@ -23,7 +23,7 @@ FMcpToolDefinition FN2CMcpReadPathTool::GetDefinition() const
              "Use empty string \"\" for project root, NOT \".\" or \"/\". "
              "Examples: \"\" for root, \"Config\" for Config folder, \"Content/Blueprints\" for nested paths. "
              "Enforces security boundaries to prevent directory traversal outside the project."),
-        TEXT("File System")
+        N2CMcpToolsets::FileSystem
     );
     
     // Define input schema

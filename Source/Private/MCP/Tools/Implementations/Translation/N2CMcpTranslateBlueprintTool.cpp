@@ -16,7 +16,7 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
         TEXT("The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. ")
         TEXT("It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. ")
         TEXT("Nothing is saved to the translation output directory."),
-        TEXT("Translation")
+        N2CMcpToolsets::Translation
     );
 
     Definition.bIsLongRunning = true; // Mark as long-running

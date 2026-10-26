@@ -18,8 +18,8 @@ SETTINGS = ['provider', 'anthropic_model_id', 'open_ai_model_id', 'gemini_model_
             'target_language', 'translation_depth', 'min_severity', 'estimated_reference_tokens',
             'reference_source_file_paths', 'custom_translation_output_directory', 'anthropic_max_output_tokens',
             'open_ai_max_output_tokens', 'gemini_max_output_tokens', 'deep_seek_max_output_tokens',
-            'lm_studio_max_output_tokens', 'mcp_server_port', 'enable_dynamic_tool_discovery',
-            'enable_python_script_only_mode', 'anthropic_api_key_source', 'open_ai_api_key_source',
+            'lm_studio_max_output_tokens', 'mcp_server_port', 'mcp_tool_exposure',
+            'mcp_tool_profile', 'anthropic_api_key_source', 'open_ai_api_key_source',
             'gemini_api_key_source', 'deep_seek_api_key_source']
 KEY_FIELDS = ['anthropic_api_key_ui', 'open_ai_api_key_ui', 'gemini_api_key_ui', 'deep_seek_api_key_ui']
 

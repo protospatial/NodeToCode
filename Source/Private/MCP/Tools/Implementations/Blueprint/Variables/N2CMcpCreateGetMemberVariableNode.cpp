@@ -23,7 +23,7 @@ FMcpToolDefinition FN2CMcpCreateGetMemberVariableNode::GetDefinition() const
         TEXT("Creates a Get node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins.")
     ,
 
-    	TEXT("Blueprint Variable Management")
+    	N2CMcpToolsets::BlueprintVariable
 
     );
     

@@ -1,9 +1,9 @@
 # Blueprint Graph Manipulation Tools
 
 This directory contains the MCP tools that find, add, wire, set, comment and delete nodes in a Blueprint graph:
-`search-blueprint-nodes` ('Blueprint Discovery'), `add-bp-node-to-active-graph`, `connect-pins`,
-`set-input-pin-value`, `delete-blueprint-node`, `create-comment-node` ('Blueprint Graph Editing') and
-`find-nodes-in-graph` (no category, so dynamic tool discovery cannot enable it).
+`search-blueprint-nodes` (`BlueprintDiscoveryTools`), and `add-bp-node-to-active-graph`, `connect-pins`,
+`set-input-pin-value`, `delete-blueprint-node`, `create-comment-node` and `find-nodes-in-graph`
+(`BlueprintGraphTools`).
 
 ## Targeting and IDs
 

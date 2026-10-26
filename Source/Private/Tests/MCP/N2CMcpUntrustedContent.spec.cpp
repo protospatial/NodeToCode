@@ -32,7 +32,7 @@ namespace N2CUntrustedSpec
 
 		virtual FMcpToolDefinition GetDefinition() const override
 		{
-			FMcpToolDefinition Definition(Name, TEXT("Spec tool"), TEXT("Spec"));
+			FMcpToolDefinition Definition(Name, TEXT("Spec tool"));
 			Definition.bReturnsUntrustedContent = bUntrusted;
 			return Definition;
 		}

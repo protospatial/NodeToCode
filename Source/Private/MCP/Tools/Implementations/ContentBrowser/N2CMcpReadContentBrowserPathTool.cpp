@@ -17,7 +17,7 @@ FMcpToolDefinition FN2CMcpReadContentBrowserPathTool::GetDefinition() const
 		TEXT("read-content-browser-path"),
 		TEXT("Returns the assets of every type and the subfolders directly inside a content browser folder (not recursive), with paging and type and name filters")
 	,
-		TEXT("Content Browser")
+		N2CMcpToolsets::ContentBrowser
 	);
 	
 	// Define input schema

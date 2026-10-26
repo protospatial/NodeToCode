@@ -1,6 +1,9 @@
 ### Plugin Setup → Initial Configuration
 ***
 
+Node to Code is configured in Project Settings, under Plugins → Node to Code. This page shows where the settings
+are, which tools the MCP server offers to AI clients, and where the plugin keeps its settings and API keys.
+
 ## Accessing Plugin Settings
 
 1. Open Project Settings (Edit → Project Settings)
@@ -24,6 +27,20 @@
 5. [Logging Configuration](Logging-Configuration)
 
 6. [Theme Customization](Theme-&-Syntax-Highlighting)
+
+## MCP Server Tools
+
+The **MCP Server** category decides which tools an MCP client (Claude Code, VS Code, Cursor) gets from Node to Code.
+Both settings take effect after an editor restart, and the tool list a client sees never changes while it is connected.
+
+- **Tool Profile**: **Default toolsets** (every tool, the default), **Python scripting only** (run-python and the
+  script library), or **Custom toolsets** (only the toolsets you pick under **Custom Toolsets**)
+- **Tool Exposure**: **List every tool** (the default), or **Tool search**, which lists three tools (`list_toolsets`,
+  `describe_toolset`, `call_tool`) that reach all the others. Use Tool search when your client has a tool limit
+  (VS Code allows 128 tools, Windsurf 100, counted across all your MCP servers)
+
+Projects that turned on **Enable Python Script-Only Mode** or **Enable Dynamic Tool Discovery** in an earlier build
+open with Python scripting only or Tool search set for them.
 
 ## Plugins Config Files & Source Control
 

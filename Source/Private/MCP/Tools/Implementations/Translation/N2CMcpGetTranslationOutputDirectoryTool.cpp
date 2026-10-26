@@ -18,7 +18,7 @@ FMcpToolDefinition FN2CMcpGetTranslationOutputDirectoryTool::GetDefinition() con
         TEXT("get-translation-output-directory"),
         TEXT("Returns the translation output directory configuration from NodeToCode settings. Shows whether a custom directory is set or if the default location is being used. ")
         TEXT("Translations run from the editor's NodeToCode window are saved there; translate-focused-blueprint returns its translation in the tool result and writes no files."),
-        TEXT("Translation")
+        N2CMcpToolsets::Translation
     );
     
     // This tool takes no input parameters

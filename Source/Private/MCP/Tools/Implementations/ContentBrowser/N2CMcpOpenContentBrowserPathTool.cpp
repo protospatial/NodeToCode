@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpOpenContentBrowserPathTool::GetDefinition() const
 		TEXT("open-content-browser-path"),
 		TEXT("Opens a specified path in the focused content browser, allowing navigation of the project structure")
 	,
-		TEXT("Content Browser")
+		N2CMcpToolsets::ContentBrowser
 	);
 	
 	// Define input schema

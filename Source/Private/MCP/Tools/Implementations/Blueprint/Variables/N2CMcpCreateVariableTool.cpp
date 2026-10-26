@@ -33,7 +33,7 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 		TEXT("create-variable"),
 		TEXT("Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
 	,
-		TEXT("Blueprint Variable Management")
+		N2CMcpToolsets::BlueprintVariable
 	);
 
 	// Build input schema

@@ -23,7 +23,7 @@ FMcpToolDefinition FN2CMcpGetBlueprintMemberVariablesTool::GetDefinition() const
         TEXT("Retrieves all member variables from the currently focused Blueprint, including their types, categories, and properties")
     ,
 
-    	TEXT("Blueprint Variable Management")
+    	N2CMcpToolsets::BlueprintVariable
 
     );
     

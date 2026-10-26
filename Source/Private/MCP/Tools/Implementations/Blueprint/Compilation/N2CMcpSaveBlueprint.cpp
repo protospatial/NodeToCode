@@ -21,7 +21,7 @@ FMcpToolDefinition FN2CMcpSaveBlueprint::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("save-blueprint"),
         TEXT("Save a Blueprint asset to disk, writing the package file"),
-        TEXT("Blueprint Compilation")
+        N2CMcpToolsets::BlueprintCompile
     );
     
     // Define input schema

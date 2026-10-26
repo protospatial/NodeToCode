@@ -1,6 +1,6 @@
 # Blueprint Analysis Tools
 
-This directory contains seven read-only tools in the 'Blueprint Discovery' category: the focused graph as N2C JSON,
+This directory contains seven read-only tools in the `BlueprintDiscoveryTools` toolset: the focused graph as N2C JSON,
 any Blueprint's graphs as N2C JSON and its graph list by asset path (card 0157), many graphs exported to files in one
 call (card 0169), a Blueprint's functions, the events and functions it can override, and the open Blueprint editors.
 

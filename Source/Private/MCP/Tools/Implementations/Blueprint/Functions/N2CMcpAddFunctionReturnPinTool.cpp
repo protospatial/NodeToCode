@@ -30,7 +30,7 @@ FMcpToolDefinition FN2CMcpAddFunctionReturnPinTool::GetDefinition() const
 		TEXT("Adds a new return value to a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function")
 	,
 
-		TEXT("Blueprint Function Management")
+		N2CMcpToolsets::BlueprintFunction
 
 	);
 

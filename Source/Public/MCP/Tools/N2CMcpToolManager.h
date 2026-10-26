@@ -5,50 +5,95 @@
 #include "CoreMinimal.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Tools/IN2CMcpTool.h"
+#include "Templates/ValueOrError.h"
 
 /**
- * Manager for MCP tools registration and execution
- * Singleton pattern to manage all available MCP tools
+ * What the MCP server serves (decision 0005, card 0165): the toolsets whose tools it serves, and how tools/list shows
+ * them. Read from Project Settings (Tool Profile, Custom Toolsets, Tool Exposure) when the server starts.
+ */
+struct NODETOCODE_API FN2CMcpToolConfig
+{
+	/** Names of the enabled toolsets (N2CMcpToolsets, case-insensitive) */
+	TArray<FString> Toolsets;
+
+	/** ListAllTools: tools/list holds every served tool. ToolSearch: only list_toolsets, describe_toolset, call_tool */
+	EN2CMcpToolExposure Exposure = EN2CMcpToolExposure::ListAllTools;
+
+	/**
+	 * The toolsets a profile enables: DefaultToolsets every toolset declared default-enabled, PythonScripting
+	 * PythonTools, Custom the given names as they are.
+	 */
+	static TArray<FString> ToolsetsForProfile(EN2CMcpToolProfile Profile, const TArray<FString>& CustomToolsets);
+};
+
+/**
+ * The MCP server's tools: the tools it serves and what tools/list shows of them.
+ *
+ * Configure picks the served tools from the registry by toolset and fixes tools/list for as long as the server runs
+ * with that configuration, so a client sees the same tools/list for its whole session (no tools/list_changed, warm
+ * prompt caches, nothing shared between clients changes underneath them). In tool-search exposure tools/list holds
+ * three meta-tools named and shaped like UE 5.8's tool search: list_toolsets, describe_toolset and call_tool, which
+ * reach every served tool. Calling them never changes tools/list.
+ *
+ * The server uses the singleton (Get); specs may build their own manager and protocol core.
  */
 class NODETOCODE_API FN2CMcpToolManager
 {
 public:
+	/** Names of the tool-search meta-tools (UE 5.8's names, ModelContextProtocolToolSearch.h) */
+	static const TCHAR* const ListToolsetsName;
+	static const TCHAR* const DescribeToolsetName;
+	static const TCHAR* const CallToolName;
+
 	/** Get the singleton instance */
 	static FN2CMcpToolManager& Get();
 
-	/** Destructor */
+	/** A manager that serves nothing until Configure or RegisterTool (the server uses Get) */
+	FN2CMcpToolManager();
 	~FN2CMcpToolManager() = default;
 
+	FN2CMcpToolManager(const FN2CMcpToolManager&) = delete;
+	FN2CMcpToolManager& operator=(const FN2CMcpToolManager&) = delete;
+
 	/**
-	 * Register a new tool with the manager
+	 * Serves the tools of the registry whose toolset Config enables (a tool with no toolset is never served) and sets
+	 * the exposure. Replaces whatever was served before; broadcasts OnToolListChanged when tools/list changes after an
+	 * earlier Configure.
+	 * @return the names in Config.Toolsets that no declared toolset has (they enable nothing)
+	 */
+	TArray<FString> Configure(const FN2CMcpToolConfig& Config);
+
+	/** The configuration Configure applied last (the enabled toolsets resolved to their declared names) */
+	FN2CMcpToolConfig GetConfig() const;
+
+	/**
+	 * Serve one tool, in addition to the configured ones (specs do this for a tool their session does not serve)
 	 * @param Tool The tool instance to register
 	 * @return true if registration was successful
 	 */
 	bool RegisterTool(TSharedPtr<IN2CMcpTool> Tool);
 
 	/**
-	 * Unregister a tool by name
+	 * Stop serving a tool
 	 * @param ToolName The name of the tool to unregister
 	 * @return true if the tool was found and unregistered
 	 */
 	bool UnregisterTool(const FString& ToolName);
 
 	/**
-	 * Get all registered tool definitions, sorted by name (tools/list order: deterministic, so a client's prompt
-	 * cache stays warm). They are the definitions cached when each tool was registered.
-	 * @return Array of all tool definitions
+	 * The definitions tools/list returns, sorted by name (deterministic, so a client's prompt cache stays warm): every
+	 * served tool, or in tool-search exposure the three meta-tools. They are the definitions cached at registration.
 	 */
 	TArray<FMcpToolDefinition> GetAllToolDefinitions() const;
 
 	/**
-	 * The cached definition of a registered tool, found by name in O(1)
-	 * @param ToolName The name of the tool
-	 * @return The definition built when the tool was registered, or null when no tool of that name is registered
+	 * The cached definition of a served tool or meta-tool, found by name in O(1)
+	 * @return The definition built when the tool was registered, or null when no tool of that name is served
 	 */
 	TSharedPtr<const FMcpToolDefinition> GetToolDefinition(const FString& ToolName) const;
 
 	/**
-	 * Execute a tool by name
+	 * Execute a served tool or meta-tool by name (call_tool runs the tool it names)
 	 * @param ToolName The name of the tool to execute
 	 * @param Arguments The JSON arguments to pass to the tool
 	 * @return The result of the tool execution
@@ -56,64 +101,81 @@ public:
 	FMcpToolCallResult ExecuteTool(const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments);
 
 	/**
-	 * Find a registered tool by name
-	 * @param ToolName The name of the tool
-	 * @return The tool, or null when no tool of that name is registered
+	 * Find a served tool or meta-tool by name
+	 * @return The tool, or null when no tool of that name is served
 	 */
 	TSharedPtr<IN2CMcpTool> FindTool(const FString& ToolName) const;
 
-	/**
-	 * Check if a tool is registered
-	 * @param ToolName The name of the tool
-	 * @return true if the tool is registered
-	 */
+	/** True when a tool of that name is served (or is a meta-tool) */
 	bool IsToolRegistered(const FString& ToolName) const;
 
-	/**
-	 * Updates the set of active tools based on a list of categories.
-	 * @param Categories The list of category names to enable.
-	 */
-	void UpdateActiveTools(const TArray<FString>& Categories);
+	/** True when tools/list holds a tool of that name: the only names a client may pass to tools/call */
+	bool IsToolListed(const FString& ToolName) const;
 
-	/** Sets the active toolset to the default (only assess-needed-tools). */
-	void SetDefaultToolSet();
-	
-	/** Register all available tools except assess-needed-tools */
-	void RegisterAllToolsExceptAssess();
+	/** True for list_toolsets, describe_toolset and call_tool */
+	static bool IsMetaTool(const FString& ToolName);
 
 	/**
-	 * Register only specific tools by name (for Python script-only mode).
-	 * This clears existing tools and registers only the specified ones.
-	 * @param ToolNames Array of tool names to register
+	 * list_toolsets: one line per enabled toolset that has a served tool, "- <Name>: <Description>" (UE 5.8's format)
 	 */
-	void RegisterToolsByName(const TArray<FString>& ToolNames);
+	FString ListToolsets() const;
 
-	/** Clear all registered tools */
+	/**
+	 * describe_toolset: the toolset's name, description and its served tools as tools/list entries, as JSON text
+	 * @return the JSON, or an error naming the valid toolsets when the name is unknown or not enabled
+	 */
+	TValueOrError<FString, FString> DescribeToolset(const FString& ToolsetName) const;
+
+	/**
+	 * Resolves call_tool's arguments ({toolset_name?, tool_name, arguments?}) to the served tool they name. The
+	 * protocol core uses it to run a long-running tool on its own call (progress, cancellation); call_tool uses it for
+	 * the rest.
+	 * @param OutError the isError text when it fails (an unknown toolset names the valid ones)
+	 */
+	bool ResolveCallTool(const TSharedPtr<FJsonObject>& CallArguments, FString& OutToolName,
+		TSharedPtr<FJsonObject>& OutArguments, FString& OutError) const;
+
+	/** Stop serving every tool (the meta-tools stay) */
 	void ClearAllTools();
 
 	/**
-	 * Broadcast after UpdateActiveTools changes the active tool set. The MCP protocol core turns it into a
-	 * notifications/tools/list_changed for its clients; the tool manager knows nothing about transports.
+	 * Broadcast when Configure changes tools/list after an earlier Configure (a server restart with new settings). The
+	 * MCP protocol core turns it into a notifications/tools/list_changed for its clients; the tool manager knows
+	 * nothing about transports.
 	 */
 	FSimpleMulticastDelegate& OnToolListChanged() { return ToolListChanged; }
 
 private:
-	/** Private constructor for singleton */
-	FN2CMcpToolManager() = default;
-
-	/** Prevent copying */
-	FN2CMcpToolManager(const FN2CMcpToolManager&) = delete;
-	FN2CMcpToolManager& operator=(const FN2CMcpToolManager&) = delete;
-
-	/** One active tool and its definition, built once when it was registered */
+	/** One served tool and its definition, built once when it was registered */
 	struct FRegisteredTool
 	{
 		TSharedPtr<IN2CMcpTool> Tool;
 		TSharedPtr<const FMcpToolDefinition> Definition;
 	};
 
-	/** Map of tool names to their entries */
+	/** The served tool or meta-tool of that name (copied under the lock); an empty entry when there is none */
+	FRegisteredTool FindEntry(const FString& ToolName) const;
+
+	/** The enabled toolsets that have a served tool (call with ToolsLock held) */
+	TArray<const FN2CMcpToolset*> ListedToolsetsLocked() const;
+
+	/** The error text for a toolset name that is unknown or not enabled (call with ToolsLock held) */
+	FString UnknownToolsetErrorLocked(const FString& ToolsetName) const;
+
+	/** The served tools by name */
 	TMap<FString, FRegisteredTool> RegisteredTools;
+
+	/** list_toolsets, describe_toolset and call_tool, built once; listed only in tool-search exposure */
+	TMap<FString, FRegisteredTool> MetaTools;
+
+	/** The toolsets Configure enabled */
+	TArray<const FN2CMcpToolset*> EnabledToolsets;
+
+	/** How tools/list shows the served tools */
+	EN2CMcpToolExposure Exposure = EN2CMcpToolExposure::ListAllTools;
+
+	/** Whether Configure ran (the first one never broadcasts) */
+	bool bConfigured = false;
 
 	/** Mutex for thread-safe access */
 	mutable FCriticalSection ToolsLock;

@@ -310,6 +310,8 @@ int32 UN2CSettings::MigrateSavedSettings(const FString& ConfigFilename)
         // Logs its own lines (once per session per conversion)
         ModelIdChanges = MigrateModelSelectionsToIds(Config).ChangedProperties.Num();
     }
+    // Not version-gated: it reads only keys the new settings have not replaced yet
+    MigrateLegacyMcpToolModes(Config, Changes);
 
     if (Changes.Num() > 0)
     {
@@ -318,6 +320,40 @@ int32 UN2CSettings::MigrateSavedSettings(const FString& ConfigFilename)
             *FString::Join(Changes, TEXT("; "))), EN2CLogSeverity::Info, TEXT("N2CSettings"));
     }
     return Changes.Num() + ModelIdChanges;
+}
+
+void UN2CSettings::MigrateLegacyMcpToolModes(const FString& ConfigFilename, TArray<FString>& OutChanges)
+{
+    const FString Config = ConfigFilename.IsEmpty() ? GetClass()->GetConfigName() : ConfigFilename;
+    const FString Section = GetClass()->GetPathName();
+    if (!GConfig)
+    {
+        return;
+    }
+    FString Unused;
+    const bool bHasProfile = GConfig->GetString(*Section, TEXT("McpToolProfile"), Unused, Config);
+    const bool bHasExposure = GConfig->GetString(*Section, TEXT("McpToolExposure"), Unused, Config);
+    bool bPythonOnly = false;
+    bool bDynamic = false;
+    GConfig->GetBool(*Section, TEXT("bEnablePythonScriptOnlyMode"), bPythonOnly, Config);
+    GConfig->GetBool(*Section, TEXT("bEnableDynamicToolDiscovery"), bDynamic, Config);
+
+    if (bPythonOnly && !bHasProfile && McpToolProfile != EN2CMcpToolProfile::PythonScripting)
+    {
+        McpToolProfile = EN2CMcpToolProfile::PythonScripting;
+        OutChanges.Add(TEXT("Enable Python Script-Only Mode is now Tool Profile = Python Scripting Only"));
+    }
+    // Script-only mode took precedence over dynamic discovery and listed the Python tools directly
+    if (bDynamic && !bPythonOnly && !bHasExposure && McpToolExposure != EN2CMcpToolExposure::ToolSearch)
+    {
+        McpToolExposure = EN2CMcpToolExposure::ToolSearch;
+        OutChanges.Add(TEXT("Enable Dynamic Tool Discovery is now Tool Exposure = Tool Search (list_toolsets, describe_toolset, call_tool)"));
+    }
+}
+
+TArray<FString> UN2CSettings::GetMcpToolsetOptions()
+{
+    return N2CMcpToolsets::AllNames();
 }
 
 namespace N2CLegacy12
@@ -1252,14 +1288,10 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             NotifyModelSettingsChanged();
         }
 
-        // Show restart notification when bEnableDynamicToolDiscovery changes
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, bEnableDynamicToolDiscovery))
-        {
-            ShowRestartEditorNotification();
-        }
-
-        // Show restart notification when bEnablePythonScriptOnlyMode changes
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, bEnablePythonScriptOnlyMode))
+        // The MCP tool settings are read when the server starts
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpToolProfile)
+            || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpCustomToolsets)
+            || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpToolExposure))
         {
             ShowRestartEditorNotification();
         }

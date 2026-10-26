@@ -1,7 +1,7 @@
 # File System Tools
 
 This directory contains the MCP tools that read files and directories inside the Unreal Engine project, in the
-'File System' category: `read-path` and `read-file`. Both are read-only. Asset operations such as `move-asset` are
+`FileSystemTools` toolset: `read-path` and `read-file`. Both are read-only. Asset operations such as `move-asset` are
 Content Browser tools (see `../ContentBrowser/AGENTS.md`).
 
 ## Available Tools

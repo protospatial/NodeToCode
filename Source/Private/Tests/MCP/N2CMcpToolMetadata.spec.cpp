@@ -29,7 +29,7 @@ namespace N2CMcpToolMetadataSpecPrivate
 		virtual FMcpToolDefinition GetDefinition() const override
 		{
 			++DefinitionBuilds;
-			FMcpToolDefinition Definition(Name, TEXT("Spec probe tool"), TEXT("Spec Probes"));
+			FMcpToolDefinition Definition(Name, TEXT("Spec probe tool"));
 			Definition.Title = TEXT("Probe ") + Name;
 			Definition.InputSchema = BuildEmptyObjectSchema();
 			SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
@@ -62,7 +62,7 @@ namespace N2CMcpToolMetadataSpecPrivate
 
 /**
  * The MCP tool metadata model (card 0164): FMcpToolDefinition serializes title, the four ToolAnnotations hints,
- * outputSchema and _meta (category and the anthropic/* entries) as MCP 2025-11-25 defines them; SetAnnotations and
+ * outputSchema and _meta (toolset and the anthropic/* entries) as MCP 2025-11-25 defines them; SetAnnotations and
  * BuildInputSchema fill it; FN2CMcpToolManager builds each definition once, at registration, finds it by name and
  * lists the tools sorted by name. Review ids: rec-mcp-spec-clients-7, imp-mcp-transport-5.
  */
@@ -147,7 +147,7 @@ void FN2CMcpToolMetadataSpec::Define()
 	{
 		It(TEXT("serializes title, annotations, outputSchema and _meta as the 2025-11-25 Tool schema expects"), [this]()
 		{
-			FMcpToolDefinition Definition(TEXT("n2c-full"), TEXT("Every field"), TEXT("Blueprint Discovery"));
+			FMcpToolDefinition Definition(TEXT("n2c-full"), TEXT("Every field"), N2CMcpToolsets::BlueprintDiscovery);
 			Definition.Title = TEXT("Full Tool");
 			Definition.InputSchema = FProbeTool::BuildEmptyObjectSchema();
 			Definition.OutputSchema = MakeShared<FJsonObject>();
@@ -167,7 +167,7 @@ void FN2CMcpToolMetadataSpec::Define()
 			}
 			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Json->Values)
 			{
-				TestTrue(FString::Printf(TEXT("'%s' is a Tool field (no top-level category, no server-only flags)"), *Field.Key),
+				TestTrue(FString::Printf(TEXT("'%s' is a Tool field (no top-level toolset, no server-only flags)"), *Field.Key),
 					ToolFields().Contains(Field.Key));
 			}
 			TestEqual(TEXT("name"), Json->GetStringField(TEXT("name")), FString(TEXT("n2c-full")));
@@ -190,8 +190,8 @@ void FN2CMcpToolMetadataSpec::Define()
 			const TSharedPtr<FJsonObject>* Meta = nullptr;
 			if (TestTrue(TEXT("_meta is an object"), Json->TryGetObjectField(TEXT("_meta"), Meta)))
 			{
-				FString Category;
-				TestTrue(TEXT("_meta nodetocode/category"), (*Meta)->TryGetStringField(TEXT("nodetocode/category"), Category) && Category == TEXT("Blueprint Discovery"));
+				FString Toolset;
+				TestTrue(TEXT("_meta nodetocode/toolset"), (*Meta)->TryGetStringField(TEXT("nodetocode/toolset"), Toolset) && Toolset == TEXT("BlueprintDiscoveryTools"));
 				int32 MaxChars = 0;
 				TestTrue(TEXT("_meta anthropic/maxResultSizeChars is the number 200000"),
 					(*Meta)->HasTypedField<EJson::Number>(TEXT("anthropic/maxResultSizeChars"))
@@ -213,7 +213,7 @@ void FN2CMcpToolMetadataSpec::Define()
 			TestFalse(TEXT("no annotations"), Json->HasField(TEXT("annotations")));
 			TestFalse(TEXT("no _meta"), Json->HasField(TEXT("_meta")));
 			TestFalse(TEXT("no outputSchema"), Json->HasField(TEXT("outputSchema")));
-			TestFalse(TEXT("no category"), Json->HasField(TEXT("category")));
+			TestFalse(TEXT("no toolset"), Json->HasField(TEXT("toolset")));
 		});
 
 		It(TEXT("sends only the hints that are set"), [this]()
@@ -230,9 +230,9 @@ void FN2CMcpToolMetadataSpec::Define()
 			TestFalse(TEXT("an unset readOnlyHint is not read-only"), Definition.Annotations.IsReadOnly());
 		});
 
-		It(TEXT("reads its own JSON back, and a top-level category from older servers"), [this]()
+		It(TEXT("reads its own JSON back, resolving the toolset name to the declared toolset"), [this]()
 		{
-			FMcpToolDefinition Definition(TEXT("n2c-round-trip"), TEXT("Round trip"), TEXT("Content Browser"));
+			FMcpToolDefinition Definition(TEXT("n2c-round-trip"), TEXT("Round trip"), N2CMcpToolsets::ContentBrowser);
 			Definition.Title = TEXT("Round Trip");
 			FProbeTool::SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 			Definition.MaxResultSizeChars = 1234;
@@ -241,7 +241,7 @@ void FN2CMcpToolMetadataSpec::Define()
 			const FMcpToolDefinition Read = FMcpToolDefinition::FromJson(Definition.ToJson());
 			TestEqual(TEXT("name"), Read.Name, Definition.Name);
 			TestEqual(TEXT("title"), Read.Title, Definition.Title);
-			TestEqual(TEXT("category from _meta"), Read.Category, Definition.Category);
+			TestTrue(TEXT("toolset from _meta"), Read.Toolset == &N2CMcpToolsets::ContentBrowser);
 			TestTrue(TEXT("readOnlyHint"), Read.Annotations.ReadOnlyHint == TOptional<bool>(true));
 			TestTrue(TEXT("destructiveHint"), Read.Annotations.DestructiveHint == TOptional<bool>(false));
 			TestTrue(TEXT("idempotentHint"), Read.Annotations.IdempotentHint == TOptional<bool>(true));
@@ -250,10 +250,15 @@ void FN2CMcpToolMetadataSpec::Define()
 			TestTrue(TEXT("alwaysLoad"), Read.bAlwaysLoad);
 			TestFalse(TEXT("known _meta keys are not repeated in Meta"), Read.Meta.IsValid());
 
-			const TSharedRef<FJsonObject> Legacy = MakeShared<FJsonObject>();
-			Legacy->SetStringField(TEXT("name"), TEXT("n2c-legacy"));
-			Legacy->SetStringField(TEXT("category"), TEXT("Translation"));
-			TestEqual(TEXT("legacy top-level category"), FMcpToolDefinition::FromJson(Legacy).Category, FString(TEXT("Translation")));
+			// A toolset this build does not declare: no toolset, and the entry stays in Meta as sent
+			const TSharedRef<FJsonObject> Other = MakeShared<FJsonObject>();
+			Other->SetStringField(TEXT("name"), TEXT("n2c-other"));
+			const TSharedRef<FJsonObject> OtherMeta = MakeShared<FJsonObject>();
+			OtherMeta->SetStringField(TEXT("nodetocode/toolset"), TEXT("NoSuchTools"));
+			Other->SetObjectField(TEXT("_meta"), OtherMeta);
+			const FMcpToolDefinition ReadOther = FMcpToolDefinition::FromJson(Other);
+			TestTrue(TEXT("unknown toolset: none"), ReadOther.Toolset == nullptr);
+			TestTrue(TEXT("unknown toolset: kept in Meta"), ReadOther.Meta.IsValid() && ReadOther.Meta->HasField(TEXT("nodetocode/toolset")));
 		});
 	});
 
@@ -363,7 +368,7 @@ void FN2CMcpToolMetadataSpec::Define()
 			{
 				TestEqual(TEXT("tools/list sends the title"), (*Probe)->GetStringField(TEXT("title")), FString(TEXT("Probe n2c-meta-probe-aa")));
 				TestTrue(TEXT("tools/list sends the annotations"), (*Probe)->HasTypedField<EJson::Object>(TEXT("annotations")));
-				TestFalse(TEXT("tools/list sends no top-level category"), (*Probe)->HasField(TEXT("category")));
+				TestFalse(TEXT("tools/list sends no top-level toolset"), (*Probe)->HasField(TEXT("toolset")));
 			}
 		});
 	});

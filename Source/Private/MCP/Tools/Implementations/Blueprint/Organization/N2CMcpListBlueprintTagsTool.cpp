@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpListBlueprintTagsTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("list-blueprint-tags"),
 		TEXT("Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, or by tag name (optionally with category), or by category; a graphGuid filter overrides the tag and category filters."),
-		TEXT("Blueprint Organization")
+		N2CMcpToolsets::BlueprintTag
 	);
 	
 	// Define input schema

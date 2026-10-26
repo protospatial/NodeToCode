@@ -8,3 +8,4 @@ One record per decision, numbered in the order they were made. A record is amend
 - [0002 — Licence and contribution model: Apache-2.0 only, NOTICE and DCO](0002-licence-and-contribution-model.md) — proposed (2026-10-23), provisional pending the owner's confirmation on card 0053
 - [0003 — N2C JSON v2 contract: version 2.0.0, lossless data edges and a kept v1 reader](0003-n2c-json-v2-contract.md) — proposed (2026-10-24), provisional pending the owner's confirmation on card 0117
 - [0004 — Provider architecture: a data-driven model catalog with string IDs and wire-dialect adapters](0004-provider-architecture-catalog-and-dialects.md) — proposed (2026-10-25), provisional pending the owner's confirmation on card 0115
+- [0005 — MCP tool exposure: declared toolsets, settings profiles and an opt-in tool search](0005-mcp-tool-exposure-toolsets-and-tool-search.md) — proposed (2026-10-25), provisional pending the owner's confirmation on card 0106

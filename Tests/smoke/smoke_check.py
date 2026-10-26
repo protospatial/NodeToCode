@@ -8,14 +8,17 @@ Stdlib only; build.ps1 runs it with the engine's own Python (`python -I -u`). By
     python -I Tests/smoke/smoke_check.py --engine G:/UE/UE_5.8 \\
         --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
-Per mode (default, dynamic, python_only; set through the host's Config/DefaultNodeToCode.ini, which the session puts
-back afterwards) it starts UnrealEditor-Cmd with -N2CMcp through Tests/mcp_probe/editor_session.py and fails on:
+Per mode (default, tool_search, python_only; set through the host's Config/DefaultNodeToCode.ini, which the session
+puts back afterwards) it starts UnrealEditor-Cmd with -N2CMcp through Tests/mcp_probe/editor_session.py and fails on:
   * an error line in the editor log (any `Log<Category>: Error:`, so LogNodeToCode, LogPython, LogBlueprint compile
     errors and LogPluginManager among them), an ensure, an assertion or a crash, unless ALLOWLIST below names it;
   * a missing 'MCP HTTP server started on port <port>' line, no /mcp/health answer, or a /mcp/health answer from a
     process that is not this editor (mcp-transport-10: a failed bind still logs that the server started);
   * the editor listening on port+1 (netstat; the port+1 notification server was removed in card 0113);
-  * in the dynamic mode, no 'Dynamic Tool Discovery:' warning (the server cannot send tools/list_changed);
+  * in the tool_search mode (set with the pre-0165 key bEnableDynamicToolDiscovery=True, so it also checks that the old
+    setting migrates to Tool Exposure = Tool Search): tools/list other than list_toolsets, describe_toolset and
+    call_tool, a tools/list that changes after list_toolsets, describe_toolset of every listed toolset and call_tool,
+    or an unknown toolset that is not an isError naming the valid toolsets (card 0165);
   * a tools/list count that differs from Tests/smoke/expected.json for the engine and mode;
   * any change to the content of the host's Config/*.ini files while the editor ran (hashes before and after;
     imp-auth-settings-module-10, auth-settings-module-14/15);
@@ -51,13 +54,15 @@ import mcp_probe  # noqa: E402
 from e05_regressions import rpc, run_python  # noqa: E402
 
 SETTINGS_SECTION = '[/Script/NodeToCode.N2CSettings]'
-# Registration modes and the settings each writes to the host's Config/DefaultNodeToCode.ini (default writes nothing,
-# so it also checks the plugin's own defaults)
+# Tool modes and the settings each writes to the host's Config/DefaultNodeToCode.ini (default writes nothing, so it also
+# checks the plugin's own defaults). tool_search writes the key NodeToCode saved before card 0165, which loads as Tool
+# Exposure = Tool Search; python_only writes the current Tool Profile key.
 MODES = [
     ('default', {}),
-    ('dynamic', {'bEnableDynamicToolDiscovery': 'True', 'bEnablePythonScriptOnlyMode': 'False'}),
-    ('python_only', {'bEnablePythonScriptOnlyMode': 'True', 'bEnableDynamicToolDiscovery': 'False'}),
+    ('tool_search', {'bEnableDynamicToolDiscovery': 'True'}),
+    ('python_only', {'McpToolProfile': 'PythonScripting'}),
 ]
+META_TOOLS = ['call_tool', 'describe_toolset', 'list_toolsets']
 
 # An engine Blueprint present in UE 5.6, 5.7 and 5.8, and a graph of it with nodes (its EventGraph is empty)
 ENGINE_BLUEPRINT = '/Engine/EngineSky/BP_Sky_Sphere'
@@ -143,10 +148,21 @@ def listener_pids(port):
     return pids
 
 
+def tools_list(url):
+    """tools/list's tools array, or None"""
+    tools = (rpc(url, 'tools/list').get('result') or {}).get('tools')
+    return tools if isinstance(tools, list) else None
+
+
 def tools_count(url):
-    resp = rpc(url, 'tools/list')
-    tools = (resp.get('result') or {}).get('tools')
-    return len(tools) if isinstance(tools, list) else None
+    tools = tools_list(url)
+    return len(tools) if tools is not None else None
+
+
+def call_text(url, name, arguments):
+    """(text, isError) of one tools/call"""
+    res = rpc(url, 'tools/call', {'name': name, 'arguments': arguments}).get('result') or {}
+    return ''.join(c.get('text', '') for c in res.get('content', [])), bool(res.get('isError'))
 
 
 IN_EDITOR_PY = r'''
@@ -234,6 +250,8 @@ class Smoke:
                 self.summary['tools'][mode] = count
                 want = self.expected_tools.get(mode)
                 self.check(count == want, '%s: tools/list count' % mode, '%s (expected %s)' % (count, want))
+                if mode == 'tool_search':
+                    self.tool_search(url)
                 if mode == 'default':
                     self.in_editor(url)
                     self.probes(port, session.proc.pid)
@@ -244,26 +262,55 @@ class Smoke:
             session.stop(before_restore=lambda: after.update(config_hashes(self.args.project)))
         log_text = session.log_text()
         self.after_session(mode, log_text, port, before, after)
-        if mode == 'dynamic':
-            # tools.listChanged is false and nothing sends tools/list_changed, so the mode warns (card 0113; card 0165
-            # replaces the mode)
-            warned = [l.strip()[:200] for l in log_text.splitlines() if 'Warning' in l and 'Dynamic Tool Discovery:' in l]
-            self.check(bool(warned), 'dynamic: warns that clients are not notified of tool list changes',
-                       warned[0] if warned else 'no "Dynamic Tool Discovery:" warning in the log')
         self.check(session.restore_ok is not False, '%s: host config restored' % mode,
                    'put back' if session.restore_ok is not False else
                    'EditorSession could not put the guarded ini files back')
         self.summary['durations'][mode] = int(time.time() - start)
 
+    def tool_search(self, url):
+        """Tool search (card 0165): only the three meta-tools are listed, calling every one of them leaves tools/list
+        as it was, and an unknown toolset is an isError naming the valid toolsets"""
+        before = tools_list(url)
+        names = sorted(t.get('name') for t in before or [])
+        self.check(names == META_TOOLS, 'tool_search: tools/list is the three meta-tools', ', '.join(names))
+        catalog, err = call_text(url, 'list_toolsets', {})
+        toolsets = [l[2:].split(':', 1)[0] for l in catalog.splitlines() if l.startswith('- ')]
+        self.check(not err and len(toolsets) > 0, 'tool_search: list_toolsets',
+                   '%d toolsets: %s' % (len(toolsets), ', '.join(toolsets)))
+        described, bad = 0, []
+        for name in toolsets:
+            text, err = call_text(url, 'describe_toolset', {'toolset_name': name})
+            try:
+                described += len(json.loads(text).get('tools') or []) if not err else 0
+            except ValueError:
+                err = True
+            if err:
+                bad.append(name)
+        self.check(not bad and described > 0, 'tool_search: describe_toolset of every toolset',
+                   '%d tools described%s' % (described, '; failed: %s' % ', '.join(bad) if bad else ''))
+        text, err = call_text(url, 'call_tool', {'toolset_name': 'TranslationTools',
+                                                 'tool_name': 'get-available-translation-targets'})
+        self.check(not err and 'cpp' in text, 'tool_search: call_tool runs a tool', text[:120])
+        text, err = call_text(url, 'describe_toolset', {'toolset_name': 'NoSuchTools'})
+        self.check(err and all(t in text for t in toolsets),
+                   'tool_search: unknown toolset is an isError naming the toolsets', text[:300])
+        after = tools_list(url)
+        self.check(after == before, 'tool_search: tools/list unchanged after every meta-tool',
+                   'identical (%d tools)' % len(after or []) if after == before else
+                   'changed: %s' % sorted(t.get('name') for t in after or []))
+        self.summary['tool_search'] = {'toolsets': len(toolsets), 'described': described}
+
     def quit(self, url, session, mode):
         """Close the editor from inside (quit_editor through run-python), so its shutdown is logged and scanned too and
-        stop() does not wait out WM_CLOSE, which UnrealEditor-Cmd ignores. Dynamic mode lists only
-        assess-needed-tools, so it first enables the 'Python' category (the category the Python tools register under;
-        assess-needed-tools does not advertise it), which also exercises that path."""
-        if mode == 'dynamic':
-            rpc(url, 'tools/call', {'name': 'assess-needed-tools', 'arguments': {'categories': ['Python']}})
+        stop() does not wait out WM_CLOSE, which UnrealEditor-Cmd ignores. Tool search lists only the meta-tools, so
+        there run-python goes through call_tool, which also exercises that path."""
+        code = 'import unreal\nunreal.SystemLibrary.quit_editor()\nresult = {"quit": True}'
         try:
-            run_python(url, 'import unreal\nunreal.SystemLibrary.quit_editor()\nresult = {"quit": True}')
+            if mode == 'tool_search':
+                rpc(url, 'tools/call', {'name': 'call_tool', 'arguments': {
+                    'toolset_name': 'PythonTools', 'tool_name': 'run-python', 'arguments': {'code': code}}})
+            else:
+                run_python(url, code)
         except Exception:  # the editor may close the connection while it exits
             pass
         deadline = time.time() + 60

@@ -439,8 +439,9 @@ def check_fixture(fixture, ctx, rows, state):
     rows.add('N2', ini_value(ini1t, sec, 'SettingsVersion') == '4' and not left,
              'ini SettingsVersion=%s after start 1; model enum keys left: %s' % (ini_value(ini1t, sec, 'SettingsVersion'), left))
     rows.add('N3', d1['mcp_server_port'] == 27000, 'McpServerPort %s' % d1['mcp_server_port'])
-    rows.add('N4', d1['enable_dynamic_tool_discovery'] is False, 'bEnableDynamicToolDiscovery %s' % d1['enable_dynamic_tool_discovery'])
-    rows.add('N5', d1['enable_python_script_only_mode'] is False, 'bEnablePythonScriptOnlyMode %s' % d1['enable_python_script_only_mode'])
+    # 1.2.x saved neither tool-mode switch: the card 0165 settings load at their defaults
+    rows.add('N4', n(d1['mcp_tool_exposure']) == n('LIST_ALL_TOOLS'), 'McpToolExposure %s' % d1['mcp_tool_exposure'])
+    rows.add('N5', n(d1['mcp_tool_profile']) == n('DEFAULT_TOOLSETS'), 'McpToolProfile %s' % d1['mcp_tool_profile'])
     rows.add('N6', d1.get('ui_colors_is_default') is True, 'UIColors at struct defaults: %s' % d1.get('ui_colors_is_default'))
     rows.add('N7', 'Unreal Engine' in d1.get('code_editor_theme_names', []), 'CodeEditorTheme has %d themes incl. "Unreal Engine": %s' % (
         len(d1.get('code_editor_theme_names', [])), 'Unreal Engine' in d1.get('code_editor_theme_names', [])))

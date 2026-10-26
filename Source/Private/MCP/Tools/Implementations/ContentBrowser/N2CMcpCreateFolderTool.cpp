@@ -19,7 +19,7 @@ FMcpToolDefinition FN2CMcpCreateFolderTool::GetDefinition() const
         TEXT("Create a new folder in the content browser")
     ,
 
-    	TEXT("Content Browser")
+    	N2CMcpToolsets::ContentBrowser
 
     );
 
