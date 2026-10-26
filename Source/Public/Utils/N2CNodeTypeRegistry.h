@@ -4,158 +4,64 @@
 
 #include "CoreMinimal.h"
 #include "Models/N2CNode.h"
-#include "K2Node.h"
 
-#include "K2Node_ActorBoundEvent.h"
-#include "K2Node_AddComponent.h"
-#include "K2Node_AddComponentByClass.h"
-#include "K2Node_AddDelegate.h"
-#include "K2Node_AddPinInterface.h"
-#include "K2Node_AssignDelegate.h"
-#include "K2Node_AssignmentStatement.h"
-#include "K2Node_AsyncAction.h"
-#include "K2Node_BaseAsyncTask.h"
-#include "K2Node_BaseMCDelegate.h"
-#include "K2Node_BitmaskLiteral.h"
-#include "K2Node_BreakStruct.h"
-#include "K2Node_CallArrayFunction.h"
-#include "K2Node_CallDataTableFunction.h"
-#include "K2Node_CallDelegate.h"
-#include "K2Node_CallFunction.h"
-#include "K2Node_CallFunctionOnMember.h"
-#include "K2Node_CallMaterialParameterCollectionFunction.h"
-#include "K2Node_CallParentFunction.h"
-#include "K2Node_CastByteToEnum.h"
-#include "K2Node_ClassDynamicCast.h"
-#include "K2Node_ClearDelegate.h"
-#include "K2Node_CommutativeAssociativeBinaryOperator.h"
-#include "K2Node_ComponentBoundEvent.h"
-#include "K2Node_Composite.h"
-#include "K2Node_ConstructObjectFromClass.h"
-#include "K2Node_ConvertAsset.h"
-#include "K2Node_Copy.h"
-#include "K2Node_CreateDelegate.h"
-#include "K2Node_CustomEvent.h"
-#include "K2Node_DeadClass.h"
-#include "K2Node_DelegateSet.h"
-#include "K2Node_DoOnceMultiInput.h"
-#include "K2Node_DynamicCast.h"
-#include "K2Node_EaseFunction.h"
-#include "K2Node_EditablePinBase.h"
-#include "K2Node_EnumEquality.h"
-#include "K2Node_EnumInequality.h"
-#include "K2Node_EnumLiteral.h"
-#include "K2Node_Event.h"
-#include "K2Node_EventNodeInterface.h"
-#include "K2Node_ExecutionSequence.h"
-#include "K2Node_ExternalGraphInterface.h"
-#include "K2Node_ForEachElementInEnum.h"
-#include "K2Node_FormatText.h"
-#include "K2Node_FunctionEntry.h"
-#include "K2Node_FunctionResult.h"
-#include "K2Node_FunctionTerminator.h"
-#include "K2Node_GenericCreateObject.h"
-#include "K2Node_GetArrayItem.h"
-#include "K2Node_GetClassDefaults.h"
-#include "K2Node_GetDataTableRow.h"
-#include "K2Node_GetEnumeratorName.h"
-#include "K2Node_GetEnumeratorNameAsString.h"
-#include "K2Node_GetInputAxisKeyValue.h"
-#include "K2Node_GetInputAxisValue.h"
-#include "K2Node_GetInputVectorAxisValue.h"
-#include "K2Node_GetNumEnumEntries.h"
-#include "K2Node_GetSubsystem.h"
-#include "K2Node_IfThenElse.h"
-#include "K2Node_InputAction.h"
-#include "K2Node_InputActionEvent.h"
-#include "K2Node_InputAxisEvent.h"
-#include "K2Node_InputAxisKeyEvent.h"
-#include "K2Node_InputKey.h"
-#include "K2Node_InputKeyEvent.h"
-#include "K2Node_InputTouch.h"
-#include "K2Node_InputTouchEvent.h"
-#include "K2Node_InputVectorAxisEvent.h"
-#include "K2Node_Knot.h"
-#include "K2Node_Literal.h"
-#include "K2Node_LoadAsset.h"
-#include "K2Node_LocalVariable.h"
-#include "K2Node_MacroInstance.h"
-#include "K2Node_MakeArray.h"
-#include "K2Node_MakeContainer.h"
-#include "K2Node_MakeMap.h"
-#include "K2Node_MakeSet.h"
-#include "K2Node_MakeStruct.h"
-#include "K2Node_MakeVariable.h"
-#include "K2Node_MathExpression.h"
-#include "K2Node_Message.h"
-#include "K2Node_MultiGate.h"
-#include "K2Node_PromotableOperator.h"
-#include "K2Node_PureAssignmentStatement.h"
-#include "K2Node_RemoveDelegate.h"
-#include "K2Node_Select.h"
-#include "K2Node_Self.h"
-#include "K2Node_SetFieldsInStruct.h"
-#include "K2Node_SetVariableOnPersistentFrame.h"
-#include "K2Node_SpawnActor.h"
-#include "K2Node_SpawnActorFromClass.h"
-#include "K2Node_StructMemberGet.h"
-#include "K2Node_StructMemberSet.h"
-#include "K2Node_StructOperation.h"
-#include "K2Node_Switch.h"
-#include "K2Node_SwitchEnum.h"
-#include "K2Node_SwitchInteger.h"
-#include "K2Node_SwitchName.h"
-#include "K2Node_SwitchString.h"
-#include "K2Node_TemporaryVariable.h"
-#include "K2Node_Timeline.h"
-#include "K2Node_Tunnel.h"
-#include "K2Node_TunnelBoundary.h"
-#include "K2Node_Variable.h"
-#include "K2Node_VariableGet.h"
-#include "K2Node_VariableSet.h"
-#include "K2Node_VariableSetRef.h"
+class UClass;
+class UK2Node;
+class UK2Node_Variable;
 
 /**
  * @class FN2CNodeTypeRegistry
- * @brief Registry for mapping Blueprint node classes to N2CNodeType
- * 
- * Provides a centralized, data-driven approach to node type determination
- * that replaces the large if-else chains and switch statements.
+ * @brief Maps Blueprint node classes to EN2CNodeType
+ *
+ * GetNodeType walks the node's class up its super classes and the nearest mapped ancestor wins (card 0234): at each
+ * level a class mapping (RegisterNodeClass) is checked, then a class-name mapping (RegisterNodeType, the class name
+ * without its "K2Node_" prefix, so a node class from another plugin can be mapped without a module dependency on it).
+ * A node with no mapped ancestor is an Event when its class implements IK2Node_EventNodeInterface, and otherwise
+ * Unknown: N2C JSON then says "Unknown" with the node's "class", and the base processor fills it.
+ * Variable gets and sets are then refined by scope and access (DetermineVariableNodeType).
+ *
+ * Third-party nodes: call RegisterNodeClass or RegisterNodeType (for example from a module's StartupModule) to give
+ * a node class, and every class derived from it, a type.
  */
 class NODETOCODE_API FN2CNodeTypeRegistry
 {
 public:
     /** Get the singleton instance */
     static FN2CNodeTypeRegistry& Get();
-    
-    /** Register node type mapping by class name */
+
+    /** Register a node type for a class name, without the "K2Node_" prefix (for example "CallFunction") */
     void RegisterNodeType(const FName& ClassName, EN2CNodeType NodeType);
-    
-    /** Register node type mapping by class pointer */
+
+    /** Register a node type for a class; it wins over a class-name mapping of the same class */
     void RegisterNodeClass(const UClass* Class, EN2CNodeType NodeType);
-    
-    /** Get node type for a specific node */
+
+    /** The node's type: its nearest mapped ancestor's, refined for variable nodes; Unknown for null or unmapped */
     EN2CNodeType GetNodeType(const UK2Node* Node);
-    
-    /** Determine variable node type */
+
+    /**
+     * The type of a variable get or set: access first (get, set, other), then scope. A local variable is
+     * LocalVariableGet or LocalVariableSet, a function parameter read is FunctionParameter and a parameter write
+     * LocalVariableSet (Blueprint writes a local copy), a member VariableGet or VariableSet. When the variable's
+     * property does not resolve, the access and the reference's scope still decide.
+     */
     EN2CNodeType DetermineVariableNodeType(const UK2Node_Variable* Node);
-    
+
 private:
     /** Constructor - initializes default mappings */
     FN2CNodeTypeRegistry();
-    
-    /** Mappings from class names to node types */
+
+    /** Mappings from class names (without the "K2Node_" prefix) to node types */
     TMap<FName, EN2CNodeType> ClassNameMappings;
-    
+
     /** Mappings from class pointers to node types */
     TMap<const UClass*, EN2CNodeType> ClassMappings;
-    
+
     /** Initialize default mappings */
     void InitializeDefaultMappings();
-    
+
     /** Get base node type from class name (strips K2Node_ prefix) */
-    FString GetBaseNodeType(const FString& ClassName);
-    
-    /** Try to determine node type based on inheritance */
-    bool MapFromInheritance(const UK2Node* Node, EN2CNodeType& OutType);
+    static FString GetBaseNodeType(const FString& ClassName);
+
+    /** The mapping of Class itself (class mapping, then class-name mapping), if any */
+    bool FindOwnMapping(const UClass* Class, EN2CNodeType& OutType) const;
 };

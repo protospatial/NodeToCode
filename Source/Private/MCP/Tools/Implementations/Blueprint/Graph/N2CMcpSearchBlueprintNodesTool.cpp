@@ -14,7 +14,6 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
-#include "Utils/N2CNodeTypeRegistry.h"
 #include "K2Node.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/BlueprintGeneratedClass.h"

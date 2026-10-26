@@ -11,6 +11,18 @@
 #include "Models/N2CJsonContract.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CNodeTypeRegistry.h"
+#include "K2Node_AddComponent.h"
+#include "K2Node_AsyncAction.h"
+#include "K2Node_BaseAsyncTask.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_Composite.h"
+#include "K2Node_CreateDelegate.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_Knot.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_MathExpression.h"
+#include "K2Node_StructOperation.h"
+#include "K2Node_Timeline.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectBase.h"
@@ -1353,13 +1365,9 @@ void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
         return;
     }
     
-    // Check for struct nodes - use string comparison for class names
-    const FString NodeClassName = Node->GetClass()->GetName();
-    
-    // Check for struct operation nodes
-    if (NodeClassName.Contains(TEXT("K2Node_StructOperation")))
+    // A struct node (Make, Break, Set Members, member get and set: every K2Node_StructOperation) names its struct
+    if (const UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node))
     {
-        UK2Node_StructOperation* StructNode = (UK2Node_StructOperation*)Node;
         if (UScriptStruct* Struct = StructNode->StructType)
         {
             if (IsBlueprintStruct(Struct))
@@ -1370,52 +1378,8 @@ void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
                     N2CBlueprint.Structs.Add(StructDef);
                     
                     FN2CLogger::Get().Log(
-                        FString::Printf(TEXT("Added Blueprint struct %s from struct operation node"), 
-                        *StructDef.Name),
-                        EN2CLogSeverity::Info);
-                }
-            }
-        }
-    }
-    
-    // Check make struct nodes
-    if (NodeClassName.Contains(TEXT("K2Node_MakeStruct")))
-    {
-        UK2Node_MakeStruct* MakeStructNode = (UK2Node_MakeStruct*)Node;
-        if (UScriptStruct* Struct = MakeStructNode->StructType)
-        {
-            if (IsBlueprintStruct(Struct))
-            {
-                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
-                if (StructDef.IsValid())
-                {
-                    N2CBlueprint.Structs.Add(StructDef);
-                    
-                    FN2CLogger::Get().Log(
-                        FString::Printf(TEXT("Added Blueprint struct %s from make struct node"), 
-                        *StructDef.Name),
-                        EN2CLogSeverity::Info);
-                }
-            }
-        }
-    }
-    
-    // Check break struct nodes
-    if (NodeClassName.Contains(TEXT("K2Node_BreakStruct")))
-    {
-        UK2Node_BreakStruct* BreakStructNode = (UK2Node_BreakStruct*)Node;
-        if (UScriptStruct* Struct = BreakStructNode->StructType)
-        {
-            if (IsBlueprintStruct(Struct))
-            {
-                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
-                if (StructDef.IsValid())
-                {
-                    N2CBlueprint.Structs.Add(StructDef);
-                    
-                    FN2CLogger::Get().Log(
-                        FString::Printf(TEXT("Added Blueprint struct %s from break struct node"), 
-                        *StructDef.Name),
+                        FString::Printf(TEXT("Added Blueprint struct %s from %s node"), 
+                        *StructDef.Name, *Node->GetClass()->GetName()),
                         EN2CLogSeverity::Info);
                 }
             }
@@ -1431,7 +1395,7 @@ void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
         // Check for struct types
         if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct)
         {
-            UScriptStruct* Struct = (UScriptStruct*)Pin->PinType.PinSubCategoryObject.Get();
+            UScriptStruct* Struct = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
             if (Struct && IsBlueprintStruct(Struct))
             {
                 FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
@@ -1451,7 +1415,7 @@ void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
         else if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte ||
                  Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
         {
-            UEnum* Enum = (UEnum*)Pin->PinType.PinSubCategoryObject.Get();
+            UEnum* Enum = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
             if (Enum && IsBlueprintEnum(Enum))
             {
                 FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);

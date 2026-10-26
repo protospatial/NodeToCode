@@ -149,7 +149,7 @@ The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is
 
 ## Utility Classes
 
-*   **`Source/Public/Utils/N2CNodeTypeRegistry.h` / `Source/Private/Utils/N2CNodeTypeRegistry.cpp` (`FN2CNodeTypeRegistry`)**: Singleton mapping `UK2Node` classes to `EN2CNodeType`.
+*   **`Source/Public/Utils/N2CNodeTypeRegistry.h` / `Source/Private/Utils/N2CNodeTypeRegistry.cpp` (`FN2CNodeTypeRegistry`)**: Singleton mapping `UK2Node` classes to `EN2CNodeType` by the nearest mapped ancestor in the class hierarchy (`Unknown` when none is mapped); its public header includes no K2Node headers.
 
 *   **`Source/Public/Utils/N2CPinTypeCompatibility.h` / `Source/Private/Utils/N2CPinTypeCompatibility.cpp` (`FN2CPinTypeCompatibility`)**: Static utility for checking pin connection compatibility.
 

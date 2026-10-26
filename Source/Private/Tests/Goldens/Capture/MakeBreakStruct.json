@@ -1,13 +1,7 @@
 {
 	"case": "MakeBreakStruct",
 	"description": "Function Structs(Value): Make Vector (X from Value) feeds Break Vector; Break X and Y feed Add (int to double through the Make); Add is the result.",
-	"known_defects": [
-		{
-			"finding": "translation-core-4",
-			"card": "0234",
-			"effect": "Break Vector (a K2Node_BreakStruct) is captured as a Variable titled 'None', with member_name Var_<graph>_<UObject index>, which changes every session (normalised to <OBJECT_INDEX> here)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -89,10 +83,11 @@
 					},
 					{
 						"id": "N3",
-						"type": "Variable",
+						"type": "BreakStruct",
 						"class": "K2Node_BreakStruct",
-						"title": "None",
-						"member_name": "Var_Structs_<OBJECT_INDEX>",
+						"title": "Break Vector",
+						"member_parent": "/Script/CoreUObject",
+						"member_name": "Vector",
 						"pure": true,
 						"input_pins": [
 							{
