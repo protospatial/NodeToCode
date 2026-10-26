@@ -26,9 +26,9 @@ struct FN2CPerUserBool
  *
  * Unreal also reads the project's Config/DefaultEditorPerProjectUserSettings.ini (and the Base and platform files) as
  * lower layers of that config, so a committed file could set these properties for everyone who opens the project.
- * The security switches are therefore not read from the loaded properties: IsMcpServerEnabled() and
- * IsMcpPythonExecutionAllowed() take the value only from the user's own layers and fall back to the code default,
- * ignoring (with one warning) any value from a project-shared layer (card 0423).
+ * The security switches are therefore not read from the loaded properties: IsMcpServerEnabled(),
+ * IsMcpPythonExecutionAllowed() and AreMcpWritesOutsideProjectAllowed() take the value only from the user's own layers
+ * and fall back to the code default, ignoring (with one warning) any value from a project-shared layer (cards 0423, 0182).
  */
 UCLASS(Config = EditorPerProjectUserSettings, meta = (DisplayName = "Node to Code (User)"))
 class NODETOCODE_API UN2CUserSettings : public UDeveloperSettings
@@ -38,9 +38,10 @@ class NODETOCODE_API UN2CUserSettings : public UDeveloperSettings
 public:
 	virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
 
-	/** Code defaults of the two security switches; a project-shared config layer cannot change them. */
+	/** Code defaults of the security switches; a project-shared config layer cannot change them. */
 	static constexpr bool bDefaultEnableMcpServer = true;
 	static constexpr bool bDefaultAllowMcpPythonExecution = false;
+	static constexpr bool bDefaultAllowMcpWritesOutsideProject = false;
 
 	/** Start the MCP server when the editor starts. Requires an editor restart. Read through IsMcpServerEnabled(). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MCP Server",
@@ -58,6 +59,17 @@ public:
 	bool bAllowMcpPythonExecution = bDefaultAllowMcpPythonExecution;
 
 	/**
+	 * Let the MCP tools that create, save, copy, move or rename content write outside the project's own content
+	 * (/Game and the project's plugins): to /Engine, engine and Fab plugins, and NodeToCode's own /NodeToCode content.
+	 * Such writes change files every project on the machine shares and are lost when the engine or plugin updates.
+	 * Requires an editor restart. Read through AreMcpWritesOutsideProjectAllowed(), never directly.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MCP Server",
+		meta = (DisplayName = "Allow MCP Writes Outside Project", ConfigRestartRequired = true,
+			ToolTip = "Lets MCP tools create, save, copy, move and rename assets and folders outside /Game and this project's own plugins: in /Engine, engine and Fab plugins, and /NodeToCode. Those files are shared by every project on this machine and replaced on update. Off by default, and only your own setting counts: a value in the project's Config folder is ignored. Requires an editor restart."))
+	bool bAllowMcpWritesOutsideProject = bDefaultAllowMcpWritesOutsideProject;
+
+	/**
 	 * Whether the MCP server may start: the user's own Enable MCP Server value, or on when the user never set it.
 	 * Read once per editor session (the setting needs a restart); a value from a project-shared layer is ignored.
 	 */
@@ -68,6 +80,12 @@ public:
 	 * Python Execution value, or off when the user never set it. A committed project file cannot turn it on.
 	 */
 	static bool IsMcpPythonExecutionAllowed();
+
+	/**
+	 * Whether MCP tools may write content outside /Game and the project's plugins: the user's own Allow MCP Writes
+	 * Outside Project value, or off when the user never set it. A committed project file cannot turn it on.
+	 */
+	static bool AreMcpWritesOutsideProjectAllowed();
 
 	/**
 	 * Reads Key in Section of Branch from the user's own layers only: the Saved/Config file (Branch->SavedLayer) and

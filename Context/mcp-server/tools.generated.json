@@ -878,7 +878,7 @@
 		{
 			"name": "copy-asset",
 			"toolset": "ContentBrowserTools",
-			"description": "Copy an asset to a new asset path in the content browser. The source may be under /Game/ or /Engine/; the destination must be under /Game/. Missing destination folders are created. An existing asset at the destination is never replaced: the copy fails. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /<PluginName>/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy fails. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "AssetTools.duplicate",
 			"longRunning": false,
@@ -3483,7 +3483,7 @@
 					"name": "asset_path",
 					"type": "string",
 					"required": true,
-					"description": "Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). Must start with /Game/ or /Engine/: other mount points, such as a plugin's /<PluginName>/, are refused."
+					"description": "Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). It may be under any mounted root: /Game/, /Engine/ or a plugin's /<PluginName>/."
 				},
 				{
 					"name": "bring_to_front",
@@ -3508,7 +3508,7 @@
 					"asset_path":
 					{
 						"type": "string",
-						"description": "Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). Must start with /Game/ or /Engine/: other mount points, such as a plugin's /<PluginName>/, are refused."
+						"description": "Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). It may be under any mounted root: /Game/, /Engine/ or a plugin's /<PluginName>/."
 					},
 					"bring_to_front":
 					{
@@ -3658,7 +3658,7 @@
 					"type": "boolean",
 					"required": false,
 					"default": false,
-					"description": "Whether to create the folder if it doesn't exist"
+					"description": "Whether to create the folder if it doesn't exist; only under /Game or a project plugin's content"
 				}
 			],
 			"inputSchema":
@@ -3680,7 +3680,7 @@
 					"create_if_missing":
 					{
 						"type": "boolean",
-						"description": "Whether to create the folder if it doesn't exist",
+						"description": "Whether to create the folder if it doesn't exist; only under /Game or a project plugin's content",
 						"default": false
 					}
 				},

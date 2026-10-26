@@ -731,7 +731,8 @@ curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 `UN2CUserSettings` (Project Settings > Plugins > Node to Code (User), saved to the user's
 `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`). Unreal also reads a committed
 `Config/DefaultEditorPerProjectUserSettings.ini` (and the Base and platform files) as lower layers of that config, so
-code reads the two switches through `UN2CUserSettings::IsMcpServerEnabled()` and `IsMcpPythonExecutionAllowed()`,
+code reads the switches through `UN2CUserSettings::IsMcpServerEnabled()`, `IsMcpPythonExecutionAllowed()` and
+`AreMcpWritesOutsideProjectAllowed()`,
 never the properties: they take the value from the branch's `SavedLayer` and `CommandLineOverrides` only
 (`FConfigBranch`, the same on UE 5.6, 5.7 and 5.8), fall back to the code default, log one warning when a shared
 layer set something else, and write the value in effect back to the settings object so Project Settings shows it
@@ -743,8 +744,12 @@ picks, the choice is not saved; the warning says to remove it from the project f
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
   `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so tool search cannot reach them either.
   Without it the default mode lists 63 tools, not 66.
+- **Allow MCP Writes Outside Project** (default off): lets the content-writing tools write outside `/Game` and the
+  project's plugins (`/Engine`, engine and Fab plugins, `/NodeToCode`); read by
+  `FN2CMcpContentBrowserUtils::IsWritableContentPath` (card 0182; the policy is "Where tools may write" in
+  `Source/Private/MCP/Tools/Implementations/ContentBrowser/AGENTS.md`). It changes no tool count.
 
-Both are read once per editor session, so a change needs an editor restart.
+All are read once per editor session, so a change needs an editor restart.
 
 Ports and shutdown (card 0112): `FN2CMcpHttpServerManager::StartServer(Port, Range)` checks each port with a bind of
 its own before handing it to HTTPServer (`GetHttpRouter(Port, true)`), so a port another process or plugin holds is

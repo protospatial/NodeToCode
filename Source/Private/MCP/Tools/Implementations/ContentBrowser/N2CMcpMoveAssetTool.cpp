@@ -178,6 +178,13 @@ bool FN2CMcpMoveAssetTool::ValidateSourceAsset(const FString& AssetPath, FString
 	// Normalize the path
 	FString NormalizedPath = FN2CMcpContentBrowserUtils::NormalizeContentPath(AssetPath);
 
+	// A move rewrites the source package too: only where MCP tools may write, /Game and the project's plugins
+	// (card 0182)
+	if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(NormalizedPath, OutErrorMessage))
+	{
+		return false;
+	}
+
 	// Convert to object path if needed (add .AssetName if not present)
 	FString ObjectPath = NormalizedPath;
 	if (!NormalizedPath.Contains(TEXT(".")))
@@ -219,6 +226,12 @@ bool FN2CMcpMoveAssetTool::ValidateDestinationPath(const FString& DestinationPat
 {
 	// Normalize the destination directory path
 	FString NormalizedDestPath = FN2CMcpContentBrowserUtils::NormalizeContentPath(DestinationPath);
+
+	// Only where MCP tools may write: /Game and the project's plugins (card 0182)
+	if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(NormalizedDestPath, OutErrorMessage))
+	{
+		return false;
+	}
 
 	// Build the full destination package path
 	FString PackagePath = NormalizedDestPath / NewName;

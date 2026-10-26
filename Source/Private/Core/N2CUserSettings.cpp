@@ -35,6 +35,7 @@ namespace N2CUserSettingsPrivate
 	{
 		bool bEnableMcpServer = UN2CUserSettings::bDefaultEnableMcpServer;
 		bool bAllowMcpPythonExecution = UN2CUserSettings::bDefaultAllowMcpPythonExecution;
+		bool bAllowMcpWritesOutsideProject = UN2CUserSettings::bDefaultAllowMcpWritesOutsideProject;
 	};
 
 	void WarnIgnored(const TCHAR* Key, const TCHAR* DisplayName, bool bIgnoredValue, bool bUsedValue)
@@ -48,7 +49,7 @@ namespace N2CUserSettingsPrivate
 			*FPaths::ConvertRelativePathToFull(GEditorPerProjectIni), bUsedValue ? TEXT("on") : TEXT("off")));
 	}
 
-	/** Resolved once per editor session: both switches need an editor restart, and the warning is logged once. */
+	/** Resolved once per editor session: every switch needs an editor restart, and each warning is logged once. */
 	const FEffectiveSwitches& GetEffectiveSwitches()
 	{
 		static const FEffectiveSwitches Switches = []()
@@ -61,7 +62,7 @@ namespace N2CUserSettingsPrivate
 			if (!Branch)
 			{
 				FN2CLogger::Get().LogWarning(FString::Printf(
-					TEXT("Could not find the %s config branch: MCP switches use their defaults (server on, Python execution off)"),
+					TEXT("Could not find the %s config branch: MCP switches use their defaults (server on, Python execution off, writes outside the project off)"),
 					*SettingsClass->ClassConfigName.ToString()));
 			}
 
@@ -69,6 +70,8 @@ namespace N2CUserSettingsPrivate
 				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bEnableMcpServer), UN2CUserSettings::bDefaultEnableMcpServer);
 			const FN2CPerUserBool Python = UN2CUserSettings::ResolvePerUserBool(Branch, Section,
 				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bAllowMcpPythonExecution), UN2CUserSettings::bDefaultAllowMcpPythonExecution);
+			const FN2CPerUserBool Writes = UN2CUserSettings::ResolvePerUserBool(Branch, Section,
+				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bAllowMcpWritesOutsideProject), UN2CUserSettings::bDefaultAllowMcpWritesOutsideProject);
 
 			if (Server.bIgnoredSharedValue)
 			{
@@ -78,15 +81,21 @@ namespace N2CUserSettingsPrivate
 			{
 				WarnIgnored(TEXT("bAllowMcpPythonExecution"), TEXT("Allow MCP Python Execution"), !Python.bValue, Python.bValue);
 			}
+			if (Writes.bIgnoredSharedValue)
+			{
+				WarnIgnored(TEXT("bAllowMcpWritesOutsideProject"), TEXT("Allow MCP Writes Outside Project"), !Writes.bValue, Writes.bValue);
+			}
 
 			Result.bEnableMcpServer = Server.bValue;
 			Result.bAllowMcpPythonExecution = Python.bValue;
+			Result.bAllowMcpWritesOutsideProject = Writes.bValue;
 
 			// Show the value in effect in Project Settings, not the ignored project one
 			if (Settings)
 			{
 				Settings->bEnableMcpServer = Result.bEnableMcpServer;
 				Settings->bAllowMcpPythonExecution = Result.bAllowMcpPythonExecution;
+				Settings->bAllowMcpWritesOutsideProject = Result.bAllowMcpWritesOutsideProject;
 			}
 			return Result;
 		}();
@@ -102,6 +111,11 @@ bool UN2CUserSettings::IsMcpServerEnabled()
 bool UN2CUserSettings::IsMcpPythonExecutionAllowed()
 {
 	return N2CUserSettingsPrivate::GetEffectiveSwitches().bAllowMcpPythonExecution;
+}
+
+bool UN2CUserSettings::AreMcpWritesOutsideProjectAllowed()
+{
+	return N2CUserSettingsPrivate::GetEffectiveSwitches().bAllowMcpWritesOutsideProject;
 }
 
 FN2CPerUserBool UN2CUserSettings::ResolvePerUserBool(const FConfigBranch* Branch, const FString& Section, FName Key, bool bCodeDefault)

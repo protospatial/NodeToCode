@@ -17,8 +17,8 @@ FMcpToolDefinition FN2CMcpCopyAssetTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("copy-asset"),
-        TEXT("Copy an asset to a new asset path in the content browser. The source may be under /Game/ or /Engine/; ")
-        TEXT("the destination must be under /Game/. Missing destination folders are created. ")
+        TEXT("Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /<PluginName>/); ")
+        TEXT("the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. ")
         TEXT("An existing asset at the destination is never replaced: the copy fails."),
         N2CMcpToolsets::ContentBrowser
     );
@@ -175,14 +175,8 @@ bool FN2CMcpCopyAssetTool::ValidateSourceAsset(const FString& AssetPath, FString
     OutNormalizedPath = AssetPath;
     OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-    // Ensure it starts with /Game or /Engine or plugin path
-    if (!OutNormalizedPath.StartsWith(TEXT("/Game/")) && 
-        !OutNormalizedPath.StartsWith(TEXT("/Engine/")) &&
-        !OutNormalizedPath.Contains(TEXT("/Plugins/")))
-    {
-        OutErrorMessage = TEXT("Asset path must start with /Game/, /Engine/, or a valid plugin path");
-        return false;
-    }
+    // Copying only reads the source, so an asset under any mounted root will do (/Game, /Engine, a plugin's
+    // /<PluginName>): the asset registry lookup below decides
 
     // Check if asset exists using AssetRegistry
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -224,11 +218,9 @@ bool FN2CMcpCopyAssetTool::ValidateDestinationPath(const FString& DestinationPat
     OutNormalizedPath = DestinationPath;
     OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-    // Ensure it starts with /Game or plugin path (no /Engine for destination)
-    if (!OutNormalizedPath.StartsWith(TEXT("/Game/")) && 
-        !OutNormalizedPath.Contains(TEXT("/Plugins/")))
+    // Only where MCP tools may write: /Game and the project's plugins (card 0182)
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutNormalizedPath, OutErrorMessage))
     {
-        OutErrorMessage = TEXT("Destination path must start with /Game/ or a valid plugin path. Cannot copy to /Engine/");
         return false;
     }
 

@@ -64,8 +64,8 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Description**: Opens a Blueprint asset in the Blueprint Editor
 - **Parameters**:
   - `asset_path` (required): Object path (`/Game/Folder/BP_Name.BP_Name`) or package path (`/Game/Folder/BP_Name`).
-    `FN2CMcpOpenBlueprintAssetTool::ValidateBlueprintAssetPath` accepts only paths starting with `/Game/`, `/Engine/`
-    or `/Plugin`, so Blueprints in a plugin mounted at `/<PluginName>/` are refused
+    `FN2CMcpOpenBlueprintAssetTool::ValidateBlueprintAssetPath` accepts any mounted root (`/Game/`, `/Engine/`, a
+    plugin's `/<PluginName>/`), as the other read tools do
   - `bring_to_front` (optional, default true): Focus the editor window
   - `focus_graph` (optional): Name of an event, function, macro or delegate graph to focus, matched
     case-insensitively (`FN2CMcpOpenBlueprintAssetTool::FocusOnGraph`). An Actor's construction script is the function
@@ -98,9 +98,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### copy-asset
 - **Description**: Copies an asset to a new asset path
 - **Parameters**:
-  - `sourcePath` (required): Package path or object path, under `/Game/` or `/Engine/`
+  - `sourcePath` (required): Package path or object path under any mounted root (copying only reads it)
   - `destinationPath` (required): Package path of the new asset including its name (e.g.,
-    `/Game/Folder/BP_Copy`); it must start with `/Game/` (`FN2CMcpCopyAssetTool::ValidateDestinationPath`), its name
+    `/Game/Folder/BP_Copy`); the write policy (`FN2CMcpContentBrowserUtils::IsWritableContentPath`, see "Where tools may write") applies, its name
     may not contain spaces or dots, and missing folders are created
   - `overwriteExisting` (optional, default false): With false, an existing destination is reported before copying
     (`Destination asset already exists`). With true that check is skipped, but `UEditorAssetSubsystem::DuplicateAsset`
@@ -112,8 +112,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### create-folder
 - **Description**: Creates a folder in the content browser and navigates to it
 - **Parameters**:
-  - `folderPath` (required): Folder to create, under `/Game/` (`/Game` itself, `/Engine/...` and plugin mount points
-    are refused by `FN2CMcpCreateFolderTool::ValidateFolderPath`); no `..`, `~`, `*`, `?` or dots in the name
+  - `folderPath` (required): Folder to create, under `/Game/` or a project plugin's `/<PluginName>/` (the write
+    policy); no `..`, `~`, `*`, `?` or dots in the name, and not a Windows device name (CON, PRN, AUX, NUL, COM1-9,
+    LPT1-9: `FN2CMcpContentBrowserUtils::IsReservedDeviceName`, shared with `rename-folder`)
   - `createParents` (optional, default false): Create missing parent folders; without it a missing parent is an
     error
 - **Returns**: `message`, `folderPath`, `navigated`, `tips`. An existing folder is an error
@@ -122,8 +123,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### move-folder
 - **Description**: Moves the assets of a folder (recursively) into `<destinationPath>/<folder name>`
 - **Parameters**:
-  - `sourcePath` (required): Folder to move, under `/Game/` (not `/Game` itself)
-  - `destinationPath` (required): Parent folder under `/Game/`; created if missing. `<destinationPath>/<folder name>`
+  - `sourcePath` (required): Folder to move, under the write policy's roots (not a root itself: `/Game`,
+    `/<PluginName>`)
+  - `destinationPath` (required): Parent folder under the write policy's roots; created if missing. `<destinationPath>/<folder name>`
     must not exist yet
   - `showNotification` (optional, default true): Show an editor notification
 - **Returns**: `message`, `sourcePath`, `destinationPath` (the new folder path), `assetsMoved`, `navigated`, `tips`
@@ -138,7 +140,8 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   - `sourcePath` (required): Package path `/Game/Folder/Asset` (as `read-content-browser-path` returns it) or object
     path `/Game/Folder/Asset.Asset`. With an object path, also pass `newName`: without it
     `FN2CMcpMoveAssetTool::Execute` takes the name from the path including `.Asset`, and the move fails
-  - `destinationPath` (required): Destination folder (e.g., '/Game/Blueprints/Characters'); created if missing
+  - `destinationPath` (required): Destination folder (e.g., '/Game/Blueprints/Characters'); created if missing.
+    The write policy applies to it and to `sourcePath`, since a move rewrites both packages
   - `newName` (optional): New asset name (default: the source's name)
   - `showNotification` (optional, default true): Show an editor notification
 - **Returns**: `success`, `oldPath`, `newPath` (package paths), `objectPath`, `operation` (`move`, or `rename` when
@@ -149,10 +152,10 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### rename-asset
 - **Description**: Renames an asset in place, or moves it to a full new asset path
 - **Parameters**:
-  - `sourcePath` (required): Package or object path under `/Game/` (`/Engine/` assets are refused)
+  - `sourcePath` (required): Package or object path under the write policy's roots (`/Engine/` assets are refused)
   - `newName` (optional): New name in the same folder
-  - `destinationPath` (optional): Full new package path including the name, under `/Game/`; missing folders are
-    created
+  - `destinationPath` (optional): Full new package path including the name, under the write policy's roots; missing
+    folders are created
   - `showNotification` (optional, default true): Show an editor notification
 - **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetSelected`, `wasMoved`, `tips`
 - **Note**: Give exactly one of `newName` and `destinationPath`; both, or neither, is an error
@@ -161,8 +164,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### rename-folder
 - **Description**: Renames a folder by moving its assets (recursively) to a sibling folder
 - **Parameters**:
-  - `sourcePath` (required): Folder under `/Game/` (not `/Game` itself)
-  - `newName` (required): New folder name (no slashes, dots, spaces, `~`, `*`, `?`, and not a reserved device name)
+  - `sourcePath` (required): Folder under the write policy's roots (not a root itself: `/Game`, `/<PluginName>`)
+  - `newName` (required): New folder name (no slashes, dots, spaces, `~`, `*`, `?`, and not a Windows device name:
+    exactly CON, PRN, AUX, NUL, COM1-9 or LPT1-9, so `Components` or `Common` are fine)
   - `showNotification` (optional, default true): Show an editor notification
 - **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetsRenamed`, `navigated`, `tips`
 - **Behaviour** (`FN2CMcpRenameFolderTool::MoveFolderContents`): as for `move-folder`, the old folder is left behind,
@@ -182,9 +186,25 @@ refuses roots that are not mounted (the error lists the mounted ones). That cove
 There is no `/Plugins` root: `/Plugins` is refused (plugin content mounts at `/<PluginName>`; the `/All/Plugins/...`
 paths in `current_selected_paths` are the browser's virtual view, not package paths).
 
-The asset tools are narrower: `copy-asset`, `create-folder`, `move-folder`, `rename-asset` and `rename-folder` write
-only under `/Game/` (their checks also accept a path containing `/Plugins/`, which no mounted root does), and
-`open-blueprint-asset` reads only `/Game/`, `/Engine/` and paths starting with `/Plugin`.
+`open-blueprint-asset` and the source of `copy-asset` accept any mounted root too.
+
+### Where tools may write (card 0182)
+Every tool that creates, saves, copies, moves or renames content checks
+`FN2CMcpContentBrowserUtils::IsWritableContentPath` on each destination, and on the source of a move or rename
+(`create-blueprint-class`, `save-blueprint`, `copy-asset`, `move-asset`, `rename-asset`, `create-folder`, `move-folder`,
+`rename-folder`, `open-content-browser-path` with `create_if_missing`; `CreateContentFolder` checks it too). It
+resolves the mount with `FPackageName::GetPackageMountPoint` and allows:
+- `/Game`
+- the content mount of a project plugin (`IPluginManager::FindPlugin(<mount>)`, `GetLoadedFrom() ==
+  EPluginLoadedFrom::Project`, `CanContainContent()`), except `/NodeToCode`, whose content ships with the plugin
+
+Everything else (`/Engine`, engine and Fab plugins, `/NodeToCode`, `/Script`, `/Temp`, `/Memory`, unmounted roots)
+is refused with a message naming the per-user setting **Allow MCP Writes Outside Project**
+(`UN2CUserSettings::AreMcpWritesOutsideProjectAllowed`, off by default, read only from the user's own config layers,
+needs a restart). With it on, any mounted root `FPackageName::IsValidLongPackageName(Path, false)` accepts is allowed,
+so `/Script`, `/Temp` and `/Memory` stay refused. Mount roots themselves (`IsContentMountRoot`) are never moved or
+renamed. Python (`run-python`, `UN2CStructUtilsLibrary`) is not covered: with Python execution on, an agent can write
+anywhere the editor can. Spec: `NodeToCode.MCP.Content` ("the write path policy", "a project plugin's content mount").
 
 ### Path Format
 - Package paths start with a root; `NormalizeContentPath` turns backslashes into slashes, drops a trailing slash and
@@ -769,8 +789,9 @@ object form `AssetName.AssetName`.
 
 ## Implementation Notes
 
-- Path checks: `FN2CMcpContentBrowserUtils::ValidateContentPath` (navigation and listing) and each asset tool's own
-  `Validate*` functions (prefix checks on `/Game/`, `/Engine/`, `/Plugins/`)
+- Path checks: `FN2CMcpContentBrowserUtils::ValidateContentPath` (reading: any mounted root) and
+  `FN2CMcpContentBrowserUtils::IsWritableContentPath` (writing: `/Game` and project plugins), called from each asset
+  tool's own `Validate*` functions
 - Listing: `FN2CMcpContentBrowserUtils::EnumerateItemsAtPathAsJson` (folders from disk, assets from the asset
   registry, immediate children only); pagination from `CalculatePagination`
 - Search: one `FARFilter` over `/Game` (and `/Engine`) with exact class paths, then name/path matching and scoring

@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpContentBrowserUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
@@ -42,7 +43,7 @@ FMcpToolDefinition FN2CMcpOpenBlueprintAssetTool::GetDefinition() const
 	// asset_path property (required)
 	TSharedPtr<FJsonObject> AssetPathProp = MakeShareable(new FJsonObject);
 	AssetPathProp->SetStringField(TEXT("type"), TEXT("string"));
-	AssetPathProp->SetStringField(TEXT("description"), TEXT("Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). Must start with /Game/ or /Engine/: other mount points, such as a plugin's /<PluginName>/, are refused."));
+	AssetPathProp->SetStringField(TEXT("description"), TEXT("Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). It may be under any mounted root: /Game/, /Engine/ or a plugin's /<PluginName>/."));
 	Properties->SetObjectField(TEXT("asset_path"), AssetPathProp);
 	
 	// bring_to_front property (optional)
@@ -175,12 +176,18 @@ bool FN2CMcpOpenBlueprintAssetTool::ValidateBlueprintAssetPath(const FString& As
 		return false;
 	}
 	
-	// Check if path starts with /Game, /Engine, or /Plugin
-	if (!AssetPath.StartsWith(TEXT("/Game/")) && 
-	    !AssetPath.StartsWith(TEXT("/Engine/")) && 
-	    !AssetPath.StartsWith(TEXT("/Plugin")))
+	// Opening only reads: any mounted root will do (/Game, /Engine, a plugin's /<PluginName>), as for the other
+	// read tools (card 0182)
+	FString PackagePath = AssetPath;
+	int32 DotIndex = INDEX_NONE;
+	if (PackagePath.FindChar(TEXT('.'), DotIndex))
 	{
-		OutErrorMsg = TEXT("Asset path must start with /Game/, /Engine/, or /Plugin");
+		PackagePath.LeftInline(DotIndex);
+	}
+	if (!AssetPath.StartsWith(TEXT("/")) || !FN2CMcpContentBrowserUtils::ValidateContentPath(PackagePath, OutErrorMsg))
+	{
+		OutErrorMsg = FString::Printf(TEXT("Asset path must be under a mounted content root (/Game/, /Engine/ or a plugin's /<PluginName>/): %s"),
+			OutErrorMsg.IsEmpty() ? TEXT("it must start with '/'") : *OutErrorMsg);
 		return false;
 	}
 	

@@ -40,6 +40,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   - `blueprintPath` (optional): Asset path of the Blueprint to save. If not provided, uses the currently focused Blueprint
   - `saveOnlyIfDirty` (optional): Only save if the Blueprint has unsaved changes (default: true)
 - **Returns**: Save operation results including success status, package information, and timestamp
+- **Refused** (`SAVE_REFUSED:`): a Blueprint outside `/Game` and the project's plugins (`/Engine`, an engine or Fab
+  plugin, `/NodeToCode`), checked with `FN2CMcpContentBrowserUtils::IsWritableContentPath` before the dirty check,
+  unless the user's **Allow MCP Writes Outside Project** is on (card 0182)
 - **Use Case**: Persisting Blueprint changes, automated save workflows, asset management
 
 ## Common Usage Patterns

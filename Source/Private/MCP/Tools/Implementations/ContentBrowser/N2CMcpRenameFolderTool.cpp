@@ -171,24 +171,22 @@ bool FN2CMcpRenameFolderTool::ValidateFolderPath(const FString& Path, FString& O
     OutNormalizedPath = Path;
     OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-    // Ensure it starts with a valid root
-    if (!OutNormalizedPath.StartsWith(TEXT("/Game/")) && 
-        !OutNormalizedPath.Contains(TEXT("/Plugins/")))
-    {
-        OutErrorMessage = TEXT("Folder path must start with /Game/ or a valid plugin path. Cannot rename folders in /Engine/");
-        return false;
-    }
-
     // Remove trailing slash if present
     if (OutNormalizedPath.EndsWith(TEXT("/")))
     {
         OutNormalizedPath = OutNormalizedPath.LeftChop(1);
     }
 
-    // Don't allow renaming root folders
-    if (OutNormalizedPath == TEXT("/Game"))
+    // Only where MCP tools may write: /Game and the project's plugins (card 0182)
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutNormalizedPath, OutErrorMessage))
     {
-        OutErrorMessage = TEXT("Cannot rename the /Game root folder");
+        return false;
+    }
+
+    // Don't allow renaming root folders (/Game, a plugin's /<PluginName>)
+    if (FN2CMcpContentBrowserUtils::IsContentMountRoot(OutNormalizedPath))
+    {
+        OutErrorMessage = FString::Printf(TEXT("Cannot rename the content root %s"), *OutNormalizedPath);
         return false;
     }
 
@@ -227,13 +225,8 @@ bool FN2CMcpRenameFolderTool::ValidateNewName(const FString& NewName, FString& O
         return false;
     }
 
-    // Check for reserved names
-    if (NewName.Equals(TEXT("CON"), ESearchCase::IgnoreCase) ||
-        NewName.Equals(TEXT("PRN"), ESearchCase::IgnoreCase) ||
-        NewName.Equals(TEXT("AUX"), ESearchCase::IgnoreCase) ||
-        NewName.Equals(TEXT("NUL"), ESearchCase::IgnoreCase) ||
-        NewName.StartsWith(TEXT("COM"), ESearchCase::IgnoreCase) ||
-        NewName.StartsWith(TEXT("LPT"), ESearchCase::IgnoreCase))
+    // Check for reserved names: the Windows device names exactly, so Components or Common are fine
+    if (FN2CMcpContentBrowserUtils::IsReservedDeviceName(NewName))
     {
         OutErrorMessage = TEXT("Folder name is a reserved system name");
         return false;

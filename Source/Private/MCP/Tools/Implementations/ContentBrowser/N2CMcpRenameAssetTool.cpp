@@ -198,19 +198,10 @@ bool FN2CMcpRenameAssetTool::ValidateSourceAsset(const FString& AssetPath, FStri
     OutNormalizedPath = AssetPath;
     OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-    // Ensure it starts with /Game or /Engine or plugin path
-    if (!OutNormalizedPath.StartsWith(TEXT("/Game/")) && 
-        !OutNormalizedPath.StartsWith(TEXT("/Engine/")) &&
-        !OutNormalizedPath.Contains(TEXT("/Plugins/")))
+    // A rename rewrites the source package too: only where MCP tools may write, /Game and the project's plugins
+    // (card 0182)
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutNormalizedPath, OutErrorMessage))
     {
-        OutErrorMessage = TEXT("Asset path must start with /Game/, /Engine/, or a valid plugin path");
-        return false;
-    }
-
-    // Cannot rename /Engine assets
-    if (OutNormalizedPath.StartsWith(TEXT("/Engine/")))
-    {
-        OutErrorMessage = TEXT("Cannot rename Engine assets. Only /Game/ and plugin assets can be renamed");
         return false;
     }
 
@@ -258,11 +249,9 @@ bool FN2CMcpRenameAssetTool::ValidateDestination(const FString& SourcePath, cons
         OutDestinationPath = NewNameOrPath;
         OutDestinationPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-        // Ensure it starts with /Game or plugin path (no /Engine for destination)
-        if (!OutDestinationPath.StartsWith(TEXT("/Game/")) && 
-            !OutDestinationPath.Contains(TEXT("/Plugins/")))
+        // Only where MCP tools may write: /Game and the project's plugins (card 0182)
+        if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutDestinationPath, OutErrorMessage))
         {
-            OutErrorMessage = TEXT("Destination path must start with /Game/ or a valid plugin path. Cannot rename to /Engine/");
             return false;
         }
 

@@ -75,9 +75,8 @@ void FN2CNameValidationSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-contentbrowser-fs-11: ValidateNewName refuses any name that starts with COM or LPT.
-		// Enable (xIt -> It) with the fix.
-		xIt(TEXT("accepts ordinary names that start with a device name's letters"), [this]()
+		// mcp-tools-contentbrowser-fs-11 (card 0182): ValidateNewName refused any name that started with COM or LPT
+		It(TEXT("accepts ordinary names that start with a device name's letters"), [this]()
 		{
 			for (const FString& Name : OrdinaryNames())
 			{
@@ -108,9 +107,9 @@ void FN2CNameValidationSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-contentbrowser-fs-11: create-folder checks only CON, PRN, AUX and NUL, so COM1-9 and
-		// LPT1-9 get through and the two tools disagree. Enable (xIt -> It) with the shared validator.
-		xIt(TEXT("refuses COM1-9 and LPT1-9 like rename-folder does"), [this]()
+		// mcp-tools-contentbrowser-fs-11 (card 0182): create-folder checked only CON, PRN, AUX and NUL; both tools now
+		// share FN2CMcpContentBrowserUtils::IsReservedDeviceName
+		It(TEXT("refuses COM1-9 and LPT1-9 like rename-folder does"), [this]()
 		{
 			for (const FString& Name : DeviceNames())
 			{

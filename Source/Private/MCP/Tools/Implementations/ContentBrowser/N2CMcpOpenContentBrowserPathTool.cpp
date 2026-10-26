@@ -41,7 +41,7 @@ FMcpToolDefinition FN2CMcpOpenContentBrowserPathTool::GetDefinition() const
 	// create_if_missing property
 	TSharedPtr<FJsonObject> CreateIfMissingProp = MakeShareable(new FJsonObject);
 	CreateIfMissingProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	CreateIfMissingProp->SetStringField(TEXT("description"), TEXT("Whether to create the folder if it doesn't exist"));
+	CreateIfMissingProp->SetStringField(TEXT("description"), TEXT("Whether to create the folder if it doesn't exist; only under /Game or a project plugin's content"));
 	CreateIfMissingProp->SetBoolField(TEXT("default"), false);
 	Properties->SetObjectField(TEXT("create_if_missing"), CreateIfMissingProp);
 	
@@ -95,7 +95,12 @@ FMcpToolCallResult FN2CMcpOpenContentBrowserPathTool::Execute(const TSharedPtr<F
 		{
 			if (bCreateIfMissing)
 			{
+				// Creating the folder is a write: only where MCP tools may write, /Game and the project's plugins (card 0182)
 				FString CreateError;
+				if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(Path, CreateError))
+				{
+					return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Path does not exist and was not created: %s"), *CreateError));
+				}
 				if (!FN2CMcpContentBrowserUtils::CreateContentFolder(Path, CreateError))
 				{
 					FN2CLogger::Get().LogError(FString::Printf(TEXT("open-content-browser-path: Failed to create folder - %s"), *CreateError));

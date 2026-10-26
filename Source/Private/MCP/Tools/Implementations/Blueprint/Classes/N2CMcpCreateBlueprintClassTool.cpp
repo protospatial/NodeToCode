@@ -430,6 +430,12 @@ bool FN2CMcpCreateBlueprintClassTool::ValidateAndPrepareAssetPath(const FString&
 		OutErrorMessage = FString::Printf(TEXT("Invalid assetPath: %s"), *PathError);
 		return false;
 	}
+	// Only where MCP tools may write: /Game and the project's plugins (card 0182)
+	if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutFolder, PathError))
+	{
+		OutErrorMessage = FString::Printf(TEXT("Invalid assetPath: %s"), *PathError);
+		return false;
+	}
 
 	OutAssetName = AssetName;
 	OutPackageName = OutFolder / OutAssetName;
