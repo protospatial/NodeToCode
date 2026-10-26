@@ -25,7 +25,8 @@ FMcpToolDefinition FN2CMcpFindNodesInGraphTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("find-nodes-in-graph"),
         TEXT("Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. ")
-        TEXT("Returns matching nodes in N2C JSON format with full node and pin GUID information.")
+        TEXT("Returns matching nodes in N2C JSON format with full node and pin GUID information."),
+        N2CMcpToolsets::BlueprintGraph
     );
     
     // Define input schema

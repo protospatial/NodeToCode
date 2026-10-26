@@ -511,12 +511,12 @@ void FN2CBatchToolsSpec::Define()
 			TestTrue(TEXT("readOnlyHint false"), T.Annotations.ReadOnlyHint == TOptional<bool>(false));
 			TestTrue(TEXT("openWorldHint true"), T.Annotations.OpenWorldHint == TOptional<bool>(true));
 			TestTrue(TEXT("destructiveHint false"), T.Annotations.DestructiveHint == TOptional<bool>(false));
-			TestEqual(TEXT("Translation category"), T.Category, FString(TEXT("Translation")));
+			TestTrue(TEXT("TranslationTools toolset"), T.Toolset == &N2CMcpToolsets::Translation);
 			TestFalse(TEXT("titled"), T.Title.IsEmpty());
 			const FMcpToolDefinition E = Export->GetDefinition();
 			TestTrue(TEXT("export is read-only"), E.Annotations.IsReadOnly());
 			TestFalse(TEXT("export is not long-running"), E.bIsLongRunning);
-			TestEqual(TEXT("Blueprint Discovery category"), E.Category, FString(TEXT("Blueprint Discovery")));
+			TestTrue(TEXT("BlueprintDiscoveryTools toolset"), E.Toolset == &N2CMcpToolsets::BlueprintDiscovery);
 		});
 
 		It(TEXT("translates two Blueprints in-band with the call's language and saves folders the viewer loads"), [this]()

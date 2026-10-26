@@ -23,7 +23,7 @@ FMcpToolDefinition FN2CMcpGetBlueprintFunctionLocalVariables::GetDefinition() co
         TEXT("Extract local variables from the currently focused Blueprint function graph")
     ,
 
-    	TEXT("Blueprint Variable Management")
+    	N2CMcpToolsets::BlueprintVariable
 
     );
     

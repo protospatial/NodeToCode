@@ -4,7 +4,7 @@ This directory contains MCP tools for interacting with Blueprint assets in Unrea
 
 ## Overview
 
-Blueprint tools are organized into the following categories:
+Blueprint tools are organized into these folders (each tool names its toolset in `N2CMcpToolsets.h`; the table is in `Source/Private/MCP/Tools/AGENTS.md`):
 
 - **[Analysis/](Analysis/)** - Tools for inspecting and analyzing Blueprint content
 - **[Classes/](Classes/)** - Tools for discovering and creating Blueprint classes

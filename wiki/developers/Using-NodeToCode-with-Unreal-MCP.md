@@ -17,8 +17,8 @@ In **Project Settings → Plugins → Node to Code → MCP Server**:
 
 | Setting | Use | Why |
 |---|---|---|
-| **Enable Python Script-Only Mode** | off (default) | On, only the Python tools are listed: no translation or Blueprint tools |
-| **Enable Dynamic Tool Discovery** | off (default) | On, only `assess-needed-tools` is listed, and Epic's client never lists tools again |
+| **Tool Profile** | Default toolsets (default) | Python scripting only lists only the Python tools: no translation or Blueprint tools |
+| **Tool Exposure** | List every tool (default) | Tool search lists only `list_toolsets`, `describe_toolset` and `call_tool`, which Epic's registry would show nested inside its own tool search |
 | **Server Port** | 27000, or a port only this project uses | The entry below names one fixed URL |
 | **Port Fallback Range** | 1 | With more, a taken port moves the server and the entry points at the wrong server (or at another editor's NodeToCode) |
 

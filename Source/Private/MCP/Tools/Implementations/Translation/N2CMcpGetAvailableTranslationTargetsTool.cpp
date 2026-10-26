@@ -18,7 +18,7 @@ FMcpToolDefinition FN2CMcpGetAvailableTranslationTargetsTool::GetDefinition() co
     FMcpToolDefinition Definition(
         TEXT("get-available-translation-targets"),
         TEXT("Returns the list of programming languages that NodeToCode can translate Blueprints into, including metadata about each language."),
-        TEXT("Translation")
+        N2CMcpToolsets::Translation
     );
     
     // This tool takes no input parameters

@@ -65,7 +65,7 @@ FMcpToolDefinition FN2CMcpSearchBlueprintClassesTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("search-blueprint-classes"),
 		TEXT("Searches for available parent classes for Blueprint creation, similar to the 'Pick Parent Class' dialog. Common parent classes (Actor, Pawn, Character, ActorComponent, UserWidget, ...) come first and are listed whatever the classType and include filters say. totalFound counts every class collected before the search term is applied, not the matches"),
-		TEXT("Blueprint Classes")
+		N2CMcpToolsets::BlueprintClass
 	);
 
 	// Build input schema manually

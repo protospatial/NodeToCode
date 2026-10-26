@@ -22,7 +22,7 @@ FMcpToolDefinition FN2CMcpMoveFolderTool::GetDefinition() const
         TEXT("Move a folder and all its contents to a new location in the content browser")
     ,
 
-    	TEXT("Content Browser")
+    	N2CMcpToolsets::ContentBrowser
 
     );
 

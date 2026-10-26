@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpSavePythonScriptTool::GetDefinition() const
 			 "Stored in Content/Python/scripts/<category>/ and importable as 'from scripts.<category>.<name> import func'. "
 			 "Write modular scripts with focused functions, clear docstrings, and parameterized inputs. "
 			 "Every saved script grows the reusable toolkit for future tasks."),
-		TEXT("Python")
+		N2CMcpToolsets::Python
 	);
 
 	// Build input schema

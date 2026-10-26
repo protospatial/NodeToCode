@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpListPythonScriptsTool::GetDefinition() const
 			 "Returns script names with metadata (description, tags, usage count). "
 			 "Use alongside search-python-scripts to discover reusable scripts before writing new code (DRY principle). "
 			 "Browse by category to find related utilities that can be imported and composed."),
-		TEXT("Python")
+		N2CMcpToolsets::Python
 	);
 
 	// Build input schema

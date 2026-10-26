@@ -20,7 +20,7 @@ FMcpToolDefinition FN2CMcpCopyAssetTool::GetDefinition() const
         TEXT("Copy an asset to a new asset path in the content browser. The source may be under /Game/ or /Engine/; ")
         TEXT("the destination must be under /Game/. Missing destination folders are created. ")
         TEXT("An existing asset at the destination is never replaced: the copy fails."),
-        TEXT("Content Browser")
+        N2CMcpToolsets::ContentBrowser
     );
 
     // Build input schema

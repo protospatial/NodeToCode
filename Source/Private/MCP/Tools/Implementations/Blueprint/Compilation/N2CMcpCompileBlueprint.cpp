@@ -16,7 +16,7 @@ FMcpToolDefinition FN2CMcpCompileBlueprint::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("compile-blueprint"),
         TEXT("Compile a Blueprint and return compilation results including errors and warnings"),
-        TEXT("Blueprint Compilation")
+        N2CMcpToolsets::BlueprintCompile
     );
     
     // Define input schema

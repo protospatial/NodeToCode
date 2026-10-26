@@ -22,7 +22,7 @@ FMcpToolDefinition FN2CMcpRenameFolderTool::GetDefinition() const
         TEXT("Rename a folder in the content browser")
     ,
 
-    	TEXT("Content Browser")
+    	N2CMcpToolsets::ContentBrowser
 
     );
 

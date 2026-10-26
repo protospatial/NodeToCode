@@ -69,7 +69,7 @@ FMcpToolDefinition FN2CMcpTranslateBatchTool::GetDefinition() const
 		TEXT("the translation output directory, BatchTranslation_<time>), its code while the whole result stays under about ")
 		TEXT("20000 tokens (else read the files) and, for a failure, the typed error. Only one batch runs at a time. ")
 		TEXT("Assets that are not Blueprints are refused per target (UNSUPPORTED_ASSET_TYPE)."),
-		TEXT("Translation")
+		N2CMcpToolsets::Translation
 	);
 	Definition.Title = TEXT("Translate many Blueprint graphs");
 	Definition.bIsLongRunning = true;

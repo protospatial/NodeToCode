@@ -239,7 +239,7 @@ private:
 	/** Creates the session a successful initialize asked for and returns its id */
 	FString CreateSession();
 
-	/** True when ToolName is a registered tool marked bIsLongRunning */
+	/** True when ToolName is a tool tools/list holds that is marked bIsLongRunning */
 	bool IsLongRunningTool(const FString& ToolName) const;
 
 	/** Starts a long-running tool's call and answers the request from it (see Handle) */

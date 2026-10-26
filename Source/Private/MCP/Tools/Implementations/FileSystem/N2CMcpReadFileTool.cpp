@@ -26,7 +26,7 @@ FMcpToolDefinition FN2CMcpReadFileTool::GetDefinition() const
              "Use empty string \"\" for project root, NOT \".\" or \"/\". "
              "Enforces security boundaries to prevent directory traversal outside the project. "
              "Supports text files up to 500KB in size. Binary files like .uasset and .umap are not supported."),
-        TEXT("File System")
+        N2CMcpToolsets::FileSystem
     );
     
     // Define input schema

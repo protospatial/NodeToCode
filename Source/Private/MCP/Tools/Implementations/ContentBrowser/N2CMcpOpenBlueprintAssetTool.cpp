@@ -29,7 +29,7 @@ FMcpToolDefinition FN2CMcpOpenBlueprintAssetTool::GetDefinition() const
 		TEXT("get-focused-blueprint and the other focus-based tools act on")
 	,
 
-		TEXT("Content Browser")
+		N2CMcpToolsets::ContentBrowser
 
 	);
 	

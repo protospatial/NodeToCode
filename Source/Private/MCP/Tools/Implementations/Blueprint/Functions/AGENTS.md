@@ -1,6 +1,6 @@
 # Blueprint Function Management Tools
 
-This directory contains the MCP tools in the 'Blueprint Function Management' category: creating, opening and deleting
+This directory contains the MCP tools in the `BlueprintFunctionTools` toolset: creating, opening and deleting
 Blueprint functions and editing their parameters and return values.
 
 ## Where Parameters Live

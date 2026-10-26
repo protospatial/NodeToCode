@@ -110,8 +110,8 @@ The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is
 
     **MCP Server Settings:**
     *   `McpServerPort` - HTTP server port (default: 27000); `McpServerPortRange` - fallback ports tried when it is taken (default: 10)
-    *   `bEnableDynamicToolDiscovery` - Dynamic tool registration mode
-    *   `bEnablePythonScriptOnlyMode` - Python-only MCP mode
+    *   `McpToolProfile`, `McpCustomToolsets` - which toolsets the MCP server serves (default: all; Python scripting only)
+    *   `McpToolExposure` - list every tool, or tool search (`list_toolsets`, `describe_toolset`, `call_tool`)
 
     **Theming:**
     *   `UIColors` (`FN2CUIColors`) - the window's colors

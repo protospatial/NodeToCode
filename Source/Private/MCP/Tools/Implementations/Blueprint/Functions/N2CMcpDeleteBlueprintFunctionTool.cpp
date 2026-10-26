@@ -35,7 +35,7 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintFunctionTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("delete-blueprint-function"),
 		TEXT("Deletes a Blueprint function, named by its functionGuid (or graphName) in blueprintPath or the focused Blueprint. Supports reference detection and forced deletion."),
-		TEXT("Blueprint Function Management")
+		N2CMcpToolsets::BlueprintFunction
 	);
 
 	// Build input schema

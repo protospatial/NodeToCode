@@ -1,6 +1,6 @@
 # Blueprint Component Tools
 
-This directory contains the MCP tools in the 'Blueprint Components' category: listing, adding and deleting the
+This directory contains the MCP tools in the `BlueprintComponentTools` toolset: listing, adding and deleting the
 components of an Actor Blueprint. Add and delete go through the engine's `USubobjectDataSubsystem`, as the Blueprint
 editor's Components panel does (card 0167); the list tool reads the hierarchy without changing anything
 (`FN2CMcpComponentUtils::BuildComponentTree`).

@@ -798,44 +798,24 @@ void FN2CMcpHttpServerManager::RegisterMcpTools()
 {
 	FN2CLogger::Get().Log(TEXT("Registering NodeToCode MCP tools"), EN2CLogSeverity::Info);
 
+	// Tool Profile picks the toolsets, Tool Exposure how tools/list shows them (decision 0005, card 0165). tools/list
+	// then stays the same until the server starts again.
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	FN2CMcpToolConfig Config;
+	Config.Toolsets = FN2CMcpToolConfig::ToolsetsForProfile(
+		Settings ? Settings->McpToolProfile : EN2CMcpToolProfile::DefaultToolsets,
+		Settings ? Settings->McpCustomToolsets : TArray<FString>());
+	Config.Exposure = Settings ? Settings->McpToolExposure : EN2CMcpToolExposure::ListAllTools;
 
-	// Check Python script-only mode first (takes priority)
-	if (Settings && Settings->bEnablePythonScriptOnlyMode)
+	const TArray<FString> Unknown = FN2CMcpToolManager::Get().Configure(Config);
+	if (Unknown.Num() > 0)
 	{
-		// Register only essential tools for Python script-only mode
-		// This mode focuses on Python scripting for UE automation - no translation tools
-		TArray<FString> EssentialTools = {
-			TEXT("run-python"),
-			// Script management tools for building a reusable script library
-			TEXT("list-python-scripts"),
-			TEXT("search-python-scripts"),
-			TEXT("get-python-script"),
-			TEXT("get-script-functions"),  // Token-efficient function signature discovery for composition
-			TEXT("save-python-script"),
-			TEXT("delete-python-script")
-		};
-
-		FN2CMcpToolManager::Get().RegisterToolsByName(EssentialTools);
-		FN2CLogger::Get().Log(TEXT("Python script-only mode enabled - registered essential tools only"), EN2CLogSeverity::Info);
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Custom Toolsets names toolsets NodeToCode does not have: %s. Toolsets: %s"),
+			*FString::Join(Unknown, TEXT(", ")), *FString::Join(N2CMcpToolsets::AllNames(), TEXT(", "))), TEXT("MCP"));
 	}
-	// Check the dynamic tool discovery setting
-	else if (Settings && Settings->bEnableDynamicToolDiscovery)
+	if (Config.Toolsets.Num() == 0)
 	{
-		// Set the default toolset (only assess-needed-tools)
-		FN2CMcpToolManager::Get().SetDefaultToolSet();
-		FN2CLogger::Get().Log(TEXT("Dynamic tool discovery enabled - registered assess-needed-tools only"), EN2CLogSeverity::Info);
-		// The server cannot tell clients the tool list changed (no notifications/tools/list_changed channel since the
-		// port+1 notification server was removed, card 0113; tools.listChanged is false). Card 0165 replaces this mode
-		// with toolsets that never change tools/list mid-session.
-		FN2CLogger::Get().LogWarning(TEXT("Dynamic Tool Discovery: tools that assess-needed-tools enables appear only when the client lists tools again; "
-			"the server cannot notify clients that the tool list changed"), TEXT("MCP"));
-	}
-	else
-	{
-		// Register all tools except assess-needed-tools
-		FN2CMcpToolManager::Get().RegisterAllToolsExceptAssess();
-		FN2CLogger::Get().Log(TEXT("Dynamic tool discovery disabled - registered all tools"), EN2CLogSeverity::Info);
+		FN2CLogger::Get().LogWarning(TEXT("Tool Profile is Custom with no Custom Toolsets: the MCP server serves no tools"), TEXT("MCP"));
 	}
 
 	FN2CLogger::Get().Log(TEXT("MCP tools registered successfully"), EN2CLogSeverity::Info);

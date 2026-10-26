@@ -16,7 +16,7 @@ FMcpToolDefinition FN2CMcpSearchPythonScriptsTool::GetDefinition() const
 			 "If exact match found: execute it with run-python. "
 			 "If partial match found: use get-script-functions to see importable functions, then compose. "
 			 "Only write new code if no relevant scripts exist."),
-		TEXT("Python")
+		N2CMcpToolsets::Python
 	);
 
 	// Build input schema

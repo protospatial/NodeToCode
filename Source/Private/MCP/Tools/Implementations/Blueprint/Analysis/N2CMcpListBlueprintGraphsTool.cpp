@@ -20,7 +20,7 @@ FMcpToolDefinition FN2CMcpListBlueprintGraphsTool::GetDefinition() const
 		TEXT("graphGuid (stable across renames; pass it to get-blueprint-n2cjson or the graph tools), kind (event, ")
 		TEXT("function, macro, collapsed, delegate, interface), nodeCount, readOnly (shown read-only in the Blueprint ")
 		TEXT("editor) and, for a collapsed graph, parentGraph."),
-		TEXT("Blueprint Discovery")
+		N2CMcpToolsets::BlueprintDiscovery
 	);
 
 	TMap<FString, FString> Properties;

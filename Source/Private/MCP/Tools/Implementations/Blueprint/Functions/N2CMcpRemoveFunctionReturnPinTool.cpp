@@ -29,7 +29,7 @@ FMcpToolDefinition FN2CMcpRemoveFunctionReturnPinTool::GetDefinition() const
 		TEXT("Removes a return value from a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function")
 	,
 
-		TEXT("Blueprint Function Management")
+		N2CMcpToolsets::BlueprintFunction
 
 	);
 

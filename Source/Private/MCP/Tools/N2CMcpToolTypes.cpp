@@ -58,9 +58,9 @@ TSharedPtr<FJsonObject> FMcpToolDefinition::BuildMeta() const
 	{
 		Json->Values = Meta->Values;
 	}
-	if (!Category.IsEmpty())
+	if (Toolset)
 	{
-		Json->SetStringField(N2CMcpToolMetaKeys::Category, Category);
+		Json->SetStringField(N2CMcpToolMetaKeys::Toolset, Toolset->Name);
 	}
 	if (MaxResultSizeChars.IsSet())
 	{
@@ -104,7 +104,7 @@ TSharedPtr<FJsonObject> FMcpToolDefinition::ToJson() const
 		JsonObject->SetObjectField(TEXT("annotations"), AnnotationsJson);
 	}
 
-	// Category is not a Tool field in MCP: it travels in _meta under a prefixed key (MCP 2025-11-25, _meta)
+	// The toolset is not a Tool field in MCP: it travels in _meta under a prefixed key (MCP 2025-11-25, _meta)
 	if (const TSharedPtr<FJsonObject> MetaJson = BuildMeta())
 	{
 		JsonObject->SetObjectField(TEXT("_meta"), MetaJson);
@@ -141,20 +141,21 @@ FMcpToolDefinition FMcpToolDefinition::FromJson(const TSharedPtr<FJsonObject>& J
 			Definition.Annotations = FMcpToolAnnotations::FromJson(*AnnotationsObj);
 		}
 
-		// Older NodeToCode servers sent the category as a top-level field
-		JsonObject->TryGetStringField(TEXT("category"), Definition.Category);
-
 		const TSharedPtr<FJsonObject>* MetaObj = nullptr;
 		if (JsonObject->TryGetObjectField(TEXT("_meta"), MetaObj))
 		{
 			const TSharedRef<FJsonObject> Rest = MakeShared<FJsonObject>();
 			Rest->Values = (*MetaObj)->Values;
 
-			FString MetaCategory;
-			if (Rest->TryGetStringField(N2CMcpToolMetaKeys::Category, MetaCategory))
+			// A toolset name this build does not declare stays in Meta as sent
+			FString MetaToolset;
+			if (Rest->TryGetStringField(N2CMcpToolMetaKeys::Toolset, MetaToolset))
 			{
-				Definition.Category = MetaCategory;
-				Rest->RemoveField(N2CMcpToolMetaKeys::Category);
+				if (const FN2CMcpToolset* Found = N2CMcpToolsets::Find(MetaToolset))
+				{
+					Definition.Toolset = Found;
+					Rest->RemoveField(N2CMcpToolMetaKeys::Toolset);
+				}
 			}
 			int32 MaxChars = 0;
 			if (Rest->TryGetNumberField(N2CMcpToolMetaKeys::MaxResultSizeChars, MaxChars))
