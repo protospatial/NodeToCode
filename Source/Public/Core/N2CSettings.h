@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Misc/Attribute.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Engine/DeveloperSettings.h"
 #include "LLM/N2CLLMModels.h"
@@ -11,129 +10,10 @@
 #include "LLM/N2COllamaConfig.h"
 #include "MCP/Tools/N2CMcpToolsets.h"
 #include "Models/N2CLogging.h"
-#include "Styling/SlateColor.h"
+#include "Core/Style/N2CUIColors.h"
 #include "N2CSettings.generated.h"
 
 struct FN2CModelMetadata;
-
-USTRUCT(BlueprintType)
-struct FN2CUIColors
-{
-    GENERATED_BODY()
-
-    // ── Background Colors ──────────────────────────────────────────
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Backgrounds", meta = (DisplayName = "Panel Background"))
-    FColor BgPanel = FColor(37, 37, 38);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Backgrounds", meta = (DisplayName = "Panel Background Dark"))
-    FColor BgPanelDarker = FColor(26, 26, 26);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Backgrounds", meta = (DisplayName = "Input Background"))
-    FColor BgInput = FColor(45, 45, 45);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Backgrounds", meta = (DisplayName = "Hover Background"))
-    FColor BgHover = FColor(51, 51, 51);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Backgrounds", meta = (DisplayName = "Overlay Panel Background"))
-    FColor BgOverlayPanel = FColor(10, 10, 10);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Backgrounds", meta = (DisplayName = "Button Dark Background"))
-    FColor BgButtonDark = FColor(28, 28, 28);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Backgrounds", meta = (DisplayName = "Button Dark Background Selected"))
-    FColor BgButtonDarkSelected = FColor(42, 42, 42);
-
-    // ── Button Style Colors ───────────────────────────────────────
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Buttons", meta = (DisplayName = "Button Normal"))
-    FColor BtnNormal = FColor(55, 55, 55);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Buttons", meta = (DisplayName = "Button Hovered"))
-    FColor BtnHovered = FColor(70, 70, 70);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Buttons", meta = (DisplayName = "Button Pressed"))
-    FColor BtnPressed = FColor(40, 40, 40);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Buttons", meta = (DisplayName = "Button Disabled"))
-    FColor BtnDisabled = FColor(35, 35, 35);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Buttons", meta = (DisplayName = "Button Foreground"))
-    FColor BtnForeground = FColor(204, 204, 204);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Buttons", meta = (DisplayName = "Button Foreground Hovered"))
-    FColor BtnForegroundHover = FColor(230, 230, 230);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Buttons", meta = (DisplayName = "Button Foreground Disabled"))
-    FColor BtnForegroundDisabled = FColor(107, 107, 107);
-
-    // ── Border Colors ──────────────────────────────────────────────
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Borders", meta = (DisplayName = "Border"))
-    FColor BorderColor = FColor(60, 60, 60);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Borders", meta = (DisplayName = "Border Subtle"))
-    FColor BorderSubtle = FColor(42, 42, 42);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Borders", meta = (DisplayName = "Fallback Border"))
-    FColor FallbackBorder = FColor(28, 28, 28);
-
-    // ── Text Colors ────────────────────────────────────────────────
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Text", meta = (DisplayName = "Text Primary"))
-    FColor TextPrimary = FColor(204, 204, 204);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Text", meta = (DisplayName = "Text Secondary"))
-    FColor TextSecondary = FColor(157, 157, 157);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Text", meta = (DisplayName = "Text Muted"))
-    FColor TextMuted = FColor(107, 107, 107);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Text", meta = (DisplayName = "Text Shadow"))
-    FColor TextShadow = FColor(15, 15, 15);
-
-    // ── Accent Colors ──────────────────────────────────────────────
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Accents", meta = (DisplayName = "Accent Orange"))
-    FColor AccentOrange = FColor(212, 160, 74);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Accents", meta = (DisplayName = "Accent Orange Dim"))
-    FColor AccentOrangeDim = FColor(139, 105, 20);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Accents", meta = (DisplayName = "Accent Green"))
-    FColor AccentGreen = FColor(78, 201, 176);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Accents", meta = (DisplayName = "Accent Red"))
-    FColor AccentRed = FColor(241, 76, 76);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Accents", meta = (DisplayName = "Accent Gold"))
-    FColor AccentGold = FColor(212, 161, 74);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Accents", meta = (DisplayName = "Accent Blue"))
-    FColor AccentBlue = FColor(79, 194, 255);
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Accents", meta = (DisplayName = "Accent Yellow"))
-    FColor AccentYellow = FColor(229, 192, 123);
-
-    // ── Editor Colors ───────────────────────────────────────────────
-
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Editor", meta = (DisplayName = "Text Highlight"))
-    FColor TextHighlight = FColor(5, 77, 0);
-
-    // ── Helper Methods ─────────────────────────────────────────────
-
-    static FLinearColor ToLinear(const FColor& Color)
-    {
-        return FLinearColor::FromSRGBColor(Color);
-    }
-
-    static FLinearColor ToLinearWithAlpha(const FColor& Color, float Alpha)
-    {
-        FLinearColor Linear = FLinearColor::FromSRGBColor(Color);
-        Linear.A = Alpha;
-        return Linear;
-    }
-};
 
 USTRUCT(BlueprintType)
 struct FN2CCodeEditorColors
@@ -726,16 +606,10 @@ public:
     /** Notify that model settings have changed - call this to update token estimation UI */
     void NotifyModelSettingsChanged();
 
-    /** UI Color palette for all NodeToCode widgets */
+    /** UI Color palette for all NodeToCode widgets. Widgets read it through N2C::UI::Colors() (Core/Style/N2CUIColors.h). */
     UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming",
         meta=(DisplayName="UI Colors"))
     FN2CUIColors UIColors;
-
-    /** Get the UI color palette */
-    static const FN2CUIColors& GetUIColors()
-    {
-        return GetDefault<UN2CSettings>()->UIColors;
-    }
 
     /** Code editor theme colors */
     UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming",
@@ -988,25 +862,3 @@ private:
     TWeakPtr<SNotificationItem> RestartNotificationPtr;
 #endif
 };
-
-// Compact UI color accessors for widget code (unity-build safe)
-inline const FN2CUIColors& N2CUI() { return UN2CSettings::GetUIColors(); }
-inline FLinearColor UIL(const FColor& C) { return FN2CUIColors::ToLinear(C); }
-inline FLinearColor UILA(const FColor& C, float A) { return FN2CUIColors::ToLinearWithAlpha(C, A); }
-
-// TAttribute-bound UI color accessors for live settings updates (unity-build safe)
-inline TAttribute<FSlateColor> UIBind(FColor FN2CUIColors::* Member)
-{
-    return TAttribute<FSlateColor>::CreateLambda([Member]() -> FSlateColor
-    {
-        return FSlateColor(FN2CUIColors::ToLinear(UN2CSettings::GetUIColors().*Member));
-    });
-}
-
-inline TAttribute<FSlateColor> UIBindAlpha(FColor FN2CUIColors::* Member, float Alpha)
-{
-    return TAttribute<FSlateColor>::CreateLambda([Member, Alpha]() -> FSlateColor
-    {
-        return FSlateColor(FN2CUIColors::ToLinearWithAlpha(UN2CSettings::GetUIColors().*Member, Alpha));
-    });
-}

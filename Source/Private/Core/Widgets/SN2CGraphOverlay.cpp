@@ -4,13 +4,13 @@
 #include "Core/Widgets/SN2CCircularProgressBar.h"
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/Widgets/SN2CIconButton.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CEditorWindow.h"
 #include "Core/N2CTagManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/Services/N2CTokenEstimationService.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "Utils/N2CLogger.h"
 #include "BlueprintEditor.h"
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
@@ -31,7 +31,7 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Styling/AppStyle.h"
 #include "HAL/PlatformApplicationMisc.h"
-#include "Core/N2CSettings.h"
+#include "Core/Style/N2CUIColors.h"
 
 #define LOCTEXT_NAMESPACE "SN2CGraphOverlay"
 
@@ -88,7 +88,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 				.IconSize(FVector2D(FN2CSizing::IconLG, FN2CSizing::IconLG))
 				.Text(LOCTEXT("N2CBranding", "N2C"))
 				.Font(FN2CFonts::Small())
-				.TextColor(UIBind(&FN2CUIColors::TextSecondary))
+				.TextColor(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 				.ButtonVariant(EN2CButtonVariant::Simple)
 				.ContentPadding(FMargin(FN2CSpacing::XXS))
 				.ToolTipText(LOCTEXT("OpenWindowTooltip", "Open NodeToCode Window"))
@@ -104,7 +104,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 				SNew(SSeparator)
 				.Orientation(Orient_Vertical)
 				.Thickness(FN2CSizing::SeparatorThickness)
-				.ColorAndOpacity(UIBind(&FN2CUIColors::BorderSubtle))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::BorderSubtle))
 			]
 
 			// Tag button with count badge
@@ -139,7 +139,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 				SNew(SSeparator)
 				.Orientation(Orient_Vertical)
 				.Thickness(FN2CSizing::SeparatorThickness)
-				.ColorAndOpacity(UIBind(&FN2CUIColors::BorderSubtle))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::BorderSubtle))
 			]
 
 			// Copy JSON button
@@ -165,7 +165,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 				SNew(SSeparator)
 				.Orientation(Orient_Vertical)
 				.Thickness(FN2CSizing::SeparatorThickness)
-				.ColorAndOpacity(UIBind(&FN2CUIColors::BorderSubtle))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::BorderSubtle))
 			]
 
 			// Translate button (custom layout due to spinner)
@@ -210,7 +210,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 						SNew(STextBlock)
 						.Text(LOCTEXT("TranslateButton", "Translate"))
 						.Font(FN2CFonts::Small())
-						.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 					]
 				]
 			]
@@ -224,7 +224,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 				SNew(SSeparator)
 				.Orientation(Orient_Vertical)
 				.Thickness(FN2CSizing::SeparatorThickness)
-				.ColorAndOpacity(UIBind(&FN2CUIColors::BorderSubtle))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::BorderSubtle))
 			]
 
 			// Context usage circular progress with percentage overlay
@@ -256,7 +256,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 						.Text(this, &SN2CGraphOverlay::GetContextUsagePercentText)
 						.Font(FN2CFonts::TinyBold())
 						.Justification(ETextJustify::Center)
-						.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 					]
 				]
 			]
@@ -296,7 +296,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 								return FText::FromString(FString::Printf(TEXT("N:%d"), Depth));
 							})
 							.Font(FN2CFonts::TinyBold())
-							.ColorAndOpacity(UIBind(&FN2CUIColors::AccentOrange))
+							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentOrange))
 						]
 					]
 				]
@@ -450,7 +450,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 		SNew(STextBlock)
 		.Text(FText::Format(LOCTEXT("TagsForGraph", "Tags for \"{0}\""), FText::FromString(GraphName)))
 		.Font(FN2CFonts::RegularBold())
-		.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+		.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 	];
 
 	// Separator
@@ -459,7 +459,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 	.Padding(FN2CSpacing::MD, 0.0f)
 	[
 		SNew(SSeparator)
-		.ColorAndOpacity(UIBind(&FN2CUIColors::BorderSubtle))
+		.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::BorderSubtle))
 	];
 
 	// Tag list
@@ -480,7 +480,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("\u2022"))) // Bullet character
 					.Font(FN2CFonts::Small())
-					.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+					.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 				]
 				+ SHorizontalBox::Slot()
 				.FillWidth(1.0f)
@@ -490,7 +490,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 					SNew(STextBlock)
 					.Text(FText::Format(LOCTEXT("TagDisplay", "{0} ({1})"),
 						FText::FromString(TagItem.Tag), FText::FromString(TagItem.Category)))
-					.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+					.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 				]
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
@@ -508,7 +508,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 					[
 						SNew(SImage)
 						.Image(FAppStyle::GetBrush("Icons.X"))
-						.ColorAndOpacity(UIBind(&FN2CUIColors::AccentRed))
+						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentRed))
 					]
 				]
 			];
@@ -530,7 +530,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 			SNew(STextBlock)
 			.Text(LOCTEXT("NoTags", "No tags applied"))
 			.Font(FN2CFonts::Regular())
-			.ColorAndOpacity(UIBind(&FN2CUIColors::TextMuted))
+			.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 		];
 	}
 
@@ -540,7 +540,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 	.Padding(FN2CSpacing::MD, FN2CSpacing::XS)
 	[
 		SNew(SSeparator)
-		.ColorAndOpacity(UIBind(&FN2CUIColors::BorderSubtle))
+		.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::BorderSubtle))
 	];
 
 	// Add new tag section header
@@ -551,7 +551,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 		SNew(STextBlock)
 		.Text(LOCTEXT("AddNewTagHeader", "Add New Tag"))
 		.Font(FN2CFonts::Small())
-		.ColorAndOpacity(UIBind(&FN2CUIColors::TextMuted))
+		.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 	];
 
 	// Get existing tags and categories for the dropdowns
@@ -599,7 +599,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 			[
 				SNew(STextBlock)
 				.Text(LOCTEXT("TagLabel", "Tag:"))
-				.ColorAndOpacity(UIBind(&FN2CUIColors::TextSecondary))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 			]
 		]
 		+ SHorizontalBox::Slot()
@@ -663,7 +663,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 			[
 				SNew(STextBlock)
 				.Text(LOCTEXT("CategoryLabel", "Category:"))
-				.ColorAndOpacity(UIBind(&FN2CUIColors::TextSecondary))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 			]
 		]
 		+ SHorizontalBox::Slot()
@@ -746,7 +746,7 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 			[
 				SNew(SImage)
 				.Image(FAppStyle::GetBrush("Icons.Plus"))
-				.ColorAndOpacity(UIBind(&FN2CUIColors::AccentGreen))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentGreen))
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
@@ -873,9 +873,9 @@ FSlateColor SN2CGraphOverlay::GetTagButtonColor() const
 {
 	if (CachedTagCount > 0)
 	{
-		return FSlateColor(UIL(N2CUI().AccentGold)); // Gold/amber for tagged
+		return FSlateColor(N2C::UI::Linear(N2C::UI::Colors().AccentGold)); // Gold/amber for tagged
 	}
-	return FSlateColor(UIL(N2CUI().TextMuted)); // Gray for untagged
+	return FSlateColor(N2C::UI::Linear(N2C::UI::Colors().TextMuted)); // Gray for untagged
 }
 
 void SN2CGraphOverlay::RefreshTokenEstimate()

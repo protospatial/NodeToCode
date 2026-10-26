@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
-#include "Models/N2CStyle.h"
-#include "Core/N2CSettings.h"
+#include "Core/Style/N2CStyle.h"
+#include "Core/Style/N2CUIColors.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Brushes/SlateColorBrush.h"
@@ -109,7 +109,7 @@ TSharedRef<FSlateStyleSet> N2CStyle::Create()
 
 void N2CStyle::UpdateButtonStyles()
 {
-	const FN2CUIColors& Colors = UN2CSettings::GetUIColors();
+	const FN2CUIColors& Colors = N2C::UI::Colors();
 
 	const FSlateColor NormalFg(FN2CUIColors::ToLinear(Colors.BtnForeground));
 	const FSlateColor HoveredFg(FN2CUIColors::ToLinear(Colors.BtnForegroundHover));
@@ -154,7 +154,7 @@ void N2CStyle::UpdateButtonStyles()
 
 void N2CStyle::UpdateBorderBrushes()
 {
-	const FN2CUIColors& Colors = UN2CSettings::GetUIColors();
+	const FN2CUIColors& Colors = N2C::UI::Colors();
 
 	// Panel border: rounded box with subtle outline, fill tinted by BorderBackgroundColor at widget level
 	N2CPanelBorderBrush = FSlateRoundedBoxBrush(
@@ -171,7 +171,7 @@ void N2CStyle::UpdateBorderBrushes()
 
 void N2CStyle::UpdateWidgetStyles()
 {
-	const FN2CUIColors& Colors = UN2CSettings::GetUIColors();
+	const FN2CUIColors& Colors = N2C::UI::Colors();
 
 	// ── CheckBox Style ──
 	// Follows Starship's two-layer pattern:
@@ -316,7 +316,7 @@ void N2CStyle::UpdateWidgetStyles()
 
 void N2CStyle::UpdateComboBoxStyle()
 {
-	const FN2CUIColors& Colors = UN2CSettings::GetUIColors();
+	const FN2CUIColors& Colors = N2C::UI::Colors();
 
 	const FSlateColor NormalFg(FN2CUIColors::ToLinear(Colors.BtnForeground));
 	const FSlateColor HoveredFg(FN2CUIColors::ToLinear(Colors.BtnForegroundHover));

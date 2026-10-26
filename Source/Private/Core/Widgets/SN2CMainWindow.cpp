@@ -3,9 +3,9 @@
 #include "Core/Widgets/SN2CMainWindow.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "Core/Widgets/SN2CTagManager.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 #include "Core/Widgets/SN2CTranslationViewer.h"
 #include "Core/Widgets/SN2CBatchProgressModal.h"
 #include "Core/N2CEditorIntegration.h"
@@ -29,7 +29,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Editor.h"
-#include "Core/N2CSettings.h"
+#include "Core/Style/N2CUIColors.h"
 #include "Utils/N2CPathUtils.h"
 
 #define LOCTEXT_NAMESPACE "SN2CMainWindow"
@@ -72,7 +72,7 @@ void SN2CMainWindow::Construct(const FArguments& InArgs)
 			[
 				SNew(SBorder)
 				.BorderImage(&N2CStyle::GetPanelBorderBrush())
-				.BorderBackgroundColor(UIBindAlpha(&FN2CUIColors::BgPanelDarker, 0.30f))
+				.BorderBackgroundColor(N2C::UI::BindAlpha(&FN2CUIColors::BgPanelDarker, 0.30f))
 				.Padding(FN2CSpacing::XXL)
 				[
 					SAssignNew(TranslationViewer, SN2CTranslationViewer)
@@ -87,7 +87,7 @@ void SN2CMainWindow::Construct(const FArguments& InArgs)
 			SNew(SBorder)
 			.Visibility(this, &SN2CMainWindow::GetBatchProgressVisibility)
 			.BorderImage(&N2CStyle::GetPanelBorderBrush())
-			.BorderBackgroundColor(UIBindAlpha(&FN2CUIColors::BgPanelDarker, 0.30f))
+			.BorderBackgroundColor(N2C::UI::BindAlpha(&FN2CUIColors::BgPanelDarker, 0.30f))
 			.Padding(0.0f)
 			[
 				// Center the modal within the full-screen overlay

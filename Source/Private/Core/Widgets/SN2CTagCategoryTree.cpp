@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CTagCategoryTree.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "Core/N2CTagManager.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -9,9 +9,9 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Images/SImage.h"
 #include "Styling/AppStyle.h"
-#include "Core/N2CSettings.h"
+#include "Core/Style/N2CUIColors.h"
 #include "Core/Widgets/SN2CPanel.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 
 #define LOCTEXT_NAMESPACE "SN2CTagCategoryTree"
 
@@ -33,7 +33,7 @@ void SN2CTagCategoryTree::Construct(const FArguments& InArgs)
 				SNew(STextBlock)
 				.Text(LOCTEXT("CategoriesHeader", "CATEGORIES"))
 				.Font(FAppStyle::GetFontStyle("SmallFontBold"))
-				.ColorAndOpacity(UIBind(&FN2CUIColors::TextMuted))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 			]
 			+ SVerticalBox::Slot()
 			.FillHeight(1.0f)
@@ -304,12 +304,12 @@ TSharedRef<ITableRow> SN2CTagCategoryTree::OnGenerateRow(TSharedPtr<FN2CTreeItem
 					? FAppStyle::GetBrush("Icons.FolderOpen")
 					: FAppStyle::GetBrush("Icons.FolderClosed");
 			})
-			.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+			.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 		)
 		: StaticCastSharedRef<SWidget>(
 			SNew(SImage)
 			.Image(FAppStyle::GetBrush("GraphEditor.Bookmark"))
-			.ColorAndOpacity(UIBind(&FN2CUIColors::AccentGold))
+			.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentGold))
 		);
 
 	return SNew(STableRow<TSharedPtr<FN2CTreeItem>>, OwnerTable)
@@ -331,7 +331,7 @@ TSharedRef<ITableRow> SN2CTagCategoryTree::OnGenerateRow(TSharedPtr<FN2CTreeItem
 				SNew(STextBlock)
 				.Text(DisplayText)
 				.Font(Item->IsCategory() ? FAppStyle::GetFontStyle("NormalFontBold") : FAppStyle::GetFontStyle("NormalFont"))
-				.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 			]
 		];
 }

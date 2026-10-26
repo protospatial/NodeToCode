@@ -10,12 +10,14 @@ The source code follows a Public/Private split for proper header visibility:
 Source/
 ├── Public/                      # Public headers (API surface)
 │   ├── Core/                    # Editor integration, settings, widgets
+│   │   ├── Style/               # UI color, spacing and font tokens, Slate style set
 │   │   └── Widgets/             # Slate widget headers
-│   ├── Models/                  # Data models (N2CStyle, N2CLogging)
+│   ├── Models/                  # Data models (N2CLogging, N2CBlueprint)
 │   └── Utils/                   # Utility classes and validators
 │       └── Validators/          # Blueprint, Node, Pin validators
 ├── Private/                     # Private implementations
 │   ├── Core/                    # Implementation files
+│   │   ├── Style/               # Style set and palette accessor
 │   │   └── Widgets/             # Widget implementations
 │   ├── Models/                  # Model implementations
 │   └── Utils/                   # Utility implementations
@@ -88,7 +90,11 @@ The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is
 
 ### Styling
 
-*   **`Source/Public/Models/N2CStyle.h` / `Source/Private/Models/N2CStyle.cpp` (`N2CStyle`)**: Manages plugin's global Slate style (toolbar icon). Provides `N2C_PLUGIN_BRUSH` macro for content paths.
+All presentation tokens live in `Source/Public/Core/Style/` (implementations in `Source/Private/Core/Style/`), so widget code does not include `Core/N2CSettings.h`:
+
+*   **`N2CUIColors.h` / `N2CUIColors.cpp` (`FN2CUIColors`, namespace `N2C::UI`)**: The color tokens. The live palette is the `UIColors` property on `UN2CSettings`; widgets read it with `N2C::UI::Colors()` (defined in the .cpp, the only style file that includes the settings header), convert with `N2C::UI::Linear` / `LinearAlpha`, and bind with `N2C::UI::Bind` / `BindAlpha`, which return a `TAttribute<FSlateColor>` re-read on every paint so a Project Settings edit shows in open widgets at once.
+*   **`N2CDesignTokens.h`**: Spacing (`FN2CSpacing`), font (`FN2CFonts`) and sizing (`FN2CSizing`) tokens.
+*   **`N2CStyle.h` / `N2CStyle.cpp` (`N2CStyle`)**: The plugin's Slate style set (toolbar icon, button, border, combo box and widget styles with stable addresses). `UN2CSettings::PostEditChangeProperty` calls its `Update*` functions when `UIColors` changes. Provides the `N2C_PLUGIN_BRUSH` macro for content paths.
 *   **`Source/Public/Core/N2CWidgetContainer.h` / `Source/Private/Core/N2CWidgetContainer.cpp` (`UN2CWidgetContainer`)**: Persistent UObject outer for widgets to maintain state.
 
 ## Plugin Settings

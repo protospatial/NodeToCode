@@ -4,6 +4,7 @@
 
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CSettings.h"
+#include "Core/Style/N2CUIColors.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/SlateTypes.h"
 #include "Styling/CoreStyle.h"
@@ -49,7 +50,7 @@ void FN2CCodeEditorStyle::ApplyThemeColors()
     else
     {
         // Fallback to a default color if themes aren't initialized yet
-        SetOrUpdateColorBrush("N2CCodeEditor.TextEditor.Border", FN2CUIColors::ToLinear(UN2CSettings::GetUIColors().FallbackBorder));
+        SetOrUpdateColorBrush("N2CCodeEditor.TextEditor.Border", FN2CUIColors::ToLinear(N2C::UI::Colors().FallbackBorder));
     }
 
     // Initialize language-specific styles
@@ -137,8 +138,8 @@ FTextBlockStyle FN2CCodeEditorStyle::CreateDefaultTextStyle(const FName& TypeNam
         .SetFont(DEFAULT_FONT("Mono", FontSize))
         .SetColorAndOpacity(FSlateColor(FLinearColor::White))
         .SetShadowOffset(FVector2D::ZeroVector)
-        .SetShadowColorAndOpacity(FN2CUIColors::ToLinear(UN2CSettings::GetUIColors().TextShadow))
-        .SetHighlightColor(FN2CUIColors::ToLinear(UN2CSettings::GetUIColors().TextHighlight));
+        .SetShadowColorAndOpacity(FN2CUIColors::ToLinear(N2C::UI::Colors().TextShadow))
+        .SetHighlightColor(FN2CUIColors::ToLinear(N2C::UI::Colors().TextHighlight));
 }
 
 void FN2CCodeEditorStyle::Shutdown()

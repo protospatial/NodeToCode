@@ -7,9 +7,9 @@
 
 /**
  * Design token constants for the NodeToCode UI system.
- * These complement the color tokens in FN2CUIColors (N2CSettings.h).
+ * These complement the color tokens in FN2CUIColors (Core/Style/N2CUIColors.h).
  *
- * Usage: #include "Core/N2CDesignTokens.h"
+ * Usage: #include "Core/Style/N2CDesignTokens.h"
  *   FMargin pad = FN2CSpacing::SM();
  *   FSlateFontInfo font = FN2CFonts::SmallBold();
  */

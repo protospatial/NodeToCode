@@ -3,8 +3,8 @@
 #include "Core/Widgets/SN2CHeaderBar.h"
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/Widgets/SN2CIconButton.h"
-#include "Core/N2CSettings.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CUIColors.h"
+#include "Core/Style/N2CDesignTokens.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/SBoxPanel.h"
 
@@ -21,7 +21,7 @@ void SN2CHeaderBar::Construct(const FArguments& InArgs)
 			SAssignNew(TitleTextBlock, STextBlock)
 			.Text(InArgs._Title)
 			.Font(FN2CFonts::LargeBold())
-			.ColorAndOpacity(UIBind(&FN2CUIColors::TextPrimary))
+			.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 		];
 
 	// Optional right content slot
@@ -48,7 +48,7 @@ void SN2CHeaderBar::Construct(const FArguments& InArgs)
 				.ContentPadding(FMargin(4.0f))
 				.Text(FText::FromString(TEXT("\u2715"))) // X character
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 18))
-				.TextColor(UIBind(&FN2CUIColors::TextMuted))
+				.TextColor(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 				.OnClicked(InArgs._OnClose)
 				.ToolTipText(LOCTEXT("CloseTooltip", "Close"))
 			];

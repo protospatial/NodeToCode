@@ -6,7 +6,7 @@
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "Async/AsyncWork.h"
 #include "PropertyEditorModule.h"
 #include "IDetailsView.h"
