@@ -12,10 +12,10 @@
 #include "Styling/AppStyle.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Models/N2CLogging.h"
-#include "Core/N2CSettings.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CUIColors.h"
+#include "Core/Style/N2CStyle.h"
 #include "Core/Widgets/SN2CIconButton.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 
 #define LOCTEXT_NAMESPACE "SN2CGraphListRow"
 
@@ -88,7 +88,7 @@ void SN2CGraphListRow::Construct(const FArguments& InArgs)
 					SNew(STextBlock)
 					.Text(FText::FromString(Item->GetBlueprintDisplayName()))
 					.Font(FN2CFonts::Small())
-					.ColorAndOpacity(UIBind(&FN2CUIColors::AccentBlue)) // Blueprint blue
+					.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentBlue)) // Blueprint blue
 					.ToolTipText(FText::FromString(Item->TagInfo.BlueprintPath))
 				]
 
@@ -126,7 +126,7 @@ void SN2CGraphListRow::Construct(const FArguments& InArgs)
 							SNew(STextBlock)
 							.Text(this, &SN2CGraphListRow::GetTokensText)
 							.Font(FN2CFonts::Tiny())
-							.ColorAndOpacity(UIBind(&FN2CUIColors::TextMuted))
+							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 						]
 
 						// Cost
@@ -137,7 +137,7 @@ void SN2CGraphListRow::Construct(const FArguments& InArgs)
 							SNew(STextBlock)
 							.Text(this, &SN2CGraphListRow::GetCostText)
 							.Font(FN2CFonts::Tiny())
-							.ColorAndOpacity(UIBind(&FN2CUIColors::AccentGreen)) // Green for cost
+							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentGreen)) // Green for cost
 						]
 					]
 				]
@@ -292,17 +292,17 @@ FSlateColor SN2CGraphListRow::GetBackgroundColor() const
 	// Selected + Hovered: Brighter gold
 	if (Item->bIsSelected && bIsHovered)
 	{
-		return FSlateColor(UILA(N2CUI().AccentGold, 0.3f));
+		return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().AccentGold, 0.3f));
 	}
 	// Selected: Normal gold
 	if (Item->bIsSelected)
 	{
-		return FSlateColor(UILA(N2CUI().AccentGold, 0.2f));
+		return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().AccentGold, 0.2f));
 	}
 	// Hovered: Subtle gray
 	if (bIsHovered)
 	{
-		return FSlateColor(UILA(N2CUI().TextMuted, 0.15f));
+		return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().TextMuted, 0.15f));
 	}
 	// Normal: Transparent
 	return FSlateColor(FLinearColor::Transparent);
@@ -320,9 +320,9 @@ FSlateColor SN2CGraphListRow::GetButtonBackgroundColor() const
 	// Match the row background when selected, otherwise use dark gray
 	if (Item.IsValid() && Item->bIsSelected)
 	{
-		return FSlateColor(UILA(N2CUI().BgButtonDarkSelected, 0.95f));
+		return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().BgButtonDarkSelected, 0.95f));
 	}
-	return FSlateColor(UILA(N2CUI().BgButtonDark, 0.9f));
+	return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().BgButtonDark, 0.9f));
 }
 
 EVisibility SN2CGraphListRow::GetActionButtonsVisibility() const

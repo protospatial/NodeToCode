@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CPanel.h"
-#include "Models/N2CStyle.h"
-#include "Core/N2CSettings.h"
+#include "Core/Style/N2CStyle.h"
+#include "Core/Style/N2CUIColors.h"
 #include "Widgets/Layout/SBorder.h"
 
 void SN2CPanel::Construct(const FArguments& InArgs)
@@ -14,17 +14,17 @@ void SN2CPanel::Construct(const FArguments& InArgs)
 	{
 	case EN2CPanelVariant::Light:
 		BorderBrush = &N2CStyle::GetPanelBorderBrush();
-		BgColor = UIBind(&FN2CUIColors::BgPanel);
+		BgColor = N2C::UI::Bind(&FN2CUIColors::BgPanel);
 		break;
 
 	case EN2CPanelVariant::Dark:
 		BorderBrush = &N2CStyle::GetDarkPanelBorderBrush();
-		BgColor = UIBind(&FN2CUIColors::BgPanelDarker);
+		BgColor = N2C::UI::Bind(&FN2CUIColors::BgPanelDarker);
 		break;
 
 	case EN2CPanelVariant::Overlay:
 		BorderBrush = &N2CStyle::GetPanelBorderBrush();
-		BgColor = UIBindAlpha(&FN2CUIColors::BgOverlayPanel, InArgs._OverlayAlpha);
+		BgColor = N2C::UI::BindAlpha(&FN2CUIColors::BgOverlayPanel, InArgs._OverlayAlpha);
 		break;
 	}
 

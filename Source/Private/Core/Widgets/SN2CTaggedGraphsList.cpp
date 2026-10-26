@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CTaggedGraphsList.h"
-#include "Core/N2CSettings.h"
+#include "Core/Style/N2CUIColors.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Widgets/Layout/SBorder.h"
@@ -11,9 +11,9 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SButton.h"
 #include "Styling/AppStyle.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CStyle.h"
 #include "Core/Widgets/SN2CPanel.h"
-#include "Core/N2CDesignTokens.h"
+#include "Core/Style/N2CDesignTokens.h"
 #include "Misc/Paths.h"
 #include "Models/N2CLogging.h"
 
@@ -86,7 +86,7 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 			[
 				SAssignNew(HeaderPathText, STextBlock)
 				.Text(LOCTEXT("SelectTagPrompt", "Select a category or tag"))
-				.ColorAndOpacity(UIBind(&FN2CUIColors::TextMuted))
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 			]
 		]
 		// List view

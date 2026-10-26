@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CIconButton.h"
-#include "Core/N2CDesignTokens.h"
-#include "Models/N2CStyle.h"
+#include "Core/Style/N2CDesignTokens.h"
+#include "Core/Style/N2CStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Text/STextBlock.h"
