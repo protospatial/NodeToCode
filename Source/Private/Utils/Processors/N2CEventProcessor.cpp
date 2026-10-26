@@ -15,10 +15,9 @@ void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         }
         
         // Log event details
-        FString EventInfo = FString::Printf(TEXT("Event: %s, Parent: %s"),
+        N2C_LOG(Debug, TEXT("Event: %s, Parent: %s"),
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(EventInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -32,10 +31,9 @@ void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         }
         
         // Log custom event details
-        FString EventInfo = FString::Printf(TEXT("Custom Event: %s, Parent: %s"),
+        N2C_LOG(Debug, TEXT("Custom Event: %s, Parent: %s"),
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(EventInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -49,10 +47,9 @@ void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         }
         
         // Log actor bound event details
-        FString EventInfo = FString::Printf(TEXT("Actor Bound Event: %s, Parent: %s"),
+        N2C_LOG(Debug, TEXT("Actor Bound Event: %s, Parent: %s"),
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(EventInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -66,10 +63,9 @@ void FN2CEventProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
         }
         
         // Log component bound event details
-        FString EventInfo = FString::Printf(TEXT("Component Bound Event: %s, Parent: %s"),
+        N2C_LOG(Debug, TEXT("Component Bound Event: %s, Parent: %s"),
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(EventInfo, EN2CLogSeverity::Debug);
         return;
     }
 }

@@ -99,11 +99,10 @@ bool FN2CNodeCollector::CollectPinsFromNode(UK2Node* Node, TArray<UEdGraphPin*>&
     }
 
     // Log pin collection results
-    FString Context = FString::Printf(TEXT("Node: %s, Input Pins: %d, Output Pins: %d"),
+    N2C_LOG_CONTEXT(Info, FString::Printf(TEXT("Node: %s, Input Pins: %d, Output Pins: %d"),
         *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
         OutInputPins.Num(),
-        OutOutputPins.Num());
-    FN2CLogger::Get().Log(TEXT("Pin collection complete"), EN2CLogSeverity::Info, Context);
+        OutOutputPins.Num()), TEXT("Pin collection complete"));
 
     return true;
 }
@@ -132,7 +131,8 @@ bool FN2CNodeCollector::ValidatePin(UEdGraphPin* Pin) const
 
 void FN2CNodeCollector::GetK2PinMetadata(UK2Node* K2Node, UEdGraphPin* Pin)
 {
-    if (!K2Node || !Pin)
+    // Only logs: nothing to do unless Debug is on (card 0193)
+    if (!K2Node || !Pin || !FN2CLogger::IsEnabled(EN2CLogSeverity::Debug))
     {
         return;
     }
@@ -166,12 +166,13 @@ void FN2CNodeCollector::GetK2PinMetadata(UK2Node* K2Node, UEdGraphPin* Pin)
         *ContainerTypeStr,
         PinType.bIsReference ? 1 : 0);
     
-    FN2CLogger::Get().Log(TEXT("K2 Pin Details"), EN2CLogSeverity::Debug, TypeInfo);
+    N2C_LOG_CONTEXT(Debug, TypeInfo, TEXT("K2 Pin Details"));
 }
 
 void FN2CNodeCollector::CollectPinDefaultValue(UEdGraphPin* Pin)
 {
-    if (!Pin)
+    // Only logs: nothing to do unless Debug is on (card 0193)
+    if (!Pin || !FN2CLogger::IsEnabled(EN2CLogSeverity::Debug))
     {
         return;
     }
@@ -182,7 +183,7 @@ void FN2CNodeCollector::CollectPinDefaultValue(UEdGraphPin* Pin)
         FString Context = FString::Printf(TEXT("Pin: %s, Default Value: %s"),
             *Pin->GetDisplayName().ToString(),
             *Pin->DefaultValue);
-        FN2CLogger::Get().Log(TEXT("Pin Default Value"), EN2CLogSeverity::Debug, Context);
+        N2C_LOG_CONTEXT(Debug, Context, TEXT("Pin Default Value"));
     }
     
     // Handle default object/class values
@@ -191,7 +192,7 @@ void FN2CNodeCollector::CollectPinDefaultValue(UEdGraphPin* Pin)
         FString Context = FString::Printf(TEXT("Pin: %s, Default Object: %s"),
             *Pin->GetDisplayName().ToString(),
             *Pin->DefaultObject->GetName());
-        FN2CLogger::Get().Log(TEXT("Pin Default Object"), EN2CLogSeverity::Debug, Context);
+        N2C_LOG_CONTEXT(Debug, Context, TEXT("Pin Default Object"));
     }
     
     // Handle default text value
@@ -200,13 +201,14 @@ void FN2CNodeCollector::CollectPinDefaultValue(UEdGraphPin* Pin)
         FString Context = FString::Printf(TEXT("Pin: %s, Default Text: %s"),
             *Pin->GetDisplayName().ToString(),
             *Pin->DefaultTextValue.ToString());
-        FN2CLogger::Get().Log(TEXT("Pin Default Text"), EN2CLogSeverity::Debug, Context);
+        N2C_LOG_CONTEXT(Debug, Context, TEXT("Pin Default Text"));
     }
 }
 
 void FN2CNodeCollector::CollectPinConnections(UEdGraphPin* Pin)
 {
-    if (!Pin)
+    // Only logs: nothing to do unless Debug is on (card 0193)
+    if (!Pin || !FN2CLogger::IsEnabled(EN2CLogSeverity::Debug))
     {
         return;
     }
@@ -230,6 +232,6 @@ void FN2CNodeCollector::CollectPinConnections(UEdGraphPin* Pin)
             }
         }
         
-        FN2CLogger::Get().Log(TEXT("Pin Connections"), EN2CLogSeverity::Debug, Context);
+        N2C_LOG_CONTEXT(Debug, Context, TEXT("Pin Connections"));
     }
 }

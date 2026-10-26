@@ -1,8 +1,9 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Utils/N2CLogger.h"
-#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Serialization/Archive.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/OutputDeviceConsole.h"
 #include "HAL/IConsoleManager.h"
@@ -33,7 +34,7 @@ bool FN2CLogger::ShouldLogLLMPayloads()
 
 void FN2CLogger::LogLLMContent(const TCHAR* Label, const TCHAR* What, const FString& Content, const FString& Context)
 {
-    if (Get().MinSeverity > EN2CLogSeverity::Debug)
+    if (!IsEnabled(EN2CLogSeverity::Debug))
     {
         return;
     }
@@ -67,6 +68,12 @@ FN2CLogger::FN2CLogger()
     , bFileLoggingEnabled(false)
     , LogFilePath(FPaths::ProjectSavedDir() / TEXT("NodeToCode.log"))
 {
+}
+
+FN2CLogger::~FN2CLogger()
+{
+    FScopeLock ScopeLock(&Lock);
+    CloseLogFile();
 }
 
 void FN2CLogger::Log(const FString& Message, EN2CLogSeverity Severity, const FString& Context)
@@ -207,13 +214,31 @@ void FN2CLogger::SetMinSeverity(EN2CLogSeverity Severity)
 
 void FN2CLogger::EnableFileLogging(bool bEnable)
 {
+    FScopeLock ScopeLock(&Lock);
     bFileLoggingEnabled = bEnable;
+    if (!bEnable)
+    {
+        CloseLogFile();
+    }
 }
 
 void FN2CLogger::SetLogFilePath(const FString& Path)
 {
     FScopeLock ScopeLock(&Lock);
-    LogFilePath = Path;
+    if (Path != LogFilePath)
+    {
+        CloseLogFile();
+        LogFilePath = Path;
+    }
+}
+
+void FN2CLogger::CloseLogFile()
+{
+    if (LogFile)
+    {
+        LogFile->Close();
+        LogFile.Reset();
+    }
 }
 
 void FN2CLogger::WriteToFile(const FString& Message)
@@ -223,22 +248,32 @@ void FN2CLogger::WriteToFile(const FString& Message)
         return;
     }
 
-    // Ensure directory exists
-    FString Directory = FPaths::GetPath(LogFilePath);
-    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-    if (!PlatformFile.DirectoryExists(*Directory))
+    if (!LogFile)
     {
-        PlatformFile.CreateDirectoryTree(*Directory);
+        // Opened once and kept open: before card 0193 every line reopened the file with SaveStringToFile and
+        // EEncodingOptions::AutoDetect, which wrote a line holding any non-ASCII character as UTF-16 and the rest as
+        // ANSI, so one file mixed encodings. Every line is UTF-8 now.
+        IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+        const FString Directory = FPaths::GetPath(LogFilePath);
+        if (!Directory.IsEmpty() && !PlatformFile.DirectoryExists(*Directory))
+        {
+            PlatformFile.CreateDirectoryTree(*Directory);
+        }
+        LogFile.Reset(IFileManager::Get().CreateFileWriter(*LogFilePath, FILEWRITE_Append | FILEWRITE_AllowRead));
+        if (!LogFile)
+        {
+            // Cannot open (a read-only folder, the path is a directory): stop trying instead of failing on every line.
+            // UE_LOG, not Log, since the caller holds Lock.
+            bFileLoggingEnabled = false;
+            UE_LOG(LogNodeToCode, Warning, TEXT("NodeToCode file logging is off: cannot open %s for writing"), *LogFilePath);
+            return;
+        }
     }
 
-    // Append to file
-    FFileHelper::SaveStringToFile(
-        Message + LINE_TERMINATOR,
-        *LogFilePath,
-        FFileHelper::EEncodingOptions::AutoDetect,
-        &IFileManager::Get(),
-        FILEWRITE_Append
-    );
+    const FTCHARToUTF8 Utf8(*(Message + LINE_TERMINATOR));
+    LogFile->Serialize(const_cast<ANSICHAR*>(Utf8.Get()), Utf8.Length());
+    // Each line reaches the file at once, so a crash keeps everything logged before it
+    LogFile->Flush();
 }
 
 FString FN2CLogger::FormatError(const FN2CError& Error) const

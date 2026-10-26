@@ -55,8 +55,7 @@ void FN2CVariableProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinit
     }
 
     // Log variable details
-    FString VarInfo = FString::Printf(TEXT("Variable: %s, Owner: %s"),
+    N2C_LOG(Debug, TEXT("Variable: %s, Owner: %s"),
         *OutNodeDef.MemberName,
         *OutNodeDef.MemberParent);
-    FN2CLogger::Get().Log(VarInfo, EN2CLogSeverity::Debug);
 }

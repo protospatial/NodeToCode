@@ -39,6 +39,6 @@ void FN2CStructProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinitio
         OutNodeDef.Title = FString::Printf(TEXT("Break %s"), *Struct->GetName());
     }
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("Struct node %s: %s, struct %s"), *Node->GetClass()->GetName(),
-        *OutNodeDef.Title, *OutNodeDef.MemberName), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Struct node %s: %s, struct %s"), *Node->GetClass()->GetName(),
+        *OutNodeDef.Title, *OutNodeDef.MemberName);
 }

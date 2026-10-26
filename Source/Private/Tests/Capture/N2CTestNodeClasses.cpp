@@ -13,3 +13,11 @@ void UK2Node_N2CTestUnmapped::AllocateDefaultPins()
 	CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Exec, UEdGraphSchema_K2::PN_Then);
 	Super::AllocateDefaultPins();
 }
+
+int32 UK2Node_N2CTestTitleCounter::TitleCalls = 0;
+
+FText UK2Node_N2CTestTitleCounter::GetNodeTitle(ENodeTitleType::Type TitleType) const
+{
+	++TitleCalls;
+	return Super::GetNodeTitle(TitleType);
+}

@@ -5,13 +5,12 @@
 bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutError)
 {
     // Log node basic info
-    FString NodeInfo = FString::Printf(TEXT("Validating Node: ID=%s, Title=%s, Type=%s, MemberParent=%s, MemberName=%s"),
+    N2C_LOG(Debug, TEXT("Validating Node: ID=%s, Title=%s, Type=%s, MemberParent=%s, MemberName=%s"),
         *Node.ID,
         *Node.Title,
         *StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(Node.NodeType)),
         *Node.MemberParent,
         *Node.MemberName);
-    FN2CLogger::Get().Log(NodeInfo, EN2CLogSeverity::Debug);
 
     // Validate required fields
     if (!ValidateRequired(Node, OutError))
@@ -47,7 +46,7 @@ bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutErr
         return false;
     }
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("Node %s (%s) validation successful"), *Node.ID, *Node.Title), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Node %s (%s) validation successful"), *Node.ID, *Node.Title);
     return true;
 }
 
@@ -90,12 +89,11 @@ bool FN2CNodeValidator::ValidateFlags(const FN2CNodeDefinition& Node, FString& O
 bool FN2CNodeValidator::ValidatePins(const FN2CNodeDefinition& Node, FString& OutError)
 {
     // Log pin counts
-    FString PinInfo = FString::Printf(TEXT("Node %s (%s) has %d input pins and %d output pins"),
+    N2C_LOG(Debug, TEXT("Node %s (%s) has %d input pins and %d output pins"),
         *Node.ID,
         *Node.Title,
         Node.InputPins.Num(),
         Node.OutputPins.Num());
-    FN2CLogger::Get().Log(PinInfo, EN2CLogSeverity::Debug);
 
     // Check for duplicate pin IDs
     TSet<FString> PinIds;
@@ -103,7 +101,7 @@ bool FN2CNodeValidator::ValidatePins(const FN2CNodeDefinition& Node, FString& Ou
     // Check input pins
     for (const FN2CPinDefinition& Pin : Node.InputPins)
     {
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Validating input pin %s (%s) on node %s"), *Pin.ID, *Pin.Name, *Node.ID), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Validating input pin %s (%s) on node %s"), *Pin.ID, *Pin.Name, *Node.ID);
         
         FString PinError;
         if (!PinValidator.Validate(Pin, PinError))
@@ -124,7 +122,7 @@ bool FN2CNodeValidator::ValidatePins(const FN2CNodeDefinition& Node, FString& Ou
     // Check output pins
     for (const FN2CPinDefinition& Pin : Node.OutputPins)
     {
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Validating output pin %s (%s) on node %s"), *Pin.ID, *Pin.Name, *Node.ID), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Validating output pin %s (%s) on node %s"), *Pin.ID, *Pin.Name, *Node.ID);
         
         FString PinError;
         if (!PinValidator.Validate(Pin, PinError))
@@ -142,7 +140,7 @@ bool FN2CNodeValidator::ValidatePins(const FN2CNodeDefinition& Node, FString& Ou
         PinIds.Add(Pin.ID);
     }
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("All pins validated successfully for node %s"), *Node.ID), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("All pins validated successfully for node %s"), *Node.ID);
     return true;
 }
 
@@ -157,7 +155,7 @@ bool FN2CNodeValidator::HasExecPins(const FN2CNodeDefinition& Node) const
         if (Pin.Type == EN2CPinType::Exec)
         {
             hasExecInput = true;
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Node %s (%s) has exec input pin: %s"), *Node.ID, *Node.Title, *Pin.Name), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("Node %s (%s) has exec input pin: %s"), *Node.ID, *Node.Title, *Pin.Name);
             break;
         }
     }
@@ -168,15 +166,15 @@ bool FN2CNodeValidator::HasExecPins(const FN2CNodeDefinition& Node) const
         if (Pin.Type == EN2CPinType::Exec)
         {
             hasExecOutput = true;
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Node %s (%s) has exec output pin: %s"), *Node.ID, *Node.Title, *Pin.Name), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("Node %s (%s) has exec output pin: %s"), *Node.ID, *Node.Title, *Pin.Name);
             break;
         }
     }
 
     if (hasExecInput || hasExecOutput)
     {
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Node %s (%s) exec pins: Input=%d, Output=%d"), 
-            *Node.ID, *Node.Title, hasExecInput ? 1 : 0, hasExecOutput ? 1 : 0), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("Node %s (%s) exec pins: Input=%d, Output=%d"),
+            *Node.ID, *Node.Title, hasExecInput ? 1 : 0, hasExecOutput ? 1 : 0);
     }
 
     return hasExecInput && hasExecOutput;

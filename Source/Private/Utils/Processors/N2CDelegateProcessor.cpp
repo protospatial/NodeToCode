@@ -15,11 +15,10 @@ void FN2CDelegateProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinit
         }
         
         // Log delegate details
-        FString DelegateInfo = FString::Printf(TEXT("Delegate Node: %s, Member: %s, Parent: %s"),
+        N2C_LOG(Debug, TEXT("Delegate Node: %s, Member: %s, Parent: %s"),
             *OutNodeDef.Title,
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(DelegateInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -43,11 +42,10 @@ void FN2CDelegateProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinit
         }
         
         // Log create delegate details
-        FString CreateDelegateInfo = FString::Printf(TEXT("Create Delegate: %s, Function: %s, Class: %s"),
+        N2C_LOG(Debug, TEXT("Create Delegate: %s, Function: %s, Class: %s"),
             *OutNodeDef.Title,
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(CreateDelegateInfo, EN2CLogSeverity::Debug);
         return;
     }
     
@@ -64,11 +62,10 @@ void FN2CDelegateProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinit
         }
         
         // Log call delegate details
-        FString CallDelegateInfo = FString::Printf(TEXT("Call Delegate: %s, Signature: %s, Class: %s"),
+        N2C_LOG(Debug, TEXT("Call Delegate: %s, Signature: %s, Class: %s"),
             *OutNodeDef.Title,
             *OutNodeDef.MemberName,
             *OutNodeDef.MemberParent);
-        FN2CLogger::Get().Log(CallDelegateInfo, EN2CLogSeverity::Debug);
         return;
     }
 }

@@ -37,10 +37,9 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
                 }
                 
                 // Log array element type
-                FString ArrayInfo = FString::Printf(TEXT("Make Array: %s, Element Type: %s"),
+                N2C_LOG(Debug, TEXT("Make Array: %s, Element Type: %s"),
                     *OutNodeDef.Title,
                     *OutNodeDef.MemberName);
-                FN2CLogger::Get().Log(ArrayInfo, EN2CLogSeverity::Debug);
                 break;
             }
         }
@@ -65,11 +64,10 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
                 OutNodeDef.MemberName = FString::Printf(TEXT("%s to %s"), *KeyType, *ValueType);
                 
                 // Log map key/value types
-                FString MapInfo = FString::Printf(TEXT("Make Map: %s, Key Type: %s, Value Type: %s"),
+                N2C_LOG(Debug, TEXT("Make Map: %s, Key Type: %s, Value Type: %s"),
                     *OutNodeDef.Title,
                     *KeyType,
                     *ValueType);
-                FN2CLogger::Get().Log(MapInfo, EN2CLogSeverity::Debug);
                 break;
             }
         }
@@ -94,10 +92,9 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
                 }
                 
                 // Log set element type
-                FString SetInfo = FString::Printf(TEXT("Make Set: %s, Element Type: %s"),
+                N2C_LOG(Debug, TEXT("Make Set: %s, Element Type: %s"),
                     *OutNodeDef.Title,
                     *OutNodeDef.MemberName);
-                FN2CLogger::Get().Log(SetInfo, EN2CLogSeverity::Debug);
                 break;
             }
         }
@@ -122,10 +119,9 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
                 }
                 
                 // Log array element type
-                FString ArrayInfo = FString::Printf(TEXT("Get Array Item: %s, Element Type: %s"),
+                N2C_LOG(Debug, TEXT("Get Array Item: %s, Element Type: %s"),
                     *OutNodeDef.Title,
                     *OutNodeDef.MemberName);
-                FN2CLogger::Get().Log(ArrayInfo, EN2CLogSeverity::Debug);
                 break;
             }
         }
@@ -165,11 +161,10 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
                 }
                 
                 // Log container type
-                FString ContainerInfo = FString::Printf(TEXT("Make Container: %s, Type: %s, Element Type: %s"),
+                N2C_LOG(Debug, TEXT("Make Container: %s, Type: %s, Element Type: %s"),
                     *OutNodeDef.Title,
                     *ContainerType,
                     *OutNodeDef.MemberName);
-                FN2CLogger::Get().Log(ContainerInfo, EN2CLogSeverity::Debug);
                 break;
             }
         }

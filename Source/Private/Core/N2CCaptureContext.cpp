@@ -169,8 +169,8 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
     {
         if (!Options.bIncludeGhostNodes && IsGhostNode(Node))
         {
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping ghost node %s (an unwired default event)"),
-                *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("Skipping ghost node %s (an unwired default event)"),
+                *Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
             continue;
         }
         CollectedNodes.Add(Node);
@@ -203,7 +203,7 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
             FString Context = FString::Printf(TEXT("Created graph: %s of type %s"),
                 *MainGraphName,
                 *StaticEnum<EN2CGraphType>()->GetNameStringByValue(static_cast<int64>(MainGraphType)));
-            FN2CLogger::Get().Log(TEXT("Graph info"), EN2CLogSeverity::Debug, Context);
+            N2C_LOG_CONTEXT(Debug, Context, TEXT("Graph info"));
         }
     }
     // The main graph counts as visited before any of its nodes, so a call to itself is not queued
@@ -449,8 +449,8 @@ void FN2CCaptureContext::AddGraphToProcess(UEdGraph* Graph)
         const UBlueprint* OwningBlueprint = FBlueprintEditorUtils::FindBlueprintForGraph(Graph);
         if (!IsUserContent(OwningBlueprint))
         {
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping graph %s: not the project's own content (%s)"),
-                *Graph->GetName(), OwningBlueprint ? *OwningBlueprint->GetPathName() : TEXT("no Blueprint")), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("Skipping graph %s: not the project's own content (%s)"),
+                *Graph->GetName(), OwningBlueprint ? *OwningBlueprint->GetPathName() : TEXT("no Blueprint"));
             return;
         }
         if (GraphDepth > Options.Depth)
@@ -469,8 +469,8 @@ void FN2CCaptureContext::AddGraphToProcess(UEdGraph* Graph)
             return;
         }
     }
-    FN2CLogger::Get().Log(FString::Printf(TEXT("Adding user-created graph to process: %s (Depth: %d)"),
-        *Graph->GetName(), GraphDepth), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Adding user-created graph to process: %s (Depth: %d)"),
+        *Graph->GetName(), GraphDepth);
     AdditionalGraphsToProcess.Add(FGraphProcessInfo(Graph, GraphDepth));
 }
 
@@ -761,8 +761,8 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
         {
             // Log successful processing
             FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully processed node '%s' using %s processor"),
-                *OutNodeDef.Title, *NodeTypeName), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("Successfully processed node '%s' using %s processor"),
+                *OutNodeDef.Title, *NodeTypeName);
         }
     }
     else
@@ -847,9 +847,8 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
                     if (FuncGraph && FuncGraph->GetFName() == CreateDelegateNode->GetFunctionName())
                     {
                         AddGraphToProcess(FuncGraph);
-                        FN2CLogger::Get().Log(
-                            FString::Printf(TEXT("Added delegate function graph to process: %s"), *FuncGraph->GetName()),
-                            EN2CLogSeverity::Debug);
+                        N2C_LOG(Debug,
+                            TEXT("Added delegate function graph to process: %s"), *FuncGraph->GetName());
                         break;
                     }
                 }
@@ -867,9 +866,8 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
                         if (FuncGraph && FuncGraph->GetFName() == DelegateSignature->GetFName())
                         {
                             AddGraphToProcess(FuncGraph);
-                            FN2CLogger::Get().Log(
-                                FString::Printf(TEXT("Added delegate signature graph to process: %s"), *FuncGraph->GetName()),
-                                EN2CLogSeverity::Debug);
+                            N2C_LOG(Debug,
+                                TEXT("Added delegate signature graph to process: %s"), *FuncGraph->GetName());
                             break;
                         }
                     }
@@ -915,9 +913,9 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
         PinDef.ID = PinID;
 
         // Debug logging for pin mapping
-        FN2CLogger::Get().Log(FString::Printf(TEXT("ProcessNodePins: Pin GUID %s has ID %s (Pin Name: %s, Node: %s)"), 
+        N2C_LOG(Debug, TEXT("ProcessNodePins: Pin GUID %s has ID %s (Pin Name: %s, Node: %s)"),
             *Pin->PinId.ToString(), *PinID, *Pin->GetDisplayName().ToString(), 
-            *Node->GetNodeTitle(ENodeTitleType::ListView).ToString()), EN2CLogSeverity::Debug);
+            *Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
         
         // The pin's identifier (PinName: "execute", "then", "ReturnValue"), never its display name, which changes with
         // the editor language and the friendly-names preference and is blank for exec pins (card 0138); the display
@@ -989,10 +987,9 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
             if (Pin->PinType.PinCategory == TEXT("exec"))
             {
                 OutExecInputs.Add(Pin);
-                FString PinContext = FString::Printf(TEXT("Found exec input pin: %s on node %s"),
+                N2C_LOG(Debug, TEXT("Found exec input pin: %s on node %s"),
                     *Pin->GetDisplayName().ToString(),
                     *Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
-                FN2CLogger::Get().Log(PinContext, EN2CLogSeverity::Debug);
             }
         }
         else if (Pin->Direction == EGPD_Output)
@@ -1003,10 +1000,9 @@ void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutN
             if (Pin->PinType.PinCategory == TEXT("exec"))
             {
                 OutExecOutputs.Add(Pin);
-                FString PinContext = FString::Printf(TEXT("Found exec output pin: %s on node %s"),
+                N2C_LOG(Debug, TEXT("Found exec output pin: %s on node %s"),
                     *Pin->GetDisplayName().ToString(),
                     *Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
-                FN2CLogger::Get().Log(PinContext, EN2CLogSeverity::Debug);
             }
         }
     }
@@ -1017,10 +1013,9 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
     // Record execution flows: one entry per link, from the exec output pin to the exec input pin it runs
     // ("N3.P5->N4.P1"), through knots and every branch of their fan-out, so Branch True/False, Switch cases, Sequence
     // outputs and loop pins stay apart, as do Gate Enter/Open/Close and Timeline Play/Reverse (translation-core-2)
-    FString ExecDebug = FString::Printf(TEXT("Node %s has %d exec outputs"), 
+    N2C_LOG(Debug, TEXT("Node %s has %d exec outputs"),
         *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
         ExecOutputs.Num());
-    FN2CLogger::Get().Log(ExecDebug, EN2CLogSeverity::Debug);
 
     // A disabled node runs nothing: the links into it go on to where exec passes through it, if anywhere
     const FString SourceNodeID = NodeIDs.FindRef(Node);
@@ -1032,10 +1027,9 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
             continue;
         }
 
-        FString PinDebug = FString::Printf(TEXT("Exec output pin %s has %d connections"), 
+        N2C_LOG(Debug, TEXT("Exec output pin %s has %d connections"),
             *ExecOutput->GetDisplayName().ToString(),
             ExecOutput->LinkedTo.Num());
-        FN2CLogger::Get().Log(PinDebug, EN2CLogSeverity::Debug);
 
         for (UEdGraphPin* TargetPin : TraceExecTargets(ExecOutput))
         {
@@ -1045,19 +1039,17 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
             if (TargetNodeID.IsEmpty() || TargetPinID.IsEmpty())
             {
                 // The target is outside the capture (or hidden): there is no ID to point at
-                FN2CLogger::Get().Log(FString::Printf(TEXT("Exec link from %s.%s to %s, outside the capture, is not recorded"),
-                    *SourceNodeID, *SourcePinID, TargetNode ? *TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString() : TEXT("(null)")),
-                    EN2CLogSeverity::Debug);
+                N2C_LOG(Debug, TEXT("Exec link from %s.%s to %s, outside the capture, is not recorded"),
+                    *SourceNodeID, *SourcePinID, TargetNode ? *TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString() : TEXT("(null)"));
                 continue;
             }
 
             CurrentGraph().Flows.Execution.AddUnique(N2CJsonContract::MakeExecEdge(SourceNodeID, SourcePinID, TargetNodeID, TargetPinID));
 
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Added execution flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),
+            N2C_LOG(Debug, TEXT("Added execution flow: %s.%s (%s.%s) -> %s.%s (%s.%s)"),
                 *SourceNodeID, *SourcePinID, *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
                 *ExecOutput->GetDisplayName().ToString(), *TargetNodeID, *TargetPinID,
-                *TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString(), *TargetPin->GetDisplayName().ToString()),
-                EN2CLogSeverity::Debug);
+                *TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString(), *TargetPin->GetDisplayName().ToString());
         }
     }
 
@@ -1089,10 +1081,10 @@ void FN2CCaptureContext::ProcessNodeFlows(UK2Node* Node, const TArray<UEdGraphPi
             const FString TargetRef = FString::Printf(TEXT("%s.%s"), *TargetNodeID, *TargetPinID);
             CurrentGraph().Flows.Data.FindOrAdd(SourceRef).Targets.AddUnique(TargetRef);
 
-            FN2CLogger::Get().Log(FString::Printf(TEXT("Added data flow: %s (%s.%s) -> %s (%s.%s)"),
+            N2C_LOG(Debug, TEXT("Added data flow: %s (%s.%s) -> %s (%s.%s)"),
                 *SourceRef, *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(), *Pin->GetDisplayName().ToString(),
                 *TargetRef, *TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString(),
-                *TargetPin->GetDisplayName().ToString()), EN2CLogSeverity::Debug);
+                *TargetPin->GetDisplayName().ToString());
         }
     }
 }
@@ -1119,23 +1111,21 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
     // Check if we've already processed this enum
     if (ProcessedEnumPaths.Contains(EnumPath))
     {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Enum %s already processed - skipping"), *EnumPath),
-            EN2CLogSeverity::Debug);
+        N2C_LOG(Debug,
+            TEXT("Enum %s already processed - skipping"), *EnumPath);
         return Result;
     }
     
     // Mark as processed
     ProcessedEnumPaths.Add(EnumPath);
-    FN2CLogger::Get().Log(TEXT("Added enum to processed paths"), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Added enum to processed paths"));
     
     // Set basic enum info
     Result.Name = EnumName;
     
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Enum details: Name=%s"), 
-            *Result.Name),
-        EN2CLogSeverity::Debug);
+    N2C_LOG(Debug,
+        TEXT("Enum details: Name=%s"),
+            *Result.Name);
     
     // Get enum comment if available
     FString EnumComment = Enum->GetMetaData(TEXT("ToolTip"));
@@ -1143,26 +1133,23 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
     if (!EnumComment.IsEmpty())
     {
         Result.Comment = EnumComment;
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Enum comment: %s"), *Result.Comment),
-            EN2CLogSeverity::Debug);
+        N2C_LOG(Debug,
+            TEXT("Enum comment: %s"), *Result.Comment);
     }
     
     // Process enum values
     int32 NumEnums = Enum->NumEnums();
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Enum has %d values according to NumEnums()"), NumEnums),
-        EN2CLogSeverity::Debug);
+    N2C_LOG(Debug,
+        TEXT("Enum has %d values according to NumEnums()"), NumEnums);
     
     // Log all enum names and values for debugging
     for (int32 i = 0; i < NumEnums; ++i)
     {
         FString ValueName = N2CStableNames::SourceText(Enum->GetDisplayNameTextByIndex(i));
         
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Enum value #%d: Name='%s'"), 
-                i, *ValueName),
-            EN2CLogSeverity::Debug);
+        N2C_LOG(Debug,
+            TEXT("Enum value #%d: Name='%s'"),
+                i, *ValueName);
             
         // Check if this is a hidden enum value (like _MAX or similar)
         bool bIsHidden = ValueName.Contains(TEXT("_MAX")) || 
@@ -1174,9 +1161,8 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
                          
         if (bIsHidden)
         {
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("  -> Skipping hidden value '%s'"), *ValueName),
-                EN2CLogSeverity::Debug);
+            N2C_LOG(Debug,
+                TEXT("  -> Skipping hidden value '%s'"), *ValueName);
             continue; // Skip adding this value
         }
         
@@ -1189,9 +1175,8 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
         {
             ValueComment = Enum->GetMetaData(TEXT("ToolTip"), i);
             Value.Comment = ValueComment;
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("  -> Comment: %s"), *ValueComment),
-                EN2CLogSeverity::Debug);
+            N2C_LOG(Debug,
+                TEXT("  -> Comment: %s"), *ValueComment);
         }
         
         Result.Values.Add(Value);
@@ -1227,42 +1212,42 @@ EN2CStructMemberType FN2CCaptureContext::ConvertPropertyToStructMemberType(FProp
     }
     
     FString PropertyName = Property->GetName();
-    FN2CLogger::Get().Log(FString::Printf(TEXT("ConvertPropertyToStructMemberType: Property '%s'"), 
-        *PropertyName), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("ConvertPropertyToStructMemberType: Property '%s'"),
+        *PropertyName);
     
     if (CastField<FBoolProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Identified as Bool type"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Bool type"));
         return EN2CStructMemberType::Bool;
     }
     if (CastField<FByteProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Identified as Byte type"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Byte type"));
         return EN2CStructMemberType::Byte;
     }
     if (CastField<FIntProperty>(Property) || CastField<FInt64Property>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Identified as Int type"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Int type"));
         return EN2CStructMemberType::Int;
     }
     if (CastField<FFloatProperty>(Property) || CastField<FDoubleProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Identified as Float type"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Float type"));
         return EN2CStructMemberType::Float;
     }
     if (CastField<FStrProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Identified as String type"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as String type"));
         return EN2CStructMemberType::String;
     }
     if (CastField<FNameProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Identified as Name type"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Name type"));
         return EN2CStructMemberType::Name;
     }
     if (CastField<FTextProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Identified as Text type"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Text type"));
         return EN2CStructMemberType::Text;
     }
     
@@ -1271,27 +1256,27 @@ EN2CStructMemberType FN2CCaptureContext::ConvertPropertyToStructMemberType(FProp
         FString StructName = StructProp->Struct ? StructProp->Struct->GetName() : TEXT("Unknown");
         FString StructPath = StructProp->Struct ? StructProp->Struct->GetPathName() : TEXT("Unknown");
         
-        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Struct type: %s (Path: %s)"), 
-            *StructName, *StructPath), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Struct type: %s (Path: %s)"),
+            *StructName, *StructPath);
             
         if (StructProp->Struct->GetFName() == NAME_Vector)
         {
-            FN2CLogger::Get().Log(TEXT("  -> Specialized as Vector type"), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Specialized as Vector type"));
             return EN2CStructMemberType::Vector;
         }
         if (StructProp->Struct->GetFName() == NAME_Vector2D)
         {
-            FN2CLogger::Get().Log(TEXT("  -> Specialized as Vector2D type"), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Specialized as Vector2D type"));
             return EN2CStructMemberType::Vector2D;
         }
         if (StructProp->Struct->GetFName() == NAME_Rotator)
         {
-            FN2CLogger::Get().Log(TEXT("  -> Specialized as Rotator type"), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Specialized as Rotator type"));
             return EN2CStructMemberType::Rotator;
         }
         if (StructProp->Struct->GetFName() == NAME_Transform)
         {
-            FN2CLogger::Get().Log(TEXT("  -> Specialized as Transform type"), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Specialized as Transform type"));
             return EN2CStructMemberType::Transform;
         }
 
@@ -1303,29 +1288,27 @@ EN2CStructMemberType FN2CCaptureContext::ConvertPropertyToStructMemberType(FProp
         FString EnumName = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetName() : TEXT("Unknown");
         FString EnumPath = EnumProp->GetEnum() ? EnumProp->GetEnum()->GetPathName() : TEXT("Unknown");
         
-        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Enum type: %s (Path: %s)"), 
-            *EnumName, *EnumPath), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Enum type: %s (Path: %s)"),
+            *EnumName, *EnumPath);
         return EN2CStructMemberType::Enum;
     }
     if (FClassProperty* ClassProp = CastField<FClassProperty>(Property))
     {
         FString ClassName = ClassProp->MetaClass ? ClassProp->MetaClass->GetName() : TEXT("Unknown");
         
-        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Class type: %s"), *ClassName), 
-            EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Class type: %s"), *ClassName);
         return EN2CStructMemberType::Class;
     }
     if (FObjectProperty* ObjProp = CastField<FObjectProperty>(Property))
     {
         FString ObjClassName = ObjProp->PropertyClass ? ObjProp->PropertyClass->GetName() : TEXT("Unknown");
         
-        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Identified as Object type: %s"), *ObjClassName), 
-            EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Identified as Object type: %s"), *ObjClassName);
         return EN2CStructMemberType::Object;
     }
 
-    FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Unrecognized property type '%s', using Custom type"), 
-        *Property->GetClass()->GetName()), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("  -> Unrecognized property type '%s', using Custom type"),
+        *Property->GetClass()->GetName());
     return EN2CStructMemberType::Custom; // For any other types
 }
 
@@ -1408,6 +1391,12 @@ void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
 
 void FN2CCaptureContext::LogNodeDetails(const FN2CNodeDefinition& NodeDef)
 {
+    // Several KB per node: built only when Debug is on (card 0193)
+    if (!FN2CLogger::IsEnabled(EN2CLogSeverity::Debug))
+    {
+        return;
+    }
+
     // Log detailed node info
     FString NodeInfo = FString::Printf(TEXT("Node Details:\n")
         TEXT("  ID: %s\n")
@@ -1505,8 +1494,8 @@ FString FN2CCaptureContext::CleanPropertyName(const FString& RawName) const
         if (MatchStart > 0)
         {
          CleanName = CleanName.Left(MatchStart);
-         FN2CLogger::Get().Log(FString::Printf(TEXT("Cleaned property name from '%s' to '%s'"),
-             *RawName, *CleanName), EN2CLogSeverity::Debug);
+         N2C_LOG(Debug, TEXT("Cleaned property name from '%s' to '%s'"),
+             *RawName, *CleanName);
         }
     }
 
@@ -1526,33 +1515,31 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
     // Set member name with cleaned version
     Member.Name = CleanPropertyName(Property->GetName());
     
-    FString DebugInfo = FString::Printf(TEXT("ProcessStructMember: Processing property '%s'"), 
+    N2C_LOG(Debug, TEXT("ProcessStructMember: Processing property '%s'"),
         *Member.Name);
-    FN2CLogger::Get().Log(DebugInfo, EN2CLogSeverity::Debug);
 
     // Get member comment if available
     if (Property->HasMetaData(TEXT("ToolTip")))
     {
         Member.Comment = Property->GetMetaData(TEXT("ToolTip"));
-        FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Found comment: %s"), *Member.Comment), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Found comment: %s"), *Member.Comment);
     }
 
     // Determine member type
     Member.Type = ConvertPropertyToStructMemberType(Property);
-    FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Determined type: %s"), 
-        *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))), 
-        EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("  -> Determined type: %s"),
+        *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type)));
 
     // Handle container types
     if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Processing as Array property"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Processing as Array property"));
         Member.bIsArray = true;
         FProperty* InnerProp = ArrayProp->Inner;
         if (InnerProp)
         {
-            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array inner type: %s"), 
-                *InnerProp->GetClass()->GetName()), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Array inner type: %s"),
+                *InnerProp->GetClass()->GetName());
                 
             Member.Type = ConvertPropertyToStructMemberType(InnerProp);
 
@@ -1560,18 +1547,18 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
             if (FStructProperty* InnerStructProp = CastField<FStructProperty>(InnerProp))
             {
                 Member.TypeName = InnerStructProp->Struct->GetName();
-                FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array of struct: %s"), 
-                    *Member.TypeName), EN2CLogSeverity::Debug);
+                N2C_LOG(Debug, TEXT("  -> Array of struct: %s"),
+                    *Member.TypeName);
 
                 // Process nested struct if it's Blueprint-defined
                 if (IsBlueprintStruct(InnerStructProp->Struct))
                 {
-                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined nested struct"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined nested struct"));
                     FN2CStruct NestedStruct = ProcessBlueprintStruct(InnerStructProp->Struct);
                     if (NestedStruct.IsValid())
                     {
                         N2CBlueprint.Structs.Add(NestedStruct);
-                        FN2CLogger::Get().Log(TEXT("  -> Added nested struct to blueprint"), EN2CLogSeverity::Debug);
+                        N2C_LOG(Debug, TEXT("  -> Added nested struct to blueprint"));
                     }
                     else
                     {
@@ -1582,18 +1569,18 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
             else if (FEnumProperty* InnerEnumProp = CastField<FEnumProperty>(InnerProp))
             {
                 Member.TypeName = InnerEnumProp->GetEnum()->GetName();
-                FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Array of enum: %s"), 
-                    *Member.TypeName), EN2CLogSeverity::Debug);
+                N2C_LOG(Debug, TEXT("  -> Array of enum: %s"),
+                    *Member.TypeName);
 
                 // Process enum if it's Blueprint-defined
                 if (IsBlueprintEnum(InnerEnumProp->GetEnum()))
                 {
-                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined nested enum"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined nested enum"));
                     FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->GetEnum());
                     if (NestedEnum.IsValid())
                     {
                         N2CBlueprint.Enums.Add(NestedEnum);
-                        FN2CLogger::Get().Log(TEXT("  -> Added nested enum to blueprint"), EN2CLogSeverity::Debug);
+                        N2C_LOG(Debug, TEXT("  -> Added nested enum to blueprint"));
                     }
                     else
                     {
@@ -1609,13 +1596,13 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
     }
     else if (FSetProperty* SetProp = CastField<FSetProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Processing as Set property"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Processing as Set property"));
         Member.bIsSet = true;
         // Similar logic for sets as for arrays
     }
     else if (FMapProperty* MapProp = CastField<FMapProperty>(Property))
     {
-        FN2CLogger::Get().Log(TEXT("  -> Processing as Map property"), EN2CLogSeverity::Debug);
+        N2C_LOG(Debug, TEXT("  -> Processing as Map property"));
         Member.bIsMap = true;
         
         // Process key type
@@ -1623,9 +1610,8 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
         if (KeyProp)
         {
             Member.KeyType = ConvertPropertyToStructMemberType(KeyProp);
-            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Map key type: %s"), 
-                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.KeyType))), 
-                EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Map key type: %s"),
+                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.KeyType)));
                 
             // Handle key type name for complex types
             if (FStructProperty* KeyStructProp = CastField<FStructProperty>(KeyProp))
@@ -1635,7 +1621,7 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
                 // Process nested struct if it's Blueprint-defined
                 if (IsBlueprintStruct(KeyStructProp->Struct))
                 {
-                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined key struct"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined key struct"));
                     FN2CStruct NestedStruct = ProcessBlueprintStruct(KeyStructProp->Struct);
                     if (NestedStruct.IsValid())
                     {
@@ -1650,7 +1636,7 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
                 // Process enum if it's Blueprint-defined
                 if (IsBlueprintEnum(KeyEnumProp->GetEnum()))
                 {
-                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined key enum"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined key enum"));
                     FN2CEnum NestedEnum = ProcessBlueprintEnum(KeyEnumProp->GetEnum());
                     if (NestedEnum.IsValid())
                     {
@@ -1665,9 +1651,8 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
         if (ValueProp)
         {
             Member.Type = ConvertPropertyToStructMemberType(ValueProp);
-            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Map value type: %s"), 
-                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))), 
-                EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Map value type: %s"),
+                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type)));
                 
             // Handle value type name for complex types
             if (FStructProperty* ValueStructProp = CastField<FStructProperty>(ValueProp))
@@ -1677,7 +1662,7 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
                 // Process nested struct if it's Blueprint-defined
                 if (IsBlueprintStruct(ValueStructProp->Struct))
                 {
-                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined value struct"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined value struct"));
                     FN2CStruct NestedStruct = ProcessBlueprintStruct(ValueStructProp->Struct);
                     if (NestedStruct.IsValid())
                     {
@@ -1692,7 +1677,7 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
                 // Process enum if it's Blueprint-defined
                 if (IsBlueprintEnum(ValueEnumProp->GetEnum()))
                 {
-                    FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined value enum"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined value enum"));
                     FN2CEnum NestedEnum = ProcessBlueprintEnum(ValueEnumProp->GetEnum());
                     if (NestedEnum.IsValid())
                     {
@@ -1708,18 +1693,18 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
         if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
         {
             Member.TypeName = StructProp->Struct->GetName();
-            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Struct type: %s (Path: %s)"), 
-                *Member.TypeName, *StructProp->Struct->GetPathName()), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Struct type: %s (Path: %s)"),
+                *Member.TypeName, *StructProp->Struct->GetPathName());
 
             // Process nested struct if it's Blueprint-defined
             if (IsBlueprintStruct(StructProp->Struct))
             {
-                FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined struct"), EN2CLogSeverity::Debug);
+                N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined struct"));
                 FN2CStruct NestedStruct = ProcessBlueprintStruct(StructProp->Struct);
                 if (NestedStruct.IsValid())
                 {
                     N2CBlueprint.Structs.Add(NestedStruct);
-                    FN2CLogger::Get().Log(TEXT("  -> Added struct to blueprint"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Added struct to blueprint"));
                 }
                 else
                 {
@@ -1730,18 +1715,18 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
         else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
         {
             Member.TypeName = EnumProp->GetEnum()->GetName();
-            FN2CLogger::Get().Log(FString::Printf(TEXT("  -> Enum type: %s (Path: %s)"), 
-                *Member.TypeName, *EnumProp->GetEnum()->GetPathName()), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("  -> Enum type: %s (Path: %s)"),
+                *Member.TypeName, *EnumProp->GetEnum()->GetPathName());
 
             // Process enum if it's Blueprint-defined
             if (IsBlueprintEnum(EnumProp->GetEnum()))
             {
-                FN2CLogger::Get().Log(TEXT("  -> Processing blueprint-defined enum"));
+                N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined enum"));
                 FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->GetEnum());
                 if (NestedEnum.IsValid())
                 {
                     N2CBlueprint.Enums.Add(NestedEnum);
-                    FN2CLogger::Get().Log(TEXT("  -> Added enum to blueprint"), EN2CLogSeverity::Debug);
+                    N2C_LOG(Debug, TEXT("  -> Added enum to blueprint"));
                 }
                 else
                 {
@@ -1751,8 +1736,7 @@ FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
         }
     }
     
-    FN2CLogger::Get().Log(FString::Printf(TEXT("ProcessStructMember: Completed processing of '%s'"), *Member.Name), 
-        EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("ProcessStructMember: Completed processing of '%s'"), *Member.Name);
                                                                                                                                                                                                                                                                                                                       
     return Member;
 }
@@ -1779,23 +1763,21 @@ FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)
     // Check if we've already processed this struct
     if (ProcessedStructPaths.Contains(StructPath))
     {
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Struct %s already processed - skipping"), *StructPath),
-            EN2CLogSeverity::Debug);
+        N2C_LOG(Debug,
+            TEXT("Struct %s already processed - skipping"), *StructPath);
         return Result;
     }
     
     // Mark as processed
     ProcessedStructPaths.Add(StructPath);
-    FN2CLogger::Get().Log(TEXT("Added struct to processed paths"), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Added struct to processed paths"));
     
     // Set basic struct info
     Result.Name = StructName;
     
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Struct details: Name=%s"), 
-            *Result.Name),
-        EN2CLogSeverity::Debug);
+    N2C_LOG(Debug,
+        TEXT("Struct details: Name=%s"),
+            *Result.Name);
     
     // Get struct comment if available
     FString StructComment = Struct->GetMetaData(TEXT("ToolTip"));
@@ -1803,13 +1785,12 @@ FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)
     if (!StructComment.IsEmpty())
     {
         Result.Comment = StructComment;
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Struct comment: %s"), *Result.Comment),
-            EN2CLogSeverity::Debug);
+        N2C_LOG(Debug,
+            TEXT("Struct comment: %s"), *Result.Comment);
     }
     
     // Log property iteration start
-    FN2CLogger::Get().Log(TEXT("Beginning property iteration for struct members..."), EN2CLogSeverity::Debug);
+    N2C_LOG(Debug, TEXT("Beginning property iteration for struct members..."));
     
     // Process struct members
     int32 PropertyCount = 0;
@@ -1818,21 +1799,19 @@ FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)
         PropertyCount++;
         if (FProperty* Property = *PropIt)
         {
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("Found property #%d: '%s' of class '%s'"), 
+            N2C_LOG(Debug,
+                TEXT("Found property #%d: '%s' of class '%s'"),
                     PropertyCount,
                     *Property->GetName(), 
-                    *Property->GetClass()->GetName()),
-                EN2CLogSeverity::Debug);
+                    *Property->GetClass()->GetName());
                 
             FN2CStructMember Member = ProcessStructMember(Property);
             Result.Members.Add(Member);
             
-            FN2CLogger::Get().Log(
-                FString::Printf(TEXT("Added member '%s' of type '%s' to struct"), 
+            N2C_LOG(Debug,
+                TEXT("Added member '%s' of type '%s' to struct"),
                     *Member.Name,
-                    *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type))),
-                EN2CLogSeverity::Debug);
+                    *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type)));
         }
         else
         {
@@ -1850,17 +1829,16 @@ FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)
         UStruct* BaseStruct = Cast<UStruct>(Struct);
         if (BaseStruct && BaseStruct->Children)
         {
-            FN2CLogger::Get().Log(TEXT("Attempting alternative property access via Children field..."), EN2CLogSeverity::Debug);
+            N2C_LOG(Debug, TEXT("Attempting alternative property access via Children field..."));
             
             for (FField* Field = BaseStruct->ChildProperties; Field; Field = Field->Next)
             {
                 if (FProperty* Property = CastField<FProperty>(Field))
                 {
-                    FN2CLogger::Get().Log(
-                        FString::Printf(TEXT("Found property via Children: '%s' of class '%s'"), 
+                    N2C_LOG(Debug,
+                        TEXT("Found property via Children: '%s' of class '%s'"),
                             *Property->GetName(), 
-                            *Property->GetClass()->GetName()),
-                        EN2CLogSeverity::Debug);
+                            *Property->GetClass()->GetName());
                         
                     FN2CStructMember Member = ProcessStructMember(Property);
                     Result.Members.Add(Member);

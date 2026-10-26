@@ -117,3 +117,4 @@ written.
 | `Session not found` (404) after the editor restarted | A restarted editor forgets its sessions: reconnect the client (Claude Code: `/mcp`, **Reconnect**) |
 | Fewer tools than expected | See [Choosing a Tool Mode](Choosing-a-Tool-Mode); a tool mode change needs an editor restart and a reconnect |
 | A tool answers `PIE_ACTIVE` | Stop Play In Editor; editing tools wait until it ends |
+| You need to see what the client sent | The Output Log (`LogNodeToCode`) has one `MCP request:` line per request with its method, tool, status, `isError` and duration; see [Logging Configuration](Logging-Configuration#mcp-requests-in-the-log) |
