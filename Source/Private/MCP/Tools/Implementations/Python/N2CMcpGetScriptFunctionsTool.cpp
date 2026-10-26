@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpGetScriptFunctionsTool::GetDefinition() const
 			 "Returns function names, parameters, types, and docstrings WITHOUT full implementation code. "
 			 "Use this after search-python-scripts finds a partial match to see what functions can be imported. "
 			 "Then import in your code: 'from scripts.<category>.<script_name> import function_name'."),
-		TEXT("Python")
+		N2CMcpToolsets::Python
 	);
 
 	// Build input schema

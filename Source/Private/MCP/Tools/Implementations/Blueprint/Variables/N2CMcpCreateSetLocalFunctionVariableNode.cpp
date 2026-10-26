@@ -23,7 +23,7 @@ FMcpToolDefinition FN2CMcpCreateSetLocalFunctionVariableNode::GetDefinition() co
         TEXT("Create a Set node for a local function variable in the currently focused Blueprint graph")
     ,
 
-    	TEXT("Blueprint Variable Management")
+    	N2CMcpToolsets::BlueprintVariable
 
     );
     

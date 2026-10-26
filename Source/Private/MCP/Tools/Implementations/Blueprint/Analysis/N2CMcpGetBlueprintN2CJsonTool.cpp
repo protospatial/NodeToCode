@@ -38,7 +38,7 @@ FMcpToolDefinition FN2CMcpGetBlueprintN2CJsonTool::GetDefinition() const
 		TEXT("and pins with ids {short, guid}, flows, the guids table). When it would exceed about 20000 tokens, or with ")
 		TEXT("toFile, it is written to a file under Saved/NodeToCode/Exports and the result is {path, bytes, ")
 		TEXT("estimatedTokens, reason, graphCount, nodeCount}: read that file in parts."),
-		TEXT("Blueprint Discovery")
+		N2CMcpToolsets::BlueprintDiscovery
 	);
 
 	TMap<FString, FString> Properties;

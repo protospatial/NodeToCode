@@ -31,7 +31,7 @@ FMcpToolDefinition FN2CMcpSetInputPinValueTool::GetDefinition() const
         TEXT("Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins).")
     ,
 
-    	TEXT("Blueprint Graph Editing")
+    	N2CMcpToolsets::BlueprintGraph
 
     );
 

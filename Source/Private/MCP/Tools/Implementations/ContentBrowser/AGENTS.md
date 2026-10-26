@@ -1,6 +1,6 @@
 # Content Browser Tools
 
-This directory contains the MCP tools in the 'Content Browser' category: navigation, asset discovery, opening
+This directory contains the MCP tools in the `ContentBrowserTools` toolset: navigation, asset discovery, opening
 Blueprints, and folder and asset operations. In dynamic tool discovery, enabling 'Content Browser' gives all ten
 tools below, `move-asset` included.
 

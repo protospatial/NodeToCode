@@ -19,7 +19,7 @@ FMcpToolDefinition FN2CMcpGetFocusedBlueprintTool::GetDefinition() const
 		TEXT("The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that ")
 		TEXT("open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without ")
 		TEXT("opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson."),
-		TEXT("Blueprint Discovery")
+		N2CMcpToolsets::BlueprintDiscovery
 	);
 	
 	// This tool takes no input parameters

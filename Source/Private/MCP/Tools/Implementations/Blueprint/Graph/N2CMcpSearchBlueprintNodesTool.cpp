@@ -36,7 +36,7 @@ FMcpToolDefinition FN2CMcpSearchBlueprintNodesTool::GetDefinition() const
         TEXT("For common math operations, you can simply search for symbols like '+', '-', '*', or '/'. ")
         TEXT("The promotable math nodes (e.g., Add, Subtract, Multiply, Divide) typically have wildcard pins that automatically promote to compatible types (e.g., float, integer, vector), so you usually don't need to search for type-specific versions like 'multiply float by float'. ")
         TEXT("Read-only: it never changes the graph. Each result's spawnMetadata.actionIdentifier is a stable ID (the node spawner's signature, the same in every search) to pass to add-bp-node-to-active-graph unchanged, with spawnMetadata.nodeName as nodeName."),
-        TEXT("Blueprint Discovery")
+        N2CMcpToolsets::BlueprintDiscovery
     );
     
     // Build input schema

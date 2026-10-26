@@ -29,7 +29,7 @@ FMcpToolDefinition FN2CMcpDeleteComponentInActorTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("delete-component-in-actor"),
         TEXT("Deletes a component this Actor Blueprint adds, as the Components panel does (one undoable step): its Get and Set nodes are removed, events bound to it are reported, and its children are deleted too or moved up to its parent"),
-        TEXT("Blueprint Components")
+        N2CMcpToolsets::BlueprintComponent
     );
 
     // Build input schema

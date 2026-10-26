@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "MCP/Tools/N2CMcpToolsets.h"
 #include "N2CMcpToolTypes.generated.h"
 
 /**
@@ -58,8 +59,8 @@ struct NODETOCODE_API FMcpToolAnnotations
 /** The _meta keys FMcpToolDefinition sends */
 namespace N2CMcpToolMetaKeys
 {
-	/** Category (not a Tool field in MCP) */
-	inline const TCHAR* const Category = TEXT("nodetocode/category");
+	/** Toolset: the name of the declared toolset the tool belongs to (not a Tool field in MCP) */
+	inline const TCHAR* const Toolset = TEXT("nodetocode/toolset");
 
 	/** MaxResultSizeChars (Claude Code: the largest text result it keeps before cutting it) */
 	inline const TCHAR* const MaxResultSizeChars = TEXT("anthropic/maxResultSizeChars");
@@ -93,11 +94,12 @@ struct NODETOCODE_API FMcpToolDefinition
 	FString Description;
 
 	/**
-	 * The category this tool belongs to: groups tools for dynamic tool discovery (assess-needed-tools). Sent to
-	 * clients as _meta["nodetocode/category"].
+	 * The declared toolset this tool belongs to (N2CMcpToolsets): the tool profile serves a tool only when its toolset
+	 * is enabled, and list_toolsets / describe_toolset / call_tool group tools by it. Sent to clients as
+	 * _meta["nodetocode/toolset"]. Every tool of the registry must have one (NodeToCode.MCP.Toolsets checks it); only
+	 * the tool-search meta-tools and spec probes have none.
 	 */
-	UPROPERTY()
-	FString Category;
+	const FN2CMcpToolset* Toolset = nullptr;
 
 	/** JSON Schema defining the tool's input parameters */
 	TSharedPtr<FJsonObject> InputSchema;
@@ -135,20 +137,27 @@ struct NODETOCODE_API FMcpToolDefinition
 	{
 	}
 
-	FMcpToolDefinition(const FString& InName, const FString& InDescription = TEXT(""), const FString& InCategory = TEXT(""))
+	/** A definition with no toolset: the tool-search meta-tools and spec probes; a registered tool uses the other */
+	explicit FMcpToolDefinition(const FString& InName, const FString& InDescription = TEXT(""))
 		: Name(InName)
 		, Description(InDescription)
-		, Category(InCategory)
 	{
 	}
 
-	/** The _meta object tools/list sends: Meta plus the category and the anthropic/* entries; null when empty */
+	FMcpToolDefinition(const FString& InName, const FString& InDescription, const FN2CMcpToolset& InToolset)
+		: Name(InName)
+		, Description(InDescription)
+		, Toolset(&InToolset)
+	{
+	}
+
+	/** The _meta object tools/list sends: Meta plus the toolset and the anthropic/* entries; null when empty */
 	TSharedPtr<FJsonObject> BuildMeta() const;
 
 	/** Convert to JSON object for MCP protocol (one tools/list entry) */
 	TSharedPtr<FJsonObject> ToJson() const;
 
-	/** Create from JSON object (a tools/list entry; a top-level "category" from older servers is read too) */
+	/** Create from JSON object (a tools/list entry; _meta["nodetocode/toolset"] is resolved to the declared toolset) */
 	static FMcpToolDefinition FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 };
 

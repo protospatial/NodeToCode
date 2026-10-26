@@ -1,6 +1,6 @@
 # Blueprint Class Tools
 
-This directory contains the MCP tools in the 'Blueprint Classes' category (the string both tools register in
+This directory contains the MCP tools in the `BlueprintClassTools` toolset (`N2CMcpToolsets::BlueprintClass`, named in
 `GetDefinition`): `search-blueprint-classes` finds parent classes and `create-blueprint-class` makes a new Blueprint
 asset from one.
 

@@ -29,7 +29,7 @@ FMcpToolDefinition FN2CMcpRemoveFunctionEntryPinTool::GetDefinition() const
 		TEXT("Removes an input parameter from a Blueprint function (a pin on its entry node): the function blueprintPath plus graphName or graphGuid name, else the focused one. Return values are on the result node: remove them with remove-function-return-pin.")
 	,
 
-		TEXT("Blueprint Function Management")
+		N2CMcpToolsets::BlueprintFunction
 
 	);
 

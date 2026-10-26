@@ -77,15 +77,17 @@ const TArray<FString>& FN2CMcpProtocol::GetSupportedProtocolVersions()
 
 const FString& FN2CMcpProtocol::GetServerInstructions()
 {
-	// Short and true in every tool-registration mode (default, dynamic discovery, Python script-only)
+	// Short and true in every tool profile and exposure (all tools, tool search, Python scripting only)
 	static const FString Instructions = TEXT(
 		"NodeToCode works on the Unreal Editor's Blueprints, most tools on the Blueprint focused in the editor. "
 		"Start with get-focused-blueprint to read its graph (open-blueprint-asset or search-content-browser to focus "
 		"another; list-blueprint-graphs and get-blueprint-n2cjson read any Blueprint by asset path with no editor open), "
 		"and translate-focused-blueprint to translate it into code: a long-running call that sends progress "
-		"when you pass _meta.progressToken and stops on notifications/cancelled. To edit a graph, search-blueprint-nodes, "
+		"when you pass _meta.progressToken and stops on notifications/cancelled. For many graphs at once, by asset paths "
+		"or a tag, export-n2cjson-batch and translate-batch. To edit a graph, search-blueprint-nodes, "
 		"then add-bp-node-to-active-graph and connect-pins, then compile-blueprint. If tools/list shows only "
-		"assess-needed-tools, call it first with the tool categories you need; if it shows only the Python script tools, "
+		"list_toolsets, describe_toolset and call_tool, reach these tools through them: list_toolsets, describe_toolset "
+		"for a toolset's tools and schemas, call_tool to run one. If it shows only the Python script tools, "
 		"search-python-scripts before writing new code for run-python.");
 	return Instructions;
 }
@@ -133,8 +135,9 @@ FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
 {
 	check(Catalogs.Tools && Catalogs.Resources && Catalogs.Prompts && Catalogs.Tasks);
 
-	// The tool list changes when assess-needed-tools activates categories: tell clients through the broadcast sink,
-	// when a transport set one (none does today; see SetBroadcastSink)
+	// tools/list is fixed while the server runs; it changes only when the tool manager is configured again (a server
+	// restart with new settings). Tell clients through the broadcast sink, when a transport set one (none does today;
+	// see SetBroadcastSink)
 	ToolListChangedHandle = Catalogs.Tools->OnToolListChanged().AddLambda([this]()
 	{
 		FJsonRpcNotification Notification;
@@ -364,10 +367,34 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
 		FString ToolName;
 		if (SingleObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
-			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName) && IsLongRunningTool(ToolName))
+			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName))
 		{
-			HandleLongRunningToolCall(Inbound, Responder, SingleObject, *ParamsObj, ToolName, SessionId);
-			return;
+			if (IsLongRunningTool(ToolName))
+			{
+				HandleLongRunningToolCall(Inbound, Responder, SingleObject, *ParamsObj, ToolName, SessionId);
+				return;
+			}
+			// call_tool naming a long-running tool runs that tool's call the same way (progress with the call's
+			// _meta.progressToken, cancellation); a call_tool that does not resolve is answered below with its isError
+			FString InnerName;
+			TSharedPtr<FJsonObject> InnerArguments;
+			FString ResolveError;
+			const TSharedPtr<FJsonObject>* CallArgs = nullptr;
+			if (ToolName == FN2CMcpToolManager::CallToolName && Catalogs.Tools->IsToolListed(ToolName)
+				&& (*ParamsObj)->TryGetObjectField(TEXT("arguments"), CallArgs) && CallArgs
+				&& Catalogs.Tools->ResolveCallTool(*CallArgs, InnerName, InnerArguments, ResolveError))
+			{
+				const TSharedPtr<const FMcpToolDefinition> Inner = Catalogs.Tools->GetToolDefinition(InnerName);
+				if (Inner.IsValid() && Inner->bIsLongRunning)
+				{
+					const TSharedRef<FJsonObject> InnerParams = MakeShared<FJsonObject>();
+					InnerParams->Values = (*ParamsObj)->Values;
+					InnerParams->SetStringField(TEXT("name"), InnerName);
+					InnerParams->SetObjectField(TEXT("arguments"), InnerArguments);
+					HandleLongRunningToolCall(Inbound, Responder, SingleObject, InnerParams, InnerName, SessionId);
+					return;
+				}
+			}
 		}
 	}
 
@@ -400,7 +427,12 @@ bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
 	{
 		return false;
 	}
-	// The definition cached at registration, found by name (no definition is rebuilt per call)
+	// Only a tool tools/list holds may be called; the definition cached at registration, found by name (no
+	// definition is rebuilt per call)
+	if (!Catalogs.Tools->IsToolListed(ToolName))
+	{
+		return false;
+	}
 	const TSharedPtr<const FMcpToolDefinition> Definition = Catalogs.Tools->GetToolDefinition(ToolName);
 	return Definition.IsValid() && Definition->bIsLongRunning;
 }
@@ -887,8 +919,8 @@ bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, con
 	
 	// Tools capability
 	TSharedPtr<FJsonObject> ToolsCapability = MakeShareable(new FJsonObject);
-	// false: the server has no channel for unsolicited notifications, so it never sends tools/list_changed (Dynamic Tool
-	// Discovery logs a warning about it; card 0165 replaces that mode)
+	// false: tools/list is fixed while the server runs (tool search reaches every tool through list_toolsets,
+	// describe_toolset and call_tool, card 0165), and the server has no channel for unsolicited notifications
 	ToolsCapability->SetBoolField(TEXT("listChanged"), false);
 	ServerCapabilities->SetObjectField(TEXT("tools"), ToolsCapability);
 	
@@ -1009,8 +1041,8 @@ bool FN2CMcpProtocol::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, cons
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Calling tool: %s"), *ToolName), EN2CLogSeverity::Info);
 
-	// Check if tool exists
-	if (!Catalogs.Tools->IsToolRegistered(ToolName))
+	// Only a tool tools/list holds may be called (in tool search, the meta-tools; call_tool reaches the rest)
+	if (!Catalogs.Tools->IsToolListed(ToolName))
 	{
 		// MCP 2025-11-25, server/tools, error handling: an unknown tool is a protocol error, -32602 in the spec's
 		// example ("Unknown tool: invalid_tool_name"); -32601 is only for unknown methods

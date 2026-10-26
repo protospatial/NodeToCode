@@ -30,7 +30,7 @@ FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 		TEXT("search-content-browser"),
 		TEXT("Search for assets under /Game (and /Engine when includeEngineContent is true) by name or type. ")
 		TEXT("Plugin content mounted at /<PluginName> is not searched; list it with read-content-browser-path."),
-		TEXT("Content Browser")
+		N2CMcpToolsets::ContentBrowser
 	);
 
 	// Build input schema

@@ -23,7 +23,7 @@ FMcpToolDefinition FN2CMcpCreateSetMemberVariableNode::GetDefinition() const
         TEXT("Creates a Set node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable that Blueprints may write (BlueprintReadOnly variables are refused). The result's nodeId is the node GUID, for connect-pins.")
     ,
 
-    	TEXT("Blueprint Variable Management")
+    	N2CMcpToolsets::BlueprintVariable
 
     );
     

@@ -27,7 +27,7 @@ FMcpToolDefinition FN2CMcpAddComponentClassToActorTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("add-component-class-to-actor"),
         TEXT("Adds a component of a specified class to an Actor Blueprint, as the Components panel does (one undoable step). A scene component is attached to parentComponent, or to the actor's root component"),
-        TEXT("Blueprint Components")
+        N2CMcpToolsets::BlueprintComponent
     );
 
     // Build input schema

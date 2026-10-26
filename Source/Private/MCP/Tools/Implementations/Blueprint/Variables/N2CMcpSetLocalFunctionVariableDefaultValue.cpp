@@ -23,7 +23,7 @@ FMcpToolDefinition FN2CMcpSetLocalFunctionVariableDefaultValue::GetDefinition() 
         TEXT("Set the default value of a local function variable (like editing in the details panel)")
     ,
 
-    	TEXT("Blueprint Variable Management")
+    	N2CMcpToolsets::BlueprintVariable
 
     );
     

@@ -29,7 +29,7 @@ FMcpToolDefinition FN2CMcpCreateCommentNodeTool::GetDefinition() const
         TEXT("Creates a comment node around specified Blueprint nodes using their GUIDs, in the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Get node GUIDs from find-nodes-in-graph or get-focused-blueprint first. Do NOT set a color unless the user requests it.")
     ,
 
-    	TEXT("Blueprint Graph Editing")
+    	N2CMcpToolsets::BlueprintGraph
 
     );
     

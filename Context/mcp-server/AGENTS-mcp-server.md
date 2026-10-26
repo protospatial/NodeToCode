@@ -49,7 +49,7 @@ Source/
     ├── Prompts/                          # N2CMcpPromptManager.cpp, N2CMcpPromptTypes.cpp
     ├── Resources/                        # N2CMcpResourceManager.cpp, N2CMcpResourceTypes.cpp
     ├── Tools/                            # Tool framework and implementations
-    │   ├── AGENTS.md                     # Tool guide: registration modes, categories, new tools
+    │   ├── AGENTS.md                     # Tool guide: profiles, toolsets, tool search, new tools
     │   ├── N2CToolCallContext.cpp
     │   ├── N2CMcpToolBase.cpp
     │   ├── N2CMcpToolTypes.cpp
@@ -93,8 +93,9 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
     unless the command line has `-N2CMcp`), graceful shutdown on exit
-*   **Tools**: which tools `tools/list` returns depends on the registration mode (default: every tool except
-    `assess-needed-tools`, 66 tools, or 63 without Allow MCP Python Execution); see Tool Registration Modes
+*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 66,
+    or 63 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
+    Toolsets
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
 ### Sessions and versions (MCP 2025-11-25, Streamable HTTP on one `/mcp` endpoint)
@@ -127,16 +128,16 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   Tests: `NodeToCode.MCP.Core` (sessions, verbs, batches), `NodeToCode.MCP.Transport.LongRunningCall` (the same
     through `HandleMcpRequest`), probes P3 and P8 in `Tests/mcp_probe`, and the conformance suite's
     `server-session-lifecycle` scenario. Probe scripts get their session from `Tests/mcp_probe/mcp_session.py`.
-*   Not yet per session: the dynamic tool set (`assess-needed-tools`) is still one global list, and no client is
-    told when it changes (no `notifications/tools/list_changed`; see Capabilities).
+*   The tool list is the same for every session and fixed while the server runs (card 0165), so nothing per
+    session needs to track it.
 
 ### Capabilities, errors and cancellation (card 0110)
 
 *   **Capabilities**: `initialize` advertises `tools`, `resources` and `prompts`, each with `listChanged: false`:
     with no server-to-client channel (GET is 405, and the port+1 notification server is gone since card 0113) the
-    server never sends `notifications/tools/list_changed`. With Enable Dynamic Tool Discovery on, the server logs a
-    warning that clients see the tools `assess-needed-tools` enables only when they list tools again; card 0165
-    replaces that mode. The initialize result has no `_meta`. It does not
+    server never sends `notifications/tools/list_changed`, and needs none: `tools/list` is fixed while the server runs
+    (tool search reaches every tool through `list_toolsets`, `describe_toolset` and `call_tool`, card 0165). The
+    initialize result has no `_meta`. It does not
     advertise `logging` (the server sends no `notifications/message`, and logging is deprecated in 2026-07-28), so
     `logging/setLevel` is an unknown method (-32601). `InitializeResult.instructions` tells the agent which tools to
     start with (`FN2CMcpProtocol::GetServerInstructions()`).
@@ -251,7 +252,7 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 *   `REGISTER_MCP_TOOL` macro for static initialization: every tool adds itself to `FN2CMcpToolRegistry` on plugin
     load
 *   At server start `FN2CMcpHttpServerManager::RegisterMcpTools()` copies tools from the registry into the active
-    set by registration mode (see Tool Registration Modes below)
+    set: the tools of the toolsets Tool Profile enables (see Tool Profiles and Toolsets below)
 *   Game Thread execution support with timeouts
 *   Input schema validation framework
 
@@ -353,8 +354,10 @@ of `Source/Private/MCP/Tools/AGENTS.md`; folders and categories do not map one t
 *   `save-python-script` - Save script to library (only with Allow MCP Python Execution)
 *   `delete-python-script` - Remove script from library (only with Allow MCP Python Execution)
 
-**ToolManagement/** - Dynamic tool management:
-*   `assess-needed-tools` - Request activation of tool categories (for dynamic discovery mode)
+**Tool search meta-tools** (in `FN2CMcpToolManager`, listed only with Tool Exposure = Tool search):
+*   `list_toolsets` - The enabled toolsets, `- <Name>: <Description>`
+*   `describe_toolset` - One toolset's tools as `tools/list` entries
+*   `call_tool` - Run a tool by name (`toolset_name`, `tool_name`, `arguments`)
 
 ## MCP Utility Classes (`Source/Private/MCP/Utils/`)
 
@@ -494,53 +497,39 @@ The server implements these MCP methods:
 *   Per-client sessions (`Mcp-Session-Id`), ended with HTTP DELETE
 *   Request cancellation (`notifications/cancelled`; the custom `nodetocode/cancelTask` is deprecated)
 
-## Tool Registration Modes
+## Tool Profiles and Toolsets
 
-`FN2CMcpHttpServerManager::RegisterMcpTools()` runs once when the server starts and picks one of three modes from
-`UN2CSettings` (Project Settings > Plugins > Node to Code > MCP Server). The first that applies wins:
+Decision record `.agents/decisions/0005-mcp-tool-exposure-toolsets-and-tool-search.md` (proposed, card 0106; applied by
+card 0165). `FN2CMcpHttpServerManager::RegisterMcpTools()` runs once when the server starts and calls
+`FN2CMcpToolManager::Configure` with three `UN2CSettings` values (Project Settings > Plugins > Node to Code > MCP
+Server):
 
-1. **Python script-only** (`bEnablePythonScriptOnlyMode`, default false): `RegisterToolsByName` with `run-python`,
-   `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`,
-   `save-python-script` and `delete-python-script`. No translation, Blueprint, Content Browser or file tools. 7 tools.
-2. **Dynamic tool discovery** (`bEnableDynamicToolDiscovery`, default false): `SetDefaultToolSet`, so only
-   `assess-needed-tools`. 1 tool.
-3. **All tools** (both false, the shipped default): `RegisterAllToolsExceptAssess`, every registered tool except
-   `assess-needed-tools`. 66 tools.
+*   **Tool Profile** (`McpToolProfile`): `DefaultToolsets` (the default: every toolset declared default-enabled),
+    `PythonScripting` (`PythonTools` only, the former Python Script-Only Mode) or `Custom` (**Custom Toolsets**,
+    `McpCustomToolsets`, names offered from the declarations).
+*   **Tool Exposure** (`McpToolExposure`): `ListAllTools` (the default: `tools/list` holds every served tool) or
+    `ToolSearch` (`tools/list` holds only `list_toolsets`, `describe_toolset` and `call_tool`, UE 5.8's names and
+    shapes, for clients with a tool limit such as VS Code's 128 and Windsurf's 100).
 
-Every path goes through `FN2CMcpToolManager::RegisterTool`, which drops `run-python`, `save-python-script` and
-`delete-python-script` unless the per-user Allow MCP Python Execution is on (see Server switches, below; off by
-default). So with the shipped defaults a fresh install lists 63 tools; Python script-only mode without the switch
-lists 4 and logs a warning at start. Both mode settings are read only when the server starts, so they need an
-editor restart. `build.ps1 -Smoke` checks each mode
-with Python execution allowed against `Tests/smoke/expected.json` (`default` 66, `dynamic` 1, `python_only` 7). The
-full tool and category tables are in `Source/Private/MCP/Tools/AGENTS.md`.
+`tools/list` is then fixed until the server starts again: no call changes it, every client sees the same list. With
+Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 66, tool search 3,
+Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (63
+and 4; Python scripting only logs a warning at start). The settings need an editor restart. `build.ps1 -Smoke` checks
+each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 66, `tool_search` 3,
+`python_only` 7).
 
-## Dynamic Tool Management
+Toolsets are declared once in `Source/Public/MCP/Tools/N2CMcpToolsets.h`, and every tool names its toolset by identity
+(`FMcpToolDefinition(Name, Description, N2CMcpToolsets::BlueprintGraph)`, sent as `_meta["nodetocode/toolset"]`):
+`BlueprintDiscoveryTools`, `BlueprintGraphTools`, `BlueprintFunctionTools`, `BlueprintVariableTools`,
+`BlueprintTagTools`, `BlueprintCompileTools`, `BlueprintClassTools`, `BlueprintComponentTools`, `ContentBrowserTools`,
+`FileSystemTools`, `PythonTools`, `TranslationTools`. The tool table per toolset and the meta-tools' arguments are in
+`Source/Private/MCP/Tools/AGENTS.md`. In tool search an unknown or disabled toolset is an `isError` naming the valid
+ones, `call_tool` runs a long-running tool on the same request with progress and cancellation, and `tools/call`
+accepts only the listed names.
 
-*   **Enabled** (mode 2 above): only `assess-needed-tools` at start
-*   `assess-needed-tools {categories: [...]}` replaces the active set with itself plus every tool whose category is
-    in the list (`FN2CMcpToolManager::UpdateActiveTools`, exact string match); an empty list resets it. The set is
-    global, shared by every session on the editor
-*   No `notifications/tools/list_changed` is sent (no notification channel, `tools.listChanged` false): the client
-    must call `tools/list` again; the server logs a warning at start when this mode is on (card 0165 replaces it)
-
-Category strings the tools register (`FMcpToolDefinition::Category`), which `assess-needed-tools` matches:
-*   Tool Management
-*   Blueprint Discovery
-*   Blueprint Graph Editing
-*   Blueprint Function Management
-*   Blueprint Variable Management
-*   Blueprint Organization
-*   Blueprint Compilation
-*   Blueprint Classes
-*   Blueprint Components
-*   Content Browser
-*   File System
-*   Translation
-*   Python
-
-The tool's own description (`FN2CMcpAssessNeededToolsTool::GetCategoryDescriptions`) names nine of them (the
-first six, Content Browser, File System and Translation), but the other four match too; `find-nodes-in-graph` has no category and cannot be enabled.
+Settings saved before card 0165 load mapped, in memory (`UN2CSettings::MigrateLegacyMcpToolModes`):
+`bEnablePythonScriptOnlyMode=True` becomes Python scripting only, `bEnableDynamicToolDiscovery=True` becomes Tool
+search (unless script-only mode was on too). `assess-needed-tools` is removed.
 
 ## Mounted in Epic's ToolsetRegistry (UE 5.8 MCPClientToolset, card 0141)
 
@@ -554,7 +543,8 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     HTTP (default Legacy SSE GETs `<url>/sse`), Auth=None (default Bearer Token; with no ApiKey it sends no header,
     so both work). In `Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini` the line must be
     `MCPServers=(...)`: a `+MCPServers=(...)` line left the list empty on 5.8 and the subsystem logged nothing.
-*   **Tool profile**: Python script-only mode and dynamic discovery off (the defaults). Tools register as
+*   **Tool profile**: Default toolsets and List every tool (the defaults; Epic's client lists tools once and would
+    see only the meta-tools in Tool search, nested behind its own `call_tool`). Tools register as
     `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 66 tools with Allow MCP
     Python Execution, all in the first `tools/list` (one page, no cursor).
 *   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
@@ -589,12 +579,11 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
         `McpServerPortRange` (default 10): ports tried from there when one is taken; `McpServerStatus` (transient,
         read-only): where the server listens now. A port change restarts the server on the next tick
         (`FN2CMcpHttpServerManager::HandlePortSettingsChanged`), no editor restart
-    *   `bEnableDynamicToolDiscovery` (default false): Toggle dynamic tool management (logs a warning: no
-        `tools/list_changed` is sent, clients see newly enabled tools when they list again)
-    *   `bEnablePythonScriptOnlyMode` (default false): Python script-only mode; takes precedence over dynamic
-        discovery (see Tool Registration Modes)
+    *   `McpToolProfile` (default `DefaultToolsets`), `McpCustomToolsets`, `McpToolExposure` (default
+        `ListAllTools`): see Tool Profiles and Toolsets. They replace `bEnablePythonScriptOnlyMode` and
+        `bEnableDynamicToolDiscovery`, whose saved values load mapped onto them
     *   Shown in Project Settings > Plugins > Node to Code > MCP Server. A port change applies at once (the
-        server restarts); the two mode settings are read only when the server starts, so they need an editor
+        server restarts); the tool settings are read only when the server starts, so they need an editor
         restart (a restart caused by a port change also picks them up)
 
 ## Testing and Development
@@ -713,4 +702,4 @@ engineVersion, pluginVersion, protocolVersions, startedAt), removed on stop; ind
 `NodeToCode.MCP.ServerLifecycle`; live check: `Tests/mcp_probe/live_port_restart.py`.
 
 The server does not start in commandlets or `-unattended` runs (build agents, the smoke test) unless the command
-line has `-N2CMcp`. `bEnablePythonScriptOnlyMode` now defaults to false.
+line has `-N2CMcp`. The default Tool Profile serves every toolset (card 0165).

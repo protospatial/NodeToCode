@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpGetPythonScriptTool::GetDefinition() const
 			 "Returns the script code, description, tags, parameters, and usage stats. "
 			 "Use this to understand implementation details before extending or modifying a script. "
 			 "For just seeing importable functions (more token-efficient), use get-script-functions instead."),
-		TEXT("Python")
+		N2CMcpToolsets::Python
 	);
 
 	// Build input schema

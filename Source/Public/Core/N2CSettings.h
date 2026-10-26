@@ -9,6 +9,7 @@
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CLLMTypes.h"
 #include "LLM/N2COllamaConfig.h"
+#include "MCP/Tools/N2CMcpToolsets.h"
 #include "Models/N2CLogging.h"
 #include "Styling/SlateColor.h"
 #include "N2CSettings.generated.h"
@@ -590,23 +591,27 @@ public:
         meta=(DisplayName="Server Status", ToolTip="Where the MCP server is listening now, or why it is not running."))
     FString McpServerStatus = TEXT("Not started");
     
-    /** Enable dynamic tool discovery for MCP server. When enabled, only assess-needed-tools will be available initially.
-     * This feature requires MCP clients that support discovery (e.g., VSCode, Cline).
-     * Note: Changing this setting requires an editor restart to take effect. */
+    /** Which toolsets the MCP server serves (decision 0005, card 0165). Replaces Enable Python Script-Only Mode, whose
+     * saved True loads as Python Scripting Only. Read when the server starts: restart the editor after a change. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
-        meta=(DisplayName="Enable Dynamic Tool Discovery",
-              ToolTip="Enable dynamic tool discovery for MCP server. When enabled, only assess-needed-tools will be available initially. This feature requires MCP clients that support discovery (e.g., VSCode, Cline). Note: Changing this setting requires an editor restart to take effect."))
-    bool bEnableDynamicToolDiscovery = false;
+        meta=(DisplayName="Tool Profile",
+              ToolTip="Which toolsets the MCP server serves. Default Toolsets: every toolset. Python Scripting Only: run-python and the script library tools. Custom: the toolsets in Custom Toolsets. Requires an editor restart."))
+    EN2CMcpToolProfile McpToolProfile = EN2CMcpToolProfile::DefaultToolsets;
 
-    /** Enable Python script-only mode. When enabled, most C++ MCP tools are disabled
-     * and LLMs use Python scripts via run-python instead. Only essential tools remain:
-     * run-python and script management tools (list, search, get, save, delete, get-functions).
-     * Pair with Context7 MCP server for UE Python API documentation lookup.
-     * Note: Changing this setting requires an editor restart to take effect. */
+    /** The toolsets the Custom tool profile serves, by name (BlueprintGraphTools, TranslationTools, ...) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
-        meta=(DisplayName="Enable Python Script-Only Mode",
-              ToolTip="When enabled, most C++ tools are disabled. LLMs use Python scripts via run-python instead. Includes script library tools for reusable script management. Pair with Context7 MCP for API docs. Requires editor restart."))
-    bool bEnablePythonScriptOnlyMode = false;
+        meta=(DisplayName="Custom Toolsets", GetOptions="GetMcpToolsetOptions",
+              EditCondition="McpToolProfile == EN2CMcpToolProfile::Custom", EditConditionHides,
+              ToolTip="The toolsets the Custom tool profile serves. Requires an editor restart."))
+    TArray<FString> McpCustomToolsets;
+
+    /** How tools/list shows the served tools. Tool Search lists only list_toolsets, describe_toolset and call_tool (UE
+     * 5.8's names), for clients with a tool limit (VS Code 128, Windsurf 100). tools/list never changes while the
+     * server runs in either mode. Replaces Enable Dynamic Tool Discovery, whose saved True loads as Tool Search. */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
+        meta=(DisplayName="Tool Exposure",
+              ToolTip="List Every Tool: tools/list holds every tool of the profile. Tool Search: tools/list holds only list_toolsets, describe_toolset and call_tool, which reach the same tools; use it for clients with a tool limit. tools/list never changes while the server runs. Requires an editor restart."))
+    EN2CMcpToolExposure McpToolExposure = EN2CMcpToolExposure::ListAllTools;
 
 /** Get the model for the selected provider */
     FString GetActiveModel() const;
@@ -665,6 +670,10 @@ public:
     /** Names of a cloud provider's Model and Custom Model ID properties (NAME_None for Ollama and LM Studio) */
     static FName GetModelIdPropertyName(EN2CLLMProvider InProvider);
     static FName GetCustomModelIdPropertyName(EN2CLLMProvider InProvider);
+
+    /** Options of the Custom Toolsets entries: the declared toolset names (N2CMcpToolsets) */
+    UFUNCTION()
+    static TArray<FString> GetMcpToolsetOptions();
 
     /** Options of the Model drop-downs (also callable from Blueprints and Python): the provider's live catalog model IDs, plus the current value when it is not one */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
@@ -780,6 +789,17 @@ public:
      * @return the number of values changed
      */
     int32 MigrateSavedSettings(const FString& ConfigFilename = FString());
+
+    /**
+     * Maps the MCP tool-mode switches NodeToCode saved before card 0165 onto Tool Profile and Tool Exposure, in memory:
+     * bEnablePythonScriptOnlyMode=True becomes Python Scripting Only, and bEnableDynamicToolDiscovery=True becomes Tool
+     * Search (unless script-only mode was on too, which took precedence and listed the Python tools directly). A new
+     * key ConfigFilename already holds wins, so running it again, or after Project Settings saved the new keys,
+     * changes nothing. Called from MigrateSavedSettings on every load; the old keys stay in the file, unread otherwise.
+     * @param ConfigFilename config the old keys are read from (empty: this class's config)
+     * @param OutChanges one readable entry per value changed
+     */
+    void MigrateLegacyMcpToolModes(const FString& ConfigFilename, TArray<FString>& OutChanges);
 
     /**
      * Saves what loading a NodeToCode 1.2.x config changed and cleans up what 1.2.x left behind. The editor calls it

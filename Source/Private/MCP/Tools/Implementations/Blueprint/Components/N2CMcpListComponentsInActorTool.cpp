@@ -21,7 +21,7 @@ FMcpToolDefinition FN2CMcpListComponentsInActorTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("list-components-in-actor"),
         TEXT("Lists the components of an Actor Blueprint as a tree, as the Components panel shows them: native components of its C++ class, components its parent Blueprints add, and its own, with types and relative transforms"),
-        TEXT("Blueprint Components")
+        N2CMcpToolsets::BlueprintComponent
     );
 
     // Build input schema

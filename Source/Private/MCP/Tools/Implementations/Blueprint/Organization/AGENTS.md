@@ -1,6 +1,6 @@
 # Blueprint Organization Tools
 
-This directory contains the MCP tools in the 'Blueprint Organization' category: tagging Blueprint graphs, listing the
+This directory contains the MCP tools in the `BlueprintTagTools` toolset: tagging Blueprint graphs, listing the
 tags and removing them. The tools are thin wrappers over `UN2CTagManager`, which stores every tag in
 `UN2CGraphStateManager` (`Source/Private/Core/N2CGraphStateManager.cpp`), the per-graph state that also records each
 graph's translation and JSON export.

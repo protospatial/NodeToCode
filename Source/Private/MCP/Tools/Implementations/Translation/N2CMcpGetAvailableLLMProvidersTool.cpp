@@ -21,7 +21,7 @@ FMcpToolDefinition FN2CMcpGetAvailableLLMProvidersTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("get-available-llm-providers"),
         TEXT("Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers."),
-        TEXT("Translation")
+        N2CMcpToolsets::Translation
     );
     
     // This tool takes no input parameters

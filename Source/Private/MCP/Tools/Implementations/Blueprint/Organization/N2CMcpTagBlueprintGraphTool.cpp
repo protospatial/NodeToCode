@@ -21,7 +21,7 @@ FMcpToolDefinition FN2CMcpTagBlueprintGraphTool::GetDefinition() const
 	FMcpToolDefinition Definition(
 		TEXT("tag-blueprint-graph"),
 		TEXT("Tags the currently focused Blueprint graph with a name and category for organization and tracking"),
-		TEXT("Blueprint Organization")
+		N2CMcpToolsets::BlueprintTag
 	);
 	
 	// Define input schema

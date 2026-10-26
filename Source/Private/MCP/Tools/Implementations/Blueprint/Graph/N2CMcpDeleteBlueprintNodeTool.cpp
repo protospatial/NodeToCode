@@ -34,7 +34,7 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintNodeTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("delete-blueprint-node"),
         TEXT("Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph blueprintPath plus graphName or graphGuid name, else the focused graph. Supports connection preservation and batch operations."),
-        TEXT("Blueprint Graph Editing")
+        N2CMcpToolsets::BlueprintGraph
     );
     
     // Build input schema
