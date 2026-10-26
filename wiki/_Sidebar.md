@@ -16,6 +16,8 @@
 * [Initial Configuration](Initial-Configuration)
 * [LM Studio Quick Start](LM-Studio-Quick-Start)
 * [Plugin Updates](Plugin-Updates)
+* [Upgrading from 1.x](Upgrading-from-Version-1)
+* [Security Model](Security-Model)
 </details>
 
 <details>
