@@ -64,11 +64,9 @@ UN2CResponseParserBase* UN2CLMStudioService::CreateResponseParser()
 
 void UN2CLMStudioService::GetConfiguration(
     FString& OutEndpoint,
-    FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = TEXT("");  // GetProviderHeaders sends the one Authorization header, when a key is set
     
     // LM Studio supports system prompts
     OutSupportsSystemPrompts = true;
@@ -76,13 +74,8 @@ void UN2CLMStudioService::GetConfiguration(
 
 void UN2CLMStudioService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
+    // A key, when the credential source has one for LM Studio, goes in Authorization: Bearer, added per request
     OutHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
-    
-    // Add authorization header with LM Studio API key
-    if (!Config.ApiKey.IsEmpty())
-    {
-        OutHeaders.Add(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *Config.ApiKey));
-    }
 }
 
 FString UN2CLMStudioService::FormatRequestPayload(const FString& UserMessage, const FString& SystemMessage) const

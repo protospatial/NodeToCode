@@ -2,6 +2,7 @@
 
 #include "Core/N2CSettings.h"
 #include "Core/N2CSecretStore.h"
+#include "LLM/N2CCredentialSource.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
@@ -1116,15 +1117,6 @@ FText UN2CSettings::GetSectionText() const
     return LOCTEXT("SettingsSection", "Node to Code");
 }
 
-FString UN2CSettings::GetActiveApiKey() const
-{
-    if (Provider == EN2CLLMProvider::LMStudio)
-    {
-        return TEXT("lm-studio"); // LM Studio just requires a dummy API key for its OpenAI endpoint
-    }
-    return FN2CSecretStore::Get().GetApiKey(Provider);
-}
-
 FString UN2CSettings::GetActiveModel() const
 {
     return GetActiveModelForProvider(Provider);
@@ -1348,7 +1340,7 @@ FString UN2CSettings::DescribeApiKeySource(EN2CLLMProvider InProvider)
 {
     const TArray<FString> Variables = FN2CSecretStore::GetEnvironmentVariableNames(InProvider);
     FString VariableName;
-    switch (FN2CSecretStore::Get().GetApiKeySource(InProvider, &VariableName))
+    switch (IN2CCredentialSource::Get()->GetOrigin(InProvider, &VariableName))
     {
         case EN2CApiKeySource::Store:
             return TEXT("Saved key (the API Key field)");
@@ -1368,15 +1360,6 @@ void UN2CSettings::RefreshApiKeySources()
     Anthropic_API_Key_Source = DescribeApiKeySource(EN2CLLMProvider::Anthropic);
     Gemini_API_Key_Source = DescribeApiKeySource(EN2CLLMProvider::Gemini);
     DeepSeek_API_Key_Source = DescribeApiKeySource(EN2CLLMProvider::DeepSeek);
-}
-
-FString UN2CSettings::GetActiveApiKeyForProvider(EN2CLLMProvider InProvider) const
-{
-    if (InProvider == EN2CLLMProvider::LMStudio)
-    {
-        return TEXT("lm-studio"); // LM Studio just requires a dummy API key for its OpenAI endpoint
-    }
-    return FN2CSecretStore::Get().GetApiKey(InProvider);
 }
 
 FString UN2CSettings::GetActiveModelForProvider(EN2CLLMProvider InProvider) const

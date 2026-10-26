@@ -12,14 +12,42 @@ void UN2CHttpHandlerBase::Initialize(const FN2CLLMConfig& InConfig)
     ActivityTimeout = Config.ActivityTimeoutSeconds > 0.0f ? FMath::Min(Config.ActivityTimeoutSeconds, RequestTimeout) : RequestTimeout;
 }
 
+TArray<TPair<FString, FString>> UN2CHttpHandlerBase::BuildRequestHeaders(const TMap<FString, FString>& Extra,
+    const FN2CCredential& Credential)
+{
+    TArray<TPair<FString, FString>> Headers;
+    Headers.Emplace(TEXT("Content-Type"), TEXT("application/json"));
+    for (const TPair<FString, FString>& Header : Extra)
+    {
+        // The key comes from the request's credential only, so it is sent in exactly one header
+        if (!FN2CCredential::IsCredentialHeader(Header.Key))
+        {
+            Headers.Emplace(Header.Key, Header.Value);
+        }
+    }
+    FString Name, Value;
+    if (Credential.GetHeader(Name, Value))
+    {
+        Headers.Emplace(MoveTemp(Name), MoveTemp(Value));
+    }
+    return Headers;
+}
+
 FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     const FString& Endpoint,
-    const FString& AuthToken,
+    const FN2CCredential& Credential,
     const FString& Payload,
-    const FOnLLMResponseReceived& OnComplete)
+    const FOnLLMResponseReceived& OnComplete,
+    FN2CLLMRequestHandlePtr ExistingHandle)
 {
     // Every path, including the early errors, delivers OnComplete through the handle so it runs at most once
-    FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+    FN2CLLMRequestHandleRef Handle = ExistingHandle.IsValid() ? ExistingHandle.ToSharedRef() : FN2CLLMRequestHandle::Create();
+
+    // Cancelled while the credential was being resolved: nothing is sent
+    if (Handle->IsFinished())
+    {
+        return Handle;
+    }
 
     // Validate request parameters
     if (!ValidateRequest(Endpoint, Payload))
@@ -34,17 +62,10 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
     Request->SetURL(Endpoint);
     Request->SetVerb(TEXT("POST"));
-    Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 
-    // A Bearer token only for a provider that sets no credential header of its own (Ollama): each request carries
-    // its key in exactly one header (Anthropic x-api-key, Gemini x-goog-api-key, the others Authorization)
-    if (!AuthToken.IsEmpty() && !HasCredentialHeader(ExtraHeaders))
-    {
-        Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *AuthToken));
-    }
-
-    // Add any extra headers
-    for (const auto& Header : ExtraHeaders)
+    // The provider's non-secret headers, then the key in its one credential header (Anthropic x-api-key, Gemini
+    // x-goog-api-key, the others Authorization)
+    for (const TPair<FString, FString>& Header : BuildRequestHeaders(ExtraHeaders, Credential))
     {
         Request->SetHeader(Header.Key, Header.Value);
     }
@@ -61,8 +82,9 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
     // The completion runs on the game thread. The handle gates OnComplete: once Cancel() has won, the cancelled
     // request's failure completion is dropped here, before any logging or broadcast. The lambda holds the handle
     // strongly; the handle holds the request only weakly, so there is no cycle.
+    // The completion keeps this request's key only to redact it from an error body
     Request->OnProcessRequestComplete().BindLambda(
-        [WeakThis, OnComplete, Handle](FHttpRequestPtr InRequest, FHttpResponsePtr InResponse, bool bWasSuccessful)
+        [WeakThis, OnComplete, Handle, SecretToRedact = Credential.Value](FHttpRequestPtr InRequest, FHttpResponsePtr InResponse, bool bWasSuccessful)
         {
             if (Handle->IsFinished())
             {
@@ -73,7 +95,7 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
 
             if (UN2CHttpHandlerBase* StrongThis = WeakThis.Get())
             {
-                StrongThis->OnRequestComplete(InRequest, InResponse, bWasSuccessful, GatedOnComplete);
+                StrongThis->OnRequestComplete(InRequest, InResponse, bWasSuccessful, GatedOnComplete, SecretToRedact);
             }
             else
             {
@@ -121,7 +143,8 @@ void UN2CHttpHandlerBase::OnRequestComplete(
     FHttpRequestPtr Request,
     FHttpResponsePtr Response,
     bool bWasSuccessful,
-    FOnLLMResponseReceived OnComplete)
+    FOnLLMResponseReceived OnComplete,
+    const FString& SecretToRedact)
 {
     if (!bWasSuccessful || !Response.IsValid())
     {
@@ -158,7 +181,7 @@ void UN2CHttpHandlerBase::OnRequestComplete(
 
     // An error body that echoes the key (a misbehaving proxy, a provider debug echo) must not carry it into the log,
     // the typed error, a saved translation folder or BatchSummary.json
-    const FString SafeContent = FN2CLogger::RedactSecret(ResponseContent, Config.ApiKey);
+    const FString SafeContent = FN2CLogger::RedactSecret(ResponseContent, SecretToRedact);
 
     // 4xx and 5xx: the provider's JSON error gains the status; any other body (an HTML proxy page, plain text) is
     // wrapped as escaped JSON, so the parser always gets valid JSON and can report the status and the real message
@@ -174,9 +197,7 @@ bool UN2CHttpHandlerBase::HasCredentialHeader(const TMap<FString, FString>& Head
 {
     for (const TPair<FString, FString>& Header : Headers)
     {
-        if (Header.Key.Equals(TEXT("Authorization"), ESearchCase::IgnoreCase)
-            || Header.Key.Equals(TEXT("x-api-key"), ESearchCase::IgnoreCase)
-            || Header.Key.Equals(TEXT("x-goog-api-key"), ESearchCase::IgnoreCase))
+        if (FN2CCredential::IsCredentialHeader(Header.Key))
         {
             return true;
         }

@@ -599,19 +599,16 @@ public:
               ToolTip="When enabled, most C++ tools are disabled. LLMs use Python scripts via run-python instead. Includes script library tools for reusable script management. Pair with Context7 MCP for API docs. Requires editor restart."))
     bool bEnablePythonScriptOnlyMode = false;
 
-    /** Get the API key for the selected provider */
-    FString GetActiveApiKey() const;
-
-    /** Get the model for the selected provider */
+/** Get the model for the selected provider */
     FString GetActiveModel() const;
 
-    /** Get the API key for a specific provider */
-    FString GetActiveApiKeyForProvider(EN2CLLMProvider Provider) const;
-
-    /** Fills the API Key Source fields from the secret store and the environment (never shows a key) */
+/** Fills the API Key Source fields from the secret store and the environment (never shows a key) */
     void RefreshApiKeySources();
 
-    /** The API Key Source text for Provider: the saved key, the environment variable it uses, or none */
+    /**
+     * The API Key Source text for Provider, from the credential source requests use (IN2CCredentialSource::Get()):
+     * the saved key, the environment variable it uses, or none. Never the key.
+     */
     static FString DescribeApiKeySource(EN2CLLMProvider Provider);
 
     /**

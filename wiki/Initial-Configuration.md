@@ -58,14 +58,19 @@ process instead. This lets build machines, CI and agents run translations withou
 |---|---|
 | Anthropic | `ANTHROPIC_API_KEY` |
 | OpenAI | `OPENAI_API_KEY` |
-| Gemini | `GEMINI_API_KEY` |
+| Gemini | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) |
 | DeepSeek | `DEEPSEEK_API_KEY` (or `DEEPSEEK_API`) |
 
 - A key entered in the **API Key** field always wins over the environment variable
+- The key is read when each request is sent, so a key entered, changed or cleared in Project Settings applies to the
+  next request, including the next Blueprint of a batch that is already running; no editor restart is needed
 - A key from the environment is used for requests only: it is never shown in the **API Key** field and never saved
   to `secrets.json`
 - Each provider's **API Key Source** line shows where its key comes from: the saved key, the environment variable it
   uses (by name; the value is never shown), or no key
-- The Output Log names the variable the first time it is used, never its value
+- The Output Log names the variable the first time it is used, never its value, and each "Sending request" line says
+  whether the request used the saved key or which variable
+- The MCP tool `get-available-llm-providers` lists a provider whose key is only in the environment, with
+  `keySource: "environment"` and the variable's name in `keyVariable` (`"saved"` for a key from Project Settings)
 - Set the variable before the editor starts (for example in the shell or CI job that launches it); the editor reads
   its own environment, so a variable set after launch is not seen

@@ -15,18 +15,15 @@ UN2CResponseParserBase* UN2CAnthropicService::CreateResponseParser()
 
 void UN2CAnthropicService::GetConfiguration(
     FString& OutEndpoint,
-    FString& OutAuthToken,
     bool& OutSupportsSystemPrompts)
 {
     OutEndpoint = Config.ApiEndpoint;
-    OutAuthToken = TEXT("");  // the key goes in x-api-key only (GetProviderHeaders), never also as a Bearer token
     OutSupportsSystemPrompts = true;  // Anthropic supports system prompts
 }
 
 void UN2CAnthropicService::GetProviderHeaders(TMap<FString, FString>& OutHeaders) const
 {
-    OutHeaders.Add(TEXT("x-api-key"), Config.ApiKey);
-
+    // The key goes in x-api-key, added per request from the resolved credential (FN2CCredential)
     OutHeaders.Add(TEXT("anthropic-version"), ApiVersion);
     OutHeaders.Add(TEXT("content-type"), TEXT("application/json"));
 }

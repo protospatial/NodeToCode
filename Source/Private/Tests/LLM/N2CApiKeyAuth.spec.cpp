@@ -7,6 +7,8 @@
 #include "Core/N2CSettings.h"
 #include "Core/N2CSecretStore.h"
 #include "LLM/N2CBaseLLMService.h"
+#include "LLM/N2CCredentialSource.h"
+#include "LLM/N2CHttpHandlerBase.h"
 #include "LLM/Providers/N2CAnthropicService.h"
 #include "LLM/Providers/N2CGeminiService.h"
 #include "Dom/JsonObject.h"
@@ -49,10 +51,11 @@ BEGIN_DEFINE_SPEC(FN2CApiKeyAuthSpec, "NodeToCode.LLM.Auth",
 	TService* MakeService(EN2CLLMProvider Provider, const FString& Model, const FString& ApiKey)
 	{
 		TService* Service = NewObject<TService>(GetTransientPackage());
+		// The key reaches requests only through the credential source; this one holds ApiKey (or none)
+		Service->SetCredentialSource(MakeShared<FN2CFixedCredentialSource>(Provider, ApiKey));
 		FN2CLLMConfig Config;
 		Config.Provider = Provider;
 		Config.Model = Model;
-		Config.ApiKey = ApiKey;
 		Service->Initialize(Config);
 		return Service;
 	}
@@ -85,8 +88,15 @@ void FN2CApiKeyAuthSpec::Define()
 			// The provider those settings now reach authenticates with its API key
 			const FString FakeKey = TEXT("n2c-test-key-not-real");
 			UN2CAnthropicService* Anthropic = MakeService<UN2CAnthropicService>(EN2CLLMProvider::Anthropic, TEXT("claude-sonnet-5-5"), FakeKey);
+			TMap<FString, FString> ProviderHeaders;
+			Anthropic->GetProviderHeaders(ProviderHeaders);
+			TestFalse(TEXT("the provider's own headers carry no key"), UN2CHttpHandlerBase::HasCredentialHeader(ProviderHeaders));
 			TMap<FString, FString> Headers;
-			Anthropic->GetProviderHeaders(Headers);
+			for (const TPair<FString, FString>& Header : UN2CHttpHandlerBase::BuildRequestHeaders(ProviderHeaders,
+				FN2CCredential::Make(EN2CLLMProvider::Anthropic, FakeKey)))
+			{
+				Headers.Add(Header.Key, Header.Value);
+			}
 			const FString* ApiKeyHeader = Headers.Find(TEXT("x-api-key"));
 			if (TestNotNull(TEXT("Anthropic sends x-api-key"), ApiKeyHeader))
 			{
@@ -106,9 +116,9 @@ void FN2CApiKeyAuthSpec::Define()
 			}
 
 			UN2CGeminiService* Gemini = MakeService<UN2CGeminiService>(EN2CLLMProvider::Gemini, TEXT("gemini-3-flash-preview"), FakeKey);
-			FString Endpoint, AuthToken;
+			FString Endpoint;
 			bool bSupportsSystemPrompts = false;
-			Gemini->GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
+			Gemini->GetConfiguration(Endpoint, bSupportsSystemPrompts);
 			TestTrue(TEXT("Gemini posts to the Generative Language API"), Endpoint.StartsWith(TEXT("https://generativelanguage.googleapis.com/")));
 		});
 

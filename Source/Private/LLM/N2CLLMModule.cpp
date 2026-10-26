@@ -75,8 +75,7 @@ FN2CLLMConfig UN2CLLMModule::MakeConfigFromSettings()
         return Snapshot;
     }
     Snapshot.Provider = Settings->Provider;
-    Snapshot.ApiKey = Settings->GetActiveApiKeyForProvider(Snapshot.Provider);
-    Settings->ResolveRequestModel(Snapshot.Provider, FString(), Snapshot);
+Settings->ResolveRequestModel(Snapshot.Provider, FString(), Snapshot);
     return Snapshot;
 }
 
@@ -112,8 +111,7 @@ bool UN2CLLMModule::RefreshFromSettings()
     const FString EndpointSetting = GetLocalEndpointSetting(Snapshot.Provider);
     const bool bUnchanged = ActiveService.GetInterface() != nullptr
         && Snapshot.Provider == Config.Provider
-        && Snapshot.ApiKey.Equals(Config.ApiKey, ESearchCase::CaseSensitive)
-        && Snapshot.Model.Equals(Config.Model, ESearchCase::CaseSensitive)
+&& Snapshot.Model.Equals(Config.Model, ESearchCase::CaseSensitive)
         && Snapshot.ReasoningEffort.Equals(Config.ReasoningEffort, ESearchCase::CaseSensitive)
         && Snapshot.MaxOutputTokens == Config.MaxOutputTokens
         && FMath::IsNearlyEqual(Snapshot.ActivityTimeoutSeconds, Config.ActivityTimeoutSeconds)
@@ -123,7 +121,6 @@ bool UN2CLLMModule::RefreshFromSettings()
         return true;
     }
 
-    // Never log the key itself
     FN2CLogger::Get().Log(FString::Printf(TEXT("LLM settings changed: the next request uses %s, model %s"),
         *UEnum::GetValueAsString(Snapshot.Provider), *Snapshot.Model), EN2CLogSeverity::Info, TEXT("LLMModule"));
 
@@ -270,8 +267,8 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
 
     // Check if service supports system prompts
     bool bSupportsSystemPrompts = false;
-    FString Endpoint, AuthToken;
-    Service->GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
+    FString Endpoint;
+    Service->GetConfiguration(Endpoint, bSupportsSystemPrompts);
 
     // Get system prompt with language specification
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();

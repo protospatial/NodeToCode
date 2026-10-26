@@ -41,10 +41,13 @@ public:
         const FOnLLMResponseReceived& OnComplete
     ) = 0;
 
-    /** Get service-specific configuration */
+    /**
+     * Get service-specific configuration: the endpoint requests go to and whether the model takes a system prompt.
+     * Credentials are not configuration: each request resolves its key from the credential source when it is sent
+     * (IN2CCredentialSource, UN2CBaseLLMService::SendRequest).
+     */
     virtual void GetConfiguration(
         FString& OutEndpoint,
-        FString& OutAuthToken,
         bool& OutSupportsSystemPrompts
     ) = 0;
 
@@ -54,7 +57,10 @@ public:
     /** Check if service is properly initialized */
     virtual bool IsInitialized() const = 0;
 
-    /** Get any provider-specific headers needed */
+    /**
+     * Get the provider's non-secret headers (anthropic-version, content-type, OpenAI-Organization). Never a key: the
+     * credential header is added per request from the resolved FN2CCredential.
+     */
     virtual void GetProviderHeaders(TMap<FString, FString>& OutHeaders) const = 0;
 
     /** Get the response parser */

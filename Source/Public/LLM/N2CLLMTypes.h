@@ -42,6 +42,9 @@ enum class EN2CSystemStatus : uint8
 /**
  * @struct FN2CLLMConfig
  * @brief Configuration settings for LLM integration
+ *
+ * Holds no API key: each request resolves its key from the credential source when it is sent (IN2CCredentialSource),
+ * so nothing reflected (Blueprint, Python) can read a key from a config.
  */
 USTRUCT(BlueprintType)
 struct FN2CLLMConfig
@@ -53,9 +56,6 @@ struct FN2CLLMConfig
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     FString ApiEndpoint;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
-    FString ApiKey;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     float TimeoutSeconds = 3600.0f;

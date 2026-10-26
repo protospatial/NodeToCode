@@ -12,29 +12,16 @@
 
 FString UN2CBaseLLMService::GetMissingApiKeyError(EN2CLLMProvider Provider, const FString& ApiKey)
 {
-    const TCHAR* Name = nullptr;
-    switch (Provider)
-    {
-    case EN2CLLMProvider::OpenAI: Name = TEXT("OpenAI"); break;
-    case EN2CLLMProvider::Anthropic: Name = TEXT("Anthropic"); break;
-    case EN2CLLMProvider::Gemini: Name = TEXT("Gemini"); break;
-    case EN2CLLMProvider::DeepSeek: Name = TEXT("DeepSeek"); break;
-    default: return FString(); // Ollama and LM Studio run locally without a key
-    }
     if (!ApiKey.TrimStartAndEnd().IsEmpty())
     {
         return FString();
     }
+    return IN2CCredentialSource::MakeMissingKeyMessage(Provider);
+}
 
-    FString Message = FString::Printf(
-        TEXT("No %s API key is set. Add one in Project Settings > Plugins > Node to Code > LLM Services > %s > API Key, or set %s in the editor's environment."),
-        Name, Name, *FString::Join(FN2CSecretStore::GetEnvironmentVariableNames(Provider), TEXT(" or ")));
-    if (Provider == EN2CLLMProvider::Anthropic || Provider == EN2CLLMProvider::Gemini)
-    {
-        Message += FString::Printf(TEXT(" Claude Pro/Max and Google account sign-in were removed in NodeToCode 2.0; see %s"),
-            N2CSignInRemoval::DocsUrl);
-    }
-    return Message;
+TSharedRef<const IN2CCredentialSource> UN2CBaseLLMService::GetCredentialSource() const
+{
+    return CredentialSource.IsValid() ? CredentialSource.ToSharedRef() : IN2CCredentialSource::Get();
 }
 
 bool UN2CBaseLLMService::Initialize(const FN2CLLMConfig& InConfig)
@@ -50,7 +37,7 @@ bool UN2CBaseLLMService::Initialize(const FN2CLLMConfig& InConfig)
     // Initialize components
     InitializeComponents();
     
-    // Set provider-specific headers
+    // The provider's non-secret headers; each request adds its own credential header (SendRequest)
     TMap<FString, FString> Headers;
     GetProviderHeaders(Headers);
     if (HttpHandler)
@@ -105,20 +92,56 @@ FN2CLLMRequestHandleRef UN2CBaseLLMService::SendRequest(
         return Handle;
     }
     
-    // A cloud provider without a key would only get a 401 back; stop before any request is made
-    const FString MissingKeyError = GetMissingApiKeyError(GetProviderType(), Config.ApiKey);
-    if (!MissingKeyError.IsEmpty())
-    {
-        FN2CLogger::Get().LogError(MissingKeyError, TEXT("BaseLLMService"));
-        FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
-        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(MissingKeyError, EN2CTranslationErrorKind::Auth));
-        return Handle;
-    }
+    // The key is read now, for this request only: a key changed since Initialize applies, and nothing keeps it after.
+    // A source that answers later (a keychain, a token refresh) delivers through the same handle, so a Cancel() while
+    // it resolves sends nothing.
+    FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
+    const EN2CLLMProvider Provider = GetProviderType();
+    TWeakObjectPtr<UN2CBaseLLMService> WeakThis(this);
+    GetCredentialSource()->Resolve(Provider,
+        [WeakThis, Handle, JsonPayload, SystemMessage, OnComplete](FN2CCredentialResult Result)
+        {
+            if (Handle->IsFinished())
+            {
+                return;
+            }
+            UN2CBaseLLMService* StrongThis = WeakThis.Get();
+            if (!StrongThis)
+            {
+                Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(TEXT("The LLM service was destroyed before the request was sent")));
+                return;
+            }
+            if (Result.HasError())
+            {
+                // A cloud provider without a key would only get a 401 back; stop before any request is made
+                const FString Message = Result.GetError().ToString();
+                FN2CLogger::Get().LogError(Message, TEXT("BaseLLMService"));
+                Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(Message, EN2CTranslationErrorKind::Auth));
+                return;
+            }
+            StrongThis->SendWithCredential(Result.GetValue(), JsonPayload, SystemMessage, OnComplete, Handle);
+        });
+    return Handle;
+}
 
-    // Log provider and model info
+void UN2CBaseLLMService::SendWithCredential(
+    const FN2CCredential& Credential,
+    const FString& JsonPayload,
+    const FString& SystemMessage,
+    const FOnLLMResponseReceived& OnComplete,
+    const FN2CLLMRequestHandleRef& Handle)
+{
+    // Log provider, model and where the key came from (never the key)
+    FString KeyOrigin;
+    switch (Credential.Origin)
+    {
+    case EN2CApiKeySource::Store: KeyOrigin = TEXT("saved key"); break;
+    case EN2CApiKeySource::Environment: KeyOrigin = FString::Printf(TEXT("key from %s"), *Credential.VariableName); break;
+    default: KeyOrigin = TEXT("no key"); break;
+    }
     FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Sending request to %s using model: %s"), 
-            *UEnum::GetValueAsString(GetProviderType()), *Config.Model),
+        FString::Printf(TEXT("Sending request to %s using model: %s (%s)"),
+            *UEnum::GetValueAsString(GetProviderType()), *Config.Model, *KeyOrigin),
         EN2CLogSeverity::Info,
         TEXT("BaseLLMService")
     );
@@ -126,24 +149,24 @@ FN2CLLMRequestHandleRef UN2CBaseLLMService::SendRequest(
     // Format request payload
     FString FormattedPayload = FormatRequestPayload(JsonPayload, SystemMessage);
 
-    // Get endpoint and auth token
-    FString Endpoint, AuthToken;
+    // Get endpoint
+    FString Endpoint;
     bool bSupportsSystemPrompts;
-    GetConfiguration(Endpoint, AuthToken, bSupportsSystemPrompts);
+    GetConfiguration(Endpoint, bSupportsSystemPrompts);
 
     if (!HttpHandler)
     {
         FN2CLogger::Get().LogError(TEXT("No HTTP handler"), TEXT("BaseLLMService"));
-        FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
         Handle->Complete(OnComplete, TEXT("{\"error\": \"Service has no HTTP handler\"}"));
-        return Handle;
+        return;
     }
 
-    // Send request through HTTP handler; its handle is this request's handle
-    return HttpHandler->PostLLMRequest(
+    // Send request through HTTP handler, delivering through this request's handle
+    HttpHandler->PostLLMRequest(
         Endpoint,
-        AuthToken,
+        Credential,
         FormattedPayload,
-        OnComplete
+        OnComplete,
+        Handle
     );
 }

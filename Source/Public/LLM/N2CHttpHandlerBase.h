@@ -7,6 +7,7 @@
 #include "Models/N2CTranslation.h"
 #include "Interfaces/IHttpRequest.h"
 #include "LLM/N2CLLMRequestHandle.h"
+#include "LLM/N2CCredentialSource.h"
 #include "N2CHttpHandlerBase.generated.h"
 
 /**
@@ -34,8 +35,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     float ActivityTimeout = 300.0f;
 
-    /** Additional headers for requests */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    /**
+     * Non-secret headers every request of this handler carries (the provider's GetProviderHeaders: anthropic-version,
+     * content-type, OpenAI-Organization). Never a credential: a credential header here is dropped when the request is
+     * built, and the key comes from the request's FN2CCredential only.
+     */
+    UPROPERTY()
     TMap<FString, FString> ExtraHeaders;
 
     /** Initialize with configuration */
@@ -45,13 +50,25 @@ public:
      * Core request method. Returns the request's handle: Cancel() on it cancels the HTTP request, and OnComplete runs
      * at most once and never after a successful Cancel(). Errors found before sending complete synchronously, so the
      * returned handle is then already completed.
+     *
+     * @param Credential the key this one request is sent with, in its provider's one credential header
+     *                   (UN2CBaseLLMService::SendRequest resolves it from the credential source right before calling)
+     * @param ExistingHandle the handle to deliver through (the service's, created before the credential was
+     *                       resolved); a new one when unset. A handle already cancelled sends nothing.
      */
     virtual FN2CLLMRequestHandleRef PostLLMRequest(
         const FString& Endpoint,
-        const FString& AuthToken,
+        const FN2CCredential& Credential,
         const FString& Payload,
-        const FOnLLMResponseReceived& OnComplete
+        const FOnLLMResponseReceived& OnComplete,
+        FN2CLLMRequestHandlePtr ExistingHandle = nullptr
     );
+
+    /**
+     * The headers a request carries, in the order they are set: Content-Type, then Extra without any credential
+     * header, then Credential's one header (when it has a key). The payload golden specs use it too.
+     */
+    static TArray<TPair<FString, FString>> BuildRequestHeaders(const TMap<FString, FString>& Extra, const FN2CCredential& Credential);
 
     /** True when Headers already carries a credential (Authorization, x-api-key or x-goog-api-key, any case) */
     static bool HasCredentialHeader(const TMap<FString, FString>& Headers);
@@ -68,7 +85,8 @@ protected:
         FHttpRequestPtr Request,
         FHttpResponsePtr Response,
         bool bWasSuccessful,
-        FOnLLMResponseReceived OnComplete
+        FOnLLMResponseReceived OnComplete,
+        const FString& SecretToRedact
     );
 
     /** True when a failed request timed out (total or activity timeout); OutMessage says which, for the user */
