@@ -6,7 +6,7 @@ variables, reading them, setting their defaults, placing Get and Set nodes, and 
 ## Status: frozen, bug fixes only (dec-5)
 
 Every tool here (`BlueprintVariableTools`) is frozen, the read-only `search-variable-types` and the two list
-tools included. Decision record [0006](../../../../../../../.agents/decisions/0006-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
+tools included. Decision record [0007](../../../../../../../.agents/decisions/0007-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
 provisionally as the review's option 2, with card 0089 applied provisionally as option (b).
 
 - **Accepted:** bug fixes, meaning a change that fixes a crash or hang (a modal dialog in an unattended call

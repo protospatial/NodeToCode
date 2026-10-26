@@ -8,7 +8,7 @@ This directory contains the MCP tools that find, add, wire, set, comment and del
 ## Status: frozen, bug fixes only (dec-5)
 
 Every `BlueprintGraphTools` tool here is frozen (`find-nodes-in-graph` too, though it only reads), and so is
-`search-blueprint-nodes`, a `BlueprintDiscoveryTools` tool that `N2CMcpEpicOverlap::Tools` lists. Decision record [0006](../../../../../../../.agents/decisions/0006-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
+`search-blueprint-nodes`, a `BlueprintDiscoveryTools` tool that `N2CMcpEpicOverlap::Tools` lists. Decision record [0007](../../../../../../../.agents/decisions/0007-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
 provisionally as the review's option 2, with card 0089 applied provisionally as option (b).
 
 - **Accepted:** bug fixes, meaning a change that fixes a crash or hang (a modal dialog in an unattended call

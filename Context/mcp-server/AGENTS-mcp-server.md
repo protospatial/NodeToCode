@@ -572,7 +572,7 @@ search (unless script-only mode was on too). `assess-needed-tools` is removed.
 **Frozen tool families (dec-5).** The CRUD toolsets (`BlueprintGraphTools`, `BlueprintFunctionTools`,
 `BlueprintVariableTools`, `BlueprintCompileTools`, `BlueprintClassTools`, `BlueprintComponentTools`,
 `ContentBrowserTools`) and every tool in `N2CMcpEpicOverlap::Tools` take bug fixes only: no new tools or capability
-(`.agents/decisions/0006-crud-tool-families-fix-then-freeze.md`, owner decision card 0140 applied provisionally).
+(`.agents/decisions/0007-crud-tool-families-fix-then-freeze.md`, owner decision card 0140 applied provisionally).
 What counts as a fix and the fix cards still owed: "Frozen tool families (dec-5)" in
 `Source/Private/MCP/Tools/AGENTS.md`.
 

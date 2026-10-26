@@ -5,7 +5,7 @@ Blueprint functions and editing their parameters and return values.
 
 ## Status: frozen, bug fixes only (dec-5)
 
-Every tool here (`BlueprintFunctionTools`) is frozen. Decision record [0006](../../../../../../../.agents/decisions/0006-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
+Every tool here (`BlueprintFunctionTools`) is frozen. Decision record [0007](../../../../../../../.agents/decisions/0007-crud-tool-families-fix-then-freeze.md): owner decision card 0140, applied
 provisionally as the review's option 2, with card 0089 applied provisionally as option (b).
 
 - **Accepted:** bug fixes, meaning a change that fixes a crash or hang (a modal dialog in an unattended call

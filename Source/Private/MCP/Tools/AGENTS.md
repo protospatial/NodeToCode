@@ -186,7 +186,7 @@ curl -X POST http://127.0.0.1:27000/mcp -H "Content-Type: application/json" \
 
 ### Status: frozen, bug fixes only (dec-5)
 
-Decision record [0006](../../../../.agents/decisions/0006-crud-tool-families-fix-then-freeze.md) (proposed; owner decision card 0140 applied
+Decision record [0007](../../../../.agents/decisions/0007-crud-tool-families-fix-then-freeze.md) (proposed; owner decision card 0140 applied
 provisionally as the review's option 2, with card 0089 applied provisionally as option (b)). NodeToCode's
 Blueprint and asset CRUD tools take bug fixes only: on UE 5.8 Epic's EditorToolset is the better default for CRUD
 (the server leaves the 34 overlapping tools to Unreal MCP, card 0174), and on 5.6 and 5.7 these tools stay as
