@@ -14,22 +14,31 @@ The skills are written once, in Agents/claude-code/nodetocode/skills/<name>/ (SK
    name, description, license, compatibility, metadata and allowed-tools; name 1-64 lowercase letters, digits and
    single hyphens, equal to its folder; description 1-1024 characters; compatibility at most 500), SKILL.md is at
    most 500 lines, every relative link in a skill resolves inside that skill, and every MCP tool a skill names is
-   registered in the plugin (REGISTER_MCP_TOOL in Source/Private/MCP/Tools/Implementations).
+   registered in the plugin (REGISTER_MCP_TOOL in Source/Private/MCP/Tools/Implementations);
+4. checks the Claude Code plugin around the skills (card 0172): every MCP tool its commands (commands/*.md) name is
+   registered, .claude-plugin/plugin.json is named nodetocode with the version of NodeToCode.uplugin (VersionName),
+   and the local marketplace (Agents/claude-code/.claude-plugin/marketplace.json) and the draft entry for other
+   marketplaces (Agents/claude-code/marketplace-entry.json) point at the plugin folder.
 
 With --check nothing is written: it fails when a generated file or the mirror is out of date, or when a check fails.
 Exit 0 clean, 1 on any finding (each printed on its own line).
 
 A tool name is any backticked kebab-case word (`get-blueprint-n2cjson`), with or without the client prefixes
-`mcp__nodetocode__` and `NodeToCode.`, plus any mcp__nodetocode__<name> anywhere. Backticked kebab-case words that are
+`mcp__nodetocode__`, `mcp__plugin_nodetocode_nodetocode__` and `NodeToCode.`, plus any such prefixed name anywhere. Backticked kebab-case words that are
 not tools are listed in NOT_TOOLS.
 """
 import argparse
+import json
 import os
 import re
 import sys
 
 PLUGIN_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-SKILLS_DIR = os.path.join(PLUGIN_ROOT, 'Agents', 'claude-code', 'nodetocode', 'skills')
+CLAUDE_DIR = os.path.join(PLUGIN_ROOT, 'Agents', 'claude-code')
+CLAUDE_PLUGIN_DIR = os.path.join(CLAUDE_DIR, 'nodetocode')
+SKILLS_DIR = os.path.join(CLAUDE_PLUGIN_DIR, 'skills')
+UPLUGIN = os.path.join(PLUGIN_ROOT, 'NodeToCode.uplugin')
+CLAUDE_PLUGIN_NAME = 'nodetocode'
 MIRROR_DIR = os.path.join(PLUGIN_ROOT, '.agents', 'skills')
 TOOLS_DIR = os.path.join(PLUGIN_ROOT, 'Source', 'Private', 'MCP', 'Tools', 'Implementations')
 SPEC_SOURCE = 'Content/Prompting/Shared/N2CJsonSpec.md'
@@ -52,7 +61,8 @@ NOT_TOOLS = {'allowed-tools'}
 
 TOOL_NAME_RE = re.compile(r'^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$')
 BACKTICK_RE = re.compile(r'`([^`\n]+)`')
-PREFIXED_RE = re.compile(r'mcp__nodetocode__([A-Za-z0-9_-]+)')
+TOOL_PREFIXES = ('mcp__plugin_nodetocode_nodetocode__', 'mcp__nodetocode__', 'NodeToCode.')
+PREFIXED_RE = re.compile(r'mcp__(?:plugin_nodetocode_)?nodetocode__([A-Za-z0-9_-]+)')
 LINK_RE = re.compile(r'\]\(([^)\s]+)\)')
 DEFINITION_RE = re.compile(r'FMcpToolDefinition\s+\w+\s*\(\s*TEXT\(\s*"([^"]+)"\s*\)')
 
@@ -200,9 +210,10 @@ def named_tools(text):
     names = set(PREFIXED_RE.findall(text))
     for token in BACKTICK_RE.findall(text):
         token = token.strip()
-        for prefix in ('mcp__nodetocode__', 'NodeToCode.'):
+        for prefix in TOOL_PREFIXES:
             if token.startswith(prefix):
                 token = token[len(prefix):]
+                break
         if TOOL_NAME_RE.match(token):
             names.add(token)
     return names
@@ -293,6 +304,54 @@ def check_all(skills_dir=SKILLS_DIR, tools_dir=TOOLS_DIR):
     return findings, tools, names
 
 
+def read_json(path, findings):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError) as e:
+        findings.append('%s: cannot read it as JSON (%s)' % (rel(path), e))
+        return None
+
+
+def check_claude_plugin(plugin_dir=CLAUDE_PLUGIN_DIR, tools=None, uplugin=UPLUGIN):
+    """Findings for the Claude Code plugin around the skills (see the module docstring)"""
+    findings = []
+    if tools is None:
+        tools, _unparsed = registered_tools()
+    commands = os.path.join(plugin_dir, 'commands')
+    if os.path.isdir(commands):
+        for name in sorted(os.listdir(commands)):
+            if name.endswith('.md'):
+                path = os.path.join(commands, name)
+                for tool in sorted(named_tools(read_text(path)) - tools - NOT_TOOLS):
+                    findings.append('%s: names MCP tool %r, which the plugin does not register' % (rel(path), tool))
+    manifest = read_json(os.path.join(plugin_dir, '.claude-plugin', 'plugin.json'), findings)
+    descriptor = read_json(uplugin, findings)
+    if manifest is not None:
+        if manifest.get('name') != CLAUDE_PLUGIN_NAME:
+            findings.append('%s/.claude-plugin/plugin.json: name must be %r' % (rel(plugin_dir), CLAUDE_PLUGIN_NAME))
+        if descriptor is not None and manifest.get('version') != descriptor.get('VersionName'):
+            findings.append('%s/.claude-plugin/plugin.json: version %r differs from NodeToCode.uplugin VersionName %r'
+                            % (rel(plugin_dir), manifest.get('version'), descriptor.get('VersionName')))
+    folder = os.path.basename(os.path.normpath(plugin_dir))
+    marketplace_dir = os.path.dirname(os.path.normpath(plugin_dir))
+    market = read_json(os.path.join(marketplace_dir, '.claude-plugin', 'marketplace.json'), findings)
+    if market is not None:
+        entries = [p for p in market.get('plugins') or [] if p.get('name') == CLAUDE_PLUGIN_NAME]
+        if len(entries) != 1 or entries[0].get('source') != './' + folder:
+            findings.append('%s/.claude-plugin/marketplace.json: needs one %r entry with source "./%s"'
+                            % (rel(marketplace_dir), CLAUDE_PLUGIN_NAME, folder))
+    entry = read_json(os.path.join(marketplace_dir, 'marketplace-entry.json'), findings)
+    if entry is not None:
+        source = entry.get('source') if isinstance(entry.get('source'), dict) else {}
+        want = 'Agents/claude-code/' + folder  # the plugin folder's path in the NodeToCode repository
+        if (entry.get('name') != CLAUDE_PLUGIN_NAME or source.get('source') != 'git-subdir'
+                or source.get('path') != want):
+            findings.append('%s/marketplace-entry.json: needs name %r and a git-subdir source with path %r'
+                            % (rel(marketplace_dir), CLAUDE_PLUGIN_NAME, want))
+    return findings
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--check', action='store_true', help='write nothing; fail when anything is out of date or invalid')
@@ -300,6 +359,7 @@ def main(argv=None):
     findings = sync(args.check)
     more, tools, names = check_all()
     findings += more
+    findings += check_claude_plugin(tools=tools)
     for finding in findings:
         print(finding)
     print('%s: %d skills (%s), %d registered MCP tools, %d findings'

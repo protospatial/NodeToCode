@@ -1,181 +1,206 @@
 # Blueprint Component Tools
 
 This directory contains the MCP tools in the 'Blueprint Components' category: listing, adding and deleting the
-components of an Actor Blueprint. All three work on the Blueprint's `SimpleConstructionScript` (SCS), the components
-added in the Blueprint editor's Components panel.
+components of an Actor Blueprint. Add and delete go through the engine's `USubobjectDataSubsystem`, as the Blueprint
+editor's Components panel does (card 0167); the list tool reads the hierarchy without changing anything
+(`FN2CMcpComponentUtils::BuildComponentTree`).
 
 ## What the Tools See
 
-- **SCS nodes only.** Native components that a C++ parent creates (a Character's `CapsuleComponent`, `Mesh`,
-  `CharacterMovement` and `Arrow`) are not SCS nodes, so they are never listed and cannot be named as a parent or
-  deleted: on a new Character Blueprint, list-components-in-actor returns `"components": []`, `"totalCount": 0` and
-  `"rootComponent": ""`. Components a parent Blueprint adds are read from that Blueprint's SCS
-  (`FN2CMcpComponentUtils::GetInheritedSCSNodes`) and only by the list and delete tools.
+- **Every component of the actor**, as the Components panel shows them: the native components of the C++ parent class
+  (a Character's `CapsuleComponent`, `Mesh`, `CharacterMovement` and `Arrow`, read from the class default object),
+  the components parent Blueprints add (their SCS), and this Blueprint's own (its `SimpleConstructionScript`).
+  A native component is named by its property name (`Mesh`); its object name (`CharacterMesh0`) is also accepted.
 - **Target.** `blueprintPath` is an asset path (`/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`),
   resolved by `FN2CMcpBlueprintUtils::ResolveBlueprint`; without it, the Blueprint of the active Blueprint editor.
   A path that does not resolve: `ASSET_NOT_FOUND: Blueprint not found at path: <path>`; no path and no editor:
   `NO_ACTIVE_BLUEPRINT: ...`; a Blueprint whose parent is not an Actor (a component or widget Blueprint):
-  `NOT_ACTOR_BLUEPRINT|Blueprint must derive from Actor to have components`.
-- **Errors** are text results with `isError` true, in the form `CODE|message`.
-- **No undo.** None of the tools opens an `FScopedTransaction`; add and delete mark the Blueprint structurally
-  modified, compile it once (`FN2CMcpBlueprintUtils::MarkModified` and `Compile`, card 0151) and leave the package
-  dirty, unsaved. `compilationStatus` and the result's `compile` object carry the compiler's real counts and
-  messages (see the Graph folder's AGENTS.md for the `compile` fields).
+  `NOT_ACTOR_BLUEPRINT|Blueprint must derive from Actor to have components`; a level script, macro library,
+  function library, interface or const Blueprint: `NO_CONSTRUCTION_SCRIPT|Blueprint '<name>' cannot have components
+  ...` (`FN2CMcpComponentUtils::CheckComponentBlueprint`). No tool ever creates a `SimpleConstructionScript`.
+- **Errors** are text results with `isError` true, in the form `CODE|message`. add and delete check everything
+  (Blueprint, class, name, parent, socket, component) before they change anything, so a refused call leaves the
+  Blueprint, its dirty flag and the undo history as they were.
+- **Undo.** Each add or delete is one `FScopedTransaction` ("Add Component 'X'", "Delete Component 'X'"): Edit > Undo
+  restores the components, their attachment and the graph nodes the delete removed. The Blueprint is compiled once
+  after the transaction closes (card 0151); `compilationStatus` and the result's `compile` object carry the
+  compiler's real counts and messages (see the Graph folder's AGENTS.md for the `compile` fields). The package is
+  left dirty, unsaved.
 - **Known issue (card 0274):** there is no target besides `blueprintPath` and the active editor.
-- **Known issue (card 0167):** the tools edit SCS nodes directly instead of through the engine's
-  `USubobjectDataSubsystem`, which causes the attachment and deletion behaviour described below.
 
 ## Available Tools
 
 ### list-components-in-actor
-- **Description**: Lists the SCS components of an Actor Blueprint as a tree (read-only, `readOnlyHint`)
+- **Description**: Lists the components of an Actor Blueprint as a tree (read-only, `readOnlyHint`): changes nothing,
+  adds no undo step, leaves the package clean
 - **Parameters**:
   - `blueprintPath` (optional): See "What the Tools See"
-  - `includeInherited` (optional, default true): Also list the SCS components of parent Blueprints
+  - `includeInherited` (optional, default true): Also list the native components and the components parent
+    Blueprints add. When false, only this Blueprint's own components are listed; one attached to an inherited or
+    native component moves up to the top level and keeps its `parentComponent`
   - `componentTypeFilter` (optional, default `all`): `scene` (`USceneComponent`), `actor` (`UActorComponent` but not
     `USceneComponent`), `primitive` (`UPrimitiveComponent`); any other value lists everything
-    (`FN2CMcpComponentUtils::PassesComponentTypeFilter`). A component that fails the filter is left out together with
-    its whole subtree (`BuildNodeHierarchyRecursive`), so `primitive` returns nothing when the root is a plain
-    `SceneComponent` or a `SpringArmComponent`
+    (`FN2CMcpComponentUtils::PassesComponentTypeFilter`). A component that fails the filter is left out and its
+    listed descendants move up to where it was
 - **Returns**: See "Output Format"
 
 ### add-component-class-to-actor
-- **Description**: Adds an SCS node of the given class and compiles the Blueprint
-  (`FN2CMcpComponentUtils::CreateSCSNode`, `SetupComponentAttachment`)
+- **Description**: Adds a component with `USubobjectDataSubsystem::AddNewSubobject`, names it with
+  `RenameSubobject`, and compiles the Blueprint
 - **Parameters**:
-  - `componentClass` (required): Class object path, found with `FindObject` then `LoadObject`
-    (`ResolveComponentClass`): `/Script/Engine.StaticMeshComponent`, or a component Blueprint's generated class
-    `/Game/Components/BP_Health.BP_Health_C`. A bare class name (`StaticMeshComponent`) is not found
-  - `componentName` (optional): Variable name. Without it, the class name minus a trailing `Component`, made unique
-    with a number: `StaticMesh`, then `StaticMesh1` (`GenerateUniqueComponentName`); a Blueprint component class keeps
-    its generated class name (`BP_Health_C`)
-  - `parentComponent` (optional): Name of an SCS component of this Blueprint (not a native or inherited one), for
-    scene components; ignored for other components
-  - `attachSocketName` (optional): Stored as the node's `AttachToName` when `parentComponent` is given
+  - `componentClass` (required): The class (`FN2CMcpComponentUtils::ResolveComponentClass`): a class path
+    (`/Script/Engine.StaticMeshComponent`), a component Blueprint's generated class
+    (`/Game/Components/BP_Health.BP_Health_C`) or the Blueprint's own path (`_C` is added), or the name of a loaded
+    class (`StaticMeshComponent`, `UStaticMeshComponent`, `BP_Health`; native classes first). The class part of a
+    path whose module is wrong (`/Script/Engin.StaticMeshComponent`) is looked up as a name
+  - `componentName` (optional): Variable name; must be a valid name not in use in the Blueprint (`NAME_EXISTS`,
+    `INVALID_NAME`). Without it, the engine's: the class name minus a trailing `Component`, or a Blueprint class's
+    name minus `_C`, made unique with a number (`StaticMesh`, then `StaticMesh1`)
+  - `parentComponent` (optional, scene components only): The scene component to attach to: one this Blueprint adds,
+    one a parent Blueprint adds, or a native one (`Mesh` on a Character). Defaults to the actor's root component
+    (`DefaultSceneRoot` on a new Actor Blueprint, `CapsuleComponent` on a Character)
+  - `attachSocketName` (optional, scene components only): A socket of the parent; it must exist on it
+    (`DoesSocketExist` or `GetAllSocketNames`, so `SpringEndpoint` on a spring arm, a mesh's sockets once the mesh
+    asset is set)
   - `relativeTransform` (optional, scene components): `{"location": {"x","y","z"}, "rotation": {"pitch","yaw","roll"},
-    "scale": {"x","y","z"}}`; each part and each number is optional (location and rotation default to 0, scale to 1)
+    "scale": {"x","y","z"}}`; each part and each number is optional (location and rotation default to 0, scale to 1).
+    The new component's relative transform is this (or identity), not conformed to its parent. Ignored for other
+    components
   - `blueprintPath` (optional): See "What the Tools See"
-- **Where the component ends up**: `CreateSCSNode` adds every node as a root node, and the engine's
-  `USimpleConstructionScript::AddNode` then makes the first scene component the Blueprint's root in place of the
-  `DefaultSceneRoot`. `SetupComponentAttachment` only sets the node's parent name, and the compile that follows moves
-  the node under the scene root. So, after the call, every scene component the tool adds is a direct child of the
-  root, whatever `parentComponent` names: in the doc's Spring Arm example `FollowCamera` ends up under `CameraBoom`
-  only because `CameraBoom` became the root, and a component added with `parentComponent: "B"`, where `B` is itself a
-  child of the root, is listed beside `B`, not under it. The socket name is kept. Components that are not scene
-  components are listed as separate roots.
+- **Where the component ends up**: under `parentComponent`, or the root, as the Components panel attaches it, and it
+  stays there after compiles. A parent in this Blueprint takes the new node as a child node; an inherited or native
+  parent is recorded on the new root node (`USCS_Node::SetParent`). The `DefaultSceneRoot` is kept: the first
+  component added to a new Actor Blueprint goes under it. A component that is not a scene component is attached to
+  nothing.
 - **Returns**: `componentName`, `componentClass` (short name), `componentClassPath`, `nodeGuid` (the SCS node's
-  `VariableGuid`, 32 hex digits), `isSceneComponent`, `attachedTo` and `attachSocketName` (echo the arguments
-  whenever `parentComponent` was given, also for a non-scene component that was not attached),
-  `compilationStatus` (`success`, `errorCount`, `warningCount`, `compilationTime` from the compile), `compile`,
-  `nextSteps`
-- **Errors**: `CLASS_NOT_FOUND|Component class '<path>' not found`, `NOT_COMPONENT|Class 'Actor' is not an
-  ActorComponent`, `CANNOT_INSTANTIATE|Class 'MovementComponent' cannot be instantiated (abstract, deprecated, or has
-  newer version)`, `NAME_EXISTS|Component with name 'CameraBoom' already exists`, `PARENT_NOT_FOUND|Parent component
-  'Mesh' not found`, `EMPTY_CLASS_PATH|...`, plus the target errors above
-- **Known issue (card 0167):** the node is created before `parentComponent` is looked up, so a `PARENT_NOT_FOUND`
-  error leaves the new component in the Blueprint (as a root, uncompiled); a parent other than the root is not kept
-  (above)
+  `VariableGuid`, 32 hex digits), `isSceneComponent`, `attachedTo` and `attachSocketName` (where the component is
+  after the compile, read back from the hierarchy; absent for a component that is not a scene component),
+  `isRootComponent`, `compilationStatus` (`success`, `errorCount`, `warningCount`, `compilationTime` from the
+  compile), `compile`, `nextSteps`
+- **Errors**: `CLASS_NOT_FOUND|Component class '<path>' not found. ...`, `NOT_COMPONENT|Class 'Actor' is not an
+  ActorComponent`, `CANNOT_INSTANTIATE|Class 'MovementComponent' cannot be instantiated (...)`,
+  `NAME_EXISTS|Component with name 'CameraBoom' already exists` (or the name validator's text for a name used by a
+  variable or function), `INVALID_NAME|...`, `PARENT_IS_SELF|parentComponent 'X' is the name of the component being
+  added`, `PARENT_NOT_FOUND|Parent component 'CamerBoom' not found. Scene components: DefaultSceneRoot, CameraBoom`,
+  `PARENT_NOT_SCENE|...`, `CANNOT_ATTACH|...` (the parent or the class refuses the attachment),
+  `SOCKET_NOT_FOUND|'CameraBoom' has no socket 'Tip'. Its sockets: SpringEndpoint`,
+  `NOT_SCENE_COMPONENT|'RotatingMovementComponent' is not a SceneComponent, so it is not attached to anything: leave
+  out parentComponent and attachSocketName`, `EMPTY_CLASS_PATH|...`, `ADD_FAILED|...` (the engine refused), plus the
+  target errors above
 
 ### delete-component-in-actor
-- **Description**: Removes an SCS node of this Blueprint (`FN2CMcpComponentUtils::DeleteSCSNode`) and compiles
+- **Description**: Deletes a component this Blueprint adds with `USubobjectDataSubsystem::DeleteSubobjects`, and
+  compiles
 - **Parameters**:
   - `componentName` (required): The component's variable name
   - `deleteChildren` (optional, default false): See "Deleting Components"
   - `blueprintPath` (optional): See "What the Tools See"
-- **Returns**: `deletedComponentName`, `deletedComponentClass`, `deletedComponentGuid`, `affectedChildren` (one
-  entry per direct child with `action` `reparented` and `newParent` `root`; with `deleteChildren` true, one entry per
-  descendant with `action` `deleted`), `childrenDeleted`, `compilationStatus` (as above), `compile`, `nextSteps`
-- **Errors**: `COMPONENT_NOT_FOUND|Component 'X' not found in Blueprint`,
-  `INHERITED_COMPONENT|Cannot delete components inherited from parent Blueprint` (a parent Blueprint's component),
-  `NO_COMPONENTS|...` (no SCS), plus the target errors above. A native component's name gives `COMPONENT_NOT_FOUND`
-- **Known issue (card 0167):** Get nodes and bound events of the deleted component are left in the graphs; there is
-  no confirmation (card 0212)
+- **Returns**: `deletedComponentName`, `deletedComponentClass`, `deletedComponentGuid`, `affectedChildren` (without
+  `deleteChildren`: one entry per direct child, `action` `reparented`, `newParent` the component it is now attached
+  to and `isRootComponent`; with it: one entry per descendant, `action` `deleted`), `childrenDeleted`,
+  `removedVariableNodes` (the Get and Set nodes of the deleted components the engine removed: `nodeGuid`, `title`,
+  `graph`, `component`), `boundEvents` (component events such as On Component Hit bound to a deleted component, same
+  fields), `compilationStatus` (as above), `compile`, `nextSteps`
+- **Errors**: `COMPONENT_NOT_FOUND|Component 'X' not found in Blueprint`, `NATIVE_COMPONENT|'Mesh' is created by the
+  C++ class Character and cannot be deleted from a Blueprint`, `INHERITED_COMPONENT|Cannot delete components inherited
+  from parent Blueprint ('CameraBoom' is added by BP_Base)`, `DEFAULT_SCENE_ROOT|...` (see below), `CANNOT_DELETE`
+  and `DELETE_FAILED` (the engine refused), plus the target errors above
+- **Known issue (card 0212):** there is no confirmation before a delete
 
 ## Deleting Components
 
-What happens to the children of a deleted component, observed on UE 5.8 with the hierarchy built in the Blueprint
-editor (DefaultSceneRoot > L1 > L2 > L3 > L4):
-
-- **`deleteChildren: false`** (default): the children are kept, but they are not moved to the deleted component's
-  parent. `DeleteSCSNode` reads the deleted node's `ParentComponentOrVariableName`, which is empty for a node that
-  sits in another node's child list, so it calls `USCS_Node::SetParent(nullptr)` on each child (the engine logs
-  `Ensure condition failed: InParentNode` the first time) and removes the node; the compile then puts each orphaned
-  child under the Blueprint's scene root. Deleting `L3` leaves DefaultSceneRoot > L1 > L2 and DefaultSceneRoot > L4,
-  with L4's own children still under it. The result says `"newParent": "root"`. Deleting the root itself moves its
-  children under a new `DefaultSceneRoot` the engine creates.
-- **`deleteChildren: true`**: the node and all its descendants are removed (`GetAllChildNodes`, deepest first).
-- **DefaultSceneRoot**: deleting it is reported as a success, but the engine adds the default root back
-  (`USimpleConstructionScript::ValidateSceneRootNodes`) with the same `nodeGuid`, so nothing changes. The
-  `DEFAULT_ROOT_WITH_CHILDREN` check in `CanDeleteNode` compares the template name with `DefaultSceneRoot`, while
-  the template is named `DefaultSceneRoot_GEN_VARIABLE`, so that error is never returned.
-- **Inherited components** cannot be deleted (`INHERITED_COMPONENT`); `INHERITED_NODE` exists in `CanDeleteNode` but is
-  not reached, because the tool looks the name up in this Blueprint's SCS first.
-- **Known issue (card 0167):** children are not reparented to the deleted component's parent, the call fires an
-  engine ensure, and the DefaultSceneRoot guard never fires.
+- **`deleteChildren: false`** (default): the children are kept and move up, as in the Components panel
+  (`USimpleConstructionScript::RemoveNodeAndPromoteChildren`): deleting `L3` from DefaultSceneRoot > L1 > L2 > L3 > L4
+  leaves DefaultSceneRoot > L1 > L2 > L4. Deleting the root component makes its first scene child the new root, with
+  the other children under it; deleting a root with no children brings the `DefaultSceneRoot` back.
+- **`deleteChildren: true`**: the component and everything under it are deleted.
+- **Graph nodes**: the engine removes the Get and Set nodes of every deleted component (listed in
+  `removedVariableNodes`; Undo puts them back). Events bound to a deleted component stay in the graph, unbound, and
+  never fire; they are listed in `boundEvents` for the agent to delete (delete-blueprint-node) or undo. The engine's
+  own delete would also open the Blueprint editor on the first such event and post a message log; the tool keeps the
+  events out of that path for the call, so a delete never opens an editor.
+- **DefaultSceneRoot** cannot be deleted: `DEFAULT_SCENE_ROOT|DefaultSceneRoot is the placeholder root the engine keeps
+  while no other scene component is the root; it cannot be deleted (the engine would add it back). Delete or move its
+  children instead`.
+- **Native and inherited components** cannot be deleted from this Blueprint (`NATIVE_COMPONENT`,
+  `INHERITED_COMPONENT`).
 
 ## Output Format (list-components-in-actor)
 
-`FN2CMcpComponentUtils::BuildComponentHierarchy` and `SCSNodeToJson`, for an Actor Blueprint with a Spring Arm root
-and a camera under it:
+`FN2CMcpComponentUtils::BuildComponentHierarchy` and `ComponentToJson`, for an Actor Blueprint with a spring arm and a
+camera under it:
 
 ```json
 {
   "components": [
     {
-      "name": "CameraBoom",
-      "className": "SpringArmComponent",
-      "classPath": "/Script/Engine.SpringArmComponent",
-      "nodeGuid": "7A3FC83C471769D1B943DD9580B59782",
+      "name": "DefaultSceneRoot",
+      "className": "SceneComponent",
+      "classPath": "/Script/Engine.SceneComponent",
+      "nodeGuid": "1D3C9E0F4B2A8C5D6E7F801122334455",
       "isSceneComponent": true,
       "isRootComponent": true,
       "parentComponent": null,
       "attachSocketName": "None",
-      "transform": {
-        "location": { "x": 0, "y": 0, "z": 60 },
-        "rotation": { "pitch": -10.000000000000004, "yaw": 0, "roll": -0 },
-        "scale": { "x": 1, "y": 1, "z": 1 }
-      },
+      "transform": { "...": "..." },
       "isInherited": false,
+      "isNative": false,
       "children": [
         {
-          "name": "FollowCamera",
-          "className": "CameraComponent",
-          "classPath": "/Script/Engine.CameraComponent",
-          "nodeGuid": "1AE67F734F1A0516DC4E81827C74351F",
+          "name": "CameraBoom",
+          "className": "SpringArmComponent",
+          "classPath": "/Script/Engine.SpringArmComponent",
+          "nodeGuid": "7A3FC83C471769D1B943DD9580B59782",
           "isSceneComponent": true,
-          "isRootComponent": true,
-          "parentComponent": null,
+          "isRootComponent": false,
+          "parentComponent": "DefaultSceneRoot",
           "attachSocketName": "None",
-          "transform": { "...": "..." },
+          "transform": {
+            "location": { "x": 0, "y": 0, "z": 60 },
+            "rotation": { "pitch": -10.000000000000004, "yaw": 0, "roll": -0 },
+            "scale": { "x": 1, "y": 1, "z": 1 }
+          },
           "isInherited": false,
-          "children": []
+          "isNative": false,
+          "children": [
+            {
+              "name": "FollowCamera",
+              "className": "CameraComponent",
+              "classPath": "/Script/Engine.CameraComponent",
+              "nodeGuid": "1AE67F734F1A0516DC4E81827C74351F",
+              "isSceneComponent": true,
+              "isRootComponent": false,
+              "parentComponent": "CameraBoom",
+              "attachSocketName": "SpringEndpoint",
+              "transform": { "...": "..." },
+              "isInherited": false,
+              "isNative": false,
+              "children": []
+            }
+          ]
         }
       ]
     }
   ],
-  "totalCount": 1,
-  "rootComponent": "CameraBoom",
+  "totalCount": 3,
+  "rootComponent": "DefaultSceneRoot",
   "blueprintName": "BP_InteractableObject",
   "blueprintPath": "/Game/Blueprints/BP_InteractableObject.BP_InteractableObject"
 }
 ```
 
-- **The tree is in `children`.** `isRootComponent` and `parentComponent` come from the node's
-  `ParentComponentOrVariableName`, which is only set for a root node attached to a native or inherited component, so
-  nearly every node, children included, shows `isRootComponent: true` and `parentComponent: null`. Read the nesting
-  from `children`.
-- **`totalCount`** is the number of top-level entries in `components` (`ComponentsArray.Num()`), not the number of
-  components: the tree above holds two components and has `totalCount` 1.
-- **`rootComponent`** is the first SCS root node's name, or `""` when the Blueprint has none (a Character
-  Blueprint, whose root is native).
+- **The tree is in `children`**, and `parentComponent` names each component's parent (null at the top level).
+  `isRootComponent` is true for the actor's root component only.
+- **Top level**: the root component, and components that are not scene components (attached to nothing).
+- **`totalCount`** is the number of components listed (the tree above holds three).
+- **`rootComponent`** is the actor's root component's name: a native root (`CapsuleComponent` on a Character), else
+  the first Blueprint's scene root; `""` when there is none.
+- **Native components** have `isNative` and `isInherited` true, an empty `nodeGuid`, and `objectName` when their
+  object name differs from their property name (`"name": "Mesh", "objectName": "CharacterMesh0"`). **Components a
+  parent Blueprint adds** have `isInherited` true and `inheritedFrom` (that Blueprint's name); their `transform` is
+  this Blueprint's override when it has one. Each component is listed once.
 - **`className`** is the class's short name (`SpringArmComponent`, no `U` prefix); `attachSocketName` is `"None"`
   when there is no socket; `transform` is relative and only present for scene components.
-- **Inherited components** (`includeInherited` true) get `isInherited: true` and are appended after this Blueprint's
-  own. `GetInheritedSCSNodes` returns every node of the parent's SCS, not only its roots, so an inherited child is
-  listed twice, once inside its parent's `children` and once at the top level, and `totalCount` counts both.
-- A Blueprint with no SCS returns `{"components": [], "totalCount": 0, "rootComponent": ""}` without the
-  `blueprintName` and `blueprintPath` fields (`GetBlueprintSCS` creates one, so in practice every Actor Blueprint has
-  an SCS).
 
 The result is not marked as untrusted content (names only; card 0124).
 
@@ -202,7 +227,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# Add a spring arm (on a new Actor Blueprint it replaces DefaultSceneRoot as the root)
+# Add a spring arm (under the root: DefaultSceneRoot on a new Actor Blueprint)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
@@ -225,7 +250,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 2
   }'
 
-# Then a camera under it (CameraBoom is the root here, so the camera stays under it)
+# Then a camera on the spring arm's end
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
@@ -239,6 +264,7 @@ curl -X POST http://localhost:27000/mcp \
         "componentClass": "/Script/Engine.CameraComponent",
         "componentName": "FollowCamera",
         "parentComponent": "CameraBoom",
+        "attachSocketName": "SpringEndpoint",
         "blueprintPath": "/Game/Blueprints/BP_InteractableObject"
       }
     },
@@ -265,15 +291,22 @@ curl -X POST http://localhost:27000/mcp \
   }'
 ```
 
-A Character's mesh cannot be a parent: `"parentComponent": "Mesh"` on a Character Blueprint answers
-`PARENT_NOT_FOUND|Parent component 'Mesh' not found` (and leaves the new component behind, card 0167).
+On a Character Blueprint, `"parentComponent": "Mesh"` attaches to the inherited skeletal mesh (with
+`attachSocketName` one of its mesh's sockets).
 
 ## Workflow Integration
 
 1. `search-blueprint-classes` with `classType: "actorComponent"` to find a component class, then
-   `add-component-class-to-actor` with its `classPath`, then `list-components-in-actor` to see where it ended up.
+   `add-component-class-to-actor` with its `classPath`, then `list-components-in-actor` to see the tree.
 2. A component is a Blueprint variable of its own name, but not a member variable the Variables tools know:
    `create-get-member-variable-node` with `CameraBoom` answers `Variable 'CameraBoom' not found`. To read it in a
    graph, search `search-blueprint-nodes` for `Get CameraBoom` (a `K2Node_VariableGet` with `member_name`
-   `CameraBoom`) and add it with `add-bp-node-to-active-graph`. The `nextSteps` hint to make a variable with
-   `create-variable` and the component's class path makes a separate, empty reference variable.
+   `CameraBoom`) and add it with `add-bp-node-to-active-graph`.
+
+## Tests
+
+`NodeToCode.MCP.Components` (`Source/Private/Tests/MCP/N2CComponentTools.spec.cpp`) runs the three tools on transient
+Actor, Character, child and macro-library Blueprints: attachment kept after compiles at three levels, refusals that
+change nothing, class lookup, native and inherited parents, deletes with and without children, Get-node removal,
+bound events, DefaultSceneRoot, and exact Undo then Redo of each edit. Live: `Tests/mcp_probe/live_components_0167.py`
+(claude -p).

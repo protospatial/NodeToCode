@@ -1,0 +1,16 @@
+{
+  "name": "nodetocode",
+  "owner": {
+    "name": "protospatial",
+    "url": "https://protospatial.com"
+  },
+  "description": "NodeToCode's Claude Code plugin, installed from the NodeToCode plugin folder so it matches the installed version.",
+  "plugins": [
+    {
+      "name": "nodetocode",
+      "source": "./nodetocode",
+      "description": "Read, translate and migrate Unreal Engine Blueprints through NodeToCode's MCP server: three Agent Skills, /nodetocode:translate and a session-start connection check.",
+      "category": "development"
+    }
+  ]
+}

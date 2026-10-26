@@ -89,6 +89,13 @@ $RequiredFiles = @(
     'Agents/claude-code/nodetocode/skills/blueprint-comprehension/references/n2c-json-spec.md',
     'Agents/claude-code/nodetocode/skills/blueprint-to-cpp/SKILL.md',
     'Agents/claude-code/nodetocode/skills/blueprint-migration/SKILL.md',
+    'Agents/claude-code/.claude-plugin/marketplace.json',
+    'Agents/claude-code/nodetocode/.claude-plugin/plugin.json',
+    'Agents/claude-code/nodetocode/.mcp.json',
+    'Agents/claude-code/nodetocode/hooks/hooks.json',
+    'Agents/claude-code/nodetocode/hooks/session-start.sh',
+    'Agents/claude-code/nodetocode/commands/translate.md',
+    'Agents/claude-code/nodetocode/README.md',
     'Binaries/Win64/UnrealEditor-NodeToCode.dll',
     'Binaries/Win64/UnrealEditor.modules'
 )
@@ -103,6 +110,8 @@ $ForbiddenPrefixes = @(
 $ForbiddenSegments = @('__pycache__', '.git', '.env', 'secrets.json', 'CLAUDE.md', '.mcp.json',
                        '.gitignore', '.gitattributes')
 $ForbiddenPatterns = @('*.pyc', '*.ps1', '.env.*', '*.log')
+# Exact paths the name rules above would refuse but that ship: the Claude Code plugin's MCP config (card 0172).
+$AllowedPaths = @('Agents/claude-code/nodetocode/.mcp.json')
 if (-not $KeepPdb) { $ForbiddenPatterns += '*.pdb' }
 # Text that looks like a provider key (checked in text files only).
 $KeyRegex = 'sk-ant-[A-Za-z0-9_\-]{20,}|sk-(proj-)?[A-Za-z0-9_\-]{32,}|AIza[0-9A-Za-z_\-]{35}'
@@ -199,7 +208,9 @@ function Test-Package([string]$pluginDir, $sourceDescriptor, [string]$ver, [stri
         $segments = $rel.Split('/')
         $name = $segments[-1]
         foreach ($p in $ForbiddenPrefixes) { if ($rel.StartsWith($p, [StringComparison]::Ordinal)) { $fail.Add("forbidden path $rel"); break } }
-        foreach ($s in $ForbiddenSegments) { if ($segments -ccontains $s) { $fail.Add("forbidden name $rel"); break } }
+        if ($AllowedPaths -cnotcontains $rel) {
+            foreach ($s in $ForbiddenSegments) { if ($segments -ccontains $s) { $fail.Add("forbidden name $rel"); break } }
+        }
         foreach ($p in $ForbiddenPatterns) { if ($name -like $p) { $fail.Add("forbidden file $rel"); break } }
         if ($TextExtensions -contains [IO.Path]::GetExtension($name).ToLowerInvariant() -and $f.Length -lt 20MB) {
             $text = [IO.File]::ReadAllText($f.Full)

@@ -145,6 +145,15 @@ for real: it saves Blueprints under `/Game/__N2CTest` (an existing folder, a Use
 parent, wrong type and parent pairs, unknown types, invalid names) create neither the folder nor an asset. Each case
 deletes the folder and everything in it before and after it runs.
 
+`NodeToCode.MCP.Components` (`MCP/N2CComponentTools.spec.cpp`, card 0167) runs add-component-class-to-actor,
+delete-component-in-actor and list-components-in-actor on transient Actor, Character, child and macro-library
+Blueprints: a component under a parent that is not the root stays there after compiles, a refused add (misspelled
+parent, its own name as parent, missing socket, taken name, non-scene component with a parent) changes nothing,
+classes resolve by short name and component Blueprint path, `Mesh` on a Character and an inherited component take
+children, a delete promotes children and removes Get nodes, a bound event is reported without opening an editor,
+DefaultSceneRoot and native and inherited components are refused, and each edit is one undo step that Undo then Redo
+restore exactly (graphs and SCS tree).
+
 ## LLM payload goldens and parser fixtures
 
 - `NodeToCode.LLM.Payload.Golden` builds every provider's request (body, endpoint and headers, with a placeholder

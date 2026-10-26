@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "nodetocode": {
+      "type": "http",
+      "url": "${user_config.mcp_url}",
+      "timeout": 900000
+    }
+  }
+}

@@ -17,14 +17,6 @@ public:
 
 private:
     /**
-     * Resolves a component class from a class path string
-     * @param ClassPath The path to the component class (e.g., "/Script/Engine.StaticMeshComponent")
-     * @param OutErrorMsg Error message if resolution fails
-     * @return The resolved UClass or nullptr on failure
-     */
-    UClass* ResolveComponentClass(const FString& ClassPath, FString& OutErrorMsg) const;
-
-    /**
      * Builds a number property for JSON schema
      * @param Description The description of the property
      * @param DefaultValue The default value (0.0 if not specified)

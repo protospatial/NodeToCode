@@ -61,7 +61,8 @@ public class NodeToCode : ModuleRules
 				"DesktopPlatform",        // For folder browser dialog in Tag Manager
 				"PythonScriptPlugin",     // For Python script execution in Code Mode
 				"EditorScriptingUtilities", // For EditorAssetLibrary in Python bridge
-				"Sockets"                 // MCP server port check before binding (N2CMcpHttpServerManager)
+				"Sockets",                // MCP server port check before binding (N2CMcpHttpServerManager)
+				"SubobjectDataInterface"  // USubobjectDataSubsystem for the component tools (card 0167)
 			}
 		);
 
