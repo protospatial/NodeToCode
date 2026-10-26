@@ -52,6 +52,8 @@ Node to Code keeps settings and API keys apart:
 - DefaultNodeToCode.ini
   - Stores all of your modified non-sensitive plugin settings
   - Saved in your Project's **Config** path
+  - Project Settings and the provider and model picker in the Node to Code window both save here, so the last
+    choice made in either one is the one used after a restart
   - Can be committed to source control without leaking API Keys
 
 - API keys

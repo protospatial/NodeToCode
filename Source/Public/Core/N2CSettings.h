@@ -783,24 +783,8 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services | Pricing")
     float GetCurrentOutputCost() const;
 
-    /** Calculate and store token estimate for reference files */
-    int32 GetReferenceFilesTokenEstimate() const
-    {
-        int32 TotalTokens = 0;
-        for (const FFilePath& Path : ReferenceSourceFilePaths)
-        {
-            if (FPaths::FileExists(Path.FilePath))
-            {
-                FString Content;
-                if (FFileHelper::LoadFileToString(Content, *Path.FilePath))
-                {
-                    // Estimate tokens by dividing character count by 4
-                    TotalTokens += FMath::CeilToInt(Content.Len() / 4.0f);
-                }
-            }
-        }
-        return TotalTokens;
-    }
+    /** Token estimate of the reference files (characters / 4 each); reads every file */
+    int32 GetReferenceFilesTokenEstimate() const;
 
 
     /** Estimated token count from reference files */
@@ -821,8 +805,23 @@ public:
                ToolTip="If set, translations will be saved to this directory instead of the default location in Saved/NodeToCode/Translations"))
     FDirectoryPath CustomTranslationOutputDirectory;
     
-    /** Validate all reference source file paths */
+    /**
+     * Drops reference source files that do not exist (one warning per missing path per editor session) and warns
+     * once about a missing Custom Translation Output Directory. Runs after the config is loaded (RefreshReferenceFiles);
+     * the dropped paths stay in the config file, so a file missing on one machine is not removed for the team.
+     */
     void ValidateReferenceSourcePaths();
+
+    /**
+     * The one way NodeToCode saves these settings, used by Project Settings edits (PostEditChangeProperty) and by the
+     * provider and model picker in the NodeToCode window. Writes each named config property, with SettingsVersion, to
+     * Config/DefaultNodeToCode.ini (the file Project Settings writes), removes the same keys from the
+     * Saved/Config/<Platform>Editor/NodeToCode.ini layer, which loads after it and would otherwise win at the next
+     * start, then reloads GConfig from the files. Names that are not config properties of this class, and array and
+     * set properties (Project Settings saves the whole section for those), are skipped.
+     * @return false when the project file could not be written (read-only, for example not checked out)
+     */
+    bool SaveToProjectConfig(TConstArrayView<FName> PropertyNames);
 
     /** Get the plugin settings */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code", 
@@ -843,6 +842,12 @@ private:
     FProperty* LastEditedProperty;
 
     void InitializePricing();
+
+    /** Prunes missing reference files and recomputes EstimatedReferenceTokens; run once the config has loaded */
+    void RefreshReferenceFiles();
+
+    /** The layout version the values in memory have: what PreEditChange and SaveToProjectConfig stamp before saving */
+    int32 GetVersionToSave() const;
 
     /**
      * Writes these config properties' current values into IniPath, leaving the file's other lines as they are (the

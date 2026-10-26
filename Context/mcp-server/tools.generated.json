@@ -909,7 +909,7 @@
 			"name": "copy-asset",
 			"title": "Copy an asset",
 			"toolset": "ContentBrowserTools",
-			"description": "Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /<PluginName>/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy fails. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /<PluginName>/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy is refused. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "AssetTools.duplicate",
 			"longRunning": false,
@@ -937,13 +937,7 @@
 					"name": "destinationPath",
 					"type": "string",
 					"required": true,
-					"description": "Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain spaces or dots"
-				},
-				{
-					"name": "overwriteExisting",
-					"type": "boolean",
-					"required": false,
-					"description": "Default false: an existing destination asset is reported before copying. true skips that check, but the copy still fails, because it never replaces an existing asset"
+					"description": "Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain '.', '/', '\\' or spaces"
 				}
 			],
 			"inputSchema":
@@ -959,12 +953,7 @@
 					"destinationPath":
 					{
 						"type": "string",
-						"description": "Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain spaces or dots"
-					},
-					"overwriteExisting":
-					{
-						"type": "boolean",
-						"description": "Default false: an existing destination asset is reported before copying. true skips that check, but the copy still fails, because it never replaces an existing asset"
+						"description": "Package path of the new asset, including its name (e.g., '/Game/Folder/Asset_Copy'); the name may not contain '.', '/', '\\' or spaces"
 					}
 				},
 				"required": [
@@ -3493,7 +3482,7 @@
 					"name": "newName",
 					"type": "string",
 					"required": false,
-					"description": "New name for the asset (optional, keeps original name if not provided)"
+					"description": "New name for the asset, a name only: no '.', '/', '\\' or spaces (optional, keeps the asset's name if not provided)"
 				},
 				{
 					"name": "showNotification",
@@ -3521,7 +3510,7 @@
 					"newName":
 					{
 						"type": "string",
-						"description": "New name for the asset (optional, keeps original name if not provided)"
+						"description": "New name for the asset, a name only: no '.', '/', '\\' or spaces (optional, keeps the asset's name if not provided)"
 					},
 					"showNotification":
 					{

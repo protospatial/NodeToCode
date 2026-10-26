@@ -27,7 +27,7 @@
  * also when one fails. Name rules are NodeToCode.Names; the file jail is NodeToCode.PathPolicy; the content write
  * policy (/Game and project plugins only, card 0182) is "the write path policy" here. Cases that fail until their E12
  * card lands are KnownDefectIt (N2C_RUN_KNOWN_DEFECTS=1 runs them). Review ids: imp-mcp-tools-contentbrowser-fs-1,
- * -9, mcp-tools-contentbrowser-fs-3, -6, -7, -9, -10, mcp-tools-bp-structure-30.
+ * -9, mcp-tools-contentbrowser-fs-3, -5, -6, -7, -8, -9, -10, -12, -13, -21, -23, -28, mcp-tools-bp-structure-30.
  */
 namespace N2CContentToolsSpec
 {
@@ -269,10 +269,10 @@ void FN2CContentToolsSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-contentbrowser-fs-3: with an object path and no newName the default name is
-		// GetCleanFilename ("A.A"), so the destination becomes /Game/Dest/A.A.A.A and the move fails. Enable
-		// (KnownDefectIt -> It) with card 0284.
-		KnownDefectIt(TEXT("moves an asset by object path into another folder, keeping its name"), [this]()
+		// mcp-tools-contentbrowser-fs-3 (card 0284): with an object path and no newName the default name was
+		// GetCleanFilename ("A.A"), so the destination became /Game/Dest/A.A.A.A and the move failed. The name now comes
+		// from the registry's asset.
+		It(TEXT("moves an asset by object path into another folder, keeping its name"), [this]()
 		{
 			const FString From = MakeAsset(TEXT("BP_N2CMoveByObject"), Folder);
 			UBlueprint* Asset = BlueprintAtPath(From);
@@ -280,9 +280,14 @@ void FN2CContentToolsSpec::Define()
 			{
 				return;
 			}
-			if (ExpectOk(TEXT("move by object path"), TEXT("move-asset"), Args({ { TEXT("sourcePath"), From }, { TEXT("destinationPath"), Folder / TEXT("Moved") } })).IsValid())
+			const TSharedPtr<FJsonObject> Json = ExpectOk(TEXT("move by object path"), TEXT("move-asset"),
+				Args({ { TEXT("sourcePath"), From }, { TEXT("destinationPath"), Folder / TEXT("Moved") } }));
+			if (Json.IsValid())
 			{
 				ExpectMoved(TEXT("move by object path"), Asset, From, Folder / TEXT("Moved/BP_N2CMoveByObject.BP_N2CMoveByObject"));
+				TestEqual(TEXT("oldPath"), Json->GetStringField(TEXT("oldPath")), Folder / TEXT("BP_N2CMoveByObject"));
+				TestEqual(TEXT("newPath, read back"), Json->GetStringField(TEXT("newPath")), Folder / TEXT("Moved/BP_N2CMoveByObject"));
+				TestEqual(TEXT("objectPath, read back"), Json->GetStringField(TEXT("objectPath")), Folder / TEXT("Moved/BP_N2CMoveByObject.BP_N2CMoveByObject"));
 			}
 		});
 
@@ -350,6 +355,174 @@ void FN2CContentToolsSpec::Define()
 			{
 				ExpectMoved(TEXT("relocate by object path"), SecondAsset, Second, Folder / TEXT("Sub/BP_N2CRelocatedObject.BP_N2CRelocatedObject"));
 			}
+		});
+	});
+
+	// Card 0284: names checked as given, nothing created before the checks, nothing left behind by a failed call, case-only
+	// renames refused, results read back from the registry. Review ids mcp-tools-contentbrowser-fs-3, -5, -8, -12, -13,
+	// -21, -23, -28.
+	Describe(TEXT("asset names and paths"), [this]()
+	{
+		// mcp-tools-contentbrowser-fs-12: the dot check ran on GetBaseFilename, which had already dropped ".Final", and
+		// the engine renamed the asset to "Final" while the result reported "BP_New"
+		It(TEXT("rename-asset refuses newName 'BP_New.Final' and other names that are not a plain name, changing nothing"), [this]()
+		{
+			const FString From = MakeAsset(TEXT("BP_N2CDotted"), Folder);
+			UBlueprint* Asset = BlueprintAtPath(From);
+			if (!Asset)
+			{
+				return;
+			}
+			const TArray<FString> Before = PackagesUnder(Folder);
+			for (const TCHAR* Name : { TEXT("BP_New.Final"), TEXT("BP_New.uasset"), TEXT("Sub/BP_New"), TEXT("Sub\\BP_New"), TEXT("BP New"), TEXT("BP:New") })
+			{
+				const FMcpToolCallResult Result = Run(TEXT("rename-asset"), Args({ { TEXT("sourcePath"), From }, { TEXT("newName"), Name } }));
+				TestTrue(FString::Printf(TEXT("newName '%s' refused (%s)"), Name, *N2CTest::ResultText(Result).Left(200)), Result.bIsError);
+			}
+			const FMcpToolCallResult Moved = Run(TEXT("move-asset"),
+				Args({ { TEXT("sourcePath"), From }, { TEXT("destinationPath"), Folder / TEXT("NotMade") }, { TEXT("newName"), TEXT("BP_New.Final") } }));
+			TestTrue(TEXT("move-asset newName 'BP_New.Final' refused (") + N2CTest::ResultText(Moved).Left(200) + TEXT(")"), Moved.bIsError);
+			TestTrue(TEXT("the asset is in place"), BlueprintAtPath(From) == Asset);
+			TestNull(TEXT("no asset named Final"), BlueprintAtPath(Folder / TEXT("Final.Final")));
+			TestEqual(TEXT("nothing renamed"), FString::Join(PackagesUnder(Folder), TEXT("\n")), FString::Join(Before, TEXT("\n")));
+			TestFalse(TEXT("move-asset created no destination folder"), N2CTest::ContentFolderExists(Folder / TEXT("NotMade")));
+		});
+
+		// mcp-tools-contentbrowser-fs-12, -21: the result reports the asset the registry holds, and assetSelected says
+		// whether the content browser selected it
+		It(TEXT("rename-asset reports the renamed asset read back from the registry"), [this]()
+		{
+			const FString From = MakeAsset(TEXT("BP_N2CReadBack"), Folder);
+			UBlueprint* Asset = BlueprintAtPath(From);
+			if (!Asset)
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Json = ExpectOk(TEXT("rename to an object-form destinationPath"), TEXT("rename-asset"),
+				Args({ { TEXT("sourcePath"), From }, { TEXT("destinationPath"), Folder / TEXT("Deep/Er/BP_N2CReadBackNew.BP_N2CReadBackNew") } }));
+			if (Json.IsValid())
+			{
+				ExpectMoved(TEXT("rename"), Asset, From, Folder / TEXT("Deep/Er/BP_N2CReadBackNew.BP_N2CReadBackNew"));
+				TestEqual(TEXT("oldPath"), Json->GetStringField(TEXT("oldPath")), Folder / TEXT("BP_N2CReadBack"));
+				TestEqual(TEXT("newPath"), Json->GetStringField(TEXT("newPath")), Folder / TEXT("Deep/Er/BP_N2CReadBackNew"));
+				TestEqual(TEXT("newName"), Json->GetStringField(TEXT("newName")), FString(TEXT("BP_N2CReadBackNew")));
+				TestTrue(TEXT("wasMoved"), Json->GetBoolField(TEXT("wasMoved")));
+				TestTrue(TEXT("assetSelected"), Json->GetBoolField(TEXT("assetSelected")));
+			}
+			// An object-form destination whose object name is another name is not a plain asset name
+			const FMcpToolCallResult Mismatched = Run(TEXT("rename-asset"),
+				Args({ { TEXT("sourcePath"), Folder / TEXT("Deep/Er/BP_N2CReadBackNew") }, { TEXT("destinationPath"), Folder / TEXT("BP_A.BP_B") } }));
+			TestTrue(TEXT("destinationPath BP_A.BP_B refused (") + N2CTest::ResultText(Mismatched).Left(200) + TEXT(")"), Mismatched.bIsError);
+		});
+
+		// mcp-tools-contentbrowser-fs-21: a package path was looked up as an object path, which finds no asset
+		It(TEXT("SelectAssetAtPath selects by package path and by object path, and says when there is nothing to select"), [this]()
+		{
+			const FString Asset = MakeAsset(TEXT("BP_N2CSelect"), Folder);
+			if (Asset.IsEmpty())
+			{
+				return;
+			}
+			TestTrue(TEXT("by package path"), FN2CMcpContentBrowserUtils::SelectAssetAtPath(Folder / TEXT("BP_N2CSelect")));
+			TestTrue(TEXT("by object path"), FN2CMcpContentBrowserUtils::SelectAssetAtPath(Asset));
+			TestFalse(TEXT("a missing asset"), FN2CMcpContentBrowserUtils::SelectAssetAtPath(Folder / TEXT("BP_N2CNoSuchAsset")));
+		});
+
+		// mcp-tools-contentbrowser-fs-28: package and folder names are case-insensitive, so a case-only rename met the
+		// asset or folder itself and failed with a misleading "already exists"
+		It(TEXT("case-only renames of an asset or a folder are refused with an explicit error"), [this]()
+		{
+			const FString From = MakeAsset(TEXT("BP_N2Ccase"), Folder);
+			UBlueprint* Asset = BlueprintAtPath(From);
+			if (!Asset || !MakeFolder(Folder / TEXT("lower")))
+			{
+				return;
+			}
+			const FMcpToolCallResult Renamed = Run(TEXT("rename-asset"), Args({ { TEXT("sourcePath"), From }, { TEXT("newName"), TEXT("BP_N2CCase") } }));
+			TestTrue(TEXT("rename-asset refuses it (") + N2CTest::ResultText(Renamed).Left(300) + TEXT(")"),
+				Renamed.bIsError && N2CTest::ResultText(Renamed).Contains(TEXT("Case-only")));
+			const FMcpToolCallResult Moved = Run(TEXT("move-asset"),
+				Args({ { TEXT("sourcePath"), From }, { TEXT("destinationPath"), Folder }, { TEXT("newName"), TEXT("BP_N2CCASE") } }));
+			TestTrue(TEXT("move-asset refuses it (") + N2CTest::ResultText(Moved).Left(300) + TEXT(")"),
+				Moved.bIsError && N2CTest::ResultText(Moved).Contains(TEXT("Case-only")));
+			const FMcpToolCallResult Folded = Run(TEXT("rename-folder"), Args({ { TEXT("sourcePath"), Folder / TEXT("lower") }, { TEXT("newName"), TEXT("Lower") } }));
+			TestTrue(TEXT("rename-folder refuses it (") + N2CTest::ResultText(Folded).Left(300) + TEXT(")"),
+				Folded.bIsError && N2CTest::ResultText(Folded).Contains(TEXT("Case-only")));
+			TestTrue(TEXT("the asset is in place"), BlueprintAtPath(From) == Asset);
+		});
+
+		// mcp-tools-contentbrowser-fs-8, -23: overwriteExisting never overwrote (and is gone); the destination folder was
+		// created before the name was checked and stayed behind when the copy failed
+		It(TEXT("a failed copy leaves no new folder and gives the real reason"), [this]()
+		{
+			const FString Source = MakeAsset(TEXT("BP_N2CCopySource"), Folder);
+			const FString Existing = MakeAsset(TEXT("BP_N2CCopyExisting"), Folder);
+			UBlueprint* ExistingAsset = BlueprintAtPath(Existing);
+			if (Source.IsEmpty() || !ExistingAsset)
+			{
+				return;
+			}
+			const FMcpToolCallResult Dotted = Run(TEXT("copy-asset"),
+				Args({ { TEXT("sourcePath"), Source }, { TEXT("destinationPath"), Folder / TEXT("Fresh/Deeper/BP_Copy.Final") } }));
+			TestTrue(TEXT("a dotted name is refused (") + N2CTest::ResultText(Dotted).Left(200) + TEXT(")"), Dotted.bIsError);
+			TestFalse(TEXT("no Fresh folder"), N2CTest::ContentFolderExists(Folder / TEXT("Fresh")));
+			TestFalse(TEXT("no Fresh folder on disk"), N2CTest::ContentFolderOnDisk(Folder / TEXT("Fresh")));
+
+			TSharedPtr<FJsonObject> Overwrite = Args({ { TEXT("sourcePath"), Source }, { TEXT("destinationPath"), Folder / TEXT("BP_N2CCopyExisting") } });
+			Overwrite->SetBoolField(TEXT("overwriteExisting"), true);
+			const FMcpToolCallResult Exists = Run(TEXT("copy-asset"), Overwrite);
+			const FString ExistsText = N2CTest::ResultText(Exists);
+			TestTrue(TEXT("an existing destination is refused, saying so (") + ExistsText.Left(300) + TEXT(")"),
+				Exists.bIsError && ExistsText.Contains(TEXT("already exists")) && !ExistsText.Contains(TEXT("permission")));
+			TestTrue(TEXT("the existing asset is untouched"), BlueprintAtPath(Existing) == ExistingAsset);
+
+			// And a copy that works creates its folder and reports the copy as the registry holds it
+			const TSharedPtr<FJsonObject> Json = ExpectOk(TEXT("copy into a new folder"), TEXT("copy-asset"),
+				Args({ { TEXT("sourcePath"), Folder / TEXT("BP_N2CCopySource") }, { TEXT("destinationPath"), Folder / TEXT("Made/BP_N2CCopied") } }));
+			if (Json.IsValid())
+			{
+				TestNotNull(TEXT("the copy"), BlueprintAtPath(Folder / TEXT("Made/BP_N2CCopied.BP_N2CCopied")));
+				TestEqual(TEXT("destinationPath"), Json->GetStringField(TEXT("destinationPath")), Folder / TEXT("Made/BP_N2CCopied"));
+				TestEqual(TEXT("assetName"), Json->GetStringField(TEXT("assetName")), FString(TEXT("BP_N2CCopied")));
+			}
+		});
+
+		// mcp-tools-contentbrowser-fs-23: CreateFolderForMutation reports the highest folder it made, and
+		// RemoveFolderCreatedForMutation takes the chain away again unless an asset is in it
+		It(TEXT("a folder made for a failed mutation is removed, with its parents, and never one holding an asset"), [this]()
+		{
+			FString CreatedRoot;
+			FString Error;
+			if (!TestTrue(TEXT("made (") + Error + TEXT(")"), FN2CMcpContentBrowserUtils::CreateFolderForMutation(Folder / TEXT("A/B/C"), CreatedRoot, Error)))
+			{
+				return;
+			}
+			TestEqual(TEXT("the highest folder made"), CreatedRoot, Folder / TEXT("A"));
+			TestTrue(TEXT("A/B/C exists"), N2CTest::ContentFolderExists(Folder / TEXT("A/B/C")));
+			FN2CMcpContentBrowserUtils::RemoveFolderCreatedForMutation(CreatedRoot);
+			TestFalse(TEXT("A is gone"), N2CTest::ContentFolderOnDisk(Folder / TEXT("A")));
+			TestTrue(TEXT("the scratch folder stays"), N2CTest::ContentFolderExists(Folder));
+
+			FString Existing;
+			TestTrue(TEXT("an existing folder"), FN2CMcpContentBrowserUtils::CreateFolderForMutation(Folder, Existing, Error));
+			TestTrue(TEXT("nothing made"), Existing.IsEmpty());
+
+			FString Kept;
+			if (FN2CMcpContentBrowserUtils::CreateFolderForMutation(Folder / TEXT("K/L"), Kept, Error) && !MakeAsset(TEXT("BP_N2CKeepMe"), Folder / TEXT("K/L")).IsEmpty())
+			{
+				FN2CMcpContentBrowserUtils::RemoveFolderCreatedForMutation(Kept);
+				TestNotNull(TEXT("the asset in it is kept"), BlueprintAtPath(Folder / TEXT("K/L/BP_N2CKeepMe.BP_N2CKeepMe")));
+			}
+		});
+
+		// mcp-tools-contentbrowser-fs-13: the source-control check passed /Game/... as a file name
+		It(TEXT("the source-control check asks about the package's file"), [this]()
+		{
+			const FString File = FN2CMcpContentBrowserUtils::SourceControlFilename(Folder / TEXT("BP_N2CAny"));
+			TestTrue(TEXT("a .uasset file: ") + File, File.EndsWith(TEXT("/BP_N2CAny.uasset")));
+			TestFalse(TEXT("an absolute file path, not the package name: ") + File, FPaths::IsRelative(File) || File.StartsWith(TEXT("/Game")));
+			TestTrue(TEXT("under the project's Content folder: ") + File,
+				File.StartsWith(FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir()), ESearchCase::IgnoreCase));
 		});
 	});
 

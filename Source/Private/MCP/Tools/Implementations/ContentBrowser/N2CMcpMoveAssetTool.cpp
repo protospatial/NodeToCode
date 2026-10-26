@@ -5,11 +5,8 @@
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpContentBrowserUtils.h"
 #include "Subsystems/EditorAssetSubsystem.h"
-#include "AssetToolsModule.h"
-#include "IAssetTools.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "ISourceControlModule.h"
-#include "SourceControlHelpers.h"
+#include "AssetRegistry/AssetData.h"
+#include "Misc/PackageName.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Dom/JsonObject.h"
@@ -51,7 +48,7 @@ FMcpToolDefinition FN2CMcpMoveAssetTool::GetDefinition() const
 	// newName property (optional)
 	TSharedPtr<FJsonObject> NewNameProp = MakeShareable(new FJsonObject);
 	NewNameProp->SetStringField(TEXT("type"), TEXT("string"));
-	NewNameProp->SetStringField(TEXT("description"), TEXT("New name for the asset (optional, keeps original name if not provided)"));
+	NewNameProp->SetStringField(TEXT("description"), TEXT("New name for the asset, a name only: no '.', '/', '\\' or spaces (optional, keeps the asset's name if not provided)"));
 	Properties->SetObjectField(TEXT("newName"), NewNameProp);
 
 	// showNotification property
@@ -97,72 +94,55 @@ FMcpToolCallResult FN2CMcpMoveAssetTool::Execute(const TSharedPtr<FJsonObject>& 
 		bool bShowNotification = true;
 		Arguments->TryGetBoolField(TEXT("showNotification"), bShowNotification);
 
-		// Validate source asset
+		// Validate source asset: every name and path after this comes from the registry's asset, never from the raw
+		// sourcePath (card 0284: an object path used to give the name "A.A" and the destination /Game/Dest/A.A.A.A)
 		FString ErrorMessage;
-		if (!ValidateSourceAsset(SourcePath, ErrorMessage))
+		FAssetData SourceAsset;
+		if (!ValidateSourceAsset(SourcePath, SourceAsset, ErrorMessage))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
 
-		// Convert source path to object path format if needed
-		FString SourceObjectPath = SourcePath;
-		if (!SourcePath.Contains(TEXT(".")))
-		{
-			FString AssetName = FPaths::GetBaseFilename(SourcePath);
-			SourceObjectPath = SourcePath + TEXT(".") + AssetName;
-		}
-
-		// If no new name provided, extract from source path
-		if (NewName.IsEmpty())
-		{
-			NewName = GetAssetNameFromPath(SourcePath);
-		}
-
-		// Validate destination and build full path
-		FString FullDestinationPath;
-		if (!ValidateDestinationPath(DestinationPath, NewName, FullDestinationPath, ErrorMessage))
+		// The asset's name, or newName checked as given before any path is built with it
+		const FString AssetName = NewName.IsEmpty() ? SourceAsset.AssetName.ToString() : NewName;
+		if (!FN2CMcpContentBrowserUtils::ValidateNewAssetName(AssetName, ErrorMessage))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
 
-		// Check if this is just a rename (same directory)
-		FString SourceDir = FPaths::GetPath(SourcePath);
-		if (SourceDir.Contains(TEXT(".")))
+		// Validate destination and build the new package path; nothing is created yet
+		FString DestinationFolder;
+		FString DestinationPackage;
+		if (!ValidateDestinationPath(DestinationPath, AssetName, SourceAsset, DestinationFolder, DestinationPackage, ErrorMessage))
 		{
-			// Remove the object part if present
-			SourceDir = FPaths::GetPath(SourceDir.Left(SourceDir.Find(TEXT("."))));
+			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
-		bool bIsRename = (SourceDir == DestinationPath);
 
 		// Perform the move/rename
-		FString NewPath;
-		if (!MoveAsset(SourceObjectPath, FullDestinationPath, NewPath, ErrorMessage))
+		const FString OldPackage = SourceAsset.PackageName.ToString();
+		FAssetData MovedAsset;
+		if (!MoveAsset(SourceAsset, DestinationFolder, DestinationPackage + TEXT(".") + AssetName, MovedAsset, ErrorMessage))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
 		}
+		const FString NewPackage = MovedAsset.PackageName.ToString();
+		const bool bIsRename = FPackageName::GetLongPackagePath(OldPackage).Equals(FPackageName::GetLongPackagePath(NewPackage), ESearchCase::IgnoreCase);
 
 		// Show notification if requested
 		if (bShowNotification)
 		{
-			// Extract clean path for notification (without object path suffix)
-			FString CleanNewPath = NewPath;
-			if (CleanNewPath.Contains(TEXT(".")))
-			{
-				CleanNewPath = CleanNewPath.Left(CleanNewPath.Find(TEXT(".")));
-			}
-			
 			FNotificationInfo Info(FText::Format(
 				NSLOCTEXT("NodeToCode", "AssetMoved", "Asset {0} to '{1}'"),
 				bIsRename ? NSLOCTEXT("NodeToCode", "Renamed", "renamed") : NSLOCTEXT("NodeToCode", "Moved", "moved"),
-				FText::FromString(CleanNewPath)
+				FText::FromString(NewPackage)
 			));
 			Info.ExpireDuration = 3.0f;
 			FSlateNotificationManager::Get().AddNotification(Info);
 		}
 
-		// Build success response
+		// Build success response from what the registry holds now
 		bool bLeftRedirector = false; // We could check this in the future
-		TSharedPtr<FJsonObject> Result = BuildSuccessResponse(SourcePath, NewPath, bLeftRedirector);
+		TSharedPtr<FJsonObject> Result = BuildSuccessResponse(OldPackage, MovedAsset, bIsRename, bLeftRedirector);
 
 		// Convert result to string
 		FString OutputString;
@@ -173,102 +153,83 @@ FMcpToolCallResult FN2CMcpMoveAssetTool::Execute(const TSharedPtr<FJsonObject>& 
 	});
 }
 
-bool FN2CMcpMoveAssetTool::ValidateSourceAsset(const FString& AssetPath, FString& OutErrorMessage) const
+bool FN2CMcpMoveAssetTool::ValidateSourceAsset(const FString& AssetPath, FAssetData& OutAsset, FString& OutErrorMessage) const
 {
-	// Normalize the path
-	FString NormalizedPath = FN2CMcpContentBrowserUtils::NormalizeContentPath(AssetPath);
-
 	// A move rewrites the source package too: only where MCP tools may write, /Game and the project's plugins
 	// (card 0182)
-	if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(NormalizedPath, OutErrorMessage))
+	if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(FN2CMcpContentBrowserUtils::NormalizeContentPath(AssetPath), OutErrorMessage))
 	{
 		return false;
 	}
 
-	// Convert to object path if needed (add .AssetName if not present)
-	FString ObjectPath = NormalizedPath;
-	if (!NormalizedPath.Contains(TEXT(".")))
+	// The asset, by package path or object path
+	if (!FN2CMcpContentBrowserUtils::ResolveAsset(AssetPath, OutAsset, OutErrorMessage))
 	{
-		// Extract asset name from path
-		FString AssetName = FPaths::GetBaseFilename(NormalizedPath);
-		ObjectPath = NormalizedPath + TEXT(".") + AssetName;
+		return false;
 	}
 
-	// Check if asset exists using asset registry
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-	FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
-	if (!AssetData.IsValid())
+	// Check if asset is checked out by another user (by its file name: card 0284)
+	if (FN2CMcpContentBrowserUtils::IsCheckedOutByAnother(OutAsset.PackageName.ToString()))
 	{
-		// Try the original path in case it was already an object path
-		AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(NormalizedPath));
-		if (!AssetData.IsValid())
-		{
-			OutErrorMessage = FString::Printf(TEXT("Asset not found. Tried paths: %s and %s. Expected format: /Game/Folder/AssetName or /Game/Folder/AssetName.AssetName"), 
-				*NormalizedPath, *ObjectPath);
-			return false;
-		}
-	}
-
-	// Check if asset is checked out by another user
-	if (IsAssetCheckedOutByAnother(AssetData.PackageName.ToString()))
-	{
-		OutErrorMessage = FString::Printf(TEXT("Asset is checked out by another user: %s"), *AssetData.PackageName.ToString());
+		OutErrorMessage = FString::Printf(TEXT("Asset is checked out by another user: %s"), *OutAsset.PackageName.ToString());
 		return false;
 	}
 
 	return true;
 }
 
-bool FN2CMcpMoveAssetTool::ValidateDestinationPath(const FString& DestinationPath, const FString& NewName, 
-	FString& OutFullPath, FString& OutErrorMessage) const
+bool FN2CMcpMoveAssetTool::ValidateDestinationPath(const FString& DestinationPath, const FString& AssetName, const FAssetData& SourceAsset,
+	FString& OutFolder, FString& OutPackage, FString& OutErrorMessage) const
 {
 	// Normalize the destination directory path
-	FString NormalizedDestPath = FN2CMcpContentBrowserUtils::NormalizeContentPath(DestinationPath);
+	OutFolder = FN2CMcpContentBrowserUtils::NormalizeContentPath(DestinationPath);
 
-	// Only where MCP tools may write: /Game and the project's plugins (card 0182)
-	if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(NormalizedDestPath, OutErrorMessage))
+	// Only where MCP tools may write: /Game and the project's plugins (card 0182); and a valid folder path
+	if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutFolder, OutErrorMessage)
+		|| !FN2CMcpContentBrowserUtils::ValidateContentPath(OutFolder, OutErrorMessage))
 	{
 		return false;
 	}
 
-	// Build the full destination package path
-	FString PackagePath = NormalizedDestPath / NewName;
-	
-	// Build the full object path (package path + . + asset name)
-	OutFullPath = PackagePath + TEXT(".") + NewName;
+	// The full destination package path
+	OutPackage = OutFolder / AssetName;
+	FText Reason;
+	if (!FPackageName::IsValidLongPackageName(OutPackage, /*bIncludeReadOnlyRoots*/ false, &Reason))
+	{
+		OutErrorMessage = FString::Printf(TEXT("Invalid destination '%s': %s"), *OutPackage, *Reason.ToString());
+		return false;
+	}
+
+	// The same asset, or the same path in another case: package names are case-insensitive, so a case-only rename
+	// would meet the asset itself
+	const FString SourcePackage = SourceAsset.PackageName.ToString();
+	if (OutPackage.Equals(SourcePackage, ESearchCase::CaseSensitive))
+	{
+		OutErrorMessage = FString::Printf(TEXT("The asset is already at %s"), *SourcePackage);
+		return false;
+	}
+	if (OutPackage.Equals(SourcePackage, ESearchCase::IgnoreCase))
+	{
+		OutErrorMessage = FString::Printf(TEXT("Case-only renames are not supported (%s to %s): package names are case-insensitive. ")
+			TEXT("Rename to another name first, then to the new spelling."), *SourcePackage, *OutPackage);
+		return false;
+	}
 
 	// Check if destination already exists
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-	FAssetData ExistingAsset = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(OutFullPath));
-	if (ExistingAsset.IsValid())
+	if (FN2CMcpContentBrowserUtils::DoesAssetPackageExist(OutPackage))
 	{
-		OutErrorMessage = FString::Printf(TEXT("Asset already exists at destination: %s"), *PackagePath);
+		OutErrorMessage = FString::Printf(TEXT("Asset already exists at destination: %s"), *OutPackage);
 		return false;
-	}
-
-	// Only try to create directory if it doesn't exist
-	// The error about "Path already exists" was misleading - it's not about the directory
-	FString DirectoryError;
-	if (!FN2CMcpContentBrowserUtils::DoesPathExist(NormalizedDestPath))
-	{
-		if (!FN2CMcpContentBrowserUtils::CreateContentFolder(NormalizedDestPath, DirectoryError))
-		{
-			OutErrorMessage = FString::Printf(TEXT("Failed to create destination directory: %s"), *DirectoryError);
-			return false;
-		}
 	}
 
 	return true;
 }
 
-bool FN2CMcpMoveAssetTool::MoveAsset(const FString& SourcePath, const FString& DestinationPath, 
-	FString& OutNewPath, FString& OutErrorMessage) const
+bool FN2CMcpMoveAssetTool::MoveAsset(const FAssetData& SourceAsset, const FString& DestinationFolder, const FString& DestinationObjectPath,
+	FAssetData& OutMovedAsset, FString& OutErrorMessage) const
 {
-	// Use EditorAssetSubsystem for the rename operation
+	// Use EditorAssetSubsystem for the rename operation: it validates the destination and keeps modal dialogs away
+	// (GIsRunningUnattendedScript). There is no IAssetTools fallback (card 0284): it retried without either.
 	UEditorAssetSubsystem* EditorAssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
 	if (!EditorAssetSubsystem)
 	{
@@ -276,95 +237,65 @@ bool FN2CMcpMoveAssetTool::MoveAsset(const FString& SourcePath, const FString& D
 		return false;
 	}
 
-	// Perform the rename (which is actually a move in UE terminology)
-	bool bSuccess = EditorAssetSubsystem->RenameAsset(SourcePath, DestinationPath);
-	
-	if (bSuccess)
+	// The destination folder, only now, and removed again if the move fails
+	FString CreatedFolder;
+	FString FolderError;
+	if (!FN2CMcpContentBrowserUtils::CreateFolderForMutation(DestinationFolder, CreatedFolder, FolderError))
 	{
-		OutNewPath = DestinationPath;
-		FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully moved asset from %s to %s"), *SourcePath, *DestinationPath), EN2CLogSeverity::Info);
-		return true;
-	}
-	else
-	{
-		// Try to get more specific error information
-		FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
-		IAssetTools& AssetTools = AssetToolsModule.Get();
-
-		// Load the asset to get more info
-		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-		IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-		FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(SourcePath));
-
-		if (AssetData.IsValid())
-		{
-			// Try alternative approach with IAssetTools
-			TArray<FAssetRenameData> RenameData;
-			FAssetRenameData& Rename = RenameData.AddDefaulted_GetRef();
-			
-			UObject* Asset = AssetData.GetAsset();
-			if (Asset)
-			{
-				Rename.Asset = Asset;
-				Rename.NewPackagePath = FPaths::GetPath(DestinationPath);
-				Rename.NewName = FPaths::GetBaseFilename(DestinationPath);
-				
-				if (AssetTools.RenameAssets(RenameData))
-				{
-					OutNewPath = DestinationPath;
-					return true;
-				}
-			}
-		}
-
-		OutErrorMessage = FString::Printf(TEXT("Failed to move asset from %s to %s. The asset may be in use or locked."), 
-			*SourcePath, *DestinationPath);
+		OutErrorMessage = FString::Printf(TEXT("Failed to create destination directory: %s"), *FolderError);
 		return false;
 	}
+
+	// Perform the rename (which is actually a move in UE terminology)
+	const FString SourceObjectPath = SourceAsset.GetObjectPathString();
+	bool bSuccess = false;
+	FString EngineReason;
+	{
+		FN2CMcpEngineErrorCapture Capture;
+		bSuccess = EditorAssetSubsystem->RenameAsset(SourceObjectPath, DestinationObjectPath);
+		EngineReason = Capture.GetReason();
+	}
+
+	// What the registry holds at the destination now
+	FString ReadBackError;
+	if (bSuccess && !FN2CMcpContentBrowserUtils::ResolveAsset(DestinationObjectPath, OutMovedAsset, ReadBackError))
+	{
+		bSuccess = false;
+		EngineReason = TEXT("the engine reported success, but no asset is at the destination");
+	}
+
+	if (!bSuccess)
+	{
+		FN2CMcpContentBrowserUtils::RemoveFolderCreatedForMutation(CreatedFolder);
+		OutErrorMessage = FString::Printf(TEXT("Failed to move asset from %s to %s: %s"), *SourceObjectPath, *DestinationObjectPath,
+			EngineReason.IsEmpty() ? TEXT("the engine gave no reason (the asset may be in use or locked)") : *EngineReason);
+		return false;
+	}
+
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully moved asset from %s to %s"), *SourceObjectPath, *OutMovedAsset.GetObjectPathString()), EN2CLogSeverity::Info);
+	return true;
 }
 
-TSharedPtr<FJsonObject> FN2CMcpMoveAssetTool::BuildSuccessResponse(const FString& OldPath, const FString& NewPath, 
+TSharedPtr<FJsonObject> FN2CMcpMoveAssetTool::BuildSuccessResponse(const FString& OldPackage, const FAssetData& MovedAsset, bool bIsRename,
 	bool bLeftRedirector) const
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 
-	// Clean up paths for display (remove object path suffix if present)
-	FString CleanOldPath = OldPath;
-	if (CleanOldPath.Contains(TEXT(".")))
-	{
-		CleanOldPath = CleanOldPath.Left(CleanOldPath.Find(TEXT(".")));
-	}
-	
-	FString CleanNewPath = NewPath;
-	if (CleanNewPath.Contains(TEXT(".")))
-	{
-		CleanNewPath = CleanNewPath.Left(CleanNewPath.Find(TEXT(".")));
-	}
-
 	Result->SetBoolField(TEXT("success"), true);
-	Result->SetStringField(TEXT("oldPath"), CleanOldPath);
-	Result->SetStringField(TEXT("newPath"), CleanNewPath);
-	Result->SetStringField(TEXT("objectPath"), NewPath); // Include full object path for advanced users
-	
+	Result->SetStringField(TEXT("oldPath"), OldPackage);
+	Result->SetStringField(TEXT("newPath"), MovedAsset.PackageName.ToString());
+	Result->SetStringField(TEXT("objectPath"), MovedAsset.GetObjectPathString()); // Include full object path for advanced users
+
 	// Determine operation type
-	FString OldDir = FPaths::GetPath(CleanOldPath);
-	FString NewDir = FPaths::GetPath(CleanNewPath);
-	Result->SetStringField(TEXT("operation"), OldDir == NewDir ? TEXT("rename") : TEXT("move"));
+	Result->SetStringField(TEXT("operation"), bIsRename ? TEXT("rename") : TEXT("move"));
 	Result->SetBoolField(TEXT("leftRedirector"), bLeftRedirector);
 
 	// Add asset info
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-	FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(NewPath));
-
-	if (AssetData.IsValid())
-	{
-		TSharedPtr<FJsonObject> AssetInfo = MakeShareable(new FJsonObject);
-		AssetInfo->SetStringField(TEXT("assetName"), AssetData.AssetName.ToString());
-		AssetInfo->SetStringField(TEXT("assetClass"), AssetData.AssetClassPath.ToString());
-		AssetInfo->SetStringField(TEXT("packageName"), AssetData.PackageName.ToString());
-		Result->SetObjectField(TEXT("assetInfo"), AssetInfo);
-	}
+	TSharedPtr<FJsonObject> AssetInfo = MakeShareable(new FJsonObject);
+	AssetInfo->SetStringField(TEXT("assetName"), MovedAsset.AssetName.ToString());
+	AssetInfo->SetStringField(TEXT("assetClass"), MovedAsset.AssetClassPath.ToString());
+	AssetInfo->SetStringField(TEXT("packageName"), MovedAsset.PackageName.ToString());
+	Result->SetObjectField(TEXT("assetInfo"), AssetInfo);
 
 	// Add helpful next steps
 	TArray<TSharedPtr<FJsonValue>> NextSteps;
@@ -374,23 +305,4 @@ TSharedPtr<FJsonObject> FN2CMcpMoveAssetTool::BuildSuccessResponse(const FString
 	Result->SetArrayField(TEXT("nextSteps"), NextSteps);
 
 	return Result;
-}
-
-FString FN2CMcpMoveAssetTool::GetAssetNameFromPath(const FString& AssetPath) const
-{
-	return FPaths::GetCleanFilename(AssetPath);
-}
-
-bool FN2CMcpMoveAssetTool::IsAssetCheckedOutByAnother(const FString& AssetPath) const
-{
-	ISourceControlModule& SourceControlModule = ISourceControlModule::Get();
-	if (SourceControlModule.IsEnabled() && SourceControlModule.GetProvider().IsAvailable())
-	{
-		FSourceControlStatePtr SourceControlState = SourceControlModule.GetProvider().GetState(AssetPath, EStateCacheUsage::Use);
-		if (SourceControlState.IsValid())
-		{
-			return SourceControlState->IsCheckedOutOther();
-		}
-	}
-	return false;
 }

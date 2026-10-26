@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
 
+struct FAssetData;
+
 /**
  * MCP tool for moving/renaming assets within the content browser.
  * Supports both single asset moves and batch operations.
@@ -18,35 +20,26 @@ public:
 
 private:
 	/**
-	 * Validates the source asset path
+	 * Validates the source asset path (write policy, registry, source control) and resolves the asset
 	 */
-	bool ValidateSourceAsset(const FString& AssetPath, FString& OutErrorMessage) const;
+	bool ValidateSourceAsset(const FString& AssetPath, FAssetData& OutAsset, FString& OutErrorMessage) const;
 
 	/**
-	 * Validates the destination path and prepares asset name
+	 * Validates the destination folder and builds the new package path (AssetName is already validated); creates nothing
 	 */
-	bool ValidateDestinationPath(const FString& DestinationPath, const FString& NewName, 
-		FString& OutFullPath, FString& OutErrorMessage) const;
+	bool ValidateDestinationPath(const FString& DestinationPath, const FString& AssetName, const FAssetData& SourceAsset,
+		FString& OutFolder, FString& OutPackage, FString& OutErrorMessage) const;
 
 	/**
-	 * Performs the actual asset move/rename operation
+	 * Creates the destination folder, moves the asset and reads it back from the registry; on failure removes the
+	 * folder it created and gives the engine's reason
 	 */
-	bool MoveAsset(const FString& SourcePath, const FString& DestinationPath, 
-		FString& OutNewPath, FString& OutErrorMessage) const;
+	bool MoveAsset(const FAssetData& SourceAsset, const FString& DestinationFolder, const FString& DestinationObjectPath,
+		FAssetData& OutMovedAsset, FString& OutErrorMessage) const;
 
 	/**
-	 * Builds the success response with move details
+	 * Builds the success response with move details, from the moved asset as the registry holds it
 	 */
-	TSharedPtr<FJsonObject> BuildSuccessResponse(const FString& OldPath, const FString& NewPath, 
+	TSharedPtr<FJsonObject> BuildSuccessResponse(const FString& OldPackage, const FAssetData& MovedAsset, bool bIsRename,
 		bool bLeftRedirector) const;
-
-	/**
-	 * Extracts the asset name from a full asset path
-	 */
-	FString GetAssetNameFromPath(const FString& AssetPath) const;
-
-	/**
-	 * Checks if asset is checked out by another user
-	 */
-	bool IsAssetCheckedOutByAnother(const FString& AssetPath) const;
 };

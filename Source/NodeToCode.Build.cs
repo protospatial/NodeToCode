@@ -62,7 +62,8 @@ public class NodeToCode : ModuleRules
 				"PythonScriptPlugin",     // For Python script execution in Code Mode
 				"EditorScriptingUtilities", // For EditorAssetLibrary in Python bridge
 				"Sockets",                // MCP server port check before binding (N2CMcpHttpServerManager)
-				"SubobjectDataInterface"  // USubobjectDataSubsystem for the component tools (card 0167)
+				"SubobjectDataInterface", // USubobjectDataSubsystem for the component tools (card 0167)
+				"SourceControl"           // USourceControlHelpers::PackageFilename for move-asset's checked-out check (card 0284)
 			}
 		);
 
