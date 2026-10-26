@@ -30,8 +30,8 @@ PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every s
   checkout's host of the same version does not count.
 - Safe to run from several checkouts at once: UBT logs to `BuildLogs/UBT_<ver>_<stamp>.txt` (`-Log=`) instead of
   the shared per-user `UnrealBuildTool/Log.txt`, and a build that fails at once because another UBT holds a shared
-  file (`IOException` in `BackupLogFile`, e.g. UE 5.8's `UnrealBuildTool/Trace.uba`) is retried up to 3 times after
-  a random 3-15 s wait.
+  file (a sharing-violation `IOException`, e.g. on UE 5.8's `UnrealBuildTool/Trace.uba` or a
+  `BuildRules/*Rules.dll`) is retried up to 3 times after a random 3-15 s wait.
 
 Machine-specific settings (engine paths, hosts root) go in `build.local.ps1` next to the script; it is gitignored and
 dot-sourced when present.

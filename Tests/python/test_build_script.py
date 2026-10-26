@@ -84,3 +84,45 @@ def test_editor_check_matches_full_host_path(tmp_path):
     for (cmd, path, want_win, want_linux), (got_win, got_linux) in zip(CASES, results):
         assert (got_win, got_linux) == (want_win, want_linux), f'{cmd!r} vs {path!r}'
     assert len(results) == len(CASES)
+
+
+# (UBT output, retried): sharing violations UBT hit at startup on per-user files other checkouts' UBT share
+UBT_LOGS = [
+    ('Log file: C:/Users/u/AppData/Local/UnrealBuildTool/Log.txt\n'
+     'Unhandled exception: IOException: The process cannot access the file because it is being used by another process.\n'
+     '   at EpicGames.Core.Log.BackupLogFile(FileReference outputFile)\n'
+     'Result: Failed (OtherCompilationError)\n', True),
+    ('Unhandled 1 aggregate exceptions\n'
+     "Unhandled exception: IOException: The process cannot access the file 'C:/Users/u/AppData/Local/UnrealEngine"
+     "/Intermediate/Build/BuildRules/MarketplaceRules.dll' because it is being used by another process.\n"
+     '   at UnrealBuildTool.DynamicCompilation.CompileAssemblyAsync(...)\n'
+     'Result: Failed (OtherCompilationError)\n', True),
+    ('[3/8] Compile [x64] Foo.cpp\nFoo.cpp(12): error C2065: undeclared identifier\nResult: Failed (OtherCompilationError)\n', False),
+    ('c1xx: fatal error C1076: compiler limit: internal heap limit reached\nResult: Failed (OtherCompilationError)\n', False),
+]
+
+COLLISION_SCRIPT = r'''
+$ErrorActionPreference = 'Stop'
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:N2C_BUILD_PS1, [ref]$null, [ref]$null)
+$fn = $ast.Find({ param($a) $a -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -eq 'Test-UbtSharedFileCollision' }, $true)
+if (-not $fn) { throw 'build.ps1 has no function Test-UbtSharedFileCollision' }
+. ([scriptblock]::Create($fn.Extent.Text))
+$out = foreach ($log in ($env:N2C_LOGS -split ';')) { [bool](Test-UbtSharedFileCollision $log) }
+ConvertTo-Json -Compress @($out)
+'''
+
+
+def test_ubt_shared_file_collision_is_detected(tmp_path):
+    logs = []
+    for i, (text, _) in enumerate(UBT_LOGS):
+        path = tmp_path / f'Build_{i}.log'
+        # build.ps1's Tee-Object writes UTF-16 on Windows PowerShell; the check must read either
+        path.write_text(text, encoding='utf-16' if i % 2 else 'utf-8')
+        logs.append(str(path))
+    script_file = tmp_path / 'collision.ps1'
+    script_file.write_text(COLLISION_SCRIPT, encoding='utf-8')
+    env = dict(os.environ, N2C_BUILD_PS1=BUILD_PS1, N2C_LOGS=';'.join(logs))
+    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-File', str(script_file)],
+                          capture_output=True, text=True, env=env, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == [want for _, want in UBT_LOGS]

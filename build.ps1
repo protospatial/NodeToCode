@@ -35,9 +35,10 @@
 
     UnrealBuildTool logs to BuildLogs/UBT_<ver>_<stamp>.txt (-Log=), not the shared per-user UnrealBuildTool/Log.txt,
     so builds from several checkouts can start together. A build that still fails at once on a shared file another
-    UBT holds (IOException in BackupLogFile, e.g. UE 5.8's UnrealBuildTool/Trace.uba) is retried up to 3 times after a
-    random 3-15 s wait; the failed attempt's log is kept as Build_<ver>_<stamp>_try<n>.log. A version is skipped only
-    when an UnrealEditor is open on this run's own host .uproject (full path compared), not another checkout's host.
+    UBT holds (a sharing-violation IOException, e.g. on UE 5.8's UnrealBuildTool/Trace.uba or a BuildRules DLL) is
+    retried up to 3 times after a random 3-15 s wait; the failed attempt's log is kept as Build_<ver>_<stamp>_try<n>.log.
+    A version is skipped only when an UnrealEditor is open on this run's own host .uproject (full path compared), not
+    another checkout's host.
 
     Release packages come from Scripts\package-release.ps1, not from -Package (a quick local BuildPlugin check).
 
@@ -373,13 +374,15 @@ function Test-EditorRunning($h) {
 }
 
 # UBT writes its log to -Log=<file> (UE 5.6-5.8) instead of the shared %LOCALAPPDATA%/UnrealBuildTool/Log.txt, which
-# two builds started together (parallel checkouts) both try to back up and open. UE 5.8 still backs up a shared
-# UnrealBuildTool/Trace.uba at startup whatever -Log says, so a build that dies on that is retried.
+# two builds started together (parallel checkouts) both try to back up and open. Other per-user UBT files stay
+# shared whatever -Log says (UE 5.8 backs up UnrealBuildTool/Trace.uba at startup; every version compiles
+# UnrealEngine/Intermediate/Build/BuildRules/*Rules.dll there), so a build that UBT aborts because another process
+# holds a file (an unhandled sharing-violation IOException, not a compile error) is retried.
 $UbtSharedFileRetries = 3
 function Test-UbtSharedFileCollision([string]$log) {
     if (-not (Test-Path $log)) { return $false }
     $text = [IO.File]::ReadAllText($log).Replace("`0", '')
-    return ($text -match 'IOException' -and $text -match 'BackupLogFile')
+    return ($text -match 'Unhandled exception: IOException: The process cannot access the file .*being used by another process')
 }
 
 # ---------------------------------------------------------------------------
@@ -599,7 +602,7 @@ foreach ($ver in $targets) {
             "-Log=$ubtLog") $log
         if ($code -eq 0 -or $attempt -gt $UbtSharedFileRetries -or -not (Test-UbtSharedFileCollision $log)) { break }
         $wait = Get-Random -Minimum 3 -Maximum 16
-        Write-Host "UBT could not back up a log file another build holds (IOException in BackupLogFile); retry $attempt of $UbtSharedFileRetries in ${wait}s" -ForegroundColor Yellow
+        Write-Host "UBT stopped on a shared file another build holds (IOException: being used by another process); retry $attempt of $UbtSharedFileRetries in ${wait}s" -ForegroundColor Yellow
         Move-Item -Force $log ($log -replace '\.log$', "_try$attempt.log")
         Start-Sleep -Seconds $wait
     }
