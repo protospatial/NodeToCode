@@ -302,6 +302,18 @@ its environment when no key is saved, so a live check never types or saves a key
   reads `/Engine/EngineSky/BP_Sky_Sphere` (every graph) with `toFile` and checks the file parses; a copy is kept as
   `logs/live_blueprint_by_path_0157_<label>_export.json` for token counts. The folder is deleted. Report:
   `logs/live_blueprint_by_path_0157_<label>.json`.
+- `live_batch_0169.py --engine ... --project ... --label 5.8 [--cli-model sonnet]` (Anthropic key from `.env`, in the
+  editor's environment only) checks export-n2cjson-batch and translate-batch (card 0169). Three wired Actor Blueprints
+  (`probe_blueprint.SETUP_PY`) are saved under a fresh `/Game/N2CTest/Batch0169_<time>` folder with every editor
+  closed. `claude -p` with only `mcp__nodetocode__*` exports them in one export-n2cjson-batch call (whole Blueprints,
+  `outDir` `Live0169_<time>`): one file per graph with nodes, every file N2C JSON 2.0.0, no failure, no editor opened.
+  Then it translates the three event graphs in one translate-batch call (anthropic, claude-haiku-5-5, cpp): three
+  completed in three folders, a `.cpp` in each, and `UN2CTagBlueprintLibrary::LoadTranslation` (run-python) reads each
+  back. The probe then starts the same batch with a progress token and sends `notifications/cancelled` when the
+  second graph starts: the call ends without a response, `BatchSummary.json` shows one completed and two skipped, and
+  the log shows the in-flight request cancelled and no third request. The scratch folder, export folder and batch
+  folders are deleted, and a leak scan covers the editor log, `Saved/NodeToCode`, `Saved/Logs` and the run's logs.
+  Report: `logs/live_batch_0169_<label>.json`.
 - `live_create_blueprint_0166.py --engine ... --project ... --label 5.8 [--cli-model haiku]` (no provider key) checks
   create-blueprint-class (card 0166). `claude -p` with only `mcp__nodetocode__*` creates a Widget Blueprint from
   `/Script/UMG.UserWidget` in a fresh `/Game/N2CTest/Create0166_<time>` folder and repeats the call: the first must

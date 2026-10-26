@@ -70,6 +70,44 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   Structure")
 - **Use Case**: Performing actual Blueprint translation
 
+### translate-batch
+- **Description**: Translates many graphs in one call, by asset path or by tag, with no Blueprint editor open (card
+  0169). The graphs go through `UN2CBatchTranslationOrchestrator` as one batch, one LLM request per graph, one after
+  another, every request with the call's provider, model and language
+  (`FN2CBatchTranslationOptions::bUseRequestConfig`, `UN2CLLMModule::ProcessN2CJsonWithOverrides`)
+- **Parameters** (all optional except the selection):
+  - `targets` or `tag`/`category`: the selection export-n2cjson-batch takes (see `Blueprint/Analysis/AGENTS.md`),
+    at most 50 graphs per call
+  - `language`, `provider`, `model`: as translate-focused-blueprint (unknown IDs are an `INVALID_ARGUMENT` error
+    before anything is sent; an unlisted model is sent with a `warnings` entry)
+- **Long-Running**: Yes, answered on the same POST as translate-focused-blueprint (card 0107): progress for each
+  graph the batch starts ("Translating BP_Door.EventGraph (2 of 3)") and a heartbeat every 0.5 s with the seconds waited; on UE
+  5.8 streamed when the client asked for progress, otherwise one held JSON response. `notifications/cancelled`
+  cancels the batch: the in-flight HTTP request is cancelled at once, the rest are skipped, and no response is sent
+  (the deprecated `nodetocode/cancelTask` gets the cancelled error result). The call cancels the batch after an hour
+  (`FN2CTranslateBatchCall::DefaultTimeoutSeconds`). Only one batch runs at a time, from the editor or MCP: a second
+  call while one runs is refused with `BATCH_IN_PROGRESS`, and a translation in flight with `LLM_BUSY`
+- **Saved**: unlike translate-focused-blueprint, every translation is saved where the editor's batch saves:
+  `<translation output directory>/BatchTranslation_<time>/<folder>/` (`<Graph>.h` for C++, `<Graph><ext>`,
+  `<Graph>_Notes.txt`, `<Graph>.json` with the N2C JSON sent) plus `BatchSummary.json`, and recorded for the
+  translation viewer (`UN2CGraphStateManager::RecordSavedTranslation` with the call's language, provider and model,
+  so `LoadTranslation` reads it back). `<folder>` is the graph's file stem, or `<Blueprint>__<Graph>` (then `_2`,
+  ...) when another graph of the batch already has that stem, so two Blueprints' EventGraphs keep their own files
+- **Returns** (at least one graph translated): JSON whose first key is `untrusted_content`, then `provider`, `model`,
+  `language`, `batchOutputPath`, `summaryPath`, `total`, `succeeded`, `failed`, `skipped`, `durationSeconds`,
+  `usage`, `items` (each `blueprintPath`, `graphName`, `graphGuid`, `kind`, `tag` for a tag filter, `status`
+  (`completed`, `failed`, `skipped`); a completed one `outputDirectory`, `files`, `graphs` (`graph_name`,
+  `graph_type`, `graph_class`, `code` as translate-focused-blueprint returns them) and `usage`; a failed one `error`,
+  the typed error object (`error_kind`, `http_status`, `retryable`, `message`, ...); a skipped one `reason`),
+  `failures` (targets that resolved to nothing, with codes as export-n2cjson-batch reports them, including
+  `UNSUPPORTED_ASSET_TYPE` for a non-Blueprint asset), `skippedGraphs` (empty graphs), `warnings` and `codeInline`.
+  When the result with the code would be over 20000 estimated tokens, `graphs` is left out of every item,
+  `codeInline` is false and `codeOmitted` says to read the files
+- **Errors** (`isError: true`): `INVALID_ARGUMENT`, `NO_TAGGED_GRAPHS`, `TOO_MANY_GRAPHS` as plain text; no graph
+  left to translate (`NO_VALID_ITEMS`), `BATCH_IN_PROGRESS`, `LLM_BUSY` as JSON `{error, code, failures}`; a batch in
+  which no graph was translated returns its full result JSON as the error; cancelled or timed out: plain text
+- **Use Case**: translating a set of graphs (a tag, a folder's Blueprints) without opening them
+
 ## Translation Languages
 
 ### Compiled Languages
@@ -218,4 +256,5 @@ Common error scenarios:
 - Insufficient tokens for large Blueprints
 - Timeout during translation
 
-Each is an `isError` result; see `translate-focused-blueprint` above for its text (`error_kind` in the error JSON).
+Each is an `isError` result; see `translate-focused-blueprint` above for its text (`error_kind` in the error JSON),
+and `translate-batch` for its per-graph errors.

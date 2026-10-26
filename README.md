@@ -37,11 +37,12 @@ Code's tools to work in your editor:
 
 - read the focused Blueprint, its functions, variables and components (`get-focused-blueprint`,
   `list-blueprint-functions`, ...), and any Blueprint by asset path without opening it (`list-blueprint-graphs`,
-  `get-blueprint-n2cjson`);
+  `get-blueprint-n2cjson`), and many graphs at once to files (`export-n2cjson-batch`);
 - add and connect nodes, create functions and variables, compile and save (`add-bp-node-to-active-graph`,
   `connect-pins`, `compile-blueprint`, ...);
 - search and organize the Content Browser, and read project files;
-- run Node to Code's own translation (`translate-focused-blueprint`), billed to the API key in Project Settings.
+- run Node to Code's own translation (`translate-focused-blueprint`, or `translate-batch` for many graphs by path or
+  tag, saved for the translation viewer), billed to the API key in Project Settings.
 
 The agent does its own reasoning with its own model, so you can use a Claude, ChatGPT or Google AI subscription
 through that vendor's agent. Node to Code itself does not sign in with a subscription; inside the editor it uses API

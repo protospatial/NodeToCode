@@ -666,7 +666,8 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     const FString& JsonInput,
     const FN2CLLMConfig& RequestConfig,
     EN2CCodeLanguage RequestLanguage,
-    const FOnLLMResponseReceived& OnComplete)
+    const FOnLLMResponseReceived& OnComplete,
+    const FOnN2CTranslationParsed& OnParsed)
 {
     // Creates a provider service and a prompt manager and writes CurrentStatus: game thread only. Objects created on
     // another thread get EInternalObjectFlags::Async and are never collected.
@@ -689,6 +690,10 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
         FString ErrorMsg = TEXT("Failed to create/initialize temporary service for override request.");
         FN2CLogger::Get().LogError(ErrorMsg, TEXT("LLMModule"));
         EndRequest(EN2CSystemStatus::Error);
+        FN2CTranslationResponse Failed;
+        Failed.Error = FN2CTranslationError::Make(ErrorMsg);
+        FillTranslationError(Failed, RequestConfig.Provider, RequestConfig.Model, FString());
+        OnParsed.ExecuteIfBound(Failed, false);
         return CompleteWithoutRequest(OnComplete, FN2CTranslationError::MakeErrorJson(ErrorMsg));
     }
     
@@ -706,7 +711,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     // The JSON goes in <n2c_json> tags, as in ProcessN2CJson.
     // The callback keeps TempServiceObject (and so the service) alive until the request completes or is cancelled
     FN2CLLMRequestHandleRef Handle = TempService->SendRequest(UN2CSystemPromptManager::WrapN2CJson(JsonInput), SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, TempService, TempServiceObject, OnComplete, RequestConfigCopy = RequestConfig](const FString& RawResponse)
+        [this, TempService, TempServiceObject, OnComplete, OnParsed, RequestConfigCopy = RequestConfig](const FString& RawResponse)
         {
             FN2CTranslationResponse TranslationResponse;
             UN2CResponseParserBase* Parser = TempServiceObject.IsValid() ? TempService->GetResponseParser() : nullptr; // Parser from the temp service
@@ -744,6 +749,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
                 TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputJsonString);
                 FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 
+                OnParsed.ExecuteIfBound(TranslationResponse, true);
                 OnComplete.ExecuteIfBound(OutputJsonString);
             }
             else
@@ -758,6 +764,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
                 FillTranslationError(TranslationResponse, RequestConfigCopy.Provider, RequestConfigCopy.Model, RawResponse);
                 FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation failed: %s"),
                     *TranslationResponse.Error.ToDisplayString()), TEXT("LLMModule"));
+                OnParsed.ExecuteIfBound(TranslationResponse, false);
                 OnComplete.ExecuteIfBound(TranslationResponse.Error.ToJsonString());
             }
         }

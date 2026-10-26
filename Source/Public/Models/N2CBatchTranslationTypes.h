@@ -56,6 +56,13 @@ struct NODETOCODE_API FN2CBatchTranslationItem
 	/** Cached JSON payload from serialization (used for saving alongside translation) */
 	FString CachedJsonPayload;
 
+	/**
+	 * The folder under the batch output folder this item's files are saved in. Set when the batch starts: the graph
+	 * name's file stem, or <Blueprint>__<Graph> (then a number) when another item of the batch already has that stem,
+	 * so two Blueprints' EventGraphs do not overwrite each other. Empty: the graph name's stem.
+	 */
+	FString OutputFolderName;
+
 	FN2CBatchTranslationItem() = default;
 };
 

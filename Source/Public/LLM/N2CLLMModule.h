@@ -74,12 +74,18 @@ public:
         const FOnN2CTranslationParsed& OnParsed
     );
 
-    /** Process N2C JSON through LLM with specific overrides for provider, model, and language. Returns the request's handle. */
+    /**
+     * Process N2C JSON through LLM with specific overrides for provider, model, and language. Returns the request's
+     * handle. Nothing is saved and OnTranslationResponseReceived is not broadcast. OnComplete gets the result as JSON
+     * text (graphs and usage, or NodeToCode error JSON); OnParsed, when bound, gets the same result as a
+     * FN2CTranslationResponse (with its typed error on failure), at most once and never after a successful Cancel().
+     */
     FN2CLLMRequestHandleRef ProcessN2CJsonWithOverrides(
         const FString& JsonInput,
         const FN2CLLMConfig& RequestConfig,
         EN2CCodeLanguage RequestLanguage,
-        const FOnLLMResponseReceived& OnComplete
+        const FOnLLMResponseReceived& OnComplete,
+        const FOnN2CTranslationParsed& OnParsed = FOnN2CTranslationParsed()
     );
 
     /**

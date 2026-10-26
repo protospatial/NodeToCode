@@ -84,20 +84,20 @@ project config `DefaultNodeToCode.ini`). The first that applies wins:
 |---|---|---|---|---|
 | 1 | Python script-only | **Enable Python Script-Only Mode** (`bEnablePythonScriptOnlyMode`, default off) | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` (`FN2CMcpToolManager::RegisterToolsByName`). No translation, Blueprint, Content Browser or file tools | 7 |
 | 2 | Dynamic tool discovery | **Enable Dynamic Tool Discovery** (`bEnableDynamicToolDiscovery`, default off) | `assess-needed-tools` only (`SetDefaultToolSet`); it enables tool categories on request | 1 |
-| 3 | All tools (the shipped default) | both off | every registered tool except `assess-needed-tools` (`RegisterAllToolsExceptAssess`) | 64 |
+| 3 | All tools (the shipped default) | both off | every registered tool except `assess-needed-tools` (`RegisterAllToolsExceptAssess`) | 66 |
 
 - **The default** is mode 3: both settings default to false in `N2CSettings.h`, so a fresh install lists every
   tool, `get-focused-blueprint` and `translate-focused-blueprint` included.
 - **Python execution switch:** every path goes through `FN2CMcpToolManager::RegisterTool`, which skips `run-python`,
   `save-python-script` and `delete-python-script` (`UN2CUserSettings::IsPythonExecutionTool`) unless the per-user
   **Allow MCP Python Execution** is on (`UN2CUserSettings::IsMcpPythonExecutionAllowed()`, default off; only the
-  user's own Saved/Config value counts, card 0423). With it off (the default) the counts are 61 for mode 3, 1 for
+  user's own Saved/Config value counts, card 0423). With it off (the default) the counts are 63 for mode 3, 1 for
   mode 2 (and those three tools cannot be enabled by `assess-needed-tools`), and 4 for mode 1 (list, search, get and
   get-script-functions; the editor logs a warning at start).
 - **Restart required:** the mode is read only when the server starts (editor start, or the server restart a Server
   Port change causes). Changing either setting takes effect after an editor restart.
 - **Checked by:** `build.ps1 -Smoke` starts one editor per mode with Python execution allowed and compares
-  `tools/list` with `Tests/smoke/expected.json` (`default` 64, `dynamic` 1, `python_only` 7). A card that adds or
+  `tools/list` with `Tests/smoke/expected.json` (`default` 66, `dynamic` 1, `python_only` 7). A card that adds or
   removes a tool updates those counts and the tables in this file.
 
 ### Tool Categories
@@ -108,7 +108,7 @@ discovery; `tools/list` sends it as `_meta["nodetocode/category"]`. The category
 | Category | Tools | Folder |
 |---|---|---|
 | `Tool Management` | `assess-needed-tools` | `ToolManagement/` |
-| `Blueprint Discovery` | `get-focused-blueprint`, `get-blueprint-n2cjson`, `list-blueprint-graphs`, `get-open-blueprint-editors`, `list-blueprint-functions`, `list-overridable-functions`, `search-blueprint-nodes` | `Blueprint/Analysis/`, `Blueprint/Graph/` |
+| `Blueprint Discovery` | `get-focused-blueprint`, `get-blueprint-n2cjson`, `list-blueprint-graphs`, `export-n2cjson-batch`, `get-open-blueprint-editors`, `list-blueprint-functions`, `list-overridable-functions`, `search-blueprint-nodes` | `Blueprint/Analysis/`, `Blueprint/Graph/` |
 | `Blueprint Graph Editing` | `add-bp-node-to-active-graph`, `connect-pins`, `create-comment-node`, `delete-blueprint-node`, `set-input-pin-value` | `Blueprint/Graph/` |
 | `Blueprint Function Management` | `create-blueprint-function`, `delete-blueprint-function`, `open-blueprint-function`, `add-function-input-pin`, `add-function-return-pin`, `remove-function-entry-pin`, `remove-function-return-pin` | `Blueprint/Functions/` |
 | `Blueprint Variable Management` | `create-variable`, `create-local-variable`, `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`, `create-get-member-variable-node`, `create-set-member-variable-node`, `create-get-local-function-variable-node`, `create-set-local-function-variable-node`, `set-member-variable-default-value`, `set-local-function-variable-default-value` | `Blueprint/Variables/` |
@@ -118,11 +118,11 @@ discovery; `tools/list` sends it as `_meta["nodetocode/category"]`. The category
 | `Blueprint Components` | `list-components-in-actor`, `add-component-class-to-actor`, `delete-component-in-actor` | `Blueprint/Components/` |
 | `Content Browser` | `open-content-browser-path`, `read-content-browser-path`, `search-content-browser`, `open-blueprint-asset`, `create-folder`, `move-folder`, `rename-folder`, `move-asset`, `copy-asset`, `rename-asset` | `ContentBrowser/` |
 | `File System` | `read-path`, `read-file` | `FileSystem/` |
-| `Translation` | `translate-focused-blueprint`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory` | `Translation/` |
+| `Translation` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory` | `Translation/` |
 | `Python` | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | `Python/` |
 | (none) | `find-nodes-in-graph` sets no category, so `assess-needed-tools` cannot enable it | `Blueprint/Graph/` |
 
-That is 65 tools; mode 3 lists 64 of them (all but `assess-needed-tools`). Category strings are matched exactly.
+That is 67 tools; mode 3 lists 66 of them (all but `assess-needed-tools`). Category strings are matched exactly.
 
 ## Long-Running Tools and Async Execution
 
@@ -166,7 +166,8 @@ result as a `TFuture`; `FN2CToolAsyncTaskManager` runs the call and knows nothin
 
 There is no registration step and no tool-name switch: the server sees `bIsLongRunning` and the manager calls the
 tool's `InvokeAsync`. `Execute` keeps its default (an error); inside a JSON-RPC batch the tool manager refuses a
-long-running tool. `FN2CTranslateBlueprintCall` is the reference implementation: it keeps itself alive until its
+long-running tool. `FN2CTranslateBlueprintCall` is the reference implementation (`FN2CTranslateBatchCall`, for
+translate-batch, does the same around a whole `UN2CBatchTranslationOrchestrator` batch): it keeps itself alive until its
 result is set, holds the `FN2CLLMRequestHandle` that `ProcessN2CJsonWithOverrides` returns, reports progress from an
 `FTSTicker`, and calls `Cancel()` on the handle on cancel and on timeout.
 
