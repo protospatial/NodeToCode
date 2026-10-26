@@ -930,7 +930,7 @@ Read text files and list folders inside the project directory.
 
 ### read-file
 
-Reads the contents of a file within the Unreal Engine project. Use empty string "" for project root, NOT "." or "/". Enforces security boundaries to prevent directory traversal outside the project. Supports text files up to 500KB in size. Binary files like .uasset and .umap are not supported.
+Reads a text file in the Unreal Engine project, or in the translation output directory when that is outside the project. relativePath is relative to the project folder; an absolute path is accepted only inside those two folders. Only text files are read (source, config, JSON, CSV, Markdown, logs, ...): other types such as .uasset, .uexp, .png or .dll, and files with NUL bytes or invalid UTF-8, are refused. At most 500 KB of text comes back per call, in whole lines: truncated is true when the cap cut the read short, and nextOffset is the offset that continues it. offset and limit read a line range. Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) are never readable.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -938,11 +938,13 @@ Reads the contents of a file within the Unreal Engine project. Use empty string 
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `relativePath` | `string` | yes |  |  |
+| `relativePath` | `string` | yes |  | The file, relative to the project folder (for example "Config/DefaultEngine.ini"); an absolute path must be inside the project or the translation output directory |
+| `offset` | `integer` | no |  | Optional. The line number to start at, 1-based (default 1) |
+| `limit` | `integer` | no |  | Optional. The most lines to return (default: as many as fit in 500 KB) |
 
 ### read-path
 
-Lists all files and folders in a directory within the Unreal Engine project. Use empty string "" for project root, NOT "." or "/". Examples: "" for root, "Config" for Config folder, "Content/Blueprints" for nested paths. Enforces security boundaries to prevent directory traversal outside the project.
+Lists the files and folders directly inside a directory of the Unreal Engine project (not recursive), or of the translation output directory when that is outside the project. relativePath is relative to the project folder: "" or "." for the project folder, "Config", "Content/Blueprints"; an absolute path is accepted only inside those two folders. Results come in pages, folders first and then files, each sorted by name: total counts every entry, and when truncated is true pass nextCursor as cursor for the next page. filter keeps the names that match a wildcard such as "*.json". Credential folders (Saved/NodeToCode/User, .git) cannot be listed.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -950,7 +952,10 @@ Lists all files and folders in a directory within the Unreal Engine project. Use
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `relativePath` | `string` | yes |  |  |
+| `relativePath` | `string` | yes |  | The directory, relative to the project folder ("" for the project folder); an absolute path must be inside the project or the translation output directory |
+| `pageSize` | `integer` | no | `200` | Optional. Entries per page, 1 to 1000 (default 200) |
+| `cursor` | `string` | no |  | Optional. The nextCursor of the previous page; leave it out for the first page |
+| `filter` | `string` | no |  | Optional. A wildcard the names must match, * and ? (for example "*.json"), ignoring case; it applies to folders and files |
 
 ## PythonTools
 

@@ -219,9 +219,11 @@ void FN2CPathPolicySpec::Define()
 				const FMcpToolCallResult Dir = N2CTest::CallTool(TEXT("read-path"), { { TEXT("relativePath"), Path } });
 				TestTrue(FString::Printf(TEXT("read-path '%s' is an error"), Path), Dir.bIsError);
 			}
-			// An absolute path is joined under the project, so it names a file that does not exist there
+			// An absolute path outside the project (and the translation output directory) is refused as such (card 0184)
+			AddExpectedErrorPlain(TEXT("Blocked MCP read of an absolute path"), EAutomationExpectedErrorFlags::Contains, 0);
 			const FMcpToolCallResult Drive = N2CTest::CallTool(TEXT("read-file"), { { TEXT("relativePath"), TEXT("C:/Windows/win.ini") } });
 			TestTrue(TEXT("read-file with a drive letter is an error"), Drive.bIsError);
+			TestTrue(TEXT("read-file with a drive letter says absolute path"), N2CTest::ResultText(Drive).Contains(TEXT("absolute path")));
 		});
 
 #if PLATFORM_WINDOWS
