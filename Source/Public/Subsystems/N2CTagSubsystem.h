@@ -78,5 +78,5 @@ private:
 	void HandleTagAdded(const FN2CTaggedBlueprintGraph& TaggedGraph);
 	
 	/** Handle tag removed from C++ */
-	void HandleTagRemoved(const FGuid& GraphGuid, const FString& Tag);
+	void HandleTagRemoved(const struct FN2CGraphKey& Graph, const FString& Tag);
 };

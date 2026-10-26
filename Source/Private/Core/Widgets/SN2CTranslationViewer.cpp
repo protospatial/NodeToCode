@@ -198,17 +198,18 @@ bool SN2CTranslationViewer::LoadTranslation(const FN2CTagInfo& GraphInfo)
 	// Try to load translation from state manager
 	FN2CGraphTranslation Translation;
 	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
-	FGuid GraphGuid;
-	if (!FGuid::Parse(GraphInfo.GraphGuid, GraphGuid))
+	// The row's own Blueprint: a duplicated Blueprint's graph has the same GUID (card 0192)
+	const FN2CGraphKey Key = FN2CGraphKey::FromStrings(GraphInfo.BlueprintPath, GraphInfo.GraphGuid);
+	if (!Key.IsValid())
 	{
 		return false;
 	}
 
-	if (UN2CGraphStateManager::Get().LoadTranslation(GraphGuid, Translation, Language))
+	if (UN2CGraphStateManager::Get().LoadTranslation(Key, Translation, Language))
 	{
 		// Try to get JSON content as well
 		FString JsonContent;
-		UN2CGraphStateManager::Get().LoadN2CJson(GraphGuid, JsonContent);
+		UN2CGraphStateManager::Get().LoadN2CJson(Key, JsonContent);
 
 		LoadTranslation(Translation, GraphInfo.GraphName, JsonContent, Language);
 		return true;

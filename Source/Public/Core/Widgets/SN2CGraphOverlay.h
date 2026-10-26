@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Input/SMenuAnchor.h"
+#include "Core/N2CGraphStateTypes.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 
 class FBlueprintEditor;
@@ -63,6 +64,15 @@ private:
 	FGuid GraphGuid;
 	FString BlueprintPath;
 	FString GraphName;
+
+	/** The graph this overlay sits on, when it was given or found; its Blueprint's path follows renames */
+	TWeakObjectPtr<UEdGraph> WeakGraph;
+
+	/** The Blueprint's current path: the live graph's owner, else the path the overlay was made with */
+	FString GetBlueprintPath() const;
+
+	/** This overlay's graph in the graph state: {Blueprint, GraphGuid}, never the GUID alone (copies share GUIDs) */
+	FN2CGraphKey GetGraphKey() const;
 	TWeakPtr<FBlueprintEditor> BlueprintEditor;
 	bool bIsTranslating = false;
 	int32 CachedTagCount = 0;
@@ -109,7 +119,7 @@ private:
 
 	// Tag manager callbacks
 	void OnTagAdded(const FN2CTaggedBlueprintGraph& TagInfo);
-	void OnTagRemoved(const FGuid& RemovedGraphGuid, const FString& RemovedTag);
+	void OnTagRemoved(const FN2CGraphKey& RemovedFrom, const FString& RemovedTag);
 
 	// Visual state helpers
 	EVisibility GetSpinnerVisibility() const;

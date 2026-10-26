@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpTagUtils.h"
 #include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 
@@ -72,8 +73,12 @@ FMcpToolCallResult FN2CMcpListBlueprintTagsTool::Execute(const TSharedPtr<FJsonO
 		
 		if (bFilterByGraph)
 		{
-			// Get tags for specific graph
-			Tags = UN2CTagManager::Get().GetTagsForGraph(GraphGuid);
+			// Get tags for specific graph: in every Blueprint that has it (a duplicated Blueprint keeps its graph GUIDs,
+			// and each row names its Blueprint)
+			for (const FN2CGraphKey& Owner : UN2CGraphStateManager::Get().FindKeysForGuid(GraphGuid))
+			{
+				Tags.Append(UN2CTagManager::Get().GetTagsForGraph(Owner));
+			}
 		}
 		else if (!TagFilter.IsEmpty())
 		{

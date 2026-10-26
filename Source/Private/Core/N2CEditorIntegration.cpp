@@ -316,13 +316,9 @@ void FN2CEditorIntegration::Initialize()
                     }
 
                     // Check if overlay still exists (weak pointer detects destroyed widgets)
-                    if (TWeakPtr<SN2CGraphOverlay>* ExistingOverlay = InjectedGraphOverlays.Find(FocusedGraph->GraphGuid))
+                    if (CheckLiveOverlay(FocusedGraph))
                     {
-                        if (ExistingOverlay->IsValid())
-                        {
-                            continue; // Overlay still alive
-                        }
-                        InjectedGraphOverlays.Remove(FocusedGraph->GraphGuid);
+                        continue; // Overlay still alive
                     }
 
                     // Found an editor with an un-overlaid focused graph - wrap it
@@ -905,15 +901,11 @@ void FN2CEditorIntegration::WrapGraphTabIfNeeded(TSharedPtr<SDockTab> Tab, UEdGr
         return;
     }
 
-    // Check if this graph already has a live overlay (weak pointer validates the widget still exists)
-    if (TWeakPtr<SN2CGraphOverlay>* ExistingOverlay = InjectedGraphOverlays.Find(Graph->GraphGuid))
+    // Check if this graph already has a live overlay (weak pointer validates the widget still exists). Keyed by the
+    // graph object: a copy of this Blueprint has a graph with the same GUID that needs its own overlay (card 0192)
+    if (CheckLiveOverlay(Graph))
     {
-        if (ExistingOverlay->IsValid())
-        {
-            return; // Overlay still exists
-        }
-        // Overlay was destroyed (e.g., graph tab rebuilt on switch) - remove stale entry and re-inject
-        InjectedGraphOverlays.Remove(Graph->GraphGuid);
+        return; // Overlay still exists
     }
 
     // Get the tab content (should be SGraphEditor)
@@ -998,12 +990,40 @@ void FN2CEditorIntegration::WrapGraphTabIfNeeded(TSharedPtr<SDockTab> Tab, UEdGr
         ];
 
     // Track this graph's overlay with a weak pointer to detect destruction
-    InjectedGraphOverlays.Add(GraphGuid, OverlayWidget);
+    InjectedGraphOverlays.Add(Graph, OverlayWidget);
 
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("WrapGraphTabIfNeeded: Overlay injected for graph '%s'"), *GraphName),
         EN2CLogSeverity::Info
     );
+}
+
+bool FN2CEditorIntegration::HasLiveOverlay(const UEdGraph* Graph) const
+{
+    if (!Graph)
+    {
+        return false;
+    }
+    const TWeakPtr<SN2CGraphOverlay>* Existing = InjectedGraphOverlays.Find(TWeakObjectPtr<UEdGraph>(const_cast<UEdGraph*>(Graph)));
+    return Existing && Existing->IsValid();
+}
+
+bool FN2CEditorIntegration::CheckLiveOverlay(UEdGraph* Graph)
+{
+    if (!Graph)
+    {
+        return false;
+    }
+    const TWeakObjectPtr<UEdGraph> Key(Graph);
+    if (const TWeakPtr<SN2CGraphOverlay>* Existing = InjectedGraphOverlays.Find(Key))
+    {
+        if (Existing->IsValid())
+        {
+            return true;
+        }
+        InjectedGraphOverlays.Remove(Key);
+    }
+    return false;
 }
 
 void FN2CEditorIntegration::TryWrapFocusedGraphTab(TWeakPtr<FBlueprintEditor> WeakEditor)
@@ -1116,18 +1136,13 @@ void FN2CEditorIntegration::CleanupStaleWrappers()
         );
     }
 
-    // Clean up stale overlay tracking (overlays destroyed by graph tab rebuilds)
-    TArray<FGuid> StaleOverlayKeys;
-    for (auto& Pair : InjectedGraphOverlays)
+    // Clean up stale overlay tracking (overlays destroyed by graph tab rebuilds, graphs of closed Blueprints)
+    for (auto It = InjectedGraphOverlays.CreateIterator(); It; ++It)
     {
-        if (!Pair.Value.IsValid())
+        if (!It->Key.IsValid() || !It->Value.IsValid())
         {
-            StaleOverlayKeys.Add(Pair.Key);
+            It.RemoveCurrent();
         }
-    }
-    for (const FGuid& Key : StaleOverlayKeys)
-    {
-        InjectedGraphOverlays.Remove(Key);
     }
 
 }
@@ -1196,15 +1211,11 @@ void FN2CEditorIntegration::OnTabForegrounded(TSharedPtr<SDockTab> NewlyForegrou
                         continue;
                     }
 
-                    // Check if overlay still exists (weak pointer detects destroyed widgets)
-                    if (TWeakPtr<SN2CGraphOverlay>* ExistingOverlay = InjectedGraphOverlays.Find(FocusedGraph->GraphGuid))
+                    // Check if overlay still exists (weak pointer detects destroyed widgets; a destroyed one's entry is
+                    // dropped so it gets re-injected)
+                    if (CheckLiveOverlay(FocusedGraph))
                     {
-                        if (ExistingOverlay->IsValid())
-                        {
-                            continue; // Overlay still alive
-                        }
-                        // Overlay was destroyed - remove stale entry so it gets re-injected
-                        InjectedGraphOverlays.Remove(FocusedGraph->GraphGuid);
+                        continue; // Overlay still alive
                     }
 
                     // Found an editor with an un-overlaid focused graph - wrap it. The focused editor is not changed

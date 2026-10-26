@@ -38,9 +38,9 @@ void UN2CTagManager::Initialize()
 		}
 	});
 
-	GraphTagRemovedHandle = UN2CGraphStateManager::Get().OnGraphTagRemoved.AddLambda([this](const FGuid& GraphGuid, const FString& Tag)
+	GraphTagRemovedHandle = UN2CGraphStateManager::Get().OnGraphTagRemoved.AddLambda([this](const FN2CGraphKey& Graph, const FString& Tag)
 	{
-		OnBlueprintTagRemoved.Broadcast(GraphGuid, Tag);
+		OnBlueprintTagRemoved.Broadcast(Graph, Tag);
 	});
 
 	GraphStatesReloadedHandle = UN2CGraphStateManager::Get().OnGraphStatesReloaded.AddLambda([this]()
@@ -102,12 +102,12 @@ bool UN2CTagManager::AddTag(const FN2CTaggedBlueprintGraph& TaggedGraph)
 	return UN2CGraphStateManager::Get().AddTag(TaggedGraph);
 }
 
-bool UN2CTagManager::RemoveTag(const FGuid& GraphGuid, const FString& Tag, const FString& Category)
+bool UN2CTagManager::RemoveTag(const FN2CGraphKey& GraphGuid, const FString& Tag, const FString& Category)
 {
 	return UN2CGraphStateManager::Get().RemoveTag(GraphGuid, Tag, Category);
 }
 
-int32 UN2CTagManager::RemoveTagByName(const FGuid& GraphGuid, const FString& Tag, FN2CTaggedBlueprintGraph& OutRemovedTag)
+int32 UN2CTagManager::RemoveTagByName(const FN2CGraphKey& GraphGuid, const FString& Tag, FN2CTaggedBlueprintGraph& OutRemovedTag)
 {
 	// Get the tags before removal so we can populate OutRemovedTag
 	TArray<FN2CTagEntry> TagsBefore = UN2CGraphStateManager::Get().GetTagsForGraph(GraphGuid);
@@ -136,12 +136,12 @@ int32 UN2CTagManager::RemoveTagByName(const FGuid& GraphGuid, const FString& Tag
 	return UN2CGraphStateManager::Get().RemoveTagByName(GraphGuid, Tag);
 }
 
-int32 UN2CTagManager::RemoveAllTagsFromGraph(FGuid GraphGuid)
+int32 UN2CTagManager::RemoveAllTagsFromGraph(const FN2CGraphKey& GraphGuid)
 {
 	return UN2CGraphStateManager::Get().RemoveAllTagsFromGraph(GraphGuid);
 }
 
-TArray<FN2CTaggedBlueprintGraph> UN2CTagManager::GetTagsForGraph(const FGuid& GraphGuid) const
+TArray<FN2CTaggedBlueprintGraph> UN2CTagManager::GetTagsForGraph(const FN2CGraphKey& GraphGuid) const
 {
 	TArray<FN2CTaggedBlueprintGraph> Result;
 	const FN2CGraphState* State = UN2CGraphStateManager::Get().FindGraphState(GraphGuid);
@@ -233,7 +233,7 @@ TArray<FString> UN2CTagManager::GetAllCategories() const
 	return UN2CGraphStateManager::Get().GetAllCategories();
 }
 
-bool UN2CTagManager::GraphHasTag(const FGuid& GraphGuid, const FString& Tag, const FString& Category) const
+bool UN2CTagManager::GraphHasTag(const FN2CGraphKey& GraphGuid, const FString& Tag, const FString& Category) const
 {
 	return UN2CGraphStateManager::Get().GraphHasTag(GraphGuid, Tag, Category);
 }

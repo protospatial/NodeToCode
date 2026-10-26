@@ -100,10 +100,10 @@ void UN2CTagSubsystem::HandleTagAdded(const FN2CTaggedBlueprintGraph& TaggedGrap
 		EN2CLogSeverity::Debug);
 }
 
-void UN2CTagSubsystem::HandleTagRemoved(const FGuid& GraphGuid, const FString& Tag)
+void UN2CTagSubsystem::HandleTagRemoved(const FN2CGraphKey& Graph, const FString& Tag)
 {
 	// Broadcast with string GUID
-	FString GraphGuidString = GraphGuid.ToString(EGuidFormats::DigitsWithHyphens);
+	FString GraphGuidString = Graph.GraphGuid.ToString(EGuidFormats::DigitsWithHyphens);
 	OnBlueprintTagRemoved.Broadcast(GraphGuidString, Tag);
 	
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Broadcasting tag removed event: %s"), *Tag), 

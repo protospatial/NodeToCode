@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpTagUtils.h"
 #include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Dom/JsonObject.h"
@@ -60,6 +61,20 @@ FMcpToolCallResult FN2CMcpRemoveTagFromGraphTool::Execute(const TSharedPtr<FJson
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Missing required parameter: tag"));
 		}
 		
+		// A duplicated Blueprint keeps its graph GUIDs: a GUID in several Blueprints cannot say which to change
+		const TArray<FN2CGraphKey> Owners = UN2CGraphStateManager::Get().FindKeysForGuid(GraphGuid);
+		if (Owners.Num() > 1)
+		{
+			TArray<FString> Paths;
+			for (const FN2CGraphKey& Owner : Owners)
+			{
+				Paths.Add(Owner.Blueprint.ToString());
+			}
+			return FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("Graph %s has tags in %d Blueprints (copies keep their graph GUIDs): %s. Remove the tag from the Tag Manager or the graph's overlay instead."),
+				*GraphGuidString, Owners.Num(), *FString::Join(Paths, TEXT(", "))));
+		}
+
 		// Get the current tag count for the graph before removal
 		TArray<FN2CTaggedBlueprintGraph> CurrentTags = UN2CTagManager::Get().GetTagsForGraph(GraphGuid);
 		int32 InitialTagCount = CurrentTags.Num();

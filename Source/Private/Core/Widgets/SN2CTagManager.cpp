@@ -8,6 +8,8 @@
 #include "Core/Widgets/SN2CIconButton.h"
 #include "Core/Style/N2CDesignTokens.h"
 #include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
+#include "Misc/MessageDialog.h"
 #include "Core/N2CSettings.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Core/Style/N2CStyle.h"
@@ -203,6 +205,18 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.ButtonVariant(EN2CButtonVariant::Standard)
 								.OnClicked(this, &SN2CTagManager::HandleRemoveSelectedClicked)
 							]
+							// Prune Missing button: tags and translation records of deleted Blueprints
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.Padding(FN2CSpacing::MD, 0.0f, 0.0f, 0.0f)
+							[
+								SNew(SN2CIconButton)
+								.IconBrush(FAppStyle::GetBrush("Icons.Warning"))
+								.Text(LOCTEXT("PruneMissingButton", "Prune Missing"))
+								.ToolTipText(LOCTEXT("PruneMissingTooltip", "Remove the tags and translation records of graphs whose Blueprint was deleted"))
+								.ButtonVariant(EN2CButtonVariant::Standard)
+								.OnClicked(this, &SN2CTagManager::HandlePruneMissingClicked)
+							]
 						]
 					]
 
@@ -300,7 +314,7 @@ void SN2CTagManager::HandleTagAdded(const FN2CTaggedBlueprintGraph& TagInfo)
 	RefreshData();
 }
 
-void SN2CTagManager::HandleTagRemoved(const FGuid& GraphGuid, const FString& RemovedTag)
+void SN2CTagManager::HandleTagRemoved(const FN2CGraphKey& Graph, const FString& RemovedTag)
 {
 	RefreshData();
 }
@@ -525,6 +539,28 @@ FReply SN2CTagManager::HandleExportJsonClicked()
 FReply SN2CTagManager::HandleRemoveSelectedClicked()
 {
 	OnRemoveSelectedRequestedDelegate.ExecuteIfBound();
+	return FReply::Handled();
+}
+
+FReply SN2CTagManager::HandlePruneMissingClicked()
+{
+	UN2CGraphStateManager& StateManager = UN2CGraphStateManager::Get();
+	const int32 Missing = StateManager.RefreshMissing();
+	if (Missing == 0)
+	{
+		FMessageDialog::Open(EAppMsgType::Ok,
+			LOCTEXT("PruneMissingNone", "Every tagged or translated graph's Blueprint still exists: there is nothing to prune."));
+		return FReply::Handled();
+	}
+
+	const FText Question = FText::Format(
+		LOCTEXT("PruneMissingConfirm", "{0} {0}|plural(one=graph belongs,other=graphs belong) to Blueprints that no longer exist. Remove {0}|plural(one=its,other=their) tags and translation records? The translation files on disk are kept."),
+		FText::AsNumber(Missing));
+	if (FMessageDialog::Open(EAppMsgType::YesNo, Question) == EAppReturnType::Yes)
+	{
+		StateManager.PruneMissing();
+		RefreshData();
+	}
 	return FReply::Handled();
 }
 

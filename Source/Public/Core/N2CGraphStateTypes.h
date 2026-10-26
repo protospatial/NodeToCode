@@ -148,6 +148,66 @@ struct NODETOCODE_API FN2CTagEntry
 };
 
 /**
+ * Which graph a state entry belongs to: the owning Blueprint asset and the graph's GUID. The GUID alone is not enough,
+ * because duplicating a Blueprint in the Content Browser copies UEdGraph::GraphGuid, so a Blueprint and its copies have
+ * graphs with the same GUID.
+ *
+ * A key without a Blueprint (made from a bare FGuid, which converts implicitly so GUID-only callers keep compiling) is
+ * a GUID-only lookup: it finds an entry only while exactly one entry has that GUID.
+ */
+USTRUCT(BlueprintType)
+struct NODETOCODE_API FN2CGraphKey
+{
+	GENERATED_BODY()
+
+	/** The owning Blueprint's object path (/Game/Folder/BP_Name.BP_Name); null for a GUID-only key */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	FSoftObjectPath Blueprint;
+
+	/** The graph's UEdGraph::GraphGuid */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	FGuid GraphGuid;
+
+	FN2CGraphKey() = default;
+
+	/** The Blueprint path is normalised (see NormalizeBlueprintPath) */
+	FN2CGraphKey(const FSoftObjectPath& InBlueprint, const FGuid& InGraphGuid);
+
+	/** A GUID-only key (implicit on purpose: existing FGuid callers become GUID-only lookups) */
+	FN2CGraphKey(const FGuid& InGraphGuid);
+
+	/** From a Blueprint path and a GUID string as the UI and the Blueprint library carry them; an unparsable GUID gives an invalid key */
+	static FN2CGraphKey FromStrings(const FString& BlueprintPath, const FString& GraphGuid);
+
+	/** The key of a live graph: its GUID and the Blueprint that owns it (outer chain) */
+	static FN2CGraphKey FromGraph(const class UEdGraph* Graph);
+
+	/**
+	 * One spelling per Blueprint: a package path (/Game/BP) gets its asset name (/Game/BP.BP), an export-text path
+	 * (Blueprint'/Game/BP.BP') loses its class, and surrounding blanks are dropped
+	 */
+	static FSoftObjectPath NormalizeBlueprintPath(const FSoftObjectPath& Path);
+	static FSoftObjectPath NormalizeBlueprintPath(const FString& Path);
+
+	/** The key names a graph (its GUID is set) */
+	bool IsValid() const { return GraphGuid.IsValid(); }
+
+	/** The key names the Blueprint, so it identifies one entry even when copies share the GUID */
+	bool HasBlueprint() const { return !Blueprint.IsNull(); }
+
+	/** "<Blueprint>:<GUID>", or the GUID alone for a GUID-only key (for logs and messages) */
+	FString ToString() const;
+
+	bool operator==(const FN2CGraphKey& Other) const { return GraphGuid == Other.GraphGuid && Blueprint == Other.Blueprint; }
+	bool operator!=(const FN2CGraphKey& Other) const { return !(*this == Other); }
+
+	friend uint32 GetTypeHash(const FN2CGraphKey& Key)
+	{
+		return HashCombine(GetTypeHash(Key.GraphGuid), GetTypeHash(Key.Blueprint));
+	}
+};
+
+/**
  * Per-graph state container - the main unified tracking structure
  */
 USTRUCT(BlueprintType)
@@ -179,6 +239,16 @@ struct NODETOCODE_API FN2CGraphState
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
 	FN2CJsonExportState JsonExport;
 
+	/**
+	 * The owning Blueprint was deleted (Asset Registry removal) and has not come back. The entry is kept, so the tags
+	 * are not lost to an accident, until the Tag Manager's Prune Missing removes it
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	bool bMissing = false;
+
+	/** This entry's identity: {OwningBlueprint, GraphGuid} */
+	FN2CGraphKey GetKey() const;
+
 	/** Serialize to JSON */
 	TSharedPtr<FJsonObject> ToJson() const;
 
@@ -209,9 +279,18 @@ struct NODETOCODE_API FN2CGraphStateFile
 {
 	GENERATED_BODY()
 
-	/** File format version */
+	/**
+	 * The current file format: 3 keys entries by {owningBlueprint, graphGuid} (2 keyed them by graphGuid alone, so one
+	 * entry could stand for a Blueprint and all of its copies)
+	 */
+	static constexpr int32 CurrentMajorVersion = 3;
+
+	/** File format version, "<major>.<minor>" */
 	UPROPERTY()
-	FString Version = TEXT("2.0");
+	FString Version = TEXT("3.0");
+
+	/** The major version Version names: 1 for an empty or unreadable value (the oldest files wrote none) */
+	int32 GetMajorVersion() const;
 
 	/** When the file was last saved */
 	UPROPERTY()

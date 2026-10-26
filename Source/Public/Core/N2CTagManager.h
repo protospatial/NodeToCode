@@ -3,11 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/N2CGraphStateTypes.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "N2CTagManager.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBlueprintTagAdded, const FN2CTaggedBlueprintGraph&);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnBlueprintTagRemoved, const FGuid& /*GraphGuid*/, const FString& /*Tag*/);
+/** A tag was removed from a graph: the key names the Blueprint too, because a duplicated Blueprint's graphs share GUIDs */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnBlueprintTagRemoved, const FN2CGraphKey& /*Graph*/, const FString& /*Tag*/);
 /** Many tags may have changed at once (Clear All, a bulk removal, a migration or a reload): re-read all tags */
 DECLARE_MULTICAST_DELEGATE(FOnBlueprintTagsReloaded);
 
@@ -49,13 +51,14 @@ public:
 	bool AddTag(const FN2CTaggedBlueprintGraph& TaggedGraph);
 
 	/**
-	 * Remove a specific tag from a graph
-	 * @param GraphGuid The GUID of the graph
+	 * Remove a specific tag from a graph. Every GraphGuid parameter here is an FN2CGraphKey: pass the Blueprint too
+	 * (FN2CGraphKey(Blueprint, Guid)); a bare GUID finds the graph only while no other Blueprint has one with that GUID.
+	 * @param GraphGuid The graph
 	 * @param Tag The tag name to remove
 	 * @param Category The tag category
 	 * @return True if the tag was removed
 	 */
-	bool RemoveTag(const FGuid& GraphGuid, const FString& Tag, const FString& Category);
+	bool RemoveTag(const FN2CGraphKey& GraphGuid, const FString& Tag, const FString& Category);
 
 	/**
 	 * Remove tag(s) from a graph by tag name only (removes all matching tags regardless of category)
@@ -64,21 +67,21 @@ public:
 	 * @param OutRemovedTag If successful, contains the removed tag info (first one if multiple)
 	 * @return Number of tags removed (0 if none found)
 	 */
-	int32 RemoveTagByName(const FGuid& GraphGuid, const FString& Tag, FN2CTaggedBlueprintGraph& OutRemovedTag);
+	int32 RemoveTagByName(const FN2CGraphKey& GraphGuid, const FString& Tag, FN2CTaggedBlueprintGraph& OutRemovedTag);
 
 	/**
 	 * Remove all tags from a graph
 	 * @param GraphGuid The GUID of the graph
 	 * @return Number of tags removed
 	 */
-	int32 RemoveAllTagsFromGraph(FGuid GraphGuid);
+	int32 RemoveAllTagsFromGraph(const FN2CGraphKey& GraphGuid);
 
 	/**
 	 * Get all tags for a specific graph
 	 * @param GraphGuid The GUID of the graph
 	 * @return Array of tags for the graph
 	 */
-	TArray<FN2CTaggedBlueprintGraph> GetTagsForGraph(const FGuid& GraphGuid) const;
+	TArray<FN2CTaggedBlueprintGraph> GetTagsForGraph(const FN2CGraphKey& GraphGuid) const;
 
 	/**
 	 * Get all graphs with a specific tag
@@ -114,7 +117,7 @@ public:
 	 * @param Category The tag category
 	 * @return True if the graph has the tag
 	 */
-	bool GraphHasTag(const FGuid& GraphGuid, const FString& Tag, const FString& Category) const;
+	bool GraphHasTag(const FN2CGraphKey& GraphGuid, const FString& Tag, const FString& Category) const;
 
 	/** Get all tags in the system */
 	const TArray<FN2CTaggedBlueprintGraph>& GetAllTags() const;

@@ -110,7 +110,7 @@ bool FN2CGraphStatePersistenceTest::RunTest(const FString& Parameters)
 		int32 Reloads = 0;
 		int32 PerTagEvents = 0;
 		Manager->OnGraphStatesReloaded.AddLambda([&Reloads]() { ++Reloads; });
-		Manager->OnGraphTagRemoved.AddLambda([&PerTagEvents](const FGuid&, const FString&) { ++PerTagEvents; });
+		Manager->OnGraphTagRemoved.AddLambda([&PerTagEvents](const FN2CGraphKey&, const FString&) { ++PerTagEvents; });
 
 		const int32 SavesBefore = Manager->GetSaveCount();
 		const int32 Removed = Manager->ClearAllTags();
