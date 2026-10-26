@@ -19,6 +19,12 @@
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
+#include "Kismet2/EnumEditorUtils.h"
+#include "MCP/Tools/Implementations/ContentBrowser/N2CMcpReadContentBrowserPathTool.h"
+#include "MCP/Tools/Implementations/ContentBrowser/N2CMcpSearchContentBrowserTool.h"
+#include "Sound/SoundCue.h"
+#include "Subsystems/EditorAssetSubsystem.h"
+#include "UObject/Package.h"
 
 /**
  * The content browser tools that move things (card 0163): move-asset and rename-asset with package paths and object
@@ -28,6 +34,8 @@
  * policy (/Game and project plugins only, card 0182) is "the write path policy" here. Cases that fail until their E12
  * card lands are KnownDefectIt (N2C_RUN_KNOWN_DEFECTS=1 runs them); folder moves are card 0281's. Review ids: imp-mcp-tools-contentbrowser-fs-1,
  * -9, mcp-tools-contentbrowser-fs-3, -5, -6, -7, -8, -9, -10, -12, -13, -21, -23, -28, mcp-tools-bp-structure-30.
+ * "listing and search" is card 0285's: search-content-browser and read-content-browser-path (fs-14, -15, -22, -26, -29,
+ * imp-mcp-tools-contentbrowser-fs-5).
  */
 namespace N2CContentToolsSpec
 {
@@ -206,6 +214,94 @@ BEGIN_DEFINE_SPEC(FN2CContentToolsSpec, "NodeToCode.MCP.Content", N2C_TEST_FLAGS
 			}
 		}
 		TestEqual(TEXT("the tips say whether the source was removed"), TipText.Contains(TEXT(" was removed")), Json.GetBoolField(TEXT("sourceRemoved")));
+	}
+
+	/** A saved Blueprint Name in InFolder with the given parent class, made by create-blueprint-class; its object path, or empty */
+	FString MakeBlueprintOf(const FString& Name, const FString& InFolder, const FString& ParentClassPath)
+	{
+		TSharedPtr<FJsonObject> Arguments = Args({ { TEXT("blueprintName"), Name }, { TEXT("parentClassPath"), ParentClassPath },
+			{ TEXT("assetPath"), InFolder } });
+		Arguments->SetBoolField(TEXT("addPrefix"), false);
+		Arguments->SetBoolField(TEXT("openInEditor"), false);
+		const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("create-blueprint-class"), Arguments);
+		const FString ObjectPath = InFolder / Name + TEXT(".") + Name;
+		if (!TestTrue(TEXT("test asset ") + ObjectPath + TEXT(" created (") + N2CTest::ResultText(Result).Left(200) + TEXT(")"),
+			!Result.bIsError && BlueprintAtPath(ObjectPath) != nullptr))
+		{
+			return FString();
+		}
+		return ObjectPath;
+	}
+
+	/** Saves Asset, a new object in its own package under the scratch folder, and tells the asset registry */
+	bool SaveNewAsset(UObject* Asset)
+	{
+		if (!TestNotNull(TEXT("new asset"), Asset))
+		{
+			return false;
+		}
+		FAssetRegistryModule::AssetCreated(Asset);
+		Asset->MarkPackageDirty();
+		UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
+		return TestTrue(TEXT("saved ") + Asset->GetPathName(), AssetSubsystem && AssetSubsystem->SaveLoadedAsset(Asset, /*bOnlyIfIsDirty*/ false));
+	}
+
+	/** A saved Sound Cue (a USoundBase subclass; USoundBase itself is abstract) at PackageName */
+	bool MakeSoundCue(const FString& PackageName)
+	{
+		UPackage* Package = CreatePackage(*PackageName);
+		return SaveNewAsset(NewObject<USoundCue>(Package, FName(*FPackageName::GetShortName(PackageName)), RF_Public | RF_Standalone | RF_Transactional));
+	}
+
+	/** A saved user-defined enum (class UserDefinedEnum, which starts with a U) at PackageName */
+	bool MakeUserEnum(const FString& PackageName)
+	{
+		UPackage* Package = CreatePackage(*PackageName);
+		return SaveNewAsset(FEnumEditorUtils::CreateUserDefinedEnum(Package, FName(*FPackageName::GetShortName(PackageName)), RF_Public | RF_Standalone | RF_Transactional));
+	}
+
+	/** search-content-browser with these arguments; its JSON, or null when it failed */
+	TSharedPtr<FJsonObject> Search(const FString& What, const TSharedPtr<FJsonObject>& Arguments)
+	{
+		return ExpectOk(TEXT("search ") + What, TEXT("search-content-browser"), Arguments);
+	}
+
+	/** The search result for the asset at PackageName, or null */
+	static TSharedPtr<FJsonObject> FoundAsset(const TSharedPtr<FJsonObject>& Json, const FString& PackageName)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Assets = nullptr;
+		if (Json.IsValid() && Json->TryGetArrayField(TEXT("assets"), Assets))
+		{
+			for (const TSharedPtr<FJsonValue>& Asset : *Assets)
+			{
+				const TSharedPtr<FJsonObject> Object = Asset->AsObject();
+				if (Object.IsValid() && Object->GetStringField(TEXT("path")) == PackageName)
+				{
+					return Object;
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	/** read-content-browser-path's items, as "<name>/" for a folder and "<name>" for an asset, in the order returned */
+	static TArray<FString> ListedNames(const TSharedPtr<FJsonObject>& Json)
+	{
+		TArray<FString> Names;
+		const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
+		if (Json.IsValid() && Json->TryGetArrayField(TEXT("items"), Items))
+		{
+			for (const TSharedPtr<FJsonValue>& Item : *Items)
+			{
+				const TSharedPtr<FJsonObject> Object = Item->AsObject();
+				bool bFolder = false;
+				if (Object.IsValid() && Object->TryGetBoolField(TEXT("isFolder"), bFolder))
+				{
+					Names.Add(Object->GetStringField(TEXT("name")) + (bFolder ? TEXT("/") : TEXT("")));
+				}
+			}
+		}
+		return Names;
 	}
 
 	/** Writes and mounts the test plugin; false (and an error) when the engine refuses */
@@ -924,6 +1020,205 @@ void FN2CContentToolsSpec::Define()
 			TestNotNull(TEXT("inner asset in place"), BlueprintAtPath(Inner));
 			TestFalse(TEXT("no Nest/Nest folder"), N2CTest::ContentFolderExists(Folder / TEXT("Nest/Nest")));
 			TestFalse(TEXT("no Nest/Inner/Nest folder"), N2CTest::ContentFolderExists(Folder / TEXT("Nest/Inner/Nest")));
+		});
+	});
+
+	// Card 0285: search-content-browser and read-content-browser-path report what is there
+	Describe(TEXT("listing and search"), [this]()
+	{
+		// mcp-tools-contentbrowser-fs-15: the class filter was exact, so the abstract USoundBase matched nothing and
+		// Blueprint missed Widget Blueprints; an unknown type applied no filter at all
+		It(TEXT("search-content-browser's Sound and Blueprint types find their subclasses, in any case, and an unknown type is an error"), [this]()
+		{
+			const FString Cue = Folder / TEXT("SC_N2CSearch0285");
+			const FString Widget = MakeBlueprintOf(TEXT("WBP_N2CSearch0285"), Folder, TEXT("/Script/UMG.UserWidget"));
+			const FString Actor = MakeBlueprintOf(TEXT("BP_N2CSearch0285"), Folder, TEXT("/Script/Engine.Actor"));
+			if (!MakeSoundCue(Cue) || Widget.IsEmpty() || Actor.IsEmpty())
+			{
+				return;
+			}
+			const FString WidgetPackage = FPackageName::ObjectPathToPackageName(Widget);
+			const FString ActorPackage = FPackageName::ObjectPathToPackageName(Actor);
+			for (const TCHAR* Type : { TEXT("Sound"), TEXT("sound") })
+			{
+				const TSharedPtr<FJsonObject> Json = Search(Type, Args({ { TEXT("query"), TEXT("N2CSearch0285") }, { TEXT("assetType"), Type } }));
+				const TSharedPtr<FJsonObject> Found = FoundAsset(Json, Cue);
+				if (TestNotNull(FString(Type) + TEXT(": the Sound Cue is found"), Found.Get()))
+				{
+					TestEqual(TEXT("its type"), Found->GetStringField(TEXT("type")), FString(TEXT("Sound")));
+					TestEqual(TEXT("searchInfo.assetType in its listed spelling"), Json->GetObjectField(TEXT("searchInfo"))->GetStringField(TEXT("assetType")), FString(TEXT("Sound")));
+				}
+				TestNull(FString(Type) + TEXT(": no Blueprint"), FoundAsset(Json, ActorPackage).Get());
+			}
+			const TSharedPtr<FJsonObject> Blueprints = Search(TEXT("Blueprint"), Args({ { TEXT("query"), TEXT("N2CSearch0285") }, { TEXT("assetType"), TEXT("blueprint") } }));
+			const TSharedPtr<FJsonObject> FoundWidget = FoundAsset(Blueprints, WidgetPackage);
+			if (TestNotNull(TEXT("Blueprint finds the Widget Blueprint"), FoundWidget.Get()))
+			{
+				TestEqual(TEXT("the Widget Blueprint's type is the filter that finds it"), FoundWidget->GetStringField(TEXT("type")), FString(TEXT("Blueprint")));
+				TestEqual(TEXT("its class"), FoundWidget->GetStringField(TEXT("class")), FString(TEXT("/Script/UMGEditor.WidgetBlueprint")));
+				TestTrue(TEXT("its Blueprint metadata"), FoundWidget->GetObjectField(TEXT("metadata"))->HasField(TEXT("parentClass")));
+			}
+			TestNotNull(TEXT("Blueprint finds the Actor Blueprint"), FoundAsset(Blueprints, ActorPackage).Get());
+			TestNull(TEXT("Blueprint leaves the Sound Cue out"), FoundAsset(Blueprints, Cue).Get());
+
+			const FMcpToolCallResult Unknown = Run(TEXT("search-content-browser"), Args({ { TEXT("assetType"), TEXT("Sounds") } }));
+			TestTrue(TEXT("an unknown assetType is an error"), Unknown.bIsError);
+			TestTrue(TEXT("that names the valid types (") + N2CTest::ResultText(Unknown).Left(200) + TEXT(")"),
+				N2CTest::ResultText(Unknown).Contains(TEXT("Sound")) && N2CTest::ResultText(Unknown).Contains(TEXT("DataTable")));
+		});
+
+		// mcp-tools-contentbrowser-fs-26: the type of an asset outside the listed types lost a leading U
+		It(TEXT("search-content-browser reports a UserDefinedEnum's type as UserDefinedEnum"), [this]()
+		{
+			const FString Enum = Folder / TEXT("E_N2CSearch0285");
+			if (!MakeUserEnum(Enum))
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Found = FoundAsset(Search(TEXT("the enum"), Args({ { TEXT("query"), TEXT("E_N2CSearch0285") } })), Enum);
+			if (TestNotNull(TEXT("the enum is found"), Found.Get()))
+			{
+				TestEqual(TEXT("its type"), Found->GetStringField(TEXT("type")), FString(TEXT("UserDefinedEnum")));
+			}
+		});
+
+		// imp-mcp-tools-contentbrowser-fs-5: the best maxResults, the real total and whether some were left out
+		It(TEXT("search-content-browser returns the best matches first, with the real total and a truncated flag"), [this]()
+		{
+			for (const TCHAR* Name : { TEXT("BP_N2CRank0285_B"), TEXT("BP_N2CRank0285"), TEXT("BP_N2CRank0285_A") })
+			{
+				if (MakeBlueprintOf(Name, Folder, TEXT("/Script/Engine.Actor")).IsEmpty())
+				{
+					return;
+				}
+			}
+			TSharedPtr<FJsonObject> Arguments = Args({ { TEXT("query"), TEXT("BP_N2CRank0285") } });
+			Arguments->SetNumberField(TEXT("maxResults"), 2);
+			const TSharedPtr<FJsonObject> Json = Search(TEXT("two of three"), Arguments);
+			if (!Json.IsValid())
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Info = Json->GetObjectField(TEXT("searchInfo"));
+			TestEqual(TEXT("totalFound counts every match"), static_cast<int32>(Info->GetNumberField(TEXT("totalFound"))), 3);
+			TestEqual(TEXT("resultsReturned"), static_cast<int32>(Info->GetNumberField(TEXT("resultsReturned"))), 2);
+			TestTrue(TEXT("truncated"), Info->GetBoolField(TEXT("truncated")));
+			const TArray<TSharedPtr<FJsonValue>>& Assets = Json->GetArrayField(TEXT("assets"));
+			if (TestEqual(TEXT("two assets"), Assets.Num(), 2))
+			{
+				TestEqual(TEXT("the exact name first"), Assets[0]->AsObject()->GetStringField(TEXT("name")), FString(TEXT("BP_N2CRank0285")));
+				TestEqual(TEXT("then the first prefix match by path"), Assets[1]->AsObject()->GetStringField(TEXT("name")), FString(TEXT("BP_N2CRank0285_A")));
+			}
+			Arguments->SetNumberField(TEXT("maxResults"), 10);
+			const TSharedPtr<FJsonObject> All = Search(TEXT("all three"), Arguments);
+			if (All.IsValid())
+			{
+				TestFalse(TEXT("not truncated when every match is returned"), All->GetObjectField(TEXT("searchInfo"))->GetBoolField(TEXT("truncated")));
+			}
+		});
+
+		// mcp-tools-contentbrowser-fs-22: filter_type was compared case-sensitively when choosing to list folders and
+		// case-insensitively when filtering, so "folder" listed nothing and "all" dropped the folders
+		It(TEXT("read-content-browser-path lists folders for 'folder' and 'all' in any case, in camelCase, and refuses an unknown filter_type"), [this]()
+		{
+			const FString Asset = MakeAsset(TEXT("BP_N2CList0285"), Folder);
+			if (Asset.IsEmpty() || !MakeFolder(Folder / TEXT("Empty0285")) || MakeAsset(TEXT("BP_N2CListSub0285"), Folder / TEXT("Full0285")).IsEmpty())
+			{
+				return;
+			}
+			auto Read = [this](const FString& FilterType)
+			{
+				return ExpectOk(TEXT("read with filter_type ") + FilterType, TEXT("read-content-browser-path"),
+					Args({ { TEXT("path"), Folder }, { TEXT("filter_type"), FilterType } }));
+			};
+			for (const TCHAR* FilterType : { TEXT("Folder"), TEXT("folder"), TEXT("FOLDER") })
+			{
+				TestEqual(FString(FilterType) + TEXT(": the folders, empty ones too"), FString::Join(ListedNames(Read(FilterType)), TEXT(", ")),
+					FString(TEXT("Empty0285/, Full0285/")));
+			}
+			for (const TCHAR* FilterType : { TEXT("All"), TEXT("all") })
+			{
+				const TSharedPtr<FJsonObject> Json = Read(FilterType);
+				TestEqual(FString(FilterType) + TEXT(": folders, then assets"), FString::Join(ListedNames(Json), TEXT(", ")),
+					FString(TEXT("Empty0285/, Full0285/, BP_N2CList0285")));
+				if (Json.IsValid())
+				{
+					TestEqual(TEXT("totalCount"), static_cast<int32>(Json->GetNumberField(TEXT("totalCount"))), 3);
+					TestTrue(TEXT("pageSize and hasMore"), Json->HasField(TEXT("pageSize")) && Json->HasField(TEXT("hasMore")));
+					TestFalse(TEXT("no snake_case total_count"), Json->HasField(TEXT("total_count")));
+				}
+			}
+			TestEqual(TEXT("blueprint: the asset only"), FString::Join(ListedNames(Read(TEXT("blueprint"))), TEXT(", ")), FString(TEXT("BP_N2CList0285")));
+			const FMcpToolCallResult Unknown = Run(TEXT("read-content-browser-path"), Args({ { TEXT("path"), Folder }, { TEXT("filter_type"), TEXT("Sound") } }));
+			TestTrue(TEXT("an unknown filter_type is an error"), Unknown.bIsError);
+			TestTrue(TEXT("that names the valid ones (") + N2CTest::ResultText(Unknown).Left(200) + TEXT(")"), N2CTest::ResultText(Unknown).Contains(TEXT("StaticMesh")));
+		});
+
+		// mcp-tools-contentbrowser-fs-29: folders came from the disk, so World Partition's per-actor folders were listed
+		It(TEXT("read-content-browser-path lists the asset registry's folders and leaves __ExternalActors__ out"), [this]()
+		{
+			UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
+			if (!TestTrue(TEXT("__ExternalActors__ folder made"), AssetSubsystem && AssetSubsystem->MakeDirectory(Folder / TEXT("__ExternalActors__")))
+				|| !MakeFolder(Folder / TEXT("Shown0285")))
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Json = ExpectOk(TEXT("read"), TEXT("read-content-browser-path"), Args({ { TEXT("path"), Folder.ToLower() } }));
+			TestEqual(TEXT("the visible folder only"), FString::Join(ListedNames(Json), TEXT(", ")), FString(TEXT("Shown0285/")));
+			const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
+			if (Json.IsValid() && Json->TryGetArrayField(TEXT("items"), Items) && Items->Num() == 1)
+			{
+				TestEqual(TEXT("the folder's path as the registry spells it"), (*Items)[0]->AsObject()->GetStringField(TEXT("path")), Folder / TEXT("Shown0285"));
+			}
+		});
+
+		It(TEXT("read-content-browser-path does not sync the content browser unless asked"), [this]()
+		{
+			const FMcpToolDefinition Definition = FN2CMcpReadContentBrowserPathTool().GetDefinition();
+			const TSharedPtr<FJsonObject>* Properties = nullptr;
+			const TSharedPtr<FJsonObject>* SyncBrowser = nullptr;
+			if (TestTrue(TEXT("schema properties"), Definition.InputSchema.IsValid() && Definition.InputSchema->TryGetObjectField(TEXT("properties"), Properties))
+				&& TestTrue(TEXT("sync_browser"), (*Properties)->TryGetObjectField(TEXT("sync_browser"), SyncBrowser)))
+			{
+				TestFalse(TEXT("sync_browser defaults to false"), (*SyncBrowser)->GetBoolField(TEXT("default")));
+			}
+		});
+
+		Describe(TEXT("in a plugin's content"), [this]()
+		{
+			BeforeEach([this]()
+			{
+				UnmountPlugin();
+				MountPlugin();
+			});
+
+			AfterEach([this]()
+			{
+				UnmountPlugin();
+			});
+
+			// mcp-tools-contentbrowser-fs-14: only /Game (and /Engine) were searched, whatever includePluginContent said
+			It(TEXT("search-content-browser finds a project plugin's asset unless includePluginContent is false"), [this]()
+			{
+				if (!bPluginMounted)
+				{
+					return;
+				}
+				const FString Mount = N2CContentToolsSpec::PluginMount;
+				TestTrue(TEXT("the plugin's mount is a search root"), FN2CMcpSearchContentBrowserTool::GetSearchRoots(false, true).Contains(Mount));
+				TestFalse(TEXT("but not without plugin content"), FN2CMcpSearchContentBrowserTool::GetSearchRoots(true, false).Contains(Mount));
+				if (MakeBlueprintOf(TEXT("BP_N2CPluginSearch0285"), Mount / TEXT("Props"), TEXT("/Script/Engine.Actor")).IsEmpty())
+				{
+					return;
+				}
+				const FString Package = Mount / TEXT("Props/BP_N2CPluginSearch0285");
+				const TSharedPtr<FJsonObject> ByDefault = Search(TEXT("by default"), Args({ { TEXT("query"), TEXT("BP_N2CPluginSearch0285") }, { TEXT("assetType"), TEXT("Blueprint") } }));
+				TestNotNull(TEXT("found by default"), FoundAsset(ByDefault, Package).Get());
+				TSharedPtr<FJsonObject> Without = Args({ { TEXT("query"), TEXT("BP_N2CPluginSearch0285") } });
+				Without->SetBoolField(TEXT("includePluginContent"), false);
+				const TSharedPtr<FJsonObject> Json = Search(TEXT("without plugin content"), Without);
+				TestNull(TEXT("not found with includePluginContent false"), FoundAsset(Json, Package).Get());
+			});
 		});
 	});
 }

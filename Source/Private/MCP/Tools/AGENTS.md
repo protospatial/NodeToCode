@@ -273,7 +273,7 @@ export or translation work goes in the unfrozen toolsets.
 | `BlueprintCompileTools` | 0290 (save-blueprint without modal dialogs), 0274 (targets) |
 | `BlueprintClassTools` | 0288 (search-blueprint-classes duplicates and counts) |
 | `BlueprintComponentTools` | 0287 (list-components-in-actor duplicates and type filter), 0274 (targets) |
-| `ContentBrowserTools` | 0182 (writes limited to /Game and project plugins), 0281 (folder moves), 0284 (asset path handling), 0285 (search and read results), 0286 (open-blueprint-asset on unknown graphs) |
+| `ContentBrowserTools` | 0286 (open-blueprint-asset on unknown graphs); 0182, 0281, 0284 and 0285 are done |
 | Epic-overlap tools in `BlueprintDiscoveryTools` | 0289 (list-blueprint-functions and list-overridable-functions) |
 | `UN2CStructUtilsLibrary` | 0282 (unnamed fields, deleted fields) |
 

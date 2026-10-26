@@ -167,7 +167,12 @@ populated folders, and move-folder into itself. The folder cases (card 0281) che
 subfolders move, the source folder is removed, a folder moved into itself or its subfolder is refused, and the result's
 `movedAssets`, `failedAssets`, `redirectors` and `sourceRemoved` match the asset registry. "asset names and paths" (card 0284) checks that names are validated as
 given (`BP_New.Final` refused), failed copies leave no folder, case-only renames are refused, and results are read
-back from the asset registry. The test plugin is `<Project>/Plugins/N2CTestContent` (content only,
+back from the asset registry. "listing and search" (card 0285) checks that search-content-browser's `Sound` and
+`Blueprint` types find a Sound Cue and a Widget Blueprint (any case; an unknown type is an error), a project plugin's
+asset is found unless `includePluginContent` is false, a `UserDefinedEnum` keeps its type name, and `maxResults`
+returns the best matches with the real `totalFound` and `truncated`; and that read-content-browser-path lists
+folders for `folder` and `all` in any case (empty ones too, `__ExternalActors__` left out), answers in camelCase,
+refuses an unknown `filter_type`, and defaults `sync_browser` to false. The test plugin is `<Project>/Plugins/N2CTestContent` (content only,
 explicitly loaded), written, mounted at `/N2CTestContent` and removed again by the case. Its assets are saved under
 `/Game/__N2CTest`.
 

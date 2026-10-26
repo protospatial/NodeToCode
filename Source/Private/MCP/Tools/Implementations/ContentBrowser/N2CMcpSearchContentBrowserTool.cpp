@@ -3,14 +3,12 @@
 #include "N2CMcpSearchContentBrowserTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
+#include "MCP/Utils/N2CMcpContentBrowserUtils.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/AssetData.h"
 #include "Engine/Blueprint.h"
-#include "Materials/Material.h"
-#include "Materials/MaterialInstance.h"
-#include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInterface.h"
 #include "Engine/Texture.h"
-#include "Engine/Texture2D.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
 #include "Sound/SoundBase.h"
@@ -18,27 +16,99 @@
 #include "Particles/ParticleSystem.h"
 #include "Engine/DataAsset.h"
 #include "Engine/DataTable.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/PackageName.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Utils/N2CLogger.h"
 
 REGISTER_MCP_TOOL(FN2CMcpSearchContentBrowserTool)
 
+namespace N2CSearchContentBrowser
+{
+	/** One assetType value and the class whose assets, subclasses included, it matches */
+	struct FAssetTypeClass
+	{
+		const TCHAR* Name;
+		UClass* (*Class)();
+	};
+
+	/**
+	 * assetType's values (card 0285). Each is matched with bRecursiveClasses, so Sound finds USoundWave and USoundCue
+	 * (USoundBase is abstract), Blueprint finds Widget and Animation Blueprints, DataAsset finds every data asset class.
+	 */
+	const FAssetTypeClass AssetTypes[] = {
+		{ TEXT("Blueprint"), [] { return UBlueprint::StaticClass(); } },
+		{ TEXT("Material"), [] { return UMaterialInterface::StaticClass(); } },
+		{ TEXT("Texture"), [] { return UTexture::StaticClass(); } },
+		{ TEXT("StaticMesh"), [] { return UStaticMesh::StaticClass(); } },
+		{ TEXT("SkeletalMesh"), [] { return USkeletalMesh::StaticClass(); } },
+		{ TEXT("Sound"), [] { return USoundBase::StaticClass(); } },
+		{ TEXT("Animation"), [] { return UAnimSequence::StaticClass(); } },
+		{ TEXT("ParticleSystem"), [] { return UParticleSystem::StaticClass(); } },
+		{ TEXT("DataAsset"), [] { return UDataAsset::StaticClass(); } },
+		{ TEXT("DataTable"), [] { return UDataTable::StaticClass(); } },
+	};
+
+	/** "All, Blueprint, Material, ...": every value assetType accepts */
+	FString AssetTypeList()
+	{
+		FString List = TEXT("All");
+		for (const FAssetTypeClass& Type : AssetTypes)
+		{
+			List += FString(TEXT(", ")) + Type.Name;
+		}
+		return List;
+	}
+
+	/** The class of the asset, when it is loaded (native classes always are) */
+	UClass* ClassOf(const FAssetData& AssetData)
+	{
+		return FindObject<UClass>(AssetData.AssetClassPath);
+	}
+
+	/** A search result: its relevance and the asset */
+	struct FScoredAsset
+	{
+		float Score = 0.0f;
+		FAssetData Asset;
+	};
+
+	/** A ranks before B: higher score, then package name and asset name, so equal scores come back in a stable order */
+	bool RanksBefore(float ScoreA, const FAssetData& A, float ScoreB, const FAssetData& B)
+	{
+		if (ScoreA != ScoreB)
+		{
+			return ScoreA > ScoreB;
+		}
+		if (A.PackageName != B.PackageName)
+		{
+			return A.PackageName.LexicalLess(B.PackageName);
+		}
+		return A.AssetName.LexicalLess(B.AssetName);
+	}
+
+	bool RanksBefore(const FScoredAsset& A, const FScoredAsset& B)
+	{
+		return RanksBefore(A.Score, A.Asset, B.Score, B.Asset);
+	}
+}
+
 FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("search-content-browser"),
-		TEXT("Search for assets under /Game (and /Engine when includeEngineContent is true) by name or type. ")
-		TEXT("Plugin content mounted at /<PluginName> is not searched; list it with read-content-browser-path."),
+		TEXT("Search for assets by name or type under /Game, the content of the project's plugins (includePluginContent), ")
+		TEXT("and /Engine and engine plugins' content when includeEngineContent is true. Returns the best matches first."),
 		N2CMcpToolsets::ContentBrowser
 	);
 
 	// Build input schema
 	TSharedPtr<FJsonObject> Schema = MakeShareable(new FJsonObject);
 	Schema->SetStringField(TEXT("type"), TEXT("object"));
-	
+
 	TSharedPtr<FJsonObject> Properties = MakeShareable(new FJsonObject);
-	
+
 	// query property (optional)
 	TSharedPtr<FJsonObject> QueryProp = MakeShareable(new FJsonObject);
 	QueryProp->SetStringField(TEXT("type"), TEXT("string"));
@@ -48,7 +118,7 @@ FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 	// assetType property (optional)
 	TSharedPtr<FJsonObject> AssetTypeProp = MakeShareable(new FJsonObject);
 	AssetTypeProp->SetStringField(TEXT("type"), TEXT("string"));
-	AssetTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each matches its exact asset classes only (Blueprint does not include Widget or Animation Blueprints); any other value applies no type filter."));
+	AssetTypeProp->SetStringField(TEXT("description"), TEXT("Filter by asset type (case-insensitive): All, Blueprint, Material, Texture, StaticMesh, SkeletalMesh, Sound, Animation, ParticleSystem, DataAsset, DataTable. Each includes its subclasses (Blueprint includes Widget and Animation Blueprints, Sound includes Sound Waves and Sound Cues); any other value is an error."));
 	AssetTypeProp->SetStringField(TEXT("default"), TEXT("All"));
 	Properties->SetObjectField(TEXT("assetType"), AssetTypeProp);
 
@@ -56,31 +126,31 @@ FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 	TSharedPtr<FJsonObject> IncludeEngineProp = MakeShareable(new FJsonObject);
 	IncludeEngineProp->SetStringField(TEXT("type"), TEXT("boolean"));
 	IncludeEngineProp->SetBoolField(TEXT("default"), false);
-	IncludeEngineProp->SetStringField(TEXT("description"), TEXT("Include assets from Engine content"));
+	IncludeEngineProp->SetStringField(TEXT("description"), TEXT("Also search /Engine, and with includePluginContent the content of engine plugins"));
 	Properties->SetObjectField(TEXT("includeEngineContent"), IncludeEngineProp);
 
 	// includePluginContent property
 	TSharedPtr<FJsonObject> IncludePluginProp = MakeShareable(new FJsonObject);
 	IncludePluginProp->SetStringField(TEXT("type"), TEXT("boolean"));
 	IncludePluginProp->SetBoolField(TEXT("default"), true);
-	IncludePluginProp->SetStringField(TEXT("description"), TEXT("Has no effect at present: the search only covers /Game and, with includeEngineContent, /Engine, so plugin content mounted at /<PluginName> is never returned. Echoed in searchInfo."));
+	IncludePluginProp->SetStringField(TEXT("description"), TEXT("Also search the content of enabled plugins, mounted at /<PluginName>: the project's plugins, and engine plugins too when includeEngineContent is true"));
 	Properties->SetObjectField(TEXT("includePluginContent"), IncludePluginProp);
 
 	// maxResults property
 	TSharedPtr<FJsonObject> MaxResultsProp = MakeShareable(new FJsonObject);
 	MaxResultsProp->SetStringField(TEXT("type"), TEXT("number"));
 	MaxResultsProp->SetNumberField(TEXT("default"), 50);
-	MaxResultsProp->SetStringField(TEXT("description"), TEXT("Maximum number of results to return; values outside 1-200 are clamped"));
+	MaxResultsProp->SetStringField(TEXT("description"), TEXT("Maximum number of results to return; values outside 1-200 are clamped. searchInfo.totalFound counts every match and searchInfo.truncated says whether some were left out"));
 	Properties->SetObjectField(TEXT("maxResults"), MaxResultsProp);
 
 	Schema->SetObjectField(TEXT("properties"), Properties);
-	
+
 	// No required fields - all are optional
 	TArray<TSharedPtr<FJsonValue>> RequiredArray;
 	Schema->SetArrayField(TEXT("required"), RequiredArray);
-	
+
 	Definition.InputSchema = Schema;
-	
+
 	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
 	return Definition;
@@ -94,8 +164,8 @@ FMcpToolCallResult FN2CMcpSearchContentBrowserTool::Execute(const TSharedPtr<FJs
 		FString SearchQuery;
 		Arguments->TryGetStringField(TEXT("query"), SearchQuery);
 
-		FString AssetType = TEXT("All");
-		Arguments->TryGetStringField(TEXT("assetType"), AssetType);
+		FString RequestedAssetType = TEXT("All");
+		Arguments->TryGetStringField(TEXT("assetType"), RequestedAssetType);
 
 		bool bIncludeEngineContent = false;
 		Arguments->TryGetBoolField(TEXT("includeEngineContent"), bIncludeEngineContent);
@@ -110,72 +180,54 @@ FMcpToolCallResult FN2CMcpSearchContentBrowserTool::Execute(const TSharedPtr<FJs
 			MaxResults = FMath::Clamp(static_cast<int32>(MaxResultsDouble), 1, 200);
 		}
 
-		// Search for assets
+		// The type in its listed spelling, or an error naming the valid ones (card 0285: an unknown type used to
+		// apply no filter and return everything)
+		FString AssetType;
+		if (!ResolveAssetType(RequestedAssetType, AssetType))
+		{
+			return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Unknown assetType '%s'; use one of %s"),
+				*RequestedAssetType, *N2CSearchContentBrowser::AssetTypeList()));
+		}
+
+		// Search for assets: the best MaxResults, ranked, and how many matched in all
+		const TArray<FString> SearchRoots = GetSearchRoots(bIncludeEngineContent, bIncludePluginContent);
 		TArray<FAssetData> FoundAssets;
-		if (!SearchAssets(SearchQuery, AssetType, bIncludeEngineContent, bIncludePluginContent, FoundAssets))
+		TArray<float> Scores;
+		int32 TotalFound = 0;
+		if (!SearchAssets(SearchQuery, AssetType, SearchRoots, MaxResults, FoundAssets, Scores, TotalFound))
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to search assets"));
 		}
 
-		// Score and sort results by relevance if we have a search query
-		TArray<TPair<FAssetData, float>> ScoredAssets;
-		if (!SearchQuery.IsEmpty())
-		{
-			for (const FAssetData& Asset : FoundAssets)
-			{
-				float Score = ScoreAssetMatch(Asset, SearchQuery);
-				if (Score > 0.0f)
-				{
-					ScoredAssets.Add(TPair<FAssetData, float>(Asset, Score));
-				}
-			}
-
-			// Sort by score (highest first)
-			ScoredAssets.Sort([](const TPair<FAssetData, float>& A, const TPair<FAssetData, float>& B)
-			{
-				return A.Value > B.Value;
-			});
-		}
-		else
-		{
-			// No search query - include all with score 1.0
-			for (const FAssetData& Asset : FoundAssets)
-			{
-				ScoredAssets.Add(TPair<FAssetData, float>(Asset, 1.0f));
-			}
-		}
-
 		// Build response
 		TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
-		
+
 		// Search metadata
 		TSharedPtr<FJsonObject> SearchInfo = MakeShareable(new FJsonObject);
 		SearchInfo->SetStringField(TEXT("query"), SearchQuery.IsEmpty() ? TEXT("*") : SearchQuery);
 		SearchInfo->SetStringField(TEXT("assetType"), AssetType);
 		SearchInfo->SetBoolField(TEXT("includeEngineContent"), bIncludeEngineContent);
 		SearchInfo->SetBoolField(TEXT("includePluginContent"), bIncludePluginContent);
-		SearchInfo->SetNumberField(TEXT("totalFound"), ScoredAssets.Num());
-		SearchInfo->SetNumberField(TEXT("resultsReturned"), FMath::Min(ScoredAssets.Num(), MaxResults));
+		SearchInfo->SetNumberField(TEXT("totalFound"), TotalFound);
+		SearchInfo->SetNumberField(TEXT("resultsReturned"), FoundAssets.Num());
+		SearchInfo->SetBoolField(TEXT("truncated"), TotalFound > FoundAssets.Num());
 		Result->SetObjectField(TEXT("searchInfo"), SearchInfo);
 
 		// Asset results
 		TArray<TSharedPtr<FJsonValue>> AssetsArray;
-		int32 ResultCount = 0;
-		for (const auto& ScoredAsset : ScoredAssets)
+		for (int32 Index = 0; Index < FoundAssets.Num(); ++Index)
 		{
-			if (ResultCount >= MaxResults)
-			{
-				break;
-			}
-
-			TSharedPtr<FJsonObject> AssetJson = ConvertAssetToJson(ScoredAsset.Key, ScoredAsset.Value);
-			AssetsArray.Add(MakeShareable(new FJsonValueObject(AssetJson)));
-			ResultCount++;
+			AssetsArray.Add(MakeShareable(new FJsonValueObject(ConvertAssetToJson(FoundAssets[Index], Scores[Index]))));
 		}
 		Result->SetArrayField(TEXT("assets"), AssetsArray);
 
 		// Add usage tips
 		TArray<TSharedPtr<FJsonValue>> TipsArray;
+		if (TotalFound > FoundAssets.Num())
+		{
+			TipsArray.Add(MakeShareable(new FJsonValueString(FString::Printf(
+				TEXT("%d of %d matches returned: narrow the query or assetType, or raise maxResults (up to 200)"), FoundAssets.Num(), TotalFound))));
+		}
 		TipsArray.Add(MakeShareable(new FJsonValueString(TEXT("Use 'open-blueprint-asset' to open found Blueprint assets"))));
 		TipsArray.Add(MakeShareable(new FJsonValueString(TEXT("Use 'move-asset' to reorganize found assets"))));
 		TipsArray.Add(MakeShareable(new FJsonValueString(TEXT("Use 'read-content-browser-path' to explore specific folders"))));
@@ -190,158 +242,161 @@ FMcpToolCallResult FN2CMcpSearchContentBrowserTool::Execute(const TSharedPtr<FJs
 	});
 }
 
-bool FN2CMcpSearchContentBrowserTool::SearchAssets(const FString& SearchQuery, const FString& AssetType,
-	bool bIncludeEngineContent, bool bIncludePluginContent, TArray<FAssetData>& OutAssets) const
+bool FN2CMcpSearchContentBrowserTool::ResolveAssetType(const FString& Requested, FString& OutAssetType)
 {
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+	if (Requested.IsEmpty() || Requested.Equals(TEXT("All"), ESearchCase::IgnoreCase))
+	{
+		OutAssetType = TEXT("All");
+		return true;
+	}
+	for (const N2CSearchContentBrowser::FAssetTypeClass& Type : N2CSearchContentBrowser::AssetTypes)
+	{
+		if (Requested.Equals(Type.Name, ESearchCase::IgnoreCase))
+		{
+			OutAssetType = Type.Name;
+			return true;
+		}
+	}
+	return false;
+}
 
-	// Build filter
-	FARFilter Filter;
-	Filter.bRecursivePaths = true;
-
-	// Add paths to search
-	Filter.PackagePaths.Add(TEXT("/Game"));
-	
+TArray<FString> FN2CMcpSearchContentBrowserTool::GetSearchRoots(bool bIncludeEngineContent, bool bIncludePluginContent)
+{
+	TArray<FString> Roots;
+	Roots.Add(TEXT("/Game"));
 	if (bIncludeEngineContent)
 	{
-		Filter.PackagePaths.Add(TEXT("/Engine"));
+		Roots.Add(TEXT("/Engine"));
+	}
+	if (bIncludePluginContent)
+	{
+		// Each enabled plugin with content is mounted at its own root (/<PluginName>), which is not under /Game or
+		// /Engine, so it has to be listed (card 0285). Engine plugins (engine, Fab, enterprise) only with engine
+		// content, as UE 5.8's AssetTools.find_assets does with get_plugin_content_paths.
+		for (const TSharedRef<IPlugin>& Plugin : IPluginManager::Get().GetEnabledPluginsWithContent())
+		{
+			if (Plugin->GetLoadedFrom() != EPluginLoadedFrom::Project && !bIncludeEngineContent)
+			{
+				continue;
+			}
+			FString Mount = Plugin->GetMountedAssetPath();
+			if (Mount.IsEmpty() || !FPackageName::MountPointExists(Mount))
+			{
+				continue;
+			}
+			Mount.RemoveFromEnd(TEXT("/"));
+			Roots.AddUnique(Mount);
+		}
+	}
+	return Roots;
+}
+
+bool FN2CMcpSearchContentBrowserTool::SearchAssets(const FString& SearchQuery, const FString& AssetType, const TArray<FString>& SearchRoots,
+	int32 MaxResults, TArray<FAssetData>& OutAssets, TArray<float>& OutScores, int32& OutTotalFound)
+{
+	using namespace N2CSearchContentBrowser;
+
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+
+	FARFilter Filter;
+	Filter.bRecursivePaths = true;
+	for (const FString& Root : SearchRoots)
+	{
+		Filter.PackagePaths.Add(FName(*Root));
 	}
 
-	// Note: Plugin content is typically under /Game or custom mount points
-	// We'll filter plugin content in post-processing if needed
-
-	// Add class filter if specific type requested
+	// The type's class and every subclass (card 0285: an exact match found nothing for the abstract USoundBase and
+	// UDataAsset, and no Widget or Animation Blueprint for Blueprint)
 	if (AssetType != TEXT("All"))
 	{
-		if (AssetType == TEXT("Blueprint"))
+		for (const FAssetTypeClass& Type : AssetTypes)
 		{
-			Filter.ClassPaths.Add(UBlueprint::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("Material"))
-		{
-			Filter.ClassPaths.Add(UMaterial::StaticClass()->GetClassPathName());
-			Filter.ClassPaths.Add(UMaterialInstance::StaticClass()->GetClassPathName());
-			Filter.ClassPaths.Add(UMaterialInstanceConstant::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("Texture"))
-		{
-			Filter.ClassPaths.Add(UTexture::StaticClass()->GetClassPathName());
-			Filter.ClassPaths.Add(UTexture2D::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("StaticMesh"))
-		{
-			Filter.ClassPaths.Add(UStaticMesh::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("SkeletalMesh"))
-		{
-			Filter.ClassPaths.Add(USkeletalMesh::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("Sound"))
-		{
-			Filter.ClassPaths.Add(USoundBase::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("Animation"))
-		{
-			Filter.ClassPaths.Add(UAnimSequence::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("ParticleSystem"))
-		{
-			Filter.ClassPaths.Add(UParticleSystem::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("DataAsset"))
-		{
-			Filter.ClassPaths.Add(UDataAsset::StaticClass()->GetClassPathName());
-		}
-		else if (AssetType == TEXT("DataTable"))
-		{
-			Filter.ClassPaths.Add(UDataTable::StaticClass()->GetClassPathName());
-		}
-	}
-
-	// Get assets
-	TArray<FAssetData> AllAssets;
-	AssetRegistry.GetAssets(Filter, AllAssets);
-
-	// Post-process to filter by path inclusion rules and search query
-	OutAssets.Reset();
-	for (const FAssetData& Asset : AllAssets)
-	{
-		FString PackagePath = Asset.PackagePath.ToString();
-		
-		// Check path inclusion
-		if (!ShouldIncludePath(PackagePath, bIncludeEngineContent, bIncludePluginContent))
-		{
-			continue;
-		}
-
-		// If we have a search query, check if asset name matches
-		if (!SearchQuery.IsEmpty())
-		{
-			FString AssetName = Asset.AssetName.ToString();
-			if (!AssetName.Contains(SearchQuery, ESearchCase::IgnoreCase))
+			if (AssetType == Type.Name)
 			{
-				// Also check the full path
-				FString FullPath = Asset.PackageName.ToString();
-				if (!FullPath.Contains(SearchQuery, ESearchCase::IgnoreCase))
-				{
-					continue;
-				}
+				Filter.ClassPaths.Add(Type.Class()->GetClassPathName());
 			}
 		}
-
-		OutAssets.Add(Asset);
+		Filter.bRecursiveClasses = true;
 	}
 
+	// Score as the registry enumerates, keeping only the best MaxResults in a heap whose top is the worst kept
+	// (imp-mcp-tools-contentbrowser-fs-5): nothing is copied or sorted for the assets that do not make the cut
+	auto WorseFirst = [](const FScoredAsset& A, const FScoredAsset& B) { return RanksBefore(B, A); };
+	TArray<FScoredAsset> Best;
+	Best.Reserve(MaxResults + 1);
+	OutTotalFound = 0;
+	const bool bValidFilter = AssetRegistry.EnumerateAssets(Filter, [&](const FAssetData& Asset)
+	{
+		// Per-actor packages of World Partition levels, which the content browser hides
+		if (FN2CMcpContentBrowserUtils::IsExternalPackagePath(Asset.PackagePath.ToString()))
+		{
+			return true;
+		}
+		const float Score = ScoreAssetMatch(Asset, SearchQuery);
+		if (Score <= 0.0f)
+		{
+			return true;
+		}
+		++OutTotalFound;
+		// The asset is copied only when it is kept
+		if (Best.Num() < MaxResults)
+		{
+			Best.HeapPush(FScoredAsset{ Score, Asset }, WorseFirst);
+		}
+		else if (RanksBefore(Score, Asset, Best.HeapTop().Score, Best.HeapTop().Asset))
+		{
+			Best.HeapPopDiscard(WorseFirst, EAllowShrinking::No);
+			Best.HeapPush(FScoredAsset{ Score, Asset }, WorseFirst);
+		}
+		return true;
+	});
+	if (!bValidFilter)
+	{
+		return false;
+	}
+
+	Best.Sort([](const FScoredAsset& A, const FScoredAsset& B) { return RanksBefore(A, B); });
+	OutAssets.Reset(Best.Num());
+	OutScores.Reset(Best.Num());
+	for (FScoredAsset& Entry : Best)
+	{
+		OutScores.Add(Entry.Score);
+		OutAssets.Add(MoveTemp(Entry.Asset));
+	}
 	return true;
 }
 
-void FN2CMcpSearchContentBrowserTool::FilterAssetsByType(const TArray<FAssetData>& Assets, const FString& AssetType,
-	TArray<FAssetData>& OutFilteredAssets) const
-{
-	// This is now handled in SearchAssets with the FARFilter
-	OutFilteredAssets = Assets;
-}
-
-float FN2CMcpSearchContentBrowserTool::ScoreAssetMatch(const FAssetData& AssetData, const FString& SearchQuery) const
+float FN2CMcpSearchContentBrowserTool::ScoreAssetMatch(const FAssetData& AssetData, const FString& SearchQuery)
 {
 	if (SearchQuery.IsEmpty())
 	{
 		return 1.0f;
 	}
 
-	FString AssetName = AssetData.AssetName.ToString();
-	FString PackageName = AssetData.PackageName.ToString();
-	FString SearchLower = SearchQuery.ToLower();
-	FString AssetNameLower = AssetName.ToLower();
+	const FString AssetName = AssetData.AssetName.ToString();
 
-	float Score = 0.0f;
-
-	// Exact match
-	if (AssetNameLower == SearchLower)
+	// Exact match, starts with, contains (FString compares here ignore case)
+	if (AssetName.Equals(SearchQuery, ESearchCase::IgnoreCase))
 	{
-		Score = 1.0f;
+		return 1.0f;
 	}
-	// Starts with
-	else if (AssetNameLower.StartsWith(SearchLower))
+	if (AssetName.StartsWith(SearchQuery, ESearchCase::IgnoreCase))
 	{
-		Score = 0.8f;
+		return 0.8f;
 	}
-	// Contains
-	else if (AssetNameLower.Contains(SearchLower))
+	if (AssetName.Contains(SearchQuery, ESearchCase::IgnoreCase))
 	{
-		Score = 0.6f;
+		return 0.6f;
 	}
-	// Check full path
-	else if (PackageName.ToLower().Contains(SearchLower))
+	// The full package path
+	if (AssetData.PackageName.ToString().Contains(SearchQuery, ESearchCase::IgnoreCase))
 	{
-		Score = 0.4f;
+		return 0.4f;
 	}
-
-	return Score;
+	return 0.0f;
 }
 
-TSharedPtr<FJsonObject> FN2CMcpSearchContentBrowserTool::ConvertAssetToJson(const FAssetData& AssetData, float Score) const
+TSharedPtr<FJsonObject> FN2CMcpSearchContentBrowserTool::ConvertAssetToJson(const FAssetData& AssetData, float Score)
 {
 	TSharedPtr<FJsonObject> AssetJson = MakeShareable(new FJsonObject);
 
@@ -354,17 +409,16 @@ TSharedPtr<FJsonObject> FN2CMcpSearchContentBrowserTool::ConvertAssetToJson(cons
 
 	// Additional metadata
 	TSharedPtr<FJsonObject> MetadataJson = MakeShareable(new FJsonObject);
-	
+
 	// Add folder path
-	FString FolderPath = FPaths::GetPath(AssetData.PackageName.ToString());
-	MetadataJson->SetStringField(TEXT("folder"), FolderPath);
+	MetadataJson->SetStringField(TEXT("folder"), AssetData.PackagePath.ToString());
 
 	// Add object path for move operations
-	FString ObjectPath = AssetData.PackageName.ToString() + TEXT(".") + AssetData.AssetName.ToString();
-	MetadataJson->SetStringField(TEXT("objectPath"), ObjectPath);
+	MetadataJson->SetStringField(TEXT("objectPath"), AssetData.GetObjectPathString());
 
-	// Check if it's a Blueprint
-	if (AssetData.AssetClassPath == UBlueprint::StaticClass()->GetClassPathName())
+	// Any Blueprint, Widget and Animation Blueprints included
+	const UClass* AssetClass = N2CSearchContentBrowser::ClassOf(AssetData);
+	if (AssetClass && AssetClass->IsChildOf(UBlueprint::StaticClass()))
 	{
 		// Try to get parent class
 		FString ParentClassName;
@@ -386,86 +440,20 @@ TSharedPtr<FJsonObject> FN2CMcpSearchContentBrowserTool::ConvertAssetToJson(cons
 	return AssetJson;
 }
 
-FString FN2CMcpSearchContentBrowserTool::GetAssetDisplayType(const FAssetData& AssetData) const
+FString FN2CMcpSearchContentBrowserTool::GetAssetDisplayType(const FAssetData& AssetData)
 {
-	FTopLevelAssetPath ClassPath = AssetData.AssetClassPath;
-	
-	if (ClassPath == UBlueprint::StaticClass()->GetClassPathName())
+	// The assetType value whose filter finds this asset, so a follow-up search on the type finds it again
+	if (const UClass* AssetClass = N2CSearchContentBrowser::ClassOf(AssetData))
 	{
-		return TEXT("Blueprint");
-	}
-	else if (ClassPath == UMaterial::StaticClass()->GetClassPathName() ||
-		ClassPath == UMaterialInstance::StaticClass()->GetClassPathName() ||
-		ClassPath == UMaterialInstanceConstant::StaticClass()->GetClassPathName())
-	{
-		return TEXT("Material");
-	}
-	else if (ClassPath == UTexture::StaticClass()->GetClassPathName() ||
-		ClassPath == UTexture2D::StaticClass()->GetClassPathName())
-	{
-		return TEXT("Texture");
-	}
-	else if (ClassPath == UStaticMesh::StaticClass()->GetClassPathName())
-	{
-		return TEXT("StaticMesh");
-	}
-	else if (ClassPath == USkeletalMesh::StaticClass()->GetClassPathName())
-	{
-		return TEXT("SkeletalMesh");
-	}
-	else if (ClassPath == USoundBase::StaticClass()->GetClassPathName())
-	{
-		return TEXT("Sound");
-	}
-	else if (ClassPath == UAnimSequence::StaticClass()->GetClassPathName())
-	{
-		return TEXT("Animation");
-	}
-	else if (ClassPath == UParticleSystem::StaticClass()->GetClassPathName())
-	{
-		return TEXT("ParticleSystem");
-	}
-	else if (ClassPath == UDataAsset::StaticClass()->GetClassPathName())
-	{
-		return TEXT("DataAsset");
-	}
-	else if (ClassPath == UDataTable::StaticClass()->GetClassPathName())
-	{
-		return TEXT("DataTable");
-	}
-	else
-	{
-		// Return the class name without the U prefix
-		FString ClassName = ClassPath.GetAssetName().ToString();
-		if (ClassName.StartsWith(TEXT("U")))
+		for (const N2CSearchContentBrowser::FAssetTypeClass& Type : N2CSearchContentBrowser::AssetTypes)
 		{
-			ClassName = ClassName.RightChop(1);
+			if (AssetClass->IsChildOf(Type.Class()))
+			{
+				return Type.Name;
+			}
 		}
-		return ClassName;
 	}
-}
-
-bool FN2CMcpSearchContentBrowserTool::ShouldIncludePath(const FString& PackagePath, bool bIncludeEngineContent, bool bIncludePluginContent) const
-{
-	// Always include /Game content
-	if (PackagePath.StartsWith(TEXT("/Game")))
-	{
-		return true;
-	}
-
-	// Check engine content
-	if (PackagePath.StartsWith(TEXT("/Engine")))
-	{
-		return bIncludeEngineContent;
-	}
-
-	// Plugin content can be under various mount points
-	// Common patterns: /PluginName/, /Plugins/PluginName/
-	if (bIncludePluginContent)
-	{
-		// If it's not /Game or /Engine, it's likely plugin content
-		return true;
-	}
-
-	return false;
+	// Otherwise the class's own name, as the class path holds it: UserDefinedStruct, not a U-stripped
+	// "serDefinedStruct" (card 0285)
+	return AssetData.AssetClassPath.GetAssetName().ToString();
 }
