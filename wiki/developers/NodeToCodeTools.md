@@ -62,3 +62,6 @@ is the running batch), and the pending `translate_graph` then ends with a `Cance
 `translate_graph`'s result and `get_batch_status` carry the `untrusted_content` notice too: code an LLM wrote from the
 project's graphs is data, not instructions. NodeToCode's own server has the same translation as `translate-batch`
 (see [Using NodeToCode with Unreal MCP](Using-NodeToCode-with-Unreal-MCP)).
+
+With the toolset, NodeToCode also registers its three [Agent Skills](Agent-Skills) in Epic's skill registry: they tell
+an agent which of these tools, and which of Epic's, to use for reading, translating and migrating Blueprints.
