@@ -10,6 +10,8 @@
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
+#include "MCP/Utils/N2CMcpUntrustedContent.h"
+#include "MCP/Tools/Implementations/Translation/N2CMcpGetAvailableTranslationTargetsTool.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CPinConnectPolicy.h"
@@ -650,6 +652,44 @@ FString UN2CPythonBridge::GetActiveProvider()
 	Data->SetBoolField(TEXT("is_local"), bIsLocal);
 
 	return MakeSuccessJson(Data);
+}
+
+FString UN2CPythonBridge::GetTranslationTargets()
+{
+	// The MCP tool's own result, so the two lists cannot drift apart (it reads only the language enum and settings)
+	FN2CMcpGetAvailableTranslationTargetsTool Tool;
+	const FMcpToolCallResult Result = Tool.Execute(MakeShared<FJsonObject>());
+	FString Text;
+	for (const TSharedPtr<FJsonObject>& Item : Result.Content)
+	{
+		FString ItemText;
+		if (Item.IsValid() && Item->TryGetStringField(TEXT("text"), ItemText))
+		{
+			Text += ItemText;
+		}
+	}
+	if (Result.bIsError)
+	{
+		return MakeErrorJson(Text.IsEmpty() ? FString(TEXT("Failed to list translation targets")) : Text);
+	}
+
+	TSharedPtr<FJsonObject> Data;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Text);
+	if (!FJsonSerializer::Deserialize(Reader, Data) || !Data.IsValid())
+	{
+		return MakeErrorJson(TEXT("Failed to list translation targets: the result is not a JSON object"));
+	}
+	return MakeSuccessJson(Data);
+}
+
+FString UN2CPythonBridge::MarkUntrustedContent(const FString& Text)
+{
+	return FN2CMcpUntrustedContent::MarkJson(Text);
+}
+
+FString UN2CPythonBridge::GetUntrustedContentNotice()
+{
+	return FN2CMcpUntrustedContent::MarkerText();
 }
 
 // ========== Blueprint Editor Navigation ==========

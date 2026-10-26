@@ -149,6 +149,32 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString GetActiveProvider();
 
+	/**
+	 * The languages NodeToCode translates Blueprints into, as the MCP get-available-translation-targets tool lists
+	 * them (card 0175).
+	 *
+	 * @return {"success", "data": {"languages": [{"id", "displayName", "description", "fileExtensions", "category",
+	 *         "features", "syntaxHighlightingSupported"}], "defaultLanguage", "currentLanguage", "languageCount"},
+	 *         "error"}
+	 */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	static FString GetTranslationTargets();
+
+	/**
+	 * Marks text taken from a project's Blueprints as untrusted data, exactly as NodeToCode's MCP server marks its
+	 * results (card 0124): a JSON object gains "untrusted_content" as its first key, other text is prefixed with the
+	 * notice, and "</" is written "<\/". Text that already carries the mark comes back unchanged.
+	 *
+	 * @param Text A tool result: N2C JSON or any other text that carries Blueprint strings.
+	 * @return The marked text.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	static FString MarkUntrustedContent(const FString& Text);
+
+	/** The notice MarkUntrustedContent puts before Blueprint text (card 0124), for results that are not text. */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	static FString GetUntrustedContentNotice();
+
 	// ========== Blueprint Editor Navigation ==========
 
 	/**
