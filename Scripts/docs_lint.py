@@ -443,18 +443,31 @@ def check_docs(root, files, ref, allow, used, findings, stats):
 
 # ---- 6. user pages ----------------------------------------------------------------------------------------------
 
+def load_docs_check(root):
+    """tools/docs_check.py of the checkout, whose link resolution the user-page check reuses"""
+    spec = importlib.util.spec_from_file_location('docs_check', os.path.join(root, 'tools', 'docs_check.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def check_wiki(root, wiki, findings):
     """Links between the user pages: a GitHub wiki links pages by name from any folder, or by relative path"""
-    spec = importlib.util.spec_from_file_location('docs_check', os.path.join(root, 'tools', 'docs_check.py'))
-    docs_check = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(docs_check)
+    docs_check = load_docs_check(root)
+    # docs_check reads docsRoot as a folder under its root (it strips a leading '/', so an absolute POSIX path breaks):
+    # give it the pages' parent folder as root and the folder's name as docsRoot, on every platform
+    wiki = os.path.abspath(wiki).rstrip('\\/')
+    parent, name = os.path.split(wiki)
     cfg = dict(docs_check.DEFAULTS)
-    cfg.update({'target': 'wiki:github', 'docsRoot': os.path.abspath(wiki), 'nav': 'none', 'summary': False,
+    cfg.update({'target': 'wiki:github', 'docsRoot': name, 'nav': 'none', 'summary': False,
                 'pageBudget': 0, 'images': {}, 'roots': []})
     count = 0
-    for f in docs_check.check_tree(docs_check.Path(root), cfg):
+    for f in docs_check.check_tree(docs_check.Path(parent), cfg):
         if f.code in ('LINK_BROKEN', 'IMAGE_MISSING', 'DOCS_ROOT_MISSING'):
-            findings.append(Finding('WIKI_' + f.code, f.path, f.line, f.message))  # repo-relative, else absolute
+            full = os.path.normpath(os.path.join(parent, f.path))
+            inside = os.path.normcase(full).startswith(os.path.normcase(os.path.abspath(root)) + os.sep)
+            path = os.path.relpath(full, root) if inside else full  # repo-relative for annotations, else absolute
+            findings.append(Finding('WIKI_' + f.code, path.replace('\\', '/'), f.line, f.message))
             count += 1
     return count
 

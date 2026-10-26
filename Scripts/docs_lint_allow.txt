@@ -14,5 +14,6 @@ Context/architecture/AGENTS-architecture.md::Content/UI  # names the folder 2.0 
 Context/mcp-server/threat-model.md::../../../../Source/Evil  # a traversal attempt the file tools refuse
 Context/mcp-server/threat-model.md::Source/Evil  # a traversal target the file tools refuse
 
-# Counts recorded as evidence at the time of a check
+# Counts the lint cannot derive: evidence recorded at the time of a check, sums of toolsets
 Context/mcp-server/threat-model.md::59 tools  # live checks 0090 and 0423 ran with 59 default tools (62 with Python execution)
+wiki/developers/Choosing-a-Tool-Mode.md::13 tools  # BlueprintDiscoveryTools (8) plus TranslationTools (5); sums of toolsets are not checked
