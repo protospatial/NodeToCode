@@ -32,15 +32,9 @@ bool UN2CDeepSeekResponseParser::ParseLLMResponse(
     const TSharedPtr<FJsonObject>* UsagePtr = nullptr;
     if (JsonObject->TryGetObjectField(TEXT("usage"), UsagePtr) && UsagePtr && UsagePtr->IsValid())
     {
-        int32 PromptTokens = 0;
-        int32 CompletionTokens = 0;
-        (*UsagePtr)->TryGetNumberField(TEXT("prompt_tokens"), PromptTokens);
-        (*UsagePtr)->TryGetNumberField(TEXT("completion_tokens"), CompletionTokens);
-        
-        OutResponse.Usage.InputTokens = PromptTokens;
-        OutResponse.Usage.OutputTokens = CompletionTokens;
-
-        FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
+        // prompt_tokens includes prompt_cache_hit_tokens; completion_tokens includes reasoning_tokens
+        ReadOpenAICompatibleUsage(*UsagePtr, OutResponse.Usage);
+        LogUsage(OutResponse.Usage, TEXT("DeepSeekResponseParser"));
     }
 
     // Extract message content from DeepSeek format: finish_reason first (length, content_filter,

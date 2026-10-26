@@ -12,6 +12,7 @@
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Core/Style/N2CStyle.h"
 #include "Utils/N2CLogger.h"
+#include "Utils/N2CGraphUtils.h"
 #include "BlueprintEditor.h"
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
 #include "TagManager/Models/N2CTagManagerTypes.h"
@@ -44,6 +45,19 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 	BlueprintPath = InArgs._BlueprintPath;
 	GraphName = InArgs._GraphName;
 	BlueprintEditor = InArgs._BlueprintEditor;
+
+	// Whether translation can read this graph: decides which actions are enabled (card 0251)
+	{
+		const UEdGraph* Graph = InArgs._Graph;
+		FString Reason;
+		if (!Graph)
+		{
+			UBlueprint* Resolved = nullptr;
+			Graph = FN2CGraphUtils::ResolveTaggedGraph(BlueprintPath, GraphGuid.ToString(), GraphName, Resolved, Reason);
+		}
+		bCanTranslate = Graph != nullptr && FN2CGraphUtils::CanTranslateGraph(Graph, &Reason);
+		UnsupportedReason = bCanTranslate ? FText::GetEmpty() : FText::FromString(Reason);
+	}
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: GraphName=%s, BlueprintPath=%s"), *GraphName, *BlueprintPath), EN2CLogSeverity::Warning);
 	FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: BlueprintEditor valid=%d"), BlueprintEditor.IsValid() ? 1 : 0), EN2CLogSeverity::Warning);
@@ -126,6 +140,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 					.ButtonVariant(EN2CButtonVariant::Simple)
 					.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
 					.ToolTipText(TAttribute<FText>::CreateSP(this, &SN2CGraphOverlay::GetTagButtonTooltip))
+					.IsEnabled(this, &SN2CGraphOverlay::IsTagButtonEnabled)
 					.OnClicked(this, &SN2CGraphOverlay::OnTagButtonClicked)
 				]
 			]
@@ -153,6 +168,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 				.ButtonVariant(EN2CButtonVariant::Simple)
 				.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
 				.ToolTipText(TAttribute<FText>::CreateSP(this, &SN2CGraphOverlay::GetCopyJsonTooltip))
+				.IsEnabled(this, &SN2CGraphOverlay::IsTranslateEnabled)
 				.OnClicked(this, &SN2CGraphOverlay::OnCopyJsonClicked)
 			]
 
@@ -178,7 +194,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 				.ButtonStyle(&N2CStyle::GetSimpleButtonStyle())
 				.ToolTipText(this, &SN2CGraphOverlay::GetTranslateTooltip)
 				.OnClicked(this, &SN2CGraphOverlay::OnTranslateClicked)
-				.IsEnabled_Lambda([this]() { return !bIsTranslating; })
+				.IsEnabled(this, &SN2CGraphOverlay::IsTranslateEnabled)
 				.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
 				[
 					SNew(SHorizontalBox)
@@ -773,6 +789,13 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 
 void SN2CGraphOverlay::OnAddTagRequested(const FString& TagName, const FString& CategoryName)
 {
+	// A tag on a graph translation cannot read could never be translated
+	if (!bCanTranslate)
+	{
+		FN2CGraphUtils::NotifyFailure(UnsupportedReason.ToString());
+		return;
+	}
+
 	FN2CTaggedBlueprintGraph NewTag(
 		TagName,
 		CategoryName,
@@ -848,11 +871,19 @@ FText SN2CGraphOverlay::GetTagCountText() const
 
 FText SN2CGraphOverlay::GetCopyJsonTooltip() const
 {
+	if (!bCanTranslate)
+	{
+		return UnsupportedReason;
+	}
 	return LOCTEXT("CopyJsonTooltip", "Copy Blueprint graph JSON to clipboard");
 }
 
 FText SN2CGraphOverlay::GetTranslateTooltip() const
 {
+	if (!bCanTranslate)
+	{
+		return UnsupportedReason;
+	}
 	if (bIsTranslating)
 	{
 		return LOCTEXT("TranslatingTooltip", "Translation in progress...");
@@ -862,6 +893,11 @@ FText SN2CGraphOverlay::GetTranslateTooltip() const
 
 FText SN2CGraphOverlay::GetTagButtonTooltip() const
 {
+	if (!bCanTranslate)
+	{
+		return CachedTagCount == 0 ? UnsupportedReason : FText::Format(
+			LOCTEXT("UnsupportedTagsTooltip", "{0} tag(s) - click to remove them\n\n{1}"), FText::AsNumber(CachedTagCount), UnsupportedReason);
+	}
 	if (CachedTagCount == 0)
 	{
 		return LOCTEXT("NoTagsTooltip", "No tags - click to add");
@@ -880,6 +916,16 @@ FSlateColor SN2CGraphOverlay::GetTagButtonColor() const
 
 void SN2CGraphOverlay::RefreshTokenEstimate()
 {
+	if (!bCanTranslate)
+	{
+		// Nothing to estimate: capture cannot read this graph
+		CachedTokenCount = 0;
+		CachedNestedGraphCount = 0;
+		CachedContextUsagePercent = 0.0f;
+		CachedEstimatedCost = 0.0f;
+		return;
+	}
+
 	FN2CTagInfo GraphInfo;
 	GraphInfo.GraphGuid = GraphGuid.ToString();
 	GraphInfo.BlueprintPath = BlueprintPath;
@@ -921,6 +967,11 @@ FText SN2CGraphOverlay::GetContextUsagePercentText() const
 
 FText SN2CGraphOverlay::GetContextTooltipText() const
 {
+	if (!bCanTranslate)
+	{
+		return UnsupportedReason;
+	}
+
 	FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();
 
 	FString TooltipStr = FString::Printf(

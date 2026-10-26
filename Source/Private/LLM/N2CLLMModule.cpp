@@ -462,12 +462,9 @@ bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Respons
     TranslationJsonObject->SetArrayField(TEXT("graphs"), GraphsArray);
     
     // Add usage information if available
-    if (Response.Usage.InputTokens > 0 || Response.Usage.OutputTokens > 0)
+    if (Response.Usage.HasAny())
     {
-        TSharedPtr<FJsonObject> UsageObject = MakeShared<FJsonObject>();
-        UsageObject->SetNumberField(TEXT("input_tokens"), Response.Usage.InputTokens);
-        UsageObject->SetNumberField(TEXT("output_tokens"), Response.Usage.OutputTokens);
-        TranslationJsonObject->SetObjectField(TEXT("usage"), UsageObject);
+        TranslationJsonObject->SetObjectField(TEXT("usage"), Response.Usage.ToJson());
     }
     
     // Serialize to string with pretty printing
@@ -742,10 +739,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
                 }
                 ResultJson->SetArrayField(TEXT("graphs"), GraphsJsonArray);
                 
-                TSharedPtr<FJsonObject> UsageJson = MakeShared<FJsonObject>();
-                UsageJson->SetNumberField(TEXT("input_tokens"), TranslationResponse.Usage.InputTokens);
-                UsageJson->SetNumberField(TEXT("output_tokens"), TranslationResponse.Usage.OutputTokens);
-                ResultJson->SetObjectField(TEXT("usage"), UsageJson);
+                ResultJson->SetObjectField(TEXT("usage"), TranslationResponse.Usage.ToJson());
                 
                 FString OutputJsonString;
                 TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputJsonString);

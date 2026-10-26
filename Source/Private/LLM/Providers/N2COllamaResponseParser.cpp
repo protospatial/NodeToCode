@@ -32,11 +32,10 @@ bool UN2COllamaResponseParser::ParseLLMResponse(
         int32 CompletionTokens = 0;
         JsonObject->TryGetNumberField(TEXT("prompt_eval_count"), PromptTokens);
         JsonObject->TryGetNumberField(TEXT("eval_count"), CompletionTokens);
-        
+
         OutResponse.Usage.InputTokens = PromptTokens;
         OutResponse.Usage.OutputTokens = CompletionTokens;
-
-        FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
+        LogUsage(OutResponse.Usage, TEXT("OllamaResponseParser"));
     }
     
     // done_reason "length": generation stopped at num_predict or the context window (Ollama llm/server.go DoneReason)
@@ -103,11 +102,7 @@ bool UN2COllamaResponseParser::ExtractOllamaMessageContent(
         }
     }
     
-    // Trim any extra whitespace that might have been left
+    // Trim any extra whitespace that might have been left; fences and text around the JSON are removed by ParseLLMResponse
     OutContent = OutContent.TrimStartAndEnd();
-    
-    // Process JSON markers
-    ProcessJsonContentWithMarkers(OutContent);
-    
     return !OutContent.IsEmpty();
 }

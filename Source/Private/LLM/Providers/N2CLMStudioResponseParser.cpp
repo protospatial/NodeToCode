@@ -32,19 +32,8 @@ bool UN2CLMStudioResponseParser::ParseLLMResponse(
     const TSharedPtr<FJsonObject>* UsagePtr = nullptr;
     if (JsonObject->TryGetObjectField(TEXT("usage"), UsagePtr) && UsagePtr && UsagePtr->IsValid())
     {
-        int32 PromptTokens = 0;
-        int32 CompletionTokens = 0;
-        (*UsagePtr)->TryGetNumberField(TEXT("prompt_tokens"), PromptTokens);
-        (*UsagePtr)->TryGetNumberField(TEXT("completion_tokens"), CompletionTokens);
-        
-        OutResponse.Usage.InputTokens = PromptTokens;
-        OutResponse.Usage.OutputTokens = CompletionTokens;
-
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("LM Studio Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), 
-            EN2CLogSeverity::Info,
-            TEXT("LMStudioResponseParser")
-        );
+        ReadOpenAICompatibleUsage(*UsagePtr, OutResponse.Usage);
+        LogUsage(OutResponse.Usage, TEXT("LMStudioResponseParser"));
     }
 
     // Log additional LM Studio-specific stats if available

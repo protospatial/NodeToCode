@@ -160,8 +160,8 @@ private:
 	/** Navigate to a graph in the Blueprint editor */
 	void NavigateToGraph(const FN2CTagInfo& Graph);
 
-	/** Find a UEdGraph by GUID in a Blueprint */
-	UEdGraph* FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid);
+	/** One notification for the batch items that failed before a request (graph not found or not translatable) */
+	void NotifyUnresolvedBatchItems(const TArray<FN2CBatchTranslationItem>& Items, const FString& Lead);
 
 	// ==================== Batch Translation Callbacks ====================
 

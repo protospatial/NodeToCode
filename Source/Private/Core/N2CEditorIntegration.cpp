@@ -994,6 +994,7 @@ void FN2CEditorIntegration::WrapGraphTabIfNeeded(TSharedPtr<SDockTab> Tab, UEdGr
             .BlueprintPath(BlueprintPath)
             .GraphName(GraphName)
             .BlueprintEditor(Editor)
+            .Graph(Graph)
         ];
 
     // Track this graph's overlay with a weak pointer to detect destruction

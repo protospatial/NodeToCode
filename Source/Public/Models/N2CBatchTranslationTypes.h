@@ -103,13 +103,25 @@ struct NODETOCODE_API FN2CBatchTranslationResult
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
 	float TotalTimeSeconds = 0.0f;
 
-	/** Total input tokens used across all translations */
+	/** Total input tokens used across all translations, cached input included */
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
 	int32 TotalInputTokens = 0;
 
-	/** Total output tokens used across all translations */
+	/** Total output tokens used across all translations, thinking included */
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
 	int32 TotalOutputTokens = 0;
+
+	/** Part of TotalInputTokens read from the provider's prompt cache */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
+	int32 TotalCacheReadInputTokens = 0;
+
+	/** Part of TotalInputTokens written to the provider's prompt cache */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
+	int32 TotalCacheWriteInputTokens = 0;
+
+	/** Part of TotalOutputTokens spent thinking, where the provider reports it */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
+	int32 TotalReasoningTokens = 0;
 
 	FN2CBatchTranslationResult() = default;
 };
