@@ -14,6 +14,8 @@
 #include "ContentBrowserDataFilter.h"
 #include "ContentBrowserItem.h"
 #include "Dom/JsonObject.h"
+#include "Core/N2CUserSettings.h"
+#include "Interfaces/IPluginManager.h"
 
 bool FN2CMcpContentBrowserUtils::ValidateContentPath(const FString& Path, FString& OutErrorMsg)
 {
@@ -67,8 +69,8 @@ bool FN2CMcpContentBrowserUtils::DoesPathExist(const FString& Path)
 
 bool FN2CMcpContentBrowserUtils::CreateContentFolder(const FString& Path, FString& OutErrorMsg)
 {
-	// Validate the path first
-	if (!ValidateContentPath(Path, OutErrorMsg))
+	// Validate the path first: a mounted root, and one MCP tools may write to
+	if (!ValidateContentPath(Path, OutErrorMsg) || !IsWritableContentPath(Path, OutErrorMsg))
 	{
 		return false;
 	}
@@ -197,35 +199,152 @@ FString FN2CMcpContentBrowserUtils::NormalizeContentPath(const FString& Path)
 
 bool FN2CMcpContentBrowserUtils::IsPathAllowed(const FString& Path)
 {
-	// List of allowed root directories
-	static const TArray<FString> AllowedRoots = {
-		TEXT("/Game"),
-		TEXT("/Engine"),
-		TEXT("/EnginePresets"),
-		TEXT("/Paper2D"),
-		// Add plugin content paths
-		TEXT("/NodeToCode"),
-		// Common plugin paths
-		TEXT("/Plugins")
-	};
-	
-	// Check if the path starts with any allowed root
-	for (const FString& AllowedRoot : AllowedRoots)
+	// Any mounted root may be read (/Game, /Engine, a plugin's /<PluginName>): ValidateContentPath checks the root is
+	// mounted. Here only the shape: rooted, and no ".." that could climb out of it. Writes go through
+	// IsWritableContentPath.
+	return Path.StartsWith(TEXT("/")) && !Path.Contains(TEXT("..")) && !Path.Contains(TEXT("\\"));
+}
+
+namespace N2CContentPathPolicy
+{
+	/** NodeToCode's own content mount: it ships with the plugin, so a write there is lost (or shipped) on update */
+	const TCHAR* PluginMountName = TEXT("NodeToCode");
+
+	/** The package part of a folder, package or object path: "/Game/A/B.B:Sub" gives "/Game/A/B" */
+	FString PackagePart(const FString& NormalizedPath)
 	{
-		if (Path.StartsWith(AllowedRoot))
+		FString Result = NormalizedPath;
+		int32 Index = INDEX_NONE;
+		if (Result.FindChar(TEXT('.'), Index))
+		{
+			Result.LeftInline(Index);
+		}
+		if (Result.FindChar(TEXT(':'), Index))
+		{
+			Result.LeftInline(Index);
+		}
+		return Result;
+	}
+
+	/** The mount point Path is under ("Game", "Engine", "<PluginName>"), or NAME_None when no root is mounted there */
+	FName MountOf(const FString& PackagePath)
+	{
+		return FPackageName::GetPackageMountPoint(PackagePath + TEXT("/"));
+	}
+
+	/** The plugin whose content is mounted at /MountName/, or null */
+	TSharedPtr<IPlugin> PluginOfMount(const FString& MountName)
+	{
+		TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(MountName);
+		if (Plugin.IsValid() && Plugin->CanContainContent()
+			&& Plugin->GetMountedAssetPath().Equals(TEXT("/") + MountName + TEXT("/"), ESearchCase::IgnoreCase))
+		{
+			return Plugin;
+		}
+		return nullptr;
+	}
+}
+
+bool FN2CMcpContentBrowserUtils::IsWritableContentPath(const FString& Path, FString& OutErrorMsg)
+{
+	return IsWritableContentPath(Path, UN2CUserSettings::AreMcpWritesOutsideProjectAllowed(), OutErrorMsg);
+}
+
+bool FN2CMcpContentBrowserUtils::IsWritableContentPath(const FString& Path, bool bAllowOutsideProject, FString& OutErrorMsg)
+{
+	using namespace N2CContentPathPolicy;
+
+	if (Path.IsEmpty())
+	{
+		OutErrorMsg = TEXT("Path cannot be empty");
+		return false;
+	}
+	// Rooted, as the callers use the path as given (move-asset and create-blueprint-class normalize first)
+	if (!Path.StartsWith(TEXT("/")) && !Path.StartsWith(TEXT("\\")))
+	{
+		OutErrorMsg = FString::Printf(TEXT("Path '%s' must start with '/', for example /Game/Folder"), *Path);
+		return false;
+	}
+	// ".." before PackagePart, which cuts at the first dot
+	const FString Normalized = NormalizeContentPath(Path);
+	const FString PackagePath = PackagePart(Normalized);
+	if (Normalized.Contains(TEXT("..")) || PackagePath.Contains(TEXT("//")))
+	{
+		OutErrorMsg = FString::Printf(TEXT("Path '%s' may not contain '..' or an empty folder name"), *Path);
+		return false;
+	}
+
+	const FName Mount = MountOf(PackagePath);
+	if (Mount.IsNone())
+	{
+		OutErrorMsg = FString::Printf(TEXT("Path '%s' is not under a mounted content root (for example /Game)"), *Path);
+		return false;
+	}
+	const FString MountName = Mount.ToString();
+
+	// The project's own content: /Game, and a project plugin's content other than NodeToCode's
+	if (MountName.Equals(TEXT("Game"), ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+	const TSharedPtr<IPlugin> Plugin = PluginOfMount(MountName);
+	const bool bNodeToCode = MountName.Equals(PluginMountName, ESearchCase::IgnoreCase);
+	if (Plugin.IsValid() && Plugin->GetLoadedFrom() == EPluginLoadedFrom::Project && !bNodeToCode)
+	{
+		return true;
+	}
+
+	// Everywhere else only with the user's own opt-in, and never to a root the engine does not save to (/Script,
+	// /Temp, /Memory)
+	if (bAllowOutsideProject && FPackageName::IsValidLongPackageName(PackagePath, /*bIncludeReadOnlyRoots*/ false))
+	{
+		return true;
+	}
+
+	FString Whose;
+	if (bNodeToCode)
+	{
+		Whose = TEXT("NodeToCode's own content, which ships with the plugin");
+	}
+	else if (MountName.Equals(TEXT("Engine"), ESearchCase::IgnoreCase))
+	{
+		Whose = TEXT("the engine's content, shared by every project on this machine");
+	}
+	else if (Plugin.IsValid())
+	{
+		Whose = FString::Printf(TEXT("the content of the %s plugin, installed with the engine and not part of this project"), *Plugin->GetName());
+	}
+	else
+	{
+		Whose = TEXT("not this project's content");
+	}
+	OutErrorMsg = FString::Printf(
+		TEXT("Cannot write to '%s': /%s is %s. MCP tools write only to /Game and to the content of this project's own plugins (/<PluginName>)%s"),
+		*Path, *MountName, *Whose,
+		bAllowOutsideProject ? TEXT(", and the engine never saves to this root")
+			: TEXT(". To allow it, turn on Allow MCP Writes Outside Project in Project Settings > Plugins > Node to Code (User) and restart the editor"));
+	return false;
+}
+
+bool FN2CMcpContentBrowserUtils::IsContentMountRoot(const FString& Path)
+{
+	const FString PackagePath = NormalizeContentPath(Path);
+	const FName Mount = N2CContentPathPolicy::MountOf(PackagePath);
+	return !Mount.IsNone() && PackagePath.Equals(TEXT("/") + Mount.ToString(), ESearchCase::IgnoreCase);
+}
+
+bool FN2CMcpContentBrowserUtils::IsReservedDeviceName(const FString& Name)
+{
+	for (const TCHAR* Device : { TEXT("CON"), TEXT("PRN"), TEXT("AUX"), TEXT("NUL") })
+	{
+		if (Name.Equals(Device, ESearchCase::IgnoreCase))
 		{
 			return true;
 		}
 	}
-	
-	// Also check if it's a plugin content path (format: /PluginName)
-	if (Path.StartsWith(TEXT("/")) && !Path.Contains(TEXT("../")) && !Path.Contains(TEXT("..\\")))
-	{
-		// Basic security check - no directory traversal
-		return true;
-	}
-	
-	return false;
+	// COM1-COM9 and LPT1-LPT9 exactly: Common, Components, COM10 and Lpthing are ordinary names
+	return Name.Len() == 4 && (Name.StartsWith(TEXT("COM"), ESearchCase::IgnoreCase) || Name.StartsWith(TEXT("LPT"), ESearchCase::IgnoreCase))
+		&& Name[3] >= TEXT('1') && Name[3] <= TEXT('9');
 }
 
 bool FN2CMcpContentBrowserUtils::EnumerateItemsAtPath(const FString& Path, bool bIncludeFolders, bool bIncludeFiles, TArray<FContentBrowserItem>& OutItems)

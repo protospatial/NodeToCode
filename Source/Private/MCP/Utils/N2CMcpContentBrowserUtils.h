@@ -19,12 +19,35 @@ class FN2CMcpContentBrowserUtils
 {
 public:
 	/**
-	 * Validates a content browser path format
+	 * Validates a content browser path format. This is the read policy: any mounted root may be read (/Game,
+	 * /Engine, any plugin's /<PluginName>). Tools that write use IsWritableContentPath as well.
 	 * @param Path The path to validate (e.g., "/Game/Blueprints")
 	 * @param OutErrorMsg Error message if validation fails
 	 * @return True if the path is valid
 	 */
 	static bool ValidateContentPath(const FString& Path, FString& OutErrorMsg);
+
+	/**
+	 * The write policy of every MCP tool that creates, saves, copies, moves or renames content (card 0182). Path is a
+	 * folder, package or object path. Allowed: /Game and the content mount of a project plugin (loaded from the
+	 * project's Plugins folder, CanContainContent), except /NodeToCode, whose content ships with the plugin. Refused:
+	 * everything else (/Engine, engine and Fab plugins, /Script, /Temp, /Memory, unmounted roots) unless the user's
+	 * own Allow MCP Writes Outside Project setting is on; then any mounted root that may be saved to is allowed.
+	 * Check every destination, and the source of a move or rename.
+	 * @param Path The path to check (e.g., "/Game/Blueprints" or "/Game/Blueprints/BP_A.BP_A")
+	 * @param OutErrorMsg Why the path is refused, naming the setting
+	 * @return True if MCP tools may write there
+	 */
+	static bool IsWritableContentPath(const FString& Path, FString& OutErrorMsg);
+
+	/** IsWritableContentPath with the setting given: bAllowOutsideProject stands for Allow MCP Writes Outside Project */
+	static bool IsWritableContentPath(const FString& Path, bool bAllowOutsideProject, FString& OutErrorMsg);
+
+	/** True when Path is a mount root itself (/Game, /<PluginName>), which no tool may move or rename */
+	static bool IsContentMountRoot(const FString& Path);
+
+	/** True for the Windows device names CON, PRN, AUX, NUL, COM1-9 and LPT1-9, in any case; never for Common or Components */
+	static bool IsReservedDeviceName(const FString& Name);
 	
 	/**
 	 * Checks if a content browser path exists
@@ -70,9 +93,11 @@ public:
 	static FString NormalizeContentPath(const FString& Path);
 	
 	/**
-	 * Checks if a path is within the allowed content directories
+	 * The read policy's first check: a rooted path with no ".." segment. Any mounted root may be read;
+	 * ValidateContentPath then checks the root is mounted (FPackageName::IsValidLongPackageName). Writes are
+	 * IsWritableContentPath's job.
 	 * @param Path The path to check
-	 * @return True if the path is in an allowed directory
+	 * @return True if the path may be read
 	 */
 	static bool IsPathAllowed(const FString& Path);
 	

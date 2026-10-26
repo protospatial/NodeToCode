@@ -76,7 +76,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
     `FKismetEditorUtilities::CanCreateBlueprintOfClass`. An `AnimInstance` parent is refused: an Animation Blueprint
     needs a target skeleton, which the tool cannot set
   - `assetPath` (required): Content folder for the new asset, checked with
-    `FN2CMcpContentBrowserUtils::ValidateContentPath`. An existing folder (`/Game` included) is used; a missing one is
+    `FN2CMcpContentBrowserUtils::ValidateContentPath` and the write policy `IsWritableContentPath` (`/Game` or a
+    project plugin's `/<PluginName>`; `/Engine` and other plugins only with the user's **Allow MCP Writes Outside
+    Project**, card 0182). An existing folder (`/Game` included) is used; a missing one is
     created (`EnsureDirectoryExists`) once every check has passed
   - `ifExists` (optional, default `error`, any case): What an existing asset of that name in the folder does. `error`
     fails; `unique` picks a free name with `IAssetTools::CreateUniqueAssetName` (`BP_Door` becomes `BP_Door1`) and

@@ -157,24 +157,22 @@ bool FN2CMcpMoveFolderTool::ValidateFolderPath(const FString& Path, FString& Out
     OutNormalizedPath = Path;
     OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-    // Ensure it starts with a valid root
-    if (!OutNormalizedPath.StartsWith(TEXT("/Game/")) && 
-        !OutNormalizedPath.Contains(TEXT("/Plugins/")))
-    {
-        OutErrorMessage = TEXT("Folder path must start with /Game/ or a valid plugin path. Cannot move folders from /Engine/");
-        return false;
-    }
-
     // Remove trailing slash if present
     if (OutNormalizedPath.EndsWith(TEXT("/")))
     {
         OutNormalizedPath = OutNormalizedPath.LeftChop(1);
     }
 
-    // Don't allow moving root folders
-    if (OutNormalizedPath == TEXT("/Game"))
+    // Only where MCP tools may write: /Game and the project's plugins (card 0182)
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutNormalizedPath, OutErrorMessage))
     {
-        OutErrorMessage = TEXT("Cannot move the /Game root folder");
+        return false;
+    }
+
+    // Don't allow moving root folders (/Game, a plugin's /<PluginName>)
+    if (FN2CMcpContentBrowserUtils::IsContentMountRoot(OutNormalizedPath))
+    {
+        OutErrorMessage = FString::Printf(TEXT("Cannot move the content root %s"), *OutNormalizedPath);
         return false;
     }
 
@@ -204,18 +202,16 @@ bool FN2CMcpMoveFolderTool::ValidateDestinationPath(const FString& DestinationPa
     FString NormalizedDestPath = DestinationPath;
     NormalizedDestPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-    // Ensure it starts with a valid root
-    if (!NormalizedDestPath.StartsWith(TEXT("/Game/")) && 
-        !NormalizedDestPath.Contains(TEXT("/Plugins/")))
-    {
-        OutErrorMessage = TEXT("Destination path must start with /Game/ or a valid plugin path. Cannot move to /Engine/");
-        return false;
-    }
-
     // Remove trailing slash if present
     if (NormalizedDestPath.EndsWith(TEXT("/")))
     {
         NormalizedDestPath = NormalizedDestPath.LeftChop(1);
+    }
+
+    // Only where MCP tools may write: /Game and the project's plugins (card 0182)
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(NormalizedDestPath, OutErrorMessage))
+    {
+        return false;
     }
 
     // Build the full destination path

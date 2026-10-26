@@ -9,14 +9,15 @@ built for one developer's own machine: it has no password or token of its own.
 |---|---|---|
 | MCP server | On, at `http://127.0.0.1:27000/mcp`, this machine only | **Enable MCP Server**, **Server Port** |
 | Python execution over MCP | Off | **Allow MCP Python Execution** |
+| Asset writes outside your project's content | Refused | **Allow MCP Writes Outside Project** |
 | Tools a client gets | Every toolset, every tool listed | **Tool Profile**, **Tool Exposure** |
 | Tools Unreal MCP also has (UE 5.8) | Left to Unreal MCP when its plugins are enabled | **Overlapping Tools** |
 | Edits while Play In Editor runs | Refused | Always on |
 | API keys | Windows Credential Manager | Each provider's **API Key** field |
 | Data sent when you translate | Goes to the selected provider only | **Provider** |
 
-**Enable MCP Server** and **Allow MCP Python Execution** are under **Project Settings → Plugins → Node to Code
-(User)**; the others are under **Plugins → Node to Code**, in **MCP Server** or **LLM Services**. Every MCP Server
+**Enable MCP Server**, **Allow MCP Python Execution** and **Allow MCP Writes Outside Project** are under
+**Project Settings → Plugins → Node to Code (User)**; the others are under **Plugins → Node to Code**, in **MCP Server** or **LLM Services**. Every MCP Server
 setting needs an editor restart.
 
 ## What the MCP server accepts
@@ -38,11 +39,12 @@ setting needs an editor restart.
 
 ## Switches a project cannot turn on for you
 
-**Enable MCP Server** and **Allow MCP Python Execution** belong to you, not the project. Only your own value counts:
+**Enable MCP Server**, **Allow MCP Python Execution** and **Allow MCP Writes Outside Project** belong to you, not the
+project. Only your own value counts:
 the one in `Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini`, or a `-ini:` override on your command line.
 A value committed in the project's `Config/DefaultEditorPerProjectUserSettings.ini` (or any other shared config file)
-is ignored, with a warning in the Output Log. This stops a careless commit from turning Python execution on for
-everyone; it does not protect you from a hostile project, which can run its own code when you open it.
+is ignored, with a warning in the Output Log. This stops a careless commit from turning Python execution or engine writes
+on for everyone; it does not protect you from a hostile project, which can run its own code when you open it.
 
 ## Python execution
 
@@ -70,7 +72,7 @@ Code refuses a call to one of them and names Epic's tool instead. See
 | Access | Where | Not allowed |
 |---|---|---|
 | Read (`read-file`, `read-path`) | Anything inside the project folder, including `Config`, `Source` and `Saved` | `Saved/NodeToCode/User`, your `%LOCALAPPDATA%\NodeToCode` folder, the project's `.git` folder, any `secrets.json*`, `.env` or `*.env` file, `.uasset` and `.umap` files, files over 500 KB, any path outside the project (links and junctions are followed and checked) |
-| Create, move, rename, copy assets and folders | `/Game` and plugin content | `/Engine`; no tool deletes an asset |
+| Create, save, move, rename, copy assets and folders | `/Game` and the content of plugins in your project's `Plugins` folder | `/Engine`, plugins installed with the engine or from Fab, and Node to Code's own content, unless **Allow MCP Writes Outside Project** is on (it needs an editor restart); no tool deletes an asset |
 | Write Blueprint exports | `Saved/NodeToCode/Exports` | Any other folder |
 | Write translations | `Saved/NodeToCode/Translations`, or **Custom Translation Output Directory** | Paths outside that folder: a graph name such as `../../Source` becomes a safe file name |
 | Write Python scripts (Python execution on) | `Content/Python/scripts` | Other folders, `init_unreal` |

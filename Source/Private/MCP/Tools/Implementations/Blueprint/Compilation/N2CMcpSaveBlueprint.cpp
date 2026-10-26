@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpContentBrowserUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "FileHelpers.h"
@@ -60,7 +61,15 @@ FMcpToolCallResult FN2CMcpSaveBlueprint::Execute(const TSharedPtr<FJsonObject>& 
         {
             return FMcpToolCallResult::CreateErrorResult(TEXT("INTERNAL_ERROR: Blueprint has no package"));
         }
-        
+
+        // Only where MCP tools may write: /Game and the project's plugins, not an engine or another plugin's
+        // Blueprint (card 0182)
+        FString PathError;
+        if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(Package->GetName(), PathError))
+        {
+            return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("SAVE_REFUSED: %s"), *PathError));
+        }
+
         // Check if we should skip saving
         if (bSaveOnlyIfDirty && !Package->IsDirty())
         {

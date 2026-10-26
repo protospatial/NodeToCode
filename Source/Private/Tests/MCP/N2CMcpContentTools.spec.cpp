@@ -8,6 +8,8 @@
 #include "Tests/N2CTestHelpers.h"
 #include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestContentFolder.h"
+#include "Core/N2CUserSettings.h"
+#include "MCP/Utils/N2CMcpContentBrowserUtils.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Dom/JsonObject.h"
@@ -22,9 +24,10 @@
  * The content browser tools that move things (card 0163): move-asset and rename-asset with package paths and object
  * paths, a project plugin's content mount, empty folders, and move-folder into itself. Everything is saved for real
  * under /Game/__N2CTest (and the test plugin's /N2CTestContent mount), which is deleted before and after every case,
- * also when one fails. Name rules are NodeToCode.Names; path policy is NodeToCode.PathPolicy. Cases that fail until
- * their E12 card lands are KnownDefectIt (N2C_RUN_KNOWN_DEFECTS=1 runs them). Review ids:
- * imp-mcp-tools-contentbrowser-fs-9, mcp-tools-contentbrowser-fs-3, -7, -9, -10.
+ * also when one fails. Name rules are NodeToCode.Names; the file jail is NodeToCode.PathPolicy; the content write
+ * policy (/Game and project plugins only, card 0182) is "the write path policy" here. Cases that fail until their E12
+ * card lands are KnownDefectIt (N2C_RUN_KNOWN_DEFECTS=1 runs them). Review ids: imp-mcp-tools-contentbrowser-fs-1,
+ * -9, mcp-tools-contentbrowser-fs-3, -6, -7, -9, -10, mcp-tools-bp-structure-30.
  */
 namespace N2CContentToolsSpec
 {
@@ -391,10 +394,10 @@ void FN2CContentToolsSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-contentbrowser-fs-7: create-folder, rename-asset, move-folder and rename-folder accept
-		// only /Game/ or a path that contains "/Plugins/", and a plugin's content mounts at /<PluginName>/, so every
-		// plugin is refused. Enable (KnownDefectIt -> It) with card 0182, whose policy allows project plugins' content.
-		KnownDefectIt(TEXT("create-folder, rename-asset, move-folder and rename-folder accept the plugin's content"), [this]()
+		// mcp-tools-contentbrowser-fs-7 (card 0182): these tools accepted only /Game/ or a path containing "/Plugins/",
+		// and a plugin's content mounts at /<PluginName>/, so every plugin was refused. The write policy
+		// (FN2CMcpContentBrowserUtils::IsWritableContentPath) allows a project plugin's content.
+		It(TEXT("create-folder, rename-asset, move-folder and rename-folder accept the plugin's content"), [this]()
 		{
 			if (!bPluginMounted)
 			{
@@ -424,6 +427,171 @@ void FN2CContentToolsSpec::Define()
 				Args({ { TEXT("sourcePath"), Mount / TEXT("Made") }, { TEXT("newName"), TEXT("Renamed") } })).IsValid())
 			{
 				TestTrue(TEXT("renamed plugin folder"), N2CTest::ContentFolderExists(Mount / TEXT("Renamed")));
+			}
+		});
+
+		It(TEXT("create-blueprint-class writes in the plugin's content, and the plugin's root cannot be moved or renamed"), [this]()
+		{
+			if (!bPluginMounted)
+			{
+				return;
+			}
+			const FString Mount = N2CContentToolsSpec::PluginMount;
+			FString Error;
+			TestTrue(TEXT("the policy allows the project plugin (") + Error + TEXT(")"),
+				FN2CMcpContentBrowserUtils::IsWritableContentPath(Mount / TEXT("Props/BP_A.BP_A"), /*bAllowOutsideProject*/ false, Error));
+			// MakeAsset runs create-blueprint-class and checks the saved Blueprint is there
+			MakeAsset(TEXT("BP_N2CMadeInPlugin"), Mount / TEXT("Props"));
+			TestTrue(TEXT("the plugin's mount is a content root"), FN2CMcpContentBrowserUtils::IsContentMountRoot(Mount));
+			const FMcpToolCallResult Renamed = Run(TEXT("rename-folder"), Args({ { TEXT("sourcePath"), Mount }, { TEXT("newName"), TEXT("Elsewhere") } }));
+			TestTrue(TEXT("rename-folder of the plugin's root refused (") + N2CTest::ResultText(Renamed).Left(200) + TEXT(")"), Renamed.bIsError);
+			const FMcpToolCallResult Moved = Run(TEXT("move-folder"), Args({ { TEXT("sourcePath"), Mount }, { TEXT("destinationPath"), Folder } }));
+			TestTrue(TEXT("move-folder of the plugin's root refused (") + N2CTest::ResultText(Moved).Left(200) + TEXT(")"), Moved.bIsError);
+			TestTrue(TEXT("the plugin is still mounted"), FPackageName::MountPointExists(Mount + TEXT("/")));
+		});
+	});
+
+	Describe(TEXT("the write path policy"), [this]()
+	{
+		It(TEXT("allows /Game and refuses /Engine, an engine plugin, /NodeToCode, read-only and unmounted roots"), [this]()
+		{
+			auto Allowed = [this](const FString& Path, bool bOutside)
+			{
+				FString Error;
+				const bool bAllowed = FN2CMcpContentBrowserUtils::IsWritableContentPath(Path, bOutside, Error);
+				TestTrue(FString::Printf(TEXT("refused%s with a reason: '%s'"), bOutside ? TEXT(" (outside on)") : TEXT(""), *Path), bAllowed || !Error.IsEmpty());
+				return bAllowed;
+			};
+			for (const TCHAR* Path : { TEXT("/Game"), TEXT("/Game/"), TEXT("/Game/__N2CTest"), TEXT("/Game/__N2CTest/BP_A"),
+				TEXT("/Game/__N2CTest/BP_A.BP_A"), TEXT("\\Game\\__N2CTest"), TEXT("/game/__N2CTest") })
+			{
+				TestTrue(FString::Printf(TEXT("allowed: '%s'"), Path), Allowed(Path, false));
+			}
+			for (const TCHAR* Path : { TEXT("/Engine"), TEXT("/Engine/N2CTest"), TEXT("/Engine/BasicShapes/Cube.Cube"), TEXT("/engine/N2CTest"),
+				TEXT("/NodeToCode"), TEXT("/NodeToCode/N2CTest"), TEXT("/Game/../Engine/N2CTest"), TEXT("/Game//N2CTest"),
+				TEXT("/Script/Engine"), TEXT("/Temp/N2CTest"), TEXT("/Memory/N2CTest"), TEXT("/N2CNotMounted/N2CTest"), TEXT("") })
+			{
+				TestFalse(FString::Printf(TEXT("refused: '%s'"), Path), Allowed(Path, false));
+			}
+			FString Error;
+			FN2CMcpContentBrowserUtils::IsWritableContentPath(TEXT("/Engine/N2CTest"), false, Error);
+			TestTrue(TEXT("the refusal names the setting: ") + Error, Error.Contains(TEXT("Allow MCP Writes Outside Project")));
+
+			// With the user's opt-in: any mounted root the engine saves to, still never /Script, /Temp, /Memory or an unmounted one
+			for (const TCHAR* Path : { TEXT("/Game/__N2CTest"), TEXT("/Engine/N2CTest"), TEXT("/NodeToCode/N2CTest") })
+			{
+				TestTrue(FString::Printf(TEXT("allowed with the setting: '%s'"), Path), Allowed(Path, true));
+			}
+			for (const TCHAR* Path : { TEXT("/Script/Engine"), TEXT("/Temp/N2CTest"), TEXT("/Memory/N2CTest"), TEXT("/N2CNotMounted/N2CTest"),
+				TEXT("/Engine/../Game") })
+			{
+				TestFalse(FString::Printf(TEXT("refused with the setting: '%s'"), Path), Allowed(Path, true));
+			}
+
+			// An engine plugin's content (any enabled one that has a mount)
+			for (const TSharedRef<IPlugin>& Plugin : IPluginManager::Get().GetEnabledPluginsWithContent())
+			{
+				if (Plugin->GetLoadedFrom() == EPluginLoadedFrom::Engine && FPackageName::MountPointExists(Plugin->GetMountedAssetPath()))
+				{
+					const FString InPlugin = Plugin->GetMountedAssetPath() + TEXT("N2CTest");
+					TestFalse(TEXT("refused: an engine plugin's ") + InPlugin, Allowed(InPlugin, false));
+					TestTrue(TEXT("allowed with the setting: an engine plugin's ") + InPlugin, Allowed(InPlugin, true));
+					break;
+				}
+			}
+
+			TestTrue(TEXT("/Game is a content root"), FN2CMcpContentBrowserUtils::IsContentMountRoot(TEXT("/Game")));
+			TestFalse(TEXT("/Game/__N2CTest is not a content root"), FN2CMcpContentBrowserUtils::IsContentMountRoot(TEXT("/Game/__N2CTest")));
+		});
+
+		It(TEXT("is off by default, and Project Settings show the value in effect"), [this]()
+		{
+			TestFalse(TEXT("the code default"), UN2CUserSettings::bDefaultAllowMcpWritesOutsideProject);
+			TestEqual(TEXT("Project Settings show the value in effect"),
+				GetDefault<UN2CUserSettings>()->bAllowMcpWritesOutsideProject, UN2CUserSettings::AreMcpWritesOutsideProjectAllowed());
+			TestFalse(TEXT("off in the test host (the refusal cases need it off)"), UN2CUserSettings::AreMcpWritesOutsideProjectAllowed());
+			// What Project Settings > Plugins > Node to Code (User) shows
+			const FProperty* Property = UN2CUserSettings::StaticClass()->FindPropertyByName(
+				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bAllowMcpWritesOutsideProject));
+			if (TestNotNull(TEXT("the property"), Property))
+			{
+				TestTrue(TEXT("a config property"), Property->HasAnyPropertyFlags(CPF_Config));
+				TestEqual(TEXT("its display name"), Property->GetMetaData(TEXT("DisplayName")), FString(TEXT("Allow MCP Writes Outside Project")));
+				TestEqual(TEXT("its category"), Property->GetMetaData(TEXT("Category")), FString(TEXT("MCP Server")));
+				TestTrue(TEXT("it needs a restart"), Property->HasMetaData(TEXT("ConfigRestartRequired")));
+			}
+		});
+
+		It(TEXT("every writing tool refuses /Engine and /NodeToCode and creates nothing there"), [this]()
+		{
+			if (!TestFalse(TEXT("Allow MCP Writes Outside Project is off"), UN2CUserSettings::AreMcpWritesOutsideProjectAllowed()))
+			{
+				return;
+			}
+			const FString Asset = MakeAsset(TEXT("BP_N2CStaysInGame"), Folder);
+			UBlueprint* Blueprint = BlueprintAtPath(Asset);
+			if (!Blueprint || !MakeFolder(Folder / TEXT("Box")))
+			{
+				return;
+			}
+			const FString CubePackage = TEXT("/Engine/BasicShapes/Cube");
+			TestTrue(TEXT("the engine's Cube exists"), FPackageName::DoesPackageExist(CubePackage));
+			const FString StandardMacrosFile = FPaths::ConvertRelativePathToFull(FPaths::EngineContentDir() / TEXT("EditorBlueprintResources/StandardMacros.uasset"));
+			const FDateTime MacrosStamp = IFileManager::Get().GetTimeStamp(*StandardMacrosFile);
+
+			auto ExpectRefused = [this](const FString& What, const TCHAR* Tool, TSharedPtr<FJsonObject> Arguments)
+			{
+				const FMcpToolCallResult Result = Run(Tool, Arguments);
+				const FString Text = N2CTest::ResultText(Result);
+				TestTrue(What + TEXT(" is refused (") + Text.Left(300) + TEXT(")"), Result.bIsError);
+				return Text;
+			};
+
+			TSharedPtr<FJsonObject> CreateArgs = Args({ { TEXT("blueprintName"), TEXT("BP_N2CEngine") }, { TEXT("parentClassPath"), TEXT("/Script/Engine.Actor") },
+				{ TEXT("assetPath"), TEXT("/Engine/N2CTest") } });
+			CreateArgs->SetBoolField(TEXT("openInEditor"), false);
+			const FString CreateText = ExpectRefused(TEXT("create-blueprint-class at /Engine/N2CTest"), TEXT("create-blueprint-class"), CreateArgs);
+			TestTrue(TEXT("create-blueprint-class names the setting"), CreateText.Contains(TEXT("Allow MCP Writes Outside Project")));
+
+			ExpectRefused(TEXT("move-asset of the engine's Cube to /Game"), TEXT("move-asset"),
+				Args({ { TEXT("sourcePath"), CubePackage }, { TEXT("destinationPath"), Folder / TEXT("X") } }));
+			ExpectRefused(TEXT("move-asset of a /Game asset to /Engine"), TEXT("move-asset"),
+				Args({ { TEXT("sourcePath"), Folder / TEXT("BP_N2CStaysInGame") }, { TEXT("destinationPath"), TEXT("/Engine/N2CTestMoved") } }));
+			TSharedPtr<FJsonObject> OpenArgs = Args({ { TEXT("path"), TEXT("/Engine/N2CNew") } });
+			OpenArgs->SetBoolField(TEXT("create_if_missing"), true);
+			ExpectRefused(TEXT("open-content-browser-path /Engine/N2CNew with create_if_missing"), TEXT("open-content-browser-path"), OpenArgs);
+			ExpectRefused(TEXT("create-folder under /NodeToCode"), TEXT("create-folder"), Args({ { TEXT("folderPath"), TEXT("/NodeToCode/N2CTest") } }));
+			ExpectRefused(TEXT("create-folder under /Engine"), TEXT("create-folder"), Args({ { TEXT("folderPath"), TEXT("/Engine/N2CTest") } }));
+			ExpectRefused(TEXT("copy-asset to /Engine"), TEXT("copy-asset"),
+				Args({ { TEXT("sourcePath"), Asset }, { TEXT("destinationPath"), TEXT("/Engine/N2CTestCopy/BP_N2CCopy") } }));
+			ExpectRefused(TEXT("rename-asset to /Engine"), TEXT("rename-asset"),
+				Args({ { TEXT("sourcePath"), Asset }, { TEXT("destinationPath"), TEXT("/Engine/N2CTestRenamed/BP_N2CRenamed") } }));
+			ExpectRefused(TEXT("rename-asset of the engine's Cube"), TEXT("rename-asset"),
+				Args({ { TEXT("sourcePath"), CubePackage }, { TEXT("newName"), TEXT("N2CCube") } }));
+			ExpectRefused(TEXT("move-folder to /Engine"), TEXT("move-folder"),
+				Args({ { TEXT("sourcePath"), Folder / TEXT("Box") }, { TEXT("destinationPath"), TEXT("/Engine/N2CTestFolder") } }));
+			ExpectRefused(TEXT("rename-folder of /Engine/BasicShapes"), TEXT("rename-folder"),
+				Args({ { TEXT("sourcePath"), TEXT("/Engine/BasicShapes") }, { TEXT("newName"), TEXT("N2CShapes") } }));
+			const FString SaveText = ExpectRefused(TEXT("save-blueprint of the engine's StandardMacros"), TEXT("save-blueprint"),
+				Args({ { TEXT("blueprintPath"), TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros") } }));
+			TestTrue(TEXT("save-blueprint says SAVE_REFUSED"), SaveText.Contains(TEXT("SAVE_REFUSED")));
+
+			// Nothing moved, nothing made
+			TestTrue(TEXT("the /Game asset is in place"), BlueprintAtPath(Asset) == Blueprint);
+			TestTrue(TEXT("the engine's Cube is in place"), FPackageName::DoesPackageExist(CubePackage));
+			TestFalse(TEXT("no /Game/__N2CTest/X"), N2CTest::ContentFolderExists(Folder / TEXT("X")));
+			TestTrue(TEXT("/Game/__N2CTest/Box is in place"), N2CTest::ContentFolderExists(Folder / TEXT("Box")));
+			TestEqual(TEXT("StandardMacros.uasset not rewritten"), IFileManager::Get().GetTimeStamp(*StandardMacrosFile), MacrosStamp);
+			const FString EngineContent = FPaths::ConvertRelativePathToFull(FPaths::EngineContentDir());
+			for (const TCHAR* Name : { TEXT("N2CTest"), TEXT("N2CTestMoved"), TEXT("N2CNew"), TEXT("N2CTestCopy"), TEXT("N2CTestRenamed"),
+				TEXT("N2CTestFolder"), TEXT("N2CShapes") })
+			{
+				TestFalse(FString::Printf(TEXT("nothing at Engine/Content/%s"), Name), IFileManager::Get().DirectoryExists(*(EngineContent / Name)));
+			}
+			TestFalse(TEXT("no Engine/Content/BasicShapes/N2CCube.uasset"), IFileManager::Get().FileExists(*(EngineContent / TEXT("BasicShapes/N2CCube.uasset"))));
+			if (const TSharedPtr<IPlugin> NodeToCode = IPluginManager::Get().FindPlugin(TEXT("NodeToCode")))
+			{
+				TestFalse(TEXT("nothing at NodeToCode/Content/N2CTest"), IFileManager::Get().DirectoryExists(*(NodeToCode->GetContentDir() / TEXT("N2CTest"))));
 			}
 		});
 	});

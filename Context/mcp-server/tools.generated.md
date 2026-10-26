@@ -760,7 +760,7 @@ Search and browse the project's assets and folders, open them in the editor, and
 
 ### copy-asset
 
-Copy an asset to a new asset path in the content browser. The source may be under /Game/ or /Engine/; the destination must be under /Game/. Missing destination folders are created. An existing asset at the destination is never replaced: the copy fails. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Copy an asset to a new asset path in the content browser. The source may be under any mounted root (/Game/, /Engine/, a plugin's /&lt;PluginName&gt;/); the destination must be under /Game/ or a project plugin's content. Missing destination folders are created. An existing asset at the destination is never replaced: the copy fails. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -834,7 +834,7 @@ Unreal MCP counterpart (UE 5.8): `EditorAppToolset.OpenEditorForAsset`. Left to 
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `asset_path` | `string` | yes |  | Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). Must start with /Game/ or /Engine/: other mount points, such as a plugin's /&lt;PluginName&gt;/, are refused. |
+| `asset_path` | `string` | yes |  | Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). It may be under any mounted root: /Game/, /Engine/ or a plugin's /&lt;PluginName&gt;/. |
 | `bring_to_front` | `boolean` | no | `true` | Whether to bring the editor window to front |
 | `focus_graph` | `string` | no | `""` | Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'UserConstructionScript' for an Actor's construction script). An unknown name is not an error: the Blueprint opens and focused_graph comes back empty. |
 
@@ -852,7 +852,7 @@ Unreal MCP counterpart (UE 5.8): `EditorAppToolset.SetContentBrowserPath`. Left 
 |---|---|---|---|---|
 | `path` | `string` | yes |  | Content browser path to navigate to (e.g., '/Game/Blueprints') |
 | `select_item` | `string` | no | `""` | Optional: Specific item to select after navigation |
-| `create_if_missing` | `boolean` | no | `false` | Whether to create the folder if it doesn't exist |
+| `create_if_missing` | `boolean` | no | `false` | Whether to create the folder if it doesn't exist; only under /Game or a project plugin's content |
 
 ### read-content-browser-path
 

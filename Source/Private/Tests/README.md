@@ -59,8 +59,6 @@ case back on. Currently disabled:
 
 | Spec | Case | Finding |
 |------|------|---------|
-| `NodeToCode.Names` | rename-folder accepts ordinary names that start with a device name's letters | mcp-tools-contentbrowser-fs-11 |
-| `NodeToCode.Names` | create-folder refuses COM1-9 and LPT1-9 like rename-folder does | mcp-tools-contentbrowser-fs-11 |
 | `NodeToCode.LLM.Parse.Fixtures` | Anthropic: a sentence before the fenced answer is skipped | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | OpenAI: an answer in a bare fence parses | llm-layer-12 (card 0185) |
 | `NodeToCode.LLM.Parse.Fixtures` | Gemini: output tokens include thoughtsTokenCount | llm-layer-27 (card 0185) |
@@ -74,7 +72,6 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists a loaded Blueprint class once, as a Blueprint class | mcp-tools-bp-structure-12 (card 0288) |
 | `NodeToCode.MCP.Content` | move-asset moves an asset by object path into another folder, keeping its name | mcp-tools-contentbrowser-fs-3 (card 0284) |
-| `NodeToCode.MCP.Content` | a project plugin's content mount: create-folder, rename-asset, move-folder and rename-folder accept the plugin's content | mcp-tools-contentbrowser-fs-7 (card 0182) |
 | `NodeToCode.MCP.Content` | folders: move-folder and rename-folder move an empty folder and remove the source | mcp-tools-contentbrowser-fs-10 (card 0281) |
 | `NodeToCode.MCP.Content` | folders: move-folder keeps an empty subfolder | mcp-tools-contentbrowser-fs-10 (card 0281) |
 | `NodeToCode.MCP.Content` | folders: move-folder refuses to move a folder into itself or its own subfolder, changing nothing | mcp-tools-contentbrowser-fs-9 (card 0281) |

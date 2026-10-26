@@ -142,18 +142,16 @@ bool FN2CMcpCreateFolderTool::ValidateFolderPath(const FString& Path, FString& O
     OutNormalizedPath = Path;
     OutNormalizedPath.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-    // Ensure it starts with a valid root
-    if (!OutNormalizedPath.StartsWith(TEXT("/Game/")) && 
-        !OutNormalizedPath.Contains(TEXT("/Plugins/")))
-    {
-        OutErrorMessage = TEXT("Folder path must start with /Game/ or a valid plugin path. Cannot create folders in /Engine/");
-        return false;
-    }
-
     // Remove trailing slash if present
     if (OutNormalizedPath.EndsWith(TEXT("/")))
     {
         OutNormalizedPath = OutNormalizedPath.LeftChop(1);
+    }
+
+    // Only where MCP tools may write: /Game and the project's plugins (card 0182)
+    if (!FN2CMcpContentBrowserUtils::IsWritableContentPath(OutNormalizedPath, OutErrorMessage))
+    {
+        return false;
     }
 
     // Check for invalid characters
@@ -174,9 +172,8 @@ bool FN2CMcpCreateFolderTool::ValidateFolderPath(const FString& Path, FString& O
         return false;
     }
 
-    // Check for reserved names
-    TArray<FString> ReservedNames = { TEXT("CON"), TEXT("PRN"), TEXT("AUX"), TEXT("NUL") };
-    if (ReservedNames.Contains(FolderName.ToUpper()))
+    // Check for reserved names (the same rule as rename-folder)
+    if (FN2CMcpContentBrowserUtils::IsReservedDeviceName(FolderName))
     {
         OutErrorMessage = TEXT("Folder name is a reserved system name");
         return false;
