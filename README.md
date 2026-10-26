@@ -82,9 +82,10 @@ keys only. The client's `tools/list` request returns the current tool set.
 
 ### API keys
 
-Keys entered in Project Settings are saved outside your project, in a per-user file
-(`%LOCALAPPDATA%\NodeToCode\secrets.json` on Windows), so they never end up in source control. If a provider's
-**API Key** field is empty, Node to Code uses the editor's environment instead:
+Keys entered in Project Settings are saved outside your project, in Windows Credential Manager (entries
+`NodeToCode/<Provider>`; a per-user file on other platforms), so they never end up in source control. The field is
+masked and empties once the key is saved; **API Key Status** says where the key in use comes from. If no key is
+saved, Node to Code uses the editor's environment instead:
 
 | Provider | Environment variable |
 |---|---|

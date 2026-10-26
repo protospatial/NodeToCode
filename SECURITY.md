@@ -54,10 +54,13 @@ Blueprints. It is designed for a single developer's machine; it has no authentic
   applies to **Enable MCP Server**. A project can still run its own code when you open it (C++ modules,
   `Content/Python/init_unreal.py`), so this protects against an accidental or careless commit, not a hostile
   project.
-- **API keys.** Keys entered in Project Settings are kept outside the project in a per-user file,
-  `<user settings folder>/NodeToCode/secrets.json`, as plain (unencrypted) JSON; they are not written to the
-  project's config files. The MCP file tools refuse to read or list that folder, any `secrets.json*` file, `.env`
-  files and the project's `.git` folder.
+- **API keys.** On Windows, keys entered in Project Settings are kept in Windows Credential Manager (entries
+  `NodeToCode/<Provider>`, encrypted for your Windows account, not roaming); a plain-text `secrets.json` left by an
+  earlier version is moved there and deleted at the first start. On other platforms they are kept outside the
+  project in a per-user file, `<user settings folder>/NodeToCode/secrets.json`, as plain (unencrypted) JSON. Keys
+  are never written to the project's config files, the API Key fields are masked and write-only, and no Blueprint
+  or Python call returns a key. The MCP file tools refuse to read or list the secrets folders, any `secrets.json*`
+  file, `.env` files and the project's `.git` folder.
 
 Any process running as you on the same machine can reach the server, and text inside Blueprints (comments, names,
 tooltips, string literals) reaches the agent that reads it. Treat a connected agent as having the access your

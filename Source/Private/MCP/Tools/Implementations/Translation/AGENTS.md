@@ -191,7 +191,7 @@ metadata file. The extension follows the Target Language in settings at save tim
 
 ### API Keys
 - Cloud providers require API keys configured in settings
-- Keys are stored as plaintext JSON in the per-user `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json` (`FN2CSecretStore`), outside the project; the MCP file tools (read-file, read-path) refuse that folder, the old project folder `Saved/NodeToCode/User`, and any `secrets.json*` file
+- Keys are stored by `FN2CSecretStore` in Windows Credential Manager (`NodeToCode/<ProviderId>`; plaintext JSON in the per-user `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json` on Mac and Linux), outside the project; no tool returns a key; the MCP file tools (read-file, read-path) refuse that folder, the old project folder `Saved/NodeToCode/User`, and any `secrets.json*` file
 - Every request resolves its key when it is sent, from `IN2CCredentialSource::Get()` (the saved key, else the
   environment variable), so a changed key applies to the next request and no config holds a key
 - `get-available-llm-providers` reports a cloud provider as configured when that source `Has()` a key, and where it

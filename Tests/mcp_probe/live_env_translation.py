@@ -187,7 +187,12 @@ def task_id_for_token(log_text, token):
 
 
 def stored_key_present(store_id):
-    """Whether the per-user secrets file holds a key for store_id (the value is not read out)"""
+    """Whether a key is saved for store_id: a NodeToCode/<store_id> Credential Manager entry on Windows (card 0161), or
+    the per-user secrets file (the value is not read out)"""
+    if os.name == 'nt':
+        import wincred
+        if wincred.read(wincred.PREFIX + store_id) is not None:
+            return True
     base = os.environ.get('LOCALAPPDATA') if os.name == 'nt' else os.path.expanduser('~/Library/Application Support/Epic')
     path = os.path.join(base or '', 'NodeToCode', 'secrets.json')
     try:
@@ -216,8 +221,8 @@ def main():
         print(json.dumps({'ok': False, 'reason': '%s not in .env' % variable}))
         return 2
     if stored_key_present(STORE_ID[args.provider]):
-        print(json.dumps({'ok': False, 'reason': 'a %s key is saved in the per-user secrets file, so the environment '
-                          'variable would not be used' % STORE_ID[args.provider]}))
+        print(json.dumps({'ok': False, 'reason': 'a %s key is saved (Credential Manager or the per-user secrets file), '
+                          'so the environment variable would not be used' % STORE_ID[args.provider]}))
         return 2
 
     os.makedirs(os.path.dirname(args.log), exist_ok=True)

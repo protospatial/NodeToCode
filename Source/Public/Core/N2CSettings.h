@@ -367,20 +367,23 @@ public:
     FString AnthropicCustomModelId;
     
     /**
-     * Anthropic API key from console.anthropic.com, stored separately in user secrets. NodeToCode needs an API key:
+     * Anthropic API key from console.anthropic.com. Write-only: an entered key is saved through FN2CSecretStore (Windows
+     * Credential Manager) and the field is cleared, so it never holds a key. NodeToCode needs an API key:
      * a Claude Pro/Max subscription cannot be used here. To translate with a subscription, use Claude Code with the
      * NodeToCode MCP server (see the Provider Configuration wiki page).
      */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Anthropic",
-        meta = (DisplayName = "API Key"))
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "API Key", PasswordField = true,
+            ToolTip = "Type or paste a key and press Enter: it is saved to Windows Credential Manager (the per-user secrets file on other platforms) and the field empties again. The key is never shown, saved to a config file, or readable from Blueprints or Python; API Key Status says where the key in use comes from."))
     FString Anthropic_API_Key_UI;
 
     /**
-     * Where the Anthropic key that requests use comes from: the API Key field above, or the ANTHROPIC_API_KEY environment
-     * variable of the editor process when the field is empty. The variable's value is never shown.
+     * Where the Anthropic key that requests use comes from (DescribeApiKeySource): a key saved with the API Key field, or the
+     * ANTHROPIC_API_KEY environment variable of the editor process when none is saved, or not set. Shows at most the last
+     * four characters of a saved key and never an environment value.
      */
     UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | Anthropic",
-        meta = (DisplayName = "API Key Source"))
+        meta = (DisplayName = "API Key Status"))
     FString Anthropic_API_Key_Source;
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
@@ -400,17 +403,19 @@ public:
         meta = (DisplayName = "Custom Model ID", ToolTip = "A model ID the catalog does not list (for example a model released after this NodeToCode version). When set it is sent instead of Model, without the catalog's limits and prices (add one under Model Price Overrides to see costs). Leave empty to use Model."))
     FString OpenAICustomModelId;
 
-    /** OpenAI API Key - Stored separately in user secrets */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | OpenAI",
-        meta = (DisplayName = "API Key"))
+    /** OpenAI API key. Write-only: an entered key is saved through FN2CSecretStore and the field is cleared */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | OpenAI",
+        meta = (DisplayName = "API Key", PasswordField = true,
+            ToolTip = "Type or paste a key and press Enter: it is saved to Windows Credential Manager (the per-user secrets file on other platforms) and the field empties again. The key is never shown, saved to a config file, or readable from Blueprints or Python; API Key Status says where the key in use comes from."))
     FString OpenAI_API_Key_UI;
 
     /**
-     * Where the OpenAI key that requests use comes from: the API Key field above, or the OPENAI_API_KEY environment
-     * variable of the editor process when the field is empty. The variable's value is never shown.
+     * Where the OpenAI key that requests use comes from (DescribeApiKeySource): a key saved with the API Key field, or the
+     * OPENAI_API_KEY environment variable of the editor process when none is saved, or not set. Shows at most the last
+     * four characters of a saved key and never an environment value.
      */
     UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | OpenAI",
-        meta = (DisplayName = "API Key Source"))
+        meta = (DisplayName = "API Key Status"))
     FString OpenAI_API_Key_Source;
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
@@ -430,17 +435,19 @@ public:
         meta = (DisplayName = "Custom Model ID", ToolTip = "A model ID the catalog does not list (for example a model released after this NodeToCode version). When set it is sent instead of Model, without the catalog's limits and prices (add one under Model Price Overrides to see costs). Leave empty to use Model."))
     FString GeminiCustomModelId;
 
-    /** Gemini API key from Google AI Studio, stored separately in user secrets */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | Gemini",
-        meta = (DisplayName = "API Key"))
+    /** Gemini API key from Google AI Studio. Write-only: an entered key is saved through FN2CSecretStore and the field is cleared */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | Gemini",
+        meta = (DisplayName = "API Key", PasswordField = true,
+            ToolTip = "Type or paste a key and press Enter: it is saved to Windows Credential Manager (the per-user secrets file on other platforms) and the field empties again. The key is never shown, saved to a config file, or readable from Blueprints or Python; API Key Status says where the key in use comes from."))
     FString Gemini_API_Key_UI;
 
     /**
-     * Where the Gemini key that requests use comes from: the API Key field above, or the GEMINI_API_KEY environment
-     * variable of the editor process when the field is empty. The variable's value is never shown.
+     * Where the Gemini key that requests use comes from (DescribeApiKeySource): a key saved with the API Key field, or the
+     * GEMINI_API_KEY environment variable of the editor process when none is saved, or not set. Shows at most the last
+     * four characters of a saved key and never an environment value.
      */
     UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | Gemini",
-        meta = (DisplayName = "API Key Source"))
+        meta = (DisplayName = "API Key Status"))
     FString Gemini_API_Key_Source;
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
@@ -466,17 +473,19 @@ public:
         meta = (DisplayName = "Custom Model ID", ToolTip = "A model ID the catalog does not list (for example a model released after this NodeToCode version). When set it is sent instead of Model, with the Thinking mode above but without the catalog's limits and prices (add one under Model Price Overrides to see costs). Leave empty to use Model."))
     FString DeepSeekCustomModelId;
     
-    /** DeepSeek API Key - Stored separately in user secrets */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code | LLM Services | DeepSeek",
-        meta = (DisplayName = "API Key"))
+    /** DeepSeek API key. Write-only: an entered key is saved through FN2CSecretStore and the field is cleared */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | DeepSeek",
+        meta = (DisplayName = "API Key", PasswordField = true,
+            ToolTip = "Type or paste a key and press Enter: it is saved to Windows Credential Manager (the per-user secrets file on other platforms) and the field empties again. The key is never shown, saved to a config file, or readable from Blueprints or Python; API Key Status says where the key in use comes from."))
     FString DeepSeek_API_Key_UI;
 
     /**
-     * Where the DeepSeek key that requests use comes from: the API Key field above, or the DEEPSEEK_API_KEY environment
-     * variable of the editor process when the field is empty. The variable's value is never shown.
+     * Where the DeepSeek key that requests use comes from (DescribeApiKeySource): a key saved with the API Key field, or the
+     * DEEPSEEK_API_KEY environment variable of the editor process when none is saved, or not set. Shows at most the last
+     * four characters of a saved key and never an environment value.
      */
     UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | DeepSeek",
-        meta = (DisplayName = "API Key Source"))
+        meta = (DisplayName = "API Key Status"))
     FString DeepSeek_API_Key_Source;
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
@@ -602,14 +611,38 @@ public:
 /** Get the model for the selected provider */
     FString GetActiveModel() const;
 
-/** Fills the API Key Source fields from the secret store and the environment (never shows a key) */
+/** Fills the API Key Status fields from the secret store and the environment (never shows a key) */
     void RefreshApiKeySources();
 
     /**
-     * The API Key Source text for Provider, from the credential source requests use (IN2CCredentialSource::Get()):
-     * the saved key, the environment variable it uses, or none. Never the key.
+     * The API Key Status text for Provider, from the credential source requests use (IN2CCredentialSource::Get()):
+     * "Stored in Windows Credential Manager (ends ...abcd)", "From environment variable ANTHROPIC_API_KEY" or
+     * "Not set". At most the last four characters of a saved key, and only of a key 16 or more characters long.
      */
     static FString DescribeApiKeySource(EN2CLLMProvider Provider);
+
+    /**
+     * Saves Provider's API key (an empty Key removes the saved one) through FN2CSecretStore, as the API Key field does,
+     * and updates the API Key Status rows. With HasApiKey, the only key access Blueprints and Python get: nothing
+     * reflected returns a key.
+     * @return true if the key was saved (or removed)
+     */
+    UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Services")
+    static bool SetApiKey(EN2CLLMProvider InProvider, const FString& Key);
+
+    /** True when requests to Provider have a key (saved or from the environment), or need none (Ollama, LM Studio) */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
+    static bool HasApiKey(EN2CLLMProvider InProvider);
+
+    /** Remove Saved Key buttons under each provider in Project Settings */
+    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | Anthropic", meta = (DisplayName = "Remove Saved Anthropic Key"))
+    void RemoveSavedAnthropicKey();
+    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | OpenAI", meta = (DisplayName = "Remove Saved OpenAI Key"))
+    void RemoveSavedOpenAIKey();
+    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | Gemini", meta = (DisplayName = "Remove Saved Gemini Key"))
+    void RemoveSavedGeminiKey();
+    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | DeepSeek", meta = (DisplayName = "Remove Saved DeepSeek Key"))
+    void RemoveSavedDeepSeekKey();
 
     /**
      * The model ID requests to Provider send: its Custom Model ID when set, else its Model (the provider default when

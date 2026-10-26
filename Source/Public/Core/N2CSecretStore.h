@@ -16,9 +16,9 @@ namespace N2CSignInRemoval
 }
 
 /**
- * Where the API keys are kept. FN2CSecretStore owns exactly one backend; the OS keychain backend (card 0161)
- * implements this same interface. Provider ids are "OpenAI", "Anthropic", "Gemini", "DeepSeek" (see
- * FN2CSecretStore::GetProviderId); a backend keeps entries for ids it does not know.
+ * Where the API keys are kept. FN2CSecretStore owns exactly one backend: Windows Credential Manager on Windows
+ * (FN2CCredentialManagerBackend), the per-user file elsewhere (FN2CSecretFileBackend). Provider ids are "OpenAI",
+ * "Anthropic", "Gemini", "DeepSeek" (see FN2CSecretStore::GetProviderId); a backend keeps entries for ids it does not know.
  */
 class NODETOCODE_API IN2CSecretBackend
 {
@@ -27,6 +27,9 @@ public:
 
     /** Where the keys live, for log lines. Never contains a key. */
     virtual FString Describe() const = 0;
+
+    /** The store's name for the API Key Source row in Project Settings ("Windows Credential Manager") */
+    virtual FString GetDisplayName() const = 0;
 
     /**
      * Reads every stored key into OutKeys, keyed by provider id.
@@ -43,7 +46,8 @@ public:
 
 /**
  * Per-user JSON file backend (the Phase 0 store, review decision dec-10): by default
- * FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json, outside every project.
+ * FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json, outside every project. The store on Mac and Linux; on
+ * Windows only the source FN2CSecretStore::MigrateFileToBackend moves into Credential Manager.
  * {
  *     "Version": 1,
  *     "OpenAI_API_Key": "...",
@@ -68,10 +72,17 @@ public:
     explicit FN2CSecretFileBackend(const FString& InFilePath, const FString& InLegacyFilePath = FString());
 
     virtual FString Describe() const override;
+    virtual FString GetDisplayName() const override;
     virtual bool LoadAll(TMap<FString, FString>& OutKeys) override;
     virtual bool StoreKey(const FString& ProviderId, const FString& Key, TMap<FString, FString>& OutKeys) override;
 
     const FString& GetFilePath() const { return FilePath; }
+
+    /**
+     * The keys kept under "MigrationConflicts" (project keys that lost to a different per-user key), as
+     * (provider id, key) pairs. Empty when the file is missing or has none.
+     */
+    TArray<TPair<FString, FString>> LoadMigrationConflictKeys() const;
 
     /** The JSON field that holds ProviderId's key ("<ProviderId>_API_Key") */
     static FString GetKeyField(const FString& ProviderId);
@@ -109,6 +120,59 @@ private:
     FString LegacyFilePath;
 };
 
+/**
+ * Windows Credential Manager backend (card 0161; decision card 0061 option (a), the OS keychain with the environment
+ * fallback): one generic credential per provider, target name "<TargetPrefix><ProviderId>" (by default
+ * "NodeToCode/OpenAI", ...), user name "NodeToCode", the key as the UTF-8 credential blob, persisted for the current
+ * user on this machine only (CRED_PERSIST_LOCAL_MACHINE: it does not roam with the profile). Windows encrypts it per
+ * user; 'cmdkey /list' shows the targets and 'cmdkey /delete:NodeToCode/OpenAI' removes one.
+ *
+ * Windows only (decision 0001: 2.0-beta is Win64 only). On other platforms the class compiles, IsSupported() is false
+ * and every call fails; FN2CSecretStore::Get() then uses FN2CSecretFileBackend.
+ */
+class NODETOCODE_API FN2CCredentialManagerBackend : public IN2CSecretBackend
+{
+public:
+    /** Target prefix of the plugin's own entries */
+    static const TCHAR* const DefaultTargetPrefix;
+
+    /** Largest key accepted (CRED_MAX_CREDENTIAL_BLOB_SIZE is 2560 bytes) */
+    static constexpr int32 MaxKeyBytes = 2560;
+
+    /** @param InTargetPrefix prefix of every target name; tests use "NodeToCodeTest/<guid>/" so they never touch the user's entries */
+    explicit FN2CCredentialManagerBackend(const FString& InTargetPrefix = DefaultTargetPrefix);
+
+    /** True where Windows Credential Manager exists (Windows builds) */
+    static bool IsSupported();
+
+    virtual FString Describe() const override;
+    virtual FString GetDisplayName() const override;
+    virtual bool LoadAll(TMap<FString, FString>& OutKeys) override;
+    virtual bool StoreKey(const FString& ProviderId, const FString& Key, TMap<FString, FString>& OutKeys) override;
+
+    /** "<TargetPrefix><ProviderId>" */
+    FString GetTargetName(const FString& ProviderId) const;
+    const FString& GetTargetPrefix() const { return TargetPrefix; }
+
+private:
+    FString TargetPrefix;
+};
+
+/** What one run of FN2CSecretStore::MigrateFileToBackend did */
+struct NODETOCODE_API FN2CSecretMigrationResult
+{
+    /** A secrets file was found (per-user or project) */
+    bool bFoundFile = false;
+    /** Every key was written to the target and read back, and the file was deleted */
+    bool bCompleted = false;
+    /** Something failed; the file was left in place (it is tried again on the next start) */
+    bool bFailed = false;
+    /** Provider ids whose key was written to the target */
+    TArray<FString> Moved;
+    /** Ids a key was kept under because the target already had a different key for that provider */
+    TArray<FString> ConflictIds;
+};
+
 /** Where the API key a provider's requests use comes from */
 enum class EN2CApiKeySource : uint8
 {
@@ -138,7 +202,11 @@ public:
     /** Reads one environment variable; empty when it is not set */
     using FEnvironmentReader = TFunction<FString(const FString& VariableName)>;
 
-    /** The process-wide store, backed by the per-user file. The first call loads it and migrates a project file. */
+    /**
+     * The process-wide store. On Windows it is backed by Windows Credential Manager ("NodeToCode/<ProviderId>"), and
+     * the first call moves the per-user secrets.json and a project's Saved/NodeToCode/User/secrets.json into it
+     * (MigrateFileToBackend). Elsewhere it is backed by the per-user file, and the first call moves a project file there.
+     */
     static FN2CSecretStore& Get();
 
     /**
@@ -180,6 +248,22 @@ public:
 
     /** Re-reads the backend (for example after another editor changed the file) */
     void Reload();
+
+    /** The backend's name for Project Settings ("Windows Credential Manager", or the per-user file) */
+    FString GetStoreDisplayName() const;
+
+    /**
+     * Moves the keys of a secrets file into Target once, never losing one:
+     * 1. The file backend loads UserFile, first merging LegacyFile (a project's Saved/NodeToCode/User/secrets.json)
+     *    into it as it always does. Nothing happens when neither file exists.
+     * 2. Each non-empty key is written to Target under its provider id. When Target already holds a different key for
+     *    that provider, Target's key stays and the file's key is written under "<ProviderId>.Conflict.<n>"; keys the
+     *    file kept under "MigrationConflicts" are written the same way.
+     * 3. Target is read back. Only when every written key reads back unchanged are UserFile and its .bak and .tmp
+     *    copies deleted. On any failure the file stays and the next start tries again.
+     * Logs name providers and paths, never a key.
+     */
+    static FN2CSecretMigrationResult MigrateFileToBackend(const FString& UserFile, const FString& LegacyFile, IN2CSecretBackend& Target);
 
     /** Where the per-user file lives: FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json */
     static FString GetUserSecretsFilePath();

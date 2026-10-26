@@ -11,9 +11,11 @@ migration_dump.py, and checks every row of Context/release/migration-1.2-to-2.0.
 A third start of the last fixture checks the environment-variable key path (K3) with a dummy value. It prints one
 PASS / FAIL / SKIP line per row and exits non-zero on any FAIL. Report: Tests/Migration/logs/migration_<label>.json.
 
-Machine state it touches, always restored in a finally block:
+Machine state it touches, always restored in a finally block (run it under the `user-secrets` lock):
 - the per-user secrets folder (%LOCALAPPDATA%/NodeToCode): moved aside before the first start and put back at the end,
   so the fixtures' dummy keys never mix with real ones;
+- on Windows, the NodeToCode/* Windows Credential Manager entries (card 0161: the migrated keys land there): kept in
+  memory, removed for the run, and written back at the end;
 - the engine's per-user EditorSettings.ini (%LOCALAPPDATA%/UnrealEngine/<ver>/Saved/Config/WindowsEditor): saved,
   set to bThrottleCPUWhenNotForeground=False as 1.2.x left it, and written back byte for byte.
 The fixtures hold dummy keys only ("test-...-0000" / "test-...-main"); no key value is printed.
@@ -35,6 +37,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'mcp_probe'))
 from editor_session import find_editor, kill_with_parent  # noqa: E402
 from env_keys import find_leaks, load_provider_keys  # noqa: E402
+
+if os.name == 'nt':
+    import wincred  # noqa: E402
 
 DUMP = os.path.join(HERE, 'migration_dump.py').replace('\\', '/')
 PRERELEASE = os.path.join(HERE, 'prerelease')
@@ -246,6 +251,28 @@ def secrets_user_path():
     return os.path.join(base, 'NodeToCode')
 
 
+def saved_keys():
+    """The saved keys and the kept conflicting keys, as ({'<Provider>_API_Key': key}, {'<Provider>_API_Key': key}): from
+    the NodeToCode/* Credential Manager entries on Windows (card 0161), else from the per-user secrets file"""
+    if os.name == 'nt':
+        main, conflicts = {}, {}
+        for target, entry in wincred.snapshot(wincred.PREFIX).items():
+            name = target[len(wincred.PREFIX):]
+            value = entry['blob'].decode('utf-8', 'replace')
+            if '.Conflict.' in name:
+                conflicts[name.split('.Conflict.')[0] + '_API_Key'] = value
+            else:
+                main[name + '_API_Key'] = value
+        return main, conflicts
+    user_file = os.path.join(secrets_user_path(), 'secrets.json')
+    user = json.load(open(user_file)) if os.path.exists(user_file) else {}
+    conflicts = user.get('MigrationConflicts', {})
+    return user, conflicts.get(next(iter(conflicts), ''), {}) if conflicts else {}
+
+
+STORED_PREFIX = 'Stored in Windows Credential Manager' if os.name == 'nt' else 'Stored in the per-user secrets file'
+
+
 def check_fixture(fixture, ctx, rows, state):
     exp = FIXTURES[fixture]
     project_dir, uproject = make_scratch(ctx['host'], ctx['root'], fixture)
@@ -418,44 +445,44 @@ def check_fixture(fixture, ctx, rows, state):
     rows.add('N7', 'Unreal Engine' in d1.get('code_editor_theme_names', []), 'CodeEditorTheme has %d themes incl. "Unreal Engine": %s' % (
         len(d1.get('code_editor_theme_names', [])), 'Unreal Engine' in d1.get('code_editor_theme_names', [])))
 
-    # K1 / K2: the project's keys move to the per-user file once
+    # K1 / K2: the project's keys move once, to Windows Credential Manager (card 0161; the per-user file elsewhere)
     user_file = os.path.join(secrets_user_path(), 'secrets.json')
-    user = json.load(open(user_file)) if os.path.exists(user_file) else {}
-    moved_line = [l for l in s1['log'].splitlines() if 'Moved API keys from' in l]
+    user, parked_keys = saved_keys()
+    moved_line = [l for l in s1['log'].splitlines() if 'Moved API keys' in l]
     leaked = [v for v in fixture_keys.values() if v and (v in s1['log'] or v in s2['log'])]
     keys1 = s1['dump']['keys']
     first = state.get('first_keys')
     if first is None:
         same = all(user.get(k + '_API_Key') == fixture_keys.get(k + '_API_Key') for k in KEY_NAMES)
+        # The API Key fields are write-only since card 0161: they stay empty, and API Key Status names the store
+        file_ok = os.name == 'nt' and not os.path.exists(user_file) or os.name != 'nt' and user.get('Version') == 1
         ok = (not os.path.exists(project_secrets) and not os.path.isdir(os.path.dirname(project_secrets)) and
-              user.get('Version') == 1 and same and not leaked and
-              all(keys1[f]['length'] == len(fixture_keys[k + '_API_Key']) for f, k in zip(
-                  ('open_ai_api_key_ui', 'anthropic_api_key_ui', 'gemini_api_key_ui', 'deep_seek_api_key_ui'), KEY_NAMES)) and
-              all(d1[p].startswith('Saved key') for p in ('anthropic_api_key_source', 'open_ai_api_key_source',
-                                                         'gemini_api_key_source', 'deep_seek_api_key_source')) and
+              file_ok and same and not leaked and
+              all(keys1[f]['length'] == 0 for f in
+                  ('open_ai_api_key_ui', 'anthropic_api_key_ui', 'gemini_api_key_ui', 'deep_seek_api_key_ui')) and
+              all(d1[p].startswith(STORED_PREFIX) for p in ('anthropic_api_key_source', 'open_ai_api_key_source',
+                                                           'gemini_api_key_source', 'deep_seek_api_key_source')) and
               bool(moved_line))
-        rows.add('K1', ok, 'project secrets.json gone: %s, User folder gone: %s; per-user file Version %s with the '
-                 'fixture\'s four keys: %s; Project Settings fields hold them (lengths only) and say "%s"; log names '
-                 'both paths: %s; no key value in either log: %s' % (
+        rows.add('K1', ok, 'project secrets.json gone: %s, User folder gone: %s; per-user file gone (Windows) or '
+                 'Version 1: %s; the fixture\'s four keys saved: %s; Project Settings fields empty and say "%s"; log '
+                 'says the keys moved: %s; no key value in either log: %s' % (
                      not os.path.exists(project_secrets), not os.path.isdir(os.path.dirname(project_secrets)),
-                     user.get('Version'), same, d1['anthropic_api_key_source'],
+                     file_ok, same, d1['anthropic_api_key_source'],
                      bool(moved_line),
                      not leaked))
         rows.add('K2', None, 'checked with the second fixture')
         state['first_keys'] = fixture_keys
     else:
-        conflicts = user.get('MigrationConflicts', {})
-        entry = conflicts.get(next(iter(conflicts), ''), {}) if conflicts else {}
         kept = all(user.get(k + '_API_Key') == first.get(k + '_API_Key') for k in KEY_NAMES)
-        parked = all(entry.get(k + '_API_Key') == fixture_keys.get(k + '_API_Key') for k in KEY_NAMES)
-        warn = [l for l in w1 if 'already had a different key' in l]
+        parked = all(parked_keys.get(k + '_API_Key') == fixture_keys.get(k + '_API_Key') for k in KEY_NAMES)
+        warn = [l for l in w1 if 'already had a different key' in l or 'keys that differed from the ones already stored' in l]
         rows.add('K1', not os.path.exists(project_secrets) and not leaked,
                  'second project\'s secrets.json moved out too: %s; no key value in either log: %s' % (
                      not os.path.exists(project_secrets), not leaked))
-        rows.add('K2', kept and parked and bool(warn) and any(project_secrets.replace('\\', '/') in k.replace('\\', '/')
-                                                                for k in conflicts),
-                 'per-user keys still the first project\'s: %s; this project\'s keys under MigrationConflicts.<its '
-                 'file>: %s; warning "already had a different key": %s' % (kept, parked, bool(warn)))
+        rows.add('K2', kept and parked and bool(warn),
+                 'saved keys still the first project\'s: %s; this project\'s keys kept beside them (Credential Manager '
+                 '<Provider>.Conflict.<n> entries, or MigrationConflicts in the per-user file): %s; conflict warning: %s' % (
+                     kept, parked, bool(warn)))
     rows.add('K4', None, 'earlier 2.0 builds only (sign-in fields); covered by NodeToCode.Secrets automation tests')
 
     # Files
@@ -525,18 +552,21 @@ def check_env_key(ctx, rows):
     user_dir = secrets_user_path()
     if os.path.isdir(user_dir):
         shutil.rmtree(user_dir)
+    if os.name == 'nt':
+        wincred.clear(wincred.PREFIX)
     dummy = 'test-env-key-0000'
     s3 = run_start(ctx['engine'], uproject, os.path.join(ctx['logs'], 'migration_k3_%s.log' % ctx['label']), False,
                    {'ANTHROPIC_API_KEY': dummy})
     d = (s3['dump'] or {}).get('settings', {})
     keys = (s3['dump'] or {}).get('keys', {})
     src = d.get('anthropic_api_key_source', '')
+    nothing_saved = not os.path.exists(os.path.join(user_dir, 'secrets.json')) and not (
+        os.name == 'nt' and wincred.targets(wincred.PREFIX))
     rows.add('K3', 'ANTHROPIC_API_KEY' in src and keys.get('anthropic_api_key_ui', {}).get('length') == 0 and
-             dummy not in s3['log'] and not os.path.exists(os.path.join(user_dir, 'secrets.json')),
+             dummy not in s3['log'] and nothing_saved,
              'no saved key + ANTHROPIC_API_KEY in the editor environment: API Key Source "%s", field empty: %s, '
              'value not in the log: %s, nothing saved: %s' % (
-                 src, keys.get('anthropic_api_key_ui', {}).get('length') == 0, dummy not in s3['log'],
-                 not os.path.exists(os.path.join(user_dir, 'secrets.json'))))
+                 src, keys.get('anthropic_api_key_ui', {}).get('length') == 0, dummy not in s3['log'], nothing_saved))
 
 
 # Runs in the editor over MCP run-python after the migration checks: picks the live model (Project Settings writes it
@@ -638,6 +668,10 @@ def main():
         user_backup = user_dir + '.migration-check-%d' % int(time.time())
         os.rename(user_dir, user_backup)
         print('per-user secrets folder moved aside to %s for the run' % user_backup)
+    # The NodeToCode/* Credential Manager entries, in memory only, put back in the finally block
+    saved_entries = wincred.snapshot(wincred.PREFIX) if os.name == 'nt' else None
+    if saved_entries is not None:
+        wincred.clear(wincred.PREFIX)
     root = tempfile.mkdtemp(prefix='n2c_mig_')
     all_rows = []
     ctx = {'engine': args.engine, 'host': args.host, 'root': root, 'logs': logs, 'label': args.label, 'state': {},
@@ -674,6 +708,8 @@ def main():
             shutil.rmtree(user_dir)
         if user_backup:
             os.rename(user_backup, user_dir)
+        if saved_entries is not None and not wincred.restore_snapshot(wincred.PREFIX, saved_entries):
+            print('WARNING: the NodeToCode/* Credential Manager entries could not all be put back')
         if not args.keep:
             shutil.rmtree(root, ignore_errors=True)
     report = os.path.join(logs, 'migration_%s.json' % args.label)

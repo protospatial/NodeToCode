@@ -169,7 +169,20 @@ its environment when no key is saved, so a live check never types or saves a key
   real translation that way: the probe Blueprint (`probe_blueprint.py`), `translate-focused-blueprint` over MCP,
   then checks the response parsed, Project Settings shows the key's source by variable name only, and no key value is
   in the editor log or the report (`logs/live_env_translation.json`). It refuses to run if a key for that provider is
-  saved in the per-user secrets file, since the saved key would be used instead.
+  saved (a `NodeToCode/<Provider>` Credential Manager entry, or the per-user secrets file), since the saved key would
+  be used instead.
+- `wincred.py` reads, snapshots and restores Windows Credential Manager entries with ctypes (`python -I wincred.py
+  [--prefix NodeToCode/]` lists target names only). Live checks that change `NodeToCode/*` entries snapshot them in
+  memory first and put them back with `restore_snapshot`, under the `user-secrets` lock.
+- `live_keychain_0161.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5]` is the headless
+  part of gate 0389 (card 0161), under the `user-secrets` lock: it writes a 2.0-beta per-user `secrets.json` (the real
+  key plus a fake one) and a project `Saved/NodeToCode/User/secrets.json` (a fake key), starts the editor and checks
+  both files are gone, the three `NodeToCode/<Provider>` entries hold the keys, Project Settings shows an empty API Key
+  field and "Stored in Windows Credential Manager (ends ...)", nothing in `unreal.N2CSettings` returns a key, and a
+  translation succeeds; then that `set_api_key` with a wrong key makes the next translation fail with an auth error,
+  typing the right key into the field (set_editor_property) empties it and the next translation succeeds; then a
+  second start changes nothing and still translates, and `set_api_key(provider, "")` removes the entry. Entries and
+  files are restored. Report: `logs/live_keychain_0161.json`.
 - `live_translate_cancel.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5] [--via notification|cancelTask]`
   cancels a live translation: it starts `translate-focused-blueprint` on the probe Blueprint, cancels it
   `--cancel-after` seconds in (default 1.5) and keeps reading the call's own response (a `text/event-stream` on UE

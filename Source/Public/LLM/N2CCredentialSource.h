@@ -64,8 +64,8 @@ using FN2CCredentialResult = TValueOrError<FN2CCredential, FText>;
  * handler keeps a key between requests.
  *
  * The process default (Get) reads FN2CSecretStore: the key saved in Project Settings, else the provider's environment
- * variable (FN2CSecretStore::GetEnvironmentVariableNames). Card 0161's OS keychain plugs in behind the store
- * (IN2CSecretBackend), so this interface does not change. Tests and integrations can give a service another source
+ * variable (FN2CSecretStore::GetEnvironmentVariableNames). On Windows the store keeps the keys in Windows Credential
+ * Manager (FN2CCredentialManagerBackend, card 0161) behind IN2CSecretBackend, so this interface did not change. Tests and integrations can give a service another source
  * with UN2CBaseLLMService::SetCredentialSource.
  */
 class NODETOCODE_API IN2CCredentialSource

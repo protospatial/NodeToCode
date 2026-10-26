@@ -15,6 +15,13 @@
 #include "Utils/N2CFileUtils.h"
 #include "Utils/N2CLogger.h"
 
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/WindowsHWrapper.h"
+#include <wincred.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
 namespace
 {
     const TCHAR* const LogContext = TEXT("SecretStore");
@@ -64,6 +71,38 @@ FN2CSecretFileBackend::FN2CSecretFileBackend(const FString& InFilePath, const FS
 FString FN2CSecretFileBackend::Describe() const
 {
     return FilePath;
+}
+
+FString FN2CSecretFileBackend::GetDisplayName() const
+{
+    return FString::Printf(TEXT("the per-user secrets file %s"), *FilePath);
+}
+
+TArray<TPair<FString, FString>> FN2CSecretFileBackend::LoadMigrationConflictKeys() const
+{
+    TArray<TPair<FString, FString>> Result;
+    TSharedPtr<FJsonObject> Json;
+    const TSharedPtr<FJsonObject>* Conflicts = nullptr;
+    if (ReadJsonFile(FilePath, Json) != EReadResult::Parsed || !Json->TryGetObjectField(MigrationConflictsField, Conflicts)
+        || !Conflicts || !Conflicts->IsValid())
+    {
+        return Result;
+    }
+    for (const TPair<FString, TSharedPtr<FJsonValue>>& Source : (*Conflicts)->Values)
+    {
+        const TSharedPtr<FJsonObject>* Fields = nullptr;
+        if (!Source.Value.IsValid() || !Source.Value->TryGetObject(Fields) || !Fields || !Fields->IsValid())
+        {
+            continue;
+        }
+        TMap<FString, FString> Keys;
+        ExtractKeys(**Fields, Keys);
+        for (const TPair<FString, FString>& Key : Keys)
+        {
+            Result.Emplace(Key.Key, Key.Value);
+        }
+    }
+    return Result;
 }
 
 FString FN2CSecretFileBackend::GetKeyField(const FString& ProviderId)
@@ -356,12 +395,356 @@ bool FN2CSecretFileBackend::StoreKey(const FString& ProviderId, const FString& K
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// FN2CCredentialManagerBackend
+
+const TCHAR* const FN2CCredentialManagerBackend::DefaultTargetPrefix = TEXT("NodeToCode/");
+
+#if PLATFORM_WINDOWS
+namespace
+{
+    /** User name stored on each entry (Credential Manager shows it; it carries no secret) */
+    const TCHAR* const CredentialUserName = TEXT("NodeToCode");
+
+    /**
+     * The key in a credential blob: UTF-8 as this backend writes it, or UTF-16LE as 'cmdkey /generic:... /pass:...' and
+     * the Credential Manager control panel write it (every second byte zero; API keys are ASCII)
+     */
+    FString DecodeBlob(const uint8* Blob, uint32 Size)
+    {
+        if (!Blob || Size == 0)
+        {
+            return FString();
+        }
+        bool bUtf16 = Size >= 2 && Size % 2 == 0;
+        for (uint32 Index = 1; bUtf16 && Index < Size; Index += 2)
+        {
+            bUtf16 = Blob[Index] == 0;
+        }
+        if (bUtf16)
+        {
+            FString Result;
+            Result.Reserve(Size / 2);
+            for (uint32 Index = 0; Index + 1 < Size; Index += 2)
+            {
+                Result.AppendChar(static_cast<TCHAR>(Blob[Index] | (Blob[Index + 1] << 8)));
+            }
+            return Result;
+        }
+        const FUTF8ToTCHAR Converted(reinterpret_cast<const ANSICHAR*>(Blob), static_cast<int32>(Size));
+        return FString(Converted.Length(), Converted.Get());
+    }
+}
+#endif
+
+FN2CCredentialManagerBackend::FN2CCredentialManagerBackend(const FString& InTargetPrefix)
+    : TargetPrefix(InTargetPrefix)
+{
+}
+
+bool FN2CCredentialManagerBackend::IsSupported()
+{
+    return PLATFORM_WINDOWS != 0;
+}
+
+FString FN2CCredentialManagerBackend::Describe() const
+{
+    return FString::Printf(TEXT("Windows Credential Manager (%s*)"), *TargetPrefix);
+}
+
+FString FN2CCredentialManagerBackend::GetDisplayName() const
+{
+    return TEXT("Windows Credential Manager");
+}
+
+FString FN2CCredentialManagerBackend::GetTargetName(const FString& ProviderId) const
+{
+    return TargetPrefix + ProviderId;
+}
+
+bool FN2CCredentialManagerBackend::LoadAll(TMap<FString, FString>& OutKeys)
+{
+    OutKeys.Reset();
+#if PLATFORM_WINDOWS
+    const FString Filter = TargetPrefix + TEXT("*");
+    DWORD Count = 0;
+    PCREDENTIALW* Credentials = nullptr;
+    if (!::CredEnumerateW(*Filter, 0, &Count, &Credentials))
+    {
+        const DWORD Error = ::GetLastError();
+        if (Error == ERROR_NOT_FOUND)
+        {
+            return true;
+        }
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not read the API keys from %s (Windows error %u)"),
+            *Describe(), static_cast<uint32>(Error)), LogContext);
+        return false;
+    }
+    for (DWORD Index = 0; Index < Count; ++Index)
+    {
+        const PCREDENTIALW Credential = Credentials[Index];
+        if (!Credential || Credential->Type != CRED_TYPE_GENERIC || !Credential->TargetName)
+        {
+            continue;
+        }
+        const FString Target(Credential->TargetName);
+        if (!Target.StartsWith(TargetPrefix, ESearchCase::IgnoreCase) || Target.Len() <= TargetPrefix.Len())
+        {
+            continue;
+        }
+        OutKeys.Add(Target.RightChop(TargetPrefix.Len()), DecodeBlob(Credential->CredentialBlob, Credential->CredentialBlobSize));
+    }
+    ::CredFree(Credentials);
+    return true;
+#else
+    FN2CLogger::Get().LogError(TEXT("Windows Credential Manager is not available on this platform"), LogContext);
+    return false;
+#endif
+}
+
+bool FN2CCredentialManagerBackend::StoreKey(const FString& ProviderId, const FString& Key, TMap<FString, FString>& OutKeys)
+{
+#if PLATFORM_WINDOWS
+    if (ProviderId.IsEmpty())
+    {
+        return false;
+    }
+    const FString Target = GetTargetName(ProviderId);
+    if (Key.IsEmpty())
+    {
+        if (!::CredDeleteW(*Target, CRED_TYPE_GENERIC, 0) && ::GetLastError() != ERROR_NOT_FOUND)
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not remove %s from Windows Credential Manager (Windows error %u)"),
+                *Target, static_cast<uint32>(::GetLastError())), LogContext);
+            return false;
+        }
+    }
+    else
+    {
+        const FTCHARToUTF8 Utf8(*Key);
+        if (Utf8.Length() > MaxKeyBytes)
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("The %s API key is %d bytes long; Windows Credential Manager takes at most %d, so it was not saved."),
+                *ProviderId, Utf8.Length(), MaxKeyBytes), LogContext);
+            return false;
+        }
+        FString Comment = FString::Printf(TEXT("NodeToCode %s API key (Project Settings > Plugins > Node to Code)"), *ProviderId);
+        FString UserName = CredentialUserName;
+        FString TargetName = Target;
+
+        CREDENTIALW Credential = {};
+        Credential.Type = CRED_TYPE_GENERIC;
+        Credential.TargetName = TargetName.GetCharArray().GetData();
+        Credential.Comment = Comment.GetCharArray().GetData();
+        Credential.UserName = UserName.GetCharArray().GetData();
+        Credential.CredentialBlobSize = static_cast<DWORD>(Utf8.Length());
+        Credential.CredentialBlob = reinterpret_cast<LPBYTE>(const_cast<ANSICHAR*>(Utf8.Get()));
+        // This user on this machine only: the key does not roam with the profile
+        Credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+        if (!::CredWriteW(&Credential, 0))
+        {
+            FN2CLogger::Get().LogError(FString::Printf(TEXT("Could not save %s to Windows Credential Manager (Windows error %u)"),
+                *Target, static_cast<uint32>(::GetLastError())), LogContext);
+            return false;
+        }
+    }
+
+    if (!LoadAll(OutKeys))
+    {
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("%s was written, but Windows Credential Manager could not be read back"), *Target), LogContext);
+        return false;
+    }
+    return true;
+#else
+    OutKeys.Reset();
+    FN2CLogger::Get().LogError(TEXT("Windows Credential Manager is not available on this platform"), LogContext);
+    return false;
+#endif
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // FN2CSecretStore
 
 FN2CSecretStore& FN2CSecretStore::Get()
 {
-    static FN2CSecretStore Store(MakeUnique<FN2CSecretFileBackend>(GetUserSecretsFilePath(), GetLegacyProjectSecretsFilePath()));
+    static FN2CSecretStore Store([]() -> TUniquePtr<IN2CSecretBackend>
+    {
+        if (FN2CCredentialManagerBackend::IsSupported())
+        {
+            // Windows: keys live in Credential Manager; a per-user or project secrets.json moves there once
+            TUniquePtr<FN2CCredentialManagerBackend> Vault = MakeUnique<FN2CCredentialManagerBackend>();
+            MigrateFileToBackend(GetUserSecretsFilePath(), GetLegacyProjectSecretsFilePath(), *Vault);
+            return Vault;
+        }
+        // Mac and Linux (not in the 2.0-beta allowlist, decision 0001): the per-user file
+        return MakeUnique<FN2CSecretFileBackend>(GetUserSecretsFilePath(), GetLegacyProjectSecretsFilePath());
+    }());
     return Store;
+}
+
+FN2CSecretMigrationResult FN2CSecretStore::MigrateFileToBackend(const FString& InUserFile, const FString& InLegacyFile, IN2CSecretBackend& Target)
+{
+    FN2CSecretMigrationResult Result;
+    const FString UserFile = FPaths::ConvertRelativePathToFull(InUserFile);
+    const FString LegacyFile = InLegacyFile.IsEmpty() ? FString() : FPaths::ConvertRelativePathToFull(InLegacyFile);
+    const bool bUserFile = FPaths::FileExists(UserFile) || FPaths::FileExists(FN2CFileUtils::TempPathFor(UserFile));
+    const bool bLegacyFile = !LegacyFile.IsEmpty() && FPaths::FileExists(LegacyFile);
+    if (!bUserFile && !bLegacyFile)
+    {
+        return Result;
+    }
+    Result.bFoundFile = true;
+
+    auto Fail = [&Result, &UserFile, &Target](const FString& Why)
+    {
+        Result.bFailed = true;
+        FN2CLogger::Get().LogError(FString::Printf(
+            TEXT("API keys were not moved from %s to %s: %s. The file was left in place and is tried again on the next start; every key in it is still used."),
+            *UserFile, *Target.Describe(), *Why), LogContext);
+        return Result;
+    };
+
+    // Merges a project file into the per-user file first (FN2CSecretFileBackend::MigrateLegacyFile)
+    FN2CSecretFileBackend File(UserFile, LegacyFile);
+    TMap<FString, FString> FileKeys;
+    if (!File.LoadAll(FileKeys))
+    {
+        return Fail(TEXT("the file could not be read"));
+    }
+    if (!FPaths::FileExists(UserFile))
+    {
+        // A project file that could not be merged (already logged) and no per-user file: nothing to move yet
+        Result.bFoundFile = false;
+        return Result;
+    }
+
+    TMap<FString, FString> Existing;
+    if (!Target.LoadAll(Existing))
+    {
+        return Fail(TEXT("the target could not be read"));
+    }
+
+    TMap<FString, FString> Written;
+    auto Store = [&Target, &Existing, &Written](const FString& Id, const FString& Key)
+    {
+        TMap<FString, FString> After;
+        if (!Target.StoreKey(Id, Key, After))
+        {
+            return false;
+        }
+        Existing = MoveTemp(After);
+        Written.Add(Id, Key);
+        return true;
+    };
+    auto IsKept = [&Existing](const FString& ProviderId, const FString& Key)
+    {
+        const FString ConflictPrefix = ProviderId + TEXT(".Conflict.");
+        for (const TPair<FString, FString>& Entry : Existing)
+        {
+            if ((Entry.Key == ProviderId || Entry.Key.StartsWith(ConflictPrefix)) && Entry.Value == Key)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    auto KeepConflict = [&Existing, &Store, &Result, &IsKept](const FString& ProviderId, const FString& Key)
+    {
+        if (IsKept(ProviderId, Key))
+        {
+            return true;
+        }
+        FString Id;
+        for (int32 Number = 1; Id.IsEmpty() || Existing.Contains(Id); ++Number)
+        {
+            Id = FString::Printf(TEXT("%s.Conflict.%d"), *ProviderId, Number);
+        }
+        if (!Store(Id, Key))
+        {
+            return false;
+        }
+        Result.ConflictIds.Add(Id);
+        return true;
+    };
+
+    TArray<FString> Ids;
+    FileKeys.GetKeys(Ids);
+    Ids.Sort();
+    for (const FString& Id : Ids)
+    {
+        const FString& Key = FileKeys[Id];
+        if (Key.TrimStartAndEnd().IsEmpty())
+        {
+            continue;
+        }
+        const FString* Current = Existing.Find(Id);
+        if (!Current || Current->TrimStartAndEnd().IsEmpty())
+        {
+            if (!Store(Id, Key))
+            {
+                return Fail(FString::Printf(TEXT("the %s key could not be written"), *Id));
+            }
+            Result.Moved.Add(Id);
+        }
+        else if (*Current != Key && !KeepConflict(Id, Key))
+        {
+            return Fail(FString::Printf(TEXT("the %s key differs from the one already stored and could not be kept beside it"), *Id));
+        }
+    }
+    for (const TPair<FString, FString>& Conflict : File.LoadMigrationConflictKeys())
+    {
+        if (!Conflict.Value.TrimStartAndEnd().IsEmpty() && !KeepConflict(Conflict.Key, Conflict.Value))
+        {
+            return Fail(FString::Printf(TEXT("a %s key kept under MigrationConflicts could not be written"), *Conflict.Key));
+        }
+    }
+
+    // Read every written key back before anything is deleted
+    TMap<FString, FString> ReadBack;
+    if (!Target.LoadAll(ReadBack))
+    {
+        return Fail(TEXT("the target could not be read back"));
+    }
+    for (const TPair<FString, FString>& Entry : Written)
+    {
+        const FString* Found = ReadBack.Find(Entry.Key);
+        if (!Found || *Found != Entry.Value)
+        {
+            return Fail(FString::Printf(TEXT("the %s key did not read back unchanged"), *Entry.Key));
+        }
+    }
+
+    if (Result.ConflictIds.Num() > 0)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("While moving API keys to %s, keys that differed from the ones already stored were kept as %s. The stored keys are used; remove the extra entries when they are not needed."),
+            *Target.Describe(), *FString::Join(Result.ConflictIds, TEXT(", "))), LogContext);
+    }
+
+    IFileManager& FileManager = IFileManager::Get();
+    FileManager.Delete(*FN2CFileUtils::TempPathFor(UserFile), false, true, true);
+    FileManager.Delete(*FN2CFileUtils::BackupPathFor(UserFile), false, true, true);
+    if (!FileManager.Delete(*UserFile, false, /*EvenReadOnly*/ true, /*Quiet*/ true) || FPaths::FileExists(UserFile))
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("API keys were moved to %s, but %s could not be deleted, so a plain-text copy is still there. Delete it by hand."),
+            *Target.Describe(), *UserFile), LogContext);
+        return Result;
+    }
+    Result.bCompleted = true;
+
+    TArray<FString> CorruptCopies;
+    FileManager.FindFiles(CorruptCopies, *(UserFile + TEXT(".corrupt-*")), true, false);
+    if (CorruptCopies.Num() > 0)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("%s still holds %s, a damaged secrets file that may contain API keys in plain text. Re-enter any key it held in Project Settings, then delete it."),
+            *FPaths::GetPath(UserFile), *FString::Join(CorruptCopies, TEXT(", "))), LogContext);
+    }
+
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Moved API keys (%s) from %s to %s and deleted the file"),
+        Result.Moved.Num() > 0 ? *FString::Join(Result.Moved, TEXT(", ")) : TEXT("none new"), *UserFile, *Target.Describe()),
+        EN2CLogSeverity::Info, LogContext);
+    return Result;
 }
 
 FN2CSecretStore::FN2CSecretStore(TUniquePtr<IN2CSecretBackend> InBackend, FEnvironmentReader InEnvironmentReader)
@@ -538,6 +921,12 @@ bool FN2CSecretStore::SetApiKey(const FString& ProviderId, const FString& Key)
 bool FN2CSecretStore::SetApiKey(EN2CLLMProvider Provider, const FString& Key)
 {
     return SetApiKey(GetProviderId(Provider), Key);
+}
+
+FString FN2CSecretStore::GetStoreDisplayName() const
+{
+    FScopeLock Lock(&Mutex);
+    return Backend->GetDisplayName();
 }
 
 void FN2CSecretStore::Reload()

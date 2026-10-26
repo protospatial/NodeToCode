@@ -496,10 +496,22 @@ void FN2CCredentialSourceSpec::Define()
 			FN2CLLMConfig::StaticStruct()->ExportText(ConfigText, &UN2CLLMModule::Get()->GetConfig(), nullptr, nullptr, PPF_None, nullptr);
 			TestFalse(TEXT("GetConfig holds no key"), ConfigText.Contains(FirstKey));
 
-			// No Blueprint-visible property and no Blueprint-callable function of the module is a key, except the four
-			// Project Settings key fields that card 0161 makes write-only (Transient, PasswordField, no Blueprint access)
-			const TSet<FString> SettingsKeyFields = { TEXT("OpenAI_API_Key_UI"), TEXT("Anthropic_API_Key_UI"),
-				TEXT("Gemini_API_Key_UI"), TEXT("DeepSeek_API_Key_UI") };
+			// The four Project Settings key fields are write-only (card 0161): Transient, masked, no Blueprint access
+			for (const TCHAR* Field : { TEXT("OpenAI_API_Key_UI"), TEXT("Anthropic_API_Key_UI"), TEXT("Gemini_API_Key_UI"), TEXT("DeepSeek_API_Key_UI") })
+			{
+				const FProperty* Prop = UN2CSettings::StaticClass()->FindPropertyByName(Field);
+				if (TestNotNull(FString::Printf(TEXT("%s exists"), Field), Prop))
+				{
+					TestTrue(FString::Printf(TEXT("%s is Transient"), Field), Prop->HasAnyPropertyFlags(CPF_Transient));
+					TestFalse(FString::Printf(TEXT("%s is not saved to config"), Field), Prop->HasAnyPropertyFlags(CPF_Config));
+					TestFalse(FString::Printf(TEXT("%s has no Blueprint access"), Field), Prop->HasAnyPropertyFlags(CPF_BlueprintVisible));
+#if WITH_METADATA
+					TestTrue(FString::Printf(TEXT("%s is masked"), Field), Prop->GetBoolMetaData(TEXT("PasswordField")));
+#endif
+				}
+			}
+
+			// No Blueprint-visible property and no Blueprint-callable function of the module is a key
 			const UPackage* Package = FindPackage(nullptr, TEXT("/Script/NodeToCode"));
 			if (!TestNotNull(TEXT("the module's script package"), Package))
 			{
@@ -519,7 +531,7 @@ void FN2CCredentialSourceSpec::Define()
 				for (TFieldIterator<FProperty> Prop(*It, EFieldIteratorFlags::ExcludeSuper); Prop; ++Prop)
 				{
 					if (Prop->HasAnyPropertyFlags(CPF_BlueprintVisible) && IsKeyName(Prop->GetName())
-						&& !Prop->GetName().EndsWith(TEXT("_Source")) && !SettingsKeyFields.Contains(Prop->GetName()))
+						&& !Prop->GetName().EndsWith(TEXT("_Source")))
 					{
 						Exposed.Add(It->GetName() + TEXT(".") + Prop->GetName());
 					}
