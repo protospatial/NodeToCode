@@ -85,6 +85,10 @@ $RequiredFiles = @(
     'Content/Prompting/Shared/N2CResponseFormat.md',
     'Content/Data/N2CModelCatalog.json',
     'Content/Python/mcp_bridge/nodetocode_bridge.py',
+    'Agents/claude-code/nodetocode/skills/blueprint-comprehension/SKILL.md',
+    'Agents/claude-code/nodetocode/skills/blueprint-comprehension/references/n2c-json-spec.md',
+    'Agents/claude-code/nodetocode/skills/blueprint-to-cpp/SKILL.md',
+    'Agents/claude-code/nodetocode/skills/blueprint-migration/SKILL.md',
     'Binaries/Win64/UnrealEditor-NodeToCode.dll',
     'Binaries/Win64/UnrealEditor.modules'
 )
@@ -92,7 +96,8 @@ $RequiredFiles = @(
 $ForbiddenPrefixes = @(
     '.git/', '.github/', '.agents/', '.claude/', '.vs/', '.idea/', 'BuildLogs/', 'Tests/', 'Intermediate/',
     'Saved/', 'DerivedDataCache/', 'Context/', 'wiki/', 'tools/', 'assets/', 'Scripts/', 'Documentation/',
-    'Content/Python/tests/', 'Content/Scripts/', 'AGENTS.md', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md'
+    'Content/Python/tests/', 'Content/Scripts/', 'Agents/sync_skills.py', 'AGENTS.md', 'README.md', 'CONTRIBUTING.md',
+    'SECURITY.md'
 )
 # File or folder names that must not appear anywhere. (Source/**/AGENTS.md, the MCP tool docs, ship with Source.)
 $ForbiddenSegments = @('__pycache__', '.git', '.env', 'secrets.json', 'CLAUDE.md', '.mcp.json',
