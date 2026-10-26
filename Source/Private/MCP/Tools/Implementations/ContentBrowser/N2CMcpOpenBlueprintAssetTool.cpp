@@ -68,6 +68,9 @@ FMcpToolDefinition FN2CMcpOpenBlueprintAssetTool::GetDefinition() const
 	
 	Definition.InputSchema = InputSchema;
 	
+	// Not read-only, but it opens an editor tab, changing no Blueprint or asset: it keeps working during Play In Editor (card 0170)
+	Definition.bAllowedDuringPlaySession = true;
+
 	return Definition;
 }
 

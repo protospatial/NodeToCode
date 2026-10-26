@@ -48,6 +48,9 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
     // Results carry Blueprint text (code an LLM wrote from the Blueprint's text; FN2CTranslateBlueprintCall marks it): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;
 
+    // Not read-only, but it reads the focused graph and writes only translation output files: it keeps working during Play In Editor (card 0170)
+    Definition.bAllowedDuringPlaySession = true;
+
     return Definition;
 }
 

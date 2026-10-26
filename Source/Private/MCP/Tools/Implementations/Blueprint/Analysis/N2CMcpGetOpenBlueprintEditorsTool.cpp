@@ -31,6 +31,8 @@ FMcpToolDefinition FN2CMcpGetOpenBlueprintEditorsTool::GetDefinition() const
 	// No input parameters required for this tool
 	Definition.InputSchema = BuildEmptyObjectSchema();
 	
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
+
 	return Definition;
 }
 

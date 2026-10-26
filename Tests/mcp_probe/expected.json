@@ -11,7 +11,7 @@
   "P9": "fixed",
   "P10": "fixed",
   "P11": "fixed",
-  "P12": "reproduced"
+  "P12": "fixed"
  },
  "5.7": {
   "P1": "fixed",
@@ -25,7 +25,7 @@
   "P9": "fixed",
   "P10": "fixed",
   "P11": "fixed",
-  "P12": "reproduced"
+  "P12": "fixed"
  },
  "5.8": {
   "P1": "fixed",
@@ -39,6 +39,6 @@
   "P9": "fixed",
   "P10": "fixed",
   "P11": "fixed",
-  "P12": "reproduced"
+  "P12": "fixed"
  }
 }

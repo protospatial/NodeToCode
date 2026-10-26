@@ -6,6 +6,7 @@
 #include "Utils/N2CLogger.h"
 #include "Core/N2CUserSettings.h"
 #include "MCP/Utils/N2CMcpUntrustedContent.h"
+#include "MCP/Utils/N2CMcpPlaySessionGuard.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
@@ -103,9 +104,13 @@ namespace N2CMcpToolSearch
 			Descriptions.Add(TEXT("arguments"), TEXT("Arguments for the tool, matching the input schema describe_toolset shows. Defaults to an empty object."));
 			const TSharedPtr<FJsonObject> Schema = BuildInputSchema(Properties, { TEXT("tool_name") }, Descriptions);
 			// The called tool decides what the call does, so no behaviour hint is claimed (the MCP defaults apply)
-			return MakeDefinition(FN2CMcpToolManager::CallToolName,
+			FMcpToolDefinition Definition = MakeDefinition(FN2CMcpToolManager::CallToolName,
 				TEXT("Call a NodeToCode tool by name with its arguments and return its result. Use list_toolsets and describe_toolset to find tool names and input schemas. Long-running tools report progress and can be cancelled as when called directly."),
 				Schema);
+			// Not refused during Play In Editor itself: the tool it calls goes through ExecuteTool (or the async task
+			// manager) and is refused there when its own definition says so (card 0170)
+			Definition.bAllowedDuringPlaySession = true;
+			return Definition;
 		}
 
 		virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override
@@ -269,6 +274,8 @@ bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
 
 	// The definition is built once, here, and served to tools/list and every tools/call from then on
 	const TSharedRef<FMcpToolDefinition> Definition = MakeShared<FMcpToolDefinition>(Tool->GetDefinition());
+	// A tool refused during Play In Editor says so in its description (card 0170)
+	FN2CMcpPlaySessionGuard::AddRuleToDescription(*Definition);
 	const FString& ToolName = Definition->Name;
 	if (ToolName.IsEmpty())
 	{
@@ -376,6 +383,13 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("%s was called inside a JSON-RPC batch; it only runs as a single request."), *ToolName));
 		return FMcpToolCallResult::CreateErrorResult(FString::Printf(
 			TEXT("%s cannot run inside a JSON-RPC batch. Send it as a single tools/call request."), *ToolName));
+	}
+
+	// Tools that change a Blueprint, an asset or a level wait until Play In Editor ends (card 0170); call_tool is
+	// allowed itself and comes back here for the tool it calls, which is judged by its own definition
+	if (TOptional<FMcpToolCallResult> Refused = FN2CMcpPlaySessionGuard::CheckCall(*Entry.Definition))
+	{
+		return MoveTemp(Refused.GetValue());
 	}
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Executing MCP tool: %s"), *ToolName), EN2CLogSeverity::Debug);
