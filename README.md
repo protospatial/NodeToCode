@@ -62,6 +62,14 @@ To trace native plugin function entry names in the Unreal Output Log, run `Log L
 
 `NodeToCode.N2CBlueprintToolset.RemoveUnusedBlueprintMemberVariable` removes one local Blueprint member only after external callers/default data have been reviewed and no local graph node references it. It changes the loaded Blueprint in memory; compile and explicitly save the asset through Unreal Python or the editor after reviewing the result.
 
+### Reviewed Blueprint graph migrations
+
+`NodeToCode.N2CBlueprintToolset.RebindBlueprintFunctionCalls` rebinds reviewed function-call nodes to native Blueprint-callable functions, inserts pure casts when the replacement output is a compatible base type, then compiles and saves the caller Blueprint.
+
+`NodeToCode.N2CBlueprintToolset.RemoveBlueprintFunctionGraphs` removes reviewed function graphs only when no surviving local graph calls them, then compiles and saves the Blueprint.
+
+`NodeToCode.N2CBlueprintToolset.MigrateBlueprintBooleanMemberToNativeParent` rebinds a reviewed local Boolean's graph nodes to an inherited native Boolean property, preserves its class-default value and graph links, removes the duplicate local member when present, then compiles and saves the Blueprint.
+
 ## 👥 Value for Your Entire Team
 
 - **Blueprint Creators:** Communicate systems clearly and gradually learn C++ through your own work

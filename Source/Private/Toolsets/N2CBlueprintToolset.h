@@ -82,7 +82,43 @@ struct FN2CBlueprintMemberRemovalResult
     FString Error;
 };
 
-/** Exposes NodeToCode Blueprint inspection and guarded member removal to Unreal MCP clients. */
+USTRUCT(BlueprintType)
+struct FN2CBlueprintFunctionCallMapping
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString SourceFunctionGraphName;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString TargetClassPath;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString TargetFunctionName;
+};
+
+USTRUCT(BlueprintType)
+struct FN2CBlueprintMutationResult
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bSuccess = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bModifiedInMemory = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bSaved = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    bool bAlreadyImplemented = false;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString AssetObjectPath;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    int32 ChangeCount = 0;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    TArray<FString> Changes;
+    UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
+    FString Error;
+};
+
+/** Exposes NodeToCode Blueprint inspection and reviewed graph mutations to Unreal MCP clients. */
 UCLASS(BlueprintType, Hidden)
 class UN2CBlueprintToolset : public UToolsetDefinition
 {
@@ -115,7 +151,31 @@ public:
         const FString& BlueprintAssetPath, const FString& VariableName,
         bool bExternalReferencesReviewed, bool bDefaultDataConfirmedEmpty);
 
+    /** Rebinds a reviewed local Boolean to an inherited native Boolean property and migrates its CDO default. */
+    UFUNCTION(Category = "Node to Code", meta = (AICallable))
+    static FN2CBlueprintMutationResult MigrateBlueprintBooleanMemberToNativeParent(
+        const FString& BlueprintAssetPath, const FString& VariableName,
+        const FString& NativePropertyName,
+        bool bExternalReferencesReviewed);
+
+    /**
+     * Rebind reviewed calls to native Blueprint-callable functions, preserving logical links with pure casts when a
+     * native output is a base type and the existing Blueprint caller expects a compatible child type.
+     */
+    UFUNCTION(Category = "Node to Code", meta = (AICallable))
+    static FN2CBlueprintMutationResult RebindBlueprintFunctionCalls(
+        const FString& BlueprintAssetPath, const FString& SourceFunctionLibraryPath,
+        const TArray<FN2CBlueprintFunctionCallMapping>& Mappings,
+        bool bExternalReferencesReviewed);
+
+    /** Removes reviewed function graphs only when no surviving local graph calls them, then compiles and saves. */
+    UFUNCTION(Category = "Node to Code", meta = (AICallable))
+    static FN2CBlueprintMutationResult RemoveBlueprintFunctionGraphs(
+        const FString& BlueprintAssetPath, const TArray<FString>& FunctionGraphNames,
+        bool bExternalReferencesReviewed);
+
     static FN2CBlueprintMemberRemovalResult RemoveUnusedBlueprintMemberVariableFromBlueprint(
         UBlueprint* Blueprint, const FName VariableName,
         bool bExternalReferencesReviewed, bool bDefaultDataConfirmedEmpty);
+
 };

@@ -5,19 +5,30 @@
 
 #include "Core/N2CNodeTranslator.h"
 #include "Core/N2CSerializer.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphPin.h"
 #include "EdGraphUtilities.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/World.h"
+#include "Engine/MemberReference.h"
 #include "Engine/Level.h"
 #include "Engine/LevelScriptBlueprint.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_DynamicCast.h"
 #include "K2Node_Variable.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/CompilerResultsLog.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/PackageName.h"
 #include "RigVMEditorAsset.h"
 #include "RigVMModel/RigVMGraph.h"
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMModel/RigVMPin.h"
 #include "RigVMModel/RigVMLink.h"
+#include "UObject/SavePackage.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
@@ -88,6 +99,160 @@ FString ExportRigVMGraphModelText(const URigVMGraph* Graph)
             : TEXT("Link <null>\n");
     }
     return Text;
+}
+
+UEdGraph* FindBlueprintFunctionGraph(UBlueprint* Blueprint, const FName GraphName)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    if (!IsValid(Blueprint) || GraphName.IsNone())
+    {
+        return nullptr;
+    }
+    for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+    {
+        if (IsValid(Graph) && Graph->GetFName() == GraphName)
+        {
+            return Graph;
+        }
+    }
+    return nullptr;
+}
+
+FString MakeGraphConnectionKey(
+    const FGuid& SourceNodeGuid, const FName SourcePinName,
+    const FGuid& TargetNodeGuid, const FName TargetPinName)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    return FString::Printf(
+        TEXT("%s:%s->%s:%s"),
+        *SourceNodeGuid.ToString(), *SourcePinName.ToString(),
+        *TargetNodeGuid.ToString(), *TargetPinName.ToString());
+}
+
+struct FGraphPinNameOverride
+{
+    FName OldName;
+    FName NewName;
+};
+
+TSet<FString> CaptureGraphConnectionKeys(
+    const UEdGraph* Graph,
+    const TMap<const UEdGraphNode*, FGraphPinNameOverride>* PinNameOverrides = nullptr)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    TSet<FString> Connections;
+    if (!IsValid(Graph))
+    {
+        return Connections;
+    }
+
+    for (const UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (!IsValid(Node))
+        {
+            continue;
+        }
+        for (const UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!Pin || Pin->Direction != EGPD_Output)
+            {
+                continue;
+            }
+            for (const UEdGraphPin* Linked : Pin->LinkedTo)
+            {
+                if (!Linked || Linked->Direction != EGPD_Input ||
+                    !IsValid(Linked->GetOwningNode()))
+                {
+                    continue;
+                }
+                FName SourcePinName = Pin->PinName;
+                FName TargetPinName = Linked->PinName;
+                if (PinNameOverrides)
+                {
+                    if (const FGraphPinNameOverride* Override = PinNameOverrides->Find(Node);
+                        Override && SourcePinName == Override->OldName)
+                    {
+                        SourcePinName = Override->NewName;
+                    }
+                    if (const FGraphPinNameOverride* Override =
+                        PinNameOverrides->Find(Linked->GetOwningNode());
+                        Override && TargetPinName == Override->OldName)
+                    {
+                        TargetPinName = Override->NewName;
+                    }
+                }
+                Connections.Add(MakeGraphConnectionKey(
+                    Node->NodeGuid, SourcePinName,
+                    Linked->GetOwningNode()->NodeGuid, TargetPinName));
+            }
+        }
+    }
+    return Connections;
+}
+
+bool AreConnectionSetsEqual(const TSet<FString>& Left, const TSet<FString>& Right)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    if (Left.Num() != Right.Num())
+    {
+        return false;
+    }
+    for (const FString& Connection : Left)
+    {
+        if (!Right.Contains(Connection))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool CompileAndSaveBlueprint(
+    UBlueprint* Blueprint, FString& Error, const TFunction<void()>& AfterCompile = {})
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    if (!IsValid(Blueprint) || !IsValid(Blueprint->GetOutermost()))
+    {
+        Error = TEXT("A valid Blueprint package is required to compile and save.");
+        return false;
+    }
+
+    FCompilerResultsLog CompileResults;
+    FKismetEditorUtilities::CompileBlueprint(
+        Blueprint, EBlueprintCompileOptions::None, &CompileResults);
+    if (CompileResults.NumErrors > 0 || Blueprint->Status == BS_Error)
+    {
+        Error = FString::Printf(
+            TEXT("Blueprint compilation failed with %d error(s)."),
+            CompileResults.NumErrors);
+        return false;
+    }
+
+    if (AfterCompile)
+    {
+        AfterCompile();
+    }
+
+    UPackage* Package = Blueprint->GetOutermost();
+    const FString Filename = FPackageName::LongPackageNameToFilename(
+        Package->GetName(), FPackageName::GetAssetPackageExtension());
+    if (Filename.IsEmpty())
+    {
+        Error = TEXT("Unreal could not resolve the Blueprint package filename.");
+        return false;
+    }
+
+    Package->SetDirtyFlag(true);
+    FSavePackageArgs SaveArgs;
+    SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+    SaveArgs.bSlowTask = false;
+    if (!UPackage::SavePackage(Package, Blueprint, *Filename, SaveArgs))
+    {
+        Error = FString::Printf(
+            TEXT("Unreal could not save Blueprint package '%s'."), *Filename);
+        return false;
+    }
+    return true;
 }
 }
 
@@ -539,5 +704,931 @@ UN2CBlueprintToolset::RemoveUnusedBlueprintMemberVariableFromBlueprint(
 
     Result.bSuccess = true;
     Result.bModifiedInMemory = true;
+    return Result;
+}
+
+FN2CBlueprintMutationResult
+UN2CBlueprintToolset::MigrateBlueprintBooleanMemberToNativeParent(
+    const FString& BlueprintAssetPath, const FString& VariableName,
+    const FString& NativePropertyName,
+    const bool bExternalReferencesReviewed)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    FN2CBlueprintMutationResult Result;
+    Result.AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
+    auto Fail = [&Result](const FString& Message)
+    {
+        Result.Error = Message;
+        return Result;
+    };
+
+    if (!IsInGameThread())
+    {
+        return Fail(TEXT("Blueprint variable migration must run on the Unreal game thread."));
+    }
+    if (!bExternalReferencesReviewed)
+    {
+        return Fail(TEXT("Review external Blueprint callers before migrating the member variable."));
+    }
+
+    const FName MemberName(*VariableName.TrimStartAndEnd());
+    const FName NativeMemberName(*NativePropertyName.TrimStartAndEnd());
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Result.AssetObjectPath);
+    if (!IsValid(Blueprint) || MemberName.IsNone() || NativeMemberName.IsNone() ||
+        !IsValid(Blueprint->GeneratedClass) || !IsValid(Blueprint->ParentClass))
+    {
+        return Fail(TEXT("A valid Blueprint, member name, and parent class are required."));
+    }
+
+    FBoolProperty* ParentProperty = FindFProperty<FBoolProperty>(
+        Blueprint->ParentClass, NativeMemberName);
+    if (!ParentProperty || !IsValid(ParentProperty->GetOwnerClass()) ||
+        ParentProperty->GetOwnerClass() == Blueprint->GeneratedClass)
+    {
+        return Fail(TEXT("The Blueprint parent does not expose a native Boolean property with this name."));
+    }
+
+    int32 VariableIndex = FBlueprintEditorUtils::FindNewVariableIndex(
+        Blueprint, MemberName);
+    TArray<UEdGraph*> VariableGraphs;
+    Blueprint->GetAllGraphs(VariableGraphs);
+    if (VariableIndex == INDEX_NONE)
+    {
+        for (const UEdGraph* Graph : VariableGraphs)
+        {
+            if (!IsValid(Graph))
+            {
+                continue;
+            }
+            for (const UEdGraphNode* Node : Graph->Nodes)
+            {
+                const UK2Node_Variable* VariableNode = Cast<UK2Node_Variable>(Node);
+                if (!IsValid(VariableNode))
+                {
+                    continue;
+                }
+
+                const FMemberReference& Reference = VariableNode->VariableReference;
+                const FString ReferencedName = Reference.GetMemberName().ToString();
+                const FString LocalNamePrefix = MemberName.ToString() + TEXT("_");
+                const bool bNameMatches = Reference.GetMemberName() == MemberName ||
+                    Reference.GetMemberName() == NativeMemberName ||
+                    ReferencedName.StartsWith(LocalNamePrefix, ESearchCase::CaseSensitive);
+                if (!Reference.IsSelfContext() || !bNameMatches ||
+                    !Reference.GetMemberGuid().IsValid())
+                {
+                    continue;
+                }
+
+                const FGuid ReferencedGuid = Reference.GetMemberGuid();
+                VariableIndex = Blueprint->NewVariables.IndexOfByPredicate(
+                    [&ReferencedGuid](const FBPVariableDescription& Variable)
+                    {
+                        return Variable.VarGuid == ReferencedGuid;
+                    });
+                if (VariableIndex != INDEX_NONE)
+                {
+                    break;
+                }
+            }
+            if (VariableIndex != INDEX_NONE)
+            {
+                break;
+            }
+        }
+    }
+    const FName LocalVariableName = VariableIndex != INDEX_NONE
+        ? Blueprint->NewVariables[VariableIndex].VarName
+        : MemberName;
+    const FGuid LocalVariableGuid = VariableIndex != INDEX_NONE
+        ? Blueprint->NewVariables[VariableIndex].VarGuid
+        : FGuid();
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    TArray<FName> ReferencerPackages;
+    const FName BlueprintPackageName = Blueprint->GetOutermost()->GetFName();
+    AssetRegistryModule.Get().GetReferencers(BlueprintPackageName, ReferencerPackages);
+    TArray<FString> ExternalReferences;
+    for (const FName ReferencerPackage : ReferencerPackages)
+    {
+        if (ReferencerPackage == BlueprintPackageName)
+        {
+            continue;
+        }
+
+        TArray<FAssetData> ReferencerAssets;
+        AssetRegistryModule.Get().GetAssetsByPackageName(
+            ReferencerPackage, ReferencerAssets);
+        for (const FAssetData& ReferencerAsset : ReferencerAssets)
+        {
+            UBlueprint* ReferencerBlueprint =
+                Cast<UBlueprint>(ReferencerAsset.GetAsset());
+            if (!IsValid(ReferencerBlueprint) ||
+                !IsValid(ReferencerBlueprint->GeneratedClass))
+            {
+                continue;
+            }
+
+            TArray<UEdGraph*> ReferencerGraphs;
+            ReferencerBlueprint->GetAllGraphs(ReferencerGraphs);
+            for (const UEdGraph* Graph : ReferencerGraphs)
+            {
+                if (!IsValid(Graph))
+                {
+                    continue;
+                }
+                for (const UEdGraphNode* Node : Graph->Nodes)
+                {
+                    const UK2Node_Variable* VariableNode = Cast<UK2Node_Variable>(Node);
+                    if (!IsValid(VariableNode))
+                    {
+                        continue;
+                    }
+
+                    const FMemberReference& Reference = VariableNode->VariableReference;
+                    if ((Reference.GetMemberName() == MemberName ||
+                         Reference.GetMemberName() == LocalVariableName ||
+                         (LocalVariableGuid.IsValid() &&
+                          Reference.GetMemberGuid() == LocalVariableGuid)) &&
+                        Reference.GetMemberParentClass() == Blueprint->GeneratedClass)
+                    {
+                        ExternalReferences.Add(FString::Printf(
+                            TEXT("%s:%s:%s"), *ReferencerBlueprint->GetPathName(),
+                            *Graph->GetName(), *VariableNode->GetName()));
+                    }
+                }
+            }
+        }
+    }
+    if (!ExternalReferences.IsEmpty())
+    {
+        return Fail(FString::Printf(
+            TEXT("Review %d external Blueprint variable reference(s) before migration: %s"),
+            ExternalReferences.Num(), *FString::Join(ExternalReferences, TEXT(", "))));
+    }
+
+    UClass* NativeOwnerClass = ParentProperty->GetOwnerClass();
+    if (!IsValid(NativeOwnerClass))
+    {
+        return Fail(TEXT("The native parent Boolean property must resolve."));
+    }
+
+    struct FVariableNodeRebind
+    {
+        struct FPinLink
+        {
+            FName OriginalPinName;
+            EEdGraphPinDirection Direction = EGPD_Input;
+            UEdGraphPin* LinkedPin = nullptr;
+        };
+
+        UK2Node_Variable* Node = nullptr;
+        FMemberReference OriginalReference;
+        TEnumAsByte<ESelfContextInfo::Type> OriginalSelfContextInfo;
+        FName OriginalValuePinName;
+        TArray<FPinLink> OriginalPinLinks;
+    };
+    TArray<FVariableNodeRebind> Rebinds;
+    TArray<UEdGraph*> Graphs;
+    TMap<UEdGraph*, TSet<FString>> OriginalConnections;
+    Blueprint->GetAllGraphs(Graphs);
+    for (UEdGraph* Graph : Graphs)
+    {
+        if (!IsValid(Graph))
+        {
+            continue;
+        }
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            UK2Node_Variable* VariableNode = Cast<UK2Node_Variable>(Node);
+            if (!IsValid(VariableNode))
+            {
+                continue;
+            }
+
+            const FMemberReference& Reference = VariableNode->VariableReference;
+            const bool bMatchesLocalVariable =
+                (LocalVariableGuid.IsValid() &&
+                 Reference.GetMemberGuid() == LocalVariableGuid) ||
+                ((Reference.GetMemberName() == MemberName ||
+                  Reference.GetMemberName() == LocalVariableName) &&
+                 Reference.IsSelfContext() && !Reference.IsLocalScope());
+            if (!bMatchesLocalVariable)
+            {
+                continue;
+            }
+
+            FVariableNodeRebind Rebind;
+            Rebind.Node = VariableNode;
+            Rebind.OriginalReference = Reference;
+            Rebind.OriginalSelfContextInfo = VariableNode->SelfContextInfo;
+            for (const UEdGraphPin* Pin : VariableNode->Pins)
+            {
+                if (!Pin || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Boolean ||
+                    (Pin->Direction != EGPD_Input &&
+                     (Pin->Direction != EGPD_Output || Pin->PinName == TEXT("Output_Get"))))
+                {
+                    continue;
+                }
+                Rebind.OriginalValuePinName = Pin->PinName;
+                for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+                {
+                    Rebind.OriginalPinLinks.Add(
+                        {Pin->PinName, Pin->Direction, LinkedPin});
+                }
+            }
+            Rebinds.Add(MoveTemp(Rebind));
+        }
+    }
+
+    TMap<const UEdGraphNode*, FGraphPinNameOverride> PinNameOverrides;
+    for (const FVariableNodeRebind& Rebind : Rebinds)
+    {
+        const FName OldPinName = Rebind.OriginalValuePinName;
+        if (OldPinName != NativeMemberName)
+        {
+            PinNameOverrides.Add(
+                Rebind.Node, FGraphPinNameOverride{OldPinName, NativeMemberName});
+        }
+    }
+    for (UEdGraph* Graph : Graphs)
+    {
+        if (IsValid(Graph))
+        {
+            OriginalConnections.Add(
+                Graph, CaptureGraphConnectionKeys(Graph, &PinNameOverrides));
+        }
+    }
+
+    if (VariableIndex == INDEX_NONE && Rebinds.IsEmpty())
+    {
+        Result.bSuccess = true;
+        Result.bAlreadyImplemented = true;
+        return Result;
+    }
+
+    FBoolProperty* LocalProperty = CastField<FBoolProperty>(
+        Blueprint->GeneratedClass->FindPropertyByName(LocalVariableName));
+    if (VariableIndex != INDEX_NONE &&
+        (!LocalProperty || LocalProperty->GetOwnerClass() != Blueprint->GeneratedClass))
+    {
+        LocalProperty = nullptr;
+        for (const FVariableNodeRebind& Rebind : Rebinds)
+        {
+            FBoolProperty* NodeProperty = CastField<FBoolProperty>(
+                Rebind.Node->GetPropertyForVariable());
+            if (NodeProperty && NodeProperty->GetOwnerClass() == Blueprint->GeneratedClass)
+            {
+                LocalProperty = NodeProperty;
+                break;
+            }
+        }
+    }
+    if (!LocalProperty && VariableIndex == INDEX_NONE &&
+        LocalVariableName == NativeMemberName)
+    {
+        LocalProperty = ParentProperty;
+    }
+    if (!LocalProperty)
+    {
+        return Fail(TEXT("The local Boolean default value could not be resolved."));
+    }
+
+    const bool bOldDefault = LocalProperty->GetPropertyValue_InContainer(
+        Blueprint->GeneratedClass->GetDefaultObject());
+    const bool bOriginalParentDefault = ParentProperty->GetPropertyValue_InContainer(
+        Blueprint->GeneratedClass->GetDefaultObject());
+    Blueprint->Modify();
+    Result.bModifiedInMemory = true;
+    ParentProperty->SetPropertyValue_InContainer(
+        Blueprint->GeneratedClass->GetDefaultObject(), bOldDefault);
+    auto RestoreReferences = [&]()
+    {
+        for (FVariableNodeRebind& Rebind : Rebinds)
+        {
+            if (IsValid(Rebind.Node))
+            {
+                Rebind.Node->VariableReference = Rebind.OriginalReference;
+                Rebind.Node->SelfContextInfo = Rebind.OriginalSelfContextInfo;
+                Rebind.Node->ReconstructNode();
+                for (const FVariableNodeRebind::FPinLink& Link : Rebind.OriginalPinLinks)
+                {
+                    UEdGraphPin* OriginalPin = Rebind.Node->FindPin(
+                        Link.OriginalPinName, Link.Direction);
+                    if (OriginalPin && Link.LinkedPin &&
+                        !OriginalPin->LinkedTo.Contains(Link.LinkedPin))
+                    {
+                        if (const UEdGraphSchema* Schema = Rebind.Node->GetSchema();
+                            !Schema || !Schema->TryCreateConnection(OriginalPin, Link.LinkedPin))
+                        {
+                            OriginalPin->MakeLinkTo(Link.LinkedPin);
+                        }
+                    }
+                }
+            }
+        }
+        ParentProperty->SetPropertyValue_InContainer(
+            Blueprint->GeneratedClass->GetDefaultObject(), bOriginalParentDefault);
+    };
+    for (FVariableNodeRebind& Rebind : Rebinds)
+    {
+        Rebind.Node->Modify();
+        Rebind.Node->SetFromProperty(ParentProperty, true, NativeOwnerClass);
+        Rebind.Node->ReconstructNode();
+        for (const FVariableNodeRebind::FPinLink& Link : Rebind.OriginalPinLinks)
+        {
+            if (!Link.LinkedPin)
+            {
+                RestoreReferences();
+                return Fail(TEXT("A linked variable pin target became invalid during rebinding."));
+            }
+
+            UEdGraphPin* NativePin = Rebind.Node->FindPin(
+                NativeMemberName, Link.Direction);
+            if (!NativePin)
+            {
+                RestoreReferences();
+                return Fail(TEXT("Unreal did not create the native property pin."));
+            }
+            if (NativePin->LinkedTo.Contains(Link.LinkedPin))
+            {
+                continue;
+            }
+
+            UEdGraphPin* OrphanedPin = Rebind.Node->FindPin(
+                Link.OriginalPinName, Link.Direction);
+            if (OrphanedPin && OrphanedPin != NativePin &&
+                OrphanedPin->LinkedTo.Contains(Link.LinkedPin))
+            {
+                OrphanedPin->BreakLinkTo(Link.LinkedPin);
+            }
+            const UEdGraphSchema* Schema = Rebind.Node->GetSchema();
+            if (!Schema || !Schema->TryCreateConnection(NativePin, Link.LinkedPin))
+            {
+                if (OrphanedPin)
+                {
+                    OrphanedPin->MakeLinkTo(Link.LinkedPin);
+                }
+                RestoreReferences();
+                return Fail(TEXT("Unreal could not preserve a variable pin connection during rebinding."));
+            }
+        }
+        TArray<UEdGraphPin*> OrphanedPinsToRemove;
+        for (UEdGraphPin* Pin : Rebind.Node->Pins)
+        {
+            if (Pin && Pin->PinName == Rebind.OriginalValuePinName &&
+                Pin->PinName != NativeMemberName && Pin->LinkedTo.IsEmpty())
+            {
+                OrphanedPinsToRemove.Add(Pin);
+            }
+        }
+        for (UEdGraphPin* Pin : OrphanedPinsToRemove)
+        {
+            Rebind.Node->RemovePin(Pin);
+        }
+        const FProperty* ResolvedProperty = Rebind.Node->VariableReference.ResolveMember<FProperty>(
+            Blueprint->GeneratedClass);
+        if (!Rebind.Node->VariableReference.IsSelfContext() ||
+            Rebind.Node->VariableReference.GetMemberName() != NativeMemberName)
+        {
+            RestoreReferences();
+            return Fail(TEXT("A graph variable node did not bind to the inherited native property."));
+        }
+        if (!ResolvedProperty || ResolvedProperty->GetOwnerClass() != NativeOwnerClass)
+        {
+            RestoreReferences();
+            return Fail(TEXT("A rebound graph node does not resolve to the native parent property."));
+        }
+    }
+
+    for (const TPair<UEdGraph*, TSet<FString>>& Entry : OriginalConnections)
+    {
+        if (!AreConnectionSetsEqual(
+                CaptureGraphConnectionKeys(Entry.Key), Entry.Value))
+        {
+            RestoreReferences();
+            return Fail(TEXT("Rebinding changed Blueprint graph links; no package was saved."));
+        }
+    }
+
+    if (VariableIndex != INDEX_NONE)
+    {
+        FBlueprintEditorUtils::RemoveMemberVariable(Blueprint, LocalVariableName);
+        if (FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, LocalVariableName) != INDEX_NONE)
+        {
+            RestoreReferences();
+            return Fail(TEXT("Unreal Editor did not remove the local member variable."));
+        }
+    }
+    FBlueprintEditorUtils::RefreshAllNodes(Blueprint);
+    for (const TPair<UEdGraph*, TSet<FString>>& Entry : OriginalConnections)
+    {
+        if (!AreConnectionSetsEqual(
+                CaptureGraphConnectionKeys(Entry.Key), Entry.Value))
+        {
+            return Fail(TEXT("Refreshing Blueprint nodes changed graph links; the package was not saved."));
+        }
+    }
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+    FString SaveError;
+    const TFunction<void()> RestoreDefault = [Blueprint, ParentProperty, bOldDefault]()
+    {
+        if (IsValid(Blueprint) && IsValid(Blueprint->GeneratedClass))
+        {
+            ParentProperty->SetPropertyValue_InContainer(
+                Blueprint->GeneratedClass->GetDefaultObject(), bOldDefault);
+        }
+    };
+    if (!CompileAndSaveBlueprint(Blueprint, SaveError, RestoreDefault))
+    {
+        return Fail(SaveError);
+    }
+
+    Result.bSuccess = true;
+    Result.bModifiedInMemory = true;
+    Result.bSaved = true;
+    Result.ChangeCount = Rebinds.Num() + (VariableIndex != INDEX_NONE ? 1 : 0);
+    Result.Changes.Add(FString::Printf(
+        TEXT("Asset Registry audit found no external Blueprint references across %d package(s)"),
+        ReferencerPackages.Num()));
+    Result.Changes.Add(FString::Printf(
+        TEXT("Rebound %d graph variable node(s) to native %s::%s"),
+        Rebinds.Num(), *NativeOwnerClass->GetName(), *NativeMemberName.ToString()));
+    Result.Changes.Add(FString::Printf(
+        TEXT("Migrated the child default value (%s)%s"),
+        bOldDefault ? TEXT("true") : TEXT("false"),
+        VariableIndex != INDEX_NONE ? TEXT(" and removed the local variable") : TEXT("")));
+    return Result;
+}
+
+FN2CBlueprintMutationResult UN2CBlueprintToolset::RebindBlueprintFunctionCalls(
+    const FString& BlueprintAssetPath, const FString& SourceFunctionLibraryPath,
+    const TArray<FN2CBlueprintFunctionCallMapping>& Mappings,
+    const bool bExternalReferencesReviewed)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    FN2CBlueprintMutationResult Result;
+    Result.AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
+    auto Fail = [&Result](const FString& Message)
+    {
+        Result.Error = Message;
+        return Result;
+    };
+
+    if (!IsInGameThread())
+    {
+        return Fail(TEXT("Blueprint function rebinding must run on the Unreal game thread."));
+    }
+    if (!bExternalReferencesReviewed || Mappings.IsEmpty())
+    {
+        return Fail(TEXT("Review external Blueprint callers and provide at least one function mapping before rebinding."));
+    }
+
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Result.AssetObjectPath);
+    UBlueprint* SourceLibrary = LoadObject<UBlueprint>(
+        nullptr, *SourceFunctionLibraryPath.TrimStartAndEnd());
+    if (!IsValid(Blueprint) || !IsValid(SourceLibrary) ||
+        !IsValid(SourceLibrary->GeneratedClass))
+    {
+        return Fail(TEXT("The caller Blueprint and source function library must both load."));
+    }
+
+    struct FCallNodeRebind
+    {
+        struct FPinCast
+        {
+            FName CallPinName;
+            UEdGraphPin* TargetPin = nullptr;
+            UClass* CastClass = nullptr;
+            UK2Node_DynamicCast* CastNode = nullptr;
+        };
+
+        UK2Node_CallFunction* Node = nullptr;
+        UFunction* OriginalFunction = nullptr;
+        UFunction* ReplacementFunction = nullptr;
+        FString ChangeDescription;
+        TArray<FPinCast> Casts;
+    };
+    TArray<FCallNodeRebind> Rebinds;
+    TMap<UEdGraph*, TSet<FString>> OriginalConnections;
+    TSet<FName> MappedFunctionNames;
+    TArray<UEdGraph*> Graphs;
+    Blueprint->GetAllGraphs(Graphs);
+
+    for (const FN2CBlueprintFunctionCallMapping& Mapping : Mappings)
+    {
+        const FName SourceFunctionName(*Mapping.SourceFunctionGraphName.TrimStartAndEnd());
+        const FName TargetFunctionName(*Mapping.TargetFunctionName.TrimStartAndEnd());
+        if (SourceFunctionName.IsNone() || TargetFunctionName.IsNone() ||
+            MappedFunctionNames.Contains(SourceFunctionName))
+        {
+            return Fail(TEXT("Function mappings must have unique, non-empty source and target names."));
+        }
+        MappedFunctionNames.Add(SourceFunctionName);
+
+        if (!FindBlueprintFunctionGraph(SourceLibrary, SourceFunctionName))
+        {
+            return Fail(FString::Printf(
+                TEXT("Source function graph '%s' was not found in '%s'."),
+                *SourceFunctionName.ToString(), *SourceLibrary->GetPathName()));
+        }
+
+        UClass* TargetClass = LoadObject<UClass>(
+            nullptr, *Mapping.TargetClassPath.TrimStartAndEnd());
+        UFunction* TargetFunction = IsValid(TargetClass)
+            ? TargetClass->FindFunctionByName(TargetFunctionName)
+            : nullptr;
+        constexpr EFunctionFlags RequiredFlags = FUNC_Static | FUNC_BlueprintPure;
+        if (!IsValid(TargetFunction) ||
+            (TargetFunction->FunctionFlags & RequiredFlags) != RequiredFlags)
+        {
+            return Fail(FString::Printf(
+                TEXT("Replacement '%s.%s' must resolve to a static Blueprint-pure UFUNCTION."),
+                *Mapping.TargetClassPath, *TargetFunctionName.ToString()));
+        }
+
+        int32 MappingCallCount = 0;
+        int32 MappingCastCount = 0;
+        for (UEdGraph* Graph : Graphs)
+        {
+            if (!IsValid(Graph))
+            {
+                continue;
+            }
+            for (UEdGraphNode* Node : Graph->Nodes)
+            {
+                UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+                if (!IsValid(CallNode) ||
+                    CallNode->FunctionReference.GetMemberName() != SourceFunctionName ||
+                    CallNode->FunctionReference.GetMemberParentClass() != SourceLibrary->GeneratedClass)
+                {
+                    continue;
+                }
+
+                UFunction* OriginalFunction = CallNode->GetTargetFunction();
+                if (!IsValid(OriginalFunction))
+                {
+                    return Fail(FString::Printf(
+                        TEXT("A call to '%s' has no resolved source UFunction."),
+                        *SourceFunctionName.ToString()));
+                }
+
+                UK2Node_CallFunction* ReplacementNode =
+                    NewObject<UK2Node_CallFunction>(Graph);
+                ReplacementNode->SetFromFunction(TargetFunction);
+                ReplacementNode->AllocateDefaultPins();
+                const UEdGraphSchema* Schema = Graph->GetSchema();
+                FCallNodeRebind Rebind;
+                Rebind.Node = CallNode;
+                Rebind.OriginalFunction = OriginalFunction;
+                Rebind.ReplacementFunction = TargetFunction;
+                Rebind.ChangeDescription = FString::Printf(
+                    TEXT("%s -> %s.%s"),
+                    *SourceFunctionName.ToString(),
+                    *Mapping.TargetClassPath,
+                    *TargetFunctionName.ToString());
+
+                for (const UEdGraphPin* Pin : CallNode->Pins)
+                {
+                    if (!Pin || Pin->LinkedTo.IsEmpty())
+                    {
+                        continue;
+                    }
+                    UEdGraphPin* ReplacementPin =
+                        ReplacementNode->FindPin(Pin->PinName, Pin->Direction);
+                    if (!ReplacementPin || !Schema)
+                    {
+                        return Fail(FString::Printf(
+                            TEXT("A connected '%s' pin has no matching replacement pin."),
+                            *Pin->PinName.ToString()));
+                    }
+                    for (const UEdGraphPin* LinkedPin : Pin->LinkedTo)
+                    {
+                        if (!LinkedPin)
+                        {
+                            return Fail(FString::Printf(
+                                TEXT("Connected pin '%s' references an invalid graph pin."),
+                                *Pin->PinName.ToString()));
+                        }
+                        const ECanCreateConnectionResponse ConnectionResponse =
+                            Schema->CanCreateConnection(
+                                ReplacementPin, const_cast<UEdGraphPin*>(LinkedPin)).Response;
+                        if (ConnectionResponse == CONNECT_RESPONSE_MAKE)
+                        {
+                            continue;
+                        }
+
+                        const FEdGraphPinType& PreviousPinType = Pin->PinType;
+                        const FEdGraphPinType& ReplacementPinType = ReplacementPin->PinType;
+                        const bool bExistingReciprocalLink = LinkedPin->LinkedTo.Contains(
+                            const_cast<UEdGraphPin*>(Pin));
+                        if (bExistingReciprocalLink &&
+                            PreviousPinType.PinCategory == ReplacementPinType.PinCategory &&
+                            PreviousPinType.PinSubCategory == ReplacementPinType.PinSubCategory &&
+                            PreviousPinType.PinSubCategoryObject.Get() == ReplacementPinType.PinSubCategoryObject.Get() &&
+                            PreviousPinType.ContainerType == ReplacementPinType.ContainerType)
+                        {
+                            continue;
+                        }
+
+                        UClass* PreviousOutputClass = Pin->Direction == EGPD_Output
+                            ? Cast<UClass>(Pin->PinType.PinSubCategoryObject.Get())
+                            : nullptr;
+                        UClass* ReplacementOutputClass = Pin->Direction == EGPD_Output
+                            ? Cast<UClass>(ReplacementPin->PinType.PinSubCategoryObject.Get())
+                            : nullptr;
+                        UClass* RequiredInputClass = LinkedPin->Direction == EGPD_Input
+                            ? Cast<UClass>(LinkedPin->PinType.PinSubCategoryObject.Get())
+                            : nullptr;
+                        if (Pin->Direction != EGPD_Output || LinkedPin->Direction != EGPD_Input ||
+                            Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Object ||
+                            LinkedPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Object ||
+                            !IsValid(PreviousOutputClass) || !IsValid(ReplacementOutputClass) ||
+                            !IsValid(RequiredInputClass) ||
+                            !PreviousOutputClass->IsChildOf(RequiredInputClass) ||
+                            !RequiredInputClass->IsChildOf(ReplacementOutputClass))
+                        {
+                            return Fail(FString::Printf(
+                                TEXT("Replacement pin '%s' cannot preserve an existing direct connection."),
+                                *Pin->PinName.ToString()));
+                        }
+
+                        UK2Node_DynamicCast* CastProbe =
+                            NewObject<UK2Node_DynamicCast>(Graph);
+                        CastProbe->TargetType = RequiredInputClass;
+                        CastProbe->SetPurity(true);
+                        CastProbe->AllocateDefaultPins();
+                        UEdGraphPin* CastSource = CastProbe->GetCastSourcePin();
+                        UEdGraphPin* CastResult = CastProbe->GetCastResultPin();
+                        if (!CastSource || !CastResult ||
+                            Schema->CanCreateConnection(ReplacementPin, CastSource).Response != CONNECT_RESPONSE_MAKE ||
+                            Schema->CanCreateConnection(CastResult, const_cast<UEdGraphPin*>(LinkedPin)).Response != CONNECT_RESPONSE_MAKE)
+                        {
+                            return Fail(FString::Printf(
+                                TEXT("A pure cast to '%s' cannot preserve the connection from pin '%s'."),
+                                *RequiredInputClass->GetPathName(), *Pin->PinName.ToString()));
+                        }
+
+                        FCallNodeRebind::FPinCast& Cast = Rebind.Casts.AddDefaulted_GetRef();
+                        Cast.CallPinName = Pin->PinName;
+                        Cast.TargetPin = const_cast<UEdGraphPin*>(LinkedPin);
+                        Cast.CastClass = RequiredInputClass;
+                    }
+                }
+
+                if (!OriginalConnections.Contains(Graph))
+                {
+                    OriginalConnections.Add(Graph, CaptureGraphConnectionKeys(Graph));
+                }
+                MappingCastCount += Rebind.Casts.Num();
+                Rebinds.Add(MoveTemp(Rebind));
+                ++MappingCallCount;
+            }
+        }
+
+        if (MappingCallCount == 0)
+        {
+            return Fail(FString::Printf(
+                TEXT("No caller nodes for '%s' were found in '%s'."),
+                *SourceFunctionName.ToString(), *Blueprint->GetPathName()));
+        }
+        Result.Changes.Add(FString::Printf(
+            TEXT("%s: %d call node(s), %d pure cast(s) inserted"),
+            *SourceFunctionName.ToString(), MappingCallCount, MappingCastCount));
+        Result.ChangeCount += MappingCallCount + MappingCastCount;
+    }
+
+    auto Rollback = [&Rebinds, Blueprint]()
+    {
+        for (int32 Index = Rebinds.Num() - 1; Index >= 0; --Index)
+        {
+            FCallNodeRebind& Rebind = Rebinds[Index];
+            for (FCallNodeRebind::FPinCast& Cast : Rebind.Casts)
+            {
+                if (IsValid(Cast.CastNode))
+                {
+                    Cast.CastNode->GetGraph()->RemoveNode(Cast.CastNode);
+                }
+            }
+            if (IsValid(Rebind.Node) && IsValid(Rebind.OriginalFunction))
+            {
+                Rebind.Node->SetFromFunction(Rebind.OriginalFunction);
+                Rebind.Node->ReconstructNode();
+            }
+        }
+        if (IsValid(Blueprint))
+        {
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+        }
+    };
+
+    for (FCallNodeRebind& Rebind : Rebinds)
+    {
+        Rebind.Node->Modify();
+        Rebind.Node->SetFromFunction(Rebind.ReplacementFunction);
+        Rebind.Node->ReconstructNode();
+
+        for (FCallNodeRebind::FPinCast& Cast : Rebind.Casts)
+        {
+            UEdGraph* Graph = Rebind.Node->GetGraph();
+            UEdGraphPin* CallPin =
+                Rebind.Node->FindPin(Cast.CallPinName, EGPD_Output);
+            UEdGraphPin* CastObjectInput = nullptr;
+            UEdGraphPin* CastObjectOutput = nullptr;
+            if (!IsValid(Graph) || !CallPin || !Cast.TargetPin)
+            {
+                Rollback();
+                return Fail(TEXT("A planned pure cast lost its call or target pin; all changes were restored."));
+            }
+            if (CallPin->LinkedTo.Contains(Cast.TargetPin))
+            {
+                CallPin->BreakLinkTo(Cast.TargetPin);
+            }
+
+            Cast.CastNode = NewObject<UK2Node_DynamicCast>(Graph);
+            Cast.CastNode->TargetType = Cast.CastClass;
+            Cast.CastNode->SetPurity(true);
+            Graph->AddNode(Cast.CastNode, true, false);
+            Cast.CastNode->CreateNewGuid();
+            Cast.CastNode->PostPlacedNewNode();
+            Cast.CastNode->AllocateDefaultPins();
+            CastObjectInput = Cast.CastNode->GetCastSourcePin();
+            CastObjectOutput = Cast.CastNode->GetCastResultPin();
+            const UEdGraphSchema* Schema = Graph->GetSchema();
+            if (!Schema || !CastObjectInput || !CastObjectOutput ||
+                !Schema->TryCreateConnection(CallPin, CastObjectInput) ||
+                !Schema->TryCreateConnection(CastObjectOutput, Cast.TargetPin))
+            {
+                Rollback();
+                return Fail(TEXT("Unreal could not insert a planned pure cast; all changes were restored."));
+            }
+        }
+    }
+    Result.bModifiedInMemory = true;
+
+    bool bConnectionsPreserved = true;
+    for (const TPair<UEdGraph*, TSet<FString>>& Original : OriginalConnections)
+    {
+        TSet<FString> LogicalConnections = CaptureGraphConnectionKeys(Original.Key);
+        for (const FCallNodeRebind& Rebind : Rebinds)
+        {
+            if (Rebind.Node->GetGraph() != Original.Key)
+            {
+                continue;
+            }
+            for (const FCallNodeRebind::FPinCast& Cast : Rebind.Casts)
+            {
+                if (!IsValid(Cast.CastNode) || !Cast.TargetPin)
+                {
+                    bConnectionsPreserved = false;
+                    break;
+                }
+                const UEdGraphPin* CastInput = Cast.CastNode->GetCastSourcePin();
+                const UEdGraphPin* CastOutput = Cast.CastNode->GetCastResultPin();
+                const UEdGraphPin* CallOutput = Rebind.Node->FindPin(Cast.CallPinName, EGPD_Output);
+                if (!CastInput || !CastOutput || !CallOutput || !Cast.TargetPin->GetOwningNode())
+                {
+                    bConnectionsPreserved = false;
+                    break;
+                }
+                LogicalConnections.Remove(MakeGraphConnectionKey(
+                    Rebind.Node->NodeGuid, Cast.CallPinName,
+                    Cast.CastNode->NodeGuid, CastInput->PinName));
+                LogicalConnections.Remove(MakeGraphConnectionKey(
+                    Cast.CastNode->NodeGuid, CastOutput->PinName,
+                    Cast.TargetPin->GetOwningNode()->NodeGuid, Cast.TargetPin->PinName));
+                LogicalConnections.Add(MakeGraphConnectionKey(
+                    Rebind.Node->NodeGuid, Cast.CallPinName,
+                    Cast.TargetPin->GetOwningNode()->NodeGuid, Cast.TargetPin->PinName));
+            }
+        }
+
+        if (!bConnectionsPreserved || LogicalConnections.Num() != Original.Value.Num())
+        {
+            bConnectionsPreserved = false;
+            break;
+        }
+        for (const FString& Connection : Original.Value)
+        {
+            if (!LogicalConnections.Contains(Connection))
+            {
+                bConnectionsPreserved = false;
+                break;
+            }
+        }
+        if (!bConnectionsPreserved)
+        {
+            break;
+        }
+    }
+
+    if (!bConnectionsPreserved)
+    {
+        Rollback();
+        return Fail(TEXT("Rebinding changed graph links; all call nodes were restored and the asset was not saved."));
+    }
+
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    FString SaveError;
+    if (!CompileAndSaveBlueprint(Blueprint, SaveError))
+    {
+        Rollback();
+        return Fail(SaveError);
+    }
+
+    Result.bSuccess = true;
+    Result.bSaved = true;
+    return Result;
+}
+
+FN2CBlueprintMutationResult UN2CBlueprintToolset::RemoveBlueprintFunctionGraphs(
+    const FString& BlueprintAssetPath, const TArray<FString>& FunctionGraphNames,
+    const bool bExternalReferencesReviewed)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    FN2CBlueprintMutationResult Result;
+    Result.AssetObjectPath = BlueprintAssetPath.TrimStartAndEnd();
+    auto Fail = [&Result](const FString& Message)
+    {
+        Result.Error = Message;
+        return Result;
+    };
+
+    if (!IsInGameThread())
+    {
+        return Fail(TEXT("Blueprint function graph removal must run on the Unreal game thread."));
+    }
+    if (!bExternalReferencesReviewed || FunctionGraphNames.IsEmpty())
+    {
+        return Fail(TEXT("Review external Blueprint callers and name at least one function graph before removal."));
+    }
+
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Result.AssetObjectPath);
+    if (!IsValid(Blueprint) || !IsValid(Blueprint->GeneratedClass))
+    {
+        return Fail(TEXT("The function library Blueprint must load and have a generated class."));
+    }
+
+    TSet<FName> NamesToRemove;
+    TArray<UEdGraph*> GraphsToRemove;
+    for (const FString& Name : FunctionGraphNames)
+    {
+        const FName GraphName(*Name.TrimStartAndEnd());
+        if (GraphName.IsNone() || NamesToRemove.Contains(GraphName))
+        {
+            return Fail(TEXT("Function graph names must be unique and non-empty."));
+        }
+        UEdGraph* FunctionGraph = FindBlueprintFunctionGraph(Blueprint, GraphName);
+        if (!IsValid(FunctionGraph))
+        {
+            return Fail(FString::Printf(TEXT("Function graph '%s' was not found."), *GraphName.ToString()));
+        }
+        NamesToRemove.Add(GraphName);
+        GraphsToRemove.Add(FunctionGraph);
+    }
+
+    TArray<UEdGraph*> AllGraphs;
+    Blueprint->GetAllGraphs(AllGraphs);
+    for (UEdGraph* Graph : AllGraphs)
+    {
+        if (!IsValid(Graph))
+        {
+            continue;
+        }
+        const bool bCallerWillBeRemoved = NamesToRemove.Contains(Graph->GetFName());
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+            if (!IsValid(CallNode) ||
+                CallNode->FunctionReference.GetMemberParentClass() != Blueprint->GeneratedClass ||
+                !NamesToRemove.Contains(CallNode->FunctionReference.GetMemberName()))
+            {
+                continue;
+            }
+            if (!bCallerWillBeRemoved)
+            {
+                return Fail(FString::Printf(
+                    TEXT("Surviving graph '%s' still calls '%s'."),
+                    *Graph->GetName(), *CallNode->FunctionReference.GetMemberName().ToString()));
+            }
+        }
+    }
+
+    for (UEdGraph* Graph : GraphsToRemove)
+    {
+        FBlueprintEditorUtils::RemoveGraph(Blueprint, Graph, EGraphRemoveFlags::Default);
+        Result.Changes.Add(Graph->GetName());
+    }
+    Result.ChangeCount = GraphsToRemove.Num();
+    Result.bModifiedInMemory = true;
+
+    FString SaveError;
+    if (!CompileAndSaveBlueprint(Blueprint, SaveError))
+    {
+        return Fail(SaveError);
+    }
+    Result.bSuccess = true;
+    Result.bSaved = true;
     return Result;
 }
