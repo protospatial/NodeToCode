@@ -3,7 +3,7 @@
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
-#include "MCP/Utils/N2CMcpPlaySessionGuard.h"
+#include "MCP/Tools/N2CToolCatalog.h"
 #include "Utils/N2CLogger.h"
 #include "Async/Async.h"
 #include "Async/TaskGraphInterfaces.h"
@@ -115,25 +115,21 @@ void FN2CToolAsyncTaskManager::InvokeTool(const TSharedRef<IN2CMcpTool>& Tool, c
 		return;
 	}
 
-	// A long-running tool that changes a Blueprint, an asset or a level waits until Play In Editor ends, like a quick
-	// one in FN2CMcpToolManager::ExecuteTool (card 0170); the definition is the one cached at registration when there is one
+	// The call runs through the catalog's pipeline (the Play In Editor rule, card 0170, and the required arguments),
+	// with the definition cached at registration when there is one. Whatever this manager is given runs as a
+	// long-running call (InvokeAsync), so a spec's own tool instance runs the same way.
 	const TSharedPtr<const FMcpToolDefinition> Cached = FN2CMcpToolManager::Get().GetToolDefinition(Record->ToolName);
-	if (TOptional<FMcpToolCallResult> Refused = FN2CMcpPlaySessionGuard::CheckCall(Cached.IsValid() ? *Cached : Tool->GetDefinition()))
-	{
-		OnTaskCompleted(TaskId, Refused.GetValue());
-		return;
-	}
+	FN2CToolDescriptor Descriptor = FN2CToolDescriptor::FromDefinition(Cached.IsValid()
+		? Cached : MakeShared<const FMcpToolDefinition>(Tool->GetDefinition()));
+	Descriptor.ExecutionPolicy = EN2CToolExecutionPolicy::LongRunning;
 
-	TFuture<FMcpToolCallResult> Future = Tool->InvokeAsync(Record->CallContext.ToSharedRef(), Record->Arguments);
-	if (!Future.IsValid())
-	{
-		OnTaskCompleted(TaskId, FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Tool '%s' returned no result"), *Record->ToolName)));
-		return;
-	}
+	TFuture<FN2CToolOutcome> Future = FN2CToolCatalog::InvokeTool(Tool, Descriptor, Record->Arguments, Record->CallContext.ToSharedRef());
 
-	// The continuation runs where the tool sets its result (at once when it already has): deliver on the game thread
-	Future.Next([this, TaskId](FMcpToolCallResult Result)
+	// The continuation runs where the tool sets its result (at once when it already has): deliver on the game thread,
+	// as MCP content (the outcome's MCP adapter)
+	Future.Next([this, TaskId](FN2CToolOutcome Outcome)
 	{
+		FMcpToolCallResult Result = Outcome.ToCallToolResult();
 		if (IsInGameThread())
 		{
 			OnTaskCompleted(TaskId, Result);
