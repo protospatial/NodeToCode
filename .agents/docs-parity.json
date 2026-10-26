@@ -87,6 +87,11 @@
       "pages": ["wiki/developers/Claude-Code-Plugin.md"]
     },
     {
+      "name": "ue58-overlap",
+      "code": ["Source/Public/MCP/Tools/N2CMcpEpicOverlap.h", "Source/Private/MCP/Tools/N2CMcpEpicOverlap.cpp"],
+      "pages": ["wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md"]
+    },
+    {
       "name": "ue58-toolset",
       "code": ["Content/Python/init_unreal.py", "Content/Python/nodetocode/toolsets/**"],
       "pages": ["wiki/developers/NodeToCodeTools.md"]

@@ -38,6 +38,10 @@ Both settings take effect after an editor restart, and the tool list a client se
 - **Tool Exposure**: **List every tool** (the default), or **Tool search**, which lists three tools (`list_toolsets`,
   `describe_toolset`, `call_tool`) that reach all the others. Use Tool search when your client has a tool limit
   (VS Code allows 128 tools, Windsurf 100, counted across all your MCP servers)
+- **Overlapping Tools** (UE 5.8): what to do with the 34 tools Epic's **Unreal MCP** also has. **Automatic** (the
+  default) leaves them to Unreal MCP when its **Unreal MCP** and **EditorToolset** plugins are enabled and Tool
+  Profile is Default toolsets; **Always serve them** keeps them. See
+  [NodeToCode and Epic Tool Mapping](NodeToCode-and-Epic-Tool-Mapping). No effect on UE 5.6 and 5.7
 
 Projects that turned on **Enable Python Script-Only Mode** or **Enable Dynamic Tool Discovery** in an earlier build
 open with Python scripting only or Tool search set for them.

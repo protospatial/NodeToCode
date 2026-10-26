@@ -20,6 +20,12 @@ struct NODETOCODE_API FN2CMcpToolConfig
 	EN2CMcpToolExposure Exposure = EN2CMcpToolExposure::ListAllTools;
 
 	/**
+	 * Leave out the tools Epic's Unreal MCP also has (N2CMcpEpicOverlap::Tools), so they are neither listed nor
+	 * callable, in either exposure. Set from N2CMcpEpicOverlap::Decide when the server starts (card 0174).
+	 */
+	bool bLeaveOverlappingToUnrealMcp = false;
+
+	/**
 	 * The toolsets a profile enables: DefaultToolsets every toolset declared default-enabled, PythonScripting
 	 * PythonTools, Custom the given names as they are.
 	 */
@@ -65,6 +71,15 @@ public:
 
 	/** The configuration Configure applied last (the enabled toolsets resolved to their declared names) */
 	FN2CMcpToolConfig GetConfig() const;
+
+	/** The tools of the enabled toolsets Configure left to Unreal MCP (bLeaveOverlappingToUnrealMcp), sorted */
+	TArray<FString> GetToolsLeftToUnrealMcp() const;
+
+	/**
+	 * For a tool name a client called but this server left to Unreal MCP: one sentence naming the Epic tools to use and
+	 * the setting that serves it. Empty for any other name.
+	 */
+	FString LeftToUnrealMcpHint(const FString& ToolName) const;
 
 	/**
 	 * Serve one tool, in addition to the configured ones (specs do this for a tool their session does not serve)
@@ -170,6 +185,12 @@ private:
 
 	/** The toolsets Configure enabled */
 	TArray<const FN2CMcpToolset*> EnabledToolsets;
+
+	/** The tools of the enabled toolsets left to Unreal MCP, and their toolsets */
+	TMap<FString, const FN2CMcpToolset*> LeftToUnrealMcp;
+
+	/** Whether the last Configure left the overlapping tools to Unreal MCP */
+	bool bLeaveOverlappingToUnrealMcp = false;
 
 	/** How tools/list shows the served tools */
 	EN2CMcpToolExposure Exposure = EN2CMcpToolExposure::ListAllTools;

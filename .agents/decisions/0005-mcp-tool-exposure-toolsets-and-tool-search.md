@@ -83,8 +83,11 @@ Option 3, provisionally. The questions of card 0106:
 3. **Default for new installs.** Default toolsets (every toolset) with List every tool: 66 tools, 63 without Allow MCP
    Python Execution, so `get-focused-blueprint` and `translate-focused-blueprint` are reachable on a fresh install,
    Claude Code gets direct tools, and the count is under both caps on its own. Tool search is the documented answer
-   for a capped client with several servers. Card 0174 turns the Epic-duplicating toolsets' default off on 5.8 through
-   the declarations' default-enabled flag, which lowers the default count there.
+   for a capped client with several servers. Card 0174 lowers the default count on 5.8 by leaving the 34 tools Epic's
+   EditorToolset also has to Unreal MCP when it is enabled. It does so per tool (`N2CMcpEpicOverlap::Tools`), not
+   through the declarations' default-enabled flag as first planned: the overlapping tools share BlueprintDiscovery,
+   BlueprintGraph, BlueprintFunction and BlueprintVariable with tools only NodeToCode has (N2C JSON, connect-pins,
+   local variable defaults), so turning whole toolsets off would drop those too.
 4. **assess-needed-tools and Enable Dynamic Tool Discovery.** Both removed. `assess-needed-tools` is gone (a client
    that calls it gets "Unknown tool"; tool search replaces it). The two old switches are no longer properties; a
    config that saved them loads mapped, in memory, on every load (`UN2CSettings::MigrateLegacyMcpToolModes`):

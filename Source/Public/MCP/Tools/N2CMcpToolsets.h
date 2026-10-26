@@ -111,3 +111,20 @@ enum class EN2CMcpToolProfile : uint8
 	/** The toolsets named in Custom Toolsets */
 	Custom UMETA(DisplayName = "Custom toolsets"),
 };
+
+/**
+ * What the MCP server does with the NodeToCode tools that Epic's Unreal MCP also has on UE 5.8 (Project Settings:
+ * Overlapping Tools; card 0174). Which tools overlap, and the default, are in N2CMcpEpicOverlap.h.
+ */
+UENUM()
+enum class EN2CMcpOverlappingTools : uint8
+{
+	/** NodeToCode's default (N2CMcpEpicOverlap::bLeaveToUnrealMcpByDefault): on UE 5.8 with Unreal MCP and EditorToolset enabled, the Default toolsets profile leaves them out */
+	Automatic UMETA(DisplayName = "Automatic (leave them to Unreal MCP on UE 5.8)"),
+
+	/** Left out of every profile whenever Unreal MCP and EditorToolset are enabled (UE 5.8) */
+	LeaveToUnrealMcp UMETA(DisplayName = "Leave them to Unreal MCP when it is enabled"),
+
+	/** Always served, as on UE 5.6 and 5.7 */
+	AlwaysServe UMETA(DisplayName = "Always serve them"),
+};

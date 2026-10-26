@@ -3,6 +3,7 @@
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolBase.h"
+#include "MCP/Tools/N2CMcpEpicOverlap.h"
 #include "Utils/N2CLogger.h"
 #include "Core/N2CUserSettings.h"
 #include "MCP/Utils/N2CMcpUntrustedContent.h"
@@ -129,6 +130,14 @@ namespace N2CMcpToolSearch
 		FN2CMcpToolManager& Executor;
 	};
 
+	/** Why a tool left to Unreal MCP (card 0174) is not served, and what to call instead */
+	FString LeftToUnrealMcpText(const FString& ToolName)
+	{
+		const TCHAR* Counterpart = N2CMcpEpicOverlap::FindEpicCounterpart(ToolName);
+		return FString::Printf(TEXT("%s is left to Unreal MCP in this editor: use %s from Unreal MCP (UE 5.8's EditorToolset). Project Settings > Plugins > Node to Code > MCP Server > Overlapping Tools serves it again."),
+			*ToolName, Counterpart ? Counterpart : TEXT("Epic's tool"));
+	}
+
 	/** "A, B, C" */
 	FString JoinToolsetNames(const TArray<const FN2CMcpToolset*>& Toolsets)
 	{
@@ -212,6 +221,8 @@ TArray<FString> FN2CMcpToolManager::Configure(const FN2CMcpToolConfig& Config)
 
 		EnabledToolsets = Enabled;
 		Exposure = Config.Exposure;
+		bLeaveOverlappingToUnrealMcp = Config.bLeaveOverlappingToUnrealMcp;
+		LeftToUnrealMcp.Empty();
 		RegisteredTools.Empty();
 		for (const TSharedPtr<IN2CMcpTool>& Tool : FN2CMcpToolRegistry::Get().GetTools())
 		{
@@ -224,7 +235,16 @@ TArray<FString> FN2CMcpToolManager::Configure(const FN2CMcpToolConfig& Config)
 			{
 				FN2CLogger::Get().LogWarning(FString::Printf(TEXT("MCP tool '%s' names no toolset, so it is never served"), *Definition.Name));
 			}
-			else if (EnabledToolsets.Contains(Definition.Toolset))
+			else if (!EnabledToolsets.Contains(Definition.Toolset))
+			{
+				continue;
+			}
+			else if (bLeaveOverlappingToUnrealMcp && N2CMcpEpicOverlap::FindEpicCounterpart(Definition.Name))
+			{
+				// Epic's EditorToolset does the same through Unreal MCP in this editor (card 0174)
+				LeftToUnrealMcp.Add(Definition.Name, Definition.Toolset);
+			}
+			else
 			{
 				RegisterTool(Tool);
 			}
@@ -238,8 +258,9 @@ TArray<FString> FN2CMcpToolManager::Configure(const FN2CMcpToolConfig& Config)
 		bBroadcast = bConfigured && ListedAfter != ListedBefore;
 		bConfigured = true;
 
-		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP tools: %d tools served from toolsets %s; tools/list shows %s"),
+		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP tools: %d tools served from toolsets %s%s; tools/list shows %s"),
 			RegisteredTools.Num(), *N2CMcpToolSearch::JoinToolsetNames(EnabledToolsets),
+			LeftToUnrealMcp.Num() > 0 ? *FString::Printf(TEXT(" (%d left to Unreal MCP)"), LeftToUnrealMcp.Num()) : TEXT(""),
 			Exposure == EN2CMcpToolExposure::ToolSearch ? TEXT("list_toolsets, describe_toolset and call_tool (tool search)") : TEXT("every served tool")),
 			EN2CLogSeverity::Info);
 	}
@@ -257,11 +278,33 @@ FN2CMcpToolConfig FN2CMcpToolManager::GetConfig() const
 	FScopeLock Lock(&ToolsLock);
 	FN2CMcpToolConfig Config;
 	Config.Exposure = Exposure;
+	Config.bLeaveOverlappingToUnrealMcp = bLeaveOverlappingToUnrealMcp;
 	for (const FN2CMcpToolset* Toolset : EnabledToolsets)
 	{
 		Config.Toolsets.Add(Toolset->Name);
 	}
 	return Config;
+}
+
+TArray<FString> FN2CMcpToolManager::GetToolsLeftToUnrealMcp() const
+{
+	FScopeLock Lock(&ToolsLock);
+	TArray<FString> Names;
+	LeftToUnrealMcp.GetKeys(Names);
+	Names.Sort();
+	return Names;
+}
+
+FString FN2CMcpToolManager::LeftToUnrealMcpHint(const FString& ToolName) const
+{
+	{
+		FScopeLock Lock(&ToolsLock);
+		if (!LeftToUnrealMcp.Contains(ToolName))
+		{
+			return FString();
+		}
+	}
+	return N2CMcpToolSearch::LeftToUnrealMcpText(ToolName);
 }
 
 bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
@@ -457,7 +500,23 @@ TArray<const FN2CMcpToolset*> FN2CMcpToolManager::ListedToolsetsLocked() const
 FString FN2CMcpToolManager::UnknownToolsetErrorLocked(const FString& ToolsetName) const
 {
 	const FString Valid = N2CMcpToolSearch::JoinToolsetNames(ListedToolsetsLocked());
-	if (N2CMcpToolsets::Find(ToolsetName))
+	const FN2CMcpToolset* Declared = N2CMcpToolsets::Find(ToolsetName);
+	if (Declared && EnabledToolsets.Contains(Declared))
+	{
+		// Enabled, but every tool it has here was left to Unreal MCP (card 0174)
+		TArray<FString> Left;
+		for (const auto& Pair : LeftToUnrealMcp)
+		{
+			if (Pair.Value == Declared)
+			{
+				Left.Add(FString::Printf(TEXT("%s (%s)"), *Pair.Key, N2CMcpEpicOverlap::FindEpicCounterpart(Pair.Key)));
+			}
+		}
+		Left.Sort();
+		return FString::Printf(TEXT("Toolset '%s' is left to Unreal MCP in this editor, whose EditorToolset does the same: %s. Project Settings > Plugins > Node to Code > MCP Server > Overlapping Tools serves it again. Toolsets: %s"),
+			Declared->Name, *FString::Join(Left, TEXT(", ")), *Valid);
+	}
+	if (Declared)
 	{
 		return FString::Printf(TEXT("Toolset '%s' is not enabled in this project (Project Settings > Plugins > Node to Code > MCP Server > Tool Profile). Toolsets: %s"),
 			*ToolsetName, *Valid);
@@ -576,7 +635,8 @@ bool FN2CMcpToolManager::ResolveCallTool(const TSharedPtr<FJsonObject>& CallArgu
 	}
 	else if (!Entry)
 	{
-		OutError = FString::Printf(TEXT("Unknown tool '%s'. Call list_toolsets and describe_toolset for the tool names."), *ToolName);
+		OutError = LeftToUnrealMcp.Contains(ToolName) ? N2CMcpToolSearch::LeftToUnrealMcpText(ToolName)
+			: FString::Printf(TEXT("Unknown tool '%s'. Call list_toolsets and describe_toolset for the tool names."), *ToolName);
 		return false;
 	}
 

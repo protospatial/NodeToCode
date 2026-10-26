@@ -527,6 +527,21 @@ Toolsets are declared once in `Source/Public/MCP/Tools/N2CMcpToolsets.h`, and ev
 ones, `call_tool` runs a long-running tool on the same request with progress and cancellation, and `tools/call`
 accepts only the listed names.
 
+**Tools Unreal MCP also has (UE 5.8, card 0174).** `RegisterMcpTools` also asks `N2CMcpEpicOverlap::Decide`
+(`Source/Public/MCP/Tools/N2CMcpEpicOverlap.h`) whether to leave the 34 tools Epic's EditorToolset also has to Unreal
+MCP, and passes the answer as `FN2CMcpToolConfig::bLeaveOverlappingToUnrealMcp`; `Configure` then neither lists nor
+calls them, in either exposure, and `list_toolsets` drops the toolsets left empty (BlueprintCompileTools,
+BlueprintClassTools, BlueprintComponentTools, ContentBrowserTools). They are left out only on UE 5.8+ with the
+`ModelContextProtocol` and `EditorToolset` plugins both enabled (`IPluginManager::FindEnabledPlugin`), and then by
+**Overlapping Tools** (`McpOverlappingTools`): `Automatic` (default) follows `N2CMcpEpicOverlap::bLeaveToUnrealMcpByDefault`
+(true: owner decision 0089 applied provisionally as option b) for the Default toolsets profile only, `LeaveToUnrealMcp`
+for every profile, `AlwaysServe` never. Counts then: 32, or 29 without Python execution. The log says once per server
+start how many tools were left out and why, or why none were. `tools/call` of a left-out tool is -32602 `Unknown tool:
+<name>. <name> is left to Unreal MCP ...` naming the Epic tool; `describe_toolset` and `call_tool` say the same. The
+tool list and Epic counterparts are `N2CMcpEpicOverlap::Tools`, mirrored in
+`wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md` (pytest `test_epic_overlap_mapping.py` keeps them equal). Specs:
+`NodeToCode.MCP.EpicOverlap`. Live: `Tests/mcp_probe/live_epic_overlap_0174.py`.
+
 Settings saved before card 0165 load mapped, in memory (`UN2CSettings::MigrateLegacyMcpToolModes`):
 `bEnablePythonScriptOnlyMode=True` becomes Python scripting only, `bEnableDynamicToolDiscovery=True` becomes Tool
 search (unless script-only mode was on too). `assess-needed-tools` is removed.

@@ -87,6 +87,7 @@ changes it, every client sees the same list, and the server never sends `notific
 | **Tool Profile** (`McpToolProfile`) | `DefaultToolsets` (every toolset declared default-enabled), `PythonScripting` (`PythonTools` only), `Custom` (the names in Custom Toolsets) | `DefaultToolsets` |
 | **Custom Toolsets** (`McpCustomToolsets`) | toolset names, offered from the declarations; an unknown name logs a warning listing the valid ones | empty |
 | **Tool Exposure** (`McpToolExposure`) | `ListAllTools` (`tools/list` holds every served tool), `ToolSearch` (`tools/list` holds only `list_toolsets`, `describe_toolset` and `call_tool`) | `ListAllTools` |
+| **Overlapping Tools** (`McpOverlappingTools`) | `Automatic`, `LeaveToUnrealMcp`, `AlwaysServe`: whether the 34 tools in `N2CMcpEpicOverlap::Tools` are left to Unreal MCP on UE 5.8 (below) | `Automatic` |
 
 | Profile | Exposure | `tools/list` | count |
 |---|---|---|---|
@@ -107,6 +108,13 @@ changes it, every client sees the same list, and the server never sends `notific
   precedence and listed the Python tools directly). A Tool Profile or Tool Exposure key already saved wins. The old
   keys stay in the file until Project Settings saves the section. `assess-needed-tools` is gone: a client that calls
   it gets "Unknown tool".
+- **Tools Unreal MCP also has (card 0174):** on UE 5.8+ with the `ModelContextProtocol` and `EditorToolset` plugins
+  enabled, `N2CMcpEpicOverlap::Decide` leaves the tools of `N2CMcpEpicOverlap::Tools` (`Source/Public/MCP/Tools/N2CMcpEpicOverlap.h`,
+  each with its Epic counterpart) out of `Configure`: `Automatic` for the Default toolsets profile when
+  `N2CMcpEpicOverlap::bLeaveToUnrealMcpByDefault` is true (owner decision 0089, provisionally option b),
+  `LeaveToUnrealMcp` for every profile, `AlwaysServe` never. Never on 5.6/5.7. A new tool that Epic's EditorToolset
+  also has goes in that table and in `wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md` (pytest
+  `test_epic_overlap_mapping.py` compares them); `NodeToCode.MCP.EpicOverlap` checks the table names registered tools.
 - **Checked by:** `build.ps1 -Smoke` starts one editor per mode with Python execution allowed and compares
   `tools/list` with `Tests/smoke/expected.json` (`default` 66, `tool_search` 3, `python_only` 7). The `tool_search`
   mode is set with the old `bEnableDynamicToolDiscovery=True` key, so it also checks the migration, and it calls every

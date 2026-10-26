@@ -613,6 +613,15 @@ public:
               ToolTip="List Every Tool: tools/list holds every tool of the profile. Tool Search: tools/list holds only list_toolsets, describe_toolset and call_tool, which reach the same tools; use it for clients with a tool limit. tools/list never changes while the server runs. Requires an editor restart."))
     EN2CMcpToolExposure McpToolExposure = EN2CMcpToolExposure::ListAllTools;
 
+    /** What the MCP server does with the 34 NodeToCode tools Epic's Unreal MCP also has (EditorToolset, UE 5.8; card
+     * 0174). Automatic follows NodeToCode's default (N2CMcpEpicOverlap::bLeaveToUnrealMcpByDefault): with Unreal MCP and
+     * EditorToolset enabled, the Default toolsets profile leaves them out, and a Custom profile serves its toolsets as
+     * chosen. A saved Leave or Always serve keeps its meaning if that default changes. No effect on UE 5.6 and 5.7. */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
+        meta=(DisplayName="Overlapping Tools",
+              ToolTip="The 34 NodeToCode tools that Epic's Unreal MCP also has on UE 5.8 (Content Browser, components, classes, compile and save, function pins, variable nodes). Automatic: left out of the Default toolsets profile when the Unreal MCP (ModelContextProtocol) and EditorToolset plugins are enabled. Leave Them to Unreal MCP: left out of every profile then. Always Serve Them: served, as on UE 5.6 and 5.7. Requires an editor restart."))
+    EN2CMcpOverlappingTools McpOverlappingTools = EN2CMcpOverlappingTools::Automatic;
+
 /** Get the model for the selected provider */
     FString GetActiveModel() const;
 

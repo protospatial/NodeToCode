@@ -8,6 +8,7 @@
 #include "HttpServerResponse.h"
 #include "HttpPath.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
+#include "MCP/Tools/N2CMcpEpicOverlap.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Resources/N2CMcpResourceManager.h"
 #include "MCP/Resources/Implementations/N2CMcpBlueprintResource.h"
@@ -807,7 +808,25 @@ void FN2CMcpHttpServerManager::RegisterMcpTools()
 		Settings ? Settings->McpCustomToolsets : TArray<FString>());
 	Config.Exposure = Settings ? Settings->McpToolExposure : EN2CMcpToolExposure::ListAllTools;
 
-	const TArray<FString> Unknown = FN2CMcpToolManager::Get().Configure(Config);
+	// UE 5.8 with Unreal MCP: the tools Epic's EditorToolset also has may be left to it (card 0174, decision 0089)
+	const N2CMcpEpicOverlap::FDecision Overlap = N2CMcpEpicOverlap::Decide(
+		Settings ? Settings->McpOverlappingTools : EN2CMcpOverlappingTools::Automatic,
+		Settings ? Settings->McpToolProfile : EN2CMcpToolProfile::DefaultToolsets,
+		N2CMcpEpicOverlap::FEnvironment::Current());
+	Config.bLeaveOverlappingToUnrealMcp = Overlap.bLeaveToUnrealMcp;
+
+	FN2CMcpToolManager& Manager = FN2CMcpToolManager::Get();
+	const TArray<FString> Unknown = Manager.Configure(Config);
+	if (Overlap.bLeaveToUnrealMcp)
+	{
+		const TArray<FString> Left = Manager.GetToolsLeftToUnrealMcp();
+		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP tools: %d tools left to Unreal MCP, whose EditorToolset does the same. Why: %s. Overlapping Tools in Project Settings serves them again. Left out: %s"),
+			Left.Num(), *Overlap.Reason, *FString::Join(Left, TEXT(", "))), EN2CLogSeverity::Info);
+	}
+	else
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP tools: none left to Unreal MCP: %s"), *Overlap.Reason), EN2CLogSeverity::Info);
+	}
 	if (Unknown.Num() > 0)
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Custom Toolsets names toolsets NodeToCode does not have: %s. Toolsets: %s"),
