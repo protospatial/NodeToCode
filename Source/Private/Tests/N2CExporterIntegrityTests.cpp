@@ -6,6 +6,7 @@
 #include "Models/N2CLogging.h"
 #include "Core/N2CSerializer.h"
 #include "Toolsets/N2CBlueprintToolset.h"
+#include "Utils/Validators/N2CBlueprintValidator.h"
 #include "RigVMEditorAsset.h"
 #include "ControlRigEditorAsset.h"
 #include "Rigs/RigHierarchy.h"
@@ -41,6 +42,95 @@
 
 namespace
 {
+bool JsonValuesMatch(
+    const TSharedPtr<FJsonValue>& Left,
+    const TSharedPtr<FJsonValue>& Right,
+    const FString& Path,
+    FString& OutMismatchPath);
+
+bool JsonObjectsMatch(
+    const TSharedPtr<FJsonObject>& Left,
+    const TSharedPtr<FJsonObject>& Right,
+    const FString& Path,
+    FString& OutMismatchPath)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    if (!Left.IsValid() || !Right.IsValid() || Left->Values.Num() != Right->Values.Num())
+    {
+        OutMismatchPath = Path;
+        return false;
+    }
+
+    for (const auto& Field : Left->Values)
+    {
+        const TSharedPtr<FJsonValue>* OtherValue = Right->Values.Find(Field.Key);
+        const FString FieldPath = Path + TEXT(".") + FString(Field.Key);
+        if (!OtherValue || !JsonValuesMatch(Field.Value, *OtherValue, FieldPath, OutMismatchPath))
+        {
+            if (OutMismatchPath.IsEmpty())
+            {
+                OutMismatchPath = FieldPath;
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool JsonValuesMatch(
+    const TSharedPtr<FJsonValue>& Left,
+    const TSharedPtr<FJsonValue>& Right,
+    const FString& Path,
+    FString& OutMismatchPath)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    if (!Left.IsValid() || !Right.IsValid() || Left->Type != Right->Type)
+    {
+        OutMismatchPath = Path;
+        return false;
+    }
+
+    switch (Left->Type)
+    {
+    case EJson::Object:
+        return JsonObjectsMatch(Left->AsObject(), Right->AsObject(), Path, OutMismatchPath);
+    case EJson::Array:
+    {
+        const TArray<TSharedPtr<FJsonValue>>& LeftArray = Left->AsArray();
+        const TArray<TSharedPtr<FJsonValue>>& RightArray = Right->AsArray();
+        if (LeftArray.Num() != RightArray.Num())
+        {
+            OutMismatchPath = Path;
+            return false;
+        }
+        for (int32 Index = 0; Index < LeftArray.Num(); ++Index)
+        {
+            if (!JsonValuesMatch(LeftArray[Index], RightArray[Index],
+                FString::Printf(TEXT("%s[%d]"), *Path, Index), OutMismatchPath))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    case EJson::String:
+        if (Left->AsString() == Right->AsString()) return true;
+        break;
+    case EJson::Number:
+        if (Left->AsNumber() == Right->AsNumber()) return true;
+        break;
+    case EJson::Boolean:
+        if (Left->AsBool() == Right->AsBool()) return true;
+        break;
+    case EJson::Null:
+        return true;
+    default:
+        break;
+    }
+    OutMismatchPath = Path;
+    return false;
+}
+
 UBlueprint* MakeTestBlueprint(const FName Name)
 {
     N2C_LOG_FUNCTION_ENTRY();
@@ -536,6 +626,22 @@ bool FNodeToCodeDirectLinkIntegrityTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Fixture serializes to JSON"), Json.IsEmpty());
     FN2CBlueprint RoundTripped;
     TestTrue(TEXT("Full graph JSON round-trip succeeds"), FN2CSerializer::FromJson(Json, RoundTripped));
+    const FString RoundTripJson = FN2CSerializer::ToJson(RoundTripped);
+    TSharedPtr<FJsonObject> SourceJsonObject;
+    TSharedRef<TJsonReader<>> SourceJsonReader = TJsonReaderFactory<>::Create(Json);
+    TSharedPtr<FJsonObject> RoundTripJsonObject;
+    TSharedRef<TJsonReader<>> RoundTripJsonReader = TJsonReaderFactory<>::Create(RoundTripJson);
+    TestTrue(TEXT("Source JSON parses for complete round-trip comparison"),
+        FJsonSerializer::Deserialize(SourceJsonReader, SourceJsonObject));
+    TestTrue(TEXT("Round-trip JSON parses for complete comparison"),
+        FJsonSerializer::Deserialize(RoundTripJsonReader, RoundTripJsonObject));
+    FString JsonMismatchPath;
+    if (!JsonObjectsMatch(SourceJsonObject, RoundTripJsonObject, TEXT("$"), JsonMismatchPath))
+    {
+        AddError(FString::Printf(TEXT("Full Blueprint JSON round-trip differs at %s."), *JsonMismatchPath));
+        return false;
+    }
+
     const FN2CGraph* RoundTrippedGraph = nullptr;
     for (const FN2CGraph& GraphResult : RoundTripped.Graphs)
     {
@@ -698,6 +804,8 @@ bool FNodeToCodeEmptyGraphIntegrityTest::RunTest(const FString& Parameters)
     // Corrupt the endpoint after linking to emulate malformed native pin identity.
     TargetIn->PinId = FGuid();
 
+    AddExpectedError(TEXT("Native topology for graph 'EventGraph' is incomplete"),
+        EAutomationExpectedErrorFlags::Contains, 3);
     const FN2CBlueprint* BrokenData = nullptr;
     const FN2CGraph* BrokenModel = TranslateGraph(*this, BrokenBlueprint, TEXT("EventGraph"), BrokenData);
     if (!BrokenModel)
@@ -714,6 +822,138 @@ bool FNodeToCodeEmptyGraphIntegrityTest::RunTest(const FString& Parameters)
     AddExpectedError(TEXT("Failed to parse pin metadata in graph 'EventGraph'."), EAutomationExpectedErrorFlags::Contains, 1);
     TestFalse(TEXT("Deserializer rejects an export with unresolved graph links"), FN2CSerializer::FromJson(BrokenJson, Rejected));
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNodeToCodeFlowReferenceInvariantTest,
+    "NodeToCode.Exporter.FlowReferenceInvariants",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNodeToCodeFlowReferenceInvariantTest::RunTest(const FString& Parameters)
+{
+    N2C_LOG_FUNCTION_ENTRY();
+    FN2CGraph Graph;
+    Graph.Name = TEXT("FlowReferenceFixture");
+    Graph.GraphPath = TEXT("/Game/Tests/BP_FlowReference.EventGraph");
+    Graph.NativeNodeCount = 3;
+
+    const FString SourceNodeGuid = FGuid::NewGuid().ToString();
+    const FString HiddenTargetNodeGuid = FGuid::NewGuid().ToString();
+    const FString VisibleTargetNodeGuid = FGuid::NewGuid().ToString();
+    const FString SourcePinGuid = FGuid::NewGuid().ToString();
+    const FString HiddenTargetPinGuid = FGuid::NewGuid().ToString();
+    const FString VisibleTargetPinGuid = FGuid::NewGuid().ToString();
+
+    FN2CNodeDefinition SourceNode;
+    SourceNode.ID = TEXT("N1");
+    FN2CPinDefinition SourceOutput;
+    SourceOutput.ID = TEXT("P1");
+    SourceNode.OutputPins.Add(SourceOutput);
+    Graph.Nodes.Add(SourceNode);
+
+    FN2CNodeDefinition HiddenTargetNode;
+    HiddenTargetNode.ID = TEXT("N2");
+    FN2CPinDefinition StaleNormalizedInput;
+    StaleNormalizedInput.ID = TEXT("P404");
+    HiddenTargetNode.InputPins.Add(StaleNormalizedInput);
+    Graph.Nodes.Add(HiddenTargetNode); // P2 is hidden; P404 has no corresponding native pin record.
+
+    FN2CNodeDefinition VisibleTargetNode;
+    VisibleTargetNode.ID = TEXT("N3");
+    FN2CPinDefinition VisibleTargetInput;
+    VisibleTargetInput.ID = TEXT("P3");
+    VisibleTargetNode.InputPins.Add(VisibleTargetInput);
+    Graph.Nodes.Add(VisibleTargetNode);
+
+    FN2CGraphPin SourcePin;
+    SourcePin.NodeGuid = SourceNodeGuid;
+    SourcePin.PinGuid = SourcePinGuid;
+    SourcePin.NodeId = TEXT("N1");
+    SourcePin.PinId = TEXT("P1");
+    SourcePin.NodeName = TEXT("Source");
+    SourcePin.NodeClass = TEXT("K2Node_Test");
+    SourcePin.PinName = TEXT("Value");
+    SourcePin.Direction = TEXT("Output");
+    Graph.Pins.Add(SourcePin);
+
+    FN2CGraphPin HiddenTargetPin;
+    HiddenTargetPin.NodeGuid = HiddenTargetNodeGuid;
+    HiddenTargetPin.PinGuid = HiddenTargetPinGuid;
+    HiddenTargetPin.NodeId = TEXT("N2");
+    HiddenTargetPin.PinId = TEXT("P2");
+    HiddenTargetPin.NodeName = TEXT("HiddenTarget");
+    HiddenTargetPin.NodeClass = TEXT("K2Node_Test");
+    HiddenTargetPin.PinName = TEXT("HiddenValue");
+    HiddenTargetPin.Direction = TEXT("Input");
+    HiddenTargetPin.bHidden = true;
+    Graph.Pins.Add(HiddenTargetPin);
+
+    FN2CGraphPin VisibleTargetPin;
+    VisibleTargetPin.NodeGuid = VisibleTargetNodeGuid;
+    VisibleTargetPin.PinGuid = VisibleTargetPinGuid;
+    VisibleTargetPin.NodeId = TEXT("N3");
+    VisibleTargetPin.PinId = TEXT("P3");
+    VisibleTargetPin.NodeName = TEXT("VisibleTarget");
+    VisibleTargetPin.NodeClass = TEXT("K2Node_Test");
+    VisibleTargetPin.PinName = TEXT("Value");
+    VisibleTargetPin.Direction = TEXT("Input");
+    Graph.Pins.Add(VisibleTargetPin);
+
+    const auto AddDirectLink = [&Graph](const FN2CGraphPin& Source, const FN2CGraphPin& Target)
+    {
+        FN2CDirectLink Link;
+        Link.SourceNodeGuid = Source.NodeGuid;
+        Link.SourcePinGuid = Source.PinGuid;
+        Link.TargetNodeGuid = Target.NodeGuid;
+        Link.TargetPinGuid = Target.PinGuid;
+        Link.SourceNodeId = Source.NodeId;
+        Link.SourcePinId = Source.PinId;
+        Link.TargetNodeId = Target.NodeId;
+        Link.TargetPinId = Target.PinId;
+        Link.SourceNodeName = Source.NodeName;
+        Link.SourceNodeClass = Source.NodeClass;
+        Link.SourcePinName = Source.PinName;
+        Link.SourceDirection = Source.Direction;
+        Link.TargetNodeName = Target.NodeName;
+        Link.TargetNodeClass = Target.NodeClass;
+        Link.TargetPinName = Target.PinName;
+        Link.TargetDirection = Target.Direction;
+        Link.bSourceHidden = Source.bHidden;
+        Link.bTargetHidden = Target.bHidden;
+        Link.bIsExecution = Source.bIsExecution || Target.bIsExecution;
+        Graph.Connections.Add(MoveTemp(Link));
+    };
+    AddDirectLink(SourcePin, HiddenTargetPin);
+    AddDirectLink(SourcePin, VisibleTargetPin);
+
+    // The compatibility TMap can represent only one consumer for this source.
+    Graph.Flows.Data.Add(TEXT("N1.P1"), TEXT("N2.P2"));
+    FN2CBlueprintValidator Validator;
+    FString Error;
+    TestTrue(TEXT("Native pin metadata validates a hidden legacy-flow pin and direct fan-out"),
+        Validator.ValidateFlowReferences(Graph, Error));
+
+    Graph.Connections[1].TargetPinGuid = FGuid::NewGuid().ToString();
+    Error.Empty();
+    AddExpectedError(TEXT("Direct connection in graph 'FlowReferenceFixture' references a missing target pin"),
+        EAutomationExpectedErrorFlags::Contains, 1);
+    TestFalse(TEXT("Every authoritative direct edge validates even when absent from legacy flows"),
+        Validator.ValidateFlowReferences(Graph, Error));
+    TestTrue(TEXT("Missing direct endpoints produce a readable graph/pin diagnostic"),
+        Error.Contains(TEXT("FlowReferenceFixture")) && Error.Contains(TEXT("missing target pin")));
+
+    Graph.Connections[1].TargetPinGuid = VisibleTargetPinGuid;
+    Graph.Flows.Data.Add(TEXT("N2.P404"), TEXT("N3.P3"));
+
+    Error.Empty();
+    AddExpectedError(TEXT("Data flow source 'N2.P404' references missing pin 'P404' on node 'N2'"),
+        EAutomationExpectedErrorFlags::Contains, 1);
+    TestFalse(TEXT("Modern flow summaries cannot reference a pin absent from native metadata"),
+        Validator.ValidateFlowReferences(Graph, Error));
+    TestTrue(TEXT("Missing flow pins produce a readable node/pin/graph diagnostic"),
+        Error.Contains(TEXT("P404")) && Error.Contains(TEXT("N2")) &&
+        Error.Contains(TEXT("FlowReferenceFixture")));
     return true;
 }
 

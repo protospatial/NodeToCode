@@ -673,7 +673,7 @@ struct FN2CGraph
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CNodeDefinition> Nodes;
 
-    /** Execution and data flow connections for this graph */
+    /** Lossy normalized summaries for legacy consumers; Connections is authoritative for physical topology. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CFlows Flows;
 

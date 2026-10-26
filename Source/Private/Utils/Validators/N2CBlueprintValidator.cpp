@@ -238,6 +238,7 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
 bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FString& OutError)
 {
     N2C_LOG_FUNCTION_ENTRY();
+    OutError.Empty();
     // Build lookup maps for validation
     TSet<FString> NodeIds;
     TMap<FString, TSet<FString>> NodePinIds;
@@ -255,6 +256,96 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
         for (const FN2CPinDefinition& Pin : Node.OutputPins)
         {
             PinIds.Add(Pin.ID);
+        }
+    }
+
+    const bool bHasNativeTopology = !Graph.GraphPath.IsEmpty() || !Graph.Pins.IsEmpty() ||
+        !Graph.Connections.IsEmpty() || !Graph.ConnectionErrors.IsEmpty() ||
+        Graph.UnresolvedConnectionCount > 0;
+    const bool bHasFullNativePinTable = !Graph.Pins.IsEmpty();
+    if (bHasNativeTopology)
+    {
+        if (Graph.UnresolvedConnectionCount > 0 || !Graph.ConnectionErrors.IsEmpty())
+        {
+            const FString Detail = Graph.ConnectionErrors.IsEmpty()
+                ? FString::Printf(TEXT("%d unresolved pin links"), Graph.UnresolvedConnectionCount)
+                : Graph.ConnectionErrors[0];
+            OutError = FString::Printf(TEXT("Native topology for graph '%s' is incomplete: %s"),
+                *Graph.Name, *Detail);
+            FN2CLogger::Get().LogError(OutError);
+            return false;
+        }
+
+        TMap<FString, const FN2CGraphPin*> PinsByGuid;
+        if (bHasFullNativePinTable)
+        {
+            NodePinIds.Empty();
+        }
+        for (const FN2CGraphPin& Pin : Graph.Pins)
+        {
+            if (Pin.NodeGuid.IsEmpty() || Pin.PinGuid.IsEmpty())
+            {
+                OutError = FString::Printf(TEXT("Native pin metadata in graph '%s' is missing a node or pin GUID."),
+                    *Graph.Name);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
+
+            const FString Endpoint = Pin.NodeGuid + TEXT(":") + Pin.PinGuid;
+            if (PinsByGuid.Contains(Endpoint))
+            {
+                OutError = FString::Printf(TEXT("Native pin metadata in graph '%s' repeats endpoint '%s'."),
+                    *Graph.Name, *Endpoint);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
+            PinsByGuid.Add(Endpoint, &Pin);
+
+            if (!Pin.NodeId.IsEmpty() && !Pin.PinId.IsEmpty())
+            {
+                NodePinIds.FindOrAdd(Pin.NodeId).Add(Pin.PinId);
+            }
+        }
+
+        TSet<FString> SeenConnections;
+        for (const FN2CDirectLink& Link : Graph.Connections)
+        {
+            const FString SourceKey = Link.SourceNodeGuid + TEXT(":") + Link.SourcePinGuid;
+            const FString TargetKey = Link.TargetNodeGuid + TEXT(":") + Link.TargetPinGuid;
+            const FN2CGraphPin* const* SourcePin = PinsByGuid.Find(SourceKey);
+            const FN2CGraphPin* const* TargetPin = PinsByGuid.Find(TargetKey);
+            if (!SourcePin || !TargetPin)
+            {
+                OutError = FString::Printf(
+                    TEXT("Direct connection in graph '%s' references a missing %s pin '%s'."),
+                    *Graph.Name, !SourcePin ? TEXT("source") : TEXT("target"),
+                    !SourcePin ? *SourceKey : *TargetKey);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
+
+            const bool bSourceDirectionMatches = Link.SourceDirection == (*SourcePin)->Direction ||
+                ((*SourcePin)->Direction == TEXT("IO") && Link.SourceDirection == TEXT("Output"));
+            const bool bTargetDirectionMatches = Link.TargetDirection == (*TargetPin)->Direction ||
+                ((*TargetPin)->Direction == TEXT("IO") && Link.TargetDirection == TEXT("Input"));
+            const FString Edge = SourceKey + TEXT("->") + TargetKey;
+            if (SeenConnections.Contains(Edge) ||
+                (!Link.SourceNodeId.IsEmpty() && Link.SourceNodeId != (*SourcePin)->NodeId) ||
+                (!Link.SourcePinId.IsEmpty() && Link.SourcePinId != (*SourcePin)->PinId) ||
+                (!Link.TargetNodeId.IsEmpty() && Link.TargetNodeId != (*TargetPin)->NodeId) ||
+                (!Link.TargetPinId.IsEmpty() && Link.TargetPinId != (*TargetPin)->PinId) ||
+                Link.SourceDirection != TEXT("Output") || Link.TargetDirection != TEXT("Input") ||
+                !bSourceDirectionMatches || !bTargetDirectionMatches ||
+                Link.bSourceHidden != (*SourcePin)->bHidden || Link.bTargetHidden != (*TargetPin)->bHidden ||
+                Link.bIsExecution != ((*SourcePin)->bIsExecution || (*TargetPin)->bIsExecution))
+            {
+                OutError = FString::Printf(
+                    TEXT("Direct connection metadata is inconsistent in graph '%s' at '%s'."),
+                    *Graph.Name, *Edge);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
+            SeenConnections.Add(Edge);
         }
     }
 
@@ -296,6 +387,15 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
             FN2CLogger::Get().LogError(OutError);
             return false;
         }
+        const TSet<FString>* SourcePinIds = NodePinIds.Find(SourceParts[0]);
+        if (bHasFullNativePinTable && (!SourcePinIds || !SourcePinIds->Contains(SourceParts[1])))
+        {
+            OutError = FString::Printf(
+                TEXT("Data flow source '%s' references missing pin '%s' on node '%s' in graph '%s'."),
+                *DataFlow.Key, *SourceParts[1], *SourceParts[0], *Graph.Name);
+            FN2CLogger::Get().LogError(OutError);
+            return false;
+        }
 
         // Validate target pin format (N#.P#)
         TArray<FString> TargetParts;
@@ -303,6 +403,15 @@ bool FN2CBlueprintValidator::ValidateFlowReferences(const FN2CGraph& Graph, FStr
         if (TargetParts.Num() != 2 || !NodeIds.Contains(TargetParts[0]))
         {
             OutError = FString::Printf(TEXT("Invalid target pin format %s in graph %s"), *DataFlow.Value, *Graph.Name);
+            FN2CLogger::Get().LogError(OutError);
+            return false;
+        }
+        const TSet<FString>* TargetPinIds = NodePinIds.Find(TargetParts[0]);
+        if (bHasFullNativePinTable && (!TargetPinIds || !TargetPinIds->Contains(TargetParts[1])))
+        {
+            OutError = FString::Printf(
+                TEXT("Data flow target '%s' references missing pin '%s' on node '%s' in graph '%s'."),
+                *DataFlow.Value, *TargetParts[1], *TargetParts[0], *Graph.Name);
             FN2CLogger::Get().LogError(OutError);
             return false;
         }
