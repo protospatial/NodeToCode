@@ -19,6 +19,7 @@ Source/Public/MCP/Tools/          - Framework headers
 Source/Private/MCP/Tools/         - This directory
 ├── AGENTS.md                     - This documentation
 ├── N2CToolCatalog.cpp
+├── N2CToolPresentation.cpp       - The presentation table: every tool's title, hints and anthropic/* _meta (card 0205)
 ├── N2CToolCallContext.cpp
 ├── N2CMcpToolBase.cpp
 ├── N2CMcpToolRegistry.cpp
@@ -552,7 +553,7 @@ FMcpToolCallResult FN2CMcpYourToolName::Execute(const TSharedPtr<FJsonObject>& A
 
 A new tool changes the mode 3 count: update `Tests/smoke/expected.json` (`default`), the tables in this file and
 the list in `Context/mcp-server/AGENTS-mcp-server.md` in the same change. Any change to a tool's definition (a new,
-renamed or removed tool, its description, arguments, annotations or toolset) also means regenerating the tool
+renamed or removed tool, its description, arguments, title, hints or toolset) also means regenerating the tool
 reference, `Context/mcp-server/tools.generated.json` and `tools.generated.md`: `python -I
 Scripts/generate_tool_reference.py --engine <UE root> --project <host .uproject>` after building; `build.ps1 -Test`
 fails while they are stale (`Tests/python/test_tool_reference.py`, `NodeToCode.MCP.ToolReference`), and so does
@@ -660,6 +661,17 @@ For tools with no parameters (`properties` empty, `"additionalProperties": false
 ```cpp
 Definition.InputSchema = BuildEmptyObjectSchema();
 ```
+
+### Title and hints: the presentation table
+Every tool's title and its four behaviour hints live in one table, `N2CToolPresentation.cpp` (card 0205), not in the
+tool: `FN2CToolCatalog::ApplyPresentation` sets them, with `MaxResultSizeChars` and `bAlwaysLoad`, on the definition
+`FN2CMcpToolManager` caches at registration and on the one `N2CMcpToolReference` collects, so `tools/list`, the
+catalog, `describe_toolset` and the generated reference agree. Where a tool sets its own title or hints, the table's
+win; a tool with no entry keeps its own. A new tool adds a row to the table (the comment there gives the hint rules)
+and to `Expected` in `Source/Private/Tests/MCP/N2CToolPresentation.spec.cpp`; `NodeToCode.MCP.ToolPresentation`
+fails on a tool without a row, a missing title or hint, a hint that breaks the rules, or a read-only hint that differs
+from the one the tool sets itself (the Play In Editor rule must not change behind the tool's back). So a tool that
+only reads still calls `SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly())`.
 
 ### `SetAnnotations`
 Sets the four MCP behaviour hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), replacing

@@ -283,6 +283,9 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
     `Invoke(Name, Arguments, Context)` returns a `TFuture<FN2CToolOutcome>` (a JSON value or a typed error). `tools/list`,
     `tools/call`, the long-running call and `call_tool` all go through it. Details: "The tool catalog" in
     `Source/Private/MCP/Tools/AGENTS.md`
+*   `N2CToolPresentation.cpp`: the catalog's presentation table (card 0205): every tool's and meta-tool's title, its
+    four hints and its `anthropic/*` `_meta` entries, applied at registration; `NodeToCode.MCP.ToolPresentation`
+    checks it
 *   `N2CMcpToolManager.h/.cpp`: the active tool set (what `tools/list` returns, built by `Configure`) and the
     tool-search meta-tools; `ExecuteTool` is the catalog's `InvokeNow` as MCP content
 *   `N2CMcpToolRegistry.h/.cpp`: Automatic registration system (every compiled tool)
@@ -521,7 +524,7 @@ The server implements these MCP methods:
 
 ### Tool Methods
 *   `tools/list`: Enumerate available tools with schemas, sorted by name; each entry carries `title` and `annotations`
-    (the four hints) where set, and `_meta` (`nodetocode/toolset`, optional `anthropic/maxResultSizeChars` and
+    (all four hints, from the presentation table of card 0205), and `_meta` (`nodetocode/toolset`, optional `anthropic/maxResultSizeChars` and
     `anthropic/alwaysLoad`). Definitions are built once at registration (card 0164)
 *   `tools/call`: Execute tools with arguments
 
