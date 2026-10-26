@@ -33,8 +33,8 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   `projectDirectory` (the `.uproject` file's path) and `projectSavedDirectory` (both relative like
   `defaultDirectory`); `usage`
 - **Use Case**: Locating saved translations. `translate-focused-blueprint` saves nothing there (see below). The MCP
-  file tools read the default location (`Saved/NodeToCode/Translations`), but not a custom directory outside the
-  project
+  file tools read the default location (`Saved/NodeToCode/Translations`) by its project-relative path, and a custom
+  directory outside the project by its `absolutePath` (a second read root, see `../FileSystem/AGENTS.md`)
 
 ### translate-focused-blueprint
 - **Description**: Translates the focused Blueprint graph with an LLM provider and returns the translation as the

@@ -6,9 +6,9 @@
 #include "MCP/Tools/N2CMcpToolBase.h"
 
 /**
- * MCP tool for reading file contents within the Unreal Engine project directory
- * Enforces path security to prevent directory traversal attacks outside the project
- * Supports text files with automatic content type detection based on file extension
+ * MCP tool for reading text files in the project folder (and the translation output directory when it is outside the
+ * project). Paths go through FN2CPathUtils::ResolveAgentReadPath; only text extensions are served, binary content is
+ * refused, and a call returns at most MaxContentBytes of whole lines (offset and limit select a line range).
  */
 class FN2CMcpReadFileTool : public FN2CMcpToolBase
 {
@@ -20,6 +20,6 @@ public:
     virtual bool RequiresGameThread() const override { return true; }
     
 private:
-    /** Maximum file size allowed to read (500KB) */
-    static constexpr int64 MaxFileSize = 500 * 1024;
+    /** The most UTF-8 bytes of content one call returns (500 KB); a larger file is read in parts */
+    static constexpr int64 MaxContentBytes = 500 * 1024;
 };
