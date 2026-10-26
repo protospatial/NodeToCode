@@ -42,6 +42,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
+#include "Tests/N2CTestHttpStub.h"
 
 /**
  * A provider error reaches the user as a typed error: the HTTP handler keeps the status and wraps a non-JSON body as
@@ -129,10 +130,10 @@ BEGIN_DEFINE_SPEC(FN2CErrorsSpec, "NodeToCode.LLM.Errors",
 		{
 			FHttpServerModule& Server = FHttpServerModule::Get();
 			*Hits = 0;
-			for (int32 Attempt = 0; Attempt < 20 && !Router.IsValid(); ++Attempt)
+			// A port the OS picked, not a random one in a range another editor's stub may hold (parallel checkouts)
+			if (!Router.IsValid())
 			{
-				Port = 30000 + FMath::RandRange(0, 9999);
-				Router = Server.GetHttpRouter(Port, /*bFailOnBindFailure=*/true);
+				Router = N2CTest::StartStubRouter(Port);
 			}
 			if (!Router.IsValid())
 			{

@@ -29,6 +29,7 @@
 #include "Models/N2CBlueprint.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CTestHttpStub.h"
 
 /**
  * A finished translation is saved with the Blueprint captured when its request was sent (card 0131). Anything that
@@ -50,10 +51,10 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 		bool Start(const FString& Body)
 		{
 			FHttpServerModule& Server = FHttpServerModule::Get();
-			for (int32 Attempt = 0; Attempt < 20 && !Router.IsValid(); ++Attempt)
+			// A port the OS picked, not a random one in a range another editor's stub may hold (parallel checkouts)
+			if (!Router.IsValid())
 			{
-				Port = 40000 + FMath::RandRange(0, 9999);
-				Router = Server.GetHttpRouter(Port, /*bFailOnBindFailure=*/true);
+				Router = N2CTest::StartStubRouter(Port);
 			}
 			if (!Router.IsValid())
 			{
