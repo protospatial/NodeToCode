@@ -89,6 +89,36 @@ public:
      */
     static bool LooksCutOff(const FString& Json);
 
+    /**
+     * Takes the N2C JSON object out of the model's answer text. Trims it, then starts at the first brace: at once when
+     * the text opens with one, else after the first ``` fence (any tag: json, JSON or none), else after leading prose.
+     * The object ends at its matching brace, found by a string-aware scan, so a closing fence or a sentence after it is
+     * dropped and braces or fences inside the generated code are kept. Without a matching brace (a cut-off answer) the
+     * text from the brace on is kept, closing fence removed, for the JSON reader to report. Returns true when text
+     * other than surrounding whitespace was removed. ParseLLMResponse runs it on every answer.
+     */
+    static bool ProcessJsonContentWithMarkers(FString& Content);
+
+    /** Index of the brace closing the object that opens at OpenBrace (braces inside strings skipped), or INDEX_NONE */
+    static int32 FindJsonObjectEnd(const FString& Text, int32 OpenBrace);
+
+    /**
+     * A string field's text without LogJson warnings: empty when the field is missing, null, an object or an array; a
+     * number or bool is read as text
+     */
+    static FString ReadTextField(const TSharedPtr<FJsonObject>& Object, const FString& FieldName);
+
+    /**
+     * Reads an OpenAI-compatible usage object (OpenAI Chat Completions and Responses API, DeepSeek, LM Studio, vLLM):
+     * prompt_tokens or input_tokens, completion_tokens or output_tokens, cached_tokens from prompt_tokens_details or
+     * input_tokens_details (DeepSeek: prompt_cache_hit_tokens), reasoning_tokens from completion_tokens_details or
+     * output_tokens_details. Fields that are missing leave their count unchanged.
+     */
+    static void ReadOpenAICompatibleUsage(const TSharedPtr<FJsonObject>& UsageObject, FN2CTranslationUsage& OutUsage);
+
+    /** Logs every count of Usage at Info */
+    static void LogUsage(const FN2CTranslationUsage& Usage, const FString& Category);
+
 protected:
     /** Remove newlines from string */
     FString RemoveNewlines(const FString& Input) const;
@@ -107,9 +137,6 @@ protected:
         const TSharedPtr<FJsonObject>& CodeObject,
         FN2CGeneratedCode& OutCode
     );
-
-    /** Process JSON content with code block markers */
-    bool ProcessJsonContentWithMarkers(FString& Content);
 
     /** Logs how much reasoning text a message carries (reasoning_content, reasoning, thinking); never parses it */
     static void LogReasoningFields(const TSharedPtr<FJsonObject>& MessageObject, const FString& Category);

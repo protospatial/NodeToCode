@@ -117,6 +117,16 @@ Before 2.0 every request asked for 16,000 output tokens and there was no setting
 version load with Max Output Tokens 0 (Auto). Ollama keeps its own **Max Tokens** setting in the Advanced Settings
 above.
 
+## Reported Token Usage
+
+Each saved translation and `BatchSummary.json` record the tokens the provider reported, counted the same way for
+every provider: input includes cached input (Anthropic reports its cache reads and writes apart from `input_tokens`;
+NodeToCode adds them), and output includes thinking (Gemini reports `thoughtsTokenCount` apart from the answer;
+NodeToCode adds it). The cached and thinking parts are also recorded on their own where the provider reports them:
+cache reads (Anthropic, OpenAI, Gemini, DeepSeek, LM Studio), cache writes (Anthropic) and thinking (OpenAI, Gemini,
+DeepSeek, LM Studio). Ollama reports input and output only. See
+[Utilizing Saved Translations](Utilizing-Saved-Translations) for the field names.
+
 ## Request Timeout
 
 **LLM Provider → HTTP Activity Timeout (s)** (default 300) is how long a translation request may wait without

@@ -330,7 +330,7 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 | `FN2CTranslationResponse` | Contains `FN2CGraphTranslation[]` and `FN2CTranslationUsage` |
 | `FN2CGraphTranslation` | Translated code for one graph (name, type, class, code) |
 | `FN2CGeneratedCode` | Declaration, implementation, and implementation notes |
-| `FN2CTranslationUsage` | Input/output token counts |
+| `FN2CTranslationUsage` | Token counts: `InputTokens` (cached input included), `OutputTokens` (thinking included), and the parts `CacheReadInputTokens`, `CacheWriteInputTokens`, `ReasoningTokens` (0 when the provider does not report them). `ToJson()` is the `usage` object saved in `N2C_Translation_*.json`; `+=` adds counts |
 
 ## Node Processing Strategy
 
@@ -372,7 +372,7 @@ Batch translation of multiple Blueprint graphs from `FN2CTagInfo` arrays.
 |------|-------------|
 | `EN2CBatchItemStatus` | Pending, Processing, Completed, Failed, Skipped |
 | `FN2CBatchTranslationItem` | Internal tracking struct per graph (with cached JSON payload) |
-| `FN2CBatchTranslationResult` | Summary with counts, timing, token usage, output path |
+| `FN2CBatchTranslationResult` | Summary with counts, timing, token usage (`TotalInputTokens`, `TotalOutputTokens`, `TotalCacheReadInputTokens`, `TotalCacheWriteInputTokens`, `TotalReasoningTokens`), output path |
 | `FN2CBatchJsonExportResult` | Result for JSON-only export (no LLM translation) |
 
 **Delegates (Blueprint-compatible):**

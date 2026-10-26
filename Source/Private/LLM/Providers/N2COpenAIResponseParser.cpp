@@ -37,26 +37,9 @@ bool UN2COpenAIResponseParser::ParseLLMResponse(
     const TSharedPtr<FJsonObject>* UsagePtr = nullptr;
     if (JsonObject->TryGetObjectField(TEXT("usage"), UsagePtr) && UsagePtr && UsagePtr->IsValid())
     {
-        const TSharedPtr<FJsonObject>& UsageObject = *UsagePtr;
-        int32 PromptTokens = 0;
-        int32 CompletionTokens = 0;
-        UsageObject->TryGetNumberField(TEXT("prompt_tokens"), PromptTokens);
-        UsageObject->TryGetNumberField(TEXT("completion_tokens"), CompletionTokens);
-
-        // Responses API may use different field names
-        if (PromptTokens == 0)
-        {
-            UsageObject->TryGetNumberField(TEXT("input_tokens"), PromptTokens);
-        }
-        if (CompletionTokens == 0)
-        {
-            UsageObject->TryGetNumberField(TEXT("output_tokens"), CompletionTokens);
-        }
-
-        OutResponse.Usage.InputTokens = PromptTokens;
-        OutResponse.Usage.OutputTokens = CompletionTokens;
-
-        FN2CLogger::Get().Log(FString::Printf(TEXT("LLM Token Usage - Input: %d Output: %d"), PromptTokens, CompletionTokens), EN2CLogSeverity::Info);
+        // Chat Completions and the Responses API: totals, cached input and reasoning output
+        ReadOpenAICompatibleUsage(*UsagePtr, OutResponse.Usage);
+        LogUsage(OutResponse.Usage, TEXT("OpenAIResponseParser"));
     }
 
     // Extract message content - handle both Chat Completions and Responses API formats

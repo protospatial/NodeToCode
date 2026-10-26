@@ -9,20 +9,52 @@
 
 /**
  * @struct FN2CTranslationUsage
- * @brief Tracks the token usage for LLM requests (input vs. output tokens).
- * Used to monitor or bill usage after a request completes.
+ * @brief Token usage of one LLM request, as the provider reported it, made comparable across providers.
+ * InputTokens and OutputTokens are the totals billed: cached input and thinking output are included. The other
+ * counts say how much of those totals was read from or written to the provider's prompt cache, or spent thinking,
+ * and are 0 when the provider does not report them.
  */
 USTRUCT(BlueprintType)
-struct FN2CTranslationUsage
+struct NODETOCODE_API FN2CTranslationUsage
 {
     GENERATED_BODY()
 
+    /** Every output token billed, thinking included (Gemini: candidatesTokenCount + thoughtsTokenCount) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    int32 OutputTokens;
-    
+    int32 OutputTokens = 0;
+
+    /** Every input token processed, cached ones included (Anthropic: input_tokens + cache read + cache creation) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
-    int32 InputTokens;
-    
+    int32 InputTokens = 0;
+
+    /**
+     * Part of InputTokens read from the prompt cache (Anthropic cache_read_input_tokens, OpenAI cached_tokens,
+     * DeepSeek prompt_cache_hit_tokens, Gemini cachedContentTokenCount)
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int32 CacheReadInputTokens = 0;
+
+    /** Part of InputTokens written to the prompt cache (Anthropic cache_creation_input_tokens) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int32 CacheWriteInputTokens = 0;
+
+    /**
+     * Part of OutputTokens spent thinking, when the provider reports it (Gemini thoughtsTokenCount, OpenAI and
+     * DeepSeek reasoning_tokens); Anthropic counts thinking in output_tokens without a separate figure
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int32 ReasoningTokens = 0;
+
+    /** True when any count is above 0 */
+    bool HasAny() const;
+
+    /**
+     * The counts as saved with a translation: input_tokens, output_tokens, cache_read_input_tokens,
+     * cache_write_input_tokens, reasoning_tokens
+     */
+    TSharedRef<FJsonObject> ToJson() const;
+
+    FN2CTranslationUsage& operator+=(const FN2CTranslationUsage& Other);
 };
 /**
  * @struct FN2CGeneratedCode
