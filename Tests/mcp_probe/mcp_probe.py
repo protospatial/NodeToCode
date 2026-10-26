@@ -594,9 +594,9 @@ def probe_p12(url, log_text):
     LevelEditorSubsystem.editor_request_begin_play() (on UE 5.8 after placing a fixture actor in the level, so the
     compile has a live PIE instance to reinstance; see PIE_START_PY), waits for is_in_play_in_editor(), calls both tools, ends PIE and lists the fixture's
     variables. Records the tool results, NodeToCode error, ensure and crash lines from the log, whether the editor
-    still answers, and the variables after PIE. Reproduced when create-variable succeeds during PIE (card 0170 makes
-    mutating tools refuse with PIE_ACTIVE); fixed when it is refused and nothing else went wrong. Skipped when PIE does
-    not start."""
+    still answers, and the variables after PIE. Reproduced when create-variable succeeds during PIE; fixed (card 0170)
+    when create-variable and compile-blueprint answer PIE_ACTIVE, get-blueprint-member-variables works during PIE,
+    create-variable works again after PIE, and nothing else went wrong. Skipped when PIE does not start."""
     ids = ['gap-1', 'next-10']
     h = _helpers()
     ev = {}
@@ -621,6 +621,9 @@ def probe_p12(url, log_text):
     data, error, text = h.tool_json(url, 'compile-blueprint', {})
     ev['compile'] = {'isError': error, 'text': text[:400], 'success': (data or {}).get('success'),
                      'status': (data or {}).get('compilationStatus')}
+    # A read-only tool keeps working during PIE (card 0170)
+    data, error, text = h.tool_json(url, 'get-blueprint-member-variables', {})
+    ev['read_during_pie'] = {'isError': error, 'text': text[:200]}
     ev['pie_after_tools'], _ = h.run_python(url, PIE_STATE_PY)
     h.run_python(url, PIE_END_PY)
     deadline = time.time() + 60
@@ -631,6 +634,9 @@ def probe_p12(url, log_text):
         time.sleep(1)
     ev['pie_ended'] = ended.get('in_pie') is False
     h.run_python(url, PIE_REFOCUS_PY % {'asset': FIXTURE_ASSET})
+    # After PIE the refused tool works again (card 0170)
+    data, error, text = h.tool_json(url, 'create-variable', {'variableName': 'N2CProbePieVar', 'typeIdentifier': 'bool'})
+    ev['create_variable_after'] = {'isError': error, 'text': text[:200]}
     data, error, text = h.tool_json(url, 'get-blueprint-member-variables', {})
     ev['variables_after'] = [v.get('name') for v in (data or {}).get('variables', [])] if not error else text[:200]
     ev['cleanup'], _ = h.run_python(url, PIE_CLEANUP_PY)
@@ -639,9 +645,14 @@ def probe_p12(url, log_text):
     ev['begin_play_printed'] = 'N2CProbe BeginPlay' in excerpt
     ev['log_problems'] = log_problems(excerpt)[:30]
     ev['ensures'] = sum(1 for l in excerpt.splitlines() if 'ensure condition failed' in l.lower())
-    refused = ev['create_variable']['isError'] and 'PIE' in ev['create_variable']['text']
+    refused = (ev['create_variable']['isError'] and ev['create_variable']['text'].startswith('PIE_ACTIVE')
+               and ev['compile']['isError'] and ev['compile']['text'].startswith('PIE_ACTIVE'))
     clean = ev['editor_answers'] and not ev['ensures'] and ev['pie_ended']
-    status = 'fixed' if refused and clean else 'reproduced'
+    # Fixed also needs reads to work during PIE and create-variable to work again once PIE ended
+    works = (not ev['read_during_pie']['isError'] and not ev['create_variable_after']['isError']
+             and 'N2CProbePieVar' in (ev['variables_after'] if isinstance(ev['variables_after'], list) else []))
+    ev['refused'], ev['works_around_pie'] = refused, works
+    status = 'fixed' if refused and clean and works else 'reproduced'
     return {'ids': ids, 'status': status, 'evidence': ev}
 
 

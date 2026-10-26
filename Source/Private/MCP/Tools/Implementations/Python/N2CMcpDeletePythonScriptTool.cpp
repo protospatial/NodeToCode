@@ -40,6 +40,9 @@ FMcpToolDefinition FN2CMcpDeletePythonScriptTool::GetDefinition() const
 
 	// Note: This is a destructive operation, so we don't add read-only annotation
 
+	// Not read-only, but it deletes from the script library, not project content: it keeps working during Play In Editor (card 0170)
+	Definition.bAllowedDuringPlaySession = true;
+
 	return Definition;
 }
 

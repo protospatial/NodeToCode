@@ -453,6 +453,15 @@ string literals) sets `Definition.bReturnsUntrustedContent = true`; `FN2CMcpTool
 successful results as untrusted data (card 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`).
 Add its name to the list in `Source/Private/Tests/MCP/N2CMcpUntrustedContent.spec.cpp`.
 
+Play In Editor (card 0170, `MCP/Utils/N2CMcpPlaySessionGuard.h`): while a PIE or Simulate session runs, every tool
+that is not read-only (`Annotations.IsReadOnly()`; an unset `readOnlyHint` counts as changing things) answers
+`PIE_ACTIVE: ...` instead of running, through `FN2CMcpToolManager::ExecuteTool` and, for long-running tools,
+`FN2CToolAsyncTaskManager`; registration adds the rule to such a tool's description. So a tool that only reads sets
+`SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly())`, and a tool that writes but never changes a Blueprint,
+an asset or a level (editor navigation, translation output files, the script library, run-python) sets
+`Definition.bAllowedDuringPlaySession = true`. Everything else is refused during PIE, which is what a new editing tool
+wants. `NodeToCode.MCP.PlaySession` checks the rule for every registered tool.
+
 ### 3. Tools Requiring Game Thread Execution
 
 If your tool needs to access Unreal Editor APIs, it must run on the Game Thread:
@@ -555,7 +564,7 @@ as `title`; clients fall back to the name), `Description`, `InputSchema`, `Outpu
 result must carry a matching `FMcpToolCallResult::StructuredContent`), `Annotations`, and `_meta`: `Toolset` is sent
 as `_meta["nodetocode/toolset"]` (the toolset's name, not a top-level field), `MaxResultSizeChars` as `_meta["anthropic/maxResultSizeChars"]`,
 `bAlwaysLoad` as `_meta["anthropic/alwaysLoad"]: true`, and `Meta` holds any other `_meta` entries.
-`bIsLongRunning` and `bReturnsUntrustedContent` stay on the server.
+`bIsLongRunning`, `bReturnsUntrustedContent` and `bAllowedDuringPlaySession` stay on the server.
 
 `FN2CMcpToolManager::RegisterTool` builds a tool's definition once and keeps it: `tools/list`
 (`GetAllToolDefinitions`, sorted by name, so the list is the same on every call), `GetToolDefinition(Name)` (O(1)) and

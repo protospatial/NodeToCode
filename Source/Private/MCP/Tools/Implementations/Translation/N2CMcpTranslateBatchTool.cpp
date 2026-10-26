@@ -95,6 +95,9 @@ FMcpToolDefinition FN2CMcpTranslateBatchTool::GetDefinition() const
 	// Results carry Blueprint text (graph names, code an LLM wrote from the graphs; the call marks them): card 0124
 	Definition.bReturnsUntrustedContent = true;
 
+	// Not read-only, but it reads graphs and writes only translation output files: it keeps working during Play In Editor (card 0170)
+	Definition.bAllowedDuringPlaySession = true;
+
 	return Definition;
 }
 

@@ -47,6 +47,10 @@ Pro/Max** or **Google Account** selected:
   each result, and a notice before the Blueprint in its prompts), but the agent can still be fooled: review what it
   wants to do before you allow a tool call that writes, deletes or runs code, and keep **Allow MCP Python Execution**
   off unless you need it.
+- While you play in the editor (Play In Editor or Simulate), the agent can read but not change. Every tool that edits
+  or compiles a Blueprint, or creates, moves, copies or renames an asset or folder, answers `PIE_ACTIVE` until you
+  stop the session, because a change then would reinstance the running game's actors. Reading tools, translation,
+  opening editors, the Python script library and `run-python` (when you allow it) keep working.
 
 ## Claude Code
 

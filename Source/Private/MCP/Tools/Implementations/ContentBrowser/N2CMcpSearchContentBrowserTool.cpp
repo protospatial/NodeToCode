@@ -81,6 +81,8 @@ FMcpToolDefinition FN2CMcpSearchContentBrowserTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
+
 	return Definition;
 }
 

@@ -76,6 +76,9 @@ FMcpToolDefinition FN2CMcpSavePythonScriptTool::GetDefinition() const
 
 	Definition.InputSchema = Schema;
 
+	// Not read-only, but it writes the script library, not project content: it keeps working during Play In Editor (card 0170)
+	Definition.bAllowedDuringPlaySession = true;
+
 	return Definition;
 }
 

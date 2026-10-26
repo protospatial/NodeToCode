@@ -133,6 +133,15 @@ struct NODETOCODE_API FMcpToolDefinition
 	 */
 	bool bReturnsUntrustedContent = false;
 
+	/**
+	 * Play In Editor rule (card 0170, FN2CMcpPlaySessionGuard): while a PIE or Simulate session runs, every tool that is
+	 * not read-only (Annotations.IsReadOnly()) is refused with PIE_ACTIVE, because editing or compiling a Blueprint or
+	 * moving an asset then reinstances live actors. A tool that is not read-only but never changes a Blueprint, an asset
+	 * or a level (editor navigation, translation output files, the Python script library) sets this to keep working
+	 * during PIE, and so does run-python (arbitrary code the user opted in to). Not sent to clients.
+	 */
+	bool bAllowedDuringPlaySession = false;
+
 	FMcpToolDefinition()
 	{
 	}
