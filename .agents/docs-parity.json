@@ -71,7 +71,14 @@
       "name": "mcp-clients",
       "code": ["Source/Private/MCP/Server/N2CMcpHttpServerManager.cpp", "Source/Public/Core/N2CUserSettings.h",
                "Content/Python/mcp_bridge/**"],
-      "pages": ["wiki/developers/Using-a-Claude-or-Gemini-Subscription.md", "wiki/developers/Using-NodeToCode-with-Unreal-MCP.md"]
+      "pages": ["wiki/developers/Connecting-an-MCP-Client.md", "wiki/developers/Using-a-Claude-or-Gemini-Subscription.md",
+                "wiki/developers/Using-NodeToCode-with-Unreal-MCP.md"]
+    },
+    {
+      "name": "mcp-tool-modes",
+      "code": ["Source/Public/MCP/Tools/N2CMcpToolsets.h", "Source/Private/MCP/Tools/N2CMcpToolManager.cpp",
+               "Context/mcp-server/tools.generated.json"],
+      "pages": ["wiki/developers/Choosing-a-Tool-Mode.md", "wiki/developers/Connecting-an-MCP-Client.md"]
     },
     {
       "name": "agent-skills",
