@@ -169,6 +169,20 @@ bool FN2CBlueprintValidator::ValidateGraph(const FN2CGraph& Graph, FString& OutE
         return false;
     }
 
+    // A comment box lists nodes of its own graph (card 0235)
+    for (const FN2CCommentBox& Comment : Graph.Comments)
+    {
+        for (const FString& NodeID : Comment.NodeIDs)
+        {
+            if (!NodeIds.Contains(NodeID))
+            {
+                OutError = FString::Printf(TEXT("Comment box in graph %s lists node %s, which is not in the graph"), *Graph.Name, *NodeID);
+                FN2CLogger::Get().LogError(OutError);
+                return false;
+            }
+        }
+    }
+
     FN2CLogger::Get().Log(FString::Printf(TEXT("Graph %s validation successful: %d nodes, %d execution flows, %d data flows"), 
         *Graph.Name, Graph.Nodes.Num(), Graph.Flows.Execution.Num(), Graph.Flows.Data.Num()), EN2CLogSeverity::Debug);
 

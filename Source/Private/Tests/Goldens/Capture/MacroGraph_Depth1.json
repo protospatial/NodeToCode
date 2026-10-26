@@ -1,0 +1,164 @@
+{
+	"case": "MacroGraph_Depth1",
+	"description": "Max Translation Depth 1. Function ApplyHit(): the entry runs an instance of the Blueprint's own macro DoDamage (In -> ControlScreensaver -> Out), whose Out runs CollectGarbage. DoDamage is a Macro graph.",
+	"translation_depth": 1,
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_MacroGraph_Depth1",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_MacroGraph_Depth1"
+		},
+		"graphs": [
+			{
+				"name": "ApplyHit",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "ApplyHit",
+						"member_parent": "BP_N2CGolden_MacroGraph_Depth1",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "MacroInstance",
+						"class": "K2Node_MacroInstance",
+						"member_parent": "BP_N2CGolden_MacroGraph_Depth1",
+						"member_name": "DoDamage",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "In",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Out",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2",
+						"N2.P3->N3.P4"
+					],
+					"data":
+					{
+					}
+				}
+			},
+			{
+				"name": "DoDamage",
+				"graph_type": "Macro",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "Tunnel",
+						"class": "K2Node_Tunnel",
+						"title": "Inputs",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "In",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "Tunnel",
+						"class": "K2Node_Tunnel",
+						"title": "Outputs",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Out",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					},
+					{
+						"id": "N6",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P8",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "bAllowScreenSaver",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": "then",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N4.P6->N6.P8",
+						"N6.P9->N5.P7"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

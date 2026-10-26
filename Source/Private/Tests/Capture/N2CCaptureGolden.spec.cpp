@@ -61,6 +61,7 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
+#include "Modules/ModuleManager.h"
 #include "Models/N2CJsonContract.h"
 #include "Policies/PrettyJsonPrintPolicy.h"
 #include "Runtime/Launch/Resources/Version.h"
@@ -121,6 +122,12 @@
  * label only when it says more than the identifier, member names as declared (Temperature_C, Convert_C), member_parent
  * the declaring Blueprint, exec pins named execute and then; and every case captures the same JSON with the editor in
  * Japanese, and the same identifiers with the friendly-names preference flipped (only the hints may change).
+ *
+ * "Discovery" and the cases ConstructionScript, MacroGraph_Depth1, NestedGraphs_Depth0/1, PluginContent_Depth1 and
+ * CommentBoxes check graph kinds and nested graphs (card 0235): graph_type comes from the schema (Construction,
+ * Macro, Animation), a collapsed graph is captured at every depth and its Composite node names it, a function and a
+ * user struct in plugin content are followed, engine content never is, comment boxes list the nodes inside them, and
+ * a null entry in a graph's Nodes array is skipped.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -1563,28 +1570,125 @@ void FN2CCaptureGoldenSpec::AddCases()
 		&BuildSameNameOwners });
 	Cases.Last().TranslationDepth = 2;
 
+	// Card 0235: a collapsed graph is part of its graph at any depth, and its node names it (imp-translation-core-5, -4);
+	// a macro is a Macro graph whatever its name (translation-core-20)
 	for (const int32 Depth : { 0, 1 })
 	{
 		FCaptureCase& Nested = Cases.Add_GetRef({ FString::Printf(TEXT("NestedGraphs_Depth%d"), Depth),
 			FString::Printf(TEXT("Max Translation Depth %d. Function Nested(): the entry runs a collapsed graph "
 				"GoldenCollapsed (In -> CollectGarbage -> Out), whose Out runs the Blueprint's own macro LocalSteps "
-				"(In -> ControlScreensaver -> Out)."), Depth),
-			{ { TEXT("imp-translation-core-5"), TEXT("0235"),
-				TEXT("Collapsed graphs and the Blueprint's own macros only count as nested graphs within the depth limit: "
-					"at depth 0 (the default) GoldenCollapsed and LocalSteps are not captured and only the opaque "
-					"Composite and MacroInstance nodes remain") },
-			  { TEXT("imp-translation-core-4"), TEXT("0235"),
-				TEXT("The Composite and MacroInstance nodes do not name the graph captured for them (the Composite has no "
-					"member_parent or member_name)") } },
+				"(In -> ControlScreensaver -> Out). The collapsed graph is captured at every depth and its Composite node "
+				"names it in member_name; the macro graph (a Macro graph, though its name has no 'macro') only from depth 1."),
+				Depth),
+			{},
 			&BuildNested });
 		Nested.TranslationDepth = Depth;
-		if (Depth > 0)
-		{
-			Nested.KnownDefects.Insert({ TEXT("translation-core-20"), TEXT("0235"),
-				TEXT("A user macro is classed as a Macro graph only when its name contains 'macro': LocalSteps comes out "
-					"as an EventGraph") }, 2);
-		}
 	}
+
+	Cases.Add({ TEXT("ConstructionScript"),
+		TEXT("The Actor Blueprint's construction script (UserConstructionScript, a function graph with an entry node): "
+			"the entry runs CollectGarbage. Its graph_type is Construction."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = FBlueprintEditorUtils::FindUserConstructionScript(BP.GetBlueprint());
+			UK2Node_FunctionEntry* Entry = Graph ? BP.FunctionEntry(Graph) : nullptr;
+			if (!Entry)
+			{
+				return nullptr;
+			}
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
+	Cases.Add({ TEXT("MacroGraph_Depth1"),
+		TEXT("Max Translation Depth 1. Function ApplyHit(): the entry runs an instance of the Blueprint's own macro "
+			"DoDamage (In -> ControlScreensaver -> Out), whose Out runs CollectGarbage. DoDamage is a Macro graph."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			const FEdGraphPinType Exec = FTestBlueprint::ExecPinType();
+			UEdGraph* Macro = BP.AddMacro(TEXT("DoDamage"));
+			UK2Node_Tunnel* MacroIn = BP.TunnelEntry(Macro);
+			UK2Node_Tunnel* MacroOut = BP.TunnelExit(Macro);
+			BP.AddTunnelPin(MacroIn, TEXT("In"), Exec);
+			BP.AddTunnelPin(MacroOut, TEXT("Out"), Exec);
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Macro);
+			BP.Link(MacroIn, TEXT("In"), Screensaver, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Screensaver, UEdGraphSchema_K2::PN_Then, MacroOut, TEXT("Out"));
+
+			UEdGraph* Graph = BP.AddFunction(TEXT("ApplyHit"));
+			UK2Node_MacroInstance* Damage = BP.AddMacroInstance(Graph, Macro);
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Damage, TEXT("In"));
+			BP.Link(Damage, TEXT("Out"), Collect, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+	Cases.Last().TranslationDepth = 1;
+
+	// Plugin content is the user's too (translation-core-21): the plugin's own /NodeToCode mount stands in for a content
+	// or GameFeature plugin (/ShooterCore/...)
+	Cases.Add({ TEXT("PluginContent_Depth1"),
+		TEXT("Max Translation Depth 1. BP_N2CGolden_PluginHelper lives under the NodeToCode plugin's mount "
+			"(/NodeToCode/N2CTest_<guid>, standing in for a content or GameFeature plugin), with the user struct "
+			"S_GoldenPluginItem {Count: int} and function Helper(Item: S_GoldenPluginItem), whose entry runs "
+			"CollectGarbage. Function CallPlugin() in /Game: the entry runs Helper with Item from Make S_GoldenPluginItem. "
+			"Helper is captured with its owner_blueprint and S_GoldenPluginItem is in 'structs'."),
+		{ RepeatMissingName },
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			FTestBlueprint* Plugin = BP.AddBlueprintAt(TEXT("BP_N2CGolden_PluginHelper"), TEXT("/NodeToCode"));
+			UUserDefinedStruct* Item = Plugin ? Plugin->AddUserStruct(TEXT("S_GoldenPluginItem"),
+				{ { TEXT("Count"), FTestBlueprint::IntPinType() } }) : nullptr;
+			if (!Item)
+			{
+				return nullptr;
+			}
+			UEdGraph* Helper = Plugin->AddFunction(TEXT("Helper"));
+			Plugin->AddFunctionInput(Helper, TEXT("Item"), FTestBlueprint::StructPinType(Item));
+			UK2Node_CallFunction* Collect = AddCollectGarbage(*Plugin, Helper);
+			Plugin->Link(Plugin->FunctionEntry(Helper), UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+
+			UEdGraph* Graph = BP.AddFunction(TEXT("CallPlugin"));
+			UK2Node_CallFunction* CallHelper = Plugin->AddSelfCall(Graph, TEXT("Helper"));
+			UK2Node_MakeStruct* Make = BP.AddMakeStruct(Graph, Item);
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, CallHelper, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(BP.Pin(Make, Item->GetFName(), EGPD_Output), BP.Pin(CallHelper, TEXT("Item"), EGPD_Input));
+			return Graph;
+		} });
+	Cases.Last().TranslationDepth = 1;
+	Cases.Last().ExpectedErrors = { TEXT("Missing name") };
+
+	Cases.Add({ TEXT("CommentBoxes"),
+		TEXT("Function Commented(): the entry (at 0,0) runs CollectGarbage (300,0), then ControlScreensaver (600,0). The "
+			"comment 'Clean up, then allow the screensaver' spans (250,-50)-(900,200) around the two calls; the comment "
+			"'Nothing in here' at (0,400)-(300,500) holds no node."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UEdGraph* Graph = BP.AddFunction(TEXT("Commented"));
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			if (!Entry || !Collect || !Screensaver)
+			{
+				return nullptr;
+			}
+			Entry->NodePosX = 0;
+			Entry->NodePosY = 0;
+			Collect->NodePosX = 300;
+			Collect->NodePosY = 0;
+			Screensaver->NodePosX = 600;
+			Screensaver->NodePosY = 0;
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Collect, UEdGraphSchema_K2::PN_Then, Screensaver, UEdGraphSchema_K2::PN_Execute);
+			FN2CMcpNodeSpawn::SpawnCommentNode(Graph, FSlateRect(250, -50, 900, 200), TEXT("Clean up, then allow the screensaver"),
+				FLinearColor::White, 18, true, { Collect, Screensaver });
+			FN2CMcpNodeSpawn::SpawnCommentNode(Graph, FSlateRect(0, 400, 300, 500), TEXT("Nothing in here"),
+				FLinearColor::White, 18, true, {});
+			return Graph;
+		} });
 
 	Cases.Add({ TEXT("EnhancedInputEvent"),
 		TEXT("Event graph: the Enhanced Input action event for a transient UInputAction IA_GoldenJump (Boolean); "
@@ -1944,6 +2048,98 @@ void FN2CCaptureGoldenSpec::Define()
 	});
 
 	// Card 0135: data edges are lossless (translation-core-1, PR #7, issue #13)
+	// Card 0235: graph types from the schema, nested-graph discovery (translation-core-20, -21); golden cases
+	// ConstructionScript, MacroGraph_Depth1, NestedGraphs_Depth0/1, PluginContent_Depth1 and CommentBoxes
+	Describe(TEXT("Discovery"), [this]()
+	{
+		It(TEXT("captures a graph whose Nodes array holds a null entry as the main graph and as a nested and a listed one"), [this]()
+		{
+			using namespace N2CCaptureGolden;
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_NullNode"), TEXT("/Game"));
+			UEdGraph* Graph = BP.GetBlueprint() ? BP.AddFunction(TEXT("WithNull")) : nullptr;
+			UEdGraph* Caller = Graph ? BP.AddFunction(TEXT("CallsWithNull")) : nullptr;
+			if (!TestNotNull(TEXT("the test graphs"), Caller))
+			{
+				return;
+			}
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, AddCollectGarbage(BP, Graph), UEdGraphSchema_K2::PN_Execute);
+			BP.Link(BP.FunctionEntry(Caller), UEdGraphSchema_K2::PN_Then, BP.AddSelfCall(Caller, TEXT("WithNull")), UEdGraphSchema_K2::PN_Execute);
+			if (!TestEqual(TEXT("building the graphs"), BP.Errors().Num(), 0))
+			{
+				return;
+			}
+
+			// As a node class that failed to load leaves it; first, so any loop over the nodes meets it before the rest
+			Graph->Nodes.Insert(nullptr, 0);
+			ON_SCOPE_EXIT { Graph->Nodes.Remove(nullptr); };
+
+			TArray<UK2Node*> Nodes;
+			FN2CNodeCollector::Get().CollectNodesFromGraph(Graph, Nodes);
+			FN2CCaptureOptions Options;
+			Options.Depth = 0;
+			const TValueOrError<FN2CCapture, FString> Main = N2C::CaptureNodes(Nodes, Options);
+			if (TestTrue(TEXT("the graph is captured"), Main.HasValue()))
+			{
+				const FN2CBlueprint& Captured = Main.GetValue().Blueprint;
+				TestEqual(TEXT("one graph"), Captured.Graphs.Num(), 1);
+				TestEqual(TEXT("its two nodes"), Captured.Graphs.Num() > 0 ? Captured.Graphs[0].Nodes.Num() : 0, 2);
+				TestTrue(TEXT("a Function graph"), Captured.Graphs.Num() > 0 && Captured.Graphs[0].GraphType == EN2CGraphType::Function);
+			}
+
+			Options.Depth = 1;
+			const TValueOrError<FN2CCapture, FString> Nested = N2C::CaptureGraph(*Caller, Options);
+			if (TestTrue(TEXT("the caller is captured"), Nested.HasValue()))
+			{
+				const FN2CBlueprint& Captured = Nested.GetValue().Blueprint;
+				TestEqual(TEXT("the caller and the graph it calls"), Captured.Graphs.Num(), 2);
+				TestEqual(TEXT("the nested graph's two nodes"), Captured.Graphs.Num() > 1 ? Captured.Graphs[1].Nodes.Num() : 0, 2);
+			}
+
+			const TValueOrError<FN2CCapture, FString> Listed = N2C::CaptureGraphs({ Graph }, Options);
+			TestTrue(TEXT("the graph is captured from a list"), Listed.HasValue()
+				&& Listed.GetValue().Blueprint.Graphs.Num() == 1 && Listed.GetValue().Blueprint.Graphs[0].Nodes.Num() == 2);
+		});
+
+		It(TEXT("types an animation graph Animation by its schema"), [this]()
+		{
+			using namespace N2CCaptureGolden;
+			FModuleManager::Get().LoadModule(TEXT("AnimGraph"));
+			UClass* SchemaClass = FindObject<UClass>(nullptr, TEXT("/Script/AnimGraph.AnimationGraphSchema"));
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_AnimSchema"), TEXT("/Game"));
+			if (!TestNotNull(TEXT("UAnimationGraphSchema"), SchemaClass) || !TestNotNull(TEXT("the Blueprint"), BP.GetBlueprint()))
+			{
+				return;
+			}
+			// Named as an Animation Blueprint names it; the name has no "animation" in it
+			UEdGraph* Graph = FBlueprintEditorUtils::CreateNewGraph(BP.GetBlueprint(), TEXT("AnimGraph"), UEdGraph::StaticClass(), SchemaClass);
+			if (!TestNotNull(TEXT("the anim graph"), Graph) || !TestNotNull(TEXT("a node in it"), AddCollectGarbage(BP, Graph)))
+			{
+				return;
+			}
+			FN2CCaptureOptions Options;
+			Options.Depth = 0;
+			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureGraph(*Graph, Options);
+			if (TestTrue(TEXT("the anim graph is captured"), Result.HasValue()) && TestEqual(TEXT("one graph"), Result.GetValue().Blueprint.Graphs.Num(), 1))
+			{
+				TestEqual(TEXT("graph_type"), StaticEnum<EN2CGraphType>()->GetNameStringByValue(
+					static_cast<int64>(Result.GetValue().Blueprint.Graphs[0].GraphType)), FString(TEXT("Animation")));
+			}
+		});
+
+		It(TEXT("never follows engine content: a StandardMacros ForEachLoop adds no graph at depth 2"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("ForEachLoop"));
+			if (!TestNotNull(TEXT("the ForEachLoop case"), Case))
+			{
+				return;
+			}
+			FCaptureCase Deep = *Case;
+			Deep.TranslationDepth = 2;
+			const FCaptured Captured = Capture(Deep);
+			TestEqual(TEXT("graphs captured"), Captured.Blueprint.Graphs.Num(), 1);
+		});
+	});
+
 	Describe(TEXT("DataFlows"), [this]()
 	{
 		It(TEXT("lists every connected data input as the target of exactly one edge in every case"), [this]()

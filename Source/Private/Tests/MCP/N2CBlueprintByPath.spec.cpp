@@ -295,7 +295,13 @@ void FN2CBlueprintByPathSpec::Define()
 				}
 				TestEqual(Name + TEXT(" N2C JSON version"), Document->GetStringField(TEXT("version")), FString(TEXT("2.0.0")));
 				const TMap<FString, TSharedPtr<FJsonObject>> Graphs = GraphsByName(Document);
-				TestEqual(Name + TEXT(": one graph at depth 0"), Graphs.Num(), 1);
+				// At depth 0 the graph alone, with the collapsed graphs it holds (always part of it, card 0235)
+				int32 CollapsedGraphs = 0;
+				for (const UEdGraphNode* Node : Graph.Key->Nodes)
+				{
+					CollapsedGraphs += Cast<UK2Node_Composite>(Node) ? 1 : 0;
+				}
+				TestEqual(Name + TEXT(": one graph and its collapsed graphs at depth 0"), Graphs.Num(), 1 + CollapsedGraphs);
 				TestEqual(Name + TEXT(": node count"), NodesIn(Graphs.FindRef(Name)), K2NodeCount(Graph.Key));
 				TestTrue(Name + TEXT(": has the guids table"), Document->HasTypedField<EJson::Object>(TEXT("guids")));
 			}

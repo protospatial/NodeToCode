@@ -42,7 +42,8 @@ Blueprint's contents.
    `BlueprintTools.list_graphs` lists them.
 3. **Read the graphs.** `get-blueprint-n2cjson` with `blueprintPath` and either `graphGuid` (preferred: stable across
    renames and never ambiguous) or `graphName`; with neither it returns every graph in one document. `depth` (0 to
-   5) also captures the user functions, macros and collapsed graphs the graph calls, up to that many calls away.
+   5) also captures the user functions and macros the graph calls, up to that many calls away; collapsed graphs
+   always come with the graph that holds them.
    `NodeToCodeTools.get_n2c_json` returns the same document from `blueprint_path` and `graph_name` (`""` for every
    graph); it has no GUID or depth, so read the functions a graph calls by name.
 4. **Large documents.** When a read would exceed about 20000 tokens (or you pass `toFile: true`) the result is

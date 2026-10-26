@@ -1,0 +1,110 @@
+{
+	"case": "CommentBoxes",
+	"description": "Function Commented(): the entry (at 0,0) runs CollectGarbage (300,0), then ControlScreensaver (600,0). The comment 'Clean up, then allow the screensaver' spans (250,-50)-(900,200) around the two calls; the comment 'Nothing in here' at (0,400)-(300,500) holds no node.",
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_CommentBoxes",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_CommentBoxes"
+		},
+		"graphs": [
+			{
+				"name": "Commented",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Commented",
+						"member_parent": "BP_N2CGolden_CommentBoxes",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "ControlScreensaver",
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "bAllowScreenSaver",
+								"type": "Boolean",
+								"default_value": "false"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2",
+						"N2.P3->N3.P4"
+					],
+					"data":
+					{
+					}
+				},
+				"comments": [
+					{
+						"text": "Clean up, then allow the screensaver",
+						"nodes": [
+							"N2",
+							"N3"
+						]
+					},
+					{
+						"text": "Nothing in here"
+					}
+				]
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

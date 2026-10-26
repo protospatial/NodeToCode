@@ -178,6 +178,9 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		Graph.Nodes.Add(Node);
 		Graph.Flows.Execution.Add(TEXT("N1.P1->N1.P1"));
 		Graph.Flows.Data.FindOrAdd(TEXT("N1.P1")).Targets = {TEXT("N1.P1"), TEXT("N1.P1")};
+		FN2CCommentBox& CommentBox = Graph.Comments.AddDefaulted_GetRef();
+		CommentBox.Text = TEXT("A comment box");
+		CommentBox.NodeIDs.Add(TEXT("N1"));
 		Blueprint.Graphs.Add(Graph);
 
 		FN2CStructMember Member;

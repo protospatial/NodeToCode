@@ -7,8 +7,13 @@
 #include "Models/N2CJsonContract.h"
 #include "Utils/N2CStableNames.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "EdGraphNode_Comment.h"
+#include "EdGraphSchema_K2.h"
+#include "Engine/UserDefinedEnum.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
-#include "Models/N2CJsonContract.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CNodeTypeRegistry.h"
 #include "K2Node_AddComponent.h"
@@ -236,6 +241,7 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
     }
     const int32 MainGraphNodeCount = CurrentGraph().Nodes.Num();
     N2CLiveness::MarkGraph(CurrentGraph());
+    CaptureComments(MainGraph);
     CurrentGraphIndex = INDEX_NONE;
 
     ProcessQueuedGraphs();
@@ -422,80 +428,122 @@ void FN2CCaptureContext::AddGraphToProcess(UEdGraph* Graph)
         return;
     }
 
-    // Check if this is a user-created graph
-    bool bIsUserCreated = false;
-
-    // Check if this is a composite/collapsed graph
-    if (Cast<UK2Node_Composite>(Graph->GetOuter()))
+    int32 GraphDepth = CurrentDepth + 1;
+    if (const UK2Node_Composite* Composite = Cast<UK2Node_Composite>(Graph->GetOuter()))
     {
-        bIsUserCreated = !Graph->GetOuter()->IsA<UK2Node_MathExpression>();  
-
-        if (bIsUserCreated)
+        // A math expression keeps its formula in the node itself; its bound graph is never captured
+        if (Composite->IsA<UK2Node_MathExpression>())
         {
-            FString Context = FString::Printf(TEXT("Found composite graph: %s"), *Graph->GetName());
-            FN2CLogger::Get().Log(Context, EN2CLogSeverity::Debug);
-        }
-    }
-    // Otherwise check if it's in a user content directory
-    else if (UBlueprint* OwningBP = Cast<UBlueprint>(Graph->GetOuter()))
-    {
-        // Check if the Blueprint is in a user content directory
-        FString BlueprintPath = OwningBP->GetPathName();
-        bIsUserCreated = BlueprintPath.Contains(TEXT("/Game/")) || 
-                        BlueprintPath.Contains(TEXT("/Content/"));
-
-        // For macros, also check if it's a user-created macro
-        if (UK2Node_MacroInstance* MacroNode = Cast<UK2Node_MacroInstance>(Graph->GetOuter()))
-        {
-            if (UEdGraph* MacroGraph = MacroNode->GetMacroGraph())
-            {
-                if (UBlueprint* MacroBP = Cast<UBlueprint>(MacroGraph->GetOuter()))
-                {
-                    FString MacroPath = MacroBP->GetPathName();
-                    bIsUserCreated = MacroPath.Contains(TEXT("/Game/")) || 
-                                   MacroPath.Contains(TEXT("/Content/"));
-                }
-            }
-        }
-    }
-
-    // Only process user-created graphs
-    if (bIsUserCreated)
-    {
-        // Now check recursion depth limit since we know it's a user graph
-        int32 NextDepth = CurrentDepth + 1;
-        if (NextDepth > Options.Depth)
-        {
-            FString Context = FString::Printf(TEXT("Skipping graph '%s' - maximum translation depth reached (%d)"), 
-                *Graph->GetName(), Options.Depth);
-            FN2CLogger::Get().Log(Context, EN2CLogSeverity::Warning);
             return;
         }
 
-        // Check if we already have this graph queued
-        bool bAlreadyQueued = false;
-        for (const FGraphProcessInfo& Info : AdditionalGraphsToProcess)
-        {
-            if (Info.Graph == Graph)
-            {
-                bAlreadyQueued = true;
-                break;
-            }
-        }
-
-        if (!bAlreadyQueued)
-        {
-            FString Context = FString::Printf(TEXT("Adding user-created graph to process: %s (Depth: %d)"), 
-                *Graph->GetName(), NextDepth);
-            FN2CLogger::Get().Log(Context, EN2CLogSeverity::Debug);
-            AdditionalGraphsToProcess.Add(FGraphProcessInfo(Graph, NextDepth));
-        }
+        // A collapsed graph is a purely visual grouping of the graph that holds it: part of that graph, so it is always
+        // captured, at that graph's depth (calls from inside it count from there), never cut off by the depth limit
+        // (imp-translation-core-5)
+        GraphDepth = CurrentDepth;
     }
     else
     {
-        // Only log at Debug severity since this is expected behavior
-        FString Context = FString::Printf(TEXT("Skipping engine graph: %s"), *Graph->GetName());
-        FN2CLogger::Get().Log(Context, EN2CLogSeverity::Debug);
+        // A function or macro graph is followed only when its Blueprint is the project's own content: /Game or a
+        // project plugin, a content or GameFeature plugin included (translation-core-21). Never engine content.
+        const UBlueprint* OwningBlueprint = FBlueprintEditorUtils::FindBlueprintForGraph(Graph);
+        if (!IsUserContent(OwningBlueprint))
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping graph %s: not the project's own content (%s)"),
+                *Graph->GetName(), OwningBlueprint ? *OwningBlueprint->GetPathName() : TEXT("no Blueprint")), EN2CLogSeverity::Debug);
+            return;
+        }
+        if (GraphDepth > Options.Depth)
+        {
+            FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping graph '%s' - maximum translation depth reached (%d)"),
+                *Graph->GetName(), Options.Depth), EN2CLogSeverity::Warning);
+            return;
+        }
+    }
+
+    // Queued once (by the graph itself)
+    for (const FGraphProcessInfo& Info : AdditionalGraphsToProcess)
+    {
+        if (Info.Graph == Graph)
+        {
+            return;
+        }
+    }
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Adding user-created graph to process: %s (Depth: %d)"),
+        *Graph->GetName(), GraphDepth), EN2CLogSeverity::Debug);
+    AdditionalGraphsToProcess.Add(FGraphProcessInfo(Graph, GraphDepth));
+}
+
+bool FN2CCaptureContext::IsUserContent(const UObject* Object)
+{
+    const UPackage* Package = Object ? Object->GetPackage() : nullptr;
+    if (!Package)
+    {
+        return false;
+    }
+
+    // The package's mount point: /Game/Folder/BP_X -> Game, /ShooterCore/BP_X -> ShooterCore
+    const FString Root = FPackageName::SplitPackageNameRoot(Package->GetFName(), nullptr);
+    if (Root == TEXT("Game"))
+    {
+        return true;
+    }
+
+    // A plugin mounts its content at its name; only a plugin of the project (its Plugins folder, GameFeatures
+    // included) is the user's own. Engine, Script and Temp are no plugin's mount point.
+    const TSharedPtr<IPlugin> Plugin = Root.IsEmpty() ? nullptr : IPluginManager::Get().FindPlugin(Root);
+    return Plugin.IsValid() && Plugin->CanContainContent() && Plugin->GetLoadedFrom() == EPluginLoadedFrom::Project;
+}
+
+void FN2CCaptureContext::CaptureComments(const UEdGraph* Graph)
+{
+    if (!Graph || CurrentGraphIndex == INDEX_NONE)
+    {
+        return;
+    }
+
+    // The captured nodes of the graph, in capture order, with where they are
+    struct FPlacedNode
+    {
+        FString ID;
+        FIntPoint Position;
+        int32 Number;
+    };
+    TArray<FPlacedNode> Placed;
+    for (const UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (const FString* NodeID = Node ? NodeIDs.Find(Node) : nullptr)
+        {
+            Placed.Add({ *NodeID, FIntPoint(Node->NodePosX, Node->NodePosY), FCString::Atoi(**NodeID + 1) });
+        }
+    }
+    Placed.Sort([](const FPlacedNode& A, const FPlacedNode& B) { return A.Number < B.Number; });
+
+    // Comment boxes carry design intent the collector (K2 nodes only) never sees (imp-translation-core-4). A node is
+    // inside a box when its top-left corner is: node sizes are only known to an open editor, which uses the whole node.
+    for (const UEdGraphNode* Node : Graph->Nodes)
+    {
+        const UEdGraphNode_Comment* CommentNode = Cast<UEdGraphNode_Comment>(Node);
+        if (!CommentNode)
+        {
+            continue;
+        }
+        const FIntRect Box(CommentNode->NodePosX, CommentNode->NodePosY,
+            CommentNode->NodePosX + CommentNode->NodeWidth, CommentNode->NodePosY + CommentNode->NodeHeight);
+        FN2CCommentBox Comment;
+        Comment.Text = CommentNode->NodeComment;
+        for (const FPlacedNode& Inside : Placed)
+        {
+            if (Inside.Position.X >= Box.Min.X && Inside.Position.X < Box.Max.X
+                && Inside.Position.Y >= Box.Min.Y && Inside.Position.Y < Box.Max.Y)
+            {
+                Comment.NodeIDs.Add(Inside.ID);
+            }
+        }
+        if (!Comment.Text.IsEmpty() || Comment.NodeIDs.Num() > 0)
+        {
+            CurrentGraph().Comments.Add(MoveTemp(Comment));
+        }
     }
 }
 
@@ -537,6 +585,7 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     if (NewGraph.Nodes.Num() > 0)
     {
         N2CLiveness::MarkGraph(NewGraph);
+        CaptureComments(Graph);
 
         // Validate all flow references
         if (!ValidateFlowReferences(NewGraph))
@@ -557,48 +606,36 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     return false;
 }
 
-EN2CGraphType FN2CCaptureContext::DetermineGraphType(UEdGraph* Graph) const
+EN2CGraphType FN2CCaptureContext::DetermineGraphType(const UEdGraph* Graph)
 {
     if (!Graph)
     {
         return EN2CGraphType::EventGraph;
     }
 
-    // First check if this is a function graph by looking for function entry node
-    for (UEdGraphNode* Node : Graph->Nodes)
-    {
-        if (Node->IsA<UK2Node_FunctionEntry>())
-        {
-            return EN2CGraphType::Function;
-        }
-    }
-
-    // Check for composite/collapsed graphs
+    // A collapsed graph first: the K2 schema would report the type of the graph that holds it
     if (Cast<UK2Node_Composite>(Graph->GetOuter()))
     {
         return EN2CGraphType::Composite;
     }
 
-    // Check graph name for common patterns
-    FString GraphName = Graph->GetName().ToLower();
-    
-    if (GraphName.Contains(TEXT("construction")))
+    // The schema knows the graph's kind (translation-core-20): the K2 schema from the Blueprint's graph lists, the
+    // animation schemas for anim graphs and state machines. Never the graph's name or the nodes it happens to hold.
+    const UEdGraphSchema* Schema = Graph->GetSchema();
+    switch (Schema ? Schema->GetGraphType(Graph) : GT_Ubergraph)
     {
-        return EN2CGraphType::Construction;
+        case GT_Function:
+            return Graph->GetFName() == UEdGraphSchema_K2::FN_UserConstructionScript
+                ? EN2CGraphType::Construction : EN2CGraphType::Function;
+        case GT_Macro:
+            return EN2CGraphType::Macro;
+        case GT_Animation:
+        case GT_StateMachine:
+            return EN2CGraphType::Animation;
+        case GT_Ubergraph:
+        default:
+            return EN2CGraphType::EventGraph;
     }
-    
-    if (GraphName.Contains(TEXT("macro")))
-    {
-        return EN2CGraphType::Macro;
-    }
-    
-    if (GraphName.Contains(TEXT("animation")))
-    {
-        return EN2CGraphType::Animation;
-    }
-
-    // Default to event graph
-    return EN2CGraphType::EventGraph;
 }
 
 void FN2CCaptureContext::DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType)
@@ -804,6 +841,15 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
             *NodeTitle, *NodeTypeName));
         
         FallbackProcessNodeProperties(Node, OutNodeDef);
+    }
+
+    // A collapsed graph's node names the graph captured for it, as a macro instance names its macro (imp-translation-core-4)
+    if (const UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(Node))
+    {
+        if (CompositeNode->BoundGraph && !CompositeNode->IsA<UK2Node_MathExpression>())
+        {
+            OutNodeDef.MemberName = CompositeNode->BoundGraph->GetName();
+        }
     }
 
     // Stable identity (card 0138): the node class; the title stays only as a hint that says more than member_name
@@ -1221,30 +1267,16 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
     return Result;
 }
 
-bool FN2CCaptureContext::IsBlueprintStruct(UScriptStruct* Struct) const
+bool FN2CCaptureContext::IsBlueprintStruct(const UScriptStruct* Struct)
 {
-    if (!Struct)
-    {
-        return false;
-    }
-    
-    // Check if the struct is in a user content directory
-    FString StructPath = Struct->GetPathName();
-    return StructPath.Contains(TEXT("/Game/")) || 
-           StructPath.Contains(TEXT("/Content/"));
+    // By its class, not its path: a struct asset in a content or GameFeature plugin is as much the user's as one in
+    // /Game, and a C++ struct is never one (translation-core-21)
+    return Struct && Struct->IsA<UUserDefinedStruct>();
 }
 
-bool FN2CCaptureContext::IsBlueprintEnum(UEnum* Enum) const
+bool FN2CCaptureContext::IsBlueprintEnum(const UEnum* Enum)
 {
-    if (!Enum)
-    {
-        return false;
-    }
-    
-    // Check if the enum is in a user content directory
-    FString EnumPath = Enum->GetPathName();
-    return EnumPath.Contains(TEXT("/Game/")) || 
-           EnumPath.Contains(TEXT("/Content/"));
+    return Enum && Enum->IsA<UUserDefinedEnum>();
 }
 
 EN2CStructMemberType FN2CCaptureContext::ConvertPropertyToStructMemberType(FProperty* Property) const

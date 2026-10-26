@@ -1,0 +1,70 @@
+{
+	"case": "ConstructionScript",
+	"description": "The Actor Blueprint's construction script (UserConstructionScript, a function graph with an entry node): the entry runs CollectGarbage. Its graph_type is Construction.",
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_ConstructionScript",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_ConstructionScript"
+		},
+		"graphs": [
+			{
+				"name": "UserConstructionScript",
+				"graph_type": "Construction",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Construction Script",
+						"member_parent": "BP_N2CGolden_ConstructionScript",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
