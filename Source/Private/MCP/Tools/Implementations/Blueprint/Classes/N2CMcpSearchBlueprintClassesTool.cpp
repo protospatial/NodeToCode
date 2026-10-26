@@ -140,8 +140,8 @@ FMcpToolDefinition FN2CMcpSearchBlueprintClassesTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
-	// Add read-only annotation
-	AddReadOnlyAnnotation(Definition);
+	// Read-only: reads editor or project state and changes nothing
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 	
 	return Definition;
 }

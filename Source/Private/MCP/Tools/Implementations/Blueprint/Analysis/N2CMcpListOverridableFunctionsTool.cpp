@@ -69,7 +69,7 @@ FMcpToolDefinition FN2CMcpListOverridableFunctionsTool::GetDefinition() const
 	Definition.InputSchema = Schema;
 	
 	// Mark as read-only
-	AddReadOnlyAnnotation(Definition);
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 	
 	// Results carry Blueprint text (tooltips of functions a Blueprint parent declares): marked as untrusted data (card 0124)
 	Definition.bReturnsUntrustedContent = true;

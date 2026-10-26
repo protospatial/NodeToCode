@@ -20,7 +20,9 @@ bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
 		return false;
 	}
 
-	const FString& ToolName = Tool->GetDefinition().Name;
+	// The definition is built once, here, and served to tools/list and every tools/call from then on
+	const TSharedRef<FMcpToolDefinition> Definition = MakeShared<FMcpToolDefinition>(Tool->GetDefinition());
+	const FString& ToolName = Definition->Name;
 	if (ToolName.IsEmpty())
 	{
 		FN2CLogger::Get().LogWarning(TEXT("Cannot register tool with empty name"));
@@ -44,7 +46,9 @@ bool FN2CMcpToolManager::RegisterTool(TSharedPtr<IN2CMcpTool> Tool)
 		return false;
 	}
 
-	RegisteredTools.Add(ToolName, Tool);
+	FRegisteredTool& Entry = RegisteredTools.Add(ToolName);
+	Entry.Tool = Tool;
+	Entry.Definition = Definition;
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Registered active MCP tool: %s"), *ToolName), EN2CLogSeverity::Debug);
 	return true;
@@ -72,27 +76,43 @@ TArray<FMcpToolDefinition> FN2CMcpToolManager::GetAllToolDefinitions() const
 
 	for (const auto& Pair : RegisteredTools)
 	{
-		Definitions.Add(Pair.Value->GetDefinition());
+		Definitions.Add(*Pair.Value.Definition);
 	}
 
+	// TMap order is not stable across registrations: sort by name (ordinal), so tools/list is deterministic
+	Definitions.Sort([](const FMcpToolDefinition& A, const FMcpToolDefinition& B)
+	{
+		return A.Name.Compare(B.Name, ESearchCase::CaseSensitive) < 0;
+	});
+
 	return Definitions;
+}
+
+TSharedPtr<const FMcpToolDefinition> FN2CMcpToolManager::GetToolDefinition(const FString& ToolName) const
+{
+	FScopeLock Lock(&ToolsLock);
+	const FRegisteredTool* Entry = RegisteredTools.Find(ToolName);
+	return Entry ? Entry->Definition : nullptr;
 }
 
 FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments)
 {
 	FScopeLock Lock(&ToolsLock);
 
-	const TSharedPtr<IN2CMcpTool>* ToolPtr = RegisteredTools.Find(ToolName);
-	if (!ToolPtr || !ToolPtr->IsValid())
+	const FRegisteredTool* Entry = RegisteredTools.Find(ToolName);
+	if (!Entry || !Entry->Tool.IsValid())
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Tool '%s' not found"), *ToolName));
 		return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Tool '%s' not found"), *ToolName));
 	}
 
+	// Copies of the shared pointers: assess-needed-tools replaces the active set (and this entry) while it runs
+	const TSharedPtr<IN2CMcpTool> Tool = Entry->Tool;
+	const TSharedPtr<const FMcpToolDefinition> Definition = Entry->Definition;
+
 	// A long-running tool is answered on its own tools/call request (FN2CMcpProtocol); it reaches this
 	// synchronous path only inside a JSON-RPC batch, which is answered as a whole and cannot wait for it.
-	const FMcpToolDefinition Definition = (*ToolPtr)->GetDefinition();
-	if (Definition.bIsLongRunning)
+	if (Definition->bIsLongRunning)
 	{
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("%s was called inside a JSON-RPC batch; it only runs as a single request."), *ToolName));
 		return FMcpToolCallResult::CreateErrorResult(FString::Printf(
@@ -104,8 +124,8 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 
 	try
 	{
-		FMcpToolCallResult Result = (*ToolPtr)->Execute(Arguments);
-		if (Definition.bReturnsUntrustedContent)
+		FMcpToolCallResult Result = Tool->Execute(Arguments);
+		if (Definition->bReturnsUntrustedContent)
 		{
 			// Blueprint text (comments, tooltips, string literals) is data for the agent, never instructions (card 0124)
 			FN2CMcpUntrustedContent::MarkToolResult(Result);
@@ -122,8 +142,8 @@ FMcpToolCallResult FN2CMcpToolManager::ExecuteTool(const FString& ToolName, cons
 TSharedPtr<IN2CMcpTool> FN2CMcpToolManager::FindTool(const FString& ToolName) const
 {
 	FScopeLock Lock(&ToolsLock);
-	const TSharedPtr<IN2CMcpTool>* ToolPtr = RegisteredTools.Find(ToolName);
-	return ToolPtr ? *ToolPtr : nullptr;
+	const FRegisteredTool* Entry = RegisteredTools.Find(ToolName);
+	return Entry ? Entry->Tool : nullptr;
 }
 
 bool FN2CMcpToolManager::IsToolRegistered(const FString& ToolName) const

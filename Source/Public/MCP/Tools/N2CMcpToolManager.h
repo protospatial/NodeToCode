@@ -34,10 +34,18 @@ public:
 	bool UnregisterTool(const FString& ToolName);
 
 	/**
-	 * Get all registered tool definitions
+	 * Get all registered tool definitions, sorted by name (tools/list order: deterministic, so a client's prompt
+	 * cache stays warm). They are the definitions cached when each tool was registered.
 	 * @return Array of all tool definitions
 	 */
 	TArray<FMcpToolDefinition> GetAllToolDefinitions() const;
+
+	/**
+	 * The cached definition of a registered tool, found by name in O(1)
+	 * @param ToolName The name of the tool
+	 * @return The definition built when the tool was registered, or null when no tool of that name is registered
+	 */
+	TSharedPtr<const FMcpToolDefinition> GetToolDefinition(const FString& ToolName) const;
 
 	/**
 	 * Execute a tool by name
@@ -97,8 +105,15 @@ private:
 	FN2CMcpToolManager(const FN2CMcpToolManager&) = delete;
 	FN2CMcpToolManager& operator=(const FN2CMcpToolManager&) = delete;
 
+	/** One active tool and its definition, built once when it was registered */
+	struct FRegisteredTool
+	{
+		TSharedPtr<IN2CMcpTool> Tool;
+		TSharedPtr<const FMcpToolDefinition> Definition;
+	};
+
 	/** Map of tool names to their entries */
-	TMap<FString, TSharedPtr<IN2CMcpTool>> RegisteredTools;
+	TMap<FString, FRegisteredTool> RegisteredTools;
 
 	/** Mutex for thread-safe access */
 	mutable FCriticalSection ToolsLock;
