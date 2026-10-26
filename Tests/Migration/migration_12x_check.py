@@ -75,9 +75,6 @@ SEVERITY = ['Debug', 'Info', 'Warning', 'Error', 'Fatal']
 # Behaviour that differs from the matrix because of a defect an open card owns: reported as KNOWN (not a failure)
 # while the defect is present, PASS once it is fixed, FAIL if it turns into something else
 KNOWN_NOTE = {
-    'S24': '; KNOWN (card 0186): the constructor computes the estimate before LoadConfig, so the saved number stays',
-    'S25': '; KNOWN (card 0186): the constructor validates the paths before LoadConfig, so a missing file is kept '
-           'and each translation warns "Failed to load reference source file"',
 }
 
 
@@ -308,6 +305,9 @@ def check_fixture(fixture, ctx, rows, state):
     ini1t = ini1.decode('utf-8', 'replace')
     sec = '/Script/NodeToCode.N2CSettings'
     w1, w2 = warnings(s1['log']), warnings(s2['log'])
+    # A listed reference file that is missing is reported at every start while it stays missing (card 0186): that is
+    # the project's current state, not a migration step repeating, so it does not count against idempotence
+    w2 = [l for l in w2 if 'Reference source file not found' not in l]
     # The migration's Info lines are logged before Min Severity is applied; the MCP server's lines come after it
     mcp_logged = SEVERITY.index(exp['severity']) <= SEVERITY.index('Info')
     info1 = '\n'.join(n2c_lines(s1['log']))
@@ -419,15 +419,16 @@ def check_fixture(fixture, ctx, rows, state):
     ref = os.path.join(project_dir, 'N2CReference', 'DoorHelpers.h')
     want_tokens = math.ceil(len(read(ref)) / 4)
     tokens_ok = d1['estimated_reference_tokens'] == want_tokens
-    rows.add('S24', tokens_ok or known('S24', d1['estimated_reference_tokens'] == 999),
-             'EstimatedReferenceTokens %s (file %d chars / 4 = %d; fixture saved 999)%s' % (
-                 d1['estimated_reference_tokens'], len(read(ref)), want_tokens, '' if tokens_ok else KNOWN_NOTE['S24']))
+    # Recomputed once the config has loaded (card 0186; before it the constructor ran first and the saved 999 stayed)
+    rows.add('S24', tokens_ok,
+             'EstimatedReferenceTokens %s (file %d chars / 4 = %d; fixture saved 999)' % (
+                 d1['estimated_reference_tokens'], len(read(ref)), want_tokens))
     paths = [re.search(r'FilePath="([^"]*)"', p).group(1) for p in d1['reference_source_file_paths']]
     missing_warn = any('Reference source file not found' in l and 'Removed.h' in l for l in s1['log'].splitlines())
     paths_ok = paths == [ref.replace('\\', '/')] and missing_warn
-    rows.add('S25', paths_ok or known('S25', [os.path.basename(p) for p in paths] == ['DoorHelpers.h', 'Removed.h']),
-             'ReferenceSourceFilePaths %s; missing Removed.h dropped with a warning: %s%s' % (
-                 [os.path.basename(p) for p in paths], missing_warn, '' if paths_ok else KNOWN_NOTE['S25']))
+    rows.add('S25', paths_ok,
+             'ReferenceSourceFilePaths %s; missing Removed.h dropped with a warning: %s' % (
+                 [os.path.basename(p) for p in paths], missing_warn))
     cdir = re.search(r'Path="([^"]*)"', d1['custom_translation_output_directory'])
     rows.add('S26', bool(cdir) and cdir.group(1) == project_dir.replace('\\', '/') + '/CustomTranslations',
              'CustomTranslationOutputDirectory %s (a translation landing there: --live)' % (cdir.group(1) if cdir else None))

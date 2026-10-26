@@ -177,7 +177,7 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
     `logging/setLevel` is an unknown method (-32601). `InitializeResult.instructions` tells the agent which tools to
     start with (`FN2CMcpProtocol::GetServerInstructions()`).
 *   **Resource templates**: `resources/templates/list` answers `{resourceTemplates: [...]}`
-    (`nodetocode://blueprint/{name}`); `resources/list` lists only `resources`.
+    (`nodetocode://blueprint/{+path}`); `resources/list` lists only `resources`.
 *   **Error codes** (JSON-RPC errors, `data` built with `FJsonObject`): an unknown tool is **-32602** "Unknown tool:
     <name>" with `data.name` (the 2025-11-25 tools page's example); an unknown prompt and a missing required prompt
     argument are **-32602**; an unknown resource uri is **-32002** "Resource not found" with `data.uri`; a resource or
@@ -446,7 +446,18 @@ Resources expose Blueprint data in a structured, queryable format:
 *   `N2CMcpBlueprintResource.h/.cpp`:
     *   `nodetocode://blueprint/current`: Current focused Blueprint
     *   `nodetocode://blueprints/all`: List of open Blueprints
-    *   `nodetocode://blueprint/{name}`: Blueprint by name (template)
+    *   `nodetocode://blueprint/{+path}`: any Blueprint as N2C JSON by asset path (template, card 0208). The path
+        is the asset path without its leading `/`, each segment percent-encoded
+        (`nodetocode://blueprint/Game/Blueprints/BP_Player`); `nodetocode://blueprints/all` gives each open
+        Blueprint's `resourceUri` in this form (`FN2CMcpBlueprintByNameResource::UriFor`). A single segment is the
+        old form, the exact name of an open Blueprint. The read returns every graph, the document
+        `get-blueprint-n2cjson` returns with no graph named (compact, inline, marked as untrusted data); an unknown
+        Blueprint is **-32002**, a failed capture **-32603**.
+*   URI templates (`FN2CMcpUriTemplate`, `N2CMcpUriTemplate.h`): the manager matches a URI against a template as a
+    full match. `{var}` is exactly one non-empty segment, `{+var}` the rest of the path (one or more non-empty
+    segments); neither spans `?` or `#`; captured values are percent-decoded (UTF-8), and a malformed escape or an
+    encoded `/` in a `{var}` does not match. Other RFC 6570 expressions make the template invalid, and
+    `RegisterDynamicResource` refuses it.
 
 ## Prompt System (`Source/Public/MCP/Prompts/`)
 

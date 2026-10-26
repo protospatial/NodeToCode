@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Resources/N2CMcpResourceManager.h"
+#include "MCP/Resources/N2CMcpUriTemplate.h"
 #include "Utils/N2CLogger.h"
 #include "Async/Async.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
@@ -11,23 +12,11 @@
 
 namespace N2CMcpResourceManagerPrivate
 {
-	/**
-	 * Marks Contents as a failed read: resources/read answers with Code and Message (and the uri in data). The text
-	 * also carries the error as JSON, built with FJsonObject so the uri is escaped, for callers that embed the
-	 * contents (the code-generation prompts).
-	 */
+	/** Marks Contents as a failed read of Uri (FMcpResourceContents::SetError) */
 	static void SetReadError(FMcpResourceContents& Contents, const FString& Uri, int32 Code, const FString& Message)
 	{
-		Contents.ErrorCode = Code;
-		Contents.ErrorMessage = Message;
-		Contents.MimeType = TEXT("application/json");
-		const TSharedRef<FJsonObject> Error = MakeShared<FJsonObject>();
-		Error->SetStringField(TEXT("error"), Message);
-		Error->SetStringField(TEXT("uri"), Uri);
-		Contents.Text.Reset();
-		const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
-			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Contents.Text);
-		FJsonSerializer::Serialize(Error, Writer);
+		Contents.Uri = Uri;
+		Contents.SetError(Code, Message);
 	}
 }
 
@@ -91,6 +80,12 @@ bool FN2CMcpResourceManager::RegisterDynamicResource(const FMcpResourceTemplate&
 		return false;
 	}
 
+	if (!FN2CMcpUriTemplate(Template.UriTemplate).IsValid())
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Cannot register resource template with an unsupported URI template: %s"), *Template.UriTemplate));
+		return false;
+	}
+
 	FScopeLock Lock(&ResourceLock);
 
 	FMcpResourceTemplateEntry Entry;
@@ -116,6 +111,21 @@ bool FN2CMcpResourceManager::UnregisterStaticResource(const FString& Uri)
 	}
 
 	return false;
+}
+
+bool FN2CMcpResourceManager::UnregisterDynamicResource(const FString& UriTemplate)
+{
+	FScopeLock Lock(&ResourceLock);
+
+	const int32 Removed = DynamicResources.RemoveAll([&UriTemplate](const FMcpResourceTemplateEntry& Entry)
+	{
+		return Entry.Template.UriTemplate == UriTemplate;
+	});
+	if (Removed > 0)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Unregistered dynamic resource template: %s"), *UriTemplate), EN2CLogSeverity::Info);
+	}
+	return Removed > 0;
 }
 
 TArray<FMcpResourceDefinition> FN2CMcpResourceManager::ListResources(const FString& Cursor) const
@@ -342,31 +352,6 @@ void FN2CMcpResourceManager::ClearAllResources()
 
 bool FN2CMcpResourceManager::MatchesTemplate(const FString& Uri, const FString& Template, TMap<FString, FString>& OutParams) const
 {
-	OutParams.Empty();
-	
-	// Simple template matching for MVP
-	// Example: "nodetocode://blueprint/{name}" matches "nodetocode://blueprint/MyBlueprint"
-	
-	// For now, just do a simple prefix check
-	// TODO: Implement proper template matching with parameter extraction
-	
-	int32 BraceIndex = Template.Find(TEXT("{"));
-	if (BraceIndex != INDEX_NONE)
-	{
-		FString Prefix = Template.Left(BraceIndex);
-		if (Uri.StartsWith(Prefix))
-		{
-			// Extract the parameter value
-			FString Suffix = Uri.RightChop(Prefix.Len());
-			int32 CloseBraceIndex = Template.Find(TEXT("}"), ESearchCase::CaseSensitive, ESearchDir::FromStart, BraceIndex);
-			if (CloseBraceIndex != INDEX_NONE)
-			{
-				FString ParamName = Template.Mid(BraceIndex + 1, CloseBraceIndex - BraceIndex - 1);
-				OutParams.Add(ParamName, Suffix);
-				return true;
-			}
-		}
-	}
-	
-	return false;
+	// A full match: {var} is one non-empty segment, {+var} the rest of the path, values percent-decoded (card 0208)
+	return FN2CMcpUriTemplate(Template).Match(Uri, OutParams);
 }

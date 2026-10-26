@@ -3,6 +3,8 @@
 #include "MCP/Resources/N2CMcpResourceTypes.h"
 #include "Serialization/JsonSerializer.h"
 #include "Misc/Base64.h"
+#include "Serialization/JsonWriter.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 
 TSharedPtr<FJsonObject> FMcpResourceDefinition::ToJson() const
 {
@@ -107,4 +109,20 @@ TSharedPtr<FJsonObject> FMcpResourceTemplate::ToJson() const
 	}
 	
 	return JsonObject;
+}
+
+void FMcpResourceContents::SetError(int32 Code, const FString& Message)
+{
+	ErrorCode = Code;
+	ErrorMessage = Message;
+	MimeType = TEXT("application/json");
+	BlobData.Reset();
+	// Built with FJsonObject so the uri is escaped
+	const TSharedRef<FJsonObject> Error = MakeShared<FJsonObject>();
+	Error->SetStringField(TEXT("error"), Message);
+	Error->SetStringField(TEXT("uri"), Uri);
+	Text.Reset();
+	const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Text);
+	FJsonSerializer::Serialize(Error, Writer);
 }

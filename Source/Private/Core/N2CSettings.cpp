@@ -40,15 +40,12 @@ UN2CSettings::UN2CSettings()
 
     // Prices come from the model catalog; ModelPricing holds the user's overrides by model ID.
 
-    // Validate reference source paths on startup
-    ValidateReferenceSourcePaths();
-    
+    // Reference files are checked once the config has loaded (RefreshReferenceFiles, from PostInitProperties and
+    // PostReloadConfig): here, before LoadConfig, the list is always empty.
+
     // The API Key fields are write-only and start empty: an entered key goes to the process-wide secret store and the
     // field is cleared (PostEditChangeProperty). The status rows say where each provider's key comes from.
     RefreshApiKeySources();
-    
-    // Initialize token estimate
-    EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
 
     // Set tooltip for ReferenceSourceFilePaths
     FProperty* ReferenceFilesProperty = GetClass()->FindPropertyByName(TEXT("ReferenceSourceFilePaths"));
@@ -65,6 +62,7 @@ void UN2CSettings::PostInitProperties()
     MigrateSavedSettings();
     MigrateRetiredModelSelections();
     ReportRemovedSignInSelections();
+    RefreshReferenceFiles();
 }
 
 void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
@@ -75,6 +73,7 @@ void UN2CSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
     MigrateSavedSettings();
     MigrateRetiredModelSelections();
     ReportRemovedSignInSelections();
+    RefreshReferenceFiles();
 }
 
 namespace N2CModelIds
@@ -1161,10 +1160,87 @@ void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
     LastEditedProperty = PropertyAboutToChange;
 
     // The values being edited are already migrated (MigrateSavedSettings ran on load), so the config saved after
-    // this edit carries the current layout version and the migrations do not run on it again. While the model catalog
-    // is missing the model ID conversion has not been saved, so the version stays below it.
-    SettingsVersion = FN2CModelCatalog::Get().IsFallback() && SettingsVersion < ModelIdSettingsVersion
+    // this edit carries the current layout version and the migrations do not run on it again
+    SettingsVersion = GetVersionToSave();
+}
+
+int32 UN2CSettings::GetVersionToSave() const
+{
+    // While the model catalog is missing the model ID conversion has not been saved, so the version stays below it
+    return FN2CModelCatalog::Get().IsFallback() && SettingsVersion < ModelIdSettingsVersion
         ? FMath::Max(SettingsVersion, ModelIdSettingsVersion - 1) : CurrentSettingsVersion;
+}
+
+bool UN2CSettings::SaveToProjectConfig(TConstArrayView<FName> PropertyNames)
+{
+    TArray<FName> ToSave;
+    for (const FName& Name : PropertyNames)
+    {
+        const FProperty* Property = Name.IsNone() ? nullptr : GetClass()->FindPropertyByName(Name);
+        // One key per property: an array or set is several lines, which Project Settings saves with the whole section
+        if (Property && Property->HasAnyPropertyFlags(CPF_Config) && !Property->IsA<FArrayProperty>() && !Property->IsA<FSetProperty>()
+            && Property->ArrayDim == 1)
+        {
+            ToSave.AddUnique(Name);
+        }
+    }
+    if (ToSave.Num() == 0 || !GConfig)
+    {
+        return true;
+    }
+    SettingsVersion = GetVersionToSave();
+    ToSave.AddUnique(GET_MEMBER_NAME_CHECKED(UN2CSettings, SettingsVersion));
+
+    const FString ProjectIni = GetDefaultConfigFilename();
+    const FString SavedIni = GetClass()->GetConfigName();
+    const FString ConfigName = GetClass()->ClassConfigName.ToString();
+    auto JoinNames = [](const TArray<FName>& Names) { return FString::JoinBy(Names, TEXT(", "), [](const FName& Name) { return Name.ToString(); }); };
+
+    // Write GConfig's unsaved changes to the Saved layer first: the reload below replaces GConfig's copy with the files
+    GConfig->Flush(false, *ConfigName);
+    const bool bWritten = WriteConfigProperties(ToSave, ProjectIni, false, TArray<FString>());
+
+    // The Saved layer loads after the project file, so a value left there (the picker saved with SaveConfig() before
+    // card 0186) would override what was just written at the next start
+    TArray<FString> Removed;
+    FString SavedText;
+    if (bWritten && FFileHelper::LoadFileToString(SavedText, *FPaths::ConvertRelativePathToFull(SavedIni)))
+    {
+        TArray<FString> Lines;
+        SavedText.ParseIntoArrayLines(Lines);
+        const FString Section = GetClass()->GetPathName();
+        for (const FName& Name : ToSave)
+        {
+            const FString Prefix = Name.ToString() + TEXT("=");
+            if (!Lines.ContainsByPredicate([&Prefix](const FString& Line) { return Line.TrimStart().StartsWith(Prefix, ESearchCase::CaseSensitive); }))
+            {
+                continue;
+            }
+            // An empty config file has no value for the key, so the update removes its line from the file on disk
+            FConfigFile NoValue;
+            if (NoValue.UpdateSinglePropertyInSection(*SavedIni, *Name.ToString(), *Section))
+            {
+                Removed.Add(Name.ToString());
+            }
+        }
+    }
+
+    FConfigContext Context = FConfigContext::ForceReloadIntoGConfig();
+    Context.bWriteDestIni = false;
+    Context.Load(*ConfigName);
+
+    if (!bWritten)
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(
+            TEXT("Could not save %s to %s: the file is read-only or its folder is missing. Check it out or make it writable, then choose the setting again."),
+            *JoinNames(ToSave), *ProjectIni), TEXT("N2CSettings"));
+        return false;
+    }
+    const FString RemovedText = Removed.Num() > 0
+        ? FString::Printf(TEXT("; removed the older %s from %s"), *FString::Join(Removed, TEXT(", ")), *SavedIni) : FString();
+    FN2CLogger::Get().Log(FString::Printf(TEXT("Saved %s to %s%s"), *JoinNames(ToSave), *ProjectIni, *RemovedText),
+        EN2CLogSeverity::Info, TEXT("N2CSettings"));
+    return true;
 }
 
 bool UN2CSettings::IsColorProperty(const FProperty* Property) const
@@ -1196,6 +1272,27 @@ void UN2CSettings::InitializePricing()
     // Prices come from the model catalog; ModelPricing holds the user's overrides by model ID. Kept, does nothing.
 }
 
+void UN2CSettings::RefreshReferenceFiles()
+{
+    ValidateReferenceSourcePaths();
+    EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
+}
+
+int32 UN2CSettings::GetReferenceFilesTokenEstimate() const
+{
+    int32 TotalTokens = 0;
+    for (const FFilePath& Path : ReferenceSourceFilePaths)
+    {
+        FString Content;
+        if (FPaths::FileExists(Path.FilePath) && FFileHelper::LoadFileToString(Content, *Path.FilePath))
+        {
+            // Estimate tokens by dividing character count by 4
+            TotalTokens += FMath::CeilToInt(Content.Len() / 4.0f);
+        }
+    }
+    return TotalTokens;
+}
+
 void UN2CSettings::ValidateReferenceSourcePaths()
 {
     TArray<FFilePath> ValidPaths;
@@ -1205,22 +1302,27 @@ void UN2CSettings::ValidateReferenceSourcePaths()
         {
             ValidPaths.Add(Path);
         }
-        else
+        else if (N2CModelIds::FirstTime(TEXT("missing-reference|") + Path.FilePath))
         {
-            FN2CLogger::Get().LogWarning(
-                FString::Printf(TEXT("Reference source file not found: %s"), *Path.FilePath));
+            // Every config reload checks again; the warning is given once per path per editor session
+            FN2CLogger::Get().LogWarning(FString::Printf(
+                TEXT("Reference source file not found: %s. It is left out of translation prompts; remove it from Project Settings > Plugins > Node to Code > Reference Source Files, or restore the file."),
+                *Path.FilePath));
         }
     }
     ReferenceSourceFilePaths = ValidPaths;
-    
+
     // Validate custom translation output directory if set
     if (!CustomTranslationOutputDirectory.Path.IsEmpty())
     {
-        if (!FPaths::DirectoryExists(CustomTranslationOutputDirectory.Path))
+        if (!FPaths::DirectoryExists(CustomTranslationOutputDirectory.Path)
+            && N2CModelIds::FirstTime(TEXT("missing-output-dir|") + CustomTranslationOutputDirectory.Path))
         {
-            FN2CLogger::Get().LogWarning(
-                FString::Printf(TEXT("Custom translation output directory does not exist: %s. Will attempt to create it when needed."), 
-                *CustomTranslationOutputDirectory.Path));
+            // Not a fault: the folder is created by the first translation saved there, so this is Info, not a warning
+            // repeated at every start
+            FN2CLogger::Get().Log(FString::Printf(
+                TEXT("Custom translation output directory does not exist yet: %s. It is created when a translation is saved there."),
+                *CustomTranslationOutputDirectory.Path), EN2CLogSeverity::Info, TEXT("N2CSettings"));
         }
     }
 }
@@ -1229,9 +1331,15 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 {
     Super::PostEditChangeProperty(PropertyChangedEvent);
 
-    // Update token estimate when reference files change
     const FProperty* Property = PropertyChangedEvent.Property;
     if (!Property)
+    {
+        return;
+    }
+
+    // A drag (colour picker, slider, spin box) sends an Interactive change on every mouse move and one ValueSet when
+    // released. As the settings editor, nothing is saved or rebuilt until the value is committed.
+    if (PropertyChangedEvent.ChangeType == EPropertyChangeType::Interactive)
     {
         return;
     }
@@ -1297,11 +1405,10 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             ShowRestartEditorNotification();
         }
 
-        // Restart the MCP server on the new port (not while a slider is being dragged). If no port in the range is
-        // free, the server's own error notification names the port and this setting.
-        if ((PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPort)
+        // Restart the MCP server on the new port (a slider drag arrives here once, when released). If no port in the
+        // range is free, the server's own error notification names the port and this setting.
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPort)
             || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPortRange))
-            && PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
         {
             FN2CMcpHttpServerManager::Get().HandlePortSettingsChanged();
         }
@@ -1316,10 +1423,6 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             FN2CLogger::Get().Log(
                 FString::Printf(TEXT("Estimated reference file tokens: %d"), EstimatedReferenceTokens),
                 EN2CLogSeverity::Info);
-
-            // UpdateSinglePropertyInConfigFile() does not support FFilePath arrays as a property
-            if (bIsArrayChange) { return; }
-
         }
 
         // Reinitialize code editor style when theme colors change
@@ -1341,25 +1444,11 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             }
         }
     }
-    const FString ConfigPath = GetDefaultConfigFilename();
-    
-    // Add debug logging for config save
-    UpdateSinglePropertyInConfigFile(Property, ConfigPath);
-
-    // PreEditChange stamped the current layout version on the values being saved; save it with them so the
-    // load-time migrations do not run on this config again
-    if (Property && Property->GetFName() != GET_MEMBER_NAME_CHECKED(UN2CSettings, SettingsVersion))
-    {
-        if (const FProperty* VersionProperty = GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UN2CSettings, SettingsVersion)))
-        {
-            UpdateSinglePropertyInConfigFile(VersionProperty, ConfigPath);
-        }
-    }
-
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("Saving settings to: %s"), *ConfigPath),
-        EN2CLogSeverity::Info
-    );
+    // Saved by the member property, as the settings editor saves it (a colour inside UI Colors is the key UIColors),
+    // with the layout version PreEditChange stamped, through the same path as the picker in the NodeToCode window.
+    // An array member is skipped there: the settings editor saves the whole section for it.
+    const FProperty* Member = PropertyChangedEvent.MemberProperty ? PropertyChangedEvent.MemberProperty : Property;
+    SaveToProjectConfig({ Member->GetFName() });
 }
 
 FString UN2CSettings::DescribeApiKeySource(EN2CLLMProvider InProvider)
