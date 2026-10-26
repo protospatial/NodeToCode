@@ -62,7 +62,11 @@
     BuildLogs/Tests_<ver>_<stamp>.log plus its report folder. The editor runs with -culture=en (-TestCulture changes
     it, for a locale check of the capture goldens). -UpdateGoldens passes -N2CUpdateGoldens, so the golden specs
     (NodeToCode.Capture.Golden, NodeToCode.LLM.Payload.Golden) rewrite their goldens instead of comparing; review and
-    commit the diff with the change that caused it.
+    commit the diff with the change that caused it. On UE 5.8 and later that editor also gets
+    -EnablePlugins=ToolsetRegistry (the host .uproject is not changed), so Content/Python/init_unreal.py registers the
+    NodeToCodeTools toolset and its in-editor Python tests, NodeToCode.Toolsets.PythonTests.*: they run in the same
+    pass, are counted apart in the summary ('tests PASS (n, m toolset)'), and when the filter covers them and none ran
+    (registration failed) the step fails.
 
 .EXAMPLE
     .\build.ps1 -UEVersion 5.7              # incremental editor build for 5.7
@@ -487,25 +491,40 @@ function Invoke-PythonTests([string]$engine, [string]$ver, [string]$stamp) {
     return "pytest FAIL ($summary)"
 }
 
-# Returns a short result string: 'tests PASS (n)', 'tests WARN (0 run)' or 'tests FAIL (...)'
+# The NodeToCodeTools Python tests: Content/Python/init_unreal.py registers them under this prefix through Epic's
+# PythonTestRunner, on UE 5.8+ when the ToolsetRegistry plugin is loaded
+$ToolsetTestPrefix = 'NodeToCode.Toolsets.PythonTests'
+$ToolsetTestMinEngine = [version]'5.8'
+
+# Returns a short result string: 'tests PASS (n)' ('tests PASS (n, m toolset)' when the toolset tests ran),
+# 'tests WARN (0 run)' or 'tests FAIL (...)'
 function Invoke-Tests($h, [string]$engine, [string]$ver, [string]$stamp) {
     $reportDir = Join-Path $LogRoot "Tests_${ver}_$stamp"
     $log = Join-Path $LogRoot "Tests_${ver}_$stamp.log"
     New-Item -ItemType Directory -Force $reportDir | Out-Null
-    Write-Step "Automation tests UE $ver ($TestFilter)"
+    # On 5.8+ the toolset tests run in the same editor: ToolsetRegistry is enabled for this run on the command line
+    # only (never in the shared host .uproject). They are expected when the filter is a prefix of their names
+    # (RunTests matches on a name substring; 'NodeToCode' and 'NodeToCode.Toolsets' both cover them).
+    $withToolset = [version]$ver -ge $ToolsetTestMinEngine
+    $expectToolset = $withToolset -and $ToolsetTestPrefix.StartsWith($TestFilter, [StringComparison]::OrdinalIgnoreCase)
+    Write-Step ("Automation tests UE $ver ($TestFilter)" + $(if ($withToolset) { ', ToolsetRegistry enabled for the NodeToCodeTools Python tests' } else { '' }))
     # -ExecCmds holds one command; never chain with ';' (it hangs the editor), use ',' if more are ever needed
     $editorArgs = @(
         $h.UProject, "-ExecCmds=`"Automation RunTests $TestFilter`"", '-TestExit="Automation Test Queue Empty"',
         "-ReportExportPath=`"$reportDir`"", "-abslog=`"$log`"",
         '-unattended', '-nullrhi', '-nosplash', '-nosound', '-NoLiveCoding', "-culture=$TestCulture")
+    if ($withToolset) { $editorArgs += '-EnablePlugins=ToolsetRegistry' }
     if ($UpdateGoldens) { $editorArgs += '-N2CUpdateGoldens' }
     $code = Invoke-Editor (Get-EngineTool $engine 'EditorCmd') $editorArgs $TestTimeoutMinutes
     if ($null -eq $code) { return 'tests FAIL (timed out)' }
 
     $index = Join-Path $reportDir 'index.json'
     $logText = if (Test-Path $log) { [IO.File]::ReadAllText($log).Replace("`0", '') } else { '' }
+    $noToolsetTests = "tests FAIL (0 toolset tests ran)"
+    $noToolsetHint = "no $ToolsetTestPrefix.* test ran: the toolset or its test runner did not register (see 'NodeToCode:' warnings in $log)"
     if (-not (Test-Path $index) -and $logText -match 'No automation tests matched|Automation Test Queue Empty 0 tests performed') {
         # The editor writes no report when the filter matches nothing
+        if ($expectToolset) { Write-Host "TESTS FAIL (UE $ver): $noToolsetHint" -ForegroundColor Red; return $noToolsetTests }
         Write-Host "TESTS WARN (UE $ver): zero tests ran for '$TestFilter' - see $log" -ForegroundColor Yellow
         return 'tests WARN (0 run)'
     }
@@ -518,6 +537,7 @@ function Invoke-Tests($h, [string]$engine, [string]$ver, [string]$stamp) {
     $failed = @($tests | Where-Object { $_.state -eq 'Fail' })
     $passed = @($tests | Where-Object { $_.state -eq 'Success' })
     $other  = @($tests | Where-Object { $_.state -ne 'Fail' -and $_.state -ne 'Success' })
+    $toolset = @($tests | Where-Object { $_.fullTestPath -like "$ToolsetTestPrefix.*" })
     foreach ($t in $failed) {
         Write-Host "  FAIL $($t.fullTestPath)" -ForegroundColor Red
         foreach ($e in @($t.entries | Where-Object { $_.event.type -eq 'Error' } | Select-Object -First 5)) {
@@ -526,15 +546,22 @@ function Invoke-Tests($h, [string]$engine, [string]$ver, [string]$stamp) {
     }
     foreach ($t in $other) { Write-Host "  $($t.state) $($t.fullTestPath)" -ForegroundColor Yellow }
     if ($tests.Count -eq 0) {
+        if ($expectToolset) { Write-Host "TESTS FAIL (UE $ver): $noToolsetHint" -ForegroundColor Red; return $noToolsetTests }
         Write-Host "TESTS WARN (UE $ver): zero tests ran for '$TestFilter' - see $log" -ForegroundColor Yellow
         return 'tests WARN (0 run)'
     }
+    $toolsetNote = if ($withToolset) { ", $($toolset.Count) toolset" } else { '' }
     if ($failed.Count -gt 0 -or $other.Count -gt 0) {
-        Write-Host "TESTS FAIL (UE $ver): $($failed.Count) failed, $($other.Count) not completed, $($passed.Count) passed - report $reportDir" -ForegroundColor Red
-        return "tests FAIL ($($failed.Count) failed, $($other.Count) not completed of $($tests.Count))"
+        Write-Host "TESTS FAIL (UE $ver): $($failed.Count) failed, $($other.Count) not completed, $($passed.Count) passed$toolsetNote - report $reportDir" -ForegroundColor Red
+        return "tests FAIL ($($failed.Count) failed, $($other.Count) not completed of $($tests.Count)$toolsetNote)"
     }
-    Write-Host "TESTS PASS (UE $ver): $($passed.Count) passed - report $reportDir" -ForegroundColor Green
-    return "tests PASS ($($passed.Count))"
+    if ($expectToolset -and $toolset.Count -eq 0) {
+        # init_unreal.py logs one warning and registers nothing when the toolset or its test runner fails to load
+        Write-Host "TESTS FAIL (UE $ver): $noToolsetHint" -ForegroundColor Red
+        return "tests FAIL (0 toolset tests ran, $($passed.Count) other passed)"
+    }
+    Write-Host "TESTS PASS (UE $ver): $($passed.Count) passed$toolsetNote - report $reportDir" -ForegroundColor Green
+    return "tests PASS ($($passed.Count)$toolsetNote)"
 }
 
 # ---------------------------------------------------------------------------

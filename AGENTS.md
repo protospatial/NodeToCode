@@ -97,6 +97,12 @@ step is reported as `pytest WARN (uv not found)` and skipped.
   `-N2CUpdateGoldens`, so the golden specs rewrite `Source/Private/Tests/Goldens/` instead of comparing, and
   `-TestCulture de` replaces `-culture=en` for a locale check (see "Capture goldens" in the tests README). If
   `-ExecCmds` ever holds more than one command, separate them with commas: a semicolon hangs the editor.
+- On UE 5.8 and later the `-Test` editor also gets `-EnablePlugins=ToolsetRegistry` (the host `.uproject` stays as
+  it is), so `Content/Python/init_unreal.py` registers NodeToCodeTools and its in-editor Python tests
+  (`Content/Python/nodetocode/toolsets/tests/`, 60 s each) as `NodeToCode.Toolsets.PythonTests.*`. They run in the
+  same pass, any failure fails it, the summary counts them apart (`tests PASS (855, 36 toolset)`), and when the
+  filter covers them but none ran (the toolset or its runner did not register) the step fails. 5.6 and 5.7 run as
+  before.
 - Before that, `-Test` runs the CPython tests in `Tests/python` on each engine's own Python (3.11.8 in UE 5.6, 5.7
   and 5.8): `uv run --no-project --python <engine python> --with-requirements Tests/python/requirements.txt --
   python -m pytest -q Tests/python`, in a throwaway environment, so the engine install is not changed. They test
