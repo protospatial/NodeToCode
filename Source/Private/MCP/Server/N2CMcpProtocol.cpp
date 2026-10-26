@@ -278,9 +278,14 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 	}
 	if (!Inbound.Verb.Equals(TEXT("POST"), ESearchCase::IgnoreCase))
 	{
-		// GET would open a server-to-client stream; this server offers none, so it answers 405 as the transport allows
-		FN2CMcpReply Reply = ErrorReply(405, JsonRpcErrorCodes::InvalidRequest,
-			FString::Printf(TEXT("Method %s not allowed; send JSON-RPC messages with POST and end a session with DELETE"), *Inbound.Verb.Left(16)));
+		// GET would open a server-to-client stream; this server offers none, so it answers 405 as the transport allows.
+		// The 405 has no body (card 0493). MCP clients open this GET without waiting for it and abort it when they close
+		// (the TypeScript SDK's transport after its DELETE), so the client often closes the socket before the game thread
+		// answers. UE's HTTPServer sends the headers and the body in two sends: the first reaches the closed socket and
+		// draws a reset, the second fails and logs LogHttpConnection: Error: socket_send_failure. With headers only there
+		// is one send, which succeeds whatever the client did. Status and Allow carry the whole answer.
+		FN2CMcpReply Reply;
+		Reply.Status = 405;
 		Reply.Headers.Emplace(TEXT("Allow"), TEXT("POST, DELETE"));
 		Responder->Reply(Reply);
 		return;

@@ -30,6 +30,8 @@ In the default mode, with the editor still up, it also fails on:
   * the official MCP conformance suite and the MCP Inspector CLI (`--method tools/list`), both pinned, through
     Tests/conformance/run_conformance.py: a scenario listed as passing in Tests/conformance/baseline.json that fails,
     or a failure the baseline does not list. Needs Node.js (npx). Results: <log-dir>/<log-prefix>_conformance/.
+  * a socket_send_failure after GET, PUT and PATCH requests the client closes before the editor answers (card 0493:
+    MCP clients abort their standalone GET when they close, so a reply sent in two parts logs that error).
 Failures already present at a commit are listed in expected.json under known_failures with their finding ids; a
 fix card removes its entry. Prints one PASS/FAIL line per check, a summary line, and N2C_SMOKE PASS or FAIL.
 """
@@ -39,6 +41,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -154,6 +157,23 @@ def tools_list(url):
     return tools if isinstance(tools, list) else None
 
 
+# Card 0493: the line UE's HTTPServer logs when a reply's send fails because the client closed the socket first
+SEND_FAILURE = re.compile(r'LogHttpConnection: Error: errors\.com\.epicgames\.httpserver\.socket_send_failure')
+DROPPED_VERBS = ('GET', 'PUT', 'PATCH')
+DROPPED_COUNT = 12
+
+
+def drop_requests(port, count=DROPPED_COUNT):
+    """Send GET, PUT and PATCH /mcp and close each socket at once, before the editor answers: what an MCP client does
+    to its standalone GET when it closes (the TypeScript SDK aborts it once its DELETE is answered). The editor still
+    answers each one with 405, to a socket that is gone (card 0493)."""
+    for i in range(count):
+        verb = DROPPED_VERBS[i % len(DROPPED_VERBS)]
+        with socket.create_connection(('127.0.0.1', port), timeout=10) as s:
+            s.sendall(('%s /mcp HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nAccept: text/event-stream\r\n'
+                       'Content-Length: 0\r\n\r\n' % (verb, port)).encode('ascii'))
+
+
 def tools_count(url):
     tools = tools_list(url)
     return len(tools) if tools is not None else None
@@ -257,6 +277,7 @@ class Smoke:
                     self.probes(port, session.proc.pid)
                     if not self.args.skip_conformance:
                         self.conformance(url, count)
+                    self.dropped_requests(port, session)
                 self.quit(url, session, mode)
         finally:
             session.stop(before_restore=lambda: after.update(config_hashes(self.args.project)))
@@ -355,6 +376,22 @@ class Smoke:
             self.summary['probes'][k] = v['status']
             self.check(k not in diff, 'probe %s' % k, '%s (expected %s; ids %s)' % (
                 v['status'], diff[k]['expected'] if k in diff else v['status'], ', '.join(v.get('ids', []))))
+
+    def dropped_requests(self, port, session):
+        """Requests the client closes before the reply must not log socket_send_failure (card 0493). The conformance
+        suite's first scenario does this by chance (the SDK aborts its GET once its DELETE is answered, and under load
+        the editor answers the GET second); drop_requests does it every time, so a reply that takes more than one send
+        fails here instead of as a flake."""
+        before = len(SEND_FAILURE.findall(session.log_text()))
+        drop_requests(port)
+        # The editor answers on game-thread ticks: two health answers a second apart mean the dropped requests have been
+        # read and answered, and the editor's output has reached the log
+        for _ in range(2):
+            session.health(timeout=60)
+            time.sleep(1.0)
+        added = len(SEND_FAILURE.findall(session.log_text())) - before
+        self.check(added == 0, 'default: requests the client drops before the reply',
+                   '%d socket_send_failure line(s) for %d dropped GET/PUT/PATCH' % (added, DROPPED_COUNT))
 
     def conformance(self, url, tool_count):
         """Pinned MCP conformance suite plus Inspector CLI tools/list, compared with Tests/conformance/baseline.json"""

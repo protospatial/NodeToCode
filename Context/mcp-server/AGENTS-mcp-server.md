@@ -146,7 +146,9 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
     ended session gives **404** (-32001 "Session not found"), after which the client must `initialize` again.
 *   **`MCP-Protocol-Version` header**: an unsupported value gives **400**; a missing header is accepted (2025-03-26
     clients do not send it) and the session's negotiated version applies.
-*   **GET** `/mcp` (and PUT, PATCH) gives **405** with `Allow: POST, DELETE`: there is no server-to-client stream.
+*   **GET** `/mcp` (and PUT, PATCH) gives **405** with `Allow: POST, DELETE` and no body: there is no server-to-client
+    stream. No body because clients abort this GET when they close, and HTTPServer sends a body as a second write,
+    which then fails on the closed socket and logs `socket_send_failure` (card 0493).
     The old `/mcp/sse` 204 route is gone (a GET there now reaches the `/mcp` handler and gets 405).
 *   **DELETE** `/mcp` with `Mcp-Session-Id` ends the session (**204**) and cancels its running long-running calls
     (each still answers its own request, with the cancelled result); unknown id **404**, no id **400**.
@@ -733,7 +735,7 @@ curl -X POST http://127.0.0.1:27000/mcp \
   -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \
   -d '{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 7, "reason": "user pressed Stop"}}'
 
-# Server-to-client stream: none (405, Allow: POST, DELETE)
+# Server-to-client stream: none (405, Allow: POST, DELETE, no body)
 curl -i -X GET http://127.0.0.1:27000/mcp -H "Accept: text/event-stream" -H "Mcp-Session-Id: $SID"
 
 # End the session (204; later requests with that id get 404)
