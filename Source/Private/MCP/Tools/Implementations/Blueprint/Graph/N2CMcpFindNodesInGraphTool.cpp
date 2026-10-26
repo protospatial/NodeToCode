@@ -68,8 +68,8 @@ FMcpToolDefinition FN2CMcpFindNodesInGraphTool::GetDefinition() const
     
     Definition.InputSchema = Schema;
     
-    // Add read-only annotation
-    AddReadOnlyAnnotation(Definition);
+    // Read-only: reads editor or project state and changes nothing
+    SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
     
     // Results carry Blueprint text (node titles and pin default values): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;

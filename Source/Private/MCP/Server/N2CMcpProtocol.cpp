@@ -400,14 +400,9 @@ bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
 	{
 		return false;
 	}
-	for (const FMcpToolDefinition& Def : Catalogs.Tools->GetAllToolDefinitions())
-	{
-		if (Def.Name == ToolName)
-		{
-			return Def.bIsLongRunning;
-		}
-	}
-	return false;
+	// The definition cached at registration, found by name (no definition is rebuilt per call)
+	const TSharedPtr<const FMcpToolDefinition> Definition = Catalogs.Tools->GetToolDefinition(ToolName);
+	return Definition.IsValid() && Definition->bIsLongRunning;
 }
 
 void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
@@ -944,7 +939,7 @@ bool FN2CMcpProtocol::HandleToolsList(const TSharedPtr<FJsonValue>& Params, cons
 	// For MVP, we ignore pagination params (cursor) and return all tools
 	// TODO: In the future, implement pagination if tool list becomes large
 
-	// Get all registered tools from the manager
+	// The registered tools' cached definitions, sorted by name
 	TArray<FMcpToolDefinition> Tools = Catalogs.Tools->GetAllToolDefinitions();
 
 	// Build the result object

@@ -476,7 +476,7 @@ void FN2CBlueprintByPathSpec::Define()
 					Tools.UnregisterTool(Name);
 				}
 				const FMcpToolDefinition Definition = N2CTest::FindRegisteredTool(Name)->GetDefinition();
-				TestTrue(FString::Printf(TEXT("%s: readOnlyHint"), Name), Definition.Annotations.IsValid() && Definition.Annotations->GetBoolField(TEXT("readOnlyHint")));
+				TestTrue(FString::Printf(TEXT("%s: readOnlyHint"), Name), Definition.Annotations.IsReadOnly());
 				TestEqual(FString::Printf(TEXT("%s: category for assess-needed-tools"), Name), Definition.Category, FString(TEXT("Blueprint Discovery")));
 			}
 		});

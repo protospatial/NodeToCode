@@ -39,7 +39,7 @@ FMcpToolDefinition FN2CMcpGetScriptFunctionsTool::GetDefinition() const
 
 	Definition.InputSchema = Schema;
 
-	AddReadOnlyAnnotation(Definition);
+	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
 	return Definition;
 }

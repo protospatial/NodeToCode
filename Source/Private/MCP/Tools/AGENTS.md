@@ -103,7 +103,7 @@ project config `DefaultNodeToCode.ini`). The first that applies wins:
 ### Tool Categories
 
 `FMcpToolDefinition::Category` (the third constructor argument, or `Definition.Category`) groups tools for dynamic
-discovery. The category strings at HEAD, with their tools and folders:
+discovery; `tools/list` sends it as `_meta["nodetocode/category"]`. The category strings at HEAD, with their tools and folders:
 
 | Category | Tools | Folder |
 |---|---|---|
@@ -554,7 +554,8 @@ curl -X POST http://127.0.0.1:27000/mcp \
 The `FN2CMcpToolBase` class provides several helper functions:
 
 ### `BuildInputSchema`
-Creates a JSON schema for tool parameters:
+Creates a JSON schema for tool parameters. The optional third map gives each property its `description`; with no
+properties the schema also says `"additionalProperties": false`:
 ```cpp
 TMap<FString, FString> Properties;
 Properties.Add(TEXT("message"), TEXT("string"));
@@ -563,20 +564,39 @@ Properties.Add(TEXT("count"), TEXT("number"));
 TArray<FString> Required;
 Required.Add(TEXT("message"));
 
-Definition.InputSchema = BuildInputSchema(Properties, Required);
+TMap<FString, FString> Descriptions;
+Descriptions.Add(TEXT("message"), TEXT("Text to log"));
+
+Definition.InputSchema = BuildInputSchema(Properties, Required, Descriptions);
 ```
 
 ### `BuildEmptyObjectSchema`
-For tools with no parameters:
+For tools with no parameters (`properties` empty, `"additionalProperties": false`):
 ```cpp
 Definition.InputSchema = BuildEmptyObjectSchema();
 ```
 
-### `AddReadOnlyAnnotation`
-Marks a tool as read-only:
+### `SetAnnotations`
+Sets the four MCP behaviour hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), replacing
+any set before. Clients use them for permission prompts and parallel calls; they are hints, not a security boundary:
 ```cpp
-AddReadOnlyAnnotation(Definition);
+SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());       // read-only, idempotent, closed world
+SetAnnotations(Definition, false, true, false, false);             // readOnly, destructive, idempotent, openWorld
 ```
+An unset hint is not sent (the client assumes the MCP default). `Definition.Annotations.IsReadOnly()` is true only
+for a tool that set `readOnlyHint` true.
+
+### Tool metadata
+`FMcpToolDefinition` (`N2CMcpToolTypes.h`) is one `tools/list` entry (MCP 2025-11-25 `Tool`): `Name`, `Title` (sent
+as `title`; clients fall back to the name), `Description`, `InputSchema`, `OutputSchema` (when set, every successful
+result must carry a matching `FMcpToolCallResult::StructuredContent`), `Annotations`, and `_meta`: `Category` is sent
+as `_meta["nodetocode/category"]` (not a top-level field), `MaxResultSizeChars` as `_meta["anthropic/maxResultSizeChars"]`,
+`bAlwaysLoad` as `_meta["anthropic/alwaysLoad"]: true`, and `Meta` holds any other `_meta` entries.
+`bIsLongRunning` and `bReturnsUntrustedContent` stay on the server.
+
+`FN2CMcpToolManager::RegisterTool` builds a tool's definition once and keeps it: `tools/list`
+(`GetAllToolDefinitions`, sorted by name, so the list is the same on every call), `GetToolDefinition(Name)` (O(1)) and
+every `tools/call` use that copy. So `GetDefinition()` must not depend on state that changes while the server runs.
 
 ### `ExecuteOnGameThread`
 Runs code on the Game Thread and waits for it, with a timeout. Called on the Game Thread it runs the logic

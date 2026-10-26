@@ -70,9 +70,10 @@ results, script-library files, prior translations read with read-file, and disco
 ## Sinks, by tool
 
 Tool names are those `tools/list` returned live (59 by default, 62 with Allow MCP Python Execution; card 0157 added
-the read-only get-blueprint-n2cjson and list-blueprint-graphs, so 61 and 64 since). 20 carry
-`readOnlyHint: true`; no tool carries `destructiveHint`, `idempotentHint` or `openWorldHint`, and no tool has a
-title. Card 0205 sets all four hints on every tool and rechecks the existing read-only marks.
+the read-only get-blueprint-n2cjson and list-blueprint-graphs, so 61 and 64 since). The tools that were marked
+read-only carry `readOnlyHint: true` and, since card 0164 (`SetAnnotations`), `destructiveHint: false`,
+`idempotentHint: true` and `openWorldHint: false`; every other tool carries no hint, and no tool has a title yet.
+Card 0205 sets the hints and a title on every tool and rechecks the existing read-only marks.
 
 | Sink | Tools | Impact | Control | Evidence | Residual, owner |
 |---|---|---|---|---|---|

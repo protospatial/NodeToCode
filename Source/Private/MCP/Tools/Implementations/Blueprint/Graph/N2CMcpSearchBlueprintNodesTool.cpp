@@ -114,9 +114,8 @@ FMcpToolDefinition FN2CMcpSearchBlueprintNodesTool::GetDefinition() const
     
     Definition.InputSchema = Schema;
     
-    // Annotations
-    Definition.Annotations = MakeShareable(new FJsonObject);
-    Definition.Annotations->SetBoolField(TEXT("readOnlyHint"), true);
+    // Annotations (as before card 0164; card 0205 sets the accurate hints)
+    SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
     
     // Results carry Blueprint text (tooltips of the project's own Blueprint functions and variables): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;
