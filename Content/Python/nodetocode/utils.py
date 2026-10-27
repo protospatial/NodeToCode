@@ -168,3 +168,13 @@ def _parse_bridge_result(json_str: str) -> Dict[str, Any]:
         return make_error_result(f"Bridge response is not a JSON object: {type(result).__name__}")
 
     return result
+
+def _target_kwargs(blueprint_path: str = "", graph: str = "") -> Dict[str, str]:
+    """The bridge call's target keyword arguments (card 0274): only the ones given, so a call without them is the
+    same call as before (the focused graph)"""
+    kwargs = {}
+    if blueprint_path and blueprint_path.strip():
+        kwargs["blueprint_path"] = blueprint_path.strip()
+    if graph and graph.strip():
+        kwargs["graph"] = graph.strip()
+    return kwargs

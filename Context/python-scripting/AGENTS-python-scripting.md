@@ -193,13 +193,18 @@ arguments and the keys of its `data`. Grouped:
     fails with `GRAPH_NOT_FOUND` listing the Blueprint's graphs and does not open the Blueprint
 *   `open_blueprint_function(name)` - Focus a function graph of the open Blueprint
 
-**Graph Editing (the focused graph):**
+**Graph Editing (a named graph, else the focused one):** every call below, and the function pin calls and
+`tag_graph`, also take `blueprint_path=""` and `graph=""` (card 0274): `blueprint_path` names the Blueprint
+(`/Game/BP_Door`), `graph` a graph of it by GUID (a function's `functionGuid`) or by name. With neither, the
+focused graph as before; with `blueprint_path` alone, its focused graph or else its event graph. No Blueprint editor
+needs to be open then. A target that does not resolve fails with the resolver's code (`ASSET_NOT_FOUND`,
+`GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME`, `READ_ONLY_GRAPH`, `NO_FOCUSED_GRAPH`).
 *   `search_blueprint_nodes(term, context_sensitive=True, max_results=20, category="", exclude_vm_functions=True)` -
     Actions to add; each has `menuName` (also in `name` and `displayName`), `category`, `tooltip`, `keywords` and
     `spawnMetadata` (`actionIdentifier`: the stable spawner-signature ID, card 0277; `nodeName`). `category` filters
     on the menu category, ignoring case and spaces. `context_sensitive` True and False search the same list, the
-    focused graph's (the editor's node menu with Context Sensitive off), and set only `isContextSensitive`; both need
-    a focused graph (card 0434)
+    target graph's (the editor's node menu with Context Sensitive off), and set only `isContextSensitive`; both need
+    a graph, named or focused (card 0434)
 *   `add_node_to_graph(node_name, action_identifier, location_x=0, location_y=0)` - Add a node (pass a result's
     `spawnMetadata.nodeName` and `spawnMetadata.actionIdentifier`; pre-0277 search-text identifiers still work);
     returns `nodeGuid` and `inputPins`/`outputPins` with `pinGuid`, `pinName`
@@ -222,7 +227,7 @@ after the call's undo transaction, and return the compiler's diagnostics in `dat
 script ends and reports it as `compile` in its own result, so a script that adds and wires 30 nodes compiles once.
 `create_comment_node` never compiles; searches and finds compile nothing and refresh nothing.
 
-**Function Pins (a function graph focused):**
+**Function Pins (a function graph, named or focused):**
 *   `add_function_input_pin(name, type, default_value="", is_pass_by_reference=False, tooltip="")`,
     `add_function_return_pin(name, type, tooltip="")`, `remove_function_entry_pin(name)`,
     `remove_function_return_pin(name)`
@@ -243,7 +248,7 @@ script ends and reports it as `compile` in its own result, so a script that adds
 *   `get_script_stats()` - Library statistics
 
 **NodeToCode-Specific:**
-*   `tag_graph(tag, category="Default", description="")` - Tag focused graph
+*   `tag_graph(tag, category="Default", description="", blueprint_path="", graph="")` - Tag a graph, else the focused one
 *   `list_tags(category=None, tag=None, blueprint_path=None)` - List tags with filters; `blueprint_path` keeps one Blueprint's graphs (a duplicated Blueprint shares its graph GUIDs with the original)
 *   `remove_tag(graph_guid, tag, blueprint_path="")` - Remove tag from graph; pass the entry's `blueprint_path` from `list_tags` (needed once a copy of the Blueprint shares the GUID)
 *   `get_llm_providers()` - Get available LLM providers

@@ -67,8 +67,30 @@ namespace N2CPythonBridgePrivate
 			}
 		}
 	}
+
+	/**
+	 * The target arguments of a bridge call (card 0274): BlueprintPath, and Graph as a graph GUID (a function's
+	 * functionGuid) or else a graph name. Both empty: the focused graph, as before.
+	 */
+	FN2CGraphTargetArgs BridgeTargetArgs(const FString& BlueprintPath, const FString& Graph)
+	{
+		FN2CGraphTargetArgs Args;
+		Args.BlueprintPath = BlueprintPath.TrimStartAndEnd();
+		const FString GraphText = Graph.TrimStartAndEnd();
+		FGuid GraphGuid;
+		if (FGuid::Parse(GraphText, GraphGuid))
+		{
+			Args.GraphGuid = GraphText;
+		}
+		else
+		{
+			Args.GraphName = GraphText;
+		}
+		return Args;
+	}
 }
 using N2CPythonBridgePrivate::AddCompileResult;
+using N2CPythonBridgePrivate::BridgeTargetArgs;
 
 FString UN2CPythonBridge::GetFocusedBlueprintJson()
 {
@@ -292,14 +314,12 @@ FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::CompileFocusedBlueprint()
+FString UN2CPythonBridge::CompileFocusedBlueprint(const FString& BlueprintPath)
 {
-	// Get the focused Blueprint
-	UBlueprint* OwningBlueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
+	// The Blueprint BlueprintPath names, else the focused one (card 0274)
 	FString GraphError;
-
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(OwningBlueprint, FocusedGraph, GraphError))
+	UBlueprint* OwningBlueprint = FN2CGraphTarget::LoadBlueprint(BlueprintPath, GraphError);
+	if (!OwningBlueprint)
 	{
 		return MakeErrorJson(GraphError);
 	}
@@ -339,14 +359,12 @@ FString UN2CPythonBridge::CompileFocusedBlueprint()
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty)
+FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty, const FString& BlueprintPath)
 {
-	// Get the focused Blueprint
-	UBlueprint* OwningBlueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
+	// The Blueprint BlueprintPath names, else the focused one (card 0274)
 	FString GraphError;
-
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(OwningBlueprint, FocusedGraph, GraphError))
+	UBlueprint* OwningBlueprint = FN2CGraphTarget::LoadBlueprint(BlueprintPath, GraphError);
+	if (!OwningBlueprint)
 	{
 		return MakeErrorJson(GraphError);
 	}
@@ -391,22 +409,22 @@ FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty)
 
 // ========== Tagging System ==========
 
-FString UN2CPythonBridge::TagFocusedGraph(const FString& Tag, const FString& Category, const FString& Description)
+FString UN2CPythonBridge::TagFocusedGraph(const FString& Tag, const FString& Category, const FString& Description,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	if (Tag.IsEmpty())
 	{
 		return MakeErrorJson(TEXT("Tag name cannot be empty"));
 	}
 
-	// Get the focused graph
-	UBlueprint* OwningBlueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
-	FString GraphError;
-
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(OwningBlueprint, FocusedGraph, GraphError))
+	// The graph BlueprintPath / Graph name, else the focused one (card 0274); tagging edits no graph
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ false);
+	if (!Target.IsValid())
 	{
-		return MakeErrorJson(GraphError);
+		return MakeErrorJson(Target.Error);
 	}
+	UBlueprint* OwningBlueprint = Target.Blueprint;
+	UEdGraph* FocusedGraph = Target.Graph;
 
 	if (!FocusedGraph || !OwningBlueprint)
 	{
@@ -899,7 +917,7 @@ FString UN2CPythonBridge::OpenBlueprintFunction(const FString& FunctionName)
 // ========== Blueprint Graph Editing ==========
 
 FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool bContextSensitive, int32 MaxResults,
-	const FString& CategoryFilter, bool bExcludeVMFunctions)
+	const FString& CategoryFilter, bool bExcludeVMFunctions, const FString& BlueprintPath, const FString& Graph)
 {
 	if (SearchTerm.IsEmpty())
 	{
@@ -910,7 +928,7 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 
 	// The focused graph, through the one graph resolver (card 0152), for bContextSensitive true and false: the engine's
 	// action filter rejects every action without a Blueprint and a graph, so a search without one found nothing (card 0434)
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ false);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(TEXT("No graph to search for: no Blueprint editor is active or graph focused: ") + Target.Error);
@@ -976,7 +994,8 @@ FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool b
 	return MakeSuccessJson(ResultObject);
 }
 
-FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX, float LocationY)
+FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX, float LocationY,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -991,7 +1010,7 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	UEdGraph* ActiveGraph = nullptr;
 	FString ContextError;
 	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1081,7 +1100,8 @@ FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString&
 	return MakeSuccessJson(ResultObject);
 }
 
-FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks)
+FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -1110,7 +1130,7 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
 	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1298,7 +1318,8 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	return MakeSuccessJson(ResultObject);
 }
 
-FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName)
+FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -1313,7 +1334,7 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
 	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1421,7 +1442,8 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections, bool bForce)
+FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections, bool bForce,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -1446,7 +1468,7 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 	}
 
 	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1543,7 +1565,8 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 	return MakeSuccessJson(ResultObject);
 }
 
-FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const FString& SearchType, bool bCaseSensitive, int32 MaxResults)
+FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const FString& SearchType, bool bCaseSensitive, int32 MaxResults,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	if (SearchTermsJson.IsEmpty())
 	{
@@ -1586,7 +1609,7 @@ FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
 	// The focused graph, through the one graph resolver (card 0152)
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ false);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1717,7 +1740,8 @@ FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const
 	return MakeSuccessJson(ResultObject);
 }
 
-FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText, float ColorR, float ColorG, float ColorB, int32 FontSize, const FString& MoveMode, float Padding)
+FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText, float ColorR, float ColorG, float ColorB, int32 FontSize, const FString& MoveMode, float Padding,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	if (NodeGuidsJson.IsEmpty())
 	{
@@ -1743,7 +1767,7 @@ FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const 
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
 	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1849,7 +1873,8 @@ FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const 
 
 // ========== Function Pin Management ==========
 
-FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue, bool bIsPassByReference, const FString& Tooltip)
+FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue, bool bIsPassByReference, const FString& Tooltip,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -1861,7 +1886,7 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 
 	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
 	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1909,7 +1934,8 @@ FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FStr
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip)
+FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -1921,7 +1947,7 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 
 	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
 	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -1970,7 +1996,8 @@ FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FSt
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
+FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -1982,7 +2009,7 @@ FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 
 	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
 	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
@@ -2018,7 +2045,8 @@ FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName)
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
+FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName,
+	const FString& BlueprintPath, const FString& Graph)
 {
 	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
 	FN2CMcpToolCallScope CallScope;
@@ -2030,7 +2058,7 @@ FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName)
 
 	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
 	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);

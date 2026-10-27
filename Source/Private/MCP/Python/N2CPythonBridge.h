@@ -84,21 +84,23 @@ public:
 	/**
 	 * Compile the currently focused Blueprint.
 	 *
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
 	 * @return JSON string with compilation result.
 	 *         Format: {"success": true/false, "data": {"status": "..."}, "error": "..." or null}
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString CompileFocusedBlueprint();
+	static FString CompileFocusedBlueprint(const FString& BlueprintPath = TEXT(""));
 
 	/**
 	 * Save the currently focused Blueprint to disk.
 	 *
 	 * @param bOnlyIfDirty If true, only saves if the Blueprint has unsaved changes.
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
 	 * @return JSON string with save result.
 	 *         Format: {"success": true/false, "data": {"was_saved": true/false}, "error": "..." or null}
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString SaveFocusedBlueprint(bool bOnlyIfDirty = true);
+	static FString SaveFocusedBlueprint(bool bOnlyIfDirty = true, const FString& BlueprintPath = TEXT(""));
 
 	// ========== Tagging System ==========
 
@@ -108,10 +110,14 @@ public:
 	 * @param Tag The tag name to apply
 	 * @param Category Optional category (default: "Default")
 	 * @param Description Optional description
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON string with tag info or error
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString TagFocusedGraph(const FString& Tag, const FString& Category = TEXT("Default"), const FString& Description = TEXT(""));
+	static FString TagFocusedGraph(const FString& Tag, const FString& Category = TEXT("Default"), const FString& Description = TEXT(""),
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * List all tags, optionally filtered by category or tag name.
@@ -123,7 +129,8 @@ public:
 	 * @return JSON array of matching tags
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString ListTags(const FString& Category = TEXT(""), const FString& Tag = TEXT(""), const FString& BlueprintPath = TEXT(""));
+	static FString ListTags(const FString& Category = TEXT(""), const FString& Tag = TEXT(""),
+		const FString& BlueprintPath = TEXT(""));
 
 	/**
 	 * Remove a tag from a graph.
@@ -219,6 +226,9 @@ public:
 	 * @param MaxResults Maximum number of results to return (1-100)
 	 * @param CategoryFilter Optional category filter (e.g., "flowcontrol", "operators", "struct")
 	 * @param bExcludeVMFunctions If true (default), excludes low-level VM math functions
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON {"nodes": [{"name", "displayName", "menuName", "category", "tooltip", "keywords",
 	 *         "spawnMetadata": {"actionIdentifier", "nodeName", "isContextSensitive"}}], "count"}. name, displayName and
 	 *         menuName are the menu name ("Print String"); category is the menu category ("Development|String");
@@ -227,7 +237,8 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString SearchBlueprintNodes(const FString& SearchTerm, bool bContextSensitive = true, int32 MaxResults = 20,
-		const FString& CategoryFilter = TEXT(""), bool bExcludeVMFunctions = true);
+		const FString& CategoryFilter = TEXT(""), bool bExcludeVMFunctions = true,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Add a Blueprint node to the focused graph.
@@ -238,10 +249,14 @@ public:
 	 *        a pre-0277 search-text identifier is still accepted
 	 * @param LocationX X position for node placement
 	 * @param LocationY Y position for node placement
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with spawned node info including nodeGuid
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX = 0.0f, float LocationY = 0.0f);
+	static FString AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX = 0.0f, float LocationY = 0.0f,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Connect pins between Blueprint nodes.
@@ -249,10 +264,14 @@ public:
 	 * @param ConnectionsJson JSON array of connection specs: [{"from":{"nodeGuid":"...","pinGuid":"..."},"to":{...}},...]
 	 * @param bBreakExistingLinks If true, a connection may replace an existing link (a linked data input, also through a
 	 *        conversion node, or a linked exec output); if false such a connection fails and names the existing link
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with succeeded/failed connections
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks = false);
+	static FString ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks = false,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Set the default value of an input pin on a Blueprint node.
@@ -261,10 +280,14 @@ public:
 	 * @param PinGuid GUID of the pin to modify
 	 * @param Value The value to set (as string); checked by the K2 schema first (card 0278), "" resets the pin
 	 * @param PinName Optional pin name for fallback lookup
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with old/new values (newValue read back), or an error with the schema's reason when the pin refuses the value
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName = TEXT(""));
+	static FString SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName = TEXT(""),
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Delete nodes from the focused Blueprint graph.
@@ -277,10 +300,14 @@ public:
 	 *        exec out-targets on a node with one exec input and output, and through reroute knots); each node lists
 	 *        the links made under preservedConnections
 	 * @param bForce If true, also deletes nodes the editor protects (a function entry, a collapsed graph's tunnels)
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with deleted node info; GUIDs not deleted are listed under 'skipped' with the reason
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections = false, bool bForce = false);
+	static FString DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections = false, bool bForce = false,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Find nodes in the focused graph by keywords or GUIDs.
@@ -290,10 +317,14 @@ public:
 	 * @param SearchType Either "keyword" or "guid"
 	 * @param bCaseSensitive Whether keyword search is case-sensitive
 	 * @param MaxResults Maximum nodes to return (1-200)
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with matching nodes in N2C format
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString FindNodesInGraph(const FString& SearchTermsJson, const FString& SearchType = TEXT("keyword"), bool bCaseSensitive = false, int32 MaxResults = 50);
+	static FString FindNodesInGraph(const FString& SearchTermsJson, const FString& SearchType = TEXT("keyword"), bool bCaseSensitive = false, int32 MaxResults = 50,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Create a comment node around specified nodes.
@@ -306,10 +337,14 @@ public:
 	 * @param FontSize Font size (1-1000)
 	 * @param MoveMode "group" or "none" for movement behavior
 	 * @param Padding Extra padding around nodes
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with comment node info
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText = TEXT("Comment"), float ColorR = 0.075f, float ColorG = 0.075f, float ColorB = 0.075f, int32 FontSize = 18, const FString& MoveMode = TEXT("group"), float Padding = 50.0f);
+	static FString CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText = TEXT("Comment"), float ColorR = 0.075f, float ColorG = 0.075f, float ColorB = 0.075f, int32 FontSize = 18, const FString& MoveMode = TEXT("group"), float Padding = 50.0f,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	// ========== Function Pin Management ==========
 
@@ -321,10 +356,14 @@ public:
 	 * @param DefaultValue Optional default value
 	 * @param bIsPassByReference Whether the parameter is passed by reference
 	 * @param Tooltip Optional tooltip description
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with created pin info
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue = TEXT(""), bool bIsPassByReference = false, const FString& Tooltip = TEXT(""));
+	static FString AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue = TEXT(""), bool bIsPassByReference = false, const FString& Tooltip = TEXT(""),
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Add a return value to the focused Blueprint function.
@@ -332,28 +371,40 @@ public:
 	 * @param PinName Name for the new return value
 	 * @param TypeIdentifier Type identifier (e.g., "bool", "/Script/Engine.Actor")
 	 * @param Tooltip Optional tooltip description
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with created pin info
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip = TEXT(""));
+	static FString AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip = TEXT(""),
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Remove an input parameter from the focused Blueprint function.
 	 *
 	 * @param PinName Name of the pin to remove
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with removal status
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString RemoveFunctionEntryPin(const FString& PinName);
+	static FString RemoveFunctionEntryPin(const FString& PinName,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
 	 * Remove a return value from the focused Blueprint function.
 	 *
 	 * @param PinName Name of the return pin to remove
+	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
+	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
+	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON with removal status
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString RemoveFunctionReturnPin(const FString& PinName);
+	static FString RemoveFunctionReturnPin(const FString& PinName,
+		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 private:
 	/**

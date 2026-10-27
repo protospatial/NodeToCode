@@ -4,6 +4,8 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpVariableDefaults.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
 #include "Utils/N2CLogger.h"
@@ -21,15 +23,16 @@ FMcpToolDefinition FN2CMcpGetBlueprintMemberVariablesTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("get-blueprint-member-variables"),
-        TEXT("Retrieves all member variables from the currently focused Blueprint, including their types, categories, and properties")
+        TEXT("Retrieves all member variables of a Blueprint (blueprintPath, else the focused Blueprint), including their types, categories, and properties")
     ,
 
     	N2CMcpToolsets::BlueprintVariable
 
     );
     
-    // This tool takes no input parameters
+    // Only the optional blueprintPath (card 0274)
     Definition.InputSchema = BuildEmptyObjectSchema();
+    FN2CGraphTarget::AddSchemaProperties(Definition, /*bGraphArguments*/ false);
     
     // Read-only: reads editor or project state and changes nothing
     SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
@@ -45,17 +48,15 @@ FMcpToolDefinition FN2CMcpGetBlueprintMemberVariablesTool::GetDefinition() const
 
 FMcpToolCallResult FN2CMcpGetBlueprintMemberVariablesTool::Execute(const TSharedPtr<FJsonObject>& Arguments)
 {
-    return ExecuteOnGameThread([this]() -> FMcpToolCallResult
+    return ExecuteOnGameThread([this, Arguments]() -> FMcpToolCallResult
     {
-        // Get the currently focused Blueprint
+        // The Blueprint blueprintPath names, else the focused one (card 0274)
         FString ErrorMsg;
-        UBlueprint* FocusedBlueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(TEXT(""), ErrorMsg);
-        
+        UBlueprint* FocusedBlueprint = FN2CGraphTarget::LoadBlueprint(FN2CMcpArgumentParser(Arguments).GetOptionalString(TEXT("blueprintPath")), ErrorMsg);
+
         if (!FocusedBlueprint)
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                FString::Printf(TEXT("Failed to get focused Blueprint: %s"), *ErrorMsg)
-            );
+            return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
         
         // Build the result JSON

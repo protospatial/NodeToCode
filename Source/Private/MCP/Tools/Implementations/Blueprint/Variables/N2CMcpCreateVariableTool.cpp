@@ -2,6 +2,7 @@
 
 #include "N2CMcpCreateVariableTool.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
@@ -31,7 +32,7 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("create-variable"),
-		TEXT("Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
+		TEXT("Creates a new member variable in a Blueprint: blueprintPath, else the focused Blueprint (the Blueprint of the active Blueprint editor). The result's blueprintPath names the Blueprint used. Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
 	,
 		N2CMcpToolsets::BlueprintVariable
 	);
@@ -114,7 +115,8 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 	Schema->SetArrayField(TEXT("required"), RequiredArray);
 	
 	Definition.InputSchema = Schema;
-	
+	FN2CGraphTarget::AddSchemaProperties(Definition, /*bGraphArguments*/ false);
+
 	// Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
 	SetStrictArguments(Definition);
 
@@ -167,9 +169,9 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 			return FMcpToolCallResult::CreateErrorResult(ValidationError);
 		}
 
-		// Get active Blueprint
+		// The Blueprint blueprintPath names, else the focused one (card 0274)
 		FString ResolveError;
-		UBlueprint* ActiveBlueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(TEXT(""), ResolveError); // Empty path gets focused
+		UBlueprint* ActiveBlueprint = FN2CGraphTarget::LoadBlueprint(FN2CMcpArgumentParser(Arguments).GetOptionalString(TEXT("blueprintPath")), ResolveError);
 		if (!ActiveBlueprint)
 		{
 			return FMcpToolCallResult::CreateErrorResult(ResolveError);
@@ -216,6 +218,10 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		// Return success result
 		TSharedPtr<FJsonObject> ResultJsonObj = BuildSuccessResult(ActiveBlueprint, Settings.VariableName,
 			ActualVariableName, ResolvedPinType, ContainerType);
+		if (!ResultJsonObj->HasField(TEXT("blueprintPath")))
+		{
+			ResultJsonObj->SetStringField(TEXT("blueprintPath"), ActiveBlueprint->GetPathName());
+		}
 
 		// Convert JSON object to string
 		FString ResultString;

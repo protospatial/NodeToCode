@@ -73,8 +73,9 @@ Epic's tools are named `<Toolset>.<tool>` as Unreal MCP's `describe_toolset` sho
 | `read-content-browser-path` | `AssetTools.list_folders`, `find_assets` |
 | `search-content-browser` | `AssetTools.find_assets` |
 
-Epic's tools take an explicit Blueprint or asset path; several NodeToCode tools act on the Blueprint focused in the
-editor. Where a NodeToCode tool gave more (for example node GUIDs in N2C JSON), read the Blueprint with
+Epic's tools take an explicit Blueprint or asset path. NodeToCode's graph, function and variable tools take one too
+(`blueprintPath`, plus `graphName` or `graphGuid` for a graph) and act on the Blueprint focused in the editor only
+without it. Where a NodeToCode tool gave more (for example node GUIDs in N2C JSON), read the Blueprint with
 `get-blueprint-n2cjson` first.
 
 ## What NodeToCode keeps serving

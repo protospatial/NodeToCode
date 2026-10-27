@@ -45,7 +45,7 @@ from typing import Dict, Any, List, Optional, Union
 
 import unreal
 
-from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result
+from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result, _target_kwargs
 
 
 # ============== Node Search & Creation ==============
@@ -55,7 +55,9 @@ def search_blueprint_nodes(
     context_sensitive: bool = True,
     max_results: int = 20,
     category: str = "",
-    exclude_vm_functions: bool = True
+    exclude_vm_functions: bool = True,
+    blueprint_path: str = "",
+    graph: str = ""
 ) -> Dict[str, Any]:
     """
     Search for Blueprint nodes/actions matching a search term.
@@ -77,6 +79,9 @@ def search_blueprint_nodes(
             - "math" - Math functions
         exclude_vm_functions: If True (default), excludes low-level VM math functions
             like Multiply_FloatFloat that are rarely used directly
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Each result carries the action's own fields: 'menuName' (also in 'name' and 'displayName'), 'category'
     (the menu category, e.g. "Development|String"), 'tooltip' and 'keywords'. Its
@@ -131,7 +136,8 @@ def search_blueprint_nodes(
             context_sensitive,
             max_results,
             category,
-            exclude_vm_functions
+            exclude_vm_functions,
+            **_target_kwargs(blueprint_path, graph)
         )
         return _parse_bridge_result(result)
     except Exception as e:
@@ -143,7 +149,9 @@ def add_node_to_graph(
     node_name: str,
     action_identifier: str,
     location_x: float = 0.0,
-    location_y: float = 0.0
+    location_y: float = 0.0,
+    blueprint_path: str = "",
+    graph: str = ""
 ) -> Dict[str, Any]:
     """
     Add a Blueprint node to the currently focused graph.
@@ -163,6 +171,9 @@ def add_node_to_graph(
             still accepted for now.
         location_x: X position for node placement
         location_y: Y position for node placement
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Returns:
         {
@@ -226,7 +237,8 @@ def add_node_to_graph(
             node_name.strip(),
             action_identifier.strip(),
             location_x,
-            location_y
+            location_y,
+            **_target_kwargs(blueprint_path, graph)
         )
         return _parse_bridge_result(result)
     except Exception as e:
@@ -238,7 +250,9 @@ def add_node_to_graph(
 
 def connect_pins(
     connections: List[Dict[str, Any]],
-    break_existing_links: bool = False
+    break_existing_links: bool = False,
+    blueprint_path: str = "",
+    graph: str = ""
 ) -> Dict[str, Any]:
     """
     Connect pins between Blueprint nodes.
@@ -261,6 +275,9 @@ def connect_pins(
             }
         break_existing_links: If True, a connection may replace an existing link (a linked data input, also
             through a conversion node, or a linked exec output); if False such a connection fails and names the link
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Returns:
         {
@@ -290,7 +307,8 @@ def connect_pins(
         connections_json = json.dumps(connections)
         result = unreal.N2CPythonBridge.connect_pins(
             connections_json,
-            break_existing_links
+            break_existing_links,
+            **_target_kwargs(blueprint_path, graph)
         )
         return _parse_bridge_result(result)
     except Exception as e:
@@ -302,7 +320,9 @@ def set_pin_value(
     node_guid: str,
     pin_guid: str,
     value: str,
-    pin_name: str = ""
+    pin_name: str = "",
+    blueprint_path: str = "",
+    graph: str = ""
 ) -> Dict[str, Any]:
     """
     Set the default value of an input pin on a Blueprint node.
@@ -317,6 +337,9 @@ def set_pin_value(
         pin_guid: GUID of the pin to modify
         value: The value to set (as string); an enum takes an entry name, display name or index; "" resets the pin
         pin_name: Optional pin name for fallback lookup if GUID fails
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Returns:
         {
@@ -351,7 +374,8 @@ def set_pin_value(
             node_guid.strip(),
             pin_guid.strip(),
             value,
-            pin_name.strip() if pin_name else ""
+            pin_name.strip() if pin_name else "",
+            **_target_kwargs(blueprint_path, graph)
         )
         return _parse_bridge_result(result)
     except Exception as e:
@@ -364,7 +388,9 @@ def set_pin_value(
 def delete_nodes(
     node_guids: List[str],
     preserve_connections: bool = False,
-    force: bool = False
+    force: bool = False,
+    blueprint_path: str = "",
+    graph: str = ""
 ) -> Dict[str, Any]:
     """
     Delete nodes from the focused Blueprint graph.
@@ -377,6 +403,9 @@ def delete_nodes(
             through reroute knots. Data pins of other nodes are not bridged.
         force: If True, also deletes nodes the editor protects (a function entry,
             the entry and exit tunnels of a collapsed graph or macro)
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Returns:
         {
@@ -404,7 +433,8 @@ def delete_nodes(
         result = unreal.N2CPythonBridge.delete_nodes(
             guids_json,
             preserve_connections,
-            force
+            force,
+            **_target_kwargs(blueprint_path, graph)
         )
         return _parse_bridge_result(result)
     except Exception as e:
@@ -416,7 +446,9 @@ def find_nodes_in_graph(
     search_terms: List[str],
     search_type: str = "keyword",
     case_sensitive: bool = False,
-    max_results: int = 50
+    max_results: int = 50,
+    blueprint_path: str = "",
+    graph: str = ""
 ) -> Dict[str, Any]:
     """
     Find nodes in the focused Blueprint graph by keywords or GUIDs.
@@ -430,6 +462,9 @@ def find_nodes_in_graph(
         search_type: Either "keyword" or "guid"
         case_sensitive: Whether keyword search is case-sensitive
         max_results: Maximum nodes to return (1-200)
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Returns:
         {
@@ -479,7 +514,8 @@ def find_nodes_in_graph(
             terms_json,
             search_type,
             case_sensitive,
-            max_results
+            max_results,
+            **_target_kwargs(blueprint_path, graph)
         )
         return _parse_bridge_result(result)
     except Exception as e:
@@ -493,7 +529,9 @@ def create_comment_node(
     color: Optional[Dict[str, float]] = None,
     font_size: int = 18,
     move_mode: str = "group",
-    padding: float = 50.0
+    padding: float = 50.0,
+    blueprint_path: str = "",
+    graph: str = ""
 ) -> Dict[str, Any]:
     """
     Create a comment node around specified Blueprint nodes.
@@ -505,6 +543,9 @@ def create_comment_node(
         font_size: Font size (1-1000)
         move_mode: "group" (nodes move with comment) or "none"
         padding: Extra padding around nodes in pixels
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Returns:
         {
@@ -544,7 +585,8 @@ def create_comment_node(
             r, g, b,
             font_size,
             move_mode,
-            padding
+            padding,
+            **_target_kwargs(blueprint_path, graph)
         )
         return _parse_bridge_result(result)
     except Exception as e:

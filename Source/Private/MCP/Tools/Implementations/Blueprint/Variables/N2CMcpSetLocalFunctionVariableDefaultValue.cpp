@@ -3,6 +3,7 @@
 #include "N2CMcpSetLocalFunctionVariableDefaultValue.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpVariableDefaults.h"
 #include "Utils/N2CLogger.h"
@@ -21,7 +22,7 @@ FMcpToolDefinition FN2CMcpSetLocalFunctionVariableDefaultValue::GetDefinition() 
 {
     FMcpToolDefinition Definition(
         TEXT("set-local-function-variable-default-value"),
-        TEXT("Set the default value of a local variable of the focused function (like editing in the details panel). The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default.")
+        TEXT("Set the default value of a local variable of a Blueprint function (the one blueprintPath plus graphName or graphGuid name, else the focused function), like editing in the details panel. The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default.")
     ,
 
     	N2CMcpToolsets::BlueprintVariable
@@ -38,6 +39,7 @@ FMcpToolDefinition FN2CMcpSetLocalFunctionVariableDefaultValue::GetDefinition() 
     Required.Add(TEXT("defaultValue"));
     
     Definition.InputSchema = BuildInputSchema(Properties, Required);
+    FN2CGraphTarget::AddSchemaProperties(Definition);
     
     // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
     SetStrictArguments(Definition);
@@ -64,33 +66,33 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
         
-        // Get the focused graph
-        UBlueprint* FocusedBlueprint = nullptr;
-        UEdGraph* FocusedGraph = nullptr;
-        FString ErrorMessage;
-        
-        if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(FocusedBlueprint, FocusedGraph, ErrorMessage))
+        // The function blueprintPath / graphName / graphGuid name, else the focused graph (card 0274); read-only
+        // graphs are refused
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
+        if (!Target.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
+            return FMcpToolCallResult::CreateErrorResult(Target.Error);
         }
-        
+        UBlueprint* FocusedBlueprint = Target.Blueprint;
+        UEdGraph* FocusedGraph = Target.Graph;
+
         // Find the function entry node
         UK2Node_FunctionEntry* FunctionEntryNode = FN2CMcpVariableUtils::FindFunctionEntryNode(FocusedGraph);
         if (!FunctionEntryNode)
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                TEXT("The focused graph is not a function graph. Please open a function in the Blueprint editor.")
-            );
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
+                TEXT("NOT_A_FUNCTION_GRAPH: the graph is not a function graph. Pass a function as graphName or graphGuid, or open one in the Blueprint editor.")
+            ));
         }
-        
+
         // Find the local variable
         FBPVariableDescription* LocalVarDesc = FN2CMcpVariableUtils::FindLocalVariable(FunctionEntryNode, VariableName);
         if (!LocalVarDesc)
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                FString::Printf(TEXT("Local variable '%s' not found in function '%s'"), 
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
+                FString::Printf(TEXT("Local variable '%s' not found in function '%s'"),
                     *VariableName, *FN2CMcpVariableUtils::GetFunctionGraph(FocusedGraph)->GetName())
-            );
+            ));
         }
         
         // Parsed against the skeleton function's property before anything changes; the stored text is what the
@@ -101,14 +103,14 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         FString ParseError;
         if (!FN2CMcpVariableDefaults::PrepareLocalDefault(FocusedBlueprint, FunctionGraph, FunctionEntryNode, LocalName, DefaultValue, StoredValue, ParseError))
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                FString::Printf(TEXT("Invalid default value for local variable '%s': %s"), *VariableName, *ParseError));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
+                FString::Printf(TEXT("Invalid default value for local variable '%s': %s"), *VariableName, *ParseError)));
         }
         // PrepareLocalDefault may have compiled: find the description again
         LocalVarDesc = FN2CMcpVariableUtils::FindLocalVariable(FunctionEntryNode, LocalName.ToString());
         if (!LocalVarDesc)
         {
-            return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Local variable '%s' not found after compiling"), *VariableName));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Local variable '%s' not found after compiling"), *VariableName)));
         }
         
         // Create a transaction for undo/redo
@@ -188,6 +190,6 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
         
-        return FMcpToolCallResult::CreateTextResult(OutputString);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(OutputString));
     });
 }
