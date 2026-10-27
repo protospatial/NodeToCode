@@ -9,8 +9,6 @@
 #include "TagManager/Models/N2CTagManagerTypes.h"
 #include "Core/Widgets/SN2CGraphListRow.h"
 
-// Delegate for when a row's refresh button is clicked
-DECLARE_DELEGATE_OneParam(FOnRowRefreshClicked, TSharedPtr<FN2CGraphListItem>);
 
 /** What the graphs list is showing, for its header and its empty-state text */
 enum class EN2CGraphsListView : uint8
@@ -41,6 +39,8 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnViewTranslationRequested)
 		/** Called when refresh button is clicked on a single graph row */
 		SLATE_EVENT(FOnRowRefreshClicked, OnRefreshTokensRequested)
+		/** Called when the right-click menu's Remove Tag runs: remove the checked graphs' tags (the menu checks its row) */
+		SLATE_EVENT(FSimpleDelegate, OnRemoveRequested)
 	SLATE_END_ARGS()
 
 	/** Constructs this widget */
@@ -76,8 +76,20 @@ public:
 	/** The text shown over an empty list */
 	FText GetEmptyText() const;
 
-	/** The rows shown (after the search filter) */
+	/** The rows shown (after the search filter), in the header's sort order */
 	const TArray<TSharedPtr<FN2CGraphListItem>>& GetShownItems() const { return FilteredItems; }
+
+	/**
+	 * Sorts rows by a column (card 0267): GraphName and Blueprint by name (case-insensitive), Context by estimated
+	 * tokens; ties keep the graph name order. EColumnSortMode::None leaves Items as they are.
+	 */
+	static void SortItems(TArray<TSharedPtr<FN2CGraphListItem>>& Items, const FName& Column, EColumnSortMode::Type Mode);
+
+	/** Sort the shown rows by Column, as a click on its header does */
+	void SetSort(const FName& Column, EColumnSortMode::Type Mode);
+
+	/** The right-click menu for the rows under the cursor (Translate, View, Export JSON, Open in Blueprint, Remove Tag) */
+	TSharedPtr<SWidget> MakeContextMenu();
 
 	/** Apply search filter to graphs */
 	void SetSearchFilter(const FString& SearchText);
@@ -214,11 +226,26 @@ private:
 	/** Last graph for which view translation was requested */
 	FN2CTagInfo LastViewTranslationRequestedGraph;
 
-	/** Column IDs */
+	/** Column IDs (the row's) */
 	static const FName Column_Checkbox;
 	static const FName Column_GraphName;
 	static const FName Column_Blueprint;
 	static const FName Column_Context;
+
+	/** The header's sort column and mode */
+	FName SortColumn;
+	EColumnSortMode::Type SortMode = EColumnSortMode::None;
+	EColumnSortMode::Type GetSortMode(const FName Column) const;
+	void OnSortModeChanged(EColumnSortPriority::Type Priority, const FName& Column, EColumnSortMode::Type Mode);
+
+	/** Keeps the list's selection and the checkboxes the same set */
+	void HandleListSelectionChanged(TSharedPtr<FN2CGraphListItem> Item, ESelectInfo::Type SelectInfo);
+	void SyncListSelection();
+	bool bSyncingSelection = false;
+
+	/** The right-click menu's actions, on the row it was opened on */
+	TSharedPtr<FN2CGraphListItem> GetContextItem() const;
+	FSimpleDelegate OnRemoveRequestedDelegate;
 
 	/** Delegate handles for token estimation service */
 	FDelegateHandle ModelChangedHandle;
