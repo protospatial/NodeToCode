@@ -1,18 +1,7 @@
 {
 	"case": "UserStruct",
 	"description": "Function UseItem(Item: S_GoldenItem): S_GoldenItem is a user struct {Owner: Actor object, Count: int, Level: user enum E_GoldenLevel {Low, High}}. Break S_GoldenItem feeds Count to the Count result and Owner, Count and Level to Make S_GoldenItem, which is the Copy result.",
-	"known_defects": [
-		{
-			"finding": "translation-core-8",
-			"card": "0236",
-			"effect": "S_GoldenItem's object member Owner gets no type name ('type': 'Object' with no 'type_name'); since card 0240 the validator keeps the struct with a MEMBER_TYPE warning ('Member Owner requires a type name')"
-		},
-		{
-			"finding": "translation-core-24",
-			"card": "0236",
-			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -194,7 +183,8 @@
 				"members": [
 					{
 						"name": "Owner",
-						"type": "Object"
+						"type": "Object",
+						"type_name": "Actor"
 					},
 					{
 						"name": "Count",
@@ -202,7 +192,8 @@
 					},
 					{
 						"name": "Level",
-						"type": "Byte"
+						"type": "Enum",
+						"type_name": "E_GoldenLevel"
 					}
 				]
 			}
@@ -212,10 +203,12 @@
 				"name": "E_GoldenLevel",
 				"values": [
 					{
-						"name": "Low"
+						"name": "Low",
+						"value": 0
 					},
 					{
-						"name": "High"
+						"name": "High",
+						"value": 1
 					}
 				]
 			}

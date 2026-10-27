@@ -1,18 +1,7 @@
 {
 	"case": "UserEnum",
 	"description": "Function SwitchLimit(Limit: E_GoldenLimit): E_GoldenLimit is a user enum {Min, Max, MaxHealth}. Switch on E_GoldenLimit: Min runs CollectGarbage, Max runs ControlScreensaver, MaxHealth is unconnected.",
-	"known_defects": [
-		{
-			"finding": "translation-core-11",
-			"card": "0236",
-			"effect": "Enum values whose display name contains 'max' in any case are dropped: E_GoldenLimit lists Min only, while the Switch still has Max and Max Health outputs"
-		},
-		{
-			"finding": "translation-core-24",
-			"card": "0236",
-			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -159,7 +148,16 @@
 				"name": "E_GoldenLimit",
 				"values": [
 					{
-						"name": "Min"
+						"name": "Min",
+						"value": 0
+					},
+					{
+						"name": "Max",
+						"value": 1
+					},
+					{
+						"name": "MaxHealth",
+						"value": 2
 					}
 				]
 			}

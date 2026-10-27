@@ -320,6 +320,22 @@ void FN2CExplicitTargetsSpec::Define()
 			bool bSuccess = false;
 			const TSharedPtr<FJsonObject> Compiled = ParseEnvelope(UN2CPythonBridge::CompileFocusedBlueprint(Test->Path()));
 			TestTrue(TEXT("CompileFocusedBlueprint by path"), Compiled.IsValid() && Compiled->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess);
+			// Card 0297: the result names the Blueprint compiled, so nodetocode.compile_blueprint(path) can be checked
+			const TSharedPtr<FJsonObject>* CompiledData = nullptr;
+			FString CompiledPath;
+			TestTrue(TEXT("its blueprint_path is the one named"), Compiled.IsValid() && Compiled->TryGetObjectField(TEXT("data"), CompiledData)
+				&& (*CompiledData)->TryGetStringField(TEXT("blueprint_path"), CompiledPath) && CompiledPath == Blueprint->GetPathName());
+
+			// SaveFocusedBlueprint by path on the clean Blueprint (Settle): nothing to write, and it says which Blueprint
+			Test->Settle();
+			const TSharedPtr<FJsonObject> Saved = ParseEnvelope(UN2CPythonBridge::SaveFocusedBlueprint(true, Test->Path()));
+			const TSharedPtr<FJsonObject>* SavedData = nullptr;
+			FString SavedPath;
+			bool bWasSaved = true;
+			TestTrue(TEXT("SaveFocusedBlueprint by path: success, the Blueprint named, not saved (clean)"), Saved.IsValid()
+				&& Saved->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess && Saved->TryGetObjectField(TEXT("data"), SavedData)
+				&& (*SavedData)->TryGetStringField(TEXT("blueprint_path"), SavedPath) && SavedPath == Blueprint->GetPathName()
+				&& (*SavedData)->TryGetBoolField(TEXT("was_saved"), bWasSaved) && !bWasSaved);
 
 			const FString Tag = TEXT("N2CTargetSpecBridgeTag");
 			const TSharedPtr<FJsonObject> Tagged = ParseEnvelope(UN2CPythonBridge::TagFocusedGraph(Tag, TEXT("Default"), FString(),

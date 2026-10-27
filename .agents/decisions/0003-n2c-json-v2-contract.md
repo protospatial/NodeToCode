@@ -131,6 +131,13 @@ Option 1, provisionally. The sub-choices of card 0117:
   enum or type (its title stays the engine's, was "Switch"), a Get (array item)'s the element type, an async proxy
   node's the factory function with the factory class in `member_parent`; Timelines and async nodes are `latent`. A
   reader that predates it keeps the four fields as unknown fields.
+- Card 0236 (additive and corrective, under 2.0.0 since no release has written it): each enum value carries its
+  number as `value` (`N2CJsonContract::EnumValueNumberField`), and every value is listed except the generated `_MAX`
+  entry and values marked Hidden (values named like "Max" or "MaxHealth" were dropped). A struct member of an object,
+  class, soft, weak or interface type gets its `type_name` (a `Class` member's is the class it holds), a member of a user
+  enum type is `Enum` with the enum in `type_name` (was `Byte` with none), sets and map keys get theirs too, and every
+  user struct and enum a member uses is listed once. A reader that predates it keeps `value` as an unknown field; this
+  reader keeps a value without one as it is.
 - Card 0505 (reader only; the contract and its version are unchanged): the agent document of get-focused-blueprint,
   get-blueprint-n2cjson and Python `get_blueprint_n2c_json` writes each node's and pin's `id` as `ids` {`short`,
   `guid`} and adds the top-level `guids` table. The reader takes `ids.short` as the ID when there is no `id`

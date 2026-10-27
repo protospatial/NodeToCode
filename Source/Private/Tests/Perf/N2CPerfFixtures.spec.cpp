@@ -27,8 +27,8 @@
  *
  * With N2C_GENERATE_PERF_FIXTURES=1 (UE 5.6 only) the first case regenerates the fixtures before the checks.
  *
- * Known defect translation-core-24 (card 0236): capture logs ERROR 'Missing name' when it meets S_N2CPerf or E_N2CPerf
- * a second time, so each export case expects that error at least once; the fixing card removes the expectation.
+ * Card 0236 fixed translation-core-24 (ERROR 'Missing name' each time a capture met S_N2CPerf or E_N2CPerf again), so
+ * the export cases expect no error.
  */
 BEGIN_DEFINE_SPEC(FN2CPerfFixturesSpec, "NodeToCode.Perf.Fixtures", N2C_TEST_FLAGS)
 
@@ -149,8 +149,6 @@ void FN2CPerfFixturesSpec::Define()
 				{
 					return;
 				}
-				// Known defect translation-core-24 (card 0236): a user struct or enum met a second time logs 'Missing name'
-				AddExpectedError(TEXT("Missing name"), EAutomationExpectedErrorFlags::Contains, 0);
 
 				const double Start = FPlatformTime::Seconds();
 				const TValueOrError<FN2CCapture, FString> Capture = N2CMcpBlueprintExport::CaptureAllGraphs(*Blueprint, 0);
@@ -204,7 +202,6 @@ void FN2CPerfFixturesSpec::Define()
 					{
 						return;
 					}
-					AddExpectedError(TEXT("Missing name"), EAutomationExpectedErrorFlags::Contains, 0);
 					// Each depth stops at the chain's next graph and says so
 					AddExpectedMessage(TEXT("maximum translation depth reached"), ELogVerbosity::Warning,
 						EAutomationExpectedMessageFlags::Contains, 0);

@@ -2,13 +2,7 @@
 	"case": "PluginContent_Depth1",
 	"description": "Max Translation Depth 1. BP_N2CGolden_PluginHelper lives under the NodeToCode plugin's mount (/NodeToCode/N2CTest_<guid>, standing in for a content or GameFeature plugin), with the user struct S_GoldenPluginItem {Count: int} and function Helper(Item: S_GoldenPluginItem), whose entry runs CollectGarbage. Function CallPlugin() in /Game: the entry runs Helper with Item from Make S_GoldenPluginItem. Helper is captured with its owner_blueprint and S_GoldenPluginItem is in 'structs'.",
 	"translation_depth": 1,
-	"known_defects": [
-		{
-			"finding": "translation-core-24",
-			"card": "0236",
-			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",

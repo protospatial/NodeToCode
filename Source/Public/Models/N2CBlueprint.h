@@ -267,6 +267,16 @@ struct FN2CEnumValue
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString Comment;
 
+    /**
+     * The value's number (UEnum::GetValueByIndex, card 0236), N2C JSON "value"; written when bHasValue (a capture always
+     * sets it; a document written before card 0236 has none and keeps none)
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    int64 Value = 0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bHasValue = false;
+
     FN2CEnumValue()
         : Name(TEXT(""))
         , Comment(TEXT(""))

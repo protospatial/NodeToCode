@@ -180,11 +180,11 @@ arguments and the keys of its `data`. Grouped:
     (card 0445), each listed in `warnings` (`code`, `path`, `value`, `message`). The `n2c_json` of
     `get_blueprint_n2c_json` reads too: its `ids.short` is the node or pin ID (card 0505). A read that had to skip a
     graph, node or pin (a missing required field) fails: `error` names the skipped parts, `data` holds the rest
-*   `compile_blueprint(path=None)` - Compile the focused Blueprint (a `path` is ignored for now: open the Blueprint
-    first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
+*   `compile_blueprint(path=None)` - Compile the Blueprint at `path` (loaded if needed; the focused one is never
+    touched), else the focused Blueprint (card 0297); `data`: `blueprint_name`, `blueprint_path`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
     `messages` (each `severity`, `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node)
-*   `save_blueprint(path=None, only_if_dirty=True)` - Save the focused Blueprint (a `path` is ignored the same way);
-    `data`: `blueprint_name`, `was_dirty`, `was_saved`
+*   `save_blueprint(path=None, only_if_dirty=True)` - Save the Blueprint at `path`, else the focused Blueprint;
+    `data`: `blueprint_name`, `blueprint_path`, `was_dirty`, `was_saved`
 *   `load_blueprint(path)` - Load Blueprint by asset path; `data`: `name`, `path`, `class_name`, `parent_class`
     (the parent's name, such as `Actor`)
 *   `open_blueprint(path, focus_graph=None)` - Open a Blueprint editor and focus a graph by name, matched
