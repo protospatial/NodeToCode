@@ -22,9 +22,8 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0276 (connect-pins: replace and conversion links), 0279
-  (delete-blueprint-node through `FBlueprintEditorUtils::RemoveNode`), 0295 (missing notification brushes, dead
-  code).
+- **Fix cards still owed here:** 0276 (connect-pins: replace and conversion links), 0295 (missing notification
+  brushes, dead code).
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.
@@ -222,14 +221,22 @@ Nodes and pins are addressed by GUID:
 - **Parameters**:
   - `nodeGuids` (required): Array of node GUIDs. All are checked first: an unknown GUID (`Node with GUID '<guid>' not
     found in graph`) or a protected node fails the call and nothing is deleted
-  - `preserveConnections` (optional, default false): See the known issue below
-  - `force` (optional, default false): Also delete protected nodes: function entry and result nodes, and tunnel nodes
-    with both inputs and outputs (`IsNodeDeletable`)
-- **Returns**: `success`, `blueprintName`, `deletedCount`, `deletedNodes` (each `guid`, `title`, `type`, `graph`)
-- **Known issue (card 0279):** `preserveConnections` has no effect. `PreserveNodeConnections` checks an input's
-  source pin against the node's own output pin with `ArePinsCompatible`, two output pins that never match, so no
-  link is made and no `preservedConnections` is returned. Deleting the middle Print String of BeginPlay -> Print
-  String -> Print String leaves BeginPlay unconnected. Reconnect with connect-pins
+  - `preserveConnections` (optional, default false): Reconnect the links that pass through each deleted node. Before
+    the node is removed, each linked input is paired with the node's pass-through pin
+    (`UEdGraphNode::GetPassThroughPin`): the exec output of a node with exactly one exec input and one exec output, or
+    a reroute knot's output. Afterwards each source of the input is linked to each target of that output through the
+    schema (`CanCreateConnection`, then `TryCreateConnection`); a link the schema refuses, or one that would replace
+    another link, is not made. Data pins of other nodes, and the exec outputs of a Branch or Sequence, are not bridged
+  - `force` (optional, default false): Also delete nodes the editor protects, those whose `CanUserDeleteNode()` is
+    false: a function entry, the entry and exit tunnels of a collapsed graph or macro. Deleting those can leave the
+    Blueprint unable to compile. A collapsed-graph node, an editable function result and events need no force
+- **Returns**: `success`, `blueprintName`, `deletedCount`, `deletedNodes` (each `guid`, `title`, `type`, `graph`, and
+  `preservedConnections` when links were made: each `fromNode`, `fromPin`, `toNode`, `toPin`, `type` (the source
+  pin's category))
+- Deletion is the editor's (card 0279, `N2CNodeDeletion` in `MCP/Utils/N2CMcpNodeDeletion.*`, shared with the Python
+  bridge's `DeleteNodes`): `FBlueprintEditorUtils::RemoveNode` per node (breakpoints and pin watches go with it, and
+  the schema's `BreakNodeLinks` updates the neighbours), then one structural mark and one compile for the call.
+  Deleting a collapsed-graph node removes its graph
 
 ### create-comment-node
 - **Description**: Adds a comment box around nodes of the target graph
@@ -436,7 +443,7 @@ curl -X POST http://localhost:27000/mcp \
     "id": 1
   }'
 
-# Protected nodes (function entry and result) need force; use with caution
+# Protected nodes (a function entry, a collapsed graph's tunnels) need force; use with caution
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \

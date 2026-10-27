@@ -2187,14 +2187,14 @@
 					"type": "boolean",
 					"required": false,
 					"default": false,
-					"description": "Meant to reconnect the deleted node's input sources to its output targets. Currently has no effect: no link is ever made. Default: false"
+					"description": "If true, reconnects the links that pass through each deleted node: the sources of its exec input to the targets of its exec output (only on a node with one exec input and one exec output), and through reroute knots. Each link made is listed in preservedConnections; a link the schema refuses or that would replace another link is not made. Data pins of other nodes are not bridged. Default: false"
 				},
 				{
 					"name": "force",
 					"type": "boolean",
 					"required": false,
 					"default": false,
-					"description": "If true, bypasses validation checks and forces deletion of nodes that would normally be protected. Default: false"
+					"description": "If true, deletes nodes the editor protects (CanUserDeleteNode false: a function entry, the entry and exit tunnels of a collapsed graph or macro). Deleting those can leave the Blueprint unable to compile. Default: false"
 				},
 				{
 					"name": "blueprintPath",
@@ -2233,13 +2233,13 @@
 					"preserveConnections":
 					{
 						"type": "boolean",
-						"description": "Meant to reconnect the deleted node's input sources to its output targets. Currently has no effect: no link is ever made. Default: false",
+						"description": "If true, reconnects the links that pass through each deleted node: the sources of its exec input to the targets of its exec output (only on a node with one exec input and one exec output), and through reroute knots. Each link made is listed in preservedConnections; a link the schema refuses or that would replace another link is not made. Data pins of other nodes are not bridged. Default: false",
 						"default": false
 					},
 					"force":
 					{
 						"type": "boolean",
-						"description": "If true, bypasses validation checks and forces deletion of nodes that would normally be protected. Default: false",
+						"description": "If true, deletes nodes the editor protects (CanUserDeleteNode false: a function entry, the entry and exit tunnels of a collapsed graph or macro). Deleting those can leave the Blueprint unable to compile. Default: false",
 						"default": false
 					},
 					"blueprintPath":

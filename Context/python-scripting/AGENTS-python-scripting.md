@@ -194,7 +194,7 @@ arguments and the keys of its `data`. Grouped:
     without `break_existing_links` a connection that would replace a link (a linked data input, also through a
     conversion node, or a linked exec output) fails and names that link
 *   `set_pin_value(node_guid, pin_guid, value, pin_name="")` - Default value of an unlinked input pin
-*   `delete_nodes(node_guids, preserve_connections=False, force=False)` - Delete nodes
+*   `delete_nodes(node_guids, preserve_connections=False, force=False)` - Delete nodes as the editor does; `preserve_connections` reconnects the exec line through a node with one exec input and output (and reroute knots); GUIDs not deleted are listed under `skipped`
 *   `find_nodes_in_graph(search_terms, search_type="keyword", case_sensitive=False, max_results=50)` - A keyword
     matches the node's title (as shown and its source text), class or member name; or `search_type="guid"`
 *   `create_comment_node(node_guids, comment_text="Comment", color=None, font_size=18, move_mode="group", padding=50)`

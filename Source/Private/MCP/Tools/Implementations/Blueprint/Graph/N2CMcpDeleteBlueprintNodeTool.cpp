@@ -5,18 +5,11 @@
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpNodeDeletion.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
-#include "Kismet2/BlueprintEditorUtils.h"
 #include "EdGraph/EdGraphNode.h"
-#include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraph.h"
-#include "EdGraphSchema_K2.h"
-#include "K2Node_FunctionEntry.h"
-#include "K2Node_FunctionResult.h"
-#include "K2Node_Event.h"
-#include "K2Node_Tunnel.h"
-#include "K2Node.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "ScopedTransaction.h"
@@ -58,14 +51,14 @@ FMcpToolDefinition FN2CMcpDeleteBlueprintNodeTool::GetDefinition() const
     // preserveConnections property (optional)
     TSharedPtr<FJsonObject> PreserveConnectionsProp = MakeShareable(new FJsonObject);
     PreserveConnectionsProp->SetStringField(TEXT("type"), TEXT("boolean"));
-    PreserveConnectionsProp->SetStringField(TEXT("description"), TEXT("Meant to reconnect the deleted node's input sources to its output targets. Currently has no effect: no link is ever made. Default: false"));
+    PreserveConnectionsProp->SetStringField(TEXT("description"), TEXT("If true, reconnects the links that pass through each deleted node: the sources of its exec input to the targets of its exec output (only on a node with one exec input and one exec output), and through reroute knots. Each link made is listed in preservedConnections; a link the schema refuses or that would replace another link is not made. Data pins of other nodes are not bridged. Default: false"));
     PreserveConnectionsProp->SetBoolField(TEXT("default"), false);
     Properties->SetObjectField(TEXT("preserveConnections"), PreserveConnectionsProp);
     
     // force property (optional)
     TSharedPtr<FJsonObject> ForceProp = MakeShareable(new FJsonObject);
     ForceProp->SetStringField(TEXT("type"), TEXT("boolean"));
-    ForceProp->SetStringField(TEXT("description"), TEXT("If true, bypasses validation checks and forces deletion of nodes that would normally be protected. Default: false"));
+    ForceProp->SetStringField(TEXT("description"), TEXT("If true, deletes nodes the editor protects (CanUserDeleteNode false: a function entry, the entry and exit tunnels of a collapsed graph or macro). Deleting those can leave the Blueprint unable to compile. Default: false"));
     ForceProp->SetBoolField(TEXT("default"), false);
     Properties->SetObjectField(TEXT("force"), ForceProp);
     
@@ -125,9 +118,9 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintNodeTool::Execute(const TSharedPtr<FJso
         // Create transaction for undo/redo
         const FScopedTransaction Transaction(LOCTEXT("DeleteBlueprintNodes", "Delete Blueprint Nodes"));
         
-        // Delete nodes
-        TArray<FDeletedNodeInfo> DeletedInfo;
-        if (!DeleteNodes(ActiveBlueprint, ActiveGraph, NodesToDelete, bPreserveConnections, DeletedInfo))
+        // Delete nodes the way the editor's Delete does, shared with the Python bridge (card 0279)
+        const TArray<N2CNodeDeletion::FDeletedNode> DeletedInfo = N2CNodeDeletion::DeleteNodes(ActiveBlueprint, NodesToDelete, bPreserveConnections);
+        if (DeletedInfo.Num() == 0)
         {
             return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to delete nodes")));
         }
@@ -211,207 +204,29 @@ bool FN2CMcpDeleteBlueprintNodeTool::ValidateNodes(
         return false;
     }
     
-    // Find and validate each node
     for (const FGuid& NodeGuid : NodeGuids)
     {
-        UEdGraphNode* FoundNode = nullptr;
-        
-        // Search for node by GUID
-        for (UEdGraphNode* Node : Graph->Nodes)
-        {
-            if (Node && Node->NodeGuid == NodeGuid)
-            {
-                FoundNode = Node;
-                break;
-            }
-        }
-        
+        UEdGraphNode* FoundNode = N2CNodeDeletion::FindNode(Graph, NodeGuid);
         if (!FoundNode)
         {
             OutError = FString::Printf(TEXT("Node with GUID '%s' not found in graph"), *NodeGuid.ToString());
             return false;
         }
         
-        // Check if node is deletable
-        if (!IsNodeDeletable(FoundNode, bForce))
+        // The node's own CanUserDeleteNode, as the editor's Delete asks it; force overrides only that (card 0279)
+        if (!N2CNodeDeletion::CanDelete(FoundNode, bForce, OutError))
         {
-            OutError = FString::Printf(TEXT("Node '%s' is protected and cannot be deleted. Use force=true to override."),
-                *FoundNode->GetNodeTitle(ENodeTitleType::FullTitle).ToString());
             return false;
         }
         
-        OutValidNodes.Add(FoundNode);
+        OutValidNodes.AddUnique(FoundNode);
     }
-    
-    return true;
-}
-
-bool FN2CMcpDeleteBlueprintNodeTool::IsNodeDeletable(UEdGraphNode* Node, bool bForce) const
-{
-    if (!Node || bForce)
-    {
-        return bForce;
-    }
-    
-    // Check for protected node types
-    if (Node->IsA<UK2Node_FunctionEntry>() || Node->IsA<UK2Node_FunctionResult>())
-    {
-        return false; // Function entry/result nodes should not be deleted
-    }
-    
-    // Check for tunnel nodes (may have special deletion rules)
-    if (UK2Node_Tunnel* TunnelNode = Cast<UK2Node_Tunnel>(Node))
-    {
-        if (TunnelNode->bCanHaveInputs && TunnelNode->bCanHaveOutputs)
-        {
-            // Tunnel entry/exit nodes might need special handling
-            return false;
-        }
-    }
-    
-    // Most other nodes are deletable
-    return true;
-}
-
-bool FN2CMcpDeleteBlueprintNodeTool::PreserveNodeConnections(
-    UEdGraphNode* NodeToDelete,
-    TArray<FPreservedConnection>& OutPreservedConnections)
-{
-    if (!NodeToDelete)
-    {
-        return false;
-    }
-    
-    // Find input pins with connections and output pins with connections
-    TArray<UEdGraphPin*> ConnectedInputPins;
-    TArray<UEdGraphPin*> ConnectedOutputPins;
-    
-    for (UEdGraphPin* Pin : NodeToDelete->Pins)
-    {
-        if (!Pin || Pin->LinkedTo.Num() == 0)
-        {
-            continue;
-        }
-        
-        if (Pin->Direction == EGPD_Input)
-        {
-            ConnectedInputPins.Add(Pin);
-        }
-        else if (Pin->Direction == EGPD_Output)
-        {
-            ConnectedOutputPins.Add(Pin);
-        }
-    }
-    
-    // For each input pin, try to connect its source to compatible output pins' targets
-    for (UEdGraphPin* InputPin : ConnectedInputPins)
-    {
-        for (UEdGraphPin* OutputPin : ConnectedOutputPins)
-        {
-            // Check if pins are type-compatible
-            const UEdGraphSchema* Schema = InputPin->GetSchema();
-            if (!Schema->ArePinsCompatible(InputPin->LinkedTo[0], OutputPin, nullptr, false))
-            {
-                continue; // Skip incompatible pins
-            }
-            
-            // Connect input's source to output's targets
-            for (UEdGraphPin* SourcePin : InputPin->LinkedTo)
-            {
-                for (UEdGraphPin* TargetPin : OutputPin->LinkedTo)
-                {
-                    const FPinConnectionResponse ConnectionResponse = Schema->CanCreateConnection(SourcePin, TargetPin);
-                    if (ConnectionResponse.CanSafeConnect())
-                    {
-                        // Record this connection for later creation
-                        FPreservedConnection Connection;
-                        Connection.FromNodeGuid = SourcePin->GetOwningNode()->NodeGuid.ToString();
-                        Connection.FromPinName = SourcePin->PinName.ToString();
-                        Connection.ToNodeGuid = TargetPin->GetOwningNode()->NodeGuid.ToString();
-                        Connection.ToPinName = TargetPin->PinName.ToString();
-                        Connection.PinType = SourcePin->PinType.PinCategory.ToString();
-                        
-                        OutPreservedConnections.Add(Connection);
-                        
-                        // Make the connection
-                        SourcePin->MakeLinkTo(TargetPin);
-                    }
-                }
-            }
-        }
-    }
-    
-    return true;
-}
-
-void FN2CMcpDeleteBlueprintNodeTool::CollectNodeInfo(
-    UEdGraphNode* Node,
-    FDeletedNodeInfo& OutInfo)
-{
-    if (!Node)
-    {
-        return;
-    }
-    
-    OutInfo.NodeGuid = Node->NodeGuid.ToString();
-    OutInfo.NodeTitle = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
-    OutInfo.NodeType = Node->GetClass()->GetName();
-    OutInfo.GraphName = Node->GetGraph() ? Node->GetGraph()->GetName() : TEXT("Unknown");
-}
-
-bool FN2CMcpDeleteBlueprintNodeTool::DeleteNodes(
-    UBlueprint* Blueprint,
-    UEdGraph* Graph,
-    const TArray<UEdGraphNode*>& NodesToDelete,
-    bool bPreserveConnections,
-    TArray<FDeletedNodeInfo>& OutDeletedInfo)
-{
-    if (!Blueprint || !Graph || NodesToDelete.Num() == 0)
-    {
-        return false;
-    }
-    
-    // Mark Blueprint and Graph as modified for transaction
-    Blueprint->Modify();
-    Graph->Modify();
-    
-    // Process each node
-    for (UEdGraphNode* Node : NodesToDelete)
-    {
-        if (!Node)
-        {
-            continue;
-        }
-        
-        // Collect node info before deletion
-        FDeletedNodeInfo NodeInfo;
-        CollectNodeInfo(Node, NodeInfo);
-        
-        // Preserve connections if requested
-        if (bPreserveConnections)
-        {
-            PreserveNodeConnections(Node, NodeInfo.PreservedConnections);
-        }
-        
-        // Mark node as modified for transaction
-        Node->Modify();
-        
-        // Destroy the node
-        Node->DestroyNode();
-        
-        OutDeletedInfo.Add(NodeInfo);
-        
-        FN2CLogger::Get().Log(FString::Printf(TEXT("Deleted node: %s"), *NodeInfo.NodeTitle), EN2CLogSeverity::Debug);
-    }
-    
-    // Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
-    FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
     
     return true;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintNodeTool::BuildSuccessResult(
-    const TArray<FDeletedNodeInfo>& DeletedInfo,
+    const TArray<N2CNodeDeletion::FDeletedNode>& DeletedInfo,
     const FString& BlueprintName) const
 {
     TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
@@ -423,20 +238,20 @@ TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintNodeTool::BuildSuccessResult(
     // Build array of deleted nodes
     TArray<TSharedPtr<FJsonValue>> DeletedNodesArray;
     
-    for (const FDeletedNodeInfo& Info : DeletedInfo)
+    for (const N2CNodeDeletion::FDeletedNode& Info : DeletedInfo)
     {
         TSharedPtr<FJsonObject> NodeObject = MakeShareable(new FJsonObject);
         NodeObject->SetStringField(TEXT("guid"), Info.NodeGuid);
-        NodeObject->SetStringField(TEXT("title"), Info.NodeTitle);
+        NodeObject->SetStringField(TEXT("title"), Info.Title);
         NodeObject->SetStringField(TEXT("type"), Info.NodeType);
         NodeObject->SetStringField(TEXT("graph"), Info.GraphName);
         
         // Add preserved connections if any
-        if (Info.PreservedConnections.Num() > 0)
+        if (Info.BridgedLinks.Num() > 0)
         {
             TArray<TSharedPtr<FJsonValue>> ConnectionsArray;
             
-            for (const FPreservedConnection& Connection : Info.PreservedConnections)
+            for (const N2CNodeDeletion::FBridgedLink& Connection : Info.BridgedLinks)
             {
                 TSharedPtr<FJsonObject> ConnObject = MakeShareable(new FJsonObject);
                 ConnObject->SetStringField(TEXT("fromNode"), Connection.FromNodeGuid);
