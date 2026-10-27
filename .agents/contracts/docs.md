@@ -47,8 +47,14 @@ name is unique across both roots.
 
 ## A screenshot
 
-- Made only by the capture harness, once it exists (owed: a board card in epic E16). Until then, keep the
-  existing images and do not hand-capture new ones; a page that needs a new picture says so in its PR.
+- Made only by the capture harness: `python -I Tests/DocsShots/capture.py --group <group>` (the `capture`
+  command in `.agents/docs-parity.json`; `--group all` takes every group). It starts a `-RenderOffScreen` editor
+  on the 5.8 host (build it first), runs the automation test `N2CDocs.Shots.<group>`
+  (`Source/Private/Tests/Docs/N2CDocsShots.cpp`), which draws the plugin's widgets from fixture data at 2x, and
+  writes `wiki/images/<group>/*.png` plus `wiki/images/shots.json` (the commit each shot was taken at, read by
+  `docs_check.py --stale`). Groups today: `main-window`, `translate-entry`, `settings`. A new picture is a new
+  shot in that file, in its surface's group; never hand-capture one. Commit the harness change first and
+  capture at that commit, so the shots are not stale on arrival. Look at every picture before committing it.
 - Single images (the Unreal editor has one theme), `wiki/images/<section>/<name>.png`, captured at 2x and
   shown at 1x with `<img src="images/<section>/<name>.png" alt="..." width="<half the pixel width>">`.
 - Alt text says what the picture shows. Cropped to what the text describes, never scaled.

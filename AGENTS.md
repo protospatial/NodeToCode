@@ -1,211 +1,80 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents when working with code in this repository.
+Guidance for AI coding agents working in this repository: the NodeToCode Unreal Engine plugin, which translates
+Blueprints into C++, Python, JavaScript, C#, Swift or pseudocode with LLMs and serves the open editor's Blueprints to
+agents through an MCP server. This page is the hub; the pages it links hold the detail.
 
-# NodeToCode Unreal Engine 5 Plugin
+## Supported engines and platforms
 
-# CRITICAL - START
+| | |
+|---|---|
+| Unreal Engine | 5.6 (the floor), 5.7 and 5.8 (the ceiling). Every C++ change builds on all three |
+| Version guards | `ENGINE_MINOR_VERSION` (include `Runtime/Launch/Resources/Version.h`), e.g. `#if ENGINE_MINOR_VERSION >= 8`; the 5.6 path must keep compiling |
+| Platforms | Windows (built and tested here), macOS and Linux (no build machine yet: keep platform code behind `PLATFORM_*`) |
 
-## Understanding NodeToCode's MCP Server Tools
+## Build and test
 
-@Source/Private/MCP/Tools/AGENTS.md
-
-The Blueprint and asset CRUD tool families (Graph, Functions, Variables, Components, Classes, Compilation, Content
-Browser, the tools Epic's EditorToolset duplicates, and `UN2CStructUtilsLibrary`) are **frozen: bug fixes only**
-(dec-5, `.agents/decisions/0007-crud-tool-families-fix-then-freeze.md`, applied provisionally). Do not add tools or
-capability to them; see "Frozen tool families (dec-5)" in `Source/Private/MCP/Tools/AGENTS.md`.
-
-## Unreal Engine Source Path
-
-The engine sources for research are at the `UE_SOURCE_PATH` line of `AGENTS.local.md` next to this file (gitignored,
-one per machine). `Scripts/detect-ue-path.sh` (macOS, Linux) or `Scripts\detect-ue-path.bat` (Windows) writes it
-from the newest Unreal Engine install; this file is never changed. NEVER modify files under that path.
-
-## User docs
-
-- **User docs move with the code.** A change that alters anything a plugin user or integrator sees or depends on
-  updates the affected pages in `wiki/` (and, once the capture harness exists, retakes the affected screenshots
-  through it, never by hand) in the same change, and the commit or PR body says `Docs: <pages>` or
-  `Docs: none, <why>`. The writer contract is `.agents/contracts/docs.md`; `tools/docs_check.py --changed` checks it.
-
-## Agent Skills
-
-- The user-facing Agent Skills (blueprint-comprehension, blueprint-to-cpp, blueprint-migration) are written once in
-  `Agents/claude-code/nodetocode/skills/<name>/` and ship in the plugin package (`Config/FilterPlugin.ini`). After
-  editing one, or `Content/Prompting/Shared/N2CJsonSpec.md` (copied into their `references/`), run
-  `python -I Agents/sync_skills.py`: it regenerates the copies and the `.agents/skills/` mirror. `--check` (run by
-  `Tests/python/test_agent_skills.py`, so by `build.ps1 -Test`) fails on a stale copy or mirror, invalid frontmatter,
-  a `SKILL.md` over 500 lines, or a skill naming an MCP tool the plugin does not register: renaming or removing a
-  tool means updating the skills in the same change. User page: `wiki/developers/Agent-Skills.md`.
-- On UE 5.8 the skills are also registered in Epic's skill registry (card 0177): the script writes
-  `Content/Python/nodetocode/skills/<name>.md` (body without frontmatter, `references/` appended) and `skills.json`
-  (descriptions), and `Content/Python/nodetocode/skills/__init__.py` has one `@agent_skill` class per skill; a new skill
-  needs its class there. `--check` also fails when a skill names a `NodeToCodeTools.<tool>` that toolset lacks, an Epic
-  tool missing from `wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md`, or a NodeToCode tool UE 5.8 leaves to
-  Unreal MCP without naming its Epic counterpart in the same file.
-- The Claude Code plugin around them (`Agents/claude-code/nodetocode/`: `.claude-plugin/plugin.json`, `.mcp.json`,
-  `hooks/`, `commands/translate.md`; the local marketplace `Agents/claude-code/.claude-plugin/marketplace.json`; the
-  draft entry for other marketplaces `Agents/claude-code/marketplace-entry.json`) is checked by the same script and
-  `Tests/python/test_claude_plugin.py`: its `version` must equal `NodeToCode.uplugin`'s `VersionName` (bump both), and
-  its command may name registered tools only. Run `claude plugin validate --strict` on both folders after a change;
-  live check: `Tests/mcp_probe/live_claude_plugin_0172.py`. User page: `wiki/developers/Claude-Code-Plugin.md`.
-
-## TESTING COMPILATION
-
-NodeToCode 2.0 supports UE 5.6 (the floor) through UE 5.8 (the ceiling). Any C++ change must build on 5.6, 5.7
-and 5.8. Guard version-specific code with `ENGINE_MINOR_VERSION` (include `Runtime/Launch/Resources/Version.h`).
-
-`build.ps1` at the repo root (tracked) builds, smoke-tests and runs the automation tests. Each engine gets a small
-C++ host project, `<HostsRoot>/NodeToCodeHost_5_X` (default `..\Hosts`, next to the checkout), which the script
-creates on first use. The host's `Plugins/NodeToCode/{Source,Content,Resources,ThirdParty}` are junctions (symbolic
-links on Mac and Linux) back into this checkout, and `NodeToCode.uplugin` is copied in on every run, so there is one
-copy of the source while `Binaries/` and `Intermediate/` stay per host and every engine builds incrementally.
-The host's `Plugins/NodeToCodeTestContent` is a junction to `Tests/NodeToCodeTestContent`, a content-only plugin with
-the tests' checked-in assets (the perf fixtures `BP_N2CPerf_100`, `_1k` and `_5k`, card 0359; its README gives the
-regeneration command). It is outside the NodeToCode plugin's folders, so no package ever contains it.
-
-Requirements: the UE 5.6, 5.7 and 5.8 engines, and for `-Smoke` Node.js 22.19 or newer with `npx` on `PATH` (it
-fetches the pinned MCP conformance suite and MCP Inspector from npm; checked with Node 24.11.1 and npm 11.6.2). For
-the Python step of `-Test`, [uv](https://docs.astral.sh/uv/) on `PATH` (checked with uv 0.12.5); without it that
-step is reported as `pytest WARN (uv not found)` and skipped.
+`build.ps1` at the repository root builds a small host project per engine (`..\Hosts\NodeToCodeHost_5_X`, junctions
+back into this checkout) and runs the checks. Engines, hosts, logs and every flag:
+[development workflow](Context/development-workflow/AGENTS-development-workflow.md).
 
 ```powershell
-.\build.ps1 -UEVersion 5.7           # incremental editor build for one version (5.6, 5.7 or 5.8)
-.\build.ps1 -All                     # build every detected version in turn
-.\build.ps1 -All -Smoke              # build, then the headless smoke check and MCP probes (Tests/smoke/smoke_check.py)
-.\build.ps1 -All -Test               # build, then Tests/python (pytest) and Automation RunTests NodeToCode headless
-.\build.ps1 -UEVersion 5.8 -Clean    # remove the host's plugin Binaries/Intermediate first
-.\build.ps1 -UEVersion 5.6 -Launch   # build, then open the host editor
-.\build.ps1 -All -Package            # RunUAT BuildPlugin into -PackagesRoot (a quick check, not a release)
-.\build.ps1 -WhatIf                  # list detected engines and host projects; change nothing
-.\build.ps1 -WhatIf -HostsRoot D:\Scratch\Hosts   # the same, with the hosts in another folder
+.\build.ps1 -WhatIf                  # detected engines and hosts; changes nothing
+.\build.ps1 -UEVersion 5.8           # incremental build for one engine
+.\build.ps1 -All -Smoke -Test        # every engine: build, headless MCP smoke and probes, pytest and automation tests
+.\build.ps1 -UEVersion 5.8 -Test -TestFilter NodeToCode.MCP   # one area's specs
 ```
 
-- Engines are found per version from `-Engine '5.8=<path>'`, then the `N2C_UE_5_6`, `N2C_UE_5_7` and `N2C_UE_5_8`
-  environment variables, then `$Engines` in `build.local.ps1`, then the registry, the Epic launcher's
-  `LauncherInstalled.dat`, registered source builds and `%ProgramFiles%\Epic Games\UE_5.X`. Each candidate is
-  checked against its `Engine/Build/Build.version`; an explicit setting that points at the wrong engine is reported,
-  not skipped.
-- Machine-specific settings go in `build.local.ps1` next to `build.ps1` (gitignored, dot-sourced when present). It
-  may set `$Engines = @{ '5.8' = '<path>' }`, `$HostsRoot`, `$PackagesRoot` and `$LogRoot`; parameters given on the
-  command line win.
-- `-HostsRoot`, `-PackagesRoot` and `-LogRoot` move the hosts, the `-Package` output and the logs (default
-  `BuildLogs/`). `-Config` picks the build configuration (default `Development`).
-- `-Test` runs `UnrealEditor-Cmd <host> -ExecCmds="Automation RunTests NodeToCode"
-  -TestExit="Automation Test Queue Empty" -ReportExportPath=<dir>` with `-unattended -nullrhi -NoLiveCoding
-  -culture=en`, reads the report's `index.json`, fails on any failed or unfinished test and warns when none ran.
-  `-TestFilter` narrows the run and `-TestTimeoutMinutes` (default 60) stops a hung editor. `-UpdateGoldens` passes
-  `-N2CUpdateGoldens`, so the golden specs rewrite `Source/Private/Tests/Goldens/` instead of comparing, and
-  `-TestCulture de` replaces `-culture=en` for a locale check (see "Capture goldens" in the tests README). If
-  `-ExecCmds` ever holds more than one command, separate them with commas: a semicolon hangs the editor.
-- On UE 5.8 and later the `-Test` editor also gets `-EnablePlugins=ToolsetRegistry` (the host `.uproject` stays as
-  it is), so `Content/Python/init_unreal.py` registers NodeToCodeTools and its in-editor Python tests
-  (`Content/Python/nodetocode/toolsets/tests/`, 60 s each) as `NodeToCode.Toolsets.PythonTests.*`. They run in the
-  same pass, any failure fails it, the summary counts them apart (`tests PASS (855, 36 toolset)`), and when the
-  filter covers them but none ran (the toolset or its runner did not register) the step fails. 5.6 and 5.7 run as
-  before.
-- Before that, `-Test` runs the CPython tests in `Tests/python` on each engine's own Python (3.11.8 in UE 5.6, 5.7
-  and 5.8): `uv run --no-project --python <engine python> --with-requirements Tests/python/requirements.txt --
-  python -m pytest -q Tests/python`, in a throwaway environment, so the engine install is not changed. They test
-  `Content/Python/nodetocode` (the script library: name and category checks, registry load, merge and corruption
-  handling, search scoring, `run_script`, path containment, import resolution) and check that
-  `Content/Python/scripts/script_registry.json` and the `.py` files beside it match. `Tests/python/conftest.py`
-  puts a stub `unreal` module in `sys.modules` (`Paths.project_content_dir`/`project_plugins_dir`/`project_dir`
-  pointed at pytest tmp folders, and the log functions), so no editor or UE install is needed. The counts land in
-  the summary (`pytest PASS (109 passed, 10 xfailed)`), the output in `BuildLogs/PyTest_<ver>_<stamp>.log`. Without
-  an engine, from the repo root: `uv run --no-project --python 3.11 --with-requirements Tests/python/requirements.txt
-  -- python -m pytest Tests/python`. pytest and its dependencies are pinned in `requirements.txt` and are never
-  added to the plugin. A known defect is a test marked `pytest.mark.xfail(strict=True, reason='<finding id>')`:
-  the card that fixes it removes the marker, since a strict xfail that passes fails the run. A new stub attribute
-  goes in the conftest only when the code under test needs it; any other `unreal.X` raises `AttributeError`.
-  Tests that need the real editor go in `Tests/python/editor` (pytest skips it) and run with
-  `Tests/python/editor/run_editor_tests.py` through `-ExecutePythonScript`; `Tests/python/README.md` has both commands.
-- `-Smoke` runs `Tests/smoke/smoke_check.py` with the engine's own Python: one headless `-N2CMcp` editor per MCP
-  tool-registration mode (default, dynamic discovery, Python script-only, set in the host's
-  `Config/DefaultNodeToCode.ini` and put back), plus the `Tests/mcp_probe` probes in the default session. It fails on
-  an error, ensure, assertion or crash line in the editor log (the allowlist in the script names each benign
-  exception and why), a missing MCP start line or `/mcp/health` answer from that editor, a `tools/list` count other
-  than `Tests/smoke/expected.json`, any change to the host's `Config/*.ini` during a session, a failed
-  `get_focused_blueprint_json` on an engine Blueprint, or a probe status other than `Tests/mcp_probe/expected.json`.
-  A card that adds or removes an MCP tool updates `Tests/smoke/expected.json`; failures already present are listed
-  there under `known_failures` with their finding ids. About 1.5 minutes per engine, with the conformance step below.
-- In the default session `-Smoke` also runs `Tests/conformance/run_conformance.py`: the official MCP conformance
-  suite (`npx @modelcontextprotocol/conformance server --requirements 2025-11-25`) and the MCP Inspector CLI
-  (`--cli <url> --method tools/list`), at the exact versions pinned in `Tests/conformance/baseline.json`, about 4 s.
-  The baseline lists every scenario once as `pass`, `known_failures` (owning card, failing checks, why) or
-  `not_applicable` (why). The smoke step fails when a `pass` scenario fails or a check outside an entry fails, and
-  prints `NOW PASSES` when a listed failure passes: the owning card then moves it to `pass` in its own commit. The
-  JSON results land in `BuildLogs/Smoke_<ver>_<stamp>_conformance/`. The rejected-Origin case is probe P1's.
-- Logs: `BuildLogs/Build_<version>_<timestamp>.log`, `Smoke_*.log`, `Tests_*.log` (report in `Tests_*/`) and
-  `Package_*.log`. The script exits non-zero when any build, smoke check or test run fails.
-- If a host editor is open, that version is skipped (Live Coding blocks UBT): use Ctrl+Alt+F11 in the editor, or
-  close it.
+- A change is done when `-All -Smoke -Test` passes on 5.6, 5.7 and 5.8. Logs land in `BuildLogs/`.
+- Automation specs live in `Source/Private/Tests/` (naming and helpers: `Source/Private/Tests/README.md`); pytest in
+  `Tests/python`; live MCP probes in `Tests/mcp_probe/` (`README.md` there).
+- A card that adds or removes an MCP tool updates `Tests/smoke/expected.json` and regenerates the tool reference
+  (`Scripts/generate_tool_reference.py`); `Scripts/docs_lint.py` checks the docs against it.
+- Release packages come only from `Scripts/package-release.ps1`, never from `build.ps1 -Package`.
 
-Automation tests live in `Source/Private/Tests/`; its `README.md` gives the naming (`NodeToCode.<Area>.<Thing>`),
-layout, shared helpers, the known-defect rule and how to run them. Live MCP probes and the headless editor helper
-live in `Tests/mcp_probe/`.
+## Engine sources are read-only
 
-Release packages come from `Scripts/package-release.ps1` (tracked), never from `build.ps1 -Package`. It exports a
-commit with `git archive` (so nothing uncommitted or ignored can ship), runs RunUAT BuildPlugin for UE 5.6, 5.7 and
-5.8, writes `NodeToCode-<VersionName>-UE<ver>.zip` plus a SHA256SUMS file to `..\Packages`, verifies each zip
-(required and forbidden files, `.uplugin` fields, no secrets), rebuilds it from source in a scratch C++ host and
-loads it in a headless editor to check the MCP server answers. It never tags or uploads.
+`AGENTS.local.md` next to this file (gitignored, one per machine) has a `UE_SOURCE_PATH` line: the engine sources to
+read for research. `Scripts/detect-ue-path.bat` (Windows) or `Scripts/detect-ue-path.sh` writes it. Never modify
+files under that path, or under any installed engine.
 
-```powershell
-.\Scripts\package-release.ps1                              # HEAD, all three engines
-.\Scripts\package-release.ps1 -Ref <tag-or-sha> -UEVersion 5.8
-```
+## Rules that apply to every change
 
-# CRITICAL - END
+- **Frozen tool families.** The Blueprint and asset CRUD MCP tools (Graph, Functions, Variables, Components, Classes,
+  Compilation, Content Browser, the tools Epic's EditorToolset duplicates) and `UN2CStructUtilsLibrary` take bug
+  fixes only (dec-5, `.agents/decisions/0007-crud-tool-families-fix-then-freeze.md`): see "Frozen tool families
+  (dec-5)" in [the MCP tools guide](Source/Private/MCP/Tools/AGENTS.md).
+- **User docs move with the code.** A change that alters what a plugin user or integrator sees updates the pages in
+  `wiki/` in the same change, and the commit or PR body says `Docs: <pages>` or `Docs: none, <why>`. Contract:
+  `.agents/contracts/docs.md`; check: `python -I tools/docs_check.py --changed <base>`.
+- **Agent Skills are generated.** After editing a skill under `Agents/claude-code/nodetocode/skills/` or
+  `Content/Prompting/Shared/N2CJsonSpec.md`, run `python -I Agents/sync_skills.py`; renaming or removing an MCP tool
+  updates the skills in the same change ([agent skills](Context/agent-skills/AGENTS-agent-skills.md)).
+- **No secrets in config, logs or the repository.** API keys live in the OS secret store
+  ([auth and secrets](Context/auth-secrets/AGENTS-auth-secrets.md)).
 
-## Overview
+## Child pages
 
-NodeToCode is an Unreal Engine 5 plugin for translating Blueprints into various programming languages (C++, Python, JavaScript, C#, Swift, Pseudocode) using Large Language Models (LLMs). It integrates into the Unreal Editor, providing tools to collect Blueprint nodes, manage LLM interactions, and display generated code with syntax highlighting.
+Plugin and pipeline:
+- [Architecture](Context/architecture/AGENTS-architecture.md): module layout, editor integration, settings, logging, utilities
+- [Translation pipeline](Context/translation-pipeline/AGENTS-translation-pipeline.md): node collection, N2C JSON, processors, batch translation
+  - [Graph-type coverage](Context/translation-pipeline/graph-type-coverage.md), [K2 node inventory](Context/translation-pipeline/k2-node-inventory.md), [Material classes](Context/translation-pipeline/material-classes.md) (generated by `gen_material_classes.py` there)
+- [LLM providers](Context/llm-providers/AGENTS-llm-providers.md): services, payloads, models, adding a provider
+- [Auth and secrets](Context/auth-secrets/AGENTS-auth-secrets.md): secret store, credential source, per-user switches, MCP token, path denial
+- [Tags and graph state](Context/tags-graph-state/AGENTS-tags-graph-state.md): `UN2CGraphStateManager`, the state file, tags, the translation archive
+- [UI and design tokens](Context/ui/AGENTS-ui.md): windows, the graph overlay, widgets, colours and tokens
+- [Code editor](Context/code-editor/AGENTS-code-editor.md): the code viewer, syntax highlighting, the theme
+- [Python scripting](Context/python-scripting/AGENTS-python-scripting.md): the Python bridge, script library, stdio bridge
+- [Agent skills](Context/agent-skills/AGENTS-agent-skills.md): the Agent Skills, the Claude Code plugin, UE 5.8 skill registry
+- [Development workflow](Context/development-workflow/AGENTS-development-workflow.md): `build.ps1` in full, hosts, tests, IDE setup, tracked vs local files
+- [Migration 1.2 to 2.0](Context/release/migration-1.2-to-2.0.md): what happens to a 1.2.x project's settings, keys and files
 
-**Key Features:**
-*   **Blueprint-to-Code Translation:** Converts selected Blueprint graphs/entire Blueprints.
-*   **Multi-LLM Support:** Integrates with OpenAI, Anthropic, Google Gemini, DeepSeek, local Ollama instances, and LM Studio.
-*   **Editor Integration:** Adds a "Node to Code" toolbar button in the Blueprint Editor for translation, JSON export, and a dedicated plugin window.
-*   **Interactive Code Editor:** Displays generated code with syntax highlighting in one color theme (`CodeEditorTheme`, editable in Project Settings).
-*   **Configuration:** Plugin settings for LLM provider selection, API keys (entered in Project Settings, not written to config `.ini` files; `FN2CSecretStore` keeps them in Windows Credential Manager, entries `NodeToCode/<ProviderId>`, and on Mac and Linux as plain JSON in the per-user `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json`; on Windows the per-user file and a project's old `Saved/NodeToCode/User/secrets.json` are moved into Credential Manager once, read back, then deleted; the API Key fields are masked, Transient and write-only, and Blueprints and Python get only `SetApiKey`/`HasApiKey`; when no key is saved, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY` or `DEEPSEEK_API_KEY`/`DEEPSEEK_API` from the editor's environment is used, never saved or shown; every request resolves its key when it is sent through `IN2CCredentialSource`, and no config holds one), target language, and logging.
-*   **Reasoning Model Support:** Prepended model commands for controlling reasoning models and feature toggles.
+MCP server and tools:
+- [MCP server](Context/mcp-server/AGENTS-mcp-server.md): transport, sessions and the 2026-07-28 era, tool modes, switches
+- [Threat model](Context/mcp-server/threat-model.md): sources, sinks, controls and residual risks
+- [Tool reference](Context/mcp-server/tools.generated.md) (generated, with [tools.generated.json](Context/mcp-server/tools.generated.json)): every tool, its arguments and annotations
+- [MCP tools guide](Source/Private/MCP/Tools/AGENTS.md): writing a tool, arguments, results, toolsets, the frozen families
+  - Blueprint tools: [overview](Source/Private/MCP/Tools/Implementations/Blueprint/AGENTS.md), [Analysis](Source/Private/MCP/Tools/Implementations/Blueprint/Analysis/AGENTS.md), [Classes](Source/Private/MCP/Tools/Implementations/Blueprint/Classes/AGENTS.md), [Compilation](Source/Private/MCP/Tools/Implementations/Blueprint/Compilation/AGENTS.md), [Components](Source/Private/MCP/Tools/Implementations/Blueprint/Components/AGENTS.md), [Functions](Source/Private/MCP/Tools/Implementations/Blueprint/Functions/AGENTS.md), [Graph](Source/Private/MCP/Tools/Implementations/Blueprint/Graph/AGENTS.md), [Organization](Source/Private/MCP/Tools/Implementations/Blueprint/Organization/AGENTS.md), [Variables](Source/Private/MCP/Tools/Implementations/Blueprint/Variables/AGENTS.md)
+  - [Content Browser](Source/Private/MCP/Tools/Implementations/ContentBrowser/AGENTS.md), [File system](Source/Private/MCP/Tools/Implementations/FileSystem/AGENTS.md), [Translation](Source/Private/MCP/Tools/Implementations/Translation/AGENTS.md)
 
-## Context Navigation
-
-For detailed information on specific areas of the codebase, navigate to the relevant context file:
-
-```
-Context/
-├── architecture/
-│   └── AGENTS-architecture.md          → Core plugin setup, editor integration, settings
-│
-├── translation-pipeline/
-│   └── AGENTS-translation-pipeline.md  → Blueprint node → code conversion, batch translation
-│
-├── llm-providers/
-│   └── AGENTS-llm-providers.md         → LLM services, adding/updating providers
-│
-├── mcp-server/
-│   └── AGENTS-mcp-server.md            → MCP server implementation, tools, resources
-│
-├── python-scripting/
-│   └── AGENTS-python-scripting.md      → Python bridge, script management system
-│
-├── code-editor/
-│   └── AGENTS-code-editor.md           → Syntax highlighting, themes, code display
-│
-├── development-workflow/
-│   └── AGENTS-development-workflow.md  → Git submodules, IDE setup, build process
-```
-
-### Quick Reference
-
-| Task | Context File |
-|------|--------------|
-| Plugin initialization, settings | `Context/architecture/` |
-| Node collection, translation | `Context/translation-pipeline/` |
-| Adding LLM providers/models | `Context/llm-providers/` |
-| MCP tools development | `Context/mcp-server/` (generated tool reference: `tools.generated.md`) + `@Source/Private/MCP/Tools/AGENTS.md` |
-| Python automation | `Context/python-scripting/` |
-| Code editor styling | `Context/code-editor/` |
-| Git workflow, IDE config | `Context/development-workflow/` |
+Users' pages are in `wiki/` (published as the GitHub wiki); `wiki/developers/` covers MCP clients and agents.

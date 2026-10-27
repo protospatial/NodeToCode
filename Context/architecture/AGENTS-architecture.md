@@ -173,19 +173,16 @@ Content/
 │   ├── CodeGen_Swift.md
 │   ├── CodeGen_Pseudocode.md
 │   └── Shared/                  # N2CJsonSpec.md, N2CResponseFormat.md: included by every CodeGen prompt
-├── Python/                      # Python scripting support
-│   ├── mcp_bridge/              # MCP bridge for external tools
-│   ├── nodetocode/              # NodeToCode Python module
-│   └── scripts/                 # User Python scripts
-└── Scripts/                     # Build/setup scripts
-    ├── detect-ue-path.sh        # UE path detection (Mac/Linux)
-    ├── detect-ue-path.bat       # UE path detection (Windows)
-    └── update_agents_ue_path.py # AGENTS.md path updater
+└── Python/                      # Python scripting support
+    ├── mcp_bridge/              # MCP bridge for external tools
+    ├── nodetocode/              # NodeToCode Python module
+    └── scripts/                 # User Python scripts
 ```
 
 **Root Files:**
 *   **`.gitignore`**: Standard Git ignore.
 *   **`LICENSE`**, **`README.md`**: License and documentation.
 *   **`Resources/`**: Plugin/toolbar icons (`Icon128.png`, `button_icon.png`).
-*   **`build.ps1`**: Build, smoke and automation-test runner for UE 5.6-5.8 (see `AGENTS.md`).
+*   **`build.ps1`**: Build, smoke and automation-test runner for UE 5.6-5.8 (see `Context/development-workflow/AGENTS-development-workflow.md`).
+*   **`Scripts/`**: Developer and release scripts, never packaged: `package-release.ps1`, `generate_tool_reference.py`, `docs_lint.py`, and `detect-ue-path.*` with `update_agents_ue_path.py` (writes this machine's `UE_SOURCE_PATH` to the gitignored `AGENTS.local.md`).
 *   **`assets/`**: Documentation/promotional images.
