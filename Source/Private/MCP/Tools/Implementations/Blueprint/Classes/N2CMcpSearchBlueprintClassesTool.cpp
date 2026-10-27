@@ -21,6 +21,7 @@
 #include "UObject/Class.h"
 #include "UObject/UnrealType.h"
 #include "Misc/PackageName.h"
+#include "Blueprint/BlueprintSupport.h"
 
 REGISTER_MCP_TOOL(FN2CMcpSearchBlueprintClassesTool)
 
@@ -64,7 +65,7 @@ FMcpToolDefinition FN2CMcpSearchBlueprintClassesTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("search-blueprint-classes"),
-		TEXT("Searches for available parent classes for Blueprint creation, similar to the 'Pick Parent Class' dialog. Common parent classes (Actor, Pawn, Character, ActorComponent, UserWidget, ...) come first and are listed whatever the classType and include filters say. totalFound counts every class collected before the search term is applied, not the matches"),
+		TEXT("Searches for available parent classes for Blueprint creation, similar to the 'Pick Parent Class' dialog. Each class is listed once, native and Blueprint classes alike, and every filter applies to all of them. Common parent classes (Actor, Pawn, Character, ActorComponent, UserWidget, ...) score higher. totalFound counts the classes that match, before maxResults is applied"),
 		N2CMcpToolsets::BlueprintClass
 	);
 
@@ -118,8 +119,8 @@ FMcpToolDefinition FN2CMcpSearchBlueprintClassesTool::GetDefinition() const
 	// includeAbstract
 	TSharedPtr<FJsonObject> IncludeAbstractProp = MakeShareable(new FJsonObject);
 	IncludeAbstractProp->SetStringField(TEXT("type"), TEXT("boolean"));
-	IncludeAbstractProp->SetBoolField(TEXT("default"), false);
-	IncludeAbstractProp->SetStringField(TEXT("description"), TEXT("Include abstract classes in results"));
+	IncludeAbstractProp->SetBoolField(TEXT("default"), true);
+	IncludeAbstractProp->SetStringField(TEXT("description"), TEXT("Include abstract classes in results; abstract classes such as UserWidget and PrimaryDataAsset are valid parents"));
 	Properties->SetObjectField(TEXT("includeAbstract"), IncludeAbstractProp);
 
 	// maxResults
@@ -169,30 +170,34 @@ FMcpToolCallResult FN2CMcpSearchBlueprintClassesTool::Execute(const TSharedPtr<F
 		bool bIncludeDeprecated = false;
 		Arguments->TryGetBoolField(TEXT("includeDeprecated"), bIncludeDeprecated);
 
-		bool bIncludeAbstract = false;
+		bool bIncludeAbstract = true;
 		Arguments->TryGetBoolField(TEXT("includeAbstract"), bIncludeAbstract);
 
 		int32 MaxResults = 50;
 		Arguments->TryGetNumberField(TEXT("maxResults"), MaxResults);
 		MaxResults = FMath::Clamp(MaxResults, 1, 200);
 
-		// Collect all eligible classes
+		// Collect every eligible class once: native classes (the common ones marked), then Blueprint classes from the
+		// asset registry. Before card 0288 the common classes were added a second time ahead of every filter, and
+		// loaded Blueprint classes came through the native pass as well.
 		TArray<FBlueprintClassInfo> AllClasses;
-
-		// Add common classes first (they get priority in results)
-		AddCommonClasses(AllClasses, ClassTypeFilter);
-
-		// Collect native classes
 		CollectNativeClasses(AllClasses, ClassTypeFilter, bIncludeEngineClasses, bIncludePluginClasses, bIncludeDeprecated, bIncludeAbstract);
+		CollectBlueprintClasses(AllClasses, ClassTypeFilter, bIncludeEngineClasses, bIncludePluginClasses, bIncludeDeprecated, bIncludeAbstract);
 
-		// Collect Blueprint classes
-		CollectBlueprintClasses(AllClasses, ClassTypeFilter, bIncludeEngineClasses, bIncludePluginClasses, bIncludeDeprecated);
+		TSet<FString> SeenPaths;
+		AllClasses.RemoveAll([&SeenPaths](const FBlueprintClassInfo& Info)
+		{
+			bool bSeen = false;
+			SeenPaths.Add(Info.ClassPath, &bSeen);
+			return bSeen;
+		});
 
-		// Filter and score based on search term
-		TArray<FBlueprintClassInfo> FilteredClasses = FilterAndScoreClasses(AllClasses, SearchTerm, MaxResults);
+		// Filter and score based on search term; totalFound is the number of matches
+		int32 TotalMatches = 0;
+		TArray<FBlueprintClassInfo> FilteredClasses = FilterAndScoreClasses(AllClasses, SearchTerm, MaxResults, TotalMatches);
 
 		// Build JSON result
-		TSharedPtr<FJsonObject> Result = BuildJsonResult(FilteredClasses, AllClasses.Num());
+		TSharedPtr<FJsonObject> Result = BuildJsonResult(FilteredClasses, TotalMatches);
 
 		// Convert result to string
 		FString OutputString;
@@ -211,6 +216,14 @@ void FN2CMcpSearchBlueprintClassesTool::CollectNativeClasses(TArray<FBlueprintCl
 	{
 		UClass* Class = *It;
 		if (!Class || Class->HasAnyClassFlags(CLASS_Interface))
+		{
+			continue;
+		}
+
+		// Native classes only: Blueprint classes (and their SKEL_ and REINST_ copies) come from the asset registry.
+		// IsChildOf(UBlueprintGeneratedClass) tested the class's parents, not the class itself, so it never matched one.
+		if (!Class->HasAnyClassFlags(CLASS_Native) || Class->HasAnyClassFlags(CLASS_CompiledFromBlueprint)
+			|| Cast<UBlueprintGeneratedClass>(Class) || Class->ClassGeneratedBy)
 		{
 			continue;
 		}
@@ -250,18 +263,13 @@ void FN2CMcpSearchBlueprintClassesTool::CollectNativeClasses(TArray<FBlueprintCl
 			continue;
 		}
 
-		// Skip Blueprint generated classes (we'll get those separately)
-		if (Class->IsChildOf(UBlueprintGeneratedClass::StaticClass()))
-		{
-			continue;
-		}
-
 		// Create class info
 		FBlueprintClassInfo ClassInfo;
 		ClassInfo.ClassName = Class->GetName();
 		ClassInfo.ClassPath = ClassPath;
 		ClassInfo.DisplayName = GetClassDisplayName(Class);
-		ClassInfo.Category = GetClassCategory(Class);
+		ClassInfo.bIsCommonClass = IsCommonClassPath(ClassPath);
+		ClassInfo.Category = ClassInfo.bIsCommonClass ? FString(TEXT("Common")) : GetClassCategory(Class);
 		ClassInfo.Description = GetClassDescription(Class);
 		ClassInfo.ParentClass = Class->GetSuperClass() ? Class->GetSuperClass()->GetName() : TEXT("");
 		ClassInfo.Module = GetClassModule(Class);
@@ -270,14 +278,13 @@ void FN2CMcpSearchBlueprintClassesTool::CollectNativeClasses(TArray<FBlueprintCl
 		ClassInfo.bIsDeprecated = Class->HasAnyClassFlags(CLASS_Deprecated);
 		ClassInfo.bIsBlueprintable = true; // Already checked via CanCreateBlueprintOfClass
 		ClassInfo.bIsNative = true;
-		ClassInfo.bIsCommonClass = false; // Will be set separately for common classes
 
 		OutClasses.Add(ClassInfo);
 	}
 }
 
 void FN2CMcpSearchBlueprintClassesTool::CollectBlueprintClasses(TArray<FBlueprintClassInfo>& OutClasses, const FString& ClassTypeFilter,
-	bool bIncludeEngineClasses, bool bIncludePluginClasses, bool bIncludeDeprecated) const
+	bool bIncludeEngineClasses, bool bIncludePluginClasses, bool bIncludeDeprecated, bool bIncludeAbstract) const
 {
 	// Get the asset registry
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -286,6 +293,14 @@ void FN2CMcpSearchBlueprintClassesTool::CollectBlueprintClasses(TArray<FBlueprin
 	// Search for Blueprint assets
 	TArray<FAssetData> BlueprintAssets;
 	AssetRegistry.GetAssetsByClass(UBlueprint::StaticClass()->GetClassPathName(), BlueprintAssets, true);
+
+	// The class tags are export text (/Script/Engine.BlueprintGeneratedClass'/Game/BP_Door.BP_Door_C'): use their
+	// object path, and the object name after its last '.'
+	auto ObjectNameOf = [](const FString& ObjectPath)
+	{
+		int32 Dot = INDEX_NONE;
+		return ObjectPath.FindLastChar(TEXT('.'), Dot) ? ObjectPath.Mid(Dot + 1) : FPackageName::GetShortName(ObjectPath);
+	};
 
 	for (const FAssetData& AssetData : BlueprintAssets)
 	{
@@ -300,76 +315,76 @@ void FN2CMcpSearchBlueprintClassesTool::CollectBlueprintClasses(TArray<FBlueprin
 			continue;
 		}
 
-		// Get the generated class name
-		FString GeneratedClassName;
-		AssetData.GetTagValue("GeneratedClass", GeneratedClassName);
-		if (GeneratedClassName.IsEmpty())
+		// Only normal and const Blueprints are classes to derive from (not macro or function libraries or level scripts)
+		FString BlueprintTypeTag;
+		if (AssetData.GetTagValue(FBlueprintTags::BlueprintType, BlueprintTypeTag) && !BlueprintTypeTag.IsEmpty()
+			&& BlueprintTypeTag != TEXT("BPTYPE_Normal") && BlueprintTypeTag != TEXT("BPTYPE_Const"))
 		{
 			continue;
 		}
 
-		// Get parent class
-		FString ParentClassName;
-		AssetData.GetTagValue("ParentClass", ParentClassName);
-		if (ParentClassName.IsEmpty())
+		// The generated class's object path
+		FString GeneratedClassTag;
+		AssetData.GetTagValue(FBlueprintTags::GeneratedClassPath, GeneratedClassTag);
+		const FString GeneratedClassPath = FPackageName::ExportTextPathToObjectPath(GeneratedClassTag);
+		if (GeneratedClassPath.IsEmpty() || GeneratedClassPath == TEXT("None"))
 		{
 			continue;
 		}
 
-		// Skip deprecated if needed
-		if (!bIncludeDeprecated)
+		// The parent class, and the first native class above it
+		FString ParentClassTag, NativeParentTag;
+		AssetData.GetTagValue(FBlueprintTags::ParentClassPath, ParentClassTag);
+		AssetData.GetTagValue(FBlueprintTags::NativeParentClassPath, NativeParentTag);
+		const FString ParentClassPath = FPackageName::ExportTextPathToObjectPath(ParentClassTag);
+		if (ParentClassPath.IsEmpty() || ParentClassPath == TEXT("None"))
 		{
-			FString IsDeprecatedStr;
-			AssetData.GetTagValue("IsDeprecated", IsDeprecatedStr);
-			if (IsDeprecatedStr.Equals(TEXT("True"), ESearchCase::IgnoreCase))
+			continue;
+		}
+
+		// The generated class's flags (interface, abstract, deprecated). The IsDeprecated tag read before card 0288 is
+		// not written by UBlueprint.
+		FString ClassFlagsTag;
+		const uint32 ClassFlags = AssetData.GetTagValue(FBlueprintTags::ClassFlags, ClassFlagsTag)
+			? static_cast<uint32>(FCString::Strtoui64(*ClassFlagsTag, nullptr, 10)) : 0;
+		if ((ClassFlags & CLASS_Interface) != 0)
+		{
+			continue;
+		}
+		if (!bIncludeDeprecated && (ClassFlags & CLASS_Deprecated) != 0)
+		{
+			continue;
+		}
+		if (!bIncludeAbstract && (ClassFlags & CLASS_Abstract) != 0)
+		{
+			continue;
+		}
+
+		// classType tests the native parent with IsChildOf, as for native classes (before card 0288 it matched a
+		// substring of the parent's export text, so a Character Blueprint was not an actor)
+		if (ClassTypeFilter != TEXT("all"))
+		{
+			const FString NativeParentPath = FPackageName::ExportTextPathToObjectPath(NativeParentTag);
+			const UClass* NativeParent = NativeParentPath.IsEmpty() || NativeParentPath == TEXT("None")
+				? nullptr : FindObject<UClass>(nullptr, *NativeParentPath);
+			if (!NativeParent || !PassesClassTypeFilter(NativeParent, ClassTypeFilter))
 			{
 				continue;
 			}
 		}
 
-		// Apply class type filter based on parent class
-		bool bPassesFilter = false;
-		if (ClassTypeFilter == TEXT("all"))
-		{
-			bPassesFilter = true;
-		}
-		else if (ClassTypeFilter == TEXT("actor") && ParentClassName.Contains(TEXT("Actor")))
-		{
-			bPassesFilter = true;
-		}
-		else if (ClassTypeFilter == TEXT("actorComponent") && ParentClassName.Contains(TEXT("Component")))
-		{
-			bPassesFilter = true;
-		}
-		else if (ClassTypeFilter == TEXT("userWidget") && ParentClassName.Contains(TEXT("Widget")))
-		{
-			bPassesFilter = true;
-		}
-		else if (ClassTypeFilter == TEXT("object"))
-		{
-			// For object filter, accept anything not in the other categories
-			bPassesFilter = !ParentClassName.Contains(TEXT("Actor")) && 
-			               !ParentClassName.Contains(TEXT("Component")) && 
-			               !ParentClassName.Contains(TEXT("Widget"));
-		}
-
-		if (!bPassesFilter)
-		{
-			continue;
-		}
-
 		// Create class info
 		FBlueprintClassInfo ClassInfo;
-		ClassInfo.ClassName = FPackageName::GetShortName(GeneratedClassName);
-		ClassInfo.ClassPath = GeneratedClassName;
+		ClassInfo.ClassName = ObjectNameOf(GeneratedClassPath);
+		ClassInfo.ClassPath = GeneratedClassPath;
 		ClassInfo.DisplayName = AssetData.AssetName.ToString();
 		ClassInfo.Category = FPackageName::GetShortName(AssetData.PackagePath.ToString());
-		ClassInfo.Description = FString::Printf(TEXT("Blueprint class derived from %s"), *FPackageName::GetShortName(ParentClassName));
-		ClassInfo.ParentClass = FPackageName::GetShortName(ParentClassName);
+		ClassInfo.ParentClass = ObjectNameOf(ParentClassPath);
+		ClassInfo.Description = FString::Printf(TEXT("Blueprint class derived from %s"), *ClassInfo.ParentClass);
 		ClassInfo.Module = TEXT("Game"); // Blueprint classes are typically in game module
 		ClassInfo.Icon = TEXT("Blueprint");
-		ClassInfo.bIsAbstract = false; // Blueprints are not abstract
-		ClassInfo.bIsDeprecated = false; // Already filtered
+		ClassInfo.bIsAbstract = (ClassFlags & CLASS_Abstract) != 0;
+		ClassInfo.bIsDeprecated = (ClassFlags & CLASS_Deprecated) != 0;
 		ClassInfo.bIsBlueprintable = true;
 		ClassInfo.bIsNative = false;
 		ClassInfo.bIsCommonClass = false;
@@ -378,51 +393,10 @@ void FN2CMcpSearchBlueprintClassesTool::CollectBlueprintClasses(TArray<FBlueprin
 	}
 }
 
-void FN2CMcpSearchBlueprintClassesTool::AddCommonClasses(TArray<FBlueprintClassInfo>& OutClasses, const FString& ClassTypeFilter) const
+bool FN2CMcpSearchBlueprintClassesTool::IsCommonClassPath(const FString& ClassPath) const
 {
-	auto AddCommonClassList = [this, &OutClasses](const TArray<FString>& ClassPaths, const FString& RequiredType, const FString& CurrentFilter)
-	{
-		if (CurrentFilter != TEXT("all") && CurrentFilter != RequiredType)
-		{
-			return;
-		}
-
-		for (const FString& ClassPath : ClassPaths)
-		{
-			// Try to find the actual class
-			UClass* Class = FindObject<UClass>(nullptr, *ClassPath);
-			if (!Class)
-			{
-				// Try loading it
-				Class = LoadObject<UClass>(nullptr, *ClassPath);
-			}
-
-			if (Class && CanCreateBlueprintOfClass(Class))
-			{
-				FBlueprintClassInfo ClassInfo;
-				ClassInfo.ClassName = Class->GetName();
-				ClassInfo.ClassPath = ClassPath;
-				ClassInfo.DisplayName = GetClassDisplayName(Class);
-				ClassInfo.Category = TEXT("Common");
-				ClassInfo.Description = GetClassDescription(Class);
-				ClassInfo.ParentClass = Class->GetSuperClass() ? Class->GetSuperClass()->GetName() : TEXT("");
-				ClassInfo.Module = GetClassModule(Class);
-				ClassInfo.Icon = GetClassIcon(Class);
-				ClassInfo.bIsAbstract = Class->HasAnyClassFlags(CLASS_Abstract);
-				ClassInfo.bIsDeprecated = Class->HasAnyClassFlags(CLASS_Deprecated);
-				ClassInfo.bIsBlueprintable = true;
-				ClassInfo.bIsNative = true;
-				ClassInfo.bIsCommonClass = true;
-
-				OutClasses.Add(ClassInfo);
-			}
-		}
-	};
-
-	AddCommonClassList(CommonActorClasses, TEXT("actor"), ClassTypeFilter);
-	AddCommonClassList(CommonComponentClasses, TEXT("actorComponent"), ClassTypeFilter);
-	AddCommonClassList(CommonObjectClasses, TEXT("object"), ClassTypeFilter);
-	AddCommonClassList(CommonWidgetClasses, TEXT("userWidget"), ClassTypeFilter);
+	return CommonActorClasses.Contains(ClassPath) || CommonComponentClasses.Contains(ClassPath)
+		|| CommonObjectClasses.Contains(ClassPath) || CommonWidgetClasses.Contains(ClassPath);
 }
 
 bool FN2CMcpSearchBlueprintClassesTool::PassesClassTypeFilter(const UClass* Class, const FString& ClassTypeFilter) const
@@ -566,42 +540,9 @@ FString FN2CMcpSearchBlueprintClassesTool::GetClassDescription(const UClass* Cla
 
 FString FN2CMcpSearchBlueprintClassesTool::GetClassDisplayName(const UClass* Class) const
 {
-	if (Class)
-	{
-		// Try display name metadata first
-		if (Class->HasMetaData(TEXT("DisplayName")))
-		{
-			return Class->GetMetaData(TEXT("DisplayName"));
-		}
-
-		// Use class name with spaces
-		FString ClassName = Class->GetName();
-		
-		// Remove common prefixes
-		if (ClassName.StartsWith(TEXT("A")))
-		{
-			ClassName = ClassName.RightChop(1);
-		}
-		else if (ClassName.StartsWith(TEXT("U")))
-		{
-			ClassName = ClassName.RightChop(1);
-		}
-
-		// Convert CamelCase to spaces
-		FString Result;
-		for (int32 i = 0; i < ClassName.Len(); i++)
-		{
-			if (i > 0 && FChar::IsUpper(ClassName[i]) && !FChar::IsUpper(ClassName[i - 1]))
-			{
-				Result += TEXT(" ");
-			}
-			Result += ClassName[i];
-		}
-
-		return Result;
-	}
-	
-	return TEXT("");
+	// The editor's display name: the DisplayName metadata, otherwise the name split at capitals. UClass names have no
+	// C++ prefix, so nothing is stripped (before card 0288 Actor showed as 'ctor').
+	return Class ? Class->GetDisplayNameText().ToString() : FString();
 }
 
 FString FN2CMcpSearchBlueprintClassesTool::GetClassIcon(const UClass* Class) const
@@ -659,7 +600,7 @@ bool FN2CMcpSearchBlueprintClassesTool::IsPluginClass(const FString& ClassPath) 
 }
 
 TArray<FN2CMcpSearchBlueprintClassesTool::FBlueprintClassInfo> FN2CMcpSearchBlueprintClassesTool::FilterAndScoreClasses(
-	const TArray<FBlueprintClassInfo>& AllClasses, const FString& SearchTerm, int32 MaxResults) const
+	const TArray<FBlueprintClassInfo>& AllClasses, const FString& SearchTerm, int32 MaxResults, int32& OutTotalMatches) const
 {
 	TArray<FBlueprintClassInfo> ScoredClasses;
 
@@ -675,16 +616,12 @@ TArray<FN2CMcpSearchBlueprintClassesTool::FBlueprintClassInfo> FN2CMcpSearchBlue
 		}
 	}
 
-	// Sort by score (descending)
+	OutTotalMatches = ScoredClasses.Num();
+
+	// Sort by score (descending): the common-class bonus is part of the score, not a tier above it
 	ScoredClasses.Sort([](const FBlueprintClassInfo& A, const FBlueprintClassInfo& B)
 	{
-		// Common classes get priority
-		if (A.bIsCommonClass != B.bIsCommonClass)
-		{
-			return A.bIsCommonClass;
-		}
-		
-		// Then sort by score
+		// Sort by score
 		if (A.RelevanceScore != B.RelevanceScore)
 		{
 			return A.RelevanceScore > B.RelevanceScore;
@@ -705,17 +642,16 @@ TArray<FN2CMcpSearchBlueprintClassesTool::FBlueprintClassInfo> FN2CMcpSearchBlue
 
 int32 FN2CMcpSearchBlueprintClassesTool::CalculateRelevanceScore(const FBlueprintClassInfo& ClassInfo, const FString& SearchTerm) const
 {
-	if (SearchTerm.IsEmpty())
-	{
-		// If no search term, all classes get base score
-		return 100;
-	}
-
 	int32 Score = 0;
 	FString SearchLower = SearchTerm.ToLower();
 
+	// No search term: every class gets the base score
+	if (SearchTerm.IsEmpty())
+	{
+		Score = 100;
+	}
 	// Exact match on class name
-	if (ClassInfo.ClassName.ToLower() == SearchLower)
+	else if (ClassInfo.ClassName.ToLower() == SearchLower)
 	{
 		Score += 1000;
 	}
