@@ -24,6 +24,7 @@
 #include "K2Node.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
+#include "Core/Widgets/SN2CMainWindow.h"
 #include "LLM/N2CLLMModule.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -263,15 +264,21 @@ void FN2CUsageRecordingSpec::Define()
 		}
 		const FN2CBlueprint Captured = Capture.GetValue().Blueprint;
 
+		// The caller saves the parsed response (card 0252: ProcessN2CJson writes nothing), as the main window does
 		const TSharedRef<int32> Completions = MakeShared<int32>(0);
-		Module->ProcessN2CJson(FN2CSerializer::ToJson(Captured, EN2CJsonStyle::Condensed), Captured,
-			FOnLLMResponseReceived::CreateLambda([Completions](const FString&) { ++(*Completions); }));
+		const TSharedRef<FN2CTranslationResponse> Parsed = MakeShared<FN2CTranslationResponse>();
+		Module->ProcessN2CJson(FN2CSerializer::ToJson(Captured, EN2CJsonStyle::Condensed),
+			FOnLLMResponseReceived::CreateLambda([Completions](const FString&) { ++(*Completions); }),
+			FOnN2CTranslationParsed::CreateLambda([Parsed](const FN2CTranslationResponse& Response, bool) { *Parsed = Response; }));
 		Pump(15.0, [Completions] { return *Completions > 0; });
 		if (!TestEqual(TEXT("the request completed once"), *Completions, 1))
 		{
 			return;
 		}
 		TestEqual(TEXT("the stub answered once"), *Stub.Hits, 1);
+		FN2CTagInfo Graph;
+		Graph.GraphName = TEXT("EventGraph");
+		SN2CMainWindow::SaveSingleTranslation(Graph, *Parsed, Captured);
 
 		const FString Folder = Module->GetLatestTranslationPath();
 		const FString TranslationPath = Folder / FString::Printf(TEXT("N2C_Translation_%s.json"), *FPaths::GetBaseFilename(Folder));

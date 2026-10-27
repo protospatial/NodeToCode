@@ -709,7 +709,12 @@ bool UN2CGraphStateManager::LoadTranslation(const FN2CGraphKey& Key, FN2CGraphTr
 		{
 			TArray<FString> Found;
 			IFileManager::Get().FindFiles(Found, *FPaths::Combine(FullPath, TEXT("*") + Extension), true, false);
-			Found.RemoveAll([](const FString& Name) { return Name.EndsWith(TEXT("_Notes.txt"), ESearchCase::IgnoreCase); });
+			// Not the notes, nor a declaration the archive wrote beside the implementation (<Stem>_Declaration<ext>)
+			Found.RemoveAll([&Extension](const FString& Name)
+			{
+				return Name.EndsWith(TEXT("_Notes.txt"), ESearchCase::IgnoreCase)
+					|| Name.EndsWith(TEXT("_Declaration") + Extension, ESearchCase::IgnoreCase);
+			});
 			if (Found.Num() == 1)
 			{
 				ImplementationPath = FPaths::Combine(FullPath, Found[0]);
@@ -781,8 +786,9 @@ bool UN2CGraphStateManager::LoadN2CJson(const FN2CGraphKey& Key, FString& OutJso
 	// Absolute, or relative to the project folder
 	const FString FullPath = FN2CPathUtils::ResolveTranslationRecordPath(State->Translation.OutputPath);
 
-	// The Blueprint capture UN2CLLMModule::SaveTranslationToDisk writes into a translation root, named as it names it:
-	// N2C_BP_<FPaths::GetBaseFilename(root)>.json (the root's timestamp has dots, so its last part is dropped)
+	// The Blueprint capture a single translation writes into its run folder: N2C_BP_<run folder>.json
+	// (FN2CTranslationArchive, card 0252). Older builds' root names had a dotted timestamp and dropped its last part
+	// (FPaths::GetBaseFilename); the archive's names have no dot, so GetBaseFilename finds both
 	auto SavedCaptureIn = [](const FString& RootFolder)
 	{
 		return FPaths::Combine(RootFolder, TEXT("N2C_BP_") + FPaths::GetBaseFilename(RootFolder) + TEXT(".json"));

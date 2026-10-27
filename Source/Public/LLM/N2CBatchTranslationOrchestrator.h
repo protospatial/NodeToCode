@@ -7,6 +7,7 @@
 #include "Models/N2CBatchTranslationTypes.h"
 #include "LLM/N2CLLMRequestHandle.h"
 #include "LLM/N2CLLMTypes.h"
+#include "LLM/N2CTranslationArchive.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "N2CBatchTranslationOrchestrator.generated.h"
 
@@ -207,28 +208,21 @@ private:
 	 * Collect nodes from a graph and serialize to JSON
 	 * @param Graph The graph to process
 	 * @param Blueprint The owning blueprint
-	 * @param OutCapture The captured Blueprint the JSON was written from (the translation is saved with it)
 	 * @return JSON string, empty on failure
 	 */
-	FString CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint, FN2CBlueprint& OutCapture);
+	FString CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint);
 
-	/** Create the batch output directory */
+	/** Starts the batch's translation archive run (BatchArchive) and sets BatchOutputPath to its folder */
 	void CreateBatchOutputDirectory();
 
 	/**
-	 * Save translation files for a completed item
-	 * @param Item The completed item to save
+	 * Writes a completed item through the batch's archive run (every response entry in its own folder under the
+	 * item's OutputFolderName) and records the tagged graph at its root entry's folder
 	 */
 	void SaveItemTranslation(const FN2CBatchTranslationItem& Item);
 
 	/** Generate the batch summary JSON file */
 	void GenerateBatchSummary();
-
-	/** Get the base path for translations */
-	FString GetTranslationBasePath() const;
-
-	/** Ensure a directory exists */
-	bool EnsureDirectoryExists(const FString& DirectoryPath) const;
 
 	/**
 	 * Generate combined markdown file from all successfully exported JSON files
@@ -253,8 +247,11 @@ private:
 	/** Whether cancellation has been requested */
 	bool bCancellationRequested = false;
 
-	/** Path to the batch output directory */
+	/** Path to the batch output directory: the archive run's folder */
 	FString BatchOutputPath;
+
+	/** The batch's translation archive run (card 0252); null between batches */
+	TSharedPtr<FN2CTranslationArchive> BatchArchive;
 
 	/** Time when the batch started */
 	double BatchStartTime = 0.0;

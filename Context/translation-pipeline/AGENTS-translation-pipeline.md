@@ -412,7 +412,8 @@ Key features:
 - Loads blueprints via `FSoftObjectPath::TryLoad()` without editor focus
 - Finds graphs by GUID in `UbergraphPages`, `FunctionGraphs`, `MacroGraphs`
 - Sequential translation reusing `UN2CLLMModule::ProcessN2CJson()`
-- Outputs to `BatchTranslation_{timestamp}/` with per-graph subfolders and `BatchSummary.json`
+- Outputs one translation archive run (`FN2CTranslationArchive`): `BatchTranslation_{time}_{run id}/` with one
+  folder per item and one per response entry inside it, `manifest.json` and `BatchSummary.json`
 - Generates combined markdown file for easy LLM chat upload
 - Blueprint caching to avoid reloading
 

@@ -572,7 +572,8 @@ void FN2CBatchToolsSpec::Define()
 				const FString Folder = Item->GetStringField(TEXT("outputDirectory"));
 				Folders.Add(Folder);
 				TestTrue(TEXT("inside the output folder"), FPaths::IsUnderDirectory(Folder, Output.Path));
-				TestTrue(TEXT("the .py file is saved"), FPaths::FileExists(Folder / TEXT("EventGraph.py")));
+				// The item folder holds one folder per entry of the response (card 0252's archive layout)
+				TestTrue(TEXT("the .py file is saved"), FPaths::FileExists(Folder / TEXT("EventGraph") / TEXT("EventGraph.py")));
 				const TArray<TSharedPtr<FJsonValue>>* Files = nullptr;
 				TestTrue(TEXT("files listed"), Item->TryGetArrayField(TEXT("files"), Files) && Files->ContainsByPredicate(
 					[](const TSharedPtr<FJsonValue>& File) { return File->AsString().EndsWith(TEXT("EventGraph.py")); }));

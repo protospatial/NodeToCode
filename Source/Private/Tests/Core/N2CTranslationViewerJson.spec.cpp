@@ -26,16 +26,12 @@
 // The graph state singleton, swapped for an isolated manager so the host project's BlueprintGraphState.json is untouched
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonStateInstance, UN2CGraphStateManager**, &UN2CGraphStateManager::Instance)
 
-// The LLM module's latest-save fields, put back after each case
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonLatestPath, FString UN2CLLMModule::*, &UN2CLLMModule::LatestTranslationPath)
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonLatestLanguage, EN2CCodeLanguage UN2CLLMModule::*, &UN2CLLMModule::LatestTranslationLanguage)
-
 // The main window's single-translate state and completion, and the viewer it shows
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonWindowViewer, TSharedPtr<SN2CTranslationViewer> SN2CMainWindow::*,
 	&SN2CMainWindow::TranslationViewer)
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonPendingGraph, FN2CTagInfo SN2CMainWindow::*, &SN2CMainWindow::PendingSingleTranslateGraph)
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonPendingJson, FString SN2CMainWindow::*, &SN2CMainWindow::PendingSingleTranslateJson)
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonComplete, void (SN2CMainWindow::*)(const FN2CTranslationResponse&, bool),
+N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonComplete, void (SN2CMainWindow::*)(const FN2CTranslationResponse&, bool, const FN2CArchivedResponse&),
 	&SN2CMainWindow::OnSingleTranslationComplete)
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonContent, FString SN2CTranslationViewer::*, &SN2CTranslationViewer::CurrentJsonContent)
 
@@ -43,9 +39,9 @@ N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonContent, FString SN2CTranslationViewer::*,
  * The translation viewer's JSON tab holds the N2C JSON a translation was made from (card 0501). Before, it was empty
  * on both paths that open the viewer: the single translate showed the translation without the JSON it sent, and a
  * recorded single translation (Tag Manager "View translation") looked for <graph folder>/<graph>.json and
- * <graph folder>/N2C_BP_<graph folder>.json, while UN2CLLMModule::SaveTranslationToDisk writes the capture as
- * N2C_BP_<root>.json in the translation root, one folder above the graph folder the main window records.
- * Checks, with the real writers (SaveTranslationToDisk, SN2CMainWindow::RecordSingleTranslation) into a scratch
+ * <graph folder>/N2C_BP_<graph folder>.json, while the single translate writes the capture as N2C_BP_<run>.json in
+ * the run folder, one folder above the entry folder the main window records (card 0252's archive layout).
+ * Checks, with the real writer (SN2CMainWindow::SaveSingleTranslation, through FN2CTranslationArchive) into a scratch
  * output folder: UN2CGraphStateManager::LoadN2CJson returns the saved capture, also when the LLM named the graph
  * differently; and on a headless SN2CMainWindow, the single translate's completion shows the sent JSON and reopening
  * the recorded translation shows the saved capture. The batch layout is NodeToCode.Core.GraphState's.
@@ -59,8 +55,6 @@ BEGIN_DEFINE_SPEC(FN2CTranslationViewerJsonSpec, "NodeToCode.UI.TranslationViewe
 		UN2CGraphStateManager* SavedInstance = nullptr;
 		EN2CCodeLanguage SavedLanguage;
 		FString SavedOutput;
-		FString SavedLatestPath;
-		EN2CCodeLanguage SavedLatestLanguage;
 
 		FScopedState(const FString& StateDir, const FString& OutputDir)
 		{
@@ -74,10 +68,6 @@ BEGIN_DEFINE_SPEC(FN2CTranslationViewerJsonSpec, "NodeToCode.UI.TranslationViewe
 			SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
 			Settings->TargetLanguage = EN2CCodeLanguage::Cpp;
 			Settings->CustomTranslationOutputDirectory.Path = OutputDir;
-
-			UN2CLLMModule* Module = UN2CLLMModule::Get();
-			SavedLatestPath = Module->*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonLatestPath());
-			SavedLatestLanguage = Module->*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonLatestLanguage());
 		}
 
 		~FScopedState()
@@ -86,9 +76,6 @@ BEGIN_DEFINE_SPEC(FN2CTranslationViewerJsonSpec, "NodeToCode.UI.TranslationViewe
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->TargetLanguage = SavedLanguage;
 			Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
-			UN2CLLMModule* Module = UN2CLLMModule::Get();
-			Module->*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonLatestPath()) = SavedLatestPath;
-			Module->*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonLatestLanguage()) = SavedLatestLanguage;
 		}
 	};
 
@@ -161,13 +148,12 @@ void FN2CTranslationViewerJsonSpec::Define()
 			{
 				return;
 			}
-			if (!TestTrue(What + TEXT(": saved"), Module->SaveTranslationToDisk(Response, Blueprint))
-				|| !TestTrue(What + TEXT(": recorded"), SN2CMainWindow::RecordSingleTranslation(Tag, Response)))
+			if (!TestTrue(What + TEXT(": saved and recorded"), SN2CMainWindow::SaveSingleTranslation(Tag, Response, Blueprint)))
 			{
 				continue;
 			}
 
-			// The real save layout: the capture in the root, the code in <root>/<graph stem>
+			// The real save layout: the capture in the run folder, the code in <run>/<entry>
 			const FString Root = Module->GetLatestTranslationPath();
 			TArray<FString> Captures;
 			IFileManager::Get().FindFiles(Captures, *(Root / TEXT("N2C_BP_*.json")), true, false);
@@ -206,9 +192,10 @@ void FN2CTranslationViewerJsonSpec::Define()
 		{
 			return;
 		}
-		// What HandleOverlayTranslationRequest sends, and what the LLM module saves when the response arrives
+		// What HandleOverlayTranslationRequest sends, and what its completion saves and records when the response arrives
 		const FString Sent = FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed);
-		if (!TestTrue(TEXT("saved"), Module->SaveTranslationToDisk(Response, Blueprint)))
+		FN2CArchivedResponse Saved;
+		if (!TestTrue(TEXT("saved"), SN2CMainWindow::SaveSingleTranslation(Tag, Response, Blueprint, nullptr, &Saved)))
 		{
 			return;
 		}
@@ -221,7 +208,7 @@ void FN2CTranslationViewerJsonSpec::Define()
 		}
 		Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonPendingGraph()) = Tag;
 		Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonPendingJson()) = Sent;
-		(Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonComplete()))(Response, true);
+		(Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonComplete()))(Response, true, Saved);
 
 		TestTrue(TEXT("after the translate: the viewer is shown"), Window->IsTranslationViewerVisible());
 		TestEqual(TEXT("after the translate: the JSON tab holds the JSON sent"),

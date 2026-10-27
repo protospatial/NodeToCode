@@ -32,6 +32,7 @@
 #include "Editor.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Utils/N2CPathUtils.h"
+#include "Core/N2CSettings.h"
 #include "Utils/N2CGraphUtils.h"
 
 #define LOCTEXT_NAMESPACE "SN2CMainWindow"
@@ -695,34 +696,25 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
 	if (LLMModule && LLMModule->Initialize())
 	{
-		// Saved with this graph's capture, whatever is captured while the request is in flight
-		LLMModule->ProcessN2CJson(JsonContent, N2CBlueprint, FOnLLMResponseReceived::CreateLambda(
-			[WeakSelf, CapturedGraphName](const FString& Response)
+		// ProcessN2CJson saves nothing (card 0252): the result is written here, with this graph's capture and the
+		// provider, model and language it was sent with, whatever is captured or changed while it is in flight. It is
+		// saved and recorded even when this window is gone by the time it arrives.
+		const TSharedRef<const FN2CBlueprint> Capture = MakeShared<const FN2CBlueprint>(MoveTemp(N2CBlueprint));
+		const FN2CTagInfo RequestGraph = PendingSingleTranslateGraph;
+		const FN2CTranslationRunInfo RunInfo = MakeSingleRunInfo(*Capture);
+		LLMModule->ProcessN2CJson(JsonContent, FOnLLMResponseReceived(), FOnN2CTranslationParsed::CreateLambda(
+			[WeakSelf, CapturedGraphName, Capture, RequestGraph, RunInfo](const FN2CTranslationResponse& TranslationResponse, bool bSuccess)
 			{
-				// Parse response (can be done on any thread)
-				FN2CTranslationResponse TranslationResponse;
-				bool bSuccess = false;
-
-				TScriptInterface<IN2CLLMService> ActiveService = UN2CLLMModule::Get()->GetActiveService();
-				if (ActiveService.GetInterface())
-				{
-					UN2CResponseParserBase* Parser = ActiveService->GetResponseParser();
-					if (Parser && Parser->ParseLLMResponse(Response, TranslationResponse))
-					{
-						bSuccess = true;
-						UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] Overlay translation completed successfully"));
-					}
-				}
-				if (!bSuccess)
-				{
-					// The typed error (HTTP status, provider message) for the modal
-					const FN2CLLMConfig& ModuleConfig = UN2CLLMModule::Get()->GetConfig();
-					UN2CLLMModule::FillTranslationError(TranslationResponse, ModuleConfig.Provider, ModuleConfig.Model, Response);
-				}
-
 				// UI updates must happen on Game Thread
-				AsyncTask(ENamedThreads::GameThread, [WeakSelf, CapturedGraphName, TranslationResponse, bSuccess]()
+				AsyncTask(ENamedThreads::GameThread, [WeakSelf, CapturedGraphName, Capture, RequestGraph, RunInfo, TranslationResponse, bSuccess]()
 				{
+					FN2CArchivedResponse Saved;
+					if (bSuccess)
+					{
+						UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] Overlay translation completed successfully"));
+						SaveSingleTranslation(RequestGraph, TranslationResponse, *Capture, &RunInfo, &Saved);
+					}
+
 					TSharedPtr<SN2CMainWindow> StrongSelf = WeakSelf.Pin();
 					if (!StrongSelf.IsValid())
 					{
@@ -754,7 +746,7 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 					FN2CEditorIntegration::Get().SetTranslationInProgress(false);
 
 					// Call the completion handler
-					StrongSelf->OnSingleTranslationComplete(TranslationResponse, bSuccess);
+					StrongSelf->OnSingleTranslationComplete(TranslationResponse, bSuccess, Saved);
 				});
 			}
 		));
@@ -770,17 +762,17 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 
 // ==================== Single Translation Callbacks ====================
 
-void SN2CMainWindow::OnSingleTranslationComplete(const FN2CTranslationResponse& Response, bool bSuccess)
+void SN2CMainWindow::OnSingleTranslationComplete(const FN2CTranslationResponse& Response, bool bSuccess, const FN2CArchivedResponse& Saved)
 {
 	bIsSingleTranslationInProgress = false;
 
 	if (bSuccess && Response.Graphs.Num() > 0)
 	{
-		// Show translation in viewer, with the N2C JSON it was made from in the JSON tab
-		ShowTranslationViewer(Response.Graphs[0], PendingSingleTranslateGraph.GraphName, PendingSingleTranslateJson);
-
-		// Update translation state in state manager
-		RecordSingleTranslation(PendingSingleTranslateGraph, Response);
+		// Show the root entry (the graph that was asked for; SaveSingleTranslation recorded it), with the N2C JSON it
+		// was made from in the JSON tab
+		const FN2CArchivedEntry* Root = Saved.GetRoot();
+		const int32 Index = Root && Response.Graphs.IsValidIndex(Root->ResponseIndex) ? Root->ResponseIndex : 0;
+		ShowTranslationViewer(Response.Graphs[Index], PendingSingleTranslateGraph.GraphName, PendingSingleTranslateJson);
 	}
 
 	// Fire external delegate
@@ -791,27 +783,54 @@ void SN2CMainWindow::OnSingleTranslationComplete(const FN2CTranslationResponse& 
 	PendingSingleTranslateJson.Reset();
 }
 
-bool SN2CMainWindow::RecordSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response)
+FN2CTranslationRunInfo SN2CMainWindow::MakeSingleRunInfo(const FN2CBlueprint& Capture)
 {
+	const FN2CLLMConfig Config = UN2CLLMModule::MakeConfigFromSettings();
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	FN2CTranslationRunInfo Info;
+	Info.Kind = EN2CTranslationRunKind::Single;
+	Info.Name = Capture.Metadata.Name.IsEmpty() ? FString(TEXT("UnknownBlueprint")) : Capture.Metadata.Name;
+	Info.Provider = UN2CLLMModule::GetProviderName(Config.Provider);
+	Info.Model = Config.Model;
+	Info.Language = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+	return Info;
+}
+
+bool SN2CMainWindow::SaveSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response,
+	const FN2CBlueprint& Capture, const FN2CTranslationRunInfo* RunInfo, FN2CArchivedResponse* OutSaved)
+{
+	const FN2CTranslationRunInfo Info = RunInfo ? *RunInfo : MakeSingleRunInfo(Capture);
+	const TSharedPtr<FN2CTranslationArchive> Run = FN2CTranslationArchive::BeginRun(Info);
+	if (!Run.IsValid())
+	{
+		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CMainWindow] Translation of %s was not saved: no run folder"), *Graph.GraphName);
+		return false;
+	}
+
+	FN2CArchiveSource Source;
+	Source.Capture = &Capture;
+	Source.GraphName = Graph.GraphName;
+	Source.BlueprintPath = Graph.BlueprintPath;
+	Source.GraphGuid = Graph.GraphGuid;
+	FN2CArchivedResponse Saved;
+	Run->WriteResponse(Response, Source, FString(), Saved);
+	if (OutSaved)
+	{
+		*OutSaved = Saved;
+	}
+
+	// The tagged graph is recorded at its root entry's folder: <run>/<entry>/<entry><ext>
+	const FN2CArchivedEntry* Root = Saved.GetRoot();
 	FGuid GraphGuid;
-	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
-	if (Response.Graphs.Num() == 0 || !FGuid::Parse(Graph.GraphGuid, GraphGuid) || !LLMModule)
+	if (!Root || !FGuid::Parse(Graph.GraphGuid, GraphGuid) || !GraphGuid.IsValid() || !Response.Graphs.IsValidIndex(Root->ResponseIndex))
 	{
+		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CMainWindow] Translation of %s was not recorded"), *Graph.GraphName);
 		return false;
 	}
 
-	// SaveTranslationToDisk wrote <root>/<stem>/<stem><ext>, the stem from the graph name in the response
-	const FString Root = LLMModule->GetLatestTranslationPath();
-	const FString Stem = FN2CPathUtils::GetTranslationFileStem(Response.Graphs[0].GraphName);
-	if (Root.IsEmpty() || Stem.IsEmpty())
-	{
-		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CMainWindow] Translation of %s was not saved to disk; not recorded"), *Graph.GraphName);
-		return false;
-	}
-
-	// Create translation summary from the response
+	// Create translation summary from the root entry
 	FN2CTranslationSummary Summary;
-	const FN2CGraphTranslation& Translation = Response.Graphs[0];
+	const FN2CGraphTranslation& Translation = Response.Graphs[Root->ResponseIndex];
 	Summary.DeclarationPreview = Translation.Code.GraphDeclaration.Left(100);
 	TArray<FString> Lines;
 	Translation.Code.GraphImplementation.ParseIntoArrayLines(Lines, false);
@@ -822,10 +841,10 @@ bool SN2CMainWindow::RecordSingleTranslation(const FN2CTagInfo& Graph, const FN2
 		GraphGuid,
 		Graph.GraphName,
 		FSoftObjectPath(Graph.BlueprintPath),
-		FPaths::Combine(Root, Stem),
-		TEXT("Unknown"),
-		TEXT("Unknown"),
-		LLMModule->GetLatestTranslationLanguage(),
+		Root->Folder,
+		Info.Provider,
+		Info.Model,
+		Info.Language,
 		Summary
 	);
 	return true;
