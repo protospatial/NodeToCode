@@ -123,7 +123,6 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintNodeTool::Execute(const TSharedPtr<FJso
         }
         
         // Create transaction for undo/redo
-        FGuid TransactionGuid = FGuid::NewGuid();
         const FScopedTransaction Transaction(LOCTEXT("DeleteBlueprintNodes", "Delete Blueprint Nodes"));
         
         // Delete nodes
@@ -137,7 +136,7 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintNodeTool::Execute(const TSharedPtr<FJso
         ShowDeletionNotification(DeletedInfo.Num(), true);
         
         // Build and return result
-        TSharedPtr<FJsonObject> Result = BuildSuccessResult(DeletedInfo, ActiveBlueprint->GetName(), TransactionGuid);
+        TSharedPtr<FJsonObject> Result = BuildSuccessResult(DeletedInfo, ActiveBlueprint->GetName());
         
         FString ResultJson;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
@@ -413,14 +412,12 @@ bool FN2CMcpDeleteBlueprintNodeTool::DeleteNodes(
 
 TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintNodeTool::BuildSuccessResult(
     const TArray<FDeletedNodeInfo>& DeletedInfo,
-    const FString& BlueprintName,
-    const FGuid& TransactionGuid) const
+    const FString& BlueprintName) const
 {
     TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
     
     Result->SetBoolField(TEXT("success"), true);
     Result->SetStringField(TEXT("blueprintName"), BlueprintName);
-    Result->SetStringField(TEXT("transactionId"), TransactionGuid.ToString());
     Result->SetNumberField(TEXT("deletedCount"), DeletedInfo.Num());
     
     // Build array of deleted nodes

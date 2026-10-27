@@ -114,8 +114,7 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
   - `force` (optional, default false): Also delete the function's call nodes in this Blueprint, and delete a function
     that child Blueprints override
 - **Returns**: `success`, `deletedFunction` (`name`, `guid`), `referencesRemoved` (each `graphName`, `nodeId`,
-  `nodeTitle`), `blueprintPath`, `target` (the deleted function, taken before the delete), `transactionId`. `transactionId` is a new random GUID, not a handle to the undo
-  transaction
+  `nodeTitle`), `blueprintPath`, `target` (the deleted function, taken before the delete)
 - **Errors**: Call nodes in the same Blueprint without `force`: `Function '<name>' has <n> references and cannot be
   deleted. Use force=true to remove anyway.` `UserConstructionScript` and a few engine event names are protected
   (`IsSystemFunction`)

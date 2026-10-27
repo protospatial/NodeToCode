@@ -78,8 +78,7 @@ private:
                     TArray<FDeletedNodeInfo>& OutDeletedInfo);
     
     TSharedPtr<FJsonObject> BuildSuccessResult(const TArray<FDeletedNodeInfo>& DeletedInfo,
-                                              const FString& BlueprintName,
-                                              const FGuid& TransactionGuid) const;
+                                              const FString& BlueprintName) const;
     
     void ShowDeletionNotification(int32 DeletedCount, bool bSuccess) const;
 };

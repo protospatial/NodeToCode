@@ -4,6 +4,7 @@
 #include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpPinDefaultUtils.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_FunctionEntry.h"
 #include "Utils/N2CLogger.h"
@@ -56,7 +57,10 @@ namespace N2CMcpNodeSpawnPrivate
 		return true;
 	}
 
-	/** Puts Value on the Set node's value pin through the K2 schema; a warning text when it did not take */
+	/**
+	 * Puts Value on the Set node's value pin through the K2 schema, after the schema's own check (card 0278): the
+	 * reason it did not take, or empty when it did
+	 */
 	FString ApplyInputValue(UK2Node_Variable* Node, const FString& Value)
 	{
 		UEdGraphPin* ValuePin = Node ? Node->FindPin(Node->GetVarName(), EGPD_Input) : nullptr;
@@ -64,17 +68,17 @@ namespace N2CMcpNodeSpawnPrivate
 		{
 			return TEXT("The Set node has no value pin; the value was not applied");
 		}
-		GetDefault<UEdGraphSchema_K2>()->TrySetDefaultValue(*ValuePin, Value, /*bMarkAsModified*/ false);
-		if (ValuePin->DefaultValue.IsEmpty() && ValuePin->DefaultObject == nullptr && ValuePin->DefaultTextValue.IsEmpty())
+		FString Reason;
+		if (!FN2CMcpPinDefault::Apply(*ValuePin, Value, Reason))
 		{
-			return FString::Printf(TEXT("The value '%s' was not applied: the pin refused it"), *Value);
+			return FN2CMcpPinDefault::RefusalMessage(*ValuePin, Value, Reason, FN2CMcpPinDefault::Read(*ValuePin));
 		}
 		return FString();
 	}
 
 	/** The result object the four variable node tools share */
 	TSharedPtr<FJsonObject> BuildResult(UK2Node_Variable* Node, UBlueprint* Blueprint, UEdGraph* Graph, const FName VariableName,
-		const FEdGraphPinType& VarType, bool bSet, bool bLocal, const FString& Warning)
+		const FEdGraphPinType& VarType, bool bSet, bool bLocal, bool bValueSent, const FString& Warning)
 	{
 		const TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
 		Result->SetBoolField(TEXT("success"), true);
@@ -99,6 +103,15 @@ namespace N2CMcpNodeSpawnPrivate
 		}
 		Result->SetArrayField(TEXT("pins"), FN2CMcpNodeSpawn::PinsToJson(Node));
 		Result->SetObjectField(TEXT("variableType"), FN2CMcpNodeSpawn::VariableTypeJson(VarType));
+		if (bValueSent)
+		{
+			// Whether the value given for the Set node's pin took, and why not (card 0278); pins[] shows what it holds
+			Result->SetBoolField(TEXT("defaultValueApplied"), Warning.IsEmpty());
+			if (!Warning.IsEmpty())
+			{
+				Result->SetStringField(TEXT("defaultValueReason"), Warning);
+			}
+		}
 		if (!Warning.IsEmpty())
 		{
 			Result->SetStringField(TEXT("warning"), Warning);
@@ -334,7 +347,7 @@ TSharedPtr<FJsonObject> FN2CMcpNodeSpawn::CreateMemberVariableNode(UBlueprint* B
 	}
 	// Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
 	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
-	return BuildResult(Node, Blueprint, Graph, Property->GetFName(), VarType, bSet, /*bLocal*/ false, Warning);
+	return BuildResult(Node, Blueprint, Graph, Property->GetFName(), VarType, bSet, /*bLocal*/ false, bSet && !InputValue.IsEmpty(), Warning);
 }
 
 TSharedPtr<FJsonObject> FN2CMcpNodeSpawn::CreateLocalVariableNode(UBlueprint* Blueprint, UEdGraph* Graph, const FString& VariableName,
@@ -380,7 +393,7 @@ TSharedPtr<FJsonObject> FN2CMcpNodeSpawn::CreateLocalVariableNode(UBlueprint* Bl
 		FN2CLogger::Get().LogWarning(Warning);
 	}
 	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
-	return BuildResult(Node, Blueprint, Graph, LocalCopy.VarName, LocalCopy.VarType, bSet, /*bLocal*/ true, Warning);
+	return BuildResult(Node, Blueprint, Graph, LocalCopy.VarName, LocalCopy.VarType, bSet, /*bLocal*/ true, bSet && !InputValue.IsEmpty(), Warning);
 }
 
 #undef LOCTEXT_NAMESPACE

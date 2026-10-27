@@ -286,6 +286,16 @@ its environment when no key is saved, so a live check never types or saves a key
   to every call. Every call must succeed with a `target` naming the renamed function (`resolvedBy` `explicit`), and
   `list-blueprint-functions` must list the renamed function with the first ID. The folder is deleted. Report:
   `logs/live_graph_target_0152_<label>.json`.
+- `live_pin_default_0278.py --engine ... --project ... --label 5.8 [--no-cli] [--cli-model sonnet]` (no provider key)
+  checks that pin default writes take the K2 schema's verdict (card 0278) on an in-memory Actor Blueprint under a fresh
+  `/Game/N2CTest/PinDefault0278_<time>` folder, every call by `blueprintPath` and `graphName`. The probe adds Get All
+  Actors Of Class, Clamp (integer) and Line Trace By Channel and sets ActorClass to StaticMeshActor; `claude -p` with
+  only `mcp__nodetocode__*` then makes one set-input-pin-value call putting the Blueprint asset on ActorClass. That
+  call must be an error with the schema's reason (`is not a class`) and the `_C` class to send, the agent must report
+  it, and ActorClass must still hold StaticMeshActor. The probe then checks that `1.5` on the integer pin is refused
+  (Max keeps 7), that DrawDebugType's index `2` and display name `For One Frame` read back as `ForDuration` and
+  `ForOneFrame`, and that an empty value resets ActorClass to None. The folder is deleted. Report:
+  `logs/live_pin_default_0278_<label>.json`.
 - `live_non_context_search_0434.py --engine ... --project ... --label 5.8` (no provider key, no `claude -p`) checks
   `search-blueprint-nodes` with `contextSensitive` false (card 0434) on an in-memory Actor Blueprint under a fresh
   `/Game/N2CTest/NonContext0434_<time>` folder: "print string" and "branch" by `blueprintPath` with nothing focused,

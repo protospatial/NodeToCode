@@ -281,7 +281,7 @@ Searches for specific nodes in a Blueprint graph (the one blueprintPath plus gra
 
 **Set an input pin's default value**
 
-Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins). Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins). The engine checks the value first: one the pin refuses is an error and the old default stays. Enums take an entry name, display name or index. An empty value resets the pin to its default; newValue is what the pin holds afterwards. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|

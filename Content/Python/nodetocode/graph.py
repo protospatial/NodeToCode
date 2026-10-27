@@ -307,12 +307,15 @@ def set_pin_value(
     """
     Set the default value of an input pin on a Blueprint node.
 
-    Only works on input pins that are not connected and not execution pins.
+    Only works on input pins that are not connected and not execution pins. The engine checks the value first,
+    as set-input-pin-value does: a value the pin refuses (1.5 on an integer pin, a Blueprint asset path on a class
+    pin) returns success False with the reason, and the pin keeps its old default. An empty value resets the pin to
+    its default.
 
     Args:
         node_guid: GUID of the node containing the pin
         pin_guid: GUID of the pin to modify
-        value: The value to set (as string, will be converted to appropriate type)
+        value: The value to set (as string); an enum takes an entry name, display name or index; "" resets the pin
         pin_name: Optional pin name for fallback lookup if GUID fails
 
     Returns:
@@ -323,7 +326,7 @@ def set_pin_value(
                 pinGuid: str,
                 pinName: str,
                 oldValue: str,
-                newValue: str
+                newValue: str   # read back from the pin (an enum index comes back as the entry's name)
             },
             error: str or None
         }

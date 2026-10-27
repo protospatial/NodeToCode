@@ -49,7 +49,7 @@ private:
 	// Deletion operations
 	bool RemoveFunctionReferences(const TArray<UK2Node_CallFunction*>& CallNodes, 
 		TArray<FRemovedReference>& OutRemovedReferences);
-	bool DeleteFunctionGraph(UBlueprint* Blueprint, UEdGraph* FunctionGraph, FGuid& OutTransactionGuid);
+	bool DeleteFunctionGraph(UBlueprint* Blueprint, UEdGraph* FunctionGraph);
 	
 	// Post-deletion operations
 	void RefreshBlueprintEditor(UBlueprint* Blueprint) const;
@@ -57,8 +57,7 @@ private:
 	
 	// Result building
 	TSharedPtr<FJsonObject> BuildSuccessResult(const FString& FunctionName, const FGuid& FunctionGuid,
-		const FString& BlueprintPath, const TArray<FRemovedReference>& RemovedReferences,
-		const FGuid& TransactionGuid) const;
+		const FString& BlueprintPath, const TArray<FRemovedReference>& RemovedReferences) const;
 	
 	// Helper methods
 	// UBlueprint* GetFocusedBlueprint() const; // Removed

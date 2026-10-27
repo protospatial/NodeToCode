@@ -18,6 +18,7 @@
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "MCP/Utils/N2CMcpNodeActions.h"
 #include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
+#include "MCP/Utils/N2CMcpPinDefaultUtils.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CJsonContract.h"
 #include "Utils/N2CStableNames.h"
@@ -1370,19 +1371,18 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 	}
 
 	// Store old value
-	FString OldValue = TargetPin->GetDefaultAsString();
+	const FString OldValue = FN2CMcpPinDefault::Read(*TargetPin);
 
-	// Set the new value
-	const UEdGraphSchema* Schema = FocusedGraph->GetSchema();
-	if (!Schema)
+	// As set-input-pin-value: the schema checks the value before the node is touched, a refused value is an error with
+	// the schema's message and the old default stays (no transaction is opened), an empty value resets the pin (card 0278)
+	FString Prepared;
+	FString PrepareError;
+	if (!FN2CMcpPinDefault::Prepare(*TargetPin, Value, Prepared, PrepareError))
 	{
-		return MakeErrorJson(TEXT("Graph has no schema"));
+		return MakeErrorJson(FN2CMcpPinDefault::RefusalMessage(*TargetPin, Value, PrepareError, OldValue));
 	}
-
 	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonSetPinValue", "Python: Set Pin Value"));
-	TargetNode->Modify();
-
-	Schema->TrySetDefaultValue(*TargetPin, Value);
+	FN2CMcpPinDefault::Write(*TargetPin, Prepared);
 
 	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 
@@ -1391,7 +1391,8 @@ FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& Pi
 	Data->SetStringField(TEXT("pinGuid"), PinGuid);
 	Data->SetStringField(TEXT("pinName"), TargetPin->GetDisplayName().ToString());
 	Data->SetStringField(TEXT("oldValue"), OldValue);
-	Data->SetStringField(TEXT("newValue"), Value);
+	// What the pin holds now, read back
+	Data->SetStringField(TEXT("newValue"), FN2CMcpPinDefault::Read(*TargetPin));
 
 	Transaction.Reset(); // close the undo transaction before compiling
 	AddCompileResult(Data, CallScope.Flush());
