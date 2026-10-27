@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Models/N2CTranslation.h"
-#include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
+#include "Core/N2CTagTypes.h"
 #include "N2CBatchTranslationTypes.generated.h"
 
 /**

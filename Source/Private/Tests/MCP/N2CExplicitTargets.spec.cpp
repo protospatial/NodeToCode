@@ -7,7 +7,7 @@
 
 #include "Tests/N2CToolSpecHarness.h"
 #include "MCP/Python/N2CPythonBridge.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -260,11 +260,11 @@ void FN2CExplicitTargetsSpec::Define()
 			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("tag-blueprint-graph"), Args);
 			TestFalse(TEXT("tag-blueprint-graph: ") + N2CTest::ResultText(Result).Left(300), Result.bIsError);
 			ExpectExplicit(*this, TEXT("tag-blueprint-graph"), Result);
-			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(Function->GraphGuid);
+			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(Function->GraphGuid);
 			TestTrue(TEXT("the function carries the tag"), Tags.ContainsByPredicate([&Tag](const FN2CTaggedBlueprintGraph& T) { return T.Tag == Tag; }));
 			for (const FN2CTaggedBlueprintGraph& T : Tags)
 			{
-				UN2CTagManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
+				UN2CGraphStateManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
 			}
 		});
 	});
@@ -325,11 +325,11 @@ void FN2CExplicitTargetsSpec::Define()
 			const TSharedPtr<FJsonObject> Tagged = ParseEnvelope(UN2CPythonBridge::TagFocusedGraph(Tag, TEXT("Default"), FString(),
 				Test->Path(), Function->GetName()));
 			TestTrue(TEXT("TagFocusedGraph by path and graph name"), Tagged.IsValid() && Tagged->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess);
-			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(Function->GraphGuid);
+			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(Function->GraphGuid);
 			TestTrue(TEXT("the function carries the tag"), Tags.ContainsByPredicate([&Tag](const FN2CTaggedBlueprintGraph& T) { return T.Tag == Tag; }));
 			for (const FN2CTaggedBlueprintGraph& T : Tags)
 			{
-				UN2CTagManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
+				UN2CGraphStateManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
 			}
 
 			const TSharedPtr<FJsonObject> Missing = ParseEnvelope(UN2CPythonBridge::CompileFocusedBlueprint(TEXT("/Temp/N2CTargetSpec_NoSuchBlueprint")));

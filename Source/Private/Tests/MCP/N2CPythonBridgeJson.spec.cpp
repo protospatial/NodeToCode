@@ -14,7 +14,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSettings.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Models/N2CJsonContract.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Misc/FileHelper.h"
@@ -239,9 +239,9 @@ BEGIN_DEFINE_SPEC(FN2CPythonBridgeJsonSpec, "NodeToCode.Python.Bridge", N2C_TEST
 		{
 			if (Blueprint.IsValid())
 			{
-				for (const FN2CTaggedBlueprintGraph& Tag : UN2CTagManager::Get().GetTagsForGraph(Function ? Function->GraphGuid : FGuid()))
+				for (const FN2CTaggedBlueprintGraph& Tag : UN2CGraphStateManager::Get().GetTaggedGraphs(Function ? Function->GraphGuid : FGuid()))
 				{
-					UN2CTagManager::Get().RemoveTag(Tag.GraphGuid, Tag.Tag, Tag.Category);
+					UN2CGraphStateManager::Get().RemoveTag(Tag.GraphGuid, Tag.Tag, Tag.Category);
 				}
 				Package->SetDirtyFlag(false);
 				if (bOpen && GEditor)
@@ -427,7 +427,7 @@ void FN2CPythonBridgeJsonSpec::Define()
 			const FGuid GraphGuid = FGuid::NewGuid();
 			const FN2CTaggedBlueprintGraph Tagged(Awkward, Awkward, Awkward, GraphGuid, FunctionName,
 				FSoftObjectPath(FString::Printf(TEXT("/Game/N2CTest/%s.%s"), TEXT("BP_Quote"), TEXT("BP_Quote"))));
-			if (!TestTrue(TEXT("tag added"), UN2CTagManager::Get().AddTag(Tagged)))
+			if (!TestTrue(TEXT("tag added"), UN2CGraphStateManager::Get().AddTag(Tagged)))
 			{
 				return;
 			}
@@ -452,9 +452,9 @@ void FN2CPythonBridgeJsonSpec::Define()
 				TestEqual(TEXT("removed_count"), Removed->GetIntegerField(TEXT("removed_count")), 1);
 				TestEqual(TEXT("remaining_tags"), Removed->GetIntegerField(TEXT("remaining_tags")), 0);
 			}
-			for (const FN2CTaggedBlueprintGraph& Left : UN2CTagManager::Get().GetTagsForGraph(GraphGuid))
+			for (const FN2CTaggedBlueprintGraph& Left : UN2CGraphStateManager::Get().GetTaggedGraphs(GraphGuid))
 			{
-				UN2CTagManager::Get().RemoveTag(Left.GraphGuid, Left.Tag, Left.Category);
+				UN2CGraphStateManager::Get().RemoveTag(Left.GraphGuid, Left.Tag, Left.Category);
 			}
 		});
 

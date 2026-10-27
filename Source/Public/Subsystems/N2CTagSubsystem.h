@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
-#include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
+#include "Core/N2CTagTypes.h"
 #include "N2CTagSubsystem.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnN2CTagAdded, const FN2CTagInfo&, TagInfo);
@@ -75,7 +75,7 @@ public:
 
 private:
 	/** Handle tag added from C++ */
-	void HandleTagAdded(const FN2CTaggedBlueprintGraph& TaggedGraph);
+	void HandleTagAdded(const struct FN2CTagEntry& Tag, const struct FN2CGraphRef& Graph);
 	
 	/** Handle tag removed from C++ */
 	void HandleTagRemoved(const struct FN2CGraphKey& Graph, const FString& Tag);

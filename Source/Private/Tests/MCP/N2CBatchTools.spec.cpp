@@ -11,7 +11,7 @@
 #include "Tests/N2CTestHttpStub.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSettings.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
 #include "MCP/Tools/N2CToolCallContext.h"
@@ -473,11 +473,11 @@ void FN2CBatchToolsSpec::Define()
 			Tagged.GraphGuid = BP->EventGraph()->GraphGuid;
 			Tagged.GraphName = BP->EventGraph()->GetName();
 			Tagged.OwningBlueprint = FSoftObjectPath(BP->GetBlueprint());
-			if (!TestTrue(TEXT("tag added"), UN2CTagManager::Get().AddTag(Tagged)))
+			if (!TestTrue(TEXT("tag added"), UN2CGraphStateManager::Get().AddTag(Tagged)))
 			{
 				return;
 			}
-			ON_SCOPE_EXIT { UN2CTagManager::Get().RemoveTag(Tagged.GraphGuid, Tag, Tagged.Category); };
+			ON_SCOPE_EXIT { UN2CGraphStateManager::Get().RemoveTag(Tagged.GraphGuid, Tag, Tagged.Category); };
 
 			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 			Args->SetStringField(TEXT("tag"), Tag);

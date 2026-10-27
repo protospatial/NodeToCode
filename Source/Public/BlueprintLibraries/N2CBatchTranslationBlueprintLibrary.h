@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
+#include "Core/N2CTagTypes.h"
 #include "Models/N2CBatchTranslationTypes.h"
 #include "N2CBatchTranslationBlueprintLibrary.generated.h"
 

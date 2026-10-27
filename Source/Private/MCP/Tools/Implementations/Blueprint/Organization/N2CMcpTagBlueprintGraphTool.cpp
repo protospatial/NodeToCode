@@ -4,7 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateTypes.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Utils/N2CLogger.h"
@@ -90,7 +90,7 @@ FMcpToolCallResult FN2CMcpTagBlueprintGraphTool::Execute(const TSharedPtr<FJsonO
 		);
 		
 		// Add the tag using the tag manager
-		bool bSuccess = UN2CTagManager::Get().AddTag(TaggedGraph);
+		bool bSuccess = UN2CGraphStateManager::Get().AddTag(TaggedGraph);
 		
 		if (!bSuccess)
 		{

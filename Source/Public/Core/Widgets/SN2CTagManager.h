@@ -217,7 +217,7 @@ private:
 	FDelegateHandle OnTagsReloadedHandle;
 
 	/** Handle tag added event */
-	void HandleTagAdded(const struct FN2CTaggedBlueprintGraph& TagInfo);
+	void HandleTagAdded(const struct FN2CTagEntry& AddedTag, const struct FN2CGraphRef& Graph);
 
 	/** Handle tag removed event */
 	void HandleTagRemoved(const struct FN2CGraphKey& Graph, const FString& RemovedTag);
