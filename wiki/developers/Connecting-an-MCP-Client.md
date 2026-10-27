@@ -1,5 +1,6 @@
 While your project is open in the Unreal editor, NodeToCode runs an MCP server at **`http://127.0.0.1:27000/mcp`**
-(Streamable HTTP, one endpoint, no API key or auth header). Point your MCP client at that URL, or, for a client
+(Streamable HTTP, one endpoint, no API key or auth header unless you turn on
+[Requiring an MCP Token](Requiring-an-MCP-Token)). Point your MCP client at that URL, or, for a client
 that only starts local commands, at NodeToCode's stdio bridge. This page gives the setup for each client; which
 tools the client then sees is set in Project Settings, see [Choosing a Tool Mode](Choosing-a-Tool-Mode).
 
@@ -113,6 +114,7 @@ written.
 |---|---|
 | Failed to connect, or the client sees another project | Open the editor first, check **Enable MCP Server**, and use the URL in **Server Status** |
 | 403 | Use `127.0.0.1` or `localhost` in the URL; other host names and web page origins are refused |
+| 401 `Unauthorized` | **Require MCP Bearer Token** is on: send the token ([Requiring an MCP Token](Requiring-an-MCP-Token)) |
 | `Request body too large` (413) | The server takes requests up to 8 MiB; split the work into smaller tool calls |
 | `Session not found` (404) after the editor restarted | A restarted editor forgets its sessions: reconnect the client (Claude Code: `/mcp`, **Reconnect**) |
 | Fewer tools than expected | See [Choosing a Tool Mode](Choosing-a-Tool-Mode); a tool mode change needs an editor restart and a reconnect |

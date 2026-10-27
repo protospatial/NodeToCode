@@ -69,10 +69,15 @@ Stdio-to-HTTP bridge enabling MCP clients (Claude Desktop, etc.) to communicate 
     *   Session management with `Mcp-Session-Id` (and `MCP-Protocol-Version` after initialize); a 404 replays
         `initialize` and resends once; stdin EOF waits for calls in flight, then sends DELETE
     *   No read timeout by default (a held translation sends nothing until it finishes); `--timeout SECONDS` sets one
+    *   Bearer token (card 0183): `TokenSource` sends `Authorization: Bearer <token>` on every request (initialize
+        replays and DELETE too) from `--token-file`, else `NODETOCODE_MCP_TOKEN`, else the editor's per-user
+        `<UserSettingsDir>/NodeToCode/mcp-token`, read again for each request so a regenerated token is used at once; no
+        token, no header. A 401 is logged with where the token came from (never the token) and returned as the
+        JSON-RPC error with the request's id. Tests: `Tests/python/test_mcp_bridge_token.py`
     *   Debug mode with `--debug` flag (logs go to stderr)
 *   **Usage**:
     ```bash
-    python nodetocode_bridge.py [--project NAME_OR_PATH] [--port PORT [--host HOST]] [--url URL] [--timeout SECONDS] [--debug]
+    python nodetocode_bridge.py [--project NAME_OR_PATH] [--port PORT [--host HOST]] [--url URL] [--token-file PATH] [--timeout SECONDS] [--debug]
     ```
 *   **Tests**: `python -I -m unittest discover -s Content/Python/tests -p "test_mcp_bridge*.py"` (no editor; fake
     editors on http.server and fake discovery folders); live: `Tests/mcp_probe/live_stdio_bridge.py` and

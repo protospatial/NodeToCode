@@ -30,12 +30,16 @@ UE plugin's Streamable HTTP MCP server.
   variable) picks by project name, .uproject path or project folder, and without it every request gets an error
   listing the running editors. The bridge starts without an editor and looks again on every request until one
   answers, so it survives an editor that is still loading or restarts.
+- Bearer token (card 0183): when the editor has Require MCP Bearer Token on, /mcp needs "Authorization: Bearer
+  <token>". The bridge sends the token from --token-file, else the NODETOCODE_MCP_TOKEN environment variable, else the
+  per-user file the editor writes (<user settings dir>/NodeToCode/mcp-token), read again for every request so a
+  regenerated token is used at once. With no token it sends no header (the editor's default accepts that).
 
 Zero external dependencies - uses only the Python standard library.
 
 Usage:
     python nodetocode_bridge.py [--project NAME_OR_PATH] [--port PORT [--host HOST]] [--url URL]
-                                [--timeout SECONDS] [--debug]
+                                [--token-file PATH] [--timeout SECONDS] [--debug]
 """
 
 import argparse
@@ -52,6 +56,7 @@ DEFAULT_HOST = "127.0.0.1"
 ACCEPT = "application/json, text/event-stream"
 PROJECT_ENV = "NODETOCODE_PROJECT"
 DISCOVERY_DIR_ENV = "NODETOCODE_DISCOVERY_DIR"
+TOKEN_ENV = "NODETOCODE_MCP_TOKEN"
 NOTIFICATION_TIMEOUT = 30.0  # seconds; notifications are sent on the stdin reader thread
 CANCEL_RESEND_DELAY = 1.0  # seconds; a cancel that overtook its request in the editor is sent once more
 
@@ -135,21 +140,62 @@ def id_key(request_id: Any) -> str:
 # Finding the editor
 # ---------------------------------------------------------------------------------------------------------------------
 
+def user_settings_dir() -> str:
+    """FPlatformProcess::UserSettingsDir(): %LOCALAPPDATA% on Windows, ~/Library/Application Support/Epic on macOS and
+    ~/.config/Epic on Linux."""
+    home = os.path.expanduser("~")
+    if os.name == "nt":
+        return os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Application Support", "Epic")
+    return os.path.join(home, ".config", "Epic")
+
+
 def discovery_index_dir() -> str:
-    """The per-user folder of discovery entries: FPlatformProcess::UserSettingsDir()/NodeToCode/servers, that is
-    %LOCALAPPDATA% on Windows, ~/Library/Application Support/Epic on macOS and ~/.config/Epic on Linux.
-    NODETOCODE_DISCOVERY_DIR replaces the whole path."""
+    """The per-user folder of discovery entries: <user settings dir>/NodeToCode/servers. NODETOCODE_DISCOVERY_DIR
+    replaces the whole path."""
     override = os.environ.get(DISCOVERY_DIR_ENV)
     if override:
         return override
-    home = os.path.expanduser("~")
-    if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
-    elif sys.platform == "darwin":
-        base = os.path.join(home, "Library", "Application Support", "Epic")
-    else:
-        base = os.path.join(home, ".config", "Epic")
-    return os.path.join(base, "NodeToCode", "servers")
+    return os.path.join(user_settings_dir(), "NodeToCode", "servers")
+
+
+def default_token_file() -> str:
+    """The editor's bearer token file: <user settings dir>/NodeToCode/mcp-token (FN2CMcpAuthToken)"""
+    return os.path.join(user_settings_dir(), "NodeToCode", "mcp-token")
+
+
+class TokenSource:
+    """The bearer token the bridge sends: the --token-file file, else NODETOCODE_MCP_TOKEN, else the editor's per-user
+    token file. A file is read on every call, so a token the editor regenerated is used at once; None when there is
+    none (then no header is sent)."""
+
+    def __init__(self, token_file: Optional[str] = None, env: Optional[Dict[str, str]] = None) -> None:
+        self.explicit_file = token_file
+        self.env = os.environ if env is None else env
+
+    def _env_token(self) -> str:
+        return "" if self.explicit_file else (self.env.get(TOKEN_ENV) or "").strip()
+
+    def describe(self) -> str:
+        """Where the token comes from, for log lines (never the token itself)"""
+        if self._env_token():
+            return f"the {TOKEN_ENV} environment variable"
+        return self.explicit_file or default_token_file()
+
+    def get(self) -> Optional[str]:
+        value = self._env_token()
+        if value:
+            return value
+        path = self.explicit_file or default_token_file()
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                token = f.read().strip()
+        except OSError:
+            if self.explicit_file:
+                log_error(f"Cannot read the token file {path}")
+            return None
+        return token or None
 
 
 def pid_alive(pid: int) -> bool:
@@ -385,8 +431,10 @@ class SseParser:
 class Upstream:
     """The editor's /mcp endpoint plus the session state shared by all requests."""
 
-    def __init__(self, locator: EditorLocator, timeout: Optional[float] = None) -> None:
+    def __init__(self, locator: EditorLocator, timeout: Optional[float] = None,
+                 tokens: Optional[TokenSource] = None) -> None:
         self.locator = locator
+        self.tokens = tokens if tokens is not None else TokenSource()
         # None: wait as long as the editor takes. A held translate-focused-blueprint call (UE 5.6/5.7, or no
         # progress token) sends nothing until the translation is done.
         self.timeout = timeout
@@ -424,8 +472,16 @@ class Upstream:
                 self.url = None
                 self.session_id = None
 
-    def _headers(self) -> dict:
+    def _base_headers(self) -> dict:
+        """Content-Type, Accept and, when there is a token, Authorization"""
         headers = {"Content-Type": "application/json", "Accept": ACCEPT}
+        token = self.tokens.get()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
+    def _headers(self) -> dict:
+        headers = self._base_headers()
         with self._lock:
             if self.session_id:
                 headers["Mcp-Session-Id"] = self.session_id
@@ -460,7 +516,7 @@ class Upstream:
             if init_body is None:
                 return False
             log_debug("Replaying initialize to open a new session")
-            headers = {"Content-Type": "application/json", "Accept": ACCEPT}
+            headers = self._base_headers()
             try:
                 req = urllib.request.Request(url, data=init_body, headers=headers, method="POST")
                 with _opener.open(req, timeout=30) as resp:
@@ -588,6 +644,14 @@ class Upstream:
         """Emit a complete application/json body. Anything that is not a JSON-RPC message becomes an error with
         the request's id, and a notification never gets a reply."""
         text = body.decode("utf-8", "replace").strip()
+        if status == 401:
+            source = self.tokens.describe()
+            if self.tokens.get():
+                log_error("The editor requires a bearer token (Require MCP Bearer Token is on) and refused the one from "
+                          f"{source}")
+            else:
+                log_error("The editor requires a bearer token (Require MCP Bearer Token is on) and the bridge has none: "
+                          f"nothing in {source}")
         if not wants_reply:
             if text or status >= 300:
                 log_debug(f"No reply to a notification or response (HTTP {status}): {text[:200]}")
@@ -813,6 +877,9 @@ def main():
                         help="Connect to the editor on this port instead of finding it through its discovery entry")
     parser.add_argument("--host", default=DEFAULT_HOST, help="Host for --port (default 127.0.0.1)")
     parser.add_argument("--url", default=None, help="The editor's MCP endpoint, for example http://127.0.0.1:27000/mcp")
+    parser.add_argument("--token-file", default=None,
+                        help="File holding the editor's MCP bearer token (default: the NODETOCODE_MCP_TOKEN environment "
+                             "variable, else the editor's per-user mcp-token file)")
     parser.add_argument("--timeout", type=float, default=0,
                         help="Seconds to wait for the editor to send data (0, the default: no limit)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
@@ -828,7 +895,8 @@ def main():
     log_debug(f"Editor: {url or 'from the discovery entries in ' + discovery_index_dir()}"
               + (f", project {args.project}" if args.project and not url else ""))
 
-    upstream = Upstream(locator, args.timeout if args.timeout and args.timeout > 0 else None)
+    upstream = Upstream(locator, args.timeout if args.timeout and args.timeout > 0 else None,
+                        TokenSource(args.token_file))
     bridge = Bridge(upstream)
 
     try:

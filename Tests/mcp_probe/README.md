@@ -260,6 +260,16 @@ its environment when no key is saved, so a live check never types or saves a key
   `bEnableMcpServer=False`: the server starts, no Python tool is listed, one warning each), `user` (Saved/Config
   True: run-python, save-python-script and delete-python-script are listed) and `both` (project True, user False:
   none). The host files are put back byte for byte. Report: `logs/live_user_settings_0423.json`.
+- `live_bearer_token_0183.py --engine ... --project ... [--claude]` (no provider key; hold the `user-secrets` lock,
+  since it reads and may create the real `<UserSettingsDir>/NodeToCode/mcp-token`, which it puts back afterwards)
+  checks the optional bearer token (card 0183) in two headless sessions. `off` (the setting unset): no token and a
+  wrong one both get 200. `on` (`bRequireMcpBearerToken=True` in the user's Saved/Config layer): `/mcp/health` is 200
+  and does not hold the token; no token, a wrong one, or a session id without the token get 401 with
+  `WWW-Authenticate: Bearer`; the file's token gets 200 and tools/list. read-file and read-path cannot read the token
+  file, and the stdio bridge (`--url`, no token option) lists the tools. `N2C.Mcp.RegenerateToken`, sent through
+  run-python, makes the old token 401 and the new one 200, and the running bridge keeps working. With `--claude`, the
+  headless Claude Code CLI connects over HTTP with the documented `headers` snippet and calls a tool. No token is
+  printed. Report: `logs/live_bearer_token_0183.json`.
 - `live_focus_0150.py --engine ... --project ... --label 5.8 [--no-cli]` (no provider key) checks that the focused
   Blueprint follows what was opened last (card 0150): three in-memory Actor Blueprints under a fresh
   `/Game/N2CTest/Focus0150_<time>` folder, opened in turn with open-blueprint-asset, re-opened while already open,
