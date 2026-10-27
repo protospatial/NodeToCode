@@ -188,9 +188,11 @@ public:
 	 * Open a Blueprint asset in the editor.
 	 *
 	 * @param BlueprintPath Asset path of the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
-	 * @param FocusGraph Optional graph to focus: the exact name of one of the Blueprint's event, function or macro
-	 *        graphs (e.g., "EventGraph", "UserConstructionScript" for the construction script, or a function name).
-	 *        A name that matches no graph is not an error: the Blueprint opens and "focusedGraph" comes back empty.
+	 * @param FocusGraph Optional graph to focus: the name of one of the Blueprint's event, function, macro, interface or
+	 *        delegate graphs, matched case-insensitively (e.g., "EventGraph", "ConstructionScript" or
+	 *        "UserConstructionScript" for the construction script, or a function name). A name that matches no graph
+	 *        fails with "GRAPH_NOT_FOUND: ..." listing the Blueprint's graphs, and the Blueprint is not opened. Empty
+	 *        opens the Blueprint without focusing a graph.
 	 * @return JSON with success status and Blueprint info: {"blueprintName", "blueprintPath", "focusedGraph",
 	 *         "eventGraphCount", "functionCount"}
 	 */

@@ -64,6 +64,9 @@ struct NODETOCODE_API FN2CToolDescriptor
 	/** The tool keeps working during Play In Editor although it is not read-only (card 0170) */
 	bool bAllowedDuringPlaySession = false;
 
+	/** Arguments the input schema does not declare are refused (card 0194) */
+	bool bStrictArguments = false;
+
 	/**
 	 * The tool definition this descriptor was made from (cached when the tool was registered). It holds what only MCP
 	 * sends (_meta entries, anthropic/maxResultSizeChars, anthropic/alwaysLoad); ToMcpDefinition starts from it.
@@ -275,8 +278,9 @@ public:
 		const TSharedPtr<FJsonObject>& Arguments, const FN2CToolCallContextRef& Context);
 
 	/**
-	 * Checks Arguments against the input schema's "required" list: an argument that is absent or null is missing.
-	 * @return the InvalidArgument error naming the first missing argument, or unset when none is missing
+	 * Checks Arguments against the input schema's "required" list: an argument that is absent or null is missing. A
+	 * strict tool (bStrictArguments) also refuses arguments its schema's "properties" does not declare.
+	 * @return the InvalidArgument error naming the first missing argument or every unknown one, or unset when none
 	 */
 	static TOptional<FN2CToolError> CheckArguments(const FN2CToolDescriptor& Descriptor, const TSharedPtr<FJsonObject>& Arguments);
 

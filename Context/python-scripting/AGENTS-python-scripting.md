@@ -182,9 +182,10 @@ arguments and the keys of its `data`. Grouped:
     `data`: `blueprint_name`, `was_dirty`, `was_saved`
 *   `load_blueprint(path)` - Load Blueprint by asset path; `data`: `name`, `path`, `class_name`, `parent_class`
     (the parent's name, such as `Actor`)
-*   `open_blueprint(path, focus_graph="EventGraph")` - Open a Blueprint editor and focus a graph by its exact name
-    (`EventGraph`, `UserConstructionScript`, a function or macro name); an unknown name opens the Blueprint with
-    `focusedGraph` empty
+*   `open_blueprint(path, focus_graph=None)` - Open a Blueprint editor and focus a graph by name, matched
+    case-insensitively (`EventGraph`, `ConstructionScript` or `UserConstructionScript`, a function or macro name).
+    Without `focus_graph` it focuses the EventGraph, or none when the Blueprint has no EventGraph. An unknown name
+    fails with `GRAPH_NOT_FOUND` listing the Blueprint's graphs and does not open the Blueprint
 *   `open_blueprint_function(name)` - Focus a function graph of the open Blueprint
 
 **Graph Editing (the focused graph):**

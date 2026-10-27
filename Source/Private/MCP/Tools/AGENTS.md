@@ -275,7 +275,7 @@ export or translation work goes in the unfrozen toolsets.
 |---|---|
 | `BlueprintGraphTools` | 0276 (connect-pins replace and conversion links), 0295 (notification brushes, dead code) |
 | `BlueprintFunctionTools` | 0295; 0280 is done |
-| `BlueprintVariableTools` | 0291 (search-variable-types), 0295, 0274 (targets); 0283 is done |
+| `BlueprintVariableTools` | 0295, 0274 (targets); 0283 and 0291 are done |
 | `BlueprintCompileTools` | 0274 (targets); 0290 is done |
 | `BlueprintClassTools` | 0288 (search-blueprint-classes duplicates and counts) |
 | `BlueprintComponentTools` | 0274 (targets) |
@@ -679,6 +679,18 @@ fails on a tool without a row, a missing title or hint, a hint that breaks the r
 from the one the tool sets itself (the Play In Editor rule must not change behind the tool's back). So a tool that
 only reads still calls `SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly())`.
 
+### Arguments (`FN2CMcpArgumentParser`, card 0194)
+`TryGetRequiredString` takes only a JSON string: `5`, `true`, an object or null is refused with `Field 'x' must be a
+string.` (FJsonValue would turn them into text). A field that names a Blueprint member (a variable) uses
+`TryGetRequiredIdentifier`: FKismetNameValidator's rules (not empty or `None`, at most 100 characters, no `.`), without
+the Blueprint's taken names, which each tool handles. An enum-like field uses `TryGetOptionalEnum(Field, Allowed,
+Default, Out, Error)`: any case, the value back as listed, an unknown value refused with `INVALID_ARGUMENT: ...; valid
+values: ...`. A tool that should refuse arguments its schema does not declare (a misspelled `isInstanceEditible`) calls
+`SetStrictArguments(Definition)` after its `InputSchema` is complete: the schema then says `"additionalProperties":
+false` and the catalog answers `INVALID_ARGUMENT: Unknown argument for <tool>: <names>. Valid arguments: ...` before
+the tool runs. Every tool in `Implementations/Blueprint/Variables` is strict; `NodeToCode.Robustness.ArgumentParser`
+checks the rules.
+
 ### `SetAnnotations`
 Sets the four MCP behaviour hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), replacing
 any set before. Clients use them for permission prompts and parallel calls; they are hints, not a security boundary:
@@ -700,7 +712,7 @@ add the tool and a sample case to `NodeToCode.MCP.StructuredOutput`, which valid
 `Annotations`, and `_meta`: `Toolset` is sent
 as `_meta["nodetocode/toolset"]` (the toolset's name, not a top-level field), `MaxResultSizeChars` as `_meta["anthropic/maxResultSizeChars"]`,
 `bAlwaysLoad` as `_meta["anthropic/alwaysLoad"]: true`, and `Meta` holds any other `_meta` entries.
-`bIsLongRunning`, `bReturnsUntrustedContent` and `bAllowedDuringPlaySession` stay on the server.
+`bIsLongRunning`, `bReturnsUntrustedContent`, `bAllowedDuringPlaySession` and `bStrictArguments` stay on the server.
 
 `FN2CMcpToolManager::RegisterTool` builds a tool's definition once and keeps it: `tools/list`
 (`GetAllToolDefinitions`, sorted by name, so the list is the same on every call), `GetToolDefinition(Name)` (O(1)) and

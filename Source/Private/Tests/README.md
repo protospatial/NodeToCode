@@ -63,7 +63,6 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Graph` | connect-pins reports a malformed connection entry in failed and counts it | mcp-tools-graph-functions-25 (card 0276) |
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
-| `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
 | `NodeToCode.MCP.RunPython` | names the line of the code that raised in the traceback; keeps a multi-line string literal as written | mcp-tools-python-translation-resources-9 (card 0299) |
 | `NodeToCode.MCP.RunPython` | runs code with '.py ' in a comment | mcp-tools-python-translation-resources-8 (card 0299) |
 | `NodeToCode.MCP.RunPython` | does not see the previous call's result | mcp-tools-python-translation-resources-6 (card 0299) |

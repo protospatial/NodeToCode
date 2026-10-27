@@ -28,6 +28,41 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "UObject/Package.h"
+#include "EdGraphSchema_K2.h"
+#include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpEditorContext.h"
+
+UEdGraph* FN2CMcpBlueprintUtils::FindTopLevelGraph(const UBlueprint& Blueprint, const FString& GraphName, FString& OutErrorMsg)
+{
+	const TArray<UEdGraph*> Graphs = N2CMcpEditorContext::TopLevelGraphs(Blueprint);
+	// FString == ignores case
+	for (UEdGraph* Graph : Graphs)
+	{
+		if (Graph->GetName() == GraphName)
+		{
+			return Graph;
+		}
+	}
+	// "ConstructionScript", the name agents use, is the function graph UserConstructionScript (card 0286)
+	if (GraphName == TEXT("ConstructionScript"))
+	{
+		for (UEdGraph* Graph : Graphs)
+		{
+			if (Graph->GetFName() == UEdGraphSchema_K2::FN_UserConstructionScript)
+			{
+				return Graph;
+			}
+		}
+	}
+
+	TArray<FString> Names;
+	for (const UEdGraph* Graph : Graphs)
+	{
+		Names.Add(Graph->GetName());
+	}
+	OutErrorMsg = FString::Printf(TEXT("GRAPH_NOT_FOUND: %s has no graph named '%s'. Available graphs: %s"),
+		*Blueprint.GetName(), *GraphName, Names.IsEmpty() ? TEXT("(none)") : *FString::Join(Names, TEXT(", ")));
+	return nullptr;
+}
 
 UBlueprint* FN2CMcpBlueprintUtils::ResolveBlueprint(const FString& OptionalBlueprintPath, FString& OutErrorMsg)
 {

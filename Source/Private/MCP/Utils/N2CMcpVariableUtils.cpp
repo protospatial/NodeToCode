@@ -74,10 +74,18 @@ void FN2CMcpVariableUtils::AddContainerTypeSchemaProperties(TSharedPtr<FJsonObje
 	Properties->SetObjectField(TEXT("mapKeyTypeIdentifier"), MapKeyTypeProp);
 }
 
-void FN2CMcpVariableUtils::ParseContainerTypeArguments(const FN2CMcpArgumentParser& ArgParser, FString& OutContainerType, FString& OutMapKeyTypeIdentifier)
+const TArray<FString>& FN2CMcpVariableUtils::ContainerTypes()
 {
-	OutContainerType = ArgParser.GetOptionalString(TEXT("containerType"), TEXT("none"));
+	static const TArray<FString> Types = { TEXT("none"), TEXT("array"), TEXT("set"), TEXT("map") };
+	return Types;
+}
+
+bool FN2CMcpVariableUtils::ParseContainerTypeArguments(const FN2CMcpArgumentParser& ArgParser, FString& OutContainerType, FString& OutMapKeyTypeIdentifier,
+	FString& OutError)
+{
 	OutMapKeyTypeIdentifier = ArgParser.GetOptionalString(TEXT("mapKeyTypeIdentifier"));
+	// An unknown container ('list', 'TArray') used to fall through as a single value (card 0194)
+	return ArgParser.TryGetOptionalEnum(TEXT("containerType"), ContainerTypes(), TEXT("none"), OutContainerType, OutError);
 }
 
 void FN2CMcpVariableUtils::AddContainerInfoToResult(TSharedPtr<FJsonObject> Result, const FString& ContainerType, bool bIsLocalVariable)

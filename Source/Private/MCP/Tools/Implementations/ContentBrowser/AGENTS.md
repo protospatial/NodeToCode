@@ -71,15 +71,17 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
     plugin's `/<PluginName>/`), as the other read tools do
   - `bring_to_front` (optional, default true): Focus the editor window
   - `focus_graph` (optional): Name of an event, function, macro or delegate graph to focus, matched
-    case-insensitively (`FN2CMcpOpenBlueprintAssetTool::FocusOnGraph`). An Actor's construction script is the function
-    graph `UserConstructionScript`. An unknown name is not an error: the Blueprint opens and `focused_graph` is empty
+    case-insensitively (`FN2CMcpBlueprintUtils::FindTopLevelGraph`, shared with the Python bridge's `OpenBlueprint`).
+    An Actor's construction script is the function graph `UserConstructionScript`; `ConstructionScript` names it too.
+    An unknown name fails with `GRAPH_NOT_FOUND: <Blueprint> has no graph named '<name>'. Available graphs: ...`
+    and the Blueprint is not opened (card 0286). `focused_graph` is the graph's own name
 - **Returns**: `success`, `asset_path`, `editor_id`, `focused_graph`, `asset_type`, `blueprint_name`, `parent_class`,
   `graph_counts` (`event_graphs`, `function_graphs`, `macro_graphs`, `delegate_graphs`). A non-Blueprint asset fails
   with `Asset is not a blueprint`. `asset_type` (`GetBlueprintTypeString`) is `Widget` (a Widget Blueprint),
   `Animation` (an Anim Blueprint), `Component`, `Actor` or `Object` for a normal Blueprint, from its asset class and
   parent class, otherwise its `BlueprintType` (`Const`, `MacroLibrary`, `Interface`, `LevelScript`,
   `FunctionLibrary`). `event_graphs` counts the event graph pages (`UbergraphPages`), not the transient `EventGraphs`
-  list, which is empty outside a compile. `focus_graph` searches `N2CMcpEditorContext::TopLevelGraphs` (card 0503)
+  list, which is empty outside a compile. `focus_graph` searches `N2CMcpEditorContext::TopLevelGraphs` (cards 0503, 0286)
 - **Use Case**: Opening Blueprints for editing
 
 ### search-content-browser

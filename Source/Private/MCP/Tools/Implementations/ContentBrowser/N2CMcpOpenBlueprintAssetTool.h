@@ -38,13 +38,4 @@ private:
 	 * @return True if valid blueprint path
 	 */
 	bool ValidateBlueprintAssetPath(const FString& AssetPath, FString& OutErrorMsg) const;
-	
-	/**
-	 * Focuses on a specific graph within the blueprint editor
-	 * @param BlueprintEditor The blueprint editor instance
-	 * @param Blueprint The blueprint being edited
-	 * @param GraphName The name of the graph to focus on
-	 * @return True if the graph was found and focused
-	 */
-	bool FocusOnGraph(TSharedPtr<class IBlueprintEditor> BlueprintEditor, UBlueprint* Blueprint, const FString& GraphName) const;
 };
