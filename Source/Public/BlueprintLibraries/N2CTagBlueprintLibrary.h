@@ -82,13 +82,14 @@ public:
 	/**
 	 * Add a tag to a specific Blueprint graph
 	 * @param BlueprintAsset The Blueprint containing the graph
-	 * @param GraphName The name of the graph to tag (empty for first graph)
+	 * @param GraphName The name of the graph to tag: any graph of the Blueprint (event graph, function, macro, delegate
+	 *        signature or collapsed graph). Empty for the first event graph, else the first function
 	 * @param Tag The tag name to apply
 	 * @param Category The category for the tag
 	 * @param Description Optional description for the tag
 	 * @param bSuccess Whether the tag was successfully added
 	 * @param ErrorMessage Error message if the operation failed
-	 * @return The created tag info
+	 * @return The created tag info; its GraphGuid names the graph that was matched
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Tags", meta = (DisplayName = "Tag Blueprint Graph", ExpandBoolAsExecs = "bSuccess"))
 	static FN2CTagInfo TagBlueprintGraph(

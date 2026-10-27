@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpListBlueprintTagsTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("list-blueprint-tags"),
-		TEXT("Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, or by tag name (optionally with category), or by category; a graphGuid filter overrides the tag and category filters."),
+		TEXT("Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, tag name and category, all optional; every filter given applies (case-insensitive tag and category)."),
 		N2CMcpToolsets::BlueprintTag
 	);
 	
@@ -95,6 +95,14 @@ FMcpToolCallResult FN2CMcpListBlueprintTagsTool::Execute(const TSharedPtr<FJsonO
 			// Get all tags
 			Tags = UN2CTagManager::Get().GetAllTags();
 		}
+
+		// Every filter given applies together (card 0294): a graphGuid list is narrowed by tag and category too, so
+		// appliedFilters below names only filters that shaped the result
+		Tags.RemoveAll([&TagFilter, &CategoryFilter](const FN2CTaggedBlueprintGraph& Entry)
+		{
+			return (!TagFilter.IsEmpty() && !Entry.Tag.Equals(TagFilter, ESearchCase::IgnoreCase))
+				|| (!CategoryFilter.IsEmpty() && !Entry.Category.Equals(CategoryFilter, ESearchCase::IgnoreCase));
+		});
 		
 		// Create response JSON
 		TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
