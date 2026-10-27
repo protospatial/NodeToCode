@@ -5,12 +5,14 @@
 #include "CoreMinimal.h"
 #include "Core/N2CGraphStateTypes.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
+#include "Core/N2CTagTypes.h"
 #include "Models/N2CTranslation.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "N2CGraphStateManager.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphStateChanged, const FN2CGraphKey& /*Graph*/);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphTagAdded, const FN2CGraphState& /*GraphState*/);
+/** A tag was added: the tag itself and the graph it was added to (card 0345: the added tag, not the graph's first) */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnN2CGraphTagAdded, const FN2CTagEntry& /*Tag*/, const FN2CGraphRef& /*Graph*/);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnN2CGraphTagRemoved, const FN2CGraphKey& /*Graph*/, const FString& /*Tag*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphTranslationUpdated, const FN2CGraphKey& /*Graph*/);
 /** A Blueprint moved or was renamed, and the entries that named its old path now name the new one */
@@ -230,11 +232,28 @@ public:
 	 */
 	TArray<FN2CTagEntry> GetTagsForGraph(const FN2CGraphKey& Key) const;
 
+	// ------------------------------------------------------------------------
+	// The tag store's projections (card 0345: this manager is the one tag store; UN2CTagManager is gone).
+	// FN2CTaggedBlueprintGraph is one tag on one graph, as the Blueprint library, the MCP tag tools and the views use it.
+	// ------------------------------------------------------------------------
+
+	/** Every tag of every graph, one row per (graph, tag) */
+	TArray<FN2CTaggedBlueprintGraph> GetAllTags() const;
+
+	/** The tags of one graph */
+	TArray<FN2CTaggedBlueprintGraph> GetTaggedGraphs(const FN2CGraphKey& Key) const;
+
+	/** Every (graph, tag) row with this tag name (case-insensitive), in Category when it is not empty */
+	TArray<FN2CTaggedBlueprintGraph> FindTaggedGraphs(const FString& Tag, const FString& Category = TEXT("")) const;
+
+	/** Every (graph, tag) row in this category (case-insensitive) */
+	TArray<FN2CTaggedBlueprintGraph> FindTaggedGraphsInCategory(const FString& Category) const;
+
 	/**
-	 * Get all tags as legacy format (for backward compatibility)
-	 * @return Array of all tags in FN2CTaggedBlueprintGraph format
+	 * RemoveTagByName, also giving the first removed tag as a row (with its category and description)
+	 * @return how many tags were removed
 	 */
-	TArray<FN2CTaggedBlueprintGraph> GetAllTagsLegacy() const;
+	int32 RemoveTagByName(const FN2CGraphKey& Key, const FString& Tag, FN2CTaggedBlueprintGraph& OutRemovedTag);
 
 	// ========================================================================
 	// Translation State Operations
@@ -518,7 +537,7 @@ private:
 	void MarkDirty();
 
 	/** Per-graph broadcasts, held back during a bulk update */
-	void BroadcastTagAdded(const FN2CGraphState& State);
+	void BroadcastTagAdded(const FN2CGraphState& State, const FN2CTagEntry& Entry);
 	void BroadcastTagRemoved(const FN2CGraphKey& Key, const FString& Tag);
 	void BroadcastStateChanged(const FN2CGraphKey& Key);
 	void BroadcastTranslationUpdated(const FN2CGraphKey& Key);

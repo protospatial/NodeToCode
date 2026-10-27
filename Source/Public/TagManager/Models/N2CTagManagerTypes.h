@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
+#include "Core/N2CTagTypes.h"
 #include "N2CTagManagerTypes.generated.h"
 
 /**

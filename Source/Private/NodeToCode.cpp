@@ -9,7 +9,7 @@
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CTargetLanguage.h"
 #include "Editor/EditorEngine.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
@@ -183,7 +183,6 @@ void FNodeToCodeModule::HandlePreExit()
 
 void FNodeToCodeModule::ShutdownStateManagers()
 {
-    UN2CTagManager::ShutdownInstance();
     UN2CGraphStateManager::ShutdownInstance();
 }
 

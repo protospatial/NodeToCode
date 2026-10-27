@@ -7,7 +7,7 @@
 #include "Core/Style/N2CDesignTokens.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CEditorWindow.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Core/Style/N2CStyle.h"
@@ -64,13 +64,13 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 		*GraphName, *BlueprintPath, BlueprintEditor.IsValid() ? 1 : 0), EN2CLogSeverity::Debug);
 
 	// Get initial tag count
-	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(GetGraphKey());
+	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(GetGraphKey());
 	CachedTagCount = Tags.Num();
 
 	// Subscribe to tag manager events
-	OnTagAddedHandle = UN2CTagManager::Get().OnBlueprintTagAdded.AddRaw(this, &SN2CGraphOverlay::OnTagAdded);
-	OnTagRemovedHandle = UN2CTagManager::Get().OnBlueprintTagRemoved.AddRaw(this, &SN2CGraphOverlay::OnTagRemoved);
-	OnTagsReloadedHandle = UN2CTagManager::Get().OnTagsReloaded.AddRaw(this, &SN2CGraphOverlay::RefreshTagCount);
+	OnTagAddedHandle = UN2CGraphStateManager::Get().OnGraphTagAdded.AddRaw(this, &SN2CGraphOverlay::OnTagAdded);
+	OnTagRemovedHandle = UN2CGraphStateManager::Get().OnGraphTagRemoved.AddRaw(this, &SN2CGraphOverlay::OnTagRemoved);
+	OnTagsReloadedHandle = UN2CGraphStateManager::Get().OnGraphStatesReloaded.AddRaw(this, &SN2CGraphOverlay::RefreshTagCount);
 
 	// Subscribe to global translation state changes
 	OnTranslationStateChangedHandle = FN2CEditorIntegration::Get().OnTranslationStateChanged.AddRaw(
@@ -330,12 +330,12 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 
 SN2CGraphOverlay::~SN2CGraphOverlay()
 {
-	// Unsubscribe from tag manager events (it may already be shut down when the editor exits)
-	if (UN2CTagManager* TagManager = UN2CTagManager::GetIfExists())
+	// Unsubscribe from the tag store's events (it may already be shut down when the editor exits)
+	if (UN2CGraphStateManager* TagStore = UN2CGraphStateManager::GetIfExists())
 	{
-		TagManager->OnBlueprintTagAdded.Remove(OnTagAddedHandle);
-		TagManager->OnBlueprintTagRemoved.Remove(OnTagRemovedHandle);
-		TagManager->OnTagsReloaded.Remove(OnTagsReloadedHandle);
+		TagStore->OnGraphTagAdded.Remove(OnTagAddedHandle);
+		TagStore->OnGraphTagRemoved.Remove(OnTagRemovedHandle);
+		TagStore->OnGraphStatesReloaded.Remove(OnTagsReloadedHandle);
 	}
 	// Unsubscribe from global translation state
 	if (OnTranslationStateChangedHandle.IsValid())
@@ -359,7 +359,7 @@ SN2CGraphOverlay::~SN2CGraphOverlay()
 
 void SN2CGraphOverlay::RefreshTagCount()
 {
-	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(GetGraphKey());
+	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(GetGraphKey());
 	CachedTagCount = Tags.Num();
 }
 
@@ -469,7 +469,7 @@ FReply SN2CGraphOverlay::OnOpenWindowClicked()
 
 TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 {
-	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(GetGraphKey());
+	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(GetGraphKey());
 
 	TSharedRef<SVerticalBox> TagList = SNew(SVerticalBox);
 
@@ -586,8 +586,8 @@ TSharedRef<SWidget> SN2CGraphOverlay::CreateTagPopoverContent()
 	];
 
 	// Get existing tags and categories for the dropdowns
-	TArray<FString> ExistingTags = UN2CTagManager::Get().GetAllTagNames();
-	TArray<FString> ExistingCategories = UN2CTagManager::Get().GetAllCategories();
+	TArray<FString> ExistingTags = UN2CGraphStateManager::Get().GetAllTagNames();
+	TArray<FString> ExistingCategories = UN2CGraphStateManager::Get().GetAllCategories();
 
 	// Ensure "Default" is always an option for categories
 	if (!ExistingCategories.Contains(TEXT("Default")))
@@ -820,7 +820,7 @@ void SN2CGraphOverlay::OnAddTagRequested(const FString& TagName, const FString& 
 		FSoftObjectPath(GetBlueprintPath())
 	);
 
-	if (UN2CTagManager::Get().AddTag(NewTag))
+	if (UN2CGraphStateManager::Get().AddTag(NewTag))
 	{
 		RefreshTagCount();
 		// Refresh the popover by toggling it
@@ -834,7 +834,7 @@ void SN2CGraphOverlay::OnAddTagRequested(const FString& TagName, const FString& 
 
 void SN2CGraphOverlay::OnRemoveTagRequested(const FN2CTaggedBlueprintGraph& TagInfo)
 {
-	if (UN2CTagManager::Get().RemoveTag(FN2CGraphKey(TagInfo.OwningBlueprint, TagInfo.GraphGuid), TagInfo.Tag, TagInfo.Category))
+	if (UN2CGraphStateManager::Get().RemoveTag(FN2CGraphKey(TagInfo.OwningBlueprint, TagInfo.GraphGuid), TagInfo.Tag, TagInfo.Category))
 	{
 		RefreshTagCount();
 		// Refresh the popover by toggling it
@@ -846,10 +846,10 @@ void SN2CGraphOverlay::OnRemoveTagRequested(const FN2CTaggedBlueprintGraph& TagI
 	}
 }
 
-void SN2CGraphOverlay::OnTagAdded(const FN2CTaggedBlueprintGraph& TagInfo)
+void SN2CGraphOverlay::OnTagAdded(const FN2CTagEntry& AddedTag, const FN2CGraphRef& Graph)
 {
 	// A copy of this Blueprint has graphs with the same GUIDs: only this Blueprint's graph counts
-	if (FN2CGraphKey(TagInfo.OwningBlueprint, TagInfo.GraphGuid) == GetGraphKey())
+	if (Graph.GetKey() == GetGraphKey())
 	{
 		RefreshTagCount();
 	}

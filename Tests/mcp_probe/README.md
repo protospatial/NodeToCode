@@ -511,6 +511,39 @@ unused flags, links and errors. Captures, translations and the report go to `log
 `/Game/N2CTest/Matrix0246_<time>` and the export and batch folders it made are deleted. The results are in
 `Context/translation-pipeline/graph-type-coverage.md`.
 
+## Material Editor in headless sessions (card 0458)
+
+`live_material_editor_probe.py --engine ... --project ... [--modes nullrhi nullrhi_offscreen gpu_offscreen]` starts one
+editor per mode (`editor_session.py`, run-python over MCP), opens `/Engine/BasicShapes/BasicShapeMaterial` with
+`AssetEditorSubsystem.open_editor_for_assets`, lets it tick 20 s, checks for the editor's working copy, closes it with
+`close_all_editors_for_asset`, ticks 20 s more and checks the editor is still alive. Modes: `nullrhi` is `-nullrhi`
+alone (what `build.ps1 -Test` passes), `nullrhi_offscreen` adds `-RenderOffScreen`, `gpu_offscreen` drops `-nullrhi`
+and keeps `-RenderOffScreen`. Report: `logs/live_material_editor_probe_<ver>.json`, one editor log per mode.
+
+Observed on 2026-10-27 (dev-2.0 56fcbb8), every cell from a fresh editor:
+
+| Engine | Mode | Opens | Closes | Crash or null dereference | Working copy (`GetMaterialInterface`) |
+|---|---|---|---|---|---|
+| 5.6 | `-nullrhi` | starts to open | never reached | **Fatal** about 6 s after the open, while ticking: `GenericWindow.cpp:113` "GetRestoredDimensions is not expected to be called on this platform" | not reached |
+| 5.6 | `-nullrhi -RenderOffScreen` | yes | yes | none | yes |
+| 5.6 | GPU, `-RenderOffScreen` | yes | yes | none | yes |
+| 5.7 | `-nullrhi` | starts to open | never reached | **Fatal**, same line and message | not reached |
+| 5.7 | `-nullrhi -RenderOffScreen` | yes | yes | none | yes |
+| 5.7 | GPU, `-RenderOffScreen` | yes | yes | none | yes |
+| 5.8 | `-nullrhi` | yes | yes | none | yes |
+| 5.8 | `-nullrhi -RenderOffScreen` | yes | yes | none | yes |
+| 5.8 | GPU, `-RenderOffScreen` | yes | yes | none | yes |
+
+- Working copy: in every surviving session a new `PreviewMaterial` appears at `/Engine/Transient.BasicShapeMaterial`
+  (the original's name, in the transient package) with the original's 2 expressions. `FMaterialEditor::GetMaterialInterface()`
+  returns that copy (`return Material;`, made by `StaticDuplicateObject(..., UPreviewMaterial::StaticClass())`), so a
+  "focused material" read through the Material Editor gets the copy, not `/Engine/BasicShapes/BasicShapeMaterial`.
+- No null dereference of `GetMaterialResource()` was seen in any mode, including 5.8 `-nullrhi`.
+- Under `-nullrhi` the editor's selection is empty (`get_material_selected_nodes` 0); with a GPU it holds the root node (1).
+- Every engine has a headless mode that survives (`-nullrhi -RenderOffScreen`), so Material Editor specs (cards 0463,
+  0464) need not be 5.8-only, but on 5.6 and 5.7 they must not run in a `-nullrhi` session without `-RenderOffScreen`,
+  which is what `build.ps1 -Test` starts today.
+
 ## Migration check
 
 The 1.2.x to 2.0 migration check (card 0079) lives in `Tests/Migration/` and reuses `editor_session.py`,

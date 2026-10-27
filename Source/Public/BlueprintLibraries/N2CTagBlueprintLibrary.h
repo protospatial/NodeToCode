@@ -5,48 +5,10 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
+#include "Core/N2CTagTypes.h"
 #include "Models/N2CTranslation.h"
 #include "Engine/Blueprint.h"
 #include "N2CTagBlueprintLibrary.generated.h"
-
-/**
- * @struct FN2CTagInfo
- * @brief Simplified tag information structure for Blueprint use
- */
-USTRUCT(BlueprintType)
-struct NODETOCODE_API FN2CTagInfo
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadWrite, Category = "NodeToCode|Tags")
-	FString Tag;
-
-	UPROPERTY(BlueprintReadWrite, Category = "NodeToCode|Tags")
-	FString Category = TEXT("Default");
-
-	UPROPERTY(BlueprintReadWrite, Category = "NodeToCode|Tags")
-	FString Description;
-
-	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Tags")
-	FString GraphGuid;
-
-	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Tags")
-	FString GraphName;
-
-	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Tags")
-	FString BlueprintPath;
-
-	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Tags")
-	FDateTime Timestamp;
-
-	FN2CTagInfo() {}
-
-	/** Create from FN2CTaggedBlueprintGraph */
-	static FN2CTagInfo FromTaggedGraph(const FN2CTaggedBlueprintGraph& TaggedGraph);
-
-	/** Convert to FN2CTaggedBlueprintGraph */
-	FN2CTaggedBlueprintGraph ToTaggedGraph() const;
-};
 
 /**
  * @class UN2CTagBlueprintLibrary
@@ -258,4 +220,8 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Translation", meta = (DisplayName = "Load Translation From Tag Info"))
 	static bool LoadTranslationFromTagInfo(const FN2CTagInfo& TagInfo, FN2CGraphTranslation& OutTranslation);
+
+private:
+	/** The focused Blueprint editor's graph and its Blueprint; false with a NO_FOCUSED_GRAPH message when there is none */
+	static bool GetFocusedGraph(UBlueprint*& OutBlueprint, UEdGraph*& OutGraph, FString& OutError);
 };
