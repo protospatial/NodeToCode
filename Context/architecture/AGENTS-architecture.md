@@ -57,7 +57,8 @@ Connects plugin logic to the Unreal Editor UI.
 *   **`Source/Public/Core/N2CEditorIntegration.h` / `Source/Private/Core/N2CEditorIntegration.cpp` (`FN2CEditorIntegration`)**: Singleton for Blueprint Editor integration.
     *   Registers toolbar extensions
     *   Maps UI commands (`FN2CToolbarCommand`) to handlers
-    *   Manages graph tab wrapping (the overlays); its `GetActiveBlueprintEditor` and `GetFocusedGraphFromActiveEditor` forward to the tracker below
+    *   Injects the graph overlays (card 0293): into the exact `SGraphEditor` that shows the graph (`FindGraphEditorFor`: the graph's own document tab, else `SGraphEditor::FindGraphEditorForGraph` limited to the editor's tabs; never another graph's tab), into the `SOverlay` around its graph panel, one per graph editor (`InjectedGraphOverlays` keyed by `TWeakPtr<SGraphEditor>`). Triggers: an editor opening, a graph tab coming to the front, and a 2 s poll (`n2c.OverlayPoll`) that backs off per graph and gives up after `MaxPollInjectionAttempts`. Shutdown takes every overlay out again (`RemoveInjectedOverlays`, `SOverlay::RemoveSlot`). Injection logs at Debug only
+    *   Its `GetActiveBlueprintEditor` and `GetFocusedGraphFromActiveEditor` forward to the tracker below
     *   Provides `TranslateFocusedBlueprintAsync()` for MCP tools
     *   Manages global translation state across overlays
     *   Delegates: `OnTranslationStateChanged`, `OnOverlayTranslationRequested`

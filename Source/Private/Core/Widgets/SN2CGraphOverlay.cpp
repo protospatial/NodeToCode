@@ -40,9 +40,6 @@
 
 void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 {
-	FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: ENTER"), EN2CLogSeverity::Warning);
-
-	FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: Storing arguments"), EN2CLogSeverity::Warning);
 	GraphGuid = InArgs._GraphGuid;
 	BlueprintPath = InArgs._BlueprintPath;
 	GraphName = InArgs._GraphName;
@@ -62,21 +59,18 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 		UnsupportedReason = bCanTranslate ? FText::GetEmpty() : FText::FromString(Reason);
 	}
 
-	FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: GraphName=%s, BlueprintPath=%s"), *GraphName, *BlueprintPath), EN2CLogSeverity::Warning);
-	FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: BlueprintEditor valid=%d"), BlueprintEditor.IsValid() ? 1 : 0), EN2CLogSeverity::Warning);
+	// Construction traces log at Debug: one per overlay, not a block of warnings per graph tab (cards 0293, 0500)
+	FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: GraphName=%s, BlueprintPath=%s, BlueprintEditor valid=%d"),
+		*GraphName, *BlueprintPath, BlueprintEditor.IsValid() ? 1 : 0), EN2CLogSeverity::Debug);
 
 	// Get initial tag count
-	FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: Getting initial tag count"), EN2CLogSeverity::Warning);
 	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(GetGraphKey());
 	CachedTagCount = Tags.Num();
-	FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: CachedTagCount=%d"), CachedTagCount), EN2CLogSeverity::Warning);
 
 	// Subscribe to tag manager events
-	FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: Subscribing to tag manager events"), EN2CLogSeverity::Warning);
 	OnTagAddedHandle = UN2CTagManager::Get().OnBlueprintTagAdded.AddRaw(this, &SN2CGraphOverlay::OnTagAdded);
 	OnTagRemovedHandle = UN2CTagManager::Get().OnBlueprintTagRemoved.AddRaw(this, &SN2CGraphOverlay::OnTagRemoved);
 	OnTagsReloadedHandle = UN2CTagManager::Get().OnTagsReloaded.AddRaw(this, &SN2CGraphOverlay::RefreshTagCount);
-	FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: Tag event subscriptions done"), EN2CLogSeverity::Warning);
 
 	// Subscribe to global translation state changes
 	OnTranslationStateChangedHandle = FN2CEditorIntegration::Get().OnTranslationStateChanged.AddRaw(
@@ -331,10 +325,6 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 	// Initial token estimate
 	RefreshTokenEstimate();
 
-	//FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: Widget hierarchy built successfully"), EN2CLogSeverity::Warning);
-	//FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: TagMenuAnchor valid=%d"), TagMenuAnchor.IsValid() ? 1 : 0), EN2CLogSeverity::Warning);
-	//FN2CLogger::Get().Log(FString::Printf(TEXT("SN2CGraphOverlay::Construct: TranslateSpinner valid=%d"), TranslateSpinner.IsValid() ? 1 : 0), EN2CLogSeverity::Warning);
-	//FN2CLogger::Get().Log(TEXT("SN2CGraphOverlay::Construct: EXIT"), EN2CLogSeverity::Warning);
 }
 
 SN2CGraphOverlay::~SN2CGraphOverlay()

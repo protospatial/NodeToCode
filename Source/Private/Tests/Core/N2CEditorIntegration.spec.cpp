@@ -16,6 +16,7 @@
 #include "Editor.h"
 #include "Engine/Blueprint.h"
 #include "Framework/Docking/TabManager.h"
+#include "GraphEditor.h"
 #include "Misc/App.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "UObject/Package.h"
@@ -32,7 +33,8 @@
  * It needs a rendering editor: under -nullrhi (build.ps1 -Test) it only reports that it was skipped. Run it in a
  * windowed editor: UnrealEditor.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode.Windowed"
  * -TestExit="Automation Test Queue Empty". The headless version of the focus rules (tab events raised directly, UE 5.8)
- * is NodeToCode.Editor.Focus; one overlay per graph for same-GUID graphs is NodeToCode.Editor.OverlayPerGraph.
+ * is NodeToCode.Editor.Focus; one overlay per graph for same-GUID graphs is NodeToCode.Editor.OverlayPerGraph; overlays
+ * only in the graph editor that shows their graph, without warnings, is NodeToCode.Editor.OverlayInjection.
  */
 namespace N2CWindowedIntegrationSpec
 {
@@ -56,6 +58,21 @@ namespace N2CWindowedIntegrationSpec
 			Editor->FindOpenTabsContainingDocument(Graph, Tabs);
 		}
 		return Tabs.Num() > 0 ? Tabs[0] : nullptr;
+	}
+
+	/** Overlays of ours anywhere below Widget */
+	int32 CountOverlays(const TSharedRef<SWidget>& Widget)
+	{
+		static const FName OverlayType(TEXT("SN2CGraphOverlay"));
+		int32 Count = Widget->GetType() == OverlayType ? 1 : 0;
+		if (FChildren* Children = Widget->GetChildren())
+		{
+			for (int32 Index = 0; Index < Children->Num(); ++Index)
+			{
+				Count += CountOverlays(Children->GetChildAt(Index));
+			}
+		}
+		return Count;
 	}
 
 	/** One user action and what must hold, on a later tick, once the editor has caught up with it */
@@ -240,6 +257,11 @@ void FN2CWindowedIntegrationSpec::Define()
 				}
 				TestTrue(What + TEXT(": GetFocusedGraphFromActiveEditor is that graph"), Shown && Integration.GetFocusedGraphFromActiveEditor() == Shown);
 				TestTrue(What + TEXT(": that graph has an overlay"), Integration.HasLiveOverlay(Shown));
+				// In the graph editor that shows it, exactly once (card 0293)
+				const TSharedPtr<SGraphEditor> ShownEditor = FN2CEditorIntegration::FindGraphEditorFor(
+					FN2CBlueprintEditorTracker::GetEditorFor(Blueprint), Shown);
+				TestEqual(What + TEXT(": one overlay in the graph editor that shows it"),
+					ShownEditor.IsValid() ? CountOverlays(ShownEditor.ToSharedRef()) : -1, 1);
 				TestEqual(What + TEXT(": get-focused-blueprint reads it"), ToolFocusedName(), Expected);
 			};
 		};

@@ -44,6 +44,16 @@ from receiving the request to answering it. A long-running call is logged when i
 W3C `traceparent` in the request's `params._meta`, the line ends with it, so you can match the line to the client's
 own trace; it is only logged. Arguments and results are never in the line.
 
+## Graph Overlays in the Log
+
+Opening a Blueprint or switching between its graphs logs no warnings. Each graph tab gets its NodeToCode overlay (the
+tags, Copy JSON and Translate bar at the bottom left of the graph) without a line above **Debug**. At **Debug** you see
+one line when an overlay is built, and one when a graph cannot get one yet, for example while a Widget Blueprint is in
+the Designer. A check every 2 seconds adds a missing overlay to a graph you reached inside an open tab, such as a
+collapsed graph or the Back button. It retries a graph that cannot get one with a growing delay and stops after a
+few tries, with one **Info** line; bringing that graph's tab to the front tries again. Enter `n2c.OverlayPoll 0` in
+the console to turn the check off for the session.
+
 ## Debug Logging and Speed
 
 Debug lines are built only while **Min Severity** is **Debug**. At **Info** or higher, capturing a large Blueprint
