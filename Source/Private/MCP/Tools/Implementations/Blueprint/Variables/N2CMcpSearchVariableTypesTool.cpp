@@ -93,6 +93,9 @@ FMcpToolDefinition FN2CMcpSearchVariableTypesTool::GetDefinition() const
 	// Read-only: reads editor or project state and changes nothing
 	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 	
+	// Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+	SetStrictArguments(Definition);
+
 	return Definition;
 }
 
@@ -272,7 +275,13 @@ FMcpToolCallResult FN2CMcpSearchVariableTypesTool::Execute(const TSharedPtr<FJso
 		}
 
 		// Optional parameters
-		FString Category = ArgParser.GetOptionalString(TEXT("category"), TEXT("all"));
+		// Any case; an unknown category used to match nothing and return an empty list (card 0194)
+		static const TArray<FString> Categories = { TEXT("all"), TEXT("primitive"), TEXT("class"), TEXT("struct"), TEXT("enum") };
+		FString Category;
+		if (!ArgParser.TryGetOptionalEnum(TEXT("category"), Categories, TEXT("all"), Category, ErrorMsg))
+		{
+			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+		}
 		bool bIncludeEngineTypes = ArgParser.GetOptionalBool(TEXT("includeEngineTypes"), true);
 		int32 MaxResults = FMath::Clamp(ArgParser.GetOptionalInt(TEXT("maxResults"), 50), 1, 200);
 

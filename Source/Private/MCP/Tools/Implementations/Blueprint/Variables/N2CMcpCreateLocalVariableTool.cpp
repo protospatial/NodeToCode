@@ -87,6 +87,9 @@ FMcpToolDefinition FN2CMcpCreateLocalVariableTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
+	// Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+	SetStrictArguments(Definition);
+
 	return Definition;
 }
 
@@ -100,7 +103,7 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 
 		// Extract required parameters
 		FString VariableName;
-		if (!ArgParser.TryGetRequiredName(TEXT("variableName"), VariableName, ErrorMsg))
+		if (!ArgParser.TryGetRequiredIdentifier(TEXT("variableName"), VariableName, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
@@ -117,7 +120,10 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 
 		// Container type parameters
 		FString ContainerType, ParsedMapKeyTypeIdentifier;
-		FN2CMcpVariableUtils::ParseContainerTypeArguments(ArgParser, ContainerType, ParsedMapKeyTypeIdentifier);
+		if (!FN2CMcpVariableUtils::ParseContainerTypeArguments(ArgParser, ContainerType, ParsedMapKeyTypeIdentifier, ErrorMsg))
+		{
+			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+		}
 
 		// The focused graph, through the shared graph resolver (card 0152). This tool takes no target arguments (card
 		// 0274 adds them), so the empty target is the focused graph; a read-only graph is refused (READ_ONLY_GRAPH).
