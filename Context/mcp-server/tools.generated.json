@@ -4097,7 +4097,7 @@
 			"name": "list-blueprint-tags",
 			"title": "List graph tags",
 			"toolset": "BlueprintTagTools",
-			"description": "Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, or by tag name (optionally with category), or by category; a graphGuid filter overrides the tag and category filters.",
+			"description": "Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, tag name and category, all optional; every filter given applies (case-insensitive tag and category).",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": true,

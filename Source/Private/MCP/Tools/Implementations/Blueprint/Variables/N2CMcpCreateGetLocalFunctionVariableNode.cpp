@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpCreateGetLocalFunctionVariableNode.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
@@ -75,14 +76,10 @@ FMcpToolCallResult FN2CMcpCreateGetLocalFunctionVariableNode::Execute(const TSha
             return FMcpToolCallResult::CreateErrorResult(Error);
         }
 
-        FNotificationInfo Info(FText::Format(
+        FN2CMcpNotification::Show(FText::Format(
             NSLOCTEXT("NodeToCode", "GetLocalNodeCreated", "Created Get node for local variable '{0}'"),
             FText::FromString(VariableName)
         ));
-        Info.ExpireDuration = 3.0f;
-        Info.bFireAndForget = true;
-        Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
-        FSlateNotificationManager::Get().AddNotification(Info);
 
         FString OutputString;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
