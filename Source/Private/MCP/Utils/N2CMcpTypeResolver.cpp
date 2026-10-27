@@ -70,10 +70,10 @@ namespace N2CMcpTypeResolverPrivate
 		const FString LowerType = TypeIdentifier.ToLower();
 		if (LowerType == TEXT("bool") || LowerType == TEXT("boolean")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
 		else if (LowerType == TEXT("byte") || LowerType == TEXT("uint8")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Byte;
-		else if (LowerType == TEXT("int") || LowerType == TEXT("int32")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
-		else if (LowerType == TEXT("int64")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int64;
+		else if (LowerType == TEXT("int") || LowerType == TEXT("int32") || LowerType == TEXT("integer")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+		else if (LowerType == TEXT("int64") || LowerType == TEXT("integer64")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int64;
 		else if (LowerType == TEXT("float")) { OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real; OutPinType.PinSubCategory = UEdGraphSchema_K2::PC_Float; }
-		else if (LowerType == TEXT("double")) { OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real; OutPinType.PinSubCategory = UEdGraphSchema_K2::PC_Double; }
+		else if (LowerType == TEXT("double") || LowerType == TEXT("real")) { OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real; OutPinType.PinSubCategory = UEdGraphSchema_K2::PC_Double; }
 		else if (LowerType == TEXT("string") || LowerType == TEXT("fstring")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_String;
 		else if (LowerType == TEXT("text") || LowerType == TEXT("ftext")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Text;
 		else if (LowerType == TEXT("name") || LowerType == TEXT("fname")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Name;

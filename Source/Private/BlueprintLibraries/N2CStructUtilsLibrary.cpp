@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "BlueprintLibraries/N2CStructUtilsLibrary.h"
+#include "MCP/Utils/N2CPinTypeCodec.h"
 #include "Editor.h"
 #include "Utils/N2CLogger.h"
 #include "Kismet2/StructureEditorUtils.h"
@@ -399,153 +400,18 @@ bool UN2CStructUtilsLibrary::TypeStringToPinType(
 	FEdGraphPinType& OutPinType,
 	FString& OutErrorMessage)
 {
-	// Initialize with defaults
-	OutPinType = FEdGraphPinType();
-	OutPinType.ContainerType = EPinContainerType::None;
-
-	FString TypeLower = TypeString.ToLower();
-
-	// Primitive types
-	if (TypeLower == TEXT("bool") || TypeLower == TEXT("boolean"))
+	// The one type vocabulary of the MCP tools and the Python bridge (card 0347): every alias this library took before
+	// (integer, FString, FVector, /Script paths, short class names), plus user structs and enums, Blueprint classes,
+	// references and array<T> / set<T> / map<K, V>. A type no struct member can have is refused with the reason
+	const TValueOrError<FEdGraphPinType, FText> Parsed = N2C::PinType::Parse(TypeString);
+	if (Parsed.HasError())
 	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
-		return true;
+		OutPinType = FEdGraphPinType();
+		OutErrorMessage = FString::Printf(TEXT("Unknown type: '%s'. %s"), *TypeString, *Parsed.GetError().ToString());
+		return false;
 	}
-	if (TypeLower == TEXT("byte") || TypeLower == TEXT("uint8"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Byte;
-		return true;
-	}
-	if (TypeLower == TEXT("int") || TypeLower == TEXT("int32") || TypeLower == TEXT("integer"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
-		return true;
-	}
-	if (TypeLower == TEXT("int64"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int64;
-		return true;
-	}
-	if (TypeLower == TEXT("float"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real;
-		OutPinType.PinSubCategory = UEdGraphSchema_K2::PC_Float;
-		return true;
-	}
-	if (TypeLower == TEXT("double"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real;
-		OutPinType.PinSubCategory = UEdGraphSchema_K2::PC_Double;
-		return true;
-	}
-	if (TypeLower == TEXT("fstring") || TypeLower == TEXT("string"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_String;
-		return true;
-	}
-	if (TypeLower == TEXT("fname") || TypeLower == TEXT("name"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Name;
-		return true;
-	}
-	if (TypeLower == TEXT("ftext") || TypeLower == TEXT("text"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Text;
-		return true;
-	}
-
-	// Common struct types
-	if (TypeLower == TEXT("fvector") || TypeLower == TEXT("vector"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-		OutPinType.PinSubCategoryObject = TBaseStructure<FVector>::Get();
-		return true;
-	}
-	if (TypeLower == TEXT("fvector2d") || TypeLower == TEXT("vector2d"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-		OutPinType.PinSubCategoryObject = TBaseStructure<FVector2D>::Get();
-		return true;
-	}
-	if (TypeLower == TEXT("frotator") || TypeLower == TEXT("rotator"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-		OutPinType.PinSubCategoryObject = TBaseStructure<FRotator>::Get();
-		return true;
-	}
-	if (TypeLower == TEXT("ftransform") || TypeLower == TEXT("transform"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-		OutPinType.PinSubCategoryObject = TBaseStructure<FTransform>::Get();
-		return true;
-	}
-	if (TypeLower == TEXT("fcolor") || TypeLower == TEXT("color"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-		OutPinType.PinSubCategoryObject = TBaseStructure<FColor>::Get();
-		return true;
-	}
-	if (TypeLower == TEXT("flinearcolor") || TypeLower == TEXT("linearcolor"))
-	{
-		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-		OutPinType.PinSubCategoryObject = TBaseStructure<FLinearColor>::Get();
-		return true;
-	}
-
-	// Try to find as a class (for object references)
-	// Check if it's a full path like /Script/Engine.Actor
-	if (TypeString.StartsWith(TEXT("/")))
-	{
-		// Try loading as class first
-		UClass* FoundClass = LoadClass<UObject>(nullptr, *TypeString);
-		if (FoundClass)
-		{
-			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Object;
-			OutPinType.PinSubCategoryObject = FoundClass;
-			return true;
-		}
-
-		// Try loading as struct
-		UScriptStruct* FoundStruct = LoadObject<UScriptStruct>(nullptr, *TypeString);
-		if (FoundStruct)
-		{
-			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-			OutPinType.PinSubCategoryObject = FoundStruct;
-			return true;
-		}
-	}
-
-	// Try common class names without full path
-	TArray<FString> CommonClassPaths = {
-		FString::Printf(TEXT("/Script/Engine.%s"), *TypeString),
-		FString::Printf(TEXT("/Script/CoreUObject.%s"), *TypeString),
-	};
-
-	for (const FString& ClassPath : CommonClassPaths)
-	{
-		UClass* FoundClass = LoadClass<UObject>(nullptr, *ClassPath);
-		if (FoundClass)
-		{
-			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Object;
-			OutPinType.PinSubCategoryObject = FoundClass;
-			return true;
-		}
-	}
-
-	// Try as struct in common paths
-	for (const FString& StructPath : CommonClassPaths)
-	{
-		UScriptStruct* FoundStruct = LoadObject<UScriptStruct>(nullptr, *StructPath);
-		if (FoundStruct)
-		{
-			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-			OutPinType.PinSubCategoryObject = FoundStruct;
-			return true;
-		}
-	}
-
-	OutErrorMessage = FString::Printf(TEXT("Unknown type: '%s'. Supported types include: bool, int32, float, double, FString, FName, FText, FVector, FRotator, FTransform, FColor, or full class/struct paths like '/Script/Engine.Actor'"), *TypeString);
-	return false;
+	OutPinType = Parsed.GetValue();
+	return true;
 }
 
 #undef LOCTEXT_NAMESPACE

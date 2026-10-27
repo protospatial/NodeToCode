@@ -11,7 +11,8 @@
  * have; anything else is refused with an error code and a reason, before any caller touches a Blueprint.
  *
  * Accepted forms (case-insensitive where noted):
- * - Primitives: bool, byte/uint8, int/int32, int64, float, double, string/FString, text/FText, name/FName.
+ * - Primitives: bool/boolean, byte/uint8, int/int32/integer, int64/integer64, float, double/real, string/FString,
+ *   text/FText, name/FName (integer, integer64 and real as UN2CStructUtilsLibrary and N2C JSON spell them, card 0347).
  * - The math structs by short name, with or without F: Vector (vector3), Vector2D, Vector4, Rotator, Transform,
  *   Quat, Color, LinearColor.
  * - softobject, softclass: a soft reference to UObject.
@@ -27,7 +28,8 @@
  *
  * Classes, structs and enums must pass UEdGraphSchema_K2::IsAllowableBlueprintVariableType. Enums, native or user,
  * become byte pins with the enum as sub-type. wildcard, exec, delegate and multicastdelegate are refused, as are C++
- * template spellings (TArray<...>, TSubclassOf<...>): containers go through ContainerTypeStr. Set elements and map
+ * template spellings (TArray<...>, TSubclassOf<...>): containers go through ContainerTypeStr. N2C::PinType::Parse
+ * (N2CPinTypeCodec.h) reads those wrappers in one type string and calls this resolver for each terminal type. Set elements and map
  * keys must be hashable (FBlueprintEditorUtils::HasGetTypeHash).
  */
 class NODETOCODE_API FN2CMcpTypeResolver
