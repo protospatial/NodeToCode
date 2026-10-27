@@ -172,7 +172,9 @@ arguments and the keys of its `data`. Grouped:
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
     a 1.x node's display `name` comes back as `title` (no `class`), its pin names stay the display names it has.
     A later 2.x document keeps its version, its unknown node, pin, graph and blueprint types and its unknown fields
-    (card 0445), each listed in `warnings` (`code`, `path`, `value`, `message`)
+    (card 0445), each listed in `warnings` (`code`, `path`, `value`, `message`). The `n2c_json` of
+    `get_blueprint_n2c_json` reads too: its `ids.short` is the node or pin ID (card 0505). A read that had to skip a
+    graph, node or pin (a missing required field) fails: `error` names the skipped parts, `data` holds the rest
 *   `compile_blueprint(path=None)` - Compile the focused Blueprint (a `path` is ignored for now: open the Blueprint
     first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
     `messages` (each `severity`, `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node)
@@ -180,9 +182,10 @@ arguments and the keys of its `data`. Grouped:
     `data`: `blueprint_name`, `was_dirty`, `was_saved`
 *   `load_blueprint(path)` - Load Blueprint by asset path; `data`: `name`, `path`, `class_name`, `parent_class`
     (the parent's name, such as `Actor`)
-*   `open_blueprint(path, focus_graph="EventGraph")` - Open a Blueprint editor and focus a graph by its exact name
-    (`EventGraph`, `UserConstructionScript`, a function or macro name); an unknown name opens the Blueprint with
-    `focusedGraph` empty
+*   `open_blueprint(path, focus_graph=None)` - Open a Blueprint editor and focus a graph by name, matched
+    case-insensitively (`EventGraph`, `ConstructionScript` or `UserConstructionScript`, a function or macro name).
+    Without `focus_graph` it focuses the EventGraph, or none when the Blueprint has no EventGraph. An unknown name
+    fails with `GRAPH_NOT_FOUND` listing the Blueprint's graphs and does not open the Blueprint
 *   `open_blueprint_function(name)` - Focus a function graph of the open Blueprint
 
 **Graph Editing (the focused graph):**

@@ -106,6 +106,16 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* PinValueTypeField = TEXT("value_type");
 	inline constexpr const TCHAR* PinValueSubTypeField = TEXT("value_sub_type");
 
+	/**
+	 * The agent document (card 0505): get-focused-blueprint, get-blueprint-n2cjson and Python get_blueprint_n2c_json
+	 * write each node's and pin's "id" as "ids": {"short": the ID, "guid": the node's NodeGuid or the pin's PinId}
+	 * (a pin's also has its "name"), plus the top-level "guids" table. FromJson reads "ids.short" as the ID when there
+	 * is no "id", so a document NodeToCode exported reads back whole; the GUIDs are not kept (ToJson writes "id").
+	 */
+	inline constexpr const TCHAR* IdField = TEXT("id");
+	inline constexpr const TCHAR* AgentIdsField = TEXT("ids");
+	inline constexpr const TCHAR* AgentIdsShortField = TEXT("short");
+
 	/** Separates a node ID from a pin ID in a pin ref ("N3.P5") */
 	inline constexpr const TCHAR* PinRefSeparator = TEXT(".");
 

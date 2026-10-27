@@ -48,19 +48,6 @@ BEGIN_DEFINE_SPEC(FN2CPythonBridgeCallsSpec, "NodeToCode.Python.BridgeCalls", N2
 	UK2Node_CallFunction* Print = nullptr;
 	UK2Node_VariableGet* VariableGet = nullptr;
 
-	/** A case that fails until its finding is fixed: xIt, or It with N2C_RUN_KNOWN_DEFECTS=1 */
-	void KnownDefectIt(const FString& CaseText, TFunction<void()> Body)
-	{
-		if (FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_RUN_KNOWN_DEFECTS")) == TEXT("1"))
-		{
-			It(CaseText, MoveTemp(Body));
-		}
-		else
-		{
-			xIt(CaseText, MoveTemp(Body));
-		}
-	}
-
 	static bool PythonAvailable()
 	{
 		IPythonScriptPlugin* Python = IPythonScriptPlugin::Get();
@@ -273,10 +260,9 @@ void FN2CPythonBridgeCallsSpec::Define()
 			Unknown.IsEmpty());
 	});
 
-	// Known defect, card 0505: get_blueprint_n2c_json writes node and pin ids as {short, guid}; the reader takes only a
-	// string id, logs "Missing required node fields in JSON" per node and reports success with no nodes. Enable
-	// (KnownDefectIt -> It) with that card
-	KnownDefectIt(TEXT("read_n2c_json reads get_blueprint_n2c_json's document with every node"), [this]()
+	// Card 0505: get_blueprint_n2c_json writes node and pin ids as {short, guid}; the reader once took only a string id,
+	// logged "Missing required node fields in JSON" per node and reported success with no nodes
+	It(TEXT("read_n2c_json reads get_blueprint_n2c_json's document with every node"), [this]()
 	{
 		if (!TestTrue(TEXT("Python is available"), PythonAvailable()) || !Function)
 		{

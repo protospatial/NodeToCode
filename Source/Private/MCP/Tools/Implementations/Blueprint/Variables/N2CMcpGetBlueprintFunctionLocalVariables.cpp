@@ -40,6 +40,9 @@ FMcpToolDefinition FN2CMcpGetBlueprintFunctionLocalVariables::GetDefinition() co
 
     SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
+    // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+    SetStrictArguments(Definition);
+
     return Definition;
 }
 

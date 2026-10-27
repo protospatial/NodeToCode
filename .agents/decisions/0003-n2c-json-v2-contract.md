@@ -107,6 +107,11 @@ Option 1, provisionally. The sub-choices of card 0117:
   index `Index`. Make Map's `member_name` is "<key> to <value>" in pin type spellings. A reader that predates it keeps
   the two fields as unknown fields; this reader keeps a map pin without them as it is and an unknown `value_type` with
   an `UNKNOWN_PIN_TYPE` warning.
+- Card 0505 (reader only; the contract and its version are unchanged): the agent document of get-focused-blueprint,
+  get-blueprint-n2cjson and Python `get_blueprint_n2c_json` writes each node's and pin's `id` as `ids` {`short`,
+  `guid`} and adds the top-level `guids` table. The reader takes `ids.short` as the ID when there is no `id`
+  (`N2CJsonContract::AgentIdsField`) and does not keep the GUIDs, so a document NodeToCode exported reads back with
+  every node; before, it skipped every node with an Error log line and still read the document.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 
@@ -132,8 +137,9 @@ rejected or lose nodes and pins in a 2.0 build and in Python, and could only shi
 4. **Warnings.** Each unknown kind, unknown field, newer version and each graph, node or pin skipped as malformed (a
    missing required field) gives one structured warning, `FN2CJsonReadWarning` {code, path, value, message}, codes in
    `N2CJsonContract::ReadWarning`, from `FN2CSerializer::FromJson(Text, Blueprint, Warnings)`, plus a log warning.
-   `UN2CPythonBridge::ReadN2CJson` / Python `nodetocode.read_n2c_json` return them as `warnings`. The validator accepts
-   the Unknown kinds with a log warning.
+   `UN2CPythonBridge::ReadN2CJson` / Python `nodetocode.read_n2c_json` return them as `warnings`; since card 0505 a
+   read that skipped a graph, node or pin is not a success there (the error names them, the data keeps the rest). The
+   validator accepts the Unknown kinds with a log warning.
 5. **Still rejected:** text that is not JSON, and JSON without `version`, `metadata` (with its three fields) or
    `graphs`, or with no readable graph.
 

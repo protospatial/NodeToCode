@@ -37,6 +37,9 @@ FMcpToolDefinition FN2CMcpGetBlueprintMemberVariablesTool::GetDefinition() const
     // Results carry Blueprint text (variable tooltips, categories and default values): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;
 
+    // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+    SetStrictArguments(Definition);
+
     return Definition;
 }
 

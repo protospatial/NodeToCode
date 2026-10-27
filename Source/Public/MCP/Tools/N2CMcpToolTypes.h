@@ -142,6 +142,14 @@ struct NODETOCODE_API FMcpToolDefinition
 	 */
 	bool bAllowedDuringPlaySession = false;
 
+	/**
+	 * Strict arguments (card 0194): tools/call refuses an argument the input schema's "properties" does not declare,
+	 * with an INVALID_ARGUMENT error naming it, so a misspelled option ('isInstanceEditible') is not silently ignored.
+	 * Set it with FN2CMcpToolBase::SetStrictArguments, which also publishes "additionalProperties": false. Not sent to
+	 * clients (the schema says it).
+	 */
+	bool bStrictArguments = false;
+
 	FMcpToolDefinition()
 	{
 	}
