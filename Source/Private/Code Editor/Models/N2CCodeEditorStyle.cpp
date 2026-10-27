@@ -164,6 +164,15 @@ void FN2CCodeEditorStyle::Reinitialize()
     // background of open editors right away; syntax colors copied into a highlighter apply when it is rebuilt
     check(IsInGameThread());
     ApplyThemeColors();
+
+    // Open code editors copied the old run styles into their highlighters: let them rebuild (card 0490)
+    OnThemeChanged().Broadcast();
+}
+
+FN2CCodeEditorStyle::FOnThemeChanged& FN2CCodeEditorStyle::OnThemeChanged()
+{
+    static FOnThemeChanged Delegate;
+    return Delegate;
 }
 
 TSharedPtr<const FSlateStyleSet> FN2CCodeEditorStyle::GetStyleSetPtr()

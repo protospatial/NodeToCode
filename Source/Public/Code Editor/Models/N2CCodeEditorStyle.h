@@ -20,6 +20,13 @@ public:
      */
     static void Reinitialize();
 
+    /**
+     * Broadcast after Reinitialize updated the colors in place (card 0490). Brushes retint by themselves, but a
+     * syntax highlighter copies its text styles when it is built: open code editors rebuild theirs on this.
+     */
+    DECLARE_MULTICAST_DELEGATE(FOnThemeChanged);
+    static FOnThemeChanged& OnThemeChanged();
+
     static const ISlateStyle& Get();
 
     /** Shared handle to the style set (null before Initialize). Lets tests check the set survives Reinitialize */
