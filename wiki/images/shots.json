@@ -1,0 +1,19 @@
+{
+  "shots": {
+    "main-window/tag-manager.png": {
+      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+    },
+    "main-window/translation-viewer.png": {
+      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+    },
+    "settings/code-generation.png": {
+      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+    },
+    "settings/llm-provider.png": {
+      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+    },
+    "translate-entry/graph-overlay.png": {
+      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+    }
+  }
+}
