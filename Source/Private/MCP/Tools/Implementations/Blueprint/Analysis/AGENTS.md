@@ -45,6 +45,14 @@ and list-overridable-functions set
 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`). The rest of the object is unchanged;
 skip that key when reading the result. get-open-blueprint-editors returns names only and is not marked.
 
+## Structured results (card 0207)
+
+get-focused-blueprint (the N2C JSON document, `N2CMcpOutputSchema::N2CJsonDocument`), list-blueprint-graphs and
+get-open-blueprint-editors declare an `outputSchema` and return the result object as `structuredContent` as well as
+text (`FMcpToolCallResult::CreateJsonResult`); a marked result's `structuredContent` carries the same
+`untrusted_content` key first. get-blueprint-n2cjson and export-n2cjson-batch do not yet (their result is either the
+document or a file summary), nor list-blueprint-functions and list-overridable-functions (frozen, decision 0007).
+
 ## Available Tools
 
 ### get-focused-blueprint

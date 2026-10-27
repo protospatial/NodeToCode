@@ -330,6 +330,16 @@ its environment when no key is saved, so a live check never types or saves a key
   `claude -p` with only `ListMcpResourcesTool` and `ReadMcpResourceTool` reads blueprints/all and the listed URI and
   answers with the graph names. On 5.8 the folder is deleted; below 5.8 the editor is not closed (fatal headless) and
   the unsaved Blueprint goes with the editor. Report: `logs/live_resources_0208_<label>.json`.
+- `live_structured_0207.py --engine ... --project ... --label 5.8 [--skip-cli] [--cli-model claude-haiku-5-5]` (no
+  provider key) checks structured tool results (card 0207). It makes an Actor Blueprint `BP_Structured` under a fresh
+  `/Game/N2CTest/Struct0207_<time>` folder (not saved). Over raw JSON-RPC, `tools/list` must give the eight tools of
+  card 0207 an object `outputSchema`; list-blueprint-graphs (marked `untrusted_content` first),
+  get-available-translation-targets, get-translation-output-directory and read-path must return `structuredContent`
+  equal to their text with the schema's required fields; list-blueprint-graphs without `blueprintPath` must be
+  `isError` with `_meta["nodetocode/error"]` `{code: INVALID_ARGUMENT, field: blueprintPath}`; a call whose
+  `arguments` is `"x"` must be an `isError` result with `INVALID_ARGUMENT`, not a JSON-RPC error. Then `claude -p`
+  with only `mcp__nodetocode__*` calls list-blueprint-graphs and answers with the graph names. On 5.8 the folder is
+  deleted. Report: `logs/live_structured_0207_<label>.json`.
 - `live_batch_0169.py --engine ... --project ... --label 5.8 [--cli-model sonnet]` (Anthropic key from `.env`, in the
   editor's environment only) checks export-n2cjson-batch and translate-batch (card 0169). Three wired Actor Blueprints
   (`probe_blueprint.SETUP_PY`) are saved under a fresh `/Game/N2CTest/Batch0169_<time>` folder with every editor

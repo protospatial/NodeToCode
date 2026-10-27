@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpGetAvailableLLMProvidersTool.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CSecretStore.h"
@@ -27,6 +28,35 @@ FMcpToolDefinition FN2CMcpGetAvailableLLMProvidersTool::GetDefinition() const
     // This tool takes no input parameters
     Definition.InputSchema = BuildEmptyObjectSchema();
     
+    {
+        using namespace N2CMcpOutputSchema;
+        const TSharedRef<FJsonObject> Model = Object({
+            { TEXT("id"), String(TEXT("Pass as translate-focused-blueprint's model")) },
+            { TEXT("name"), String() },
+            { TEXT("deprecated"), Boolean() },
+            { TEXT("shutdownDate"), String() },
+            { TEXT("supportsSystemPrompts"), Boolean() },
+            { TEXT("reasoningEffort"), String() },
+        }, { TEXT("id") });
+        Definition.OutputSchema = Object({
+            { TEXT("providers"), Array(Object({
+                { TEXT("id"), String(TEXT("Pass as translate-focused-blueprint's provider")) },
+                { TEXT("displayName"), String() },
+                { TEXT("configured"), Boolean() },
+                { TEXT("isLocal"), Boolean() },
+                { TEXT("keySource"), Enum({ TEXT("saved"), TEXT("environment"), TEXT("none") }, TEXT("Where the API key comes from (never the key)")) },
+                { TEXT("keyVariable"), String(TEXT("The environment variable, when keySource is environment")) },
+                { TEXT("currentModel"), String() },
+                { TEXT("availableModels"), Array(Model) },
+                { TEXT("endpoint"), String() },
+                { TEXT("supportsStructuredOutput"), Boolean() },
+                { TEXT("supportsSystemPrompts"), Boolean() },
+            }, { TEXT("id"), TEXT("displayName"), TEXT("isLocal") })) },
+            { TEXT("currentProvider"), String(TEXT("The provider Project Settings selects")) },
+            { TEXT("configuredProviderCount"), Integer() },
+        }, { TEXT("providers"), TEXT("currentProvider"), TEXT("configuredProviderCount") });
+    }
+
     // Read-only: reads editor or project state and changes nothing
     SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
     
@@ -94,12 +124,7 @@ FMcpToolCallResult FN2CMcpGetAvailableLLMProvidersTool::Execute(const TSharedPtr
         
         FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully retrieved %d configured LLM providers"), ProvidersArray.Num()), EN2CLogSeverity::Info);
         
-        // Convert JSON to string for the result
-        FString OutputString;
-        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-        FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
-        
-        return FMcpToolCallResult::CreateTextResult(OutputString);
+        return FMcpToolCallResult::CreateJsonResult(ResponseObject.ToSharedRef(), /*bIndented*/ true);
     });
 }
 

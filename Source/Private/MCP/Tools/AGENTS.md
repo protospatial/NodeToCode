@@ -94,6 +94,12 @@ same two calls. `FN2CToolCatalog::Get()` is the catalog over the server's tool m
   (`structuredContent`, else the text, parsed when it is one JSON object or array) or the error from the tool's
   `FMcpToolCallResult` and keeps that result, so `ToCallToolResult()` (the MCP adapter) sends exactly what the tool
   built. A native outcome (`MakeValue`, `MakeError`) becomes a text result, with `structuredContent` for an object.
+- **Error codes (card 0207):** every `isError` result `ToCallToolResult()` sends carries `_meta["nodetocode/error"]`
+  `{code, field?}` (`FMcpToolCallResult::SetErrorCode`): the outcome's code (`INVALID_ARGUMENT` with the argument's
+  name, `PIE_ACTIVE`, `CANCELLED`), else the tool's own `CODE: message` or `CODE|message` prefix
+  (`ParseErrorCode`), else `TOOL_FAILED`. `tools/call` with `arguments` that is not an object is answered with such a
+  result (`INVALID_ARGUMENT`, field `arguments`), not a JSON-RPC error (SEP-1303). `_meta` goes before `isError`,
+  which the request trace reads from the end of the response.
 - **Locking:** the manager's `Configure` builds the new tool set without its lock and swaps it in under it, and no
   tool code (`GetDefinition`, `Execute`, `InvokeAsync`) runs under the lock, so a tool may call `Configure` while it
   runs. A `tools/list` change goes out through `FN2CMcpToolManager::OnToolListChanged`, which the protocol core
@@ -686,7 +692,12 @@ for a tool that set `readOnlyHint` true.
 ### Tool metadata
 `FMcpToolDefinition` (`N2CMcpToolTypes.h`) is one `tools/list` entry (MCP 2025-11-25 `Tool`): `Name`, `Title` (sent
 as `title`; clients fall back to the name), `Description`, `InputSchema`, `OutputSchema` (when set, every successful
-result must carry a matching `FMcpToolCallResult::StructuredContent`), `Annotations`, and `_meta`: `Toolset` is sent
+result must carry a matching `FMcpToolCallResult::StructuredContent`: build the schema with `N2CMcpOutputSchema`
+(`N2CMcpOutputSchema.h`; `UntrustedObject` for a tool with `bReturnsUntrustedContent`) and return
+`FMcpToolCallResult::CreateJsonResult(Object)`, which sends the object as `structuredContent` and the same JSON as text;
+add the tool and a sample case to `NodeToCode.MCP.StructuredOutput`, which validates the result with
+`N2CMcpOutputSchema::Validate`. Card 0207 set it on the eight tools `wiki/developers/Choosing-a-Tool-Mode.md` lists),
+`Annotations`, and `_meta`: `Toolset` is sent
 as `_meta["nodetocode/toolset"]` (the toolset's name, not a top-level field), `MaxResultSizeChars` as `_meta["anthropic/maxResultSizeChars"]`,
 `bAlwaysLoad` as `_meta["anthropic/alwaysLoad"]: true`, and `Meta` holds any other `_meta` entries.
 `bIsLongRunning`, `bReturnsUntrustedContent` and `bAllowedDuringPlaySession` stay on the server.

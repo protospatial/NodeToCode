@@ -378,7 +378,10 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
 		FString ToolName;
 		if (SingleObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
-			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName))
+			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName)
+			// Arguments that are not an object are refused below, at once, as an isError result (HandleToolsCall)
+			&& !(*ParamsObj)->HasTypedField<EJson::String>(TEXT("arguments")) && !(*ParamsObj)->HasTypedField<EJson::Array>(TEXT("arguments"))
+			&& !(*ParamsObj)->HasTypedField<EJson::Number>(TEXT("arguments")) && !(*ParamsObj)->HasTypedField<EJson::Boolean>(TEXT("arguments")))
 		{
 			if (IsLongRunningTool(ToolName))
 			{
@@ -1026,6 +1029,18 @@ bool FN2CMcpProtocol::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, cons
 		return true;
 	}
 
+	// Arguments that are not an object are an input validation error of the call, answered as an isError result once
+	// the tool is known (MCP 2025-11-25, SEP-1303: the model can read it and correct the call)
+	const TSharedPtr<FJsonValue> ArgumentsValue = ParamsObject->TryGetField(TEXT("arguments"));
+	const bool bArgumentsNotObject = ArgumentsValue.IsValid() && ArgumentsValue->Type != EJson::Object && ArgumentsValue->Type != EJson::Null;
+	if (bArgumentsNotObject)
+	{
+		const TSharedRef<FJsonObject> WithoutArguments = MakeShared<FJsonObject>();
+		WithoutArguments->Values = ParamsObject->Values;
+		WithoutArguments->RemoveField(TEXT("arguments"));
+		ParamsObject = WithoutArguments;
+	}
+
 	// Validate tools/call specific requirements
 	if (!FN2CMcpRequestValidator::ValidateToolsCallRequest(ParamsObject, ValidationError))
 	{
@@ -1067,6 +1082,16 @@ bool FN2CMcpProtocol::HandleToolsCall(const TSharedPtr<FJsonValue>& Params, cons
 		OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::InvalidParams,
 			Hint.IsEmpty() ? FString::Printf(TEXT("Unknown tool: %s"), *ToolName) : FString::Printf(TEXT("Unknown tool: %s. %s"), *ToolName, *Hint),
 			MakeShared<FJsonValueObject>(Data));
+		return true;
+	}
+
+	if (bArgumentsNotObject)
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("tools/call %s: arguments is not an object"), *ToolName));
+		const FMcpToolCallResult Refused = FN2CToolOutcome::MakeError(EN2CToolErrorCode::InvalidArgument, FString::Printf(
+			TEXT("%s: arguments must be an object of named arguments"), FN2CToolError::CodeName(EN2CToolErrorCode::InvalidArgument)),
+			TEXT("arguments")).ToCallToolResult();
+		OutResponse = FJsonRpcUtils::CreateSuccessResponse(Id, MakeShareable(new FJsonValueObject(Refused.ToJson())));
 		return true;
 	}
 

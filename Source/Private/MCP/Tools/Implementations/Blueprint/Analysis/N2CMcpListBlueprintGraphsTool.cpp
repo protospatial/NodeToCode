@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "N2CMcpListBlueprintGraphsTool.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
@@ -29,6 +30,23 @@ FMcpToolDefinition FN2CMcpListBlueprintGraphsTool::GetDefinition() const
 	Definition.InputSchema->GetObjectField(TEXT("properties"))->GetObjectField(TEXT("blueprintPath"))->SetStringField(
 		TEXT("description"), TEXT("Required. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door or /Game/Blueprints/BP_Door.BP_Door."));
 
+	{
+		using namespace N2CMcpOutputSchema;
+		Definition.OutputSchema = UntrustedObject({
+			{ TEXT("blueprintPath"), String(TEXT("Object path of the Blueprint")) },
+			{ TEXT("blueprintName"), String() },
+			{ TEXT("graphCount"), Integer() },
+			{ TEXT("graphs"), Array(Object({
+				{ TEXT("name"), String() },
+				{ TEXT("graphGuid"), String(TEXT("Stable across renames")) },
+				{ TEXT("kind"), String(TEXT("event, function, macro, collapsed, delegate or interface")) },
+				{ TEXT("nodeCount"), Integer() },
+				{ TEXT("readOnly"), Boolean(TEXT("Shown read-only in the Blueprint editor")) },
+				{ TEXT("parentGraph"), String(TEXT("For a collapsed graph: the graph that holds it")) },
+			}, { TEXT("name"), TEXT("graphGuid"), TEXT("kind"), TEXT("nodeCount"), TEXT("readOnly") })) },
+		}, { TEXT("blueprintPath"), TEXT("blueprintName"), TEXT("graphCount"), TEXT("graphs") });
+	}
+
 	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
 	// Results carry names from the project's Blueprints (graph, function and macro names): marked as untrusted data (card 0124)
@@ -54,10 +72,6 @@ FMcpToolCallResult FN2CMcpListBlueprintGraphsTool::Execute(const TSharedPtr<FJso
 			return FMcpToolCallResult::CreateErrorResult(LoadError);
 		}
 
-		FString Text;
-		const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
-			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Text);
-		FJsonSerializer::Serialize(N2CMcpBlueprintExport::ListGraphs(*Blueprint), Writer);
-		return FMcpToolCallResult::CreateTextResult(Text);
+		return FMcpToolCallResult::CreateJsonResult(N2CMcpBlueprintExport::ListGraphs(*Blueprint));
 	}, 30.0f);
 }

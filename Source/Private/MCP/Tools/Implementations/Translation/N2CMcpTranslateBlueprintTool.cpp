@@ -15,7 +15,9 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
         TEXT("Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. ")
         TEXT("The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. ")
         TEXT("It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. ")
-        TEXT("Nothing is saved to the translation output directory."),
+        TEXT("Nothing is saved to the translation output directory. The result's structuredContent is the translation (graphs with their code, usage); ")
+        TEXT("one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, ")
+        TEXT("savedTo and a resource_link to the file."),
         N2CMcpToolsets::Translation
     );
 
@@ -44,6 +46,10 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
     // No required fields, all are optional and will use defaults from settings.
     
     Definition.InputSchema = Schema;
+
+    // The translation as structuredContent (card 0207); a translation over the result limit is saved to a file and
+    // returned as a summary with a resource_link (FN2CTranslateBlueprintCall::BuildSuccessResult)
+    Definition.OutputSchema = FN2CTranslateBlueprintCall::BuildOutputSchema();
 
     // Results carry Blueprint text (code an LLM wrote from the Blueprint's text; FN2CTranslateBlueprintCall marks it): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;

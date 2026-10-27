@@ -4,6 +4,9 @@ This directory contains the MCP tools that read files and directories inside the
 `FileSystemTools` toolset: `read-path` and `read-file`. Both are read-only. Asset operations such as `move-asset` are
 Content Browser tools (see `../ContentBrowser/AGENTS.md`).
 
+read-path declares an `outputSchema` and returns its listing as `structuredContent` too (card 0207). read-file does
+not: its result is up to a file part of text, which `structuredContent` would send twice.
+
 ## Available Tools
 
 ### read-path
