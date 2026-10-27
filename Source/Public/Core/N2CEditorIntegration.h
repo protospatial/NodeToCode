@@ -13,13 +13,6 @@
 #include "LLM/N2CLLMTypes.h"
 #include "Models/N2CBlueprint.h"
 
-// Forward declarations
-class SN2CGraphEditorWrapper;
-class SDockTab;
-class SN2CGraphOverlay;
-class SGraphEditor;
-class SOverlay;
-
 /**
  * Delegate for when translation state changes globally
  */
@@ -48,30 +41,26 @@ struct FN2CTranslationOverrides
 
 /**
  * @class FN2CEditorIntegration
- * @brief Handles integration with the Blueprint Editor
+ * @brief The editor module's wiring and the entry points the overlay, the main window and the MCP tools share
  *
- * Manages Blueprint Editor toolbar extensions and provides
- * access to the active Blueprint Editor instance.
+ * Initialize and Shutdown start and stop the N2C tab spawner, the focused-editor tracker (FN2CBlueprintEditorTracker)
+ * and the graph overlay injector (FN2CGraphOverlayInjector). The rest is the focused-graph capture and translation
+ * entry points (moving to the capture module and UN2CTranslationSubsystem, cards 0010 and 0254) and the global
+ * translation state.
  */
 class FN2CEditorIntegration
 {
 public:
     static FN2CEditorIntegration& Get();
 
-    /** Initialize integration with Blueprint Editor */
+    /** Registers the N2C tab spawner and starts the focused-editor tracker and the graph overlay injector */
     void Initialize();
 
-    /** Cleanup integration */
+    /** Stops what Initialize started and removes the injected overlays */
     void Shutdown();
 
-    /** Get available themes for a language */
-    TArray<FName> GetAvailableThemes(EN2CCodeLanguage Language) const;
-
-    /** Get the default theme for a language */
-    FName GetDefaultTheme(EN2CCodeLanguage Language) const;
-
     /**
-     * Marks Editor as the one the user activated (an overlay button, the toolbar commands). Forwards to
+     * Marks Editor as the one the user activated (an overlay button). Forwards to
      * FN2CBlueprintEditorTracker::NotifyEditorActivated.
      */
     void StoreActiveBlueprintEditor(TWeakPtr<FBlueprintEditor> Editor);
@@ -120,9 +109,6 @@ public:
      */
     FString GetGraphAsJson(UEdGraph* Graph, bool bPrettyPrint, FString& OutErrorMsg, FN2CBlueprint* OutCapture = nullptr) const;
 
-    /** Simple wrapper function that translates the focused Blueprint graph using the latest active editor */
-    void TranslateFocusedBlueprintGraph();
-
     /**
      * Translates the focused Blueprint graph using specified or default LLM settings. Game thread only: collects the
      * graph JSON, sends the request and returns at once. OnComplete runs later on the game thread (or inside this call
@@ -168,47 +154,6 @@ public:
     /** Language IDs a translation accepts (lowercase, as get-available-translation-targets returns them) */
     static TArray<FString> GetTranslationLanguageIds();
 
-    /**
-     * Injects the NodeToCode overlay into the graph editor a document tab holds, if it has none yet. Only a tab whose
-     * content is exactly an SGraphEditor showing Graph qualifies (card 0293): a tab showing another graph is refused.
-     * @param Tab The dock tab holding the graph editor
-     * @param Graph The graph the tab shows
-     * @param Editor The Blueprint editor instance
-     * @return true when that graph editor has an overlay afterwards
-     */
-    bool WrapGraphTabIfNeeded(TSharedPtr<SDockTab> Tab, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor);
-
-    /**
-     * Injects the overlay into the graph editor that shows the editor's focused graph: its own document tab, else
-     * SGraphEditor::FindGraphEditorForGraph when that widget sits in this editor's tabs. Nothing else: when no such
-     * graph editor exists the attempt is recorded and the poll retries it later with a backoff (card 0293).
-     * @param Editor The Blueprint editor to check
-     * @return true when the focused graph's editor has an overlay afterwards
-     */
-    bool TryWrapFocusedGraphTab(TWeakPtr<FBlueprintEditor> Editor);
-
-    /**
-     * Clean up any stale wrapper references
-     */
-    void CleanupStaleWrappers();
-
-    /**
-     * Whether a graph editor showing this graph object carries a live N2C overlay. Overlays are tracked per SGraphEditor
-     * widget, not per GraphGuid: copies of a Blueprint made in the Content Browser keep the original's graph GUIDs, and
-     * each copy's graph needs its own.
-     */
-    bool HasLiveOverlay(const UEdGraph* Graph) const;
-
-    /**
-     * The graph editor that shows Graph inside Editor (exact SGraphEditor type, current graph is Graph), or null.
-     * Looks in Editor's document tabs for Graph first, then SGraphEditor::FindGraphEditorForGraph limited to widgets in
-     * Editor's own tabs (a diff window can show the same graph).
-     */
-    static TSharedPtr<SGraphEditor> FindGraphEditorFor(const TSharedPtr<FBlueprintEditor>& Editor, const UEdGraph* Graph);
-
-    /** Removes every injected overlay from its graph editor (SOverlay::RemoveSlot) and forgets them. Run by Shutdown */
-    void RemoveInjectedOverlays();
-
     // ==================== Global Translation State ====================
 
     /**
@@ -239,103 +184,7 @@ private:
     /** Constructor */
     FN2CEditorIntegration() = default;
 
-public:
-    /** Get Blueprint Editor from active tab */
-    TSharedPtr<FBlueprintEditor> GetBlueprintEditorFromTab() const;
-
-    /** Register for Blueprint Editor callbacks */
-    void RegisterBlueprintEditorCallback();
-
-private:
-    /** Map of wrapped tabs to their wrapper widgets (legacy, kept for compatibility) */
-    TMap<TWeakPtr<SDockTab>, TSharedPtr<SN2CGraphEditorWrapper>> WrappedTabs;
-
-    /** One injected overlay: the SOverlay slot it sits in and the graph it acts on */
-    struct FInjectedOverlay
-    {
-        TWeakPtr<SOverlay> Host;
-        TWeakPtr<SN2CGraphOverlay> Overlay;
-        TWeakObjectPtr<UEdGraph> Graph;
-    };
-
-    /**
-     * The injected overlays, keyed by the SGraphEditor widget they sit in (card 0293), so one graph editor never gets
-     * two. Weak: a closed tab or a rebuilt graph editor leaves a stale entry, removed on the next look.
-     */
-    TMap<TWeakPtr<SGraphEditor>, FInjectedOverlay> InjectedGraphOverlays;
-
-    /**
-     * True if GraphEditor carries a live overlay for Graph. Drops a stale entry, and removes an overlay left in a graph
-     * editor that now shows another graph.
-     */
-    bool CheckLiveOverlay(const TSharedRef<SGraphEditor>& GraphEditor, const UEdGraph* Graph);
-
-    /** Injects the overlay into GraphEditor (which must show Graph) unless it has one */
-    bool InjectOverlay(const TSharedRef<SGraphEditor>& GraphEditor, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor);
-
-    /** Failed injection attempts of a graph: the poll backs off between them and gives up after a limit */
-    struct FInjectionRetry
-    {
-        int32 Failures = 0;
-        double NextAttemptTime = 0.0;
-    };
-    TMap<TWeakObjectPtr<UEdGraph>, FInjectionRetry> InjectionRetries;
-
-    /** Records a failed attempt for Graph (logged at Debug; once at Info when the poll gives up) */
-    void RecordInjectionFailure(const UEdGraph* Graph, const TCHAR* Why);
-
-    /** Whether the poll may try Graph now (not backing off, not given up) */
-    bool IsInjectionDue(const UEdGraph* Graph, double Now) const;
-
-    /** The poll's body: injects an overlay for each open Blueprint editor's focused graph that lacks one */
-    void PollOverlays();
-
-    /** Attempts before the poll gives up on a graph (an event, a tab coming to the front, still tries) */
-    static constexpr int32 MaxPollInjectionAttempts = 6;
-
-    /** Timer handle for initial graph tab wrapping on editor open (with retry) */
-    FTimerHandle InitialWrapTimerHandle;
-
-    /** Timer handle for tab-change-triggered graph tab wrapping */
-    FTimerHandle TabChangeWrapTimerHandle;
-
-    /** Timer handle for periodic overlay health check (catches internal graph switches) */
-    FTimerHandle OverlayPollingTimerHandle;
-
-    /** Retry counter for initial wrap attempts (for editors that open without a focused graph) */
-    int32 InitialWrapRetryCount = 0;
-
-    /** Max retries before giving up on initial wrap */
-    static constexpr int32 MaxInitialWrapRetries = 20;
-
-    /** Interval between initial wrap retry attempts in seconds */
-    static constexpr float InitialWrapRetryInterval = 0.5f;
-
-    /** Delegate handle for tab foregrounded subscription */
-    FDelegateHandle OnTabForegroundedHandle;
-
-    /** Handle for the OnAssetOpenedInEditor subscription */
-    FDelegateHandle OnAssetEditorOpenedHandle;
-
     /** Global flag tracking if any translation is in progress */
     bool bIsAnyTranslationInProgress = false;
-
-    /** Handle tab foregrounded to keep graph overlays injected (the broadcast passes the new foreground tab first) */
-    void OnTabForegrounded(TSharedPtr<SDockTab> NewlyForegrounded, TSharedPtr<SDockTab> Backgrounded);
-
-    /**
-     * The SOverlay SGraphEditorImpl puts around its graph panel (SGraphEditor > SBox > SGraphEditorImpl > SOverlay):
-     * found by walking up from the graph panel, with a recursive search (logged at Debug) as the fallback.
-     */
-    static TSharedPtr<SOverlay> FindGraphEditorOverlay(const TSharedRef<SGraphEditor>& GraphEditor);
-
-    /** Execute collect nodes for a specific editor */
-    void TranslateBlueprintNodesForEditor(TWeakPtr<FBlueprintEditor> InEditor);
-
-    /** Execute copy blueprint JSON to clipboard for a specific editor */
-    void ExecuteCopyJsonForEditor(TWeakPtr<FBlueprintEditor> InEditor);
-    
-    /** Handle asset editor opened callback */
-    void HandleAssetEditorOpened(UObject* Asset, IAssetEditorInstance* EditorInstance);
 
 };

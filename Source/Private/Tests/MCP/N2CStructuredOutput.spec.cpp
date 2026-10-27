@@ -13,6 +13,8 @@
 #include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Tools/IN2CMcpTool.h"
 #include "MCP/Tools/N2CMcpOutputSchema.h"
+#include "MCP/Tools/N2CMcpToolManager.h"
+#include "MCP/Tools/N2CMcpToolsets.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CToolCallContext.h"
 #include "MCP/Tools/N2CToolCatalog.h"
@@ -98,9 +100,25 @@ BEGIN_DEFINE_SPEC(FN2CStructuredOutputSpec, "NodeToCode.MCP.StructuredOutput", N
 	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
 	TUniquePtr<N2CTest::FScratchDir> Scratch;
 
+	/**
+	 * The tools this spec's catalog and protocol core call: a manager of its own serving every toolset, not the server's
+	 * singleton, which serves only what an earlier spec of the run left configured (card 0504: run alone, the singleton
+	 * serves nothing and every call is UNKNOWN_TOOL)
+	 */
+	TUniquePtr<FN2CMcpToolManager> Tools;
+	TUniquePtr<FN2CToolCatalog> Catalog;
+
+	/** The protocol core over this spec's tools */
+	FN2CMcpCatalogs ProtocolCatalogs() const
+	{
+		FN2CMcpCatalogs Catalogs = FN2CMcpCatalogs::Default();
+		Catalogs.Tools = Tools.Get();
+		return Catalogs;
+	}
+
 	TSharedPtr<FJsonObject> SchemaOf(const FString& Name)
 	{
-		const TOptional<FN2CToolDescriptor> Descriptor = FN2CToolCatalog::Get().Find(Name);
+		const TOptional<FN2CToolDescriptor> Descriptor = Catalog->Find(Name);
 		if (Descriptor.IsSet() && Descriptor->OutputSchema.IsValid())
 		{
 			return Descriptor->OutputSchema;
@@ -159,11 +177,18 @@ void FN2CStructuredOutputSpec::Define()
 		Test = MakeUnique<N2CTest::FToolSpecBlueprint>(TEXT("BP_N2CStructured"));
 		Scratch = MakeUnique<N2CTest::FScratchDir>(TEXT("N2CStructuredOutput"));
 		N2CMcpBlueprintExport::SetExportDirectoryForTests(Scratch->Path);
+		Tools = MakeUnique<FN2CMcpToolManager>();
+		FN2CMcpToolConfig Config;
+		Config.Toolsets = N2CMcpToolsets::AllNames();
+		Tools->Configure(Config);
+		Catalog = MakeUnique<FN2CToolCatalog>(*Tools);
 	});
 
 	AfterEach([this]()
 	{
 		N2CMcpBlueprintExport::SetExportDirectoryForTests(FString());
+		Catalog.Reset();
+		Tools.Reset();
 		Scratch.Reset();
 		Test.Reset();
 	});
@@ -268,7 +293,7 @@ void FN2CStructuredOutputSpec::Define()
 			TestFalse(TEXT("closing tags are escaped in the text"), FirstText(Result).Contains(TEXT("</script>")));
 			TestEqual(TEXT("one content item: no resource_link"), Result.Content.Num(), 1);
 		}
-		const TOptional<FN2CToolDescriptor> Descriptor = FN2CToolCatalog::Get().Find(TEXT("translate-focused-blueprint"));
+		const TOptional<FN2CToolDescriptor> Descriptor = Catalog->Find(TEXT("translate-focused-blueprint"));
 		if (TestTrue(TEXT("translate-focused-blueprint is registered"), Descriptor.IsSet() && Descriptor->Source.IsValid()))
 		{
 			TestEqual(TEXT("MaxInlineChars is the tool's maxResultSizeChars"), Descriptor->Source->MaxResultSizeChars.Get(0),
@@ -328,7 +353,7 @@ void FN2CStructuredOutputSpec::Define()
 	It(TEXT("gives every isError result a stable code, and refuses arguments that are not an object with one"), [this]()
 	{
 		// A required argument left out: the catalog's check
-		const FMcpToolCallResult Missing = FN2CToolCatalog::Get().InvokeNow(TEXT("list-blueprint-graphs"), MakeShared<FJsonObject>()).ToCallToolResult();
+		const FMcpToolCallResult Missing = Catalog->InvokeNow(TEXT("list-blueprint-graphs"), MakeShared<FJsonObject>()).ToCallToolResult();
 		TestTrue(TEXT("missing argument: isError"), Missing.bIsError);
 		TestEqual(TEXT("missing argument: INVALID_ARGUMENT"), Missing.GetErrorCode(), FString(TEXT("INVALID_ARGUMENT")));
 		const TSharedPtr<FJsonObject> Meta = Missing.ToJson()->GetObjectField(TEXT("_meta"));
@@ -339,21 +364,21 @@ void FN2CStructuredOutputSpec::Define()
 		const TSharedPtr<FJsonObject> BadDepth = MakeShared<FJsonObject>();
 		BadDepth->SetStringField(TEXT("blueprintPath"), Test->Path());
 		BadDepth->SetNumberField(TEXT("depth"), 9);
-		const FMcpToolCallResult Depth = FN2CToolCatalog::Get().InvokeNow(TEXT("get-blueprint-n2cjson"), BadDepth).ToCallToolResult();
+		const FMcpToolCallResult Depth = Catalog->InvokeNow(TEXT("get-blueprint-n2cjson"), BadDepth).ToCallToolResult();
 		TestEqual(TEXT("the tool's own code"), Depth.GetErrorCode(), FString(TEXT("INVALID_ARGUMENT")));
 		TestEqual(TEXT("CODE|message"), FMcpToolCallResult::ParseErrorCode(TEXT("PIE_ACTIVE|stop the session")), FString(TEXT("PIE_ACTIVE")));
 		TestEqual(TEXT("no code in plain text"), FMcpToolCallResult::ParseErrorCode(TEXT("Missing required parameter: x")), FString());
 		TestEqual(TEXT("no code in a lone word"), FMcpToolCallResult::ParseErrorCode(TEXT("A: b")), FString());
 		const TSharedPtr<FJsonObject> NoFile = MakeShared<FJsonObject>();
 		NoFile->SetStringField(TEXT("relativePath"), TEXT("Config/N2CNoSuchFolder"));
-		const FMcpToolCallResult Plain = FN2CToolCatalog::Get().InvokeNow(TEXT("read-path"), NoFile).ToCallToolResult();
+		const FMcpToolCallResult Plain = Catalog->InvokeNow(TEXT("read-path"), NoFile).ToCallToolResult();
 		if (TestTrue(TEXT("a missing folder is an error"), Plain.bIsError) && FMcpToolCallResult::ParseErrorCode(FirstText(Plain)).IsEmpty())
 		{
 			TestEqual(TEXT("an error text without a code is TOOL_FAILED"), Plain.GetErrorCode(), FString(TEXT("TOOL_FAILED")));
 		}
 
 		// tools/call with arguments that are not an object: an isError result, not a JSON-RPC error (SEP-1303)
-		FN2CMcpProtocol Core;
+		FN2CMcpProtocol Core(ProtocolCatalogs());
 		auto Send = [&Core](const FString& Body, const FString& SessionId)
 		{
 			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Responder = MakeShared<N2CTest::FN2CMcpMemoryResponder>(false);

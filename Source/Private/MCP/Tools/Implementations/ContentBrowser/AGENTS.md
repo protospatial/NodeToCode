@@ -75,7 +75,11 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
     graph `UserConstructionScript`. An unknown name is not an error: the Blueprint opens and `focused_graph` is empty
 - **Returns**: `success`, `asset_path`, `editor_id`, `focused_graph`, `asset_type`, `blueprint_name`, `parent_class`,
   `graph_counts` (`event_graphs`, `function_graphs`, `macro_graphs`, `delegate_graphs`). A non-Blueprint asset fails
-  with `Asset is not a blueprint`
+  with `Asset is not a blueprint`. `asset_type` (`GetBlueprintTypeString`) is `Widget` (a Widget Blueprint),
+  `Animation` (an Anim Blueprint), `Component`, `Actor` or `Object` for a normal Blueprint, from its asset class and
+  parent class, otherwise its `BlueprintType` (`Const`, `MacroLibrary`, `Interface`, `LevelScript`,
+  `FunctionLibrary`). `event_graphs` counts the event graph pages (`UbergraphPages`), not the transient `EventGraphs`
+  list, which is empty outside a compile. `focus_graph` searches `N2CMcpEditorContext::TopLevelGraphs` (card 0503)
 - **Use Case**: Opening Blueprints for editing
 
 ### search-content-browser

@@ -8,6 +8,7 @@
 #include "Tests/N2CTestHelpers.h"
 #include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
+#include "Tests/N2CTestContentFolder.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpEditorContext.h"
 #include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpGetOpenBlueprintEditorsTool.h"
@@ -223,7 +224,7 @@ void FN2CEditorContextSpec::Define()
 				{
 					Object->ClearFlags(RF_Standalone | RF_Public);
 					return true;
-				}, false);
+				}, N2CTest::TopLevelObjectsOnly);
 			};
 			if (!TestTrue(TEXT("the Actor Blueprint was built"), Branch && Sequence) || !TestNotNull(TEXT("the Widget Blueprint"), Widget))
 			{

@@ -9,7 +9,7 @@
 #include "Tests/N2CTestContentFolder.h"
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Tests/N2CToolSpecHarness.h"
-#include "Core/N2CEditorIntegration.h"
+#include "Core/N2CGraphOverlayInjector.h"
 #include "Core/N2CGraphStateManager.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -320,7 +320,7 @@ bool FN2CGraphOverlayIdentityTest::RunTest(const FString& Parameters)
 	}
 	GraphB->GraphGuid = GraphA->GraphGuid;
 
-	FN2CEditorIntegration& Integration = FN2CEditorIntegration::Get();
+	FN2CGraphOverlayInjector& Injector = FN2CGraphOverlayInjector::Get();
 	for (N2CTest::FTestBlueprint* Each : Both)
 	{
 		TSharedPtr<IBlueprintEditor> Opened;
@@ -340,11 +340,11 @@ bool FN2CGraphOverlayIdentityTest::RunTest(const FString& Parameters)
 		{
 			return false;
 		}
-		Integration.WrapGraphTabIfNeeded(Tabs[0], Graph, Editor);
+		Injector.InjectIntoTab(Tabs[0], Graph, Editor);
 	}
 
-	TestTrue(TEXT("the original's EventGraph has an overlay"), Integration.HasLiveOverlay(GraphA));
-	TestTrue(TEXT("the copy's EventGraph (same GUID) has its own overlay"), Integration.HasLiveOverlay(GraphB));
+	TestTrue(TEXT("the original's EventGraph has an overlay"), Injector.HasLiveOverlay(GraphA));
+	TestTrue(TEXT("the copy's EventGraph (same GUID) has its own overlay"), Injector.HasLiveOverlay(GraphB));
 	return true;
 #endif
 }
