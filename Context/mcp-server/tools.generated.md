@@ -666,7 +666,7 @@ Tag Blueprint graphs so they can be found and translated as a group, and list or
 
 **List graph tags**
 
-Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, or by tag name (optionally with category), or by category; a graphGuid filter overrides the tag and category filters.
+Lists tags that have been applied to Blueprint graphs. Filters by graph GUID, tag name and category, all optional; every filter given applies (case-insensitive tag and category).
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
