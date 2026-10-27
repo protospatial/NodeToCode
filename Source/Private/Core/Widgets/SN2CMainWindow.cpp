@@ -25,6 +25,7 @@
 #include "Layout/Visibility.h"
 #include "Styling/AppStyle.h"
 #include "Misc/FileHelper.h"
+#include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -434,23 +435,64 @@ void SN2CMainWindow::HandleRemoveSelectedRequested()
 		return;
 	}
 
-	// Remove tags from all selected graphs: one save and one reload broadcast for the whole selection
-	UN2CGraphStateManager& StateManager = UN2CGraphStateManager::Get();
+	TArray<FN2CTagRemovalRequest> Requests;
+	TSet<FN2CGraphKey> Graphs;
+	for (const FN2CTagInfo& Graph : SelectedGraphs)
 	{
-		FN2CGraphStateBulkUpdate Bulk(StateManager);
-		for (const FN2CTagInfo& Graph : SelectedGraphs)
+		// The row's own Blueprint: a duplicated Blueprint's graph has the same GUID (card 0192)
+		const FN2CGraphKey Key = FN2CGraphKey::FromStrings(Graph.BlueprintPath, Graph.GraphGuid);
+		if (Key.IsValid())
 		{
-			// The row's own Blueprint: a duplicated Blueprint's graph has the same GUID (card 0192)
-			const FN2CGraphKey Key = FN2CGraphKey::FromStrings(Graph.BlueprintPath, Graph.GraphGuid);
-			if (Key.IsValid())
-			{
-				StateManager.RemoveTag(Key, Graph.Tag, Graph.Category);
-			}
+			Requests.Add({Key, Graph.Tag, Graph.Category});
+			Graphs.Add(Key);
 		}
 	}
+	if (Requests.Num() == 0)
+	{
+		return;
+	}
 
-	// Refresh the UI
+	const FText Question = FText::Format(
+		LOCTEXT("RemoveSelectedConfirm", "Remove {0} {0}|plural(one=tag,other=tags) from {1} {1}|plural(one=graph,other=graphs)? Translations and JSON exports are kept."),
+		FText::AsNumber(Requests.Num()), FText::AsNumber(Graphs.Num()));
+	if (FMessageDialog::Open(EAppMsgType::YesNo, Question) != EAppReturnType::Yes)
+	{
+		return;
+	}
+
+	// One save and one reload broadcast for the whole selection; the tag list refreshes once on that broadcast
+	TArray<FN2CRemovedTag> Removed = UN2CGraphStateManager::Get().RemoveTags(Requests);
 	RefreshData();
+	if (Removed.Num() == 0)
+	{
+		return;
+	}
+
+	// Offer Undo: the snapshot puts each tag back with its description and timestamp. The lambda holds no widget, so
+	// it works after this window closes; the holder stops a second click restoring twice.
+	TSharedRef<TWeakPtr<SNotificationItem>> NotificationHolder = MakeShared<TWeakPtr<SNotificationItem>>();
+	FNotificationInfo Info(FText::Format(
+		LOCTEXT("RemoveSelectedDone", "Removed {0} {0}|plural(one=tag,other=tags)"), FText::AsNumber(Removed.Num())));
+	Info.ButtonDetails.Add(FNotificationButtonInfo(
+		LOCTEXT("RemoveSelectedUndo", "Undo"),
+		LOCTEXT("RemoveSelectedUndoToolTip", "Put the removed tags back"),
+		FSimpleDelegate::CreateLambda([NotificationHolder, Snapshot = MoveTemp(Removed)]()
+		{
+			const TSharedPtr<SNotificationItem> Item = NotificationHolder->Pin();
+			if (!Item.IsValid() || Item->GetCompletionState() == SNotificationItem::CS_Success)
+			{
+				return;
+			}
+			const int32 Restored = UN2CGraphStateManager::Get().RestoreTags(Snapshot);
+			Item->SetText(FText::Format(
+				LOCTEXT("RemoveSelectedUndone", "Restored {0} {0}|plural(one=tag,other=tags)"), FText::AsNumber(Restored)));
+			Item->SetCompletionState(SNotificationItem::CS_Success);
+			Item->ExpireAndFadeout();
+		}),
+		SNotificationItem::CS_None));
+	Info.ExpireDuration = 10.0f;
+	Info.bUseSuccessFailIcons = false;
+	*NotificationHolder = FSlateNotificationManager::Get().AddNotification(Info);
 }
 
 // ==================== Backend Integration ====================

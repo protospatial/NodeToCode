@@ -541,6 +541,81 @@ void FN2CGraphStateSpec::Define()
 		});
 	});
 
+	Describe(TEXT("RemoveTags (Remove Selected)"), [this]()
+	{
+		It(TEXT("removes 50 tags with one save and one reload broadcast, and RestoreTags puts them back the same way"), [this]()
+		{
+			UN2CGraphStateManager* State = OpenManager();
+			const FSoftObjectPath Blueprint(TEXT("/Game/BP_Many.BP_Many"));
+			TArray<FN2CTagRemovalRequest> Requests;
+			TArray<FGuid> Guids;
+			// 25 graphs with two tags each; graph 3 also has a translation, so it must stay after its tags go
+			for (int32 Graph = 0; Graph < 25; ++Graph)
+			{
+				Guids.Add(FGuid::NewGuid());
+				const FString Name = FString::Printf(TEXT("Graph%d"), Graph);
+				State->AddTag(Guids.Last(), Name, Blueprint, TEXT("First"), TEXT("Default"), TEXT("described"));
+				State->AddTag(Guids.Last(), Name, Blueprint, TEXT("Second"), TEXT("Other"));
+				Requests.Add({FN2CGraphKey(Blueprint, Guids.Last()), TEXT("First"), TEXT("Default")});
+				Requests.Add({FN2CGraphKey(Blueprint, Guids.Last()), TEXT("Second"), TEXT("")});
+				if (Graph == 3)
+				{
+					State->RecordSavedTranslation(Guids.Last(), Name, Blueprint, Scratch->Path / Name, TEXT("Anthropic"),
+						TEXT("model"), EN2CCodeLanguage::Cpp, FN2CTranslationSummary());
+				}
+			}
+			// One request that matches nothing is skipped
+			Requests.Add({FN2CGraphKey(Blueprint, FGuid::NewGuid()), TEXT("First"), TEXT("Default")});
+			const FDateTime FirstStamp = State->GetTagsForGraph(FN2CGraphKey(Blueprint, Guids[0]))[0].Timestamp;
+
+			int32 Reloads = 0;
+			int32 PerTagEvents = 0;
+			int32 PerGraphEvents = 0;
+			State->OnGraphStatesReloaded.AddLambda([&Reloads]() { ++Reloads; });
+			State->OnGraphTagRemoved.AddLambda([&PerTagEvents](const FN2CGraphKey&, const FString&) { ++PerTagEvents; });
+			State->OnGraphTagAdded.AddLambda([&PerTagEvents](const FN2CGraphState&) { ++PerTagEvents; });
+			State->OnGraphStateChanged.AddLambda([&PerGraphEvents](const FN2CGraphKey&) { ++PerGraphEvents; });
+			int32 SavesBefore = State->GetSaveCount();
+
+			const TArray<FN2CRemovedTag> Removed = State->RemoveTags(Requests);
+			TestEqual(TEXT("50 tags removed"), Removed.Num(), 50);
+			TestEqual(TEXT("one state-file write"), State->GetSaveCount() - SavesBefore, 1);
+			TestEqual(TEXT("one reload broadcast"), Reloads, 1);
+			TestEqual(TEXT("no per-tag broadcasts"), PerTagEvents, 0);
+			TestEqual(TEXT("no per-graph broadcasts"), PerGraphEvents, 0);
+			TestEqual(TEXT("only the translated graph is left"), State->GetAllGraphStates().Num(), 1);
+			TestEqual(TEXT("no tag names are left"), State->GetAllTagNames().Num(), 0);
+
+			Reloads = 0;
+			SavesBefore = State->GetSaveCount();
+			TestEqual(TEXT("RestoreTags puts back all 50"), State->RestoreTags(Removed), 50);
+			TestEqual(TEXT("with one state-file write"), State->GetSaveCount() - SavesBefore, 1);
+			TestEqual(TEXT("and one reload broadcast"), Reloads, 1);
+			TestEqual(TEXT("and no per-tag broadcasts"), PerTagEvents, 0);
+			TestEqual(TEXT("every graph is back"), State->GetAllGraphStates().Num(), 25);
+			const TArray<FN2CTagEntry> FirstTags = State->GetTagsForGraph(FN2CGraphKey(Blueprint, Guids[0]));
+			if (TestEqual(TEXT("graph 0 has both tags again"), FirstTags.Num(), 2))
+			{
+				const FN2CTagEntry* First = FirstTags.FindByPredicate([](const FN2CTagEntry& Entry) { return Entry.Tag == TEXT("First"); });
+				if (TestNotNull(TEXT("its First tag"), First))
+				{
+					TestEqual(TEXT("keeps its description"), First->Description, FString(TEXT("described")));
+					TestEqual(TEXT("keeps its timestamp"), First->Timestamp, FirstStamp);
+				}
+			}
+			TestTrue(TEXT("the translated graph kept its translation"),
+				State->HasTranslation(FN2CGraphKey(Blueprint, Guids[3])));
+
+			SavesBefore = State->GetSaveCount();
+			TestEqual(TEXT("a second restore finds every tag already there"), State->RestoreTags(Removed), 0);
+			TestEqual(TEXT("and saves nothing"), State->GetSaveCount() - SavesBefore, 0);
+
+			UN2CGraphStateManager* Reloaded = OpenManager();
+			TestEqual(TEXT("the saved file holds the restored tags"), Reloaded->GetAllTagNames().Num(), 2);
+			TestEqual(TEXT("on every graph"), Reloaded->GetAllGraphStates().Num(), 25);
+		});
+	});
+
 	Describe(TEXT("LoadTranslation"), [this]()
 	{
 		for (const FN2CTargetLanguage& Language : N2C::GetLanguages())

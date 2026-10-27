@@ -457,6 +457,76 @@ int32 UN2CGraphStateManager::ClearAllTags()
 	return RemovedCount;
 }
 
+TArray<FN2CRemovedTag> UN2CGraphStateManager::RemoveTags(const TArray<FN2CTagRemovalRequest>& Requests)
+{
+	// RemoveTag's save and broadcasts are held back until Bulk ends: one save and one reload broadcast in all
+	FN2CGraphStateBulkUpdate Bulk(*this);
+
+	TArray<FN2CRemovedTag> Removed;
+	for (const FN2CTagRemovalRequest& Request : Requests)
+	{
+		const int32 Index = FindGraphStateIndex(Request.Key);
+		if (Index == INDEX_NONE)
+		{
+			continue;
+		}
+		const FN2CGraphState& State = StateFile.Graphs[Index];
+		// The entry RemoveTag takes: the last match (a graph holds a tag and category only once)
+		for (int32 TagIndex = State.Tags.Num() - 1; TagIndex >= 0; --TagIndex)
+		{
+			if (State.Tags[TagIndex].MatchesTag(Request.Tag, Request.Category))
+			{
+				FN2CRemovedTag Snapshot;
+				Snapshot.Key = State.GetKey();
+				Snapshot.GraphName = State.GraphName;
+				Snapshot.Entry = State.Tags[TagIndex];
+				if (RemoveTag(Snapshot.Key, Snapshot.Entry.Tag, Snapshot.Entry.Category))
+				{
+					Removed.Add(MoveTemp(Snapshot));
+				}
+				break;
+			}
+		}
+	}
+	return Removed;
+}
+
+int32 UN2CGraphStateManager::RestoreTags(const TArray<FN2CRemovedTag>& Removed)
+{
+	FN2CGraphStateBulkUpdate Bulk(*this);
+
+	int32 RestoredCount = 0;
+	for (const FN2CRemovedTag& Item : Removed)
+	{
+		if (!Item.Key.GraphGuid.IsValid())
+		{
+			continue;
+		}
+		FN2CGraphState& State = GetOrCreateGraphState(Item.Key.GraphGuid, Item.GraphName, Item.Key.Blueprint);
+		const bool bAlreadyThere = State.Tags.ContainsByPredicate([&Item](const FN2CTagEntry& Existing)
+		{
+			return Existing.MatchesTagExactly(Item.Entry.Tag, Item.Entry.Category);
+		});
+		if (bAlreadyThere)
+		{
+			continue;
+		}
+		State.Tags.Add(Item.Entry);
+		++RestoredCount;
+		MarkDirty();
+		BroadcastTagAdded(State);
+		BroadcastStateChanged(State.GetKey());
+	}
+
+	if (RestoredCount > 0)
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Restored %d removed tags"), RestoredCount), EN2CLogSeverity::Info);
+		// Saved once when Bulk ends, which also broadcasts OnGraphStatesReloaded once
+		SaveState();
+	}
+	return RestoredCount;
+}
+
 bool UN2CGraphStateManager::GraphHasTag(const FN2CGraphKey& Key, const FString& Tag, const FString& Category) const
 {
 	const FN2CGraphState* State = FindGraphState(Key);
