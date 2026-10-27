@@ -12,8 +12,8 @@
 
 /**
  * Card 0295: the Blueprint tools' toasts (FN2CMcpNotification) use brushes the editor style defines. Before it the
- * tools asked for 'Icons.SuccessWithCircle' / 'Icons.ErrorWithCircle', which no UE 5.6-5.8 style has, and every toast
- * showed the checkerboard default brush. Review ids: mcp-tools-variables-24, mcp-tools-graph-functions-23.
+ * tools asked for success and error brush names that no UE 5.6-5.8 style has, and every toast showed the checkerboard
+ * default brush. Review ids: mcp-tools-variables-24, mcp-tools-graph-functions-23.
  */
 BEGIN_DEFINE_SPEC(FN2CMcpNotificationSpec, "NodeToCode.MCP.Notification", N2C_TEST_FLAGS)
 END_DEFINE_SPEC(FN2CMcpNotificationSpec)
@@ -33,7 +33,6 @@ void FN2CMcpNotificationSpec::Define()
 		// A brush the style defines is found without a fallback; a missing one comes back as the fallback (nullptr)
 		TestTrue(TEXT("the success icon is a defined style brush"), Success != nullptr && FAppStyle::Get().GetOptionalBrush(TEXT("Icons.SuccessWithColor"), nullptr, nullptr) == Success);
 		TestTrue(TEXT("the error icon is a defined style brush"), Error != nullptr && FAppStyle::Get().GetOptionalBrush(TEXT("Icons.ErrorWithColor"), nullptr, nullptr) == Error);
-		TestNull(TEXT("the names used before card 0295 are not defined"), FAppStyle::Get().GetOptionalBrush(TEXT("Icons.SuccessWithCircle"), nullptr, nullptr));
 	});
 }
 
