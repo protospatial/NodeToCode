@@ -20,7 +20,6 @@ public:
 	virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
 	virtual bool RequiresGameThread() const override { return true; }
 
-private:
 	// Type information structure
 	struct FVariableTypeInfo
 	{
@@ -31,29 +30,30 @@ private:
 		FString Icon;
 		FString ParentClass;
 		bool bIsAbstract;
-		TArray<FString> EnumValues;
+		/** Comes from the engine or an engine plugin (by module or mount point, not by path prefix) */
+		bool bIsEngine;
+		/** TypeName and Description in lower case, for matching */
+		FString LowerName;
+		FString LowerDescription;
 
-		FVariableTypeInfo() : bIsAbstract(false) {}
+		FVariableTypeInfo() : bIsAbstract(false), bIsEngine(false) {}
 	};
 
+private:
 	// Type collection methods
 	void CollectPrimitiveTypes(TArray<FVariableTypeInfo>& OutTypes) const;
-	void CollectClassTypes(TArray<FVariableTypeInfo>& OutTypes, bool bIncludeEngineTypes) const;
-	void CollectStructTypes(TArray<FVariableTypeInfo>& OutTypes, bool bIncludeEngineTypes) const;
-	void CollectEnumTypes(TArray<FVariableTypeInfo>& OutTypes, bool bIncludeEngineTypes) const;
+	/** Builds the cached native and asset types if stale; loads no asset */
+	void BuildTypeIndex() const;
+	/** Appends user structs, enums and Blueprint classes loaded in memory that the index does not have */
+	void CollectLoadedUserTypes(TArray<FVariableTypeInfo>& InOutTypes) const;
 
-	// Helper methods - using fully qualified type names
-	void ProcessTypeTree(const TArray<TSharedPtr<class UEdGraphSchema_K2::FPinTypeTreeInfo>>& TypeTree, 
-		TArray<FVariableTypeInfo>& OutTypes, const FString& Category, bool bIncludeEngineTypes) const;
-	void ProcessBlueprintAssets(const TArray<FAssetData>& BlueprintAssets, 
-		TArray<FVariableTypeInfo>& OutTypes) const;
+	/** The top MaxResults matches; OutTotalMatches is the number that matched before the cut */
 	TArray<FVariableTypeInfo> FilterTypesBySearchTerm(const TArray<FVariableTypeInfo>& AllTypes,
-		const FString& SearchTerm, int32 MaxResults) const;
+		const FString& SearchTerm, int32 MaxResults, int32& OutTotalMatches) const;
 
 	// JSON conversion
-	TSharedPtr<FJsonObject> BuildJsonResult(const TArray<FVariableTypeInfo>& FilteredTypes) const;
-	
+	TSharedPtr<FJsonObject> BuildJsonResult(const TArray<FVariableTypeInfo>& FilteredTypes, int32 TotalMatches) const;
+
 	// Utility
-	bool IsEngineType(const FString& TypePath) const;
 	FString GetTypeDescription(const UObject* TypeObject) const;
 };

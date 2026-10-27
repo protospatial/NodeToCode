@@ -19,6 +19,14 @@
 #include "AssetRegistry/AssetData.h"
 #include "Dom/JsonObject.h"
 #include "UObject/UObjectIterator.h"
+#include "UObject/Package.h"
+#include "Blueprint/BlueprintSupport.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/CoreDelegates.h"
+#include "Misc/PackageName.h"
+#include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
+#include "HAL/PlatformTime.h"
 
 REGISTER_MCP_TOOL(FN2CMcpSearchVariableTypesTool)
 
@@ -88,6 +96,155 @@ FMcpToolDefinition FN2CMcpSearchVariableTypesTool::GetDefinition() const
 	return Definition;
 }
 
+namespace N2CSearchVariableTypes
+{
+	using FTypeInfo = FN2CMcpSearchVariableTypesTool::FVariableTypeInfo;
+
+	/**
+	 * The native and asset types every search reads, built once without loading any asset (mcp-tools-variables-18,
+	 * imp-mcp-tools-variables-7). Native types are rebuilt when a module loads or unloads, asset types when the asset
+	 * registry adds, removes, renames or updates an asset. Both rebuilds happen on the next search, on the game thread.
+	 */
+	struct FTypeIndex
+	{
+		TArray<FTypeInfo> NativeTypes;
+		TArray<FTypeInfo> AssetTypes;
+		bool bNativeStale = true;
+		bool bAssetsStale = true;
+		bool bSubscribed = false;
+		FDelegateHandle AssetAddedHandle;
+		FDelegateHandle AssetRemovedHandle;
+		FDelegateHandle AssetRenamedHandle;
+		FDelegateHandle AssetUpdatedHandle;
+		FDelegateHandle FilesLoadedHandle;
+		FDelegateHandle ModulesChangedHandle;
+		FDelegateHandle PreExitHandle;
+	};
+
+	FTypeIndex& Index()
+	{
+		static FTypeIndex Instance;
+		return Instance;
+	}
+
+	void Unsubscribe()
+	{
+		FTypeIndex& State = Index();
+		if (!State.bSubscribed)
+		{
+			return;
+		}
+		if (IAssetRegistry* AssetRegistry = IAssetRegistry::Get())
+		{
+			AssetRegistry->OnAssetAdded().Remove(State.AssetAddedHandle);
+			AssetRegistry->OnAssetRemoved().Remove(State.AssetRemovedHandle);
+			AssetRegistry->OnAssetRenamed().Remove(State.AssetRenamedHandle);
+			AssetRegistry->OnAssetUpdated().Remove(State.AssetUpdatedHandle);
+			AssetRegistry->OnFilesLoaded().Remove(State.FilesLoadedHandle);
+		}
+		FModuleManager::Get().OnModulesChanged().Remove(State.ModulesChangedHandle);
+		FCoreDelegates::OnPreExit.Remove(State.PreExitHandle);
+		State.bSubscribed = false;
+	}
+
+	void Subscribe(IAssetRegistry& AssetRegistry)
+	{
+		FTypeIndex& State = Index();
+		if (State.bSubscribed)
+		{
+			return;
+		}
+		State.AssetAddedHandle = AssetRegistry.OnAssetAdded().AddLambda([](const FAssetData&) { Index().bAssetsStale = true; });
+		State.AssetRemovedHandle = AssetRegistry.OnAssetRemoved().AddLambda([](const FAssetData&) { Index().bAssetsStale = true; });
+		State.AssetRenamedHandle = AssetRegistry.OnAssetRenamed().AddLambda([](const FAssetData&, const FString&) { Index().bAssetsStale = true; });
+		State.AssetUpdatedHandle = AssetRegistry.OnAssetUpdated().AddLambda([](const FAssetData&) { Index().bAssetsStale = true; });
+		State.FilesLoadedHandle = AssetRegistry.OnFilesLoaded().AddLambda([]() { Index().bAssetsStale = true; });
+		State.ModulesChangedHandle = FModuleManager::Get().OnModulesChanged().AddLambda([](FName, EModuleChangeReason) { Index().bNativeStale = true; });
+		// The lambdas live in this module: drop them before modules shut down
+		State.PreExitHandle = FCoreDelegates::OnPreExit.AddLambda([]() { Unsubscribe(); });
+		State.bSubscribed = true;
+	}
+
+	/** True when a native module's binary is under the engine directory (engine modules and engine plugins) */
+	bool IsEngineModule(const FString& ModuleName, TMap<FString, bool>& Cache)
+	{
+		if (const bool* Known = Cache.Find(ModuleName))
+		{
+			return *Known;
+		}
+		// A module the manager does not know is compiled into the executable: the engine's
+		bool bEngine = true;
+		FModuleStatus Status;
+		if (FModuleManager::Get().QueryModule(FName(*ModuleName), Status) && !Status.FilePath.IsEmpty())
+		{
+			bEngine = FPaths::IsUnderDirectory(FPaths::ConvertRelativePathToFull(Status.FilePath),
+				FPaths::ConvertRelativePathToFull(FPaths::EngineDir()));
+		}
+		Cache.Add(ModuleName, bEngine);
+		return bEngine;
+	}
+
+	/**
+	 * Classifies a type by where it comes from (mcp-tools-variables-23): /Script/<Module> by the module's location,
+	 * /Engine content as engine, /Game as the project's, and another mount point by the plugin it belongs to. A
+	 * project's own native types (/Script/MyGame) and its plugins' are not engine types.
+	 */
+	bool IsEngineTypePath(const FString& ObjectPath, TMap<FString, bool>& ModuleCache)
+	{
+		FString Rest = ObjectPath;
+		Rest.RemoveFromStart(TEXT("/"));
+		int32 End = INDEX_NONE;
+		Rest.FindChar(TEXT('/'), End);
+		const FString Root = End == INDEX_NONE ? Rest : Rest.Left(End);
+		if (Root == TEXT("Script"))
+		{
+			FString Module = Rest.Mid(End + 1);
+			int32 Dot = INDEX_NONE;
+			if (Module.FindChar(TEXT('.'), Dot))
+			{
+				Module.LeftInline(Dot);
+			}
+			return IsEngineModule(Module, ModuleCache);
+		}
+		if (Root == TEXT("Engine"))
+		{
+			return true;
+		}
+		if (Root == TEXT("Game"))
+		{
+			return false;
+		}
+		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(Root);
+		return Plugin.IsValid() && Plugin->GetLoadedFrom() == EPluginLoadedFrom::Engine;
+	}
+
+	/** Engine-internal class copies a Blueprint compile leaves in memory, never a type to offer */
+	bool IsCompilerCopy(const UObject* Object)
+	{
+		const FString Name = Object->GetName();
+		return Name.StartsWith(TEXT("SKEL_")) || Name.StartsWith(TEXT("REINST_")) || Name.StartsWith(TEXT("TRASH_"))
+			|| Name.StartsWith(TEXT("HOTRELOADED_"));
+	}
+
+	void Finish(FTypeInfo& Info, bool bIsEngine)
+	{
+		Info.bIsEngine = bIsEngine;
+		Info.LowerName = Info.TypeName.ToLower();
+		Info.LowerDescription = Info.Description.ToLower();
+	}
+
+	/** An object path from a GeneratedClass or ParentClass tag, which holds export text (Class'/Game/BP.BP_C') */
+	FString TagObjectPath(const FAssetData& AssetData, const FName Tag)
+	{
+		FString Value;
+		if (!AssetData.GetTagValue(Tag, Value) || Value.IsEmpty() || Value == TEXT("None"))
+		{
+			return FString();
+		}
+		return FPackageName::ExportTextPathToObjectPath(Value);
+	}
+}
+
 FMcpToolCallResult FN2CMcpSearchVariableTypesTool::Execute(const TSharedPtr<FJsonObject>& Arguments)
 {
 	return ExecuteOnGameThread([this, Arguments]() -> FMcpToolCallResult
@@ -102,13 +259,13 @@ FMcpToolCallResult FN2CMcpSearchVariableTypesTool::Execute(const TSharedPtr<FJso
 		// Parse arguments
 		FN2CMcpArgumentParser ArgParser(Arguments);
 		FString ErrorMsg;
-		
+
 		FString SearchTerm;
 		if (!ArgParser.TryGetRequiredString(TEXT("searchTerm"), SearchTerm, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
-		
+
 		if (SearchTerm.IsEmpty())
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("searchTerm cannot be empty"));
@@ -121,45 +278,42 @@ FMcpToolCallResult FN2CMcpSearchVariableTypesTool::Execute(const TSharedPtr<FJso
 
 		// Log the search request
 		FN2CLogger& Logger = FN2CLogger::Get();
-		Logger.Log(FString::Printf(TEXT("Searching variable types: '%s', Category: %s, MaxResults: %d"), 
+		Logger.Log(FString::Printf(TEXT("Searching variable types: '%s', Category: %s, MaxResults: %d"),
 			*SearchTerm, *Category, MaxResults), EN2CLogSeverity::Info, TEXT("SearchVariableTypes"));
 
-		// Build type list based on category filter
-		TArray<FVariableTypeInfo> AllTypes;
-		
-		if (Category == TEXT("all") || Category == TEXT("primitive"))
+		// Every candidate once: primitives, the cached native and asset types, and user types loaded in memory that
+		// the asset registry does not list (a new struct not yet saved, a Blueprint in a transient package)
+		TArray<FVariableTypeInfo> Candidates;
+		CollectPrimitiveTypes(Candidates);
+		BuildTypeIndex();
+		const N2CSearchVariableTypes::FTypeIndex& State = N2CSearchVariableTypes::Index();
+		Candidates.Append(State.NativeTypes);
+		Candidates.Append(State.AssetTypes);
+		CollectLoadedUserTypes(Candidates);
+
+		TArray<FVariableTypeInfo> Filtered;
+		for (FVariableTypeInfo& Info : Candidates)
 		{
-			CollectPrimitiveTypes(AllTypes);
-		}
-		
-		if (Category == TEXT("all") || Category == TEXT("class"))
-		{
-			CollectClassTypes(AllTypes, bIncludeEngineTypes);
-		}
-		
-		if (Category == TEXT("all") || Category == TEXT("struct"))
-		{
-			CollectStructTypes(AllTypes, bIncludeEngineTypes);
-		}
-		
-		if (Category == TEXT("all") || Category == TEXT("enum"))
-		{
-			CollectEnumTypes(AllTypes, bIncludeEngineTypes);
+			if ((Category == TEXT("all") || Info.Category == Category) && (bIncludeEngineTypes || !Info.bIsEngine))
+			{
+				Filtered.Add(MoveTemp(Info));
+			}
 		}
 
 		// Filter by search term
-		TArray<FVariableTypeInfo> FilteredTypes = FilterTypesBySearchTerm(AllTypes, SearchTerm, MaxResults);
+		int32 TotalMatches = 0;
+		TArray<FVariableTypeInfo> FilteredTypes = FilterTypesBySearchTerm(Filtered, SearchTerm, MaxResults, TotalMatches);
 
 		// Build JSON result
-		TSharedPtr<FJsonObject> Result = BuildJsonResult(FilteredTypes);
+		TSharedPtr<FJsonObject> Result = BuildJsonResult(FilteredTypes, TotalMatches);
 
 		// Convert result to string
 		FString OutputString;
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
 		FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
 
-		Logger.Log(FString::Printf(TEXT("Found %d variable types matching '%s'"), 
-			FilteredTypes.Num(), *SearchTerm), EN2CLogSeverity::Info, TEXT("SearchVariableTypes"));
+		Logger.Log(FString::Printf(TEXT("Found %d variable types matching '%s', returned %d"),
+			TotalMatches, *SearchTerm, FilteredTypes.Num()), EN2CLogSeverity::Info, TEXT("SearchVariableTypes"));
 
 		return FMcpToolCallResult::CreateTextResult(OutputString);
 	});
@@ -167,501 +321,279 @@ FMcpToolCallResult FN2CMcpSearchVariableTypesTool::Execute(const TSharedPtr<FJso
 
 void FN2CMcpSearchVariableTypesTool::CollectPrimitiveTypes(TArray<FVariableTypeInfo>& OutTypes) const
 {
-	// Basic primitive types - create struct instances properly
-	FVariableTypeInfo BoolType;
-	BoolType.TypeName = TEXT("Boolean");
-	BoolType.TypeIdentifier = TEXT("bool");
-	BoolType.Category = TEXT("primitive");
-	BoolType.Description = TEXT("True/False value");
-	BoolType.Icon = TEXT("boolean");
-	OutTypes.Add(BoolType);
-	
-	FVariableTypeInfo ByteType;
-	ByteType.TypeName = TEXT("Byte");
-	ByteType.TypeIdentifier = TEXT("uint8");
-	ByteType.Category = TEXT("primitive");
-	ByteType.Description = TEXT("8-bit unsigned integer (0-255)");
-	ByteType.Icon = TEXT("byte");
-	OutTypes.Add(ByteType);
-	
-	FVariableTypeInfo IntType;
-	IntType.TypeName = TEXT("Integer");
-	IntType.TypeIdentifier = TEXT("int32");
-	IntType.Category = TEXT("primitive");
-	IntType.Description = TEXT("32-bit signed integer");
-	IntType.Icon = TEXT("integer");
-	OutTypes.Add(IntType);
-	
-	FVariableTypeInfo Int64Type;
-	Int64Type.TypeName = TEXT("Integer64");
-	Int64Type.TypeIdentifier = TEXT("int64");
-	Int64Type.Category = TEXT("primitive");
-	Int64Type.Description = TEXT("64-bit signed integer");
-	Int64Type.Icon = TEXT("integer64");
-	OutTypes.Add(Int64Type);
-	
-	FVariableTypeInfo FloatType;
-	FloatType.TypeName = TEXT("Float");
-	FloatType.TypeIdentifier = TEXT("float");
-	FloatType.Category = TEXT("primitive");
-	FloatType.Description = TEXT("Single precision decimal");
-	FloatType.Icon = TEXT("float");
-	OutTypes.Add(FloatType);
-	
-	FVariableTypeInfo DoubleType;
-	DoubleType.TypeName = TEXT("Double");
-	DoubleType.TypeIdentifier = TEXT("double");
-	DoubleType.Category = TEXT("primitive");
-	DoubleType.Description = TEXT("Double precision decimal");
-	DoubleType.Icon = TEXT("double");
-	OutTypes.Add(DoubleType);
-	
-	FVariableTypeInfo StringType;
-	StringType.TypeName = TEXT("String");
-	StringType.TypeIdentifier = TEXT("FString");
-	StringType.Category = TEXT("primitive");
-	StringType.Description = TEXT("Text string");
-	StringType.Icon = TEXT("string");
-	OutTypes.Add(StringType);
-	
-	FVariableTypeInfo TextType;
-	TextType.TypeName = TEXT("Text");
-	TextType.TypeIdentifier = TEXT("FText");
-	TextType.Category = TEXT("primitive");
-	TextType.Description = TEXT("Localized text");
-	TextType.Icon = TEXT("text");
-	OutTypes.Add(TextType);
-	
-	FVariableTypeInfo NameType;
-	NameType.TypeName = TEXT("Name");
-	NameType.TypeIdentifier = TEXT("FName");
-	NameType.Category = TEXT("primitive");
-	NameType.Description = TEXT("Lightweight name identifier");
-	NameType.Icon = TEXT("name");
-	OutTypes.Add(NameType);
+	struct FPrimitive { const TCHAR* Name; const TCHAR* Identifier; const TCHAR* Description; const TCHAR* Icon; };
+	static const FPrimitive Primitives[] = {
+		{ TEXT("Boolean"), TEXT("bool"), TEXT("True/False value"), TEXT("boolean") },
+		{ TEXT("Byte"), TEXT("uint8"), TEXT("8-bit unsigned integer (0-255)"), TEXT("byte") },
+		{ TEXT("Integer"), TEXT("int32"), TEXT("32-bit signed integer"), TEXT("integer") },
+		{ TEXT("Integer64"), TEXT("int64"), TEXT("64-bit signed integer"), TEXT("integer64") },
+		{ TEXT("Float"), TEXT("float"), TEXT("Single precision decimal"), TEXT("float") },
+		{ TEXT("Double"), TEXT("double"), TEXT("Double precision decimal"), TEXT("double") },
+		{ TEXT("String"), TEXT("FString"), TEXT("Text string"), TEXT("string") },
+		{ TEXT("Text"), TEXT("FText"), TEXT("Localized text"), TEXT("text") },
+		{ TEXT("Name"), TEXT("FName"), TEXT("Lightweight name identifier"), TEXT("name") },
+	};
+	for (const FPrimitive& Primitive : Primitives)
+	{
+		FVariableTypeInfo Info;
+		Info.TypeName = Primitive.Name;
+		Info.TypeIdentifier = Primitive.Identifier;
+		Info.Category = TEXT("primitive");
+		Info.Description = Primitive.Description;
+		Info.Icon = Primitive.Icon;
+		N2CSearchVariableTypes::Finish(Info, /*bIsEngine: always offered*/ false);
+		OutTypes.Add(MoveTemp(Info));
+	}
 }
 
-void FN2CMcpSearchVariableTypesTool::CollectClassTypes(TArray<FVariableTypeInfo>& OutTypes, bool bIncludeEngineTypes) const
+void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 {
-	FN2CLogger& Logger = FN2CLogger::Get();
-	Logger.Log(FString::Printf(TEXT("CollectClassTypes: Starting class collection (IncludeEngineTypes: %s)"), 
-		bIncludeEngineTypes ? TEXT("true") : TEXT("false")), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
+	using namespace N2CSearchVariableTypes;
+	FTypeIndex& State = Index();
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+	Subscribe(AssetRegistry);
+	TMap<FString, bool> ModuleCache;
 
-	// Get variable type tree from K2 schema
-	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
-	TArray<TSharedPtr<UEdGraphSchema_K2::FPinTypeTreeInfo>> TypeTree;
-	K2Schema->GetVariableTypeTree(TypeTree, ETypeTreeFilter::None);
-
-	// Process the type tree for class types
-	ProcessTypeTree(TypeTree, OutTypes, TEXT("class"), bIncludeEngineTypes);
-
-	// Keep track of processed classes
-	TSet<FString> ProcessedClassPaths;
-	for (const FVariableTypeInfo& ExistingType : OutTypes)
+	if (State.bNativeStale)
 	{
-		ProcessedClassPaths.Add(ExistingType.TypeIdentifier);
-	}
+		State.bNativeStale = false;
+		State.NativeTypes.Reset();
+		const double Start = FPlatformTime::Seconds();
 
-	// Also iterate through all loaded classes directly
-	for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
-	{
-		UClass* Class = *ClassIt;
-		if (!Class)
+		// Native classes: Blueprint and Python classes come from the asset registry or CollectLoadedUserTypes
+		for (TObjectIterator<UClass> It; It; ++It)
 		{
-			continue;
-		}
-
-		FString ClassPath = Class->GetPathName();
-		
-		// Skip if already processed
-		if (ProcessedClassPaths.Contains(ClassPath))
-		{
-			continue;
-		}
-
-		// Filter engine types if requested
-		if (!bIncludeEngineTypes && IsEngineType(ClassPath))
-		{
-			continue;
-		}
-
-		// Check if it's a Blueprint-compatible type
-		if (UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Class))
-		{
-			FVariableTypeInfo TypeInfo;
-			TypeInfo.TypeName = Class->GetDisplayNameText().ToString();
-			if (TypeInfo.TypeName.IsEmpty())
+			const UClass* Class = *It;
+			if (!Class->HasAnyClassFlags(CLASS_Native) || Class->HasAnyClassFlags(CLASS_NewerVersionExists)
+				|| !UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Class))
 			{
-				TypeInfo.TypeName = Class->GetName();
+				continue;
 			}
-			TypeInfo.TypeIdentifier = ClassPath;
-			TypeInfo.Category = TEXT("class");
-			TypeInfo.Description = GetTypeDescription(Class);
-			TypeInfo.bIsAbstract = Class->HasAnyClassFlags(CLASS_Abstract);
+			FVariableTypeInfo Info;
+			Info.TypeName = Class->GetDisplayNameText().ToString();
+			if (Info.TypeName.IsEmpty())
+			{
+				Info.TypeName = Class->GetName();
+			}
+			Info.TypeIdentifier = Class->GetPathName();
+			Info.Category = TEXT("class");
+			Info.Description = GetTypeDescription(Class);
+			Info.bIsAbstract = Class->HasAnyClassFlags(CLASS_Abstract);
 			if (Class->GetSuperClass())
 			{
-				TypeInfo.ParentClass = Class->GetSuperClass()->GetPathName();
+				Info.ParentClass = Class->GetSuperClass()->GetPathName();
 			}
-
-			OutTypes.Add(TypeInfo);
-			ProcessedClassPaths.Add(ClassPath);
-		}
-	}
-
-	// Also query asset registry for unloaded Blueprint classes
-	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	TArray<FAssetData> BlueprintAssets;
-	AssetRegistry.Get().GetAssetsByClass(FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("Blueprint")), BlueprintAssets);
-	
-	ProcessBlueprintAssets(BlueprintAssets, OutTypes);
-
-	Logger.Log(FString::Printf(TEXT("CollectClassTypes: Total classes collected: %d"), 
-		OutTypes.Num()), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-}
-
-void FN2CMcpSearchVariableTypesTool::CollectStructTypes(TArray<FVariableTypeInfo>& OutTypes, bool bIncludeEngineTypes) const
-{
-	FN2CLogger& Logger = FN2CLogger::Get();
-	Logger.Log(FString::Printf(TEXT("CollectStructTypes: Starting struct collection (IncludeEngineTypes: %s)"), 
-		bIncludeEngineTypes ? TEXT("true") : TEXT("false")), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-
-	// Get variable type tree from K2 schema
-	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
-	TArray<TSharedPtr<UEdGraphSchema_K2::FPinTypeTreeInfo>> TypeTree;
-	K2Schema->GetVariableTypeTree(TypeTree, ETypeTreeFilter::None);
-
-	Logger.Log(FString::Printf(TEXT("CollectStructTypes: GetVariableTypeTree returned %d root items"), 
-		TypeTree.Num()), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-
-	// Process the type tree for struct types
-	ProcessTypeTree(TypeTree, OutTypes, TEXT("struct"), bIncludeEngineTypes);
-
-	int32 TypeTreeStructCount = OutTypes.Num();
-	Logger.Log(FString::Printf(TEXT("CollectStructTypes: After ProcessTypeTree, have %d structs"), 
-		TypeTreeStructCount), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-
-	// Also iterate through all loaded script structs directly (like the engine does)
-	TSet<FString> ProcessedStructPaths;
-	for (const FVariableTypeInfo& ExistingType : OutTypes)
-	{
-		ProcessedStructPaths.Add(ExistingType.TypeIdentifier);
-	}
-
-	// Find script structs marked with "BlueprintType=true" (mirrors engine behavior)
-	for (TObjectIterator<UScriptStruct> StructIt; StructIt; ++StructIt)
-	{
-		UScriptStruct* ScriptStruct = *StructIt;
-		if (!ScriptStruct)
-		{
-			continue;
+			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			State.NativeTypes.Add(MoveTemp(Info));
 		}
 
-		FString StructPath = ScriptStruct->GetPathName();
-		
-		// Skip if already processed
-		if (ProcessedStructPaths.Contains(StructPath))
+		// Native structs and enums: those in compiled-in packages; user structs and enums are assets
+		for (TObjectIterator<UScriptStruct> It; It; ++It)
 		{
-			continue;
-		}
-
-		// Filter engine types if requested
-		if (!bIncludeEngineTypes && IsEngineType(StructPath))
-		{
-			continue;
-		}
-
-		// Check if it's a Blueprint-compatible type
-		if (UEdGraphSchema_K2::IsAllowableBlueprintVariableType(ScriptStruct))
-		{
-			FVariableTypeInfo TypeInfo;
-			TypeInfo.TypeName = ScriptStruct->GetDisplayNameText().ToString();
-			if (TypeInfo.TypeName.IsEmpty())
+			const UScriptStruct* Struct = *It;
+			if (!Struct->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn) || !UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Struct))
 			{
-				TypeInfo.TypeName = ScriptStruct->GetName();
+				continue;
 			}
-			TypeInfo.TypeIdentifier = StructPath;
-			TypeInfo.Category = TEXT("struct");
-			TypeInfo.Description = GetTypeDescription(ScriptStruct);
-
-			OutTypes.Add(TypeInfo);
-			ProcessedStructPaths.Add(StructPath);
-
-			Logger.Log(FString::Printf(TEXT("CollectStructTypes: Added struct '%s' from TObjectIterator"), 
-				*TypeInfo.TypeName), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
+			FVariableTypeInfo Info;
+			Info.TypeName = Struct->GetDisplayNameText().ToString();
+			if (Info.TypeName.IsEmpty())
+			{
+				Info.TypeName = Struct->GetName();
+			}
+			Info.TypeIdentifier = Struct->GetPathName();
+			Info.Category = TEXT("struct");
+			Info.Description = GetTypeDescription(Struct);
+			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			State.NativeTypes.Add(MoveTemp(Info));
 		}
+		for (TObjectIterator<UEnum> It; It; ++It)
+		{
+			const UEnum* Enum = *It;
+			if (!Enum->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn) || !UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Enum))
+			{
+				continue;
+			}
+			FVariableTypeInfo Info;
+			Info.TypeName = Enum->GetDisplayNameText().ToString();
+			if (Info.TypeName.IsEmpty())
+			{
+				Info.TypeName = Enum->GetName();
+			}
+			Info.TypeIdentifier = Enum->GetPathName();
+			Info.Category = TEXT("enum");
+			Info.Description = GetTypeDescription(Enum);
+			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			State.NativeTypes.Add(MoveTemp(Info));
+		}
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Indexed %d native variable types in %.0f ms"),
+			State.NativeTypes.Num(), (FPlatformTime::Seconds() - Start) * 1000.0), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
 	}
 
-	// Query asset registry for user-defined structs
-	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	TArray<FAssetData> StructAssets;
-	AssetRegistry.Get().GetAssetsByClass(FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("UserDefinedStruct")), StructAssets);
-
-	Logger.Log(FString::Printf(TEXT("CollectStructTypes: Found %d user-defined structs in asset registry"), 
-		StructAssets.Num()), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-
-	for (const FAssetData& AssetData : StructAssets)
+	if (State.bAssetsStale)
 	{
-		FVariableTypeInfo TypeInfo;
-		TypeInfo.TypeName = AssetData.AssetName.ToString();
-		TypeInfo.TypeIdentifier = AssetData.GetObjectPathString();
-		TypeInfo.Category = TEXT("struct");
-		TypeInfo.Description = TEXT("User-defined struct");
+		State.bAssetsStale = false;
+		State.AssetTypes.Reset();
+		TSet<FString> Seen;
 
-		OutTypes.Add(TypeInfo);
-		
-		Logger.Log(FString::Printf(TEXT("CollectStructTypes: Added user-defined struct '%s'"), 
-			*TypeInfo.TypeName), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-	}
-	
-	Logger.Log(FString::Printf(TEXT("CollectStructTypes: Total structs collected: %d"), 
-		OutTypes.Num()), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-}
-
-void FN2CMcpSearchVariableTypesTool::CollectEnumTypes(TArray<FVariableTypeInfo>& OutTypes, bool bIncludeEngineTypes) const
-{
-	FN2CLogger& Logger = FN2CLogger::Get();
-	Logger.Log(FString::Printf(TEXT("CollectEnumTypes: Starting enum collection (IncludeEngineTypes: %s)"), 
-		bIncludeEngineTypes ? TEXT("true") : TEXT("false")), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-
-	// Get variable type tree from K2 schema
-	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
-	TArray<TSharedPtr<UEdGraphSchema_K2::FPinTypeTreeInfo>> TypeTree;
-	K2Schema->GetVariableTypeTree(TypeTree, ETypeTreeFilter::None);
-
-	// Process the type tree for enum types
-	ProcessTypeTree(TypeTree, OutTypes, TEXT("enum"), bIncludeEngineTypes);
-
-	// Keep track of processed enums
-	TSet<FString> ProcessedEnumPaths;
-	for (const FVariableTypeInfo& ExistingType : OutTypes)
-	{
-		ProcessedEnumPaths.Add(ExistingType.TypeIdentifier);
-	}
-
-	// Also iterate through all loaded enums directly
-	for (TObjectIterator<UEnum> EnumIt; EnumIt; ++EnumIt)
-	{
-		UEnum* Enum = *EnumIt;
-		if (!Enum)
+		// Class paths from the classes themselves: UserDefinedStruct is in CoreUObject since 5.5, and the asset
+		// registry applies no class redirects to a filter (mcp-tools-variables-17). Subclasses of UBlueprint
+		// (Widget and Anim Blueprints) are included. Nothing is loaded.
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByClass(UUserDefinedStruct::StaticClass()->GetClassPathName(), Assets, /*bSearchSubClasses*/ true);
+		for (const FAssetData& AssetData : Assets)
 		{
-			continue;
-		}
-
-		FString EnumPath = Enum->GetPathName();
-		
-		// Skip if already processed
-		if (ProcessedEnumPaths.Contains(EnumPath))
-		{
-			continue;
-		}
-
-		// Filter engine types if requested
-		if (!bIncludeEngineTypes && IsEngineType(EnumPath))
-		{
-			continue;
-		}
-
-		// Check if it's a Blueprint-compatible type
-		if (UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Enum))
-		{
-			FVariableTypeInfo TypeInfo;
-			TypeInfo.TypeName = Enum->GetDisplayNameText().ToString();
-			if (TypeInfo.TypeName.IsEmpty())
+			FVariableTypeInfo Info;
+			Info.TypeName = AssetData.AssetName.ToString();
+			Info.TypeIdentifier = AssetData.GetObjectPathString();
+			Info.Category = TEXT("struct");
+			Info.Description = TEXT("User-defined struct");
+			if (!Seen.Contains(Info.TypeIdentifier))
 			{
-				TypeInfo.TypeName = Enum->GetName();
-			}
-			TypeInfo.TypeIdentifier = EnumPath;
-			TypeInfo.Category = TEXT("enum");
-			TypeInfo.Description = GetTypeDescription(Enum);
-
-			// Get enum values
-			for (int32 i = 0; i < Enum->NumEnums() - 1; ++i) // -1 to skip MAX value
-			{
-				TypeInfo.EnumValues.Add(Enum->GetNameStringByIndex(i));
-			}
-
-			OutTypes.Add(TypeInfo);
-			ProcessedEnumPaths.Add(EnumPath);
-		}
-	}
-
-	// Query asset registry for user-defined enums
-	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	TArray<FAssetData> EnumAssets;
-	AssetRegistry.Get().GetAssetsByClass(FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("UserDefinedEnum")), EnumAssets);
-
-	for (const FAssetData& AssetData : EnumAssets)
-	{
-		if (ProcessedEnumPaths.Contains(AssetData.GetObjectPathString()))
-		{
-			continue;
-		}
-
-		FVariableTypeInfo TypeInfo;
-		TypeInfo.TypeName = AssetData.AssetName.ToString();
-		TypeInfo.TypeIdentifier = AssetData.GetObjectPathString();
-		TypeInfo.Category = TEXT("enum");
-		TypeInfo.Description = TEXT("User-defined enumeration");
-
-		// Try to load the enum to get values
-		if (UUserDefinedEnum* Enum = Cast<UUserDefinedEnum>(AssetData.GetAsset()))
-		{
-			for (int32 i = 0; i < Enum->NumEnums() - 1; ++i) // -1 to skip MAX value
-			{
-				TypeInfo.EnumValues.Add(Enum->GetDisplayNameTextByIndex(i).ToString());
+				Seen.Add(Info.TypeIdentifier);
+				Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+				State.AssetTypes.Add(MoveTemp(Info));
 			}
 		}
 
-		OutTypes.Add(TypeInfo);
-	}
-
-	Logger.Log(FString::Printf(TEXT("CollectEnumTypes: Total enums collected: %d"), 
-		OutTypes.Num()), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-}
-
-void FN2CMcpSearchVariableTypesTool::ProcessTypeTree(const TArray<TSharedPtr<UEdGraphSchema_K2::FPinTypeTreeInfo>>& TypeTree, 
-	TArray<FVariableTypeInfo>& OutTypes, const FString& Category, bool bIncludeEngineTypes) const
-{
-	FN2CLogger& Logger = FN2CLogger::Get();
-	
-	for (const TSharedPtr<UEdGraphSchema_K2::FPinTypeTreeInfo>& TypeInfo : TypeTree)
-	{
-		if (!TypeInfo.IsValid())
+		Assets.Reset();
+		AssetRegistry.GetAssetsByClass(UUserDefinedEnum::StaticClass()->GetClassPathName(), Assets, /*bSearchSubClasses*/ true);
+		for (const FAssetData& AssetData : Assets)
 		{
-			continue;
-		}
-
-		FString TypeName = TypeInfo->GetDescription().ToString();
-		FEdGraphPinType PinType = TypeInfo->GetPinType(false);
-		
-		// Log each type being processed
-		Logger.Log(FString::Printf(TEXT("ProcessTypeTree: Processing type '%s' (PinCategory: %s, PinSubCategory: %s)"), 
-			*TypeName, *PinType.PinCategory.ToString(), *PinType.PinSubCategory.ToString()), 
-			EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-
-		// Determine category from pin type
-		FString TypeCategory;
-		if (TypeInfo->GetPinType(false).PinCategory == UEdGraphSchema_K2::PC_Object ||
-			TypeInfo->GetPinType(false).PinCategory == UEdGraphSchema_K2::PC_Class ||
-			TypeInfo->GetPinType(false).PinCategory == UEdGraphSchema_K2::PC_Interface)
-		{
-			TypeCategory = TEXT("class");
-		}
-		else if (TypeInfo->GetPinType(false).PinCategory == UEdGraphSchema_K2::PC_Struct)
-		{
-			TypeCategory = TEXT("struct");
-		}
-		else if (TypeInfo->GetPinType(false).PinCategory == UEdGraphSchema_K2::PC_Enum ||
-				 TypeInfo->GetPinType(false).PinCategory == UEdGraphSchema_K2::PC_Byte)
-		{
-			TypeCategory = TEXT("enum");
-		}
-		else
-		{
-			Logger.Log(FString::Printf(TEXT("ProcessTypeTree: Skipping type '%s' - unhandled category"), 
-				*TypeName), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-			continue; // Skip other categories
-		}
-
-		// Check if this matches our desired category
-		if (Category != TEXT("all") && Category != TypeCategory)
-		{
-			Logger.Log(FString::Printf(TEXT("ProcessTypeTree: Skipping type '%s' - category mismatch (wanted: %s, got: %s)"), 
-				*TypeName, *Category, *TypeCategory), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-			continue;
-		}
-
-		// Get the object from the pin type
-		UObject* TypeObject = TypeInfo->GetPinType(false).PinSubCategoryObject.Get();
-		if (!TypeObject)
-		{
-			Logger.Log(FString::Printf(TEXT("ProcessTypeTree: Skipping type '%s' - no PinSubCategoryObject"), 
-				*TypeName), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-			continue;
-		}
-
-		FString TypePath = TypeObject->GetPathName();
-		Logger.Log(FString::Printf(TEXT("ProcessTypeTree: Type '%s' has path: %s"), 
-			*TypeName, *TypePath), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-		
-		// Filter engine types if requested
-		if (!bIncludeEngineTypes && IsEngineType(TypePath))
-		{
-			Logger.Log(FString::Printf(TEXT("ProcessTypeTree: Filtering out engine type '%s'"), 
-				*TypeName), EN2CLogSeverity::Debug, TEXT("SearchVariableTypes"));
-			continue;
-		}
-
-		// Create type info
-		FVariableTypeInfo VarTypeInfo;
-		VarTypeInfo.TypeName = TypeInfo->GetDescription().ToString();
-		VarTypeInfo.TypeIdentifier = TypePath;
-		VarTypeInfo.Category = TypeCategory;
-		VarTypeInfo.Description = GetTypeDescription(TypeObject);
-
-		// Handle class-specific info
-		if (UClass* Class = Cast<UClass>(TypeObject))
-		{
-			VarTypeInfo.bIsAbstract = Class->HasAnyClassFlags(CLASS_Abstract);
-			if (Class->GetSuperClass())
+			FVariableTypeInfo Info;
+			Info.TypeName = AssetData.AssetName.ToString();
+			Info.TypeIdentifier = AssetData.GetObjectPathString();
+			Info.Category = TEXT("enum");
+			Info.Description = TEXT("User-defined enumeration");
+			if (!Seen.Contains(Info.TypeIdentifier))
 			{
-				VarTypeInfo.ParentClass = Class->GetSuperClass()->GetPathName();
-			}
-		}
-		// Handle enum-specific info
-		else if (UEnum* Enum = Cast<UEnum>(TypeObject))
-		{
-			for (int32 i = 0; i < Enum->NumEnums() - 1; ++i) // -1 to skip MAX value
-			{
-				VarTypeInfo.EnumValues.Add(Enum->GetNameStringByIndex(i));
+				Seen.Add(Info.TypeIdentifier);
+				Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+				State.AssetTypes.Add(MoveTemp(Info));
 			}
 		}
 
-		OutTypes.Add(VarTypeInfo);
-
-		// Process children recursively
-		if (TypeInfo->Children.Num() > 0)
+		Assets.Reset();
+		AssetRegistry.GetAssetsByClass(UBlueprint::StaticClass()->GetClassPathName(), Assets, /*bSearchSubClasses*/ true);
+		for (const FAssetData& AssetData : Assets)
 		{
-			ProcessTypeTree(TypeInfo->Children, OutTypes, Category, bIncludeEngineTypes);
+			// The generated class's object path (/Game/BP_Enemy.BP_Enemy_C), the form the type resolver accepts;
+			// the tag itself holds export text (mcp-tools-variables-23)
+			FVariableTypeInfo Info;
+			Info.TypeIdentifier = TagObjectPath(AssetData, FBlueprintTags::GeneratedClassPath);
+			if (Info.TypeIdentifier.IsEmpty() || Seen.Contains(Info.TypeIdentifier))
+			{
+				continue;
+			}
+			// Macro libraries, function libraries and level scripts have a generated class, but no variable can
+			// have it as type (UEdGraphSchema_K2::IsAllowableBlueprintVariableType refuses them); the tag says so
+			// without loading. A loaded class is checked directly.
+			FString BlueprintType;
+			if (AssetData.GetTagValue(FBlueprintTags::BlueprintType, BlueprintType)
+				&& (BlueprintType.Contains(TEXT("MacroLibrary")) || BlueprintType.Contains(TEXT("FunctionLibrary")) || BlueprintType.Contains(TEXT("LevelScript"))))
+			{
+				continue;
+			}
+			if (const UClass* LoadedClass = FindObject<UClass>(nullptr, *Info.TypeIdentifier))
+			{
+				if (!UEdGraphSchema_K2::IsAllowableBlueprintVariableType(LoadedClass))
+				{
+					continue;
+				}
+			}
+			Info.TypeName = AssetData.AssetName.ToString();
+			Info.Category = TEXT("class");
+			Info.Description = TEXT("Blueprint class");
+			Info.ParentClass = TagObjectPath(AssetData, FBlueprintTags::ParentClassPath);
+			Seen.Add(Info.TypeIdentifier);
+			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			State.AssetTypes.Add(MoveTemp(Info));
+		}
+
+		// While the first scan runs, every search rebuilds the asset part; the added-asset events say so too
+		if (AssetRegistry.IsLoadingAssets())
+		{
+			State.bAssetsStale = true;
 		}
 	}
 }
 
-void FN2CMcpSearchVariableTypesTool::ProcessBlueprintAssets(const TArray<FAssetData>& BlueprintAssets, 
-	TArray<FVariableTypeInfo>& OutTypes) const
+void FN2CMcpSearchVariableTypesTool::CollectLoadedUserTypes(TArray<FVariableTypeInfo>& InOutTypes) const
 {
-	for (const FAssetData& AssetData : BlueprintAssets)
+	using namespace N2CSearchVariableTypes;
+	TSet<FString> Seen;
+	Seen.Reserve(InOutTypes.Num());
+	for (const FVariableTypeInfo& Info : InOutTypes)
 	{
-		// Get the generated class tag
-		FString GeneratedClassPath;
-		if (!AssetData.GetTagValue("GeneratedClass", GeneratedClassPath))
+		Seen.Add(Info.TypeIdentifier);
+	}
+	TMap<FString, bool> ModuleCache;
+	UPackage* const TransientPackage = GetTransientPackage();
+
+	auto Add = [&](const UObject* Object, const TCHAR* Category, FVariableTypeInfo&& Info)
+	{
+		Info.TypeIdentifier = Object->GetPathName();
+		if (Seen.Contains(Info.TypeIdentifier))
+		{
+			return;
+		}
+		Seen.Add(Info.TypeIdentifier);
+		if (Info.TypeName.IsEmpty())
+		{
+			Info.TypeName = Object->GetName();
+		}
+		Info.Category = Category;
+		Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+		InOutTypes.Add(MoveTemp(Info));
+	};
+
+	for (TObjectIterator<UUserDefinedStruct> It; It; ++It)
+	{
+		const UUserDefinedStruct* Struct = *It;
+		if (Struct->GetOutermost() == TransientPackage || IsCompilerCopy(Struct) || !UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Struct))
 		{
 			continue;
 		}
-
-		// Extract class name from the path
-		FString ClassName = AssetData.AssetName.ToString();
-		
-		FVariableTypeInfo TypeInfo;
-		TypeInfo.TypeName = ClassName;
-		TypeInfo.TypeIdentifier = GeneratedClassPath;
-		TypeInfo.Category = TEXT("class");
-		TypeInfo.Description = TEXT("Blueprint class");
-		TypeInfo.bIsAbstract = false;
-
-		// Get parent class if available
-		FString ParentClassPath;
-		if (AssetData.GetTagValue("ParentClass", ParentClassPath))
+		FVariableTypeInfo Info;
+		Info.TypeName = Struct->GetName();
+		Info.Description = TEXT("User-defined struct");
+		Add(Struct, TEXT("struct"), MoveTemp(Info));
+	}
+	for (TObjectIterator<UUserDefinedEnum> It; It; ++It)
+	{
+		const UUserDefinedEnum* Enum = *It;
+		if (Enum->GetOutermost() == TransientPackage || !UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Enum))
 		{
-			TypeInfo.ParentClass = ParentClassPath;
+			continue;
 		}
-
-		OutTypes.Add(TypeInfo);
+		FVariableTypeInfo Info;
+		Info.TypeName = Enum->GetName();
+		Info.Description = TEXT("User-defined enumeration");
+		Add(Enum, TEXT("enum"), MoveTemp(Info));
+	}
+	for (TObjectIterator<UBlueprintGeneratedClass> It; It; ++It)
+	{
+		const UBlueprintGeneratedClass* Class = *It;
+		if (Class->GetOutermost() == TransientPackage || IsCompilerCopy(Class) || Class->HasAnyClassFlags(CLASS_NewerVersionExists)
+			|| !UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Class))
+		{
+			continue;
+		}
+		FVariableTypeInfo Info;
+		const UBlueprint* Blueprint = Cast<UBlueprint>(Class->ClassGeneratedBy);
+		Info.TypeName = Blueprint ? Blueprint->GetName() : Class->GetName();
+		Info.Description = TEXT("Blueprint class");
+		Info.bIsAbstract = Class->HasAnyClassFlags(CLASS_Abstract);
+		if (Class->GetSuperClass())
+		{
+			Info.ParentClass = Class->GetSuperClass()->GetPathName();
+		}
+		Add(Class, TEXT("class"), MoveTemp(Info));
 	}
 }
 
 TArray<FN2CMcpSearchVariableTypesTool::FVariableTypeInfo> FN2CMcpSearchVariableTypesTool::FilterTypesBySearchTerm(
-	const TArray<FVariableTypeInfo>& AllTypes, const FString& SearchTerm, int32 MaxResults) const
+	const TArray<FVariableTypeInfo>& AllTypes, const FString& SearchTerm, int32 MaxResults, int32& OutTotalMatches) const
 {
 	TArray<FVariableTypeInfo> Results;
 
@@ -678,16 +610,16 @@ TArray<FN2CMcpSearchVariableTypesTool::FVariableTypeInfo> FN2CMcpSearchVariableT
 	// Score-based filtering for better results
 	struct FScoredType
 	{
-		FVariableTypeInfo TypeInfo;
+		const FVariableTypeInfo* TypeInfo;
 		int32 Score;
 	};
 	TArray<FScoredType> ScoredTypes;
 
 	for (const FVariableTypeInfo& TypeInfo : AllTypes)
 	{
-		FString LowerTypeName = TypeInfo.TypeName.ToLower();
-		FString LowerDescription = TypeInfo.Description.ToLower();
-		
+		const FString& LowerTypeName = TypeInfo.LowerName;
+		const FString& LowerDescription = TypeInfo.LowerDescription;
+
 		int32 Score = 0;
 		bool bMatchesAll = true;
 
@@ -695,7 +627,7 @@ TArray<FN2CMcpSearchVariableTypesTool::FVariableTypeInfo> FN2CMcpSearchVariableT
 		for (const FString& Token : SearchTokens)
 		{
 			bool bTokenFound = false;
-			
+
 			// Exact match in type name gets highest score
 			if (LowerTypeName == Token)
 			{
@@ -730,26 +662,27 @@ TArray<FN2CMcpSearchVariableTypesTool::FVariableTypeInfo> FN2CMcpSearchVariableT
 
 		if (bMatchesAll && Score > 0)
 		{
-			ScoredTypes.Add({TypeInfo, Score});
+			ScoredTypes.Add({&TypeInfo, Score});
 		}
 	}
 
-	// Sort by score (highest first)
+	// Sort by score (highest first), then by name so equal scores come in a stable order
 	ScoredTypes.Sort([](const FScoredType& A, const FScoredType& B)
 	{
-		return A.Score > B.Score;
+		return A.Score != B.Score ? A.Score > B.Score : A.TypeInfo->LowerName < B.TypeInfo->LowerName;
 	});
 
-	// Take top results up to MaxResults
+	// Every match is counted; the top MaxResults are returned
+	OutTotalMatches = ScoredTypes.Num();
 	for (int32 i = 0; i < FMath::Min(ScoredTypes.Num(), MaxResults); ++i)
 	{
-		Results.Add(ScoredTypes[i].TypeInfo);
+		Results.Add(*ScoredTypes[i].TypeInfo);
 	}
 
 	return Results;
 }
 
-TSharedPtr<FJsonObject> FN2CMcpSearchVariableTypesTool::BuildJsonResult(const TArray<FVariableTypeInfo>& FilteredTypes) const
+TSharedPtr<FJsonObject> FN2CMcpSearchVariableTypesTool::BuildJsonResult(const TArray<FVariableTypeInfo>& FilteredTypes, int32 TotalMatches) const
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 	TArray<TSharedPtr<FJsonValue>> TypesArray;
@@ -757,12 +690,12 @@ TSharedPtr<FJsonObject> FN2CMcpSearchVariableTypesTool::BuildJsonResult(const TA
 	for (const FVariableTypeInfo& TypeInfo : FilteredTypes)
 	{
 		TSharedPtr<FJsonObject> TypeObject = MakeShareable(new FJsonObject);
-		
+
 		TypeObject->SetStringField(TEXT("typeName"), TypeInfo.TypeName);
 		TypeObject->SetStringField(TEXT("typeIdentifier"), TypeInfo.TypeIdentifier);
 		TypeObject->SetStringField(TEXT("category"), TypeInfo.Category);
 		TypeObject->SetStringField(TEXT("description"), TypeInfo.Description);
-		
+
 		if (!TypeInfo.Icon.IsEmpty())
 		{
 			TypeObject->SetStringField(TEXT("icon"), TypeInfo.Icon);
@@ -776,29 +709,38 @@ TSharedPtr<FJsonObject> FN2CMcpSearchVariableTypesTool::BuildJsonResult(const TA
 			}
 			TypeObject->SetBoolField(TEXT("isAbstract"), TypeInfo.bIsAbstract);
 		}
-		else if (TypeInfo.Category == TEXT("enum") && TypeInfo.EnumValues.Num() > 0)
+		else if (TypeInfo.Category == TEXT("enum"))
 		{
-			TArray<TSharedPtr<FJsonValue>> EnumValuesArray;
-			for (const FString& EnumValue : TypeInfo.EnumValues)
+			// Enumerators only for the enums returned: a user enum is loaded here, never while searching.
+			// values are the names a default value takes (NewEnumerator0); displayNames what the editor shows.
+			const UEnum* Enum = FindObject<UEnum>(nullptr, *TypeInfo.TypeIdentifier);
+			if (!Enum && !FPackageName::IsScriptPackage(TypeInfo.TypeIdentifier))
 			{
-				EnumValuesArray.Add(MakeShareable(new FJsonValueString(EnumValue)));
+				Enum = LoadObject<UEnum>(nullptr, *TypeInfo.TypeIdentifier, nullptr, LOAD_NoWarn);
 			}
-			TypeObject->SetArrayField(TEXT("values"), EnumValuesArray);
+			if (Enum)
+			{
+				TArray<TSharedPtr<FJsonValue>> Values;
+				TArray<TSharedPtr<FJsonValue>> DisplayNames;
+				for (int32 i = 0; i < Enum->NumEnums() - 1; ++i) // -1 to skip MAX value
+				{
+					Values.Add(MakeShared<FJsonValueString>(Enum->GetNameStringByIndex(i)));
+					DisplayNames.Add(MakeShared<FJsonValueString>(Enum->GetDisplayNameTextByIndex(i).ToString()));
+				}
+				TypeObject->SetArrayField(TEXT("values"), Values);
+				TypeObject->SetArrayField(TEXT("displayNames"), DisplayNames);
+			}
 		}
 
 		TypesArray.Add(MakeShareable(new FJsonValueObject(TypeObject)));
 	}
 
 	Result->SetArrayField(TEXT("types"), TypesArray);
-	Result->SetNumberField(TEXT("totalMatches"), FilteredTypes.Num());
+	// Every match, before maxResults cut the list; truncated says the list was cut
+	Result->SetNumberField(TEXT("totalMatches"), TotalMatches);
+	Result->SetBoolField(TEXT("truncated"), TotalMatches > FilteredTypes.Num());
 
 	return Result;
-}
-
-bool FN2CMcpSearchVariableTypesTool::IsEngineType(const FString& TypePath) const
-{
-	return TypePath.StartsWith(TEXT("/Script/")) || 
-		   TypePath.StartsWith(TEXT("/Engine/"));
 }
 
 FString FN2CMcpSearchVariableTypesTool::GetTypeDescription(const UObject* TypeObject) const

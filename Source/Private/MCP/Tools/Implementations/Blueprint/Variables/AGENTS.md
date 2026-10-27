@@ -20,8 +20,7 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0291 (search-variable-types: CoreUObject struct path, counts),
-  0295 (notification brushes, dead code), and 0274 (explicit targets, admitted as next-6). Card 0292 (class,
+- **Fix cards still owed here:** 0295 (notification brushes, dead code), and 0274 (explicit targets, admitted as next-6). Card 0292 (class,
   soft and interface references) is new capability and waits for the owner.
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
@@ -110,14 +109,24 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
     description (case-insensitive). Results are ranked: exact name, name prefix, name contains, description contains
     (`FilterTypesBySearchTerm`)
   - `category` (optional, default `all`): `all`, `primitive`, `class`, `struct` or `enum` (case-insensitive)
-  - `includeEngineTypes` (optional, default true): With false, types whose path starts with `/Script/` or `/Engine/`
-    are left out (`IsEngineType`)
+  - `includeEngineTypes` (optional, default true): With false, types from the engine and engine plugins are left
+    out: a native type by where its module's binary is (under the engine directory or not), an asset by its mount
+    point (`/Engine`, or a plugin loaded from the engine). The project's own native types (`/Script/MyGame`) and
+    project plugins' types stay (`IsEngineTypePath`). Primitives always stay
   - `maxResults` (optional, default 50): Clamped to 1-200
 - **Returns**: `types` (each with `typeName`, `typeIdentifier`, `category`, `description`, plus `icon` for
-  primitives, `parentClass` and `isAbstract` for classes, `values` for enums) and `totalMatches`, the number returned
-  (after the `maxResults` cut, not the number that matched). Primitive identifiers are `bool`, `uint8`, `int32`,
+  primitives, `parentClass` and `isAbstract` for classes, and for enums `values`, the enumerator names a default value
+  takes (`NewEnumerator0`), and `displayNames`, what the editor shows), `totalMatches`, the number that matched before
+  the `maxResults` cut, and `truncated`, true when the list was cut. Each type is listed once. Primitive identifiers are `bool`, `uint8`, `int32`,
   `int64`, `float`, `double`, `FString`, `FText` and `FName`; every other identifier is a full path
   (`/Script/Engine.HitResult`), which is the safe form for every type (see "Type Identifiers")
+- **Sources**: one cached index, built without loading any asset: native classes, structs and enums, and from the
+  asset registry the user structs, user enums and Blueprints (subclasses included, so Widget and Anim Blueprints),
+  filtered by `UUserDefinedStruct::StaticClass()->GetClassPathName()` and the like (since 5.5 the struct class is in
+  CoreUObject, and the registry applies no class redirects). A Blueprint's identifier is its generated class's object
+  path (`/Game/BP_Enemy.BP_Enemy_C`). The native part is rebuilt when a module loads, the asset part when the asset
+  registry adds, removes, renames or updates an asset. User types loaded in memory but not in the registry are added
+  per search. Only the enums returned are loaded, to list their enumerators
 - **Errors**: Needs an open Blueprint editor even though it reads no Blueprint: `No active Blueprint editor found`
 
 ### get-blueprint-member-variables
