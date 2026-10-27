@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpConnectPinsTool.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -264,15 +265,11 @@ FMcpToolCallResult FN2CMcpConnectPinsTool::Execute(const TSharedPtr<FJsonObject>
 		// Show notification
 		if (SuccessCount > 0)
 		{
-			FNotificationInfo Info(FText::Format(
+			FN2CMcpNotification::Show(FText::Format(
 				LOCTEXT("ConnectionsCreated", "Created {0} of {1} connections"),
 				FText::AsNumber(SuccessCount),
 				FText::AsNumber(Results.Num())
 			));
-			Info.ExpireDuration = 3.0f;
-			Info.bFireAndForget = true;
-			Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
-			FSlateNotificationManager::Get().AddNotification(Info);
 		}
 		
 		// Build and return result JSON

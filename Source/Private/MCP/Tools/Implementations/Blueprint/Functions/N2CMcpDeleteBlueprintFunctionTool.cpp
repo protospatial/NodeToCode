@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpDeleteBlueprintFunctionTool.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
@@ -484,16 +485,9 @@ void FN2CMcpDeleteBlueprintFunctionTool::RefreshBlueprintEditor(UBlueprint* Blue
 
 void FN2CMcpDeleteBlueprintFunctionTool::ShowDeletionNotification(const FString& FunctionName, bool bSuccess) const
 {
-	FNotificationInfo Info(bSuccess ?
+	FN2CMcpNotification::Show(bSuccess ?
 		FText::Format(LOCTEXT("FunctionDeleted", "Function '{0}' deleted successfully"), FText::FromString(FunctionName)) :
-		FText::Format(LOCTEXT("FunctionDeletionFailed", "Failed to delete function '{0}'"), FText::FromString(FunctionName))
-	);
-	
-	Info.ExpireDuration = 3.0f;
-	Info.bFireAndForget = true;
-	Info.Image = bSuccess ? FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle")) : FCoreStyle::Get().GetBrush(TEXT("Icons.ErrorWithCircle"));
-	
-	FSlateNotificationManager::Get().AddNotification(Info);
+		FText::Format(LOCTEXT("FunctionDeletionFailed", "Failed to delete function '{0}'"), FText::FromString(FunctionName)), bSuccess);
 }
 
 TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintFunctionTool::BuildSuccessResult(const FString& FunctionName, const FGuid& FunctionGuid,

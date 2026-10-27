@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpDeleteBlueprintNodeTool.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
@@ -294,12 +295,7 @@ void FN2CMcpDeleteBlueprintNodeTool::ShowDeletionNotification(int32 DeletedCount
         NotificationText = LOCTEXT("NodeDeletionFailed", "Failed to delete nodes");
     }
     
-    FNotificationInfo Info(NotificationText);
-    Info.ExpireDuration = 3.0f;
-    Info.bFireAndForget = true;
-    Info.Image = bSuccess ? FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle")) : FCoreStyle::Get().GetBrush(TEXT("Icons.ErrorWithCircle"));
-    
-    FSlateNotificationManager::Get().AddNotification(Info);
+    FN2CMcpNotification::Show(NotificationText, bSuccess);
 }
 
 #undef LOCTEXT_NAMESPACE

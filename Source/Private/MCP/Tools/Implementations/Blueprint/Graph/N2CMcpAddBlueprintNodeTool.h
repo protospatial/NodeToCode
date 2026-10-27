@@ -44,8 +44,4 @@ private:
                        FString& OutActionIdentifier,
                        FVector2D& OutLocation,
                        FString& OutError);
-    
-
-    // Convert spawned node to N2CJSON format
-    TSharedPtr<FJsonObject> ConvertSpawnedNodeToJson(class UK2Node* Node);
 };
