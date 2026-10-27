@@ -705,6 +705,72 @@ void FN2CPythonBridgeJsonSpec::Define()
 				ExpectString(TEXT("AddNodeToGraph"), Added, TEXT("blueprintName"), BlueprintObjectName);
 			}
 		});
+
+		// Card 0276: ConnectPins reports every entry by index, the schema's response and the conversion node it placed;
+		// a malformed entry used to vanish from the result
+		It(TEXT("ConnectPins names the conversion node it placed and reports a malformed entry by index"), [this]()
+		{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
+			// As above: a headless Blueprint editor window cannot be closed below 5.8. The MCP tool shares the connect
+			// code (N2CPinConnectPolicy) and is checked on every engine by NodeToCode.MCP.Graph
+			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
+			return;
+#endif
+			FScopedStateFolder StateFolder;
+			FFocusedBlueprint Focused;
+			if (!TestTrue(TEXT("the awkward Blueprint is open with its function graph focused"), Focused.Create()))
+			{
+				return;
+			}
+			UEdGraphPin* VariableOut = nullptr;
+			for (UEdGraphPin* Pin : Focused.VariableGet->Pins)
+			{
+				if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					VariableOut = Pin;
+				}
+			}
+			UEdGraphPin* InString = Focused.Print->FindPin(TEXT("InString"), EGPD_Input);
+			if (!TestTrue(TEXT("the float variable's output and In String"), VariableOut && InString))
+			{
+				return;
+			}
+			const int32 NodesBefore = Focused.Function->Nodes.Num();
+			const TSharedPtr<FJsonObject> Connected = SuccessData(TEXT("ConnectPins"), UN2CPythonBridge::ConnectPins(FString::Printf(
+				TEXT("[42,{\"from\":{\"nodeGuid\":\"%s\",\"pinGuid\":\"%s\"},\"to\":{\"nodeGuid\":\"%s\",\"pinName\":\"InString\"}}]"),
+				*Focused.VariableGet->NodeGuid.ToString(), *VariableOut->PinId.ToString(), *Focused.Print->NodeGuid.ToString()), false));
+			Focused.Package->SetDirtyFlag(false);
+			if (!Connected.IsValid())
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Summary = Connected->GetObjectField(TEXT("summary"));
+			TestEqual(TEXT("totalRequested counts both entries"), Summary->GetIntegerField(TEXT("totalRequested")), 2);
+			const TArray<TSharedPtr<FJsonValue>>& Failed = Connected->GetArrayField(TEXT("failed"));
+			if (TestEqual(TEXT("the malformed entry failed"), Failed.Num(), 1))
+			{
+				TestEqual(TEXT("by its index"), Failed[0]->AsObject()->GetIntegerField(TEXT("index")), 0);
+				ExpectString(TEXT("failed"), Failed[0]->AsObject(), TEXT("errorCode"), TEXT("INVALID_REQUEST"));
+			}
+			const TArray<TSharedPtr<FJsonValue>>& Made = Connected->GetArrayField(TEXT("succeeded"));
+			if (!TestEqual(TEXT("the float -> In String connection is made"), Made.Num(), 1))
+			{
+				return;
+			}
+			const TSharedPtr<FJsonObject> Entry = Made[0]->AsObject();
+			TestEqual(TEXT("its index"), Entry->GetIntegerField(TEXT("index")), 1);
+			ExpectString(TEXT("succeeded"), Entry, TEXT("response"), TEXT("MAKE_WITH_CONVERSION_NODE"));
+			ExpectString(TEXT("succeeded"), Entry, TEXT("toPin"), InString->PinId.ToString());
+			const TSharedPtr<FJsonObject>* Conversion = nullptr;
+			if (TestTrue(TEXT("conversionNode reported"), Entry->TryGetObjectField(TEXT("conversionNode"), Conversion)))
+			{
+				FGuid Guid;
+				FGuid::Parse((*Conversion)->GetStringField(TEXT("nodeGuid")), Guid);
+				const TObjectPtr<UEdGraphNode>* Node = Focused.Function->Nodes.FindByPredicate([&Guid](const TObjectPtr<UEdGraphNode>& N) { return N && N->NodeGuid == Guid; });
+				TestTrue(TEXT("its nodeGuid names the node new in the function graph"), Node != nullptr && Focused.Function->Nodes.Num() == NodesBefore + 1);
+				TestTrue(TEXT("that node feeds In String"), Node != nullptr && InString->LinkedTo.Num() == 1 && InString->LinkedTo[0]->GetOwningNode() == *Node);
+			}
+		});
 	});
 
 	Describe(TEXT("a new Actor Blueprint whose event graph holds only its ghost default events"), [this]()

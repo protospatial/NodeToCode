@@ -249,7 +249,8 @@ public:
 	 * @param ConnectionsJson JSON array of connection specs: [{"from":{"nodeGuid":"...","pinGuid":"..."},"to":{...}},...]
 	 * @param bBreakExistingLinks If true, a connection may replace an existing link (a linked data input, also through a
 	 *        conversion node, or a linked exec output); if false such a connection fails and names the existing link
-	 * @return JSON with succeeded/failed connections
+	 * @return JSON with succeeded/failed connections, each with its array index; a made one names the schema's response
+	 *         and any conversion node placed, a failed or malformed one an errorCode; summary.totalRequested counts every entry
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks = false);

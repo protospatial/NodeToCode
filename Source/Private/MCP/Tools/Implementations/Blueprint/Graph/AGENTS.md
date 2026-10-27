@@ -22,7 +22,8 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0276 (connect-pins: replace and conversion links). 0295 is done: the toasts use
+- **Fix cards done here:** 0276 (connect-pins reports the schema's response and conversion node, and malformed
+  entries). 0295: the toasts use
   `FN2CMcpNotification` (`MCP/Utils/N2CMcpNotification.h`), and add-bp-node-to-active-graph's unused
   `ConvertSpawnedNodeToJson` and includes are gone.
 
@@ -183,14 +184,19 @@ Nodes and pins are addressed by GUID:
     PrintString.execute). Pass breakExistingLinks=true to replace it.") unless `breakExistingLinks` is true. A link
     that needs a conversion node into an already linked data input counts as a replace too (cards 0046, 0415)
   - A connection the schema refuses fails with `SCHEMA_VALIDATION_FAILED` and the schema's message
-- **Returns**: `succeeded` and `failed` (each with `from` and `to` as sent; failed ones add `errorCode` and `reason`)
-  and `summary` (`totalRequested`, `succeeded`, `failed`). Failed connections do not make the call an error result
-  and do not undo the successful ones: read `summary.failed`. Error codes: `INVALID_GUID` (a `nodeGuid` that is not a
-  GUID), `NODE_NOT_FOUND`, `PIN_NOT_FOUND`, `WOULD_BREAK_EXISTING_LINK`, `SCHEMA_VALIDATION_FAILED`,
-  `CONNECTION_FAILED`
-- **Known issue (card 0276):** an entry missing `from`, `to`, or a `nodeGuid` or `pinGuid` on either side is skipped
-  without a trace (`ParseConnectionRequests`): it is not in `failed` and not counted in `totalRequested`. Always send
-  `pinGuid`, even when you rely on `pinName`
+- **Returns**: `succeeded` and `failed` (each with `from` and `to` as sent and `index`, the entry's position in
+  `connections`; failed ones add `errorCode` and `reason`) and `summary` (`totalRequested` counts every entry,
+  `succeeded`, `failed`). Once both pins are found, an entry also has `response`, the schema's answer (`MAKE`,
+  `BREAK_OTHERS_A`, `BREAK_OTHERS_B`, `BREAK_OTHERS_AB`, `MAKE_WITH_CONVERSION_NODE`, `MAKE_WITH_PROMOTION`,
+  `DISALLOW`), `message` when the schema gave one, and on success `conversionNode` (`nodeGuid`, `title`) when the
+  schema placed a conversion node such as To String between the pins (card 0276). Failed connections do not make the
+  call an error result and do not undo the successful ones: read `summary.failed`. Error codes: `INVALID_REQUEST` (an
+  entry that is not an object, or lacks `from`, `to`, or a `nodeGuid` or `pinGuid` string on either side; `reason`
+  says which), `INVALID_GUID` (a `nodeGuid` that is not a GUID), `NODE_NOT_FOUND`, `PIN_NOT_FOUND`,
+  `WOULD_BREAK_EXISTING_LINK`, `SCHEMA_VALIDATION_FAILED`, `CONNECTION_FAILED`
+- The Python bridge's `ConnectPins` (`nodetocode.connect_pins`) reports the same way: every entry has `index`, failed
+  ones `errorCode` and `error`, made ones `response` and `conversionNode`, and `summary.totalRequested`. There
+  `pinGuid` is optional (`pinName` alone finds the pin)
 
 ### set-input-pin-value
 - **Description**: Sets the default value of an input pin

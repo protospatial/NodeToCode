@@ -19,7 +19,8 @@ class UEdGraphSchema;
  * Connection behavior:
  * - Output data pins can connect to multiple input pins (one-to-many)
  * - Input data pins can only have one connection (many-to-one)
- * - Execution pins maintain single connections (one-to-one)
+ * - Exec outputs take one link; exec inputs take any number (fan-in)
+ * Each result names the schema's response, its message and any conversion node it placed (card 0276).
  */
 class FN2CMcpConnectPinsTool : public FN2CMcpToolBase
 {
@@ -45,6 +46,10 @@ private:
 		FString ToPinGuid;
 		FString ToPinName;		// Optional fallback
 		FString ToPinDirection;	// Optional for validation
+
+		// Position in the connections array, and why the entry could not be read (empty when it was)
+		int32 Index = INDEX_NONE;
+		FString MalformedReason;
 	};
 	
 	/**
@@ -59,6 +64,9 @@ private:
 		FString ToPinGuid;
 		FString ErrorMessage;
 		FString ErrorCode;
+		int32 Index = INDEX_NONE;
+		// The schema's response, its message and the conversion node it placed (N2CPinConnectPolicy::WriteResponse)
+		TSharedPtr<FJsonObject> ResponseFields;
 	};
 	
 	/**

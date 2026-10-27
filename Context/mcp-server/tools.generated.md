@@ -222,7 +222,7 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node, write_graph_dsl`. 
 
 **Connect pins**
 
-Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Each entry's result has its array index and the schema's response (MAKE, BREAK_OTHERS_A/B/AB, MAKE_WITH_CONVERSION_NODE, MAKE_WITH_PROMOTION) with any conversion node placed; failed and malformed entries are listed in the result with an errorCode, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
