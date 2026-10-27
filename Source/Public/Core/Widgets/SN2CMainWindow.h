@@ -103,6 +103,8 @@ private:
 
 	// Pending operation state
 	FN2CTagInfo PendingSingleTranslateGraph;
+	/** The N2C JSON sent for the pending single translation, for the translation viewer's JSON tab */
+	FString PendingSingleTranslateJson;
 	bool bIsSingleTranslationInProgress;
 
 	// Batch orchestrator delegate handles

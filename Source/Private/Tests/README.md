@@ -224,6 +224,12 @@ known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN
     after the search is cleared.
   - Checked graphs stay checked when the same view is refreshed.
   - The header names the view, and an empty list says why.
+- `NodeToCode.UI.TranslationViewerJson` (`Core/N2CTranslationViewerJson.spec.cpp`, card 0501) saves a single
+  translation with the real writers (`UN2CLLMModule::SaveTranslationToDisk`, `SN2CMainWindow::RecordSingleTranslation`)
+  into a scratch output folder on an isolated graph state manager. `LoadN2CJson` returns the `N2C_BP_<root>.json`
+  capture from the translation root, one folder above the recorded graph folder, also when the LLM renamed the graph.
+  On a headless `SN2CMainWindow`, the single translate's completion puts the sent JSON in the viewer's JSON tab, and
+  reopening the recorded translation puts the saved capture there.
 
 ## Secrets, settings migration and StructUtils
 

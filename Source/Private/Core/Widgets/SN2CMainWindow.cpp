@@ -598,6 +598,7 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 	PendingSingleTranslateGraph.GraphGuid = GraphGuid.ToString();
 	PendingSingleTranslateGraph.GraphName = GraphName;
 	PendingSingleTranslateGraph.BlueprintPath = BlueprintPath;
+	PendingSingleTranslateJson.Reset();
 	bIsSingleTranslationInProgress = true;
 
 	// Load the blueprint and graph: every graph of the Blueprint (interface implementations and collapsed graphs too).
@@ -635,6 +636,8 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 		HideBatchProgress();
 		return;
 	}
+	// The viewer's JSON tab shows what was sent (card 0501)
+	PendingSingleTranslateJson = JsonContent;
 
 	// Update progress modal to show processing
 	if (BatchProgressModal.IsValid())
@@ -731,8 +734,8 @@ void SN2CMainWindow::OnSingleTranslationComplete(const FN2CTranslationResponse& 
 
 	if (bSuccess && Response.Graphs.Num() > 0)
 	{
-		// Show translation in viewer
-		ShowTranslationViewer(Response.Graphs[0], PendingSingleTranslateGraph.GraphName);
+		// Show translation in viewer, with the N2C JSON it was made from in the JSON tab
+		ShowTranslationViewer(Response.Graphs[0], PendingSingleTranslateGraph.GraphName, PendingSingleTranslateJson);
 
 		// Update translation state in state manager
 		RecordSingleTranslation(PendingSingleTranslateGraph, Response);
@@ -743,6 +746,7 @@ void SN2CMainWindow::OnSingleTranslationComplete(const FN2CTranslationResponse& 
 
 	// Clear pending graph
 	PendingSingleTranslateGraph = FN2CTagInfo();
+	PendingSingleTranslateJson.Reset();
 }
 
 bool SN2CMainWindow::RecordSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response)
