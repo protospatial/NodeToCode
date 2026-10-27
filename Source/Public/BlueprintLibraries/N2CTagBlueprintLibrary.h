@@ -106,13 +106,17 @@ public:
 	 * @param GraphGuid The GUID of the graph (as string)
 	 * @param Tag The tag name to remove
 	 * @param Category The tag category
+	 * @param BlueprintPath The owning Blueprint's path (a tag info's Blueprint Path; object or package path). The graph
+	 *        is {Blueprint, GraphGuid}: a duplicated Blueprint keeps the original's graph GUIDs, so without it the
+	 *        removal works only while one Blueprint has a graph with this GUID (as the Python bridge's RemoveTag, #198)
 	 * @return True if the tag was removed
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Tags", meta = (DisplayName = "Remove Tag"))
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Tags", meta = (DisplayName = "Remove Tag", AdvancedDisplay = "BlueprintPath"))
 	static bool RemoveTag(
 		const FString& GraphGuid,
 		const FString& Tag,
-		const FString& Category
+		const FString& Category,
+		const FString& BlueprintPath = TEXT("")
 	);
 
 	/**

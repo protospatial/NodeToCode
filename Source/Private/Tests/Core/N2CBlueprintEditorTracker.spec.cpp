@@ -10,6 +10,7 @@
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Core/N2CGraphOverlayInjector.h"
 #include "MCP/Python/N2CPythonBridge.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "BlueprintEditor.h"
@@ -241,8 +242,8 @@ void FN2CEditorFocusSpec::Define()
 
 			// The overlay upkeep no longer moves the focus: a foregrounded graph tab of the focused editor's Blueprint
 			// keeps it, and the injection loops run without changing it
-			FN2CEditorIntegration::Get().TryWrapFocusedGraphTab(Editors[&C]);
-			ExpectFocus(TEXT("after wrapping C's graph tab"), A);
+			FN2CGraphOverlayInjector::Get().InjectForFocusedGraph(Editors[&C]);
+			ExpectFocus(TEXT("after injecting C's overlay"), A);
 
 			// Opening an already open Blueprint through a tool returns its own editor and focuses it (card 0145 saw
 			// the graph go into the previously focused Blueprint's editor)
