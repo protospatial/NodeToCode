@@ -66,14 +66,20 @@ FN2CMcpCatalogs FN2CMcpCatalogs::Default()
 
 const TArray<FString>& FN2CMcpProtocol::GetSupportedProtocolVersions()
 {
-	// In order of preference (newest first). 2026-07-28 (stateless, no initialize) is not supported yet: initialize
-	// answers it with 2025-11-25.
+	// In order of preference (newest first). 2026-07-28 (stateless, no initialize) is served by HandleModern, never
+	// negotiated by initialize: an initialize asking for it is answered with 2025-11-25.
 	static const TArray<FString> Versions = {
 		TEXT("2025-11-25"),
 		TEXT("2025-06-18"),
 		TEXT("2025-03-26"),
 		TEXT("2024-11-05")
 	};
+	return Versions;
+}
+
+const TArray<FString>& FN2CMcpProtocol::GetModernProtocolVersions()
+{
+	static const TArray<FString> Versions = { TEXT("2026-07-28") };
 	return Versions;
 }
 
@@ -146,12 +152,32 @@ FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
 		Notification.Method = TEXT("notifications/tools/list_changed");
 		Notification.Params = MakeShared<FJsonValueObject>(MakeShared<FJsonObject>());
 		BroadcastNotification(Notification);
+
+		// 2026-07-28 subscriptions/listen streams that asked for it get the notification with their subscription id
+		for (const FWatchedStream& Watched : WatchedStreams)
+		{
+			if (Watched.SubscriptionId.IsValid() && Watched.bToolsListChanged && !*Watched.bDone)
+			{
+				const TSharedRef<FJsonObject> Meta = MakeShared<FJsonObject>();
+				Meta->SetField(TEXT("io.modelcontextprotocol/subscriptionId"), Watched.SubscriptionId);
+				const TSharedRef<FJsonObject> Params = MakeShared<FJsonObject>();
+				Params->SetObjectField(TEXT("_meta"), Meta);
+				FJsonRpcNotification Tagged;
+				Tagged.Method = Notification.Method;
+				Tagged.Params = MakeShared<FJsonValueObject>(Params);
+				Watched.Responder->Stream(FJsonRpcUtils::SerializeNotification(Tagged), FString());
+			}
+		}
 	});
 }
 
 FN2CMcpProtocol::~FN2CMcpProtocol()
 {
 	Catalogs.Tools->OnToolListChanged().Remove(ToolListChangedHandle);
+	if (StreamTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(StreamTickerHandle);
+	}
 }
 
 void FN2CMcpProtocol::BroadcastNotification(const FJsonRpcNotification& Notification)
@@ -316,6 +342,14 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 	}
 	const bool bInitialize = SingleType == FJsonRpcUtils::EJsonRpcMessageType::Request && SingleMethod == TEXT("initialize");
 
+	// A 2026-07-28 message (per-request _meta, or a modern MCP-Protocol-Version) is served statelessly; initialize
+	// always selects the legacy era (basic/versioning, "A dual-era server selects its behavior from how the client opens")
+	if (!bInitialize && IsModernMessage(Inbound, SingleObject))
+	{
+		HandleModern(Inbound, Responder, JsonValue);
+		return;
+	}
+
 	FString SessionId;
 	if (!bInitialize)
 	{
@@ -373,43 +407,10 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 	}
 
 	// A single tools/call of a long-running tool runs as a call answered on this same request
-	if (SingleType == FJsonRpcUtils::EJsonRpcMessageType::Request && SingleMethod == TEXT("tools/call"))
+	if (SingleType == FJsonRpcUtils::EJsonRpcMessageType::Request && SingleMethod == TEXT("tools/call")
+		&& TryHandleLongRunningToolCall(Inbound, Responder, SingleObject, SessionId, /*bModern=*/false))
 	{
-		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-		FString ToolName;
-		if (SingleObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
-			&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName)
-			// Arguments that are not an object are refused below, at once, as an isError result (HandleToolsCall)
-			&& !(*ParamsObj)->HasTypedField<EJson::String>(TEXT("arguments")) && !(*ParamsObj)->HasTypedField<EJson::Array>(TEXT("arguments"))
-			&& !(*ParamsObj)->HasTypedField<EJson::Number>(TEXT("arguments")) && !(*ParamsObj)->HasTypedField<EJson::Boolean>(TEXT("arguments")))
-		{
-			if (IsLongRunningTool(ToolName))
-			{
-				HandleLongRunningToolCall(Inbound, Responder, SingleObject, *ParamsObj, ToolName, SessionId);
-				return;
-			}
-			// call_tool naming a long-running tool runs that tool's call the same way (progress with the call's
-			// _meta.progressToken, cancellation); a call_tool that does not resolve is answered below with its isError
-			FString InnerName;
-			TSharedPtr<FJsonObject> InnerArguments;
-			FString ResolveError;
-			const TSharedPtr<FJsonObject>* CallArgs = nullptr;
-			if (ToolName == FN2CMcpToolManager::CallToolName && Catalogs.Tools->IsToolListed(ToolName)
-				&& (*ParamsObj)->TryGetObjectField(TEXT("arguments"), CallArgs) && CallArgs
-				&& Catalogs.Tools->ResolveCallTool(*CallArgs, InnerName, InnerArguments, ResolveError))
-			{
-				const TOptional<FN2CToolDescriptor> Inner = FN2CToolCatalog(*Catalogs.Tools).Find(InnerName);
-				if (Inner.IsSet() && Inner->ExecutionPolicy == EN2CToolExecutionPolicy::LongRunning)
-				{
-					const TSharedRef<FJsonObject> InnerParams = MakeShared<FJsonObject>();
-					InnerParams->Values = (*ParamsObj)->Values;
-					InnerParams->SetStringField(TEXT("name"), InnerName);
-					InnerParams->SetObjectField(TEXT("arguments"), InnerArguments);
-					HandleLongRunningToolCall(Inbound, Responder, SingleObject, InnerParams, InnerName, SessionId);
-					return;
-				}
-			}
-		}
+		return;
 	}
 
 	// Everything else is answered at once
@@ -435,6 +436,47 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 	Responder->Reply(Reply);
 }
 
+bool FN2CMcpProtocol::TryHandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
+	const TSharedPtr<FJsonObject>& SingleObject, const FString& SessionId, bool bModern)
+{
+	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+	FString ToolName;
+	if (SingleObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
+		&& (*ParamsObj)->TryGetStringField(TEXT("name"), ToolName)
+		// Arguments that are not an object are refused below, at once, as an isError result (HandleToolsCall)
+		&& !(*ParamsObj)->HasTypedField<EJson::String>(TEXT("arguments")) && !(*ParamsObj)->HasTypedField<EJson::Array>(TEXT("arguments"))
+		&& !(*ParamsObj)->HasTypedField<EJson::Number>(TEXT("arguments")) && !(*ParamsObj)->HasTypedField<EJson::Boolean>(TEXT("arguments")))
+	{
+		if (IsLongRunningTool(ToolName))
+		{
+			HandleLongRunningToolCall(Inbound, Responder, SingleObject, *ParamsObj, ToolName, SessionId, bModern);
+			return true;
+		}
+		// call_tool naming a long-running tool runs that tool's call the same way (progress with the call's
+		// _meta.progressToken, cancellation); a call_tool that does not resolve is answered below with its isError
+		FString InnerName;
+		TSharedPtr<FJsonObject> InnerArguments;
+		FString ResolveError;
+		const TSharedPtr<FJsonObject>* CallArgs = nullptr;
+		if (ToolName == FN2CMcpToolManager::CallToolName && Catalogs.Tools->IsToolListed(ToolName)
+			&& (*ParamsObj)->TryGetObjectField(TEXT("arguments"), CallArgs) && CallArgs
+			&& Catalogs.Tools->ResolveCallTool(*CallArgs, InnerName, InnerArguments, ResolveError))
+		{
+			const TOptional<FN2CToolDescriptor> Inner = FN2CToolCatalog(*Catalogs.Tools).Find(InnerName);
+			if (Inner.IsSet() && Inner->ExecutionPolicy == EN2CToolExecutionPolicy::LongRunning)
+			{
+				const TSharedRef<FJsonObject> InnerParams = MakeShared<FJsonObject>();
+				InnerParams->Values = (*ParamsObj)->Values;
+				InnerParams->SetStringField(TEXT("name"), InnerName);
+				InnerParams->SetObjectField(TEXT("arguments"), InnerArguments);
+				HandleLongRunningToolCall(Inbound, Responder, SingleObject, InnerParams, InnerName, SessionId, bModern);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
 {
 	if (ToolName.IsEmpty())
@@ -454,7 +496,7 @@ bool FN2CMcpProtocol::IsLongRunningTool(const FString& ToolName) const
 
 void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
 	const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
-	const FString& SessionId)
+	const FString& SessionId, bool bModern)
 {
 	const TSharedPtr<FJsonObject>* ArgsObj = nullptr;
 	const TSharedPtr<FJsonObject> ToolArguments = Params->TryGetObjectField(TEXT("arguments"), ArgsObj) && ArgsObj && ArgsObj->IsValid()
@@ -490,31 +532,42 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 	const FString ResponseSessionId = SessionId;
 
 	// Stream when the transport can stream, the client can read a stream (Accept lists text/event-stream) and wants
-	// progress (sent a token); otherwise answer with one JSON reply when the call finishes.
-	const bool bStream = Responder->CanStream() && ClientProgressToken.IsValid() && Inbound.AcceptsEventStream();
+	// progress (sent a token); otherwise answer with one JSON reply when the call finishes. A 2026-07-28 call streams
+	// whenever it can, token or not: closing that stream is how its client cancels it (basic/patterns/cancellation).
+	const bool bStream = Responder->CanStream() && Inbound.AcceptsEventStream() && (ClientProgressToken.IsValid() || bModern);
+
+	// 2026-07-28: the response gets resultType and serverInfo, and the stream is watched (keep-alive, closed by client)
+	const TSharedRef<bool> bDone = MakeShared<bool>(false);
+	const TFunction<FString(const FString&)> Finish = [bModern, bDone](const FString& ResponseJson)
+	{
+		*bDone = true;
+		return bModern ? DecorateModernResponseJson(TEXT("tools/call"), ResponseJson) : ResponseJson;
+	};
+
+	// Whether the stream is open (a progress event or a keep-alive was written), so a call cancelled before then can
+	// still end its request
+	const TSharedRef<bool> bStreamOpen = MakeShared<bool>(false);
 
 	FN2CAsyncTaskResponder CallResponder;
 	if (bStream)
 	{
-		// Whether the stream is open (a progress event was written), so a call cancelled before its first event can
-		// still end its request
-		const TSharedRef<bool> bStreamOpen = MakeShared<bool>(false);
 		CallResponder.SendProgress = [Responder, ResponseSessionId, bStreamOpen](const FString& NotificationJson)
 		{
 			check(IsInGameThread());
 			*bStreamOpen = true;
 			Responder->Stream(NotificationJson, ResponseSessionId);
 		};
-		CallResponder.SendResponse = [Responder, ResponseSessionId](const FString& ResponseJson)
+		CallResponder.SendResponse = [Responder, ResponseSessionId, Finish](const FString& ResponseJson)
 		{
 			check(IsInGameThread());
-			Responder->Stream(ResponseJson, ResponseSessionId);
+			Responder->Stream(Finish(ResponseJson), ResponseSessionId);
 			Responder->Close();
 		};
 		// Cancelled by the client (notifications/cancelled): the stream closes without the response event
-		CallResponder.EndWithoutResponse = [Responder, ResponseSessionId, bStreamOpen]()
+		CallResponder.EndWithoutResponse = [Responder, ResponseSessionId, bStreamOpen, bDone]()
 		{
 			check(IsInGameThread());
+			*bDone = true;
 			if (*bStreamOpen)
 			{
 				Responder->Close();
@@ -531,18 +584,19 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 	else
 	{
 		// The transport holds the request open and answers it once, when the call reports
-		CallResponder.SendResponse = [Responder, ResponseSessionId](const FString& ResponseJson)
+		CallResponder.SendResponse = [Responder, ResponseSessionId, Finish](const FString& ResponseJson)
 		{
 			check(IsInGameThread());
 			FN2CMcpReply Reply;
-			Reply.Body = ResponseJson;
+			Reply.Body = Finish(ResponseJson);
 			Reply.SessionId = ResponseSessionId;
 			Responder->Reply(Reply);
 		};
 		// Cancelled by the client (notifications/cancelled): the held request ends with no JSON-RPC message (202, no body)
-		CallResponder.EndWithoutResponse = [Responder, ResponseSessionId]()
+		CallResponder.EndWithoutResponse = [Responder, ResponseSessionId, bDone]()
 		{
 			check(IsInGameThread());
+			*bDone = true;
 			FN2CMcpReply Reply;
 			Reply.Status = 202;
 			Reply.SessionId = ResponseSessionId;
@@ -565,6 +619,17 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 		Reply.SessionId = ResponseSessionId;
 		Responder->Reply(Reply);
 		return;
+	}
+
+	if (bModern && bStream && !*bDone)
+	{
+		FWatchedStream Watched;
+		Watched.Responder = Responder;
+		Watched.TaskId = TaskId;
+		Watched.bDone = bDone;
+		Watched.bOpened = bStreamOpen;
+		WatchedStreams.Add(MoveTemp(Watched));
+		EnsureStreamTicker();
 	}
 
 	// Tests/mcp_probe/live_*.py parse this line: keep "Started task ... answering ..." and "text/event-stream" (the
@@ -929,47 +994,11 @@ bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, con
 	// Set protocol version
 	Result->SetStringField(TEXT("protocolVersion"), NegotiatedProtocolVersion);
 	
-	// Set server capabilities
-	TSharedPtr<FJsonObject> ServerCapabilities = MakeShareable(new FJsonObject);
-	
-	// Tools capability
-	TSharedPtr<FJsonObject> ToolsCapability = MakeShareable(new FJsonObject);
-	// false: tools/list is fixed while the server runs (tool search reaches every tool through list_toolsets,
-	// describe_toolset and call_tool, card 0165), and the server has no channel for unsolicited notifications
-	ToolsCapability->SetBoolField(TEXT("listChanged"), false);
-	ServerCapabilities->SetObjectField(TEXT("tools"), ToolsCapability);
-	
-	// Resources capability
-	TSharedPtr<FJsonObject> ResourcesCapability = MakeShareable(new FJsonObject);
-	ResourcesCapability->SetBoolField(TEXT("subscribe"), false); // Subscriptions not implemented yet
-	ResourcesCapability->SetBoolField(TEXT("listChanged"), false); // List change notifications not implemented yet
-	ServerCapabilities->SetObjectField(TEXT("resources"), ResourcesCapability);
-	
-	// Prompts capability
-	TSharedPtr<FJsonObject> PromptsCapability = MakeShareable(new FJsonObject);
-	PromptsCapability->SetBoolField(TEXT("listChanged"), false); // List change notifications not implemented yet
-	ServerCapabilities->SetObjectField(TEXT("prompts"), PromptsCapability);
-
-	// No logging capability: the server sends no notifications/message and has no logging/setLevel, and both parties
-	// may "Only use capabilities that were successfully negotiated" (logging is deprecated in 2026-07-28)
-
-	Result->SetObjectField(TEXT("capabilities"), ServerCapabilities);
+	Result->SetObjectField(TEXT("capabilities"), BuildServerCapabilities());
 
 	// Guidance for the agent (InitializeResult.instructions)
 	Result->SetStringField(TEXT("instructions"), GetServerInstructions());
-	
-	// Set server info
-	TSharedPtr<FJsonObject> ServerInfo = MakeShareable(new FJsonObject);
-	ServerInfo->SetStringField(TEXT("name"), TEXT("NodeToCodeMCPServer"));
-	
-	// Get plugin version dynamically
-	FString PluginVersion = TEXT("Unknown");
-	if (TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("NodeToCode")))
-	{
-		PluginVersion = Plugin->GetDescriptor().VersionName;
-	}
-	ServerInfo->SetStringField(TEXT("version"), PluginVersion);
-	Result->SetObjectField(TEXT("serverInfo"), ServerInfo);
+	Result->SetObjectField(TEXT("serverInfo"), BuildServerInfo());
 
 	// Create success response
 	OutResponse = FJsonRpcUtils::CreateSuccessResponse(Id, MakeShareable(new FJsonValueObject(Result)));

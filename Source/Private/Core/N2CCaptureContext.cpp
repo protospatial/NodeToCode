@@ -186,6 +186,9 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
 
     FN2CLogger::Get().Log(TEXT("Starting node translation"), EN2CLogSeverity::Info);
 
+    // A capture of one graph or a node selection (a translation) leaves variables out unless asked (card 0242)
+    bIncludeVariables = Options.IncludeVariables.Get(false);
+
     // Get Blueprint metadata from first node (all nodes are from the same graph)
     CaptureBlueprintMetadata(CollectedNodes[0]);
 
@@ -242,9 +245,17 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
     const int32 MainGraphNodeCount = CurrentGraph().Nodes.Num();
     N2CLiveness::MarkGraph(CurrentGraph());
     CaptureComments(MainGraph);
+    if (bIncludeVariables)
+    {
+        CaptureLocalVariables(MainGraph);
+    }
     CurrentGraphIndex = INDEX_NONE;
 
     ProcessQueuedGraphs();
+    if (bIncludeVariables)
+    {
+        CaptureMemberVariables();
+    }
 
     FString Context = FString::Printf(TEXT("Translated %d nodes in %d graphs"),
         MainGraphNodeCount,
@@ -362,6 +373,9 @@ bool FN2CCaptureContext::CaptureGraphs(TConstArrayView<UEdGraph*> Graphs)
     }
     CaptureBlueprintMetadata(FirstNode);
 
+    // A whole-Blueprint capture records its variables unless told not to (card 0242)
+    bIncludeVariables = Options.IncludeVariables.Get(true);
+
     // Every graph asked for counts as visited before any is processed, so a call from one to another is never
     // queued as a nested graph: each is captured once, at depth 0, in the order given
     for (UEdGraph* Graph : Graphs)
@@ -381,6 +395,10 @@ bool FN2CCaptureContext::CaptureGraphs(TConstArrayView<UEdGraph*> Graphs)
         }
     }
     ProcessQueuedGraphs();
+    if (bIncludeVariables)
+    {
+        CaptureMemberVariables();
+    }
 
     FN2CLogger::Get().Log(TEXT("Graph capture complete"), EN2CLogSeverity::Info,
         FString::Printf(TEXT("Captured %d graphs (%d asked for)"), N2CBlueprint.Graphs.Num(), Graphs.Num()));
@@ -547,6 +565,144 @@ void FN2CCaptureContext::CaptureComments(const UEdGraph* Graph)
     }
 }
 
+FN2CVariable FN2CCaptureContext::DescribeVariable(const FBPVariableDescription& Variable, const FString& DefaultValue,
+    const bool bMember) const
+{
+    // The type in the pin spellings, from the same helpers as pins (card 0238): a float is Real with sub_type "float",
+    // a map is typed by its key and PinValueType is its value (PR #8 compared the category with "float" and swapped the
+    // map's key and value)
+    FN2CVariable Result;
+    Result.Name = Variable.VarName.ToString();
+    const FEdGraphPinType& Type = Variable.VarType;
+    Result.Type = N2CStableNames::PinType(Type.PinCategory, Type.PinSubCategory, Type.PinSubCategoryObject.Get());
+    Result.SubType = N2CStableNames::PinSubType(Type.PinSubCategory, Type.PinSubCategoryObject.Get());
+    Result.bIsArray = Type.ContainerType == EPinContainerType::Array;
+    Result.bIsSet = Type.ContainerType == EPinContainerType::Set;
+    Result.bIsMap = Type.ContainerType == EPinContainerType::Map;
+    if (Result.bIsMap)
+    {
+        const FEdGraphTerminalType& Value = Type.PinValueType;
+        Result.ValueType = N2CStableNames::PinType(Value.TerminalCategory, Value.TerminalSubCategory,
+            Value.TerminalSubCategoryObject.Get());
+        Result.ValueSubType = N2CStableNames::PinSubType(Value.TerminalSubCategory, Value.TerminalSubCategoryObject.Get());
+    }
+    Result.DefaultValue = DefaultValue;
+    if (!bMember)
+    {
+        return Result;
+    }
+
+    // Category, description and flags as the details panel and get-blueprint-member-variables read them (card 0283):
+    // Instance Editable is CPF_Edit without CPF_DisableEditOnInstance, Private the BlueprintPrivate metadata
+    const FString Category = N2CStableNames::SourceText(Variable.Category);
+    if (!Category.IsEmpty() && !Category.Equals(N2CStableNames::SourceText(UEdGraphSchema_K2::VR_DefaultCategory)))
+    {
+        Result.Category = Category;
+    }
+    if (Variable.HasMetaData(FBlueprintMetadata::MD_Tooltip))
+    {
+        Result.Comment = Variable.GetMetaData(FBlueprintMetadata::MD_Tooltip);
+    }
+    const uint64 Flags = Variable.PropertyFlags;
+    Result.bInstanceEditable = (Flags & CPF_Edit) != 0 && (Flags & CPF_DisableEditOnInstance) == 0;
+    Result.bReadOnly = (Flags & CPF_BlueprintReadOnly) != 0;
+    Result.bExposeOnSpawn = (Flags & CPF_ExposeOnSpawn) != 0;
+    Result.bPrivate = Variable.HasMetaData(FBlueprintMetadata::MD_Private)
+        && Variable.GetMetaData(FBlueprintMetadata::MD_Private).ToBool();
+    Result.bReplicated = (Flags & CPF_Net) != 0;
+    if ((Flags & CPF_RepNotify) != 0 && !Variable.RepNotifyFunc.IsNone())
+    {
+        Result.RepNotify = Variable.RepNotifyFunc.ToString();
+    }
+    return Result;
+}
+
+void FN2CCaptureContext::AddVariableRelatedTypes(const FEdGraphPinType& Type)
+{
+    if (!Options.bIncludeRelatedTypes)
+    {
+        return;
+    }
+    const auto Add = [this](const FName& Category, UObject* TypeObject)
+    {
+        if (Category == UEdGraphSchema_K2::PC_Struct)
+        {
+            UScriptStruct* Struct = Cast<UScriptStruct>(TypeObject);
+            if (Struct && IsBlueprintStruct(Struct) && !ProcessedStructPaths.Contains(Struct->GetPathName()))
+            {
+                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+                if (StructDef.IsValid())
+                {
+                    N2CBlueprint.Structs.Add(MoveTemp(StructDef));
+                }
+            }
+        }
+        else if (Category == UEdGraphSchema_K2::PC_Byte || Category == UEdGraphSchema_K2::PC_Enum)
+        {
+            UEnum* Enum = Cast<UEnum>(TypeObject);
+            if (Enum && IsBlueprintEnum(Enum) && !ProcessedEnumPaths.Contains(Enum->GetPathName()))
+            {
+                FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
+                if (EnumDef.IsValid())
+                {
+                    N2CBlueprint.Enums.Add(MoveTemp(EnumDef));
+                }
+            }
+        }
+    };
+    Add(Type.PinCategory, Type.PinSubCategoryObject.Get());
+    if (Type.IsMap())
+    {
+        Add(Type.PinValueType.TerminalCategory, Type.PinValueType.TerminalSubCategoryObject.Get());
+    }
+}
+
+void FN2CCaptureContext::CaptureMemberVariables()
+{
+    const UBlueprint* Blueprint = CapturedBlueprint.Get();
+    if (!Blueprint)
+    {
+        return;
+    }
+    UClass* GeneratedClass = Blueprint->GeneratedClass;
+    UObject* Defaults = GeneratedClass ? GeneratedClass->GetDefaultObject(/*bCreateIfNeeded*/ false) : nullptr;
+    for (const FBPVariableDescription& Variable : Blueprint->NewVariables)
+    {
+        // The default lives on the class defaults once the Blueprint is compiled (a full compile moves the
+        // description's DefaultValue there and empties it); the description's value until the class has the variable
+        FString DefaultValue = Variable.DefaultValue;
+        const FProperty* Property = Defaults ? FindFProperty<FProperty>(GeneratedClass, Variable.VarName) : nullptr;
+        FString FromDefaults;
+        if (Property && FBlueprintEditorUtils::PropertyValueToString(Property, reinterpret_cast<const uint8*>(Defaults),
+            FromDefaults, Defaults))
+        {
+            DefaultValue = FromDefaults;
+        }
+        N2CBlueprint.Variables.Add(DescribeVariable(Variable, DefaultValue, /*bMember*/ true));
+        AddVariableRelatedTypes(Variable.VarType);
+    }
+}
+
+void FN2CCaptureContext::CaptureLocalVariables(const UEdGraph* Graph)
+{
+    if (!Graph || CurrentGraphIndex == INDEX_NONE)
+    {
+        return;
+    }
+    for (const UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (const UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+        {
+            for (const FBPVariableDescription& Variable : Entry->LocalVariables)
+            {
+                CurrentGraph().LocalVariables.Add(DescribeVariable(Variable, Variable.DefaultValue, /*bMember*/ false));
+                AddVariableRelatedTypes(Variable.VarType);
+            }
+            return;
+        }
+    }
+}
+
 bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
 {
     if (!Graph)
@@ -586,6 +742,10 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     {
         N2CLiveness::MarkGraph(NewGraph);
         CaptureComments(Graph);
+        if (bIncludeVariables)
+        {
+            CaptureLocalVariables(Graph);
+        }
 
         // Validate all flow references
         if (!ValidateFlowReferences(NewGraph))

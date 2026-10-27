@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "LLM/N2CTranslationArchive.h"
 #include "Widgets/SCompoundWidget.h"
 #include "TagManager/Models/N2CTagManagerTypes.h"
 #include "Models/N2CTranslation.h"
@@ -81,11 +82,18 @@ public:
 	bool IsBatchProgressVisible() const { return bShowBatchProgress; }
 
 	/**
-	 * Record a finished single translation of Graph in the graph state, pointing at the folder
-	 * UN2CLLMModule::SaveTranslationToDisk wrote for it and the language it was saved as, so the translation viewer
-	 * can load it again. False when nothing was saved or Graph has no valid GUID.
+	 * Writes a single translation as a run of the translation archive (FN2CTranslationArchive, card 0252): every
+	 * response entry in its own folder, the capture beside them, a manifest. Then records Graph (the tagged graph) at
+	 * its root entry's folder, with the run's provider, model and language, so the translation viewer can load it
+	 * again. RunInfo null: a Single run named after the capture, with the settings' provider, model and language.
+	 * OutSaved, when given, gets what was written. False when nothing was written or Graph has no valid GUID.
 	 */
-	static bool RecordSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response);
+	static bool SaveSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response,
+		const FN2CBlueprint& Capture, const FN2CTranslationRunInfo* RunInfo = nullptr, FN2CArchivedResponse* OutSaved = nullptr);
+
+	/** A Single run named after Capture, with the settings' provider, model and target language */
+	static FN2CTranslationRunInfo MakeSingleRunInfo(const FN2CBlueprint& Capture);
+
 
 private:
 	// External event delegates
@@ -184,8 +192,8 @@ private:
 
 	// ==================== Single Translation Callbacks ====================
 
-	/** Called when single graph translation completes */
-	void OnSingleTranslationComplete(const FN2CTranslationResponse& Response, bool bSuccess);
+	/** Called when single graph translation completes; Saved is what SaveSingleTranslation wrote (empty on failure) */
+	void OnSingleTranslationComplete(const FN2CTranslationResponse& Response, bool bSuccess, const FN2CArchivedResponse& Saved);
 
 	// ==================== Overlay Visibility ====================
 

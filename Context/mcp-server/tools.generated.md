@@ -222,7 +222,7 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node, write_graph_dsl`. 
 
 **Connect pins**
 
-Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Each entry's result has its array index and the schema's response (MAKE, BREAK_OTHERS_A/B/AB, MAKE_WITH_CONVERSION_NODE, MAKE_WITH_PROMOTION) with any conversion node placed; failed and malformed entries are listed in the result with an errorCode, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -1239,7 +1239,7 @@ Returns `structuredContent` matching its `outputSchema` (in tools.generated.json
 
 **Show the translation output folder**
 
-Returns the translation output directory configuration from NodeToCode settings. Shows whether a custom directory is set or if the default location is being used. Translations run from the editor's NodeToCode window are saved there; translate-focused-blueprint returns its translation in the tool result and writes no files.
+Returns the translation output directory configuration from NodeToCode settings. Shows whether a custom directory is set or if the default location is being used. Every translation is saved there as a run folder with a manifest.json: from the editor's NodeToCode window, translate-batch, translate-focused-blueprint and the Python API.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -1272,7 +1272,7 @@ Translates many Blueprint graphs with an LLM provider in one call, with no Bluep
 
 **Translate the focused Blueprint graph**
 
-Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. Nothing is saved to the translation output directory. The result's structuredContent is the translation (graphs with their code, usage); one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, savedTo and a resource_link to the file.
+Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. The translation is also saved to the translation output directory (get-translation-output-directory) as a run folder with a manifest.json. The result's structuredContent is the translation (graphs with their code, usage); one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, savedTo and a resource_link to the file.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|

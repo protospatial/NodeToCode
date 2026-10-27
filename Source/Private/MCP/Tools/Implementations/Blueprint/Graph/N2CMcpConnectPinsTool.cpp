@@ -27,7 +27,7 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("connect-pins"),
-		TEXT("Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error."),
+		TEXT("Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Each entry's result has its array index and the schema's response (MAKE, BREAK_OTHERS_A/B/AB, MAKE_WITH_CONVERSION_NODE, MAKE_WITH_PROMOTION) with any conversion node placed; failed and malformed entries are listed in the result with an errorCode, which is not an error."),
 		N2CMcpToolsets::BlueprintGraph
 	);
 
@@ -61,7 +61,7 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	
 	TSharedPtr<FJsonObject> FromPinGuidProp = MakeShareable(new FJsonObject);
 	FromPinGuidProp->SetStringField(TEXT("type"), TEXT("string"));
-	FromPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the source pin. Required: an entry without it is skipped"));
+	FromPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the source pin. Required: an entry without it fails with INVALID_REQUEST"));
 	FromProperties->SetObjectField(TEXT("pinGuid"), FromPinGuidProp);
 	
 	TSharedPtr<FJsonObject> FromPinNameProp = MakeShareable(new FJsonObject);
@@ -99,7 +99,7 @@ FMcpToolDefinition FN2CMcpConnectPinsTool::GetDefinition() const
 	
 	TSharedPtr<FJsonObject> ToPinGuidProp = MakeShareable(new FJsonObject);
 	ToPinGuidProp->SetStringField(TEXT("type"), TEXT("string"));
-	ToPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the target pin. Required: an entry without it is skipped"));
+	ToPinGuidProp->SetStringField(TEXT("description"), TEXT("GUID of the target pin. Required: an entry without it fails with INVALID_REQUEST"));
 	ToProperties->SetObjectField(TEXT("pinGuid"), ToPinGuidProp);
 	
 	TSharedPtr<FJsonObject> ToPinNameProp = MakeShareable(new FJsonObject);
@@ -300,20 +300,31 @@ bool FN2CMcpConnectPinsTool::ParseConnectionRequests(const TSharedPtr<FJsonObjec
 	
 	FN2CLogger::Get().Log(FString::Printf(TEXT("ConnectPins: Found %d connections in request"), ConnectionsArray->Num()), EN2CLogSeverity::Debug);
 	
-	for (const TSharedPtr<FJsonValue>& ConnectionValue : *ConnectionsArray)
+	// Every entry becomes a request, in order: one that cannot be read keeps its index and the reason, and is reported
+	// as INVALID_REQUEST instead of vanishing from the result (card 0276)
+	for (int32 Index = 0; Index < ConnectionsArray->Num(); ++Index)
 	{
-		const TSharedPtr<FJsonObject>* ConnectionObject;
-		if (!ConnectionValue->TryGetObject(ConnectionObject))
+		const TSharedPtr<FJsonValue>& ConnectionValue = (*ConnectionsArray)[Index];
+		FConnectionRequest Request;
+		Request.Index = Index;
+		auto Malformed = [&OutRequests, &Request](const FString& Reason)
 		{
+			Request.MalformedReason = Reason;
+			OutRequests.Add(Request);
+		};
+
+		const TSharedPtr<FJsonObject>* ConnectionObject;
+		if (!ConnectionValue.IsValid() || !ConnectionValue->TryGetObject(ConnectionObject))
+		{
+			Malformed(TEXT("The entry is not an object with 'from' and 'to'"));
 			continue;
 		}
-		
-		FConnectionRequest Request;
 		
 		// Parse 'from' object
 		const TSharedPtr<FJsonObject>* FromObject;
 		if (!(*ConnectionObject)->TryGetObjectField(TEXT("from"), FromObject))
 		{
+			Malformed(TEXT("The entry has no 'from' object"));
 			continue;
 		}
 		
@@ -322,6 +333,7 @@ bool FN2CMcpConnectPinsTool::ParseConnectionRequests(const TSharedPtr<FJsonObjec
 		if (!FromParser.TryGetRequiredString(TEXT("nodeGuid"), Request.FromNodeGuid, ErrorMsg) ||
 			!FromParser.TryGetRequiredString(TEXT("pinGuid"), Request.FromPinGuid, ErrorMsg))
 		{
+			Malformed(TEXT("'from': ") + ErrorMsg);
 			continue;
 		}
 		
@@ -333,6 +345,7 @@ bool FN2CMcpConnectPinsTool::ParseConnectionRequests(const TSharedPtr<FJsonObjec
 		const TSharedPtr<FJsonObject>* ToObject;
 		if (!(*ConnectionObject)->TryGetObjectField(TEXT("to"), ToObject))
 		{
+			Malformed(TEXT("The entry has no 'to' object"));
 			continue;
 		}
 		
@@ -340,6 +353,7 @@ bool FN2CMcpConnectPinsTool::ParseConnectionRequests(const TSharedPtr<FJsonObjec
 		if (!ToParser.TryGetRequiredString(TEXT("nodeGuid"), Request.ToNodeGuid, ErrorMsg) ||
 			!ToParser.TryGetRequiredString(TEXT("pinGuid"), Request.ToPinGuid, ErrorMsg))
 		{
+			Malformed(TEXT("'to': ") + ErrorMsg);
 			continue;
 		}
 		
@@ -509,6 +523,15 @@ FN2CMcpConnectPinsTool::FConnectionResult FN2CMcpConnectPinsTool::ProcessConnect
 	Result.FromPinGuid = Request.FromPinGuid;
 	Result.ToNodeGuid = Request.ToNodeGuid;
 	Result.ToPinGuid = Request.ToPinGuid;
+	Result.Index = Request.Index;
+
+	if (!Request.MalformedReason.IsEmpty())
+	{
+		Result.bSuccess = false;
+		Result.ErrorCode = TEXT("INVALID_REQUEST");
+		Result.ErrorMessage = Request.MalformedReason;
+		return Result;
+	}
 	
 	// Find nodes
 	FGuid FromNodeGuid, ToNodeGuid;
@@ -580,6 +603,8 @@ FN2CMcpConnectPinsTool::FConnectionResult FN2CMcpConnectPinsTool::ProcessConnect
 	
 	// Validate connection via schema; the schema decides what (if anything) a connection breaks
 	const FPinConnectionResponse Response = Schema->CanCreateConnection(FromPin, ToPin);
+	Result.ResponseFields = MakeShared<FJsonObject>();
+	N2CPinConnectPolicy::WriteResponse(Result.ResponseFields, Response);
 	FString PolicyError;
 	if (!N2CPinConnectPolicy::Allow(Response, FromPin, ToPin, Options.bBreakExistingLinks, PolicyError))
 	{
@@ -593,11 +618,12 @@ FN2CMcpConnectPinsTool::FConnectionResult FN2CMcpConnectPinsTool::ProcessConnect
 	FromNode->Modify();
 	ToNode->Modify();
 	
-	const bool bConnectionMade = Schema->TryCreateConnection(FromPin, ToPin);
+	const N2CPinConnectPolicy::FConnectOutcome Outcome = N2CPinConnectPolicy::Connect(Schema, FromPin, ToPin);
 	
-	if (bConnectionMade)
+	if (Outcome.bConnected)
 	{
 		Result.bSuccess = true;
+		N2CPinConnectPolicy::WriteResponse(Result.ResponseFields, Response, Outcome.ConversionNode);
 		// No compile here: the tool call compiles the Blueprint once, after the transaction (card 0151)
 
 		// Log success
@@ -652,6 +678,11 @@ TSharedPtr<FJsonObject> FN2CMcpConnectPinsTool::BuildResultJson(const TArray<FCo
 			ToObject->SetStringField(TEXT("nodeGuid"), Result.ToNodeGuid);
 			ToObject->SetStringField(TEXT("pinGuid"), Result.ToPinGuid);
 			SuccessObject->SetObjectField(TEXT("to"), ToObject);
+			SuccessObject->SetNumberField(TEXT("index"), Result.Index);
+			if (Result.ResponseFields.IsValid())
+			{
+				SuccessObject->Values.Append(Result.ResponseFields->Values);
+			}
 			
 			SucceededArray.Add(MakeShareable(new FJsonValueObject(SuccessObject)));
 		}
@@ -672,6 +703,11 @@ TSharedPtr<FJsonObject> FN2CMcpConnectPinsTool::BuildResultJson(const TArray<FCo
 			ToObject->SetStringField(TEXT("nodeGuid"), Result.ToNodeGuid);
 			ToObject->SetStringField(TEXT("pinGuid"), Result.ToPinGuid);
 			FailureObject->SetObjectField(TEXT("to"), ToObject);
+			FailureObject->SetNumberField(TEXT("index"), Result.Index);
+			if (Result.ResponseFields.IsValid())
+			{
+				FailureObject->Values.Append(Result.ResponseFields->Values);
+			}
 			
 			// Error info
 			FailureObject->SetStringField(TEXT("errorCode"), Result.ErrorCode);

@@ -1,0 +1,131 @@
+{
+	"case": "Variables",
+	"description": "Variables asked for (card 0242). Members: Health (float, default 100, Instance Editable, category Stats, description 'Hit points'), Precise (double, replicated with RepNotify OnRep_Precise), BigCount (int64, Blueprint read-only and private), Mesh (soft object StaticMesh), Blend (BlendableInterface), Targets (array of Actor) and Lookup (Name to float map, Expose on Spawn). Function Score has local variables Count (int, default 3) and Offset (Vector) and a return node with Total (int). Captured from Score.",
+	"include_variables": true,
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_Variables",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_Variables"
+		},
+		"graphs": [
+			{
+				"name": "Score",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Score",
+						"member_parent": "BP_N2CGolden_Variables",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "FunctionResult",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_Variables",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P3",
+								"name": "Total",
+								"type": "Integer"
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2"
+					],
+					"data":
+					{
+					}
+				},
+				"local_variables": [
+					{
+						"name": "Count",
+						"type": "Integer",
+						"default_value": "3"
+					},
+					{
+						"name": "Offset",
+						"type": "Struct",
+						"sub_type": "Vector"
+					}
+				]
+			}
+		],
+		"structs": [],
+		"enums": [],
+		"variables": [
+			{
+				"name": "Health",
+				"type": "Real",
+				"sub_type": "float",
+				"default_value": "100.0",
+				"category": "Stats",
+				"comment": "Hit points",
+				"instance_editable": true
+			},
+			{
+				"name": "Precise",
+				"type": "Real",
+				"sub_type": "double",
+				"replicated": true,
+				"rep_notify": "OnRep_Precise"
+			},
+			{
+				"name": "BigCount",
+				"type": "Integer64",
+				"read_only": true,
+				"private": true
+			},
+			{
+				"name": "Mesh",
+				"type": "SoftObject",
+				"sub_type": "StaticMesh"
+			},
+			{
+				"name": "Blend",
+				"type": "Interface",
+				"sub_type": "BlendableInterface"
+			},
+			{
+				"name": "Targets",
+				"type": "Object",
+				"sub_type": "Actor",
+				"is_array": true
+			},
+			{
+				"name": "Lookup",
+				"type": "Name",
+				"is_map": true,
+				"value_type": "Real",
+				"value_sub_type": "float",
+				"expose_on_spawn": true
+			}
+		]
+	}
+}

@@ -23,6 +23,7 @@
 #include "K2Node.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "LLM/N2CLLMModule.h"
+#include "Core/Widgets/SN2CMainWindow.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
@@ -36,7 +37,9 @@
  * captures while the request is in flight (an overlay's token estimate on open or compile, Copy JSON, find-nodes, a
  * second translation) and anything the caller does with its own copy afterwards must not change the saved folder or
  * its N2C_BP_*.json: they name and describe the Blueprint that was translated. Since card 0133 every capture is its
- * own value (N2C::CaptureNodes), and ProcessN2CJson copies the caller's capture when the request is sent.
+ * own value (N2C::CaptureNodes). Since card 0252 ProcessN2CJson saves nothing: the caller keeps a copy of its capture
+ * when it sends (the main window does) and writes the parsed result with SN2CMainWindow::SaveSingleTranslation (the
+ * translation archive). Checks that nothing is written before the caller saves, and that the run then names A.
  */
 BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C_TEST_FLAGS)
 
@@ -186,8 +189,8 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 			FolderName.StartsWith(Expected + TEXT("_")));
 
 		FString Json;
-		// Named as SaveTranslationToDisk names it: GetBaseFilename drops the timestamp's last ".<seconds>"
-		const FString JsonPath = Folder / FString::Printf(TEXT("N2C_BP_%s.json"), *FPaths::GetBaseFilename(Folder));
+		// Named as the archive names it: N2C_BP_<run folder>.json
+		const FString JsonPath = Folder / FString::Printf(TEXT("N2C_BP_%s.json"), *FPaths::GetCleanFilename(Folder));
 		const TSharedPtr<FJsonObject> Root = FFileHelper::LoadFileToString(Json, *JsonPath) ? N2CTest::ParseJsonObject(Json) : nullptr;
 		const TSharedPtr<FJsonObject>* Metadata = nullptr;
 		FString Name;
@@ -206,10 +209,11 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 	/**
 	 * Initializes the module with Ollama at a stub, captures BP_N2CSaveA, sends it through Send (which starts the
 	 * request), captures BP_N2CSaveB while the request is in flight, into the very variable that held A's capture when
-	 * bReuseCapture is set, then waits for the reply and checks the save.
+	 * bReuseCapture is set, then waits for the reply, checks nothing was written, saves the parsed result with the
+	 * copy taken at send time (as the main window does) and checks the save.
 	 */
 	void RunScenario(bool bReuseCapture,
-		TFunctionRef<void(const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)> Send)
+		TFunctionRef<void(const FString& JsonA, const FOnLLMResponseReceived& OnComplete, const FOnN2CTranslationParsed& OnParsed)> Send)
 	{
 		FStubOllama Stub;
 		if (!TestTrue(TEXT("stub endpoint started"), Stub.Start(OllamaReply(TEXT("BP_N2CSaveA")))))
@@ -235,8 +239,17 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 		}
 		const FString JsonA = FN2CSerializer::ToJson(CapturedA, EN2CJsonStyle::Condensed);
 
+		// What the caller keeps for the save: a copy of its capture when it sends
+		const TSharedRef<const FN2CBlueprint> SentCapture = MakeShared<const FN2CBlueprint>(CapturedA);
 		const TSharedRef<int32> Completions = MakeShared<int32>(0);
-		Send(JsonA, CapturedA, FOnLLMResponseReceived::CreateLambda([Completions](const FString&) { ++(*Completions); }));
+		const TSharedRef<FN2CTranslationResponse> Parsed = MakeShared<FN2CTranslationResponse>();
+		const TSharedRef<bool> bParsed = MakeShared<bool>(false);
+		Send(JsonA, FOnLLMResponseReceived::CreateLambda([Completions](const FString&) { ++(*Completions); }),
+			FOnN2CTranslationParsed::CreateLambda([Parsed, bParsed](const FN2CTranslationResponse& Response, bool bSuccess)
+			{
+				*Parsed = Response;
+				*bParsed = bSuccess;
+			}));
 		TestEqual(TEXT("the request is still in flight"), *Completions, 0);
 
 		// Another capture before the reply, as an overlay's token estimate does when a graph tab opens or a Blueprint compiles
@@ -249,9 +262,19 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 
 		Pump(15.0, [Completions] { return *Completions > 0; });
 		TestEqual(TEXT("the stub answered once"), *Stub.Hits, 1);
-		if (TestEqual(TEXT("the request completed once"), *Completions, 1))
+		if (TestEqual(TEXT("the request completed once"), *Completions, 1) && TestTrue(TEXT("the response parsed"), *bParsed))
 		{
 			TestTrue(TEXT("the module is idle after a successful translation"), Module->GetSystemStatus() == EN2CSystemStatus::Idle);
+			TArray<FString> Written;
+			IFileManager::Get().FindFilesRecursive(Written, *Output.Path, TEXT("*"), true, true);
+			TestEqual(TEXT("ProcessN2CJson wrote nothing"), Written.Num(), 0);
+
+			// A tag without a GUID: the run is written, and nothing is recorded in the host's graph state
+			FN2CTagInfo Graph;
+			Graph.GraphName = TEXT("EventGraph");
+			FN2CArchivedResponse Saved;
+			SN2CMainWindow::SaveSingleTranslation(Graph, *Parsed, *SentCapture, nullptr, &Saved);
+			TestNotNull(TEXT("the caller saves the translation"), Saved.GetRoot());
 			ExpectSavedAs(Output.Path, TEXT("BP_N2CSaveA"), TEXT("BP_N2CSaveB"));
 		}
 	}
@@ -263,18 +286,18 @@ void FN2CTranslationSaveSpec::Define()
 	It(TEXT("saves with the Blueprint as it was when the request was sent, whatever the caller's copy holds later"), [this]()
 	{
 		// The caller's variable is reused for the next capture while the request is in flight
-		RunScenario(true, [](const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)
+		RunScenario(true, [](const FString& JsonA, const FOnLLMResponseReceived& OnComplete, const FOnN2CTranslationParsed& OnParsed)
 		{
-			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, CapturedA, OnComplete);
+			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, OnComplete, OnParsed);
 		});
 	});
 
 	It(TEXT("saves with the Blueprint its caller captured, whatever is captured next"), [this]()
 	{
 		// The translation window's, editor-integration and batch paths: each passes the capture it serialized
-		RunScenario(false, [](const FString& JsonA, const FN2CBlueprint& CapturedA, const FOnLLMResponseReceived& OnComplete)
+		RunScenario(false, [](const FString& JsonA, const FOnLLMResponseReceived& OnComplete, const FOnN2CTranslationParsed& OnParsed)
 		{
-			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, CapturedA, OnComplete);
+			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, OnComplete, OnParsed);
 		});
 	});
 }

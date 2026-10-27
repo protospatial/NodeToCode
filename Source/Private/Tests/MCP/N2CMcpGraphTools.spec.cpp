@@ -28,6 +28,28 @@ namespace N2CMcpGraphToolsSpec
 		return Json.IsValid() && Json->TryGetArrayField(TEXT("failed"), Failed) ? *Failed : TArray<TSharedPtr<FJsonValue>>();
 	}
 
+	/** The connect-pins result's succeeded entries */
+	TArray<TSharedPtr<FJsonValue>> SucceededOf(const FMcpToolCallResult& Result)
+	{
+		const TSharedPtr<FJsonObject> Json = N2CTest::ResultJson(Result);
+		const TArray<TSharedPtr<FJsonValue>>* Succeeded = nullptr;
+		return Json.IsValid() && Json->TryGetArrayField(TEXT("succeeded"), Succeeded) ? *Succeeded : TArray<TSharedPtr<FJsonValue>>();
+	}
+
+	/** An entry's string field, or "" */
+	FString EntryString(const TSharedPtr<FJsonValue>& Entry, const TCHAR* Field)
+	{
+		FString Value;
+		return Entry.IsValid() && Entry->AsObject().IsValid() && Entry->AsObject()->TryGetStringField(Field, Value) ? Value : FString();
+	}
+
+	/** An entry's index, or INDEX_NONE */
+	int32 EntryIndex(const TSharedPtr<FJsonValue>& Entry)
+	{
+		int32 Index = INDEX_NONE;
+		return Entry.IsValid() && Entry->AsObject().IsValid() && Entry->AsObject()->TryGetNumberField(TEXT("index"), Index) ? Index : INDEX_NONE;
+	}
+
 	/** A connect-pins entry with its pins named by pinName only: no pinGuid (a malformed entry) */
 	TSharedPtr<FJsonValue> EntryWithoutPinGuid(const UEdGraphPin* From, const UEdGraphPin* To)
 	{
@@ -234,6 +256,13 @@ void FN2CMcpGraphToolsSpec::Define()
 			}
 			N2CTest::ExpectResultTargets(*this, TEXT("connect False"), Result, Blueprint, Graph);
 			TestEqual(TEXT("no failed connection"), FailedOf(Result).Num(), 0);
+			const TArray<TSharedPtr<FJsonValue>> Made = SucceededOf(Result);
+			if (TestEqual(TEXT("one connection made"), Made.Num(), 1))
+			{
+				TestEqual(TEXT("its index"), EntryIndex(Made[0]), 0);
+				TestEqual(TEXT("the schema's response"), EntryString(Made[0], TEXT("response")), FString(TEXT("MAKE")));
+				TestFalse(TEXT("no conversion node"), Made[0]->AsObject()->HasField(TEXT("conversionNode")));
+			}
 			TestTrue(TEXT("False -> Print linked"), False->LinkedTo.Contains(Execute));
 			TestTrue(TEXT("True -> Print kept (fan-in)"), True->LinkedTo.Contains(Execute));
 			TestEqual(TEXT("Print's execute has both links"), Execute->LinkedTo.Num(), 2);
@@ -263,6 +292,10 @@ void FN2CMcpGraphToolsSpec::Define()
 			TestFalse(TEXT("not an error result"), Refused.bIsError);
 			TestTrue(TEXT("WOULD_BREAK_EXISTING_LINK: ") + N2CTest::ResultText(Refused).Left(300), Failed.Num() == 1
 				&& Failed[0]->AsObject()->GetStringField(TEXT("errorCode")) == TEXT("WOULD_BREAK_EXISTING_LINK"));
+			if (Failed.Num() == 1)
+			{
+				TestEqual(TEXT("refused: the schema's response"), EntryString(Failed[0], TEXT("response")), FString(TEXT("BREAK_OTHERS_A")));
+			}
 			const FString Difference = N2CTest::FirstSnapshotDifference(Before, N2CTest::Snapshot(Blueprint));
 			TestTrue(TEXT("the graph is unchanged ") + Difference, Difference.IsEmpty());
 			TestTrue(TEXT("Go -> Branch kept"), GoThen->LinkedTo.Contains(BranchIn));
@@ -277,6 +310,8 @@ void FN2CMcpGraphToolsSpec::Define()
 				return;
 			}
 			TestEqual(TEXT("replace: no failed connection"), FailedOf(Replaced).Num(), 0);
+			const TArray<TSharedPtr<FJsonValue>> Made = SucceededOf(Replaced);
+			TestTrue(TEXT("replace: response BREAK_OTHERS_A"), Made.Num() == 1 && EntryString(Made[0], TEXT("response")) == TEXT("BREAK_OTHERS_A"));
 			TestTrue(TEXT("Go -> PrintB now"), GoThen->LinkedTo.Num() == 1 && GoThen->LinkedTo.Contains(PrintBIn));
 			TestFalse(TEXT("Go -> Branch gone from both sides"), BranchIn->LinkedTo.Contains(GoThen));
 			TestTrue(TEXT("PrintB keeps its other links (fan-in)"), PrintBIn->LinkedTo.Contains(N2CTest::ExecOut(PrintA)));
@@ -286,9 +321,8 @@ void FN2CMcpGraphToolsSpec::Define()
 			N2CTest::ExpectUndoRedoExact(*this, TEXT("replace"), Blueprint, Before);
 		});
 
-		// Known defect mcp-tools-graph-functions-25 (card 0276): an entry without pinGuid is skipped without a trace,
-		// not counted in summary.totalRequested and not listed in failed. Enable (xIt -> It) with the fix.
-		xIt(TEXT("reports a malformed connection entry in failed and counts it"), [this]()
+		// mcp-tools-graph-functions-25 (card 0276): an entry without pinGuid used to be skipped without a trace
+		It(TEXT("reports malformed connection entries in failed with their index and INVALID_REQUEST, and counts them"), [this]()
 		{
 			if (!Build(TEXT("BP_N2CGraphSpecMalformed")))
 			{
@@ -298,15 +332,71 @@ void FN2CMcpGraphToolsSpec::Define()
 				{ { Branch->FindPin(UEdGraphSchema_K2::PN_Else, EGPD_Output), N2CTest::ExecIn(PrintB) } }, N2CTest::TargetArgs(Blueprint, Graph));
 			TArray<TSharedPtr<FJsonValue>> Connections = Args->GetArrayField(TEXT("connections"));
 			Connections.Add(EntryWithoutPinGuid(N2CTest::ExecOut(PrintB), N2CTest::ExecIn(PrintA)));
+			Connections.Add(MakeShared<FJsonValueNumber>(42));
 			Args->SetArrayField(TEXT("connections"), Connections);
 			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("connect-pins"), Args);
 			const TSharedPtr<FJsonObject> Json = N2CTest::ResultJson(Result);
 			const TSharedPtr<FJsonObject>* Summary = nullptr;
 			if (TestTrue(TEXT("summary: ") + N2CTest::ResultText(Result).Left(300), Json.IsValid() && Json->TryGetObjectField(TEXT("summary"), Summary)))
 			{
-				TestEqual(TEXT("totalRequested counts both entries"), static_cast<int32>((*Summary)->GetNumberField(TEXT("totalRequested"))), 2);
+				TestEqual(TEXT("totalRequested counts every entry"), static_cast<int32>((*Summary)->GetNumberField(TEXT("totalRequested"))), 3);
 			}
-			TestEqual(TEXT("the malformed entry is in failed"), FailedOf(Result).Num(), 1);
+			const TArray<TSharedPtr<FJsonValue>> Failed = FailedOf(Result);
+			if (TestEqual(TEXT("both malformed entries are in failed"), Failed.Num(), 2))
+			{
+				TestEqual(TEXT("the first by its index"), EntryIndex(Failed[0]), 1);
+				TestEqual(TEXT("the second by its index"), EntryIndex(Failed[1]), 2);
+				TestEqual(TEXT("INVALID_REQUEST"), EntryString(Failed[0], TEXT("errorCode")), FString(TEXT("INVALID_REQUEST")));
+				TestEqual(TEXT("INVALID_REQUEST for a number"), EntryString(Failed[1], TEXT("errorCode")), FString(TEXT("INVALID_REQUEST")));
+				TestTrue(TEXT("the reason names pinGuid: ") + EntryString(Failed[0], TEXT("reason")), EntryString(Failed[0], TEXT("reason")).Contains(TEXT("pinGuid")));
+			}
+			const TArray<TSharedPtr<FJsonValue>> Made = SucceededOf(Result);
+			TestTrue(TEXT("the good entry is made, index 0"), Made.Num() == 1 && EntryIndex(Made[0]) == 0);
+			TestTrue(TEXT("Branch.False -> PrintB linked"), Branch->FindPin(UEdGraphSchema_K2::PN_Else, EGPD_Output)->LinkedTo.Contains(N2CTest::ExecIn(PrintB)));
+		});
+
+		It(TEXT("wires a float output into a String input through a conversion node and names the node it placed"), [this]()
+		{
+			if (!Build(TEXT("BP_N2CGraphSpecConversion")))
+			{
+				return;
+			}
+			UK2Node_CallFunction* Time = Test->AddCall(Graph, UKismetSystemLibrary::StaticClass(),
+				GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, GetGameTimeInSeconds));
+			UEdGraphPin* TimeOut = Time ? Time->GetReturnValuePin() : nullptr;
+			UEdGraphPin* InString = PrintA->FindPin(TEXT("InString"), EGPD_Input);
+			if (!TestTrue(TEXT("Get Game Time and In String"), TimeOut && InString))
+			{
+				return;
+			}
+			Test->Settle();
+			const FString Before = N2CTest::Snapshot(Blueprint);
+			const int32 NodesBefore = Graph->Nodes.Num();
+			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("connect-pins"),
+				N2CTest::ConnectArgs({ { TimeOut, InString } }, N2CTest::TargetArgs(Blueprint, Graph)));
+			if (!N2CTest::ExpectToolCompiled(*this, TEXT("convert"), Result))
+			{
+				return;
+			}
+			const TArray<TSharedPtr<FJsonValue>> Made = SucceededOf(Result);
+			if (!TestEqual(TEXT("one connection made: ") + N2CTest::ResultText(Result).Left(400), Made.Num(), 1))
+			{
+				return;
+			}
+			TestEqual(TEXT("the schema's response"), EntryString(Made[0], TEXT("response")), FString(TEXT("MAKE_WITH_CONVERSION_NODE")));
+			const TSharedPtr<FJsonObject>* Conversion = nullptr;
+			if (TestTrue(TEXT("conversionNode reported"), Made[0]->AsObject()->TryGetObjectField(TEXT("conversionNode"), Conversion)))
+			{
+				UEdGraphNode* Node = N2CTest::FindNodeByGuid(Blueprint, (*Conversion)->GetStringField(TEXT("nodeGuid")));
+				TestTrue(TEXT("its nodeGuid names a node in the graph"), Node != nullptr && Node->GetGraph() == Graph);
+				TestEqual(TEXT("one node more"), Graph->Nodes.Num(), NodesBefore + 1);
+				TestTrue(TEXT("that node feeds In String"), Node != nullptr && InString->LinkedTo.Num() == 1 && InString->LinkedTo[0]->GetOwningNode() == Node);
+				TestTrue(TEXT("and is fed by Get Game Time"), Node != nullptr && TimeOut->LinkedTo.Num() == 1 && TimeOut->LinkedTo[0]->GetOwningNode() == Node);
+				TestFalse(TEXT("it has a title"), (*Conversion)->GetStringField(TEXT("title")).IsEmpty());
+			}
+			N2CTest::ExpectSymmetricLinks(*this, TEXT("after convert"), Blueprint);
+			N2CTest::ExpectUndoRedoExact(*this, TEXT("convert"), Blueprint, Before);
+			N2CTest::ExpectCompilesClean(*this, TEXT("after redo"), Blueprint);
 		});
 	});
 

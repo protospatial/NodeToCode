@@ -513,9 +513,9 @@ void FN2CMcpProtocolCoreSpec::Define()
 			TestEqual(TEXT("garbage"), Ping(TEXT("latest")), 400);
 		});
 
-		// Claude Code first probes for the stateless 2026-07-28 protocol: server/discover with MCP-Protocol-Version
-		// 2026-07-28 and no session. The unsupported version is a 400, and the client falls back to initialize.
-		It(TEXT("refuse a 2026-07-28 server/discover probe without a session with 400 and create no session"), [this]()
+		// A server/discover with MCP-Protocol-Version 2026-07-28 but no _meta is a malformed modern request (card 0210:
+		// 2026-07-28 is served, NodeToCode.MCP.Modern): 400 with -32602, and no session is created
+		It(TEXT("refuse a 2026-07-28 server/discover without _meta with 400 and create no session"), [this]()
 		{
 			FN2CMcpProtocol Core;
 			FN2CMcpInbound Inbound = N2CTest::MakeMcpInbound(
@@ -524,7 +524,7 @@ void FN2CMcpProtocolCoreSpec::Define()
 			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Responder = MakeShared<N2CTest::FN2CMcpMemoryResponder>();
 			Core.Handle(Inbound, Responder);
 			TestEqual(TEXT("status"), Responder->LastReply().Status, 400);
-			TestTrue(TEXT("names the supported versions"), Responder->LastReply().Body.Contains(TEXT("2025-11-25")));
+			TestEqual(TEXT("-32602"), ErrorCodeOf(*Responder), JsonRpcErrorCodes::InvalidParams);
 			TestEqual(TEXT("no session"), Core.GetSessionCount(), 0);
 		});
 

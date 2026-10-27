@@ -2,6 +2,7 @@
 
 #include "Core/Widgets/SN2CTagManager.h"
 #include "Core/Widgets/SN2CTagCategoryTree.h"
+#include "Utils/N2CPathUtils.h"
 #include "Core/Widgets/SN2CTaggedGraphsList.h"
 #include "Core/Widgets/SN2CContextWindowVisualizer.h"
 #include "Core/Widgets/SN2CPanel.h"
@@ -10,7 +11,6 @@
 #include "Core/N2CTagManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Misc/MessageDialog.h"
-#include "Core/N2CSettings.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Core/Style/N2CStyle.h"
 #include "Widgets/Layout/SBorder.h"
@@ -45,13 +45,8 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 	bMinifyJson = InArgs._MinifyJsonByDefault;
 	TagSource = InArgs._TagSource;
 
-	// Initialize output path from settings
-	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	OutputPath = Settings->CustomTranslationOutputDirectory.Path;
-	if (OutputPath.IsEmpty())
-	{
-		OutputPath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
-	}
+	// The translation output directory, as the translation archive resolves it
+	OutputPath = FN2CPathUtils::GetTranslationsBasePath();
 
 	ChildSlot
 	[

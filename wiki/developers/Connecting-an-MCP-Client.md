@@ -14,7 +14,8 @@ tools the client then sees is set in Project Settings, see [Choosing a Tool Mode
 | The client runs on this computer | The server answers only on `127.0.0.1` and `localhost`. A request whose `Host` header, or `Origin` header when it sends one, is not `localhost`, `127.0.0.1` or `[::1]` gets 403, so a web page cannot call it and a remote machine cannot reach it |
 
 The client sends the protocol headers itself (`Accept: application/json, text/event-stream`, then the
-`Mcp-Session-Id` from `initialize`); NodeToCode accepts MCP versions 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05.
+`Mcp-Session-Id` from `initialize`); NodeToCode accepts MCP versions 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05,
+and the stateless 2026-07-28 revision (no `initialize` and no session; current Claude Code uses it) on the same URL.
 
 **Tool mode and what a client lists.** The tool mode is the server's, so every client below gets the same list. The
 default (**Tool Profile** Default toolsets, **Tool Exposure** List every tool) lists 64 tools, such as
