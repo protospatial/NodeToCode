@@ -39,6 +39,7 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 	FN2CTokenEstimationService& TokenService = FN2CTokenEstimationService::Get();
 	ModelChangedHandle = TokenService.OnModelChanged.AddSP(this, &SN2CTaggedGraphsList::OnModelChanged);
 	CacheInvalidatedHandle = TokenService.OnCacheInvalidated.AddSP(this, &SN2CTaggedGraphsList::OnCacheInvalidated);
+	EstimatesStaleHandle = TokenService.OnEstimatesStale.AddSP(this, &SN2CTaggedGraphsList::OnEstimatesStale);
 
 	// Create header row
 	// Note: We use a button wrapper for the select-all checkbox because SHeaderRow
@@ -572,6 +573,10 @@ SN2CTaggedGraphsList::~SN2CTaggedGraphsList()
 	{
 		FN2CTokenEstimationService::Get().OnCacheInvalidated.Remove(CacheInvalidatedHandle);
 	}
+	if (EstimatesStaleHandle.IsValid())
+	{
+		FN2CTokenEstimationService::Get().OnEstimatesStale.Remove(EstimatesStaleHandle);
+	}
 }
 
 void SN2CTaggedGraphsList::OnModelChanged()
@@ -584,6 +589,24 @@ void SN2CTaggedGraphsList::OnCacheInvalidated()
 {
 	// Cache was invalidated, refresh all token estimates
 	RefreshTokenEstimates();
+}
+
+void SN2CTaggedGraphsList::OnEstimatesStale(const FSoftObjectPath& Blueprint)
+{
+	if (EstimatesStaleTimer.IsValid())
+	{
+		UnRegisterActiveTimer(EstimatesStaleTimer.ToSharedRef());
+	}
+	EstimatesStaleTimer = RegisterActiveTimer(1.0f, FWidgetActiveTimerDelegate::CreateLambda(
+		[WeakThis = TWeakPtr<SN2CTaggedGraphsList>(SharedThis(this))](double, float)
+		{
+			if (TSharedPtr<SN2CTaggedGraphsList> This = WeakThis.Pin())
+			{
+				This->EstimatesStaleTimer.Reset();
+				This->RefreshTokenEstimates();
+			}
+			return EActiveTimerReturnType::Stop;
+		}));
 }
 
 void SN2CTaggedGraphsList::RefreshTokenEstimates()

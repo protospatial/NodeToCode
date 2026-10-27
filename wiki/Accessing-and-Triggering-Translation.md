@@ -29,7 +29,9 @@ Blueprint implements, wherever they are nested. You can tag, copy as JSON and tr
 overlay or from the NodeToCode window.
 
 Graphs that are not Blueprint graphs, such as an Animation Blueprint's state machines, cannot be translated. On such a
-graph the overlay's Copy JSON, Translate and tag buttons are grayed out, and their tooltip says why.
+graph the overlay's Copy JSON, Translate and tag buttons are grayed out, their tooltip says why, and the context
+ring reads **n/a**. On other graphs the ring estimates what Translate sends (see
+[Handling Large Graphs](Handling-Large-Graphs)).
 
 Tags and translation records belong to one Blueprint's graph. A copy of a Blueprint made in the Content Browser starts
 with no tags of its own, even though its graphs keep the original's internal IDs, and each open copy gets its own
