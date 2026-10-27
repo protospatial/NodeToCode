@@ -214,22 +214,25 @@ def get_translation_targets() -> Dict[str, Any]:
 
 # ============== Blueprint Editor Navigation ==============
 
-def open_blueprint(blueprint_path: str, focus_graph: str = "EventGraph") -> Dict[str, Any]:
+def open_blueprint(blueprint_path: str, focus_graph: Optional[str] = None) -> Dict[str, Any]:
     """
     Open a Blueprint asset in the editor and focus on a specific graph.
 
     IMPORTANT: A graph must be focused for other functions like get_focused_blueprint(),
-    add_node_to_graph(), etc. to work. Defaults to "EventGraph" if not specified.
+    add_node_to_graph(), etc. to work. Without focus_graph the EventGraph is focused, when the
+    Blueprint has one (a Function Library or an Interface has none: it opens with focusedGraph "").
 
     Args:
         blueprint_path: Asset path of the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
-        focus_graph: Graph name to focus. Defaults to "EventGraph". It must be the exact name of one of
-                     the Blueprint's event, function or macro graphs: "UserConstructionScript" for the
-                     construction script, or a function name. A name that matches no graph is not an
-                     error: the Blueprint opens and data['focusedGraph'] is "" (check it).
+        focus_graph: Name of one of the Blueprint's event, function, macro, interface or delegate graphs
+                     to focus, matched case-insensitively: "EventGraph", "ConstructionScript" (or
+                     "UserConstructionScript") for the construction script, or a function name. A name
+                     that matches no graph fails with "GRAPH_NOT_FOUND: ..." listing the Blueprint's
+                     graphs, and the Blueprint is not opened.
 
     Returns:
         {success, data: {blueprintName, blueprintPath, focusedGraph, eventGraphCount, functionCount}, error}
+        focusedGraph is the graph's own name (e.g. "UserConstructionScript" for "ConstructionScript").
 
     Example:
         # Open a Blueprint (focuses EventGraph by default)
@@ -237,16 +240,21 @@ def open_blueprint(blueprint_path: str, focus_graph: str = "EventGraph") -> Dict
 
         # Open and focus on a specific function
         result = open_blueprint("/Game/Blueprints/BP_Player", "HandleInput")
+
+        # Open the construction script
+        result = open_blueprint("/Game/Blueprints/BP_Player", "ConstructionScript")
     """
     if not blueprint_path or not blueprint_path.strip():
         return make_error_result("blueprint_path cannot be empty")
 
+    requested = (focus_graph or "").strip()
     try:
-        result = unreal.N2CPythonBridge.open_blueprint(
-            blueprint_path.strip(),
-            (focus_graph or "EventGraph").strip()
-        )
-        return _parse_bridge_result(result)
+        result = _parse_bridge_result(unreal.N2CPythonBridge.open_blueprint(
+            blueprint_path.strip(), requested or "EventGraph"))
+        # The default EventGraph only: a Blueprint without one opens unfocused; a name the caller gave stays an error
+        if not requested and not result.get('success') and str(result.get('error') or '').startswith('GRAPH_NOT_FOUND'):
+            result = _parse_bridge_result(unreal.N2CPythonBridge.open_blueprint(blueprint_path.strip(), ""))
+        return result
     except Exception as e:
         log_error(f"open_blueprint failed: {e}")
         return make_error_result(str(e))
