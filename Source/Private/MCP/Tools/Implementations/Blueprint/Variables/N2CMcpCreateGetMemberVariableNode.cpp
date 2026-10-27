@@ -21,7 +21,7 @@ FMcpToolDefinition FN2CMcpCreateGetMemberVariableNode::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("create-get-member-variable-node"),
-        TEXT("Creates a Get node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins.")
+        TEXT("Creates a Get node for a member variable in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph): its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins.")
     ,
 
     	N2CMcpToolsets::BlueprintVariable
@@ -63,6 +63,8 @@ FMcpToolDefinition FN2CMcpCreateGetMemberVariableNode::GetDefinition() const
     
     Definition.InputSchema = Schema;
     
+    FN2CGraphTarget::AddSchemaProperties(Definition);
+
     // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
     SetStrictArguments(Definition);
 
@@ -93,8 +95,9 @@ FMcpToolCallResult FN2CMcpCreateGetMemberVariableNode::Execute(const TSharedPtr<
             Location.Y = LocationParser.GetOptionalNumber(TEXT("y"), 0.0);
         }
 
-        // The focused graph through the shared resolver (no target arguments, card 0140); read-only graphs are refused
-        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+        // The graph blueprintPath / graphName / graphGuid name, else the focused one, through the shared
+        // resolver (card 0274); read-only graphs are refused
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
         if (!Target.IsValid())
         {
             return FMcpToolCallResult::CreateErrorResult(Target.Error);
@@ -107,7 +110,7 @@ FMcpToolCallResult FN2CMcpCreateGetMemberVariableNode::Execute(const TSharedPtr<
             VariableName, /*bSet*/ false, Location, FString(), Error);
         if (!Result.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(Error);
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(Error));
         }
 
         FN2CMcpNotification::Show(FText::Format(
@@ -118,6 +121,6 @@ FMcpToolCallResult FN2CMcpCreateGetMemberVariableNode::Execute(const TSharedPtr<
         FString ResultJson;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
-        return FMcpToolCallResult::CreateTextResult(ResultJson);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(ResultJson));
     });
 }
