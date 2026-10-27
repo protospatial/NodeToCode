@@ -42,10 +42,9 @@ void FN2CCodeEditorStyle::ApplyThemeColors()
     SetOrUpdateTextStyle("N2CCodeEditor.TextEditor.NormalText", CreateDefaultTextStyle(TEXT("CPP")));
 
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    if (Settings && Settings->CodeEditorTheme.Themes.Contains(TEXT("Unreal Engine")))
+    if (const FN2CCodeEditorColors* Colors = Settings ? Settings->GetThemeColors(EN2CCodeLanguage::Cpp, FName("Unreal Engine")) : nullptr)
     {
-        const FN2CCodeEditorColors& Colors = *Settings->CodeEditorTheme.Themes.Find(TEXT("Unreal Engine"));
-        SetOrUpdateColorBrush("N2CCodeEditor.TextEditor.Border", FLinearColor(Colors.Background));
+        SetOrUpdateColorBrush("N2CCodeEditor.TextEditor.Border", FLinearColor(Colors->Background));
     }
     else
     {
@@ -83,7 +82,7 @@ void FN2CCodeEditorStyle::SetOrUpdateTextStyle(const FName& Name, const FTextBlo
 void FN2CCodeEditorStyle::InitializeLanguageStyles()
 {
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    const FN2CCodeEditorColors* Colors = Settings->GetThemeColors(EN2CCodeLanguage::Cpp, FName("Unreal Engine"));
+    const FN2CCodeEditorColors* Colors = Settings ? Settings->GetThemeColors(EN2CCodeLanguage::Cpp, FName("Unreal Engine")) : nullptr;
     if (!Colors) return;
 
     // Register styles for each language using the same theme colors
