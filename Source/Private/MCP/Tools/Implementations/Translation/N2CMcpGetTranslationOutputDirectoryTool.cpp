@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpGetTranslationOutputDirectoryTool.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CSettings.h"
 #include "Utils/N2CLogger.h"
@@ -24,6 +25,25 @@ FMcpToolDefinition FN2CMcpGetTranslationOutputDirectoryTool::GetDefinition() con
     // This tool takes no input parameters
     Definition.InputSchema = BuildEmptyObjectSchema();
     
+    {
+        using namespace N2CMcpOutputSchema;
+        Definition.OutputSchema = Object({
+            { TEXT("isCustomDirectorySet"), Boolean() },
+            { TEXT("customDirectory"), String(TEXT("The Project Settings path, when one is set")) },
+            { TEXT("defaultDirectory"), String(TEXT("Saved/NodeToCode/Translations, when no custom directory is set")) },
+            { TEXT("absolutePath"), String(TEXT("The directory translations are saved to")) },
+            { TEXT("directoryExists"), Boolean() },
+            { TEXT("status"), String() },
+            { TEXT("projectDirectory"), String() },
+            { TEXT("projectSavedDirectory"), String() },
+            { TEXT("usage"), Object({
+                { TEXT("description"), String() },
+                { TEXT("structure"), String() },
+                { TEXT("autoCreateIfMissing"), Boolean() },
+            }) },
+        }, { TEXT("isCustomDirectorySet"), TEXT("absolutePath"), TEXT("directoryExists") });
+    }
+
     // Read-only: reads editor or project state and changes nothing
     SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
     
@@ -110,11 +130,6 @@ FMcpToolCallResult FN2CMcpGetTranslationOutputDirectoryTool::Execute(const TShar
             EN2CLogSeverity::Info
         );
         
-        // Convert JSON to string for the result
-        FString OutputString;
-        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-        FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
-        
-        return FMcpToolCallResult::CreateTextResult(OutputString);
+        return FMcpToolCallResult::CreateJsonResult(ResponseObject.ToSharedRef(), /*bIndented*/ true);
     });
 }

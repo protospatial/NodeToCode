@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpGetFocusedBlueprintTool.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CCapture.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
@@ -25,6 +26,9 @@ FMcpToolDefinition FN2CMcpGetFocusedBlueprintTool::GetDefinition() const
 	// This tool takes no input parameters
 	Definition.InputSchema = BuildEmptyObjectSchema();
 	
+	// The N2C JSON document as structuredContent, and as indented text (card 0207)
+	Definition.OutputSchema = N2CMcpOutputSchema::N2CJsonDocument();
+
 	// Read-only: reads editor or project state and changes nothing
 	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 	
@@ -54,12 +58,12 @@ FMcpToolCallResult FN2CMcpGetFocusedBlueprintTool::Execute(const TSharedPtr<FJso
 			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("get-focused-blueprint tool failed: %s"), *Capture.GetError()));
 			return FMcpToolCallResult::CreateErrorResult(Capture.GetError());
 		}
-		const FString Json = BuildResultJson(Capture.GetValue());
-		if (Json.IsEmpty())
+		const TSharedPtr<FJsonObject> Document = N2CMcpOutputSchema::ParseObject(BuildResultJson(Capture.GetValue()));
+		if (!Document.IsValid())
 		{
 			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to serialize N2CBlueprint to JSON."));
 		}
-		return FMcpToolCallResult::CreateTextResult(Json);
+		return FMcpToolCallResult::CreateJsonResult(Document.ToSharedRef(), /*bIndented*/ true);
 	});
 }
 

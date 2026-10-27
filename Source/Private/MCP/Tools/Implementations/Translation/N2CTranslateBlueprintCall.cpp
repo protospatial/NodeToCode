@@ -2,7 +2,13 @@
 
 #include "N2CTranslateBlueprintCall.h"
 #include "Core/N2CEditorIntegration.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
+#include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpUntrustedContent.h"
+#include "Misc/DateTime.h"
+#include "Misc/Guid.h"
+#include "Misc/Paths.h"
+#include "Utils/N2CPathUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -144,10 +150,37 @@ void FN2CTranslateBlueprintCall::HandleLLMResponse(const FString& LLMResponse)
         Context->ReportProgress(ProgressParsing, TEXT("LLM response received; parsing the translation"));
     }
     const FString Text = WithWarnings(LLMResponse);
-    const FMcpToolCallResult Result = bIsError
-        ? FMcpToolCallResult::CreateErrorResult(Text)
-        // The translation was written from the Blueprint's own text, so it is untrusted data too (card 0124)
-        : FMcpToolCallResult::CreateTextResult(FN2CMcpUntrustedContent::MarkJson(Text));
+    FMcpToolCallResult Result = FMcpToolCallResult::CreateErrorResult(Text);
+    if (!bIsError)
+    {
+        // structuredContent matching the tool's outputSchema, inline or as a saved file (card 0207)
+        if (TOptional<FMcpToolCallResult> Success = BuildSuccessResult(Text))
+        {
+            Result = MoveTemp(Success.GetValue());
+        }
+    }
+    else
+    {
+        // The error's kind as the stable code (RateLimited -> TRANSLATION_RATE_LIMITED); TRANSLATION_FAILED without one
+        FString Kind;
+        if (bIsJsonObject && ResponseJson->TryGetStringField(TEXT("error_kind"), Kind) && !Kind.IsEmpty())
+        {
+            FString Code = TEXT("TRANSLATION_");
+            for (int32 Index = 0; Index < Kind.Len(); ++Index)
+            {
+                if (Index > 0 && FChar::IsUpper(Kind[Index]) && FChar::IsLower(Kind[Index - 1]))
+                {
+                    Code.AppendChar(TEXT('_'));
+                }
+                Code.AppendChar(FChar::IsAlnum(Kind[Index]) ? FChar::ToUpper(Kind[Index]) : TEXT('_'));
+            }
+            Result.SetErrorCode(Code);
+        }
+        else
+        {
+            Result.SetErrorCode(TEXT("TRANSLATION_FAILED"));
+        }
+    }
 
     Context->ReportProgress(1.0f, Result.bIsError ? TEXT("Translation failed") : TEXT("Translation complete"));
     Finish(Result);
@@ -187,6 +220,126 @@ void FN2CTranslateBlueprintCall::Finish(const FMcpToolCallResult& Result)
     const TSharedPtr<FN2CTranslateBlueprintCall, ESPMode::ThreadSafe> KeepAlive = MoveTemp(SelfWhileRunning);
     SelfWhileRunning.Reset();
     Promise.SetValue(Result);
+}
+
+TSharedRef<FJsonObject> FN2CTranslateBlueprintCall::BuildOutputSchema()
+{
+    using namespace N2CMcpOutputSchema;
+    const TSharedRef<FJsonObject> Code = Object({
+        { TEXT("graphDeclaration"), String(TEXT("Declaration (for C++ the header part)")) },
+        { TEXT("graphImplementation"), String(TEXT("Implementation")) },
+        { TEXT("implementationNotes"), String() },
+    }, { TEXT("graphDeclaration"), TEXT("graphImplementation"), TEXT("implementationNotes") });
+    const TSharedRef<FJsonObject> Graph = Object({
+        { TEXT("graph_name"), String() },
+        { TEXT("graph_type"), String() },
+        { TEXT("graph_class"), String() },
+        { TEXT("code"), Code },
+    }, { TEXT("graph_name"), TEXT("graph_type"), TEXT("graph_class") },
+        TEXT("One translated graph; code is left out when the translation was saved to a file (savedTo)"));
+    const TSharedRef<FJsonObject> Usage = Object({
+        { TEXT("input_tokens"), Integer() },
+        { TEXT("output_tokens"), Integer() },
+        { TEXT("cache_read_input_tokens"), Integer() },
+        { TEXT("cache_write_input_tokens"), Integer() },
+        { TEXT("reasoning_tokens"), Integer() },
+    });
+    return UntrustedObject({
+        { TEXT("graphs"), Array(Graph) },
+        { TEXT("usage"), Usage },
+        { TEXT("warnings"), Array(String()) },
+        { TEXT("savedTo"), String(TEXT("When the translation is larger than the result limit: the file holding all of it (read-file, or the resource_link)")) },
+        { TEXT("bytes"), Integer(TEXT("Size of the saved file")) },
+    }, { TEXT("graphs") }, TEXT("The N2C translation response (the LLM module's graphs and usage)"));
+}
+
+TOptional<FMcpToolCallResult> FN2CTranslateBlueprintCall::BuildSuccessResult(const FString& TranslationJson, int32 MaxInline)
+{
+    const TSharedPtr<FJsonObject> Translation = N2CMcpOutputSchema::ParseObject(TranslationJson);
+    if (!Translation.IsValid())
+    {
+        return {};
+    }
+
+    // The translation was written from the Blueprint's own text, so it is untrusted data too (card 0124): the text
+    // escapes closing tags, and text and structuredContent both carry the notice first
+    auto Marked = [](const TSharedRef<FJsonObject>& Object)
+    {
+        FString Condensed;
+        const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+            TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Condensed);
+        FJsonSerializer::Serialize(Object, Writer);
+        FMcpToolCallResult Result = FMcpToolCallResult::CreateTextResult(FN2CMcpUntrustedContent::MarkJson(Condensed));
+        Result.StructuredContent = N2CMcpOutputSchema::MarkUntrusted(Object);
+        return Result;
+    };
+
+    FMcpToolCallResult Inline = Marked(Translation.ToSharedRef());
+    FString InlineText;
+    Inline.Content[0]->TryGetStringField(TEXT("text"), InlineText);
+    if (InlineText.Len() <= MaxInline)
+    {
+        return Inline;
+    }
+
+    // Too large for one result: the whole translation goes to a file, the result is its summary and a link to it
+    FString Path;
+    FString WriteError;
+    int64 Bytes = 0;
+    const FString FileName = FString::Printf(TEXT("Translations/Translation__%s__%s.json"),
+        *FDateTime::Now().ToString(TEXT("%Y%m%d-%H%M%S")), *FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8));
+    if (!N2CMcpBlueprintExport::WriteExport(InlineText, FileName, Path, Bytes, WriteError))
+    {
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("translate-focused-blueprint: the translation (%d characters) could not be saved (%s); it is returned inline"),
+            InlineText.Len(), *WriteError));
+        return Inline;
+    }
+
+    const TSharedRef<FJsonObject> Summary = MakeShared<FJsonObject>();
+    TArray<TSharedPtr<FJsonValue>> Graphs;
+    const TArray<TSharedPtr<FJsonValue>>* Translated = nullptr;
+    if (Translation->TryGetArrayField(TEXT("graphs"), Translated) && Translated)
+    {
+        for (const TSharedPtr<FJsonValue>& Value : *Translated)
+        {
+            const TSharedPtr<FJsonObject>* GraphObject = nullptr;
+            if (!Value.IsValid() || !Value->TryGetObject(GraphObject) || !GraphObject)
+            {
+                continue;
+            }
+            const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+            for (const TCHAR* Field : { TEXT("graph_name"), TEXT("graph_type"), TEXT("graph_class") })
+            {
+                FString FieldValue;
+                (*GraphObject)->TryGetStringField(Field, FieldValue);
+                Entry->SetStringField(Field, FieldValue);
+            }
+            Graphs.Add(MakeShared<FJsonValueObject>(Entry));
+        }
+    }
+    Summary->SetArrayField(TEXT("graphs"), Graphs);
+    for (const TCHAR* Field : { TEXT("usage"), TEXT("warnings") })
+    {
+        if (const TSharedPtr<FJsonValue> Value = Translation->TryGetField(Field))
+        {
+            Summary->SetField(Field, Value);
+        }
+    }
+    const FString DisplayPath = FN2CPathUtils::MakeAgentDisplayPath(Path);
+    Summary->SetStringField(TEXT("savedTo"), DisplayPath);
+    Summary->SetNumberField(TEXT("bytes"), static_cast<double>(Bytes));
+
+    FMcpToolCallResult Saved = Marked(Summary);
+    FString FilePath = FPaths::ConvertRelativePathToFull(Path);
+    FPaths::NormalizeFilename(FilePath);
+    while (FilePath.StartsWith(TEXT("/")))
+    {
+        FilePath.RightChopInline(1);
+    }
+    Saved.Content.Add(FMcpToolCallResult::MakeResourceLink(TEXT("file:///") + FilePath, FPaths::GetCleanFilename(Path),
+        TEXT("application/json"), FString::Printf(TEXT("The whole translation (%d characters, over the %d-character result limit); read it with read-file %s"),
+            InlineText.Len(), MaxInline, *DisplayPath), Bytes));
+    return Saved;
 }
 
 FString FN2CTranslateBlueprintCall::WithWarnings(const FString& Text) const

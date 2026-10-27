@@ -111,7 +111,9 @@ void FN2CToolAsyncTaskManager::InvokeTool(const TSharedRef<IN2CMcpTool>& Tool, c
 	if (Record->CallContext->IsCancelled())
 	{
 		// Cancelled while queued for the game thread
-		OnTaskCompleted(TaskId, FMcpToolCallResult::CreateErrorResult(Record->CallContext->GetCancelledMessage()));
+		FMcpToolCallResult Cancelled = FMcpToolCallResult::CreateErrorResult(Record->CallContext->GetCancelledMessage());
+		Cancelled.SetErrorCode(FN2CToolError::CodeName(EN2CToolErrorCode::Cancelled));
+		OnTaskCompleted(TaskId, Cancelled);
 		return;
 	}
 

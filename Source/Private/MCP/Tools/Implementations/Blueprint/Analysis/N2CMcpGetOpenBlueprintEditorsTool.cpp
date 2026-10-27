@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpGetOpenBlueprintEditorsTool.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "Core/N2CEditorIntegration.h"
@@ -31,6 +32,31 @@ FMcpToolDefinition FN2CMcpGetOpenBlueprintEditorsTool::GetDefinition() const
 	// No input parameters required for this tool
 	Definition.InputSchema = BuildEmptyObjectSchema();
 	
+	{
+		using namespace N2CMcpOutputSchema;
+		const TSharedRef<FJsonObject> GraphEntry = Object({
+			{ TEXT("name"), String() },
+			{ TEXT("type"), Enum({ TEXT("Function"), TEXT("Event"), TEXT("Macro"), TEXT("Delegate") }) },
+			{ TEXT("isEditable"), Boolean() },
+		}, { TEXT("name"), TEXT("type") });
+		Definition.OutputSchema = Object({
+			{ TEXT("editors"), Array(Object({
+				{ TEXT("blueprintName"), String() },
+				{ TEXT("assetPath"), String() },
+				{ TEXT("blueprintType"), String() },
+				{ TEXT("parentClass"), String() },
+				{ TEXT("focusedGraph"), String(TEXT("The graph the editor shows")) },
+				{ TEXT("focusedGraphType"), String() },
+				{ TEXT("graphs"), Array(GraphEntry) },
+				{ TEXT("isFocused"), Boolean(TEXT("The editor the focus-based tools act on")) },
+				{ TEXT("isDirty"), Boolean() },
+				{ TEXT("hasCompilerResults"), Boolean() },
+				{ TEXT("graph_counts"), Object({}) },
+			}, { TEXT("blueprintName"), TEXT("assetPath"), TEXT("blueprintType"), TEXT("graphs") })) },
+			{ TEXT("count"), Integer() },
+		}, { TEXT("editors"), TEXT("count") });
+	}
+
 	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
 
 	return Definition;
@@ -123,10 +149,7 @@ FMcpToolCallResult FN2CMcpGetOpenBlueprintEditorsTool::Execute(const TSharedPtr<
 		
 		FN2CLogger::Get().Log(FString::Printf(TEXT("get-open-blueprint-editors: Found %d open Blueprint editors"), Editors.Num()), EN2CLogSeverity::Debug);
 		
-		FString JsonString;
-		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
-		FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
-		return FMcpToolCallResult::CreateTextResult(JsonString);
+		return FMcpToolCallResult::CreateJsonResult(Result.ToSharedRef(), /*bIndented*/ true);
 	});
 }
 

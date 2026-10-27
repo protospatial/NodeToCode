@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "MCP/Tools/N2CToolCatalog.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/IN2CMcpTool.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
 #include "MCP/Utils/N2CMcpPlaySessionGuard.h"
@@ -197,11 +198,22 @@ FMcpToolCallResult FN2CToolOutcome::ToCallToolResult() const
 {
 	if (LegacyResult.IsValid())
 	{
-		return *LegacyResult;
+		FMcpToolCallResult Result = *LegacyResult;
+		if (Result.bIsError && Result.GetErrorCode().IsEmpty())
+		{
+			// Every isError result carries a stable code (card 0207): the tool's own "CODE: message" prefix, else the
+			// outcome's code (TOOL_FAILED, PIE_ACTIVE, CANCELLED)
+			const FString Parsed = FMcpToolCallResult::ParseErrorCode(N2CToolCatalogPrivate::JoinText(Result));
+			Result.SetErrorCode(!Parsed.IsEmpty() ? Parsed
+				: FString(FN2CToolError::CodeName(Error.IsSet() ? Error->Code : EN2CToolErrorCode::ToolFailed)));
+		}
+		return Result;
 	}
 	if (Error.IsSet())
 	{
-		return FMcpToolCallResult::CreateErrorResult(Error->Message);
+		FMcpToolCallResult Result = FMcpToolCallResult::CreateErrorResult(Error->Message);
+		Result.SetErrorCode(FN2CToolError::CodeName(Error->Code), Error->Field);
+		return Result;
 	}
 	FMcpToolCallResult Result = FMcpToolCallResult::CreateTextResult(ToValueString());
 	if (Value.IsValid() && Value->Type == EJson::Object)
@@ -351,6 +363,11 @@ TFuture<FN2CToolOutcome> FN2CToolCatalog::InvokeTool(const TSharedRef<IN2CMcpToo
 		{
 			// Blueprint text (comments, tooltips, string literals) is data for the agent, never instructions (card 0124)
 			FN2CMcpUntrustedContent::MarkToolResult(Result);
+			if (!Result.bIsError && Result.StructuredContent.IsValid())
+			{
+				// structuredContent says what the marked text says, notice first (card 0207)
+				Result.StructuredContent = N2CMcpOutputSchema::MarkUntrusted(Result.StructuredContent.ToSharedRef());
+			}
 		}
 		return MakeFulfilledPromise<FN2CToolOutcome>(FN2CToolOutcome::FromCallToolResult(Result)).GetFuture();
 	}

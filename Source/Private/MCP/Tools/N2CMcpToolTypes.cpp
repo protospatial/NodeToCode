@@ -1,7 +1,9 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Tools/N2CMcpToolTypes.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 namespace N2CMcpToolTypesPrivate
 {
@@ -205,6 +207,91 @@ FMcpToolCallResult FMcpToolCallResult::CreateErrorResult(const FString& ErrorMes
 	return Result;
 }
 
+const TCHAR* const FMcpToolCallResult::ErrorMetaKey = TEXT("nodetocode/error");
+
+FMcpToolCallResult FMcpToolCallResult::CreateJsonResult(const TSharedRef<FJsonObject>& Object, bool bIndented)
+{
+	FString Text;
+	if (bIndented)
+	{
+		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Text);
+		FJsonSerializer::Serialize(Object, Writer);
+	}
+	else
+	{
+		const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Text);
+		FJsonSerializer::Serialize(Object, Writer);
+	}
+	FMcpToolCallResult Result = CreateTextResult(Text);
+	Result.StructuredContent = Object;
+	return Result;
+}
+
+TSharedRef<FJsonObject> FMcpToolCallResult::MakeResourceLink(const FString& Uri, const FString& Name, const FString& MimeType,
+	const FString& Description, int64 Size)
+{
+	const TSharedRef<FJsonObject> Link = MakeShared<FJsonObject>();
+	Link->SetStringField(TEXT("type"), TEXT("resource_link"));
+	Link->SetStringField(TEXT("uri"), Uri);
+	Link->SetStringField(TEXT("name"), Name);
+	if (!MimeType.IsEmpty())
+	{
+		Link->SetStringField(TEXT("mimeType"), MimeType);
+	}
+	if (!Description.IsEmpty())
+	{
+		Link->SetStringField(TEXT("description"), Description);
+	}
+	if (Size >= 0)
+	{
+		Link->SetNumberField(TEXT("size"), static_cast<double>(Size));
+	}
+	return Link;
+}
+
+void FMcpToolCallResult::SetErrorCode(const FString& Code, const FString& Field)
+{
+	if (!Meta.IsValid())
+	{
+		Meta = MakeShared<FJsonObject>();
+	}
+	const TSharedRef<FJsonObject> Error = MakeShared<FJsonObject>();
+	Error->SetStringField(TEXT("code"), Code);
+	if (!Field.IsEmpty())
+	{
+		Error->SetStringField(TEXT("field"), Field);
+	}
+	Meta->SetObjectField(ErrorMetaKey, Error);
+}
+
+FString FMcpToolCallResult::GetErrorCode() const
+{
+	const TSharedPtr<FJsonObject>* Error = nullptr;
+	FString Code;
+	if (Meta.IsValid() && Meta->TryGetObjectField(ErrorMetaKey, Error) && Error && Error->IsValid())
+	{
+		(*Error)->TryGetStringField(TEXT("code"), Code);
+	}
+	return Code;
+}
+
+FString FMcpToolCallResult::ParseErrorCode(const FString& ErrorText)
+{
+	const FString Text = ErrorText.TrimStart();
+	int32 End = 0;
+	while (End < Text.Len() && (FChar::IsUpper(Text[End]) || FChar::IsDigit(Text[End]) || Text[End] == TEXT('_')))
+	{
+		++End;
+	}
+	// At least two characters, starting with a letter, followed by ':' or '|'
+	if (End < 2 || End >= Text.Len() || !FChar::IsUpper(Text[0]) || (Text[End] != TEXT(':') && Text[End] != TEXT('|')))
+	{
+		return FString();
+	}
+	return Text.Left(End);
+}
+
 TSharedPtr<FJsonObject> FMcpToolCallResult::ToJson() const
 {
 	TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
@@ -226,6 +313,12 @@ TSharedPtr<FJsonObject> FMcpToolCallResult::ToJson() const
 		JsonObject->SetObjectField(TEXT("structuredContent"), StructuredContent);
 	}
 
+	if (Meta.IsValid() && Meta->Values.Num() > 0)
+	{
+		JsonObject->SetObjectField(TEXT("_meta"), Meta);
+	}
+
+	// Last: the request trace reads isError from the end of the response (FN2CMcpTracingResponder)
 	if (bIsError)
 	{
 		JsonObject->SetBoolField(TEXT("isError"), true);

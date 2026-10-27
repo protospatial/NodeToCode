@@ -88,6 +88,8 @@ Client hints: text results up to 200000 characters (`anthropic/maxResultSizeChar
 
 No arguments.
 
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
+
 ### get-open-blueprint-editors
 
 **List open Blueprint editors**
@@ -99,6 +101,8 @@ Returns a list of all currently open Blueprint editors with their asset paths an
 | yes | no | yes | no | no | no | yes | yes |
 
 No arguments.
+
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
 
 ### list-blueprint-functions
 
@@ -129,6 +133,8 @@ Lists every graph of any Blueprint in the project by asset path, with no Bluepri
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `blueprintPath` | `string` | yes |  | Required. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door or /Game/Blueprints/BP_Door.BP_Door. |
+
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
 
 ### list-overridable-functions
 
@@ -1066,6 +1072,8 @@ Lists the files and folders directly inside a directory of the Unreal Engine pro
 | `cursor` | `string` | no |  | Optional. The nextCursor of the previous page; leave it out for the first page |
 | `filter` | `string` | no |  | Optional. A wildcard the names must match, * and ? (for example "*.json"), ignoring case; it applies to folders and files |
 
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
+
 ## PythonTools
 
 Run Python in the editor with the unreal module (only when the user allows MCP Python execution), and keep a library of reusable Python scripts to list, search, read, save and delete.
@@ -1197,6 +1205,8 @@ Returns the LLM providers available for Blueprint translation: cloud providers w
 
 No arguments.
 
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
+
 ### get-available-translation-targets
 
 **List translation languages**
@@ -1209,6 +1219,8 @@ Returns the list of programming languages that NodeToCode can translate Blueprin
 
 No arguments.
 
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
+
 ### get-translation-output-directory
 
 **Show the translation output folder**
@@ -1220,6 +1232,8 @@ Returns the translation output directory configuration from NodeToCode settings.
 | yes | no | yes | no | no | no | yes | yes |
 
 No arguments.
+
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
 
 ### translate-batch
 
@@ -1244,7 +1258,7 @@ Translates many Blueprint graphs with an LLM provider in one call, with no Bluep
 
 **Translate the focused Blueprint graph**
 
-Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. Nothing is saved to the translation output directory.
+Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. Nothing is saved to the translation output directory. The result's structuredContent is the translation (graphs with their code, usage); one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, savedTo and a resource_link to the file.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -1257,6 +1271,8 @@ Client hints: text results up to 200000 characters (`anthropic/maxResultSizeChar
 | `provider` | `string` | no |  | Optional: LLM provider ID as get-available-llm-providers lists it (e.g., 'openai', 'anthropic', 'ollama'; case-insensitive). Uses settings default if empty; an unknown ID is an error. |
 | `model` | `string` | no |  | Optional: Specific model ID. Uses provider's default from settings if empty. An ID NodeToCode does not list for a cloud provider is still sent, with a note in the result's warnings array. |
 | `language` | `string` | no |  | Optional: Target language ID as get-available-translation-targets lists it (e.g., 'cpp', 'python'; case-insensitive). Uses settings default if empty; an unknown ID is an error. |
+
+Returns `structuredContent` matching its `outputSchema` (in tools.generated.json).
 
 ## Tool search meta-tools
 
