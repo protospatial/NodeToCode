@@ -37,6 +37,10 @@ PowerShell 5.1 or PowerShell 7). `AGENTS.md` (TESTING COMPILATION) lists every s
   one per-user `UnrealEngine/Intermediate/Build/BuildRules/MarketplaceRules.dll` and each recompiles the others' copy,
   which a running UBT keeps loaded for its whole build, so two checkouts building different versions at once wait
   for each other here.
+- The smoke and test editors (`Tests/mcp_probe/editor_session.py` and `Invoke-Editor`) start with
+  `-ddc=InstalledNoZenLocalFallback` and `UE_SKIP_UBT_SDK_SETUP=1` (card 0495). Otherwise 5.6, 5.7 and 5.8 editors
+  shut down each other's shared local Zen server, which can stop an editor at startup ("no writable nodes"), and a 5.8
+  editor waits at startup on the machine-wide `Build.bat` lock until any other 5.8 build ends.
 
 Machine-specific settings (engine paths, hosts root) go in `build.local.ps1` next to the script; it is gitignored and
 dot-sourced when present.

@@ -81,14 +81,40 @@ FAIL_PATTERNS = [
                                r'Plugin \'NodeToCode\' failed')),
 ]
 
-# Known-benign lines that match FAIL_PATTERNS. Each entry: (regex, sessions it applies to, why it is benign). Keep it
-# narrow: match the specific message, never a whole category.
+SESSIONS = ('default', 'tool_search', 'python_only', 'p4')
+
+# Known-benign lines that match FAIL_PATTERNS. Each entry: (regex, sessions, engine labels, why it is benign). Keep it
+# narrow: match the whole message, on the engines that log it, never a whole category.
+# Card 0112 removed the last P4 entry: NodeToCode checks a port with its own bind before handing it to HTTPServer, so
+# "LogHttpListener: Error: HttpListener unable to bind" in any session, P4 included, is a real failure.
 ALLOWLIST = [
-    # Empty since card 0112. P4 holds the MCP port with a plain socket, but NodeToCode now checks a port with its own
-    # bind before handing it to HTTPServer and moves on to the next one (a warning, not an error), so no
-    # "LogHttpListener: Error: HttpListener unable to bind" line appears there any more. That line in any session,
-    # P4 included, is now a real failure: HTTPServer was given a port someone else holds.
+    # Card 0495, engine code: UE 5.8's Dataflow plugin declares `FDateTime Date = FDateTime::Now();` in
+    # FDataflowToolNodeSnapshot (Engine/Plugins/Dataflow/Source/DataflowNodes/Public/Dataflow/DataflowToolNode.h), and
+    # the engine's startup member-initialization test (CoreUObject Class.cpp, FindUninitializedScriptStructMembers)
+    # constructs each struct in 0xAA- and 0x55-filled memory and compares the two. Now() has millisecond resolution, so
+    # the test logs this error whenever a millisecond passes between the two constructions, more often under load.
+    # Either of the test's two passes can catch it (with or without the "custom default constructor" sentence), and
+    # the automation framework repeats it as LogAutomationTest. 5.6 and 5.7 have no such struct.
+    (re.compile(r'^(?:LogClass: Error: |LogAutomationTest: Error: LogClass: )StructProperty '
+                r'FDataflowToolNodeSnapshot::Date is not initialized properly(?: even though its struct probably has '
+                r'a custom default constructor\. Non deterministic fields should use UPROPERTY\(Meta = '
+                r'\(IgnoreForMemberInitializationTest\)\) to avoid errors from this test)?\. '
+                r'Module:DataflowNodes File:Public/Dataflow/DataflowToolNode\.h$'),
+     SESSIONS, ('5.8',), 'UE 5.8 engine struct initializes a member with FDateTime::Now() (card 0495)'),
 ]
+
+# Card 0495: three startup failures in card 0493's 30-run soak (2-3 other lanes building), none of them NodeToCode
+# code, and what this check does about each:
+#   * DDC "no writable nodes" fatal (5.6, and 5.7 in lane-c): editors of different engine versions shut down each
+#     other's shared local Zen server. Mitigated in the session: EditorSession starts every editor with
+#     -ddc=InstalledNoZenLocalFallback (editor_session.DDC_ARGS), so it never uses or restarts that server.
+#   * LogClass error for FDataflowToolNodeSnapshot::Date (5.8): engine-owned and nondeterministic. ALLOWLIST above,
+#     that exact line on 5.8 only.
+#   * 5.8 editor stalled at TurnkeySupport past the start timeout: it waited for Build.bat, which queued behind
+#     another lane's build on the machine-wide Build.bat lock. Memory was not the cause and a longer timeout would
+#     only wait for that build. Mitigated in the session: UE_SKIP_UBT_SDK_SETUP=1 (editor_session.STARTUP_ENV). The
+#     240 s timeout stays; a start failure now reports the editor log's last line, so the next one shows where it
+#     stopped.
 
 
 def ts():
@@ -122,17 +148,25 @@ def strip_prefix(line):
     return re.sub(r'^\[[^\]]*\]\[[^\]]*\]', '', line).strip()
 
 
-def scan_log(text, session):
-    """(failures, allowed): lines that match FAIL_PATTERNS, split by whether ALLOWLIST covers them in this session"""
+def scan_log(text, session, label):
+    """(failures, allowed): lines that match FAIL_PATTERNS, split by whether ALLOWLIST covers them in this session on
+    this engine (label, e.g. '5.8')"""
     failures, allowed = [], []
     for raw in text.splitlines():
         line = strip_prefix(raw)
         kinds = [k for k, rx in FAIL_PATTERNS if rx.search(line)]
         if not kinds:
             continue
-        why = next((w for rx, where, w in ALLOWLIST if session in where and rx.search(line)), None)
+        why = next((w for rx, where, engines, w in ALLOWLIST
+                    if session in where and label in engines and rx.search(line)), None)
         (allowed if why else failures).append('%s: %s' % (kinds[0], line[:300]))
     return failures, allowed
+
+
+def last_log_line(text):
+    """The editor log's last non-empty line without its prefix: where a start that never answered stopped"""
+    lines = [l for l in text.replace('\0', '').splitlines() if l.strip()]
+    return strip_prefix(lines[-1])[:200] if lines else '(empty log)'
 
 
 def listener_pids(port):
@@ -254,7 +288,9 @@ class Smoke:
         say('== %s mode (port %d, log %s) %s' % (mode, port, log, ts()))
         try:
             started = session.start()
-            self.check(started, '%s: /mcp/health' % mode, 'answered' if started else 'no answer within 240 s')
+            self.check(started, '%s: /mcp/health' % mode, 'answered' if started else '%s; log ends: %s' % (
+                'editor exited with %s' % session.proc.poll() if session.proc.poll() is not None
+                else 'no answer within 240 s', last_log_line(session.log_text())))
             if started:
                 url = 'http://127.0.0.1:%d/mcp' % port
                 pids = listener_pids(port)
@@ -345,7 +381,7 @@ class Smoke:
         if port is not None:
             line = 'MCP HTTP server started on port %d' % port
             self.check(line in text, '%s: server start line' % session_name, repr(line))
-        failures, allowed = scan_log(text, session_name)
+        failures, allowed = scan_log(text, session_name, self.label)
         for a in allowed:
             say('ALLOWED %s  %s' % (session_name, a))
         self.check(not failures, '%s: editor log' % session_name,

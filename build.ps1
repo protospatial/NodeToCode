@@ -69,6 +69,8 @@
     NodeToCodeTools toolset and its in-editor Python tests, NodeToCode.Toolsets.PythonTests.*: they run in the same
     pass, are counted apart in the summary ('tests PASS (n, m toolset)'), and when the filter covers them and none ran
     (registration failed) the step fails.
+    The smoke and test editors start with -ddc=InstalledNoZenLocalFallback and UE_SKIP_UBT_SDK_SETUP=1, so editors
+    and builds of other engine versions or checkouts on the machine cannot stop or stall their startup (card 0495).
 
 .EXAMPLE
     .\build.ps1 -UEVersion 5.7              # incremental editor build for 5.7
@@ -429,14 +431,22 @@ function Invoke-Logged([string]$exe, [string[]]$argList, [string]$log) {
     return $LASTEXITCODE
 }
 
+# Card 0495: the same per-run settings as Tests/mcp_probe/editor_session.py (DDC_ARGS, STARTUP_ENV; the reasons are
+# there). -ddc=InstalledNoZenLocalFallback: the file-system DDC instead of the local Zen server that UE 5.6-5.8 share
+# and shut down for each other (a "no writable nodes" fatal at startup). UE_SKIP_UBT_SDK_SETUP=1: UE 5.8 skips its
+# startup Build.bat -Mode=ValidatePlatforms, which waits on the machine-wide Build.bat lock while any 5.8 build runs.
+$EditorDdcArgs = @('-ddc=InstalledNoZenLocalFallback')
+$EditorStartupEnv = @{ 'UE_SKIP_UBT_SDK_SETUP' = '1' }
+
 # Runs an editor without echoing its output (it logs through -abslog) and kills it after the timeout
 function Invoke-Editor([string]$exe, [string[]]$argList, [int]$timeoutMinutes) {
-    $line = ($argList | ForEach-Object { Format-Arg $_ }) -join ' '
+    $line = (@($argList) + $EditorDdcArgs | ForEach-Object { Format-Arg $_ }) -join ' '
     Write-Host "    $exe $line" -ForegroundColor DarkGray
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName = $exe
     $psi.Arguments = $line
     $psi.UseShellExecute = $false
+    foreach ($k in $EditorStartupEnv.Keys) { $psi.EnvironmentVariables[$k] = $EditorStartupEnv[$k] }
     $proc = [Diagnostics.Process]::Start($psi)
     if (-not $proc.WaitForExit($timeoutMinutes * 60 * 1000)) {
         Write-Host "    timed out after $timeoutMinutes min, stopping the editor (pid $($proc.Id))" -ForegroundColor Red
