@@ -20,7 +20,7 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0288 (search-blueprint-classes filtering, names and counts).
+- **Fix cards still owed here:** none.
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.
@@ -29,31 +29,31 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### search-blueprint-classes
 - **Description**: Searches the classes a Blueprint can derive from, scored by how well their names match
-  (read-only, `readOnlyHint`). Runs over every loaded class and every Blueprint asset on each call
+  (read-only, `readOnlyHint`). Runs over every loaded class and every Blueprint asset on each call, on the game
+  thread, with no cache. Each class is listed once (`Execute` drops a repeated `classPath`)
 - **Parameters**:
   - `searchTerm` (required): Text matched case-insensitively against the class name, then the display name, the
     description and the category (`CalculateRelevanceScore`). An empty string matches every class
-  - `classType` (optional, default `all`): `all`, `actor`, `actorComponent`, `object` or `userWidget`. Native
-    classes are tested with `IsChildOf` (`PassesClassTypeFilter`); Blueprint assets only by a substring of their
-    parent class name (`Actor`, `Component`, `Widget`) in `CollectBlueprintClasses`
+  - `classType` (optional, default `all`): `all`, `actor`, `actorComponent`, `object` or `userWidget`, tested with
+    `IsChildOf` (`PassesClassTypeFilter`): on a native class itself, and for a Blueprint asset on its first native
+    parent (the `NativeParentClass` tag), so a Character Blueprint is an `actor`
   - `includeEngineClasses` (optional, default true): With false, classes under `/Script/Engine`, `/Script/CoreUObject`,
     `/Script/UMG` and `/Engine/` are left out (`IsEngineClass`); other engine modules (`/Script/Paper2D`,
     `/Script/AIModule`, ...) stay
   - `includePluginClasses` (optional, default true): With false, other `/Script/` modules and paths containing
     `/Plugins/` are left out (`IsPluginClass`)
-  - `includeDeprecated` (optional, default false), `includeAbstract` (optional, default false): Keep deprecated or
-    abstract native classes. `includeAbstract` has no effect on Blueprint assets
+  - `includeDeprecated` (optional, default false), `includeAbstract` (optional, default true): Keep deprecated or
+    abstract classes, native or Blueprint (a Blueprint's flags come from its `ClassFlags` tag). Abstract classes such
+    as `UserWidget`, `ActorComponent` and `PrimaryDataAsset` are valid parents, as in the editor's Pick Parent Class
+    dialog
   - `maxResults` (optional, default 50): Clamped to 1-200 (`0` returns one result, `500` returns 200)
 - **Returns**: `classes`, `totalFound`, `hasMore` (see "Result Shape")
 - **Errors**: `Missing required parameter: searchTerm`
-- **Known issue (card 0288):** the common parent classes (below) are added before any filter runs, so they appear
-  whatever `classType`, `includeAbstract` or `includeEngineClasses` say (`AddCommonClasses`), and a common class that
-  also matches the native scan is listed twice (`Character` with `category` `Common`, then again with
-  `Actor|Pawn|Character`). A Blueprint class loaded in the editor is listed twice too: once from the asset registry
-  and once as a native class. Display names drop a leading `A` or `U` even when it is part of the name (`Actor` is
-  shown as `ctor`, `UserWidget` as `ser Widget`; `GetClassDisplayName`). A Blueprint asset's `className` and
-  `classPath` keep the asset registry's export text, with a trailing quote (see "Result Shape"). Abstract
-  valid parents such as `UserWidget` are only found with `includeAbstract` true unless they are common classes.
+- Only native classes come from the class iterator (`CLASS_Native`, not compiled from a Blueprint); Blueprint
+  classes, loaded or not, come from the asset registry, and only normal and const Blueprints (not interfaces, macro or
+  function libraries or level scripts). Before card 0288 the common classes and loaded Blueprint classes were listed
+  twice, display names lost a leading `A` or `U`, Blueprint names kept the registry's export text, `totalFound`
+  counted every collected class and common classes ignored the filters
 
 ### create-blueprint-class
 - **Description**: Creates a Blueprint asset, compiles it, saves its package to disk and, by default, opens it
@@ -71,8 +71,8 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   - `parentClassPath` (required): Object path of the parent class, found with `FindObject` then `LoadObject`
     (`ValidateParentClass`): `/Script/Engine.Character`, `/Script/UMG.UserWidget` for a Widget Blueprint,
     `/Script/CoreUObject.Interface` for a Blueprint interface, or a Blueprint class as
-    `/Game/Folder/BP_Base.BP_Base_C` (the export-text `classPath` search-blueprint-classes returns for a Blueprint
-    asset is accepted too). A bare name (`Actor`) is not found. The class must pass
+    `/Game/Folder/BP_Base.BP_Base_C`, the `classPath` search-blueprint-classes returns for a Blueprint asset (export
+    text such as the asset registry's is accepted too). A bare name (`Actor`) is not found. The class must pass
     `FKismetEditorUtilities::CanCreateBlueprintOfClass`. An `AnimInstance` parent is refused: an Animation Blueprint
     needs a target skeleton, which the tool cannot set
   - `assetPath` (required): Content folder for the new asset, checked with
@@ -150,27 +150,29 @@ Each entry of `classes` (`ClassInfoToJson`):
 }
 ```
 
-- `className` is the `UClass` name without its C++ prefix (`Actor`, not `AActor`); `parentClass` likewise.
-- `displayName` is the class's `DisplayName` metadata when it has one (`TextBlock` shows as `Text`), otherwise the
-  name split at capitals.
+- `className` is the `UClass` name without its C++ prefix (`Actor`, not `AActor`); `parentClass` likewise. For a
+  Blueprint class, `className` is the generated class (`BP_Base_C`) and `parentClass` its direct parent's name
+  (`Character`, or `BP_Parent_C`).
+- `displayName` is `UClass::GetDisplayNameText`: the class's `DisplayName` metadata when it has one (`TextBlock`
+  shows as `Text`), otherwise the name split at capitals (`UserWidget` is `User Widget`, `Actor` is `Actor`). A
+  Blueprint asset's is its asset name.
 - `category` is `Common` for a common class, the class's `Category` metadata, a hierarchy string (`Actor|Pawn`,
   `Component|Scene`, `Widget`) or the module name; for a Blueprint asset, its folder name.
 - `description` is the class tooltip (engine text), or `Class derived from <parent>`.
 - A Blueprint asset found in the asset registry has `isNative` false, `module` `Game`, `icon` `Blueprint`, and
-  `className`/`classPath` taken from the registry's export text, for example
-  `"className": "BP_Base.BP_Base_C'"` and
-  `"classPath": "/Script/Engine.BlueprintGeneratedClass'/Game/Folder/BP_Base.BP_Base_C'"`.
-- `totalFound` is the number of classes collected before the search term is applied, duplicates included
-  (`BuildJsonResult` receives `AllClasses.Num()`), not the number that matched. `hasMore` is
-  `classes.length < totalFound`, so it is true for almost every search: a search for `zzqqnothing` returns no classes
-  with `totalFound` 974 and `hasMore` true on the UE 5.8 host.
+  `classPath` its generated class's object path (`FPackageName::ExportTextPathToObjectPath` of the registry tag),
+  for example `"classPath": "/Game/Folder/BP_Base.BP_Base_C"`, which create-blueprint-class takes as
+  `parentClassPath`.
+- `totalFound` is the number of classes that match the search term and filters, before `maxResults` cuts the list;
+  `hasMore` is `classes.length < totalFound`. A search that matches nothing returns `totalFound` 0.
 
-Results are sorted with common classes first, then by score, then by display name (`FilterAndScoreClasses`).
+Results are sorted by score, then by display name (`FilterAndScoreClasses`); a common class's 100-point bonus is
+part of its score (`CalculateRelevanceScore`).
 
 ## Common Parent Classes
 
-`AddCommonClasses` puts these at the top of the results, as `commonClass: true` with `category` `Common`, when
-`classType` is `all` or their own type:
+`IsCommonClassPath` marks these `commonClass: true` with `category` `Common` when the native pass lists them; the
+filters (`classType`, the include flags) apply to them as to any class:
 
 - **actor**: `/Script/Engine.Actor`, `Pawn`, `Character`, `GameModeBase`, `GameStateBase`, `PlayerController`,
   `PlayerState`, `HUD`
@@ -179,7 +181,7 @@ Results are sorted with common classes first, then by score, then by display nam
 - **object**: `/Script/CoreUObject.Object`, `/Script/Engine.DataAsset`, `/Script/Engine.SaveGame`
 - **userWidget**: `/Script/UMG.UserWidget`, `/Script/UMG.Button`, `/Script/UMG.TextBlock`, `/Script/UMG.Image`
 
-A common class is skipped only when it cannot be loaded or fails `CanCreateBlueprintOfClass`.
+A common class is listed only when it passes the filters and `CanCreateBlueprintOfClass`.
 
 ## Examples
 
@@ -187,7 +189,7 @@ The curl examples assume `$SID` holds a session id from `initialize` (see "Calli
 `Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it.
 
 ```bash
-# Step 1: find a parent class (the first results are the common Character entry and its native duplicate)
+# Step 1: find a parent class (the first result is the common Character entry)
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \

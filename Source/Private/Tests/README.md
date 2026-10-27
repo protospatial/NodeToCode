@@ -64,8 +64,6 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
-| `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
-| `NodeToCode.MCP.Structure` | search-blueprint-classes lists a loaded Blueprint class once, as a Blueprint class | mcp-tools-bp-structure-12 (card 0288) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -176,7 +174,9 @@ an Interface Blueprint into that existing folder; a SpringArm and a Camera under
 SpringArm's `ChildNodes` after three compiles; a delete of a mid-hierarchy component whose children are promoted with
 their own children and whose SCS `AllNodes` stays equal to the nodes reachable from the roots; list-components-in-actor
 on a child of a Character Blueprint (native, inherited and own components once each, under their parents, `totalCount`
-counting all); and search-blueprint-classes without duplicates. Its Blueprints are saved under
+counting all); and search-blueprint-classes (card 0288): each class once, display names, a Character Blueprint
+under classType actor with its object path, abstract parents found by default, and totalFound counting matches. Its
+Blueprints are saved under
 `/Game/__N2CTestStructure`.
 
 `NodeToCode.MCP.Content` (`MCP/N2CMcpContentTools.spec.cpp`, card 0163) runs move-asset and rename-asset with package
