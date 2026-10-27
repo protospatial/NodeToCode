@@ -183,6 +183,28 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		FN2CCommentBox& CommentBox = Graph.Comments.AddDefaulted_GetRef();
 		CommentBox.Text = TEXT("A comment box");
 		CommentBox.NodeIDs.Add(TEXT("N1"));
+
+		// Card 0242: a variable with every field set, as a member and as a local variable
+		FN2CVariable Variable;
+		Variable.Name = TEXT("Lookup");
+		Variable.Type = EN2CPinType::Name;
+		Variable.SubType = TEXT("float");
+		Variable.bIsArray = true;
+		Variable.bIsSet = true;
+		Variable.bIsMap = true;
+		Variable.ValueType = EN2CPinType::Real;
+		Variable.ValueSubType = TEXT("float");
+		Variable.DefaultValue = TEXT("()");
+		Variable.Category = TEXT("Stats");
+		Variable.Comment = TEXT("A description");
+		Variable.bInstanceEditable = true;
+		Variable.bReadOnly = true;
+		Variable.bExposeOnSpawn = true;
+		Variable.bPrivate = true;
+		Variable.bReplicated = true;
+		Variable.RepNotify = TEXT("OnRep_Lookup");
+		Graph.LocalVariables.Add(Variable);
+		Blueprint.Variables.Add(Variable);
 		Blueprint.Graphs.Add(Graph);
 
 		FN2CStructMember Member;

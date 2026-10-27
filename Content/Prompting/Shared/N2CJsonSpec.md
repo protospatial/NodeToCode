@@ -105,7 +105,7 @@ A document looks like this (an event graph whose custom event runs a Branch on "
 
 ### Fields
 
-Optional fields are left out when they are empty, and the boolean flags ("pure", "latent", "unused", "unreachable", "disabled", "connected", "is_reference", "is_const", "is_array", "is_map", "is_set") are written only when true: a missing flag means false.
+Optional fields are left out when they are empty, and the boolean flags ("pure", "latent", "unused", "unreachable", "disabled", "connected", "is_reference", "is_const", "is_array", "is_map", "is_set", and a variable's "instance_editable", "read_only", "expose_on_spawn", "private", "replicated") are written only when true: a missing flag means false.
 
 - "version": "2.0.0". Documents saved by NodeToCode 1.x say "1.0.0": in them a node's display title is "name" (there is no "class" or "title"), pin names are display names (an exec pin's is often empty), "execution" lists node pairs ("N1->N2") and every "data" value is a single pin.
 - "metadata":
@@ -134,6 +134,7 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
     - "execution": the exec wires, as an array of "N1.P1->N3.P5" entries.
     - "data": the data wires, as an object keyed by an output pin.
   - "comments" (optional): the graph's comment boxes, in graph order. Each has "text", the comment the user wrote, and "nodes", the IDs of the nodes inside the box (left out when it holds none). A comment box says what the nodes inside it are for: carry it into the code as a comment, and let it guide names.
+  - "local_variables" (optional, only in a whole-Blueprint document): a function graph's local variables, each described like a member variable (see "variables" below, without the category, comment and flags). Declare them as locals of the function; "LocalVariableGet" and "LocalVariableSet" nodes read and write them.
 - Each pin has:
   - "id": a short ID, e.g. "P1", unique in the document. "N2.P4" in "flows" means pin P4 of node N2.
   - "name": the pin's internal name, the same in every editor language (e.g. "execute" and "then" for exec pins, "self" for the target object, "ReturnValue", a parameter's name).
@@ -147,6 +148,7 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
   - "value_type", "value_sub_type" (map pins only; "value_sub_type" only when the value is a struct, enum, class or object): the map's value type. Older documents (1.x and early 2.0.0) leave them out, and type every enum pin "Byte" with the enum in "sub_type".
 - "structs": user-defined structs the graphs use. Each has "name", an optional "comment" and "members"; each member has "name", "type" ("Bool", "Byte", "Int", "Float", "String", "Name", "Text", "Vector", "Vector2D", "Rotator", "Transform", "Class", "Object", "Struct", "Enum" or "Custom"), and optionally "type_name" (the struct, enum, class or object type), "is_array", "is_set", "is_map" (then "key_type" and optionally "key_type_name" give the key), "default_value" and "comment".
 - "enums": user-defined enums the graphs use. Each has "name", an optional "comment" and "values", each with "name" and an optional "comment", in declaration order.
+- "variables" (optional, only in a whole-Blueprint document; a translation of one graph leaves it out): the Blueprint's member variables, in declaration order. Each has "name" and its type in the pin spellings ("type", "sub_type", "is_array", "is_set", "is_map", and for a map "value_type" and "value_sub_type"; a float is "Real" with "sub_type" "float"), then optionally "default_value", "category" (its My Blueprint category, left out for the default one), "comment" (its description) and the flags "instance_editable", "read_only" (Blueprint read-only), "expose_on_spawn", "private", "replicated" and "rep_notify" (the RepNotify function's name). Declare each as a member of the generated class.
 
 ### Reading the graph
 

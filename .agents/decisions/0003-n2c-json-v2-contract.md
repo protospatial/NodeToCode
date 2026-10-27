@@ -107,6 +107,17 @@ Option 1, provisionally. The sub-choices of card 0117:
   index `Index`. Make Map's `member_name` is "<key> to <value>" in pin type spellings. A reader that predates it keeps
   the two fields as unknown fields; this reader keeps a map pin without them as it is and an unknown `value_type` with
   an `UNKNOWN_PIN_TYPE` warning.
+- Card 0242 (additive, under 2.0.0 since no release has written it; from PR #8 by flashpoint493): a document may carry
+  the Blueprint's member variables as an optional top-level `variables` array after `enums`, and a function graph its
+  local variables as an optional `local_variables` array after `comments` (`N2CJsonContract::VariablesField`,
+  `LocalVariablesField`). Each entry has `name` and its type in the pin spellings (`type`, `sub_type`, `is_array`,
+  `is_set`, `is_map`, `value_type`, `value_sub_type`), then the optional `default_value`, and for a member variable
+  `category`, `comment`, the flags `instance_editable`, `read_only`, `expose_on_spawn`, `private`, `replicated` (each
+  only when true) and `rep_notify`. They are written only by a capture that asks for them
+  (`FN2CCaptureOptions::IncludeVariables`): a whole-Blueprint capture (`N2C::CaptureGraphs`, get-blueprint-n2cjson
+  without a graph) does by default, a translation or one graph's capture does not, so its output is unchanged. A reader
+  that predates it keeps both as unknown fields; this reader skips an entry that is not an object or has no `name`
+  with a `SKIPPED_VARIABLE` warning.
 - Card 0505 (reader only; the contract and its version are unchanged): the agent document of get-focused-blueprint,
   get-blueprint-n2cjson and Python `get_blueprint_n2c_json` writes each node's and pin's `id` as `ids` {`short`,
   `guid`} and adds the top-level `guids` table. The reader takes `ids.short` as the ID when there is no `id`
