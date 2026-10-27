@@ -13,7 +13,7 @@ namespace
 
     /** The fields each object of the contract has; any other is kept in UnknownFields */
     const TCHAR* const TopLevelFields[] = { N2CJsonContract::VersionField, TEXT("metadata"), TEXT("graphs"), TEXT("structs"),
-        TEXT("enums"), N2CJsonContract::VariablesField, TEXT("guids") };
+        TEXT("enums"), N2CJsonContract::VariablesField, TEXT("guids"), N2CJsonContract::WarningsField };
     const TCHAR* const MetadataFields[] = { TEXT("name"), TEXT("blueprint_type"), TEXT("blueprint_class") };
     const TCHAR* const GraphFields[] = { TEXT("name"), TEXT("graph_type"), TEXT("owner_blueprint"), TEXT("nodes"),
         N2CJsonContract::FlowsField, N2CJsonContract::CommentsField, N2CJsonContract::LocalVariablesField };
@@ -303,7 +303,8 @@ FString FN2CSerializer::ToJson(const FN2CCapture& Capture, EN2CJsonStyle Style, 
         return ToJson(Capture.Blueprint, Style);
     }
 
-    if (!Capture.Blueprint.IsValid())
+    // The capture validated itself (card 0240)
+    if (Capture.HasErrors())
     {
         FN2CLogger::Get().LogWarning(TEXT("Blueprint validation failed - attempting partial serialization"));
     }
@@ -314,7 +315,32 @@ FString FN2CSerializer::ToJson(const FN2CCapture& Capture, EN2CJsonStyle Style, 
         return TEXT("");
     }
     JsonObject->SetObjectField(TEXT("guids"), GuidTableToJsonObject(Capture));
+
+    // The capture's warnings for the agent (card 0240): what it can fix or should know, in the tool result itself
+    const TArray<TSharedPtr<FJsonValue>> Warnings = WarningsToJson(Capture);
+    if (Warnings.Num() > 0)
+    {
+        JsonObject->SetArrayField(N2CJsonContract::WarningsField, Warnings);
+    }
     return WriteJson(JsonObject, Style);
+}
+
+TArray<TSharedPtr<FJsonValue>> FN2CSerializer::WarningsToJson(const FN2CCapture& Capture)
+{
+    TArray<TSharedPtr<FJsonValue>> Warnings;
+    for (const FN2CDiagnostic& Diagnostic : Capture.Diagnostics)
+    {
+        if (Diagnostic.IsError())
+        {
+            continue;
+        }
+        const TSharedPtr<FJsonObject> Warning = MakeShared<FJsonObject>();
+        Warning->SetStringField(N2CJsonContract::WarningCodeField, Diagnostic.Code);
+        Warning->SetStringField(N2CJsonContract::WarningPathField, Diagnostic.Path);
+        Warning->SetStringField(N2CJsonContract::WarningMessageField, Diagnostic.Message);
+        Warnings.Add(MakeShared<FJsonValueObject>(Warning));
+    }
+    return Warnings;
 }
 
 TSharedPtr<FJsonObject> FN2CSerializer::GuidTableToJsonObject(const FN2CCapture& Capture)

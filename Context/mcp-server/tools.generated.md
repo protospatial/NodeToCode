@@ -92,7 +92,7 @@ Returns `structuredContent` matching its `outputSchema` (in tools.generated.json
 
 **Read the focused Blueprint graph**
 
-Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.
+Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -281,7 +281,7 @@ Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph bl
 
 **Find nodes in a graph**
 
-Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.
+Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information, and the capture's 'warnings' when it has any.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|

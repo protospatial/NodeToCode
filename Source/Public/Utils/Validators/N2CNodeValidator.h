@@ -9,27 +9,22 @@
 
 /**
  * @class FN2CNodeValidator
- * @brief Validates node definitions to ensure they meet requirements
+ * @brief Validates node definitions. A missing node ID or a duplicate pin ID is an error; flag combinations and pin
+ *        findings are warnings (card 0240).
  */
 class NODETOCODE_API FN2CNodeValidator
 {
 public:
-    /** Validate a single node definition */
+    /** Validate a single node definition: false on an error, whose text goes to OutError */
     bool Validate(const FN2CNodeDefinition& Node, FString& OutError);
-    
+
+    /** Adds the node's and its pins' findings to OutDiagnostics; Path is the node's place, e.g. "graphs[0].nodes[2]". False on an error. */
+    bool Validate(const FN2CNodeDefinition& Node, const FString& Path, TArray<FN2CDiagnostic>& OutDiagnostics);
+
 private:
-    /** Validate required fields */
-    bool ValidateRequired(const FN2CNodeDefinition& Node, FString& OutError);
-    
-    /** Validate node flags */
-    bool ValidateFlags(const FN2CNodeDefinition& Node, FString& OutError);
-    
-    /** Validate all pins on the node */
-    bool ValidatePins(const FN2CNodeDefinition& Node, FString& OutError);
-    
-    /** Check if node has valid exec pins */
+    /** Check if node has exec pins */
     bool HasExecPins(const FN2CNodeDefinition& Node) const;
-    
+
     /** Pin validator instance */
     FN2CPinValidator PinValidator;
 };

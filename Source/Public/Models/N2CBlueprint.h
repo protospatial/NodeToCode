@@ -560,6 +560,32 @@ struct FN2CBlueprint
         // Version is initialized to N2CJsonContract::Version by the FN2CVersion constructor
     }
 
-    /** Validates the Blueprint structure and its enums */
+    /** Validates the Blueprint structure and its enums: true when it has no error (warnings do not fail it, card 0240) */
     bool IsValid() const;
+};
+
+/** How bad one validation or capture finding is (card 0240) */
+enum class EN2CDiagnosticSeverity : uint8
+{
+    /** Recoverable: the document is still used (a pin missing its sub_type, a graph left out at the depth limit) */
+    Warning,
+    /** Structural: the document cannot be used as it is (a flow naming a missing node, a duplicate ID) */
+    Error,
+};
+
+/**
+ * One finding of FN2CBlueprintValidator or of a capture (card 0240, imp-translation-core-8): what agents see in a tool
+ * result instead of only a log line. Codes are N2CJsonContract::Diagnostic.
+ */
+struct FN2CDiagnostic
+{
+    EN2CDiagnosticSeverity Severity = EN2CDiagnosticSeverity::Warning;
+    /** N2CJsonContract::Diagnostic code, for example "DANGLING_FLOW" */
+    FString Code;
+    /** Where in the document: "graphs[0]", "graphs[0].nodes[2].input_pins[1]", "structs[1]", "graphs[0].flows.data" */
+    FString Path;
+    /** A sentence for people, naming the graph, node or pin */
+    FString Message;
+
+    bool IsError() const { return Severity == EN2CDiagnosticSeverity::Error; }
 };

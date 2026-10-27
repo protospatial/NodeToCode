@@ -118,6 +118,11 @@ Option 1, provisionally. The sub-choices of card 0117:
   without a graph) does by default, a translation or one graph's capture does not, so its output is unchanged. A reader
   that predates it keeps both as unknown fields; this reader skips an entry that is not an object or has no `name`
   with a `SKIPPED_VARIABLE` warning.
+- Card 0240 (agent document only; the contract and its version are unchanged): the validator reports findings as
+  diagnostics, and a capture fails only on an error (a structural problem: a dangling flow, a duplicate ID, a missing
+  name). The agent document of get-focused-blueprint, get-blueprint-n2cjson and find-nodes-in-graph lists the capture's
+  warnings in an optional top-level `warnings` array of {`code`, `path`, `message`} (`N2CJsonContract::WarningsField`,
+  codes in `N2CJsonContract::Diagnostic`); a translation's document never carries it, and the reader reads past it.
 - Card 0505 (reader only; the contract and its version are unchanged): the agent document of get-focused-blueprint,
   get-blueprint-n2cjson and Python `get_blueprint_n2c_json` writes each node's and pin's `id` as `ids` {`short`,
   `guid`} and adds the top-level `guids` table. The reader takes `ids.short` as the ID when there is no `id`

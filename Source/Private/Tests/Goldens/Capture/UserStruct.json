@@ -5,7 +5,7 @@
 		{
 			"finding": "translation-core-8",
 			"card": "0236",
-			"effect": "S_GoldenItem is missing from 'structs': its object member Owner gets no type name, the validator rejects the struct (ERROR 'Member Owner requires a type name') and it is dropped without a warning"
+			"effect": "S_GoldenItem's object member Owner gets no type name ('type': 'Object' with no 'type_name'); since card 0240 the validator keeps the struct with a MEMBER_TYPE warning ('Member Owner requires a type name')"
 		},
 		{
 			"finding": "translation-core-24",
@@ -188,7 +188,25 @@
 				}
 			}
 		],
-		"structs": [],
+		"structs": [
+			{
+				"name": "S_GoldenItem",
+				"members": [
+					{
+						"name": "Owner",
+						"type": "Object"
+					},
+					{
+						"name": "Count",
+						"type": "Int"
+					},
+					{
+						"name": "Level",
+						"type": "Byte"
+					}
+				]
+			}
+		],
 		"enums": [
 			{
 				"name": "E_GoldenLevel",

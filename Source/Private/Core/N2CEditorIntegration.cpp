@@ -9,6 +9,7 @@
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CEditorWindow.h"
 #include "Core/N2CCapture.h"
+#include "Utils/Validators/N2CPinValidator.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTargetLanguage.h"
@@ -70,11 +71,9 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>&
     TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
     if (Capture.HasValue())
     {
-        OutN2CBlueprint = MoveTemp(Capture.GetValue().Blueprint);
-
-        // Validate the result
-        bool bIsValid = OutN2CBlueprint.IsValid();
-
+        // The capture validated itself (card 0240): only an error (a structural problem) fails it; warnings travel
+        // in its diagnostics and were logged
+        const bool bIsValid = !Capture.GetValue().HasErrors();
         if (bIsValid)
         {
             FN2CLogger::Get().Log(TEXT("TranslateNodesToN2CBlueprint: Translation validation successful"), EN2CLogSeverity::Info);
@@ -84,10 +83,11 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprint(const TArray<UK2Node*>&
             FN2CLogger::Get().LogError(TEXT("TranslateNodesToN2CBlueprint: Translation validation failed"));
             if (OutError)
             {
-                *OutError = TEXT("The captured Blueprint did not validate.");
+                *OutError = FString::Printf(TEXT("The captured Blueprint did not validate: %s"),
+                    *N2CDiagnostics::FirstError(Capture.GetValue().Diagnostics));
             }
         }
-
+        OutN2CBlueprint = MoveTemp(Capture.GetValue().Blueprint);
         return bIsValid;
     }
 
@@ -109,8 +109,8 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprintWithMaps(const TArray<UK
         // The blueprint and its ID maps come from the same capture, which nothing else can change
         OutCapture = Capture.StealValue();
 
-        // Validate the result
-        bool bIsValid = OutCapture.Blueprint.IsValid();
+        // The capture validated itself (card 0240): only an error fails it; its warnings stay in OutCapture.Diagnostics
+        const bool bIsValid = !OutCapture.HasErrors();
 
         if (bIsValid)
         {
@@ -123,7 +123,8 @@ bool FN2CEditorIntegration::TranslateNodesToN2CBlueprintWithMaps(const TArray<UK
             FN2CLogger::Get().LogError(TEXT("TranslateNodesToN2CBlueprintWithMaps: Translation validation failed"));
             if (OutError)
             {
-                *OutError = TEXT("The captured Blueprint did not validate.");
+                *OutError = FString::Printf(TEXT("The captured Blueprint did not validate: %s"),
+                    *N2CDiagnostics::FirstError(OutCapture.Diagnostics));
             }
         }
 

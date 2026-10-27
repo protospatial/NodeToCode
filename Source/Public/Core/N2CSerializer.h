@@ -25,7 +25,8 @@ enum class EN2CJsonGuids : uint8
     None,
     /**
      * Adds a top-level "guids" object for agents: "graphs" (each graph's GraphGuid, in "graphs" order), "nodes" (node
-     * ID -> NodeGuid) and "pins" (pin ID -> {"node": node ID, "guid": PinId}), one entry per captured node and pin
+     * ID -> NodeGuid) and "pins" (pin ID -> {"node": node ID, "guid": PinId}), one entry per captured node and pin;
+     * and, when the capture has any, a top-level "warnings" array of its warning diagnostics (card 0240)
      */
     Table
 };
@@ -64,6 +65,9 @@ public:
 
     /** The "guids" table of a capture (see EN2CJsonGuids::Table) */
     static TSharedPtr<FJsonObject> GuidTableToJsonObject(const FN2CCapture& Capture);
+
+    /** The capture's warning diagnostics as {"code", "path", "message"} objects (card 0240): an agent document's "warnings" */
+    static TArray<TSharedPtr<FJsonValue>> WarningsToJson(const FN2CCapture& Capture);
 
     /** Convert JSON string back to FN2CBlueprint */
     static bool FromJson(const FString& JsonString, FN2CBlueprint& OutBlueprint);

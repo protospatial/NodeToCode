@@ -59,6 +59,9 @@ private:
     /** What this capture includes, with Depth resolved from the settings when it was INDEX_NONE */
     FN2CCaptureOptions Options;
 
+    /** Graphs the captured graphs use that were left out at the depth limit, in the order met (card 0240) */
+    TArray<TWeakObjectPtr<const UEdGraph>> DepthLimitedGraphs;
+
     /** The Blueprint structure being built */
     FN2CBlueprint N2CBlueprint;
 
@@ -131,9 +134,6 @@ private:
 
     /** Process a single graph */
     bool ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType);
-
-    /** Validate all flow references after processing */
-    bool ValidateFlowReferences(FN2CGraph& Graph);
 
     /**
      * The graph's type from its schema (UEdGraphSchema::GetGraphType): a collapsed graph is Composite, the
