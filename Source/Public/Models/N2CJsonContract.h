@@ -107,6 +107,25 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* PinValueSubTypeField = TEXT("value_sub_type");
 
 	/**
+	 * Variables (card 0242, from PR #8 by flashpoint493; additive): the Blueprint's member variables as the optional
+	 * top-level "variables" array after "enums", and a function graph's local variables as the optional per-graph
+	 * "local_variables" array after "comments". Written only by a capture that asks for them
+	 * (FN2CCaptureOptions::bIncludeVariables; on for a whole-Blueprint capture, off for a translation) and only when
+	 * there are any. Each entry has "name" and the type in pin spellings ("type", "sub_type", "is_array", "is_set",
+	 * "is_map", "value_type", "value_sub_type"), then the optional "default_value", "category", "comment" and the flags
+	 * below, each written only when true; "rep_notify" names the RepNotify function.
+	 */
+	inline constexpr const TCHAR* VariablesField = TEXT("variables");
+	inline constexpr const TCHAR* LocalVariablesField = TEXT("local_variables");
+	inline constexpr const TCHAR* VariableCategoryField = TEXT("category");
+	inline constexpr const TCHAR* VariableInstanceEditableField = TEXT("instance_editable");
+	inline constexpr const TCHAR* VariableReadOnlyField = TEXT("read_only");
+	inline constexpr const TCHAR* VariableExposeOnSpawnField = TEXT("expose_on_spawn");
+	inline constexpr const TCHAR* VariablePrivateField = TEXT("private");
+	inline constexpr const TCHAR* VariableReplicatedField = TEXT("replicated");
+	inline constexpr const TCHAR* VariableRepNotifyField = TEXT("rep_notify");
+
+	/**
 	 * The agent document (card 0505): get-focused-blueprint, get-blueprint-n2cjson and Python get_blueprint_n2c_json
 	 * write each node's and pin's "id" as "ids": {"short": the ID, "guid": the node's NodeGuid or the pin's PinId}
 	 * (a pin's also has its "name"), plus the top-level "guids" table. FromJson reads "ids.short" as the ID when there
@@ -201,6 +220,8 @@ namespace N2CJsonContract
 		inline constexpr const TCHAR* SkippedPin = TEXT("SKIPPED_PIN");
 		/** A "comments" entry that is not an object (card 0235); the graph and its other comments are kept */
 		inline constexpr const TCHAR* SkippedComment = TEXT("SKIPPED_COMMENT");
+		/** A "variables" or "local_variables" entry that is not an object or has no "name" (card 0242); the rest is kept */
+		inline constexpr const TCHAR* SkippedVariable = TEXT("SKIPPED_VARIABLE");
 	}
 
 	/** True when FromJson reads this version (majors OldestReadableMajor..Major) */
