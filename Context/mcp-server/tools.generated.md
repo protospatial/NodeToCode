@@ -92,7 +92,7 @@ Returns `structuredContent` matching its `outputSchema` (in tools.generated.json
 
 **Read the focused Blueprint graph**
 
-Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.
+Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -281,7 +281,7 @@ Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph bl
 
 **Find nodes in a graph**
 
-Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.
+Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information, and the capture's 'warnings' when it has any.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -469,7 +469,7 @@ Create Blueprint member variables and function local variables, read and set the
 
 **Add a Get node for a local variable**
 
-Create a Get node for a local function variable in the currently focused Blueprint function graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Create a Get node for a local function variable in a Blueprint function graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -482,12 +482,15 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 | `variableName` | `string` | yes |  |  |
 | `x` | `number` | no |  |  |
 | `y` | `number` | no |  |  |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### create-get-member-variable-node
 
 **Add a Get node for a member variable**
 
-Creates a Get node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Creates a Get node for a member variable in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph): its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -499,12 +502,15 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 |---|---|---|---|---|
 | `variableName` | `string` | yes |  |  |
 | `location` | `object` | no |  | The location to place the node in the graph |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### create-local-variable
 
 **Create a local variable**
 
-Creates a new local variable in the currently focused Blueprint function. The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Creates a new local variable in a Blueprint function (the one blueprintPath plus graphName or graphGuid name, else the focused function). The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -518,12 +524,15 @@ Creates a new local variable in the currently focused Blueprint function. The na
 | `tooltip` | `string` | no | `""` | Tooltip description for the variable |
 | `containerType` | `string` | no | `"none"` | Container type for the variable (none, array, set, map). One of: `"none"`, `"array"`, `"set"`, `"map"`. |
 | `mapKeyTypeIdentifier` | `string` | no | `""` | For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor', 'Guid'; the key must be hashable: bool, text and structs without a hash function are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap&lt;FName, FVector&gt;, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'. |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### create-set-local-function-variable-node
 
 **Add a Set node for a local variable**
 
-Create a Set node for a local function variable in the currently focused Blueprint graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Create a Set node for a local function variable in a Blueprint function graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -537,12 +546,15 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 | `x` | `number` | no |  |  |
 | `y` | `number` | no |  |  |
 | `inputPinValue` | `string` | no |  |  |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### create-set-member-variable-node
 
 **Add a Set node for a member variable**
 
-Creates a Set node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable that Blueprints may write (BlueprintReadOnly variables are refused). The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Creates a Set node for a member variable in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph): its own, an inherited, a native (C++) or a component variable that Blueprints may write (BlueprintReadOnly variables are refused). The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -555,12 +567,15 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node`. Left to Unreal MC
 | `variableName` | `string` | yes |  |  |
 | `defaultValue` | `string` | no |  | Optional default value to set on the input pin. This sets the pin's default value, not the variable's default value. |
 | `location` | `object` | no |  | The location to place the node in the graph |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### create-variable
 
 **Create a member variable**
 
-Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Creates a new member variable in a Blueprint: blueprintPath, else the focused Blueprint (the Blueprint of the active Blueprint editor). The result's blueprintPath names the Blueprint used. Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -578,12 +593,13 @@ Creates a new member variable in the focused Blueprint (the Blueprint of the act
 | `replicationCondition` | `string` | no | `"none"` | Network replication setting. 'repnotify' also creates the OnRep_&lt;variable&gt; function, as the editor does. One of: `"none"`, `"replicated"`, `"repnotify"`. |
 | `containerType` | `string` | no | `"none"` | Container type for the variable (none, array, set, map). One of: `"none"`, `"array"`, `"set"`, `"map"`. |
 | `mapKeyTypeIdentifier` | `string` | no | `""` | For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor', 'Guid'; the key must be hashable: bool, text and structs without a hash function are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap&lt;FName, FVector&gt;, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'. |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint. |
 
 ### get-blueprint-function-local-variables
 
 **List a function's local variables**
 
-Extract local variables from the currently focused Blueprint function graph
+Extract the local variables of a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function graph
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -594,12 +610,15 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_variables`. Left to Unreal
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `includeDetails` | `boolean` | no |  |  |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### get-blueprint-member-variables
 
 **List a Blueprint's member variables**
 
-Retrieves all member variables from the currently focused Blueprint, including their types, categories, and properties
+Retrieves all member variables of a Blueprint (blueprintPath, else the focused Blueprint), including their types, categories, and properties
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -607,7 +626,9 @@ Retrieves all member variables from the currently focused Blueprint, including t
 
 Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_variables`. Left to Unreal MCP by default when it runs in the same editor (Overlapping Tools).
 
-No arguments.
+| Argument | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint. |
 
 ### search-variable-types
 
@@ -630,7 +651,7 @@ Searches for available variable types (primitives, classes, structs, enums) by n
 
 **Set a local variable's default value**
 
-Set the default value of a local variable of the focused function (like editing in the details panel). The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Set the default value of a local variable of a Blueprint function (the one blueprintPath plus graphName or graphGuid name, else the focused function), like editing in the details panel. The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -640,12 +661,15 @@ Set the default value of a local variable of the focused function (like editing 
 |---|---|---|---|---|
 | `variableName` | `string` | yes |  |  |
 | `defaultValue` | `string` | yes |  |  |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ### set-member-variable-default-value
 
 **Set a member variable's default value**
 
-Sets the default value of a member variable in the focused Blueprint, on its class defaults as the Details panel does (one undo step; placed instances still on the old default follow it). The value is parsed as the variable's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string resets the variable to its type's default value. Adds no node. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Sets the default value of a member variable of a Blueprint (blueprintPath, else the focused Blueprint), on its class defaults as the Details panel does (one undo step; placed instances still on the old default follow it). The value is parsed as the variable's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string resets the variable to its type's default value. Adds no node. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -657,6 +681,7 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.get_default_object, ObjectTools
 |---|---|---|---|---|
 | `variableName` | `string` | yes |  |  |
 | `defaultValue` | `string` | yes |  |  |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint. |
 
 ## BlueprintTagTools
 
@@ -697,7 +722,7 @@ Removes a specific tag from a Blueprint graph by its GUID and tag name Refused w
 
 **Tag the focused graph**
 
-Tags the currently focused Blueprint graph with a name and category for organization and tracking Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Tags a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) with a name and category for organization and tracking Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -708,6 +733,9 @@ Tags the currently focused Blueprint graph with a name and category for organiza
 | `tag` | `string` | yes |  |  |
 | `category` | `string` | no |  |  |
 | `description` | `string` | no |  |  |
+| `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
+| `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
+| `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |
 
 ## BlueprintCompileTools
 

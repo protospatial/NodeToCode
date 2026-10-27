@@ -2,7 +2,61 @@
 
 #include "Utils/Validators/N2CPinValidator.h"
 
+#include "Models/N2CJsonContract.h"
+
+namespace N2CDiagnostics
+{
+	void Add(TArray<FN2CDiagnostic>& Out, const EN2CDiagnosticSeverity Severity, const TCHAR* Code, const FString& Path,
+		const FString& Message)
+	{
+		if (Severity == EN2CDiagnosticSeverity::Error)
+		{
+			FN2CLogger::Get().LogError(Message);
+		}
+		else
+		{
+			FN2CLogger::Get().LogWarning(Message);
+		}
+		FN2CDiagnostic& Diagnostic = Out.AddDefaulted_GetRef();
+		Diagnostic.Severity = Severity;
+		Diagnostic.Code = Code;
+		Diagnostic.Path = Path;
+		Diagnostic.Message = Message;
+	}
+
+	bool HasError(const TArray<FN2CDiagnostic>& Diagnostics)
+	{
+		return Diagnostics.ContainsByPredicate([](const FN2CDiagnostic& Diagnostic) { return Diagnostic.IsError(); });
+	}
+
+	FString FirstError(const TArray<FN2CDiagnostic>& Diagnostics)
+	{
+		const FN2CDiagnostic* Error = Diagnostics.FindByPredicate([](const FN2CDiagnostic& Diagnostic) { return Diagnostic.IsError(); });
+		return Error ? Error->Message : FString();
+	}
+}
+
+namespace
+{
+	void PinWarn(TArray<FN2CDiagnostic>& Out, const FString& Path, const FString& Message,
+		const TCHAR* Code = N2CJsonContract::Diagnostic::PinShape)
+	{
+		N2CDiagnostics::Add(Out, EN2CDiagnosticSeverity::Warning, Code, Path, Message);
+	}
+}
+
 bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
+{
+    TArray<FN2CDiagnostic> Diagnostics;
+    const bool bValid = Validate(Pin, FString(), Diagnostics);
+    if (Diagnostics.Num() > 0)
+    {
+        OutError = Diagnostics.Last().Message;
+    }
+    return bValid;
+}
+
+bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, const FString& Path, TArray<FN2CDiagnostic>& OutDiagnostics)
 {
     // Log basic pin info
     N2C_LOG(Debug, TEXT("Validating Pin: ID=%s, Name=%s, Type=%s, SubType=%s"),
@@ -11,25 +65,10 @@ bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
         *StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)),
         *Pin.SubType);
 
-    // Validate required fields
-    if (!ValidateRequired(Pin, OutError))
-    {
-        return false;
-    }
+    ValidateRequired(Pin, Path, OutDiagnostics);
+    ValidateTypeSpecific(Pin, Path, OutDiagnostics);
+    ValidateContainerFlags(Pin, Path, OutDiagnostics);
 
-    // Validate type-specific requirements
-    if (!ValidateTypeSpecific(Pin, OutError))
-    {
-        return false;
-    }
-
-    // Validate container flags
-    if (!ValidateContainerFlags(Pin, OutError))
-    {
-        return false;
-    }
-
-    // Log pin flags
     N2C_LOG(Debug, TEXT("Pin %s flags: Connected=%d, IsRef=%d, IsConst=%d, IsArray=%d, IsMap=%d, IsSet=%d"),
         *Pin.ID,
         Pin.bConnected ? 1 : 0,
@@ -39,18 +78,15 @@ bool FN2CPinValidator::Validate(const FN2CPinDefinition& Pin, FString& OutError)
         Pin.bIsMap ? 1 : 0,
         Pin.bIsSet ? 1 : 0);
 
-    N2C_LOG(Debug, TEXT("Pin %s validation successful"), *Pin.ID);
+    // A pin never fails a document: every pin finding is a warning (card 0240)
     return true;
 }
 
-bool FN2CPinValidator::ValidateRequired(const FN2CPinDefinition& Pin, FString& OutError)
+void FN2CPinValidator::ValidateRequired(const FN2CPinDefinition& Pin, const FString& Path, TArray<FN2CDiagnostic>& Out)
 {
-    // Check required fields
     if (Pin.ID.IsEmpty())
     {
-        OutError = FString::Printf(TEXT("Pin validation warning: Empty ID for pin %s"), *Pin.Name);
-        FN2CLogger::Get().LogWarning(OutError);
-        // Continue despite warning - generate a default ID if needed
+        PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Empty ID for pin %s"), *Pin.Name));
     }
 
     // Allow empty names for all pins
@@ -58,13 +94,11 @@ bool FN2CPinValidator::ValidateRequired(const FN2CPinDefinition& Pin, FString& O
     {
         N2C_LOG(Debug, TEXT("Pin %s has empty name"), *Pin.ID);
     }
-
-    return true;
 }
 
-bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FString& OutError)
+void FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, const FString& Path, TArray<FN2CDiagnostic>& Out)
 {
-    // Validate type-specific requirements
+    const FString TypeName = StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type));
     switch (Pin.Type)
     {
         case EN2CPinType::Array:
@@ -73,29 +107,20 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
             // Container types require valid SubType
             if (Pin.SubType.IsEmpty())
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: Container type %s missing SubType for pin %s"), 
-                    *StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Container type %s missing SubType for pin %s"), *TypeName, *Pin.ID));
             }
             // Container flags must match type
             if (Pin.Type == EN2CPinType::Array && !Pin.bIsArray)
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: Array type without array flag for pin %s"), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Array type without array flag for pin %s"), *Pin.ID));
             }
             if (Pin.Type == EN2CPinType::Map && !Pin.bIsMap)
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: Map type without map flag for pin %s"), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Map type without map flag for pin %s"), *Pin.ID));
             }
             if (Pin.Type == EN2CPinType::Set && !Pin.bIsSet)
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: Set type without set flag for pin %s"), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Set type without set flag for pin %s"), *Pin.ID));
             }
             break;
 
@@ -106,10 +131,7 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
             // These types require valid SubType for type information
             if (Pin.SubType.IsEmpty())
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: %s type missing SubType for pin %s"), 
-                    *StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: %s type missing SubType for pin %s"), *TypeName, *Pin.ID));
             }
             break;
 
@@ -117,9 +139,7 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
             // Exec pins can't have default values or be const/reference
             if (!Pin.DefaultValue.IsEmpty() || Pin.bIsConst || Pin.bIsReference)
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: Invalid Exec pin configuration for pin %s"), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Invalid Exec pin configuration for pin %s"), *Pin.ID));
             }
             break;
 
@@ -128,9 +148,7 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
             // Delegates can't be const
             if (Pin.bIsConst)
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: Const delegate pin %s"), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Const delegate pin %s"), *Pin.ID));
             }
             break;
 
@@ -139,52 +157,39 @@ bool FN2CPinValidator::ValidateTypeSpecific(const FN2CPinDefinition& Pin, FStrin
             // Soft references require class path in SubType
             if (Pin.SubType.IsEmpty())
             {
-                OutError = FString::Printf(TEXT("Pin validation warning: Soft reference missing class path for pin %s"), *Pin.ID);
-                FN2CLogger::Get().LogWarning(OutError);
-                // Continue despite warning
+                PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Soft reference missing class path for pin %s"), *Pin.ID));
             }
             break;
 
         case EN2CPinType::Unknown:
             // A pin type this build does not know (a later 2.x document, card 0445): accepted with a warning
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Pin %s has a pin type this build does not know: '%s'"),
-                *Pin.ID, *Pin.UnknownType));
+            PinWarn(Out, Path, FString::Printf(TEXT("Pin %s has a pin type this build does not know: '%s'"), *Pin.ID, *Pin.UnknownType),
+                N2CJsonContract::Diagnostic::UnknownKind);
             break;
 
         default:
-            // Log other types
-            N2C_LOG(Debug, TEXT("Pin %s has standard type %s"),
-                *Pin.ID, *StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(Pin.Type)));
+            N2C_LOG(Debug, TEXT("Pin %s has standard type %s"), *Pin.ID, *TypeName);
             break;
     }
-
-    return true;
 }
 
-bool FN2CPinValidator::ValidateContainerFlags(const FN2CPinDefinition& Pin, FString& OutError)
+void FN2CPinValidator::ValidateContainerFlags(const FN2CPinDefinition& Pin, const FString& Path, TArray<FN2CDiagnostic>& Out)
 {
-    // Validate container flags - only one container type allowed
+    // Only one container type allowed; the LLM will need to determine the most appropriate one
     if ((Pin.bIsArray && Pin.bIsMap) || (Pin.bIsArray && Pin.bIsSet) || (Pin.bIsMap && Pin.bIsSet))
     {
-        OutError = FString::Printf(TEXT("Pin validation warning: Pin %s has multiple container types"), *Pin.ID);
-        FN2CLogger::Get().LogWarning(OutError);
-        // Continue despite warning - LLM will need to determine the most appropriate container type
+        PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Pin %s has multiple container types"), *Pin.ID));
     }
 
     // Only a map has a value type (card 0238): "type" is then its key's
     if (Pin.HasValueType() && !Pin.bIsMap)
     {
-        OutError = FString::Printf(TEXT("Pin validation warning: Pin %s has a value_type but is not a map"), *Pin.ID);
-        FN2CLogger::Get().LogWarning(OutError);
-        // Continue despite warning
+        PinWarn(Out, Path, FString::Printf(TEXT("Pin validation warning: Pin %s has a value_type but is not a map"), *Pin.ID));
     }
 
     // Const and reference validation - allow for certain types
     if (Pin.bIsConst && Pin.bIsReference)
     {
-        // Log this case but don't fail validation
         N2C_LOG(Debug, TEXT("Pin %s is both const and reference - this is valid for certain engine types"), *Pin.ID);
     }
-
-    return true;
 }

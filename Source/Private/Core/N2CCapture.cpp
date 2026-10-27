@@ -7,6 +7,12 @@
 #include "Core/N2CNodeCollector.h"
 #include "EdGraph/EdGraph.h"
 #include "K2Node.h"
+#include "Utils/Validators/N2CBlueprintValidator.h"
+
+bool FN2CCapture::HasErrors() const
+{
+	return N2CDiagnostics::HasError(Diagnostics);
+}
 
 const FString* FN2CCapture::FindNodeID(const FGuid& NodeGuid) const
 {
@@ -22,6 +28,13 @@ const FString* FN2CCapture::FindNodeID(const FGuid& NodeGuid) const
 
 namespace N2C
 {
+	/** The capture's validation findings after its own (card 0240); the result is returned with them, errors included */
+	FN2CCapture Validated(FN2CCapture&& Capture)
+	{
+		FN2CBlueprintValidator().Validate(Capture.Blueprint, Capture.Diagnostics);
+		return MoveTemp(Capture);
+	}
+
 	TValueOrError<FN2CCapture, FString> CaptureNodes(TConstArrayView<UK2Node*> Nodes, const FN2CCaptureOptions& Options)
 	{
 		FN2CCaptureContext Context(Options);
@@ -36,7 +49,7 @@ namespace N2C
 				? FString(TEXT("Nothing to capture: the graph holds only unwired default events (ghost nodes)"))
 				: FString(TEXT("No graph was captured")));
 		}
-		return MakeValue(Context.TakeCapture());
+		return MakeValue(Validated(Context.TakeCapture()));
 	}
 
 	TValueOrError<FN2CCapture, FString> CaptureGraph(const UEdGraph& Graph, const FN2CCaptureOptions& Options)
@@ -57,7 +70,7 @@ namespace N2C
 		{
 			return MakeError(FString(TEXT("Nothing to capture: none of the graphs has a node")));
 		}
-		return MakeValue(Context.TakeCapture());
+		return MakeValue(Validated(Context.TakeCapture()));
 	}
 
 	TValueOrError<FN2CNodeDefinition, FString> DescribeNode(UK2Node& Node, const FString& NodeID)

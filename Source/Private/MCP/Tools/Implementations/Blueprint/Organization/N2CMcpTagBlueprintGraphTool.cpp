@@ -3,6 +3,7 @@
 #include "N2CMcpTagBlueprintGraphTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "Core/N2CTagManager.h"
 #include "Core/N2CGraphStateTypes.h"
 #include "Core/N2CEditorIntegration.h"
@@ -21,7 +22,7 @@ FMcpToolDefinition FN2CMcpTagBlueprintGraphTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("tag-blueprint-graph"),
-		TEXT("Tags the currently focused Blueprint graph with a name and category for organization and tracking"),
+		TEXT("Tags a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) with a name and category for organization and tracking"),
 		N2CMcpToolsets::BlueprintTag
 	);
 	
@@ -35,6 +36,7 @@ FMcpToolDefinition FN2CMcpTagBlueprintGraphTool::GetDefinition() const
 	Required.Add(TEXT("tag")); // Only tag is required
 	
 	Definition.InputSchema = BuildInputSchema(Properties, Required);
+	FN2CGraphTarget::AddSchemaProperties(Definition);
 	
 	return Definition;
 }
@@ -58,22 +60,22 @@ FMcpToolCallResult FN2CMcpTagBlueprintGraphTool::Execute(const TSharedPtr<FJsonO
 		FString Description;
 		Arguments->TryGetStringField(TEXT("description"), Description);
 		
-		// Get the focused graph and owning Blueprint
-		UBlueprint* OwningBlueprint = nullptr;
-		UEdGraph* FocusedGraph = nullptr;
-		FString GraphError;
-		
-		if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(OwningBlueprint, FocusedGraph, GraphError))
+		// The graph blueprintPath / graphName / graphGuid name, else the focused one (card 0274). Tagging does not edit
+		// the graph, so a read-only graph can be tagged
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ false);
+		if (!Target.IsValid())
 		{
-			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("tag-blueprint-graph tool failed: %s"), *GraphError));
-			return FMcpToolCallResult::CreateErrorResult(GraphError);
+			FN2CLogger::Get().LogWarning(FString::Printf(TEXT("tag-blueprint-graph tool failed: %s"), *Target.Error));
+			return FMcpToolCallResult::CreateErrorResult(Target.Error);
 		}
+		UBlueprint* OwningBlueprint = Target.Blueprint;
+		UEdGraph* FocusedGraph = Target.Graph;
 		
 		// Validate graph has a valid GUID
 		if (!FocusedGraph->GraphGuid.IsValid())
 		{
 			FN2CLogger::Get().LogWarning(TEXT("tag-blueprint-graph tool failed: Current graph does not have a valid GUID"));
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Current graph is not valid for tagging"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Current graph is not valid for tagging")));
 		}
 		
 		// Create the tagged graph struct
@@ -93,7 +95,7 @@ FMcpToolCallResult FN2CMcpTagBlueprintGraphTool::Execute(const TSharedPtr<FJsonO
 		if (!bSuccess)
 		{
 			FN2CLogger::Get().LogError(TEXT("Failed to add tag to tag manager"));
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Failed to persist tag"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to persist tag")));
 		}
 		
 		// Create success response
@@ -116,6 +118,6 @@ FMcpToolCallResult FN2CMcpTagBlueprintGraphTool::Execute(const TSharedPtr<FJsonO
 		FN2CLogger::Get().Log(FString::Printf(TEXT("tag-blueprint-graph tool: %s"), *Message), 
 			EN2CLogSeverity::Info);
 		
-		return FMcpToolCallResult::CreateTextResult(JsonString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(JsonString));
 	});
 }

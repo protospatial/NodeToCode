@@ -118,6 +118,11 @@ Option 1, provisionally. The sub-choices of card 0117:
   without a graph) does by default, a translation or one graph's capture does not, so its output is unchanged. A reader
   that predates it keeps both as unknown fields; this reader skips an entry that is not an object or has no `name`
   with a `SKIPPED_VARIABLE` warning.
+- Card 0240 (agent document only; the contract and its version are unchanged): the validator reports findings as
+  diagnostics, and a capture fails only on an error (a structural problem: a dangling flow, a duplicate ID, a missing
+  name). The agent document of get-focused-blueprint, get-blueprint-n2cjson and find-nodes-in-graph lists the capture's
+  warnings in an optional top-level `warnings` array of {`code`, `path`, `message`} (`N2CJsonContract::WarningsField`,
+  codes in `N2CJsonContract::Diagnostic`); a translation's document never carries it, and the reader reads past it.
 - Card 0239 (additive and corrective, under 2.0.0 since no release has written it): a node may carry `bound_to` (a
   component- or actor-bound event's component variable or actor), `net` ("Server", "Client" or "Multicast") and `reliable`
   (a replicated custom event) and, on a Timeline node, `timeline` {`length`, `loop`, `autoplay`, `tracks`: [{`name`,

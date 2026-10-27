@@ -1486,7 +1486,7 @@
 			"name": "create-get-local-function-variable-node",
 			"title": "Add a Get node for a local variable",
 			"toolset": "BlueprintVariableTools",
-			"description": "Create a Get node for a local function variable in the currently focused Blueprint function graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Create a Get node for a local function variable in a Blueprint function graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.create_node",
 			"longRunning": false,
@@ -1521,6 +1521,24 @@
 					"type": "number",
 					"required": false,
 					"description": ""
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -1539,6 +1557,21 @@
 					"y":
 					{
 						"type": "number"
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"required": [
@@ -1551,7 +1584,7 @@
 			"name": "create-get-member-variable-node",
 			"title": "Add a Get node for a member variable",
 			"toolset": "BlueprintVariableTools",
-			"description": "Creates a Get node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Creates a Get node for a member variable in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph): its own, an inherited, a native (C++) or a component variable. The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.create_node",
 			"longRunning": false,
@@ -1580,6 +1613,24 @@
 					"type": "object",
 					"required": false,
 					"description": "The location to place the node in the graph"
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -1608,6 +1659,21 @@
 								"default": 0
 							}
 						}
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"required": [
@@ -1620,7 +1686,7 @@
 			"name": "create-local-variable",
 			"title": "Create a local variable",
 			"toolset": "BlueprintVariableTools",
-			"description": "Creates a new local variable in the currently focused Blueprint function. The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Creates a new local variable in a Blueprint function (the one blueprintPath plus graphName or graphGuid name, else the focused function). The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -1682,6 +1748,24 @@
 					"required": false,
 					"default": "",
 					"description": "For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor', 'Guid'; the key must be hashable: bool, text and structs without a hash function are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'."
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -1728,6 +1812,21 @@
 						"type": "string",
 						"description": "For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor', 'Guid'; the key must be hashable: bool, text and structs without a hash function are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'.",
 						"default": ""
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"required": [
@@ -1741,7 +1840,7 @@
 			"name": "create-set-local-function-variable-node",
 			"title": "Add a Set node for a local variable",
 			"toolset": "BlueprintVariableTools",
-			"description": "Create a Set node for a local function variable in the currently focused Blueprint graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Create a Set node for a local function variable in a Blueprint function graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.create_node",
 			"longRunning": false,
@@ -1782,6 +1881,24 @@
 					"type": "string",
 					"required": false,
 					"description": ""
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -1804,6 +1921,21 @@
 					"inputPinValue":
 					{
 						"type": "string"
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"required": [
@@ -1816,7 +1948,7 @@
 			"name": "create-set-member-variable-node",
 			"title": "Add a Set node for a member variable",
 			"toolset": "BlueprintVariableTools",
-			"description": "Creates a Set node for a member variable in the focused blueprint graph: its own, an inherited, a native (C++) or a component variable that Blueprints may write (BlueprintReadOnly variables are refused). The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Creates a Set node for a member variable in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph): its own, an inherited, a native (C++) or a component variable that Blueprints may write (BlueprintReadOnly variables are refused). The result's nodeId is the node GUID, for connect-pins. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.create_node",
 			"longRunning": false,
@@ -1851,6 +1983,24 @@
 					"type": "object",
 					"required": false,
 					"description": "The location to place the node in the graph"
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -1884,6 +2034,21 @@
 								"default": 0
 							}
 						}
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"required": [
@@ -1896,7 +2061,7 @@
 			"name": "create-variable",
 			"title": "Create a member variable",
 			"toolset": "BlueprintVariableTools",
-			"description": "Creates a new member variable in the focused Blueprint (the Blueprint of the active Blueprint editor; no argument selects another Blueprint). Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Creates a new member variable in a Blueprint: blueprintPath, else the focused Blueprint (the Blueprint of the active Blueprint editor). The result's blueprintPath names the Blueprint used. Interface, Function Library and Macro Library Blueprints cannot have member variables. One undo removes the variable with its settings. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -1991,6 +2156,12 @@
 					"required": false,
 					"default": "",
 					"description": "For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor', 'Guid'; the key must be hashable: bool, text and structs without a hash function are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'."
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint."
 				}
 			],
 			"inputSchema":
@@ -2066,6 +2237,11 @@
 						"type": "string",
 						"description": "For 'map' containerType, this specifies the map's KEY type identifier (e.g., 'Name', 'int32', 'FString', '/Script/Engine.Actor', 'Guid'; the key must be hashable: bool, text and structs without a hash function are refused). This is required if containerType is 'map'. The map's VALUE type is specified by 'typeIdentifier'. Example: For TMap<FName, FVector>, 'typeIdentifier' would be 'FVector' and 'mapKeyTypeIdentifier' would be 'FName'.",
 						"default": ""
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint."
 					}
 				},
 				"required": [
@@ -2516,7 +2692,7 @@
 			"name": "find-nodes-in-graph",
 			"title": "Find nodes in a graph",
 			"toolset": "BlueprintGraphTools",
-			"description": "Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.",
+			"description": "Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information, and the capture's 'warnings' when it has any.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": true,
@@ -2931,7 +3107,7 @@
 			"name": "get-blueprint-function-local-variables",
 			"title": "List a function's local variables",
 			"toolset": "BlueprintVariableTools",
-			"description": "Extract local variables from the currently focused Blueprint function graph",
+			"description": "Extract the local variables of a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function graph",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.list_variables",
 			"longRunning": false,
@@ -2954,6 +3130,24 @@
 					"type": "boolean",
 					"required": false,
 					"description": ""
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -2964,6 +3158,21 @@
 					"includeDetails":
 					{
 						"type": "boolean"
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"additionalProperties": false
@@ -2973,7 +3182,7 @@
 			"name": "get-blueprint-member-variables",
 			"title": "List a Blueprint's member variables",
 			"toolset": "BlueprintVariableTools",
-			"description": "Retrieves all member variables from the currently focused Blueprint, including their types, categories, and properties",
+			"description": "Retrieves all member variables of a Blueprint (blueprintPath, else the focused Blueprint), including their types, categories, and properties",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.list_variables",
 			"longRunning": false,
@@ -2990,12 +3199,24 @@
 			{
 				"nodetocode/toolset": "BlueprintVariableTools"
 			},
-			"arguments": [],
+			"arguments": [
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint."
+				}
+			],
 			"inputSchema":
 			{
 				"type": "object",
 				"properties":
 				{
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint."
+					}
 				},
 				"required": [],
 				"additionalProperties": false
@@ -3387,7 +3608,7 @@
 			"name": "get-focused-blueprint",
 			"title": "Read the focused Blueprint graph",
 			"toolset": "BlueprintDiscoveryTools",
-			"description": "Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.",
+			"description": "Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": true,
@@ -3519,6 +3740,36 @@
 							"properties":
 							{
 							}
+						}
+					},
+					"warnings":
+					{
+						"type": "array",
+						"description": "What the capture found but could still use (card 0240); absent when nothing",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"code":
+								{
+									"type": "string",
+									"description": "e.g. DEPTH_LIMIT, PIN_SHAPE, UNFED_INPUT"
+								},
+								"path":
+								{
+									"type": "string",
+									"description": "Where in the document, e.g. graphs[0].nodes[2]"
+								},
+								"message":
+								{
+									"type": "string"
+								}
+							},
+							"required": [
+								"code",
+								"message"
+							]
 						}
 					}
 				},
@@ -6314,7 +6565,7 @@
 			"name": "set-local-function-variable-default-value",
 			"title": "Set a local variable's default value",
 			"toolset": "BlueprintVariableTools",
-			"description": "Set the default value of a local variable of the focused function (like editing in the details panel). The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Set the default value of a local variable of a Blueprint function (the one blueprintPath plus graphName or graphGuid name, else the focused function), like editing in the details panel. The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -6342,6 +6593,24 @@
 					"type": "string",
 					"required": true,
 					"description": ""
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -6356,6 +6625,21 @@
 					"defaultValue":
 					{
 						"type": "string"
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"required": [
@@ -6369,7 +6653,7 @@
 			"name": "set-member-variable-default-value",
 			"title": "Set a member variable's default value",
 			"toolset": "BlueprintVariableTools",
-			"description": "Sets the default value of a member variable in the focused Blueprint, on its class defaults as the Details panel does (one undo step; placed instances still on the old default follow it). The value is parsed as the variable's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string resets the variable to its type's default value. Adds no node. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Sets the default value of a member variable of a Blueprint (blueprintPath, else the focused Blueprint), on its class defaults as the Details panel does (one undo step; placed instances still on the old default follow it). The value is parsed as the variable's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string resets the variable to its type's default value. Adds no node. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"unrealMcpCounterpart": "BlueprintTools.get_default_object, ObjectTools.set_properties",
 			"longRunning": false,
@@ -6398,6 +6682,12 @@
 					"type": "string",
 					"required": true,
 					"description": ""
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint."
 				}
 			],
 			"inputSchema":
@@ -6412,6 +6702,11 @@
 					"defaultValue":
 					{
 						"type": "string"
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door; without it, the focused Blueprint."
 					}
 				},
 				"required": [
@@ -6425,7 +6720,7 @@
 			"name": "tag-blueprint-graph",
 			"title": "Tag the focused graph",
 			"toolset": "BlueprintTagTools",
-			"description": "Tags the currently focused Blueprint graph with a name and category for organization and tracking Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Tags a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) with a name and category for organization and tracking Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -6459,6 +6754,24 @@
 					"type": "string",
 					"required": false,
 					"description": ""
+				},
+				{
+					"name": "blueprintPath",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+				},
+				{
+					"name": "graphName",
+					"type": "string",
+					"required": false,
+					"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+				},
+				{
+					"name": "graphGuid",
+					"type": "string",
+					"required": false,
+					"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 				}
 			],
 			"inputSchema":
@@ -6477,6 +6790,21 @@
 					"description":
 					{
 						"type": "string"
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used."
+					},
+					"graphName":
+					{
+						"type": "string",
+						"description": "Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then."
+					},
+					"graphGuid":
+					{
+						"type": "string",
+						"description": "Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName."
 					}
 				},
 				"required": [
