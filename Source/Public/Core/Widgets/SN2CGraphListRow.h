@@ -83,6 +83,9 @@ private:
 	bool IsViewButtonEnabled() const;
 	FText GetViewButtonTooltip() const;
 
+	/** The graph name's tooltip: every tag that lists the graph in this view */
+	FText GetTagsTooltip() const;
+
 	// Context column helpers
 	float GetContextUsagePercent() const;
 	FText GetTokensText() const;

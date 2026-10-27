@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "TagManager/Models/N2CTagManagerTypes.h"
+#include "Core/Widgets/SN2CTagCategoryTree.h"
 
 class SN2CTagCategoryTree;
 class SN2CTaggedGraphsList;
@@ -28,6 +29,8 @@ public:
 		SLATE_ARGUMENT(bool, ShowActionBar)
 		/** Default state of minify JSON checkbox */
 		SLATE_ARGUMENT(bool, MinifyJsonByDefault)
+		/** Where the tags come from (tests pass an isolated source); unset: the tag manager */
+		SLATE_ARGUMENT(FN2CTagSource, TagSource)
 
 		/** Called when a tag is selected */
 		SLATE_EVENT(FSimpleDelegate, OnTagSelected)
@@ -54,8 +57,11 @@ public:
 	/** Constructs this widget */
 	void Construct(const FArguments& InArgs);
 
-	/** Refresh all data */
+	/** Refresh all data now: the tree keeps its selection and the list keeps its checked graphs */
 	void RefreshData();
+
+	/** Refresh once on the next frame however many times this is called (tag events come in bursts) */
+	void RequestRefresh();
 
 	/** Get the currently selected tag (empty if category selected) */
 	FString GetSelectedTag() const;
@@ -66,8 +72,11 @@ public:
 	/** Check if a category is selected (vs a tag) */
 	bool IsSelectedCategory() const;
 
-	/** Get selected graphs from the list */
+	/** Get selected graphs from the list, each graph once */
 	TArray<FN2CTagInfo> GetSelectedGraphs() const;
+
+	/** Every (graph, tag) entry of the checked rows: a row lists a graph once, with all the tags that put it there */
+	TArray<FN2CTagInfo> GetSelectedTagEntries() const;
 
 	/** Get count of selected graphs */
 	int32 GetSelectedCount() const;
@@ -139,8 +148,14 @@ private:
 	/** Handle browse button click */
 	FReply HandleBrowseClicked();
 
-	/** Update graphs list based on tree selection */
+	/** Update graphs list based on tree selection and the search text */
 	void UpdateGraphsList();
+
+	/** The tags to show */
+	TArray<FN2CTaggedBlueprintGraph> GetTags() const;
+
+	/** The deferred refresh RequestRefresh registers */
+	EActiveTimerReturnType HandleDeferredRefresh(double InCurrentTime, float InDeltaTime);
 
 	/** Update selection count display */
 	void UpdateSelectionDisplay();
@@ -183,6 +198,18 @@ private:
 
 	/** Current search filter text */
 	FString CurrentSearchFilter;
+
+	/** A category or tag was picked during the current search: the list shows its graphs that match */
+	bool bSearchScopedToTree = false;
+
+	/** The view the list showed last ("<view>|<category>|<tag>"): a refresh of the same view keeps the checks */
+	FString LastListView;
+
+	/** A RequestRefresh is waiting for the next frame */
+	bool bRefreshPending = false;
+
+	/** Where the tags come from */
+	FN2CTagSource TagSource;
 
 	/** Delegate handles for tag manager events */
 	FDelegateHandle OnTagAddedHandle;

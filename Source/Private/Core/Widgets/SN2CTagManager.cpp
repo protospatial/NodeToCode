@@ -43,6 +43,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 	OnViewTranslationRequestedDelegate = InArgs._OnViewTranslationRequested;
 
 	bMinifyJson = InArgs._MinifyJsonByDefault;
+	TagSource = InArgs._TagSource;
 
 	// Initialize output path from settings
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
@@ -98,6 +99,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 			.Value(0.3f)
 			[
 				SAssignNew(CategoryTree, SN2CTagCategoryTree)
+				.TagSource(TagSource)
 				.OnSelectionChanged(FSimpleDelegate::CreateSP(this, &SN2CTagManager::HandleTreeSelectionChanged))
 			]
 			// Right panel - Graphs list
@@ -292,7 +294,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 	// Subscribe to tag manager events for live updates
 	OnTagAddedHandle = UN2CTagManager::Get().OnBlueprintTagAdded.AddRaw(this, &SN2CTagManager::HandleTagAdded);
 	OnTagRemovedHandle = UN2CTagManager::Get().OnBlueprintTagRemoved.AddRaw(this, &SN2CTagManager::HandleTagRemoved);
-	OnTagsReloadedHandle = UN2CTagManager::Get().OnTagsReloaded.AddRaw(this, &SN2CTagManager::RefreshData);
+	OnTagsReloadedHandle = UN2CTagManager::Get().OnTagsReloaded.AddRaw(this, &SN2CTagManager::RequestRefresh);
 
 	// Initial data load
 	RefreshData();
@@ -311,16 +313,41 @@ SN2CTagManager::~SN2CTagManager()
 
 void SN2CTagManager::HandleTagAdded(const FN2CTaggedBlueprintGraph& TagInfo)
 {
-	RefreshData();
+	RequestRefresh();
 }
 
 void SN2CTagManager::HandleTagRemoved(const FN2CGraphKey& Graph, const FString& RemovedTag)
 {
-	RefreshData();
+	RequestRefresh();
+}
+
+void SN2CTagManager::RequestRefresh()
+{
+	if (bRefreshPending)
+	{
+		return;
+	}
+	bRefreshPending = true;
+	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SN2CTagManager::HandleDeferredRefresh));
+}
+
+EActiveTimerReturnType SN2CTagManager::HandleDeferredRefresh(double InCurrentTime, float InDeltaTime)
+{
+	if (bRefreshPending)
+	{
+		RefreshData();
+	}
+	return EActiveTimerReturnType::Stop;
+}
+
+TArray<FN2CTaggedBlueprintGraph> SN2CTagManager::GetTags() const
+{
+	return TagSource ? TagSource() : UN2CTagManager::Get().GetAllTags();
 }
 
 void SN2CTagManager::RefreshData()
 {
+	bRefreshPending = false;
 	if (CategoryTree.IsValid())
 	{
 		CategoryTree->RefreshData();
@@ -360,6 +387,15 @@ TArray<FN2CTagInfo> SN2CTagManager::GetSelectedGraphs() const
 	if (GraphsList.IsValid())
 	{
 		return GraphsList->GetSelectedGraphs();
+	}
+	return TArray<FN2CTagInfo>();
+}
+
+TArray<FN2CTagInfo> SN2CTagManager::GetSelectedTagEntries() const
+{
+	if (GraphsList.IsValid())
+	{
+		return GraphsList->GetSelectedTagEntries();
 	}
 	return TArray<FN2CTagInfo>();
 }
@@ -424,6 +460,7 @@ void SN2CTagManager::SelectTag(const FString& InTag, const FString& InCategory)
 	if (CategoryTree.IsValid())
 	{
 		CategoryTree->SelectTag(InTag, InCategory);
+		bSearchScopedToTree = !CurrentSearchFilter.IsEmpty() && CategoryTree->GetSelectedItem().IsValid();
 		UpdateGraphsList();
 	}
 }
@@ -433,6 +470,7 @@ void SN2CTagManager::SelectCategory(const FString& Category)
 	if (CategoryTree.IsValid())
 	{
 		CategoryTree->SelectCategory(Category);
+		bSearchScopedToTree = !CurrentSearchFilter.IsEmpty() && CategoryTree->GetSelectedItem().IsValid();
 		UpdateGraphsList();
 	}
 }
@@ -448,6 +486,8 @@ void SN2CTagManager::SetSearchFilter(const FString& SearchText)
 
 void SN2CTagManager::HandleTreeSelectionChanged()
 {
+	// A category or tag picked during a search narrows the search to it
+	bSearchScopedToTree = !CurrentSearchFilter.IsEmpty() && CategoryTree.IsValid() && CategoryTree->GetSelectedItem().IsValid();
 	UpdateGraphsList();
 
 	if (CategoryTree.IsValid())
@@ -483,45 +523,21 @@ void SN2CTagManager::HandleGraphDoubleClicked()
 
 void SN2CTagManager::HandleSearchTextChanged(const FText& NewText)
 {
-	FString SearchText = NewText.ToString();
+	const FString SearchText = NewText.ToString();
+	if (SearchText.IsEmpty() != CurrentSearchFilter.IsEmpty())
+	{
+		// A search starts across all tags, and ends back on the tree's selection
+		bSearchScopedToTree = false;
+	}
 	CurrentSearchFilter = SearchText;
 
+	// The tree keeps its items (and so its selection) while it filters: the first keystroke no longer clears the list
 	if (CategoryTree.IsValid())
 	{
 		CategoryTree->SetSearchFilter(SearchText);
 	}
 
-	// When search is active, load ALL graphs so search can find matches across all tags
-	// When search is cleared, go back to showing graphs for selected category/tag
-	if (!SearchText.IsEmpty())
-	{
-		// Load all graphs from all tags
-		if (GraphsList.IsValid())
-		{
-			UN2CTagManager& TagManager = UN2CTagManager::Get();
-			const TArray<FN2CTaggedBlueprintGraph>& AllTaggedGraphs = TagManager.GetAllTags();
-
-			TArray<FN2CTagInfo> AllTagInfos;
-			for (const FN2CTaggedBlueprintGraph& Graph : AllTaggedGraphs)
-			{
-				FN2CTagInfo Info = FN2CTagInfo::FromTaggedGraph(Graph);
-				AllTagInfos.Add(Info);
-			}
-
-			GraphsList->SetGraphs(AllTagInfos);
-			GraphsList->SetHeaderPath(TEXT("Search Results"), TEXT(""));
-			GraphsList->SetSearchFilter(SearchText);
-		}
-	}
-	else
-	{
-		// Search cleared - go back to selection-based view
-		UpdateGraphsList();
-		if (GraphsList.IsValid())
-		{
-			GraphsList->SetSearchFilter(SearchText);
-		}
-	}
+	UpdateGraphsList();
 }
 
 FReply SN2CTagManager::HandleBatchTranslateClicked()
@@ -612,47 +628,57 @@ void SN2CTagManager::UpdateGraphsList()
 		return;
 	}
 
-	TSharedPtr<FN2CTreeItem> SelectedItem = CategoryTree->GetSelectedItem();
-	if (!SelectedItem.IsValid())
+	// Which view: a search across all tags, the tree's category or tag (narrowed by a search, if any), or a prompt
+	const TSharedPtr<FN2CTreeItem> SelectedItem = CategoryTree->GetSelectedItem();
+	EN2CGraphsListView View = EN2CGraphsListView::Prompt;
+	FString Category;
+	FString TagName;
+	if (!CurrentSearchFilter.IsEmpty() && (!bSearchScopedToTree || !SelectedItem.IsValid()))
 	{
-		GraphsList->SetGraphs(TArray<FN2CTagInfo>());
-		GraphsList->SetHeaderPath(TEXT(""), TEXT(""));
-		return;
+		View = EN2CGraphsListView::Search;
+	}
+	else if (SelectedItem.IsValid() && SelectedItem->IsCategory())
+	{
+		View = EN2CGraphsListView::Category;
+		Category = SelectedItem->Name;
+	}
+	else if (SelectedItem.IsValid())
+	{
+		View = EN2CGraphsListView::Tag;
+		Category = SelectedItem->Category;
+		TagName = SelectedItem->Name;
 	}
 
-	UN2CTagManager& TagManager = UN2CTagManager::Get();
+	// One entry per (graph, tag) in the view; the list shows each graph once (FString == ignores case)
 	TArray<FN2CTagInfo> TagInfos;
-
-	if (SelectedItem->IsCategory())
+	if (View != EN2CGraphsListView::Prompt)
 	{
-		// Get all graphs in category
-		TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.GetTagsInCategory(SelectedItem->Name);
-		for (const FN2CTaggedBlueprintGraph& Graph : TaggedGraphs)
+		for (const FN2CTaggedBlueprintGraph& Graph : GetTags())
 		{
-			FN2CTagInfo Info = FN2CTagInfo::FromTaggedGraph(Graph);
-			TagInfos.Add(Info);
+			const FString GraphCategory = FN2CTagEntry::NormalizeCategory(Graph.Category);
+			const bool bInView = View == EN2CGraphsListView::Search
+				|| (View == EN2CGraphsListView::Category && GraphCategory == Category)
+				|| (View == EN2CGraphsListView::Tag && GraphCategory == Category && Graph.Tag == TagName);
+			if (bInView)
+			{
+				TagInfos.Add(FN2CTagInfo::FromTaggedGraph(Graph));
+			}
 		}
-		GraphsList->SetHeaderPath(SelectedItem->Name, TEXT(""));
-	}
-	else
-	{
-		// Get all graphs with this tag
-		TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.GetGraphsWithTag(SelectedItem->Name, SelectedItem->Category);
-		for (const FN2CTaggedBlueprintGraph& Graph : TaggedGraphs)
-		{
-			FN2CTagInfo Info = FN2CTagInfo::FromTaggedGraph(Graph);
-			TagInfos.Add(Info);
-		}
-		GraphsList->SetHeaderPath(SelectedItem->Category, SelectedItem->Name);
 	}
 
-	GraphsList->SetGraphs(TagInfos);
+	// A refresh of the view already shown (after a batch, a tag change, a search keystroke) keeps the checked graphs
+	const FString ListView = FString::Printf(TEXT("%d|%s|%s"), static_cast<int32>(View), *Category, *TagName);
+	const bool bSameView = ListView.Equals(LastListView, ESearchCase::CaseSensitive);
+	LastListView = ListView;
+
+	GraphsList->SetView(View, Category, TagName);
+	GraphsList->SetSearchFilter(CurrentSearchFilter);
+	GraphsList->SetGraphs(TagInfos, bSameView);
 	UpdateSelectionDisplay();
 
-	// Clear context visualizer when graph list changes (selection is cleared)
 	if (ContextVisualizer.IsValid())
 	{
-		ContextVisualizer->UpdateForSelection(TArray<FN2CTagInfo>());
+		ContextVisualizer->UpdateForSelection(GetSelectedGraphs());
 	}
 }
 

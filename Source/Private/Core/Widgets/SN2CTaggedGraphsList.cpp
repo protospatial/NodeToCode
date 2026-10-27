@@ -3,6 +3,8 @@
 #include "Core/Widgets/SN2CTaggedGraphsList.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Core/N2CGraphStateManager.h"
+#include "Core/N2CGraphStateTypes.h"
+#include "Widgets/SOverlay.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -85,7 +87,7 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 			.Padding(FN2CSpacing::XS)
 			[
 				SAssignNew(HeaderPathText, STextBlock)
-				.Text(LOCTEXT("SelectTagPrompt", "Select a category or tag"))
+				.Text(GetHeaderText())
 				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 			]
 		]
@@ -97,26 +99,93 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 			.Variant(EN2CPanelVariant::Light)
 			.Padding(0)
 			[
-				SAssignNew(ListView, SListView<TSharedPtr<FN2CGraphListItem>>)
-				.ListItemsSource(&FilteredItems)
-				.OnGenerateRow(this, &SN2CTaggedGraphsList::OnGenerateRow)
-				.SelectionMode(ESelectionMode::None) // We handle selection via checkboxes
-				.HeaderRow(HeaderRow)
+				SNew(SOverlay)
+				+ SOverlay::Slot()
+				[
+					SAssignNew(ListView, SListView<TSharedPtr<FN2CGraphListItem>>)
+					.ListItemsSource(&FilteredItems)
+					.OnGenerateRow(this, &SN2CTaggedGraphsList::OnGenerateRow)
+					.SelectionMode(ESelectionMode::None) // We handle selection via checkboxes
+					.HeaderRow(HeaderRow)
+				]
+				// Says why the list is empty: nothing selected, or no graph matches
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				.Padding(FN2CSpacing::MD)
+				[
+					SNew(STextBlock)
+					.Text(this, &SN2CTaggedGraphsList::GetEmptyText)
+					.Visibility_Lambda([this]()
+					{
+						return FilteredItems.Num() == 0 ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					})
+					.AutoWrapText(true)
+					.Justification(ETextJustify::Center)
+					.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
+				]
 			]
 		]
 	];
 }
 
-void SN2CTaggedGraphsList::SetGraphs(const TArray<FN2CTagInfo>& InTagInfos)
+FString SN2CTaggedGraphsList::GetGraphKey(const FN2CTagInfo& Info)
 {
+	const FN2CGraphKey Key = FN2CGraphKey::FromStrings(Info.BlueprintPath, Info.GraphGuid);
+	return Key.IsValid() ? Key.ToString() : Info.BlueprintPath + TEXT(":") + Info.GraphGuid;
+}
+
+TArray<FN2CTagInfo> SN2CTaggedGraphsList::UniqueGraphs(const TArray<FN2CTagInfo>& Infos)
+{
+	TArray<FN2CTagInfo> Unique;
+	TSet<FString> Seen;
+	for (const FN2CTagInfo& Info : Infos)
+	{
+		bool bAlreadySeen = false;
+		Seen.Add(GetGraphKey(Info), &bAlreadySeen);
+		if (!bAlreadySeen)
+		{
+			Unique.Add(Info);
+		}
+	}
+	return Unique;
+}
+
+void SN2CTaggedGraphsList::SetGraphs(const TArray<FN2CTagInfo>& InTagInfos, bool bKeepChecks)
+{
+	// The graphs checked before, so a refresh of the same view (after a batch, a tag change) keeps them checked
+	TSet<FString> Checked;
+	if (bKeepChecks)
+	{
+		for (const TSharedPtr<FN2CGraphListItem>& Old : AllItems)
+		{
+			if (Old->bIsSelected)
+			{
+				Checked.Add(GetGraphKey(Old->TagInfo));
+			}
+		}
+	}
+
 	AllItems.Empty();
 
+	// One row per graph: the category and search views get one entry per (graph, tag), and a graph listed twice was
+	// translated twice by Select All + Batch Translate (ui-widgets-code-editor-14)
+	TMap<FString, TSharedPtr<FN2CGraphListItem>> ByGraph;
 	for (const FN2CTagInfo& TagInfo : InTagInfos)
 	{
+		const FString GraphKey = GetGraphKey(TagInfo);
+		if (const TSharedPtr<FN2CGraphListItem>* Existing = ByGraph.Find(GraphKey))
+		{
+			(*Existing)->Tags.Add(TagInfo);
+			continue;
+		}
+
 		TSharedPtr<FN2CGraphListItem> Item = MakeShared<FN2CGraphListItem>();
 		Item->TagInfo = TagInfo;
-		Item->bIsSelected = false;
+		Item->Tags.Add(TagInfo);
+		Item->bIsSelected = Checked.Contains(GraphKey);
 		Item->bIsStarred = false;
+		ByGraph.Add(GraphKey, Item);
 
 		// Check if a translation exists for this graph (of this Blueprint: copies share graph GUIDs)
 		const FN2CGraphKey Key = FN2CGraphKey::FromStrings(TagInfo.BlueprintPath, TagInfo.GraphGuid);
@@ -144,26 +213,64 @@ void SN2CTaggedGraphsList::SetGraphs(const TArray<FN2CTagInfo>& InTagInfos)
 	RefreshTokenEstimates();
 }
 
-void SN2CTaggedGraphsList::SetHeaderPath(const FString& InCategory, const FString& InTag)
+void SN2CTaggedGraphsList::SetView(EN2CGraphsListView InView, const FString& InCategory, const FString& InTag)
+{
+	View = InView;
+	ViewCategory = InCategory;
+	ViewTag = InTag;
+	UpdateHeader();
+}
+
+FText SN2CTaggedGraphsList::GetHeaderText() const
+{
+	const FText Search = FText::FromString(CurrentSearchFilter);
+	FText Text;
+	switch (View)
+	{
+	case EN2CGraphsListView::Prompt:
+		return LOCTEXT("SelectTagPrompt", "Select a category or tag");
+	case EN2CGraphsListView::Search:
+		return FText::Format(LOCTEXT("SearchHeader", "Search results for \"{0}\""), Search);
+	case EN2CGraphsListView::Category:
+		Text = FText::Format(LOCTEXT("CategoryPathFormat", "Category: {0}"), FText::FromString(ViewCategory));
+		break;
+	case EN2CGraphsListView::Tag:
+		Text = FText::Format(LOCTEXT("TagPathFormat", "{0} > {1}"), FText::FromString(ViewCategory), FText::FromString(ViewTag));
+		break;
+	}
+	// A category or tag picked during a search lists its graphs that match the search
+	return CurrentSearchFilter.IsEmpty()
+		? Text
+		: FText::Format(LOCTEXT("ScopedSearchHeader", "{0}, matching \"{1}\""), Text, Search);
+}
+
+FText SN2CTaggedGraphsList::GetEmptyText() const
+{
+	if (View == EN2CGraphsListView::Prompt)
+	{
+		return LOCTEXT("EmptyPrompt", "Select a category or tag to list its graphs.");
+	}
+	if (!CurrentSearchFilter.IsEmpty())
+	{
+		return FText::Format(LOCTEXT("EmptySearch", "No graphs match \"{0}\"."), FText::FromString(CurrentSearchFilter));
+	}
+	return View == EN2CGraphsListView::Category
+		? LOCTEXT("EmptyCategory", "No graphs in this category.")
+		: LOCTEXT("EmptyTag", "No graphs have this tag.");
+}
+
+void SN2CTaggedGraphsList::UpdateHeader()
 {
 	if (HeaderPathText.IsValid())
 	{
-		if (InTag.IsEmpty())
-		{
-			// Category only
-			HeaderPathText->SetText(FText::Format(LOCTEXT("CategoryPathFormat", "Category: {0}"), FText::FromString(InCategory)));
-		}
-		else
-		{
-			// Category > Tag
-			HeaderPathText->SetText(FText::Format(LOCTEXT("TagPathFormat", "{0} > {1}"), FText::FromString(InCategory), FText::FromString(InTag)));
-		}
+		HeaderPathText->SetText(GetHeaderText());
 	}
 }
 
 void SN2CTaggedGraphsList::SetSearchFilter(const FString& SearchText)
 {
 	CurrentSearchFilter = SearchText;
+	UpdateHeader();
 	ApplyFilters();
 }
 
@@ -177,7 +284,21 @@ TArray<FN2CTagInfo> SN2CTaggedGraphsList::GetSelectedGraphs() const
 			Selected.Add(Item->TagInfo);
 		}
 	}
-	return Selected;
+	// Rows are one per graph already; a batch must never get a graph twice
+	return UniqueGraphs(Selected);
+}
+
+TArray<FN2CTagInfo> SN2CTaggedGraphsList::GetSelectedTagEntries() const
+{
+	TArray<FN2CTagInfo> Entries;
+	for (const TSharedPtr<FN2CGraphListItem>& Item : AllItems)
+	{
+		if (Item->bIsSelected)
+		{
+			Entries.Append(Item->Tags);
+		}
+	}
+	return Entries;
 }
 
 int32 SN2CTaggedGraphsList::GetSelectedCount() const
@@ -373,9 +494,15 @@ bool SN2CTaggedGraphsList::ItemPassesFilters(const TSharedPtr<FN2CGraphListItem>
 	// Search filter
 	if (!CurrentSearchFilter.IsEmpty())
 	{
-		bool bMatchesGraph = Item->TagInfo.GraphName.Contains(CurrentSearchFilter, ESearchCase::IgnoreCase);
-		bool bMatchesBlueprint = Item->TagInfo.BlueprintPath.Contains(CurrentSearchFilter, ESearchCase::IgnoreCase);
-		if (!bMatchesGraph && !bMatchesBlueprint)
+		const bool bMatchesGraph = Item->TagInfo.GraphName.Contains(CurrentSearchFilter, ESearchCase::IgnoreCase);
+		const bool bMatchesBlueprint = Item->TagInfo.BlueprintPath.Contains(CurrentSearchFilter, ESearchCase::IgnoreCase);
+		// The search box says "Search tags or graphs": a graph also matches by one of its tags or their category
+		const bool bMatchesTag = Item->Tags.ContainsByPredicate([this](const FN2CTagInfo& TagEntry)
+		{
+			return TagEntry.Tag.Contains(CurrentSearchFilter, ESearchCase::IgnoreCase)
+				|| TagEntry.Category.Contains(CurrentSearchFilter, ESearchCase::IgnoreCase);
+		});
+		if (!bMatchesGraph && !bMatchesBlueprint && !bMatchesTag)
 		{
 			return false;
 		}

@@ -12,6 +12,15 @@
 // Delegate for when a row's refresh button is clicked
 DECLARE_DELEGATE_OneParam(FOnRowRefreshClicked, TSharedPtr<FN2CGraphListItem>);
 
+/** What the graphs list is showing, for its header and its empty-state text */
+enum class EN2CGraphsListView : uint8
+{
+	Prompt,    // nothing selected
+	Category,  // the graphs in one category
+	Tag,       // the graphs with one tag
+	Search     // the graphs matching the search text, across all tags
+};
+
 /**
  * Slate widget for displaying tagged graphs in a list/table view
  */
@@ -40,8 +49,17 @@ public:
 	/** Destructor - cleans up delegate bindings */
 	virtual ~SN2CTaggedGraphsList();
 
-	/** Set the graphs to display */
-	void SetGraphs(const TArray<FN2CTagInfo>& InTagInfos);
+	/**
+	 * Set the graphs to display: one row per graph (Blueprint and graph GUID), whatever number of tags put it in the
+	 * view. With bKeepChecks, a graph checked before stays checked (a refresh of the same view)
+	 */
+	void SetGraphs(const TArray<FN2CTagInfo>& InTagInfos, bool bKeepChecks = false);
+
+	/** One graph's identity in the list: its Blueprint and graph GUID (copies of a Blueprint share graph GUIDs) */
+	static FString GetGraphKey(const FN2CTagInfo& Info);
+
+	/** Infos with each graph once (the first entry of each), in order */
+	static TArray<FN2CTagInfo> UniqueGraphs(const TArray<FN2CTagInfo>& Infos);
 
 	/** Refresh token estimates for all items using the token estimation service */
 	void RefreshTokenEstimates();
@@ -49,14 +67,26 @@ public:
 	/** Refresh token estimate for a specific item */
 	void RefreshTokenEstimate(TSharedPtr<FN2CGraphListItem> Item);
 
-	/** Set the header path display (e.g., "Category > Tag") */
-	void SetHeaderPath(const FString& InCategory, const FString& InTag);
+	/** Set what the list shows: the header names it and the empty-state text explains an empty list */
+	void SetView(EN2CGraphsListView InView, const FString& InCategory = FString(), const FString& InTag = FString());
+
+	/** The header text shown */
+	FText GetHeaderText() const;
+
+	/** The text shown over an empty list */
+	FText GetEmptyText() const;
+
+	/** The rows shown (after the search filter) */
+	const TArray<TSharedPtr<FN2CGraphListItem>>& GetShownItems() const { return FilteredItems; }
 
 	/** Apply search filter to graphs */
 	void SetSearchFilter(const FString& SearchText);
 
-	/** Get currently selected graphs */
+	/** Get currently selected graphs, each once */
 	TArray<FN2CTagInfo> GetSelectedGraphs() const;
+
+	/** Every (graph, tag) entry of the checked rows: what Remove Selected removes */
+	TArray<FN2CTagInfo> GetSelectedTagEntries() const;
 
 	/** Get count of selected graphs */
 	int32 GetSelectedCount() const;
@@ -124,6 +154,9 @@ private:
 	/** Update selection count display */
 	void UpdateSelectionDisplay();
 
+	/** Set the header text from the view and the search filter */
+	void UpdateHeader();
+
 	// Row widget callbacks
 	/** Handle checkbox change from row widget */
 	void HandleRowCheckboxChanged(TSharedPtr<FN2CGraphListItem> Item);
@@ -160,6 +193,11 @@ private:
 
 	/** Current search filter */
 	FString CurrentSearchFilter;
+
+	/** What the list shows */
+	EN2CGraphsListView View = EN2CGraphsListView::Prompt;
+	FString ViewCategory;
+	FString ViewTag;
 
 	/** Last double-clicked graph */
 	FN2CTagInfo LastDoubleClickedGraph;
