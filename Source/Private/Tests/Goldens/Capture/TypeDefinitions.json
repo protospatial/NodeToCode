@@ -1,0 +1,259 @@
+{
+	"case": "TypeDefinitions",
+	"description": "Function Inspect(Item: S_GoldenInventoryItem, Weapon: S_GoldenWeapon) returns Copy (S_GoldenWeapon) from a Make S_GoldenWeapon fed by Break S_GoldenWeapon. S_GoldenInventoryItem {Label: String, Icon: Texture2D object, OwnerClass: Actor class, Targets: array of Actor objects, Stat: E_GoldenStatType {Health, MaxHealth, Stamina}}; S_GoldenWeapon {Type: E_GoldenWeaponKind {Sword, Bow}, Difficulty: E_GoldenDifficulty {Easy, Normal, Max}}.",
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_TypeDefinitions",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_TypeDefinitions"
+		},
+		"graphs": [
+			{
+				"name": "Inspect",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Inspect",
+						"member_parent": "BP_N2CGolden_TypeDefinitions",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "Item",
+								"type": "Struct",
+								"sub_type": "S_GoldenInventoryItem"
+							},
+							{
+								"id": "P3",
+								"name": "Weapon",
+								"type": "Struct",
+								"sub_type": "S_GoldenWeapon",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "BreakStruct",
+						"class": "K2Node_BreakStruct",
+						"title": "Break S_GoldenWeapon",
+						"member_parent": "<PACKAGE>",
+						"member_name": "S_GoldenWeapon",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "S_GoldenWeapon",
+								"type": "Struct",
+								"sub_type": "S_GoldenWeapon",
+								"connected": true,
+								"is_reference": true,
+								"is_const": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Type_2_<GUID>",
+								"label": "Type",
+								"type": "Enum",
+								"sub_type": "E_GoldenWeaponKind",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "Difficulty_4_<GUID>",
+								"label": "Difficulty",
+								"type": "Enum",
+								"sub_type": "E_GoldenDifficulty",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MakeStruct",
+						"class": "K2Node_MakeStruct",
+						"title": "Make S_GoldenWeapon",
+						"member_parent": "<PACKAGE>",
+						"member_name": "S_GoldenWeapon",
+						"pure": true,
+						"input_pins": [
+							{
+								"id": "P8",
+								"name": "Type_2_<GUID>",
+								"label": "Type",
+								"type": "Enum",
+								"sub_type": "E_GoldenWeaponKind",
+								"default_value": "NewEnumerator0",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "Difficulty_4_<GUID>",
+								"label": "Difficulty",
+								"type": "Enum",
+								"sub_type": "E_GoldenDifficulty",
+								"default_value": "NewEnumerator0",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": "S_GoldenWeapon",
+								"type": "Struct",
+								"sub_type": "S_GoldenWeapon",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "FunctionResult",
+						"class": "K2Node_FunctionResult",
+						"title": "Add Return Node...",
+						"member_parent": "BP_N2CGolden_TypeDefinitions",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "execute",
+								"connected": true
+							},
+							{
+								"id": "P11",
+								"name": "Copy",
+								"type": "Struct",
+								"sub_type": "S_GoldenWeapon",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N4.P10"
+					],
+					"data":
+					{
+						"N1.P3": "N2.P4",
+						"N2.P5": "N3.P8",
+						"N2.P6": "N3.P9",
+						"N3.P7": "N4.P11"
+					}
+				}
+			}
+		],
+		"structs": [
+			{
+				"name": "S_GoldenInventoryItem",
+				"members": [
+					{
+						"name": "Label",
+						"type": "String"
+					},
+					{
+						"name": "Icon",
+						"type": "Object",
+						"type_name": "Texture2D"
+					},
+					{
+						"name": "OwnerClass",
+						"type": "Class",
+						"type_name": "Actor"
+					},
+					{
+						"name": "Targets",
+						"type": "Object",
+						"type_name": "Actor",
+						"is_array": true
+					},
+					{
+						"name": "Stat",
+						"type": "Enum",
+						"type_name": "E_GoldenStatType"
+					}
+				]
+			},
+			{
+				"name": "S_GoldenWeapon",
+				"members": [
+					{
+						"name": "Type",
+						"type": "Enum",
+						"type_name": "E_GoldenWeaponKind"
+					},
+					{
+						"name": "Difficulty",
+						"type": "Enum",
+						"type_name": "E_GoldenDifficulty"
+					}
+				]
+			}
+		],
+		"enums": [
+			{
+				"name": "E_GoldenStatType",
+				"values": [
+					{
+						"name": "Health",
+						"value": 0
+					},
+					{
+						"name": "MaxHealth",
+						"value": 1
+					},
+					{
+						"name": "Stamina",
+						"value": 2
+					}
+				]
+			},
+			{
+				"name": "E_GoldenWeaponKind",
+				"values": [
+					{
+						"name": "Sword",
+						"value": 0
+					},
+					{
+						"name": "Bow",
+						"value": 1
+					}
+				]
+			},
+			{
+				"name": "E_GoldenDifficulty",
+				"values": [
+					{
+						"name": "Easy",
+						"value": 0
+					},
+					{
+						"name": "Normal",
+						"value": 1
+					},
+					{
+						"name": "Max",
+						"value": 2
+					}
+				]
+			}
+		]
+	}
+}

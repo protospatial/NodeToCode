@@ -107,6 +107,12 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* PinValueSubTypeField = TEXT("value_sub_type");
 
 	/**
+	 * A user enum value's number (card 0236, additive): "value" on each entry of an enum's "values", after "comment"
+	 * (UEnum::GetValueByIndex). Every value is listed except the generated "_MAX" entry and values marked Hidden.
+	 */
+	inline constexpr const TCHAR* EnumValueNumberField = TEXT("value");
+
+	/**
 	 * Node details (card 0239, additive), each written only when set, after "output_pins": "bound_to" (a component- or
 	 * actor-bound event's component variable or actor, its "member_name" being the delegate), "net" ("Server",
 	 * "Client" or "Multicast" for a replicated custom event) and "reliable" (true for a reliable RPC), and "timeline"
