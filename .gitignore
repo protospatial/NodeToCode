@@ -94,8 +94,10 @@ __pycache__/
 .aider.input.history
 /Development
 .aider*
-# Agent instructions (CLAUDE.md is local-only, AGENTS.md is tracked)
+# Agent instructions (CLAUDE.md is local-only, AGENTS.md is tracked; AGENTS.local.md holds this machine's
+# UE_SOURCE_PATH, written by Scripts/detect-ue-path.*)
 **/CLAUDE.md
+/AGENTS.local.md
 /.claude
 /.idea
 .mcp.json

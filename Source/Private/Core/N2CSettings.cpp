@@ -1759,7 +1759,17 @@ void UN2CSettings::ResolveRequestModel(EN2CLLMProvider InProvider, const FString
 #undef LOCTEXT_NAMESPACE
 const FN2CCodeEditorColors* UN2CSettings::GetThemeColors(EN2CCodeLanguage Language, const FName& ThemeName) const
 {
-    return CodeEditorTheme.Themes.Find(FName("Unreal Engine"));
+    // A saved config can rename the key or empty the map: highlighting keeps working with what is left (card 0332)
+    if (const FN2CCodeEditorColors* Colors = CodeEditorTheme.Themes.Find(FName("Unreal Engine")))
+    {
+        return Colors;
+    }
+    for (const TPair<FName, FN2CCodeEditorColors>& Theme : CodeEditorTheme.Themes)
+    {
+        return &Theme.Value;
+    }
+    static const FN2CCodeEditorThemes Defaults;
+    return Defaults.Themes.Find(FName("Unreal Engine"));
 }
 
 #undef LOCTEXT_NAMESPACE

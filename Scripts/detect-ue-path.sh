@@ -1,6 +1,7 @@
 #!/bin/bash
 # NodeToCode UE Path Detector (macOS/Linux)
-# Finds Unreal Engine installation and updates AGENTS.md
+# Finds the newest Unreal Engine install and writes its Engine/Source folder to AGENTS.local.md (gitignored) at the
+# repository root, for AI coding agents; the tracked AGENTS.md is not changed. Developer tool, not packaged.
 # Finds Python the same way as launch_bridge.sh: ue_python_finder.py (Content/Python/mcp_bridge) picks the bundled
 # Python of the newest UE install it finds (LauncherInstalled.dat, common folders; any version).
 #   1. Run ue_python_finder.py with python3, falling back to python
@@ -8,7 +9,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/update_agents_ue_path.py"
-FINDER_SCRIPT="$SCRIPT_DIR/../Python/mcp_bridge/ue_python_finder.py"
+FINDER_SCRIPT="$SCRIPT_DIR/../Content/Python/mcp_bridge/ue_python_finder.py"
 
 # Check that the scripts exist
 for script in "$PYTHON_SCRIPT" "$FINDER_SCRIPT"; do
@@ -55,6 +56,6 @@ if [ -z "$PYTHON_EXE" ]; then
     exit 1
 fi
 
-# Run the Python script to update AGENTS.md
+# Run the Python script that writes AGENTS.local.md
 echo "[detect-ue-path] Running UE path detection..."
 exec "$PYTHON_EXE" "$PYTHON_SCRIPT" "$@"

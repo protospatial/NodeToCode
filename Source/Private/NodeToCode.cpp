@@ -2,7 +2,6 @@
 
 #include "NodeToCode.h"
 
-#include <Core/N2CWidgetContainer.h>
 
 #include "HttpModule.h"
 #include "Models/N2CLogging.h"
@@ -214,10 +213,6 @@ void FNodeToCodeModule::ShutdownModule()
     // Drop a queued action-database refresh: its ticker calls into this module
     FN2CMcpBlueprintUtils::CancelPendingActionDatabaseRefresh();
 
-    // Unregister menu extensions
-    UToolMenus::UnRegisterStartupCallback(this);
-    UToolMenus::UnregisterOwner(this);
-
     // Shutdown token estimation service
     FN2CTokenEstimationService::Get().Shutdown();
     FN2CLogger::Get().Log(TEXT("Token estimation service shutdown"), EN2CLogSeverity::Debug);
@@ -234,11 +229,8 @@ void FNodeToCodeModule::ShutdownModule()
     // Shutdown style system
     N2CStyle::Shutdown();
     
-    // Clean up widget container
     if (!GExitPurge)  // Only clean up if not already in exit purge
     {
-        UN2CWidgetContainer::Reset();
-
         // Unloaded without exiting (OnPreExit already did this on exit): save graph state that was marked dirty
         // without a save, and release the rooted singletons
         ShutdownStateManagers();

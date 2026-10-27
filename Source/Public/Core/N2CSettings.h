@@ -59,8 +59,13 @@ struct FN2CCodeEditorThemes
 {
     GENERATED_BODY()
 
-    UPROPERTY(config, EditAnywhere, Category = "Themes", meta = (DisplayName = "Themes",
-        ToolTip = "Collection of color themes for syntax highlighting"))
+    /**
+     * The code editor's colors. One theme, "Unreal Engine", is drawn (UN2CSettings::GetThemeColors); the map is fixed
+     * size in Project Settings so no entry can be added that nothing reads (card 0332). The map type stays so saved
+     * config still loads.
+     */
+    UPROPERTY(config, EditAnywhere, EditFixedSize, Category = "Themes", meta = (DisplayName = "Themes",
+        ToolTip = "The code editor's syntax highlighting colors"))
     TMap<FName, FN2CCodeEditorColors> Themes;
 
     FN2CCodeEditorThemes()
@@ -616,7 +621,10 @@ public:
         meta=(DisplayName="Code Editor Theme"))
     FN2CCodeEditorThemes CodeEditorTheme;
     
-    /** Get theme colors for a specific language and theme name */
+    /**
+     * The code editor's colors (one theme for every language): the "Unreal Engine" entry of CodeEditorTheme, else its
+     * first entry (a renamed key), else the default colors (an emptied map). Never null.
+     */
     const FN2CCodeEditorColors* GetThemeColors(EN2CCodeLanguage Language, const FName& ThemeName) const;
 
     // Begin UObject Interface
