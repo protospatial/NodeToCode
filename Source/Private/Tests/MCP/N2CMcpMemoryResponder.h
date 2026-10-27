@@ -37,6 +37,11 @@ namespace N2CTest
 
 		virtual void Close() override { ++CloseCount; }
 
+		virtual void StreamKeepAlive(const FString& SessionId) override { ++KeepAliveCount; }
+
+		/** A spec sets bClosedByClient to act as a client that closed its stream */
+		virtual bool IsClosedByClient() const override { return bClosedByClient; }
+
 		/** Something was answered: a reply, or a stream that was closed */
 		bool IsAnswered() const { return ReplyCount > 0 || CloseCount > 0; }
 
@@ -49,6 +54,8 @@ namespace N2CTest
 		TArray<FN2CMcpReply> Replies;
 		TArray<FString> Streamed;
 		FString StreamSessionId;
+		int32 KeepAliveCount = 0;
+		bool bClosedByClient = false;
 	};
 
 	/** An inbound POST with a JSON body and the given Accept header (and Mcp-Session-Id when not empty) */

@@ -401,6 +401,9 @@ void FN2CMcpHttpServerManager::StopServer()
 		return;
 	}
 
+	// 2026-07-28 subscriptions/listen streams end gracefully (their completion result), so clients know to reconnect
+	Protocol->CloseSubscriptions();
+
 	// Only this server's routes: HTTPServer's listeners are shared with other plugins (Remote Control, Unreal MCP)
 	UnbindRoutes();
 	RemoveDiscoveryFiles();
@@ -691,8 +694,42 @@ namespace N2CMcpHttpTransport
 		{
 			check(IsInGameThread());
 #if N2C_MCP_HTTP_CAN_STREAM
-			const FString Event = FString::Printf(TEXT("event: message\r\ndata: %s\r\n\r\n"), *MessageJson);
-			const FTCHARToUTF8 Utf8(*Event);
+			Write(FString::Printf(TEXT("event: message\r\ndata: %s\r\n\r\n"), *MessageJson), SessionId);
+#else
+			ensureMsgf(false, TEXT("MCP: this engine's HTTPServer cannot stream a response"));
+#endif
+		}
+
+		virtual void StreamKeepAlive(const FString& SessionId) override
+		{
+			check(IsInGameThread());
+#if N2C_MCP_HTTP_CAN_STREAM
+			// An SSE comment (clients ignore it). Writing something is also how a closed client is noticed: the send
+			// fails, the connection is destroyed and releases the body queue (IsClosedByClient)
+			if (!BodyComplete.IsValid() || !BodyComplete->Load())
+			{
+				Write(TEXT(": keep-alive\r\n\r\n"), SessionId);
+			}
+#endif
+		}
+
+		virtual bool IsClosedByClient() const override
+		{
+#if N2C_MCP_HTTP_CAN_STREAM
+			// HTTPServer owns the response (and so a reference to the queue) until the connection is destroyed; once
+			// only this responder holds the queue while the body is not complete, the client went away
+			return BodyQueue.IsValid() && BodyQueue.GetSharedReferenceCount() == 1 && BodyComplete.IsValid() && !BodyComplete->Load();
+#else
+			return false;
+#endif
+		}
+
+	private:
+#if N2C_MCP_HTTP_CAN_STREAM
+		/** Queues Text on the stream, opening it (200, text/event-stream) with Text as its first bytes */
+		void Write(const FString& Text, const FString& SessionId)
+		{
+			const FTCHARToUTF8 Utf8(*Text);
 			TArray<uint8> Bytes;
 			Bytes.Append(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
 			if (BodyQueue.IsValid())
@@ -721,11 +758,10 @@ namespace N2CMcpHttpTransport
 			Response->StreamingBodyComplete = BodyComplete;
 			Response->Flags = EHttpServerResponseFlags::CloseAfterWrite;
 			OnComplete(MoveTemp(Response));
-#else
-			ensureMsgf(false, TEXT("MCP: this engine's HTTPServer cannot stream a response"));
-#endif
 		}
+#endif
 
+	public:
 		virtual void Close() override
 		{
 			check(IsInGameThread());
