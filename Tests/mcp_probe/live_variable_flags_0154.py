@@ -13,9 +13,10 @@ folder, opens it, and adds a function N2CFlagsFn with an int input Target (creat
    read-only, replicated, category Stats, a tooltip; Ammo: int, repnotify; Plain: bool, no flags), opens N2CFlagsFn and
    creates a local variable named Target, then reads the members back with get-blueprint-member-variables.
 2. The probe reads them back itself (get-blueprint-member-variables, get-blueprint-function-local-variables) and checks
-   the flags on the description: Health replicated, read-only, instance editable (flags.private false, which is
-   CPF_DisableEditOnInstance), category and tooltip; Ammo replicated with repNotify and repNotifyFunc OnRep_Ammo; Plain
-   not instance editable (flags.private true) and not replicated; the local renamed away from the parameter Target.
+   the flags on the description: Health replicated, read-only, instance editable (flags.instanceEditable true:
+   CPF_Edit without CPF_DisableEditOnInstance, card 0283) and not private (no BlueprintPrivate metadata), category and
+   tooltip; Ammo replicated with repNotify and repNotifyFunc OnRep_Ammo; Plain not instance editable
+   (flags.instanceEditable false), not private and not replicated; the local renamed away from the parameter Target.
 3. The package is dirty. Undo through the editor's TRANSACTION UNDO console command (run-python): the first undo
    removes the local, the second removes Plain, Health and Ammo keep their flags.
 
@@ -82,7 +83,7 @@ CLI_PROMPT = (
     '5) create-local-variable with variableName "Target", typeIdentifier "int". '
     '6) get-blueprint-member-variables. '
     'Reply with only a JSON object {"local": <actualName from the create-local-variable result>, "members": '
-    '{<name>: {"replicated": bool, "repNotifyFunc": string or null, "blueprintReadOnly": bool, "private": bool, '
+    '{<name>: {"replicated": bool, "repNotifyFunc": string or null, "blueprintReadOnly": bool, "instanceEditable": bool, "private": bool, '
     '"category": string}} for Health, Ammo and Plain from the get-blueprint-member-variables result}.' % FUNCTION)
 
 
@@ -227,11 +228,13 @@ def main():
             report['members'] = {k: summary(members.get(k)) for k in ('Health', 'Ammo', 'Plain')}
             h, a, pl = (report['members'][k] or {} for k in ('Health', 'Ammo', 'Plain'))
             checks['Health: replicated, read-only, instance editable'] = h.get('replicated') is True and \
-                h.get('blueprintReadOnly') is True and h.get('private') is False and h.get('repNotify') is False
+                h.get('blueprintReadOnly') is True and h.get('instanceEditable') is True and h.get('private') is False \
+                and h.get('repNotify') is False
             checks['Health: category and tooltip'] = h.get('category') == 'Stats' and h.get('tooltip') == 'Hit points left'
             checks['Ammo: repnotify with OnRep_Ammo'] = a.get('replicated') is True and a.get('repNotify') is True and \
                 a.get('repNotifyFunc') == 'OnRep_Ammo'
-            checks['Plain: not instance editable, not replicated'] = pl.get('private') is True and pl.get('replicated') is False
+            checks['Plain: not instance editable, not private, not replicated'] = pl.get('instanceEditable') is False \
+                and pl.get('private') is False and pl.get('replicated') is False
 
             status, text, err = p.tool('open-blueprint-function', {'graphName': FUNCTION})
             local_names, text = p.locals()
@@ -254,7 +257,7 @@ def main():
             checks['undo 2 removes Plain'] = 'Plain' not in members_after_undo2
             h2 = summary(members_after_undo2.get('Health')) or {}
             checks['undo 2 leaves Health with its flags'] = h2.get('replicated') is True and h2.get('blueprintReadOnly') is True \
-                and h2.get('private') is False
+                and h2.get('instanceEditable') is True and h2.get('private') is False
 
             data, text = p.python(CLEANUP_PY % {'folder': folder, 'name': NAME})
             report['cleanup'] = data or text

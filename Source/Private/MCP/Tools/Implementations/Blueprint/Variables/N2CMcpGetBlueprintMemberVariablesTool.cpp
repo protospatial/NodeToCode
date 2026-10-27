@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpVariableDefaults.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -71,7 +72,7 @@ FMcpToolCallResult FN2CMcpGetBlueprintMemberVariablesTool::Execute(const TShared
         // Process each member variable
         for (const FBPVariableDescription& VarDesc : FocusedBlueprint->NewVariables)
         {
-            TSharedPtr<FJsonObject> VarInfo = BuildVariableInfo(VarDesc, VarDesc.VarName);
+            TSharedPtr<FJsonObject> VarInfo = BuildVariableInfo(FocusedBlueprint, VarDesc);
             if (VarInfo.IsValid())
             {
                 VariablesArray.Add(MakeShareable(new FJsonValueObject(VarInfo)));
@@ -110,35 +111,111 @@ FMcpToolCallResult FN2CMcpGetBlueprintMemberVariablesTool::Execute(const TShared
     });
 }
 
+namespace N2CMcpGetMemberVariablesPrivate
+{
+    /** The type name of one terminal type: a real pin by its sub-category (float or double), as UE5 makes them */
+    FString CategoryName(const FName Category, const FName SubCategory)
+    {
+        if (Category == UEdGraphSchema_K2::PC_Real)
+            return SubCategory == UEdGraphSchema_K2::PC_Float ? TEXT("float") : TEXT("double");
+        if (Category == UEdGraphSchema_K2::PC_Boolean)
+            return TEXT("bool");
+        if (Category == UEdGraphSchema_K2::PC_Byte)
+            return TEXT("byte");
+        if (Category == UEdGraphSchema_K2::PC_Int)
+            return TEXT("int");
+        if (Category == UEdGraphSchema_K2::PC_Int64)
+            return TEXT("int64");
+        if (Category == UEdGraphSchema_K2::PC_Float)
+            return TEXT("float");
+        if (Category == UEdGraphSchema_K2::PC_Double)
+            return TEXT("double");
+        if (Category == UEdGraphSchema_K2::PC_Name)
+            return TEXT("name");
+        if (Category == UEdGraphSchema_K2::PC_String)
+            return TEXT("string");
+        if (Category == UEdGraphSchema_K2::PC_Text)
+            return TEXT("text");
+        if (Category == UEdGraphSchema_K2::PC_Struct)
+            return TEXT("struct");
+        if (Category == UEdGraphSchema_K2::PC_Object)
+            return TEXT("object");
+        if (Category == UEdGraphSchema_K2::PC_Class)
+            return TEXT("class");
+        if (Category == UEdGraphSchema_K2::PC_SoftObject)
+            return TEXT("softobject");
+        if (Category == UEdGraphSchema_K2::PC_SoftClass)
+            return TEXT("softclass");
+        if (Category == UEdGraphSchema_K2::PC_Interface)
+            return TEXT("interface");
+        if (Category == UEdGraphSchema_K2::PC_Enum)
+            return TEXT("enum");
+        if (Category == UEdGraphSchema_K2::PC_Wildcard)
+            return TEXT("wildcard");
+        return TEXT("unknown");
+    }
+
+    /** category, subCategory, typeObject and typeName of one terminal type into Out */
+    void WriteTerminal(FJsonObject& Out, const FName Category, const FName SubCategory, const UObject* Object)
+    {
+        Out.SetStringField(TEXT("category"), CategoryName(Category, SubCategory));
+        if (!SubCategory.IsNone())
+        {
+            Out.SetStringField(TEXT("subCategory"), SubCategory.ToString());
+        }
+        if (Object)
+        {
+            Out.SetStringField(TEXT("typeObject"), Object->GetPathName());
+            Out.SetStringField(TEXT("typeName"), Object->GetName());
+        }
+    }
+
+    /** The terminal type as it reads in a type string: the class, struct or enum name, else the category */
+    FString TerminalDisplay(const FName Category, const FName SubCategory, const UObject* Object)
+    {
+        return Object ? Object->GetName() : CategoryName(Category, SubCategory);
+    }
+}
+
 TSharedPtr<FJsonObject> FN2CMcpGetBlueprintMemberVariablesTool::BuildVariableInfo(
-    const FBPVariableDescription& VarDesc, FName VariableName) const
+    const UBlueprint* Blueprint, const FBPVariableDescription& VarDesc) const
 {
     TSharedPtr<FJsonObject> VarInfo = MakeShareable(new FJsonObject);
-    
+
     // Basic info
-    VarInfo->SetStringField(TEXT("name"), VariableName.ToString());
+    VarInfo->SetStringField(TEXT("name"), VarDesc.VarName.ToString());
     VarInfo->SetStringField(TEXT("category"), VarDesc.Category.ToString());
     VarInfo->SetStringField(TEXT("friendlyName"), VarDesc.FriendlyName);
-    VarInfo->SetStringField(TEXT("defaultValue"), VarDesc.DefaultValue);
+
+    // The default lives on the class defaults: a full compile moves the description's DefaultValue there and empties
+    // it. The description's value only until the class has the variable (card 0283)
+    FString DefaultValue;
+    if (!FN2CMcpVariableDefaults::ReadMemberDefault(Blueprint, VarDesc.VarName, DefaultValue))
+    {
+        DefaultValue = VarDesc.DefaultValue;
+    }
+    VarInfo->SetStringField(TEXT("defaultValue"), DefaultValue);
     VarInfo->SetStringField(TEXT("guid"), VarDesc.VarGuid.ToString());
-    
+
     // Type information
     TSharedPtr<FJsonObject> TypeInfo = PinTypeToJson(VarDesc.VarType);
     VarInfo->SetObjectField(TEXT("type"), TypeInfo);
-    
-    // Property flags
+
+    // Property flags. Instance Editable is CPF_Edit without CPF_DisableEditOnInstance (every variable has CPF_Edit);
+    // Private is the BlueprintPrivate metadata, as the details panel reads them (card 0283)
     TSharedPtr<FJsonObject> Flags = MakeShareable(new FJsonObject);
-    Flags->SetBoolField(TEXT("instanceEditable"), (VarDesc.PropertyFlags & CPF_Edit) != 0);
+    Flags->SetBoolField(TEXT("instanceEditable"), (VarDesc.PropertyFlags & CPF_Edit) != 0 && (VarDesc.PropertyFlags & CPF_DisableEditOnInstance) == 0);
     Flags->SetBoolField(TEXT("blueprintVisible"), (VarDesc.PropertyFlags & CPF_BlueprintVisible) != 0);
     Flags->SetBoolField(TEXT("blueprintReadOnly"), (VarDesc.PropertyFlags & CPF_BlueprintReadOnly) != 0);
     Flags->SetBoolField(TEXT("exposeOnSpawn"), (VarDesc.PropertyFlags & CPF_ExposeOnSpawn) != 0);
-    Flags->SetBoolField(TEXT("private"), (VarDesc.PropertyFlags & CPF_DisableEditOnInstance) != 0);
+    Flags->SetBoolField(TEXT("private"), VarDesc.HasMetaData(FBlueprintMetadata::MD_Private)
+        && VarDesc.GetMetaData(FBlueprintMetadata::MD_Private).ToBool());
     Flags->SetBoolField(TEXT("transient"), (VarDesc.PropertyFlags & CPF_Transient) != 0);
     Flags->SetBoolField(TEXT("saveGame"), (VarDesc.PropertyFlags & CPF_SaveGame) != 0);
     Flags->SetBoolField(TEXT("advancedDisplay"), (VarDesc.PropertyFlags & CPF_AdvancedDisplay) != 0);
     Flags->SetBoolField(TEXT("deprecated"), (VarDesc.PropertyFlags & CPF_Deprecated) != 0);
     Flags->SetBoolField(TEXT("config"), (VarDesc.PropertyFlags & CPF_Config) != 0);
-    
+
     // Replication flags
     TSharedPtr<FJsonObject> Replication = MakeShareable(new FJsonObject);
     Replication->SetBoolField(TEXT("replicated"), (VarDesc.PropertyFlags & CPF_Net) != 0);
@@ -147,121 +224,38 @@ TSharedPtr<FJsonObject> FN2CMcpGetBlueprintMemberVariablesTool::BuildVariableInf
     {
         Replication->SetStringField(TEXT("repNotifyFunc"), VarDesc.RepNotifyFunc.ToString());
     }
-    
+
     Flags->SetObjectField(TEXT("replication"), Replication);
     VarInfo->SetObjectField(TEXT("flags"), Flags);
-    
+
     // Metadata
     TSharedPtr<FJsonObject> Metadata = MakeShareable(new FJsonObject);
-    
+
     // Add known metadata
     for (const auto& MetaPair : VarDesc.MetaDataArray)
     {
         Metadata->SetStringField(MetaPair.DataKey.ToString(), MetaPair.DataValue);
     }
-    
-    VarInfo->SetObjectField(TEXT("metadata"), Metadata);
-    
-    return VarInfo;
-}
 
-TSharedPtr<FJsonObject> FN2CMcpGetBlueprintMemberVariablesTool::ExtractVariableMetadata(
-    const UBlueprint* Blueprint, FName VariableName) const
-{
-    TSharedPtr<FJsonObject> Metadata = MakeShareable(new FJsonObject);
-    
-    // Get common metadata fields
-    FString MetaValue;
-    
-    // Tooltip
-    if (FBlueprintEditorUtils::GetBlueprintVariableMetaData(Blueprint, VariableName, nullptr, TEXT("tooltip"), MetaValue))
-    {
-        Metadata->SetStringField(TEXT("tooltip"), MetaValue);
-    }
-    
-    // Display name
-    if (FBlueprintEditorUtils::GetBlueprintVariableMetaData(Blueprint, VariableName, nullptr, TEXT("DisplayName"), MetaValue))
-    {
-        Metadata->SetStringField(TEXT("DisplayName"), MetaValue);
-    }
-    
-    // Clamp min/max
-    if (FBlueprintEditorUtils::GetBlueprintVariableMetaData(Blueprint, VariableName, nullptr, TEXT("ClampMin"), MetaValue))
-    {
-        Metadata->SetStringField(TEXT("ClampMin"), MetaValue);
-    }
-    if (FBlueprintEditorUtils::GetBlueprintVariableMetaData(Blueprint, VariableName, nullptr, TEXT("ClampMax"), MetaValue))
-    {
-        Metadata->SetStringField(TEXT("ClampMax"), MetaValue);
-    }
-    
-    // Units
-    if (FBlueprintEditorUtils::GetBlueprintVariableMetaData(Blueprint, VariableName, nullptr, TEXT("Units"), MetaValue))
-    {
-        Metadata->SetStringField(TEXT("Units"), MetaValue);
-    }
-    
-    return Metadata;
+    VarInfo->SetObjectField(TEXT("metadata"), Metadata);
+
+    return VarInfo;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpGetBlueprintMemberVariablesTool::PinTypeToJson(const FEdGraphPinType& PinType) const
 {
+    using namespace N2CMcpGetMemberVariablesPrivate;
     TSharedPtr<FJsonObject> TypeInfo = MakeShareable(new FJsonObject);
-    
-    // Basic type category
-    FString CategoryString;
-    if (PinType.PinCategory == UEdGraphSchema_K2::PC_Boolean)
-        CategoryString = TEXT("bool");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Byte)
-        CategoryString = TEXT("byte");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Int)
-        CategoryString = TEXT("int");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Int64)
-        CategoryString = TEXT("int64");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Float)
-        CategoryString = TEXT("float");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Double)
-        CategoryString = TEXT("double");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Name)
-        CategoryString = TEXT("name");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_String)
-        CategoryString = TEXT("string");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Text)
-        CategoryString = TEXT("text");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Struct)
-        CategoryString = TEXT("struct");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Object)
-        CategoryString = TEXT("object");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Class)
-        CategoryString = TEXT("class");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_SoftObject)
-        CategoryString = TEXT("softobject");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_SoftClass)
-        CategoryString = TEXT("softclass");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Interface)
-        CategoryString = TEXT("interface");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
-        CategoryString = TEXT("enum");
-    else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard)
-        CategoryString = TEXT("wildcard");
-    else
-        CategoryString = TEXT("unknown");
-    
-    TypeInfo->SetStringField(TEXT("category"), CategoryString);
-    
-    // Subcategory (used for objects/structs/enums)
-    if (!PinType.PinSubCategory.IsNone())
-    {
-        TypeInfo->SetStringField(TEXT("subCategory"), PinType.PinSubCategory.ToString());
-    }
-    
-    // Object/struct/enum reference
-    if (PinType.PinSubCategoryObject.IsValid())
-    {
-        TypeInfo->SetStringField(TEXT("typeObject"), PinType.PinSubCategoryObject->GetPathName());
-        TypeInfo->SetStringField(TEXT("typeName"), PinType.PinSubCategoryObject->GetName());
-    }
-    
+
+    // A variable's pin type keeps a map's KEY in its main fields and the value in PinValueType. The top-level fields
+    // describe the element type, which for a map is the value (create-variable's typeIdentifier); the key is keyType
+    // (its mapKeyTypeIdentifier) and the value is also valueType. Card 0283
+    const bool bIsMap = PinType.ContainerType == EPinContainerType::Map;
+    const FName Category = bIsMap ? PinType.PinValueType.TerminalCategory : PinType.PinCategory;
+    const FName SubCategory = bIsMap ? PinType.PinValueType.TerminalSubCategory : PinType.PinSubCategory;
+    const UObject* Object = bIsMap ? PinType.PinValueType.TerminalSubCategoryObject.Get() : PinType.PinSubCategoryObject.Get();
+    WriteTerminal(*TypeInfo, Category, SubCategory, Object);
+
     // Container type
     if (PinType.ContainerType == EPinContainerType::Array)
     {
@@ -271,41 +265,29 @@ TSharedPtr<FJsonObject> FN2CMcpGetBlueprintMemberVariablesTool::PinTypeToJson(co
     {
         TypeInfo->SetStringField(TEXT("container"), TEXT("set"));
     }
-    else if (PinType.ContainerType == EPinContainerType::Map)
+    else if (bIsMap)
     {
         TypeInfo->SetStringField(TEXT("container"), TEXT("map"));
-        
-        // Map key type
+
         TSharedPtr<FJsonObject> KeyType = MakeShareable(new FJsonObject);
-        KeyType->SetStringField(TEXT("category"), PinType.PinValueType.TerminalCategory.ToString());
-        if (!PinType.PinValueType.TerminalSubCategory.IsNone())
-        {
-            KeyType->SetStringField(TEXT("subCategory"), PinType.PinValueType.TerminalSubCategory.ToString());
-        }
-        if (PinType.PinValueType.TerminalSubCategoryObject.IsValid())
-        {
-            KeyType->SetStringField(TEXT("typeObject"), PinType.PinValueType.TerminalSubCategoryObject->GetPathName());
-            KeyType->SetStringField(TEXT("typeName"), PinType.PinValueType.TerminalSubCategoryObject->GetName());
-        }
+        WriteTerminal(*KeyType, PinType.PinCategory, PinType.PinSubCategory, PinType.PinSubCategoryObject.Get());
         TypeInfo->SetObjectField(TEXT("keyType"), KeyType);
+
+        TSharedPtr<FJsonObject> ValueType = MakeShareable(new FJsonObject);
+        WriteTerminal(*ValueType, Category, SubCategory, Object);
+        TypeInfo->SetObjectField(TEXT("valueType"), ValueType);
     }
     else
     {
         TypeInfo->SetStringField(TEXT("container"), TEXT("none"));
     }
-    
+
     // Pass-by-reference
     TypeInfo->SetBoolField(TEXT("isReference"), PinType.bIsReference);
     TypeInfo->SetBoolField(TEXT("isConst"), PinType.bIsConst);
-    
+
     // Build a human-readable type string
-    FString TypeString = CategoryString;
-    if (PinType.PinSubCategoryObject.IsValid())
-    {
-        TypeString = PinType.PinSubCategoryObject->GetName();
-    }
-    
-    // Add container prefix
+    FString TypeString = TerminalDisplay(Category, SubCategory, Object);
     if (PinType.ContainerType == EPinContainerType::Array)
     {
         TypeString = FString::Printf(TEXT("TArray<%s>"), *TypeString);
@@ -314,17 +296,13 @@ TSharedPtr<FJsonObject> FN2CMcpGetBlueprintMemberVariablesTool::PinTypeToJson(co
     {
         TypeString = FString::Printf(TEXT("TSet<%s>"), *TypeString);
     }
-    else if (PinType.ContainerType == EPinContainerType::Map)
+    else if (bIsMap)
     {
-        FString KeyTypeString = TEXT("?");
-        if (!PinType.PinValueType.TerminalCategory.IsNone())
-        {
-            KeyTypeString = PinType.PinValueType.TerminalCategory.ToString();
-        }
-        TypeString = FString::Printf(TEXT("TMap<%s, %s>"), *KeyTypeString, *TypeString);
+        TypeString = FString::Printf(TEXT("TMap<%s, %s>"),
+            *TerminalDisplay(PinType.PinCategory, PinType.PinSubCategory, PinType.PinSubCategoryObject.Get()), *TypeString);
     }
-    
+
     TypeInfo->SetStringField(TEXT("displayString"), TypeString);
-    
+
     return TypeInfo;
 }

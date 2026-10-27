@@ -22,22 +22,15 @@ public:
 private:
     /**
      * Builds a JSON object containing information about a Blueprint variable
+     * @param Blueprint The Blueprint that declares the variable (its class defaults hold the default value)
      * @param VarDesc The variable description from the Blueprint
-     * @param VariableName The name of the variable
      * @return JSON object with variable details
      */
-    TSharedPtr<FJsonObject> BuildVariableInfo(const struct FBPVariableDescription& VarDesc, FName VariableName) const;
+    TSharedPtr<FJsonObject> BuildVariableInfo(const class UBlueprint* Blueprint, const struct FBPVariableDescription& VarDesc) const;
     
     /**
-     * Extracts metadata values for a variable
-     * @param Blueprint The Blueprint containing the variable
-     * @param VariableName The name of the variable
-     * @return JSON object containing metadata key-value pairs
-     */
-    TSharedPtr<FJsonObject> ExtractVariableMetadata(const class UBlueprint* Blueprint, FName VariableName) const;
-    
-    /**
-     * Converts pin type information to a JSON object
+     * Converts pin type information to a JSON object. The top-level fields describe the element type (for a map, its
+     * value: what create-variable's typeIdentifier takes); a map also has keyType and valueType (card 0283)
      * @param PinType The pin type to convert
      * @return JSON object with type information
      */

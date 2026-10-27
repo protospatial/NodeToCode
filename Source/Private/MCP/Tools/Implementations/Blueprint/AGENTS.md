@@ -88,8 +88,8 @@ takes the path of the asset it creates.
   `Graph/AGENTS.md`). A failed compile does not make the call an error. `create-comment-node` only dirties the
   package, and read tools compile nothing. `compile-blueprint` compiles on request and reports in its own fields.
 - **Undo:** not every operation is an undo step. Each folder's `AGENTS.md` says which tools open a transaction;
-  creating an asset (`create-blueprint-class`) and the Content Browser operations are not undoable, and undoing
-  `set-member-variable-default-value` misses the class default object until card 0283.
+  creating an asset (`create-blueprint-class`) and the Content Browser operations are not undoable.
+  `set-member-variable-default-value` writes the class default object in one undo step and compiles nothing (card 0283).
 - **Save:** nothing is saved to disk except by `save-blueprint`.
 
 ## Integration with NodeToCode

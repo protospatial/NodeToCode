@@ -74,8 +74,6 @@ namespace N2CVariableToolsSpec
 
 	static const FName PC_Bool = UEdGraphSchema_K2::PC_Boolean;
 
-	static const TCHAR* const Map0283 = TEXT("mcp-tools-variables-8 (card 0283): get-blueprint-member-variables writes a map's key as its value and the value as keyType");
-	static const TCHAR* const Real0283 = TEXT("mcp-tools-variables-8 (card 0283): get-blueprint-member-variables reports float and double (PC_Real) as category 'unknown'");
 	static const TCHAR* const Sub0292 = TEXT("mcp-tools-variables-15 (card 0292): create-variable has no sub-type argument, so a class or soft reference to a given class cannot be asked for");
 
 	static TArray<FCase> Cases()
@@ -125,7 +123,6 @@ namespace N2CVariableToolsSpec
 			Case.Key = Key;
 			Case.Expected = ExpectedKey;
 			Case.ExpectedValue = ExpectedValue;
-			Case.ReadBackDefect = Map0283;
 			return Case;
 		};
 
@@ -134,8 +131,8 @@ namespace N2CVariableToolsSpec
 		Add(TEXT("int"), TEXT("int"), { Int }, TEXT("42"));
 		Add(TEXT("int64"), TEXT("int64"), { UEdGraphSchema_K2::PC_Int64 }, TEXT("9000000000"));
 		Add(TEXT("byte"), TEXT("uint8"), { Byte }, TEXT("7"));
-		Add(TEXT("float"), TEXT("float"), { Real, UEdGraphSchema_K2::PC_Float }, TEXT("1.5")).ReadBackDefect = Real0283;
-		Add(TEXT("double"), TEXT("double"), { Real, UEdGraphSchema_K2::PC_Double }, TEXT("2.25")).ReadBackDefect = Real0283;
+		Add(TEXT("float"), TEXT("float"), { Real, UEdGraphSchema_K2::PC_Float }, TEXT("1.5"));
+		Add(TEXT("double"), TEXT("double"), { Real, UEdGraphSchema_K2::PC_Double }, TEXT("2.25"));
 		Add(TEXT("string"), TEXT("FString"), { UEdGraphSchema_K2::PC_String }, TEXT("hello"));
 		Add(TEXT("name"), TEXT("FName"), { Name }, TEXT("Alpha"));
 		Add(TEXT("text"), TEXT("FText"), { UEdGraphSchema_K2::PC_Text }, TEXT("Hi"));

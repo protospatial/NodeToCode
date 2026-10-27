@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpVariableDefaults.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -20,7 +21,7 @@ FMcpToolDefinition FN2CMcpSetLocalFunctionVariableDefaultValue::GetDefinition() 
 {
     FMcpToolDefinition Definition(
         TEXT("set-local-function-variable-default-value"),
-        TEXT("Set the default value of a local function variable (like editing in the details panel)")
+        TEXT("Set the default value of a local variable of the focused function (like editing in the details panel). The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default.")
     ,
 
     	N2CMcpToolsets::BlueprintVariable
@@ -54,7 +55,8 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
-        if (!Parser.TryGetRequiredString(TEXT("defaultValue"), DefaultValue, ErrorMsg))
+        // An empty value clears the default (card 0283)
+        if (!Parser.TryGetRequiredString(TEXT("defaultValue"), DefaultValue, ErrorMsg, /*bAllowEmpty*/ true))
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
@@ -88,6 +90,24 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
             );
         }
         
+        // Parsed against the skeleton function's property before anything changes; the stored text is what the
+        // editor stores for that value (card 0283)
+        UEdGraph* FunctionGraph = FN2CMcpVariableUtils::GetFunctionGraph(FocusedGraph);
+        const FName LocalName = LocalVarDesc->VarName;
+        FString StoredValue;
+        FString ParseError;
+        if (!FN2CMcpVariableDefaults::PrepareLocalDefault(FocusedBlueprint, FunctionGraph, FunctionEntryNode, LocalName, DefaultValue, StoredValue, ParseError))
+        {
+            return FMcpToolCallResult::CreateErrorResult(
+                FString::Printf(TEXT("Invalid default value for local variable '%s': %s"), *VariableName, *ParseError));
+        }
+        // PrepareLocalDefault may have compiled: find the description again
+        LocalVarDesc = FN2CMcpVariableUtils::FindLocalVariable(FunctionEntryNode, LocalName.ToString());
+        if (!LocalVarDesc)
+        {
+            return FMcpToolCallResult::CreateErrorResult(FString::Printf(TEXT("Local variable '%s' not found after compiling"), *VariableName));
+        }
+        
         // Create a transaction for undo/redo
         TOptional<FScopedTransaction> Transaction(InPlace, NSLOCTEXT("MCP", "SetLocalVariableDefaultValue", "Set Local Variable Default Value"));
         FunctionEntryNode->Modify();
@@ -97,7 +117,7 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         FString OldValue = LocalVarDesc->DefaultValue;
         
         // Set the new default value
-        LocalVarDesc->DefaultValue = DefaultValue;
+        LocalVarDesc->DefaultValue = StoredValue;
         
         // Update the function variable cache to ensure the default value is properly applied
         FunctionEntryNode->RefreshFunctionVariableCache();
@@ -120,7 +140,7 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         {
             Result->SetStringField(TEXT("message"), 
                 FString::Printf(TEXT("Successfully set default value for local variable '%s' from '%s' to '%s'"), 
-                    *VariableName, *OldValue, *DefaultValue));
+                    *VariableName, *OldValue, *StoredValue));
         }
         else
         {
@@ -132,7 +152,7 @@ FMcpToolCallResult FN2CMcpSetLocalFunctionVariableDefaultValue::Execute(const TS
         Result->SetStringField(TEXT("variableName"), VariableName);
         Result->SetStringField(TEXT("functionName"), FN2CMcpVariableUtils::GetFunctionGraph(FocusedGraph)->GetName());
         Result->SetStringField(TEXT("oldValue"), OldValue);
-        Result->SetStringField(TEXT("newValue"), DefaultValue);
+        Result->SetStringField(TEXT("newValue"), StoredValue);
         Result->SetStringField(TEXT("variableType"), LocalVarDesc->VarType.PinCategory.ToString());
         
         if (LocalVarDesc->VarType.IsArray())
