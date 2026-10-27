@@ -236,7 +236,7 @@ BEGIN_DEFINE_SPEC(FN2CRequestLifecycleSpec, "NodeToCode.LLM.RequestLifecycle", N
 
 	static FN2CLLMRequestHandleRef Send(const TSharedRef<FObserved>& Observed)
 	{
-		return UN2CLLMModule::Get()->ProcessN2CJson(TEXT("{\"version\":\"1.0.0\"}"), FN2CBlueprint(),
+		return UN2CLLMModule::Get()->ProcessN2CJson(TEXT("{\"version\":\"1.0.0\"}"),
 			FOnLLMResponseReceived::CreateLambda([Observed](const FString&) { ++Observed->Completions; }),
 			FOnN2CTranslationParsed::CreateLambda([Observed](const FN2CTranslationResponse& Response, bool bSuccess)
 			{
@@ -382,8 +382,6 @@ void FN2CRequestLifecycleSpec::Define()
 
 		It(TEXT("lets a slow answer through when data arrives within the activity timeout"), [this]()
 		{
-			// The request carries an empty capture: saving it logs that it has no name, which is not what this checks
-			AddExpectedError(TEXT("Missing Blueprint name"), EAutomationExpectedErrorFlags::Contains, 0);
 			FStubProvider Stub;
 			if (!TestTrue(TEXT("stub started"), Stub.Start([](int32) { return 1.0; })))
 			{

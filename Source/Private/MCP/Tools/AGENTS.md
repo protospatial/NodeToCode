@@ -273,9 +273,9 @@ export or translation work goes in the unfrozen toolsets.
 
 | Family | Cards |
 |---|---|
-| `BlueprintGraphTools` | 0276 (connect-pins replace and conversion links), 0295 (notification brushes, dead code) |
-| `BlueprintFunctionTools` | 0295; 0280 is done |
-| `BlueprintVariableTools` | 0295, 0274 (targets); 0283 and 0291 are done |
+| `BlueprintGraphTools` | 0276 (connect-pins replace and conversion links); 0295 is done |
+| `BlueprintFunctionTools` | none; 0280 and 0295 are done |
+| `BlueprintVariableTools` | 0274 (targets); 0283, 0291 and 0295 are done |
 | `BlueprintCompileTools` | 0274 (targets); 0290 is done |
 | `BlueprintClassTools` | 0288 (search-blueprint-classes duplicates and counts) |
 | `BlueprintComponentTools` | 0274 (targets) |
@@ -367,12 +367,9 @@ TFuture<FMcpToolCallResult> FN2CMcpMyLongTool::InvokeAsync(const FN2CToolCallCon
         return Future;
     }
 
-    // The translation is saved with the Blueprint the JSON describes (a capture's FN2CCapture::Blueprint, when you have one)
-    FN2CBlueprint Captured;
-    FN2CSerializer::FromJson(Json, Captured);
-
+    // ProcessN2CJson saves nothing: a tool that keeps the result writes it with FN2CTranslationArchive (card 0252)
     Context->ReportProgress(0.1f, TEXT("Sending request..."));
-    State->Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, Captured, FOnLLMResponseReceived::CreateLambda(
+    State->Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, FOnLLMResponseReceived::CreateLambda(
         [State](const FString& Response)
         {
             // Runs on the game thread, at most once, and never after Request->Cancel() succeeded

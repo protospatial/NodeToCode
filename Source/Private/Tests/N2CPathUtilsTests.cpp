@@ -5,7 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Utils/N2CPathUtils.h"
-#include "LLM/N2CLLMModule.h"
+#include "LLM/N2CTranslationArchive.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
 #include "HAL/FileManager.h"
@@ -61,12 +61,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FN2CTranslationSaveContainmentTest, "NodeToCode
 
 bool FN2CTranslationSaveContainmentTest::RunTest(const FString& Parameters)
 {
-	UN2CLLMModule* Module = UN2CLLMModule::Get();
-	if (!TestNotNull(TEXT("LLM module"), Module))
-	{
-		return false;
-	}
-
 	FN2CBlueprint Blueprint;
 	Blueprint.Metadata.Name = TEXT("N2CPathTestFixture");
 	Blueprint.Metadata.BlueprintClass = TEXT("Actor");
@@ -82,7 +76,21 @@ bool FN2CTranslationSaveContainmentTest::RunTest(const FString& Parameters)
 	FN2CTranslationResponse Response;
 	Response.Graphs.Add(Graph);
 
-	Module->SaveTranslationToDisk(Response, Blueprint);
+	// Through the translation archive, the one writer of translation files (card 0252); the run is named after the
+	// fixture, and so is the batch item folder in the second run
+	FN2CTranslationRunInfo Info;
+	Info.Name = Blueprint.Metadata.Name;
+	FN2CArchiveSource Source;
+	Source.Capture = &Blueprint;
+	FN2CArchivedResponse Written;
+	if (const TSharedPtr<FN2CTranslationArchive> Run = FN2CTranslationArchive::BeginRun(Info))
+	{
+		Run->WriteResponse(Response, Source, FString(), Written);
+	}
+	if (const TSharedPtr<FN2CTranslationArchive> Batch = FN2CTranslationArchive::BeginRun(Info))
+	{
+		Batch->WriteResponse(Response, Source, Graph.GraphName, Written);
+	}
 
 	// Nothing named after the evil graph may exist above the translation folders
 	TArray<FString> Escaped;

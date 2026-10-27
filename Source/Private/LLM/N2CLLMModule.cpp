@@ -17,6 +17,7 @@
 #include "LLM/Providers/N2COllamaService.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CPathUtils.h"
+#include "LLM/N2CTranslationArchive.h"
 #include "HAL/PlatformProcess.h"
 #include "UObject/StrongObjectPtr.h"
 
@@ -28,7 +29,6 @@ UN2CLLMModule* UN2CLLMModule::Get()
         Instance = NewObject<UN2CLLMModule>();
         Instance->AddToRoot(); // Prevent garbage collection
         Instance->CurrentStatus = EN2CSystemStatus::Idle;
-        Instance->LatestTranslationPath = TEXT("");
     }
     return Instance;
 }
@@ -217,15 +217,13 @@ void UN2CLLMModule::ResetStatusOnCancel(const FN2CLLMRequestHandleRef& Handle)
 
 FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     const FString& JsonInput,
-    const FN2CBlueprint& CapturedBlueprint,
     const FOnLLMResponseReceived& OnComplete)
 {
-    return ProcessN2CJson(JsonInput, CapturedBlueprint, OnComplete, FOnN2CTranslationParsed());
+    return ProcessN2CJson(JsonInput, OnComplete, FOnN2CTranslationParsed());
 }
 
 FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     const FString& JsonInput,
-    const FN2CBlueprint& CapturedBlueprint,
     const FOnLLMResponseReceived& OnComplete,
     const FOnN2CTranslationParsed& OnParsed)
 {
@@ -281,11 +279,10 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
 // Send request through service, with the JSON in <n2c_json> tags (data, not instructions; see N2CJsonSpec.md).
     // The callback keeps the service it was sent on alive and parses with that
     // service's parser, even if the active provider changes or GC runs while the request is in flight.
-    // The translation is saved with the Blueprint captured for this request, shared (not copied) by the delegate's copies
+    // Nothing is saved here: the caller writes the translation (FN2CTranslationArchive) if it keeps it (card 0252)
     TStrongObjectPtr<UObject> RequestServiceObject(Service.GetObject());
-    const TSharedRef<const FN2CBlueprint> RequestBlueprint = MakeShared<const FN2CBlueprint>(CapturedBlueprint);
     FN2CLLMRequestHandleRef Handle = ActiveService->SendRequest(UN2CSystemPromptManager::WrapN2CJson(JsonInput), SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, OnComplete, OnParsed, RequestServiceObject, RequestService = Service, RequestModel = Config.Model, RequestBlueprint](const FString& Response)
+        [this, OnComplete, OnParsed, RequestServiceObject, RequestService = Service, RequestModel = Config.Model](const FString& Response)
         {
             // Create translation response struct
             FN2CTranslationResponse TranslationResponse;
@@ -300,12 +297,6 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
                     if (Parser->ParseLLMResponse(Response, TranslationResponse))
                     {
                         EndRequest(EN2CSystemStatus::Idle);
-
-                        // Save translation to disk, with the Blueprint captured when the request was sent
-                        if (SaveTranslationToDisk(TranslationResponse, *RequestBlueprint))
-                        {
-                            FN2CLogger::Get().Log(TEXT("Successfully saved translation to disk"), EN2CLogSeverity::Info);
-                        }
 
                         OnParsed.ExecuteIfBound(TranslationResponse, true);
                         OnTranslationResponseReceived.Broadcast(TranslationResponse, true);
@@ -362,22 +353,27 @@ bool UN2CLLMModule::InitializeComponents()
     return true;
 }
 
+FString UN2CLLMModule::GetLatestTranslationPath() const
+{
+    return FN2CTranslationArchive::GetLatestRunFolder();
+}
+
 void UN2CLLMModule::OpenTranslationFolder(bool& Success)
 {
-    FString PathToOpen = LatestTranslationPath;
+    FString PathToOpen = GetLatestTranslationPath();
     
     if (PathToOpen.IsEmpty())
     {
         FN2CLogger::Get().LogWarning(TEXT("No translation path available, opening the base path"));
         Success = true;
-        PathToOpen = GetTranslationBasePath();
+        PathToOpen = FN2CPathUtils::GetTranslationsBasePath();
     }
 
     if (!FPaths::DirectoryExists(PathToOpen))
     {
         FN2CLogger::Get().LogError(FString::Printf(TEXT("Translation directory does not exist: %s \n\nOpening the base path"), *PathToOpen));
         Success = true;
-        PathToOpen = GetTranslationBasePath();
+        PathToOpen = FN2CPathUtils::GetTranslationsBasePath();
     }
 
     FPlatformProcess::ExploreFolder(*PathToOpen);
@@ -385,224 +381,9 @@ void UN2CLLMModule::OpenTranslationFolder(bool& Success)
     
 }
 
-bool UN2CLLMModule::SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint)
-{
-    // Get blueprint name from metadata
-    FString BlueprintName = Blueprint.Metadata.Name;
-    if (BlueprintName.IsEmpty())
-    {
-        BlueprintName = TEXT("UnknownBlueprint");
-    }
-    
-    // Generate root path for this translation
-    FString RootPath = GenerateTranslationRootPath(BlueprintName);
-    
-    // Ensure the directory exists
-    if (!EnsureDirectoryExists(RootPath))
-    {
-        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to create translation directory: %s"), *RootPath));
-        return false;
-    }
-    
-    // Store the path for later reference
-    LatestTranslationPath = RootPath;
-    
-    // Save the Blueprint JSON (pretty-printed)
-    FString JsonFileName = FString::Printf(TEXT("N2C_BP_%s.json"), *FPaths::GetBaseFilename(RootPath));
-    FString JsonFilePath = FPaths::Combine(RootPath, JsonFileName);
-    
-    // Serialize the Blueprint to JSON with pretty printing
-    FString JsonContent = FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Pretty);
-    
-    if (!FFileHelper::SaveStringToFile(JsonContent, *JsonFilePath))
-    {
-        FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to save JSON file: %s"), *JsonFilePath));
-        return false;
-    }
-    
-    // Save minified version of the Blueprint JSON
-    FString MinifiedJsonFileName = FString::Printf(TEXT("N2C_BP_Minified_%s.json"), *FPaths::GetBaseFilename(RootPath));
-    FString MinifiedJsonFilePath = FPaths::Combine(RootPath, MinifiedJsonFileName);
-    
-    // Serialize the Blueprint to JSON without pretty printing
-    FString MinifiedJsonContent = FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed);
-    
-    if (!FFileHelper::SaveStringToFile(MinifiedJsonContent, *MinifiedJsonFilePath))
-    {
-        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save minified JSON file: %s"), *MinifiedJsonFilePath));
-        // Continue even if minified version fails
-    }
-    
-    // Save the raw LLM translation response JSON
-    FString TranslationJsonFileName = FString::Printf(TEXT("N2C_Translation_%s.json"), *FPaths::GetBaseFilename(RootPath));
-    FString TranslationJsonFilePath = FPaths::Combine(RootPath, TranslationJsonFileName);
-    
-    // Serialize the Translation response to JSON
-    TSharedPtr<FJsonObject> TranslationJsonObject = MakeShared<FJsonObject>();
-    
-    // Create graphs array
-    TArray<TSharedPtr<FJsonValue>> GraphsArray;
-    for (const FN2CGraphTranslation& Graph : Response.Graphs)
-    {
-        TSharedPtr<FJsonObject> GraphObject = MakeShared<FJsonObject>();
-        GraphObject->SetStringField(TEXT("graph_name"), Graph.GraphName);
-        GraphObject->SetStringField(TEXT("graph_type"), Graph.GraphType);
-        GraphObject->SetStringField(TEXT("graph_class"), Graph.GraphClass);
-        
-        // Create code object
-        TSharedPtr<FJsonObject> CodeObject = MakeShared<FJsonObject>();
-        CodeObject->SetStringField(TEXT("graphDeclaration"), Graph.Code.GraphDeclaration);
-        CodeObject->SetStringField(TEXT("graphImplementation"), Graph.Code.GraphImplementation);
-        CodeObject->SetStringField(TEXT("implementationNotes"), Graph.Code.ImplementationNotes);
-        
-        GraphObject->SetObjectField(TEXT("code"), CodeObject);
-        GraphsArray.Add(MakeShared<FJsonValueObject>(GraphObject));
-    }
-    
-    TranslationJsonObject->SetArrayField(TEXT("graphs"), GraphsArray);
-    
-    // Add usage information if available
-    if (Response.Usage.HasAny())
-    {
-        TranslationJsonObject->SetObjectField(TEXT("usage"), Response.Usage.ToJson());
-    }
-    
-    // Serialize to string with pretty printing
-    FString TranslationJsonContent;
-    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&TranslationJsonContent);
-    FJsonSerializer::Serialize(TranslationJsonObject.ToSharedRef(), Writer);
-    
-    if (!FFileHelper::SaveStringToFile(TranslationJsonContent, *TranslationJsonFilePath))
-    {
-        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save translation JSON file: %s"), *TranslationJsonFilePath));
-        // Continue even if translation JSON fails
-    }
-    
-    // Get the target language from settings
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    EN2CCodeLanguage TargetLanguage = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
-    LatestTranslationLanguage = TargetLanguage;
-    
-    // Save each graph's files
-    for (const FN2CGraphTranslation& Graph : Response.Graphs)
-    {
-        // The graph name comes from the LLM response: never use it as a path without making it a safe stem
-        const FString Stem = FN2CPathUtils::GetTranslationFileStem(Graph.GraphName);
-        if (Stem.IsEmpty())
-        {
-            continue;
-        }
-
-        // Create directory for this graph
-        FString GraphDir = FPaths::Combine(RootPath, Stem);
-        if (!FN2CPathUtils::IsUnderDirectoryResolved(GraphDir, RootPath))
-        {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Skipping graph '%s': its folder would be outside the translation root"), *Graph.GraphName));
-            continue;
-        }
-        if (!EnsureDirectoryExists(GraphDir))
-        {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to create graph directory: %s"), *GraphDir));
-            continue;
-        }
-        
-        // Save the declaration file, for a language that has one (C++)
-        const FN2CTargetLanguage& Language = N2C::GetLanguage(TargetLanguage);
-        if (Language.bHasDeclarationFile && !Graph.Code.GraphDeclaration.IsEmpty())
-        {
-            FString HeaderPath = FPaths::Combine(GraphDir, Stem + Language.DeclarationExtension);
-            if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
-            {
-                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save header file: %s"), *HeaderPath));
-            }
-        }
-        
-        // Save implementation file with appropriate extension
-        if (!Graph.Code.GraphImplementation.IsEmpty())
-        {
-            FString Extension = Language.ImplementationExtension;
-            FString ImplPath = FPaths::Combine(GraphDir, Stem + Extension);
-            if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
-            {
-                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save implementation file: %s"), *ImplPath));
-            }
-        }
-        
-        // Save implementation notes
-        if (!Graph.Code.ImplementationNotes.IsEmpty())
-        {
-            FString NotesPath = FPaths::Combine(GraphDir, Stem + TEXT("_Notes.txt"));
-            if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
-            {
-                FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Failed to save notes file: %s"), *NotesPath));
-            }
-        }
-    }
-    
-    FN2CLogger::Get().Log(FString::Printf(TEXT("Translation saved to: %s"), *RootPath), EN2CLogSeverity::Info);
-    return true;
-}
-
-FString UN2CLLMModule::GenerateTranslationRootPath(const FString& BlueprintName) const
-{
-    // Get current date/time
-    FDateTime Now = FDateTime::Now();
-    FString Timestamp = Now.ToString(TEXT("%Y-%m-%d-%H.%M.%S"));
-    
-    // Create folder name
-    FString FolderName = FString::Printf(TEXT("%s_%s"), *FN2CPathUtils::GetTranslationFileStem(BlueprintName), *Timestamp);
-
-    // Get the saved translations base path
-    FString BasePath = GetTranslationBasePath();
-    
-    return FPaths::Combine(BasePath, FolderName);
-}
-
-FString UN2CLLMModule::GetTranslationBasePath() const
-{
-    // Check if custom output directory is set in settings
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    FString BasePath;
-    
-    if (Settings && !Settings->CustomTranslationOutputDirectory.Path.IsEmpty())
-    {
-        // Use custom path if specified
-        BasePath = Settings->CustomTranslationOutputDirectory.Path;
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Using custom translation output directory: %s"), *BasePath),
-            EN2CLogSeverity::Info);
-    }
-    else
-    {
-        // Use default path
-        BasePath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
-    }
-
-    return BasePath;
-}
-
 FString UN2CLLMModule::GetFileExtensionForLanguage(EN2CCodeLanguage Language) const
 {
     return N2C::GetLanguage(Language).ImplementationExtension;
-}
-
-bool UN2CLLMModule::EnsureDirectoryExists(const FString& DirectoryPath) const
-{
-    if (!FPaths::DirectoryExists(DirectoryPath))
-    {
-        bool bSuccess = FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*DirectoryPath);
-        if (!bSuccess)
-        {
-            FN2CLogger::Get().LogError(
-                FString::Printf(TEXT("Failed to create directory: %s"), *DirectoryPath));
-            return false;
-        }
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Created directory: %s"), *DirectoryPath),
-            EN2CLogSeverity::Info);
-        return true;
-    }
-    return true;
 }
 
 bool UN2CLLMModule::CreateServiceForProvider(EN2CLLMProvider Provider)
@@ -666,7 +447,8 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     const FN2CLLMConfig& RequestConfig,
     EN2CCodeLanguage RequestLanguage,
     const FOnLLMResponseReceived& OnComplete,
-    const FOnN2CTranslationParsed& OnParsed)
+    const FOnN2CTranslationParsed& OnParsed,
+    bool bArchiveRun)
 {
     // Creates a provider service and a prompt manager and writes CurrentStatus: game thread only. Objects created on
     // another thread get EInternalObjectFlags::Async and are never collected.
@@ -710,7 +492,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     // The JSON goes in <n2c_json> tags, as in ProcessN2CJson.
     // The callback keeps TempServiceObject (and so the service) alive until the request completes or is cancelled
     FN2CLLMRequestHandleRef Handle = TempService->SendRequest(UN2CSystemPromptManager::WrapN2CJson(JsonInput), SystemPrompt, FOnLLMResponseReceived::CreateLambda(
-        [this, TempService, TempServiceObject, OnComplete, OnParsed, RequestConfigCopy = RequestConfig](const FString& RawResponse)
+        [this, TempService, TempServiceObject, OnComplete, OnParsed, RequestConfigCopy = RequestConfig, RequestLanguage, JsonInput, bArchiveRun](const FString& RawResponse)
         {
             FN2CTranslationResponse TranslationResponse;
             UN2CResponseParserBase* Parser = TempServiceObject.IsValid() ? TempService->GetResponseParser() : nullptr; // Parser from the temp service
@@ -719,6 +501,12 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
             if (bParseSuccess)
             {
                 EndRequest(EN2CSystemStatus::Idle);
+
+                // An MCP or Python translation is kept as a run of the translation archive (card 0252)
+                if (bArchiveRun)
+                {
+                    ArchiveMcpTranslation(TranslationResponse, JsonInput, RequestConfigCopy, RequestLanguage);
+                }
 
                 TSharedPtr<FJsonObject> ResultJson = MakeShared<FJsonObject>();
                 TArray<TSharedPtr<FJsonValue>> GraphsJsonArray;
@@ -767,4 +555,40 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     ));
     ResetStatusOnCancel(Handle);
     return Handle;
+}
+
+void UN2CLLMModule::ArchiveMcpTranslation(const FN2CTranslationResponse& Response, const FString& JsonInput,
+    const FN2CLLMConfig& RequestConfig, EN2CCodeLanguage Language)
+{
+    // The run is named after the Blueprint the N2C JSON describes (metadata.name)
+    FString BlueprintName;
+    TSharedPtr<FJsonObject> Input;
+    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonInput);
+    const TSharedPtr<FJsonObject>* Metadata = nullptr;
+    if (FJsonSerializer::Deserialize(Reader, Input) && Input.IsValid() && Input->TryGetObjectField(TEXT("metadata"), Metadata))
+    {
+        (*Metadata)->TryGetStringField(TEXT("name"), BlueprintName);
+    }
+
+    FN2CTranslationRunInfo Info;
+    Info.Kind = EN2CTranslationRunKind::Mcp;
+    Info.Name = BlueprintName.IsEmpty() ? FString(TEXT("Translation")) : BlueprintName;
+    Info.Provider = GetProviderName(RequestConfig.Provider);
+    Info.Model = RequestConfig.Model;
+    Info.Language = Language;
+    const TSharedPtr<FN2CTranslationArchive> Run = FN2CTranslationArchive::BeginRun(Info);
+    if (!Run.IsValid())
+    {
+        FN2CLogger::Get().LogWarning(TEXT("The translation could not be saved: no run folder"), TEXT("LLMModule"));
+        return;
+    }
+    FN2CArchiveSource Source;
+    Source.InputJson = JsonInput;
+    FN2CArchivedResponse Written;
+    Run->WriteResponse(Response, Source, FString(), Written);
+}
+
+FString UN2CLLMModule::GetProviderName(EN2CLLMProvider Provider)
+{
+    return StaticEnum<EN2CLLMProvider>()->GetNameStringByValue(static_cast<int64>(Provider));
 }

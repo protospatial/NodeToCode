@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CSettings.h"
+#include "Utils/N2CPathUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -18,7 +19,7 @@ FMcpToolDefinition FN2CMcpGetTranslationOutputDirectoryTool::GetDefinition() con
     FMcpToolDefinition Definition(
         TEXT("get-translation-output-directory"),
         TEXT("Returns the translation output directory configuration from NodeToCode settings. Shows whether a custom directory is set or if the default location is being used. ")
-        TEXT("Translations run from the editor's NodeToCode window are saved there; translate-focused-blueprint returns its translation in the tool result and writes no files."),
+        TEXT("Every translation is saved there as a run folder with a manifest.json: from the editor's NodeToCode window, translate-batch, translate-focused-blueprint and the Python API."),
         N2CMcpToolsets::Translation
     );
     
@@ -30,7 +31,7 @@ FMcpToolDefinition FN2CMcpGetTranslationOutputDirectoryTool::GetDefinition() con
         Definition.OutputSchema = Object({
             { TEXT("isCustomDirectorySet"), Boolean() },
             { TEXT("customDirectory"), String(TEXT("The Project Settings path, when one is set")) },
-            { TEXT("defaultDirectory"), String(TEXT("Saved/NodeToCode/Translations, when no custom directory is set")) },
+            { TEXT("defaultDirectory"), String(TEXT("<Project>/Saved/NodeToCode/Translations (absolute), when no custom directory is set")) },
             { TEXT("absolutePath"), String(TEXT("The directory translations are saved to")) },
             { TEXT("directoryExists"), Boolean() },
             { TEXT("status"), String() },
@@ -68,48 +69,23 @@ FMcpToolCallResult FN2CMcpGetTranslationOutputDirectoryTool::Execute(const TShar
         // Build the response JSON
         TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
         
-        // Check if custom directory is set
-        bool bIsCustomDirectorySet = !Settings->CustomTranslationOutputDirectory.Path.IsEmpty();
+        // The directory the translation archive writes to (FN2CPathUtils::GetTranslationsBasePath, absolute)
+        const FString AbsolutePath = FN2CPathUtils::GetTranslationsBasePath();
+        const bool bIsCustomDirectorySet = !Settings->CustomTranslationOutputDirectory.Path.TrimStartAndEnd().IsEmpty();
+        const bool bDirectoryExists = FPaths::DirectoryExists(AbsolutePath);
         ResponseObject->SetBoolField(TEXT("isCustomDirectorySet"), bIsCustomDirectorySet);
-        
+        ResponseObject->SetStringField(TEXT("absolutePath"), AbsolutePath);
+        ResponseObject->SetBoolField(TEXT("directoryExists"), bDirectoryExists);
         if (bIsCustomDirectorySet)
         {
-            // Custom directory is set
-            FString CustomPath = Settings->CustomTranslationOutputDirectory.Path;
-            ResponseObject->SetStringField(TEXT("customDirectory"), CustomPath);
-            
-            // Check if the directory exists
-            bool bDirectoryExists = FPaths::DirectoryExists(CustomPath);
-            ResponseObject->SetBoolField(TEXT("directoryExists"), bDirectoryExists);
-            
-            // Convert to absolute path if relative
-            FString AbsolutePath = FPaths::ConvertRelativePathToFull(CustomPath);
-            ResponseObject->SetStringField(TEXT("absolutePath"), AbsolutePath);
-            
-            // Add directory status message
-            if (bDirectoryExists)
-            {
-                ResponseObject->SetStringField(TEXT("status"), TEXT("Custom directory is set and exists"));
-            }
-            else
-            {
-                ResponseObject->SetStringField(TEXT("status"), TEXT("Custom directory is set but does not exist (will be created when needed)"));
-            }
+            ResponseObject->SetStringField(TEXT("customDirectory"), Settings->CustomTranslationOutputDirectory.Path);
+            ResponseObject->SetStringField(TEXT("status"), bDirectoryExists
+                ? TEXT("Custom directory is set and exists")
+                : TEXT("Custom directory is set but does not exist (will be created when needed)"));
         }
         else
         {
-            // Using default directory
-            FString DefaultPath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
-            ResponseObject->SetStringField(TEXT("defaultDirectory"), DefaultPath);
-            
-            // Convert to absolute path
-            FString AbsolutePath = FPaths::ConvertRelativePathToFull(DefaultPath);
-            ResponseObject->SetStringField(TEXT("absolutePath"), AbsolutePath);
-            
-            // Check if the default directory exists
-            bool bDirectoryExists = FPaths::DirectoryExists(DefaultPath);
-            ResponseObject->SetBoolField(TEXT("directoryExists"), bDirectoryExists);
-            
+            ResponseObject->SetStringField(TEXT("defaultDirectory"), FN2CPathUtils::GetDefaultTranslationsBasePath());
             ResponseObject->SetStringField(TEXT("status"), TEXT("Using default directory"));
         }
         
@@ -120,7 +96,9 @@ FMcpToolCallResult FN2CMcpGetTranslationOutputDirectoryTool::Execute(const TShar
         // Add usage information
         TSharedPtr<FJsonObject> UsageObject = MakeShareable(new FJsonObject);
         UsageObject->SetStringField(TEXT("description"), TEXT("This directory is where NodeToCode saves all translation outputs including generated code files and N2C JSON files"));
-        UsageObject->SetStringField(TEXT("structure"), TEXT("Each translation creates a timestamped subdirectory: {BlueprintName}_{YYYY-MM-DD-HH.MM.SS}"));
+        UsageObject->SetStringField(TEXT("structure"), TEXT("Each translation run creates {BlueprintName}_{yyyyMMdd-HHmmss-fff}_{runId} (a batch: BatchTranslation_...) holding manifest.json ")
+            TEXT("(kind, provider, model, language, usage, and every entry with its role and files) and one folder per translated graph, struct or enum named after it ")
+            TEXT("({Graph}/{Graph}.cpp, .h, _Notes.txt); a batch puts each item in its own folder first ({Item}/{Graph}/...)"));
         UsageObject->SetBoolField(TEXT("autoCreateIfMissing"), true);
         ResponseObject->SetObjectField(TEXT("usage"), UsageObject);
         

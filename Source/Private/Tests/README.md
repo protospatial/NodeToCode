@@ -271,9 +271,13 @@ call's `result`, and NaN, infinite and unserializable results (isError, naming t
   - Checked graphs stay checked when the same view is refreshed.
   - The header names the view, and an empty list says why.
 - `NodeToCode.UI.TranslationViewerJson` (`Core/N2CTranslationViewerJson.spec.cpp`, card 0501) saves a single
-  translation with the real writers (`UN2CLLMModule::SaveTranslationToDisk`, `SN2CMainWindow::RecordSingleTranslation`)
-  into a scratch output folder on an isolated graph state manager. `LoadN2CJson` returns the `N2C_BP_<root>.json`
-  capture from the translation root, one folder above the recorded graph folder, also when the LLM renamed the graph.
+  translation with the real writer (`SN2CMainWindow::SaveSingleTranslation`, through `FN2CTranslationArchive`)
+  into a scratch output folder on an isolated graph state manager. `LoadN2CJson` returns the `N2C_BP_<run>.json`
+  capture from the run folder, one folder above the recorded entry folder, also when the LLM renamed the graph.
+- `NodeToCode.Translation.Archive` (`LLM/N2CTranslationArchive.spec.cpp`, card 0252) writes a response with root,
+  nested, struct and enum entries in C++ and Python to a scratch base folder: one folder and file set per entry,
+  Python declarations on disk, `manifest.json` fields, two runs in the same second in two folders, batch items in
+  their own folders, and the absolute output directory.
   On a headless `SN2CMainWindow`, the single translate's completion puts the sent JSON in the viewer's JSON tab, and
   reopening the recorded translation puts the saved capture there.
 

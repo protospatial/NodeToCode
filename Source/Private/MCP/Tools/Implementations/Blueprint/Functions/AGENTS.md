@@ -19,8 +19,8 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0295 (delete-blueprint-function's notification brush). 0280 (create- and
-  delete-blueprint-function renamed or deleted unrelated graphs and nodes) is done.
+- **Fix cards still owed here:** none. 0280 (create- and delete-blueprint-function renamed or deleted unrelated
+  graphs and nodes) and 0295 (delete-blueprint-function's toast icon, now `FN2CMcpNotification`) are done.
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.

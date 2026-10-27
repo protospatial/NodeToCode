@@ -26,15 +26,16 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 - **Use Case**: Choosing a provider and a model ID for `translate-focused-blueprint`
 
 ### get-translation-output-directory
-- **Description**: Returns where translations run from the editor's NodeToCode window are saved
+- **Description**: Returns where every translation is saved (the editor's window, translate-batch,
+  translate-focused-blueprint and the Python API; "Translation Output Structure" below)
 - **Parameters**: None
-- **Returns**: `isCustomDirectorySet`; `customDirectory` or `defaultDirectory` (as configured, which for the default
-  is relative to the engine's working directory); `absolutePath` (use this one); `directoryExists`; `status`;
-  `projectDirectory` (the `.uproject` file's path) and `projectSavedDirectory` (both relative like
-  `defaultDirectory`); `usage`
-- **Use Case**: Locating saved translations. `translate-focused-blueprint` saves nothing there (see below). The MCP
-  file tools read the default location (`Saved/NodeToCode/Translations`) by its project-relative path, and a custom
-  directory outside the project by its `absolutePath` (a second read root, see `../FileSystem/AGENTS.md`)
+- **Returns**: `isCustomDirectorySet`; `customDirectory` (as configured) or `defaultDirectory` (absolute); `absolutePath`
+  (`FN2CPathUtils::GetTranslationsBasePath`: absolute, a relative custom directory is under the project folder; use
+  this one); `directoryExists`; `status`; `projectDirectory` (the `.uproject` file's path) and `projectSavedDirectory`
+  (relative to the engine's working directory); `usage` (`structure` describes the run folders)
+- **Use Case**: Locating saved translations. The MCP file tools read the default location
+  (`Saved/NodeToCode/Translations`) by its project-relative path, and a custom directory outside the project by its
+  `absolutePath` (a second read root, see `../FileSystem/AGENTS.md`)
 
 ### translate-focused-blueprint
 - **Description**: Translates the focused Blueprint graph with an LLM provider and returns the translation as the
@@ -71,10 +72,10 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
     `TRANSLATION_RATE_LIMITED`), `TRANSLATION_FAILED` without one, `INVALID_ARGUMENT` or `CANCELLED`
 - A `model` the catalog does not list for a cloud provider is still sent; the result (or the provider's error) then
   carries the `warnings` array
-- **Not saved** to the translation output directory: the MCP path (`UN2CLLMModule::ProcessN2CJsonWithOverrides`)
-  returns the translation, writing a file only under Saved/NodeToCode/Exports when it is over the result limit (above);
-  only translations run from the editor (`UN2CLLMModule::ProcessN2CJson`) are saved there (see "Translation Output
-  Structure")
+- **Saved** to the translation output directory as an `mcp` run (`UN2CLLMModule::ProcessN2CJsonWithOverrides` with
+  `bArchiveRun`, card 0252; see "Translation Output Structure"), before the result is returned. The result itself
+  does not name the folder; the run is the newest `<Blueprint>_<time>_<run id>` folder. It is not recorded for the
+  translation viewer
 - **Use Case**: Performing actual Blueprint translation
 
 ### translate-batch
@@ -94,12 +95,13 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   (the deprecated `nodetocode/cancelTask` gets the cancelled error result). The call cancels the batch after an hour
   (`FN2CTranslateBatchCall::DefaultTimeoutSeconds`). Only one batch runs at a time, from the editor or MCP: a second
   call while one runs is refused with `BATCH_IN_PROGRESS`, and a translation in flight with `LLM_BUSY`
-- **Saved**: unlike translate-focused-blueprint, every translation is saved where the editor's batch saves:
-  `<translation output directory>/BatchTranslation_<time>/<folder>/` (`<Graph>.h` for C++, `<Graph><ext>`,
-  `<Graph>_Notes.txt`, `<Graph>.json` with the N2C JSON sent) plus `BatchSummary.json`, and recorded for the
-  translation viewer (`UN2CGraphStateManager::RecordSavedTranslation` with the call's language, provider and model,
-  so `LoadTranslation` reads it back). `<folder>` is the graph's file stem, or `<Blueprint>__<Graph>` (then `_2`,
-  ...) when another graph of the batch already has that stem, so two Blueprints' EventGraphs keep their own files
+- **Saved**: every translation is saved where the editor's batch saves, one `batch` run of the translation archive:
+  `<translation output directory>/BatchTranslation_<time>_<run id>/<folder>/<entry>/` (one folder per entry of the
+  response, see "Translation Output Structure"; the root entry's folder also holds `<Graph>.json` with the N2C JSON
+  sent) plus `manifest.json` and `BatchSummary.json`, and recorded for the translation viewer at the root entry's
+  folder (`UN2CGraphStateManager::RecordSavedTranslation` with the call's language, provider and model, so
+  `LoadTranslation` reads it back). `<folder>` is the graph's file stem, or `<Blueprint>__<Graph>` (then `_2`, ...)
+  when another graph of the batch already has that stem, so two Blueprints' EventGraphs keep their own files
 - **Returns** (at least one graph translated): JSON whose first key is `untrusted_content`, then `provider`, `model`,
   `language`, `batchOutputPath`, `summaryPath`, `total`, `succeeded`, `failed`, `skipped`, `durationSeconds`,
   `usage`, `items` (each `blueprintPath`, `graphName`, `graphGuid`, `kind`, `tag` for a tag filter, `status`
@@ -205,22 +207,43 @@ curl -N -X POST http://localhost:27000/mcp \
 
 ## Translation Output Structure
 
-Translations run from the editor's NodeToCode window are saved by `UN2CLLMModule::SaveTranslationToDisk`
-(`Source/Private/LLM/N2CLLMModule.cpp`); `translate-focused-blueprint` does not call it. The base is
-`Saved/NodeToCode/Translations` under the project, or the custom output directory from settings:
+Every translation is written by the translation archive, `FN2CTranslationArchive`
+(`Source/Public/LLM/N2CTranslationArchive.h`, card 0252), the only code that creates translation folders and files:
+the editor's single translate (`SN2CMainWindow::SaveSingleTranslation`, kind `single`), batches
+(`UN2CBatchTranslationOrchestrator`, kind `batch`) and translate-focused-blueprint and the Python API
+(`UN2CLLMModule::ProcessN2CJsonWithOverrides`, kind `mcp`). `UN2CLLMModule::ProcessN2CJson` saves nothing. The base is
+`FN2CPathUtils::GetTranslationsBasePath()`: `Saved/NodeToCode/Translations` under the project, or the custom output
+directory from settings (a relative one is under the project folder), always absolute:
 ```
 <base>/
-└── <Blueprint>_<YYYY-MM-DD-HH.MM.SS>/                 (one folder per translation; <folder> below is this name)
-    ├── N2C_BP_<folder>.json                           (the Blueprint's N2C JSON, pretty-printed)
-    ├── N2C_BP_Minified_<folder>.json                  (the same, minified)
-    ├── N2C_Translation_<folder>.json                  (graphs and code from the LLM response, plus usage)
-    └── <Graph>/                                       (one folder per translated graph)
-        ├── <Graph>.h                                  (C++ target only, when the graph has a declaration)
-        ├── <Graph><ext>                               (implementation: .cpp, .py, .js, .cs, .swift, or .md for pseudocode)
-        └── <Graph>_Notes.txt                          (implementation notes, when present)
+├── <Blueprint>_<yyyyMMdd-HHmmss-fff>_<run id>/        (a single or mcp run; <run> below is this name; two runs never share one)
+│   ├── manifest.json                                  (the run: see below)
+│   ├── N2C_BP_<run>.json                              (the N2C JSON sent, pretty-printed when the capture is known)
+│   ├── N2C_BP_Minified_<run>.json                     (single runs: the capture, minified)
+│   ├── N2C_Translation_<run>.json                     (graphs and code from the LLM response, plus usage)
+│   └── <Entry>/                                       (one folder per entry of the response: graph, struct or enum)
+│       ├── <Entry>.h                                  (the declaration, for a language with a declaration file: C++)
+│       ├── <Entry><ext>                               (implementation: .cpp, .py, .js, .cs, .swift, or .md for pseudocode)
+│       ├── <Entry>_Declaration<ext>                   (other languages: a declaration beside an implementation)
+│       └── <Entry>_Notes.txt                          (implementation notes, when present)
+└── BatchTranslation_<yyyyMMdd-HHmmss-fff>_<run id>/   (a batch run)
+    ├── manifest.json, BatchSummary.json
+    └── <Item>/<Entry>/...                             (one folder per item, then one per entry; <Item>/<root entry>/<Graph>.json is the N2C JSON sent)
 ```
-`<Graph>` is the graph name made safe for a file name (`FN2CPathUtils::GetTranslationFileStem`). There is no
-metadata file. The extension follows the Target Language in settings at save time.
+`<Entry>` is the graph name from the response made safe for a file name (`FN2CPathUtils::GetTranslationFileStem`),
+with `_2`, `_3` when two entries share it, so a struct or nested graph never overwrites the translated graph's files.
+For a language without a declaration file, an entry whose code is only a declaration (a C# or Swift struct or enum)
+is written as `<Entry><ext>`. Every file is written to a temporary file and moved into place. The extension follows
+the run's language.
+
+`manifest.json` (`schemaVersion` 1): `runId`, `kind` (`single`, `batch`, `mcp`), `name`, `provider`, `model`,
+`language` (the language id: `Cpp`, `Python`, ...), `timestamp` (UTC), `usage` (summed), `stopReason` and
+`requestIds` (empty: the parsed response does not carry them yet), `items` (one per response written: `graphName`,
+`blueprintPath`, `graphGuid`, `folder`, `timestamp`, `usage`, `stopReason`, `requestId`) and `entries` (`item`,
+`graphName`, `graphType`, `role` (`root`, `nested`, `struct`, `enum`), `folder`, `files` {`declaration`,
+`implementation`, `notes`}, paths relative to the run folder). The root entry is the graph the caller asked for
+(the tag's graph name), else the first entry that is not a struct or enum; the translation viewer's record points at
+its folder.
 
 ## Translation Call
 
@@ -251,8 +274,8 @@ metadata file. The extension follows the Target Language in settings at save tim
 
 ### Output Directory
 - Default: `Saved/NodeToCode/Translations` under the project
-- Can be customized in plugin settings
-- Created when the first editor translation is saved
+- Can be customized in plugin settings (a relative path is under the project folder)
+- Created when the first translation is saved
 
 ## Error Handling
 

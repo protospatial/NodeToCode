@@ -52,13 +52,11 @@ public:
      * Process N2C JSON through LLM. Returns the request's handle: Cancel() stops the HTTP request, OnComplete and the
      * OnTranslationResponseReceived broadcast, and returns the module to Idle. Callers may ignore it.
      *
-     * A successful translation is saved with CapturedBlueprint (the Blueprint JsonInput was serialized from), copied
-     * when the request is sent: whatever is captured while the request is in flight cannot change where or with
-     * which Blueprint JSON it is saved.
+     * Nothing is saved: a caller that keeps the translation writes it with FN2CTranslationArchive (card 0252), with
+     * the capture it serialized JsonInput from (the main window does in its OnParsed, the batch orchestrator per item).
      */
     FN2CLLMRequestHandleRef ProcessN2CJson(
         const FString& JsonInput,
-        const FN2CBlueprint& CapturedBlueprint,
         const FOnLLMResponseReceived& OnComplete
     );
 
@@ -69,23 +67,27 @@ public:
      */
     FN2CLLMRequestHandleRef ProcessN2CJson(
         const FString& JsonInput,
-        const FN2CBlueprint& CapturedBlueprint,
         const FOnLLMResponseReceived& OnComplete,
         const FOnN2CTranslationParsed& OnParsed
     );
 
     /**
      * Process N2C JSON through LLM with specific overrides for provider, model, and language. Returns the request's
-     * handle. Nothing is saved and OnTranslationResponseReceived is not broadcast. OnComplete gets the result as JSON
-     * text (graphs and usage, or NodeToCode error JSON); OnParsed, when bound, gets the same result as a
-     * FN2CTranslationResponse (with its typed error on failure), at most once and never after a successful Cancel().
+     * handle. OnTranslationResponseReceived is not broadcast. OnComplete gets the result as JSON text (graphs and
+     * usage, or NodeToCode error JSON); OnParsed, when bound, gets the same result as a FN2CTranslationResponse (with
+     * its typed error on failure), at most once and never after a successful Cancel().
+     *
+     * With bArchiveRun (the MCP tools and the Python API), a successful translation is written as an MCP run of the
+     * translation archive (FN2CTranslationArchive) before OnComplete runs. A caller that saves the result itself (the
+     * batch orchestrator) passes false.
      */
     FN2CLLMRequestHandleRef ProcessN2CJsonWithOverrides(
         const FString& JsonInput,
         const FN2CLLMConfig& RequestConfig,
         EN2CCodeLanguage RequestLanguage,
         const FOnLLMResponseReceived& OnComplete,
-        const FOnN2CTranslationParsed& OnParsed = FOnN2CTranslationParsed()
+        const FOnN2CTranslationParsed& OnParsed = FOnN2CTranslationParsed(),
+        bool bArchiveRun = true
     );
 
     /**
@@ -122,35 +124,21 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
     EN2CSystemStatus GetSystemStatus() const { return CurrentStatus; }
 
-    /** Get the path to the latest translation */
+    /** The folder of the latest translation run written this session (FN2CTranslationArchive), empty before the first */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Module")
-    FString GetLatestTranslationPath() const { return LatestTranslationPath; }
-
-    /** The language the latest translation's implementation files were saved as */
-    EN2CCodeLanguage GetLatestTranslationLanguage() const { return LatestTranslationLanguage; }
+    FString GetLatestTranslationPath() const;
 
     /** Open the latest translation folder in file explorer */
     UFUNCTION(BlueprintCallable, Category = "Node to Code | LLM Module")
     void OpenTranslationFolder(bool& Success);
 
-    /** Save translation files to disk */
-    bool SaveTranslationToDisk(const FN2CTranslationResponse& Response, const FN2CBlueprint& Blueprint);
-
-private:
-    /** Generate file paths for translation */
-    FString GenerateTranslationRootPath(const FString& BlueprintName) const;
-
-    /** Get the base path where translations are saved */
-    FString GetTranslationBasePath() const;
-
-public:    
     /** Get the appropriate file extension for the target language */
     FString GetFileExtensionForLanguage(EN2CCodeLanguage Language) const;
+
+    /** A provider's short name, as translation manifests name it: Anthropic, OpenAI, LMStudio, ... */
+    static FString GetProviderName(EN2CLLMProvider Provider);
     
 private:
-    
-    /** Create directory if it doesn't exist */
-    bool EnsureDirectoryExists(const FString& DirectoryPath) const;
     
     /** Initialize components */
     bool InitializeComponents();
@@ -180,6 +168,10 @@ private:
 
     /** Sets Status unless a request is in flight (for errors found before anything is sent) */
     void SetStatusIfIdle(EN2CSystemStatus Status);
+
+    /** Writes a ProcessN2CJsonWithOverrides translation as an MCP run of the translation archive */
+    static void ArchiveMcpTranslation(const FN2CTranslationResponse& Response, const FString& JsonInput,
+        const FN2CLLMConfig& RequestConfig, EN2CCodeLanguage Language);
 
     /** Requests sent and not yet completed or cancelled */
     int32 InFlightRequests = 0;
@@ -213,13 +205,6 @@ private:
     /** Current system status */
     UPROPERTY()
     EN2CSystemStatus CurrentStatus;
-    
-    /** Path to the latest translation */
-    UPROPERTY()
-    FString LatestTranslationPath;
-
-    /** Language of the latest saved translation */
-    EN2CCodeLanguage LatestTranslationLanguage = EN2CCodeLanguage::Cpp;
     
     /** Initialization state */
     bool bIsInitialized;

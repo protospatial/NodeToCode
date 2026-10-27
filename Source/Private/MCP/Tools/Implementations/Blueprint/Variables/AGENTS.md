@@ -20,7 +20,8 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0295 (notification brushes, dead code), and 0274 (explicit targets, admitted as next-6). Card 0292 (class,
+- **Fix cards still owed here:** 0274 (explicit targets, admitted as next-6); 0295 (toast icons, now
+  `FN2CMcpNotification`) is done. Card 0292 (class,
   soft and interface references) is new capability and waits for the owner.
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in

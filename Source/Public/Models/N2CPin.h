@@ -99,12 +99,6 @@ struct FN2CPinDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     EN2CPinType Type;
 
-    /** Checks if this pin type is compatible with another pin type for connections */
-    bool IsCompatibleWith(const EN2CPinType& OtherType) const;
-
-    /** Checks if this pin is compatible with another pin for connections */
-    bool IsCompatibleWith(const FN2CPinDefinition& OtherPin) const;
-
     /** Validates the pin definition and its enum */
     bool IsValid() const;
 

@@ -434,7 +434,9 @@ its environment when no key is saved, so a live check never types or saves a key
   that case's logged payload: no temperature/top_p/top_k where the provider rules forbid them, the expected output
   budget field and value, OpenAI `response_format` `json_schema` with `strict: true`, Gemini `responseSchema` with no
   `additionalProperties`, DeepSeek `thinking` and `reasoning_effort`. A case passes when the translation returns
-  code and every rule holds. After the cases it turns `n2c.LogLLMPayloads` off and translates the first case again
+  code and every rule holds. Each case's `usage` lists the slice's `LLM Token Usage` lines (input, output, cache
+  read and write, reasoning); a translated case without one is listed in `not_verified` (card 0506), so a change to
+  that log line cannot empty the usage unnoticed. After the cases it turns `n2c.LogLLMPayloads` off and translates the first case again
   (`payloads_off`): that slice must have no payload, prompt or answer line, only sizes. It also scans the editor log,
   `Saved/Logs`, the plugin log and new translation folders for key values, and the logs for a key in URL form
   (`?key=`, `&key=`) or `key=` with a key-shaped value (Print String's `key` argument in generated code does not

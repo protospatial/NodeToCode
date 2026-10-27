@@ -2,7 +2,7 @@
 ***
 
 ## Automatic Translation Saving
-Translations run from the editor are automatically saved locally to your project's Saved path (or the custom output directory in settings) when a translation successfully completes. A translation an MCP client requests with `translate-focused-blueprint` is not saved: the client receives it as the tool's result. This allows you to easily revisit previous translations or share translation files with other people, LLMs, and applications.
+Every translation is automatically saved locally to your project's Saved path (or the custom output directory in settings) when it successfully completes: from the editor, from a batch, and from an MCP client or the Python API (which also receive it as the result). This allows you to easily revisit previous translations or share translation files with other people, LLMs, and applications.
 
 An MCP client can read saved translations with the `read-path` and `read-file` tools. Folders in the default location are given relative to the project, for example `Saved/NodeToCode/Translations`. A custom output directory outside the project is given by its absolute path, which `get-translation-output-directory` returns as `absolutePath`. The tools refuse a custom directory that is a drive root or that contains your project or your home folder. `read-file` returns at most 500 KB of a file per call and can continue from a line number.
 
@@ -15,20 +15,22 @@ ProjectRoot/
 └── Saved/
     └── NodeToCode/
         └── Translations/
-            └── BlueprintName_YYYY-MM-DD-HH.MM.SS/  (Timestamp format)
-                ├── N2C_BP_BlueprintName_YYYY-MM-DD-HH.MM.SS.json  (Pretty-printed Blueprint JSON)
-                ├── N2C_BP_Minified_BlueprintName_YYYY-MM-DD-HH.MM.SS.json  (Minified Blueprint JSON)
-                ├── N2C_Translation_BlueprintName_YYYY-MM-DD-HH.MM.SS.json  (LLM translation response)
-                └── GraphName/                      (Directory for each graph)
-                    ├── GraphName.h                 (C++ header - only for C++ target)
-                    ├── GraphName.ext               (Implementation file with language-specific extension)
-                    └── GraphName_Notes.txt         (Implementation notes)
+            ├── BlueprintName_20260115-103000-123_1a2b3c4d/  (date-time with milliseconds, then a run id)
+            │   ├── manifest.json                    (What the run holds: provider, model, language, tokens, every file)
+            │   ├── N2C_BP_<folder name>.json         (Pretty-printed Blueprint JSON)
+            │   ├── N2C_BP_Minified_<folder name>.json  (Minified Blueprint JSON)
+            │   ├── N2C_Translation_<folder name>.json  (LLM translation response)
+            │   └── GraphName/                       (One folder for each graph, struct or enum in the reply)
+            │       ├── GraphName.h                  (C++ header - only for C++ target)
+            │       ├── GraphName.ext                (Implementation file with language-specific extension)
+            │       └── GraphName_Notes.txt          (Implementation notes)
+            └── BatchTranslation_20260115-103500-456_5e6f7a8b/  (A batch: one folder per graph, then as above)
 ```
 
 ### Key Details:
 
 1. **Root Location**: Files are saved in the project's `Saved/NodeToCode/Translations` directory
-2. **Folder Naming**: Each translation gets a timestamped folder (`BlueprintName_YYYY-MM-DD-HH.MM.SS`)
+2. **Folder Naming**: Each translation gets its own folder (`BlueprintName_<date>-<time>-<milliseconds>_<run id>`), so two translations started in the same second never share one. Folders saved by earlier versions (`BlueprintName_YYYY-MM-DD-HH.MM.SS`) are left as they are
     - `BlueprintName` and the Blueprint JSON files are the Blueprint you translated, as captured when the request was sent: opening other graphs, compiling or copying another Blueprint's JSON while you wait for the reply does not change them
 3. **Blueprint JSON files**: A **Prettified** version for human readability and a **Minified** version for sharing with other LLMs or applications
     - This is the efficient JSON representation of your Blueprint that's sent to the LLM for translation
@@ -36,7 +38,7 @@ ProjectRoot/
     - Since 2.0 these files say `"version": "2.0.0"`. When one output pin feeds several inputs, its entry under `flows` > `data` lists all of them (`"N1.P2": ["N2.P1", "N3.P4"]`); 1.x files kept only one, so the LLM had to guess the other inputs. Each entry under `flows` > `execution` is one exec wire from the output pin to the input pin it runs (`"N3.P5->N4.P1"`), so a Branch's True and False, a Switch's cases or a Gate's Enter, Open and Close stay apart; 1.x files listed only node pairs (`"N3->N4"`). Nodes Blueprint never runs are marked, each flag present only when true: `"unused": true` on a pure node whose result nothing that runs reads, `"unreachable": true` on a node with exec pins that no event or entry reaches, and `"disabled": true` on a node disabled in the editor (exec runs past a disabled node with one exec input and one exec output). A new Blueprint's greyed-out default events that nothing is wired to are left out. Names do not depend on the editor language or on **Show Friendly Names**: each node has a `class`, functions and variables keep their declared names, and a pin's `name` is its internal name (`execute`, `then`, `ReturnValue`); the English title or pin label you see in the editor appears as `title` or `label` only when it says more than that name (1.x files had display text, in the editor's language, under `name`). Files saved by 1.2.x (`"version": "1.0.0"`) are left as they are and still read: from Python, `nodetocode.read_n2c_json(text)` reads either version. A file written by a later 2.x version (for example 2.1.0) is read without loss: node, pin, graph and Blueprint types and fields this version does not know are kept as they are written, and `read_n2c_json` lists each one in its `warnings`
 4. **Translation Response**: The graphs and code parsed from the LLM's reply, saved as JSON with the token usage under `usage`: `input_tokens` (cached input included) and `output_tokens` (thinking included), and the parts of those totals the provider reports separately: `cache_read_input_tokens` (read from the provider's prompt cache), `cache_write_input_tokens` (written to it, Anthropic) and `reasoning_tokens` (thinking: Gemini, OpenAI, DeepSeek). Earlier versions left Gemini's thinking and Anthropic's cached input out of the totals
     - The reply may hold the JSON inside a code fence (with or without a `json` tag) or after a sentence such as "Here is the translation:"; NodeToCode reads the JSON object out of it
-5. **Per-Graph Folders**: Each graph in the Blueprint gets its own subfolder
+5. **Per-Graph Folders**: Each graph, struct and enum in the reply gets its own subfolder, named after it (`_2`, `_3` when two share a name), so a struct never overwrites the graph's files. `manifest.json` lists each one with its role (`root` for the graph you translated, `nested`, `struct`, `enum`) and its files
 6. **Language-Specific Files**: The file extension for implementation files depends on the target language:
    - C++: `.cpp`
    - Python: `.py`
@@ -45,7 +47,7 @@ ProjectRoot/
    - Swift: `.swift`
    - Pseudocode: `.md`
 
-7. **Header Files**: Header files (`.h`) are only generated for C++ translations, and the translation viewer only reads one for a C++ translation (a `.h` left in the folder by an earlier C++ translation does not appear in a Python translation)
+7. **Header Files**: Header files (`.h`) are only generated for C++ translations, and the translation viewer only reads one for a C++ translation (a `.h` left in the folder by an earlier C++ translation does not appear in a Python translation). In other languages, a struct or enum definition is saved as its own file (`S_Item.cs`), and a declaration beside an implementation as `GraphName_Declaration.ext`
 8. **Batch summary**: a batch translation's `BatchSummary.json` records the target language under `settings` > `language` as its id: `Cpp`, `Python`, `JavaScript`, `CSharp`, `Swift` or `Pseudocode` (earlier 2.0 builds wrote `EN2CCodeLanguage::Python`). Its `statistics` add up the token counts of the translated graphs: `totalInputTokens`, `totalOutputTokens`, `totalCacheReadInputTokens`, `totalCacheWriteInputTokens` and `totalReasoningTokens`, and each translated item's `tokensUsed` has `input`, `output`, `cacheReadInput`, `cacheWriteInput` and `reasoning`
 
 ### Tags and translation history file

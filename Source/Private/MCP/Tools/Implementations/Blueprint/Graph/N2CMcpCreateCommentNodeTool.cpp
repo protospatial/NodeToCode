@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpCreateCommentNodeTool.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -153,14 +154,10 @@ FMcpToolCallResult FN2CMcpCreateCommentNodeTool::Execute(const TSharedPtr<FJsonO
         FN2CMcpBlueprintUtils::MarkCosmeticChange(FocusedBlueprint);
         
         // Show notification
-        FNotificationInfo Info(FText::Format(
+        FN2CMcpNotification::Show(FText::Format(
             NSLOCTEXT("NodeToCode", "CommentNodeCreated", "Created comment node around {0} nodes"),
             FText::AsNumber(NodesToComment.Num())
         ));
-        Info.ExpireDuration = 3.0f;
-        Info.bFireAndForget = true;
-        Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
-        FSlateNotificationManager::Get().AddNotification(Info);
         
         // Build and return result
         TSharedPtr<FJsonObject> Result = BuildResultJson(true, CommentNode, NodesToComment, MissingGuids);
