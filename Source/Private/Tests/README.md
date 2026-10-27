@@ -69,7 +69,6 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists a loaded Blueprint class once, as a Blueprint class | mcp-tools-bp-structure-12 (card 0288) |
-| `NodeToCode.State` | malformed input: a graphs field that is not an array, a graph entry that is not an object, a graphGuid that does not parse | editor-integration-12 (card 0499) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -193,8 +192,9 @@ known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN
   `UN2CGraphStateManager::CreateIsolated` manager whose state file is in a scratch folder, never on the singleton or
   the host's `Saved/NodeToCode`. It checks that `FN2CGraphStateFile` survives ToJson -> FromJson -> ToJson with every
   field set and that a second manager reads back what the first saved. Malformed state files (cut off, not JSON, a
-  trailing comma, an array, a file another process holds open) are kept in place or as one `.corrupt-` copy, an error
-  is reported, and two tag changes afterwards write nothing. `ClearAllTags` removes neighbouring tag-only graphs in
+  trailing comma, an array, a file another process holds open, and JSON with the wrong shape: `graphs` not an array,
+  an entry that is not an object, an entry without a `graphGuid` that parses; card 0499) are kept in place or as one
+  `.corrupt-` copy, an error naming what is wrong is reported, and two tag changes afterwards write nothing. `ClearAllTags` removes neighbouring tag-only graphs in
   one pass, one save and one reload broadcast, and keeps translations and exports. `LoadTranslation` and
   `LoadN2CJson` find a translation of every `EN2CCodeLanguage` written the way the batch writes it, in a folder inside
   the project (a relative record), outside it (an absolute record) and under a Custom Translation Output Directory

@@ -490,8 +490,8 @@ private:
 	void BroadcastStateChanged(const FN2CGraphKey& Key);
 	void BroadcastTranslationUpdated(const FN2CGraphKey& Key);
 
-	/** Logs and (unless isolated) shows a notification that the state file was set aside */
-	void ReportCorruptFile(const FString& FilePath, bool bMoved);
+	/** Logs and (unless isolated) shows a notification that the state file was set aside; Reason says what was wrong */
+	void ReportCorruptFile(const FString& FilePath, bool bMoved, const FString& Reason);
 
 	/** The singleton instance */
 	static UN2CGraphStateManager* Instance;

@@ -303,6 +303,10 @@ struct NODETOCODE_API FN2CGraphStateFile
 	/** Serialize to JSON string */
 	FString ToJsonString(bool bPrettyPrint = true) const;
 
-	/** Deserialize from JSON string */
-	static bool FromJsonString(const FString& JsonString, FN2CGraphStateFile& OutFile);
+	/**
+	 * Deserialize from JSON string. Fails, leaving OutFile unchanged, on text that is not a JSON object and on a file
+	 * with the wrong shape: a "graphs" field that is not an array, an entry that is not an object, or an entry whose
+	 * "graphGuid" is missing or does not parse (card 0499). OutError, when given, says which.
+	 */
+	static bool FromJsonString(const FString& JsonString, FN2CGraphStateFile& OutFile, FString* OutError = nullptr);
 };
