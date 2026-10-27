@@ -25,7 +25,8 @@ FMcpToolDefinition FN2CMcpFindNodesInGraphTool::GetDefinition() const
     FMcpToolDefinition Definition(
         TEXT("find-nodes-in-graph"),
         TEXT("Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. ")
-        TEXT("Returns matching nodes in N2C JSON format with full node and pin GUID information."),
+        TEXT("Returns matching nodes in N2C JSON format with full node and pin GUID information, and the capture's ")
+        TEXT("'warnings' when it has any."),
         N2CMcpToolsets::BlueprintGraph
     );
     
@@ -141,9 +142,11 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         // instead of adding a duplicate event (card 0137)
         FN2CCaptureOptions Options;
         Options.bIncludeGhostNodes = true;
-        if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(AllNodes, Capture, Options))
+        FString CaptureError;
+        if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(AllNodes, Capture, Options, &CaptureError))
         {
-            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to translate nodes for ID mapping.")));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
+                FString::Printf(TEXT("Failed to translate nodes for ID mapping: %s"), *CaptureError)));
         }
         
         // Build the result JSON
@@ -177,6 +180,13 @@ FMcpToolCallResult FN2CMcpFindNodesInGraphTool::Execute(const TSharedPtr<FJsonOb
         }
         
         ResultObject->SetArrayField(TEXT("nodes"), NodesArray);
+
+        // The capture's warnings (card 0240), as get-focused-blueprint gives them: the IDs above still hold
+        const TArray<TSharedPtr<FJsonValue>> Warnings = FN2CSerializer::WarningsToJson(Capture);
+        if (Warnings.Num() > 0)
+        {
+            ResultObject->SetArrayField(N2CJsonContract::WarningsField, Warnings);
+        }
         
         // Serialize to JSON string
         FString ResultJsonString;

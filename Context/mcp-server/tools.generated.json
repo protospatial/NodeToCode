@@ -2516,7 +2516,7 @@
 			"name": "find-nodes-in-graph",
 			"title": "Find nodes in a graph",
 			"toolset": "BlueprintGraphTools",
-			"description": "Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.",
+			"description": "Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information, and the capture's 'warnings' when it has any.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": true,
@@ -3387,7 +3387,7 @@
 			"name": "get-focused-blueprint",
 			"title": "Read the focused Blueprint graph",
 			"toolset": "BlueprintDiscoveryTools",
-			"description": "Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.",
+			"description": "Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": true,
@@ -3519,6 +3519,36 @@
 							"properties":
 							{
 							}
+						}
+					},
+					"warnings":
+					{
+						"type": "array",
+						"description": "What the capture found but could still use (card 0240); absent when nothing",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"code":
+								{
+									"type": "string",
+									"description": "e.g. DEPTH_LIMIT, PIN_SHAPE, UNFED_INPUT"
+								},
+								"path":
+								{
+									"type": "string",
+									"description": "Where in the document, e.g. graphs[0].nodes[2]"
+								},
+								"message":
+								{
+									"type": "string"
+								}
+							},
+							"required": [
+								"code",
+								"message"
+							]
 						}
 					}
 				},

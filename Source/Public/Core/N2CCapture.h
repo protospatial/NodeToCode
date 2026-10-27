@@ -61,6 +61,16 @@ struct NODETOCODE_API FN2CCapture
 	/** Pin ID (P1, P2, ...) -> its node and PinId: one entry per captured pin */
 	TMap<FString, FN2CCapturedPin> Pins;
 
+	/**
+	 * What the capture and FN2CBlueprintValidator found (card 0240): warnings (a graph left out at the depth limit, a pin
+	 * missing its sub_type, a connected input with no source, ...) and, when the result cannot be used, errors. Callers
+	 * fail only on an error; the agent document lists the warnings in its top-level "warnings".
+	 */
+	TArray<FN2CDiagnostic> Diagnostics;
+
+	/** True when a diagnostic is an error: the captured Blueprint cannot be used as it is */
+	bool HasErrors() const;
+
 	/** The ID of the captured node with this NodeGuid, or null */
 	const FString* FindNodeID(const FGuid& NodeGuid) const;
 };

@@ -19,7 +19,9 @@ FMcpToolDefinition FN2CMcpGetFocusedBlueprintTool::GetDefinition() const
 		TEXT("Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. ")
 		TEXT("The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that ")
 		TEXT("open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without ")
-		TEXT("opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson."),
+		TEXT("opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' ")
+		TEXT("array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, ")
+		TEXT("a pin missing its type, a connected input with no source."),
 		N2CMcpToolsets::BlueprintDiscovery
 	);
 	

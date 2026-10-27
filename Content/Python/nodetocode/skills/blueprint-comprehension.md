@@ -260,6 +260,7 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
   - "value_type", "value_sub_type" (map pins only; "value_sub_type" only when the value is a struct, enum, class or object): the map's value type. Older documents (1.x and early 2.0.0) leave them out, and type every enum pin "Byte" with the enum in "sub_type".
 - "structs": user-defined structs the graphs use. Each has "name", an optional "comment" and "members"; each member has "name", "type" ("Bool", "Byte", "Int", "Float", "String", "Name", "Text", "Vector", "Vector2D", "Rotator", "Transform", "Class", "Object", "Struct", "Enum" or "Custom"), and optionally "type_name" (the struct, enum, class or object type), "is_array", "is_set", "is_map" (then "key_type" and optionally "key_type_name" give the key), "default_value" and "comment".
 - "enums": user-defined enums the graphs use. Each has "name", an optional "comment" and "values", each with "name" and an optional "comment", in declaration order.
+- "warnings" (optional; only in what the MCP tools and Python return, never in a translation request): what the capture found but could still use, each with "code" (for example "DEPTH_LIMIT", a graph beyond Max Translation Depth that the document leaves out; "PIN_SHAPE"; "UNFED_INPUT"), "path" (where in the document, e.g. "graphs[0].nodes[2]") and "message".
 
 ### Reading the graph
 

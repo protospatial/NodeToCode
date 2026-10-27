@@ -203,6 +203,51 @@ namespace N2CJsonContract
 		inline constexpr const TCHAR* SkippedComment = TEXT("SKIPPED_COMMENT");
 	}
 
+	/**
+	 * Validation and capture findings (card 0240, imp-translation-core-8): FN2CDiagnostic codes. A capture fails only on
+	 * an error (a structural problem); its warnings travel with it (FN2CCapture::Diagnostics) and the agent document
+	 * (get-focused-blueprint, get-blueprint-n2cjson, find-nodes-in-graph) lists them in an optional top-level "warnings"
+	 * array of {"code", "path", "message"}, after the known fields. A translation's document never carries it, and
+	 * FromJson reads past it (the model does not keep it).
+	 */
+	inline constexpr const TCHAR* WarningsField = TEXT("warnings");
+	inline constexpr const TCHAR* WarningCodeField = TEXT("code");
+	inline constexpr const TCHAR* WarningPathField = TEXT("path");
+	inline constexpr const TCHAR* WarningMessageField = TEXT("message");
+
+	namespace Diagnostic
+	{
+		// Errors: the document cannot be used as it is
+		/** No version this build reads */
+		inline constexpr const TCHAR* InvalidVersion = TEXT("INVALID_VERSION");
+		/** A Blueprint, graph, struct, enum, struct member or enum value without its name, or a Blueprint without its class */
+		inline constexpr const TCHAR* MissingName = TEXT("MISSING_NAME");
+		/** No graph, or no node in any graph, or a graph without nodes */
+		inline constexpr const TCHAR* NoNodes = TEXT("NO_NODES");
+		/** A node without an ID */
+		inline constexpr const TCHAR* MissingId = TEXT("MISSING_ID");
+		/** Two nodes of a graph, or two pins of a node, with the same ID */
+		inline constexpr const TCHAR* DuplicateId = TEXT("DUPLICATE_ID");
+		/** A flow entry that is malformed or names a node or pin the graph does not have */
+		inline constexpr const TCHAR* DanglingFlow = TEXT("DANGLING_FLOW");
+		/** A comment box listing a node the graph does not have */
+		inline constexpr const TCHAR* DanglingComment = TEXT("DANGLING_COMMENT");
+
+		// Warnings: the document is used, but a reader should know
+		/** A pin missing what its type needs (a sub_type), or with contradictory flags, or no ID */
+		inline constexpr const TCHAR* PinShape = TEXT("PIN_SHAPE");
+		/** A node marked both pure and latent, or pure with exec pins */
+		inline constexpr const TCHAR* NodeFlags = TEXT("NODE_FLAGS");
+		/** A connected data input with no data flow into it: its source is missing */
+		inline constexpr const TCHAR* UnfedInput = TEXT("UNFED_INPUT");
+		/** A struct member of an object, class, struct or enum type without its type name */
+		inline constexpr const TCHAR* MemberType = TEXT("MEMBER_TYPE");
+		/** A blueprint_type, graph_type, node type or pin type this build does not know */
+		inline constexpr const TCHAR* UnknownKind = TEXT("UNKNOWN_KIND");
+		/** A graph the captured graphs use that was left out because it is beyond Max Translation Depth */
+		inline constexpr const TCHAR* DepthLimit = TEXT("DEPTH_LIMIT");
+	}
+
 	/** True when FromJson reads this version (majors OldestReadableMajor..Major) */
 	inline bool IsReadable(const FString& VersionString)
 	{

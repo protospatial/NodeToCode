@@ -92,6 +92,11 @@ namespace N2CMcpOutputSchema
 			{ TEXT("graphs"), Array(Graph) },
 			{ TEXT("structs"), Array(Object({})) },
 			{ TEXT("enums"), Array(Object({})) },
+			{ TEXT("warnings"), Array(Object({
+				{ TEXT("code"), String(TEXT("e.g. DEPTH_LIMIT, PIN_SHAPE, UNFED_INPUT")) },
+				{ TEXT("path"), String(TEXT("Where in the document, e.g. graphs[0].nodes[2]")) },
+				{ TEXT("message"), String() },
+			}, { TEXT("code"), TEXT("message") }), TEXT("What the capture found but could still use (card 0240); absent when nothing")) },
 		}, { TEXT("version"), TEXT("metadata"), TEXT("graphs") },
 			TEXT("An N2C JSON document (Content/Prompting/Shared/N2CJsonSpec.md)"));
 	}

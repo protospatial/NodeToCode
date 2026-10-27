@@ -68,6 +68,24 @@ FN2CCapture FN2CCaptureContext::TakeCapture()
     Capture.GraphGuids = MoveTemp(GraphGuids);
     Capture.NodeGuids = MoveTemp(NodeGuids);
     Capture.Pins = MoveTemp(CapturedPins);
+
+    // A graph left out at the depth limit (and not captured another way): a warning, so an agent or user can raise
+    // Max Translation Depth or capture that graph on its own (card 0240)
+    for (const TWeakObjectPtr<const UEdGraph>& Weak : DepthLimitedGraphs)
+    {
+        const UEdGraph* Graph = Weak.Get();
+        if (!Graph || VisitedGraphs.Contains(Graph))
+        {
+            continue;
+        }
+        const UBlueprint* Owner = FBlueprintEditorUtils::FindBlueprintForGraph(Graph);
+        FN2CDiagnostic& Diagnostic = Capture.Diagnostics.AddDefaulted_GetRef();
+        Diagnostic.Severity = EN2CDiagnosticSeverity::Warning;
+        Diagnostic.Code = N2CJsonContract::Diagnostic::DepthLimit;
+        Diagnostic.Path = TEXT("graphs");
+        Diagnostic.Message = FString::Printf(TEXT("Graph %s%s%s is used but not captured: it is beyond Max Translation Depth %d"),
+            Owner ? *Owner->GetName() : TEXT(""), Owner ? TEXT(".") : TEXT(""), *Graph->GetName(), Options.Depth);
+    }
     return Capture;
 }
 
@@ -457,6 +475,7 @@ void FN2CCaptureContext::AddGraphToProcess(UEdGraph* Graph)
         {
             FN2CLogger::Get().Log(FString::Printf(TEXT("Skipping graph '%s' - maximum translation depth reached (%d)"),
                 *Graph->GetName(), Options.Depth), EN2CLogSeverity::Warning);
+            DepthLimitedGraphs.AddUnique(Graph);
             return;
         }
     }
@@ -586,12 +605,6 @@ bool FN2CCaptureContext::ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType)
     {
         N2CLiveness::MarkGraph(NewGraph);
         CaptureComments(Graph);
-
-        // Validate all flow references
-        if (!ValidateFlowReferences(NewGraph))
-        {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Flow validation issues found in graph: %s"), *NewGraph.Name));
-        }
 
         FString Context = FString::Printf(TEXT("Processed graph: %s with %d nodes"), 
             *NewGraph.Name, 
@@ -726,14 +739,6 @@ TArray<UEdGraphPin*> FN2CCaptureContext::TraceExecTargets(UEdGraphPin* ExecOutpu
         }
     }
     return Targets;
-}
-
-bool FN2CCaptureContext::ValidateFlowReferences(FN2CGraph& Graph)
-{
-    // Use the blueprint validator to validate the graph
-    FN2CBlueprintValidator Validator;
-    FString ErrorMessage;
-    return Validator.ValidateFlowReferences(Graph, ErrorMessage);
 }
 
 void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
