@@ -15,15 +15,40 @@ class FN2CRichTextSyntaxHighlighter;
 class SN2CCodeEditor : public SCompoundWidget
 {
 public:
+    /** The text changed (typed, pasted, or set) */
+    DECLARE_DELEGATE_OneParam(FOnTextChanged, const FText& /*NewText*/);
+
+    /** The cursor moved: zero-based line and column */
+    DECLARE_DELEGATE_TwoParams(FOnCursorMoved, int32 /*Line*/, int32 /*Column*/);
+
+    /** The selection changed: its first and last zero-based line (equal when nothing is selected) */
+    DECLARE_DELEGATE_TwoParams(FOnSelectionChanged, int32 /*StartLine*/, int32 /*EndLine*/);
+
     SLATE_BEGIN_ARGS(SN2CCodeEditor)
         : _Text()
         , _Language(EN2CCodeLanguage::Cpp)
+        , _FontSize(9)
+        , _TabSize(4)
+        , _WordWrap(false)
     {}
         /** Initial text content */
         SLATE_ATTRIBUTE(FText, Text)
 
         /** Programming language for syntax highlighting */
         SLATE_ARGUMENT(EN2CCodeLanguage, Language)
+
+        /** Font size in points */
+        SLATE_ARGUMENT(int32, FontSize)
+
+        /** Spaces a tab character is drawn as */
+        SLATE_ARGUMENT(int32, TabSize)
+
+        /** Wrap long lines at the widget's width */
+        SLATE_ARGUMENT(bool, WordWrap)
+
+        SLATE_EVENT(FOnTextChanged, OnTextChanged)
+        SLATE_EVENT(FOnCursorMoved, OnCursorMoved)
+        SLATE_EVENT(FOnSelectionChanged, OnSelectionChanged)
     SLATE_END_ARGS()
 
     void Construct(const FArguments& InArgs);
@@ -36,6 +61,9 @@ public:
 
     /** Change the programming language (and leave JSON highlighting) */
     void SetLanguage(EN2CCodeLanguage NewLanguage);
+
+    /** The language the editor highlights (and takes its background from) */
+    EN2CCodeLanguage GetLanguage() const { return CurrentLanguage; }
 
     /** Highlight as JSON (the translation viewer's JSON tab) until the next SetLanguage */
     void SetJsonSyntax();
@@ -81,12 +109,15 @@ public:
 
     /** Set font size */
     void SetFontSize(int32 NewSize);
+    int32 GetFontSize() const { return FontSize; }
 
-    /** Set word wrap */
+    /** Set word wrap: long lines wrap at the widget's width */
     void SetWordWrap(bool bEnable);
+    bool GetWordWrap() const { return bWordWrap; }
 
-    /** Set tab size */
+    /** Set tab size: the number of spaces a tab is drawn as */
     void SetTabSize(int32 NewSize);
+    int32 GetTabSize() const { return TabSize; }
 
 private:
     /** Horizontal scrollbar widget */
@@ -102,7 +133,7 @@ private:
     TSharedPtr<FN2CRichTextSyntaxHighlighter> SyntaxHighlighter;
 
     /** Current language */
-    EN2CCodeLanguage CurrentLanguage;
+    EN2CCodeLanguage CurrentLanguage = EN2CCodeLanguage::Cpp;
 
     /** Highlight as JSON instead of CurrentLanguage (font, tab size and theme rebuilds keep it) */
     bool bJsonSyntax = false;
@@ -111,16 +142,27 @@ private:
     static const FName CurrentTheme;
 
     /** Current tab size */
-    int32 TabSize;
+    int32 TabSize = 4;
 
     /** Current font size */
-    int32 FontSize;
-    
-    /** Current text style */
+    int32 FontSize = 9;
+
+    /** Whether long lines wrap */
+    bool bWordWrap = false;
+
+    /** The style the text widget and the highlighter's runs start from: the theme's normal text at FontSize */
     FTextBlockStyle TextStyle;
 
     /** Background brush for the current language, looked up from FN2CCodeEditorStyle */
     const FSlateBrush* BackgroundBrush = nullptr;
+
+    /** The last selection reported through OnSelectionChanged */
+    int32 LastSelectionStartLine = 0;
+    int32 LastSelectionEndLine = 0;
+
+    FOnTextChanged OnTextChangedDelegate;
+    FOnCursorMoved OnCursorMovedDelegate;
+    FOnSelectionChanged OnSelectionChangedDelegate;
 
     /** Looks up and stores the background brush for a language */
     const FSlateBrush* UpdateBackgroundBrush(EN2CCodeLanguage Language);
@@ -128,29 +170,20 @@ private:
     /** Clamps a line/column pair to the current text layout */
     FTextLocation ClampLocation(int32 Line, int32 Column) const;
 
-    /** Create a new syntax highlighter for the specified language */
-    void CreateSyntaxHighlighter(EN2CCodeLanguage Language);
+    /**
+     * The one place the highlighter and the text widget are built: CurrentLanguage (or JSON), TextStyle at FontSize,
+     * TabSize and bWordWrap. Keeps the text and the cursor.
+     */
+    void RebuildEditor(TOptional<TAttribute<FText>> InitialText = TOptional<TAttribute<FText>>());
 
-    /** The highlighter for a language, or for JSON while bJsonSyntax is set */
-    TSharedRef<FN2CRichTextSyntaxHighlighter> MakeSyntaxHighlighter(EN2CCodeLanguage Language, const FTextBlockStyle& BaseStyle) const;
+    /** Text widget callbacks, forwarded to the delegates */
+    void HandleTextChanged(const FText& NewText);
+    void HandleCursorMoved(const FTextLocation& Location);
 
-    /** Rebuild the highlighter and the text widget for a language, keeping the text */
-    void ApplyLanguage(EN2CCodeLanguage NewLanguage);
-
-    /** Delegate for text changes */
-    DECLARE_DELEGATE_OneParam(FOnTextChanged, const FText&);
-
-    /** Set the callback for text changes */
-    void SetOnTextChanged(const FOnTextChanged& InHandler) { OnTextChangedHandler = InHandler; }
-
-private:
-    /** Handler for text changes */
-    FOnTextChanged OnTextChangedHandler;
+    /** Fires OnSelectionChanged when the selection's first or last line differs from the last one reported */
+    void ReportSelectionIfChanged();
 
 public:
-    /** Internal callback for text changes */
-    void OnTextChanged(const FText& NewText);
-
     /** Convert language enum to string */
     static FString GetLanguageString(EN2CCodeLanguage Language)
     {

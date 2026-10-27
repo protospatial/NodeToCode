@@ -120,6 +120,8 @@ step is reported as `pytest WARN (uv not found)` and skipped.
   added to the plugin. A known defect is a test marked `pytest.mark.xfail(strict=True, reason='<finding id>')`:
   the card that fixes it removes the marker, since a strict xfail that passes fails the run. A new stub attribute
   goes in the conftest only when the code under test needs it; any other `unreal.X` raises `AttributeError`.
+  Tests that need the real editor go in `Tests/python/editor` (pytest skips it) and run with
+  `Tests/python/editor/run_editor_tests.py` through `-ExecutePythonScript`; `Tests/python/README.md` has both commands.
 - `-Smoke` runs `Tests/smoke/smoke_check.py` with the engine's own Python: one headless `-N2CMcp` editor per MCP
   tool-registration mode (default, dynamic discovery, Python script-only, set in the host's
   `Config/DefaultNodeToCode.ini` and put back), plus the `Tests/mcp_probe` probes in the default session. It fails on

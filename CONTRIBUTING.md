@@ -44,7 +44,8 @@ C++ must compile on all three.
 
    `.\build.ps1 -Test` also runs them on each engine's bundled Python. Python 3.11 is what UE 5.6 to 5.8 embed, so
    do not use newer syntax in `Content/Python`. Known defects are `xfail(strict=True)` tests named after their
-   finding; fixing one means removing its marker.
+   finding; fixing one means removing its marker. Tests that need the editor go in `Tests/python/editor`;
+   `Tests/python/README.md` gives the command that runs them.
 5. If you cannot build on every engine, say which ones you built and tested in the pull request. The maintainer
    runs the rest before merging.
 

@@ -13,7 +13,8 @@ Evidence names: `P<n>` are the live probes in `Tests/mcp_probe/mcp_probe.py` (st
 
 ## Scope and trust boundary
 
-The MCP server runs inside the Unreal Editor and is meant for one developer's machine. It has no authentication.
+The MCP server runs inside the Unreal Editor and is meant for one developer's machine. Authentication is optional
+(Require MCP Bearer Token, off by default, card 0183).
 The trust boundary is the **project**: opening a project already runs its code (C++ modules, `Content/Python/
 init_unreal.py`, editor utility scripts), so a hostile project is out of scope. In scope is untrusted **content**
 inside a trusted project (an asset from Fab, a third-party pack or a teammate), untrusted **peers** of the editor
@@ -46,7 +47,7 @@ inside a trusted project (an asset from Fab, a third-party pack or a teammate), 
 | Source | Reaches the agent through | Live 0090 |
 |---|---|---|
 | Web pages | HTTP requests to `/mcp` | refused, see Network controls |
-| Other local processes | HTTP requests to `/mcp`; discovery files | accepted (no auth token) |
+| Other local processes | HTTP requests to `/mcp`; discovery files | accepted by default; with Require MCP Bearer Token on, only with the token from the user's `mcp-token` file (401 otherwise) |
 | LAN peers | HTTP requests | no listener off loopback (P5, bind code) |
 | Node comments (`UEdGraphNode::NodeComment`) | N2C JSON `comment` field in get-focused-blueprint, get-blueprint-n2cjson (any Blueprint by path, card 0157), the `nodetocode://blueprint/*` resources, the prompts, translate-focused-blueprint's LLM input | code (`N2CCaptureContext.cpp`, `N2CBaseNodeProcessor.cpp`); engine-written comments ("This node is disabled...") seen live in get-focused-blueprint |
 | Variable tooltips | get-blueprint-member-variables `metadata.tooltip`; N2C JSON member `comment` for struct and enum tooltips | yes: fixture canary B returned by get-blueprint-member-variables |
@@ -104,8 +105,8 @@ control: the Play In Editor rule is the only thing in the server that reads them
 | Body cap: a `/mcp` body over 8 MiB (`FN2CMcpProtocol::MaxRequestBodyBytes`) is answered 413 with JSON-RPC -32600 (null id) before NodeToCode copies, converts or parses it; checked in `FN2CMcpHttpServerManager::HandleMcpRequest` and again at the top of `FN2CMcpProtocol::Handle` | card 0425 | `NodeToCode.MCP.Transport.BodySizeCap` (core and HTTP transport, one byte over and exactly at the limit); probe P6 on 5.6, 5.7, 5.8: 8 MiB + 1 byte `ping` 413, 1 MiB `ping` 200; with the checks reverted the same probe got 200 on 5.8 (live 0090 had a 32 MB body answered 200) | the engine still buffers the body first. Unreal's HTTPServer (5.6, 5.7 and 5.8 alike, `FHttpConnectionRequestReadContext`) has no body or header limit and no hook before the body is read: it takes `Content-Length` with `Atoi` (up to INT32_MAX, about 2 GB), appends up to 64 KB per tick to `FHttpServerRequest::Body`, and routes the request only when the whole body has arrived; a POST without `Content-Length` gets 411, and chunked bodies are not decoded. Headers are buffered until the blank line with no size or count limit, and the request target is not limited. So a local client can still make the editor hold one oversized body (and a large header block) per connection until it has been read; what the cap removes is NodeToCode's copy, UTF-8 conversion and JSON parse of it on the game thread. Rejecting on `Content-Length` before the read would need an engine change or a listener of our own |
 | Server switch and headless default: **Enable MCP Server** (per user, default on); not started in commandlets or `-unattended` runs without `-N2CMcp` | `NodeToCode.cpp`, card 0021 | smoke, every probe run; `NodeToCode.Security.UserSettings`, `live_user_settings_0423.py` (a committed `bEnableMcpServer=False` is ignored with a warning) | none for the switch itself (card 0423 fixed the committed default layer) |
 | Port conflicts handled, discovery files written: `<Project>/Saved/NodeToCode/mcp-server.json` and `<UserSettingsDir>/NodeToCode/servers/<pid>.json` | card 0112 | P4 fixed, `NodeToCode.MCP.ServerLifecycle`, live 0090 (both files present with the session's port and pid) | the files tell any local process where the server is (it could find it anyway) |
-| Stdio bridge picks the editor from the discovery files and sends no auth header | `nodetocode_bridge.py`, card 0114 | `live_stdio_bridge.py` | it trusts the `url` in a discovery file without a loopback check (code; card **0426**) |
-| Authentication | none | | card **0183** (optional per-editor bearer token) |
+| Stdio bridge picks the editor from the discovery files and sends the bearer token when one exists (card 0183) | `nodetocode_bridge.py`, card 0114 | `live_stdio_bridge.py` | it trusts the `url` in a discovery file without a loopback check (code; card **0426**) |
+| Optional bearer token: with **Require MCP Bearer Token** on (per user, default off), `/mcp` needs `Authorization: Bearer <token>` after the Origin, Host and Content-Type checks, else 401 with `WWW-Authenticate: Bearer` and a JSON-RPC error with a null id; compared in constant time. The token is 32 bytes from the OS CSPRNG (BCryptGenRandom, `/dev/urandom`), hex, in `<UserSettingsDir>/NodeToCode/mcp-token` (owner-only on POSIX), outside every project and denied to the file tools; `/mcp/health` stays open | `FN2CMcpAuthToken`, card 0183 | `NodeToCode.MCP.AuthToken`; `Tests/mcp_probe/live_bearer_token_0183.py` | off by default for 2.0-beta; a process that can read the user's files reads the token; a regenerated token reaches other editors when they next see a wrong token |
 
 ## Comparison with UE 5.8's EditorToolset
 
@@ -134,7 +135,7 @@ and content checks too. Its credential deny-list and the absence of a general wr
 | Elicitation (a confirmation form) for destructive and code-execution tools | adopt for delete-blueprint-function, move-folder, delete-component-in-actor; extend to run-python and save-python-script once the first three land | card 0212 |
 | Audit log of code-execution and script-write calls | adopt | card 0424 (new) |
 | run-python off by default | done | card 0021, decision 0019 |
-| Per-editor bearer token | adopt as an option | card 0183 |
+| Per-editor bearer token | done, as an option (per-user token shared by the user's editors) | card 0183 |
 | Restricted Python mode or a sandboxed runner | adopt the runner, decide restriction there | card 0299 (E13) |
 | Refuse mutation during PIE | adopt | card 0170 |
 | Strip or redact comments from tool output | rejected: comments are the information users ask agents to read, and a filter of instruction-like text is easy to evade; provenance marking (0207) and confirmation (0212) address the same risk without losing content |
@@ -144,7 +145,7 @@ and content checks too. Its credential deny-list and the absence of a general wr
 | Risk | Owner |
 |---|---|
 | Prompt injection through Blueprint text reaches an agent with mutating tools. Since card 0124 it is marked as data in the Blueprint tools, the resource and the prompts, but the mark is advice the model may ignore, names-only results and non-Blueprint text (read-file, script library) are unmarked, and clients get no enforceable provenance | 0207, 0205, 0212, gate 0383 |
-| No authentication; any local process and any page on a localhost origin can call tools | 0183 |
+| Authentication is off by default: any local process and any page on a localhost origin can call tools until the user turns Require MCP Bearer Token on; turning it on by default waits for the generated client configs | 0206 |
 | run-python has no timeout and no undo on the game thread | 0300, 0299 |
 | No audit of code execution | 0424 |
 | No confirmation for destructive tools | 0212 |

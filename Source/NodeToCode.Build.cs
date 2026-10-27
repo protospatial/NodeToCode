@@ -72,6 +72,9 @@ public class NodeToCode : ModuleRules
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
 			PublicSystemLibraries.Add("Advapi32.lib");
+
+			// BCryptGenRandom: the MCP bearer token's random bytes (FN2CMcpAuthToken, card 0183)
+			PublicSystemLibraries.Add("Bcrypt.lib");
 		}
 
 		// --- httplib.h Integration (unused today, see the include path above) ---

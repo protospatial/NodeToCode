@@ -18,6 +18,24 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FOnN2CBlueprintPathChanged, const FSoftObje
 /** Many graphs may have changed at once (a bulk update ended, or the state was reloaded): re-read everything */
 DECLARE_MULTICAST_DELEGATE(FOnN2CGraphStatesReloaded);
 
+/** One tag to take off one graph (UN2CGraphStateManager::RemoveTags); an empty Category matches any category */
+struct FN2CTagRemovalRequest
+{
+	FN2CGraphKey Key;
+	FString Tag;
+	FString Category;
+};
+
+/** A tag RemoveTags took off, with what RestoreTags needs to put it back as it was */
+struct FN2CRemovedTag
+{
+	/** The full key of the entry it came from (Blueprint and GUID) */
+	FN2CGraphKey Key;
+	FString GraphName;
+	/** The entry as it was: tag, category, description and timestamp */
+	FN2CTagEntry Entry;
+};
+
 /**
  * @class UN2CGraphStateManager
  * @brief Singleton manager for unified Blueprint graph state tracking
@@ -181,6 +199,20 @@ public:
 	 * @return Number of tags removed
 	 */
 	int32 ClearAllTags();
+
+	/**
+	 * Remove many tags at once (Remove Selected): one bulk update, so one save and one OnGraphStatesReloaded however
+	 * many tags go, and no per-tag broadcasts. Requests that match nothing are skipped.
+	 * @return The removed entries, in request order, for RestoreTags (an undo snapshot)
+	 */
+	TArray<FN2CRemovedTag> RemoveTags(const TArray<FN2CTagRemovalRequest>& Requests);
+
+	/**
+	 * Put back tags RemoveTags returned, with their description and timestamp (undo). One save and one
+	 * OnGraphStatesReloaded; a tag already back on its graph is left alone.
+	 * @return Number of tags restored
+	 */
+	int32 RestoreTags(const TArray<FN2CRemovedTag>& Removed);
 
 	/**
 	 * Check if a graph has a specific tag

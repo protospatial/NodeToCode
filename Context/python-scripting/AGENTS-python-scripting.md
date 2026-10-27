@@ -69,10 +69,15 @@ Stdio-to-HTTP bridge enabling MCP clients (Claude Desktop, etc.) to communicate 
     *   Session management with `Mcp-Session-Id` (and `MCP-Protocol-Version` after initialize); a 404 replays
         `initialize` and resends once; stdin EOF waits for calls in flight, then sends DELETE
     *   No read timeout by default (a held translation sends nothing until it finishes); `--timeout SECONDS` sets one
+    *   Bearer token (card 0183): `TokenSource` sends `Authorization: Bearer <token>` on every request (initialize
+        replays and DELETE too) from `--token-file`, else `NODETOCODE_MCP_TOKEN`, else the editor's per-user
+        `<UserSettingsDir>/NodeToCode/mcp-token`, read again for each request so a regenerated token is used at once; no
+        token, no header. A 401 is logged with where the token came from (never the token) and returned as the
+        JSON-RPC error with the request's id. Tests: `Tests/python/test_mcp_bridge_token.py`
     *   Debug mode with `--debug` flag (logs go to stderr)
 *   **Usage**:
     ```bash
-    python nodetocode_bridge.py [--project NAME_OR_PATH] [--port PORT [--host HOST]] [--url URL] [--timeout SECONDS] [--debug]
+    python nodetocode_bridge.py [--project NAME_OR_PATH] [--port PORT [--host HOST]] [--url URL] [--token-file PATH] [--timeout SECONDS] [--debug]
     ```
 *   **Tests**: `python -I -m unittest discover -s Content/Python/tests -p "test_mcp_bridge*.py"` (no editor; fake
     editors on http.server and fake discovery folders); live: `Tests/mcp_probe/live_stdio_bridge.py` and
@@ -247,7 +252,9 @@ script ends and reports it as `compile` in its own result, so a script that adds
 
 The script system searches two locations, with project scripts taking precedence:
 
-1. **Plugin bundled scripts** (read-only): `Plugins/NodeToCode/Content/Python/scripts/`
+1. **Plugin bundled scripts** (read-only): `Content/Python/scripts/` of the plugin, found beside the `nodetocode`
+   package (`_get_plugin_scripts_dir` resolves it from `scripts.py`'s own path), so a Fab install under
+   `Engine/Plugins/Marketplace` or a renamed plugin folder finds them too
 2. **Project user scripts** (read-write): `Content/Python/scripts/`
 
 *   All list/search/get operations search **BOTH** locations
@@ -295,6 +302,8 @@ Writing and recovery (project registry; same pattern as `FN2CFileUtils`):
     AGENTS.md gives the `uv run` command). `test_scripts.py` covers this module and `test_registry_integrity.py`
     checks that every bundled registry path exists and every bundled `.py` file is registered, so a script added
     under `Content/Python/scripts` needs its registry entry in the same change.
+*   In-editor tests: `Tests/python/editor` (`run_editor_tests.py` runs each `test_*.py` there with
+    `-ExecutePythonScript` and logs `N2C_EDITOR_TESTS PASS <count>` or `FAIL`; command in `Tests/python/README.md`).
 
 ### Bundled Scripts
 

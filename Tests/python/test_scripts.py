@@ -11,11 +11,12 @@ its marker, because a strict xfail that passes fails the run.
 import importlib
 import json
 import os
+import shutil
 import sys
 
 import pytest
 
-from conftest import CONTENT_PYTHON, REPO_ROOT
+from conftest import CONTENT_PYTHON, REAL_PLUGIN_SCRIPTS_LOOKUP, REPO_ROOT, UNREAL
 
 
 def save(scripts, name, code='result = 1', description='A test script', **kwargs):
@@ -596,18 +597,85 @@ def test_is_inside(scripts_module, tmp_path):
 # ---------------------------------------------------------------------------------------------------------------------
 # Where the bundled scripts are looked for
 
-@pytest.mark.xfail(strict=True, reason='mcp-tools-python-translation-resources-19: bundled scripts are only found at '
-                                       '<Project>/Plugins/NodeToCode, not in an engine (Fab) install')
+def bundled_registry_names():
+    with open(os.path.join(CONTENT_PYTHON, 'scripts', 'script_registry.json'), 'r', encoding='utf-8') as f:
+        return set(json.load(f)['scripts'])
+
+
+def test_unstubbed_unreal_api_fails_with_a_message_naming_the_stub():
+    with pytest.raises(AttributeError, match=r'unreal\.EditorAssetLibrary is not in the test stub'):
+        UNREAL.EditorAssetLibrary
+    assert getattr(UNREAL, 'EditorAssetLibrary', None) is None
+
+
+def test_bundled_scripts_dir_is_beside_the_package_not_under_project_plugins(scripts_module, monkeypatch):
+    # mcp-tools-python-translation-resources-19: the folder came from <Project>/Plugins/NodeToCode
+    def no_project_plugins():
+        raise AssertionError('the bundled scripts folder must not depend on the project Plugins folder')
+    monkeypatch.setattr(UNREAL.Paths, 'project_plugins_dir', staticmethod(no_project_plugins))
+    assert REAL_PLUGIN_SCRIPTS_LOOKUP() == os.path.normpath(os.path.join(CONTENT_PYTHON, 'scripts'))
+
+
+def test_every_bundled_script_is_listed_when_project_plugins_is_unrelated(real_plugin_lookup, scripts_module, tmp_path):
+    unrelated = tmp_path / 'SomewhereElse' / 'Plugins'
+    (unrelated / 'NodeToCode').mkdir(parents=True)  # even a NodeToCode folder there, without scripts, changes nothing
+    UNREAL._plugins_dir = unrelated.as_posix() + '/'
+    expected = bundled_registry_names()
+    assert len(expected) >= 13
+    result = scripts_module.list_scripts(limit=1000)
+    assert set(names(result)) == expected
+    assert {s['source'] for s in result['data']['scripts']} == {'plugin'}
+
+
+def test_bundled_script_functions_are_read_from_the_package_folder(real_plugin_lookup, scripts_module):
+    result = scripts_module.get_script_functions('asset_iterator')
+    assert result['success'], result['error']
+    assert 'find_assets_by_type' in [f['name'] for f in result['data']['functions']]
+
+
 def test_bundled_scripts_found_in_an_engine_install(real_plugin_lookup, scripts_module):
     # No NodeToCode under the project's Plugins folder, as with a Fab install under Engine/Plugins/Marketplace
     assert 'asset_iterator' in names(scripts_module.list_scripts(limit=100))
 
 
-@pytest.mark.xfail(strict=True, reason='mcp-tools-python-translation-resources-19: bundled scripts are not found when '
-                                       'the plugin folder is not named NodeToCode')
-def test_bundled_scripts_found_in_a_renamed_plugin_folder(real_plugin_lookup, scripts_module):
-    real_plugin_lookup.install_plugin('NodeToCode-main')
-    assert 'asset_iterator' in names(scripts_module.list_scripts(limit=100))
+@pytest.fixture
+def installed_package(ue, monkeypatch, tmp_path):
+    """
+    Import a copy of Content/Python installed at tmp_path/<folder>/Content/Python as the `nodetocode` package, the way
+    the editor finds it in that install, and return its scripts module. The checkout's package is put back afterwards.
+    """
+    saved = {name: module for name, module in sys.modules.items()
+             if name == 'nodetocode' or name.startswith('nodetocode.')}
+
+    def install(folder):
+        content_python = tmp_path / folder / 'Content' / 'Python'
+        shutil.copytree(CONTENT_PYTHON, content_python, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'tests'))
+        for name in saved:
+            del sys.modules[name]
+        monkeypatch.setattr(sys, 'path', [str(content_python)] + [p for p in sys.path if p != CONTENT_PYTHON])
+        importlib.invalidate_caches()
+        module = importlib.import_module('nodetocode.scripts')
+        assert os.path.commonpath([module.__file__, str(content_python)]) == str(content_python)
+        return module, str(content_python / 'scripts')
+
+    yield install
+    for name in [n for n in sys.modules if n == 'nodetocode' or n.startswith('nodetocode.')]:
+        del sys.modules[name]
+    sys.modules.update(saved)
+    importlib.invalidate_caches()
+
+
+@pytest.mark.parametrize('folder', [
+    'Engine/Plugins/Marketplace/NodeToCode_a1b2c3',  # Fab / Launcher install
+    'Project/Plugins/NodeToCode-main',               # GitHub zip, folder not renamed
+])
+def test_bundled_scripts_found_in_an_installed_copy(installed_package, folder):
+    module, scripts_dir = installed_package(folder)
+    assert module._get_plugin_scripts_dir() == os.path.normpath(scripts_dir)
+    assert set(names(module.list_scripts(limit=1000))) == bundled_registry_names()
+    functions = module.get_script_functions('asset_iterator')
+    assert functions['success'], functions['error']
+    assert 'find_assets_by_type' in [f['name'] for f in functions['data']['functions']]
 
 
 # ---------------------------------------------------------------------------------------------------------------------

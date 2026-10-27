@@ -2,6 +2,8 @@
 
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "MCP/Server/N2CMcpProtocol.h"
+#include "MCP/Server/N2CMcpAuthToken.h"
+#include "Core/N2CUserSettings.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 #include "Utils/N2CLogger.h"
 #include "HttpServerModule.h"
@@ -231,7 +233,7 @@ bool FN2CMcpHttpServerManager::TryStartOnPort(int32 Port, FString& OutReason)
 
 	// Register the MCP endpoint: POST carries messages, DELETE ends a session, and GET, PUT and PATCH get 405 from the
 	// protocol core (an unbound verb would get the router's 404). The Origin and Host checks run first for every verb;
-	// only POST needs a JSON body.
+	// only POST needs a JSON body. Then, with Require MCP Bearer Token on, the bearer token (401 without it, card 0183).
 	FHttpRequestHandler McpHandler;
 	McpHandler.BindLambda([this](const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete) -> bool
 	{
@@ -240,12 +242,16 @@ bool FN2CMcpHttpServerManager::TryStartOnPort(int32 Port, FString& OutReason)
 		{
 			return true;
 		}
+		if (bRequireBearerToken && !FN2CMcpAuthToken::Authorize(Request, OnComplete))
+		{
+			return true;
+		}
 		return HandleMcpRequest(Request, OnComplete);
 	});
 	RouteHandles.Add(HttpRouter->BindRoute(FHttpPath(TEXT("/mcp")), EHttpServerRequestVerbs::VERB_POST | EHttpServerRequestVerbs::VERB_GET
 		| EHttpServerRequestVerbs::VERB_DELETE | EHttpServerRequestVerbs::VERB_PUT | EHttpServerRequestVerbs::VERB_PATCH, McpHandler));
 
-	// Register health check endpoint
+	// Register health check endpoint: open without the token, and it never shows it
 	FHttpRequestHandler HealthHandler;
 	HealthHandler.BindLambda([this](const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete) -> bool
 	{
@@ -309,6 +315,19 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port, int32 PortRange)
 
 	RequestedPort = Port;
 
+	// Read once per start, like the other per-user switches (Require MCP Bearer Token needs an editor restart). The token
+	// file is made now, so the stdio bridge can read it before the first request.
+	bRequireBearerToken = RequireBearerTokenOverride.IsSet() ? RequireBearerTokenOverride.GetValue() : UN2CUserSettings::IsMcpBearerTokenRequired();
+	if (bRequireBearerToken)
+	{
+		if (FN2CMcpAuthToken::Get().IsEmpty())
+		{
+			FN2CLogger::Get().LogError(TEXT("Require MCP Bearer Token is on but no token could be made: every MCP request will get 401"), TEXT("MCP"));
+		}
+		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP requests need 'Authorization: Bearer <token>' (Require MCP Bearer Token is on); ")
+			TEXT("the token is in %s"), *FN2CMcpAuthToken::GetTokenFilePath()), EN2CLogSeverity::Info);
+	}
+
 	// Get the HTTP server module
 	HttpServerModule = &FModuleManager::LoadModuleChecked<FHttpServerModule>(FName("HTTPServer"));
 	if (!HttpServerModule)
@@ -353,11 +372,12 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port, int32 PortRange)
 		Notify(FString::Printf(TEXT("NodeToCode MCP: port %d is in use (another editor?), so the MCP server is on port %d: ")
 			TEXT("http://127.0.0.1:%d/mcp. Point your MCP client there, or set a free port in %s."),
 			FirstPort, ServerPort, ServerPort, *N2CMcpPorts::SettingPath()), /*bIsError=*/false);
-		SetStatus(FString::Printf(TEXT("Running on http://127.0.0.1:%d/mcp (port %d was in use)"), ServerPort, FirstPort));
+		SetStatus(FString::Printf(TEXT("Running on http://127.0.0.1:%d/mcp (port %d was in use)%s"), ServerPort, FirstPort,
+			bRequireBearerToken ? TEXT(", bearer token required") : TEXT("")));
 	}
 	else
 	{
-		SetStatus(FString::Printf(TEXT("Running on http://127.0.0.1:%d/mcp"), ServerPort));
+		SetStatus(FString::Printf(TEXT("Running on http://127.0.0.1:%d/mcp%s"), ServerPort, bRequireBearerToken ? TEXT(", bearer token required") : TEXT("")));
 	}
 
 	WriteDiscoveryFiles();

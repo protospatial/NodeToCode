@@ -61,6 +61,9 @@ claude mcp add --scope user nodetocode -- "<Project>/Plugins/NodeToCode/Content/
 
 Then disable `plugin:nodetocode:nodetocode` in `/mcp`. The skills work over either route.
 
+The plugin's server entry sends no token, so with **Require MCP Bearer Token** on use the bridge above, which reads
+the token itself, or the `headers` snippet in [Requiring an MCP Token](Requiring-an-MCP-Token).
+
 ## Translate with `/nodetocode:translate`
 
 ```

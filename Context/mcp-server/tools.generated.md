@@ -779,7 +779,7 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create`. Left to Unreal MCP by 
 
 **Search parent classes**
 
-Searches for available parent classes for Blueprint creation, similar to the 'Pick Parent Class' dialog. Common parent classes (Actor, Pawn, Character, ActorComponent, UserWidget, ...) come first and are listed whatever the classType and include filters say. totalFound counts every class collected before the search term is applied, not the matches
+Searches for available parent classes for Blueprint creation, similar to the 'Pick Parent Class' dialog. Each class is listed once, native and Blueprint classes alike, and every filter applies to all of them. Common parent classes (Actor, Pawn, Character, ActorComponent, UserWidget, ...) score higher. totalFound counts the classes that match, before maxResults is applied
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -794,7 +794,7 @@ Unreal MCP counterpart (UE 5.8): `ObjectTools.search_subclasses`. Left to Unreal
 | `includeEngineClasses` | `boolean` | no | `true` | Include engine-provided classes in results |
 | `includePluginClasses` | `boolean` | no | `true` | Include plugin-provided classes in results |
 | `includeDeprecated` | `boolean` | no | `false` | Include deprecated classes in results |
-| `includeAbstract` | `boolean` | no | `false` | Include abstract classes in results |
+| `includeAbstract` | `boolean` | no | `true` | Include abstract classes in results; abstract classes such as UserWidget and PrimaryDataAsset are valid parents |
 | `maxResults` | `integer` | no | `50` | Maximum number of results to return |
 
 ## BlueprintComponentTools
