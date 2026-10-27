@@ -38,6 +38,8 @@ FN2CSwiftSyntaxDefinition::FN2CSwiftSyntaxDefinition()
 
     // String delimiters
     StringDelimiters = { TEXT('\"') };
+    // Triple quotes open multi-line string literals
+    bTripleQuotedStrings = true;
 
     // Comment delimiters
     LineCommentDelimiter = TEXT("//");

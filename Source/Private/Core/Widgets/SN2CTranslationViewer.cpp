@@ -358,9 +358,8 @@ void SN2CTranslationViewer::UpdateCodeDisplay()
 	// Set appropriate language for syntax highlighting
 	if (ActiveFileType == TEXT("json"))
 	{
-		// Use Pseudocode for JSON since we don't have dedicated JSON highlighting
-		// This provides reasonable highlighting for structured text
-		CodeEditor->SetLanguage(EN2CCodeLanguage::Pseudocode);
+		// The N2C JSON the translation was made from, highlighted as JSON
+		CodeEditor->SetJsonSyntax();
 	}
 	else if (ActiveFileType == TEXT("h"))
 	{

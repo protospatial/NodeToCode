@@ -22,9 +22,7 @@ FN2CPythonSyntaxDefinition::FN2CPythonSyntaxDefinition()
 
     // Python Operators
     Operators = {
-        // Comment operators first to ensure proper matching
-        TEXT("#"), TEXT("\"\"\""), TEXT("\"\"\""),
-        // Standard operators
+        TEXT("#"),
         TEXT("+"), TEXT("-"), TEXT("*"), TEXT("**"), TEXT("/"), TEXT("//"), TEXT("%"),
         TEXT("@"), TEXT("<<"), TEXT(">>"), TEXT("&"), TEXT("|"), TEXT("^"), TEXT("~"),
         TEXT("<"), TEXT(">"), TEXT("<="), TEXT(">="), TEXT("=="), TEXT("!="),
@@ -35,11 +33,14 @@ FN2CPythonSyntaxDefinition::FN2CPythonSyntaxDefinition()
 
     // String delimiters
     StringDelimiters = { TEXT('\"'), TEXT('\'') };
+    // Triple quotes (docstrings included) open strings that run across lines to the same triple quote
+    bTripleQuotedStrings = true;
 
     // Comment delimiters
     LineCommentDelimiter = TEXT("#");
-    BlockCommentStart = TEXT("\"\"\"");
-    BlockCommentEnd = TEXT("\"\"\"");
+    // Python has no block comment
+    BlockCommentStart.Reset();
+    BlockCommentEnd.Reset();
 }
 
 void FN2CPythonSyntaxDefinition::GetCommentDelimiters(FString& OutLineComment, FString& OutBlockCommentStart, FString& OutBlockCommentEnd) const
