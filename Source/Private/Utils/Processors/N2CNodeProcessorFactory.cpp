@@ -14,6 +14,7 @@
 #include "Utils/Processors/N2CFunctionEntryProcessor.h"
 #include "Utils/Processors/N2CVariableProcessor.h"
 #include "Utils/Processors/N2CStructProcessor.h"
+#include "Utils/Processors/N2CTimelineProcessor.h"
 
 class FN2CStructProcessor;
 
@@ -44,13 +45,13 @@ TSharedPtr<IN2CNodeProcessor> FN2CNodeProcessorFactory::GetProcessor(EN2CNodeTyp
         return *FoundProcessor;
     }
     
-    // If no specific processor is found, return the default processor (CallFunction)
-    if (TSharedPtr<IN2CNodeProcessor>* DefaultProcessor = Processors.Find(EN2CNodeType::CallFunction))
+    // Any other type gets the base processor (card 0239, translation-core-14): what every node has, the function a
+    // call node names and the latent flag. It used to get the CallFunction processor, so a Timeline or an async node
+    // lost its own properties.
+    if (TSharedPtr<IN2CNodeProcessor>* BaseProcessor = Processors.Find(EN2CNodeType::Unknown))
     {
-        return *DefaultProcessor;
+        return *BaseProcessor;
     }
-    
-    // If no default processor is found, return nullptr
     return nullptr;
 }
 
@@ -155,4 +156,10 @@ void FN2CNodeProcessorFactory::InitializeDefaultProcessors()
     RegisterProcessor(EN2CNodeType::DynamicCast, CastProcessor);
     RegisterProcessor(EN2CNodeType::ClassDynamicCast, CastProcessor);
     RegisterProcessor(EN2CNodeType::CastByteToEnum, CastProcessor);
+
+    // Timelines and async proxy nodes (card 0239)
+    RegisterProcessor(EN2CNodeType::Timeline, MakeShared<FN2CTimelineProcessor>());
+    const TSharedPtr<FN2CAsyncTaskProcessor> AsyncTaskProcessor = MakeShared<FN2CAsyncTaskProcessor>();
+    RegisterProcessor(EN2CNodeType::AsyncAction, AsyncTaskProcessor);
+    RegisterProcessor(EN2CNodeType::BaseAsyncTask, AsyncTaskProcessor);
 }

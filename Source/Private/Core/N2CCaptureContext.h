@@ -126,9 +126,6 @@ private:
     /** Gives Node and its visible pins their IDs (the first pass over a graph; knots get none). False for a knot or null. */
     bool AssignIDs(UK2Node* Node);
 
-    /** Fallback method for processing node properties when no processor is available */
-    void FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
-
     /** Process a single graph */
     bool ProcessGraph(UEdGraph* Graph, EN2CGraphType GraphType);
 
@@ -183,8 +180,6 @@ private:
     /** Determine node type */
     void DetermineNodeType(UK2Node* Node, EN2CNodeType& OutType);
 
-    /** Process K2Node-specific data */
-    void DetermineNodeSpecificProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);
     
     /** Convert UE pin type to N2C pin type */
     EN2CPinType DeterminePinType(const UEdGraphPin* Pin) const;

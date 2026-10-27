@@ -243,6 +243,9 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
     - "unreachable": a node with exec pins that no event, function entry or other entry reaches through exec wires. It never runs.
     - "disabled": the node is disabled in the editor and is not compiled. When it has one exec input and one exec output, "execution" already links its predecessor straight to its successor; otherwise the exec chain stops at it.
     - "input_pins", "output_pins": the node's pins.
+    - "bound_to" (optional): on a component-bound event (e.g. "member_name" "OnComponentHit"), the component variable it is bound to; on an actor-bound event, the level actor. Bind the delegate on that object.
+    - "net" (optional): a replicated custom event's RPC kind, "Server", "Client" or "Multicast"; "reliable": the RPC is reliable. Declare the event as that RPC.
+    - "timeline" (optional, on a "Timeline" node, whose "member_name" is the timeline): its template, {"length": seconds, "loop", "autoplay" (each only when true), "tracks": [{"name", "kind"}]} with kind "float", "vector", "color" or "event". A Timeline node is "latent": its outputs fire as the timeline plays. On a "Switch..." node "member_name" is the switched enum or type; on a latent async node (AI MoveTo, an async action) "member_parent" and "member_name" are the factory function it calls.
   - "flows": the graph's wires (see "Reading the graph" below):
     - "execution": the exec wires, as an array of "N1.P1->N3.P5" entries.
     - "data": the data wires, as an object keyed by an output pin.

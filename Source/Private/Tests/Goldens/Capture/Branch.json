@@ -1,13 +1,7 @@
 {
 	"case": "Branch",
 	"description": "Event graph: custom event OnBranch runs a Branch on Less(A, B); True runs CollectGarbage, False runs ControlScreensaver.",
-	"known_defects": [
-		{
-			"finding": "translation-core-16",
-			"card": "0239",
-			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,8 +20,8 @@
 						"id": "N1",
 						"type": "CustomEvent",
 						"class": "K2Node_CustomEvent",
-						"title": "OnBranch",
-						"member_name": "None",
+						"member_parent": "BP_N2CGolden_Branch",
+						"member_name": "OnBranch",
 						"input_pins": [],
 						"output_pins": [
 							{
