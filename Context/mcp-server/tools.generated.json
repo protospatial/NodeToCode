@@ -4544,7 +4544,7 @@
 					"type": "string",
 					"required": false,
 					"default": "",
-					"description": "Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'UserConstructionScript' for an Actor's construction script). An unknown name is not an error: the Blueprint opens and focused_graph comes back empty."
+					"description": "Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'ConstructionScript' / 'UserConstructionScript' for an Actor's construction script). An unknown name fails with GRAPH_NOT_FOUND and lists the Blueprint's graphs; the Blueprint is not opened."
 				}
 			],
 			"inputSchema":
@@ -4566,7 +4566,7 @@
 					"focus_graph":
 					{
 						"type": "string",
-						"description": "Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'UserConstructionScript' for an Actor's construction script). An unknown name is not an error: the Blueprint opens and focused_graph comes back empty.",
+						"description": "Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'ConstructionScript' / 'UserConstructionScript' for an Actor's construction script). An unknown name fails with GRAPH_NOT_FOUND and lists the Blueprint's graphs; the Blueprint is not opened.",
 						"default": ""
 					}
 				},
