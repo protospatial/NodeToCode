@@ -2,6 +2,7 @@
 
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
 #include "Widgets/Text/SMultiLineEditableText.h"
+#include "Widgets/Layout/SGridPanel.h"
 #include "Code Editor/Syntax/N2CRichTextSyntaxHighlighter.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Core/Style/N2CStyle.h"
@@ -12,11 +13,13 @@ const FName SN2CCodeEditor::CurrentTheme = FName(TEXT("Unreal Engine"));
 void SN2CCodeEditor::Construct(const FArguments& InArgs)
 {
     CurrentLanguage = InArgs._Language;
-    TabSize = 4; // Default tab size
-    FontSize = 9; // Default font size
-    CreateSyntaxHighlighter(CurrentLanguage);
+    FontSize = FMath::Max(1, InArgs._FontSize);
+    TabSize = FMath::Max(1, InArgs._TabSize);
+    bWordWrap = InArgs._WordWrap;
+    OnTextChangedDelegate = InArgs._OnTextChanged;
+    OnCursorMovedDelegate = InArgs._OnCursorMoved;
+    OnSelectionChangedDelegate = InArgs._OnSelectionChanged;
 
-    // Create scrollbars
     HorizontalScrollBar = SNew(SScrollBar)
         .Style(&N2CStyle::GetScrollBarStyle())
         .Orientation(Orient_Horizontal)
@@ -29,110 +32,39 @@ void SN2CCodeEditor::Construct(const FArguments& InArgs)
         .Padding(2)
         .Thickness(FVector2D(6.0f, 6.0f));
 
-    // Initialize the text style
+    RebuildEditor(InArgs._Text);
+}
+
+void SN2CCodeEditor::RebuildEditor(TOptional<TAttribute<FText>> InitialText)
+{
+    // Keep the text and the cursor across the rebuild (Construct passes the Text argument instead)
+    TAttribute<FText> CurrentText;
+    FTextLocation CursorLocation;
+    bool bRestoreCursor = false;
+    if (InitialText.IsSet())
+    {
+        CurrentText = InitialText.GetValue();
+    }
+    else if (EditableText.IsValid())
+    {
+        CurrentText = EditableText->GetText();
+        CursorLocation = EditableText->GetCursorLocation();
+        bRestoreCursor = true;
+    }
+
+    // The widget and every run start from the same style: the theme's normal text at FontSize
     TextStyle = FN2CCodeEditorStyle::Get().GetWidgetStyle<FTextBlockStyle>("N2CCodeEditor.TextEditor.NormalText");
     TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
-    
-    // Create the main text widget first so we can reference its font size
-    TSharedRef<SMultiLineEditableText> TextWidget = SAssignNew(EditableText, SMultiLineEditableText)
-        .Text(InArgs._Text)
-        .TextStyle(&TextStyle)
-        .Marshaller(SyntaxHighlighter)
-        .AutoWrapText(false)
-        .OnTextChanged(this, &SN2CCodeEditor::OnTextChanged)
-        .AllowMultiLine(true)
-        .HScrollBar(HorizontalScrollBar)
-        .VScrollBar(VerticalScrollBar);
+
+    SyntaxHighlighter = bJsonSyntax
+        ? FN2CRichTextSyntaxHighlighter::CreateJson(CurrentTheme, TextStyle)
+        : FN2CRichTextSyntaxHighlighter::Create(CurrentLanguage, CurrentTheme, TextStyle);
+    SyntaxHighlighter->SetTabSize(TabSize);
 
     ChildSlot
     [
         SNew(SBorder)
         .BorderImage(UpdateBackgroundBrush(CurrentLanguage))
-        [
-            SNew(SHorizontalBox)
-
-            // Main editor area
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            [
-                TextWidget
-            ]
-
-            // Vertical scrollbar
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            [
-                VerticalScrollBar.ToSharedRef()
-            ]
-        ]
-    ];
-
-    // Add horizontal scrollbar at bottom
-    if (HorizontalScrollBar.IsValid())
-    {
-        ChildSlot
-        [
-            SNew(SVerticalBox)
-            +SVerticalBox::Slot()
-            .FillHeight(1.0f)
-            [
-                ChildSlot.GetWidget()
-            ]
-            +SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                HorizontalScrollBar.ToSharedRef()
-            ]
-        ];
-    }
-}
-
-FText SN2CCodeEditor::GetText() const
-{
-    return EditableText.IsValid() ? EditableText->GetText() : FText::GetEmpty();
-}
-
-void SN2CCodeEditor::SetText(const FText& NewText)
-{
-    if (EditableText.IsValid())
-    {
-        EditableText->SetText(NewText);
-    }
-}
-
-void SN2CCodeEditor::SetLanguage(EN2CCodeLanguage NewLanguage)
-{
-    bJsonSyntax = false;
-    ApplyLanguage(NewLanguage);
-}
-
-void SN2CCodeEditor::SetJsonSyntax()
-{
-    // The background stays the current language's; only the highlighting changes
-    bJsonSyntax = true;
-    ApplyLanguage(CurrentLanguage);
-}
-
-void SN2CCodeEditor::ApplyLanguage(EN2CCodeLanguage NewLanguage)
-{
-    // Store current text
-    FText CurrentText;
-    if (EditableText.IsValid())
-    {
-        CurrentText = EditableText->GetText();
-    }
-
-    // Remember it, so a font size, tab size or theme change rebuilds the highlighter in this language, not the first one
-    CurrentLanguage = NewLanguage;
-
-    // Create new syntax highlighter
-    CreateSyntaxHighlighter(NewLanguage);
-
-    // Recreate the editable text widget with the new highlighter
-    ChildSlot
-    [
-        SNew(SBorder)
-        .BorderImage(UpdateBackgroundBrush(NewLanguage))
         [
             SNew(SGridPanel)
             .FillColumn(0, 1.0f)
@@ -143,10 +75,11 @@ void SN2CCodeEditor::ApplyLanguage(EN2CCodeLanguage NewLanguage)
             [
                 SAssignNew(EditableText, SMultiLineEditableText)
                 .Text(CurrentText)
-                .TextStyle(&FN2CCodeEditorStyle::Get().GetWidgetStyle<FTextBlockStyle>("N2CCodeEditor.TextEditor.NormalText"))
+                .TextStyle(&TextStyle)
                 .Marshaller(SyntaxHighlighter)
-                .AutoWrapText(false)
-                .OnTextChanged(this, &SN2CCodeEditor::OnTextChanged)
+                .AutoWrapText(bWordWrap)
+                .OnTextChanged(this, &SN2CCodeEditor::HandleTextChanged)
+                .OnCursorMoved(this, &SN2CCodeEditor::HandleCursorMoved)
                 .AllowMultiLine(true)
                 .HScrollBar(HorizontalScrollBar)
                 .VScrollBar(VerticalScrollBar)
@@ -167,29 +100,64 @@ void SN2CCodeEditor::ApplyLanguage(EN2CCodeLanguage NewLanguage)
             ]
         ]
     ];
-}
 
-void SN2CCodeEditor::CreateSyntaxHighlighter(EN2CCodeLanguage Language)
-{
-    // Create base style with current font size
-    FTextBlockStyle BaseStyle = FN2CCodeEditorStyle::Get().GetWidgetStyle<FTextBlockStyle>("N2CCodeEditor.TextEditor.NormalText");
-    BaseStyle.SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
-    
-    SyntaxHighlighter = MakeSyntaxHighlighter(Language, BaseStyle);
-}
-
-TSharedRef<FN2CRichTextSyntaxHighlighter> SN2CCodeEditor::MakeSyntaxHighlighter(EN2CCodeLanguage Language, const FTextBlockStyle& BaseStyle) const
-{
-    return bJsonSyntax
-        ? FN2CRichTextSyntaxHighlighter::CreateJson(CurrentTheme, BaseStyle)
-        : FN2CRichTextSyntaxHighlighter::Create(Language, CurrentTheme, BaseStyle);
-}
-
-void SN2CCodeEditor::OnTextChanged(const FText& NewText)
-{
-    if (OnTextChangedHandler.IsBound())
+    if (bRestoreCursor)
     {
-        OnTextChangedHandler.Execute(NewText);
+        EditableText->GoTo(CursorLocation);
+    }
+}
+
+FText SN2CCodeEditor::GetText() const
+{
+    return EditableText.IsValid() ? EditableText->GetText() : FText::GetEmpty();
+}
+
+void SN2CCodeEditor::SetText(const FText& NewText)
+{
+    if (EditableText.IsValid())
+    {
+        EditableText->SetText(NewText);
+    }
+}
+
+void SN2CCodeEditor::SetLanguage(EN2CCodeLanguage NewLanguage)
+{
+    // Remembered, so a later font size or tab size change rebuilds in this language, not the first one
+    CurrentLanguage = NewLanguage;
+    bJsonSyntax = false;
+    RebuildEditor();
+}
+
+void SN2CCodeEditor::SetJsonSyntax()
+{
+    // The background stays the current language's; only the highlighting changes
+    bJsonSyntax = true;
+    RebuildEditor();
+}
+
+void SN2CCodeEditor::HandleTextChanged(const FText& NewText)
+{
+    OnTextChangedDelegate.ExecuteIfBound(NewText);
+}
+
+void SN2CCodeEditor::HandleCursorMoved(const FTextLocation& Location)
+{
+    OnCursorMovedDelegate.ExecuteIfBound(Location.GetLineIndex(), Location.GetOffset());
+
+    // Typing, clicking and shift-moving change the selection by moving the cursor (it runs from an anchor to it)
+    ReportSelectionIfChanged();
+}
+
+void SN2CCodeEditor::ReportSelectionIfChanged()
+{
+    int32 StartLine = 0;
+    int32 EndLine = 0;
+    GetSelection(StartLine, EndLine);
+    if (StartLine != LastSelectionStartLine || EndLine != LastSelectionEndLine)
+    {
+        LastSelectionStartLine = StartLine;
+        LastSelectionEndLine = EndLine;
+        OnSelectionChangedDelegate.ExecuteIfBound(StartLine, EndLine);
     }
 }
 
@@ -295,6 +263,8 @@ void SN2CCodeEditor::SelectText(int32 StartLine, int32 StartColumn, int32 EndLin
     if (EditableText.IsValid() && GetLineCount() > 0)
     {
         EditableText->SelectText(ClampLocation(StartLine, StartColumn), ClampLocation(EndLine, EndColumn));
+        // SelectText does not report a cursor move
+        ReportSelectionIfChanged();
     }
 }
 
@@ -328,132 +298,27 @@ void SN2CCodeEditor::GetSelection(int32& OutStartLine, int32& OutStartColumn, in
 
 void SN2CCodeEditor::SetFontSize(int32 NewSize)
 {
-    FontSize = NewSize;
-    
-    if (EditableText.IsValid())
+    if (NewSize > 0 && NewSize != FontSize)
     {
-        // Store current text and cursor position
-        FText CurrentText = EditableText->GetText();
-        FTextLocation CursorLocation = EditableText->GetCursorLocation();
-        
-        // Update the text style with new font size
-        TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
-        
-        // Recreate syntax highlighter with updated style
-        SyntaxHighlighter = MakeSyntaxHighlighter(CurrentLanguage, TextStyle);
-        
-        // Create new text widget with updated style
-        TSharedRef<SMultiLineEditableText> NewTextWidget = SNew(SMultiLineEditableText)
-            .Text(CurrentText)
-            .TextStyle(&TextStyle)
-            .Marshaller(SyntaxHighlighter)
-            .AutoWrapText(false)
-            .OnTextChanged(this, &SN2CCodeEditor::OnTextChanged)
-            .AllowMultiLine(true)
-            .HScrollBar(HorizontalScrollBar)
-            .VScrollBar(VerticalScrollBar);
-            
-        // Replace the old widget with the new one
-        EditableText = NewTextWidget;
-        
-        // Restore cursor position
-        EditableText->GoTo(CursorLocation);
-        EditableText->ScrollTo(CursorLocation);
-        
-        // Update the child slot with the new widget
-        ChildSlot
-        [
-            SNew(SBorder)
-            .BorderImage(UpdateBackgroundBrush(CurrentLanguage))
-            [
-                SNew(SGridPanel)
-                .FillColumn(0, 1.0f)
-                .FillRow(0, 1.0f)
-
-                // Main text area
-                +SGridPanel::Slot(0, 0)
-                [
-                    NewTextWidget
-                ]
-
-                // Vertical scrollbar
-                +SGridPanel::Slot(1, 0)
-                .Padding(0)
-                [
-                    VerticalScrollBar.ToSharedRef()
-                ]
-
-                // Horizontal scrollbar
-                +SGridPanel::Slot(0, 1)
-                .Padding(0)
-                [
-                    HorizontalScrollBar.ToSharedRef()
-                ]
-            ]
-        ];
+        FontSize = NewSize;
+        RebuildEditor();
     }
 }
 
 void SN2CCodeEditor::SetWordWrap(bool bEnable)
 {
+    bWordWrap = bEnable;
     if (EditableText.IsValid())
     {
-        EditableText->SetWrappingPolicy(bEnable ? ETextWrappingPolicy::DefaultWrapping : ETextWrappingPolicy::AllowPerCharacterWrapping);
+        EditableText->SetAutoWrapText(bWordWrap);
     }
 }
 
 void SN2CCodeEditor::SetTabSize(int32 NewSize)
 {
-    // Store the new tab size
-    TabSize = NewSize;
-
-    // Store current text
-    FText CurrentText;
-    if (EditableText.IsValid())
+    if (NewSize > 0 && NewSize != TabSize)
     {
-        CurrentText = EditableText->GetText();
+        TabSize = NewSize;
+        RebuildEditor();
     }
-
-    // Create new syntax highlighter
-    CreateSyntaxHighlighter(CurrentLanguage);
-
-    // Recreate the editable text widget with the new highlighter
-    ChildSlot
-    [
-        SNew(SBorder)
-        .BorderImage(UpdateBackgroundBrush(CurrentLanguage))
-        [
-            SNew(SGridPanel)
-            .FillColumn(0, 1.0f)
-            .FillRow(0, 1.0f)
-
-            // Main text area
-            +SGridPanel::Slot(0, 0)
-            [
-                SAssignNew(EditableText, SMultiLineEditableText)
-                .Text(CurrentText)
-                .TextStyle(&FN2CCodeEditorStyle::Get().GetWidgetStyle<FTextBlockStyle>("N2CCodeEditor.TextEditor.NormalText"))
-                .Marshaller(SyntaxHighlighter)
-                .AutoWrapText(false)
-                .OnTextChanged(this, &SN2CCodeEditor::OnTextChanged)
-                .AllowMultiLine(true)
-                .HScrollBar(HorizontalScrollBar)
-                .VScrollBar(VerticalScrollBar)
-            ]
-
-            // Vertical scrollbar
-            +SGridPanel::Slot(1, 0)
-            .Padding(0)
-            [
-                VerticalScrollBar.ToSharedRef()
-            ]
-
-            // Horizontal scrollbar
-            +SGridPanel::Slot(0, 1)
-            .Padding(0)
-            [
-                HorizontalScrollBar.ToSharedRef()
-            ]
-        ]
-    ];
 }

@@ -53,6 +53,10 @@ public:
 
     virtual ~FN2CRichTextSyntaxHighlighter();
 
+    /** Spaces a tab is drawn as in the whitespace runs (the code editor's tab size); takes effect on the next SetText */
+    void SetTabSize(int32 InTabSize) { TabSize = FMath::Max(1, InTabSize); }
+    int32 GetTabSize() const { return TabSize; }
+
 protected:
     virtual void ParseTokens(const FString& SourceString, FTextLayout& TargetTextLayout, TArray<ISyntaxTokenizer::FTokenizedLine> TokenizedLines) override;
 
@@ -121,6 +125,9 @@ private:
 
     /** The syntax definition for the current language */
     TSharedPtr<FN2CSyntaxDefinition> SyntaxDefinition;
+
+    /** Spaces per tab in whitespace runs */
+    int32 TabSize = 4;
 
     /**
      * Brackets, keywords and operators, each mapped to its kind (brackets win over keywords, keywords over operators).
