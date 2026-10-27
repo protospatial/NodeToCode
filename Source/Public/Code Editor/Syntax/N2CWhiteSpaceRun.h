@@ -19,6 +19,9 @@ public:
 
     virtual FVector2D Measure(int32 StartIndex, int32 EndIndex, float Scale, const FRunTextContext& TextContext) const override;
 
+    /** Spaces a tab in this run is drawn as */
+    int32 GetNumSpacesPerTab() const { return NumSpacesPerTab; }
+
 protected:
     FN2CWhiteSpaceRun(
         const FRunInfo& InRunInfo,

@@ -40,7 +40,7 @@ public:
     /** Event fired when cursor position changes */
     DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCursorMovedEvent, int32, Line, int32, Column);
 
-    /** Event fired when text selection changes */
+    /** Event fired when text selection changes: the first and last zero-based line of the selection */
     DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSelectionChangedEvent, int32, StartIndex, int32, EndIndex);
     
     /** Fired when the text content changes */
@@ -51,7 +51,7 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Code Editor|Events")
     FOnCursorMovedEvent OnCursorMoved;
 
-    /** Fired when text selection changes */
+    /** Fired when the selection's first or last line changes (StartIndex and EndIndex are zero-based lines, as GetSelection) */
     UPROPERTY(BlueprintAssignable, Category = "Code Editor|Events")
     FOnSelectionChangedEvent OnSelectionChanged;
 
@@ -126,6 +126,8 @@ private:
     /** The Slate widget */
     TSharedPtr<class SN2CCodeEditor> CodeEditorWidget;
 
-    /** Callback for text changes from slate widget */
+    /** Callbacks from the Slate widget, forwarded to the events */
     void HandleTextChanged(const FText& NewText);
+    void HandleCursorMoved(int32 Line, int32 Column);
+    void HandleSelectionChanged(int32 StartLine, int32 EndLine);
 };
