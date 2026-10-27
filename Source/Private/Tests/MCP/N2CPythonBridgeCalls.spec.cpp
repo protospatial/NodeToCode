@@ -9,7 +9,7 @@
 #include "MCP/Python/N2CPythonBridge.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CGraphStateManager.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -195,9 +195,9 @@ BEGIN_DEFINE_SPEC(FN2CPythonBridgeCallsSpec, "NodeToCode.Python.BridgeCalls", N2
 	{
 		if (Function)
 		{
-			for (const FN2CTaggedBlueprintGraph& Tag : UN2CTagManager::Get().GetTagsForGraph(Function->GraphGuid))
+			for (const FN2CTaggedBlueprintGraph& Tag : UN2CGraphStateManager::Get().GetTaggedGraphs(Function->GraphGuid))
 			{
-				UN2CTagManager::Get().RemoveTag(Tag.GraphGuid, Tag.Tag, Tag.Category);
+				UN2CGraphStateManager::Get().RemoveTag(Tag.GraphGuid, Tag.Tag, Tag.Category);
 			}
 		}
 	}

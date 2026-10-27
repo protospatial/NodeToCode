@@ -3,7 +3,7 @@
 #include "N2CMcpListBlueprintTagsTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpTagUtils.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -77,23 +77,23 @@ FMcpToolCallResult FN2CMcpListBlueprintTagsTool::Execute(const TSharedPtr<FJsonO
 			// and each row names its Blueprint)
 			for (const FN2CGraphKey& Owner : UN2CGraphStateManager::Get().FindKeysForGuid(GraphGuid))
 			{
-				Tags.Append(UN2CTagManager::Get().GetTagsForGraph(Owner));
+				Tags.Append(UN2CGraphStateManager::Get().GetTaggedGraphs(Owner));
 			}
 		}
 		else if (!TagFilter.IsEmpty())
 		{
 			// Get graphs with specific tag
-			Tags = UN2CTagManager::Get().GetGraphsWithTag(TagFilter, CategoryFilter);
+			Tags = UN2CGraphStateManager::Get().FindTaggedGraphs(TagFilter, CategoryFilter);
 		}
 		else if (!CategoryFilter.IsEmpty())
 		{
 			// Get tags in specific category
-			Tags = UN2CTagManager::Get().GetTagsInCategory(CategoryFilter);
+			Tags = UN2CGraphStateManager::Get().FindTaggedGraphsInCategory(CategoryFilter);
 		}
 		else
 		{
 			// Get all tags
-			Tags = UN2CTagManager::Get().GetAllTags();
+			Tags = UN2CGraphStateManager::Get().GetAllTags();
 		}
 
 		// Every filter given applies together (card 0294): a graphGuid list is narrowed by tag and category too, so
@@ -122,7 +122,7 @@ FMcpToolCallResult FN2CMcpListBlueprintTagsTool::Execute(const TSharedPtr<FJsonO
 		TSharedPtr<FJsonObject> SummaryObject = MakeShareable(new FJsonObject);
 		
 		// Get unique tag names
-		TArray<FString> UniqueTagNames = UN2CTagManager::Get().GetAllTagNames();
+		TArray<FString> UniqueTagNames = UN2CGraphStateManager::Get().GetAllTagNames();
 		TArray<TSharedPtr<FJsonValue>> TagNamesArray;
 		for (const FString& TagName : UniqueTagNames)
 		{
@@ -131,7 +131,7 @@ FMcpToolCallResult FN2CMcpListBlueprintTagsTool::Execute(const TSharedPtr<FJsonO
 		SummaryObject->SetArrayField(TEXT("uniqueTagNames"), TagNamesArray);
 		
 		// Get unique categories
-		TArray<FString> UniqueCategories = UN2CTagManager::Get().GetAllCategories();
+		TArray<FString> UniqueCategories = UN2CGraphStateManager::Get().GetAllCategories();
 		TArray<TSharedPtr<FJsonValue>> CategoriesArray;
 		for (const FString& Category : UniqueCategories)
 		{

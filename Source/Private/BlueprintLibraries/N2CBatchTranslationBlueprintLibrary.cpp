@@ -2,7 +2,7 @@
 
 #include "BlueprintLibraries/N2CBatchTranslationBlueprintLibrary.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
 
 void UN2CBatchTranslationBlueprintLibrary::StartBatchTranslation(
@@ -51,8 +51,8 @@ void UN2CBatchTranslationBlueprintLibrary::TranslateGraphsWithTag(
 	}
 
 	// Get all graphs with the specified tag from the tag manager
-	UN2CTagManager& TagManager = UN2CTagManager::Get();
-	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.GetGraphsWithTag(Tag, OptionalCategory);
+	UN2CGraphStateManager& TagManager = UN2CGraphStateManager::Get();
+	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.FindTaggedGraphs(Tag, OptionalCategory);
 
 	if (TaggedGraphs.IsEmpty())
 	{
@@ -92,8 +92,8 @@ void UN2CBatchTranslationBlueprintLibrary::TranslateGraphsInCategory(
 	}
 
 	// Get all tags in the specified category from the tag manager
-	UN2CTagManager& TagManager = UN2CTagManager::Get();
-	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.GetTagsInCategory(Category);
+	UN2CGraphStateManager& TagManager = UN2CGraphStateManager::Get();
+	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.FindTaggedGraphsInCategory(Category);
 
 	if (TaggedGraphs.IsEmpty())
 	{
@@ -190,8 +190,8 @@ void UN2CBatchTranslationBlueprintLibrary::ExportGraphsWithTagToJson(
 	}
 
 	// Get all graphs with the specified tag from the tag manager
-	UN2CTagManager& TagManager = UN2CTagManager::Get();
-	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.GetGraphsWithTag(Tag, OptionalCategory);
+	UN2CGraphStateManager& TagManager = UN2CGraphStateManager::Get();
+	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.FindTaggedGraphs(Tag, OptionalCategory);
 
 	if (TaggedGraphs.IsEmpty())
 	{
@@ -234,8 +234,8 @@ void UN2CBatchTranslationBlueprintLibrary::ExportGraphsInCategoryToJson(
 	}
 
 	// Get all tags in the specified category from the tag manager
-	UN2CTagManager& TagManager = UN2CTagManager::Get();
-	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.GetTagsInCategory(Category);
+	UN2CGraphStateManager& TagManager = UN2CGraphStateManager::Get();
+	TArray<FN2CTaggedBlueprintGraph> TaggedGraphs = TagManager.FindTaggedGraphsInCategory(Category);
 
 	if (TaggedGraphs.IsEmpty())
 	{

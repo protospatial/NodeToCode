@@ -3,7 +3,7 @@
 #include "N2CMcpRemoveTagFromGraphTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpTagUtils.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Utils/N2CLogger.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
@@ -76,12 +76,12 @@ FMcpToolCallResult FN2CMcpRemoveTagFromGraphTool::Execute(const TSharedPtr<FJson
 		}
 
 		// Get the current tag count for the graph before removal
-		TArray<FN2CTaggedBlueprintGraph> CurrentTags = UN2CTagManager::Get().GetTagsForGraph(GraphGuid);
+		TArray<FN2CTaggedBlueprintGraph> CurrentTags = UN2CGraphStateManager::Get().GetTaggedGraphs(GraphGuid);
 		int32 InitialTagCount = CurrentTags.Num();
 		
 		// Remove the tag(s) using the tag manager
 		FN2CTaggedBlueprintGraph RemovedTag;
-		int32 RemovedCount = UN2CTagManager::Get().RemoveTagByName(GraphGuid, Tag, RemovedTag);
+		int32 RemovedCount = UN2CGraphStateManager::Get().RemoveTagByName(GraphGuid, Tag, RemovedTag);
 		
 		// Create response based on result
 		bool bSuccess = true; // Always true for idempotent operation
