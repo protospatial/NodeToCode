@@ -66,6 +66,8 @@ To trace native plugin function entry names in the Unreal Output Log, run `Log L
 
 `NodeToCode.N2CBlueprintToolset.RebindBlueprintFunctionCalls` rebinds reviewed function-call nodes to native Blueprint-callable functions, inserts pure casts when the replacement output is a compatible base type, then compiles and saves the caller Blueprint.
 
+`NodeToCode.N2CBlueprintToolset.MigrateBlueprintInterface` handles exact interface message/event node GUIDs. First run it with `bApply=false`, review the node changes and returned `planHash`, then apply with `bApply=true` and that hash. An empty target function removes the selected node and preserves a single execution path when possible. The tool verifies logical graph links after reconstruction and saves only after compilation succeeds; signature mismatches remain unsaved. It can remove the reviewed source interface implementation, its function graphs, and listed empty local variables. Before applying, it writes a package backup under `Saved/BlueprintMigrationBackups`; failures return the backup path. Set `bExternalReferencesReviewed=true` only after reviewing the relevant callers within the migration scope.
+
 `NodeToCode.N2CBlueprintToolset.RemoveBlueprintFunctionGraphs` removes reviewed function graphs only when no surviving local graph calls them, then compiles and saves the Blueprint.
 
 `NodeToCode.N2CBlueprintToolset.MigrateBlueprintBooleanMemberToNativeParent` rebinds a reviewed local Boolean's graph nodes to an inherited native Boolean property, preserves its class-default value and graph links, removes the duplicate local member when present, then compiles and saves the Blueprint.
