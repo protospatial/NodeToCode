@@ -28,19 +28,16 @@ graph's translation and JSON export.
 ### list-blueprint-tags
 - **Description**: Lists stored tags (read-only, `readOnlyHint`; results marked as untrusted content, card 0124:
   `untrusted_content` is the first key)
-- **Parameters** (all optional; one filter applies, in this order, `FN2CMcpListBlueprintTagsTool::Execute`):
-  - `graphGuid`: Every tag of that graph. With hyphens or without (`FGuid::Parse`). When it is given, `tag` and
-    `category` are ignored
-  - `tag`: Tags with that name, case-insensitive (`UN2CTagManager::GetGraphsWithTag`), narrowed by `category` when
-    that is given too
+- **Parameters** (all optional; every filter given applies, together, `FN2CMcpListBlueprintTagsTool::Execute`,
+  card 0294):
+  - `graphGuid`: Tags of that graph, in every Blueprint that has it. With hyphens or without (`FGuid::Parse`)
+  - `tag`: Tags with that name, case-insensitive (`UN2CTagManager::GetGraphsWithTag`)
   - `category`: Tags in that category, case-insensitive (`GetTagsInCategory`)
   - none: every tag (`GetAllTags`)
 - **Returns**: `untrusted_content`, `tags` (each as in `taggedGraph` above), `count`, `summary` (`uniqueTagNames`
-  and `uniqueCategories` across all stored tags, not only the listed ones) and `appliedFilters` (the arguments as
-  given, so it can name a `tag` filter that was ignored)
+  and `uniqueCategories` across all stored tags, not only the listed ones) and `appliedFilters` (the filters given,
+  each of which narrowed the list)
 - **Errors**: `Invalid graphGuid format: Invalid GUID format`
-- **Known issue (card 0294):** with `graphGuid` the `tag` and `category` filters are ignored while `appliedFilters`
-  still lists them
 
 ### remove-tag-from-graph
 - **Description**: Removes every tag with that name from a graph, whatever its category
