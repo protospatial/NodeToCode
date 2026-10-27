@@ -8,7 +8,7 @@
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/Widgets/SN2CIconButton.h"
 #include "Core/Style/N2CDesignTokens.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Misc/MessageDialog.h"
 #include "Core/Style/N2CUIColors.h"
@@ -288,9 +288,9 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 	];
 
 	// Subscribe to tag manager events for live updates
-	OnTagAddedHandle = UN2CTagManager::Get().OnBlueprintTagAdded.AddRaw(this, &SN2CTagManager::HandleTagAdded);
-	OnTagRemovedHandle = UN2CTagManager::Get().OnBlueprintTagRemoved.AddRaw(this, &SN2CTagManager::HandleTagRemoved);
-	OnTagsReloadedHandle = UN2CTagManager::Get().OnTagsReloaded.AddRaw(this, &SN2CTagManager::RequestRefresh);
+	OnTagAddedHandle = UN2CGraphStateManager::Get().OnGraphTagAdded.AddRaw(this, &SN2CTagManager::HandleTagAdded);
+	OnTagRemovedHandle = UN2CGraphStateManager::Get().OnGraphTagRemoved.AddRaw(this, &SN2CTagManager::HandleTagRemoved);
+	OnTagsReloadedHandle = UN2CGraphStateManager::Get().OnGraphStatesReloaded.AddRaw(this, &SN2CTagManager::RequestRefresh);
 
 	// Initial data load
 	RefreshData();
@@ -298,16 +298,16 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 
 SN2CTagManager::~SN2CTagManager()
 {
-	// Unsubscribe from tag manager events (it may already be shut down when the editor exits)
-	if (UN2CTagManager* TagManager = UN2CTagManager::GetIfExists())
+	// Unsubscribe from the tag store's events (it may already be shut down when the editor exits)
+	if (UN2CGraphStateManager* TagStore = UN2CGraphStateManager::GetIfExists())
 	{
-		TagManager->OnBlueprintTagAdded.Remove(OnTagAddedHandle);
-		TagManager->OnBlueprintTagRemoved.Remove(OnTagRemovedHandle);
-		TagManager->OnTagsReloaded.Remove(OnTagsReloadedHandle);
+		TagStore->OnGraphTagAdded.Remove(OnTagAddedHandle);
+		TagStore->OnGraphTagRemoved.Remove(OnTagRemovedHandle);
+		TagStore->OnGraphStatesReloaded.Remove(OnTagsReloadedHandle);
 	}
 }
 
-void SN2CTagManager::HandleTagAdded(const FN2CTaggedBlueprintGraph& TagInfo)
+void SN2CTagManager::HandleTagAdded(const FN2CTagEntry& AddedTag, const FN2CGraphRef& Graph)
 {
 	RequestRefresh();
 }
@@ -338,7 +338,7 @@ EActiveTimerReturnType SN2CTagManager::HandleDeferredRefresh(double InCurrentTim
 
 TArray<FN2CTaggedBlueprintGraph> SN2CTagManager::GetTags() const
 {
-	return TagSource ? TagSource() : UN2CTagManager::Get().GetAllTags();
+	return TagSource ? TagSource() : UN2CGraphStateManager::Get().GetAllTags();
 }
 
 void SN2CTagManager::RefreshData()

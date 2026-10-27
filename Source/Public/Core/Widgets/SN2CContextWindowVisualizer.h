@@ -7,7 +7,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
-#include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
+#include "Core/N2CTagTypes.h"
 #include "LLM/N2CLLMTypes.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 

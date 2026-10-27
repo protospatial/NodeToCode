@@ -573,7 +573,7 @@ void FN2CGraphStateSpec::Define()
 			int32 PerGraphEvents = 0;
 			State->OnGraphStatesReloaded.AddLambda([&Reloads]() { ++Reloads; });
 			State->OnGraphTagRemoved.AddLambda([&PerTagEvents](const FN2CGraphKey&, const FString&) { ++PerTagEvents; });
-			State->OnGraphTagAdded.AddLambda([&PerTagEvents](const FN2CGraphState&) { ++PerTagEvents; });
+			State->OnGraphTagAdded.AddLambda([&PerTagEvents](const FN2CTagEntry&, const FN2CGraphRef&) { ++PerTagEvents; });
 			State->OnGraphStateChanged.AddLambda([&PerGraphEvents](const FN2CGraphKey&) { ++PerGraphEvents; });
 			int32 SavesBefore = State->GetSaveCount();
 

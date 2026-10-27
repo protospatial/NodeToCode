@@ -865,6 +865,12 @@ TSharedPtr<FJsonObject> FN2CSerializer::EnumToJsonObject(const FN2CEnum& Enum)
         {
             ValueObject->SetStringField(TEXT("comment"), Value.Comment);
         }
+
+        // The value's number (card 0236), for bit flags and explicit values
+        if (Value.bHasValue)
+        {
+            ValueObject->SetNumberField(N2CJsonContract::EnumValueNumberField, static_cast<double>(Value.Value));
+        }
         
         ValuesArray.Add(MakeShared<FJsonValueObject>(ValueObject));
     }
@@ -1554,7 +1560,7 @@ bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject
         
         FN2CEnumValue Value;
         
-        // Parse value properties: "name" (ToJson writes no numeric "value", and none is needed)
+        // Parse value properties: "name", and the number "value" when the document has it (card 0236)
         FString ValueName;
         if (!ValueObject->TryGetStringField(TEXT("name"), ValueName))
         {
@@ -1563,6 +1569,12 @@ bool FN2CSerializer::ParseEnumFromJson(const TSharedPtr<FJsonObject>& JsonObject
         }
         
         Value.Name = ValueName;
+        int64 Number = 0;
+        if (ValueObject->TryGetNumberField(N2CJsonContract::EnumValueNumberField, Number))
+        {
+            Value.Value = Number;
+            Value.bHasValue = true;
+        }
         
         // Parse optional comment
         FString ValueComment;

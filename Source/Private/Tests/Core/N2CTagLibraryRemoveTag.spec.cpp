@@ -9,7 +9,7 @@
 #include "Tests/N2CTestContentFolder.h"
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
 #include "Core/N2CGraphStateTypes.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
@@ -56,7 +56,7 @@ bool FN2CTagLibraryRemoveTagTest::RunTest(const FString& Parameters)
 
 	const FString Tag = FString::Printf(TEXT("N2CLibraryTag0344_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	const FString Category = TEXT("N2CLibraryTags");
-	UN2CTagManager& Tags = UN2CTagManager::Get();
+	UN2CGraphStateManager& Tags = UN2CGraphStateManager::Get();
 
 	N2CTest::DeleteContentFolder(Folder);
 	FN2CGraphKey OriginalKey;
@@ -72,7 +72,7 @@ bool FN2CTagLibraryRemoveTagTest::RunTest(const FString& Parameters)
 		{
 			Tags.RemoveTag(CopyKey, Tag, Category);
 		}
-		Tags.SaveTags();
+		Tags.SaveState();
 		N2CTest::DeleteContentFolder(Folder);
 	};
 

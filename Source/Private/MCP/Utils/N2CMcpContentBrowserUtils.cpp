@@ -309,7 +309,7 @@ bool FN2CMcpContentBrowserUtils::IsWritableContentPath(const FString& Path, bool
 		TEXT("Cannot write to '%s': /%s is %s. MCP tools write only to /Game and to the content of this project's own plugins (/<PluginName>)%s"),
 		*Path, *MountName, *Whose,
 		bAllowOutsideProject ? TEXT(", and the engine never saves to this root")
-			: TEXT(". To allow it, turn on Allow MCP Writes Outside Project in Project Settings > Plugins > Node to Code (User) and restart the editor"));
+			: TEXT(". To allow it, turn on Allow MCP Writes Outside Project in Editor Preferences > Plugins > Node to Code (User) and restart the editor"));
 	return false;
 }
 

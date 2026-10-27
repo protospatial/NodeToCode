@@ -8,7 +8,7 @@
 #include "TagManager/Models/N2CTagManagerTypes.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 
-/** Every (graph, tag) pair the tag views show; unset means UN2CTagManager::Get().GetAllTags() */
+/** Every (graph, tag) pair the tag views show; unset means UN2CGraphStateManager::Get().GetAllTags() */
 using FN2CTagSource = TFunction<TArray<FN2CTaggedBlueprintGraph>()>;
 
 /**

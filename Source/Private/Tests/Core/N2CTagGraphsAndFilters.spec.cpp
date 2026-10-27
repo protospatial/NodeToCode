@@ -10,7 +10,7 @@
 #include "Tests/N2CToolSpecHarness.h"
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
 #include "Core/N2CGraphStateTypes.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
@@ -91,7 +91,7 @@ bool FN2CTagGraphsAndFiltersTest::RunTest(const FString& Parameters)
 	const FString TagB = FString::Printf(TEXT("N2CTag0294B_%s"), *Suffix);
 	const FString CategoryA = TEXT("N2CTag0294Alpha");
 	const FString CategoryB = TEXT("N2CTag0294Beta");
-	UN2CTagManager& Tags = UN2CTagManager::Get();
+	UN2CGraphStateManager& Tags = UN2CGraphStateManager::Get();
 
 	N2CTest::DeleteContentFolder(Folder);
 	FN2CGraphKey EventKey;
@@ -108,7 +108,7 @@ bool FN2CTagGraphsAndFiltersTest::RunTest(const FString& Parameters)
 		{
 			Tags.RemoveTag(MacroKey, TagA, CategoryA);
 		}
-		Tags.SaveTags();
+		Tags.SaveState();
 		N2CTest::DeleteContentFolder(Folder);
 	};
 

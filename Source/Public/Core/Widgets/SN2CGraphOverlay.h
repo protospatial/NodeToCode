@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/N2CTagTypes.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Core/N2CGraphStateTypes.h"
@@ -124,7 +125,7 @@ private:
 	void OnRemoveTagRequested(const FN2CTaggedBlueprintGraph& TagInfo);
 
 	// Tag manager callbacks
-	void OnTagAdded(const FN2CTaggedBlueprintGraph& TagInfo);
+	void OnTagAdded(const FN2CTagEntry& AddedTag, const FN2CGraphRef& Graph);
 	void OnTagRemoved(const FN2CGraphKey& RemovedFrom, const FString& RemovedTag);
 
 	// Visual state helpers

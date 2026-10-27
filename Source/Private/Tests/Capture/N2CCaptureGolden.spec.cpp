@@ -17,6 +17,7 @@
 #include "Engine/BlendableInterface.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/Texture2D.h"
 #include "Engine/UserDefinedEnum.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
@@ -1233,9 +1234,6 @@ void FN2CCaptureGoldenSpec::AddCases()
 {
 	using namespace N2CCaptureGolden;
 
-	const FKnownDefect RepeatMissingName{ TEXT("translation-core-24"), TEXT("0236"),
-		TEXT("A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' "
-			"(expected errors in this case)") };
 
 	Cases.Add({ TEXT("FanOutData"),
 		TEXT("Function FanOut(Value): Value feeds Add.A, Add.B and Multiply.A; Add feeds Multiply.B; Multiply is the result."),
@@ -1561,10 +1559,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Function UseItem(Item: S_GoldenItem): S_GoldenItem is a user struct {Owner: Actor object, Count: int, "
 			"Level: user enum E_GoldenLevel {Low, High}}. Break S_GoldenItem feeds Count to the Count result and "
 			"Owner, Count and Level to Make S_GoldenItem, which is the Copy result."),
-		{ { TEXT("translation-core-8"), TEXT("0236"),
-			TEXT("S_GoldenItem's object member Owner gets no type name ('type': 'Object' with no 'type_name'); since card 0240 "
-				"the validator keeps the struct with a MEMBER_TYPE warning ('Member Owner requires a type name')") },
-		  RepeatMissingName },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Level = BP.AddUserEnum(TEXT("E_GoldenLevel"), { TEXT("Low"), TEXT("High") });
@@ -1595,15 +1590,11 @@ void FN2CCaptureGoldenSpec::AddCases()
 			return Graph;
 		} });
 
-	Cases.Last().ExpectedErrors = { TEXT("Member Owner requires a type name"), TEXT("Missing name") };
 
 	Cases.Add({ TEXT("UserEnum"),
 		TEXT("Function SwitchLimit(Limit: E_GoldenLimit): E_GoldenLimit is a user enum {Min, Max, MaxHealth}. Switch "
 			"on E_GoldenLimit: Min runs CollectGarbage, Max runs ControlScreensaver, MaxHealth is unconnected."),
-		{ { TEXT("translation-core-11"), TEXT("0236"),
-			TEXT("Enum values whose display name contains 'max' in any case are dropped: E_GoldenLimit lists Min only, "
-				"while the Switch still has Max and Max Health outputs") },
-		  RepeatMissingName },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Limit = BP.AddUserEnum(TEXT("E_GoldenLimit"), { TEXT("Min"), TEXT("Max"), TEXT("MaxHealth") });
@@ -1623,7 +1614,56 @@ void FN2CCaptureGoldenSpec::AddCases()
 			BP.Link(Switch, TEXT("NewEnumerator1"), Screensaver, UEdGraphSchema_K2::PN_Execute);
 			return Graph;
 		} });
-	Cases.Last().ExpectedErrors = { TEXT("Missing name") };
+
+	// Card 0236: user struct and enum definitions (translation-core-8, -11, -12, -24)
+	Cases.Add({ TEXT("TypeDefinitions"),
+		TEXT("Function Inspect(Item: S_GoldenInventoryItem, Weapon: S_GoldenWeapon) returns Copy (S_GoldenWeapon) from a Make "
+			"S_GoldenWeapon fed by Break S_GoldenWeapon. S_GoldenInventoryItem {Label: String, Icon: Texture2D object, OwnerClass: "
+			"Actor class, Targets: array of Actor objects, Stat: E_GoldenStatType {Health, MaxHealth, Stamina}}; "
+			"S_GoldenWeapon {Type: E_GoldenWeaponKind {Sword, Bow}, Difficulty: E_GoldenDifficulty {Easy, Normal, Max}}."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UUserDefinedEnum* Stat = BP.AddUserEnum(TEXT("E_GoldenStatType"), { TEXT("Health"), TEXT("MaxHealth"), TEXT("Stamina") });
+			UUserDefinedEnum* Kind = BP.AddUserEnum(TEXT("E_GoldenWeaponKind"), { TEXT("Sword"), TEXT("Bow") });
+			UUserDefinedEnum* Difficulty = BP.AddUserEnum(TEXT("E_GoldenDifficulty"), { TEXT("Easy"), TEXT("Normal"), TEXT("Max") });
+			FEdGraphPinType String;
+			String.PinCategory = UEdGraphSchema_K2::PC_String;
+			FEdGraphPinType ActorClass;
+			ActorClass.PinCategory = UEdGraphSchema_K2::PC_Class;
+			ActorClass.PinSubCategoryObject = AActor::StaticClass();
+			FEdGraphPinType Actors = FTestBlueprint::ObjectPinType(AActor::StaticClass());
+			Actors.ContainerType = EPinContainerType::Array;
+			UUserDefinedStruct* Item = Stat ? BP.AddUserStruct(TEXT("S_GoldenInventoryItem"), {
+				{ TEXT("Label"), String },
+				{ TEXT("Icon"), FTestBlueprint::ObjectPinType(UTexture2D::StaticClass()) },
+				{ TEXT("OwnerClass"), ActorClass },
+				{ TEXT("Targets"), Actors },
+				{ TEXT("Stat"), FTestBlueprint::EnumPinType(Stat) } }) : nullptr;
+			UUserDefinedStruct* Weapon = Kind && Difficulty ? BP.AddUserStruct(TEXT("S_GoldenWeapon"), {
+				{ TEXT("Type"), FTestBlueprint::EnumPinType(Kind) },
+				{ TEXT("Difficulty"), FTestBlueprint::EnumPinType(Difficulty) } }) : nullptr;
+			if (!Item || !Weapon)
+			{
+				return nullptr;
+			}
+			UEdGraph* Graph = BP.AddFunction(TEXT("Inspect"));
+			BP.AddFunctionInput(Graph, TEXT("Item"), FTestBlueprint::StructPinType(Item));
+			BP.AddFunctionInput(Graph, TEXT("Weapon"), FTestBlueprint::StructPinType(Weapon));
+			UK2Node_BreakStruct* Break = BP.AddBreakStruct(Graph, Weapon);
+			UK2Node_MakeStruct* Make = BP.AddMakeStruct(Graph, Weapon);
+			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Copy"), FTestBlueprint::StructPinType(Weapon));
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(BP.Pin(Entry, TEXT("Weapon"), EGPD_Output), BP.Pin(Break, Weapon->GetFName(), EGPD_Input));
+			for (const TCHAR* Member : { TEXT("Type"), TEXT("Difficulty") })
+			{
+				const FName PinName = MemberPinName(Weapon, Member);
+				BP.Link(Break, PinName, Make, PinName);
+			}
+			BP.Link(BP.Pin(Make, Weapon->GetFName(), EGPD_Output), BP.Pin(Result, TEXT("Copy"), EGPD_Input));
+			return Graph;
+		} });
 
 	// Card 0238: map value types, enum and bitmask pins (translation-core-13, translation-core-31)
 
@@ -1632,7 +1672,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 			"and Weapons (Name to user enum E_GoldenWeaponType {Sword, Bow}); S_GoldenMapItem and E_GoldenWeaponType are "
 			"used only as map values. Get Counts, Get Items and Get Weapons are the results of the same names; a Make Map "
 			"(Name to int) is the Made result."),
-		{ RepeatMissingName },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Weapon = BP.AddUserEnum(TEXT("E_GoldenWeaponType"), { TEXT("Sword"), TEXT("Bow") });
@@ -1661,7 +1701,6 @@ void FN2CCaptureGoldenSpec::AddCases()
 			BP.Link(MakeMap->GetOutputPin(), BP.Pin(Result, TEXT("Made"), EGPD_Input));
 			return Graph;
 		} });
-	Cases.Last().ExpectedErrors = { TEXT("Missing name") };
 
 	Cases.Add({ TEXT("BitmaskPin"),
 		TEXT("Function Bits with member Flags (int, marked Bitmask in its details): Get Flags is the Value result."),
@@ -1876,7 +1915,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 			"S_GoldenPluginItem {Count: int} and function Helper(Item: S_GoldenPluginItem), whose entry runs "
 			"CollectGarbage. Function CallPlugin() in /Game: the entry runs Helper with Item from Make S_GoldenPluginItem. "
 			"Helper is captured with its owner_blueprint and S_GoldenPluginItem is in 'structs'."),
-		{ RepeatMissingName },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			FTestBlueprint* Plugin = BP.AddBlueprintAt(TEXT("BP_N2CGolden_PluginHelper"), TEXT("/NodeToCode"));
@@ -1899,7 +1938,6 @@ void FN2CCaptureGoldenSpec::AddCases()
 			return Graph;
 		} });
 	Cases.Last().TranslationDepth = 1;
-	Cases.Last().ExpectedErrors = { TEXT("Missing name") };
 
 	Cases.Add({ TEXT("CommentBoxes"),
 		TEXT("Function Commented(): the entry (at 0,0) runs CollectGarbage (300,0), then ControlScreensaver (600,0). The "
@@ -3176,6 +3214,98 @@ void FN2CCaptureGoldenSpec::Define()
 			TestFalse(TEXT("v2"), N2CJsonContract::IsReadable(TEXT("v2")));
 			FN2CBlueprint Fresh;
 			TestEqual(TEXT("a new model's version"), Fresh.Version.Value, FString(TEXT("2.0.0")));
+		});
+	});
+
+	// Card 0236 (translation-core-8, -11, -12, -24): user struct and enum definitions; golden case TypeDefinitions
+	Describe(TEXT("TypeDefinitions"), [this]()
+	{
+		It(TEXT("lists every user struct and enum once, with type names, enum members and every enum value"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("TypeDefinitions"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			const FN2CBlueprint& Blueprint = Captured.Blueprint;
+			const auto FindStruct = [&Blueprint](const TCHAR* Name) { return Blueprint.Structs.FindByPredicate([Name](const FN2CStruct& S) { return S.Name == Name; }); };
+			const auto FindEnum = [&Blueprint](const TCHAR* Name) { return Blueprint.Enums.FindByPredicate([Name](const FN2CEnum& E) { return E.Name == Name; }); };
+			const auto FindMember = [](const FN2CStruct* Struct, const TCHAR* Name) -> const FN2CStructMember*
+			{
+				return Struct ? Struct->Members.FindByPredicate([Name](const FN2CStructMember& M) { return M.Name.StartsWith(Name); }) : nullptr;
+			};
+			const auto ExpectMember = [this, &FindMember](const FN2CStruct* Struct, const TCHAR* Name, EN2CStructMemberType Type,
+				const TCHAR* TypeName, bool bArray)
+			{
+				const FN2CStructMember* Member = FindMember(Struct, Name);
+				if (TestNotNull(FString(TEXT("member ")) + Name, Member))
+				{
+					TestEqual(FString(Name) + TEXT(" type"), StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(int64(Member->Type)),
+						StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(int64(Type)));
+					TestEqual(FString(Name) + TEXT(" type_name"), Member->TypeName, FString(TypeName));
+					TestEqual(FString(Name) + TEXT(" is_array"), Member->bIsArray, bArray);
+				}
+			};
+
+			// Each once (a struct met on several pins is listed once, with no ERROR 'Missing name': the case expects no error)
+			for (const TCHAR* Name : { TEXT("S_GoldenInventoryItem"), TEXT("S_GoldenWeapon") })
+			{
+				TestEqual(FString(Name) + TEXT(" listed once"), Blueprint.Structs.FilterByPredicate([Name](const FN2CStruct& S) { return S.Name == Name; }).Num(), 1);
+			}
+			const FN2CStruct* Item = FindStruct(TEXT("S_GoldenInventoryItem"));
+			ExpectMember(Item, TEXT("Icon"), EN2CStructMemberType::Object, TEXT("Texture2D"), false);
+			ExpectMember(Item, TEXT("OwnerClass"), EN2CStructMemberType::Class, TEXT("Actor"), false);
+			ExpectMember(Item, TEXT("Targets"), EN2CStructMemberType::Object, TEXT("Actor"), true);
+			ExpectMember(Item, TEXT("Stat"), EN2CStructMemberType::Enum, TEXT("E_GoldenStatType"), false);
+			const FN2CStruct* Weapon = FindStruct(TEXT("S_GoldenWeapon"));
+			ExpectMember(Weapon, TEXT("Type"), EN2CStructMemberType::Enum, TEXT("E_GoldenWeaponKind"), false);
+
+			// Every value, "Max" ones included, with its number; enums used only by struct members are listed
+			const auto ExpectValues = [this, &FindEnum](const TCHAR* Name, const TArray<FString>& Names)
+			{
+				const FN2CEnum* Enum = FindEnum(Name);
+				if (!TestNotNull(FString(TEXT("enum ")) + Name, Enum))
+				{
+					return;
+				}
+				TArray<FString> Got;
+				for (int32 Index = 0; Index < Enum->Values.Num(); ++Index)
+				{
+					Got.Add(Enum->Values[Index].Name);
+					TestTrue(FString::Printf(TEXT("%s value %d has its number"), Name, Index),
+						Enum->Values[Index].bHasValue && Enum->Values[Index].Value == Index);
+				}
+				TestEqual(FString(Name) + TEXT(" values"), FString::Join(Got, TEXT(",")), FString::Join(Names, TEXT(",")));
+			};
+			ExpectValues(TEXT("E_GoldenStatType"), { TEXT("Health"), TEXT("MaxHealth"), TEXT("Stamina") });
+			ExpectValues(TEXT("E_GoldenDifficulty"), { TEXT("Easy"), TEXT("Normal"), TEXT("Max") });
+			ExpectValues(TEXT("E_GoldenWeaponKind"), { TEXT("Sword"), TEXT("Bow") });
+
+			// Valid without a MEMBER_TYPE warning now that every member has its type name
+			TestFalse(TEXT("no MEMBER_TYPE warning"), Captured.Result.Diagnostics.ContainsByPredicate([](const FN2CDiagnostic& Diagnostic)
+			{
+				return Diagnostic.Code == N2CJsonContract::Diagnostic::MemberType;
+			}));
+		});
+
+		It(TEXT("reads and writes an enum value's number, and a value without one stays without"), [this]()
+		{
+			const FString Text = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"BP\"},")
+				TEXT("\"graphs\":[{\"name\":\"F\",\"graph_type\":\"Function\",\"nodes\":[{\"id\":\"N1\",\"type\":\"FunctionEntry\",")
+				TEXT("\"class\":\"K2Node_FunctionEntry\",\"input_pins\":[],\"output_pins\":[]}],\"flows\":{\"execution\":[],\"data\":{}}}],")
+				TEXT("\"structs\":[],\"enums\":[{\"name\":\"E_Flags\",\"values\":[{\"name\":\"A\",\"value\":1},{\"name\":\"B\",\"value\":4},{\"name\":\"C\"}]}]}");
+			FN2CBlueprint Read;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Read, Warnings)) || !TestEqual(TEXT("one enum"), Read.Enums.Num(), 1))
+			{
+				return;
+			}
+			const TArray<FN2CEnumValue>& Values = Read.Enums[0].Values;
+			TestTrue(TEXT("A = 1, B = 4, C without"), Values.Num() == 3 && Values[0].bHasValue && Values[0].Value == 1
+				&& Values[1].Value == 4 && !Values[2].bHasValue);
+			TestEqual(TEXT("no read warning"), Warnings.Num(), 0);
+			TestEqual(TEXT("ToJson writes it back"), PrettyJson(N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed))),
+				PrettyJson(N2CTest::ParseJsonObject(Text)));
 		});
 	});
 

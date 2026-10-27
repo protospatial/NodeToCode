@@ -642,37 +642,10 @@ void FN2CCaptureContext::AddVariableRelatedTypes(const FEdGraphPinType& Type)
     {
         return;
     }
-    const auto Add = [this](const FName& Category, UObject* TypeObject)
-    {
-        if (Category == UEdGraphSchema_K2::PC_Struct)
-        {
-            UScriptStruct* Struct = Cast<UScriptStruct>(TypeObject);
-            if (Struct && IsBlueprintStruct(Struct) && !ProcessedStructPaths.Contains(Struct->GetPathName()))
-            {
-                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
-                if (StructDef.IsValid())
-                {
-                    N2CBlueprint.Structs.Add(MoveTemp(StructDef));
-                }
-            }
-        }
-        else if (Category == UEdGraphSchema_K2::PC_Byte || Category == UEdGraphSchema_K2::PC_Enum)
-        {
-            UEnum* Enum = Cast<UEnum>(TypeObject);
-            if (Enum && IsBlueprintEnum(Enum) && !ProcessedEnumPaths.Contains(Enum->GetPathName()))
-            {
-                FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
-                if (EnumDef.IsValid())
-                {
-                    N2CBlueprint.Enums.Add(MoveTemp(EnumDef));
-                }
-            }
-        }
-    };
-    Add(Type.PinCategory, Type.PinSubCategoryObject.Get());
+    AddRelatedPinType(Type.PinCategory, Type.PinSubCategoryObject.Get());
     if (Type.IsMap())
     {
-        Add(Type.PinValueType.TerminalCategory, Type.PinValueType.TerminalSubCategoryObject.Get());
+        AddRelatedPinType(Type.PinValueType.TerminalCategory, Type.PinValueType.TerminalSubCategoryObject.Get());
     }
 }
 
@@ -1260,51 +1233,28 @@ FN2CEnum FN2CCaptureContext::ProcessBlueprintEnum(UEnum* Enum)
             TEXT("Enum comment: %s"), *Result.Comment);
     }
     
-    // Process enum values
-    int32 NumEnums = Enum->NumEnums();
-    N2C_LOG(Debug,
-        TEXT("Enum has %d values according to NumEnums()"), NumEnums);
-    
-    // Log all enum names and values for debugging
-    for (int32 i = 0; i < NumEnums; ++i)
+    // Every value but the "_MAX" entry the engine adds and values marked Hidden (card 0236, translation-core-11): a
+    // display name that merely contains "max" ("Max", "MaxHealth") is a real value. Each with its number.
+    const int32 NumEnums = Enum->NumEnums();
+    const int32 Listed = Enum->ContainsExistingMax() ? NumEnums - 1 : NumEnums;
+    for (int32 i = 0; i < Listed; ++i)
     {
-        FString ValueName = N2CStableNames::SourceText(Enum->GetDisplayNameTextByIndex(i));
-        
-        N2C_LOG(Debug,
-            TEXT("Enum value #%d: Name='%s'"),
-                i, *ValueName);
-            
-        // Check if this is a hidden enum value (like _MAX or similar)
-        bool bIsHidden = ValueName.Contains(TEXT("_MAX")) || 
-                         ValueName.Contains(TEXT("MAX_")) ||
-                         ValueName.Contains(TEXT("E MAX")) ||
-                         ValueName.Contains(TEXT("MAX")) ||
-                         ValueName.StartsWith(TEXT("_")) ||
-                         ValueName.EndsWith(TEXT("_None"));
-                         
-        if (bIsHidden)
+        if (Enum->HasMetaData(TEXT("Hidden"), i))
         {
-            N2C_LOG(Debug,
-                TEXT("  -> Skipping hidden value '%s'"), *ValueName);
-            continue; // Skip adding this value
+            N2C_LOG(Debug, TEXT("  -> Skipping hidden value #%d"), i);
+            continue;
         }
-        
         FN2CEnumValue Value;
-        Value.Name = ValueName;
-        
-        // Get value comment if available
-        FString ValueComment;
+        Value.Name = N2CStableNames::SourceText(Enum->GetDisplayNameTextByIndex(i));
+        Value.Value = Enum->GetValueByIndex(i);
+        Value.bHasValue = true;
         if (Enum->HasMetaData(TEXT("ToolTip"), i))
         {
-            ValueComment = Enum->GetMetaData(TEXT("ToolTip"), i);
-            Value.Comment = ValueComment;
-            N2C_LOG(Debug,
-                TEXT("  -> Comment: %s"), *ValueComment);
+            Value.Comment = Enum->GetMetaData(TEXT("ToolTip"), i);
         }
-        
-        Result.Values.Add(Value);
+        Result.Values.Add(MoveTemp(Value));
     }
-    
+
     FN2CLogger::Get().Log(
         FString::Printf(TEXT("Processed enum %s with %d values"), 
             *Result.Name, 
@@ -1343,10 +1293,10 @@ EN2CStructMemberType FN2CCaptureContext::ConvertPropertyToStructMemberType(FProp
         N2C_LOG(Debug, TEXT("  -> Identified as Bool type"));
         return EN2CStructMemberType::Bool;
     }
-    if (CastField<FByteProperty>(Property))
+    if (const FByteProperty* ByteProp = CastField<FByteProperty>(Property))
     {
-        N2C_LOG(Debug, TEXT("  -> Identified as Byte type"));
-        return EN2CStructMemberType::Byte;
+        // A user enum is a namespaced enum, held in an FByteProperty with its Enum set (card 0236, translation-core-12)
+        return ByteProp->Enum ? EN2CStructMemberType::Enum : EN2CStructMemberType::Byte;
     }
     if (CastField<FIntProperty>(Property) || CastField<FInt64Property>(Property))
     {
@@ -1422,7 +1372,15 @@ EN2CStructMemberType FN2CCaptureContext::ConvertPropertyToStructMemberType(FProp
         N2C_LOG(Debug, TEXT("  -> Identified as Class type: %s"), *ClassName);
         return EN2CStructMemberType::Class;
     }
-    if (FObjectProperty* ObjProp = CastField<FObjectProperty>(Property))
+    if (CastField<FSoftClassProperty>(Property))
+    {
+        return EN2CStructMemberType::Class;
+    }
+    if (CastField<FInterfaceProperty>(Property))
+    {
+        return EN2CStructMemberType::Object;
+    }
+    if (FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(Property))
     {
         FString ObjClassName = ObjProp->PropertyClass ? ObjProp->PropertyClass->GetName() : TEXT("Unknown");
         
@@ -1441,73 +1399,26 @@ void FN2CCaptureContext::ProcessRelatedTypes(UK2Node* Node, FN2CNodeDefinition& 
     {
         return;
     }
-    
+
     // A struct node (Make, Break, Set Members, member get and set: every K2Node_StructOperation) names its struct
     if (const UK2Node_StructOperation* StructNode = Cast<UK2Node_StructOperation>(Node))
     {
-        if (UScriptStruct* Struct = StructNode->StructType)
-        {
-            if (IsBlueprintStruct(Struct))
-            {
-                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
-                if (StructDef.IsValid())
-                {
-                    N2CBlueprint.Structs.Add(StructDef);
-                    
-                    FN2CLogger::Get().Log(
-                        FString::Printf(TEXT("Added Blueprint struct %s from %s node"), 
-                        *StructDef.Name, *Node->GetClass()->GetName()),
-                        EN2CLogSeverity::Info);
-                }
-            }
-        }
+        AddBlueprintStruct(StructNode->StructType);
     }
-    
+
     // The user structs and enums the pins hold: each pin's own type (a map's key) and a map pin's value type
     // (PinValueType, card 0238, translation-core-13), so a struct or enum used only as a map value is listed too
-    const auto AddRelatedType = [this](const FName& Category, const UObject* TypeObject, const TCHAR* Where)
-    {
-        if (Category == UEdGraphSchema_K2::PC_Struct)
-        {
-            UScriptStruct* Struct = Cast<UScriptStruct>(const_cast<UObject*>(TypeObject));
-            if (Struct && IsBlueprintStruct(Struct))
-            {
-                FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
-                if (StructDef.IsValid())
-                {
-                    N2CBlueprint.Structs.Add(StructDef);
-                    FN2CLogger::Get().Log(FString::Printf(TEXT("Added Blueprint struct %s from %s"), *StructDef.Name, Where),
-                        EN2CLogSeverity::Info);
-                }
-            }
-        }
-        else if (Category == UEdGraphSchema_K2::PC_Byte || Category == UEdGraphSchema_K2::PC_Enum)
-        {
-            UEnum* Enum = Cast<UEnum>(const_cast<UObject*>(TypeObject));
-            if (Enum && IsBlueprintEnum(Enum))
-            {
-                FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
-                if (EnumDef.IsValid())
-                {
-                    N2CBlueprint.Enums.Add(EnumDef);
-                    FN2CLogger::Get().Log(FString::Printf(TEXT("Added Blueprint enum %s from %s"), *EnumDef.Name, Where),
-                        EN2CLogSeverity::Info);
-                }
-            }
-        }
-    };
-
     for (const UEdGraphPin* Pin : Node->Pins)
     {
         if (!Pin)
         {
             continue;
         }
-        AddRelatedType(Pin->PinType.PinCategory, Pin->PinType.PinSubCategoryObject.Get(), TEXT("pin type"));
+        AddRelatedPinType(Pin->PinType.PinCategory, Pin->PinType.PinSubCategoryObject.Get());
         if (Pin->PinType.IsMap())
         {
             const FEdGraphTerminalType& Value = Pin->PinType.PinValueType;
-            AddRelatedType(Value.TerminalCategory, Value.TerminalSubCategoryObject.Get(), TEXT("map value type"));
+            AddRelatedPinType(Value.TerminalCategory, Value.TerminalSubCategoryObject.Get());
         }
     }
 }
@@ -1628,240 +1539,140 @@ FString FN2CCaptureContext::CleanPropertyName(const FString& RawName) const
 FN2CStructMember FN2CCaptureContext::ProcessStructMember(FProperty* Property)
 {
     FN2CStructMember Member;
-
     if (!Property)
     {
         FN2CLogger::Get().LogWarning(TEXT("Null property provided to ProcessStructMember"));
         return Member;
     }
 
-    // Set member name with cleaned version
     Member.Name = CleanPropertyName(Property->GetName());
-    
-    N2C_LOG(Debug, TEXT("ProcessStructMember: Processing property '%s'"),
-        *Member.Name);
-
-    // Get member comment if available
     if (Property->HasMetaData(TEXT("ToolTip")))
     {
         Member.Comment = Property->GetMetaData(TEXT("ToolTip"));
-        N2C_LOG(Debug, TEXT("  -> Found comment: %s"), *Member.Comment);
     }
 
-    // Determine member type
-    Member.Type = ConvertPropertyToStructMemberType(Property);
-    N2C_LOG(Debug, TEXT("  -> Determined type: %s"),
-        *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type)));
-
-    // Handle container types
-    if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
+    // A container's element (an array's or set's inner, a map's value) is the member's type, a map's key its key type;
+    // every one gets its type name and its user struct or enum (card 0236: sets, keys and enum inners were skipped)
+    if (const FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
     {
-        N2C_LOG(Debug, TEXT("  -> Processing as Array property"));
         Member.bIsArray = true;
-        FProperty* InnerProp = ArrayProp->Inner;
-        if (InnerProp)
-        {
-            N2C_LOG(Debug, TEXT("  -> Array inner type: %s"),
-                *InnerProp->GetClass()->GetName());
-                
-            Member.Type = ConvertPropertyToStructMemberType(InnerProp);
-
-            // Handle inner struct or enum types
-            if (FStructProperty* InnerStructProp = CastField<FStructProperty>(InnerProp))
-            {
-                Member.TypeName = InnerStructProp->Struct->GetName();
-                N2C_LOG(Debug, TEXT("  -> Array of struct: %s"),
-                    *Member.TypeName);
-
-                // Process nested struct if it's Blueprint-defined
-                if (IsBlueprintStruct(InnerStructProp->Struct))
-                {
-                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined nested struct"));
-                    FN2CStruct NestedStruct = ProcessBlueprintStruct(InnerStructProp->Struct);
-                    if (NestedStruct.IsValid())
-                    {
-                        N2CBlueprint.Structs.Add(NestedStruct);
-                        N2C_LOG(Debug, TEXT("  -> Added nested struct to blueprint"));
-                    }
-                    else
-                    {
-                        FN2CLogger::Get().LogWarning(TEXT("  -> Nested struct validation failed"));
-                    }
-                }
-            }
-            else if (FEnumProperty* InnerEnumProp = CastField<FEnumProperty>(InnerProp))
-            {
-                Member.TypeName = InnerEnumProp->GetEnum()->GetName();
-                N2C_LOG(Debug, TEXT("  -> Array of enum: %s"),
-                    *Member.TypeName);
-
-                // Process enum if it's Blueprint-defined
-                if (IsBlueprintEnum(InnerEnumProp->GetEnum()))
-                {
-                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined nested enum"));
-                    FN2CEnum NestedEnum = ProcessBlueprintEnum(InnerEnumProp->GetEnum());
-                    if (NestedEnum.IsValid())
-                    {
-                        N2CBlueprint.Enums.Add(NestedEnum);
-                        N2C_LOG(Debug, TEXT("  -> Added nested enum to blueprint"));
-                    }
-                    else
-                    {
-                        FN2CLogger::Get().LogWarning(TEXT("  -> Nested enum validation failed"));
-                    }
-                }
-            }
-        }
-        else
-        {
-            FN2CLogger::Get().LogWarning(TEXT("  -> Array property has null inner property"));
-        }
+        ResolveMemberType(ArrayProp->Inner, Member.Type, Member.TypeName);
     }
-    else if (FSetProperty* SetProp = CastField<FSetProperty>(Property))
+    else if (const FSetProperty* SetProp = CastField<FSetProperty>(Property))
     {
-        N2C_LOG(Debug, TEXT("  -> Processing as Set property"));
         Member.bIsSet = true;
-        // Similar logic for sets as for arrays
+        ResolveMemberType(SetProp->ElementProp, Member.Type, Member.TypeName);
     }
-    else if (FMapProperty* MapProp = CastField<FMapProperty>(Property))
+    else if (const FMapProperty* MapProp = CastField<FMapProperty>(Property))
     {
-        N2C_LOG(Debug, TEXT("  -> Processing as Map property"));
         Member.bIsMap = true;
-        
-        // Process key type
-        FProperty* KeyProp = MapProp->KeyProp;
-        if (KeyProp)
-        {
-            Member.KeyType = ConvertPropertyToStructMemberType(KeyProp);
-            N2C_LOG(Debug, TEXT("  -> Map key type: %s"),
-                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.KeyType)));
-                
-            // Handle key type name for complex types
-            if (FStructProperty* KeyStructProp = CastField<FStructProperty>(KeyProp))
-            {
-                Member.KeyTypeName = KeyStructProp->Struct->GetName();
-                
-                // Process nested struct if it's Blueprint-defined
-                if (IsBlueprintStruct(KeyStructProp->Struct))
-                {
-                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined key struct"));
-                    FN2CStruct NestedStruct = ProcessBlueprintStruct(KeyStructProp->Struct);
-                    if (NestedStruct.IsValid())
-                    {
-                        N2CBlueprint.Structs.Add(NestedStruct);
-                    }
-                }
-            }
-            else if (FEnumProperty* KeyEnumProp = CastField<FEnumProperty>(KeyProp))
-            {
-                Member.KeyTypeName = KeyEnumProp->GetEnum()->GetName();
-                
-                // Process enum if it's Blueprint-defined
-                if (IsBlueprintEnum(KeyEnumProp->GetEnum()))
-                {
-                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined key enum"));
-                    FN2CEnum NestedEnum = ProcessBlueprintEnum(KeyEnumProp->GetEnum());
-                    if (NestedEnum.IsValid())
-                    {
-                        N2CBlueprint.Enums.Add(NestedEnum);
-                    }
-                }
-            }
-        }
-        
-        // Process value type (similar to array inner type)
-        FProperty* ValueProp = MapProp->ValueProp;
-        if (ValueProp)
-        {
-            Member.Type = ConvertPropertyToStructMemberType(ValueProp);
-            N2C_LOG(Debug, TEXT("  -> Map value type: %s"),
-                *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type)));
-                
-            // Handle value type name for complex types
-            if (FStructProperty* ValueStructProp = CastField<FStructProperty>(ValueProp))
-            {
-                Member.TypeName = ValueStructProp->Struct->GetName();
-                
-                // Process nested struct if it's Blueprint-defined
-                if (IsBlueprintStruct(ValueStructProp->Struct))
-                {
-                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined value struct"));
-                    FN2CStruct NestedStruct = ProcessBlueprintStruct(ValueStructProp->Struct);
-                    if (NestedStruct.IsValid())
-                    {
-                        N2CBlueprint.Structs.Add(NestedStruct);
-                    }
-                }
-            }
-            else if (FEnumProperty* ValueEnumProp = CastField<FEnumProperty>(ValueProp))
-            {
-                Member.TypeName = ValueEnumProp->GetEnum()->GetName();
-                
-                // Process enum if it's Blueprint-defined
-                if (IsBlueprintEnum(ValueEnumProp->GetEnum()))
-                {
-                    N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined value enum"));
-                    FN2CEnum NestedEnum = ProcessBlueprintEnum(ValueEnumProp->GetEnum());
-                    if (NestedEnum.IsValid())
-                    {
-                        N2CBlueprint.Enums.Add(NestedEnum);
-                    }
-                }
-            }
-        }
+        ResolveMemberType(MapProp->KeyProp, Member.KeyType, Member.KeyTypeName);
+        ResolveMemberType(MapProp->ValueProp, Member.Type, Member.TypeName);
     }
     else
     {
-        // Handle non-container types
-        if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
-        {
-            Member.TypeName = StructProp->Struct->GetName();
-            N2C_LOG(Debug, TEXT("  -> Struct type: %s (Path: %s)"),
-                *Member.TypeName, *StructProp->Struct->GetPathName());
+        ResolveMemberType(Property, Member.Type, Member.TypeName);
+    }
 
-            // Process nested struct if it's Blueprint-defined
-            if (IsBlueprintStruct(StructProp->Struct))
-            {
-                N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined struct"));
-                FN2CStruct NestedStruct = ProcessBlueprintStruct(StructProp->Struct);
-                if (NestedStruct.IsValid())
-                {
-                    N2CBlueprint.Structs.Add(NestedStruct);
-                    N2C_LOG(Debug, TEXT("  -> Added struct to blueprint"));
-                }
-                else
-                {
-                    FN2CLogger::Get().LogWarning(TEXT("  -> Struct validation failed"));
-                }
-            }
-        }
-        else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
-        {
-            Member.TypeName = EnumProp->GetEnum()->GetName();
-            N2C_LOG(Debug, TEXT("  -> Enum type: %s (Path: %s)"),
-                *Member.TypeName, *EnumProp->GetEnum()->GetPathName());
+    N2C_LOG(Debug, TEXT("ProcessStructMember: %s is %s %s"), *Member.Name,
+        *StaticEnum<EN2CStructMemberType>()->GetNameStringByValue(static_cast<int64>(Member.Type)), *Member.TypeName);
+    return Member;
+}
 
-            // Process enum if it's Blueprint-defined
-            if (IsBlueprintEnum(EnumProp->GetEnum()))
-            {
-                N2C_LOG(Debug, TEXT("  -> Processing blueprint-defined enum"));
-                FN2CEnum NestedEnum = ProcessBlueprintEnum(EnumProp->GetEnum());
-                if (NestedEnum.IsValid())
-                {
-                    N2CBlueprint.Enums.Add(NestedEnum);
-                    N2C_LOG(Debug, TEXT("  -> Added enum to blueprint"));
-                }
-                else
-                {
-                    FN2CLogger::Get().LogWarning(TEXT("  -> Enum validation failed"));
-                }
-            }
+void FN2CCaptureContext::ResolveMemberType(const FProperty* Property, EN2CStructMemberType& OutType, FString& OutTypeName)
+{
+    OutType = ConvertPropertyToStructMemberType(const_cast<FProperty*>(Property));
+    OutTypeName.Reset();
+    if (!Property)
+    {
+        return;
+    }
+
+    // The type name of every type that needs one (card 0236, translation-core-8): a struct, an enum (an FEnumProperty or
+    // a user enum's FByteProperty, translation-core-12), and the class of an object, class, soft, weak, lazy or
+    // interface member; a user struct or enum is listed too
+    if (const FStructProperty* StructProp = CastField<FStructProperty>(Property))
+    {
+        if (StructProp->Struct && OutType == EN2CStructMemberType::Struct)
+        {
+            OutTypeName = N2CStableNames::TypeObjectName(StructProp->Struct);
+            AddBlueprintStruct(StructProp->Struct);
         }
     }
-    
-    N2C_LOG(Debug, TEXT("ProcessStructMember: Completed processing of '%s'"), *Member.Name);
-                                                                                                                                                                                                                                                                                                                      
-    return Member;
+    else if (const UEnum* Enum = EnumOfProperty(Property))
+    {
+        OutTypeName = N2CStableNames::TypeObjectName(Enum);
+        AddBlueprintEnum(const_cast<UEnum*>(Enum));
+    }
+    else if (const FClassProperty* ClassProp = CastField<FClassProperty>(Property))
+    {
+        OutTypeName = ClassProp->MetaClass ? N2CStableNames::TypeObjectName(ClassProp->MetaClass) : FString();
+    }
+    else if (const FSoftClassProperty* SoftClassProp = CastField<FSoftClassProperty>(Property))
+    {
+        OutTypeName = SoftClassProp->MetaClass ? N2CStableNames::TypeObjectName(SoftClassProp->MetaClass) : FString();
+    }
+    else if (const FObjectPropertyBase* ObjectProp = CastField<FObjectPropertyBase>(Property))
+    {
+        OutTypeName = ObjectProp->PropertyClass ? N2CStableNames::TypeObjectName(ObjectProp->PropertyClass) : FString();
+    }
+    else if (const FInterfaceProperty* InterfaceProp = CastField<FInterfaceProperty>(Property))
+    {
+        OutTypeName = InterfaceProp->InterfaceClass ? N2CStableNames::TypeObjectName(InterfaceProp->InterfaceClass) : FString();
+    }
+}
+
+const UEnum* FN2CCaptureContext::EnumOfProperty(const FProperty* Property)
+{
+    if (const FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
+    {
+        return EnumProp->GetEnum();
+    }
+    if (const FByteProperty* ByteProp = CastField<FByteProperty>(Property))
+    {
+        return ByteProp->Enum;
+    }
+    return nullptr;
+}
+
+void FN2CCaptureContext::AddBlueprintStruct(UScriptStruct* Struct)
+{
+    // Checked before processing (card 0236, translation-core-24): a struct met again is already listed, and processing
+    // it again returned an empty struct that the validator logged as ERROR "Missing name"
+    if (!Struct || !IsBlueprintStruct(Struct) || ProcessedStructPaths.Contains(Struct->GetPathName()))
+    {
+        return;
+    }
+    FN2CStruct StructDef = ProcessBlueprintStruct(Struct);
+    if (StructDef.IsValid())
+    {
+        N2CBlueprint.Structs.Add(MoveTemp(StructDef));
+    }
+}
+
+void FN2CCaptureContext::AddBlueprintEnum(UEnum* Enum)
+{
+    if (!Enum || !IsBlueprintEnum(Enum) || ProcessedEnumPaths.Contains(Enum->GetPathName()))
+    {
+        return;
+    }
+    FN2CEnum EnumDef = ProcessBlueprintEnum(Enum);
+    if (EnumDef.IsValid())
+    {
+        N2CBlueprint.Enums.Add(MoveTemp(EnumDef));
+    }
+}
+
+void FN2CCaptureContext::AddRelatedPinType(const FName& Category, UObject* TypeObject)
+{
+    if (Category == UEdGraphSchema_K2::PC_Struct)
+    {
+        AddBlueprintStruct(Cast<UScriptStruct>(TypeObject));
+    }
+    else if (Category == UEdGraphSchema_K2::PC_Byte || Category == UEdGraphSchema_K2::PC_Enum)
+    {
+        AddBlueprintEnum(Cast<UEnum>(TypeObject));
+    }
 }
 
 FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)

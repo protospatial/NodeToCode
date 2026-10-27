@@ -23,7 +23,7 @@ In **Project Settings → Plugins → Node to Code → MCP Server**:
 | **Server Port** | 27000, or a port only this project uses | The entry below names one fixed URL |
 | **Port Fallback Range** | 1 | With more, a taken port moves the server and the entry points at the wrong server (or at another editor's NodeToCode) |
 
-**Enable MCP Server** (**Project Settings → Plugins → Node to Code (User)**) must stay on. `run-python` and the
+**Enable MCP Server** (**Editor Preferences → Plugins → Node to Code (User)**) must stay on. `run-python` and the
 script save and delete tools are listed only when **Allow MCP Python Execution** is on there.
 
 ## 3. Add the entry

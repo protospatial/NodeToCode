@@ -9,7 +9,7 @@
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CTargetLanguage.h"
 #include "Editor/EditorEngine.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
@@ -138,7 +138,7 @@ void FNodeToCodeModule::StartupModule()
     FString McpSkipReason;
     if (!UN2CUserSettings::IsMcpServerEnabled())
     {
-        McpSkipReason = TEXT("Enable MCP Server is off in Project Settings > Plugins > Node to Code (User)");
+        McpSkipReason = TEXT("Enable MCP Server is off in Editor Preferences > Plugins > Node to Code (User)");
     }
     else if (!bForceMcp && IsRunningCommandlet())
     {
@@ -183,7 +183,6 @@ void FNodeToCodeModule::HandlePreExit()
 
 void FNodeToCodeModule::ShutdownStateManagers()
 {
-    UN2CTagManager::ShutdownInstance();
     UN2CGraphStateManager::ShutdownInstance();
 }
 

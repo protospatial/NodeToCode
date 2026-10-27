@@ -144,8 +144,8 @@ fi
 
 if [ -f "$tmp/unreal" ]; then
   emit "NodeToCode: no NodeToCode server answers (checked $url); Epic's Unreal MCP answers at $unreal_url, but its NodeToCode toolset needs NodeToCode's server on too." \
-       "No NodeToCode MCP server answers at $url or in any discovery entry, so NodeToCode's tools are unavailable, also through Epic's Unreal MCP (which only mounts a running NodeToCode server). The editor needs Project Settings > Plugins > Node to Code (User) > Enable MCP Server."
+       "No NodeToCode MCP server answers at $url or in any discovery entry, so NodeToCode's tools are unavailable, also through Epic's Unreal MCP (which only mounts a running NodeToCode server). The editor needs Editor Preferences > Plugins > Node to Code (User) > Enable MCP Server."
 fi
 
 emit "NodeToCode: no editor is serving NodeToCode's MCP server (checked $url). Open the project with NodeToCode's MCP server on, then run /mcp reconnect." \
-     "No NodeToCode MCP server is running (checked $url and the editors' discovery entries), so the ${tool_prefix}* tools are unavailable. If the user asks for Blueprint work, tell them to open the project in Unreal Editor with Project Settings > Plugins > Node to Code (User) > Enable MCP Server on, then reconnect the $server_name server in /mcp. Do not guess at Blueprint contents."
+     "No NodeToCode MCP server is running (checked $url and the editors' discovery entries), so the ${tool_prefix}* tools are unavailable. If the user asks for Blueprint work, tell them to open the project in Unreal Editor with Editor Preferences > Plugins > Node to Code (User) > Enable MCP Server on, then reconnect the $server_name server in /mcp. Do not guess at Blueprint contents."
