@@ -240,6 +240,12 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
   and writes it back byte for byte. `NodeToCode.Capture.Golden.V1Reader` reads the 1.0.0 documents in
   `Source/Private/Tests/Fixtures/Capture/V1` (earlier goldens and a 1.2.3 save); `Tests/Migration` reads the 1.2.3
   fixture's saved translation (row F2).
+- **The agent document (card 0505):** get-focused-blueprint, get-blueprint-n2cjson and Python `get_blueprint_n2c_json`
+  write each node's and pin's `id` as `ids` {`short`, `guid`} (`N2CMcpBlueprintExport::ToResultJson`) and add the
+  top-level `guids` table. `FromJson` reads `ids.short` as the ID when there is no `id`
+  (`N2CJsonContract::AgentIdsField`) and drops the GUIDs, so the export reads back whole;
+  `NodeToCode.Capture.Golden.Identity` reads every case's agent document back to the captured model.
+  `UN2CPythonBridge::ReadN2CJson` fails, naming them, when a graph, node or pin was skipped (`SKIPPED_*`).
 
 **User-Defined Types:**
 

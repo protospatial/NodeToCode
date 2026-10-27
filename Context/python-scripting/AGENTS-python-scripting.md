@@ -172,7 +172,9 @@ arguments and the keys of its `data`. Grouped:
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
     a 1.x node's display `name` comes back as `title` (no `class`), its pin names stay the display names it has.
     A later 2.x document keeps its version, its unknown node, pin, graph and blueprint types and its unknown fields
-    (card 0445), each listed in `warnings` (`code`, `path`, `value`, `message`)
+    (card 0445), each listed in `warnings` (`code`, `path`, `value`, `message`). The `n2c_json` of
+    `get_blueprint_n2c_json` reads too: its `ids.short` is the node or pin ID (card 0505). A read that had to skip a
+    graph, node or pin (a missing required field) fails: `error` names the skipped parts, `data` holds the rest
 *   `compile_blueprint(path=None)` - Compile the focused Blueprint (a `path` is ignored for now: open the Blueprint
     first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
     `messages` (each `severity`, `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node)

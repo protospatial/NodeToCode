@@ -17,11 +17,11 @@ namespace
     const TCHAR* const MetadataFields[] = { TEXT("name"), TEXT("blueprint_type"), TEXT("blueprint_class") };
     const TCHAR* const GraphFields[] = { TEXT("name"), TEXT("graph_type"), TEXT("owner_blueprint"), TEXT("nodes"),
         N2CJsonContract::FlowsField, N2CJsonContract::CommentsField };
-    const TCHAR* const NodeFields[] = { TEXT("id"), TEXT("type"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField,
+    const TCHAR* const NodeFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, TEXT("type"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField,
         N2CJsonContract::NodeNameFieldV1, TEXT("member_parent"), TEXT("member_name"), TEXT("comment"), TEXT("pure"), TEXT("latent"),
         N2CJsonContract::UnusedField, N2CJsonContract::UnreachableField, N2CJsonContract::DisabledField, TEXT("input_pins"),
         TEXT("output_pins") };
-    const TCHAR* const PinFields[] = { TEXT("id"), N2CJsonContract::PinNameField, N2CJsonContract::PinLabelField, TEXT("type"),
+    const TCHAR* const PinFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, N2CJsonContract::PinNameField, N2CJsonContract::PinLabelField, TEXT("type"),
         TEXT("sub_type"), TEXT("default_value"), TEXT("connected"), TEXT("is_reference"), TEXT("is_const"), TEXT("is_array"),
         TEXT("is_map"), TEXT("is_set"), N2CJsonContract::PinValueTypeField, N2CJsonContract::PinValueSubTypeField };
 
@@ -34,6 +34,18 @@ namespace
         Warning.Value = Value;
         Warning.Message = Message;
         FN2CLogger::Get().LogWarning(FString::Printf(TEXT("N2C JSON %s at %s: %s"), Code, *Path, *Message), TEXT("Deserialization"));
+    }
+
+    /** The ID of a node or pin: its "id", or in the agent document (card 0505) its "ids" {"short", "guid"}'s "short" */
+    bool TryGetID(const TSharedPtr<FJsonObject>& Object, FString& OutID)
+    {
+        if (Object->TryGetStringField(N2CJsonContract::IdField, OutID))
+        {
+            return true;
+        }
+        const TSharedPtr<FJsonObject>* Ids = nullptr;
+        return Object->TryGetObjectField(N2CJsonContract::AgentIdsField, Ids)
+            && (*Ids)->TryGetStringField(N2CJsonContract::AgentIdsShortField, OutID);
     }
 
     FString JoinPath(const FString& Path, const FString& Field)
@@ -953,7 +965,7 @@ bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject
 
     // Parse basic properties
     FString ID, TypeString, MemberParent, MemberName, Comment;
-    if (!JsonObject->TryGetStringField(TEXT("id"), ID) ||
+    if (!TryGetID(JsonObject, ID) ||
         !JsonObject->TryGetStringField(TEXT("type"), TypeString))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required node fields in JSON"));
@@ -1047,7 +1059,7 @@ bool FN2CSerializer::ParsePinFromJson(const TSharedPtr<FJsonObject>& JsonObject,
 
     // Parse basic properties
     FString ID, Name, TypeString, SubType, DefaultValue;
-    if (!JsonObject->TryGetStringField(TEXT("id"), ID) ||
+    if (!TryGetID(JsonObject, ID) ||
         !JsonObject->TryGetStringField(TEXT("name"), Name))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required pin fields in JSON"));
