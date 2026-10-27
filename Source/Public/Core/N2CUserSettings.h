@@ -27,8 +27,9 @@ struct FN2CPerUserBool
  * Unreal also reads the project's Config/DefaultEditorPerProjectUserSettings.ini (and the Base and platform files) as
  * lower layers of that config, so a committed file could set these properties for everyone who opens the project.
  * The security switches are therefore not read from the loaded properties: IsMcpServerEnabled(),
- * IsMcpPythonExecutionAllowed() and AreMcpWritesOutsideProjectAllowed() take the value only from the user's own layers
- * and fall back to the code default, ignoring (with one warning) any value from a project-shared layer (cards 0423, 0182).
+ * IsMcpPythonExecutionAllowed(), AreMcpWritesOutsideProjectAllowed() and IsMcpBearerTokenRequired() take the value only
+ * from the user's own layers and fall back to the code default, ignoring (with one warning) any value from a
+ * project-shared layer (cards 0423, 0182, 0183).
  */
 UCLASS(Config = EditorPerProjectUserSettings, meta = (DisplayName = "Node to Code (User)"))
 class NODETOCODE_API UN2CUserSettings : public UDeveloperSettings
@@ -42,6 +43,8 @@ public:
 	static constexpr bool bDefaultEnableMcpServer = true;
 	static constexpr bool bDefaultAllowMcpPythonExecution = false;
 	static constexpr bool bDefaultAllowMcpWritesOutsideProject = false;
+	/** Off for 2.0-beta; turn it on by default once every generated client config sends the header (card 0183) */
+	static constexpr bool bDefaultRequireMcpBearerToken = false;
 
 	/** Start the MCP server when the editor starts. Requires an editor restart. Read through IsMcpServerEnabled(). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MCP Server",
@@ -70,6 +73,17 @@ public:
 	bool bAllowMcpWritesOutsideProject = bDefaultAllowMcpWritesOutsideProject;
 
 	/**
+	 * Answer every /mcp request without "Authorization: Bearer <token>" with 401, so a program on this machine that can
+	 * reach the port but cannot read the user's files cannot call tools. The token is in
+	 * <UserSettingsDir>/NodeToCode/mcp-token (FN2CMcpAuthToken); the stdio bridge reads it itself, HTTP clients send it
+	 * as a header (N2C.Mcp.CopyToken copies it). Requires an editor restart. Read through IsMcpBearerTokenRequired().
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MCP Server",
+		meta = (DisplayName = "Require MCP Bearer Token", ConfigRestartRequired = true,
+			ToolTip = "Refuses (401) every MCP request that does not send Authorization: Bearer <token>. The token is in NodeToCode's mcp-token file in your user settings folder (%LOCALAPPDATA%/NodeToCode on Windows); the stdio bridge reads it itself, and the console command N2C.Mcp.CopyToken copies it for an HTTP client's header. Off by default, and only your own setting counts. Requires an editor restart."))
+	bool bRequireMcpBearerToken = bDefaultRequireMcpBearerToken;
+
+	/**
 	 * Whether the MCP server may start: the user's own Enable MCP Server value, or on when the user never set it.
 	 * Read once per editor session (the setting needs a restart); a value from a project-shared layer is ignored.
 	 */
@@ -86,6 +100,12 @@ public:
 	 * Outside Project value, or off when the user never set it. A committed project file cannot turn it on.
 	 */
 	static bool AreMcpWritesOutsideProjectAllowed();
+
+	/**
+	 * Whether /mcp requires the bearer token: the user's own Require MCP Bearer Token value, or off when the user never
+	 * set it. A value from a project-shared layer is ignored, like the other switches.
+	 */
+	static bool IsMcpBearerTokenRequired();
 
 	/**
 	 * Reads Key in Section of Branch from the user's own layers only: the Saved/Config file (Branch->SavedLayer) and

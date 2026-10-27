@@ -36,6 +36,7 @@ namespace N2CUserSettingsPrivate
 		bool bEnableMcpServer = UN2CUserSettings::bDefaultEnableMcpServer;
 		bool bAllowMcpPythonExecution = UN2CUserSettings::bDefaultAllowMcpPythonExecution;
 		bool bAllowMcpWritesOutsideProject = UN2CUserSettings::bDefaultAllowMcpWritesOutsideProject;
+		bool bRequireMcpBearerToken = UN2CUserSettings::bDefaultRequireMcpBearerToken;
 	};
 
 	void WarnIgnored(const TCHAR* Key, const TCHAR* DisplayName, bool bIgnoredValue, bool bUsedValue)
@@ -62,7 +63,7 @@ namespace N2CUserSettingsPrivate
 			if (!Branch)
 			{
 				FN2CLogger::Get().LogWarning(FString::Printf(
-					TEXT("Could not find the %s config branch: MCP switches use their defaults (server on, Python execution off, writes outside the project off)"),
+					TEXT("Could not find the %s config branch: MCP switches use their defaults (server on, Python execution off, writes outside the project off, bearer token not required)"),
 					*SettingsClass->ClassConfigName.ToString()));
 			}
 
@@ -72,6 +73,8 @@ namespace N2CUserSettingsPrivate
 				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bAllowMcpPythonExecution), UN2CUserSettings::bDefaultAllowMcpPythonExecution);
 			const FN2CPerUserBool Writes = UN2CUserSettings::ResolvePerUserBool(Branch, Section,
 				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bAllowMcpWritesOutsideProject), UN2CUserSettings::bDefaultAllowMcpWritesOutsideProject);
+			const FN2CPerUserBool Token = UN2CUserSettings::ResolvePerUserBool(Branch, Section,
+				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bRequireMcpBearerToken), UN2CUserSettings::bDefaultRequireMcpBearerToken);
 
 			if (Server.bIgnoredSharedValue)
 			{
@@ -85,10 +88,15 @@ namespace N2CUserSettingsPrivate
 			{
 				WarnIgnored(TEXT("bAllowMcpWritesOutsideProject"), TEXT("Allow MCP Writes Outside Project"), !Writes.bValue, Writes.bValue);
 			}
+			if (Token.bIgnoredSharedValue)
+			{
+				WarnIgnored(TEXT("bRequireMcpBearerToken"), TEXT("Require MCP Bearer Token"), !Token.bValue, Token.bValue);
+			}
 
 			Result.bEnableMcpServer = Server.bValue;
 			Result.bAllowMcpPythonExecution = Python.bValue;
 			Result.bAllowMcpWritesOutsideProject = Writes.bValue;
+			Result.bRequireMcpBearerToken = Token.bValue;
 
 			// Show the value in effect in Project Settings, not the ignored project one
 			if (Settings)
@@ -96,6 +104,7 @@ namespace N2CUserSettingsPrivate
 				Settings->bEnableMcpServer = Result.bEnableMcpServer;
 				Settings->bAllowMcpPythonExecution = Result.bAllowMcpPythonExecution;
 				Settings->bAllowMcpWritesOutsideProject = Result.bAllowMcpWritesOutsideProject;
+				Settings->bRequireMcpBearerToken = Result.bRequireMcpBearerToken;
 			}
 			return Result;
 		}();
@@ -116,6 +125,11 @@ bool UN2CUserSettings::IsMcpPythonExecutionAllowed()
 bool UN2CUserSettings::AreMcpWritesOutsideProjectAllowed()
 {
 	return N2CUserSettingsPrivate::GetEffectiveSwitches().bAllowMcpWritesOutsideProject;
+}
+
+bool UN2CUserSettings::IsMcpBearerTokenRequired()
+{
+	return N2CUserSettingsPrivate::GetEffectiveSwitches().bRequireMcpBearerToken;
 }
 
 FN2CPerUserBool UN2CUserSettings::ResolvePerUserBool(const FConfigBranch* Branch, const FString& Section, FName Key, bool bCodeDefault)

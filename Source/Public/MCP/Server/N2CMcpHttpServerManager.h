@@ -101,6 +101,12 @@ public:
 	/** Tests: write the discovery files to ProjectFile and IndexDir instead (empty strings restore the defaults) */
 	void SetDiscoveryPathsForTesting(const FString& ProjectFile, const FString& IndexDir);
 
+	/** Tests: require the bearer token (or not) from the next StartServer on, whatever the setting says; unset restores it */
+	void SetRequireBearerTokenForTesting(TOptional<bool> bRequire) { RequireBearerTokenOverride = bRequire; }
+
+	/** True when the running server requires the bearer token on /mcp */
+	bool IsBearerTokenRequired() const { return bRequireBearerToken; }
+
 	/** Tests: receive (message, bIsError) instead of showing editor notifications (nullptr restores them) */
 	void SetNotificationHandlerForTesting(TFunction<void(const FString&, bool)> Handler);
 
@@ -170,6 +176,15 @@ private:
 
 	/** Whether the server is currently running */
 	bool bIsServerRunning = false;
+
+	/**
+	 * Whether /mcp requires Authorization: Bearer <token> (FN2CMcpAuthToken, card 0183): Require MCP Bearer Token as
+	 * StartServer read it, or the value a spec set
+	 */
+	bool bRequireBearerToken = false;
+
+	/** A spec's value for bRequireBearerToken (unset: the user's setting) */
+	TOptional<bool> RequireBearerTokenOverride;
 
 	/** Whether the module started the server from the settings (a port change then restarts it) */
 	bool bConfiguredServersStarted = false;

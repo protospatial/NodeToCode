@@ -157,7 +157,8 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Client JSON-RPC responses and notifications** get **202** with no body.
 *   **Batches** (a JSON array body) are accepted only on sessions negotiated at `2025-03-26` (batching was added in
     2025-03-26 and removed in 2025-06-18); on any other session they get **400** with -32600.
-*   Order of checks: the transport's Origin and Host checks (403) and, for POST, Content-Type (415) run first; then
+*   Order of checks: the transport's Origin and Host checks (403) and, for POST, Content-Type (415) run first; then,
+    with Require MCP Bearer Token on, the bearer token (401, `FN2CMcpAuthToken::Authorize`, card 0183); then
     the body cap (more than `FN2CMcpProtocol::MaxRequestBodyBytes`, 8 MiB: **413** with -32600 and a null id,
     checked in `HandleMcpRequest` before the body is copied and again at the top of `FN2CMcpProtocol::Handle`;
     HTTPServer has already read the whole body by then, see the threat model); then the core's verb, `MCP-Protocol-Version`, session and batch checks; then dispatch. The version check comes before
@@ -206,7 +207,8 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **`N2CMcpHttpServerManager.h/.cpp`**: the HTTP transport
     *   Singleton pattern for server lifecycle control
     *   HTTP routing: `/mcp` (POST, DELETE; GET, PUT and PATCH answered 405 by the core), `/mcp/health` (health check)
-    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; a body over 8 MiB gets 413 (card 0425)
+    *   Loopback-only request policy: Origin and Host must be localhost, 127.0.0.1 or [::1] (else 403), POST /mcp needs Content-Type application/json (else 415), no CORS headers; a body over 8 MiB gets 413 (card 0425);
+        with Require MCP Bearer Token on, `/mcp` needs `Authorization: Bearer <token>` (else 401; `/mcp/health` stays open)
     *   `HandleMcpRequest` copies the request into an `FN2CMcpInbound` and calls the protocol core with an
         HTTPServer responder: one `application/json` response, or on UE 5.8 a `text/event-stream` response drained
         from a queue (`CanStreamToolProgress()`)
@@ -786,8 +788,29 @@ picks, the choice is not saved; the warning says to remove it from the project f
   project's plugins (`/Engine`, engine and Fab plugins, `/NodeToCode`); read by
   `FN2CMcpContentBrowserUtils::IsWritableContentPath` (card 0182; the policy is "Where tools may write" in
   `Source/Private/MCP/Tools/Implementations/ContentBrowser/AGENTS.md`). It changes no tool count.
+- **Require MCP Bearer Token** (default off for 2.0-beta, `bDefaultRequireMcpBearerToken`; turn it on by default once
+  every generated client config carries the header, card 0206): `/mcp` then needs `Authorization: Bearer <token>`.
+  See "Bearer token" below.
 
 All are read once per editor session, so a change needs an editor restart.
+
+Bearer token (card 0183): `Source/Private/MCP/Server/N2CMcpAuthToken.{h,cpp}`. `StartServer` reads
+`IsMcpBearerTokenRequired()` into `bRequireBearerToken` (specs: `SetRequireBearerTokenForTesting`) and, when it is on,
+makes the token file at once so the bridge can read it; Server Status ends in `, bearer token required`. The token is 32
+bytes from the OS CSPRNG (BCryptGenRandom, `/dev/urandom`) as 64 lowercase hex characters in
+`<UserSettingsDir>/NodeToCode/mcp-token` (`FN2CFileUtils::SaveStringAtomically`, owner-only on POSIX), shared by every
+editor of the user, outside the project and inside the folder `FN2CPathUtils::IsDeniedForAgentAccess` denies.
+`Authorize` runs in the `/mcp` route after `ValidateLocalRequest`: the scheme is case-insensitive, the comparison is
+constant-time, a mismatch rereads the file once (another editor may have regenerated it), and a refusal is 401 with
+`WWW-Authenticate: Bearer` and a JSON-RPC -32600 error with a null id that never contains the token. Console commands:
+`N2C.Mcp.CopyToken` (clipboard) and `N2C.Mcp.RegenerateToken`. The stdio bridge sends the token from `--token-file`,
+`NODETOCODE_MCP_TOKEN` or the per-user file, read again for each request. Client headers (user page
+`wiki/developers/Requiring-an-MCP-Token.md`): Claude Code `.mcp.json`
+`"headers": {"Authorization": "Bearer ${NODETOCODE_MCP_TOKEN}"}`; Codex `bearer_token_env_var = "NODETOCODE_MCP_TOKEN"`;
+VS Code and Cursor `"headers": {"Authorization": "Bearer ${env:NODETOCODE_MCP_TOKEN}"}`; Gemini CLI
+`"headers": {"Authorization": "Bearer $NODETOCODE_MCP_TOKEN"}`; UE 5.8 MCP Client Toolset Auth Bearer Token with the
+token as Api Key. Spec `NodeToCode.MCP.AuthToken`; pytest `Tests/python/test_mcp_bridge_token.py`; live check
+`Tests/mcp_probe/live_bearer_token_0183.py` (needs the `user-secrets` lock).
 
 Ports and shutdown (card 0112): `FN2CMcpHttpServerManager::StartServer(Port, Range)` checks each port with a bind of
 its own before handing it to HTTPServer (`GetHttpRouter(Port, true)`), so a port another process or plugin holds is

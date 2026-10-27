@@ -1,7 +1,7 @@
 Node to Code runs an MCP server inside the Unreal Editor so that AI agents on your machine can read and edit your
 Blueprints, and it sends Blueprints to the LLM provider you pick when you translate. This page says what each part
 can reach, what it does by default and which setting controls it, so you can decide what to turn on. The server is
-built for one developer's own machine: it has no password or token of its own.
+built for one developer's own machine: it has no password, and a bearer token only when you turn one on.
 
 ## At a glance
 
@@ -10,13 +10,15 @@ built for one developer's own machine: it has no password or token of its own.
 | MCP server | On, at `http://127.0.0.1:27000/mcp`, this machine only | **Enable MCP Server**, **Server Port** |
 | Python execution over MCP | Off | **Allow MCP Python Execution** |
 | Asset writes outside your project's content | Refused | **Allow MCP Writes Outside Project** |
+| A token on every MCP request | Not required | **Require MCP Bearer Token** |
 | Tools a client gets | Every toolset, every tool listed | **Tool Profile**, **Tool Exposure** |
 | Tools Unreal MCP also has (UE 5.8) | Left to Unreal MCP when its plugins are enabled | **Overlapping Tools** |
 | Edits while Play In Editor runs | Refused | Always on |
 | API keys | Windows Credential Manager | Each provider's **API Key** field |
 | Data sent when you translate | Goes to the selected provider only | **Provider** |
 
-**Enable MCP Server**, **Allow MCP Python Execution** and **Allow MCP Writes Outside Project** are under
+**Enable MCP Server**, **Allow MCP Python Execution**, **Allow MCP Writes Outside Project** and **Require MCP Bearer
+Token** are under
 **Project Settings → Plugins → Node to Code (User)**; the others are under **Plugins → Node to Code**, in **MCP Server** or **LLM Services**. Every MCP Server
 setting needs an editor restart.
 
@@ -31,7 +33,10 @@ setting needs an editor restart.
   or whose `Host` is not one of those names, is refused with 403. A web page on the internet, or a DNS-rebinding
   trick, cannot drive your editor. A page served from any port on localhost (a local dev server, for example) can.
 - **Requests.** A POST must be `application/json` (else 415), and a body over 8 MiB is refused with 413.
-- **No authentication.** Any program running as you on this machine can connect and call the tools a client would.
+- **Authentication: off by default.** Any program running as you on this machine can connect and call the tools a
+  client would. With **Require MCP Bearer Token** on, a request without `Authorization: Bearer <token>` gets 401; the
+  token is in a per-user file outside every project, which the file tools cannot read
+  ([Requiring an MCP Token](Requiring-an-MCP-Token)). A program that can read your files can still read the token.
 - **When it runs.** At editor start, unless **Enable MCP Server** is off. It does not start in commandlets or
   `-unattended` runs unless `-N2CMcp` is on the command line.
 - **Discovery files.** It writes where it listens to the project's `Saved/NodeToCode/mcp-server.json` and to
@@ -39,7 +44,8 @@ setting needs an editor restart.
 
 ## Switches a project cannot turn on for you
 
-**Enable MCP Server**, **Allow MCP Python Execution** and **Allow MCP Writes Outside Project** belong to you, not the
+**Enable MCP Server**, **Allow MCP Python Execution**, **Allow MCP Writes Outside Project** and **Require MCP Bearer
+Token** belong to you, not the
 project. Only your own value counts:
 the one in `Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini`, or a `-ini:` override on your command line.
 A value committed in the project's `Config/DefaultEditorPerProjectUserSettings.ini` (or any other shared config file)
