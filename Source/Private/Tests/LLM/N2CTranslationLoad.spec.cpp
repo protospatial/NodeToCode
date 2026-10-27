@@ -27,25 +27,24 @@
 // The graph state singleton, swapped for an isolated manager so the host project's BlueprintGraphState.json is untouched
 N2C_TEST_PRIVATE_MEMBER(FN2CLoadStateInstance, UN2CGraphStateManager**, &UN2CGraphStateManager::Instance)
 
-// The batch writer and the folder it writes into
+// The batch writer, the archive run it starts and the folder it writes into
 N2C_TEST_PRIVATE_MEMBER(FN2CLoadSaveItemTranslation,
 	void (UN2CBatchTranslationOrchestrator::*)(const FN2CBatchTranslationItem&),
 	&UN2CBatchTranslationOrchestrator::SaveItemTranslation)
+N2C_TEST_PRIVATE_MEMBER(FN2CLoadCreateBatchOutput, void (UN2CBatchTranslationOrchestrator::*)(),
+	&UN2CBatchTranslationOrchestrator::CreateBatchOutputDirectory)
 N2C_TEST_PRIVATE_MEMBER(FN2CLoadBatchOutputPath, FString UN2CBatchTranslationOrchestrator::*,
 	&UN2CBatchTranslationOrchestrator::BatchOutputPath)
-
-// The LLM module's latest-save fields, put back after the test
-N2C_TEST_PRIVATE_MEMBER(FN2CLoadLatestPath, FString UN2CLLMModule::*, &UN2CLLMModule::LatestTranslationPath)
-N2C_TEST_PRIVATE_MEMBER(FN2CLoadLatestLanguage, EN2CCodeLanguage UN2CLLMModule::*, &UN2CLLMModule::LatestTranslationLanguage)
 
 /**
  * A saved translation loads in the translation viewer for every target language (card 0438). The viewer reads
  * through UN2CGraphStateManager::LoadTranslation (also UN2CTagBlueprintLibrary::LoadTranslation), which picks the
  * implementation file from the language the writer recorded. Before 0438 the batch recorded EN2CCodeLanguage::Python,
  * the main window recorded CPP for every language, and the loader expected Python and Pseudocode as .txt, so only
- * C++ loaded. Checks: each writer (the batch orchestrator, the LLM module's save plus the main window's record) saves
- * each of the six languages and the reader gets the code back; the record keeps the canonical id across a reload of
- * the state file; folders recorded by older builds (enum-qualified id, CPP, Pseudocode as .txt) still load.
+ * C++ loaded. Checks: each writer (the batch orchestrator and the main window's SaveSingleTranslation, both through
+ * the translation archive, card 0252) saves each of the six languages and the reader gets the code back; the record
+ * keeps the canonical id across a reload of the state file; folders recorded by older builds (enum-qualified id, CPP,
+ * Pseudocode as .txt) still load.
  */
 BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C_TEST_FLAGS)
 
@@ -76,8 +75,6 @@ BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C
 		UN2CGraphStateManager* SavedInstance = nullptr;
 		EN2CCodeLanguage SavedLanguage;
 		FString SavedOutput;
-		FString SavedLatestPath;
-		EN2CCodeLanguage SavedLatestLanguage;
 
 		FScopedState(const FString& StateDir, const FString& OutputDir)
 		{
@@ -90,10 +87,6 @@ BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C
 			SavedLanguage = Settings->TargetLanguage;
 			SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
 			Settings->CustomTranslationOutputDirectory.Path = OutputDir;
-
-			UN2CLLMModule* Module = UN2CLLMModule::Get();
-			SavedLatestPath = Module->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadLatestPath());
-			SavedLatestLanguage = Module->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadLatestLanguage());
 		}
 
 		~FScopedState()
@@ -102,9 +95,6 @@ BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->TargetLanguage = SavedLanguage;
 			Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
-			UN2CLLMModule* Module = UN2CLLMModule::Get();
-			Module->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadLatestPath()) = SavedLatestPath;
-			Module->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadLatestLanguage()) = SavedLatestLanguage;
 		}
 	};
 
@@ -193,14 +183,15 @@ void FN2CTranslationLoadSpec::Define()
 			N2CTest::FScratchDir Output(TEXT("N2CLoadBatch"));
 			FScopedState Scoped(StateDir.Path, Output.Path);
 
-			TStrongObjectPtr<UN2CBatchTranslationOrchestrator> Orchestrator(NewObject<UN2CBatchTranslationOrchestrator>());
-			Orchestrator.Get()->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadBatchOutputPath()) = Output / TEXT("BatchTranslation_Test");
-			IFileManager::Get().MakeDirectory(*(Output / TEXT("BatchTranslation_Test")), true);
-
 			TArray<FN2CTagInfo> Tags;
 			for (const FLanguageCase& Case : Languages())
 			{
+				// One batch run per language (the run's language is the batch's), under the scratch output folder
 				GetMutableDefault<UN2CSettings>()->TargetLanguage = Case.Language;
+				TStrongObjectPtr<UN2CBatchTranslationOrchestrator> Orchestrator(NewObject<UN2CBatchTranslationOrchestrator>());
+				(Orchestrator.Get()->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadCreateBatchOutput()))();
+				const FString BatchFolder = Orchestrator.Get()->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadBatchOutputPath());
+				TestTrue(FString::Printf(TEXT("batch %s: the run folder is under the output folder"), Case.Id), FPaths::IsUnderDirectory(BatchFolder, Output.Path));
 				FN2CBatchTranslationItem Item;
 				Item.TagInfo = MakeTag(FString::Printf(TEXT("Batch%s"), Case.Id));
 				Item.TranslationResponse.Graphs.Add(MakeGraph(Item.TagInfo.GraphName, Case));
@@ -208,8 +199,9 @@ void FN2CTranslationLoadSpec::Define()
 				(Orchestrator.Get()->*N2CTest::GetPrivateMember(N2CTest::FN2CLoadSaveItemTranslation()))(Item);
 				Tags.Add(Item.TagInfo);
 
+				// <run>/<item>/<entry>/<entry><ext>
 				TestTrue(FString::Printf(TEXT("batch %s file written as %s"), Case.Id, Case.Extension), FPaths::FileExists(
-					Output / TEXT("BatchTranslation_Test") / Item.TagInfo.GraphName / (Item.TagInfo.GraphName + Case.Extension)));
+					BatchFolder / Item.TagInfo.GraphName / Item.TagInfo.GraphName / (Item.TagInfo.GraphName + Case.Extension)));
 				TestEqual(FString::Printf(TEXT("batch %s recorded as its id"), Case.Id), RecordedLanguage(Item.TagInfo), FString(Case.Id));
 				ExpectLoads(TEXT("batch"), Item.TagInfo, Case);
 			}
@@ -244,8 +236,7 @@ void FN2CTranslationLoadSpec::Define()
 				IFileManager::Get().MakeDirectory(*Output, true);
 				{
 					FScopedState Scoped(StateDir.Path, Output);
-					UN2CLLMModule* Module = UN2CLLMModule::Get();
-					// A valid capture to save beside the translation (SaveTranslationToDisk writes it as N2C_BP_*.json)
+					// A valid capture to save beside the translation (the archive writes it as N2C_BP_*.json)
 					FString FixtureJson;
 					FN2CBlueprint Fixture;
 					if (!TestTrue(TEXT("the capture fixture loads"), FFileHelper::LoadFileToString(FixtureJson,
@@ -267,8 +258,7 @@ void FN2CTranslationLoadSpec::Define()
 
 							const FString What = FString::Printf(TEXT("single%s%s"), bRenamed ? TEXT(" (renamed)") : TEXT(""),
 								bOutsideProject ? TEXT(" outside the project") : TEXT(""));
-							if (!TestTrue(What + TEXT(": saved"), Module->SaveTranslationToDisk(Response, Blueprint))
-								|| !TestTrue(What + TEXT(": recorded"), SN2CMainWindow::RecordSingleTranslation(Tag, Response)))
+							if (!TestTrue(What + TEXT(": saved and recorded"), SN2CMainWindow::SaveSingleTranslation(Tag, Response, Blueprint)))
 							{
 								continue;
 							}
