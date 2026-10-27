@@ -133,6 +133,9 @@ private:
 
 	/** Handle cache invalidation from the token estimation service */
 	void OnCacheInvalidated();
+
+	/** A Blueprint changed: refresh the estimates once the edits settle (unchanged graphs answer from the cache) */
+	void OnEstimatesStale(const FSoftObjectPath& Blueprint);
 	/** Generate a row for the list view */
 	TSharedRef<ITableRow> OnGenerateRow(TSharedPtr<FN2CGraphListItem> Item, const TSharedRef<STableViewBase>& OwnerTable);
 
@@ -220,4 +223,6 @@ private:
 	/** Delegate handles for token estimation service */
 	FDelegateHandle ModelChangedHandle;
 	FDelegateHandle CacheInvalidatedHandle;
+	FDelegateHandle EstimatesStaleHandle;
+	TSharedPtr<FActiveTimerHandle> EstimatesStaleTimer;
 };

@@ -321,9 +321,10 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 	FN2CTokenEstimationService& TokenService = FN2CTokenEstimationService::Get();
 	OnModelChangedHandle = TokenService.OnModelChanged.AddSP(this, &SN2CGraphOverlay::OnModelChanged);
 	OnCacheInvalidatedHandle = TokenService.OnCacheInvalidated.AddSP(this, &SN2CGraphOverlay::OnCacheInvalidated);
+	OnEstimatesStaleHandle = TokenService.OnEstimatesStale.AddSP(this, &SN2CGraphOverlay::OnEstimatesStale);
 
-	// Initial token estimate
-	RefreshTokenEstimate();
+	// First estimate on the next tick, not while the Blueprint editor is still opening
+	ScheduleTokenEstimate(0.0f);
 
 }
 
@@ -349,6 +350,10 @@ SN2CGraphOverlay::~SN2CGraphOverlay()
 	if (OnCacheInvalidatedHandle.IsValid())
 	{
 		FN2CTokenEstimationService::Get().OnCacheInvalidated.Remove(OnCacheInvalidatedHandle);
+	}
+	if (OnEstimatesStaleHandle.IsValid())
+	{
+		FN2CTokenEstimationService::Get().OnEstimatesStale.Remove(OnEstimatesStaleHandle);
 	}
 }
 
@@ -925,6 +930,21 @@ FSlateColor SN2CGraphOverlay::GetTagButtonColor() const
 	return FSlateColor(N2C::UI::Linear(N2C::UI::Colors().TextMuted)); // Gray for untagged
 }
 
+namespace N2CGraphOverlayEstimate
+{
+	/** Seconds after the last edit or compile before the estimate is taken again */
+	constexpr float DebounceSeconds = 1.0f;
+}
+
+FN2CTagInfo SN2CGraphOverlay::MakeEstimateGraphInfo() const
+{
+	FN2CTagInfo GraphInfo;
+	GraphInfo.GraphGuid = GraphGuid.ToString();
+	GraphInfo.BlueprintPath = GetBlueprintPath();
+	GraphInfo.GraphName = GraphName;
+	return GraphInfo;
+}
+
 void SN2CGraphOverlay::RefreshTokenEstimate()
 {
 	if (!bCanTranslate)
@@ -934,18 +954,17 @@ void SN2CGraphOverlay::RefreshTokenEstimate()
 		CachedNestedGraphCount = 0;
 		CachedContextUsagePercent = 0.0f;
 		CachedEstimatedCost = 0.0f;
+		bEstimateValid = false;
 		return;
 	}
 
-	FN2CTagInfo GraphInfo;
-	GraphInfo.GraphGuid = GraphGuid.ToString();
-	GraphInfo.BlueprintPath = GetBlueprintPath();
-	GraphInfo.GraphName = GraphName;
-
 	FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();
 
-	// Use nesting-aware estimation if enabled
-	CachedTokenCount = Service.GetTokenEstimateWithNesting(GraphInfo, CachedNestedGraphCount);
+	// One capture at the configured depth, as Translate sends it (a cache hit unless this Blueprint changed)
+	const FN2CTokenEstimate Estimate = Service.GetEstimate(MakeEstimateGraphInfo());
+	CachedTokenCount = Estimate.Tokens;
+	CachedNestedGraphCount = Estimate.NestedGraphCount;
+	bEstimateValid = Estimate.bValid;
 
 	int32 UsableContext = Service.GetUsableContextWindow();
 	CachedContextUsagePercent = UsableContext > 0
@@ -955,14 +974,43 @@ void SN2CGraphOverlay::RefreshTokenEstimate()
 	CachedEstimatedCost = Service.CalculateCost(CachedTokenCount);
 }
 
+void SN2CGraphOverlay::ScheduleTokenEstimate(float Delay)
+{
+	if (EstimateTimer.IsValid())
+	{
+		UnRegisterActiveTimer(EstimateTimer.ToSharedRef());
+	}
+	EstimateTimer = RegisterActiveTimer(Delay, FWidgetActiveTimerDelegate::CreateLambda(
+		[WeakThis = TWeakPtr<SN2CGraphOverlay>(SharedThis(this))](double, float)
+		{
+			if (TSharedPtr<SN2CGraphOverlay> This = WeakThis.Pin())
+			{
+				This->EstimateTimer.Reset();
+				This->RefreshTokenEstimate();
+			}
+			return EActiveTimerReturnType::Stop;
+		}));
+}
+
 void SN2CGraphOverlay::OnModelChanged()
 {
+	// The token count is cached; the context window and price are the model's
 	RefreshTokenEstimate();
 }
 
 void SN2CGraphOverlay::OnCacheInvalidated()
 {
-	RefreshTokenEstimate();
+	// Translation Depth changed or the cache was cleared
+	ScheduleTokenEstimate(N2CGraphOverlayEstimate::DebounceSeconds);
+}
+
+void SN2CGraphOverlay::OnEstimatesStale(const FSoftObjectPath& Blueprint)
+{
+	// Only this graph's Blueprint, or an estimate that took in the changed Blueprint's graphs, is taken again
+	if (!FN2CTokenEstimationService::Get().IsEstimateCurrent(MakeEstimateGraphInfo()))
+	{
+		ScheduleTokenEstimate(N2CGraphOverlayEstimate::DebounceSeconds);
+	}
 }
 
 float SN2CGraphOverlay::GetContextUsagePercent() const
@@ -972,6 +1020,11 @@ float SN2CGraphOverlay::GetContextUsagePercent() const
 
 FText SN2CGraphOverlay::GetContextUsagePercentText() const
 {
+	if (!bCanTranslate || !bEstimateValid)
+	{
+		// A graph capture refuses (or not estimated yet): no number rather than a misleading 0%
+		return NSLOCTEXT("SN2CGraphOverlay", "ContextUsageNotAvailable", "n/a");
+	}
 	int32 PercentInt = FMath::RoundToInt(CachedContextUsagePercent * 100.0f);
 	return FText::FromString(FString::Printf(TEXT("%d%%"), PercentInt));
 }
@@ -981,6 +1034,10 @@ FText SN2CGraphOverlay::GetContextTooltipText() const
 	if (!bCanTranslate)
 	{
 		return UnsupportedReason;
+	}
+	if (!bEstimateValid)
+	{
+		return LOCTEXT("ContextNoEstimate", "No token estimate: the graph has nothing to translate yet (or is still being estimated).");
 	}
 
 	FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();

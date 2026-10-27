@@ -63,6 +63,11 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Graph` | connect-pins reports a malformed connection entry in failed and counts it | mcp-tools-graph-functions-25 (card 0276) |
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
+| `NodeToCode.Python.BridgeCalls` | read_n2c_json reads get_blueprint_n2c_json's document with every node | card 0505 (suggested) |
+| `NodeToCode.MCP.RunPython` | names the line of the code that raised in the traceback; keeps a multi-line string literal as written | mcp-tools-python-translation-resources-9 (card 0299) |
+| `NodeToCode.MCP.RunPython` | runs code with '.py ' in a comment | mcp-tools-python-translation-resources-8 (card 0299) |
+| `NodeToCode.MCP.RunPython` | does not see the previous call's result | mcp-tools-python-translation-resources-6 (card 0299) |
+| `NodeToCode.MCP.RunPython` | reports a NaN result, an infinite result and an unserializable result with isError | mcp-tools-python-translation-resources-13 (card 0299) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -204,6 +209,34 @@ prompts: `FN2CMcpSaveBlueprint::Decide` with the states Perforce and Git report 
 Both delete their folders (assets, the redirectors a move leaves, files and registry paths;
 `N2CTest::DeleteContentFolder` in `N2CTestContentFolder.h`) before and after every case, also a failed one. Their
 known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN_DEFECTS=1`.
+
+## The Python bridge and run-python
+
+`NodeToCode.Python.BridgeCalls` (`MCP/N2CPythonBridgeCalls.spec.cpp`, card 0201) calls every `UN2CPythonBridge`
+UFUNCTION from Python, through the `unreal` module as the `nodetocode` package does, and checks that `json.loads`
+(refusing NaN and Infinity) reads every response as one `{success, data, error}` object. Each call runs with normal
+arguments and once more per string argument with an apostrophe in that argument (python-bridge-1). The calls are in
+`Fixtures/Python/n2c_bridge_calls.py`; the spec builds a scratch Blueprint under `/Game` (transient, never dirty, so
+`save_focused_blueprint` writes nothing), points the graph state at a scratch folder, and runs the file in a fresh
+namespace through `IPythonScriptPlugin` (`ExecuteStatement`, so neither the console's shared globals nor the
+`ExecuteFile` '.py ' rule apply). With no Blueprint focused, every function is called on every engine (the ones that
+need the focused graph answer with an error, which must be JSON too), and the spec fails when the class declares a
+UFUNCTION the fixture does not call. On UE 5.8 the scratch function graph is also focused and each editing call must
+succeed with normal arguments. Disabled: `read_n2c_json` on `get_blueprint_n2c_json`'s document drops every node
+(card 0505). `NodeToCode.Python.Bridge` checks the responses' content from C++.
+
+It is a C++ spec, not a PythonAutomationTest suite or a file for `Tests/python/editor/run_editor_tests.py` (card
+0296): `build.ps1 -Test` runs it on every engine with the other specs, it can open, focus and close the Blueprint editor
+where that is safe (`N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR`) and redirect the graph state folder, and the hosts
+junction only `Source`, `Content`, `Resources` and `ThirdParty`, so a fixture under `Source` is found where
+`Tests/` is not. PythonAutomationTest is not enabled in the hosts.
+
+`NodeToCode.MCP.RunPython` (`MCP/N2CRunPython.spec.cpp`, card 0201) runs run-python's Execute
+(`N2CTest::RunToolUnmarked`; the Allow MCP Python Execution setting gates only its registration) and checks every answer is JSON a strict parser reads (no `nan` or `Infinity` word outside a string): a script that
+raises comes back with isError, its message and the traceback; and, disabled until card 0299 rebuilds run-python,
+traceback line numbers, a multi-line string literal, '.py ' in a comment, a call that must not see the previous
+call's `result`, and NaN, infinite and unserializable results (isError, naming the problem and not the wrapper).
+`NodeToCode.MCP.PythonToolErrors` covers isError for the script-library tools.
 
 ## Graph state and the editor integration
 
