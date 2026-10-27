@@ -116,20 +116,25 @@ public:
 	 *
 	 * @param Category Optional category filter (empty string for all)
 	 * @param Tag Optional tag name filter (empty string for all)
+	 * @param BlueprintPath Optional: only the tags of this Blueprint's graphs (object or package path). A duplicated
+	 *        Blueprint shares its graph GUIDs with the original, so this is how to tell their tags apart (card 0498)
 	 * @return JSON array of matching tags
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString ListTags(const FString& Category = TEXT(""), const FString& Tag = TEXT(""));
+	static FString ListTags(const FString& Category = TEXT(""), const FString& Tag = TEXT(""), const FString& BlueprintPath = TEXT(""));
 
 	/**
 	 * Remove a tag from a graph.
 	 *
 	 * @param GraphGuid The GUID of the graph (string format)
 	 * @param Tag The tag name to remove
+	 * @param BlueprintPath The owning Blueprint's path (blueprint_path from ListTags or TagFocusedGraph). The graph is
+	 *        {Blueprint, GraphGuid} (FN2CGraphKey, card 0498): copies of a Blueprint share graph GUIDs, so without it
+	 *        the removal works only while one Blueprint has a graph with this GUID
 	 * @return JSON result with removal status
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString RemoveTag(const FString& GraphGuid, const FString& Tag);
+	static FString RemoveTag(const FString& GraphGuid, const FString& Tag, const FString& BlueprintPath = TEXT(""));
 
 	// ========== LLM Provider Info ==========
 

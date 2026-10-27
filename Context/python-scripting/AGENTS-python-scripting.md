@@ -231,8 +231,8 @@ script ends and reports it as `compile` in its own result, so a script that adds
 
 **NodeToCode-Specific:**
 *   `tag_graph(tag, category="Default", description="")` - Tag focused graph
-*   `list_tags(category=None, tag=None)` - List tags with filters
-*   `remove_tag(graph_guid, tag)` - Remove tag from graph
+*   `list_tags(category=None, tag=None, blueprint_path=None)` - List tags with filters; `blueprint_path` keeps one Blueprint's graphs (a duplicated Blueprint shares its graph GUIDs with the original)
+*   `remove_tag(graph_guid, tag, blueprint_path="")` - Remove tag from graph; pass the entry's `blueprint_path` from `list_tags` (needed once a copy of the Blueprint shares the GUID)
 *   `get_llm_providers()` - Get available LLM providers
 *   `get_active_provider()` - Get current LLM provider info
 

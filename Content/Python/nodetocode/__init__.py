@@ -103,8 +103,8 @@ Available Functions (the authoritative list is __all__ below):
 
     NodeToCode-Specific (Tagging & LLM):
     - tag_graph(tag, category, description) - Tag the focused graph
-    - list_tags(category, tag) - List all tags with optional filters
-    - remove_tag(graph_guid, tag) - Remove a tag from a graph
+    - list_tags(category, tag, blueprint_path) - List all tags with optional filters
+    - remove_tag(graph_guid, tag, blueprint_path) - Remove a tag from a graph (its Blueprint and GUID)
     - get_llm_providers() - Get all available LLM providers
     - get_active_provider() - Get current LLM provider info
     - get_translation_targets() - Get the languages NodeToCode translates into
