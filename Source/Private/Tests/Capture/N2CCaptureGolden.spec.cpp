@@ -3320,6 +3320,9 @@ void FN2CCaptureGoldenSpec::Define()
 			FString Error;
 			TestFalse(TEXT("the bool overload fails too"), Validator.Validate(Blueprint, Error));
 			TestTrue(TEXT("with the first error's text"), Error.Contains(TEXT("references non-existent node N9")));
+		});
+	});
+
 	// Card 0239 (translation-core-14, -16, -29, -32): node processors for timelines, async nodes, events, Get and Switch
 	Describe(TEXT("NodeDetails"), [this]()
 	{
