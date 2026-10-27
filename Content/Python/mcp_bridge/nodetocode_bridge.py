@@ -432,7 +432,7 @@ class EditorLocator:
         if not editors:
             raise EditorNotFound("No NodeToCode editor is running: no MCP server discovery entry in "
                                  f"{index_dir}. Open the project in the Unreal Editor with NodeToCode's MCP server "
-                                 "enabled (Project Settings > Plugins > Node to Code (User)), or pass --port/--url.")
+                                 "enabled (Editor Preferences > Plugins > Node to Code (User)), or pass --port/--url.")
         raise EditorNotFound(f"{len(editors)} NodeToCode editors are running; {hint}: "
                              + "; ".join(describe_entry(e) for e in editors), editors)
 

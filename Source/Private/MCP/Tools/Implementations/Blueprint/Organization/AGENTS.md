@@ -1,9 +1,11 @@
 # Blueprint Organization Tools
 
 This directory contains the MCP tools in the `BlueprintTagTools` toolset: tagging Blueprint graphs, listing the
-tags and removing them. The tools are thin wrappers over `UN2CTagManager`, which stores every tag in
+tags and removing them. The tools are thin wrappers over the one tag store,
 `UN2CGraphStateManager` (`Source/Private/Core/N2CGraphStateManager.cpp`), the per-graph state that also records each
-graph's translation and JSON export.
+graph's translation and JSON export. Its tag projections (`GetAllTags`, `GetTaggedGraphs`, `FindTaggedGraphs`,
+`FindTaggedGraphsInCategory`, `RemoveTagByName`) return `FN2CTaggedBlueprintGraph` rows, and `OnGraphTagAdded` carries
+the added `FN2CTagEntry` and its `FN2CGraphRef` (card 0345; the `UN2CTagManager` facade is gone).
 
 ## Available Tools
 
@@ -33,8 +35,8 @@ graph's translation and JSON export.
 - **Parameters** (all optional; every filter given applies, together, `FN2CMcpListBlueprintTagsTool::Execute`,
   card 0294):
   - `graphGuid`: Tags of that graph, in every Blueprint that has it. With hyphens or without (`FGuid::Parse`)
-  - `tag`: Tags with that name, case-insensitive (`UN2CTagManager::GetGraphsWithTag`)
-  - `category`: Tags in that category, case-insensitive (`GetTagsInCategory`)
+  - `tag`: Tags with that name, case-insensitive (`UN2CGraphStateManager::FindTaggedGraphs`)
+  - `category`: Tags in that category, case-insensitive (`FindTaggedGraphsInCategory`)
   - none: every tag (`GetAllTags`)
 - **Returns**: `untrusted_content`, `tags` (each as in `taggedGraph` above), `count`, `summary` (`uniqueTagNames`
   and `uniqueCategories` across all stored tags, not only the listed ones) and `appliedFilters` (the filters given,
@@ -62,7 +64,7 @@ graph's translation and JSON export.
   `BlueprintGraphState.json.bak`); a corrupt file is set aside as `.corrupt-*` and saving stops until the tags are
   reloaded (`LoadStateInternal`), so a bad file is never overwritten.
 - **Reads.** The file is read once, when the editor starts (`UN2CGraphStateManager::Initialize`), and again only when
-  the user reloads the tags (`UN2CTagManager::LoadTags`). Tags survive editor restarts and belong to one project.
+  the user reloads the tags (`UN2CGraphStateManager::LoadState`, the Blueprint library's `LoadTags`). Tags survive editor restarts and belong to one project.
 - **Several editors on one project: the last writer wins.** There is no lock and no merge: each editor keeps its own
   copy in memory and writes all of it on every change. On UE 5.8, a tag written into the file from outside while the
   editor ran was not seen by `list-blueprint-tags`, and the editor's next `tag-blueprint-graph` rewrote the file

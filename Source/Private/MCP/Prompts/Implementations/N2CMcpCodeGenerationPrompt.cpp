@@ -329,7 +329,7 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 	const FString DisabledSection = bPythonExecution ? FString() : FString(TEXT(
 		"## run-python is disabled on this server\n\n"
 		"`run-python`, `save-python-script` and `delete-python-script` are not available: the per-user setting "
-		"**Allow MCP Python Execution** is off (the default). To enable them, the user turns it on in Project Settings > "
+		"**Allow MCP Python Execution** is off (the default). To enable them, the user turns it on in Editor Preferences > "
 		"Plugins > Node to Code (User) > MCP Server and restarts the editor. It lets any connected MCP client run "
 		"arbitrary Python in the editor, so leave that decision to the user.\n\n"
 		"Until then you can still search, list and read saved scripts, research the API and write the script. Give "

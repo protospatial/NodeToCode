@@ -180,11 +180,11 @@ arguments and the keys of its `data`. Grouped:
     (card 0445), each listed in `warnings` (`code`, `path`, `value`, `message`). The `n2c_json` of
     `get_blueprint_n2c_json` reads too: its `ids.short` is the node or pin ID (card 0505). A read that had to skip a
     graph, node or pin (a missing required field) fails: `error` names the skipped parts, `data` holds the rest
-*   `compile_blueprint(path=None)` - Compile the focused Blueprint (a `path` is ignored for now: open the Blueprint
-    first); `data`: `blueprint_name`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
+*   `compile_blueprint(path=None)` - Compile the Blueprint at `path` (loaded if needed; the focused one is never
+    touched), else the focused Blueprint (card 0297); `data`: `blueprint_name`, `blueprint_path`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
     `messages` (each `severity`, `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node)
-*   `save_blueprint(path=None, only_if_dirty=True)` - Save the focused Blueprint (a `path` is ignored the same way);
-    `data`: `blueprint_name`, `was_dirty`, `was_saved`
+*   `save_blueprint(path=None, only_if_dirty=True)` - Save the Blueprint at `path`, else the focused Blueprint;
+    `data`: `blueprint_name`, `blueprint_path`, `was_dirty`, `was_saved`
 *   `load_blueprint(path)` - Load Blueprint by asset path; `data`: `name`, `path`, `class_name`, `parent_class`
     (the parent's name, such as `Actor`)
 *   `open_blueprint(path, focus_graph=None)` - Open a Blueprint editor and focus a graph by name, matched
@@ -312,7 +312,7 @@ Writing and recovery (project registry; same pattern as `FN2CFileUtils`):
 *   The bundled plugin registry is read-only: if it does not parse, it is logged and treated as empty.
 *   Headless check: `Tests/mcp_probe/e05_registry_check.py` (run with `-ExecutePythonScript`).
 *   CPython tests, no editor: `Tests/python` (pytest with a stub `unreal` module; `build.ps1 -Test` runs them, and
-    AGENTS.md gives the `uv run` command). `test_scripts.py` covers this module and `test_registry_integrity.py`
+    `Context/development-workflow/AGENTS-development-workflow.md` gives the `uv run` command). `test_scripts.py` covers this module and `test_registry_integrity.py`
     checks that every bundled registry path exists and every bundled `.py` file is registered, so a script added
     under `Content/Python/scripts` needs its registry entry in the same change.
 *   In-editor tests: `Tests/python/editor` (`run_editor_tests.py` runs each `test_*.py` there with
@@ -470,7 +470,7 @@ MCP prompt (`FN2CMcpPythonScriptingPrompt`) enforcing proper workflow:
 
 **With Python execution off** (the per-user **Allow MCP Python Execution**, default off; card 0124): the prompt checks
 `FN2CMcpToolManager::IsToolRegistered("run-python")` and, when it is not registered, opens with a "run-python is
-disabled on this server" section naming the setting (Project Settings > Plugins > Node to Code (User) > MCP Server,
+disabled on this server" section naming the setting (Editor Preferences > Plugins > Node to Code (User) > MCP Server,
 editor restart), says run-python, save-python-script and delete-python-script are unavailable, and tells the agent to
 give the script to the user to run and not to claim it ran. Steps 1, 4 and 5 and the tool list say the same.
 

@@ -7,7 +7,7 @@
 
 #include "Tests/N2CToolSpecHarness.h"
 #include "MCP/Python/N2CPythonBridge.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -260,11 +260,11 @@ void FN2CExplicitTargetsSpec::Define()
 			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("tag-blueprint-graph"), Args);
 			TestFalse(TEXT("tag-blueprint-graph: ") + N2CTest::ResultText(Result).Left(300), Result.bIsError);
 			ExpectExplicit(*this, TEXT("tag-blueprint-graph"), Result);
-			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(Function->GraphGuid);
+			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(Function->GraphGuid);
 			TestTrue(TEXT("the function carries the tag"), Tags.ContainsByPredicate([&Tag](const FN2CTaggedBlueprintGraph& T) { return T.Tag == Tag; }));
 			for (const FN2CTaggedBlueprintGraph& T : Tags)
 			{
-				UN2CTagManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
+				UN2CGraphStateManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
 			}
 		});
 	});
@@ -320,16 +320,32 @@ void FN2CExplicitTargetsSpec::Define()
 			bool bSuccess = false;
 			const TSharedPtr<FJsonObject> Compiled = ParseEnvelope(UN2CPythonBridge::CompileFocusedBlueprint(Test->Path()));
 			TestTrue(TEXT("CompileFocusedBlueprint by path"), Compiled.IsValid() && Compiled->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess);
+			// Card 0297: the result names the Blueprint compiled, so nodetocode.compile_blueprint(path) can be checked
+			const TSharedPtr<FJsonObject>* CompiledData = nullptr;
+			FString CompiledPath;
+			TestTrue(TEXT("its blueprint_path is the one named"), Compiled.IsValid() && Compiled->TryGetObjectField(TEXT("data"), CompiledData)
+				&& (*CompiledData)->TryGetStringField(TEXT("blueprint_path"), CompiledPath) && CompiledPath == Blueprint->GetPathName());
+
+			// SaveFocusedBlueprint by path on the clean Blueprint (Settle): nothing to write, and it says which Blueprint
+			Test->Settle();
+			const TSharedPtr<FJsonObject> Saved = ParseEnvelope(UN2CPythonBridge::SaveFocusedBlueprint(true, Test->Path()));
+			const TSharedPtr<FJsonObject>* SavedData = nullptr;
+			FString SavedPath;
+			bool bWasSaved = true;
+			TestTrue(TEXT("SaveFocusedBlueprint by path: success, the Blueprint named, not saved (clean)"), Saved.IsValid()
+				&& Saved->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess && Saved->TryGetObjectField(TEXT("data"), SavedData)
+				&& (*SavedData)->TryGetStringField(TEXT("blueprint_path"), SavedPath) && SavedPath == Blueprint->GetPathName()
+				&& (*SavedData)->TryGetBoolField(TEXT("was_saved"), bWasSaved) && !bWasSaved);
 
 			const FString Tag = TEXT("N2CTargetSpecBridgeTag");
 			const TSharedPtr<FJsonObject> Tagged = ParseEnvelope(UN2CPythonBridge::TagFocusedGraph(Tag, TEXT("Default"), FString(),
 				Test->Path(), Function->GetName()));
 			TestTrue(TEXT("TagFocusedGraph by path and graph name"), Tagged.IsValid() && Tagged->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess);
-			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(Function->GraphGuid);
+			const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(Function->GraphGuid);
 			TestTrue(TEXT("the function carries the tag"), Tags.ContainsByPredicate([&Tag](const FN2CTaggedBlueprintGraph& T) { return T.Tag == Tag; }));
 			for (const FN2CTaggedBlueprintGraph& T : Tags)
 			{
-				UN2CTagManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
+				UN2CGraphStateManager::Get().RemoveTag(T.GraphGuid, T.Tag, T.Category);
 			}
 
 			const TSharedPtr<FJsonObject> Missing = ParseEnvelope(UN2CPythonBridge::CompileFocusedBlueprint(TEXT("/Temp/N2CTargetSpec_NoSuchBlueprint")));

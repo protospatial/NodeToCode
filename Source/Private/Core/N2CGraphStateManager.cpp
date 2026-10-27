@@ -291,7 +291,7 @@ bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphN
 		EN2CLogSeverity::Info);
 
 	// Fire delegates
-	BroadcastTagAdded(State);
+	BroadcastTagAdded(State, NewTag);
 	BroadcastStateChanged(State.GetKey());
 
 	// Auto-save
@@ -514,7 +514,7 @@ int32 UN2CGraphStateManager::RestoreTags(const TArray<FN2CRemovedTag>& Removed)
 		State.Tags.Add(Item.Entry);
 		++RestoredCount;
 		MarkDirty();
-		BroadcastTagAdded(State);
+		BroadcastTagAdded(State, Item.Entry);
 		BroadcastStateChanged(State.GetKey());
 	}
 
@@ -543,27 +543,83 @@ TArray<FN2CTagEntry> UN2CGraphStateManager::GetTagsForGraph(const FN2CGraphKey& 
 	return TArray<FN2CTagEntry>();
 }
 
-TArray<FN2CTaggedBlueprintGraph> UN2CGraphStateManager::GetAllTagsLegacy() const
+TArray<FN2CTaggedBlueprintGraph> UN2CGraphStateManager::GetAllTags() const
 {
 	TArray<FN2CTaggedBlueprintGraph> Result;
-
 	for (const FN2CGraphState& State : StateFile.Graphs)
 	{
+		const FN2CGraphRef Graph(State.OwningBlueprint, State.GraphGuid, State.GraphName);
 		for (const FN2CTagEntry& TagEntry : State.Tags)
 		{
-			FN2CTaggedBlueprintGraph LegacyTag;
-			LegacyTag.Tag = TagEntry.Tag;
-			LegacyTag.Category = TagEntry.Category;
-			LegacyTag.Description = TagEntry.Description;
-			LegacyTag.GraphGuid = State.GraphGuid;
-			LegacyTag.GraphName = State.GraphName;
-			LegacyTag.OwningBlueprint = State.OwningBlueprint;
-			LegacyTag.Timestamp = TagEntry.Timestamp;
-			Result.Add(LegacyTag);
+			Result.Add(Graph.MakeTaggedGraph(TagEntry));
 		}
 	}
-
 	return Result;
+}
+
+TArray<FN2CTaggedBlueprintGraph> UN2CGraphStateManager::GetTaggedGraphs(const FN2CGraphKey& Key) const
+{
+	TArray<FN2CTaggedBlueprintGraph> Result;
+	if (const FN2CGraphState* State = FindGraphState(Key))
+	{
+		const FN2CGraphRef Graph(State->OwningBlueprint, State->GraphGuid, State->GraphName);
+		for (const FN2CTagEntry& TagEntry : State->Tags)
+		{
+			Result.Add(Graph.MakeTaggedGraph(TagEntry));
+		}
+	}
+	return Result;
+}
+
+TArray<FN2CTaggedBlueprintGraph> UN2CGraphStateManager::FindTaggedGraphs(const FString& Tag, const FString& Category) const
+{
+	TArray<FN2CTaggedBlueprintGraph> Result;
+	for (const FN2CGraphState& State : StateFile.Graphs)
+	{
+		const FN2CGraphRef Graph(State.OwningBlueprint, State.GraphGuid, State.GraphName);
+		for (const FN2CTagEntry& TagEntry : State.Tags)
+		{
+			if (TagEntry.Tag.Equals(Tag, ESearchCase::IgnoreCase)
+				&& (Category.IsEmpty() || TagEntry.Category.Equals(Category, ESearchCase::IgnoreCase)))
+			{
+				Result.Add(Graph.MakeTaggedGraph(TagEntry));
+			}
+		}
+	}
+	return Result;
+}
+
+TArray<FN2CTaggedBlueprintGraph> UN2CGraphStateManager::FindTaggedGraphsInCategory(const FString& Category) const
+{
+	TArray<FN2CTaggedBlueprintGraph> Result;
+	for (const FN2CGraphState& State : StateFile.Graphs)
+	{
+		const FN2CGraphRef Graph(State.OwningBlueprint, State.GraphGuid, State.GraphName);
+		for (const FN2CTagEntry& TagEntry : State.Tags)
+		{
+			if (TagEntry.Category.Equals(Category, ESearchCase::IgnoreCase))
+			{
+				Result.Add(Graph.MakeTaggedGraph(TagEntry));
+			}
+		}
+	}
+	return Result;
+}
+
+int32 UN2CGraphStateManager::RemoveTagByName(const FN2CGraphKey& Key, const FString& Tag, FN2CTaggedBlueprintGraph& OutRemovedTag)
+{
+	if (const FN2CGraphState* State = FindGraphState(Key))
+	{
+		const FN2CGraphRef Graph(State->OwningBlueprint, State->GraphGuid, State->GraphName);
+		if (const FN2CTagEntry* First = State->Tags.FindByPredicate([&Tag](const FN2CTagEntry& Entry)
+			{
+				return Entry.Tag.Equals(Tag, ESearchCase::IgnoreCase);
+			}))
+		{
+			OutRemovedTag = Graph.MakeTaggedGraph(*First);
+		}
+	}
+	return RemoveTagByName(Key, Tag);
 }
 
 // ============================================================================
@@ -1065,14 +1121,14 @@ void UN2CGraphStateManager::EndBulkUpdate()
 	}
 }
 
-void UN2CGraphStateManager::BroadcastTagAdded(const FN2CGraphState& State)
+void UN2CGraphStateManager::BroadcastTagAdded(const FN2CGraphState& State, const FN2CTagEntry& Entry)
 {
 	if (IsInBulkUpdate())
 	{
 		bBulkChanged = true;
 		return;
 	}
-	OnGraphTagAdded.Broadcast(State);
+	OnGraphTagAdded.Broadcast(Entry, FN2CGraphRef(State.OwningBlueprint, State.GraphGuid, State.GraphName));
 }
 
 void UN2CGraphStateManager::BroadcastTagRemoved(const FN2CGraphKey& Key, const FString& Tag)

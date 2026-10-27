@@ -4,7 +4,7 @@
 #include "MCP/Utils/N2CMcpBatchTargets.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Dom/JsonObject.h"
@@ -288,8 +288,8 @@ FN2CBatchTargets N2CMcpBatchTargets::Resolve(const TSharedPtr<FJsonObject>& Argu
 	else
 	{
 		const TArray<FN2CTaggedBlueprintGraph> Tagged = !Tag.IsEmpty()
-			? UN2CTagManager::Get().GetGraphsWithTag(Tag, Category)
-			: UN2CTagManager::Get().GetTagsInCategory(Category);
+			? UN2CGraphStateManager::Get().FindTaggedGraphs(Tag, Category)
+			: UN2CGraphStateManager::Get().FindTaggedGraphsInCategory(Category);
 		if (Tagged.Num() == 0)
 		{
 			Result.Error = !Tag.IsEmpty()

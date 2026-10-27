@@ -5,7 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CGraphStateManager.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "UObject/StrongObjectPtr.h"
@@ -25,15 +25,11 @@ bool FN2CTagEventsTest::RunTest(const FString& Parameters)
 	{
 		TStrongObjectPtr<UN2CGraphStateManager> Manager(UN2CGraphStateManager::CreateIsolated(Dir));
 
-		// The same conversion UN2CTagManager's forwarder uses for OnBlueprintTagAdded
+		// The store's tag-added event carries the added tag and its graph (card 0345)
 		TArray<FN2CTaggedBlueprintGraph> Events;
-		Manager->OnGraphTagAdded.AddLambda([&Events](const FN2CGraphState& State)
+		Manager->OnGraphTagAdded.AddLambda([&Events](const FN2CTagEntry& Tag, const FN2CGraphRef& Graph)
 		{
-			FN2CTaggedBlueprintGraph Added;
-			if (UN2CTagManager::MakeTagAddedEvent(State, Added))
-			{
-				Events.Add(Added);
-			}
+			Events.Add(Graph.MakeTaggedGraph(Tag));
 		});
 
 		// 1. Adding Combat then AI to one graph reports AI for the second add

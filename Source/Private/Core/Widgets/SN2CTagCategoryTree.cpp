@@ -2,7 +2,7 @@
 
 #include "Core/Widgets/SN2CTagCategoryTree.h"
 #include "Core/Style/N2CStyle.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateTypes.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -72,7 +72,7 @@ void SN2CTagCategoryTree::Construct(const FArguments& InArgs)
 
 TArray<FN2CTaggedBlueprintGraph> SN2CTagCategoryTree::GetTags() const
 {
-	return TagSource ? TagSource() : UN2CTagManager::Get().GetAllTags();
+	return TagSource ? TagSource() : UN2CGraphStateManager::Get().GetAllTags();
 }
 
 void SN2CTagCategoryTree::RefreshData()

@@ -8,23 +8,30 @@
   "roots": [
     {"name": "developers", "path": "developers"}
   ],
-  "images": {"dir": "wiki/images", "themes": ["default"]},
+  "images": {"dir": "wiki/images", "themes": ["default"], "manifest": "wiki/images/shots.json"},
+  "capture": "python -I Tests/DocsShots/capture.py --group {group}",
   "surfaces": [
     {
       "name": "translate-entry",
       "code": ["Source/Private/Core/N2CEditorIntegration.cpp", "Source/Public/Core/N2CEditorIntegration.h",
                "Source/Private/Core/N2CToolbarCommand.cpp", "Source/Public/Core/N2CToolbarCommand.h",
                "Source/Private/Core/N2CEditorWindow.cpp", "Source/Public/Core/N2CEditorWindow.h",
-               "Source/Private/Core/Widgets/SN2CGraphOverlay.cpp", "Source/Public/Core/Widgets/SN2CGraphOverlay.h"],
-      "pages": ["wiki/Accessing-and-Triggering-Translation.md", "wiki/Opening-the-Editor.md", "wiki/Blueprint-Selection.md"]
+               "Source/Private/Core/Widgets/SN2CGraphOverlay.cpp", "Source/Public/Core/Widgets/SN2CGraphOverlay.h",
+               "Source/Private/Tests/Docs/N2CDocsShots.cpp"],
+      "pages": ["wiki/Accessing-and-Triggering-Translation.md", "wiki/Opening-the-Editor.md", "wiki/Blueprint-Selection.md"],
+      "shots": ["wiki/images/translate-entry/**"], "group": "translate-entry"
     },
     {
       "name": "main-window",
       "code": ["Source/Private/Core/Widgets/SN2CMainWindow.cpp", "Source/Public/Core/Widgets/SN2CMainWindow.h",
                "Source/Private/Core/Widgets/SN2CHeaderBar.cpp", "Source/Public/Core/Widgets/SN2CHeaderBar.h",
                "Source/Private/Core/Widgets/SN2CTranslationViewer.cpp", "Source/Public/Core/Widgets/SN2CTranslationViewer.h",
-               "Source/Private/Core/Widgets/SN2CGraphListRow.cpp", "Source/Public/Core/Widgets/SN2CGraphListRow.h"],
-      "pages": ["wiki/Top-Navbar-Overview.md", "wiki/Viewing-the-Results.md", "wiki/Implementation-Notes.md", "wiki/Copy-&-Integrate.md"]
+               "Source/Private/Core/Widgets/SN2CGraphListRow.cpp", "Source/Public/Core/Widgets/SN2CGraphListRow.h",
+               "Source/Private/Core/Widgets/SN2CTagManager.cpp", "Source/Public/Core/Widgets/SN2CTagManager.h",
+               "Source/Private/Core/Widgets/SN2CTagCategoryTree.cpp", "Source/Private/Core/Widgets/SN2CTaggedGraphsList.cpp",
+               "Source/Private/Tests/Docs/N2CDocsShots.cpp"],
+      "pages": ["wiki/Top-Navbar-Overview.md", "wiki/Viewing-the-Results.md", "wiki/Implementation-Notes.md", "wiki/Copy-&-Integrate.md"],
+      "shots": ["wiki/images/main-window/**"], "group": "main-window"
     },
     {
       "name": "code-editor",
@@ -34,9 +41,10 @@
     },
     {
       "name": "settings",
-      "code": ["Source/Public/Core/N2CSettings.h", "Source/Private/Core/N2CSettings.cpp"],
+      "code": ["Source/Public/Core/N2CSettings.h", "Source/Private/Core/N2CSettings.cpp", "Source/Private/Tests/Docs/N2CDocsShots.cpp"],
       "pages": ["wiki/Initial-Configuration.md", "wiki/Provider-Configuration.md", "wiki/Target-Language-Settings.md",
-                "wiki/Max-Translation-Depth.md", "wiki/Reference-Source-Files.md", "wiki/Logging-Configuration.md"]
+                "wiki/Max-Translation-Depth.md", "wiki/Reference-Source-Files.md", "wiki/Logging-Configuration.md"],
+      "shots": ["wiki/images/settings/**"], "group": "settings"
     },
     {
       "name": "providers",

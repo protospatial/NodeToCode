@@ -338,7 +338,7 @@ void FN2CMcpUntrustedContentSpec::Define()
 			const FString Text = Result.Messages.Num() > 0 ? Result.Messages[0].Content.Text : FString();
 			TestTrue(TEXT("says it is disabled"), Text.Contains(TEXT("run-python is disabled")));
 			TestTrue(TEXT("names the setting"), Text.Contains(TEXT("Allow MCP Python Execution")));
-			TestTrue(TEXT("says where it is"), Text.Contains(TEXT("Node to Code (User) > MCP Server")));
+			TestTrue(TEXT("says where it is (Editor Preferences, card 0486)"), Text.Contains(TEXT("Editor Preferences > Plugins > Node to Code (User) > MCP Server")));
 			TestFalse(TEXT("does not tell the agent to execute with run-python"), Text.Contains(TEXT("Execute it with `run-python`")));
 
 			if (RunPython.IsValid())

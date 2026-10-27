@@ -26,7 +26,7 @@ C++ must compile on all three.
    variables and `-Engine '5.8=<path>'`), creates a small C++ host project per engine under `..\Hosts` (or
    `-HostsRoot <dir>`) whose `Plugins/NodeToCode` folders link back to your checkout, and builds its editor target.
    `.\build.ps1 -WhatIf` shows what it found; `.\build.ps1 -All -Smoke` builds 5.6, 5.7 and 5.8 and smoke-tests the plugin
-   headless. Machine-specific paths go in a gitignored `build.local.ps1` (see `AGENTS.md`). Switch branches only
+   headless. Machine-specific paths go in a gitignored `build.local.ps1` (see `Context/development-workflow/AGENTS-development-workflow.md`). Switch branches only
    when no host editor is open.
 2. Guard version-specific code with `ENGINE_MINOR_VERSION` (include `Runtime/Launch/Resources/Version.h`).
 3. Run the plugin's automation tests on each engine: `.\build.ps1 -All -Test` builds, runs

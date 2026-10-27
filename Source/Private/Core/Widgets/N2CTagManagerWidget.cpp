@@ -16,7 +16,7 @@ UN2CTagManagerWidget::UN2CTagManagerWidget()
 
 TSharedRef<SWidget> UN2CTagManagerWidget::RebuildWidget()
 {
-	// SN2CTagManager subscribes to UN2CTagManager's tag delegates in Construct. In the UMG designer that
+	// SN2CTagManager subscribes to the tag store's (UN2CGraphStateManager) tag delegates in Construct. In the UMG designer that
 	// would hook a preview widget into live editor state, so show a placeholder.
 	if (IsDesignTime())
 	{

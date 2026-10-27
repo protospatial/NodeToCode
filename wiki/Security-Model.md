@@ -19,7 +19,7 @@ built for one developer's own machine: it has no password, and a bearer token on
 
 **Enable MCP Server**, **Allow MCP Python Execution**, **Allow MCP Writes Outside Project** and **Require MCP Bearer
 Token** are under
-**Project Settings → Plugins → Node to Code (User)**; the others are under **Plugins → Node to Code**, in **MCP Server** or **LLM Services**. Every MCP Server
+**Editor Preferences → Plugins → Node to Code (User)**; the others are in **Project Settings → Plugins → Node to Code**, in **MCP Server** or **LLM Services**. Every MCP Server
 setting needs an editor restart.
 
 ## What the MCP server accepts

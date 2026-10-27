@@ -44,7 +44,7 @@ namespace N2CUserSettingsPrivate
 		FN2CLogger::Get().LogWarning(FString::Printf(
 			TEXT("Ignored %s=%s from a project-shared config layer (for example the project's Config/DefaultEditorPerProjectUserSettings.ini): ")
 			TEXT("'%s' is a per-user setting and only your own value (in %s) counts, so it stays %s. ")
-			TEXT("Set it in Project Settings > Plugins > Node to Code (User); if the project file sets the same value, remove it there first, ")
+			TEXT("Set it in Editor Preferences > Plugins > Node to Code (User); if the project file sets the same value, remove it there first, ")
 			TEXT("because Unreal does not save a value that matches the project file."),
 			Key, bIgnoredValue ? TEXT("True") : TEXT("False"), DisplayName,
 			*FPaths::ConvertRelativePathToFull(GEditorPerProjectIni), bUsedValue ? TEXT("on") : TEXT("off")));

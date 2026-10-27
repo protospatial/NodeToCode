@@ -15,6 +15,7 @@ from .utils import (
     log_info,
     log_error,
     _parse_bridge_result,
+    _target_kwargs,
 )
 
 
@@ -198,19 +199,19 @@ def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
 
 def compile_blueprint(blueprint_path: Optional[str] = None) -> Dict[str, Any]:
     """
-    Compile a Blueprint. If no path is provided, compiles the focused Blueprint.
-
-    Note: Currently only supports compiling the focused Blueprint.
-    Path-based compilation will be added in a future update.
+    Compile a Blueprint: the one at blueprint_path, loading it if needed, else the focused Blueprint.
+    With a path, the focused Blueprint is never touched (card 0297).
 
     Args:
-        blueprint_path: Optional asset path (currently ignored, uses focused Blueprint)
+        blueprint_path: Optional asset path ('/Game/BP_Door' or '/Game/BP_Door.BP_Door'); a path that names no
+            Blueprint fails with "ASSET_NOT_FOUND: ..."
 
     Returns:
         dict: {
             'success': bool,        # True if compilation succeeded without errors
             'data': {
                 'blueprint_name': str,
+                'blueprint_path': str,  # the Blueprint compiled
                 'status': str,       # Post-compilation status
                 'had_errors': bool,
                 'had_warnings': bool,
@@ -233,11 +234,8 @@ def compile_blueprint(blueprint_path: Optional[str] = None) -> Dict[str, Any]:
             print("Compilation failed with errors")
     """
     try:
-        if blueprint_path:
-            log_info(f"Note: blueprint_path parameter not yet implemented, using focused Blueprint")
-
-        # Call the C++ bridge function
-        result_json = unreal.N2CPythonBridge.compile_focused_blueprint()
+        # The bridge loads and compiles the Blueprint at the path (card 0274); without one, the focused Blueprint
+        result_json = unreal.N2CPythonBridge.compile_focused_blueprint(**_target_kwargs(blueprint_path or ""))
         return _parse_bridge_result(result_json)
     except Exception as e:
         log_error(f"compile_blueprint failed: {e}")
@@ -247,13 +245,12 @@ def compile_blueprint(blueprint_path: Optional[str] = None) -> Dict[str, Any]:
 def save_blueprint(blueprint_path: Optional[str] = None,
                    only_if_dirty: bool = True) -> Dict[str, Any]:
     """
-    Save a Blueprint to disk. If no path is provided, saves the focused Blueprint.
-
-    Note: Currently only supports saving the focused Blueprint.
-    Path-based saving will be added in a future update.
+    Save a Blueprint to disk: the one at blueprint_path, loading it if needed, else the focused Blueprint.
+    With a path, the focused Blueprint is never touched (card 0297).
 
     Args:
-        blueprint_path: Optional asset path (currently ignored, uses focused Blueprint)
+        blueprint_path: Optional asset path ('/Game/BP_Door' or '/Game/BP_Door.BP_Door'); a path that names no
+            Blueprint fails with "ASSET_NOT_FOUND: ..."
         only_if_dirty: If True, only saves if the Blueprint has unsaved changes.
                       Default is True to avoid unnecessary disk writes.
 
@@ -262,6 +259,7 @@ def save_blueprint(blueprint_path: Optional[str] = None,
             'success': bool,
             'data': {
                 'blueprint_name': str,
+                'blueprint_path': str,  # the Blueprint saved (or found clean)
                 'was_dirty': bool,
                 'was_saved': bool,
             } or None,
@@ -274,11 +272,8 @@ def save_blueprint(blueprint_path: Optional[str] = None,
             print("Blueprint saved to disk")
     """
     try:
-        if blueprint_path:
-            log_info(f"Note: blueprint_path parameter not yet implemented, using focused Blueprint")
-
-        # Call the C++ bridge function
-        result_json = unreal.N2CPythonBridge.save_focused_blueprint(only_if_dirty)
+        # The bridge loads and saves the Blueprint at the path (card 0274); without one, the focused Blueprint
+        result_json = unreal.N2CPythonBridge.save_focused_blueprint(only_if_dirty, **_target_kwargs(blueprint_path or ""))
         return _parse_bridge_result(result_json)
     except Exception as e:
         log_error(f"save_blueprint failed: {e}")

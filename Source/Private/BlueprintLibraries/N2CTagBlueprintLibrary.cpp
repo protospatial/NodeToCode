@@ -1,43 +1,33 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
-#include "Core/N2CTagManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CEditorIntegration.h"
-#include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "Utils/N2CLogger.h"
 #include "BlueprintEditorModule.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 
-// FN2CTagInfo Implementation
-FN2CTagInfo FN2CTagInfo::FromTaggedGraph(const FN2CTaggedBlueprintGraph& TaggedGraph)
-{
-	FN2CTagInfo Info;
-	Info.Tag = TaggedGraph.Tag;
-	Info.Category = TaggedGraph.Category;
-	Info.Description = TaggedGraph.Description;
-	Info.GraphGuid = TaggedGraph.GraphGuid.ToString(EGuidFormats::DigitsWithHyphens);
-	Info.GraphName = TaggedGraph.GraphName;
-	Info.BlueprintPath = TaggedGraph.OwningBlueprint.ToString();
-	Info.Timestamp = TaggedGraph.Timestamp;
-	return Info;
-}
-
-FN2CTaggedBlueprintGraph FN2CTagInfo::ToTaggedGraph() const
-{
-	FN2CTaggedBlueprintGraph TaggedGraph;
-	TaggedGraph.Tag = Tag;
-	TaggedGraph.Category = Category;
-	TaggedGraph.Description = Description;
-	FGuid::Parse(GraphGuid, TaggedGraph.GraphGuid);
-	TaggedGraph.GraphName = GraphName;
-	TaggedGraph.OwningBlueprint = FSoftObjectPath(BlueprintPath);
-	TaggedGraph.Timestamp = Timestamp;
-	return TaggedGraph;
-}
-
 // UN2CTagBlueprintLibrary Implementation
+
+bool UN2CTagBlueprintLibrary::GetFocusedGraph(UBlueprint*& OutBlueprint, UEdGraph*& OutGraph, FString& OutError)
+{
+	// The graph the focused Blueprint editor shows (core, not the MCP utilities: card 0345)
+	OutBlueprint = nullptr;
+	OutGraph = FN2CEditorIntegration::Get().GetFocusedGraphFromActiveEditor();
+	if (!OutGraph)
+	{
+		OutError = TEXT("NO_FOCUSED_GRAPH: No graph is currently focused in the active Blueprint editor.");
+		return false;
+	}
+	OutBlueprint = FBlueprintEditorUtils::FindBlueprintForGraph(OutGraph);
+	if (!OutBlueprint)
+	{
+		OutError = FString::Printf(TEXT("INTERNAL_ERROR: Could not find owning Blueprint for focused graph: %s"), *OutGraph->GetName());
+		return false;
+	}
+	return true;
+}
 FN2CTagInfo UN2CTagBlueprintLibrary::TagFocusedBlueprintGraph(
 	const FString& Tag,
 	const FString& Category,
@@ -59,7 +49,7 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagFocusedBlueprintGraph(
 	UEdGraph* FocusedGraph = nullptr;
 	FString GraphError;
 	
-	if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(OwningBlueprint, FocusedGraph, GraphError))
+	if (!GetFocusedGraph(OwningBlueprint, FocusedGraph, GraphError))
 	{
 		ErrorMessage = GraphError;
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("TagFocusedBlueprintGraph failed: %s"), *GraphError));
@@ -87,7 +77,7 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagFocusedBlueprintGraph(
 	);
 	
 	// Add the tag using the tag manager
-	bSuccess = UN2CTagManager::Get().AddTag(TaggedGraph);
+	bSuccess = UN2CGraphStateManager::Get().AddTag(TaggedGraph);
 	
 	if (bSuccess)
 	{
@@ -191,7 +181,7 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagBlueprintGraph(
 	);
 	
 	// Add the tag using the tag manager
-	bSuccess = UN2CTagManager::Get().AddTag(TaggedGraph);
+	bSuccess = UN2CGraphStateManager::Get().AddTag(TaggedGraph);
 	
 	if (bSuccess)
 	{
@@ -226,7 +216,7 @@ bool UN2CTagBlueprintLibrary::RemoveTag(
 	const FN2CGraphKey Key = BlueprintPath.TrimStartAndEnd().IsEmpty()
 		? FN2CGraphKey(Guid)
 		: FN2CGraphKey(FN2CGraphKey::NormalizeBlueprintPath(BlueprintPath), Guid);
-	return UN2CTagManager::Get().RemoveTag(Key, Tag, Category);
+	return UN2CGraphStateManager::Get().RemoveTag(Key, Tag, Category);
 }
 
 TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::GetTagsForGraph(const FString& GraphGuid)
@@ -240,7 +230,7 @@ TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::GetTagsForGraph(const FString& Grap
 		return Result;
 	}
 	
-	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsForGraph(Guid);
+	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetTaggedGraphs(Guid);
 	for (const FN2CTaggedBlueprintGraph& Tag : Tags)
 	{
 		Result.Add(FN2CTagInfo::FromTaggedGraph(Tag));
@@ -255,7 +245,7 @@ TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::GetGraphsWithTag(
 {
 	TArray<FN2CTagInfo> Result;
 	
-	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetGraphsWithTag(Tag, Category);
+	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().FindTaggedGraphs(Tag, Category);
 	for (const FN2CTaggedBlueprintGraph& TaggedGraph : Tags)
 	{
 		Result.Add(FN2CTagInfo::FromTaggedGraph(TaggedGraph));
@@ -268,7 +258,7 @@ TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::GetTagsInCategory(const FString& Ca
 {
 	TArray<FN2CTagInfo> Result;
 	
-	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CTagManager::Get().GetTagsInCategory(Category);
+	TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().FindTaggedGraphsInCategory(Category);
 	for (const FN2CTaggedBlueprintGraph& Tag : Tags)
 	{
 		Result.Add(FN2CTagInfo::FromTaggedGraph(Tag));
@@ -281,7 +271,7 @@ TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::GetAllTags()
 {
 	TArray<FN2CTagInfo> Result;
 	
-	const TArray<FN2CTaggedBlueprintGraph>& Tags = UN2CTagManager::Get().GetAllTags();
+	const TArray<FN2CTaggedBlueprintGraph> Tags = UN2CGraphStateManager::Get().GetAllTags();
 	for (const FN2CTaggedBlueprintGraph& Tag : Tags)
 	{
 		Result.Add(FN2CTagInfo::FromTaggedGraph(Tag));
@@ -292,12 +282,12 @@ TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::GetAllTags()
 
 TArray<FString> UN2CTagBlueprintLibrary::GetAllTagNames()
 {
-	return UN2CTagManager::Get().GetAllTagNames();
+	return UN2CGraphStateManager::Get().GetAllTagNames();
 }
 
 TArray<FString> UN2CTagBlueprintLibrary::GetAllCategories()
 {
-	return UN2CTagManager::Get().GetAllCategories();
+	return UN2CGraphStateManager::Get().GetAllCategories();
 }
 
 bool UN2CTagBlueprintLibrary::GraphHasTag(
@@ -312,24 +302,24 @@ bool UN2CTagBlueprintLibrary::GraphHasTag(
 		return false;
 	}
 	
-	return UN2CTagManager::Get().GraphHasTag(Guid, Tag, Category);
+	return UN2CGraphStateManager::Get().GraphHasTag(Guid, Tag, Category);
 }
 
 int32 UN2CTagBlueprintLibrary::ClearAllTags()
 {
-	int32 TagCount = UN2CTagManager::Get().GetAllTags().Num();
-	UN2CTagManager::Get().ClearAllTags();
+	int32 TagCount = UN2CGraphStateManager::Get().GetAllTags().Num();
+	UN2CGraphStateManager::Get().ClearAllTags();
 	return TagCount;
 }
 
 bool UN2CTagBlueprintLibrary::SaveTags()
 {
-	return UN2CTagManager::Get().SaveTags();
+	return UN2CGraphStateManager::Get().SaveState();
 }
 
 bool UN2CTagBlueprintLibrary::LoadTags()
 {
-	return UN2CTagManager::Get().LoadTags();
+	return UN2CGraphStateManager::Get().LoadState();
 }
 
 void UN2CTagBlueprintLibrary::GetTagStatistics(
@@ -338,7 +328,7 @@ void UN2CTagBlueprintLibrary::GetTagStatistics(
 	int32& UniqueTagNames,
 	int32& UniqueCategories)
 {
-	const TArray<FN2CTaggedBlueprintGraph>& AllTags = UN2CTagManager::Get().GetAllTags();
+	const TArray<FN2CTaggedBlueprintGraph> AllTags = UN2CGraphStateManager::Get().GetAllTags();
 	TotalTags = AllTags.Num();
 	
 	// Count unique graphs
@@ -350,8 +340,8 @@ void UN2CTagBlueprintLibrary::GetTagStatistics(
 	UniqueGraphs = UniqueGraphGuids.Num();
 	
 	// Get unique counts from manager
-	UniqueTagNames = UN2CTagManager::Get().GetAllTagNames().Num();
-	UniqueCategories = UN2CTagManager::Get().GetAllCategories().Num();
+	UniqueTagNames = UN2CGraphStateManager::Get().GetAllTagNames().Num();
+	UniqueCategories = UN2CGraphStateManager::Get().GetAllCategories().Num();
 }
 
 TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::SearchTags(
@@ -365,7 +355,7 @@ TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::SearchTags(
 		return Result;
 	}
 	
-	const TArray<FN2CTaggedBlueprintGraph>& AllTags = UN2CTagManager::Get().GetAllTags();
+	const TArray<FN2CTaggedBlueprintGraph> AllTags = UN2CGraphStateManager::Get().GetAllTags();
 	FString SearchTermLower = SearchTerm.ToLower();
 	
 	for (const FN2CTaggedBlueprintGraph& Tag : AllTags)

@@ -4,7 +4,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CSettings.h"
-#include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
@@ -339,6 +339,7 @@ FString UN2CPythonBridge::CompileFocusedBlueprint(const FString& BlueprintPath)
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetStringField(TEXT("blueprint_path"), OwningBlueprint->GetPathName()); // the Blueprint acted on (card 0297)
 	Data->SetStringField(TEXT("status"), Diagnostics.Status);
 	Data->SetBoolField(TEXT("had_errors"), bHadErrors);
 	Data->SetBoolField(TEXT("had_warnings"), bHadWarnings);
@@ -383,6 +384,7 @@ FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty, const FString&
 	{
 		const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetStringField(TEXT("blueprint_path"), OwningBlueprint->GetPathName()); // the Blueprint acted on (card 0297)
 		Data->SetBoolField(TEXT("was_dirty"), false);
 		Data->SetBoolField(TEXT("was_saved"), false);
 		return MakeSuccessJson(Data);
@@ -396,6 +398,7 @@ FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty, const FString&
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetStringField(TEXT("blueprint_path"), OwningBlueprint->GetPathName()); // the Blueprint acted on (card 0297)
 	Data->SetBoolField(TEXT("was_dirty"), bWasDirty);
 	Data->SetBoolField(TEXT("was_saved"), bSaved);
 
@@ -442,13 +445,13 @@ FString UN2CPythonBridge::TagFocusedGraph(const FString& Tag, const FString& Cat
 	);
 
 	// Add the tag
-	if (!UN2CTagManager::Get().AddTag(TaggedGraph))
+	if (!UN2CGraphStateManager::Get().AddTag(TaggedGraph))
 	{
 		return MakeErrorJson(TEXT("Failed to add tag - tag may already exist on this graph"));
 	}
 
 	// Save tags to persist
-	UN2CTagManager::Get().SaveTags();
+	UN2CGraphStateManager::Get().SaveState();
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("TagFocusedGraph: Added tag '%s' to %s"), *Tag, *FocusedGraph->GetName()), EN2CLogSeverity::Info);
 
@@ -473,22 +476,22 @@ FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag, 
 	if (!Category.IsEmpty() && !Tag.IsEmpty())
 	{
 		// Filter by both
-		Tags = UN2CTagManager::Get().GetGraphsWithTag(Tag, Category);
+		Tags = UN2CGraphStateManager::Get().FindTaggedGraphs(Tag, Category);
 	}
 	else if (!Category.IsEmpty())
 	{
 		// Filter by category only
-		Tags = UN2CTagManager::Get().GetTagsInCategory(Category);
+		Tags = UN2CGraphStateManager::Get().FindTaggedGraphsInCategory(Category);
 	}
 	else if (!Tag.IsEmpty())
 	{
 		// Filter by tag only (all categories)
-		Tags = UN2CTagManager::Get().GetGraphsWithTag(Tag, TEXT(""));
+		Tags = UN2CGraphStateManager::Get().FindTaggedGraphs(Tag, TEXT(""));
 	}
 	else
 	{
 		// Get all tags
-		Tags = UN2CTagManager::Get().GetAllTags();
+		Tags = UN2CGraphStateManager::Get().GetAllTags();
 	}
 
 	// Only one Blueprint's graphs, when asked (card 0498): copies share graph GUIDs
@@ -517,8 +520,8 @@ FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag, 
 	}
 
 	// Get summary info
-	TArray<FString> AllCategories = UN2CTagManager::Get().GetAllCategories();
-	TArray<FString> AllTagNames = UN2CTagManager::Get().GetAllTagNames();
+	TArray<FString> AllCategories = UN2CGraphStateManager::Get().GetAllCategories();
+	TArray<FString> AllTagNames = UN2CGraphStateManager::Get().GetAllTagNames();
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetArrayField(TEXT("tags"), TagsArray);
@@ -551,7 +554,7 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 
 	// Try to remove the tag
 	FN2CTaggedBlueprintGraph RemovedTag;
-	int32 RemovedCount = UN2CTagManager::Get().RemoveTagByName(Key, Tag, RemovedTag);
+	int32 RemovedCount = UN2CGraphStateManager::Get().RemoveTagByName(Key, Tag, RemovedTag);
 
 	if (RemovedCount == 0)
 	{
@@ -564,10 +567,10 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 	}
 
 	// Save tags to persist
-	UN2CTagManager::Get().SaveTags();
+	UN2CGraphStateManager::Get().SaveState();
 
 	// Get remaining tags for this graph
-	TArray<FN2CTaggedBlueprintGraph> RemainingTags = UN2CTagManager::Get().GetTagsForGraph(Key);
+	TArray<FN2CTaggedBlueprintGraph> RemainingTags = UN2CGraphStateManager::Get().GetTaggedGraphs(Key);
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveTag: Removed %d tag(s) '%s' from graph %s"), RemovedCount, *Tag, *GraphGuid), EN2CLogSeverity::Info);
 
