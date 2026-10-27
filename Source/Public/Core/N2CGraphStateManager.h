@@ -273,8 +273,9 @@ public:
 	bool LoadTranslation(const FN2CGraphKey& Key, FN2CGraphTranslation& OutTranslation, EN2CCodeLanguage& OutLanguage) const;
 
 	/**
-	 * Load the N2C JSON representation of a graph from disk
-	 * @param GraphGuid The GUID of the graph
+	 * Load the N2C JSON representation of a graph from disk: the JSON a batch saved in the recorded graph folder, or
+	 * the Blueprint capture a single translation saved in the translation root above it (N2C_BP_<root>.json)
+	 * @param Key The graph (Blueprint and GUID)
 	 * @param OutJsonContent The loaded JSON content as a string
 	 * @return True if loaded successfully
 	 */
