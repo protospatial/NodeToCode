@@ -55,9 +55,10 @@ from a newer version is left alone and saving stays off, so an older plugin neve
 
 ## Facades and callers
 
-- `UN2CTagManager` (`Source/Public/Core/N2CTagManager.h`): the 1.x facade, delegating to the manager and
-  re-broadcasting `OnBlueprintTagAdded`, `OnBlueprintTagRemoved`, `OnTagsReloaded`. `SN2CGraphOverlay` and
-  `SN2CTagManager` subscribe to these.
+- `UN2CGraphStateManager` is the one tag store (card 0345 removed the 1.x `UN2CTagManager` facade). Its tag
+  projections are `GetAllTags`, `GetTaggedGraphs`, `FindTaggedGraphs`, `FindTaggedGraphsInCategory` and
+  `RemoveTagByName`; `OnGraphTagAdded` carries `(FN2CTagEntry, FN2CGraphRef)`, with `FN2CGraphRef` and `FN2CTagInfo`
+  in `Source/Public/Core/N2CTagTypes.h`. `SN2CGraphOverlay` and `SN2CTagManager` subscribe to the store's events.
 - `UN2CTagSubsystem` (`Source/Public/Subsystems/N2CTagSubsystem.h`): an editor subsystem with dynamic delegates for
   Blueprint and UMG (`FOnN2CTagAdded`, `FOnN2CTagRemoved`, `FOnN2CTagsLoaded`, `FOnN2CTagsSaved`),
   `GetFocusedGraphInfo` and `RefreshTags`.
