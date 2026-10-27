@@ -71,7 +71,7 @@ results, script-library files, prior translations read with read-file, and disco
 
 Tool names are those `tools/list` returned live (59 by default, 62 with Allow MCP Python Execution; card 0157 added
 the read-only get-blueprint-n2cjson and list-blueprint-graphs, so 61 and 64; card 0169
-export-n2cjson-batch (read-only) and translate-batch, so 63 and 66 since). Since card 0205 every tool and
+export-n2cjson-batch (read-only) and translate-batch, so 63 and 66; card 0275 the read-only get-editor-context, so 64 and 67 since). Since card 0205 every tool and
 meta-tool carries a title and all four hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`)
 from one table, `Source/Private/MCP/Tools/N2CToolPresentation.cpp`, whose comment gives the rules (delete, remove,
 move, rename, set and save are destructive; create, add and tag are additive; only the translation tools, run-python

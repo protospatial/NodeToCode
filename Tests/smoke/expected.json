@@ -1,9 +1,9 @@
 {
  "_doc": "Read by smoke_check.py (build.ps1 -Smoke). tool_counts: tools/list length per engine and registration mode (default = the plugin defaults, every toolset listed; tool_search = the pre-0165 key bEnableDynamicToolDiscovery=True, which loads as Tool Exposure = Tool Search: list_toolsets, describe_toolset and call_tool; python_only = McpToolProfile=PythonScripting: run-python and the six script-library tools). A card that adds or removes an MCP tool updates the default counts. known_failures: per engine, a list of {check, ids, why} for failures already present at a commit; check is the exact check name smoke_check.py prints, and the card that fixes the finding removes the entry. Probe statuses live in Tests/mcp_probe/expected.json.",
  "tool_counts": {
-  "5.6": {"default": 66, "tool_search": 3, "python_only": 7},
-  "5.7": {"default": 66, "tool_search": 3, "python_only": 7},
-  "5.8": {"default": 66, "tool_search": 3, "python_only": 7}
+  "5.6": {"default": 67, "tool_search": 3, "python_only": 7},
+  "5.7": {"default": 67, "tool_search": 3, "python_only": 7},
+  "5.8": {"default": 67, "tool_search": 3, "python_only": 7}
  },
  "known_failures": {}
 }

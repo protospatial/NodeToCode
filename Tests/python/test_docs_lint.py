@@ -102,7 +102,7 @@ def test_seeded_drift_fails_with_file_and_line(docs_lint, tmp_path):
     substitute(root, compilation, '  - `skipGarbageCollection` (optional)',
                '  - `forceRecompile` (optional): seeded\n  - `skipGarbageCollection` (optional)')
     substitute(root, server, '[threat-model.md](threat-model.md)', '[threat-model.md](threat-modle.md)')
-    substitute(root, server, '66 tools by folder', '65 tools by folder')
+    substitute(root, server, '67 tools by folder', '66 tools by folder')
     substitute(root, page, '(Agent-Skills)', '(Agent-Skillz)')
     substitute(root, 'Source/Private/MCP/Tools/Implementations/FileSystem/N2CMcpReadFileTool.cpp',
                'TEXT("read-file")', 'TEXT("read-files")')
@@ -114,7 +114,7 @@ def test_seeded_drift_fails_with_file_and_line(docs_lint, tmp_path):
         ('TOOL_UNKNOWN', graph, line_of(root, graph, 'set-input-pin-values')),
         ('ARG_UNKNOWN', compilation, line_of(root, compilation, 'forceRecompile')),
         ('LINK_BROKEN', server, line_of(root, server, 'threat-modle.md')),
-        ('COUNT_DRIFT', server, line_of(root, server, '65 tools by folder')),
+        ('COUNT_DRIFT', server, line_of(root, server, '66 tools by folder')),
         ('WIKI_LINK_BROKEN', page, line_of(root, page, 'Agent-Skillz')),
     }
     assert expected <= got, report

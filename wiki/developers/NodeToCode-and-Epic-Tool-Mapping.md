@@ -23,7 +23,7 @@ All of these must hold when the editor starts:
 Restart the editor after changing it. The Output Log says at startup how many tools were left to Unreal MCP and why
 (`MCP tools: 34 tools left to Unreal MCP ...`), or why none were.
 
-With 63 tools by default (66 with **Allow MCP Python Execution**), NodeToCode lists 29 (32) when the 34 are left out.
+With 64 tools by default (67 with **Allow MCP Python Execution**), NodeToCode lists 30 (33) when the 34 are left out.
 In **Tool search** exposure, `list_toolsets` no longer shows **BlueprintCompileTools**, **BlueprintClassTools**,
 **BlueprintComponentTools** and **ContentBrowserTools**, whose every tool is Epic's then. A client that still calls a
 left-out tool gets `Unknown tool: <name>` with the Epic tool to use; `describe_toolset` and `call_tool` say the same.

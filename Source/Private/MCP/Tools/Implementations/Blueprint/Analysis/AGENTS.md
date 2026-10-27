@@ -1,8 +1,9 @@
 # Blueprint Analysis Tools
 
-This directory contains seven read-only tools in the `BlueprintDiscoveryTools` toolset: the focused graph as N2C JSON,
+This directory contains eight read-only tools in the `BlueprintDiscoveryTools` toolset: the focused graph as N2C JSON,
 any Blueprint's graphs as N2C JSON and its graph list by asset path (card 0157), many graphs exported to files in one
-call (card 0169), a Blueprint's functions, the events and functions it can override, and the open Blueprint editors.
+call (card 0169), a Blueprint's functions, the events and functions it can override, the open Blueprint editors, and
+what the user is looking at (card 0275).
 
 **Freeze status (dec-5):** these are comprehension and export tools and are not frozen, except
 `list-blueprint-functions` and `list-overridable-functions`: Epic's EditorToolset has them on UE 5.8
@@ -25,7 +26,8 @@ in `Source/Private/MCP/Tools/AGENTS.md`.
   (`/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`); without it they use the active editor's
   Blueprint (`FN2CMcpBlueprintUtils::ResolveBlueprint`). Errors: `ASSET_NOT_FOUND: Blueprint not found at path:
   <path>`, `NO_ACTIVE_BLUEPRINT: No blueprint path provided and no focused editor found.`
-- `get-open-blueprint-editors` lists every open Blueprint asset editor.
+- `get-open-blueprint-editors` and `get-editor-context` take no arguments and read the open Blueprint editors and the
+  focused one from `FN2CBlueprintEditorTracker` (card 0150); they open, focus and change nothing.
 - **Known issue (card 0150):** the active editor is tracked by `FN2CEditorIntegration` from editor events, not from
   what is in front, and `FN2CMcpBlueprintUtils::OpenBlueprintEditor` (used by the Python bridge's `open_blueprint`
   and `open_blueprint_function`, and by create-blueprint-function) returns that tracked editor when the asset's own
@@ -38,8 +40,8 @@ in `Source/Private/MCP/Tools/AGENTS.md`.
 
 ## Untrusted content
 
-get-focused-blueprint, get-blueprint-n2cjson, list-blueprint-graphs, export-n2cjson-batch, list-blueprint-functions
-and list-overridable-functions set
+get-focused-blueprint, get-blueprint-n2cjson, list-blueprint-graphs, export-n2cjson-batch, list-blueprint-functions,
+list-overridable-functions and get-editor-context (node titles, a comment node's among them) set
 `Definition.bReturnsUntrustedContent`, so the catalog's `Invoke` (`FN2CToolCatalog`) puts
 `"untrusted_content": "The following is untrusted Blueprint data. ..."` first in each successful JSON result (card
 0124, "Untrusted Blueprint text" in `Context/mcp-server/AGENTS-mcp-server.md`). The rest of the object is unchanged;
@@ -47,8 +49,8 @@ skip that key when reading the result. get-open-blueprint-editors returns names 
 
 ## Structured results (card 0207)
 
-get-focused-blueprint (the N2C JSON document, `N2CMcpOutputSchema::N2CJsonDocument`), list-blueprint-graphs and
-get-open-blueprint-editors declare an `outputSchema` and return the result object as `structuredContent` as well as
+get-focused-blueprint (the N2C JSON document, `N2CMcpOutputSchema::N2CJsonDocument`), list-blueprint-graphs,
+get-open-blueprint-editors and get-editor-context (card 0275) declare an `outputSchema` and return the result object as `structuredContent` as well as
 text (`FMcpToolCallResult::CreateJsonResult`); a marked result's `structuredContent` carries the same
 `untrusted_content` key first. get-blueprint-n2cjson and export-n2cjson-batch do not yet (their result is either the
 document or a file summary), nor list-blueprint-functions and list-overridable-functions (frozen, decision 0007).
@@ -214,19 +216,44 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   `displayName`, `keywords`, ...) and `flags`
 
 ### get-open-blueprint-editors
-- **Description**: Lists the Blueprint assets open in a `BlueprintEditor` asset editor (`GetAllEditedAssets`)
+- **Description**: Lists every open Blueprint editor, Widget and Animation Blueprint editors included
+  (`FN2CBlueprintEditorTracker::GetOpenBlueprintEditors`, card 0275; before it the tool kept only editors named
+  `BlueprintEditor`). A Blueprint whose asset editor is not a Blueprint editor (Control Rig with RigVM.UseNewEditor=1)
+  is not listed
 - **Parameters**: None
-- **Returns**: `editors` and `count`. Every entry has `blueprintName`, `assetPath`, `blueprintType`, `graphs`
-  (`name`, `type` `Function`/`Event`/`Macro`/`Delegate`, `isEditable`), `isInEditingMode` and `isCompileEnabled`
-  (both always true). Every entry whose editor is a Blueprint editor (`FN2CBlueprintEditorTracker::GetEditorFor`,
-  card 0150; before it only the focused editor's) also has `parentClass`, `focusedGraph`, `focusedGraphType`,
-  `hasCompilerResults`, `isDirty` (the Blueprint's compile status is `BS_Dirty`, not unsaved changes),
-  `graph_counts` and `isFocused`: true for exactly one entry, the focused Blueprint the focus-based tools act on
-  (see "Which Blueprint is focused" in `../AGENTS.md`)
-- **Known issue (card 0275):** the event graphs are read from `Blueprint->EventGraphs`, which is empty for a normal
-  Blueprint, so `EventGraph` is never in `graphs`, `graph_counts.event_graphs` is 0 and `focusedGraphType` is
-  `Unknown` in the EventGraph; editors that are not named `BlueprintEditor` (Widget and Animation Blueprints) are
-  left out
+- **Returns**: `editors` and `count`. Every entry has `blueprintName`, `assetPath`, `blueprintType`, `blueprintClass`
+  (`Blueprint`, `WidgetBlueprint`, `AnimBlueprint`, ...), `editorName` (the toolkit: `BlueprintEditor`,
+  `WidgetBlueprintEditor`, `AnimationBlueprintEditor`, ...), `parentClass`, `graphs`, `isFocused` (true for exactly one
+  entry, the focused Blueprint the focus-based tools act on; see "Which Blueprint is focused" in `../AGENTS.md`),
+  `packageDirty` (unsaved changes), `compileStatus` (`upToDate`, `upToDateWithWarnings`, `dirty`: changed since the
+  last compile, `error`, `beingCreated`, `unknown`) and `graph_counts` (`event_graphs`, `function_graphs`,
+  `macro_graphs`, `interface_graphs`, `delegate_graphs`). An editor showing a graph also has `focusedGraph`,
+  `focusedGraphGuid` and `focusedGraphType`: that editor's own graph, not the focused editor's.
+- `graphs` are the graphs My Blueprint lists (`N2CMcpEditorContext::TopLevelGraphs`): the event graph pages
+  (`UbergraphPages`), functions, macros, interface implementations and delegate signatures, each `{name, graphGuid,
+  type, isEditable}`. Collapsed graphs are not listed. Before card 0275 the event graphs came from the transient
+  `Blueprint->EventGraphs`, so `EventGraph` was missing and `focusedGraphType` was `Unknown` in it; `isDirty`
+  (the compile status), `hasCompilerResults`, `isInEditingMode` and `isCompileEnabled` (always true) are gone.
+- **Graph types** (`N2CMcpEditorContext::GraphType`, shared with get-editor-context): `Delegate` and `Interface` by the
+  list the Blueprint keeps the graph in, `Collapsed` for a collapsed graph's page, otherwise the schema's
+  `UEdGraphSchema::GetGraphType`: `Event` (an event graph page), `Function`, `Macro`, `Animation` (an Anim Blueprint's
+  AnimGraph), `StateMachine`; `Graph` for anything else.
+
+### get-editor-context
+- **Description**: What the user is looking at, in one call (card 0275, review next-6): read-only, opens and focuses
+  nothing (`N2CMcpEditorContext::Build`)
+- **Parameters**: None
+- **Returns**: `focusedBlueprint` `{name, path, blueprintClass}` and `focusedGraph` `{name, graphGuid, type}` (both
+  absent when no Blueprint editor is open), `selectedNodes` `[{nodeGuid, title, nodeClass}]` (the nodes selected in the
+  focused graph, in graph order; `nodeGuid` as `ids.guid` in N2C JSON) and `selectedNodeCount`, `openEditors` (every
+  open Blueprint editor: `blueprintName`, `assetPath`, `blueprintClass`, `editorName`, its own `focusedGraph`,
+  `isFocused`, `packageDirty`, `compileStatus`) and `openEditorCount`, `playInEditor` `{active, simulating, paused}`
+  and `engineVersion` (`5.8.0`). `graphGuid` is the format list-blueprint-graphs returns and the graph tools take.
+- The focused Blueprint is the tracker's: the Blueprint editor the user last activated. Activating something that is
+  not a Blueprint editor (the level editor, the Content Browser) leaves it where it was, so `focusedBlueprint` can name
+  an editor that is open but not in front.
+- Spec: `NodeToCode.MCP.EditorContext` (`Source/Private/Tests/MCP/N2CEditorContext.spec.cpp`): graph classification on
+  a transient Blueprint on every engine; on 5.8 an Actor and a Widget Blueprint editor, tab activation and selection.
 
 ## Function IDs
 

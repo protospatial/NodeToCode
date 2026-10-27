@@ -111,7 +111,7 @@ claude mcp list
 Or install the [Claude Code plugin](wiki/developers/Claude-Code-Plugin.md), which adds the server and NodeToCode's
 Agent Skills in one step. Setup for Cursor, VS Code, Codex, Claude Desktop (through the stdio bridge) and Epic's MCP
 Client Toolset, and what to do when a client does not connect:
-[Connecting an MCP Client](wiki/developers/Connecting-an-MCP-Client.md). A client sees 63 tools by default (66 with
+[Connecting an MCP Client](wiki/developers/Connecting-an-MCP-Client.md). A client sees 64 tools by default (67 with
 **Allow MCP Python Execution**); to serve fewer, or only three search tools for a client with a tool limit, see
 [Choosing a Tool Mode](wiki/developers/Choosing-a-Tool-Mode.md).
 
