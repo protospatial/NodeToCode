@@ -11,6 +11,7 @@
 class FBlueprintEditor;
 class UEdGraph;
 class SN2CCircularProgressBar;
+struct FN2CTagInfo;
 
 /**
  * Overlay widget that appears in the top-right corner of Blueprint graph editors
@@ -96,12 +97,17 @@ private:
 	FDelegateHandle OnTranslationStateChangedHandle;
 	FDelegateHandle OnModelChangedHandle;
 	FDelegateHandle OnCacheInvalidatedHandle;
+	FDelegateHandle OnEstimatesStaleHandle;
 
 	// Context window tracking
 	int32 CachedTokenCount = 0;
 	float CachedContextUsagePercent = 0.0f;
 	float CachedEstimatedCost = 0.0f;
 	int32 CachedNestedGraphCount = 0;
+	/** False when the graph could not be captured: the ring reads "n/a" */
+	bool bEstimateValid = false;
+	/** The pending estimate (debounced); null when none is scheduled */
+	TSharedPtr<FActiveTimerHandle> EstimateTimer;
 
 	// Global translation state callback
 	void OnGlobalTranslationStateChanged(bool bInProgress);
@@ -138,6 +144,12 @@ private:
 	void RefreshTokenEstimate();
 	void OnModelChanged();
 	void OnCacheInvalidated();
+	/** A Blueprint changed: re-estimate (debounced) if it is this graph's or this estimate took in its graphs */
+	void OnEstimatesStale(const FSoftObjectPath& Blueprint);
+	/** Takes the estimate after Delay seconds, restarting a pending wait (edits in a row capture once) */
+	void ScheduleTokenEstimate(float Delay);
+	/** The overlay's graph as the token service names it */
+	FN2CTagInfo MakeEstimateGraphInfo() const;
 	float GetContextUsagePercent() const;
 	FText GetContextUsagePercentText() const;
 	FText GetContextTooltipText() const;

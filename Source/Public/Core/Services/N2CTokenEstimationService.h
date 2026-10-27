@@ -5,13 +5,29 @@
 #include "CoreMinimal.h"
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
 
+class UBlueprint;
+class UEdGraph;
+
+/** One graph's estimate: what the Translate button would send (one capture at the configured Translation Depth) */
+struct FN2CTokenEstimate
+{
+	/** ceil(characters of the condensed N2C JSON / 4) */
+	int32 Tokens = 0;
+
+	/** Nested graphs the capture took in (functions, macros, collapsed graphs within the depth) */
+	int32 NestedGraphCount = 0;
+
+	/** False when the graph could not be found or captured (unsupported graph type, only ghost nodes, deleted) */
+	bool bValid = false;
+};
+
 /**
- * Token cache entry for efficient token estimation
+ * A cached estimate. It stays valid while its Blueprint's change counter and the Translation Depth it was taken at
+ * are unchanged (and, when the capture took in graphs from other Blueprints, while no Blueprint was compiled since).
  */
 struct FN2CTokenCacheEntry
 {
-	/** Cached token estimate (JSON length / 4) */
-	int32 CachedTokenCount = 0;
+	FN2CTokenEstimate Estimate;
 
 	/** Size of serialized JSON in characters */
 	int32 CachedJsonSize = 0;
@@ -19,18 +35,17 @@ struct FN2CTokenCacheEntry
 	/** Blueprint path for invalidation tracking */
 	FString BlueprintPath;
 
-	/** When the cache was created */
+	/** Translation Depth the capture used */
+	int32 Depth = 0;
+
+	/** The Blueprint's change counter when captured */
+	uint32 BlueprintRevision = 0;
+
+	/** Set when nested graphs came from other Blueprints: the any-compile counter when captured */
+	TOptional<uint32> ExternalRevision;
+
+	/** When the cache was created (eviction order) */
 	FDateTime CacheTimestamp;
-
-	FN2CTokenCacheEntry() = default;
-
-	FN2CTokenCacheEntry(int32 InTokenCount, int32 InJsonSize, const FString& InBlueprintPath)
-		: CachedTokenCount(InTokenCount)
-		, CachedJsonSize(InJsonSize)
-		, BlueprintPath(InBlueprintPath)
-		, CacheTimestamp(FDateTime::Now())
-	{
-	}
 };
 
 /**
@@ -38,7 +53,7 @@ struct FN2CTokenCacheEntry
  * Provides notifications when model settings change or cache is invalidated.
  *
  * Key features:
- * - Caches token estimates per graph with Blueprint compilation invalidation
+ * - Caches one capture-based estimate per graph; a graph edit or compile of its Blueprint makes it stale
  * - Tracks current model info (context window, cost, etc.)
  * - Applies 65% rule: usable context = advertised context * 0.65
  * - Broadcasts notifications for UI updates
@@ -66,21 +81,24 @@ public:
 	// ==================== Token Estimation ====================
 
 	/**
-	 * Get the token estimate for a graph (single graph only, ignores nesting)
-	 * Uses caching with Blueprint compilation invalidation
-	 * @param GraphInfo The graph to estimate tokens for
-	 * @return Estimated token count
+	 * The estimate for what the Translate button sends for this graph: one N2C::CaptureGraph at the configured
+	 * Translation Depth, nested graphs included, as condensed N2C JSON, at 4 characters per token. Cached per
+	 * {Blueprint, graph}; a cached estimate is reused until its Blueprint changes (a graph edit, a compile) or the
+	 * depth changes. Game thread only.
 	 */
+	FN2CTokenEstimate GetEstimate(const FN2CTagInfo& GraphInfo);
+
+	/** True when GetEstimate would answer from the cache without capturing */
+	bool IsEstimateCurrent(const FN2CTagInfo& GraphInfo) const;
+
+	/** GetEstimate's token count (0 when the graph cannot be captured) */
 	int32 GetTokenEstimate(const FN2CTagInfo& GraphInfo);
 
-	/**
-	 * Get the token estimate for a graph including nested graphs
-	 * Respects the TranslationDepth setting for how deep to traverse
-	 * @param GraphInfo The graph to estimate tokens for
-	 * @param OutNestedGraphCount Number of nested graphs included (output)
-	 * @return Total estimated token count including nested graphs
-	 */
+	/** GetEstimate's token count and nested-graph count */
 	int32 GetTokenEstimateWithNesting(const FN2CTagInfo& GraphInfo, int32& OutNestedGraphCount);
+
+	/** How many captures the service has run (tests and the overlay's log) */
+	int32 GetCaptureCount() const { return CaptureCount; }
 
 	/**
 	 * Get the current translation depth setting
@@ -164,9 +182,19 @@ public:
 	DECLARE_MULTICAST_DELEGATE(FOnModelChanged);
 	FOnModelChanged OnModelChanged;
 
-	/** Delegate fired when token cache is invalidated */
+	/** Every estimate may be out of date (the cache was cleared, or the Translation Depth changed) */
 	DECLARE_MULTICAST_DELEGATE(FOnCacheInvalidated);
 	FOnCacheInvalidated OnCacheInvalidated;
+
+	/**
+	 * A Blueprint changed (a graph edit or a compile): estimates of its graphs, and any estimate IsEstimateCurrent
+	 * now reports out of date, should be taken again. Listeners debounce; nothing is captured here.
+	 */
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnEstimatesStale, const FSoftObjectPath& /*Blueprint*/);
+	FOnEstimatesStale OnEstimatesStale;
+
+	/** Marks a Blueprint changed, as a graph edit or compile would (tests; the editor hooks call it) */
+	void NotifyBlueprintChanged(const UBlueprint* Blueprint);
 
 private:
 	FN2CTokenEstimationService();
@@ -181,43 +209,30 @@ private:
 	 */
 	void OnSettingsPropertyChanged(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
 
-	/**
-	 * Handle Blueprint compilation - invalidates all cache entries
-	 * Note: OnBlueprintCompiled delegate doesn't pass the specific Blueprint,
-	 * so we invalidate all entries. Individual entries also self-invalidate
-	 * on access if the Blueprint is dirty.
-	 */
-	void OnBlueprintCompiled();
+	/** A Blueprint is about to compile: its estimates and those that took in other Blueprints' graphs go stale */
+	void OnBlueprintPreCompile(UBlueprint* Blueprint);
 
 	/**
-	 * Serialize a graph to JSON for token estimation
-	 * @param GraphInfo The graph to serialize
-	 * @return JSON string, empty on failure
+	 * Captures the graph at Depth and serializes it the way the Translate button does
+	 * @param OutNestedGraphCount nested graphs in the capture
+	 * @param OutGraphGuids every captured graph's GUID (the root first)
+	 * @return condensed N2C JSON, empty on failure
 	 */
-	FString SerializeGraphToJson(const FN2CTagInfo& GraphInfo);
+	FString SerializeGraphToJson(const FN2CTagInfo& GraphInfo, int32 Depth, UBlueprint*& OutBlueprint,
+		TArray<FGuid>& OutGraphGuids);
 
-	/**
-	 * Find all referenced graphs (function calls to user-created functions)
-	 * @param GraphInfo The graph to analyze
-	 * @param OutReferencedGraphs Array of referenced graph infos
-	 */
-	void FindReferencedGraphs(const FN2CTagInfo& GraphInfo, TArray<FN2CTagInfo>& OutReferencedGraphs);
+	/** Follows a Blueprint's graph edits (every graph, re-scanned when the Blueprint changes) */
+	void WatchBlueprint(UBlueprint* Blueprint);
+	void UnwatchAll();
 
-	/**
-	 * Recursive helper for nested token estimation
-	 * @param GraphInfo The graph to estimate
-	 * @param CurrentDepth Current recursion depth
-	 * @param MaxDepth Maximum recursion depth
-	 * @param VisitedGraphGuids Set of already visited graph GUIDs to prevent cycles
-	 * @param OutNestedGraphCount Running count of nested graphs
-	 * @return Token estimate for this graph and its nested graphs
-	 */
-	int32 GetTokenEstimateRecursive(
-		const FN2CTagInfo& GraphInfo,
-		int32 CurrentDepth,
-		int32 MaxDepth,
-		TSet<FString>& VisitedGraphGuids,
-		int32& OutNestedGraphCount);
+	/** The cache key: the normalised Blueprint path and the graph GUID */
+	static FString MakeCacheKey(const FN2CTagInfo& GraphInfo);
+
+	/** The change counter of a Blueprint path (0 until it first changes) */
+	uint32 GetBlueprintRevision(const FString& BlueprintPath) const;
+
+	/** Whether an entry still describes the graph */
+	bool IsEntryCurrent(const FN2CTokenCacheEntry& Entry) const;
 
 	/**
 	 * Evict oldest cache entries if over limit
@@ -229,8 +244,18 @@ private:
 	 */
 	static FString FormatNumber(int64 Number);
 
-	// Token cache: GraphGuid string -> cache entry
+	// Token cache: MakeCacheKey -> cache entry
 	TMap<FString, FN2CTokenCacheEntry> TokenCache;
+
+	// Change counter per Blueprint path (graph edits and compiles), and one bumped by every compile
+	TMap<FString, uint32> BlueprintRevisions;
+	uint32 AnyCompileRevision = 0;
+
+	// Watched Blueprints and graphs
+	TMap<TWeakObjectPtr<UBlueprint>, FDelegateHandle> WatchedBlueprints;
+	TMap<TWeakObjectPtr<UEdGraph>, FDelegateHandle> WatchedGraphs;
+
+	int32 CaptureCount = 0;
 
 	// Maximum cache entries before LRU eviction
 	static constexpr int32 MaxCacheEntries = 100;
@@ -247,7 +272,7 @@ private:
 
 	// Delegate handles
 	FDelegateHandle SettingsChangedHandle;
-	FDelegateHandle BlueprintCompiledHandle;
+	FDelegateHandle BlueprintPreCompileHandle;
 
 	// Initialization state
 	bool bIsInitialized = false;
