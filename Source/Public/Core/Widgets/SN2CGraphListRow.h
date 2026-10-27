@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Widgets/SCompoundWidget.h"
+#include "Widgets/Views/STableRow.h"
 #include "TagManager/Models/N2CTagManagerTypes.h"
 
 // Delegate declarations for row events
@@ -11,14 +11,14 @@ DECLARE_DELEGATE_OneParam(FOnRowCheckboxChanged, TSharedPtr<FN2CGraphListItem>);
 DECLARE_DELEGATE_OneParam(FOnRowTranslateClicked, TSharedPtr<FN2CGraphListItem>);
 DECLARE_DELEGATE_OneParam(FOnRowJsonExportClicked, TSharedPtr<FN2CGraphListItem>);
 DECLARE_DELEGATE_OneParam(FOnRowViewTranslationClicked, TSharedPtr<FN2CGraphListItem>);
-DECLARE_DELEGATE_OneParam(FOnRowDoubleClicked, TSharedPtr<FN2CGraphListItem>);
 DECLARE_DELEGATE_OneParam(FOnRowRefreshClicked, TSharedPtr<FN2CGraphListItem>);
 
 /**
- * Custom row widget for the tagged graphs list
- * Handles hover state, selection highlighting, and action buttons
+ * One row of the tagged graphs list (card 0267): a multi-column table row, so every cell follows the header's
+ * columns (resizing, order). The list's selection is the checked set; the row shows hover actions in its Blueprint
+ * cell. Double-click and the right-click menu are the list's (SListView events).
  */
-class NODETOCODE_API SN2CGraphListRow : public SCompoundWidget
+class NODETOCODE_API SN2CGraphListRow : public SMultiColumnTableRow<TSharedPtr<FN2CGraphListItem>>
 {
 public:
 	SLATE_BEGIN_ARGS(SN2CGraphListRow) {}
@@ -32,19 +32,21 @@ public:
 		SLATE_EVENT(FOnRowJsonExportClicked, OnJsonExportClicked)
 		/** Called when the view translation button is clicked */
 		SLATE_EVENT(FOnRowViewTranslationClicked, OnViewTranslationClicked)
-		/** Called when the row is double-clicked */
-		SLATE_EVENT(FOnRowDoubleClicked, OnDoubleClicked)
 		/** Called when the refresh button is clicked on the context column */
 		SLATE_EVENT(FOnRowRefreshClicked, OnRefreshClicked)
 	SLATE_END_ARGS()
 
-	/** Constructs this widget */
-	void Construct(const FArguments& InArgs);
+	/** Column IDs, shared with the list's header row */
+	static const FName Column_Checkbox;
+	static const FName Column_GraphName;
+	static const FName Column_Blueprint;
+	static const FName Column_Context;
 
-	// SWidget interface
-	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override;
-	virtual FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent) override;
+	/** Constructs this row in OwnerTable */
+	void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& OwnerTable);
+
+	/** SMultiColumnTableRow: the cell of one header column */
+	virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& ColumnName) override;
 
 	/** Force a visual update of the row */
 	void UpdateVisuals();
@@ -56,15 +58,11 @@ private:
 	/** The graph list item data */
 	TSharedPtr<FN2CGraphListItem> Item;
 
-	/** Whether the mouse is currently hovering over this row */
-	bool bIsHovered = false;
-
 	// Delegates
 	FOnRowCheckboxChanged OnCheckboxChangedDelegate;
 	FOnRowTranslateClicked OnTranslateClickedDelegate;
 	FOnRowJsonExportClicked OnJsonExportClickedDelegate;
 	FOnRowViewTranslationClicked OnViewTranslationClickedDelegate;
-	FOnRowDoubleClicked OnDoubleClickedDelegate;
 	FOnRowRefreshClicked OnRefreshClickedDelegate;
 
 	// Event handlers
@@ -73,6 +71,9 @@ private:
 	FReply HandleJsonExportClicked();
 	FReply HandleViewTranslationClicked();
 	void HandleRefreshClicked();
+
+	/** A cell: Content on the row's background (checked, hovered) */
+	TSharedRef<SWidget> MakeCell(const TSharedRef<SWidget>& CellContent, bool bFill = true);
 
 	// Visual state helpers (called via TAttribute binding)
 	FSlateColor GetBackgroundColor() const;

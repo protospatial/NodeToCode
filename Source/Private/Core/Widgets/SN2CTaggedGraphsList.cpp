@@ -5,6 +5,7 @@
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateTypes.h"
 #include "Widgets/SOverlay.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -21,10 +22,10 @@
 
 #define LOCTEXT_NAMESPACE "SN2CTaggedGraphsList"
 
-const FName SN2CTaggedGraphsList::Column_Checkbox = TEXT("Checkbox");
-const FName SN2CTaggedGraphsList::Column_GraphName = TEXT("GraphName");
-const FName SN2CTaggedGraphsList::Column_Blueprint = TEXT("Blueprint");
-const FName SN2CTaggedGraphsList::Column_Context = TEXT("Context");
+const FName SN2CTaggedGraphsList::Column_Checkbox = SN2CGraphListRow::Column_Checkbox;
+const FName SN2CTaggedGraphsList::Column_GraphName = SN2CGraphListRow::Column_GraphName;
+const FName SN2CTaggedGraphsList::Column_Blueprint = SN2CGraphListRow::Column_Blueprint;
+const FName SN2CTaggedGraphsList::Column_Context = SN2CGraphListRow::Column_Context;
 
 void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 {
@@ -34,6 +35,7 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 	OnSingleJsonExportRequestedDelegate = InArgs._OnSingleJsonExportRequested;
 	OnViewTranslationRequestedDelegate = InArgs._OnViewTranslationRequested;
 	OnRefreshTokensRequestedDelegate = InArgs._OnRefreshTokensRequested;
+	OnRemoveRequestedDelegate = InArgs._OnRemoveRequested;
 
 	// Subscribe to token estimation service events
 	FN2CTokenEstimationService& TokenService = FN2CTokenEstimationService::Get();
@@ -68,12 +70,18 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 		+ SHeaderRow::Column(Column_GraphName)
 		.DefaultLabel(LOCTEXT("GraphNameHeader", "Graph Name"))
 		.FillWidth(1.0f)
+		.SortMode(this, &SN2CTaggedGraphsList::GetSortMode, Column_GraphName)
+		.OnSort(this, &SN2CTaggedGraphsList::OnSortModeChanged)
 		+ SHeaderRow::Column(Column_Blueprint)
 		.DefaultLabel(LOCTEXT("BlueprintHeader", "Blueprint"))
 		.FillWidth(1.0f)
+		.SortMode(this, &SN2CTaggedGraphsList::GetSortMode, Column_Blueprint)
+		.OnSort(this, &SN2CTaggedGraphsList::OnSortModeChanged)
 		+ SHeaderRow::Column(Column_Context)
 		.DefaultLabel(LOCTEXT("ContextHeader", "Context"))
-		.FixedWidth(120.0f);
+		.ManualWidth(120.0f)
+		.SortMode(this, &SN2CTaggedGraphsList::GetSortMode, Column_Context)
+		.OnSort(this, &SN2CTaggedGraphsList::OnSortModeChanged);
 
 	ChildSlot
 	[
@@ -106,7 +114,12 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 					SAssignNew(ListView, SListView<TSharedPtr<FN2CGraphListItem>>)
 					.ListItemsSource(&FilteredItems)
 					.OnGenerateRow(this, &SN2CTaggedGraphsList::OnGenerateRow)
-					.SelectionMode(ESelectionMode::None) // We handle selection via checkboxes
+					// Multi selection is the checked set (card 0267): Shift and Ctrl click, arrows, Space and Ctrl+A
+					// select, and the checkboxes follow (HandleListSelectionChanged)
+					.SelectionMode(ESelectionMode::Multi)
+					.OnSelectionChanged(this, &SN2CTaggedGraphsList::HandleListSelectionChanged)
+					.OnMouseButtonDoubleClick(this, &SN2CTaggedGraphsList::HandleRowDoubleClicked)
+					.OnContextMenuOpening(this, &SN2CTaggedGraphsList::MakeContextMenu)
 					.HeaderRow(HeaderRow)
 				]
 				// Says why the list is empty: nothing selected, or no graph matches
@@ -321,6 +334,7 @@ void SN2CTaggedGraphsList::SelectAll()
 	{
 		Item->bIsSelected = true;
 	}
+	SyncListSelection();
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
@@ -334,6 +348,7 @@ void SN2CTaggedGraphsList::DeselectAll()
 	{
 		Item->bIsSelected = false;
 	}
+	SyncListSelection();
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
@@ -363,30 +378,140 @@ FN2CTagInfo SN2CTaggedGraphsList::GetViewTranslationRequestedGraph() const
 
 TSharedRef<ITableRow> SN2CTaggedGraphsList::OnGenerateRow(TSharedPtr<FN2CGraphListItem> Item, const TSharedRef<STableViewBase>& OwnerTable)
 {
-	return SNew(STableRow<TSharedPtr<FN2CGraphListItem>>, OwnerTable)
-		.Style(&N2CStyle::GetTableRowStyle())
-		.Padding(0)
-		[
-			SNew(SN2CGraphListRow)
-			.Item(Item)
-			.OnCheckboxChanged(this, &SN2CTaggedGraphsList::HandleRowCheckboxChanged)
-			.OnTranslateClicked(this, &SN2CTaggedGraphsList::HandleRowTranslateClicked)
-			.OnJsonExportClicked(this, &SN2CTaggedGraphsList::HandleRowJsonExportClicked)
-			.OnViewTranslationClicked(this, &SN2CTaggedGraphsList::HandleRowViewTranslationClicked)
-			.OnDoubleClicked(this, &SN2CTaggedGraphsList::HandleRowDoubleClicked)
-			.OnRefreshClicked(this, &SN2CTaggedGraphsList::HandleRowRefreshClicked)
-		];
+	// A multi-column row: its cells are the header's columns (card 0267)
+	return SNew(SN2CGraphListRow, OwnerTable)
+		.Item(Item)
+		.OnCheckboxChanged(this, &SN2CTaggedGraphsList::HandleRowCheckboxChanged)
+		.OnTranslateClicked(this, &SN2CTaggedGraphsList::HandleRowTranslateClicked)
+		.OnJsonExportClicked(this, &SN2CTaggedGraphsList::HandleRowJsonExportClicked)
+		.OnViewTranslationClicked(this, &SN2CTaggedGraphsList::HandleRowViewTranslationClicked)
+		.OnRefreshClicked(this, &SN2CTaggedGraphsList::HandleRowRefreshClicked);
 }
 
 void SN2CTaggedGraphsList::HandleRowCheckboxChanged(TSharedPtr<FN2CGraphListItem> Item)
 {
-	// Item selection state is already updated by the row widget
-	// Just refresh the list and notify
+	// The row set bIsSelected: the list's selection follows
+	SyncListSelection();
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
 	}
 	OnSelectionChangedDelegate.ExecuteIfBound();
+}
+
+void SN2CTaggedGraphsList::SyncListSelection()
+{
+	if (!ListView.IsValid())
+	{
+		return;
+	}
+	TGuardValue<bool> Guard(bSyncingSelection, true);
+	ListView->ClearSelection();
+	for (const TSharedPtr<FN2CGraphListItem>& Item : FilteredItems)
+	{
+		if (Item->bIsSelected)
+		{
+			ListView->SetItemSelection(Item, true, ESelectInfo::Direct);
+		}
+	}
+}
+
+void SN2CTaggedGraphsList::HandleListSelectionChanged(TSharedPtr<FN2CGraphListItem> Item, ESelectInfo::Type SelectInfo)
+{
+	if (bSyncingSelection || !ListView.IsValid())
+	{
+		return;
+	}
+	// A click, Shift or Ctrl click, the arrows, Space or Ctrl+A: the shown rows' checks become the selection (rows
+	// hidden by the search keep theirs)
+	for (const TSharedPtr<FN2CGraphListItem>& Shown : FilteredItems)
+	{
+		Shown->bIsSelected = ListView->IsItemSelected(Shown);
+	}
+	OnSelectionChangedDelegate.ExecuteIfBound();
+}
+
+EColumnSortMode::Type SN2CTaggedGraphsList::GetSortMode(const FName Column) const
+{
+	return Column == SortColumn ? SortMode : EColumnSortMode::None;
+}
+
+void SN2CTaggedGraphsList::OnSortModeChanged(EColumnSortPriority::Type Priority, const FName& Column, EColumnSortMode::Type Mode)
+{
+	SetSort(Column, Mode);
+}
+
+void SN2CTaggedGraphsList::SetSort(const FName& Column, EColumnSortMode::Type Mode)
+{
+	SortColumn = Column;
+	SortMode = Mode;
+	SortItems(FilteredItems, SortColumn, SortMode);
+	if (ListView.IsValid())
+	{
+		ListView->RequestListRefresh();
+	}
+}
+
+void SN2CTaggedGraphsList::SortItems(TArray<TSharedPtr<FN2CGraphListItem>>& Items, const FName& Column, EColumnSortMode::Type Mode)
+{
+	if (Mode == EColumnSortMode::None || Column.IsNone())
+	{
+		return;
+	}
+	const bool bAscending = Mode == EColumnSortMode::Ascending;
+	auto ByName = [](const TSharedPtr<FN2CGraphListItem>& A, const TSharedPtr<FN2CGraphListItem>& B)
+	{
+		return A->TagInfo.GraphName.Compare(B->TagInfo.GraphName, ESearchCase::IgnoreCase);
+	};
+	Items.StableSort([&](const TSharedPtr<FN2CGraphListItem>& A, const TSharedPtr<FN2CGraphListItem>& B)
+	{
+		int32 Order = 0;
+		if (Column == SN2CGraphListRow::Column_Blueprint)
+		{
+			Order = A->GetBlueprintDisplayName().Compare(B->GetBlueprintDisplayName(), ESearchCase::IgnoreCase);
+		}
+		else if (Column == SN2CGraphListRow::Column_Context)
+		{
+			Order = A->EstimatedTokens == B->EstimatedTokens ? 0 : (A->EstimatedTokens < B->EstimatedTokens ? -1 : 1);
+		}
+		if (Order == 0)
+		{
+			Order = ByName(A, B);
+		}
+		return bAscending ? Order < 0 : Order > 0;
+	});
+}
+
+TSharedPtr<FN2CGraphListItem> SN2CTaggedGraphsList::GetContextItem() const
+{
+	const TArray<TSharedPtr<FN2CGraphListItem>> Selected = ListView.IsValid() ? ListView->GetSelectedItems() : TArray<TSharedPtr<FN2CGraphListItem>>();
+	return Selected.Num() > 0 ? Selected[0] : nullptr;
+}
+
+TSharedPtr<SWidget> SN2CTaggedGraphsList::MakeContextMenu()
+{
+	const TSharedPtr<FN2CGraphListItem> Item = GetContextItem();
+	if (!Item.IsValid())
+	{
+		return nullptr;
+	}
+	FMenuBuilder Menu(/*bInShouldCloseWindowAfterMenuSelection*/ true, nullptr);
+	Menu.AddMenuEntry(LOCTEXT("MenuTranslate", "Translate"), LOCTEXT("MenuTranslateTip", "Translate this graph"), FSlateIcon(),
+		FUIAction(FExecuteAction::CreateSP(this, &SN2CTaggedGraphsList::HandleRowTranslateClicked, Item)));
+	Menu.AddMenuEntry(LOCTEXT("MenuView", "View Translation"), LOCTEXT("MenuViewTip", "Open the saved translation"), FSlateIcon(),
+		FUIAction(FExecuteAction::CreateSP(this, &SN2CTaggedGraphsList::HandleRowViewTranslationClicked, Item),
+			FCanExecuteAction::CreateLambda([Item]() { return Item->bHasTranslation; })));
+	Menu.AddMenuEntry(LOCTEXT("MenuJson", "Export JSON"), LOCTEXT("MenuJsonTip", "Export this graph as N2C JSON"), FSlateIcon(),
+		FUIAction(FExecuteAction::CreateSP(this, &SN2CTaggedGraphsList::HandleRowJsonExportClicked, Item)));
+	Menu.AddMenuEntry(LOCTEXT("MenuOpen", "Open in Blueprint"), LOCTEXT("MenuOpenTip", "Open the graph in its Blueprint editor"), FSlateIcon(),
+		FUIAction(FExecuteAction::CreateSP(this, &SN2CTaggedGraphsList::HandleRowDoubleClicked, Item)));
+	if (OnRemoveRequestedDelegate.IsBound())
+	{
+		Menu.AddMenuSeparator();
+		Menu.AddMenuEntry(LOCTEXT("MenuRemove", "Remove Tag"), LOCTEXT("MenuRemoveTip", "Remove the selected graphs' tags in this view"), FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([this]() { OnRemoveRequestedDelegate.ExecuteIfBound(); })));
+	}
+	return Menu.MakeWidget();
 }
 
 void SN2CTaggedGraphsList::OnSelectAllChanged(ECheckBoxState NewState)
@@ -396,6 +521,7 @@ void SN2CTaggedGraphsList::OnSelectAllChanged(ECheckBoxState NewState)
 	{
 		Item->bIsSelected = bSelect;
 	}
+	SyncListSelection();
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
@@ -419,6 +545,7 @@ FReply SN2CTaggedGraphsList::OnSelectAllClicked()
 	{
 		Item->bIsSelected = bShouldSelectAll;
 	}
+	SyncListSelection();
 
 	if (ListView.IsValid())
 	{
@@ -484,6 +611,9 @@ void SN2CTaggedGraphsList::ApplyFilters()
 		}
 	}
 
+	// The header's sort order, and the list's selection is the checked rows that are shown
+	SortItems(FilteredItems, SortColumn, SortMode);
+	SyncListSelection();
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
