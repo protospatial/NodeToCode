@@ -19,3 +19,9 @@ The editor highlights code in the language the translation was written in (C++, 
 <p align="left">
     <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_CodeEditor.png" alt="Node to Code header" width="500">
 </p>
+
+### The Code Editor widget in Editor Utility Widgets
+The **Code Editor** UMG widget that 1.x Editor Utility Widgets embed still loads, but it is unsupported and will be
+removed. Its **On Text Changed**, **On Cursor Moved** and **On Selection Changed** events fire when you type, move
+the cursor or change the selection (selection events give the first and last line). Text you type is kept when the
+widget's properties are synchronized.

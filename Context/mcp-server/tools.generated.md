@@ -856,7 +856,7 @@ Unreal MCP counterpart (UE 5.8): `ActorTools.get_components`. Left to Unreal MCP
 |---|---|---|---|---|
 | `blueprintPath` | `string` | no |  | Optional asset path of the Blueprint. If not provided, uses the currently focused Blueprint |
 | `includeInherited` | `boolean` | no | `true` | Include the native components of the C++ parent class and the components parent Blueprints add. When false, only this Blueprint's own components are listed |
-| `componentTypeFilter` | `string` | no | `"all"` | Filter by component type. One of: `"all"`, `"scene"`, `"actor"`, `"primitive"`. |
+| `componentTypeFilter` | `string` | no | `"all"` | List only components of this type (any case): scene (SceneComponent), actor (ActorComponent but not SceneComponent), primitive (PrimitiveComponent). The whole tree is searched: a matching component under one that does not match moves up to where that one was and keeps its parentComponent. Any other value is refused. One of: `"all"`, `"scene"`, `"actor"`, `"primitive"`. |
 
 ## ContentBrowserTools
 

@@ -19,6 +19,7 @@
 #include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_VariableGet.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/SceneComponent.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "UObject/UnrealType.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -197,12 +198,59 @@ BEGIN_DEFINE_SPEC(FN2CComponentToolsSpec, "NodeToCode.MCP.Components", N2C_TEST_
 		return N2CTest::RunTool(TEXT("delete-component-in-actor"), Args);
 	}
 
-	FMcpToolCallResult List(UBlueprint* Target, bool bIncludeInherited = true)
+	FMcpToolCallResult List(UBlueprint* Target, bool bIncludeInherited = true, const FString& TypeFilter = FString())
 	{
 		TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 		Args->SetStringField(TEXT("blueprintPath"), Target->GetPathName());
 		Args->SetBoolField(TEXT("includeInherited"), bIncludeInherited);
+		if (!TypeFilter.IsEmpty())
+		{
+			Args->SetStringField(TEXT("componentTypeFilter"), TypeFilter);
+		}
 		return N2CTest::RunTool(TEXT("list-components-in-actor"), Args);
+	}
+
+	/** Lists with a type filter; every listed component's name (depth first) and the result, or false on an error */
+	bool ListFiltered(const FString& What, UBlueprint* Target, const FString& TypeFilter, TArray<FString>& OutNames,
+		TSharedPtr<FJsonObject>& OutResult)
+	{
+		OutNames.Reset();
+		const FMcpToolCallResult Result = List(Target, true, TypeFilter);
+		OutResult = Result.bIsError ? nullptr : N2CTest::ResultJson(Result);
+		const TArray<TSharedPtr<FJsonValue>>* Components = nullptr;
+		if (!TestTrue(What + TEXT(": listed (") + N2CTest::ResultText(Result).Left(200) + TEXT(")"),
+			OutResult.IsValid() && OutResult->TryGetArrayField(TEXT("components"), Components)))
+		{
+			return false;
+		}
+		TFunction<void(const TArray<TSharedPtr<FJsonValue>>&)> Walk = [&](const TArray<TSharedPtr<FJsonValue>>& Values)
+		{
+			for (const TSharedPtr<FJsonValue>& Value : Values)
+			{
+				const TSharedPtr<FJsonObject> Component = Value.IsValid() ? Value->AsObject() : nullptr;
+				if (!Component.IsValid())
+				{
+					continue;
+				}
+				OutNames.Add(Component->GetStringField(TEXT("name")));
+				const UClass* Class = FindObject<UClass>(nullptr, *Component->GetStringField(TEXT("classPath")));
+				const bool bMatches = Class && (TypeFilter.Equals(TEXT("primitive"), ESearchCase::IgnoreCase)
+					? Class->IsChildOf(UPrimitiveComponent::StaticClass())
+					: TypeFilter.Equals(TEXT("actor"), ESearchCase::IgnoreCase)
+					? !Class->IsChildOf(USceneComponent::StaticClass())
+					: Class->IsChildOf(USceneComponent::StaticClass()));
+				TestTrue(What + TEXT(": ") + Component->GetStringField(TEXT("name")) + TEXT(" is of the filtered type"), bMatches);
+				const TArray<TSharedPtr<FJsonValue>>* Children = nullptr;
+				if (Component->TryGetArrayField(TEXT("children"), Children))
+				{
+					Walk(*Children);
+				}
+			}
+		};
+		Walk(*Components);
+		TestEqual(What + TEXT(": totalCount counts every listed component"), static_cast<int32>(OutResult->GetNumberField(TEXT("totalCount"))),
+			OutNames.Num());
+		return true;
 	}
 
 	/** Adds a component and checks it compiled and became one undo step; the result's JSON, or null */
@@ -630,6 +678,69 @@ void FN2CComponentToolsSpec::Define()
 				TestTrue(TEXT("FollowCamera reported deleted"), Children.Num() == 1
 					&& Children[0]->AsObject()->GetStringField(TEXT("action")) == TEXT("deleted"));
 				ExpectUndoRedoState(TEXT("delete subtree"), Blueprint, Before);
+			}
+		});
+	});
+
+	Describe(TEXT("list-components-in-actor"), [this]()
+	{
+		// Card 0287 (review mcp-tools-bp-structure-28): the type filter searches the whole tree, in any case, and an
+		// unknown value is refused instead of listing everything as if it had matched
+		It(TEXT("filters by type through the whole tree: primitive finds a mesh under a scene component and a Character's capsule and mesh, actor its movement, in any case; an unknown filter is refused"), [this]()
+		{
+			if (!Build(TEXT("BP_N2CComponentsFilter"))
+				|| !ExpectAdded(TEXT("add Pivot"), Blueprint, TEXT("/Script/Engine.SceneComponent"), TEXT("Pivot")).IsValid()
+				|| !ExpectAdded(TEXT("add Body under Pivot"), Blueprint, TEXT("/Script/Engine.StaticMeshComponent"), TEXT("Body"), TEXT("Pivot")).IsValid())
+			{
+				return;
+			}
+			TArray<FString> Names;
+			TSharedPtr<FJsonObject> Listed;
+			if (ListFiltered(TEXT("primitive on DefaultSceneRoot > Pivot > Body"), Blueprint, TEXT("primitive"), Names, Listed))
+			{
+				TestEqual(TEXT("only Body"), FString::Join(Names, TEXT(",")), FString(TEXT("Body")));
+				const TArray<TSharedPtr<FJsonValue>>& Top = Listed->GetArrayField(TEXT("components"));
+				if (Top.Num() == 1)
+				{
+					TestEqual(TEXT("Body keeps its parent"), Top[0]->AsObject()->GetStringField(TEXT("parentComponent")), FString(TEXT("Pivot")));
+				}
+				TestEqual(TEXT("rootComponent is still the real root"), Listed->GetStringField(TEXT("rootComponent")), FString(TEXT("DefaultSceneRoot")));
+			}
+			if (ListFiltered(TEXT("scene"), Blueprint, TEXT("scene"), Names, Listed))
+			{
+				TestEqual(TEXT("every scene component"), FString::Join(Names, TEXT(",")), FString(TEXT("DefaultSceneRoot,Pivot,Body")));
+			}
+
+			UBlueprint* Character = MakeBlueprint(Test->GetPackage(), ACharacter::StaticClass(), TEXT("BP_N2CSpecFilterCharacter"));
+			if (!TestNotNull(TEXT("Character Blueprint"), Character))
+			{
+				return;
+			}
+			FKismetEditorUtilities::CompileBlueprint(Character, EBlueprintCompileOptions::SkipGarbageCollection);
+			for (const TCHAR* Filter : { TEXT("primitive"), TEXT("Primitive") })
+			{
+				if (ListFiltered(FString(TEXT("Character ")) + Filter, Character, Filter, Names, Listed))
+				{
+					TestEqual(TEXT("CapsuleComponent listed once"), Names.FilterByPredicate([](const FString& N) { return N == TEXT("CapsuleComponent"); }).Num(), 1);
+					TestEqual(TEXT("Mesh listed once"), Names.FilterByPredicate([](const FString& N) { return N == TEXT("Mesh"); }).Num(), 1);
+					TestFalse(TEXT("no CharacterMovement"), Names.Contains(TEXT("CharacterMovement")));
+				}
+			}
+			if (ListFiltered(TEXT("Character actor"), Character, TEXT("actor"), Names, Listed))
+			{
+				TestEqual(TEXT("CharacterMovement only"), FString::Join(Names, TEXT(",")), FString(TEXT("CharacterMovement")));
+			}
+
+			for (const TCHAR* Unknown : { TEXT("primitives"), TEXT("StaticMesh"), TEXT("mesh") })
+			{
+				const FMcpToolCallResult Refused = List(Character, true, Unknown);
+				TestEqual(FString(TEXT("unknown filter refused: ")) + Unknown, ErrorCode(Refused), FString(TEXT("INVALID_ARGUMENT")));
+				TestTrue(TEXT("the error lists the filters"), N2CTest::ResultText(Refused).Contains(TEXT("all, scene, actor, primitive")));
+			}
+			TestTrue(TEXT("a missing class passes all"), FN2CMcpComponentUtils::PassesComponentTypeFilter(nullptr, TEXT("all")));
+			for (const TCHAR* Filter : { TEXT("scene"), TEXT("actor"), TEXT("primitive") })
+			{
+				TestFalse(FString(TEXT("a missing class is of no type: ")) + Filter, FN2CMcpComponentUtils::PassesComponentTypeFilter(nullptr, Filter));
 			}
 		});
 	});
