@@ -268,6 +268,10 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   Simulate runs, tools that edit or compile Blueprints or change assets answer `PIE_ACTIVE` ([#150]).
 - Each MCP tool call compiles each Blueprint it changed once, after its transactions close, and returns the compiler
   diagnostics as `compile`; comments never compile ([#124]).
+- MCP tools refuse a number, bool or object where a required string is expected; the variable tools refuse arguments
+  their schema does not declare, naming them, and unknown `containerType`, `replicationCondition` and
+  search-variable-types `category` values, listing the valid ones in any case; `variableName` follows the editor's
+  Blueprint name rules ([#219]).
 - `read-file` returns at most 500 KB of whole lines per call (`offset`, `limit`, `truncated`, `nextOffset`) and reads
   text files only; `read-path` is paginated (`pageSize`, `cursor`, `filter`); both return project-relative paths
   ([#166]).
@@ -422,7 +426,8 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   pass-through links ([#195]); create-blueprint-class makes real Widget Blueprints through `IAssetTools` ([#140]);
   component add and delete attach to the named parent and can be undone ([#142], [#213]); list-blueprint-functions
   lists events, list-overridable-functions follows the editor's rules ([#183]); open-blueprint-asset reports Widget
-  and Anim Blueprints ([#206]); search-blueprint-classes lists each class once with real counts ([#211]); the struct
+  and Anim Blueprints ([#206]), and it and `nodetocode.open_blueprint` fail with `GRAPH_NOT_FOUND`, listing the
+  graphs, when `focus_graph` names no graph ([#218]); search-blueprint-classes lists each class once with real counts ([#211]); the struct
   utilities refuse clashing names and remove only the default member ([#214]).
 - **MCP content tools:** move-, rename- and copy-asset check new names and report real results ([#172]); move-folder
   and rename-folder move empty folders and refuse moving a folder into itself ([#177]); search-content-browser
@@ -433,7 +438,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   N2C JSON, and template matching is exact ([#176]). GET, PUT and PATCH on `/mcp` get a 405 with no body, so a client
   closing its stream no longer logs `socket_send_failure` ([#180]). With the old dynamic discovery, 15 tools could
   never be enabled and enabling tools changed every client's list ([#148]).
-- **Python:** the script library finds the bundled scripts when the plugin is installed from Fab or the Launcher
+- **Python:** `nodetocode.read_n2c_json` read the document `get_blueprint_n2c_json` returns with every node
+  dropped and reported success; it now keeps them, and fails, naming them, when it has to skip a malformed graph, node
+  or pin ([#220]). The script library finds the bundled scripts when the plugin is installed from Fab or the Launcher
   ([#210]); `set_pin_value` reports a refused value as an error, and `delete_nodes` honours `preserve_connections`
   and lists what it skipped ([#191], [#195]).
 - **Logs:** the Node to Code log file is UTF-8 through one open file ([#189]); keys and payloads stay out of logs
@@ -548,7 +555,9 @@ Only for people who ran a `dev-2.0` build before this beta.
   `sync_browser` defaults to false ([#184]); search-blueprint-classes' `includeAbstract` defaults to true ([#211]);
   get-open-blueprint-editors drops `isDirty`, `hasCompilerResults`, `isInEditingMode` and `isCompileEnabled` for
   `packageDirty` and `compileStatus` ([#202]); delete-blueprint-node and delete-blueprint-function drop
-  `transactionId` ([#191]); `tools/call` with non-object `arguments` is an `isError` result ([#196]).
+  `transactionId` ([#191]); `tools/call` with non-object `arguments` is an `isError` result ([#196]); open-blueprint-asset with an
+  unknown `focus_graph` fails instead of opening with nothing focused ([#218]); a misspelled variable-tool argument
+  is refused instead of ignored ([#219]).
 
 ### Known issues
 
@@ -762,3 +771,6 @@ Thanks to the people whose pull requests are in this release:
 [#215]: https://github.com/protospatial/NodeToCode/pull/215
 [#216]: https://github.com/protospatial/NodeToCode/pull/216
 [#217]: https://github.com/protospatial/NodeToCode/pull/217
+[#218]: https://github.com/protospatial/NodeToCode/pull/218
+[#219]: https://github.com/protospatial/NodeToCode/pull/219
+[#220]: https://github.com/protospatial/NodeToCode/pull/220
