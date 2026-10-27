@@ -630,7 +630,7 @@ Searches for available variable types (primitives, classes, structs, enums) by n
 
 **Set a local variable's default value**
 
-Set the default value of a local function variable (like editing in the details panel) Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Set the default value of a local variable of the focused function (like editing in the details panel). The value is parsed as the local's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string clears the default. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -645,7 +645,7 @@ Set the default value of a local function variable (like editing in the details 
 
 **Set a member variable's default value**
 
-Sets the default value of a member variable in the focused Blueprint. This modifies the variable's default value property (as shown in the Details panel), not creating any nodes in the graph. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Sets the default value of a member variable in the focused Blueprint, on its class defaults as the Details panel does (one undo step; placed instances still on the old default follow it). The value is parsed as the variable's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string resets the variable to its type's default value. Adds no node. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|

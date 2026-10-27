@@ -303,6 +303,16 @@ its environment when no key is saved, so a live check never types or saves a key
   with `--no-cli`) deletes B with `preserveConnections`. The call must succeed with `preservedConnections` listing
   exactly A.then -> C.execute (exec), the agent must report that link, B must be gone and the Blueprint must compile
   without errors. The folder is deleted. Report: `logs/live_delete_node_0279_<label>.json`.
+- `live_variable_defaults_0283.py --engine ... --project ... --label 5.8 [--no-cli] [--cli-model sonnet]` (no provider
+  key; UE 5.8 only, the variable tools need a focused Blueprint editor) checks that member variable defaults are read
+  and written on the class defaults (card 0283) on an in-memory Actor Blueprint under a fresh
+  `/Game/N2CTest/VarDefaults0283_<time>` folder, opened. The probe creates Health (int, default 100), Speed (float) and
+  Channel (ECollisionChannel); `claude -p` with only `mcp__nodetocode__*` (or the probe, with `--no-cli`) lists the
+  variables, sets Speed to 75, tries Speed `fast` and sets Channel to the display name `Camera`. Health must list
+  `100` and Speed `float`; Speed's old and new values must be `0.000000` and `75.000000`; `fast` must be an error
+  naming the type; Channel must read `ECC_Camera`, in the listing and on the class default object (run-python). Two
+  `TRANSACTION UNDO`s must put Channel back to `ECC_WorldStatic` and then Speed to 0 on the class defaults. The
+  folder is deleted. Report: `logs/live_variable_defaults_0283_<label>.json`.
 - `live_non_context_search_0434.py --engine ... --project ... --label 5.8` (no provider key, no `claude -p`) checks
   `search-blueprint-nodes` with `contextSensitive` false (card 0434) on an in-memory Actor Blueprint under a fresh
   `/Game/N2CTest/NonContext0434_<time>` folder: "print string" and "branch" by `blueprintPath` with nothing focused,

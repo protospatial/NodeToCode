@@ -62,6 +62,27 @@ namespace N2CMcpPinDefaultPrivate
 	}
 }
 
+FString FN2CMcpPinDefault::EnumEntryName(const UEnum& Enum, const FString& Value)
+{
+	return N2CMcpPinDefaultPrivate::EnumEntryName(Enum, Value);
+}
+
+bool FN2CMcpPinDefault::NormalizeBool(const FString& Value, FString& OutValue)
+{
+	const FString Trimmed = Value.TrimStartAndEnd();
+	if (Trimmed.Equals(TEXT("true"), ESearchCase::IgnoreCase) || Trimmed == TEXT("1") || Trimmed.Equals(TEXT("yes"), ESearchCase::IgnoreCase))
+	{
+		OutValue = TEXT("true");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("false"), ESearchCase::IgnoreCase) || Trimmed == TEXT("0") || Trimmed.Equals(TEXT("no"), ESearchCase::IgnoreCase))
+	{
+		OutValue = TEXT("false");
+		return true;
+	}
+	return false;
+}
+
 bool FN2CMcpPinDefault::Normalize(const UEdGraphPin& Pin, const FString& Value, FString& OutValue, FString& OutError)
 {
 	using namespace N2CMcpPinDefaultPrivate;
@@ -76,15 +97,7 @@ bool FN2CMcpPinDefault::Normalize(const UEdGraphPin& Pin, const FString& Value, 
 	if (Category == UEdGraphSchema_K2::PC_Boolean)
 	{
 		// The schema accepts any text for a bool (and reads anything else as false), so the spelling is checked here
-		if (OutValue.Equals(TEXT("true"), ESearchCase::IgnoreCase) || OutValue == TEXT("1") || OutValue.Equals(TEXT("yes"), ESearchCase::IgnoreCase))
-		{
-			OutValue = TEXT("true");
-		}
-		else if (OutValue.Equals(TEXT("false"), ESearchCase::IgnoreCase) || OutValue == TEXT("0") || OutValue.Equals(TEXT("no"), ESearchCase::IgnoreCase))
-		{
-			OutValue = TEXT("false");
-		}
-		else
+		if (!NormalizeBool(OutValue, OutValue))
 		{
 			OutError = FString::Printf(TEXT("'%s' is not a boolean. Use 'true' or 'false'"), *Value);
 			return false;

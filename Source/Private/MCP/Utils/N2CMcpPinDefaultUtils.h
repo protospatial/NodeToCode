@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 
 class UEdGraphPin;
+class UEnum;
 
 /**
  * Writes an input pin's default value the way the editor's pin widgets do, and says whether it took (card 0278).
@@ -50,6 +51,15 @@ public:
 
 	/** "Pin '<name>' refused the value '<value>': <reason>. The pin keeps its default '<old>'." */
 	static FString RefusalMessage(const UEdGraphPin& Pin, const FString& Value, const FString& Reason, const FString& OldValue);
+
+	/**
+	 * An enum entry by its name (short or Enum::Name), its display name or its index, as the entry's name; Value
+	 * unchanged when it names no entry. Shared with the variable default tools (card 0283).
+	 */
+	static FString EnumEntryName(const UEnum& Enum, const FString& Value);
+
+	/** "true" or "false" for true/false/yes/no (any case) and 1/0, else false: the spellings a boolean default takes */
+	static bool NormalizeBool(const FString& Value, FString& OutValue);
 
 	/** The pin's default as the tools report it: a text pin's text, else UEdGraphPin::GetDefaultAsString */
 	static FString Read(const UEdGraphPin& Pin);
