@@ -2,7 +2,7 @@
 
 This Claude Code plugin connects Claude Code to NodeToCode in your open Unreal Editor, so you can ask about,
 translate and migrate Blueprints in plain words. It needs the NodeToCode Unreal plugin (UE 5.6 to 5.8) in your
-project, with its MCP server on (**Project Settings > Plugins > Node to Code (User) > Enable MCP Server**, on by
+project, with its MCP server on (**Editor Preferences > Plugins > Node to Code (User) > Enable MCP Server**, on by
 default).
 
 | Part | What it does |

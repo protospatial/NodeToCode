@@ -5,7 +5,7 @@ is, and the header setting for each client.
 
 ## Turning it on
 
-1. **Project Settings → Plugins → Node to Code (User) → MCP Server → Require MCP Bearer Token**. It is a per-user
+1. **Editor Preferences → Plugins → Node to Code (User) → MCP Server → Require MCP Bearer Token**. It is a per-user
    switch: only your own value counts, and a value committed in the project's config is ignored.
 2. Restart the editor. **Server Status** then ends in `, bearer token required`, and the Output Log names the token
    file.

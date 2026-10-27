@@ -9,7 +9,7 @@ tools the client then sees is set in Project Settings, see [Choosing a Tool Mode
 | Check | Where |
 |---|---|
 | The editor is open | The server runs only while the editor runs, and stops when it closes |
-| **Enable MCP Server** is on (the default) | **Project Settings → Plugins → Node to Code (User) → MCP Server**; per user, needs an editor restart |
+| **Enable MCP Server** is on (the default) | **Editor Preferences → Plugins → Node to Code (User) → MCP Server**; per user, needs an editor restart |
 | The URL | **Server Status** in **Project Settings → Plugins → Node to Code → MCP Server** shows where the server listens. **Server Port** is 27000; when that port is taken (a second editor, say) the server takes the next free one in **Port Fallback Range** (10) and shows a notification |
 | The client runs on this computer | The server answers only on `127.0.0.1` and `localhost`. A request whose `Host` header, or `Origin` header when it sends one, is not `localhost`, `127.0.0.1` or `[::1]` gets 403, so a web page cannot call it and a remote machine cannot reach it |
 
