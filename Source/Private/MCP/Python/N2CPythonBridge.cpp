@@ -339,6 +339,7 @@ FString UN2CPythonBridge::CompileFocusedBlueprint(const FString& BlueprintPath)
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetStringField(TEXT("blueprint_path"), OwningBlueprint->GetPathName()); // the Blueprint acted on (card 0297)
 	Data->SetStringField(TEXT("status"), Diagnostics.Status);
 	Data->SetBoolField(TEXT("had_errors"), bHadErrors);
 	Data->SetBoolField(TEXT("had_warnings"), bHadWarnings);
@@ -383,6 +384,7 @@ FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty, const FString&
 	{
 		const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 		Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetStringField(TEXT("blueprint_path"), OwningBlueprint->GetPathName()); // the Blueprint acted on (card 0297)
 		Data->SetBoolField(TEXT("was_dirty"), false);
 		Data->SetBoolField(TEXT("was_saved"), false);
 		return MakeSuccessJson(Data);
@@ -396,6 +398,7 @@ FString UN2CPythonBridge::SaveFocusedBlueprint(bool bOnlyIfDirty, const FString&
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	Data->SetStringField(TEXT("blueprint_path"), OwningBlueprint->GetPathName()); // the Blueprint acted on (card 0297)
 	Data->SetBoolField(TEXT("was_dirty"), bWasDirty);
 	Data->SetBoolField(TEXT("was_saved"), bSaved);
 

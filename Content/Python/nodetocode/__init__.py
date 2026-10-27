@@ -70,8 +70,8 @@ Available Functions (the authoritative list is __all__ below):
     - get_blueprint_n2cjson(path, graph_name, graph_guid, depth, to_file) - Any Blueprint as N2C JSON by path
     - list_blueprint_graphs(path) - Every graph of a Blueprint by path
     - read_n2c_json(text) - Read N2C JSON (1.x or 2.x) into the current version
-    - compile_blueprint(path=None) - Compile the focused Blueprint (path is ignored for now)
-    - save_blueprint(path=None, only_if_dirty=True) - Save the focused Blueprint (path is ignored for now)
+    - compile_blueprint(path=None) - Compile the Blueprint at path, else the focused Blueprint
+    - save_blueprint(path=None, only_if_dirty=True) - Save the Blueprint at path, else the focused Blueprint
     - load_blueprint(path) - Load a Blueprint by path
     - open_blueprint(path, focus_graph) - Open Blueprint in editor
     - open_blueprint_function(name) - Focus a function in the open Blueprint
