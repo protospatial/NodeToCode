@@ -10,6 +10,7 @@
 #include "Tests/N2CTestBlueprintFactory.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Core/N2CGraphOverlayInjector.h"
 #include "BlueprintEditor.h"
 #include "Containers/Ticker.h"
 #include "EdGraph/EdGraph.h"
@@ -238,7 +239,7 @@ void FN2CWindowedIntegrationSpec::Define()
 				const TSharedPtr<FBlueprintEditor> Active = Integration.GetActiveBlueprintEditor();
 				UEdGraph* Shown = ShownGraph(Blueprint);
 				return Active.IsValid() && Active->GetBlueprintObj() == Blueprint && Shown
-					&& (!Graph || Shown == Graph) && Integration.HasLiveOverlay(Shown);
+					&& (!Graph || Shown == Graph) && FN2CGraphOverlayInjector::Get().HasLiveOverlay(Shown);
 			};
 		};
 		const auto ExpectFocus = [this, ShownGraph](UBlueprint* Blueprint, UEdGraph* Graph)
@@ -256,9 +257,9 @@ void FN2CWindowedIntegrationSpec::Define()
 					TestTrue(What + TEXT(": the editor shows the graph the user picked"), Shown == Graph);
 				}
 				TestTrue(What + TEXT(": GetFocusedGraphFromActiveEditor is that graph"), Shown && Integration.GetFocusedGraphFromActiveEditor() == Shown);
-				TestTrue(What + TEXT(": that graph has an overlay"), Integration.HasLiveOverlay(Shown));
+				TestTrue(What + TEXT(": that graph has an overlay"), FN2CGraphOverlayInjector::Get().HasLiveOverlay(Shown));
 				// In the graph editor that shows it, exactly once (card 0293)
-				const TSharedPtr<SGraphEditor> ShownEditor = FN2CEditorIntegration::FindGraphEditorFor(
+				const TSharedPtr<SGraphEditor> ShownEditor = FN2CGraphOverlayInjector::FindGraphEditorFor(
 					FN2CBlueprintEditorTracker::GetEditorFor(Blueprint), Shown);
 				TestEqual(What + TEXT(": one overlay in the graph editor that shows it"),
 					ShownEditor.IsValid() ? CountOverlays(ShownEditor.ToSharedRef()) : -1, 1);

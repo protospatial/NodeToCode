@@ -54,21 +54,16 @@ Connects plugin logic to the Unreal Editor UI.
 
 ### Core Integration
 
-*   **`Source/Public/Core/N2CEditorIntegration.h` / `Source/Private/Core/N2CEditorIntegration.cpp` (`FN2CEditorIntegration`)**: Singleton for Blueprint Editor integration.
-    *   Registers toolbar extensions
-    *   Maps UI commands (`FN2CToolbarCommand`) to handlers
-    *   Injects the graph overlays (card 0293): into the exact `SGraphEditor` that shows the graph (`FindGraphEditorFor`: the graph's own document tab, else `SGraphEditor::FindGraphEditorForGraph` limited to the editor's tabs; never another graph's tab), into the `SOverlay` around its graph panel, one per graph editor (`InjectedGraphOverlays` keyed by `TWeakPtr<SGraphEditor>`). Triggers: an editor opening, a graph tab coming to the front, and a 2 s poll (`n2c.OverlayPoll`) that backs off per graph and gives up after `MaxPollInjectionAttempts`. Shutdown takes every overlay out again (`RemoveInjectedOverlays`, `SOverlay::RemoveSlot`). Injection logs at Debug only
+*   **`Source/Public/Core/N2CEditorIntegration.h` / `Source/Private/Core/N2CEditorIntegration.cpp` (`FN2CEditorIntegration`)**: the editor module's wiring and shared entry points (card 0344).
+    *   `Initialize` / `Shutdown`: the N2C tab spawner, the focused-editor tracker and the graph overlay injector below
     *   Its `GetActiveBlueprintEditor` and `GetFocusedGraphFromActiveEditor` forward to the tracker below
-    *   Provides `TranslateFocusedBlueprintAsync()` for MCP tools
+    *   The focused-graph capture facade (`GetFocusedBlueprintAsJson`, `GetGraphAsJson`, `CollectNodesFromGraph`, `TranslateNodesToN2CBlueprint*`) and translation dispatch (`TranslateFocusedBlueprintAsync()`, `TranslateJsonAsync`, `ResolveTranslationOverrides`) for the overlay, the main window and the MCP tools; they move to the capture module and `UN2CTranslationSubsystem` with cards 0010 and 0254
     *   Manages global translation state across overlays
     *   Delegates: `OnTranslationStateChanged`, `OnOverlayTranslationRequested`
 
-*   **`Source/Public/Core/N2CBlueprintEditorTracker.h` / `Source/Private/Core/N2CBlueprintEditorTracker.cpp` (`FN2CBlueprintEditorTracker`)**: the single definition of the focused Blueprint editor (card 0150): the Blueprint editor last activated through `OnTabForegrounded`, `OnActiveTabChanged` or `OnAssetOpenedInEditor`, with a fallback to the most recently activated editor still open. `GetEditorFor(UBlueprint*)` gives a Blueprint's own editor (checked with `IsBlueprintEditor()`). See "Which Blueprint is focused" in `Source/Private/MCP/Tools/Implementations/Blueprint/AGENTS.md`
+*   **`Source/Public/Core/N2CGraphOverlayInjector.h` / `Source/Private/Core/N2CGraphOverlayInjector.cpp` (`FN2CGraphOverlayInjector`)**: the one place that walks the engine's graph editor widgets (card 0344). Injects the graph overlays (card 0293): into the exact `SGraphEditor` that shows the graph (`FindGraphEditorFor`: the graph's own document tab, else `SGraphEditor::FindGraphEditorForGraph` limited to the editor's tabs; never another graph's tab), into the `SOverlay` around its graph panel (`FindGraphEditorOverlay`), one per graph editor (`InjectedGraphOverlays` keyed by `TWeakPtr<SGraphEditor>`). Triggers: a Blueprint editor opening (`OnAssetOpenedInEditor`, retried until it shows a graph), a graph tab coming to the front, and a 2 s poll (`n2c.OverlayPoll`) that backs off per graph and gives up after `MaxPollInjectionAttempts`; the tab event and the poll share one pass, `InjectMissingOverlays`. Editors come from the tracker below, and injection never changes the focus. Shutdown takes every overlay out again (`RemoveInjectedOverlays`, `SOverlay::RemoveSlot`). Injection logs at Debug only
 
-*   **`Source/Public/Core/N2CToolbarCommand.h` / `Source/Private/Core/N2CToolbarCommand.cpp` (`FN2CToolbarCommand`)**: `TCommands` subclass defining toolbar UI actions:
-    *   `OpenWindowCommand` - Open plugin window
-    *   `CollectNodesCommand` - Collect nodes for translation
-    *   `CopyJsonCommand` - Copy Blueprint JSON to clipboard
+*   **`Source/Public/Core/N2CBlueprintEditorTracker.h` / `Source/Private/Core/N2CBlueprintEditorTracker.cpp` (`FN2CBlueprintEditorTracker`)**: the single definition of the focused Blueprint editor (card 0150): the Blueprint editor last activated through `OnTabForegrounded`, `OnActiveTabChanged` or `OnAssetOpenedInEditor`, with a fallback to the most recently activated editor still open. `GetEditorFor(UBlueprint*)` gives a Blueprint's own editor (checked with `IsBlueprintEditor()`). See "Which Blueprint is focused" in `Source/Private/MCP/Tools/Implementations/Blueprint/AGENTS.md`
 
 *   **`Source/Public/Core/N2CEditorWindow.h` / `Source/Private/Core/N2CEditorWindow.cpp` (`SN2CEditorWindow`)**: Slate widget container for the main plugin UI. Registers a nomad tab spawner, embedding `SN2CMainWindow`.
 
@@ -78,8 +73,7 @@ Pure Slate widgets for the plugin UI:
 
 *   **`SN2CMainWindow`**: Main plugin window (pure Slate implementation)
 *   **`N2CMainWindowWidget`**: UMG wrapper for embedding in Editor Utility Widgets (kept for compatibility, unsupported, planned for removal; shows a placeholder in the UMG designer)
-*   **`SN2CGraphOverlay`**: Overlay widget for Blueprint graph tabs
-*   **`SN2CGraphEditorWrapper`**: Wrapper for graph editor with overlay injection
+*   **`SN2CGraphOverlay`**: Overlay widget for Blueprint graph tabs (put there by `FN2CGraphOverlayInjector`); its Copy JSON and Translate buttons are the editor's entry points for them
 *   **`SN2CTagManager`**, **`SN2CTagCategoryTree`**, **`N2CTagManagerWidget`**: Tag management UI (`N2CTagManagerWidget` is the UMG wrapper: kept, unsupported, planned for removal)
 *   **`SN2CTaggedGraphsList`**, **`SN2CGraphListRow`**: Tagged graphs list view
 *   **`SN2CBatchProgressModal`**: Progress modal for batch translations

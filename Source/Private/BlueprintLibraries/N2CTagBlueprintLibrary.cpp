@@ -216,7 +216,8 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagBlueprintGraph(
 bool UN2CTagBlueprintLibrary::RemoveTag(
 	const FString& GraphGuid,
 	const FString& Tag,
-	const FString& Category)
+	const FString& Category,
+	const FString& BlueprintPath)
 {
 	FGuid Guid;
 	if (!FGuid::Parse(GraphGuid, Guid))
@@ -224,8 +225,13 @@ bool UN2CTagBlueprintLibrary::RemoveTag(
 		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("RemoveTag: Invalid GUID format: %s"), *GraphGuid));
 		return false;
 	}
-	
-	return UN2CTagManager::Get().RemoveTag(Guid, Tag, Category);
+
+	// The graph is {Blueprint, GraphGuid} (card 0192): a GUID alone names a graph only while one Blueprint has it
+	// (a duplicated Blueprint keeps the original's graph GUIDs), so the Blueprint path picks the copy (card 0344, as #198)
+	const FN2CGraphKey Key = BlueprintPath.TrimStartAndEnd().IsEmpty()
+		? FN2CGraphKey(Guid)
+		: FN2CGraphKey(FN2CGraphKey::NormalizeBlueprintPath(BlueprintPath), Guid);
+	return UN2CTagManager::Get().RemoveTag(Key, Tag, Category);
 }
 
 TArray<FN2CTagInfo> UN2CTagBlueprintLibrary::GetTagsForGraph(const FString& GraphGuid)
