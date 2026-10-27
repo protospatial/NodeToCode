@@ -16,6 +16,20 @@ public:
 	virtual FMcpToolCallResult Execute(const TSharedPtr<FJsonObject>& Arguments) override;
 	virtual bool RequiresGameThread() const override { return true; }
 
+	/**
+	 * The Blueprint's kind (card 0503): Widget (a Widget Blueprint), Animation (an Anim Blueprint), Component, Actor or
+	 * Object for a normal Blueprint, from its asset class and parent class; Const, MacroLibrary, Interface, LevelScript
+	 * or FunctionLibrary from its BlueprintType. Unknown for null.
+	 */
+	static FString GetBlueprintTypeString(const UBlueprint* Blueprint);
+
+	/**
+	 * The result of a successful open: success, asset_path, editor_id, focused_graph, asset_type, blueprint_name,
+	 * parent_class and graph_counts. event_graphs counts the event graph pages (UbergraphPages), not the transient
+	 * EventGraphs list, which is empty outside a compile (card 0503).
+	 */
+	static TSharedPtr<FJsonObject> BuildSuccessResult(const UBlueprint* Blueprint, const FString& AssetPath, const FString& FocusedGraph);
+
 private:
 	/**
 	 * Validates that the given asset path is a valid blueprint path
@@ -26,13 +40,6 @@ private:
 	bool ValidateBlueprintAssetPath(const FString& AssetPath, FString& OutErrorMsg) const;
 	
 	/**
-	 * Gets the blueprint type as a string (Actor, Component, Interface, etc.)
-	 * @param Blueprint The blueprint to check
-	 * @return String representation of the blueprint type
-	 */
-	FString GetBlueprintTypeString(const UBlueprint* Blueprint) const;
-	
-	/**
 	 * Focuses on a specific graph within the blueprint editor
 	 * @param BlueprintEditor The blueprint editor instance
 	 * @param Blueprint The blueprint being edited
@@ -40,13 +47,4 @@ private:
 	 * @return True if the graph was found and focused
 	 */
 	bool FocusOnGraph(TSharedPtr<class IBlueprintEditor> BlueprintEditor, UBlueprint* Blueprint, const FString& GraphName) const;
-	
-	/**
-	 * Builds the JSON result object for successful execution
-	 * @param Blueprint The opened blueprint
-	 * @param AssetPath The asset path that was opened
-	 * @param FocusedGraph The name of the focused graph (if any)
-	 * @return JSON object with result data
-	 */
-	TSharedPtr<FJsonObject> BuildSuccessResult(const UBlueprint* Blueprint, const FString& AssetPath, const FString& FocusedGraph) const;
 };

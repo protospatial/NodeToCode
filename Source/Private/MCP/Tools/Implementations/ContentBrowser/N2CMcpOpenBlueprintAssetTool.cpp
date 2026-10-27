@@ -9,6 +9,11 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Animation/AnimBlueprint.h"
+#include "Components/ActorComponent.h"
+#include "GameFramework/Actor.h"
+#include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpEditorContext.h"
+#include "WidgetBlueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "BlueprintEditor.h"
 #include "BlueprintEditorModule.h"
@@ -223,18 +228,15 @@ bool FN2CMcpOpenBlueprintAssetTool::ValidateBlueprintAssetPath(const FString& As
 	return true;
 }
 
-FString FN2CMcpOpenBlueprintAssetTool::GetBlueprintTypeString(const UBlueprint* Blueprint) const
+FString FN2CMcpOpenBlueprintAssetTool::GetBlueprintTypeString(const UBlueprint* Blueprint)
 {
 	if (!Blueprint)
 	{
 		return TEXT("Unknown");
 	}
 	
-	// Check blueprint type
 	switch (Blueprint->BlueprintType)
 	{
-		case BPTYPE_Normal:
-			return TEXT("Actor");
 		case BPTYPE_Const:
 			return TEXT("Const");
 		case BPTYPE_MacroLibrary:
@@ -249,24 +251,28 @@ FString FN2CMcpOpenBlueprintAssetTool::GetBlueprintTypeString(const UBlueprint* 
 			break;
 	}
 	
-	// Additional checks for component blueprints
+	// A normal Blueprint: its kind is its asset class, then its parent class (before card 0503 every normal Blueprint,
+	// a Widget Blueprint included, was an Actor)
+	if (Blueprint->IsA<UWidgetBlueprint>())
+	{
+		return TEXT("Widget");
+	}
+	if (Blueprint->IsA<UAnimBlueprint>())
+	{
+		return TEXT("Animation");
+	}
 	if (Blueprint->ParentClass)
 	{
 		if (Blueprint->ParentClass->IsChildOf(UActorComponent::StaticClass()))
 		{
 			return TEXT("Component");
 		}
-		else if (Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
+		if (Blueprint->ParentClass->IsChildOf(AActor::StaticClass()))
 		{
 			return TEXT("Actor");
 		}
-		else if (Blueprint->ParentClass->IsChildOf(UObject::StaticClass()))
-		{
-			return TEXT("Object");
-		}
 	}
-	
-	return TEXT("Blueprint");
+	return TEXT("Object");
 }
 
 bool FN2CMcpOpenBlueprintAssetTool::FocusOnGraph(TSharedPtr<IBlueprintEditor> BlueprintEditor, UBlueprint* Blueprint, const FString& GraphName) const
@@ -276,68 +282,15 @@ bool FN2CMcpOpenBlueprintAssetTool::FocusOnGraph(TSharedPtr<IBlueprintEditor> Bl
 		return false;
 	}
 	
-	// Find the graph to focus on
+	// The graphs My Blueprint lists: event graph pages, functions, macros, interface implementations and delegate
+	// signatures. FString == ignores case.
 	UEdGraph* TargetGraph = nullptr;
-	
-	// Check EventGraphs first (most common)
-	for (UEdGraph* Graph : Blueprint->EventGraphs)
+	for (UEdGraph* Graph : N2CMcpEditorContext::TopLevelGraphs(*Blueprint))
 	{
-		if (Graph && Graph->GetName() == GraphName)
+		if (Graph->GetName() == GraphName)
 		{
 			TargetGraph = Graph;
 			break;
-		}
-	}
-	
-	// Check FunctionGraphs if not found
-	if (!TargetGraph)
-	{
-		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-		{
-			if (Graph && Graph->GetName() == GraphName)
-			{
-				TargetGraph = Graph;
-				break;
-			}
-		}
-	}
-	
-	// Check MacroGraphs if not found
-	if (!TargetGraph)
-	{
-		for (UEdGraph* Graph : Blueprint->MacroGraphs)
-		{
-			if (Graph && Graph->GetName() == GraphName)
-			{
-				TargetGraph = Graph;
-				break;
-			}
-		}
-	}
-	
-	// Check UbergraphPages if not found
-	if (!TargetGraph)
-	{
-		for (UEdGraph* Graph : Blueprint->UbergraphPages)
-		{
-			if (Graph && Graph->GetName() == GraphName)
-			{
-				TargetGraph = Graph;
-				break;
-			}
-		}
-	}
-	
-	// Check DelegateSignatureGraphs if not found
-	if (!TargetGraph)
-	{
-		for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
-		{
-			if (Graph && Graph->GetName() == GraphName)
-			{
-				TargetGraph = Graph;
-				break;
-			}
 		}
 	}
 	
@@ -355,7 +308,7 @@ bool FN2CMcpOpenBlueprintAssetTool::FocusOnGraph(TSharedPtr<IBlueprintEditor> Bl
 	return false;
 }
 
-TSharedPtr<FJsonObject> FN2CMcpOpenBlueprintAssetTool::BuildSuccessResult(const UBlueprint* Blueprint, const FString& AssetPath, const FString& FocusedGraph) const
+TSharedPtr<FJsonObject> FN2CMcpOpenBlueprintAssetTool::BuildSuccessResult(const UBlueprint* Blueprint, const FString& AssetPath, const FString& FocusedGraph)
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 	
@@ -375,7 +328,8 @@ TSharedPtr<FJsonObject> FN2CMcpOpenBlueprintAssetTool::BuildSuccessResult(const 
 	
 	// Add graph information
 	TSharedPtr<FJsonObject> GraphInfo = MakeShareable(new FJsonObject);
-	GraphInfo->SetNumberField(TEXT("event_graphs"), Blueprint->EventGraphs.Num());
+	// The event graph pages: EventGraphs is a transient list the compiler fills, empty on a loaded Blueprint (card 0503)
+	GraphInfo->SetNumberField(TEXT("event_graphs"), Blueprint->UbergraphPages.Num());
 	GraphInfo->SetNumberField(TEXT("function_graphs"), Blueprint->FunctionGraphs.Num());
 	GraphInfo->SetNumberField(TEXT("macro_graphs"), Blueprint->MacroGraphs.Num());
 	GraphInfo->SetNumberField(TEXT("delegate_graphs"), Blueprint->DelegateSignatureGraphs.Num());
