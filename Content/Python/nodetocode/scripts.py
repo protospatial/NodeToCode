@@ -2,7 +2,7 @@
 Script management for NodeToCode Python environment.
 
 Provides CRUD operations for Python scripts with dual-path search:
-- Plugin bundled scripts: Plugins/NodeToCode/Content/Python/scripts/ (read-only)
+- Plugin bundled scripts: <plugin folder>/Content/Python/scripts/ (read-only), found beside this package
 - Project user scripts: Content/Python/scripts/ (read-write)
 
 Scripts are indexed in script_registry.json for fast search and discovery.
@@ -57,10 +57,14 @@ def _get_project_scripts_dir() -> str:
 
 
 def _get_plugin_scripts_dir() -> str:
-    """Get the plugin's bundled scripts directory."""
-    # Find the NodeToCode plugin's Content/Python/scripts folder
-    plugin_dir = unreal.Paths.project_plugins_dir()
-    return os.path.join(plugin_dir, "NodeToCode", "Content", "Python", "scripts")
+    """
+    Get the plugin's bundled scripts directory: Content/Python/scripts beside this package.
+
+    Resolved from this file rather than from the project's Plugins folder, so it holds wherever the plugin is
+    installed: <Project>/Plugins/<any folder name>, Engine/Plugins/Marketplace/<folder> (Fab and Launcher installs)
+    or any other plugin search path.
+    """
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "scripts"))
 
 
 def _get_scripts_dir() -> str:

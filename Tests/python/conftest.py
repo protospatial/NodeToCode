@@ -7,10 +7,13 @@ The package imports `unreal`, which only exists inside the editor. This file ins
 sys.modules before anything imports the package, so the logic (script library paths, registry, search, run_script)
 runs on any CPython without UE installed. The stub has only what the tested code uses: unreal.Paths
 (project_content_dir, project_plugins_dir, project_dir) and unreal.log / log_warning / log_error. Any other
-attribute raises AttributeError, so a new editor dependency shows up as a test failure instead of passing silently.
+attribute raises an AttributeError that names the stub, so a new editor dependency shows up as a test failure instead
+of passing silently.
 
 Run (from the repo root; 3.11 is the Python UE 5.6-5.8 embed):
     uv run --no-project --python 3.11 --with-requirements Tests/python/requirements.txt -- python -m pytest Tests/python
+
+Tests/python/editor holds tests that need the real editor (run_editor_tests.py, see README.md); pytest skips it.
 """
 
 import os
@@ -28,6 +31,9 @@ PLUGIN_SCRIPTS = os.path.join(CONTENT_PYTHON, 'scripts')
 sys.dont_write_bytecode = True
 if CONTENT_PYTHON not in sys.path:
     sys.path.insert(0, CONTENT_PYTHON)
+
+# In-editor tests import the real `unreal` and run through editor/run_editor_tests.py, never under this stub
+collect_ignore = ['editor']
 
 
 def _ue_dir(path):
@@ -73,6 +79,14 @@ class _UnrealStub(types.ModuleType):
 
     def messages(self, level):
         return [m for lvl, m in self.logs if lvl == level]
+
+    def __getattr__(self, name):
+        # Only reached for names the stub does not define. Still an AttributeError, so hasattr()/getattr(x, n, d)
+        # probes in the package behave as they do for a missing editor class.
+        if name.startswith('__') and name.endswith('__'):
+            raise AttributeError(name)
+        raise AttributeError(f"unreal.{name} is not in the test stub (Tests/python/conftest.py): the code under test "
+                             f"now needs it, so stub it there or test that code in the editor (Tests/python/editor)")
 
 
 UNREAL = _UnrealStub()
@@ -134,9 +148,8 @@ def ue(tmp_path, monkeypatch):
     A fresh fake project with no bundled scripts and an empty log.
 
     The bundled-scripts folder is pinned to ue.plugin_scripts_dir through scripts._get_plugin_scripts_dir, so these
-    tests do not depend on how the real lookup finds the plugin (that lookup is broken for Fab installs,
-    mcp-tools-python-translation-resources-19, and its own tests use real_plugin_lookup). If the lookup moves or is
-    renamed, update this seam.
+    tests control which bundled scripts exist (the real lookup resolves Content/Python/scripts beside the package,
+    i.e. this checkout's; its own tests use real_plugin_lookup). If the lookup moves or is renamed, update this seam.
     """
     import nodetocode.scripts as scripts
     UNREAL.logs.clear()
@@ -155,7 +168,10 @@ def ue_with_plugin(ue):
 
 @pytest.fixture
 def real_plugin_lookup(ue, monkeypatch):
-    """The fake project, with the module's own bundled-scripts lookup instead of the pinned folder."""
+    """
+    The fake project, with the module's own bundled-scripts lookup instead of the pinned folder. Nothing is installed
+    under its Plugins folder, so the bundled scripts can only come from the folder beside the package.
+    """
     import nodetocode.scripts as scripts
     monkeypatch.setattr(scripts, '_get_plugin_scripts_dir', REAL_PLUGIN_SCRIPTS_LOOKUP)
     return ue
