@@ -1,13 +1,7 @@
 {
 	"case": "SwitchOnInt",
 	"description": "Function SwitchInt(Selection): Switch on Int with cases 0 and 1 and Default; 0 and Default both run CollectGarbage, 1 runs ControlScreensaver.",
-	"known_defects": [
-		{
-			"finding": "translation-core-32",
-			"card": "0239",
-			"effect": "Switch nodes are named 'Switch', losing the switched type"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -48,7 +42,8 @@
 						"id": "N2",
 						"type": "SwitchInt",
 						"class": "K2Node_SwitchInteger",
-						"title": "Switch",
+						"title": "Switch on Int",
+						"member_name": "Integer",
 						"input_pins": [
 							{
 								"id": "P4",

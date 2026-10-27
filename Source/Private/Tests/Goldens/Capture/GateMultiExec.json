@@ -1,13 +1,7 @@
 {
 	"case": "GateMultiExec",
 	"description": "Event graph: custom events OnEnter, OnOpen and OnClose run a Gate (StandardMacros) through its Enter, Open and Close inputs; Exit runs CollectGarbage.",
-	"known_defects": [
-		{
-			"finding": "translation-core-16",
-			"card": "0239",
-			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,8 +20,8 @@
 						"id": "N1",
 						"type": "CustomEvent",
 						"class": "K2Node_CustomEvent",
-						"title": "OnEnter",
-						"member_name": "None",
+						"member_parent": "BP_N2CGolden_GateMultiExec",
+						"member_name": "OnEnter",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -46,8 +40,8 @@
 						"id": "N2",
 						"type": "CustomEvent",
 						"class": "K2Node_CustomEvent",
-						"title": "OnOpen",
-						"member_name": "None",
+						"member_parent": "BP_N2CGolden_GateMultiExec",
+						"member_name": "OnOpen",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -66,8 +60,8 @@
 						"id": "N3",
 						"type": "CustomEvent",
 						"class": "K2Node_CustomEvent",
-						"title": "OnClose",
-						"member_name": "None",
+						"member_parent": "BP_N2CGolden_GateMultiExec",
+						"member_name": "OnClose",
 						"input_pins": [],
 						"output_pins": [
 							{
