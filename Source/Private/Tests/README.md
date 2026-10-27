@@ -89,7 +89,10 @@ check what it did. Use it for any new tool spec instead of a local copy:
   active tool set is registered for the call. `RunToolUnmarked` skips the mark, for a spec that compares the text
   byte for byte with what the tool builds (`NodeToCode.MCP.BlueprintByPath`). `InToolCall(lambda)` runs code that a
   tool would run (a tool's static helper) inside one call scope and returns the compiles. Arguments:
-  `TargetArgs(Blueprint, Graph)` (`blueprintPath` + `graphGuid`), `PinRef`, `ConnectArgs`.
+  `TargetArgs(Blueprint, Graph)` (`blueprintPath` + `graphGuid`), `PinRef`, `ConnectArgs`. A spec that calls
+  through `FN2CToolCatalog` or an `FN2CMcpProtocol` core builds and configures an `FN2CMcpToolManager` of its own
+  (`NodeToCode.MCP.StructuredOutput`, `NodeToCode.MCP.EpicOverlap`): the server's singleton serves only what an
+  earlier spec of the run left configured, so a spec that reads it passes or fails by test order.
 - **Results:** `ResultJson`, `ResultTarget`, `ResultCompile`, `IsMarkedUntrusted`; `ExpectResultTargets` checks the
   result names the intended Blueprint and graph, `ExpectToolCompiled` that it succeeded and its compile has no
   errors.
