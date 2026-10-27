@@ -5,7 +5,8 @@ Stdlib only; run with `python -I`. Used by mcp_probe.py, and usable on its own:
     python -I editor_session.py --engine G:/UE/UE_5.8 --project <host>.uproject --port 27150
 
 Launch form: UnrealEditor-Cmd.exe <project> -unattended -nullrhi -nosplash -nosound -NoLiveCoding -culture=en
--N2CMcp, without -ExecutePythonScript or -ExecCmds=Quit, keeps the editor running until it is told to stop.
+-N2CMcp -ddc=InstalledNoZenLocalFallback, with UE_SKIP_UBT_SDK_SETUP=1 in its environment (DDC_ARGS and STARTUP_ENV
+below, card 0495). Without -ExecutePythonScript or -ExecCmds=Quit the editor keeps running until it is told to stop.
 -N2CMcp is needed because the MCP server does not start in unattended runs otherwise.
 
 Settings: the plugin's own config file does not take -ini: command-line overrides, so for the length of the session
@@ -35,6 +36,28 @@ import urllib.request
 # probe Blueprint, probe_blueprint.py): on UE 5.6 under -nullrhi the Blueprint editor's window otherwise reaches
 # FGenericWindow::GetRestoredDimensions, which is Fatal. Pass as EditorSession(..., extra_args=BLUEPRINT_EDITOR_ARGS).
 BLUEPRINT_EDITOR_ARGS = ('-RenderOffScreen',)
+
+# Card 0495: every session runs apart from two machine-wide things that other editors and builds on this computer share.
+# build.ps1 gives its automation-test editor the same two settings (Invoke-Editor); keep them in step.
+#
+# -ddc=InstalledNoZenLocalFallback: the installed engines' default DDC graph has one writable node, the local Zen
+# server, which all of UE 5.6, 5.7 and 5.8 share (port 8558, %LOCALAPPDATA%/UnrealEngine/Common/Zen/Data). Each version
+# wants that server started with other arguments ([Zen.AutoLaunch] ExtraArgs), so a starting editor of one version shuts
+# down the server another version just launched (ZenServerInterface.cpp: "Found existing instance running on port 8558
+# with different run context, will attempt shut down"). An editor whose server is shut down between its launch and its
+# readiness check has no writable node and stops with DerivedDataBackends.cpp "Unable to use default cache graph
+# 'InstalledDerivedDataBackendGraph' because there are no writable nodes available" (lane-b's 5.6 and lane-c's 5.7 smoke
+# on 2026-10-26, each 2 ms after another lane's editor shut the server down). This graph, which BaseEngine.ini defines
+# in 5.6-5.8 and the engine's own message suggests, uses the per-user file-system cache instead, so the session neither
+# needs that server nor shuts down anyone else's.
+DDC_ARGS = ('-ddc=InstalledNoZenLocalFallback',)
+# UE_SKIP_UBT_SDK_SETUP=1: a UE 5.8 editor with AutoSDK off runs Build.bat -Mode=ValidatePlatforms at startup and waits
+# for it without a timeout (TargetPlatformManagerModule.cpp, LaunchUBTValidatePlatformsProc and SDKSetup). Build.bat
+# takes a machine-wide lock (%TMP%/<Build.bat path>.lock), so while any other UE 5.8 build runs (another lane's
+# build.ps1) the editor stops in early init, its log ending at TurnkeySupport after "Build.bat is already running,
+# waiting for existing script to terminate..." (lane-b's 5.8 smoke, 2026-10-26, past the 240 s start timeout). 5.8 reads
+# this variable (NeedsToRunSetupPlatformsUBT) and skips the call; 5.6 and 5.7 do not run UBT at startup with AutoSDK off.
+STARTUP_ENV = {'UE_SKIP_UBT_SDK_SETUP': '1'}
 
 
 def find_editor(engine_root):
@@ -174,8 +197,15 @@ class EditorSession:
 
     def args(self):
         a = [self.exe, self.project, '-unattended', '-nullrhi', '-nosplash', '-nosound', '-NoLiveCoding',
-             '-culture=en', '-stdout', '-FullStdOutLogOutput', '-N2CMcp']
+             '-culture=en', '-stdout', '-FullStdOutLogOutput', '-N2CMcp'] + list(DDC_ARGS)
         return a + self.extra_args
+
+    def env(self):
+        """The editor's environment: this process's, plus STARTUP_ENV, plus extra_env"""
+        env = dict(os.environ)
+        env.update(STARTUP_ENV)
+        env.update(self.extra_env)
+        return env
 
     def _saved_config_dir(self):
         platform = 'WindowsEditor' if os.name == 'nt' else 'MacEditor'
@@ -223,11 +253,7 @@ class EditorSession:
             self._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]',
                         'bAllowMcpPythonExecution', 'True' if self.allow_python else 'False')
         self.log = open(self.log_path, 'wb')
-        env = None
-        if self.extra_env:
-            env = dict(os.environ)
-            env.update(self.extra_env)
-        self.proc = subprocess.Popen(self.args(), stdout=self.log, stderr=subprocess.STDOUT, env=env)
+        self.proc = subprocess.Popen(self.args(), stdout=self.log, stderr=subprocess.STDOUT, env=self.env())
         self._job = kill_with_parent(self.proc)
         deadline = time.time() + timeout
         while time.time() < deadline:
