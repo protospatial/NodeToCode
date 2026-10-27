@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpSetInputPinValueTool.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -174,14 +175,10 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
 
         // Show notification
-        FNotificationInfo Info(FText::Format(
+        FN2CMcpNotification::Show(FText::Format(
             LOCTEXT("PinValueSet", "Set value on pin '{0}'"),
             FText::FromString(TargetPin->GetDisplayName().ToString())
-        ));
-        Info.ExpireDuration = 2.0f;
-        Info.bFireAndForget = true;
-        Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
-        FSlateNotificationManager::Get().AddNotification(Info);
+        ), true, 2.0f);
 
         // Build result JSON: newValue is what the pin now holds, read back
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);

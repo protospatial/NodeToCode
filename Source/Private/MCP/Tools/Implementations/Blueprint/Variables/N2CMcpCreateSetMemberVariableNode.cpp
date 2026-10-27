@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpCreateSetMemberVariableNode.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
@@ -112,14 +113,10 @@ FMcpToolCallResult FN2CMcpCreateSetMemberVariableNode::Execute(const TSharedPtr<
             return FMcpToolCallResult::CreateErrorResult(Error);
         }
 
-        FNotificationInfo Info(FText::Format(
+        FN2CMcpNotification::Show(FText::Format(
             NSLOCTEXT("NodeToCode", "SetNodeCreated", "Created Set node for variable '{0}'"),
             FText::FromString(VariableName)
         ));
-        Info.ExpireDuration = 3.0f;
-        Info.bFireAndForget = true;
-        Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
-        FSlateNotificationManager::Get().AddNotification(Info);
 
         FString ResultJson;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);

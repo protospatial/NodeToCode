@@ -3,26 +3,17 @@
 #include "N2CMcpAddBlueprintNodeTool.h"
 #include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
-#include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpNodeActions.h"
-#include "Core/N2CCapture.h"
-#include "Core/N2CSerializer.h"
 #include "Utils/N2CLogger.h"
-#include "BlueprintActionFilter.h"
 #include "BlueprintActionMenuBuilder.h"
-#include "Framework/Application/SlateApplication.h"
-#include "Kismet2/BlueprintEditorUtils.h"
-#include "K2Node.h"
-#include "EdGraphSchema_K2.h"
-#include "Engine/BlueprintGeneratedClass.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraph.h"
-#include "BlueprintEditor.h"
-#include "BlueprintEditorModule.h"
-#include "Kismet2/KismetEditorUtilities.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 // Register the tool
 REGISTER_MCP_TOOL(FN2CMcpAddBlueprintNodeTool)
@@ -247,22 +238,4 @@ bool FN2CMcpAddBlueprintNodeTool::FindAndSpawnNode(
         SpawnedNode->NodePosX, SpawnedNode->NodePosY), EN2CLogSeverity::Debug);
 
     return true;
-}
-
-TSharedPtr<FJsonObject> FN2CMcpAddBlueprintNodeTool::ConvertSpawnedNodeToJson(UK2Node* Node)
-{
-    if (!Node)
-    {
-        return nullptr;
-    }
-    
-    // Describe the node on its own (a fresh capture context; no other capture is read or changed)
-    const TValueOrError<FN2CNodeDefinition, FString> NodeDef = N2C::DescribeNode(*Node);
-    if (NodeDef.HasError())
-    {
-        return nullptr;
-    }
-    
-    // Convert to JSON
-    return FN2CSerializer::NodeToJsonObject(NodeDef.GetValue());
 }

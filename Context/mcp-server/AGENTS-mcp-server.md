@@ -101,6 +101,7 @@ Source/
     │   ├── N2CMcpGraphTarget.h/.cpp      # FN2CGraphTarget: the graph a Graph/Functions tool acts on (card 0152)
     │   ├── N2CMcpNodeDeletion.h/.cpp     # N2CNodeDeletion: delete nodes as the editor does, bridging links (card 0279)
     │   ├── N2CMcpNodeSpawnUtils.h/.cpp   # FN2CMcpNodeSpawn: variable and comment nodes the engine way (card 0155)
+    │   ├── N2CMcpNotification.h/.cpp     # FN2CMcpNotification: the Blueprint tools' editor toast (card 0295)
     │   ├── N2CMcpPinDefaultUtils.h/.cpp  # FN2CMcpPinDefault: pin default writes checked by the K2 schema (card 0278)
     │   ├── N2CMcpTagUtils.h/.cpp
     │   ├── N2CMcpTypeResolver.h/.cpp
@@ -432,6 +433,8 @@ Common utilities shared across MCP tools:
 *   **`N2CMcpNodeSpawnUtils`**: `FN2CMcpNodeSpawn`, which makes variable Get/Set nodes through
     `UBlueprintVariableNodeSpawner` and comment nodes through the schema's template path (a GUID, `RF_Transactional`,
     one set of pins, one transaction), and the node result fields add-bp-node-to-active-graph returns (card 0155)
+*   **`N2CMcpNotification`**: `FN2CMcpNotification::Show`, the fire-and-forget editor toast the Blueprint tools
+    show after an edit, with `Icons.SuccessWithColor` or `Icons.ErrorWithColor` from `FAppStyle` (card 0295)
 *   **`N2CMcpPinDefaultUtils`**: `FN2CMcpPinDefault`, which writes an input pin's default the way the editor does:
     normalizes the value (booleans, enum names, display names and indices), runs the K2 schema's own check before the
     node is touched and returns its reason on a refusal, resets on an empty value, and reads the result back. Used by

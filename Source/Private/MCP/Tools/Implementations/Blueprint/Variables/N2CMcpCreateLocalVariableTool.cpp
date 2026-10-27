@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpCreateLocalVariableTool.h"
+#include "MCP/Utils/N2CMcpNotification.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
@@ -165,14 +166,10 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		}
 
 		// Show notification
-		FNotificationInfo Info(FText::Format(
+		FN2CMcpNotification::Show(FText::Format(
 			LOCTEXT("LocalVariableCreated", "Local variable '{0}' created successfully"),
 			FText::FromName(ActualVariableName)
 		));
-		Info.ExpireDuration = 3.0f;
-		Info.bFireAndForget = true;
-		Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
-		FSlateNotificationManager::Get().AddNotification(Info);
 
 		// Build and return success result
 		UK2Node_FunctionEntry* FunctionEntry = FN2CMcpVariableUtils::FindFunctionEntryNode(FunctionGraph);

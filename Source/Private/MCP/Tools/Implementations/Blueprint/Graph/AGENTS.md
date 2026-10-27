@@ -22,8 +22,9 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0276 (connect-pins: replace and conversion links), 0295 (missing notification
-  brushes, dead code).
+- **Fix cards still owed here:** 0276 (connect-pins: replace and conversion links). 0295 is done: the toasts use
+  `FN2CMcpNotification` (`MCP/Utils/N2CMcpNotification.h`), and add-bp-node-to-active-graph's unused
+  `ConvertSpawnedNodeToJson` and includes are gone.
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.
