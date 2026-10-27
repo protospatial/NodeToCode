@@ -1,19 +1,19 @@
 {
   "shots": {
     "main-window/tag-manager.png": {
-      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+      "commit": "3cd456b801e8f85a69cd66d8c79d27b50ce3fe92"
     },
     "main-window/translation-viewer.png": {
-      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+      "commit": "3cd456b801e8f85a69cd66d8c79d27b50ce3fe92"
     },
     "settings/code-generation.png": {
-      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+      "commit": "3cd456b801e8f85a69cd66d8c79d27b50ce3fe92"
     },
     "settings/llm-provider.png": {
-      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+      "commit": "3cd456b801e8f85a69cd66d8c79d27b50ce3fe92"
     },
     "translate-entry/graph-overlay.png": {
-      "commit": "2a48d09bdf15e852521bde9f19310ae2f9837bc9"
+      "commit": "3cd456b801e8f85a69cd66d8c79d27b50ce3fe92"
     }
   }
 }
