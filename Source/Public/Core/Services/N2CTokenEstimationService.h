@@ -22,6 +22,25 @@ struct FN2CTokenEstimate
 };
 
 /**
+ * What translating some graphs would cost (card 0220): every request sends the system prompt for the target language
+ * and the reference files besides the graph's N2C JSON, and the reply is priced at the output rate.
+ */
+struct FN2CCostEstimate
+{
+	/** Graph JSON plus, per request, the system prompt and reference files */
+	int32 InputTokens = 0;
+
+	/** Expected reply: about the graph JSON's size (ExpectedOutputRatio), at most the model's output limit per request */
+	int32 OutputTokens = 0;
+
+	/** USD at the selected model's input and output prices (0 for a local provider) */
+	float InputCost = 0.0f;
+	float OutputCost = 0.0f;
+
+	float GetTotal() const { return InputCost + OutputCost; }
+};
+
+/**
  * A cached estimate. It stays valid while its Blueprint's change counter and the Translation Depth it was taken at
  * are unchanged (and, when the capture took in graphs from other Blueprints, while no Blueprint was compiled since).
  */
@@ -55,7 +74,7 @@ struct FN2CTokenCacheEntry
  * Key features:
  * - Caches one capture-based estimate per graph; a graph edit or compile of its Blueprint makes it stale
  * - Tracks current model info (context window, cost, etc.)
- * - Applies 65% rule: usable context = advertised context * 0.65
+ * - Applies the usable-context rule: usable context = advertised context * ContextWindowFactor (0.45)
  * - Broadcasts notifications for UI updates
  */
 class NODETOCODE_API FN2CTokenEstimationService
@@ -123,7 +142,7 @@ public:
 	 */
 	void InvalidateAllCache();
 
-	// ==================== Model Info (65% rule applied) ====================
+	// ==================== Model Info (usable-context rule applied) ====================
 
 	/**
 	 * Get the current model's display name
@@ -131,7 +150,7 @@ public:
 	FString GetCurrentModelName() const { return CachedModelName; }
 
 	/**
-	 * Get the usable context window size (ContextWindow * 0.65)
+	 * Get the usable context window size (ContextWindow * ContextWindowFactor, 0.45)
 	 * The advertised context window is not fully usable for input
 	 */
 	int32 GetUsableContextWindow() const { return CachedUsableContextWindow; }
@@ -151,12 +170,39 @@ public:
 	 */
 	bool IsLocalProvider() const { return bCachedIsLocal; }
 
+	/** The output price per 1M tokens of the selected model (0 for a local provider) */
+	float GetOutputCostPer1M() const { return CachedOutputCostPer1M; }
+
 	/**
-	 * Calculate the estimated cost for a token count
-	 * @param TokenCount The number of tokens
-	 * @return Estimated cost in USD
+	 * Tokens every translation request sends besides the graph: the system prompt for the target language and the
+	 * reference source files (card 0220). Refreshed with the model info.
+	 */
+	int32 GetRequestOverheadTokens() const { return CachedRequestOverheadTokens; }
+
+	/**
+	 * Input and output tokens and their price for graphs whose N2C JSON comes to GraphTokens, sent as RequestCount
+	 * requests (one per graph in a batch): each request carries GetRequestOverheadTokens, and the reply is about the
+	 * graph's size (ExpectedOutputRatio), capped at the model's output limit per request.
+	 */
+	FN2CCostEstimate EstimateCost(int32 GraphTokens, int32 RequestCount = 1) const;
+
+	/**
+	 * The estimated cost in USD of translating one graph whose N2C JSON comes to TokenCount tokens: input with the
+	 * request overhead, plus the expected output (EstimateCost(TokenCount).GetTotal())
 	 */
 	float CalculateCost(int32 TokenCount) const;
+
+	/** One request's prompt (graph plus overhead) as a share of the usable context window; can exceed 1 */
+	float GetContextUsage(int32 GraphTokens) const;
+
+	/**
+	 * Whether one request's prompt (graph plus overhead) is larger than the full context window: a local server
+	 * (Ollama with Context Window set) would cut it without an error
+	 */
+	bool IsOverContext(int32 GraphTokens) const;
+
+	/** The expected reply size as a share of the graph JSON's tokens */
+	static constexpr float ExpectedOutputRatio = 1.0f;
 
 	/**
 	 * Force refresh of model information from settings
@@ -268,7 +314,13 @@ private:
 	int32 CachedFullContextWindow = 0;
 	int32 CachedUsableContextWindow = 0;
 	float CachedInputCostPer1M = 0.0f;
+	float CachedOutputCostPer1M = 0.0f;
+	int32 CachedMaxOutputTokens = 0;
+	int32 CachedRequestOverheadTokens = 0;
 	bool bCachedIsLocal = false;
+
+	/** The system prompt for the target language and the reference files, in tokens */
+	static int32 ComputeRequestOverheadTokens();
 
 	// Delegate handles
 	FDelegateHandle SettingsChangedHandle;

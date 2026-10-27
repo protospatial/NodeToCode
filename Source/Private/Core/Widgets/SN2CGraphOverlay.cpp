@@ -966,10 +966,8 @@ void SN2CGraphOverlay::RefreshTokenEstimate()
 	CachedNestedGraphCount = Estimate.NestedGraphCount;
 	bEstimateValid = Estimate.bValid;
 
-	int32 UsableContext = Service.GetUsableContextWindow();
-	CachedContextUsagePercent = UsableContext > 0
-		? FMath::Clamp(static_cast<float>(CachedTokenCount) / UsableContext, 0.0f, 1.0f)
-		: 0.0f;
+	// The request sends the system prompt and reference files too (card 0220)
+	CachedContextUsagePercent = FMath::Clamp(Service.GetContextUsage(CachedTokenCount), 0.0f, 1.0f);
 
 	CachedEstimatedCost = Service.CalculateCost(CachedTokenCount);
 }

@@ -145,6 +145,12 @@ Cost estimates use each model's list price. To use your own (a discount, or a **
 under **LLM Services → Pricing → Model Price Overrides**: the key is the model ID, the value the input and output
 price in USD per million tokens. Ollama and LM Studio are always free.
 
+An estimate counts what each request sends: the graph's N2C JSON plus the system prompt for the target language and
+your reference files (a batch sends those once per graph). The reply is priced at the output price, as about the
+graph's size and at most the model's output limit. The batch panel shows the total with its input and output parts,
+and follows a price, model or provider change at once. The context bar compares the graph plus that prompt with the
+model's usable context window.
+
 ## Subscription sign-in removed in 2.0
 
 Every cloud provider (Anthropic, OpenAI, Gemini, DeepSeek) needs its **API Key**; Ollama and LM Studio need

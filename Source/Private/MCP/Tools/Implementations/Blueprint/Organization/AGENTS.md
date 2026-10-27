@@ -8,22 +8,24 @@ graph's translation and JSON export.
 ## Available Tools
 
 ### tag-blueprint-graph
-- **Description**: Tags the focused graph of the active Blueprint editor (`FN2CMcpBlueprintUtils::GetFocusedEditorGraph`)
-  under its `GraphGuid` (`FN2CMcpTagBlueprintGraphTool::Execute`)
+- **Description**: Tags a graph under its `GraphGuid` (`FN2CMcpTagBlueprintGraphTool::Execute`): the one
+  `blueprintPath` plus `graphName` or `graphGuid` name, else the focused graph of the active Blueprint editor
+  (`FN2CGraphTarget::Resolve`, card 0274; a read-only graph can be tagged). The result has `target`
 - **Parameters**:
   - `tag` (required, not empty): The tag name
   - `category` (optional, default `Default`): Grouping. An empty or blank category is stored as `Default`
     (`FN2CTagEntry::NormalizeCategory`, also applied by `UN2CGraphStateManager::AddTag` for every caller)
   - `description` (optional): Free text
+  - `blueprintPath`, `graphName`, `graphGuid` (optional): The graph to tag, as for the Graph tools
 - **Returns**: `success`, `message` (`Successfully tagged EventGraph with 'PlayerMovement'`) and `taggedGraph` (`tag`,
   `category`, `description`, `graphGuid` (hyphenated), `graphName`, `blueprintPath`, `timestamp` (UTC, ISO 8601))
 - **Duplicates**: a tag with the same name and category, compared case-insensitively with no wildcard
   (`FN2CTagEntry::MatchesTagExactly`), is not added again and the call still succeeds. The `taggedGraph` it returns
   echoes the request (`playermovement` / `feature`, a new timestamp), not the stored tag, which keeps its first
   spelling and timestamp. The same name in another category is a separate tag
-- **Errors**: `Missing required parameter: tag` (missing or empty), `NO_FOCUSED_GRAPH: ...`,
+- **Errors**: `Missing required parameter: tag` (missing or empty), the resolver's `NO_FOCUSED_GRAPH`, `ASSET_NOT_FOUND`,
+  `GRAPH_NOT_FOUND` and `AMBIGUOUS_GRAPH_NAME`,
   `Current graph is not valid for tagging` (a graph without a `GraphGuid`), `Failed to persist tag`
-- **Known issue (card 0274):** only the focused graph can be tagged
 
 ### list-blueprint-tags
 - **Description**: Lists stored tags (read-only, `readOnlyHint`; results marked as untrusted content, card 0124:

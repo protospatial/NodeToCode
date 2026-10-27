@@ -9,9 +9,6 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/UserDefinedEnum.h"
 #include "StructUtils/UserDefinedStruct.h"
-#include "BlueprintEditorModule.h"
-#include "BlueprintEditor.h"
-#include "Core/N2CBlueprintEditorTracker.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node.h"
 #include "EdGraphSchema_K2.h"
@@ -252,12 +249,7 @@ FMcpToolCallResult FN2CMcpSearchVariableTypesTool::Execute(const TSharedPtr<FJso
 {
 	return ExecuteOnGameThread([this, Arguments]() -> FMcpToolCallResult
 	{
-		// The same focused Blueprint editor every focus-based tool uses (card 0150)
-		const TSharedPtr<FBlueprintEditor> BlueprintEditor = FN2CBlueprintEditorTracker::Get().GetFocusedEditor();
-		if (!BlueprintEditor.IsValid())
-		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("No active Blueprint editor found"));
-		}
+		// Searches types only: no Blueprint editor needs to be open (card 0274, imp-mcp-tools-variables-4)
 
 		// Parse arguments
 		FN2CMcpArgumentParser ArgParser(Arguments);

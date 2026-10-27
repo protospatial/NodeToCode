@@ -21,7 +21,7 @@ FMcpToolDefinition FN2CMcpCreateSetLocalFunctionVariableNode::GetDefinition() co
 {
     FMcpToolDefinition Definition(
         TEXT("create-set-local-function-variable-node"),
-        TEXT("Create a Set node for a local function variable in the currently focused Blueprint graph")
+        TEXT("Create a Set node for a local function variable in a Blueprint function graph: the one blueprintPath plus graphName or graphGuid name, else the focused graph")
     ,
 
     	N2CMcpToolsets::BlueprintVariable
@@ -40,6 +40,8 @@ FMcpToolDefinition FN2CMcpCreateSetLocalFunctionVariableNode::GetDefinition() co
     
     Definition.InputSchema = BuildInputSchema(Properties, Required);
     
+    FN2CGraphTarget::AddSchemaProperties(Definition);
+
     // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
     SetStrictArguments(Definition);
 
@@ -60,9 +62,10 @@ FMcpToolCallResult FN2CMcpCreateSetLocalFunctionVariableNode::Execute(const TSha
         const FVector2D Location(Parser.GetOptionalNumber(TEXT("x"), 0.0), Parser.GetOptionalNumber(TEXT("y"), 0.0));
         const FString InputPinValue = Parser.GetOptionalString(TEXT("inputPinValue"));
 
-        // The focused graph through the shared resolver (no target arguments, card 0140); read-only graphs are refused.
+        // The graph blueprintPath / graphName / graphGuid name, else the focused one, through the shared
+        // resolver (card 0274); read-only graphs are refused.
         // A collapsed graph inside a function counts as that function (card 0155)
-        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
         if (!Target.IsValid())
         {
             return FMcpToolCallResult::CreateErrorResult(Target.Error);
@@ -75,7 +78,7 @@ FMcpToolCallResult FN2CMcpCreateSetLocalFunctionVariableNode::Execute(const TSha
             VariableName, /*bSet*/ true, Location, InputPinValue, Error);
         if (!Result.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(Error);
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(Error));
         }
 
         FN2CMcpNotification::Show(FText::Format(
@@ -86,6 +89,6 @@ FMcpToolCallResult FN2CMcpCreateSetLocalFunctionVariableNode::Execute(const TSha
         FString OutputString;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
-        return FMcpToolCallResult::CreateTextResult(OutputString);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(OutputString));
     });
 }
