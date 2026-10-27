@@ -33,6 +33,21 @@ void SN2CCodeEditor::Construct(const FArguments& InArgs)
         .Thickness(FVector2D(6.0f, 6.0f));
 
     RebuildEditor(InArgs._Text);
+
+    // A theme color edited in Project Settings applies to this open editor at once (card 0490)
+    ThemeChangedHandle = FN2CCodeEditorStyle::OnThemeChanged().AddSP(this, &SN2CCodeEditor::HandleThemeChanged);
+}
+
+SN2CCodeEditor::~SN2CCodeEditor()
+{
+    FN2CCodeEditorStyle::OnThemeChanged().Remove(ThemeChangedHandle);
+}
+
+void SN2CCodeEditor::HandleThemeChanged()
+{
+    // The highlighter's run styles and TextStyle are copies of the old theme: build them again, keeping the text,
+    // the cursor, the language (or JSON), the font size, the tab size and word wrap
+    RebuildEditor();
 }
 
 void SN2CCodeEditor::RebuildEditor(TOptional<TAttribute<FText>> InitialText)

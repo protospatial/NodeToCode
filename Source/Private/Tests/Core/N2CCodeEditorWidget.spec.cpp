@@ -13,6 +13,8 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Text/SlateTextLayout.h"
 #include "Tests/N2CTestHelpers.h"
+#include "Core/N2CSettings.h"
+#include "Misc/ScopeExit.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/Layout/SBox.h"
@@ -39,6 +41,9 @@ N2C_TEST_PRIVATE_MEMBER(FN2CCodeEditorSpecCursorDelegate, SN2CCodeEditor::FOnCur
 	&SN2CCodeEditor::OnCursorMovedDelegate)
 N2C_TEST_PRIVATE_MEMBER(FN2CCodeEditorSpecSelectionDelegate, SN2CCodeEditor::FOnSelectionChanged SN2CCodeEditor::*,
 	&SN2CCodeEditor::OnSelectionChangedDelegate)
+// The run styles a highlighter copied when it was built (card 0490)
+N2C_TEST_PRIVATE_MEMBER(FN2CCodeEditorSpecSyntaxStyle, FN2CRichTextSyntaxHighlighter::FSyntaxTextStyle FN2CRichTextSyntaxHighlighter::*,
+	&FN2CRichTextSyntaxHighlighter::SyntaxTextStyle)
 
 /**
  * SN2CCodeEditor's setters and the UMG wrapper's events (card 0264). Before, the tab size never reached the
@@ -218,6 +223,48 @@ void FN2CCodeEditorWidgetSpec::Define()
 			Editor->InsertTextAtCursor(TEXT("zero "));
 			TestTrue(TEXT("typing reports a change"), TextChanges > 0);
 			TestEqual(TEXT("with the new text"), LastText.Replace(TEXT("\r\n"), TEXT("\n")),FString(TEXT("zero one\ntwo\nthree")));
+		});
+	});
+
+	Describe(TEXT("Theme edits"), [this]()
+	{
+		// Card 0490: a Code Editor Theme color changed in Project Settings (UN2CSettings::PostEditChangeProperty calls
+		// FN2CCodeEditorStyle::Reinitialize) left an open editor's highlighter with the old colors until it was reopened
+		It(TEXT("reach an open editor's highlighting at once, keeping its text"), [this]()
+		{
+			if (!SlateReady())
+			{
+				return;
+			}
+			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+			FN2CCodeEditorColors* Colors = Settings->CodeEditorTheme.Themes.Find(TEXT("Unreal Engine"));
+			if (!TestNotNull(TEXT("the Unreal Engine theme"), Colors))
+			{
+				return;
+			}
+			const FColor SavedStrings = Colors->Strings;
+			ON_SCOPE_EXIT
+			{
+				if (FN2CCodeEditorColors* Restore = GetMutableDefault<UN2CSettings>()->CodeEditorTheme.Themes.Find(TEXT("Unreal Engine")))
+				{
+					Restore->Strings = SavedStrings;
+				}
+				FN2CCodeEditorStyle::Reinitialize();
+			};
+
+			const FText Source = FText::FromString(TEXT("FString Name = TEXT(\"door\");"));
+			const TSharedRef<SN2CCodeEditor> Editor = SNew(SN2CCodeEditor).Language(EN2CCodeLanguage::Cpp).Text(Source);
+			const FColor NewStrings(255, 0, 0, 255);
+			Colors->Strings = NewStrings;
+			FN2CCodeEditorStyle::Reinitialize();
+
+			const TSharedPtr<FN2CRichTextSyntaxHighlighter> Highlighter = (*Editor).*N2CTest::GetPrivateMember(N2CTest::FN2CCodeEditorSpecHighlighter());
+			if (TestTrue(TEXT("the editor has a highlighter"), Highlighter.IsValid()))
+			{
+				const FN2CRichTextSyntaxHighlighter::FSyntaxTextStyle& Styles = (*Highlighter).*N2CTest::GetPrivateMember(N2CTest::FN2CCodeEditorSpecSyntaxStyle());
+				TestEqual(TEXT("strings use the new color"), Styles.StringTextStyle.ColorAndOpacity.GetSpecifiedColor(), FLinearColor(NewStrings));
+			}
+			TestEqual(TEXT("the text is kept"), Editor->GetText().ToString(), Source.ToString());
 		});
 	});
 
