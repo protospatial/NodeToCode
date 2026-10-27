@@ -34,6 +34,16 @@ After translation completes, you'll see the code appear within the Node to Code 
 </p>
 
 
+## Tags and the graph list
+
+The NodeToCode window lists tag categories and tags on the left, each with the number of graphs it holds. Select a
+category to list its graphs, or a tag to list the graphs that have it. A graph is listed once however many of the
+category's tags it has; hover its name to see them, and Select All with Batch Translate translates it once. The search
+box lists the graphs whose name, Blueprint, tag or category matches what you type; select a category or tag during a
+search to narrow it. The header above the list says what it shows, and an empty list says why (for example
+`No graphs match "foo".`). Your selection in the tree and the graphs you checked stay as they are when tags change
+or a batch finishes, so **View** on a new translation is one click away.
+
 ## Reviewing the Translation
 
 When examining the results:

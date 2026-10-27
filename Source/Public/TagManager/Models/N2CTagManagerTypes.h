@@ -89,8 +89,11 @@ struct FN2CTreeItem : public TSharedFromThis<FN2CTreeItem>
  */
 struct FN2CGraphListItem : public TSharedFromThis<FN2CGraphListItem>
 {
-	/** Tag information for this graph */
+	/** Tag information for this graph (its first tag in this view) */
 	FN2CTagInfo TagInfo;
+
+	/** Every tag that put this graph in the view, one entry per tag: a graph is listed once (card 0266) */
+	TArray<FN2CTagInfo> Tags;
 
 	/** Translation status */
 	EN2CGraphTranslationStatus Status;

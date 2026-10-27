@@ -427,7 +427,8 @@ void SN2CMainWindow::HandleExportJsonRequested()
 
 void SN2CMainWindow::HandleRemoveSelectedRequested()
 {
-	TArray<FN2CTagInfo> SelectedGraphs = GetSelectedGraphs();
+	// A row lists its graph once with every tag that put it in the view (a category or search view): remove them all
+	TArray<FN2CTagInfo> SelectedGraphs = TagManager.IsValid() ? TagManager->GetSelectedTagEntries() : TArray<FN2CTagInfo>();
 	if (SelectedGraphs.Num() == 0)
 	{
 		return;

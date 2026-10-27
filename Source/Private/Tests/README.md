@@ -214,6 +214,16 @@ known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN
   in a windowed editor: `UnrealEditor.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode.Windowed"
   -TestExit="Automation Test Queue Empty"` (its MCP server takes the settings' port, 27000 by default). The headless version of
   the focus rules is `NodeToCode.Editor.Focus` (UE 5.8).
+- `NodeToCode.UI.TagManager` (`Core/N2CTagManagerUI.spec.cpp`, card 0266) builds a headless `SN2CTagManager` whose
+  `TagSource` argument returns an in-memory list of (graph, tag) pairs, so no graph state is read or written. It
+  ticks the tree's `STreeView` by hand (where the tree drops a selected item it no longer holds) and checks the
+  following:
+  - A graph with two tags in one category is listed once, both in the category view and in the search results.
+  - Select All gives each graph once.
+  - The selected tag is still selected, and its graphs are still listed, after `RefreshData`, after a search, and
+    after the search is cleared.
+  - Checked graphs stay checked when the same view is refreshed.
+  - The header names the view, and an empty list says why.
 
 ## Secrets, settings migration and StructUtils
 
