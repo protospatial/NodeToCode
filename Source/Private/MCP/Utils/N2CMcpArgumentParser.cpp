@@ -1,6 +1,7 @@
 // Copyright Protospatial 2025. All Rights Reserved.
 
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "Kismet2/Kismet2NameValidators.h"
 
 FN2CMcpArgumentParser::FN2CMcpArgumentParser(const TSharedPtr<FJsonObject>& InArguments)
     : ArgumentsJson(InArguments)
@@ -29,11 +30,14 @@ bool FN2CMcpArgumentParser::TryGetRequiredString(const FString& FieldName, FStri
         OutErrorMsg = FString::Printf(TEXT("Missing required field: %s"), *FieldName);
         return false;
     }
-    if (!ArgumentsJson->TryGetStringField(FieldName, OutValue))
+    // Only a JSON string: TryGetStringField would also turn a number or bool into text
+    const TSharedPtr<FJsonValue> Value = ArgumentsJson->TryGetField(FieldName);
+    if (!Value.IsValid() || Value->Type != EJson::String)
     {
         OutErrorMsg = FString::Printf(TEXT("Field '%s' must be a string."), *FieldName);
         return false;
     }
+    OutValue = Value->AsString();
     if (!bAllowEmpty && OutValue.IsEmpty())
     {
         OutErrorMsg = FString::Printf(TEXT("Field '%s' cannot be empty."), *FieldName);
@@ -55,6 +59,83 @@ bool FN2CMcpArgumentParser::TryGetRequiredName(const FString& FieldName, FString
         return false;
     }
     return true;
+}
+
+bool FN2CMcpArgumentParser::TryGetRequiredIdentifier(const FString& FieldName, FString& OutValue, FString& OutErrorMsg)
+{
+    return TryGetRequiredString(FieldName, OutValue, OutErrorMsg) && ValidateIdentifier(FieldName, OutValue, OutErrorMsg);
+}
+
+bool FN2CMcpArgumentParser::ValidateIdentifier(const FString& FieldName, const FString& Value, FString& OutErrorMsg)
+{
+    // FKismetNameValidator::IsValid(FString) and IsValid(FName), less the Blueprint's taken names
+    const int32 MaxLength = FKismetNameValidator::GetMaximumNameLength();
+    if (Value.IsEmpty() || FName(*Value.Left(MaxLength + 1)) == NAME_None)
+    {
+        OutErrorMsg = FString::Printf(TEXT("INVALID_ARGUMENT: Field '%s' must be a name; empty and 'None' are not names."), *FieldName);
+        return false;
+    }
+    if (Value.Len() > MaxLength)
+    {
+        OutErrorMsg = FString::Printf(TEXT("INVALID_ARGUMENT: Field '%s' is %d characters long; Blueprint names are limited to %d characters."),
+            *FieldName, Value.Len(), MaxLength);
+        return false;
+    }
+    if (!FName::IsValidXName(Value, UE_BLUEPRINT_INVALID_NAME_CHARACTERS))
+    {
+        OutErrorMsg = FString::Printf(TEXT("INVALID_ARGUMENT: Field '%s' ('%s') contains a character Blueprint names cannot hold: %s"),
+            *FieldName, *Value, UE_BLUEPRINT_INVALID_NAME_CHARACTERS);
+        return false;
+    }
+    return true;
+}
+
+bool FN2CMcpArgumentParser::TryGetOptionalEnum(const FString& FieldName, const TArray<FString>& AllowedValues,
+    const FString& DefaultValue, FString& OutValue, FString& OutErrorMsg) const
+{
+    const TSharedPtr<FJsonValue> Value = ArgumentsJson.IsValid() ? ArgumentsJson->TryGetField(FieldName) : nullptr;
+    if (!Value.IsValid() || Value->Type == EJson::Null || Value->Type == EJson::None)
+    {
+        OutValue = DefaultValue;
+        return true;
+    }
+    if (Value->Type == EJson::String)
+    {
+        const FString Given = Value->AsString();
+        for (const FString& Allowed : AllowedValues)
+        {
+            if (Allowed.Equals(Given, ESearchCase::IgnoreCase))
+            {
+                OutValue = Allowed;
+                return true;
+            }
+        }
+        OutErrorMsg = FString::Printf(TEXT("INVALID_ARGUMENT: Field '%s' is '%s'; valid values: %s."),
+            *FieldName, *Given, *FString::Join(AllowedValues, TEXT(", ")));
+        return false;
+    }
+    OutErrorMsg = FString::Printf(TEXT("INVALID_ARGUMENT: Field '%s' must be a string, one of: %s."),
+        *FieldName, *FString::Join(AllowedValues, TEXT(", ")));
+    return false;
+}
+
+TArray<FString> FN2CMcpArgumentParser::FindUnknownFields(const TSharedPtr<FJsonObject>& Arguments, const TSharedPtr<FJsonObject>& InputSchema)
+{
+    TArray<FString> Unknown;
+    const TSharedPtr<FJsonObject>* Properties = nullptr;
+    if (!Arguments.IsValid() || !InputSchema.IsValid())
+    {
+        return Unknown;
+    }
+    InputSchema->TryGetObjectField(TEXT("properties"), Properties);
+    for (const TPair<FString, TSharedPtr<FJsonValue>>& Argument : Arguments->Values)
+    {
+        if (!Properties || !(*Properties).IsValid() || !(*Properties)->HasField(Argument.Key))
+        {
+            Unknown.Add(Argument.Key);
+        }
+    }
+    return Unknown;
 }
 
 FString FN2CMcpArgumentParser::GetOptionalString(const FString& FieldName, const FString& DefaultValue) const

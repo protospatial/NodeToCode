@@ -115,6 +115,9 @@ FMcpToolDefinition FN2CMcpCreateVariableTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
+	// Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+	SetStrictArguments(Definition);
+
 	return Definition;
 }
 
@@ -127,7 +130,7 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		FN2CMcpArgumentParser ArgParser(Arguments);
 		FString ErrorMsg;
 
-		if (!ArgParser.TryGetRequiredName(TEXT("variableName"), Settings.VariableName, ErrorMsg))
+		if (!ArgParser.TryGetRequiredIdentifier(TEXT("variableName"), Settings.VariableName, ErrorMsg))
 		{
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
@@ -143,11 +146,19 @@ FMcpToolCallResult FN2CMcpCreateVariableTool::Execute(const TSharedPtr<FJsonObje
 		Settings.bInstanceEditable = ArgParser.GetOptionalBool(TEXT("isInstanceEditable"), false);
 		Settings.bBlueprintReadOnly = ArgParser.GetOptionalBool(TEXT("isBlueprintReadOnly"), false);
 		Settings.Tooltip = ArgParser.GetOptionalString(TEXT("tooltip"));
-		Settings.ReplicationCondition = ArgParser.GetOptionalString(TEXT("replicationCondition"), TEXT("none"));
+		// Any case; an unknown value is refused here, before the Blueprint is touched (card 0194)
+		static const TArray<FString> ReplicationConditions = { TEXT("none"), TEXT("replicated"), TEXT("repnotify") };
+		if (!ArgParser.TryGetOptionalEnum(TEXT("replicationCondition"), ReplicationConditions, TEXT("none"), Settings.ReplicationCondition, ErrorMsg))
+		{
+			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+		}
 
 		// Container type fields
 		FString ContainerType, ParsedMapKeyTypeIdentifier;
-		FN2CMcpVariableUtils::ParseContainerTypeArguments(ArgParser, ContainerType, ParsedMapKeyTypeIdentifier);
+		if (!FN2CMcpVariableUtils::ParseContainerTypeArguments(ArgParser, ContainerType, ParsedMapKeyTypeIdentifier, ErrorMsg))
+		{
+			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+		}
 
 		// Validate variable name
 		FString ValidationError;

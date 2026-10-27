@@ -40,6 +40,9 @@ FMcpToolDefinition FN2CMcpSetMemberVariableDefaultValueTool::GetDefinition() con
 
     Definition.InputSchema = BuildInputSchema(Properties, Required);
 
+    // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+    SetStrictArguments(Definition);
+
     return Definition;
 }
 
@@ -52,7 +55,7 @@ FMcpToolCallResult FN2CMcpSetMemberVariableDefaultValueTool::Execute(const TShar
         FString ErrorMsg;
 
         FString VariableName;
-        if (!ArgParser.TryGetRequiredName(TEXT("variableName"), VariableName, ErrorMsg))
+        if (!ArgParser.TryGetRequiredIdentifier(TEXT("variableName"), VariableName, ErrorMsg))
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }

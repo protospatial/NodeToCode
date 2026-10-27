@@ -5,6 +5,7 @@
 #include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/IN2CMcpTool.h"
 #include "MCP/Tools/N2CMcpToolManager.h"
+#include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpPlaySessionGuard.h"
 #include "MCP/Utils/N2CMcpUntrustedContent.h"
 #include "Utils/N2CLogger.h"
@@ -78,6 +79,7 @@ FN2CToolDescriptor FN2CToolDescriptor::FromDefinition(const TSharedPtr<const FMc
 	Descriptor.ExecutionPolicy = Definition->bIsLongRunning ? EN2CToolExecutionPolicy::LongRunning : EN2CToolExecutionPolicy::Immediate;
 	Descriptor.bReturnsUntrustedContent = Definition->bReturnsUntrustedContent;
 	Descriptor.bAllowedDuringPlaySession = Definition->bAllowedDuringPlaySession;
+	Descriptor.bStrictArguments = Definition->bStrictArguments;
 	Descriptor.Source = Definition;
 	return Descriptor;
 }
@@ -95,6 +97,7 @@ FMcpToolDefinition FN2CToolDescriptor::ToMcpDefinition() const
 	Definition.bIsLongRunning = ExecutionPolicy == EN2CToolExecutionPolicy::LongRunning;
 	Definition.bReturnsUntrustedContent = bReturnsUntrustedContent;
 	Definition.bAllowedDuringPlaySession = bAllowedDuringPlaySession;
+	Definition.bStrictArguments = bStrictArguments;
 	return Definition;
 }
 
@@ -310,6 +313,31 @@ TOptional<FN2CToolError> FN2CToolCatalog::CheckArguments(const FN2CToolDescripto
 			// The code prefix the tools' own argument errors use ("INVALID_ARGUMENT: ...")
 			Error.Message = FString::Printf(TEXT("%s: Missing required parameter: %s"), FN2CToolError::CodeName(Error.Code), *Required);
 			Error.Field = Required;
+			return Error;
+		}
+	}
+	if (Descriptor.bStrictArguments)
+	{
+		// Strict tools (card 0194): an argument the schema does not declare is a mistake, usually a misspelling
+		const TArray<FString> Unknown = FN2CMcpArgumentParser::FindUnknownFields(Arguments, Descriptor.InputSchema);
+		if (Unknown.Num() > 0)
+		{
+			TArray<FString> Declared;
+			const TSharedPtr<FJsonObject>* Properties = nullptr;
+			if (Descriptor.InputSchema.IsValid() && Descriptor.InputSchema->TryGetObjectField(TEXT("properties"), Properties))
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Property : (*Properties)->Values)
+				{
+					Declared.Add(Property.Key);
+				}
+				Declared.Sort();
+			}
+			FN2CToolError Error;
+			Error.Code = EN2CToolErrorCode::InvalidArgument;
+			Error.Message = FString::Printf(TEXT("%s: Unknown argument%s for %s: %s. Valid arguments: %s"),
+				FN2CToolError::CodeName(Error.Code), Unknown.Num() > 1 ? TEXT("s") : TEXT(""), *Descriptor.Name,
+				*FString::Join(Unknown, TEXT(", ")), Declared.Num() > 0 ? *FString::Join(Declared, TEXT(", ")) : TEXT("none"));
+			Error.Field = Unknown[0];
 			return Error;
 		}
 	}

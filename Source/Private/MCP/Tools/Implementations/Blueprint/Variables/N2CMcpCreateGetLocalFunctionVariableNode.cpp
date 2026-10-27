@@ -38,6 +38,9 @@ FMcpToolDefinition FN2CMcpCreateGetLocalFunctionVariableNode::GetDefinition() co
     
     Definition.InputSchema = BuildInputSchema(Properties, Required);
     
+    // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+    SetStrictArguments(Definition);
+
     return Definition;
 }
 
@@ -48,7 +51,7 @@ FMcpToolCallResult FN2CMcpCreateGetLocalFunctionVariableNode::Execute(const TSha
         FN2CMcpArgumentParser Parser(Arguments);
         FString VariableName;
         FString ErrorMsg;
-        if (!Parser.TryGetRequiredName(TEXT("variableName"), VariableName, ErrorMsg))
+        if (!Parser.TryGetRequiredIdentifier(TEXT("variableName"), VariableName, ErrorMsg))
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
