@@ -104,26 +104,17 @@ void FN2CArrayProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition
     // Handle get array item nodes
     if (UK2Node_GetArrayItem* GetArrayItemNode = Cast<UK2Node_GetArrayItem>(Node))
     {
-        // Get array element type from input pin
-        for (UEdGraphPin* Pin : GetArrayItemNode->Pins)
+        // The element type, from the array pin (named "Array" by the engine; the processor looked for "TargetArray" and
+        // never found it, translation-core-29), in pin type spellings: the struct, enum, class or object type when there
+        // is one, else the type ("Integer"). The title hint says whether it returns a copy or a reference.
+        if (const UEdGraphPin* ArrayPin = GetArrayItemNode->GetTargetArrayPin())
         {
-            if (Pin && Pin->Direction == EGPD_Input && Pin->PinName == TEXT("TargetArray"))
-            {
-                if (Pin->PinType.PinSubCategory != NAME_None)
-                {
-                    OutNodeDef.MemberName = Pin->PinType.PinSubCategory.ToString();
-                }
-                else if (Pin->PinType.PinSubCategoryObject.IsValid())
-                {
-                    OutNodeDef.MemberName = N2CStableNames::TypeObjectName(Pin->PinType.PinSubCategoryObject.Get());
-                }
-                
-                // Log array element type
-                N2C_LOG(Debug, TEXT("Get Array Item: %s, Element Type: %s"),
-                    *OutNodeDef.Title,
-                    *OutNodeDef.MemberName);
-                break;
-            }
+            const FEdGraphPinType& Type = ArrayPin->PinType;
+            OutNodeDef.MemberName = Type.PinSubCategoryObject.IsValid()
+                ? N2CStableNames::TypeObjectName(Type.PinSubCategoryObject.Get())
+                : StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(
+                    N2CStableNames::PinType(Type.PinCategory, Type.PinSubCategory, nullptr)));
+            N2C_LOG(Debug, TEXT("Get Array Item: %s, Element Type: %s"), *OutNodeDef.Title, *OutNodeDef.MemberName);
         }
         return;
     }

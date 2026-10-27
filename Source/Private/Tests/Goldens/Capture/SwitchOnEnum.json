@@ -1,13 +1,7 @@
 {
 	"case": "SwitchOnEnum",
 	"description": "Function SwitchEnum(Mobility: EComponentMobility): Switch on the engine enum; Static runs CollectGarbage, Movable runs ControlScreensaver, Stationary is unconnected.",
-	"known_defects": [
-		{
-			"finding": "translation-core-32",
-			"card": "0239",
-			"effect": "Switch nodes are named 'Switch', losing the switched type"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -50,7 +44,8 @@
 						"id": "N2",
 						"type": "SwitchEnum",
 						"class": "K2Node_SwitchEnum",
-						"title": "Switch",
+						"title": "Switch on EComponentMobility",
+						"member_name": "EComponentMobility",
 						"input_pins": [
 							{
 								"id": "P3",

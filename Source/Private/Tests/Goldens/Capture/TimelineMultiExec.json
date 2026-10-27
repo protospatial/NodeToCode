@@ -1,13 +1,7 @@
 {
 	"case": "TimelineMultiExec",
 	"description": "Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver.",
-	"known_defects": [
-		{
-			"finding": "translation-core-16",
-			"card": "0239",
-			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,8 +20,8 @@
 						"id": "N1",
 						"type": "CustomEvent",
 						"class": "K2Node_CustomEvent",
-						"title": "OnPlay",
-						"member_name": "None",
+						"member_parent": "BP_N2CGolden_TimelineMultiExec",
+						"member_name": "OnPlay",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -46,8 +40,8 @@
 						"id": "N2",
 						"type": "CustomEvent",
 						"class": "K2Node_CustomEvent",
-						"title": "OnReverse",
-						"member_name": "None",
+						"member_parent": "BP_N2CGolden_TimelineMultiExec",
+						"member_name": "OnReverse",
 						"input_pins": [],
 						"output_pins": [
 							{
@@ -66,7 +60,9 @@
 						"id": "N3",
 						"type": "Timeline",
 						"class": "K2Node_Timeline",
-						"title": "GoldenTimeline",
+						"member_parent": "BP_N2CGolden_TimelineMultiExec",
+						"member_name": "GoldenTimeline",
+						"latent": true,
 						"input_pins": [
 							{
 								"id": "P5",
@@ -119,7 +115,12 @@
 								"type": "Enum",
 								"sub_type": "ETimelineDirection"
 							}
-						]
+						],
+						"timeline":
+						{
+							"length": 5,
+							"tracks": []
+						}
 					},
 					{
 						"id": "N4",

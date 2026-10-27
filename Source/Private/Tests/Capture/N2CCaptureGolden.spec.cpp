@@ -24,6 +24,12 @@
 #include "Internationalization/Culture.h"
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/Regex.h"
+#include "Components/PrimitiveComponent.h"
+#include "Engine/TimelineTemplate.h"
+#include "GameFramework/AsyncActionHandleSaveGame.h"
+#include "K2Node_AsyncAction.h"
+#include "K2Node_ComponentBoundEvent.h"
+#include "K2Node_GetArrayItem.h"
 #include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_Composite.h"
@@ -137,6 +143,10 @@
  * typed by its key with its value in "value_type" and "value_sub_type", a struct or enum used only as a map value is
  * listed, Make Map is named key then value, an enum pin is Enum (not Byte) with its enum as sub_type, a bitmask int is
  * Bitmask and a Target pin Self; the subcategory is checked before the category, and the value fields round-trip.
+ *
+ * "NodeDetails" checks the node processors (card 0239): a Timeline is latent with its name and template, an async
+ * action latent with its factory class and function, a custom event named with its RPC kind, a component-bound event
+ * with its component and delegate, Get on an int array named by its element type, and Switch on an enum by its enum.
  *
  * "Variables" and the case Variables check member and local variables (card 0242, PR #8): each is typed as a pin of its
  * type (real float and double, int64, soft object, interface, array, a map's key and value), with its category,
@@ -1223,10 +1233,6 @@ void FN2CCaptureGoldenSpec::AddCases()
 {
 	using namespace N2CCaptureGolden;
 
-	const FKnownDefect CustomEventNone{ TEXT("translation-core-16"), TEXT("0239"),
-		TEXT("Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)") };
-	const FKnownDefect SwitchName{ TEXT("translation-core-32"), TEXT("0239"),
-		TEXT("Switch nodes are named 'Switch', losing the switched type") };
 	const FKnownDefect RepeatMissingName{ TEXT("translation-core-24"), TEXT("0236"),
 		TEXT("A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' "
 			"(expected errors in this case)") };
@@ -1300,7 +1306,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("Branch"),
 		TEXT("Event graph: custom event OnBranch runs a Branch on Less(A, B); True runs CollectGarbage, False runs "
 			"ControlScreensaver."),
-		{ CustomEventNone },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1394,7 +1400,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnInt"),
 		TEXT("Function SwitchInt(Selection): Switch on Int with cases 0 and 1 and Default; 0 and Default both run "
 			"CollectGarbage, 1 runs ControlScreensaver."),
-		{ SwitchName },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.AddFunction(TEXT("SwitchInt"));
@@ -1414,7 +1420,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("SwitchOnEnum"),
 		TEXT("Function SwitchEnum(Mobility: EComponentMobility): Switch on the engine enum; Static runs CollectGarbage, "
 			"Movable runs ControlScreensaver, Stationary is unconnected."),
-		{ SwitchName },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEnum* Mobility = StaticEnum<EComponentMobility::Type>();
@@ -1460,7 +1466,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("GateMultiExec"),
 		TEXT("Event graph: custom events OnEnter, OnOpen and OnClose run a Gate (StandardMacros) through its Enter, "
 			"Open and Close inputs; Exit runs CollectGarbage."),
-		{ CustomEventNone },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1479,7 +1485,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 	Cases.Add({ TEXT("TimelineMultiExec"),
 		TEXT("Event graph: custom events OnPlay and OnReverse run a Timeline (empty template GoldenTimeline) through "
 			"Play and Reverse; Update runs CollectGarbage, Finished runs ControlScreensaver."),
-		{ CustomEventNone },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -1597,7 +1603,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		{ { TEXT("translation-core-11"), TEXT("0236"),
 			TEXT("Enum values whose display name contains 'max' in any case are dropped: E_GoldenLimit lists Min only, "
 				"while the Switch still has Max and Max Health outputs") },
-		  RepeatMissingName, SwitchName },
+		  RepeatMissingName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UUserDefinedEnum* Limit = BP.AddUserEnum(TEXT("E_GoldenLimit"), { TEXT("Min"), TEXT("Max"), TEXT("MaxHealth") });
@@ -2053,7 +2059,7 @@ void FN2CCaptureGoldenSpec::AddCases()
 		TEXT("Event graph: custom event OnRun runs CollectGarbage. Apart from it, ControlScreensaver (its Allow Screen "
 			"Saver from Not of a literal) runs ResetGamepadAssignments with no event before them: both are unreachable "
 			"and Not, read only by them, is unused. The default ghost events are not captured."),
-		{ CustomEventNone },
+		{},
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
 			UEdGraph* Graph = BP.EventGraph();
@@ -2785,10 +2791,10 @@ void FN2CCaptureGoldenSpec::Define()
 		It(TEXT("records each wired case of a Switch on Int, two of them into one node"), [this]()
 		{
 			ExpectExecLinks(TEXT("SwitchOnInt"), {
-				{ TEXT("SwitchInt"), TEXT("then"), TEXT("Switch"), TEXT("execute") },
-				{ TEXT("Switch"), TEXT("0"), TEXT("CollectGarbage"), TEXT("execute") },
-				{ TEXT("Switch"), TEXT("1"), TEXT("ControlScreensaver"), TEXT("execute") },
-				{ TEXT("Switch"), TEXT("Default"), TEXT("CollectGarbage"), TEXT("execute") } });
+				{ TEXT("SwitchInt"), TEXT("then"), TEXT("K2Node_SwitchInteger"), TEXT("execute") },
+				{ TEXT("K2Node_SwitchInteger"), TEXT("0"), TEXT("CollectGarbage"), TEXT("execute") },
+				{ TEXT("K2Node_SwitchInteger"), TEXT("1"), TEXT("ControlScreensaver"), TEXT("execute") },
+				{ TEXT("K2Node_SwitchInteger"), TEXT("Default"), TEXT("CollectGarbage"), TEXT("execute") } });
 		});
 
 		It(TEXT("tells a Timeline's Play and Reverse inputs apart"), [this]()
@@ -3314,6 +3320,144 @@ void FN2CCaptureGoldenSpec::Define()
 			FString Error;
 			TestFalse(TEXT("the bool overload fails too"), Validator.Validate(Blueprint, Error));
 			TestTrue(TEXT("with the first error's text"), Error.Contains(TEXT("references non-existent node N9")));
+		});
+	});
+
+	// Card 0239 (translation-core-14, -16, -29, -32): node processors for timelines, async nodes, events, Get and Switch
+	Describe(TEXT("NodeDetails"), [this]()
+	{
+		It(TEXT("captures a Timeline as latent, named by its timeline, with its template's length, loop and tracks"), [this]()
+		{
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_TimelineDetails"), TEXT("/Game"));
+			UK2Node_Timeline* Node = BP.GetBlueprint() ? BP.AddTimeline(BP.EventGraph(), TEXT("Fade")) : nullptr;
+			UTimelineTemplate* Template = Node ? BP.GetBlueprint()->FindTimelineTemplateByVariableName(TEXT("Fade")) : nullptr;
+			if (!TestNotNull(TEXT("timeline and template"), Template))
+			{
+				return;
+			}
+			Template->TimelineLength = 2.5f;
+			Template->bLoop = true;
+			FTTFloatTrack Alpha;
+			Alpha.SetTrackName(TEXT("Alpha"), Template);
+			Template->FloatTracks.Add(Alpha);
+			FTTEventTrack Pulse;
+			Pulse.SetTrackName(TEXT("Pulse"), Template);
+			Template->EventTracks.Add(Pulse);
+
+			const TValueOrError<FN2CNodeDefinition, FString> Described = N2C::DescribeNode(*Node);
+			if (!TestTrue(TEXT("described"), Described.HasValue()))
+			{
+				return;
+			}
+			const FN2CNodeDefinition& Def = Described.GetValue();
+			TestEqual(TEXT("member_name"), Def.MemberName, FString(TEXT("Fade")));
+			TestEqual(TEXT("member_parent"), Def.MemberParent, FString(TEXT("BP_N2CGolden_TimelineDetails")));
+			TestTrue(TEXT("latent"), Def.bLatent);
+			TestTrue(TEXT("a timeline summary"), Def.Timeline.bSet);
+			TestEqual(TEXT("length"), Def.Timeline.Length, 2.5f);
+			TestTrue(TEXT("loop, not autoplay"), Def.Timeline.bLoop && !Def.Timeline.bAutoPlay);
+			const TArray<FN2CTimelineTrack> Expected = { { TEXT("Alpha"), TEXT("float") }, { TEXT("Pulse"), TEXT("event") } };
+			TestTrue(TEXT("tracks Alpha (float), Pulse (event)"), Def.Timeline.Tracks == Expected);
+
+			// The JSON says so, and reads back the same
+			const TSharedPtr<FJsonObject> Json = FN2CSerializer::NodeToJsonObject(Def);
+			const TSharedPtr<FJsonObject>* Timeline = nullptr;
+			if (TestTrue(TEXT("\"timeline\" in the node's JSON"), Json->TryGetObjectField(N2CJsonContract::NodeTimelineField, Timeline)))
+			{
+				TestEqual(TEXT("two tracks in the JSON"), (*Timeline)->GetArrayField(N2CJsonContract::TimelineTracksField).Num(), 2);
+			}
+		});
+
+		It(TEXT("captures an async action as latent, named by its factory class and function"), [this]()
+		{
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_AsyncDetails"), TEXT("/Game"));
+			const UFunction* Factory = UAsyncActionHandleSaveGame::StaticClass()->FindFunctionByName(TEXT("AsyncLoadGameFromSlot"));
+			if (!TestNotNull(TEXT("factory function"), Factory) || !BP.GetBlueprint())
+			{
+				return;
+			}
+			FGraphNodeCreator<UK2Node_AsyncAction> Creator(*BP.EventGraph());
+			UK2Node_AsyncAction* Node = Creator.CreateNode();
+			Node->InitializeProxyFromFunction(Factory);
+			Creator.Finalize();
+			const TValueOrError<FN2CNodeDefinition, FString> Described = N2C::DescribeNode(*Node);
+			if (TestTrue(TEXT("described"), Described.HasValue()))
+			{
+				TestEqual(TEXT("member_parent"), Described.GetValue().MemberParent, FString(TEXT("AsyncActionHandleSaveGame")));
+				TestEqual(TEXT("member_name"), Described.GetValue().MemberName, FString(TEXT("AsyncLoadGameFromSlot")));
+				TestTrue(TEXT("latent"), Described.GetValue().bLatent);
+			}
+		});
+
+		It(TEXT("names a custom event, with its RPC kind, and a component-bound event with its component and delegate"), [this]()
+		{
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_EventDetails"), TEXT("/Game"));
+			UK2Node_CustomEvent* Damaged = BP.GetBlueprint() ? BP.AddCustomEvent(BP.EventGraph(), TEXT("OnDamaged")) : nullptr;
+			if (!TestNotNull(TEXT("custom event"), Damaged))
+			{
+				return;
+			}
+			Damaged->FunctionFlags |= FUNC_Net | FUNC_NetServer | FUNC_NetReliable;
+			const TValueOrError<FN2CNodeDefinition, FString> Custom = N2C::DescribeNode(*Damaged);
+			if (TestTrue(TEXT("custom event described"), Custom.HasValue()))
+			{
+				TestEqual(TEXT("member_name"), Custom.GetValue().MemberName, FString(TEXT("OnDamaged")));
+				TestEqual(TEXT("member_parent"), Custom.GetValue().MemberParent, FString(TEXT("BP_N2CGolden_EventDetails")));
+				TestEqual(TEXT("net"), Custom.GetValue().Net, FString(TEXT("Server")));
+				TestTrue(TEXT("reliable"), Custom.GetValue().bReliable);
+			}
+
+			// Bound as the details panel's "+" button binds it: the component variable, the delegate and its class
+			UK2Node_ComponentBoundEvent* Hit = NewObject<UK2Node_ComponentBoundEvent>(BP.EventGraph());
+			Hit->ComponentPropertyName = TEXT("CollisionComp");
+			Hit->DelegatePropertyName = TEXT("OnComponentHit");
+			Hit->DelegateOwnerClass = UPrimitiveComponent::StaticClass();
+			const TValueOrError<FN2CNodeDefinition, FString> Bound = N2C::DescribeNode(*Hit);
+			if (TestTrue(TEXT("component-bound event described"), Bound.HasValue()))
+			{
+				TestEqual(TEXT("member_name"), Bound.GetValue().MemberName, FString(TEXT("OnComponentHit")));
+				TestEqual(TEXT("member_parent"), Bound.GetValue().MemberParent, FString(TEXT("PrimitiveComponent")));
+				TestEqual(TEXT("bound_to"), Bound.GetValue().BoundTo, FString(TEXT("CollisionComp")));
+				TestTrue(TEXT("no RPC"), Bound.GetValue().Net.IsEmpty());
+			}
+		});
+
+		It(TEXT("names a Get (a copy) on an int array by its element type, and a Switch by its enum"), [this]()
+		{
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_GetDetails"), TEXT("/Game"));
+			FEdGraphPinType Ints = N2CTest::FTestBlueprint::IntPinType();
+			Ints.ContainerType = EPinContainerType::Array;
+			if (!BP.GetBlueprint() || !BP.AddMemberVariable(TEXT("Scores"), Ints))
+			{
+				AddError(TEXT("could not build the Blueprint"));
+				return;
+			}
+			UEdGraph* Graph = BP.AddFunction(TEXT("Third"));
+			UK2Node_VariableGet* Scores = BP.AddVariableGet(Graph, TEXT("Scores"));
+			FGraphNodeCreator<UK2Node_GetArrayItem> Creator(*Graph);
+			UK2Node_GetArrayItem* Get = Creator.CreateNode();
+			Creator.Finalize();
+			if (!TestTrue(TEXT("Scores feeds the Get's array pin"), Scores && BP.Link(Scores->FindPin(TEXT("Scores")), Get->GetTargetArrayPin())))
+			{
+				return;
+			}
+			const TValueOrError<FN2CNodeDefinition, FString> Described = N2C::DescribeNode(*Get);
+			if (TestTrue(TEXT("Get described"), Described.HasValue()))
+			{
+				TestEqual(TEXT("member_name"), Described.GetValue().MemberName, FString(TEXT("Integer")));
+			}
+
+			const FCaptured Captured = CaptureNamed(TEXT("SwitchOnEnum"));
+			const TSharedPtr<FJsonObject> Switch = Captured.Capture.IsValid() ? FindNode(Captured.Capture, TEXT("K2Node_SwitchEnum")) : nullptr;
+			if (TestTrue(TEXT("the Switch on enum node"), Switch.IsValid()))
+			{
+				FString MemberName;
+				Switch->TryGetStringField(TEXT("member_name"), MemberName);
+				FString Title;
+				Switch->TryGetStringField(N2CJsonContract::NodeTitleField, Title);
+				TestFalse(TEXT("member_name names the enum: ") + MemberName, MemberName.IsEmpty());
+				TestTrue(TEXT("the engine's title stays as the hint: ") + Title, Title.StartsWith(TEXT("Switch on ")));
+			}
 		});
 	});
 

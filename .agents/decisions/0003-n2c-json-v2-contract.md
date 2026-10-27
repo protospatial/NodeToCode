@@ -123,6 +123,14 @@ Option 1, provisionally. The sub-choices of card 0117:
   name). The agent document of get-focused-blueprint, get-blueprint-n2cjson and find-nodes-in-graph lists the capture's
   warnings in an optional top-level `warnings` array of {`code`, `path`, `message`} (`N2CJsonContract::WarningsField`,
   codes in `N2CJsonContract::Diagnostic`); a translation's document never carries it, and the reader reads past it.
+- Card 0239 (additive and corrective, under 2.0.0 since no release has written it): a node may carry `bound_to` (a
+  component- or actor-bound event's component variable or actor), `net` ("Server", "Client" or "Multicast") and `reliable`
+  (a replicated custom event) and, on a Timeline node, `timeline` {`length`, `loop`, `autoplay`, `tracks`: [{`name`,
+  `kind`}]}, each written only when set, after `output_pins` (`N2CJsonContract::NodeBoundToField` and the others).
+  `member_name` changes where it was wrong or empty: a custom event's is its name (was "None"), a Switch's the switched
+  enum or type (its title stays the engine's, was "Switch"), a Get (array item)'s the element type, an async proxy
+  node's the factory function with the factory class in `member_parent`; Timelines and async nodes are `latent`. A
+  reader that predates it keeps the four fields as unknown fields.
 - Card 0505 (reader only; the contract and its version are unchanged): the agent document of get-focused-blueprint,
   get-blueprint-n2cjson and Python `get_blueprint_n2c_json` writes each node's and pin's `id` as `ids` {`short`,
   `guid`} and adds the top-level `guids` table. The reader takes `ids.short` as the ID when there is no `id`

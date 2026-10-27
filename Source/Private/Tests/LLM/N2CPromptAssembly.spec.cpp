@@ -170,6 +170,15 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		Node.bUnused = true;
 		Node.bUnreachable = true;
 		Node.bDisabled = true;
+		// Card 0239: the node details
+		Node.BoundTo = TEXT("CollisionComp");
+		Node.Net = TEXT("Server");
+		Node.bReliable = true;
+		Node.Timeline.bSet = true;
+		Node.Timeline.Length = 2.5f;
+		Node.Timeline.bLoop = true;
+		Node.Timeline.bAutoPlay = true;
+		Node.Timeline.Tracks.Add({ TEXT("Alpha"), TEXT("float") });
 		Node.InputPins.Add(Pin);
 		Node.OutputPins.Add(Pin);
 
