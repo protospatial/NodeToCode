@@ -121,8 +121,8 @@ All presentation tokens live in `Source/Public/Core/Style/` (implementations in 
     *   `McpToolExposure` - list every tool, or tool search (`list_toolsets`, `describe_toolset`, `call_tool`)
 
     **Theming:**
-    *   `UIColors` (`FN2CUIColors`) - the window's colors
-    *   `CodeEditorTheme` (`FN2CCodeEditorThemes`) - one theme for every language; the code editor draws its "Unreal Engine" entry. 1.2.x's per-language `CPPThemes` ... `PseudocodeThemes` keys are no longer read
+    *   `UIColors` (`FN2CUIColors`, `Core/Style/N2CUIColors.h`) - the window's colors, read through `N2C::UI::Colors()`; spacing, font and sizing tokens are constants in `Core/Style/N2CDesignTokens.h` (see `Context/code-editor/AGENTS-code-editor.md`, Colors)
+    *   `CodeEditorTheme` (`FN2CCodeEditorThemes`) - one theme for every language; the code editor draws its "Unreal Engine" entry. 1.2.x's per-language theme maps are no longer read (migration S18)
     *   `FN2CCodeEditorColors` struct with: NormalText, Operators, Keywords, Strings, Numbers, Comments, Preprocessor, Parentheses, CurlyBraces, SquareBrackets, Background
 
     **Logging:**

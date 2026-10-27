@@ -166,7 +166,7 @@ NodeToCode is an Unreal Engine 5 plugin for translating Blueprints into various 
 *   **Blueprint-to-Code Translation:** Converts selected Blueprint graphs/entire Blueprints.
 *   **Multi-LLM Support:** Integrates with OpenAI, Anthropic, Google Gemini, DeepSeek, local Ollama instances, and LM Studio.
 *   **Editor Integration:** Adds a "Node to Code" toolbar button in the Blueprint Editor for translation, JSON export, and a dedicated plugin window.
-*   **Interactive Code Editor:** Displays generated code with syntax highlighting and theme customization.
+*   **Interactive Code Editor:** Displays generated code with syntax highlighting in one color theme (`CodeEditorTheme`, editable in Project Settings).
 *   **Configuration:** Plugin settings for LLM provider selection, API keys (entered in Project Settings, not written to config `.ini` files; `FN2CSecretStore` keeps them in Windows Credential Manager, entries `NodeToCode/<ProviderId>`, and on Mac and Linux as plain JSON in the per-user `FPlatformProcess::UserSettingsDir()/NodeToCode/secrets.json`; on Windows the per-user file and a project's old `Saved/NodeToCode/User/secrets.json` are moved into Credential Manager once, read back, then deleted; the API Key fields are masked, Transient and write-only, and Blueprints and Python get only `SetApiKey`/`HasApiKey`; when no key is saved, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY` or `DEEPSEEK_API_KEY`/`DEEPSEEK_API` from the editor's environment is used, never saved or shown; every request resolves its key when it is sent through `IN2CCredentialSource`, and no config holds one), target language, and logging.
 *   **Reasoning Model Support:** Prepended model commands for controlling reasoning models and feature toggles.
 
