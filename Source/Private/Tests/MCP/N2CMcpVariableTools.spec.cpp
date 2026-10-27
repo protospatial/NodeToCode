@@ -32,6 +32,17 @@
 #include "StructUtils/UserDefinedStruct.h"
 #include "UObject/UnrealType.h"
 #include "Runtime/Launch/Resources/Version.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "BlueprintActionDatabase.h"
+#include "UObject/ReferenceChainSearch.h"
+#include "HAL/FileManager.h"
+#include "Misc/PackageName.h"
+#include "Misc/ScopeExit.h"
+#include "ObjectTools.h"
+#include "PackageTools.h"
+#include "Subsystems/EditorAssetSubsystem.h"
+#include "UObject/SavePackage.h"
+#include "UObject/UObjectIterator.h"
 
 // get-blueprint-member-variables' type description, the read side of the round trip (private in the tool)
 N2C_TEST_PRIVATE_MEMBER(FN2CVariableToolsPinTypeToJson,
@@ -422,6 +433,35 @@ BEGIN_DEFINE_SPEC(FN2CMcpVariableToolsSpec, "NodeToCode.MCP.Variables", N2C_TEST
 	 * bSkipAssetIdentifiers leaves out the export-text identifiers of Blueprint assets (mcp-tools-variables-23).
 	 */
 	void ExpectSearchResolves(const TArray<FString>& Terms, bool bSkipAssetIdentifiers);
+	/** Deletes every asset under a /Game test folder, loaded or not, and the folder's files */
+	void DeleteGameFolder(const FString& Folder)
+	{
+		TArray<UObject*> Loaded;
+		for (TObjectIterator<UObject> It; It; ++It)
+		{
+			if (It->IsAsset() && It->GetPathName().StartsWith(Folder + TEXT("/")))
+			{
+				It->GetOutermost()->SetDirtyFlag(false);
+				Loaded.Add(*It);
+			}
+		}
+		if (Loaded.Num() > 0)
+		{
+			ObjectTools::ForceDeleteObjects(Loaded, /*ShowConfirmation*/ false);
+		}
+		if (UEditorAssetSubsystem* AssetSubsystem = GEditor ? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>() : nullptr)
+		{
+			if (AssetSubsystem->DoesDirectoryExist(Folder))
+			{
+				AssetSubsystem->DeleteDirectory(Folder);
+			}
+		}
+		FString Filename;
+		if (FPackageName::TryConvertLongPackageNameToFilename(Folder, Filename))
+		{
+			IFileManager::Get().DeleteDirectory(*Filename, /*RequireExists*/ false, /*Tree*/ true);
+		}
+	}
 	/** Unique valid GUID in the Blueprint, no two pins with the same name and direction, the value pin of Type */
 	void ExpectVariableNode(const FString& What, UBlueprint* Blueprint, const UK2Node_Variable* Node, const FName VariableName,
 		const FEdGraphPinType& Type);
@@ -1023,15 +1063,191 @@ void FN2CMcpVariableToolsSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-variables-23 (card 0291): a Blueprint class found through the asset registry is returned
-		// as export text ("/Script/Engine.BlueprintGeneratedClass'/Engine/....ActorMacros_C'"), which the resolver
-		// refuses (INVALID_TYPE_PATH). Enable (xIt -> It) with the fix.
-		xIt(TEXT("search-variable-types returns Blueprint classes as identifiers the resolver accepts"), [this]()
+		It(TEXT("search-variable-types returns Blueprint classes as identifiers the resolver accepts"), [this]()
 		{
 			if (MakeBlueprint(TEXT("BP_N2CVarSearchBP")) && Test->OpenInEditor(*this, Test->EventGraph()))
 			{
-				ExpectSearchResolves({ TEXT("Actor"), TEXT("Macros") }, /*bSkipAssetIdentifiers*/ false);
+				// Context.Sibling is a Blueprint class; "Actor" also matches engine Blueprints found through the asset registry
+				ExpectSearchResolves({ TEXT("Actor"), Context.Sibling->ClassGeneratedBy->GetName() }, /*bSkipAssetIdentifiers*/ false);
 			}
+		});
+
+		// Card 0291 (mcp-tools-variables-17, -23): a saved user struct that is not loaded is found through the asset
+		// registry (the filter was /Script/Engine.UserDefinedStruct, which no 5.5+ asset has), searching loads nothing,
+		// its identifier goes to create-variable unchanged, and a user enum lists its enumerators' names and display names.
+		It(TEXT("search-variable-types finds a saved user struct that is not loaded, and create-variable takes it"), [this]()
+		{
+			const FString Folder = FString::Printf(TEXT("/Game/__N2CTestSearch_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+			ON_SCOPE_EXIT
+			{
+				Test.Reset();
+				DeleteGameFolder(Folder);
+			};
+			UBlueprint* Blueprint = MakeBlueprint(TEXT("BP_N2CVarSearchDisk"));
+			if (!Blueprint)
+			{
+				return;
+			}
+			const FString StructName = UniqueName(TEXT("S_N2CDiskLoot")).ToString();
+			const FString EnumName = UniqueName(TEXT("E_N2CDiskMode")).ToString();
+			const FString StructPath = Folder / StructName + TEXT(".") + StructName;
+			const FString EnumPath = Folder / EnumName + TEXT(".") + EnumName;
+			UPackage* StructPackage = CreatePackage(*(Folder / StructName));
+			UPackage* EnumPackage = CreatePackage(*(Folder / EnumName));
+			UUserDefinedStruct* Struct = Test->AddUserStruct(FName(*StructName), { { TEXT("Count"), N2CTest::FTestBlueprint::IntPinType() } }, StructPackage);
+			UUserDefinedEnum* Enum = Test->AddUserEnum(FName(*EnumName), { TEXT("Idle Mode"), TEXT("Running") }, EnumPackage);
+			if (!TestNotNull(TEXT("struct"), Struct) || !TestNotNull(TEXT("enum"), Enum))
+			{
+				return;
+			}
+			FAssetRegistryModule::AssetCreated(Struct);
+			FAssetRegistryModule::AssetCreated(Enum);
+			TArray<FString> SavedFiles;
+			for (UPackage* Package : { StructPackage, EnumPackage })
+			{
+				FString Filename;
+				FPackageName::TryConvertLongPackageNameToFilename(Package->GetName(), Filename, FPackageName::GetAssetPackageExtension());
+				FSavePackageArgs SaveArgs;
+				SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+				SaveArgs.SaveFlags = SAVE_NoError;
+				TestTrue(TEXT("saved ") + Package->GetName(), UPackage::SavePackage(Package, nullptr, *Filename, SaveArgs));
+				SavedFiles.Add(FPaths::ConvertRelativePathToFull(Filename));
+			}
+			// The Blueprint action menu keeps spawners (Make and Break nodes) that hold a new struct or enum
+			FBlueprintActionDatabase::Get().ClearAssetActions(Struct);
+			FBlueprintActionDatabase::Get().ClearAssetActions(Enum);
+			Struct = nullptr;
+			Enum = nullptr;
+			FText UnloadError;
+			TestTrue(TEXT("both packages unload: ") + UnloadError.ToString(),
+				UPackageTools::UnloadPackages({ StructPackage, EnumPackage }, UnloadError, /*bUnloadDirtyPackages*/ true));
+			if (UUserDefinedStruct* StillLoaded = FindObject<UUserDefinedStruct>(nullptr, *StructPath))
+			{
+				// Prints what keeps it to the log
+				FReferenceChainSearch(StillLoaded, EReferenceChainSearchMode::Shortest | EReferenceChainSearchMode::PrintResults);
+				AddError(TEXT("the struct is still loaded after unloading its package; the log has the reference chain"));
+				return;
+			}
+			// As the editor finds a file that appears on disk: the registry reads it without loading it
+			IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+			AssetRegistry.ScanFilesSynchronous(SavedFiles, /*bForceRescan*/ true);
+			if (!TestTrue(TEXT("the asset registry lists the saved struct"), AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(StructPath)).IsValid()))
+			{
+				return;
+			}
+			if (!Test->OpenInEditor(*this, Test->EventGraph()))
+			{
+				return;
+			}
+
+			auto Search = [](const FString& Term, const TCHAR* Category) -> TSharedPtr<FJsonObject>
+			{
+				const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+				Args->SetStringField(TEXT("searchTerm"), Term);
+				Args->SetStringField(TEXT("category"), Category);
+				Args->SetBoolField(TEXT("includeEngineTypes"), false);
+				return N2CTest::ResultJson(N2CTest::RunTool(TEXT("search-variable-types"), Args));
+			};
+			auto Find = [](const TSharedPtr<FJsonObject>& Json, const FString& Identifier) -> TSharedPtr<FJsonObject>
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Types = nullptr;
+				if (Json.IsValid() && Json->TryGetArrayField(TEXT("types"), Types))
+				{
+					for (const TSharedPtr<FJsonValue>& Value : *Types)
+					{
+						if (Value->AsObject()->GetStringField(TEXT("typeIdentifier")) == Identifier)
+						{
+							return Value->AsObject();
+						}
+					}
+				}
+				return nullptr;
+			};
+
+			const TSharedPtr<FJsonObject> FoundStruct = Find(Search(StructName, TEXT("struct")), StructPath);
+			if (!TestTrue(TEXT("the unloaded struct is found by name, as ") + StructPath, FoundStruct.IsValid()))
+			{
+				return;
+			}
+			TestEqual(TEXT("its name"), FoundStruct->GetStringField(TEXT("typeName")), StructName);
+			TestNull(TEXT("searching did not load it"), FindObject<UUserDefinedStruct>(nullptr, *StructPath));
+
+			const TSharedPtr<FJsonObject> FoundEnum = Find(Search(EnumName, TEXT("enum")), EnumPath);
+			if (TestTrue(TEXT("the unloaded enum is found by name"), FoundEnum.IsValid()))
+			{
+				TArray<FString> Values;
+				TArray<FString> DisplayNames;
+				FoundEnum->TryGetStringArrayField(TEXT("values"), Values);
+				FoundEnum->TryGetStringArrayField(TEXT("displayNames"), DisplayNames);
+				TestEqual(TEXT("values are the enumerator names a default takes"), Values, TArray<FString>{ TEXT("NewEnumerator0"), TEXT("NewEnumerator1") });
+				TestEqual(TEXT("displayNames are what the editor shows"), DisplayNames, TArray<FString>{ TEXT("Idle Mode"), TEXT("Running") });
+			}
+
+			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+			Args->SetStringField(TEXT("variableName"), TEXT("DiskLoot"));
+			Args->SetStringField(TEXT("typeIdentifier"), FoundStruct->GetStringField(TEXT("typeIdentifier")));
+			const FMcpToolCallResult Created = N2CTest::RunTool(TEXT("create-variable"), Args);
+			if (TestTrue(TEXT("create-variable takes the identifier: ") + N2CTest::ResultText(Created).Left(300),
+					N2CTest::ExpectToolCompiled(*this, TEXT("DiskLoot"), Created)))
+			{
+				const FStructProperty* Property = Blueprint->GeneratedClass
+					? FindFProperty<FStructProperty>(Blueprint->GeneratedClass, TEXT("DiskLoot")) : nullptr;
+				TestTrue(TEXT("a property of the saved struct"), Property && Property->Struct && Property->Struct->GetPathName() == StructPath);
+			}
+		});
+
+		// Card 0291 (mcp-tools-variables-23): totalMatches counts every match and truncated says the list was cut, no
+		// type is listed twice, and includeEngineTypes false keeps the project's own native types (/Script/NodeToCode)
+		It(TEXT("search-variable-types counts every match, lists each type once and keeps project native types"), [this]()
+		{
+			if (!MakeBlueprint(TEXT("BP_N2CVarSearchCount")) || !Test->OpenInEditor(*this, Test->EventGraph()))
+			{
+				return;
+			}
+			auto Run = [](const FString& Term, int32 MaxResults, bool bIncludeEngine) -> TSharedPtr<FJsonObject>
+			{
+				const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+				Args->SetStringField(TEXT("searchTerm"), Term);
+				Args->SetNumberField(TEXT("maxResults"), MaxResults);
+				Args->SetBoolField(TEXT("includeEngineTypes"), bIncludeEngine);
+				return N2CTest::ResultJson(N2CTest::RunTool(TEXT("search-variable-types"), Args));
+			};
+			auto Identifiers = [](const TSharedPtr<FJsonObject>& Json)
+			{
+				TArray<FString> Out;
+				const TArray<TSharedPtr<FJsonValue>>* Types = nullptr;
+				if (Json.IsValid() && Json->TryGetArrayField(TEXT("types"), Types))
+				{
+					for (const TSharedPtr<FJsonValue>& Value : *Types)
+					{
+						Out.Add(Value->AsObject()->GetStringField(TEXT("typeIdentifier")));
+					}
+				}
+				return Out;
+			};
+
+			const TSharedPtr<FJsonObject> One = Run(TEXT("Vector"), 1, true);
+			if (TestTrue(TEXT("a result"), One.IsValid()))
+			{
+				TestEqual(TEXT("one type returned"), Identifiers(One).Num(), 1);
+				TestTrue(TEXT("totalMatches counts them all"), One->GetIntegerField(TEXT("totalMatches")) > 1);
+				TestTrue(TEXT("truncated"), One->GetBoolField(TEXT("truncated")));
+			}
+			const TSharedPtr<FJsonObject> All = Run(TEXT("Vector"), 200, true);
+			if (TestTrue(TEXT("a result"), All.IsValid()) && All->GetIntegerField(TEXT("totalMatches")) <= 200)
+			{
+				TestEqual(TEXT("not truncated when every match fits"), All->GetBoolField(TEXT("truncated")), false);
+				TestEqual(TEXT("totalMatches is the number returned"), All->GetIntegerField(TEXT("totalMatches")), Identifiers(All).Num());
+			}
+
+			const TArray<FString> Actors = Identifiers(Run(TEXT("Actor"), 200, true));
+			TestTrue(TEXT("Actor matches types"), Actors.Num() > 0);
+			TestEqual(TEXT("no type twice"), TSet<FString>(Actors).Num(), Actors.Num());
+
+			const TArray<FString> Project = Identifiers(Run(TEXT("N2C"), 200, false));
+			TestTrue(TEXT("includeEngineTypes false keeps /Script/NodeToCode.N2CTagInfo"), Project.Contains(TEXT("/Script/NodeToCode.N2CTagInfo")));
+			TestFalse(TEXT("and leaves out engine types"), Project.ContainsByPredicate([](const FString& Id)
+				{ return Id.StartsWith(TEXT("/Script/Engine.")) || Id.StartsWith(TEXT("/Script/CoreUObject.")) || Id.StartsWith(TEXT("/Engine/")); }));
 		});
 	});
 #else
