@@ -1,13 +1,7 @@
 {
 	"case": "UserEnum",
 	"description": "Function SwitchLimit(Limit: E_GoldenLimit): E_GoldenLimit is a user enum {Min, Max, MaxHealth}. Switch on E_GoldenLimit: Min runs CollectGarbage, Max runs ControlScreensaver, MaxHealth is unconnected.",
-	"known_defects": [
-		{
-			"finding": "translation-core-32",
-			"card": "0239",
-			"effect": "Switch nodes are named 'Switch', losing the switched type"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -50,7 +44,8 @@
 						"id": "N2",
 						"type": "SwitchEnum",
 						"class": "K2Node_SwitchEnum",
-						"title": "Switch",
+						"title": "Switch on E_GoldenLimit",
+						"member_name": "E_GoldenLimit",
 						"input_pins": [
 							{
 								"id": "P3",

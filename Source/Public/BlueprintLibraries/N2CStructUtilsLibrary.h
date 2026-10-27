@@ -70,13 +70,15 @@ public:
 	 * Add a variable/property to a UserDefinedStruct
 	 * @param Struct The UserDefinedStruct to modify
 	 * @param VariableName The name for the new variable
-	 * @param VariableType The type of the variable. Supported types:
-	 *        - Primitives: bool, int32, int64, float, double, byte
+	 * @param VariableType The type of the variable, in the type vocabulary every NodeToCode tool reads
+	 *        (N2C::PinType::Parse, card 0347):
+	 *        - Primitives: bool, int32 (int, integer), int64, float, double, byte
 	 *        - Strings: FString, FName, FText
-	 *        - Vectors: FVector, FVector2D, FRotator, FTransform
-	 *        - Colors: FColor, FLinearColor
-	 *        - Objects: Use full path like '/Script/Engine.Actor' or class name 'Actor'
-	 *        - Structs: Use full path like '/Script/CoreUObject.Vector' or struct name
+	 *        - Structs and enums: a short name (Vector, FHitResult, ECollisionChannel, S_Loot) or a path
+	 *          ('/Script/CoreUObject.Vector', '/Game/Data/S_Loot')
+	 *        - Objects: a class name ('Actor', 'BP_Enemy') or path ('/Script/Engine.Actor'); class<Actor>,
+	 *          softobject<Actor>, softclass<Actor>, interface<...> for the other reference kinds
+	 *        - Containers: array<T>, set<T>, map<K, V>
 	 * @param bSuccess Whether the variable was successfully added. False, with nothing added, when the struct already
 	 *        has a variable with this name or the new variable could not be given it.
 	 * @param ErrorMessage Error message if the operation failed

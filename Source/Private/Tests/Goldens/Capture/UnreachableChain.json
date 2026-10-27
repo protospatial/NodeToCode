@@ -1,13 +1,7 @@
 {
 	"case": "UnreachableChain",
 	"description": "Event graph: custom event OnRun runs CollectGarbage. Apart from it, ControlScreensaver (its Allow Screen Saver from Not of a literal) runs ResetGamepadAssignments with no event before them: both are unreachable and Not, read only by them, is unused. The default ghost events are not captured.",
-	"known_defects": [
-		{
-			"finding": "translation-core-16",
-			"card": "0239",
-			"effect": "Custom events get member_name 'None' (the event processor's custom-event branch is unreachable)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -26,8 +20,8 @@
 						"id": "N1",
 						"type": "CustomEvent",
 						"class": "K2Node_CustomEvent",
-						"title": "OnRun",
-						"member_name": "None",
+						"member_parent": "BP_N2CGolden_UnreachableChain",
+						"member_name": "OnRun",
 						"input_pins": [],
 						"output_pins": [
 							{

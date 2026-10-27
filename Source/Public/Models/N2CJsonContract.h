@@ -113,6 +113,24 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* EnumValueNumberField = TEXT("value");
 
 	/**
+	 * Node details (card 0239, additive), each written only when set, after "output_pins": "bound_to" (a component- or
+	 * actor-bound event's component variable or actor, its "member_name" being the delegate), "net" ("Server",
+	 * "Client" or "Multicast" for a replicated custom event) and "reliable" (true for a reliable RPC), and "timeline"
+	 * on a Timeline node: {"length": seconds, "loop", "autoplay" (each only when true), "tracks": [{"name", "kind"}]}
+	 * with kind "float", "vector", "color" or "event".
+	 */
+	inline constexpr const TCHAR* NodeBoundToField = TEXT("bound_to");
+	inline constexpr const TCHAR* NodeNetField = TEXT("net");
+	inline constexpr const TCHAR* NodeReliableField = TEXT("reliable");
+	inline constexpr const TCHAR* NodeTimelineField = TEXT("timeline");
+	inline constexpr const TCHAR* TimelineLengthField = TEXT("length");
+	inline constexpr const TCHAR* TimelineLoopField = TEXT("loop");
+	inline constexpr const TCHAR* TimelineAutoPlayField = TEXT("autoplay");
+	inline constexpr const TCHAR* TimelineTracksField = TEXT("tracks");
+	inline constexpr const TCHAR* TimelineTrackNameField = TEXT("name");
+	inline constexpr const TCHAR* TimelineTrackKindField = TEXT("kind");
+
+	/**
 	 * Variables (card 0242, from PR #8 by flashpoint493; additive): the Blueprint's member variables as the optional
 	 * top-level "variables" array after "enums", and a function graph's local variables as the optional per-graph
 	 * "local_variables" array after "comments". Written only by a capture that asks for them

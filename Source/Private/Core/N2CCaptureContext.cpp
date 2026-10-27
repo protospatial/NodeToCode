@@ -879,40 +879,14 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
     // Determine node type
     DetermineNodeType(Node, OutNodeDef.NodeType);
 
-    // Get the appropriate processor for this node type
-    TSharedPtr<IN2CNodeProcessor> Processor = FN2CNodeProcessorFactory::Get().GetProcessor(OutNodeDef.NodeType);
-    if (Processor.IsValid())
+    // Every type has a processor: its own, else the base processor (card 0239), which also sets "latent" for every kind
+    // of node, so the old fallback path that never ran is gone
+    const TSharedPtr<IN2CNodeProcessor> Processor = FN2CNodeProcessorFactory::Get().GetProcessor(OutNodeDef.NodeType);
+    if (!Processor.IsValid() || !Processor->Process(Node, OutNodeDef))
     {
-        // Process the node using the processor
-        if (!Processor->Process(Node, OutNodeDef))
-        {
-            FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
-            FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
-            
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node processor failed for node '%s' of type %s"),
-                *NodeTitle, *NodeTypeName));
-            
-            // Fall back to the old method if processor fails
-            FallbackProcessNodeProperties(Node, OutNodeDef);
-        }
-        else
-        {
-            // Log successful processing
-            FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
-            N2C_LOG(Debug, TEXT("Successfully processed node '%s' using %s processor"),
-                *OutNodeDef.Title, *NodeTypeName);
-        }
-    }
-    else
-    {
-        // Fall back to the old method if no processor is available
-        FString NodeTypeName = StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType));
-        FString NodeTitle = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
-        
-        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("No processor available for node '%s' of type %s"),
-            *NodeTitle, *NodeTypeName));
-        
-        FallbackProcessNodeProperties(Node, OutNodeDef);
+        FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node processor failed for node '%s' of type %s"),
+            *Node->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+            *StaticEnum<EN2CNodeType>()->GetNameStringByValue(static_cast<int64>(OutNodeDef.NodeType))));
     }
 
     // A collapsed graph's node names the graph captured for it, as a macro instance names its macro (imp-translation-core-4)
@@ -1013,22 +987,6 @@ void FN2CCaptureContext::ProcessNodeTypeAndProperties(UK2Node* Node, FN2CNodeDef
             }
         }
     }
-}
-
-void FN2CCaptureContext::FallbackProcessNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
-{
-    // The title hint, in source text so it is the same in every editor language
-    OutNodeDef.Title = N2CStableNames::NodeTitle(Node);
-
-    // Determine node specific data directly such as
-    // MemberParent, MemberName, bLatent, 
-    DetermineNodeSpecificProperties(Node, OutNodeDef);
-    
-    // Extract comments if present
-    if (Node->NodeComment.Len() > 0) { OutNodeDef.Comment = Node->NodeComment; }
-    
-    // Set purity from node
-    OutNodeDef.bPure = Node->IsNodePure();
 }
 
 void FN2CCaptureContext::ProcessNodePins(UK2Node* Node, FN2CNodeDefinition& OutNodeDef, TArray<UEdGraphPin*>& OutExecInputs, TArray<UEdGraphPin*>& OutExecOutputs)
@@ -1833,38 +1791,3 @@ FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)
     return Result;
 }
 
-void FN2CCaptureContext::DetermineNodeSpecificProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
-{
-    if (!Node)
-    {
-        return;
-    }
-
-    // Handle component add nodes
-    if (UK2Node_AddComponent* AddCompNode = Cast<UK2Node_AddComponent>(Node))
-    {
-        if (UClass* ComponentClass = AddCompNode->TemplateType)
-        {
-            OutNodeDef.MemberParent = N2CStableNames::ClassName(ComponentClass);
-        }
-    }
-
-    // Handle timeline nodes
-    else if (UK2Node_Timeline* TimelineNode = Cast<UK2Node_Timeline>(Node))
-    {
-        OutNodeDef.MemberName = TimelineNode->TimelineName.ToString();
-        if (UBlueprint* BP = TimelineNode->GetBlueprint())
-        {
-            OutNodeDef.MemberParent = BP->GetName();
-        }
-    }
-
-    // Mark latent/async nodes
-    if (Node->IsA<UK2Node_AsyncAction>() || 
-        Node->IsA<UK2Node_BaseAsyncTask>() ||
-        Node->IsA<UK2Node_Timeline>() ||
-        (Node->IsA<UK2Node_CallFunction>() && Cast<UK2Node_CallFunction>(Node)->IsLatentFunction()))
-    {
-        OutNodeDef.bLatent = true;
-    }
-}

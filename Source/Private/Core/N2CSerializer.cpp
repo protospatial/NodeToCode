@@ -20,7 +20,8 @@ namespace
     const TCHAR* const NodeFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, TEXT("type"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField,
         N2CJsonContract::NodeNameFieldV1, TEXT("member_parent"), TEXT("member_name"), TEXT("comment"), TEXT("pure"), TEXT("latent"),
         N2CJsonContract::UnusedField, N2CJsonContract::UnreachableField, N2CJsonContract::DisabledField, TEXT("input_pins"),
-        TEXT("output_pins") };
+        TEXT("output_pins"), N2CJsonContract::NodeBoundToField, N2CJsonContract::NodeNetField, N2CJsonContract::NodeReliableField,
+        N2CJsonContract::NodeTimelineField };
     const TCHAR* const PinFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, N2CJsonContract::PinNameField, N2CJsonContract::PinLabelField, TEXT("type"),
         TEXT("sub_type"), TEXT("default_value"), TEXT("connected"), TEXT("is_reference"), TEXT("is_const"), TEXT("is_array"),
         TEXT("is_map"), TEXT("is_set"), N2CJsonContract::PinValueTypeField, N2CJsonContract::PinValueSubTypeField };
@@ -622,6 +623,43 @@ TSharedPtr<FJsonObject> FN2CSerializer::NodeToJsonObject(const FN2CNodeDefinitio
         }
     }
     JsonObject->SetArrayField(TEXT("output_pins"), OutputPinsArray);
+
+    // Node details (card 0239), each only when set
+    if (!Node.BoundTo.IsEmpty())
+    {
+        JsonObject->SetStringField(N2CJsonContract::NodeBoundToField, Node.BoundTo);
+    }
+    if (!Node.Net.IsEmpty())
+    {
+        JsonObject->SetStringField(N2CJsonContract::NodeNetField, Node.Net);
+    }
+    if (Node.bReliable)
+    {
+        JsonObject->SetBoolField(N2CJsonContract::NodeReliableField, true);
+    }
+    if (Node.Timeline.bSet)
+    {
+        const TSharedPtr<FJsonObject> Timeline = MakeShared<FJsonObject>();
+        Timeline->SetNumberField(N2CJsonContract::TimelineLengthField, Node.Timeline.Length);
+        if (Node.Timeline.bLoop)
+        {
+            Timeline->SetBoolField(N2CJsonContract::TimelineLoopField, true);
+        }
+        if (Node.Timeline.bAutoPlay)
+        {
+            Timeline->SetBoolField(N2CJsonContract::TimelineAutoPlayField, true);
+        }
+        TArray<TSharedPtr<FJsonValue>> Tracks;
+        for (const FN2CTimelineTrack& Track : Node.Timeline.Tracks)
+        {
+            const TSharedPtr<FJsonObject> TrackObject = MakeShared<FJsonObject>();
+            TrackObject->SetStringField(N2CJsonContract::TimelineTrackNameField, Track.Name);
+            TrackObject->SetStringField(N2CJsonContract::TimelineTrackKindField, Track.Kind);
+            Tracks.Add(MakeShared<FJsonValueObject>(TrackObject));
+        }
+        Timeline->SetArrayField(N2CJsonContract::TimelineTracksField, Tracks);
+        JsonObject->SetObjectField(N2CJsonContract::NodeTimelineField, Timeline);
+    }
     WriteUnknownFields(JsonObject, Node.UnknownFields);
 
     return JsonObject;
@@ -1200,6 +1238,39 @@ bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject
             {
                 AddReadWarning(Warnings, N2CJsonContract::ReadWarning::SkippedPin, PinPath, FString(),
                     TEXT("pin skipped: it is not an object or misses a required field"));
+            }
+        }
+    }
+
+    // Node details (card 0239)
+    OutNode.BoundTo.Reset();
+    OutNode.Net.Reset();
+    OutNode.bReliable = false;
+    OutNode.Timeline = FN2CTimelineSummary();
+    JsonObject->TryGetStringField(N2CJsonContract::NodeBoundToField, OutNode.BoundTo);
+    JsonObject->TryGetStringField(N2CJsonContract::NodeNetField, OutNode.Net);
+    JsonObject->TryGetBoolField(N2CJsonContract::NodeReliableField, OutNode.bReliable);
+    const TSharedPtr<FJsonObject>* Timeline = nullptr;
+    if (JsonObject->TryGetObjectField(N2CJsonContract::NodeTimelineField, Timeline))
+    {
+        OutNode.Timeline.bSet = true;
+        double Length = 0.0;
+        (*Timeline)->TryGetNumberField(N2CJsonContract::TimelineLengthField, Length);
+        OutNode.Timeline.Length = static_cast<float>(Length);
+        (*Timeline)->TryGetBoolField(N2CJsonContract::TimelineLoopField, OutNode.Timeline.bLoop);
+        (*Timeline)->TryGetBoolField(N2CJsonContract::TimelineAutoPlayField, OutNode.Timeline.bAutoPlay);
+        const TArray<TSharedPtr<FJsonValue>>* Tracks = nullptr;
+        if ((*Timeline)->TryGetArrayField(N2CJsonContract::TimelineTracksField, Tracks))
+        {
+            for (const TSharedPtr<FJsonValue>& TrackValue : *Tracks)
+            {
+                const TSharedPtr<FJsonObject>* TrackObject = nullptr;
+                if (TrackValue.IsValid() && TrackValue->TryGetObject(TrackObject))
+                {
+                    FN2CTimelineTrack& Track = OutNode.Timeline.Tracks.AddDefaulted_GetRef();
+                    (*TrackObject)->TryGetStringField(N2CJsonContract::TimelineTrackNameField, Track.Name);
+                    (*TrackObject)->TryGetStringField(N2CJsonContract::TimelineTrackKindField, Track.Kind);
+                }
             }
         }
     }
