@@ -53,7 +53,7 @@ FMcpToolDefinition FN2CMcpListComponentsInActorTool::GetDefinition() const
     TypeFilterEnum.Add(MakeShareable(new FJsonValueString(TEXT("primitive"))));
     TypeFilterProp->SetArrayField(TEXT("enum"), TypeFilterEnum);
     TypeFilterProp->SetStringField(TEXT("default"), TEXT("all"));
-    TypeFilterProp->SetStringField(TEXT("description"), TEXT("Filter by component type"));
+    TypeFilterProp->SetStringField(TEXT("description"), TEXT("List only components of this type (any case): scene (SceneComponent), actor (ActorComponent but not SceneComponent), primitive (PrimitiveComponent). The whole tree is searched: a matching component under one that does not match moves up to where that one was and keeps its parentComponent. Any other value is refused"));
     Properties->SetObjectField(TEXT("componentTypeFilter"), TypeFilterProp);
 
     Schema->SetObjectField(TEXT("properties"), Properties);
@@ -81,11 +81,18 @@ FMcpToolCallResult FN2CMcpListComponentsInActorTool::Execute(const TSharedPtr<FJ
         bool bIncludeInherited = true;
         Arguments->TryGetBoolField(TEXT("includeInherited"), bIncludeInherited);
 
-        FString ComponentTypeFilter = TEXT("all");
-        Arguments->TryGetStringField(TEXT("componentTypeFilter"), ComponentTypeFilter);
+        FString ComponentTypeFilterArg;
+        Arguments->TryGetStringField(TEXT("componentTypeFilter"), ComponentTypeFilterArg);
+
+        // An unknown filter is refused rather than listing everything as if it had matched (card 0287)
+        FString ErrorMsg;
+        FString ComponentTypeFilter;
+        if (!FN2CMcpComponentUtils::ParseComponentTypeFilter(ComponentTypeFilterArg, ComponentTypeFilter, ErrorMsg))
+        {
+            return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+        }
 
         // Resolve the Blueprint
-        FString ErrorMsg;
         UBlueprint* Blueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(BlueprintPath, ErrorMsg);
         if (!Blueprint)
         {
