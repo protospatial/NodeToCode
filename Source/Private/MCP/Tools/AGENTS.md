@@ -274,7 +274,7 @@ export or translation work goes in the unfrozen toolsets.
 | Family | Cards |
 |---|---|
 | `BlueprintGraphTools` | 0276 (connect-pins replace and conversion links), 0295 (notification brushes, dead code) |
-| `BlueprintFunctionTools` | 0280 (create- and delete-blueprint-function touch unrelated graphs), 0295 |
+| `BlueprintFunctionTools` | 0295; 0280 is done |
 | `BlueprintVariableTools` | 0283 (member defaults through the CDO), 0291 (search-variable-types), 0295, 0274 (targets) |
 | `BlueprintCompileTools` | 0274 (targets); 0290 is done |
 | `BlueprintClassTools` | 0288 (search-blueprint-classes duplicates and counts) |
