@@ -96,24 +96,6 @@ struct FN2CBlueprintFunctionCallMapping
 };
 
 USTRUCT(BlueprintType)
-struct FN2CBlueprintInterfaceNodeMapping
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	FString SourceFunctionName;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	FString TargetFunctionName;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	TArray<FString> NodeGuids;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	TArray<FString> CompanionNodeGuidsToRemove;
-};
-
-USTRUCT(BlueprintType)
 struct FN2CBlueprintMutationResult
 {
     GENERATED_BODY()
@@ -134,45 +116,6 @@ struct FN2CBlueprintMutationResult
     TArray<FString> Changes;
     UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
     FString Error;
-};
-
-USTRUCT(BlueprintType)
-struct FN2CBlueprintInterfaceMigrationResult
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	bool bSuccess = false;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	bool bPlanReady = false;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	bool bApplied = false;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	bool bSaved = false;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	bool bSourceInterfaceRemoved = false;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	FString AssetObjectPath;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	FString PlanHash;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	FString BackupPath;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	int32 ChangeCount = 0;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	TArray<FString> Changes;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Node to Code")
-	FString Error;
 };
 
 /** Exposes NodeToCode Blueprint inspection and reviewed graph mutations to Unreal MCP clients. */
@@ -224,24 +167,6 @@ public:
         const FString& BlueprintAssetPath, const FString& SourceFunctionLibraryPath,
         const TArray<FN2CBlueprintFunctionCallMapping>& Mappings,
         bool bExternalReferencesReviewed);
-
-	/**
-	 * Dry-runs and then applies exact, reviewed Blueprint interface-node migrations. Each mapping names exact node GUIDs;
-	 * an empty target removes the selected node, while a target function rebinds message/event nodes to another interface.
-	 * It verifies logical graph links after reconstruction and saves only after compilation succeeds. Optional source-interface removal deletes its implementation graphs and reviewed empty local variables. Apply only with the
-	 * plan hash returned by a successful dry run. A package backup is written before mutation; failed compilation is not saved.
-	 */
-	UFUNCTION(Category = "Node to Code", meta = (AICallable))
-	static FN2CBlueprintInterfaceMigrationResult MigrateBlueprintInterface(
-		const FString& BlueprintAssetPath,
-		const FString& SourceInterfaceClassPath,
-		const FString& TargetInterfaceClassPath,
-		const TArray<FN2CBlueprintInterfaceNodeMapping>& Mappings,
-		const TArray<FString>& MemberVariablesToRemove,
-		bool bRemoveSourceInterfaceImplementation,
-		bool bExternalReferencesReviewed,
-		bool bApply,
-		const FString& ExpectedPlanHash);
 
     /** Removes reviewed function graphs only when no surviving local graph calls them, then compiles and saves. */
     UFUNCTION(Category = "Node to Code", meta = (AICallable))
