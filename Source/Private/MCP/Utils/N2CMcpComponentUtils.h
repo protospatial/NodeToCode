@@ -121,7 +121,16 @@ public:
     static bool ApplyTransformToComponent(USceneComponent* SceneComponent,
         const TSharedPtr<FJsonObject>& TransformJson, FString& OutErrorMsg);
 
-    /** Checks if a component class passes the type filter ("all", "scene", "actor", "primitive") */
+    /**
+     * Reads a componentTypeFilter argument into "all", "scene", "actor" or "primitive" (any case; empty is "all").
+     * Any other value: false, with INVALID_ARGUMENT in OutErrorMsg.
+     */
+    static bool ParseComponentTypeFilter(const FString& InFilter, FString& OutFilter, FString& OutErrorMsg);
+
+    /**
+     * Checks if a component class passes a parsed type filter ("all", "scene", "actor", "primitive"). A missing
+     * class passes "all" only; an unknown filter passes nothing.
+     */
     static bool PassesComponentTypeFilter(UClass* ComponentClass, const FString& TypeFilter);
 
 private:

@@ -615,11 +615,38 @@ bool FN2CMcpComponentUtils::ApplyTransformToComponent(USceneComponent* SceneComp
     return true;
 }
 
+bool FN2CMcpComponentUtils::ParseComponentTypeFilter(const FString& InFilter, FString& OutFilter, FString& OutErrorMsg)
+{
+    // FString comparison ignores case: "Primitive" is "primitive"; an empty value is the default
+    static const TCHAR* const Filters[] = { TEXT("all"), TEXT("scene"), TEXT("actor"), TEXT("primitive") };
+    const FString Trimmed = InFilter.TrimStartAndEnd();
+    if (Trimmed.IsEmpty())
+    {
+        OutFilter = TEXT("all");
+        return true;
+    }
+    for (const TCHAR* Filter : Filters)
+    {
+        if (Trimmed == Filter)
+        {
+            OutFilter = Filter;
+            return true;
+        }
+    }
+    OutErrorMsg = FString::Printf(TEXT("INVALID_ARGUMENT|componentTypeFilter '%s' is not one of: all, scene, actor, primitive"), *InFilter);
+    return false;
+}
+
 bool FN2CMcpComponentUtils::PassesComponentTypeFilter(UClass* ComponentClass, const FString& TypeFilter)
 {
-    if (!ComponentClass || TypeFilter == TEXT("all"))
+    if (TypeFilter == TEXT("all"))
     {
         return true;
+    }
+    // A component whose class is missing (a deleted component Blueprint) is of no known type
+    if (!ComponentClass)
+    {
+        return false;
     }
     if (TypeFilter == TEXT("scene"))
     {
@@ -634,7 +661,7 @@ bool FN2CMcpComponentUtils::PassesComponentTypeFilter(UClass* ComponentClass, co
     {
         return ComponentClass->IsChildOf(UPrimitiveComponent::StaticClass());
     }
-    return true;
+    return false;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpComponentUtils::GetComponentTransformJson(const USceneComponent* Component)

@@ -7,6 +7,7 @@
 
 #include "BlueprintLibraries/N2CStructUtilsLibrary.h"
 #include "Editor.h"
+#include "Editor/TransBuffer.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFileManager.h"
@@ -23,7 +24,10 @@
  * Bad package paths and names are refused with a message and create nothing (auth-settings-module-19: an unmounted or
  * malformed path was a fatal error), a duplicate name never replaces the struct already there, a failed save returns
  * false (auth-settings-module-20: SavePackage errors went to GError, which is fatal), and the variable listing has one
- * entry per variable. Structs are made under /Game/__N2CTestStructUtils_<guid>, which each case deletes with its files.
+ * entry per variable, by the name it was given. A variable name the struct already has is refused and adds nothing
+ * (auth-settings-module-21: the rename failed and a MemberVar_<n> field stayed behind), the listing gives those names
+ * rather than the internal ones (auth-settings-module-22), and removing the default variable never removes a field
+ * the user made (auth-settings-module-24: it removed whatever came first). Structs are made under /Game/__N2CTestStructUtils_<guid>, which each case deletes with its files.
  */
 BEGIN_DEFINE_SPEC(FN2CStructUtilsSpec, "NodeToCode.StructUtils", N2C_TEST_FLAGS)
 
@@ -170,21 +174,95 @@ void FN2CStructUtilsSpec::Define()
 		TestTrue(TEXT("the default variable is removed"), bSuccess);
 
 		const TArray<FString> Names = UN2CStructUtilsLibrary::GetStructVariableNames(Struct);
-		if (TestEqual(TEXT("three names"), Names.Num(), 3))
-		{
-			// A struct member's name is the display name with a unique suffix (Health_2_<guid>)
-			TestTrue(TEXT("Health first"), Names[0].StartsWith(TEXT("Health")));
-			TestTrue(TEXT("DisplayName second"), Names[1].StartsWith(TEXT("DisplayName")));
-			TestTrue(TEXT("Location third"), Names[2].StartsWith(TEXT("Location")));
-		}
-		TSet<FString> Unique(Names);
-		TestEqual(TEXT("no name twice"), Unique.Num(), Names.Num());
+		// The names are the ones asked for, not the internal Health_2_<guid>
+		TestEqual(TEXT("the names given, in order"), Names, TArray<FString>{ TEXT("Health"), TEXT("DisplayName"), TEXT("Location") });
+	});
 
-		// A second variable with a display name already used gets a name of its own
+	It(TEXT("refuses a variable name the struct already has and leaves no unnamed field"), [this]()
+	{
+		bool bSuccess = false;
+		FString Error;
+		UUserDefinedStruct* Struct = Create(Folder, TEXT("F_Dup"), bSuccess, Error);
+		if (!TestNotNull(FString::Printf(TEXT("created (%s)"), *Error), Struct)) { return; }
+		UN2CStructUtilsLibrary::AddStructVariable(Struct, TEXT("Health"), TEXT("int"), bSuccess, Error);
+		TestTrue(TEXT("the first Health is added"), bSuccess);
+		UN2CStructUtilsLibrary::RemoveDefaultVariable(Struct, bSuccess, Error);
+		TestTrue(TEXT("the default variable is removed"), bSuccess);
+
+		Error.Reset();
 		UN2CStructUtilsLibrary::AddStructVariable(Struct, TEXT("Health"), TEXT("float"), bSuccess, Error);
-		const TArray<FString> After = UN2CStructUtilsLibrary::GetStructVariableNames(Struct);
-		TestEqual(TEXT("four names"), After.Num(), 4);
-		TestEqual(TEXT("still no name twice"), TSet<FString>(After).Num(), After.Num());
+		TestFalse(TEXT("a second Health is refused"), bSuccess);
+		TestTrue(FString::Printf(TEXT("saying the name is taken (%s)"), *Error), Error.Contains(TEXT("already has a variable named 'Health'")));
+		UN2CStructUtilsLibrary::AddStructVariable(Struct, TEXT("health"), TEXT("float"), bSuccess, Error);
+		TestFalse(TEXT("names differing only in case are the same name"), bSuccess);
+
+		const int32 Added = UN2CStructUtilsLibrary::AddStructVariablesBatch(Struct,
+			{ TEXT("Armor"), TEXT("Health") }, { TEXT("int"), TEXT("int") }, bSuccess, Error);
+		TestEqual(TEXT("a batch adds the new name only"), Added, 1);
+		TestFalse(TEXT("and is not a success"), bSuccess);
+
+		const TArray<FString> Names = UN2CStructUtilsLibrary::GetStructVariableNames(Struct);
+		TestEqual(TEXT("Health once, then Armor"), Names, TArray<FString>{ TEXT("Health"), TEXT("Armor") });
+		TestFalse(TEXT("no MemberVar field left behind"),
+			Names.ContainsByPredicate([](const FString& Name) { return Name.StartsWith(TEXT("MemberVar")); }));
+	});
+
+	It(TEXT("undoes adding a variable in one step, name and all"), [this]()
+	{
+		UTransBuffer* TransBuffer = GEditor ? Cast<UTransBuffer>(GEditor->Trans) : nullptr;
+		if (!TestNotNull(TEXT("the editor has an undo buffer"), TransBuffer)) { return; }
+		bool bSuccess = false;
+		FString Error;
+		UUserDefinedStruct* Struct = Create(Folder, TEXT("F_Undo"), bSuccess, Error);
+		if (!TestNotNull(FString::Printf(TEXT("created (%s)"), *Error), Struct)) { return; }
+		const TArray<FString> Before = UN2CStructUtilsLibrary::GetStructVariableNames(Struct);
+
+		UN2CStructUtilsLibrary::AddStructVariable(Struct, TEXT("Speed"), TEXT("float"), bSuccess, Error);
+		TestTrue(TEXT("Speed is added"), bSuccess);
+		TestEqual(TEXT("as one undo step"), TransBuffer->GetUndoContext().Title.ToString(), FString(TEXT("Add Struct Variable")));
+		TestTrue(TEXT("one undo"), GEditor->UndoTransaction());
+		TestEqual(TEXT("leaves the struct as it was, with no unnamed field"), UN2CStructUtilsLibrary::GetStructVariableNames(Struct), Before);
+	});
+
+	It(TEXT("removes only the default variable, never a field the user made"), [this]()
+	{
+		bool bSuccess = true;
+		FString Error;
+		UN2CStructUtilsLibrary::RemoveDefaultVariable(nullptr, bSuccess, Error);
+		TestFalse(TEXT("no struct is refused"), bSuccess);
+
+		UUserDefinedStruct* Struct = Create(Folder, TEXT("F_Item"), bSuccess, Error);
+		if (!TestNotNull(FString::Printf(TEXT("created (%s)"), *Error), Struct)) { return; }
+
+		// While the default is the only member it cannot go: a struct cannot be empty
+		UN2CStructUtilsLibrary::RemoveDefaultVariable(Struct, bSuccess, Error);
+		TestFalse(TEXT("the only member is not removed"), bSuccess);
+		TestFalse(TEXT("saying why"), Error.IsEmpty());
+		TestEqual(TEXT("it is still there"), UN2CStructUtilsLibrary::GetStructVariableNames(Struct).Num(), 1);
+
+		UN2CStructUtilsLibrary::AddStructVariablesBatch(Struct, { TEXT("ItemId"), TEXT("Count") }, { TEXT("name"), TEXT("int") }, bSuccess, Error);
+		TestTrue(TEXT("ItemId and Count added"), bSuccess);
+		UN2CStructUtilsLibrary::RemoveDefaultVariable(Struct, bSuccess, Error);
+		TestTrue(TEXT("then the default is removed"), bSuccess);
+		const TArray<FString> Expected = { TEXT("ItemId"), TEXT("Count") };
+		TestEqual(TEXT("ItemId is now the first field"), UN2CStructUtilsLibrary::GetStructVariableNames(Struct), Expected);
+
+		// A second call, as on a struct loaded from disk whose first field is the user's
+		Error.Reset();
+		UN2CStructUtilsLibrary::RemoveDefaultVariable(Struct, bSuccess, Error);
+		TestFalse(TEXT("a second call removes nothing"), bSuccess);
+		TestTrue(FString::Printf(TEXT("and says there is no default variable (%s)"), *Error), Error.Contains(TEXT("no default variable")));
+		TestEqual(TEXT("ItemId and Count are kept"), UN2CStructUtilsLibrary::GetStructVariableNames(Struct), Expected);
+
+		// A user's bool is not the default either, even first in the struct
+		UUserDefinedStruct* Flags = Create(Folder, TEXT("F_Flags"), bSuccess, Error);
+		if (!TestNotNull(TEXT("second struct created"), Flags)) { return; }
+		UN2CStructUtilsLibrary::AddStructVariablesBatch(Flags, { TEXT("bEnabled"), TEXT("bVisible") }, { TEXT("bool"), TEXT("bool") }, bSuccess, Error);
+		UN2CStructUtilsLibrary::RemoveDefaultVariable(Flags, bSuccess, Error);
+		TestTrue(TEXT("the default goes"), bSuccess);
+		UN2CStructUtilsLibrary::RemoveDefaultVariable(Flags, bSuccess, Error);
+		TestFalse(TEXT("a user's bool does not"), bSuccess);
+		TestEqual(TEXT("both bools kept"), UN2CStructUtilsLibrary::GetStructVariableNames(Flags), TArray<FString>{ TEXT("bEnabled"), TEXT("bVisible") });
 	});
 
 	It(TEXT("returns false instead of a fatal error when the save fails"), [this]()

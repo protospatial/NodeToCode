@@ -53,8 +53,9 @@ private:
 	void CollectNativeClasses(TArray<FBlueprintClassInfo>& OutClasses, const FString& ClassTypeFilter, 
 		bool bIncludeEngineClasses, bool bIncludePluginClasses, bool bIncludeDeprecated, bool bIncludeAbstract) const;
 	void CollectBlueprintClasses(TArray<FBlueprintClassInfo>& OutClasses, const FString& ClassTypeFilter,
-		bool bIncludeEngineClasses, bool bIncludePluginClasses, bool bIncludeDeprecated) const;
-	void AddCommonClasses(TArray<FBlueprintClassInfo>& OutClasses, const FString& ClassTypeFilter) const;
+		bool bIncludeEngineClasses, bool bIncludePluginClasses, bool bIncludeDeprecated, bool bIncludeAbstract) const;
+	/** The class is one of the common parent classes (Common*Classes): it is marked commonClass and scores higher */
+	bool IsCommonClassPath(const FString& ClassPath) const;
 
 	// Helper methods
 	bool PassesClassTypeFilter(const UClass* Class, const FString& ClassTypeFilter) const;
@@ -69,7 +70,7 @@ private:
 	
 	// Filtering and scoring
 	TArray<FBlueprintClassInfo> FilterAndScoreClasses(const TArray<FBlueprintClassInfo>& AllClasses,
-		const FString& SearchTerm, int32 MaxResults) const;
+		const FString& SearchTerm, int32 MaxResults, int32& OutTotalMatches) const;
 	int32 CalculateRelevanceScore(const FBlueprintClassInfo& ClassInfo, const FString& SearchTerm) const;
 	
 	// JSON conversion

@@ -219,6 +219,19 @@ BEGIN_DEFINE_SPEC(FN2CStructureToolsSpec, "NodeToCode.MCP.Structure", N2C_TEST_F
 		return Classes;
 	}
 
+	/** The entry of a search result whose classPath is ClassPath, or null */
+	static TSharedPtr<FJsonObject> FindClass(const TArray<TSharedPtr<FJsonValue>>& Classes, const FString& ClassPath)
+	{
+		for (const TSharedPtr<FJsonValue>& Value : Classes)
+		{
+			if (Value->AsObject()->GetStringField(TEXT("classPath")) == ClassPath)
+			{
+				return Value->AsObject();
+			}
+		}
+		return nullptr;
+	}
+
 	/** Every SCS node is reachable from the root nodes and every reachable node is in AllNodes */
 	void ExpectAllNodesReachable(const FString& What, UBlueprint* Blueprint)
 	{
@@ -434,9 +447,8 @@ void FN2CStructureToolsSpec::Define()
 
 	Describe(TEXT("search-blueprint-classes"), [this]()
 	{
-		// Known defect mcp-tools-bp-structure-12: AddCommonClasses adds Actor, Pawn and the other common classes and
-		// CollectNativeClasses adds them again, so a search lists them twice. Enable (KnownDefectIt -> It) with card 0288.
-		KnownDefectIt(TEXT("lists each native class once"), [this]()
+		// mcp-tools-bp-structure-12 (card 0288): the common classes were added a second time
+		It(TEXT("lists each native class once"), [this]()
 		{
 			for (const TCHAR* Term : { TEXT("Actor"), TEXT("Pawn"), TEXT("Character") })
 			{
@@ -459,10 +471,8 @@ void FN2CStructureToolsSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-bp-structure-12: the native pass skips Blueprint classes with IsChildOf(UBlueprintGeneratedClass),
-		// which never matches one, so a loaded Blueprint class is listed as native and again from the asset registry.
-		// Enable (KnownDefectIt -> It) with card 0288.
-		KnownDefectIt(TEXT("lists a loaded Blueprint class once, as a Blueprint class"), [this]()
+		// mcp-tools-bp-structure-12 (card 0288): the native pass let loaded Blueprint classes through
+		It(TEXT("lists a loaded Blueprint class once, as a Blueprint class"), [this]()
 		{
 			if (!MakeFolder())
 			{
@@ -490,6 +500,157 @@ void FN2CStructureToolsSpec::Define()
 			if (TestEqual(TEXT("the Blueprint class listed once"), Found.Num(), 1))
 			{
 				TestFalse(TEXT("not reported as native"), Found[0]->GetBoolField(TEXT("isNative")));
+			}
+		});
+		// mcp-tools-bp-structure-20 (card 0288): a leading A or U was stripped from the class name
+		It(TEXT("names classes by their display name, without dropping a first letter"), [this]()
+		{
+			for (const TPair<const TCHAR*, const TCHAR*>& Expected : TArray<TPair<const TCHAR*, const TCHAR*>>{
+				{ TEXT("/Script/Engine.Actor"), TEXT("Actor") }, { TEXT("/Script/UMG.UserWidget"), TEXT("User Widget") },
+				{ TEXT("/Script/AIModule.AIController"), TEXT("AIController") } })
+			{
+				const FString Path = Expected.Key;
+				const FString Term = FPackageName::ObjectPathToObjectName(FString(Path));
+				TSharedPtr<FJsonObject> Json;
+				const TArray<TSharedPtr<FJsonValue>>* Classes = Search(Term, Json);
+				const TSharedPtr<FJsonObject> Entry = Classes ? FindClass(*Classes, Path) : nullptr;
+				if (TestTrue(Term + TEXT(" found"), Entry.IsValid()))
+				{
+					TestEqual(Term + TEXT(": displayName"), Entry->GetStringField(TEXT("displayName")),
+						FindObject<UClass>(nullptr, *Path)->GetDisplayNameText().ToString());
+					TestFalse(Term + TEXT(": displayName keeps its first letter"), Entry->GetStringField(TEXT("displayName")).StartsWith(Expected.Value + 1));
+				}
+			}
+			TSharedPtr<FJsonObject> Json;
+			const TArray<TSharedPtr<FJsonValue>>* Classes = Search(TEXT("Actor"), Json);
+			const TSharedPtr<FJsonObject> Actor = Classes ? FindClass(*Classes, TEXT("/Script/Engine.Actor")) : nullptr;
+			if (TestTrue(TEXT("Actor found"), Actor.IsValid()))
+			{
+				TestEqual(TEXT("Actor's displayName"), Actor->GetStringField(TEXT("displayName")), FString(TEXT("Actor")));
+				TestTrue(TEXT("Actor is a common class"), Actor->GetBoolField(TEXT("commonClass")));
+				TestEqual(TEXT("Actor ranks first for 'Actor'"), (*Classes)[0]->AsObject()->GetStringField(TEXT("classPath")), FString(TEXT("/Script/Engine.Actor")));
+			}
+		});
+
+		// mcp-tools-bp-structure-13 (card 0288): classType matched a substring of the parent's export text, and names kept it
+		It(TEXT("lists a Character Blueprint under classType actor with its object path and names"), [this]()
+		{
+			if (!MakeFolder())
+			{
+				return;
+			}
+			UBlueprint* Blueprint = Create(TEXT("BP_N2CStructSearchChar"), TEXT("/Script/Engine.Character"));
+			if (!Blueprint)
+			{
+				return;
+			}
+			const FString ClassPath = Folder + TEXT("/BP_N2CStructSearchChar.BP_N2CStructSearchChar_C");
+			for (const TCHAR* Type : { TEXT("actor"), TEXT("all") })
+			{
+				TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+				Args->SetStringField(TEXT("searchTerm"), TEXT("BP_N2CStructSearchChar"));
+				Args->SetStringField(TEXT("classType"), Type);
+				const TSharedPtr<FJsonObject> Json = ExpectOk(FString(TEXT("search ")) + Type, TEXT("search-blueprint-classes"), Args);
+				const TArray<TSharedPtr<FJsonValue>>* Classes = nullptr;
+				const TSharedPtr<FJsonObject> Entry = Json.IsValid() && Json->TryGetArrayField(TEXT("classes"), Classes) ? FindClass(*Classes, ClassPath) : nullptr;
+				if (TestTrue(FString(Type) + TEXT(": the Character Blueprint listed by its object path"), Entry.IsValid()))
+				{
+					TestEqual(FString(Type) + TEXT(": className"), Entry->GetStringField(TEXT("className")), FString(TEXT("BP_N2CStructSearchChar_C")));
+					TestEqual(FString(Type) + TEXT(": parentClass"), Entry->GetStringField(TEXT("parentClass")), FString(TEXT("Character")));
+					TestFalse(FString(Type) + TEXT(": not native"), Entry->GetBoolField(TEXT("isNative")));
+				}
+			}
+			for (const TCHAR* Type : { TEXT("actorComponent"), TEXT("userWidget"), TEXT("object") })
+			{
+				TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+				Args->SetStringField(TEXT("searchTerm"), TEXT("BP_N2CStructSearchChar"));
+				Args->SetStringField(TEXT("classType"), Type);
+				const TSharedPtr<FJsonObject> Json = ExpectOk(FString(TEXT("search ")) + Type, TEXT("search-blueprint-classes"), Args);
+				const TArray<TSharedPtr<FJsonValue>>* Classes = nullptr;
+				if (Json.IsValid() && Json->TryGetArrayField(TEXT("classes"), Classes))
+				{
+					TestFalse(FString(Type) + TEXT(": the Character Blueprint is not listed"), FindClass(*Classes, ClassPath).IsValid());
+				}
+			}
+		});
+
+		// mcp-tools-bp-structure-22 (card 0288): abstract classes, valid parents, were hidden by default
+		It(TEXT("finds abstract parent classes by default and marks them isAbstract"), [this]()
+		{
+			for (const TCHAR* Path : { TEXT("/Script/Engine.PrimaryDataAsset"), TEXT("/Script/UMG.UserWidget") })
+			{
+				const FString Term = FPackageName::ObjectPathToObjectName(FString(Path));
+				TSharedPtr<FJsonObject> Json;
+				const TArray<TSharedPtr<FJsonValue>>* Classes = Search(Term, Json);
+				const TSharedPtr<FJsonObject> Entry = Classes ? FindClass(*Classes, Path) : nullptr;
+				if (TestTrue(Term + TEXT(" found"), Entry.IsValid()))
+				{
+					TestTrue(Term + TEXT(": isAbstract"), Entry->GetBoolField(TEXT("isAbstract")));
+				}
+			}
+			TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+			Args->SetStringField(TEXT("searchTerm"), TEXT("PrimaryDataAsset"));
+			Args->SetBoolField(TEXT("includeAbstract"), false);
+			const TSharedPtr<FJsonObject> Json = ExpectOk(TEXT("search without abstract"), TEXT("search-blueprint-classes"), Args);
+			const TArray<TSharedPtr<FJsonValue>>* Classes = nullptr;
+			if (Json.IsValid() && Json->TryGetArrayField(TEXT("classes"), Classes))
+			{
+				TestFalse(TEXT("includeAbstract false leaves PrimaryDataAsset out"), FindClass(*Classes, TEXT("/Script/Engine.PrimaryDataAsset")).IsValid());
+			}
+		});
+
+		// mcp-tools-bp-structure-21 (card 0288): totalFound counted every collected class, and common classes skipped the filters
+		It(TEXT("counts the matches in totalFound and applies every filter to common classes"), [this]()
+		{
+			TSharedPtr<FJsonObject> Json;
+			const TArray<TSharedPtr<FJsonValue>>* Classes = Search(TEXT("zzqqN2CNoSuchClass"), Json);
+			if (Classes)
+			{
+				TestEqual(TEXT("no match: no classes"), Classes->Num(), 0);
+				TestEqual(TEXT("no match: totalFound 0"), static_cast<int32>(Json->GetNumberField(TEXT("totalFound"))), 0);
+				TestFalse(TEXT("no match: hasMore false"), Json->GetBoolField(TEXT("hasMore")));
+			}
+			Classes = Search(TEXT("Character"), Json);
+			if (Classes && TestTrue(TEXT("Character: a page that holds every match"), Classes->Num() < 200))
+			{
+				TestEqual(TEXT("Character: totalFound is the number listed"), static_cast<int32>(Json->GetNumberField(TEXT("totalFound"))), Classes->Num());
+				TestFalse(TEXT("Character: hasMore false"), Json->GetBoolField(TEXT("hasMore")));
+			}
+			{
+				TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+				Args->SetStringField(TEXT("searchTerm"), TEXT("Character"));
+				Args->SetNumberField(TEXT("maxResults"), 1);
+				const TSharedPtr<FJsonObject> Page = ExpectOk(TEXT("search Character, one result"), TEXT("search-blueprint-classes"), Args);
+				if (Page.IsValid() && Classes)
+				{
+					TestEqual(TEXT("one result"), Page->GetArrayField(TEXT("classes")).Num(), 1);
+					TestEqual(TEXT("totalFound still counts every match"), static_cast<int32>(Page->GetNumberField(TEXT("totalFound"))), Classes->Num());
+					TestTrue(TEXT("hasMore"), Page->GetBoolField(TEXT("hasMore")));
+				}
+			}
+			{
+				TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+				Args->SetStringField(TEXT("searchTerm"), TEXT("Actor"));
+				Args->SetStringField(TEXT("classType"), TEXT("userWidget"));
+				Args->SetNumberField(TEXT("maxResults"), 200);
+				const TSharedPtr<FJsonObject> Widgets = ExpectOk(TEXT("search Actor, userWidget"), TEXT("search-blueprint-classes"), Args);
+				const TArray<TSharedPtr<FJsonValue>>* WidgetClasses = nullptr;
+				if (Widgets.IsValid() && Widgets->TryGetArrayField(TEXT("classes"), WidgetClasses))
+				{
+					TestFalse(TEXT("classType userWidget leaves the common Actor out"), FindClass(*WidgetClasses, TEXT("/Script/Engine.Actor")).IsValid());
+				}
+			}
+			{
+				TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+				Args->SetStringField(TEXT("searchTerm"), TEXT("Character"));
+				Args->SetBoolField(TEXT("includeEngineClasses"), false);
+				Args->SetNumberField(TEXT("maxResults"), 200);
+				const TSharedPtr<FJsonObject> NoEngine = ExpectOk(TEXT("search Character, no engine classes"), TEXT("search-blueprint-classes"), Args);
+				const TArray<TSharedPtr<FJsonValue>>* NoEngineClasses = nullptr;
+				if (NoEngine.IsValid() && NoEngine->TryGetArrayField(TEXT("classes"), NoEngineClasses))
+				{
+					TestFalse(TEXT("includeEngineClasses false leaves the common Character out"), FindClass(*NoEngineClasses, TEXT("/Script/Engine.Character")).IsValid());
+				}
 			}
 		});
 	});

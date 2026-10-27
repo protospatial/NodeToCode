@@ -365,7 +365,7 @@ void FN2CRichTextSyntaxHighlighter::ParseTokens(const FString& SourceString, FTe
 
         if (LineLen == 0)
         {
-            Runs.Add(FN2CWhiteSpaceRun::Create(FRunInfo(TEXT("WhiteSpace")), ModelString, SyntaxTextStyle.NormalTextStyle, FTextRange(0, 0), 4));
+            Runs.Add(FN2CWhiteSpaceRun::Create(FRunInfo(TEXT("WhiteSpace")), ModelString, SyntaxTextStyle.NormalTextStyle, FTextRange(0, 0), TabSize));
             if (ParseState == EParseState::InString && !bStringSpansLines)
             {
                 ParseState = EParseState::None;
@@ -499,7 +499,7 @@ void FN2CRichTextSyntaxHighlighter::ParseTokens(const FString& SourceString, FTe
 
                 if (bIsWhitespace)
                 {
-                    Runs.Add(FN2CWhiteSpaceRun::Create(FRunInfo(TEXT("WhiteSpace")), ModelString, SyntaxTextStyle.NormalTextStyle, ModelRange, 4));
+                    Runs.Add(FN2CWhiteSpaceRun::Create(FRunInfo(TEXT("WhiteSpace")), ModelString, SyntaxTextStyle.NormalTextStyle, ModelRange, TabSize));
                 }
                 else
                 {

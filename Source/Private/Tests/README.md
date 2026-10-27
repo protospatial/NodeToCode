@@ -64,8 +64,6 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
-| `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
-| `NodeToCode.MCP.Structure` | search-blueprint-classes lists a loaded Blueprint class once, as a Blueprint class | mcp-tools-bp-structure-12 (card 0288) |
 | `NodeToCode.Python.BridgeCalls` | read_n2c_json reads get_blueprint_n2c_json's document with every node | card 0505 (suggested) |
 | `NodeToCode.MCP.RunPython` | names the line of the code that raised in the traceback; keeps a multi-line string literal as written | mcp-tools-python-translation-resources-9 (card 0299) |
 | `NodeToCode.MCP.RunPython` | runs code with '.py ' in a comment | mcp-tools-python-translation-resources-8 (card 0299) |
@@ -173,7 +171,10 @@ parent, its own name as parent, missing socket, taken name, non-scene component 
 classes resolve by short name and component Blueprint path, `Mesh` on a Character and an inherited component take
 children, a delete promotes children and removes Get nodes, a bound event is reported without opening an editor,
 DefaultSceneRoot and native and inherited components are refused, and each edit is one undo step that Undo then Redo
-restore exactly (graphs and SCS tree).
+restore exactly (graphs and SCS tree). Its list-components-in-actor case (card 0287) checks the type filter through
+the whole tree: `primitive` finds a mesh under a scene component (at the top level, keeping its `parentComponent`)
+and a Character's capsule and mesh once each, `actor` its movement component, any case is accepted, `totalCount`
+matches what is listed, and an unknown filter is refused with `INVALID_ARGUMENT`.
 
 `NodeToCode.MCP.Structure` (`MCP/N2CMcpStructureTools.spec.cpp`, card 0163) runs the structure tools end to end, the
 way an agent chains them: create-folder, then create-blueprint-class of an Actor, a Widget (a `UWidgetBlueprint`) and
@@ -181,7 +182,9 @@ an Interface Blueprint into that existing folder; a SpringArm and a Camera under
 SpringArm's `ChildNodes` after three compiles; a delete of a mid-hierarchy component whose children are promoted with
 their own children and whose SCS `AllNodes` stays equal to the nodes reachable from the roots; list-components-in-actor
 on a child of a Character Blueprint (native, inherited and own components once each, under their parents, `totalCount`
-counting all); and search-blueprint-classes without duplicates. Its Blueprints are saved under
+counting all); and search-blueprint-classes (card 0288): each class once, display names, a Character Blueprint
+under classType actor with its object path, abstract parents found by default, and totalFound counting matches. Its
+Blueprints are saved under
 `/Game/__N2CTestStructure`.
 
 `NodeToCode.MCP.Content` (`MCP/N2CMcpContentTools.spec.cpp`, card 0163) runs move-asset and rename-asset with package

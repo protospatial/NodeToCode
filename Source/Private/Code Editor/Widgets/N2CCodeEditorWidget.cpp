@@ -16,17 +16,16 @@ UN2CCodeEditorWidget::UN2CCodeEditorWidget()
 
 TSharedRef<SWidget> UN2CCodeEditorWidget::RebuildWidget()
 {
+    // Built once with every property, and bound to the events (they never fired before: nothing was bound)
     CodeEditorWidget = SNew(SN2CCodeEditor)
         .Text(Text)
-        .Language(Language);
-        
-    // Apply initial properties
-    if (CodeEditorWidget.IsValid())
-    {
-        CodeEditorWidget->SetFontSize(FontSize);
-        CodeEditorWidget->SetWordWrap(bWordWrap);
-        CodeEditorWidget->SetTabSize(TabSize);
-    }
+        .Language(Language)
+        .FontSize(FontSize)
+        .TabSize(TabSize)
+        .WordWrap(bWordWrap)
+        .OnTextChanged(SN2CCodeEditor::FOnTextChanged::CreateUObject(this, &UN2CCodeEditorWidget::HandleTextChanged))
+        .OnCursorMoved(SN2CCodeEditor::FOnCursorMoved::CreateUObject(this, &UN2CCodeEditorWidget::HandleCursorMoved))
+        .OnSelectionChanged(SN2CCodeEditor::FOnSelectionChanged::CreateUObject(this, &UN2CCodeEditorWidget::HandleSelectionChanged));
 
     return CodeEditorWidget.ToSharedRef();
 }
@@ -37,8 +36,20 @@ void UN2CCodeEditorWidget::SynchronizeProperties()
 
     if (CodeEditorWidget.IsValid())
     {
-        CodeEditorWidget->SetText(Text);
-        CodeEditorWidget->SetLanguage(Language);
+        // Push only what differs from the live widget: pushing the stored Text back over what the user typed (or
+        // rebuilding the highlighter for an unchanged language) lost edits and the cursor
+        if (!Text.ToString().Equals(CodeEditorWidget->GetText().ToString(), ESearchCase::CaseSensitive))
+        {
+            CodeEditorWidget->SetText(Text);
+        }
+        if (CodeEditorWidget->GetLanguage() != Language || CodeEditorWidget->IsJsonSyntax())
+        {
+            CodeEditorWidget->SetLanguage(Language);
+        }
+        if (CodeEditorWidget->GetFontSize() != FontSize)
+        {
+            CodeEditorWidget->SetFontSize(FontSize);
+        }
     }
 }
 
@@ -73,6 +84,16 @@ void UN2CCodeEditorWidget::HandleTextChanged(const FText& NewText)
 {
     Text = NewText;
     OnTextChanged.Broadcast(NewText);
+}
+
+void UN2CCodeEditorWidget::HandleCursorMoved(int32 Line, int32 Column)
+{
+    OnCursorMoved.Broadcast(Line, Column);
+}
+
+void UN2CCodeEditorWidget::HandleSelectionChanged(int32 StartLine, int32 EndLine)
+{
+    OnSelectionChanged.Broadcast(StartLine, EndLine);
 }
 
 void UN2CCodeEditorWidget::InsertTextAtCursor(const FString& InText)
