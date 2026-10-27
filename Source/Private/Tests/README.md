@@ -386,7 +386,8 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   makes user types outside the editor's undo history and clears the flags of the `STRUCT_REINST_` copies the struct
   compiler leaves behind; either would keep the package alive).
 - **Known defects are pinned, not hidden.** Each golden's `known_defects` lists the findings its output shows and the
-  card that changes them: custom events with member_name `None` and Switch nodes named `Switch` (translation-core-16 and -32, 0239). Card 0134
+  card that changes them. Card 0239 fixed and removed custom events with member_name `None` and Switch nodes named
+  `Switch` (translation-core-16 and -32; the `NodeDetails` cases check timelines, async nodes, events and Get). Card 0134
   fixed and removed the ID defects (translation-core-7: pin IDs keyed by pin GUID, so a pasted node's pins shared one
   ID, and node IDs that depended on traversal order; translation-core-9: a function that calls itself was captured
   twice). Card 0135 fixed and removed the lossy data edges (translation-core-1: `flows.data` kept one edge per output,

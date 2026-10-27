@@ -612,15 +612,13 @@ void SN2CTaggedGraphsList::OnEstimatesStale(const FSoftObjectPath& Blueprint)
 void SN2CTaggedGraphsList::RefreshTokenEstimates()
 {
 	FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();
-	int32 UsableContext = Service.GetUsableContextWindow();
 
 	for (auto& Item : AllItems)
 	{
+		// Input with the request's prompt plus the expected output, and the prompt's share of the context (card 0220)
 		Item->EstimatedTokens = Service.GetTokenEstimate(Item->TagInfo);
 		Item->EstimatedCost = Service.CalculateCost(Item->EstimatedTokens);
-		Item->ContextUsagePercent = UsableContext > 0
-			? FMath::Clamp(static_cast<float>(Item->EstimatedTokens) / static_cast<float>(UsableContext), 0.0f, 1.0f)
-			: 0.0f;
+		Item->ContextUsagePercent = FMath::Clamp(Service.GetContextUsage(Item->EstimatedTokens), 0.0f, 1.0f);
 		Item->bTokenEstimateValid = true;
 	}
 
@@ -638,13 +636,10 @@ void SN2CTaggedGraphsList::RefreshTokenEstimate(TSharedPtr<FN2CGraphListItem> It
 	}
 
 	FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();
-	int32 UsableContext = Service.GetUsableContextWindow();
 
 	Item->EstimatedTokens = Service.GetTokenEstimate(Item->TagInfo);
 	Item->EstimatedCost = Service.CalculateCost(Item->EstimatedTokens);
-	Item->ContextUsagePercent = UsableContext > 0
-		? FMath::Clamp(static_cast<float>(Item->EstimatedTokens) / static_cast<float>(UsableContext), 0.0f, 1.0f)
-		: 0.0f;
+	Item->ContextUsagePercent = FMath::Clamp(Service.GetContextUsage(Item->EstimatedTokens), 0.0f, 1.0f);
 	Item->bTokenEstimateValid = true;
 
 	if (ListView.IsValid())

@@ -106,6 +106,8 @@ __pycache__/
 /build.sh
 # Machine-specific build.ps1 settings (engine paths, hosts root); build.ps1 itself is tracked
 /build.local.ps1
+# MCP Bundles built from Content/Python/mcp_bridge/manifest.json (card 0310): release artifacts, never committed
+*.mcpb
 /BuildLogs
 /Documentation
 nul

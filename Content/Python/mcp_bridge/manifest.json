@@ -1,0 +1,79 @@
+{
+  "manifest_version": "0.3",
+  "name": "nodetocode",
+  "display_name": "NodeToCode",
+  "version": "2.0.0-beta.1",
+  "description": "Read, translate and edit the Blueprints of the Unreal Editor you have open, through NodeToCode's MCP server.",
+  "long_description": "NodeToCode is an Unreal Engine plugin. While your project is open in the editor, its MCP server gives Claude the focused Blueprint as N2C JSON, translates it into C++ or another language, and edits graphs. This extension is NodeToCode's stdio bridge (standard-library Python): it finds the running editor through the discovery file the server writes and forwards every request to it. Install the NodeToCode plugin in your project first; the editor must be open for the tools to answer.",
+  "author": {
+    "name": "Protospatial",
+    "url": "https://www.protospatial.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/protospatial/NodeToCode"
+  },
+  "homepage": "https://github.com/protospatial/NodeToCode",
+  "documentation": "https://github.com/protospatial/NodeToCode/wiki/Connecting-an-MCP-Client",
+  "support": "https://github.com/protospatial/NodeToCode/issues",
+  "license": "Apache-2.0",
+  "keywords": [
+    "unreal-engine",
+    "blueprint",
+    "ue5",
+    "mcp",
+    "nodetocode"
+  ],
+  "server": {
+    "type": "python",
+    "entry_point": "nodetocode_bridge.py",
+    "mcp_config": {
+      "command": "python",
+      "args": [
+        "${__dirname}/nodetocode_bridge.py",
+        "--project",
+        "${user_config.project}",
+        "--url",
+        "${user_config.mcp_url}"
+      ],
+      "env": {
+        "PYTHONUTF8": "1"
+      },
+      "platform_overrides": {
+        "darwin": {
+          "command": "python3"
+        },
+        "linux": {
+          "command": "python3"
+        }
+      }
+    }
+  },
+  "tools_generated": true,
+  "user_config": {
+    "project": {
+      "type": "string",
+      "title": "Unreal project",
+      "description": "Only needed when several editors run NodeToCode at once: the project's name, .uproject path or folder. Leave empty to use the one running editor.",
+      "required": false,
+      "default": ""
+    },
+    "mcp_url": {
+      "type": "string",
+      "title": "NodeToCode MCP URL",
+      "description": "Leave empty to find the editor automatically. Otherwise the editor's endpoint, http://127.0.0.1:<Server Port>/mcp (Project Settings > Plugins > Node to Code > MCP Server).",
+      "required": false,
+      "default": ""
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "win32",
+      "darwin",
+      "linux"
+    ],
+    "runtimes": {
+      "python": ">=3.9"
+    }
+  }
+}

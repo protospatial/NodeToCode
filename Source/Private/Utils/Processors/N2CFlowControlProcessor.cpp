@@ -2,6 +2,9 @@
 
 #include "Utils/Processors/N2CFlowControlProcessor.h"
 
+#include "K2Node_SwitchEnum.h"
+#include "Utils/N2CStableNames.h"
+
 void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefinition& OutNodeDef)
 {
     // Handle sequence nodes
@@ -52,10 +55,24 @@ void FN2CFlowControlProcessor::ExtractNodeProperties(UK2Node* Node, FN2CNodeDefi
     // Handle switch nodes
     if (UK2Node_Switch* SwitchNode = Cast<UK2Node_Switch>(Node))
     {
-        OutNodeDef.Title = TEXT("Switch");
-        
-        // Log switch details
-        N2C_LOG(Debug, TEXT("Switch Node: %s"), *OutNodeDef.ID);
+        // The engine's title stays as the hint ("Switch on E_WeaponType"); member_name is the switched enum, or the
+        // switched type in pin type spellings ("Integer", "String", "Name") (card 0239, translation-core-32)
+        if (const UK2Node_SwitchEnum* SwitchEnum = Cast<UK2Node_SwitchEnum>(SwitchNode))
+        {
+            if (SwitchEnum->Enum)
+            {
+                OutNodeDef.MemberName = N2CStableNames::TypeObjectName(SwitchEnum->Enum);
+            }
+        }
+        else if (const UEdGraphPin* Selection = SwitchNode->GetSelectionPin())
+        {
+            const FEdGraphPinType& Type = Selection->PinType;
+            OutNodeDef.MemberName = Type.PinSubCategoryObject.IsValid()
+                ? N2CStableNames::TypeObjectName(Type.PinSubCategoryObject.Get())
+                : StaticEnum<EN2CPinType>()->GetNameStringByValue(static_cast<int64>(
+                    N2CStableNames::PinType(Type.PinCategory, Type.PinSubCategory, nullptr)));
+        }
+        N2C_LOG(Debug, TEXT("Switch Node: %s on %s"), *OutNodeDef.ID, *OutNodeDef.MemberName);
         return;
     }
     

@@ -2,6 +2,11 @@
 
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CTargetLanguage.h"
+#include "LLM/N2CLLMModule.h"
+#include "LLM/N2CLLMPricing.h"
+#include "LLM/N2CSystemPromptManager.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Core/N2CNodeCollector.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
@@ -295,15 +300,58 @@ bool FN2CTokenEstimationService::WarnIfPromptExceedsContext(int32 EstimatedPromp
 	return true;
 }
 
-float FN2CTokenEstimationService::CalculateCost(int32 TokenCount) const
+FN2CCostEstimate FN2CTokenEstimationService::EstimateCost(int32 GraphTokens, int32 RequestCount) const
 {
-	if (bCachedIsLocal || CachedInputCostPer1M <= 0.0f)
+	FN2CCostEstimate Estimate;
+	const int32 Requests = FMath::Max(RequestCount, 1);
+	const int32 Graph = FMath::Max(GraphTokens, 0);
+	Estimate.InputTokens = Graph + CachedRequestOverheadTokens * Requests;
+
+	// The reply is about the graph's size; a model cannot write more than its output limit per request
+	Estimate.OutputTokens = FMath::CeilToInt(Graph * ExpectedOutputRatio);
+	if (CachedMaxOutputTokens > 0)
 	{
-		return 0.0f;
+		Estimate.OutputTokens = FMath::Min(Estimate.OutputTokens, CachedMaxOutputTokens * Requests);
 	}
 
-	// Calculate cost: (tokens / 1,000,000) * cost per 1M
-	return (static_cast<float>(TokenCount) / 1000000.0f) * CachedInputCostPer1M;
+	if (!bCachedIsLocal)
+	{
+		Estimate.InputCost = Estimate.InputTokens / 1000000.0f * CachedInputCostPer1M;
+		Estimate.OutputCost = Estimate.OutputTokens / 1000000.0f * CachedOutputCostPer1M;
+	}
+	return Estimate;
+}
+
+float FN2CTokenEstimationService::CalculateCost(int32 TokenCount) const
+{
+	return EstimateCost(TokenCount).GetTotal();
+}
+
+float FN2CTokenEstimationService::GetContextUsage(int32 GraphTokens) const
+{
+	return CachedUsableContextWindow > 0
+		? static_cast<float>(FMath::Max(GraphTokens, 0) + CachedRequestOverheadTokens) / CachedUsableContextWindow
+		: 0.0f;
+}
+
+bool FN2CTokenEstimationService::IsOverContext(int32 GraphTokens) const
+{
+	return CachedFullContextWindow > 0 && FMath::Max(GraphTokens, 0) + CachedRequestOverheadTokens > CachedFullContextWindow;
+}
+
+int32 FN2CTokenEstimationService::ComputeRequestOverheadTokens()
+{
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	if (!Settings)
+	{
+		return 0;
+	}
+
+	// The system prompt the request sends for the target language, as the LLM module builds it
+	TStrongObjectPtr<UN2CSystemPromptManager> Prompts(NewObject<UN2CSystemPromptManager>());
+	Prompts->Initialize(UN2CLLMModule::MakeConfigFromSettings());
+	const FString SystemPrompt = Prompts->GetLanguageSpecificPrompt(N2C::BlueprintPromptFamily, Settings->TargetLanguage);
+	return EstimateTokensForChars(SystemPrompt.Len()) + Settings->GetReferenceFilesTokenEstimate();
 }
 
 void FN2CTokenEstimationService::RefreshModelInfo()
@@ -313,6 +361,10 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 	{
 		return;
 	}
+
+	CachedRequestOverheadTokens = ComputeRequestOverheadTokens();
+	CachedOutputCostPer1M = 0.0f;
+	CachedMaxOutputTokens = 0;
 
 	switch (Settings->Provider)
 	{
@@ -337,12 +389,15 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 
 	// Cloud providers: the selected model ID's catalog row; the price is the user's override when there is one
 	const FN2CModelMetadata* Metadata = Settings->GetActiveModelMetadataForProvider(Settings->Provider);
-	CachedInputCostPer1M = Settings->GetActivePricingForProvider(Settings->Provider).InputCost;
+	const FN2CModelPricing Pricing = Settings->GetActivePricingForProvider(Settings->Provider);
+	CachedInputCostPer1M = Pricing.InputCost;
+	CachedOutputCostPer1M = Pricing.OutputCost;
 	bCachedIsLocal = false;
 	if (Metadata)
 	{
 		CachedModelName = Metadata->DisplayName;
 		CachedFullContextWindow = Metadata->ContextWindowSize;
+		CachedMaxOutputTokens = Metadata->MaxOutputTokens;
 	}
 	else
 	{
@@ -362,8 +417,10 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 		return;
 	}
 
-	// Check if relevant property changed
+	// Check if relevant property changed: the edited property, or the setting it is a member of (a price inside
+	// ModelPricing, a path in ReferenceSourceFilePaths)
 	FName PropertyName = PropertyChangedEvent.GetPropertyName();
+	const FName MemberName = PropertyChangedEvent.GetMemberPropertyName();
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, TranslationDepth))
 	{
 		// Estimates are cached per depth: the overlays and lists take theirs again at the new one
@@ -381,11 +438,15 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekCustomModelId) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekReasoningEffort) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, ModelPricing) ||
+		MemberName == GET_MEMBER_NAME_CHECKED(UN2CSettings, ModelPricing) ||
+		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, TargetLanguage) ||
+		MemberName == GET_MEMBER_NAME_CHECKED(UN2CSettings, ReferenceSourceFilePaths) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaModel) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, NumCtx))
 	{
-		// Token counts do not depend on the model; its context window and price do, and listeners re-read those
+		// Token counts do not depend on the model; its context window, prices and the prompt it sends do, and
+		// listeners re-read those
 		RefreshModelInfo();
 		OnModelChanged.Broadcast();
 	}

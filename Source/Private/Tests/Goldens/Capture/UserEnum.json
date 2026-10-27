@@ -11,11 +11,6 @@
 			"finding": "translation-core-24",
 			"card": "0236",
 			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
-		},
-		{
-			"finding": "translation-core-32",
-			"card": "0239",
-			"effect": "Switch nodes are named 'Switch', losing the switched type"
 		}
 	],
 	"capture":
@@ -60,7 +55,8 @@
 						"id": "N2",
 						"type": "SwitchEnum",
 						"class": "K2Node_SwitchEnum",
-						"title": "Switch",
+						"title": "Switch on E_GoldenLimit",
+						"member_name": "E_GoldenLimit",
 						"input_pins": [
 							{
 								"id": "P3",

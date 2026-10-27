@@ -1,0 +1,9 @@
+# Files mcpb pack leaves out of nodetocode.mcpb (card 0310): the bundle is manifest.json and the bridge script
+__pycache__/
+*.pyc
+*.mcpb
+launch_bridge.bat
+launch_bridge.sh
+ue_python_finder.py
+server.json
+README.md

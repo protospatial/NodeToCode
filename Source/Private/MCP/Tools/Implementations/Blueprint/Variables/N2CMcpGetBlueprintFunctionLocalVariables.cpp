@@ -3,6 +3,7 @@
 #include "N2CMcpGetBlueprintFunctionLocalVariables.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
@@ -20,7 +21,7 @@ FMcpToolDefinition FN2CMcpGetBlueprintFunctionLocalVariables::GetDefinition() co
 {
     FMcpToolDefinition Definition(
         TEXT("get-blueprint-function-local-variables"),
-        TEXT("Extract local variables from the currently focused Blueprint function graph")
+        TEXT("Extract the local variables of a Blueprint function: the one blueprintPath plus graphName or graphGuid name, else the focused function graph")
     ,
 
     	N2CMcpToolsets::BlueprintVariable
@@ -34,6 +35,7 @@ FMcpToolDefinition FN2CMcpGetBlueprintFunctionLocalVariables::GetDefinition() co
     TArray<FString> Required; // No required fields
     
     Definition.InputSchema = BuildInputSchema(Properties, Required);
+    FN2CGraphTarget::AddSchemaProperties(Definition);
     
     // Results carry Blueprint text (local variable names, categories and default values): marked as untrusted data (card 0124)
     Definition.bReturnsUntrustedContent = true;
@@ -54,23 +56,22 @@ FMcpToolCallResult FN2CMcpGetBlueprintFunctionLocalVariables::Execute(const TSha
         FN2CMcpArgumentParser Parser(Arguments);
         bool bIncludeDetails = Parser.GetOptionalBool(TEXT("includeDetails"), true);
         
-        // Get the focused graph
-        UBlueprint* FocusedBlueprint = nullptr;
-        UEdGraph* FocusedGraph = nullptr;
-        FString ErrorMessage;
-        
-        if (!FN2CMcpBlueprintUtils::GetFocusedEditorGraph(FocusedBlueprint, FocusedGraph, ErrorMessage))
+        // The function blueprintPath / graphName / graphGuid name, else the focused graph (card 0274)
+        const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ false);
+        if (!Target.IsValid())
         {
-            return FMcpToolCallResult::CreateErrorResult(ErrorMessage);
+            return FMcpToolCallResult::CreateErrorResult(Target.Error);
         }
-        
+        UBlueprint* FocusedBlueprint = Target.Blueprint;
+        UEdGraph* FocusedGraph = Target.Graph;
+
         // Find the function entry node to verify this is a function graph
         UK2Node_FunctionEntry* FunctionEntryNode = FN2CMcpVariableUtils::FindFunctionEntryNode(FocusedGraph);
         if (!FunctionEntryNode)
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                TEXT("The focused graph is not a function graph. Please focus on a function in the Blueprint editor.")
-            );
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
+                TEXT("NOT_A_FUNCTION_GRAPH: the graph is not a function graph. Pass a function as graphName or graphGuid, or focus one in the Blueprint editor.")
+            ));
         }
         
         // Build the result JSON
@@ -150,6 +151,6 @@ FMcpToolCallResult FN2CMcpGetBlueprintFunctionLocalVariables::Execute(const TSha
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
         FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
         
-        return FMcpToolCallResult::CreateTextResult(OutputString);
+        return Target.Finish(FMcpToolCallResult::CreateTextResult(OutputString));
     });
 }

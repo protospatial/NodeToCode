@@ -176,6 +176,48 @@ enum class EN2CNodeType : uint8
     Unknown             UMETA(DisplayName = "unknown"),
 };
 
+/** One track of a Timeline (card 0239): its name and kind ("float", "vector", "color" or "event") */
+USTRUCT(BlueprintType)
+struct FN2CTimelineTrack
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Kind;
+
+    bool operator==(const FN2CTimelineTrack& Other) const { return Name == Other.Name && Kind == Other.Kind; }
+};
+
+/**
+ * A Timeline node's template (card 0239, imp-translation-core-4): N2C JSON "timeline" {"length", "loop", "autoplay",
+ * "tracks"}. bSet says the node has one; the other fields are what UTimelineTemplate holds.
+ */
+USTRUCT(BlueprintType)
+struct FN2CTimelineSummary
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bSet = false;
+
+    /** Length in seconds */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    float Length = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bLoop = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bAutoPlay = false;
+
+    /** Float, vector, color and event tracks, in that order, each in the template's order */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CTimelineTrack> Tracks;
+};
+
 /**
  * @struct FN2CNodeDefinition
  * @brief Defines a single node within a Blueprint graph for code generation
@@ -245,6 +287,27 @@ struct FN2CNodeDefinition
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CPinDefinition> OutputPins;
+
+    /**
+     * A bound event's object (card 0239, N2C JSON "bound_to"): the component variable of a component-bound event
+     * (OnComponentHit of CollisionComp) or the level actor of an actor-bound event. MemberName is the delegate.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString BoundTo;
+
+    /**
+     * A custom event's replication (card 0239, N2C JSON "net"): "Server", "Client" or "Multicast", empty when it is not
+     * replicated; bReliable ("reliable") when it is a reliable RPC
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Net;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bReliable = false;
+
+    /** A Timeline node's template (card 0239, N2C JSON "timeline") */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FN2CTimelineSummary Timeline;
 
     /** The "type" text as read when NodeType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")

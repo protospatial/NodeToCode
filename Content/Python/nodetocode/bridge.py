@@ -23,12 +23,12 @@ from typing import Dict, Any, Optional
 
 import unreal
 
-from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result
+from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result, _target_kwargs
 
 
 # ============== Tagging System ==============
 
-def tag_graph(tag: str, category: str = "Default", description: str = "") -> Dict[str, Any]:
+def tag_graph(tag: str, category: str = "Default", description: str = "", blueprint_path: str = "", graph: str = "") -> Dict[str, Any]:
     """
     Tag the currently focused Blueprint graph.
 
@@ -39,6 +39,9 @@ def tag_graph(tag: str, category: str = "Default", description: str = "") -> Dic
         tag: Tag name to apply (required)
         category: Category for organization (default "Default")
         description: Optional description for the tag
+        blueprint_path: Optional Blueprint asset path (e.g. "/Game/BP_Door"); empty acts on the focused Blueprint
+        graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
+            with blueprint_path alone its focused graph, else its event graph
 
     Returns:
         {success, data: {tag, category, description, graph_guid, graph_name, blueprint_name,
@@ -53,7 +56,7 @@ def tag_graph(tag: str, category: str = "Default", description: str = "") -> Dic
         return make_error_result("Tag name cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.tag_focused_graph(tag.strip(), category.strip(), description.strip())
+        result = unreal.N2CPythonBridge.tag_focused_graph(tag.strip(), category.strip(), description.strip(), **_target_kwargs(blueprint_path, graph))
         return _parse_bridge_result(result)
     except Exception as e:
         log_error(f"tag_graph failed: {e}")
