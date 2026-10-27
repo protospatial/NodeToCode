@@ -2187,14 +2187,14 @@
 					"type": "boolean",
 					"required": false,
 					"default": false,
-					"description": "Meant to reconnect the deleted node's input sources to its output targets. Currently has no effect: no link is ever made. Default: false"
+					"description": "If true, reconnects the links that pass through each deleted node: the sources of its exec input to the targets of its exec output (only on a node with one exec input and one exec output), and through reroute knots. Each link made is listed in preservedConnections; a link the schema refuses or that would replace another link is not made. Data pins of other nodes are not bridged. Default: false"
 				},
 				{
 					"name": "force",
 					"type": "boolean",
 					"required": false,
 					"default": false,
-					"description": "If true, bypasses validation checks and forces deletion of nodes that would normally be protected. Default: false"
+					"description": "If true, deletes nodes the editor protects (CanUserDeleteNode false: a function entry, the entry and exit tunnels of a collapsed graph or macro). Deleting those can leave the Blueprint unable to compile. Default: false"
 				},
 				{
 					"name": "blueprintPath",
@@ -2233,13 +2233,13 @@
 					"preserveConnections":
 					{
 						"type": "boolean",
-						"description": "Meant to reconnect the deleted node's input sources to its output targets. Currently has no effect: no link is ever made. Default: false",
+						"description": "If true, reconnects the links that pass through each deleted node: the sources of its exec input to the targets of its exec output (only on a node with one exec input and one exec output), and through reroute knots. Each link made is listed in preservedConnections; a link the schema refuses or that would replace another link is not made. Data pins of other nodes are not bridged. Default: false",
 						"default": false
 					},
 					"force":
 					{
 						"type": "boolean",
-						"description": "If true, bypasses validation checks and forces deletion of nodes that would normally be protected. Default: false",
+						"description": "If true, deletes nodes the editor protects (CanUserDeleteNode false: a function entry, the entry and exit tunnels of a collapsed graph or macro). Deleting those can leave the Blueprint unable to compile. Default: false",
 						"default": false
 					},
 					"blueprintPath":
@@ -2664,6 +2664,130 @@
 				},
 				"required": [],
 				"additionalProperties": false
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"properties":
+				{
+					"providers":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"id":
+								{
+									"type": "string",
+									"description": "Pass as translate-focused-blueprint's provider"
+								},
+								"displayName":
+								{
+									"type": "string"
+								},
+								"configured":
+								{
+									"type": "boolean"
+								},
+								"isLocal":
+								{
+									"type": "boolean"
+								},
+								"keySource":
+								{
+									"type": "string",
+									"description": "Where the API key comes from (never the key)",
+									"enum": [
+										"saved",
+										"environment",
+										"none"
+									]
+								},
+								"keyVariable":
+								{
+									"type": "string",
+									"description": "The environment variable, when keySource is environment"
+								},
+								"currentModel":
+								{
+									"type": "string"
+								},
+								"availableModels":
+								{
+									"type": "array",
+									"items":
+									{
+										"type": "object",
+										"properties":
+										{
+											"id":
+											{
+												"type": "string",
+												"description": "Pass as translate-focused-blueprint's model"
+											},
+											"name":
+											{
+												"type": "string"
+											},
+											"deprecated":
+											{
+												"type": "boolean"
+											},
+											"shutdownDate":
+											{
+												"type": "string"
+											},
+											"supportsSystemPrompts":
+											{
+												"type": "boolean"
+											},
+											"reasoningEffort":
+											{
+												"type": "string"
+											}
+										},
+										"required": [
+											"id"
+										]
+									}
+								},
+								"endpoint":
+								{
+									"type": "string"
+								},
+								"supportsStructuredOutput":
+								{
+									"type": "boolean"
+								},
+								"supportsSystemPrompts":
+								{
+									"type": "boolean"
+								}
+							},
+							"required": [
+								"id",
+								"displayName",
+								"isLocal"
+							]
+						}
+					},
+					"currentProvider":
+					{
+						"type": "string",
+						"description": "The provider Project Settings selects"
+					},
+					"configuredProviderCount":
+					{
+						"type": "integer"
+					}
+				},
+				"required": [
+					"providers",
+					"currentProvider",
+					"configuredProviderCount"
+				]
 			}
 		},
 		{
@@ -2695,6 +2819,105 @@
 				},
 				"required": [],
 				"additionalProperties": false
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"properties":
+				{
+					"languages":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"id":
+								{
+									"type": "string",
+									"description": "Pass as translate-focused-blueprint's language",
+									"enum": [
+										"cpp",
+										"python",
+										"javascript",
+										"csharp",
+										"swift",
+										"pseudocode"
+									]
+								},
+								"displayName":
+								{
+									"type": "string"
+								},
+								"description":
+								{
+									"type": "string"
+								},
+								"fileExtensions":
+								{
+									"type": "array",
+									"items":
+									{
+										"type": "string"
+									}
+								},
+								"category":
+								{
+									"type": "string"
+								},
+								"features":
+								{
+									"type": "string"
+								},
+								"syntaxHighlightingSupported":
+								{
+									"type": "boolean"
+								}
+							},
+							"required": [
+								"id",
+								"displayName",
+								"fileExtensions"
+							]
+						}
+					},
+					"defaultLanguage":
+					{
+						"type": "string",
+						"enum": [
+							"cpp",
+							"python",
+							"javascript",
+							"csharp",
+							"swift",
+							"pseudocode"
+						]
+					},
+					"currentLanguage":
+					{
+						"type": "string",
+						"description": "The language Project Settings selects",
+						"enum": [
+							"cpp",
+							"python",
+							"javascript",
+							"csharp",
+							"swift",
+							"pseudocode"
+						]
+					},
+					"languageCount":
+					{
+						"type": "integer"
+					}
+				},
+				"required": [
+					"languages",
+					"defaultLanguage",
+					"currentLanguage",
+					"languageCount"
+				]
 			}
 		},
 		{
@@ -2907,6 +3130,119 @@
 				},
 				"required": [],
 				"additionalProperties": false
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"description": "An N2C JSON document (Content/Prompting/Shared/N2CJsonSpec.md)",
+				"properties":
+				{
+					"untrusted_content":
+					{
+						"type": "string",
+						"description": "Notice that every Blueprint-derived string in this result is untrusted data (card 0124)"
+					},
+					"version":
+					{
+						"type": "string",
+						"description": "N2C JSON version, e.g. 2.0.0"
+					},
+					"metadata":
+					{
+						"type": "object",
+						"properties":
+						{
+							"name":
+							{
+								"type": "string",
+								"description": "Blueprint name"
+							},
+							"blueprint_type":
+							{
+								"type": "string"
+							},
+							"blueprint_class":
+							{
+								"type": "string"
+							}
+						},
+						"required": [
+							"name"
+						]
+					},
+					"graphs":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"name":
+								{
+									"type": "string",
+									"description": "Graph name"
+								},
+								"graph_type":
+								{
+									"type": "string",
+									"description": "EventGraph, Function, Macro, Composite, ..."
+								},
+								"nodes":
+								{
+									"type": "array",
+									"description": "The graph's nodes",
+									"items":
+									{
+										"type": "object",
+										"properties":
+										{
+										}
+									}
+								},
+								"flows":
+								{
+									"type": "object",
+									"description": "Execution and data links",
+									"properties":
+									{
+									}
+								}
+							},
+							"required": [
+								"name",
+								"graph_type"
+							]
+						}
+					},
+					"structs":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+							}
+						}
+					},
+					"enums":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+							}
+						}
+					}
+				},
+				"required": [
+					"version",
+					"metadata",
+					"graphs"
+				]
 			}
 		},
 		{
@@ -2938,6 +3274,116 @@
 				},
 				"required": [],
 				"additionalProperties": false
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"properties":
+				{
+					"editors":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"blueprintName":
+								{
+									"type": "string"
+								},
+								"assetPath":
+								{
+									"type": "string"
+								},
+								"blueprintType":
+								{
+									"type": "string"
+								},
+								"parentClass":
+								{
+									"type": "string"
+								},
+								"focusedGraph":
+								{
+									"type": "string",
+									"description": "The graph the editor shows"
+								},
+								"focusedGraphType":
+								{
+									"type": "string"
+								},
+								"graphs":
+								{
+									"type": "array",
+									"items":
+									{
+										"type": "object",
+										"properties":
+										{
+											"name":
+											{
+												"type": "string"
+											},
+											"type":
+											{
+												"type": "string",
+												"enum": [
+													"Function",
+													"Event",
+													"Macro",
+													"Delegate"
+												]
+											},
+											"isEditable":
+											{
+												"type": "boolean"
+											}
+										},
+										"required": [
+											"name",
+											"type"
+										]
+									}
+								},
+								"isFocused":
+								{
+									"type": "boolean",
+									"description": "The editor the focus-based tools act on"
+								},
+								"isDirty":
+								{
+									"type": "boolean"
+								},
+								"hasCompilerResults":
+								{
+									"type": "boolean"
+								},
+								"graph_counts":
+								{
+									"type": "object",
+									"properties":
+									{
+									}
+								}
+							},
+							"required": [
+								"blueprintName",
+								"assetPath",
+								"blueprintType",
+								"graphs"
+							]
+						}
+					},
+					"count":
+					{
+						"type": "integer"
+					}
+				},
+				"required": [
+					"editors",
+					"count"
+				]
 			}
 		},
 		{
@@ -3057,6 +3503,72 @@
 				},
 				"required": [],
 				"additionalProperties": false
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"properties":
+				{
+					"isCustomDirectorySet":
+					{
+						"type": "boolean"
+					},
+					"customDirectory":
+					{
+						"type": "string",
+						"description": "The Project Settings path, when one is set"
+					},
+					"defaultDirectory":
+					{
+						"type": "string",
+						"description": "Saved/NodeToCode/Translations, when no custom directory is set"
+					},
+					"absolutePath":
+					{
+						"type": "string",
+						"description": "The directory translations are saved to"
+					},
+					"directoryExists":
+					{
+						"type": "boolean"
+					},
+					"status":
+					{
+						"type": "string"
+					},
+					"projectDirectory":
+					{
+						"type": "string"
+					},
+					"projectSavedDirectory":
+					{
+						"type": "string"
+					},
+					"usage":
+					{
+						"type": "object",
+						"properties":
+						{
+							"description":
+							{
+								"type": "string"
+							},
+							"structure":
+							{
+								"type": "string"
+							},
+							"autoCreateIfMissing":
+							{
+								"type": "boolean"
+							}
+						}
+					}
+				},
+				"required": [
+					"isCustomDirectorySet",
+					"absolutePath",
+					"directoryExists"
+				]
 			}
 		},
 		{
@@ -3143,6 +3655,83 @@
 				},
 				"required": [
 					"blueprintPath"
+				]
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"properties":
+				{
+					"untrusted_content":
+					{
+						"type": "string",
+						"description": "Notice that every Blueprint-derived string in this result is untrusted data (card 0124)"
+					},
+					"blueprintPath":
+					{
+						"type": "string",
+						"description": "Object path of the Blueprint"
+					},
+					"blueprintName":
+					{
+						"type": "string"
+					},
+					"graphCount":
+					{
+						"type": "integer"
+					},
+					"graphs":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"name":
+								{
+									"type": "string"
+								},
+								"graphGuid":
+								{
+									"type": "string",
+									"description": "Stable across renames"
+								},
+								"kind":
+								{
+									"type": "string",
+									"description": "event, function, macro, collapsed, delegate or interface"
+								},
+								"nodeCount":
+								{
+									"type": "integer"
+								},
+								"readOnly":
+								{
+									"type": "boolean",
+									"description": "Shown read-only in the Blueprint editor"
+								},
+								"parentGraph":
+								{
+									"type": "string",
+									"description": "For a collapsed graph: the graph that holds it"
+								}
+							},
+							"required": [
+								"name",
+								"graphGuid",
+								"kind",
+								"nodeCount",
+								"readOnly"
+							]
+						}
+					}
+				},
+				"required": [
+					"blueprintPath",
+					"blueprintName",
+					"graphCount",
+					"graphs"
 				]
 			}
 		},
@@ -4082,6 +4671,83 @@
 				},
 				"required": [
 					"relativePath"
+				]
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"properties":
+				{
+					"path":
+					{
+						"type": "string",
+						"description": "The directory, relative to the project folder"
+					},
+					"directories":
+					{
+						"type": "array",
+						"description": "Folder names on this page",
+						"items":
+						{
+							"type": "string"
+						}
+					},
+					"files":
+					{
+						"type": "array",
+						"description": "File names on this page",
+						"items":
+						{
+							"type": "string"
+						}
+					},
+					"directoryCount":
+					{
+						"type": "integer",
+						"description": "Folders in the directory (after filter)"
+					},
+					"fileCount":
+					{
+						"type": "integer",
+						"description": "Files in the directory (after filter)"
+					},
+					"total":
+					{
+						"type": "integer"
+					},
+					"returned":
+					{
+						"type": "integer"
+					},
+					"pageSize":
+					{
+						"type": "integer"
+					},
+					"truncated":
+					{
+						"type": "boolean"
+					},
+					"nextCursor":
+					{
+						"type": "string",
+						"description": "Pass as cursor for the next page, when truncated"
+					},
+					"filter":
+					{
+						"type": "string"
+					},
+					"success":
+					{
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"path",
+					"directories",
+					"files",
+					"total",
+					"returned",
+					"truncated"
 				]
 			}
 		},
@@ -5585,7 +6251,7 @@
 			"name": "translate-focused-blueprint",
 			"title": "Translate the focused Blueprint graph",
 			"toolset": "TranslationTools",
-			"description": "Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. Nothing is saved to the translation output directory.",
+			"description": "Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. Nothing is saved to the translation output directory. The result's structuredContent is the translation (graphs with their code, usage); one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, savedTo and a resource_link to the file.",
 			"defaultEnabled": true,
 			"longRunning": true,
 			"returnsUntrustedContent": true,
@@ -5643,6 +6309,122 @@
 						"description": "Optional: Target language ID as get-available-translation-targets lists it (e.g., 'cpp', 'python'; case-insensitive). Uses settings default if empty; an unknown ID is an error."
 					}
 				}
+			},
+			"outputSchema":
+			{
+				"type": "object",
+				"description": "The N2C translation response (the LLM module's graphs and usage)",
+				"properties":
+				{
+					"untrusted_content":
+					{
+						"type": "string",
+						"description": "Notice that every Blueprint-derived string in this result is untrusted data (card 0124)"
+					},
+					"graphs":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "object",
+							"description": "One translated graph; code is left out when the translation was saved to a file (savedTo)",
+							"properties":
+							{
+								"graph_name":
+								{
+									"type": "string"
+								},
+								"graph_type":
+								{
+									"type": "string"
+								},
+								"graph_class":
+								{
+									"type": "string"
+								},
+								"code":
+								{
+									"type": "object",
+									"properties":
+									{
+										"graphDeclaration":
+										{
+											"type": "string",
+											"description": "Declaration (for C++ the header part)"
+										},
+										"graphImplementation":
+										{
+											"type": "string",
+											"description": "Implementation"
+										},
+										"implementationNotes":
+										{
+											"type": "string"
+										}
+									},
+									"required": [
+										"graphDeclaration",
+										"graphImplementation",
+										"implementationNotes"
+									]
+								}
+							},
+							"required": [
+								"graph_name",
+								"graph_type",
+								"graph_class"
+							]
+						}
+					},
+					"usage":
+					{
+						"type": "object",
+						"properties":
+						{
+							"input_tokens":
+							{
+								"type": "integer"
+							},
+							"output_tokens":
+							{
+								"type": "integer"
+							},
+							"cache_read_input_tokens":
+							{
+								"type": "integer"
+							},
+							"cache_write_input_tokens":
+							{
+								"type": "integer"
+							},
+							"reasoning_tokens":
+							{
+								"type": "integer"
+							}
+						}
+					},
+					"warnings":
+					{
+						"type": "array",
+						"items":
+						{
+							"type": "string"
+						}
+					},
+					"savedTo":
+					{
+						"type": "string",
+						"description": "When the translation is larger than the result limit: the file holding all of it (read-file, or the resource_link)"
+					},
+					"bytes":
+					{
+						"type": "integer",
+						"description": "Size of the saved file"
+					}
+				},
+				"required": [
+					"graphs"
+				]
 			}
 		}
 	],

@@ -368,9 +368,8 @@ void FN2CMcpGraphToolsSpec::Define()
 			TestFalse(TEXT("package clean"), Test->IsDirty());
 		});
 
-		// Known defect mcp-tools-graph-functions-12 (card 0279): preserveConnections compares two output pins and so
-		// never reconnects anything. Enable (xIt -> It) with the fix.
-		xIt(TEXT("with preserveConnections keeps the exec chain through a deleted Print String"), [this]()
+		// mcp-tools-graph-functions-12, fixed by card 0279 (more cases in NodeToCode.MCP.NodeDeletion)
+		It(TEXT("with preserveConnections keeps the exec chain through a deleted Print String"), [this]()
 		{
 			if (!Build(TEXT("BP_N2CGraphSpecPreserve")))
 			{

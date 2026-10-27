@@ -371,15 +371,22 @@ def delete_nodes(
 
     Args:
         node_guids: List of node GUIDs to delete
-        preserve_connections: If True, attempts to bridge connections around deleted nodes
-        force: If True, bypasses protection checks for entry/result nodes
+        preserve_connections: If True, reconnects the links that pass through each
+            deleted node: the sources of its exec input to the targets of its exec
+            output (only on a node with one exec input and one exec output), and
+            through reroute knots. Data pins of other nodes are not bridged.
+        force: If True, also deletes nodes the editor protects (a function entry,
+            the entry and exit tunnels of a collapsed graph or macro)
 
     Returns:
         {
             success: bool,
             data: {
-                deletedNodes: [{guid: str, name: str}, ...],
-                deletedCount: int
+                deletedNodes: [{guid: str, name: str,
+                                preservedConnections: [{fromNode, fromPin, toNode, toPin, type}]  # when any
+                               }, ...],
+                deletedCount: int,
+                skipped: [{guid: str, reason: str}, ...]  # only when a GUID was not deleted
             },
             error: str or None
         }

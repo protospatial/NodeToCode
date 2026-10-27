@@ -52,7 +52,11 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 - **Returns** (success): JSON text whose first key is `untrusted_content` (the notice that the text came from the
   project's Blueprints and is data, card 0124), then `graphs` (each with `graph_name`, `graph_type`, `graph_class` and
   `code`: `graphDeclaration`, `graphImplementation`, `implementationNotes`) and `usage` (`input_tokens`,
-  `output_tokens`), plus `warnings` when the model ID is not in the catalog
+  `output_tokens`), plus `warnings` when the model ID is not in the catalog. The same object is the result's
+  `structuredContent`, declared by the tool's `outputSchema` (`FN2CTranslateBlueprintCall::BuildOutputSchema`, card
+  0207). Over `FN2CTranslateBlueprintCall::MaxInlineChars` (200,000, the tool's `anthropic/maxResultSizeChars`) the
+  whole translation is written to `Saved/NodeToCode/Exports/Translations/Translation__<time>__<id>.json` and the result
+  is a summary (`graphs` without `code`, `usage`, `warnings`, `savedTo`, `bytes`) plus a `resource_link` to the file
 - **Errors** (`isError: true`):
   - An unknown `provider` or `language`: plain text naming the valid IDs (for example
     `Unknown language 'COBOL'. Valid languages: cpp, python, javascript, csharp, swift, pseudocode`), without
@@ -63,10 +67,13 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
     `Unknown`), `message`, `retryable`, and when known `http_status`, `provider`, `model`, `provider_error_type`,
     `request_id`, `warnings`
   - Cancelled or timed out: plain text (`LLM request timed out.` for the timeout)
+  - Every error carries `_meta["nodetocode/error"].code`: `TRANSLATION_<KIND>` from `error_kind` (`RateLimited` ->
+    `TRANSLATION_RATE_LIMITED`), `TRANSLATION_FAILED` without one, `INVALID_ARGUMENT` or `CANCELLED`
 - A `model` the catalog does not list for a cloud provider is still sent; the result (or the provider's error) then
   carries the `warnings` array
-- **Not saved**: the MCP path (`UN2CLLMModule::ProcessN2CJsonWithOverrides`) returns the translation without writing
-  files; only translations run from the editor (`UN2CLLMModule::ProcessN2CJson`) are saved (see "Translation Output
+- **Not saved** to the translation output directory: the MCP path (`UN2CLLMModule::ProcessN2CJsonWithOverrides`)
+  returns the translation, writing a file only under Saved/NodeToCode/Exports when it is over the result limit (above);
+  only translations run from the editor (`UN2CLLMModule::ProcessN2CJson`) are saved there (see "Translation Output
   Structure")
 - **Use Case**: Performing actual Blueprint translation
 

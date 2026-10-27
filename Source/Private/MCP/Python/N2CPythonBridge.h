@@ -116,20 +116,25 @@ public:
 	 *
 	 * @param Category Optional category filter (empty string for all)
 	 * @param Tag Optional tag name filter (empty string for all)
+	 * @param BlueprintPath Optional: only the tags of this Blueprint's graphs (object or package path). A duplicated
+	 *        Blueprint shares its graph GUIDs with the original, so this is how to tell their tags apart (card 0498)
 	 * @return JSON array of matching tags
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString ListTags(const FString& Category = TEXT(""), const FString& Tag = TEXT(""));
+	static FString ListTags(const FString& Category = TEXT(""), const FString& Tag = TEXT(""), const FString& BlueprintPath = TEXT(""));
 
 	/**
 	 * Remove a tag from a graph.
 	 *
 	 * @param GraphGuid The GUID of the graph (string format)
 	 * @param Tag The tag name to remove
+	 * @param BlueprintPath The owning Blueprint's path (blueprint_path from ListTags or TagFocusedGraph). The graph is
+	 *        {Blueprint, GraphGuid} (FN2CGraphKey, card 0498): copies of a Blueprint share graph GUIDs, so without it
+	 *        the removal works only while one Blueprint has a graph with this GUID
 	 * @return JSON result with removal status
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
-	static FString RemoveTag(const FString& GraphGuid, const FString& Tag);
+	static FString RemoveTag(const FString& GraphGuid, const FString& Tag, const FString& BlueprintPath = TEXT(""));
 
 	// ========== LLM Provider Info ==========
 
@@ -261,9 +266,14 @@ public:
 	 * Delete nodes from the focused Blueprint graph.
 	 *
 	 * @param NodeGuidsJson JSON array of node GUIDs to delete: ["guid1","guid2",...]
-	 * @param bPreserveConnections If true, attempts to bridge connections around deleted nodes
-	 * @param bForce If true, bypasses protection checks for entry/result nodes
-	 * @return JSON with deleted node info
+	 * Deletes as the editor's Delete does (N2CNodeDeletion, shared with delete-blueprint-node): FBlueprintEditorUtils::RemoveNode,
+	 * one structural compile, protection by the node's CanUserDeleteNode.
+	 *
+	 * @param bPreserveConnections If true, reconnects the links that pass through each deleted node (exec in-sources to
+	 *        exec out-targets on a node with one exec input and output, and through reroute knots); each node lists
+	 *        the links made under preservedConnections
+	 * @param bForce If true, also deletes nodes the editor protects (a function entry, a collapsed graph's tunnels)
+	 * @return JSON with deleted node info; GUIDs not deleted are listed under 'skipped' with the reason
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections = false, bool bForce = false);

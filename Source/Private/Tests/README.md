@@ -61,7 +61,6 @@ case back on. Currently disabled:
 | Spec | Case | Finding |
 |------|------|---------|
 | `NodeToCode.MCP.Graph` | connect-pins reports a malformed connection entry in failed and counts it | mcp-tools-graph-functions-25 (card 0276) |
-| `NodeToCode.MCP.Graph` | delete-blueprint-node with preserveConnections keeps the exec chain through a deleted Print String | mcp-tools-graph-functions-12 (card 0279) |
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: float, double | mcp-tools-variables-8 (card 0283) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: the four maps | mcp-tools-variables-8 (card 0283) |
@@ -119,6 +118,13 @@ and refuses an unknown GUID and a function entry; and add-function-input-pin, ad
 remove-function-entry-pin and remove-function-return-pin on a function with two Return nodes. What they leave to
 other specs is listed in each spec's header comment (NodeActionIds, SearchIsReadOnly, GraphTarget, CompileOnce,
 CompileScope, SpawnedNodes, FunctionPinEdits).
+
+`NodeToCode.MCP.NodeDeletion` (`MCP/N2CNodeDeletion.spec.cpp`, card 0279) covers the deletion delete-blueprint-node
+and the Python bridge's DeleteNodes share: preserveConnections bridges the exec chain through a mid-chain Print
+String (and the node's breakpoint goes with it, and Undo then Redo are exact) and a data line through a reroute knot;
+a collapsed graph's entry and exit tunnels are refused as protected while the collapsed-graph node deletes without
+force; the bridge (5.8 only, it needs a focused editor) bridges the same chain and lists an unknown GUID under
+`skipped`.
 
 `NodeToCode.MCP.Variables` (`MCP/N2CMcpVariableTools.spec.cpp`, card 0148) is a type table: bool, int, int64, byte,
 float, double, string, name, text, a native enum (by path and name), a user enum and a user struct (by name and by
@@ -208,6 +214,16 @@ known-defect cases are `KnownDefectIt`: an `xIt`, or an `It` with `N2C_RUN_KNOWN
   in a windowed editor: `UnrealEditor.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode.Windowed"
   -TestExit="Automation Test Queue Empty"` (its MCP server takes the settings' port, 27000 by default). The headless version of
   the focus rules is `NodeToCode.Editor.Focus` (UE 5.8).
+- `NodeToCode.UI.TagManager` (`Core/N2CTagManagerUI.spec.cpp`, card 0266) builds a headless `SN2CTagManager` whose
+  `TagSource` argument returns an in-memory list of (graph, tag) pairs, so no graph state is read or written. It
+  ticks the tree's `STreeView` by hand (where the tree drops a selected item it no longer holds) and checks the
+  following:
+  - A graph with two tags in one category is listed once, both in the category view and in the search results.
+  - Select All gives each graph once.
+  - The selected tag is still selected, and its graphs are still listed, after `RefreshData`, after a search, and
+    after the search is cleared.
+  - Checked graphs stay checked when the same view is refreshed.
+  - The header names the view, and an empty list says why.
 
 ## Secrets, settings migration and StructUtils
 

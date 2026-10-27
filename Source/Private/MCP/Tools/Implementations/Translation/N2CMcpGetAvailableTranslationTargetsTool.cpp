@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpGetAvailableTranslationTargetsTool.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTargetLanguage.h"
@@ -23,6 +24,30 @@ FMcpToolDefinition FN2CMcpGetAvailableTranslationTargetsTool::GetDefinition() co
     // This tool takes no input parameters
     Definition.InputSchema = BuildEmptyObjectSchema();
     
+    {
+        using namespace N2CMcpOutputSchema;
+        // The ids from the target-language table, the same list translate-focused-blueprint's language takes
+        TArray<FString> Ids;
+        for (const FN2CTargetLanguage& Language : N2C::GetLanguages())
+        {
+            Ids.Add(Language.GetMcpId());
+        }
+        Definition.OutputSchema = Object({
+            { TEXT("languages"), Array(Object({
+                { TEXT("id"), Enum(Ids, TEXT("Pass as translate-focused-blueprint's language")) },
+                { TEXT("displayName"), String() },
+                { TEXT("description"), String() },
+                { TEXT("fileExtensions"), Array(String()) },
+                { TEXT("category"), String() },
+                { TEXT("features"), String() },
+                { TEXT("syntaxHighlightingSupported"), Boolean() },
+            }, { TEXT("id"), TEXT("displayName"), TEXT("fileExtensions") })) },
+            { TEXT("defaultLanguage"), Enum(Ids) },
+            { TEXT("currentLanguage"), Enum(Ids, TEXT("The language Project Settings selects")) },
+            { TEXT("languageCount"), Integer() },
+        }, { TEXT("languages"), TEXT("defaultLanguage"), TEXT("currentLanguage"), TEXT("languageCount") });
+    }
+
     // Read-only: reads editor or project state and changes nothing
     SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());
     
@@ -79,10 +104,5 @@ FMcpToolCallResult FN2CMcpGetAvailableTranslationTargetsTool::Execute(const TSha
     
     FN2CLogger::Get().Log(FString::Printf(TEXT("Successfully retrieved %d translation target languages"), LanguagesArray.Num()), EN2CLogSeverity::Info);
     
-    // Convert JSON to string for the result
-    FString OutputString;
-    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-    FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
-    
-    return FMcpToolCallResult::CreateTextResult(OutputString);
+    return FMcpToolCallResult::CreateJsonResult(ResponseObject.ToSharedRef(), /*bIndented*/ true);
 }

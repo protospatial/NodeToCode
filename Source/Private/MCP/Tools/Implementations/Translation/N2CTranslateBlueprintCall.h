@@ -83,6 +83,24 @@ public:
         return ProgressAfterSend + (ProgressParsing - 0.01f - ProgressAfterSend) * static_cast<float>(Elapsed / (Elapsed + 60.0));
     }
 
+    /**
+     * Results longer than this (characters of text) are saved to a file and returned as a resource_link (card 0207).
+     * Equals the tool's _meta["anthropic/maxResultSizeChars"] (NodeToCode.MCP.StructuredOutput checks it).
+     */
+    static constexpr int32 MaxInlineChars = 200000;
+
+    /**
+     * The successful result of a translation (TranslationJson: the LLM module's {graphs, usage} plus warnings), marked
+     * as untrusted data in its text and structuredContent. Up to MaxInline characters it is inline; above that the
+     * whole translation is written to Saved/NodeToCode/Exports/Translations and the result is a summary (each graph's
+     * name, type and class, usage, warnings, savedTo, bytes) plus a resource_link to the file. Unset when
+     * TranslationJson is not a JSON object.
+     */
+    static TOptional<FMcpToolCallResult> BuildSuccessResult(const FString& TranslationJson, int32 MaxInline = MaxInlineChars);
+
+    /** translate-focused-blueprint's outputSchema: the inline translation and the saved-file summary both match it */
+    static TSharedRef<FJsonObject> BuildOutputSchema();
+
 private:
     /** Turns the LLM response into the call's result (game thread) */
     void HandleLLMResponse(const FString& LLMResponse);

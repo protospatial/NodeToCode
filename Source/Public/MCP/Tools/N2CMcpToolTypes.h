@@ -188,13 +188,48 @@ struct NODETOCODE_API FMcpToolCallResult
 	 */
 	TSharedPtr<FJsonObject> StructuredContent;
 
+	/**
+	 * Optional _meta of the CallToolResult. An error result carries ErrorMetaKey: {"code": a stable code such as
+	 * INVALID_ARGUMENT, "field": the argument it names, when there is one} (SetErrorCode).
+	 */
+	TSharedPtr<FJsonObject> Meta;
+
 	/** Whether this result indicates an error */
 	UPROPERTY()
 	bool bIsError = false;
 
+	/** The _meta key of an error result's stable code */
+	static const TCHAR* const ErrorMetaKey;
+
 	FMcpToolCallResult()
 	{
 	}
+
+	/**
+	 * A successful result whose structuredContent is Object and whose one text block is the same JSON (the spec's
+	 * backward-compatibility SHOULD), condensed or indented. A tool with an OutputSchema returns this.
+	 */
+	static FMcpToolCallResult CreateJsonResult(const TSharedRef<FJsonObject>& Object, bool bIndented = false);
+
+	/**
+	 * A resource_link content item (MCP 2025-06-18+): a link the client can read with resources/read or, for file://,
+	 * from disk, instead of the content inline.
+	 * @param Size the content's size in bytes, or a negative number to leave it out
+	 */
+	static TSharedRef<FJsonObject> MakeResourceLink(const FString& Uri, const FString& Name, const FString& MimeType,
+		const FString& Description, int64 Size = -1);
+
+	/** Sets _meta[ErrorMetaKey] to {code, field}; field is left out when empty */
+	void SetErrorCode(const FString& Code, const FString& Field = FString());
+
+	/** The code SetErrorCode set, or empty */
+	FString GetErrorCode() const;
+
+	/**
+	 * The code at the start of a tool's error text, "CODE: message" or "CODE|message" (an upper-case word of letters,
+	 * digits and underscores), or empty when the text has none
+	 */
+	static FString ParseErrorCode(const FString& ErrorText);
 
 	/**
 	 * Create a result with text content. bInIsError marks a tool execution failure whose body is still structured

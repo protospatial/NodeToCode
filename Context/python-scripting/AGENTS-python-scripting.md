@@ -194,7 +194,7 @@ arguments and the keys of its `data`. Grouped:
     without `break_existing_links` a connection that would replace a link (a linked data input, also through a
     conversion node, or a linked exec output) fails and names that link
 *   `set_pin_value(node_guid, pin_guid, value, pin_name="")` - Default value of an unlinked input pin
-*   `delete_nodes(node_guids, preserve_connections=False, force=False)` - Delete nodes
+*   `delete_nodes(node_guids, preserve_connections=False, force=False)` - Delete nodes as the editor does; `preserve_connections` reconnects the exec line through a node with one exec input and output (and reroute knots); GUIDs not deleted are listed under `skipped`
 *   `find_nodes_in_graph(search_terms, search_type="keyword", case_sensitive=False, max_results=50)` - A keyword
     matches the node's title (as shown and its source text), class or member name; or `search_type="guid"`
 *   `create_comment_node(node_guids, comment_text="Comment", color=None, font_size=18, move_mode="group", padding=50)`
@@ -231,8 +231,8 @@ script ends and reports it as `compile` in its own result, so a script that adds
 
 **NodeToCode-Specific:**
 *   `tag_graph(tag, category="Default", description="")` - Tag focused graph
-*   `list_tags(category=None, tag=None)` - List tags with filters
-*   `remove_tag(graph_guid, tag)` - Remove tag from graph
+*   `list_tags(category=None, tag=None, blueprint_path=None)` - List tags with filters; `blueprint_path` keeps one Blueprint's graphs (a duplicated Blueprint shares its graph GUIDs with the original)
+*   `remove_tag(graph_guid, tag, blueprint_path="")` - Remove tag from graph; pass the entry's `blueprint_path` from `list_tags` (needed once a copy of the Blueprint shares the GUID)
 *   `get_llm_providers()` - Get available LLM providers
 *   `get_active_provider()` - Get current LLM provider info
 

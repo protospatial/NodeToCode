@@ -5,10 +5,12 @@
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "MCP/Utils/N2CMcpNodeDeletion.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpUntrustedContent.h"
 #include "MCP/Tools/Implementations/Translation/N2CMcpGetAvailableTranslationTargetsTool.h"
@@ -415,11 +417,13 @@ FString UN2CPythonBridge::TagFocusedGraph(const FString& Tag, const FString& Cat
 	Data->SetStringField(TEXT("graph_guid"), FocusedGraph->GraphGuid.ToString());
 	Data->SetStringField(TEXT("graph_name"), FocusedGraph->GetName());
 	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	// With graph_guid, what RemoveTag takes to name this graph even when a copy of the Blueprint shares its GUID
+	Data->SetStringField(TEXT("blueprint_path"), TaggedGraph.OwningBlueprint.ToString());
 
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
+FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag, const FString& BlueprintPath)
 {
 	TArray<FN2CTaggedBlueprintGraph> Tags;
 
@@ -443,6 +447,16 @@ FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
 	{
 		// Get all tags
 		Tags = UN2CTagManager::Get().GetAllTags();
+	}
+
+	// Only one Blueprint's graphs, when asked (card 0498): copies share graph GUIDs
+	if (!BlueprintPath.TrimStartAndEnd().IsEmpty())
+	{
+		const FSoftObjectPath Wanted = FN2CGraphKey::NormalizeBlueprintPath(BlueprintPath);
+		Tags.RemoveAll([&Wanted](const FN2CTaggedBlueprintGraph& TagInfo)
+		{
+			return FN2CGraphKey::NormalizeBlueprintPath(TagInfo.OwningBlueprint) != Wanted;
+		});
 	}
 
 	// Build JSON array
@@ -473,7 +487,7 @@ FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag)
+FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag, const FString& BlueprintPath)
 {
 	if (GraphGuid.IsEmpty() || Tag.IsEmpty())
 	{
@@ -487,20 +501,31 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 		return MakeErrorJson(FString::Printf(TEXT("Invalid GUID format: %s"), *GraphGuid));
 	}
 
+	// The graph is {Blueprint, GraphGuid} (card 0192): a duplicated Blueprint shares its graph GUIDs with the original,
+	// so a GUID alone names a graph only while one Blueprint has it (card 0498)
+	const FN2CGraphKey Key = BlueprintPath.TrimStartAndEnd().IsEmpty()
+		? FN2CGraphKey(ParsedGuid)
+		: FN2CGraphKey(FN2CGraphKey::NormalizeBlueprintPath(BlueprintPath), ParsedGuid);
+
 	// Try to remove the tag
 	FN2CTaggedBlueprintGraph RemovedTag;
-	int32 RemovedCount = UN2CTagManager::Get().RemoveTagByName(ParsedGuid, Tag, RemovedTag);
+	int32 RemovedCount = UN2CTagManager::Get().RemoveTagByName(Key, Tag, RemovedTag);
 
 	if (RemovedCount == 0)
 	{
-		return MakeErrorJson(FString::Printf(TEXT("Tag '%s' not found on graph %s"), *Tag, *GraphGuid));
+		if (!Key.HasBlueprint() && UN2CGraphStateManager::Get().FindKeysForGuid(ParsedGuid).Num() > 1)
+		{
+			return MakeErrorJson(FString::Printf(TEXT("Graph %s is in more than one Blueprint (a duplicated Blueprint keeps its graph GUIDs). Pass blueprint_path (from list_tags) to say which."),
+				*GraphGuid));
+		}
+		return MakeErrorJson(FString::Printf(TEXT("Tag '%s' not found on graph %s"), *Tag, *Key.ToString()));
 	}
 
 	// Save tags to persist
 	UN2CTagManager::Get().SaveTags();
 
 	// Get remaining tags for this graph
-	TArray<FN2CTaggedBlueprintGraph> RemainingTags = UN2CTagManager::Get().GetTagsForGraph(ParsedGuid);
+	TArray<FN2CTaggedBlueprintGraph> RemainingTags = UN2CTagManager::Get().GetTagsForGraph(Key);
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveTag: Removed %d tag(s) '%s' from graph %s"), RemovedCount, *Tag, *GraphGuid), EN2CLogSeverity::Info);
 
@@ -509,6 +534,7 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 	Data->SetNumberField(TEXT("removed_count"), RemovedCount);
 	Data->SetStringField(TEXT("tag"), Tag);
 	Data->SetStringField(TEXT("graph_guid"), GraphGuid);
+	Data->SetStringField(TEXT("blueprint_path"), RemovedTag.OwningBlueprint.ToString());
 	Data->SetNumberField(TEXT("remaining_tags"), RemainingTags.Num());
 
 	return MakeSuccessJson(Data);
@@ -1424,90 +1450,97 @@ FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreser
 		return MakeErrorJson(TEXT("NodeGuidsJson must be a non-empty array"));
 	}
 
-	// Get focused graph
-	UBlueprint* Blueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
-	FString GraphError;
 	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
 	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
 	if (!Target.IsValid())
 	{
 		return MakeErrorJson(Target.Error);
 	}
-	Blueprint = Target.Blueprint;
-	FocusedGraph = Target.Graph;
+	UBlueprint* Blueprint = Target.Blueprint;
+	UEdGraph* FocusedGraph = Target.Graph;
 
-	// Parse GUIDs and find nodes
+	// Find the nodes; protection is the node's own CanUserDeleteNode, which bForce overrides (card 0279). A GUID that
+	// is not a node of the graph, or names a protected node, is listed under 'skipped' with the reason
 	TArray<UEdGraphNode*> NodesToDelete;
-	TArray<FString> DeletedNodeGuids;
-	TArray<FString> DeletedNodeNames;
+	TArray<TSharedPtr<FJsonValue>> SkippedArray;
+	auto Skip = [&SkippedArray](const FString& Guid, const FString& Reason)
+	{
+		const TSharedPtr<FJsonObject> Skipped = MakeShared<FJsonObject>();
+		Skipped->SetStringField(TEXT("guid"), Guid);
+		Skipped->SetStringField(TEXT("reason"), Reason);
+		SkippedArray.Add(MakeShared<FJsonValueObject>(Skipped));
+	};
 
 	for (const TSharedPtr<FJsonValue>& Value : *GuidsArray)
 	{
 		FString GuidString;
-		if (!Value->TryGetString(GuidString))
-		{
-			continue;
-		}
-
 		FGuid ParsedGuid;
-		if (!FGuid::Parse(GuidString, ParsedGuid))
+		if (!Value->TryGetString(GuidString) || !FGuid::Parse(GuidString, ParsedGuid))
 		{
+			Skip(GuidString, TEXT("not a GUID"));
 			continue;
 		}
-
-		for (UEdGraphNode* Node : FocusedGraph->Nodes)
+		UEdGraphNode* Node = N2CNodeDeletion::FindNode(FocusedGraph, ParsedGuid);
+		if (!Node)
 		{
-			if (Node && Node->NodeGuid == ParsedGuid)
-			{
-				// Check if node is deletable
-				if (!bForce)
-				{
-					if (Node->IsA<UK2Node_FunctionEntry>() || Node->IsA<UK2Node_FunctionResult>())
-					{
-						continue; // Skip protected nodes
-					}
-				}
-
-				NodesToDelete.Add(Node);
-				DeletedNodeGuids.Add(GuidString);
-				DeletedNodeNames.Add(Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
-				break;
-			}
+			Skip(GuidString, FString::Printf(TEXT("no node with this GUID in graph %s"), *FocusedGraph->GetName()));
+			continue;
 		}
+		FString Reason;
+		if (!N2CNodeDeletion::CanDelete(Node, bForce, Reason))
+		{
+			Skip(GuidString, Reason);
+			continue;
+		}
+		NodesToDelete.AddUnique(Node);
 	}
 
 	if (NodesToDelete.Num() == 0)
 	{
-		return MakeErrorJson(TEXT("No valid nodes found to delete"));
+		TArray<FString> Reasons;
+		for (const TSharedPtr<FJsonValue>& Skipped : SkippedArray)
+		{
+			Reasons.Add(FString::Printf(TEXT("%s: %s"), *Skipped->AsObject()->GetStringField(TEXT("guid")), *Skipped->AsObject()->GetStringField(TEXT("reason"))));
+		}
+		return MakeErrorJson(FString::Printf(TEXT("No valid nodes found to delete (%s)"), *FString::Join(Reasons, TEXT("; "))));
 	}
 
-	// Delete nodes
+	// Delete the way the editor's Delete does, shared with the delete-blueprint-node tool (card 0279)
 	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonDeleteNodes", "Python: Delete Nodes"));
-	Blueprint->Modify();
-	FocusedGraph->Modify();
-
-	for (UEdGraphNode* Node : NodesToDelete)
-	{
-		Node->Modify();
-		Node->DestroyNode();
-	}
-
-	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
+	const TArray<N2CNodeDeletion::FDeletedNode> Deleted = N2CNodeDeletion::DeleteNodes(Blueprint, NodesToDelete, bPreserveConnections);
 
 	// Build result
 	TArray<TSharedPtr<FJsonValue>> DeletedArray;
-	for (int32 i = 0; i < DeletedNodeGuids.Num(); ++i)
+	for (const N2CNodeDeletion::FDeletedNode& Info : Deleted)
 	{
 		TSharedPtr<FJsonObject> NodeObj = MakeShareable(new FJsonObject);
-		NodeObj->SetStringField(TEXT("guid"), DeletedNodeGuids[i]);
-		NodeObj->SetStringField(TEXT("name"), DeletedNodeNames[i]);
+		NodeObj->SetStringField(TEXT("guid"), Info.NodeGuid);
+		NodeObj->SetStringField(TEXT("name"), Info.ListTitle);
+		if (Info.BridgedLinks.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Links;
+			for (const N2CNodeDeletion::FBridgedLink& Link : Info.BridgedLinks)
+			{
+				const TSharedPtr<FJsonObject> LinkObj = MakeShared<FJsonObject>();
+				LinkObj->SetStringField(TEXT("fromNode"), Link.FromNodeGuid);
+				LinkObj->SetStringField(TEXT("fromPin"), Link.FromPinName);
+				LinkObj->SetStringField(TEXT("toNode"), Link.ToNodeGuid);
+				LinkObj->SetStringField(TEXT("toPin"), Link.ToPinName);
+				LinkObj->SetStringField(TEXT("type"), Link.PinType);
+				Links.Add(MakeShared<FJsonValueObject>(LinkObj));
+			}
+			NodeObj->SetArrayField(TEXT("preservedConnections"), Links);
+		}
 		DeletedArray.Add(MakeShareable(new FJsonValueObject(NodeObj)));
 	}
 
 	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
 	ResultObject->SetArrayField(TEXT("deletedNodes"), DeletedArray);
 	ResultObject->SetNumberField(TEXT("deletedCount"), DeletedArray.Num());
+	if (SkippedArray.Num() > 0)
+	{
+		ResultObject->SetArrayField(TEXT("skipped"), SkippedArray);
+	}
 
 	Transaction.Reset(); // close the undo transaction before compiling
 	AddCompileResult(ResultObject, CallScope.Flush());

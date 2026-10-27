@@ -86,6 +86,16 @@ During Play In Editor or Simulate, the 32 tools that edit or compile a Blueprint
 asset or folder, answer `PIE_ACTIVE` until the session ends; every tool stays listed. Reading, translation, opening
 editors, the script library and `run-python` keep working.
 
+## Reading tool results
+
+Every result has the JSON as text. These tools also declare an `outputSchema` in `tools/list` and return the same
+object as `structuredContent`: `get-focused-blueprint`, `list-blueprint-graphs`, `get-open-blueprint-editors`,
+`translate-focused-blueprint`, `get-available-translation-targets`, `get-available-llm-providers`,
+`get-translation-output-directory` and `read-path`. A translation over 200,000 characters is saved under
+`Saved/NodeToCode/Exports/Translations`; the result then lists its graphs with `savedTo` and a `resource_link`.
+A failed call is an `isError` result whose `_meta["nodetocode/error"]` holds a stable `code` (`INVALID_ARGUMENT`,
+`TOOL_FAILED`, `PIE_ACTIVE`, ...) and, for a bad argument, its `field`; arguments that are not an object get one too.
+
 ## Settings from older versions
 
 A project saved with **Enable Python Script-Only Mode** loads as **Python scripting only**, and one saved with

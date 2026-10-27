@@ -252,7 +252,8 @@ void UN2CTagManagerWidget::HandleRemoveSelectedRequested()
 {
 	if (TagManagerWidget.IsValid())
 	{
-		TArray<FN2CTagInfo> SelectedGraphs = TagManagerWidget->GetSelectedGraphs();
+		// One entry per (graph, tag) of the checked rows: what to remove
+		TArray<FN2CTagInfo> SelectedGraphs = TagManagerWidget->GetSelectedTagEntries();
 		OnRemoveSelectedRequested.Broadcast(SelectedGraphs);
 	}
 }

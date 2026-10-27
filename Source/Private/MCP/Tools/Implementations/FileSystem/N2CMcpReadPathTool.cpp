@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "N2CMcpReadPathTool.h"
+#include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CPathUtils.h"
@@ -113,6 +114,24 @@ FMcpToolDefinition FN2CMcpReadPathTool::GetDefinition() const
         (*PageSize)->SetNumberField(TEXT("minimum"), 1);
         (*PageSize)->SetNumberField(TEXT("maximum"), MaxPageSize);
         (*PageSize)->SetNumberField(TEXT("default"), DefaultPageSize);
+    }
+
+    {
+        using namespace N2CMcpOutputSchema;
+        Definition.OutputSchema = Object({
+            { TEXT("path"), String(TEXT("The directory, relative to the project folder")) },
+            { TEXT("directories"), Array(String(), TEXT("Folder names on this page")) },
+            { TEXT("files"), Array(String(), TEXT("File names on this page")) },
+            { TEXT("directoryCount"), Integer(TEXT("Folders in the directory (after filter)")) },
+            { TEXT("fileCount"), Integer(TEXT("Files in the directory (after filter)")) },
+            { TEXT("total"), Integer() },
+            { TEXT("returned"), Integer() },
+            { TEXT("pageSize"), Integer() },
+            { TEXT("truncated"), Boolean() },
+            { TEXT("nextCursor"), String(TEXT("Pass as cursor for the next page, when truncated")) },
+            { TEXT("filter"), String() },
+            { TEXT("success"), Boolean() },
+        }, { TEXT("path"), TEXT("directories"), TEXT("files"), TEXT("total"), TEXT("returned"), TEXT("truncated") });
     }
 
     // Read-only: reads editor or project state and changes nothing
@@ -239,9 +258,6 @@ FMcpToolCallResult FN2CMcpReadPathTool::Execute(const TSharedPtr<FJsonObject>& A
             EN2CLogSeverity::Info
         );
 
-        FString OutputString;
-        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-        FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
-        return FMcpToolCallResult::CreateTextResult(OutputString);
+        return FMcpToolCallResult::CreateJsonResult(ResponseObject.ToSharedRef(), /*bIndented*/ true);
     });
 }

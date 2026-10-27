@@ -77,6 +77,7 @@ void SN2CGraphListRow::Construct(const FArguments& InArgs)
 					.Text(FText::FromString(Item->TagInfo.GraphName))
 					.Font(FN2CFonts::Small())
 					.ColorAndOpacity(FSlateColor::UseForeground())
+					.ToolTipText(this, &SN2CGraphListRow::GetTagsTooltip)
 				]
 
 				// Blueprint name column - fill width
@@ -351,6 +352,20 @@ FText SN2CGraphListRow::GetViewButtonTooltip() const
 		return LOCTEXT("ViewTranslationTooltipEnabled", "View translation");
 	}
 	return LOCTEXT("ViewTranslationTooltipDisabled", "No translation available");
+}
+
+FText SN2CGraphListRow::GetTagsTooltip() const
+{
+	if (!Item.IsValid() || Item->Tags.Num() == 0)
+	{
+		return FText::GetEmpty();
+	}
+	TArray<FString> Labels;
+	for (const FN2CTagInfo& TagEntry : Item->Tags)
+	{
+		Labels.AddUnique(FString::Printf(TEXT("%s (%s)"), *TagEntry.Tag, *TagEntry.Category));
+	}
+	return FText::Format(LOCTEXT("GraphTagsTooltip", "Tags: {0}"), FText::FromString(FString::Join(Labels, TEXT(", "))));
 }
 
 void SN2CGraphListRow::HandleRefreshClicked()
