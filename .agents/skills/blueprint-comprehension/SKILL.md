@@ -35,7 +35,8 @@ Blueprint's contents.
 
 1. **Find the asset.** With only a name, call `search-content-browser` with `{"query": "<name>", "assetType":
    "Blueprint"}` (Epic: `AssetTools.find_assets`) and take the package path (`/Game/Folder/BP_Name`). Ask when
-   several match.
+   several match. When the user means what they have open ("this Blueprint", "these nodes"), call
+   `get-editor-context`: `focusedBlueprint.path`, `focusedGraph.graphGuid` and `selectedNodes` name it.
 2. **List its graphs.** `list-blueprint-graphs` with `{"blueprintPath": "/Game/Folder/BP_Name"}` gives each graph's
    `name`, `graphGuid`, `kind` (`event`, `function`, `macro`, `collapsed`, `delegate`, `interface`), `nodeCount` and
    `readOnly`. Use it to decide what to read and in what order. With only NodeToCodeTools, Epic's

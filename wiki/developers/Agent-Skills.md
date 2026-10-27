@@ -15,7 +15,7 @@ also serves the three skills itself (see [In Epic's skill registry](#in-epics-sk
 
 | Skill | The agent uses it when you ask | What it does |
 |---|---|---|
-| `blueprint-comprehension` | what a Blueprint does, to explain, review or document one | Lists the Blueprint's graphs and reads them as N2C JSON by asset path (`list-blueprint-graphs`, `get-blueprint-n2cjson`), then explains each event and function in order, the variables used and the nodes that never run. Read-only |
+| `blueprint-comprehension` | what a Blueprint does, to explain, review or document one | Finds the Blueprint by name, or the one the user has open (`get-editor-context`), lists its graphs and reads them as N2C JSON by asset path (`list-blueprint-graphs`, `get-blueprint-n2cjson`), then explains each event and function in order, the variables used and the nodes that never run. Read-only |
 | `blueprint-to-cpp` | to convert or translate a Blueprint to C++, or a tagged set of graphs | Reads the Blueprint, writes the `.h` and `.cpp` itself (or, when you ask for NodeToCode's translator, translates by path with `translate-batch` or, on UE 5.8, `NodeToCodeTools.translate_graph`), places the code in your module and builds it. For many graphs it tags them and exports or translates the tag in one batch |
 | `blueprint-migration` | to migrate or move a Blueprint to C++ | One Blueprint at a time with three stops for your approval: the plan, the compiled C++, and the switch-over. It never reparents, deletes or saves anything before the C++ compiles and you approve |
 

@@ -75,6 +75,7 @@ namespace N2CToolPresentationPrivate
 			// Blueprint discovery (Blueprint/Analysis)
 			Read(TEXT("export-n2cjson-batch"), TEXT("Export N2C JSON for many graphs")),
 			AlwaysLoad(Read(TEXT("get-blueprint-n2cjson"), TEXT("Read a Blueprint as N2C JSON"))),
+			Read(TEXT("get-editor-context"), TEXT("Read what the user is looking at")),
 			AlwaysLoad(Large(Read(TEXT("get-focused-blueprint"), TEXT("Read the focused Blueprint graph")))),
 			Read(TEXT("get-open-blueprint-editors"), TEXT("List open Blueprint editors")),
 			Read(TEXT("list-blueprint-functions"), TEXT("List Blueprint functions")),

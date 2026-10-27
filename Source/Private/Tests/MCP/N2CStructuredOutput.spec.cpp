@@ -32,7 +32,7 @@ namespace N2CStructuredOutputSpec
 {
 	/** The tools card 0207 gives an outputSchema (unfrozen discovery, translation and file system tools) */
 	const TCHAR* const ToolsWithSchema[] = {
-		TEXT("get-focused-blueprint"), TEXT("list-blueprint-graphs"), TEXT("get-open-blueprint-editors"),
+		TEXT("get-focused-blueprint"), TEXT("list-blueprint-graphs"), TEXT("get-open-blueprint-editors"), TEXT("get-editor-context"),
 		TEXT("translate-focused-blueprint"), TEXT("get-available-translation-targets"), TEXT("get-available-llm-providers"),
 		TEXT("get-translation-output-directory"), TEXT("read-path"),
 	};
@@ -210,6 +210,12 @@ void FN2CStructuredOutputSpec::Define()
 		}
 
 		ExpectStructured(TEXT("get-open-blueprint-editors"), N2CTest::RunTool(TEXT("get-open-blueprint-editors"), MakeShared<FJsonObject>()));
+		const FMcpToolCallResult Context = N2CTest::RunTool(TEXT("get-editor-context"), MakeShared<FJsonObject>());
+		if (ExpectStructured(TEXT("get-editor-context"), Context))
+		{
+			TestTrue(TEXT("get-editor-context: structuredContent is marked as untrusted, like its text"),
+				Context.StructuredContent->HasField(FN2CMcpUntrustedContent::MarkerField) && N2CTest::IsMarkedUntrusted(Context));
+		}
 		ExpectStructured(TEXT("get-available-translation-targets"), N2CTest::RunTool(TEXT("get-available-translation-targets"), MakeShared<FJsonObject>()));
 		ExpectStructured(TEXT("get-available-llm-providers"), N2CTest::RunTool(TEXT("get-available-llm-providers"), MakeShared<FJsonObject>()));
 		ExpectStructured(TEXT("get-translation-output-directory"), N2CTest::RunTool(TEXT("get-translation-output-directory"), MakeShared<FJsonObject>()));

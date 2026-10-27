@@ -66,6 +66,7 @@ namespace N2CToolPresentationSpecPrivate
 		{ TEXT("get-blueprint-function-local-variables"), R, false, true, false },
 		{ TEXT("get-blueprint-member-variables"), R, false, true, false },
 		{ TEXT("get-blueprint-n2cjson"), R, false, true, false },
+		{ TEXT("get-editor-context"), R, false, true, false },
 		{ TEXT("get-focused-blueprint"), R, false, true, false },
 		{ TEXT("get-open-blueprint-editors"), R, false, true, false },
 		{ TEXT("get-python-script"), R, false, true, false },

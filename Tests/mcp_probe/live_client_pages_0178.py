@@ -11,13 +11,13 @@ changed) and signs in with ANTHROPIC_API_KEY from the repo's .env, given to the 
 editor with the settings the page names, then:
 
 - http: the page's JSON config ({"type": "http", "url": ...}) through `claude -p --mcp-config --strict-mcp-config`.
-  Passes when the init lists nodetocode as connected with 63 tools (the default: Default toolsets, List every tool,
+  Passes when the init lists nodetocode as connected with 64 tools (the default: Default toolsets, List every tool,
   Allow MCP Python Execution off) and a get-available-translation-targets call succeeds.
 - mcp_add: `claude mcp add --transport http nodetocode <url>` then `claude mcp list`, which must say Connected.
 - bridge: the stdio bridge as Claude Desktop starts it (command python, args nodetocode_bridge.py --project <host>),
-  through --mcp-config. Passes with nodetocode connected and 63 tools.
+  through --mcp-config. Passes with nodetocode connected and 64 tools.
 - launcher: the same with launch_bridge.bat as the command (Windows only).
-- python_allowed: Allow MCP Python Execution on: 66 tools, run-python among them.
+- python_allowed: Allow MCP Python Execution on: 67 tools, run-python among them.
 - tool_search: Tool Exposure Tool search: exactly call_tool, describe_toolset and list_toolsets, and list_toolsets
   succeeds.
 - python_only: Tool Profile Python scripting only, Python execution off: the 4 script library tools.
@@ -50,11 +50,11 @@ PYTHON_LIBRARY = ['get-python-script', 'get-script-functions', 'list-python-scri
 
 # name: (settings in Saved/Config NodeToCode.ini, custom toolsets, allow python, route, expected count, tool to call)
 SCENARIOS = {
-    'http': ({}, None, False, 'http', 63, 'get-available-translation-targets'),
+    'http': ({}, None, False, 'http', 64, 'get-available-translation-targets'),
     'mcp_add': ({}, None, False, 'mcp_add', None, None),
-    'bridge': ({}, None, False, 'bridge', 63, 'get-available-translation-targets'),
-    'launcher': ({}, None, False, 'launcher', 63, None),
-    'python_allowed': ({}, None, True, 'http', 66, None),
+    'bridge': ({}, None, False, 'bridge', 64, 'get-available-translation-targets'),
+    'launcher': ({}, None, False, 'launcher', 64, None),
+    'python_allowed': ({}, None, True, 'http', 67, None),
     'tool_search': ({'McpToolExposure': 'ToolSearch'}, None, False, 'http', 3, 'list_toolsets'),
     'python_only': ({'McpToolProfile': 'PythonScripting'}, None, False, 'http', 4, None),
     'custom': ({'McpToolProfile': 'Custom'}, ['BlueprintDiscoveryTools', 'TranslationTools'], False, 'http', 13, None),

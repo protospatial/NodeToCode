@@ -44,7 +44,7 @@ namespace N2CMcpEpicOverlapSpec
 
 	/** Tools only NodeToCode has, or does better (keep-unique / keep-better / differentiate): never left to Unreal MCP */
 	const TArray<FString> Kept = {
-		TEXT("get-focused-blueprint"), TEXT("get-blueprint-n2cjson"), TEXT("export-n2cjson-batch"), TEXT("get-open-blueprint-editors"),
+		TEXT("get-focused-blueprint"), TEXT("get-blueprint-n2cjson"), TEXT("export-n2cjson-batch"), TEXT("get-open-blueprint-editors"), TEXT("get-editor-context"),
 		TEXT("list-blueprint-graphs"), TEXT("connect-pins"), TEXT("create-comment-node"), TEXT("delete-blueprint-node"),
 		TEXT("find-nodes-in-graph"), TEXT("delete-blueprint-function"), TEXT("open-blueprint-function"), TEXT("create-variable"),
 		TEXT("create-local-variable"), TEXT("search-variable-types"), TEXT("set-local-function-variable-default-value"),

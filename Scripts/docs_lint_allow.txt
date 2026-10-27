@@ -16,4 +16,5 @@ Context/mcp-server/threat-model.md::Source/Evil  # a traversal target the file t
 
 # Counts the lint cannot derive: evidence recorded at the time of a check, sums of toolsets
 Context/mcp-server/threat-model.md::59 tools  # live checks 0090 and 0423 ran with 59 default tools (62 with Python execution)
-wiki/developers/Choosing-a-Tool-Mode.md::13 tools  # BlueprintDiscoveryTools (8) plus TranslationTools (5); sums of toolsets are not checked
+wiki/developers/Choosing-a-Tool-Mode.md::14 tools  # BlueprintDiscoveryTools (9) plus TranslationTools (5); sums of toolsets are not checked
+wiki/developers/Choosing-a-Tool-Mode.md::32 tools  # the tools that answer PIE_ACTIVE (worksDuringPlaySession false in tools.generated.json); the lint does not derive that count

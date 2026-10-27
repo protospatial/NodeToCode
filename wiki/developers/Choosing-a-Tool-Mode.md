@@ -1,4 +1,4 @@
-NodeToCode's MCP server has 66 tools in 12 toolsets. Two settings choose which of them a connected client sees:
+NodeToCode's MCP server has 67 tools in 12 toolsets. Two settings choose which of them a connected client sees:
 **Tool Profile** picks the toolsets, and **Tool Exposure** picks whether `tools/list` names every tool or only three
 search tools that reach them. The defaults serve every toolset and list every tool, which suits most clients; change
 them when a client struggles with many tools or should only run Python.
@@ -11,7 +11,7 @@ reads it once (as most do) stays correct. Every client gets the same list.
 
 | Tool Profile | What the client gets | Tools |
 |---|---|---|
-| **Default toolsets** (default) | Every toolset | 63, or 66 with **Allow MCP Python Execution** |
+| **Default toolsets** (default) | Every toolset | 64, or 67 with **Allow MCP Python Execution** |
 | **Python scripting only** | Only **PythonTools**: `run-python` and the script library (`list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script`) | 7, or 4 without **Allow MCP Python Execution** |
 | **Custom toolsets** | The toolsets you pick in **Custom Toolsets** | the sum of their tools |
 
@@ -33,7 +33,7 @@ and pick its name from the list:
 | PythonTools | 7 | `run-python` and the script library |
 | TranslationTools | 5 | NodeToCode's own LLM translation, its providers and languages |
 
-For example, BlueprintDiscoveryTools and TranslationTools give an agent 13 tools to read Blueprints and translate
+For example, BlueprintDiscoveryTools and TranslationTools give an agent 14 tools to read Blueprints and translate
 them, and nothing that edits a Blueprint.
 
 ## Tool Exposure
@@ -66,7 +66,7 @@ MCP** (ModelContextProtocol) and **EditorToolset** plugins are both enabled:
 
 | Overlapping Tools | Effect |
 |---|---|
-| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 29 tools (32 with Python execution); a Custom profile serves its toolsets as chosen |
+| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 30 tools (33 with Python execution); a Custom profile serves its toolsets as chosen |
 | **Leave them to Unreal MCP when it is enabled** | Left out of every profile |
 | **Always serve them** | Served, as on UE 5.6 and 5.7 |
 
@@ -89,7 +89,7 @@ editors, the script library and `run-python` keep working.
 ## Reading tool results
 
 Every result has the JSON as text. These tools also declare an `outputSchema` in `tools/list` and return the same
-object as `structuredContent`: `get-focused-blueprint`, `list-blueprint-graphs`, `get-open-blueprint-editors`,
+object as `structuredContent`: `get-focused-blueprint`, `list-blueprint-graphs`, `get-open-blueprint-editors`, `get-editor-context`,
 `translate-focused-blueprint`, `get-available-translation-targets`, `get-available-llm-providers`,
 `get-translation-output-directory` and `read-path`. A translation over 200,000 characters is saved under
 `Saved/NodeToCode/Exports/Translations`; the result then lists its graphs with `savedTo` and a `resource_link`.

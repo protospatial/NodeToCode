@@ -581,7 +581,7 @@ void FN2CToolCatalogSpec::Define()
 				TEXT("list-overridable-functions"), TEXT("list-components-in-actor"), TEXT("find-nodes-in-graph"),
 				TEXT("search-blueprint-nodes"), TEXT("list-blueprint-tags"), TEXT("get-available-llm-providers"),
 				TEXT("get-available-translation-targets"), TEXT("get-translation-output-directory"),
-				TEXT("get-open-blueprint-editors"), TEXT("list-python-scripts"), TEXT("search-python-scripts"),
+				TEXT("get-open-blueprint-editors"), TEXT("get-editor-context"), TEXT("list-python-scripts"), TEXT("search-python-scripts"),
 				TEXT("search-content-browser"), TEXT("read-content-browser-path"), TEXT("read-path") };
 			int32 Succeeded = 0;
 			int32 Invoked = 0;

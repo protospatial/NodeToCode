@@ -130,8 +130,8 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
     unless the command line has `-N2CMcp`), graceful shutdown on exit
-*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 66,
-    or 63 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
+*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 67,
+    or 64 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
     Toolsets
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
@@ -307,7 +307,7 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 
 ### Tool Implementations (`Implementations/`)
 
-66 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
+67 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
 (folders and toolsets do not map one to one), and every tool's schema is in [tools.generated.md](tools.generated.md);
 `Scripts/docs_lint.py` fails when this list misses a registered tool:
 
@@ -320,7 +320,10 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
     `Saved/NodeToCode/Exports`, no editor needed; non-Blueprint assets refused per target (card 0169)
 *   `list-blueprint-functions` - List functions in a Blueprint
 *   `list-overridable-functions` - List parent class overridable functions
-*   `get-open-blueprint-editors` - Get all open Blueprint editors
+*   `get-open-blueprint-editors` - Every open Blueprint editor (Widget and Animation Blueprints too) with its graphs,
+    the graph it shows, packageDirty and compileStatus (card 0275)
+*   `get-editor-context` - What the user is looking at: focused Blueprint and graph, selected node GUIDs, every open
+    Blueprint editor with its own focused graph, Play In Editor state, engine version (card 0275)
 
 **Blueprint/Functions/** - Function management:
 *   `create-blueprint-function` - Create a new function
@@ -582,10 +585,10 @@ Server):
     shapes, for clients with a tool limit such as VS Code's 128 and Windsurf's 100).
 
 `tools/list` is then fixed until the server starts again: no call changes it, every client sees the same list. With
-Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 66, tool search 3,
-Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (63
+Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 67, tool search 3,
+Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (64
 and 4; Python scripting only logs a warning at start). The settings need an editor restart. `build.ps1 -Smoke` checks
-each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 66, `tool_search` 3,
+each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 67, `tool_search` 3,
 `python_only` 7).
 
 Toolsets are declared once in `Source/Public/MCP/Tools/N2CMcpToolsets.h`, and every tool names its toolset by identity
@@ -605,7 +608,7 @@ BlueprintClassTools, BlueprintComponentTools, ContentBrowserTools). They are lef
 `ModelContextProtocol` and `EditorToolset` plugins both enabled (`IPluginManager::FindEnabledPlugin`), and then by
 **Overlapping Tools** (`McpOverlappingTools`): `Automatic` (default) follows `N2CMcpEpicOverlap::bLeaveToUnrealMcpByDefault`
 (true: owner decision 0089 applied provisionally as option b) for the Default toolsets profile only, `LeaveToUnrealMcp`
-for every profile, `AlwaysServe` never. Counts then: 32, or 29 without Python execution. The log says once per server
+for every profile, `AlwaysServe` never. Counts then: 33, or 30 without Python execution. The log says once per server
 start how many tools were left out and why, or why none were. `tools/call` of a left-out tool is -32602 `Unknown tool:
 <name>. <name> is left to Unreal MCP ...` naming the Epic tool; `describe_toolset` and `call_tool` say the same. The
 tool list and Epic counterparts are `N2CMcpEpicOverlap::Tools`, mirrored in
@@ -637,7 +640,7 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     `MCPServers=(...)`: a `+MCPServers=(...)` line left the list empty on 5.8 and the subsystem logged nothing.
 *   **Tool profile**: Default toolsets and List every tool (the defaults; Epic's client lists tools once and would
     see only the meta-tools in Tool search, nested behind its own `call_tool`). Tools register as
-    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 66 tools with Allow MCP
+    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 67 tools with Allow MCP
     Python Execution, all in the first `tools/list` (one page, no cursor).
 *   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
     `Accept: application/json, text/event-stream`, `Mcp-Session-Id` from the first response on every later POST,
@@ -778,7 +781,7 @@ picks, the choice is not saved; the warning says to remove it from the project f
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
   `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so tool search cannot reach them either.
-  Without it the default mode lists 63 tools, not 66.
+  Without it the default mode lists 64 tools, not 67.
 - **Allow MCP Writes Outside Project** (default off): lets the content-writing tools write outside `/Game` and the
   project's plugins (`/Engine`, engine and Fab plugins, `/NodeToCode`); read by
   `FN2CMcpContentBrowserUtils::IsWritableContentPath` (card 0182; the policy is "Where tools may write" in

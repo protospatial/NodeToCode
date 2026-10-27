@@ -58,7 +58,7 @@ def test_registry_holds_the_tools_the_skills_rely_on(sync_skills):
     assert {'get-blueprint-n2cjson', 'list-blueprint-graphs', 'translate-focused-blueprint', 'open-blueprint-asset',
             'compile-blueprint', 'find-nodes-in-graph'} <= tools
     assert 'assess-needed-tools' not in tools  # removed by card 0165 (tool search: list_toolsets, describe_toolset, call_tool)
-    assert len(tools) == 66  # every tool, all listed with the default Tool Profile (Source/Private/MCP/Tools/AGENTS.md)
+    assert len(tools) == 67  # every tool, all listed with the default Tool Profile (Source/Private/MCP/Tools/AGENTS.md)
 
 
 @pytest.mark.parametrize('mention', ['`translate-blueprint-by-path`', 'mcp__nodetocode__batch-translate-blueprints',

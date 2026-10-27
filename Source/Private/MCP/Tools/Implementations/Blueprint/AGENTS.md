@@ -61,7 +61,7 @@ Not every tool can be pointed at a Blueprint; what each takes:
 |---|---|
 | `blueprintPath`, `graphName`, `graphGuid` | every `Graph/` and `Functions/` tool and `search-blueprint-nodes` (all through `FN2CGraphTarget::Resolve`), `get-blueprint-n2cjson` |
 | `blueprintPath` only | `list-blueprint-graphs`, `list-blueprint-functions`, `list-overridable-functions`, `compile-blueprint`, `save-blueprint`, the three `Components/` tools |
-| none: the focused Blueprint | every `Variables/` tool, the `Organization/` tag tools, `get-focused-blueprint`, `get-open-blueprint-editors` (card 0274 owes the explicit targets) |
+| none: the focused Blueprint | every `Variables/` tool, the `Organization/` tag tools, `get-focused-blueprint`, `get-open-blueprint-editors`, `get-editor-context` (card 0274 owes the explicit targets) |
 
 `export-n2cjson-batch` and `translate-batch` take their own lists of asset paths or tags, and `create-blueprint-class`
 takes the path of the asset it creates.
