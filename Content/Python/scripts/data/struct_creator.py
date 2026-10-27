@@ -85,13 +85,6 @@ def create_struct_with_variables(
         if not success or not struct:
             return _make_error(f"Failed to create struct: {error}")
 
-        # Remove the default variable if requested
-        if remove_default_variable:
-            rm_success, rm_error = unreal.N2CStructUtilsLibrary.remove_default_variable(struct)
-            if not rm_success:
-                # Log warning but continue
-                unreal.log_warning(f"Could not remove default variable: {rm_error}")
-
         # Add all the specified variables
         added_vars = []
         failed_vars = []
@@ -104,6 +97,14 @@ def create_struct_with_variables(
                 added_vars.append({'name': var_name, 'type': var_type})
             else:
                 failed_vars.append({'name': var_name, 'type': var_type, 'error': var_error})
+
+        # Remove the default variable if requested. Only after the others are added: a struct cannot be empty, so
+        # the default member cannot be removed while it is the only one.
+        if remove_default_variable and added_vars:
+            rm_success, rm_error = unreal.N2CStructUtilsLibrary.remove_default_variable(struct)
+            if not rm_success:
+                # Log warning but continue
+                unreal.log_warning(f"Could not remove default variable: {rm_error}")
 
         # Save the struct
         if save_after_creation:

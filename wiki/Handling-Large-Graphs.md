@@ -28,6 +28,12 @@ The context window bar in the Node to Code window estimates a graph's size and i
 [Model Price Overrides](Provider-Configuration#model-price-overrides). For a **Custom Model ID** it shows the ID,
 assumes a 128K context and costs nothing unless you add a price override.
 
+The ring in a graph editor's overlay and the token counts in the Node to Code list estimate exactly what Translate
+sends: the graph and its nested graphs up to the [Translation Depth](Translation-Depth), each counted once, at about
+4 characters per token. The estimate follows your edits about a second after you stop, compiled or not, and a
+Translation Depth change. Compiling one Blueprint re-estimates only that Blueprint's graphs. A graph with nothing to
+translate shows **n/a**.
+
 The provider and model you pick beside the bar are saved to the project's settings (`Config/DefaultNodeToCode.ini`),
 the same place Project Settings saves them, so whichever you changed last is used after a restart.
 

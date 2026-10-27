@@ -380,7 +380,9 @@ lib.save_struct(struct)
 ```
 
 `add_struct_variables_batch` returns `(count, success, error)`; `get_struct_variable_names` returns the members'
-internal names (`MyFloat_2_<GUID digits>`).
+names as given (`MyFloat`). `add_struct_variable` refuses a name the struct already has and adds nothing.
+`remove_default_variable` removes only the bool `MemberVar_<n>` member a new struct starts with, and only once the
+struct has another member; on any other struct it returns `(False, error)` and removes nothing.
 
 ## MCP Python Tools
 

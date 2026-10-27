@@ -12,10 +12,7 @@
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "K2Node.h"
-#include "K2Node_CallFunction.h"
-#include "K2Node_CreateDelegate.h"
-#include "K2Node_Composite.h"
-#include "K2Node_MacroInstance.h"
+#include "Core/N2CGraphStateTypes.h"
 #include "Editor.h"
 
 FN2CTokenEstimationService& FN2CTokenEstimationService::Get()
@@ -44,11 +41,10 @@ void FN2CTokenEstimationService::Initialize()
 	SettingsChangedHandle = FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(
 		this, &FN2CTokenEstimationService::OnSettingsPropertyChanged);
 
-	// Subscribe to Blueprint compilation (void delegate - no Blueprint parameter)
+	// Each compile names its Blueprint here (OnBlueprintCompiled does not), so only that Blueprint's estimates go stale
 	if (GEditor)
 	{
-		BlueprintCompiledHandle = GEditor->OnBlueprintCompiled().AddLambda(
-			[this]() { OnBlueprintCompiled(); });
+		BlueprintPreCompileHandle = GEditor->OnBlueprintPreCompile().AddRaw(this, &FN2CTokenEstimationService::OnBlueprintPreCompile);
 	}
 
 	// Initial refresh of model info
@@ -71,58 +67,126 @@ void FN2CTokenEstimationService::Shutdown()
 		SettingsChangedHandle.Reset();
 	}
 
-	// Unsubscribe from Blueprint compilation
-	if (BlueprintCompiledHandle.IsValid() && GEditor)
+	if (BlueprintPreCompileHandle.IsValid() && GEditor)
 	{
-		GEditor->OnBlueprintCompiled().Remove(BlueprintCompiledHandle);
-		BlueprintCompiledHandle.Reset();
+		GEditor->OnBlueprintPreCompile().Remove(BlueprintPreCompileHandle);
+		BlueprintPreCompileHandle.Reset();
 	}
 
+	UnwatchAll();
 	TokenCache.Empty();
 	bIsInitialized = false;
 }
 
-int32 FN2CTokenEstimationService::GetTokenEstimate(const FN2CTagInfo& GraphInfo)
+FString FN2CTokenEstimationService::MakeCacheKey(const FN2CTagInfo& GraphInfo)
 {
-	// Check cache first
-	if (FN2CTokenCacheEntry* CacheEntry = TokenCache.Find(GraphInfo.GraphGuid))
+	return FN2CGraphKey::NormalizeBlueprintPath(GraphInfo.BlueprintPath).ToString() + TEXT("|") + GraphInfo.GraphGuid;
+}
+
+uint32 FN2CTokenEstimationService::GetBlueprintRevision(const FString& BlueprintPath) const
+{
+	const uint32* Revision = BlueprintRevisions.Find(BlueprintPath);
+	return Revision ? *Revision : 0;
+}
+
+bool FN2CTokenEstimationService::IsEntryCurrent(const FN2CTokenCacheEntry& Entry) const
+{
+	return Entry.Depth == GetTranslationDepth()
+		&& Entry.BlueprintRevision == GetBlueprintRevision(Entry.BlueprintPath)
+		&& (!Entry.ExternalRevision.IsSet() || Entry.ExternalRevision.GetValue() == AnyCompileRevision);
+}
+
+bool FN2CTokenEstimationService::IsEstimateCurrent(const FN2CTagInfo& GraphInfo) const
+{
+	const FN2CTokenCacheEntry* Entry = TokenCache.Find(MakeCacheKey(GraphInfo));
+	return Entry && IsEntryCurrent(*Entry);
+}
+
+FN2CTokenEstimate FN2CTokenEstimationService::GetEstimate(const FN2CTagInfo& GraphInfo)
+{
+	const FString Key = MakeCacheKey(GraphInfo);
+	if (FN2CTokenCacheEntry* Cached = TokenCache.Find(Key))
 	{
-		// Validate cache - check if Blueprint is dirty
-		UBlueprint* Blueprint = Cast<UBlueprint>(FSoftObjectPath(GraphInfo.BlueprintPath).TryLoad());
-		if (Blueprint && Blueprint->GetPackage())
+		if (IsEntryCurrent(*Cached))
 		{
-			if (!Blueprint->GetPackage()->IsDirty())
+			return Cached->Estimate;
+		}
+		TokenCache.Remove(Key);
+	}
+
+	const int32 Depth = GetTranslationDepth();
+	UBlueprint* Blueprint = nullptr;
+	TArray<FGuid> GraphGuids;
+	const FString JsonContent = SerializeGraphToJson(GraphInfo, Depth, Blueprint, GraphGuids);
+
+	FN2CTokenCacheEntry Entry;
+	Entry.BlueprintPath = FN2CGraphKey::NormalizeBlueprintPath(GraphInfo.BlueprintPath).ToString();
+	Entry.Depth = Depth;
+	Entry.CacheTimestamp = FDateTime::Now();
+	if (!JsonContent.IsEmpty())
+	{
+		Entry.Estimate.Tokens = EstimateTokensForChars(JsonContent.Len());
+		Entry.Estimate.NestedGraphCount = FMath::Max(0, GraphGuids.Num() - 1);
+		Entry.Estimate.bValid = true;
+		Entry.CachedJsonSize = JsonContent.Len();
+	}
+
+	if (Blueprint)
+	{
+		// Cached against this Blueprint's change counter; a nested graph from another Blueprint (a macro or function
+		// library) ties the entry to every compile as well
+		Entry.BlueprintPath = FN2CGraphKey::NormalizeBlueprintPath(FSoftObjectPath(Blueprint)).ToString();
+		WatchBlueprint(Blueprint);
+		TSet<FGuid> OwnGraphs;
+		TArray<UEdGraph*> AllGraphs;
+		Blueprint->GetAllGraphs(AllGraphs);
+		for (const UEdGraph* Graph : AllGraphs)
+		{
+			if (Graph)
 			{
-				// Cache is valid
-				return CacheEntry->CachedTokenCount;
+				OwnGraphs.Add(Graph->GraphGuid);
 			}
 		}
-		// Blueprint is dirty, invalidate cache entry
-		TokenCache.Remove(GraphInfo.GraphGuid);
+		for (const FGuid& Guid : GraphGuids)
+		{
+			if (!OwnGraphs.Contains(Guid))
+			{
+				Entry.ExternalRevision = AnyCompileRevision;
+				break;
+			}
+		}
 	}
+	Entry.BlueprintRevision = GetBlueprintRevision(Entry.BlueprintPath);
 
-	// Cache miss - serialize and calculate
-	FString JsonContent = SerializeGraphToJson(GraphInfo);
-	if (JsonContent.IsEmpty())
-	{
-		return 0;
-	}
-
-	// Estimate tokens: ~4 characters per token
-	int32 TokenEstimate = FMath::CeilToInt(JsonContent.Len() / 4.0f);
-
-	// Store in cache
-	TokenCache.Add(GraphInfo.GraphGuid, FN2CTokenCacheEntry(TokenEstimate, JsonContent.Len(), GraphInfo.BlueprintPath));
-
-	// Evict old entries if cache is too large
+	const FN2CTokenEstimate Result = Entry.Estimate;
+	TokenCache.Add(Key, MoveTemp(Entry));
 	EvictOldestCacheEntries();
+	return Result;
+}
 
-	return TokenEstimate;
+int32 FN2CTokenEstimationService::GetTokenEstimate(const FN2CTagInfo& GraphInfo)
+{
+	return GetEstimate(GraphInfo).Tokens;
+}
+
+int32 FN2CTokenEstimationService::GetTokenEstimateWithNesting(const FN2CTagInfo& GraphInfo, int32& OutNestedGraphCount)
+{
+	const FN2CTokenEstimate Estimate = GetEstimate(GraphInfo);
+	OutNestedGraphCount = Estimate.NestedGraphCount;
+	return Estimate.Tokens;
 }
 
 void FN2CTokenEstimationService::InvalidateCache(const FString& GraphGuid)
 {
-	TokenCache.Remove(GraphGuid);
+	// Every Blueprint's entry for this GUID (a duplicated Blueprint's graph has the same GUID)
+	const FString Suffix = TEXT("|") + GraphGuid;
+	for (auto It = TokenCache.CreateIterator(); It; ++It)
+	{
+		if (It.Key().EndsWith(Suffix))
+		{
+			It.RemoveCurrent();
+		}
+	}
 	OnCacheInvalidated.Broadcast();
 }
 
@@ -132,22 +196,75 @@ void FN2CTokenEstimationService::InvalidateAllCache()
 	OnCacheInvalidated.Broadcast();
 }
 
-int32 FN2CTokenEstimationService::GetTokenEstimateWithNesting(const FN2CTagInfo& GraphInfo, int32& OutNestedGraphCount)
+void FN2CTokenEstimationService::NotifyBlueprintChanged(const UBlueprint* Blueprint)
 {
-	OutNestedGraphCount = 0;
-
-	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	int32 MaxDepth = Settings ? Settings->TranslationDepth : 0;
-
-	if (MaxDepth <= 0)
+	if (!Blueprint)
 	{
-		// No nesting enabled, just return single graph estimate
-		return GetTokenEstimate(GraphInfo);
+		return;
+	}
+	const FSoftObjectPath Path = FN2CGraphKey::NormalizeBlueprintPath(FSoftObjectPath(Blueprint));
+	++BlueprintRevisions.FindOrAdd(Path.ToString());
+	OnEstimatesStale.Broadcast(Path);
+}
+
+void FN2CTokenEstimationService::OnBlueprintPreCompile(UBlueprint* Blueprint)
+{
+	++AnyCompileRevision;
+	NotifyBlueprintChanged(Blueprint);
+}
+
+void FN2CTokenEstimationService::WatchBlueprint(UBlueprint* Blueprint)
+{
+	if (!Blueprint)
+	{
+		return;
+	}
+	const TWeakObjectPtr<UBlueprint> WeakBlueprint(Blueprint);
+	if (!WatchedBlueprints.Contains(WeakBlueprint))
+	{
+		// A structural change (a function added, removed or renamed) bumps the counter and picks up new graphs
+		WatchedBlueprints.Add(WeakBlueprint, Blueprint->OnChanged().AddLambda([this, WeakBlueprint](UBlueprint* Changed)
+		{
+			NotifyBlueprintChanged(Changed);
+			WatchBlueprint(WeakBlueprint.Get());
+		}));
 	}
 
-	// Use recursive estimation with cycle detection
-	TSet<FString> VisitedGraphGuids;
-	return GetTokenEstimateRecursive(GraphInfo, 0, MaxDepth, VisitedGraphGuids, OutNestedGraphCount);
+	TArray<UEdGraph*> Graphs;
+	Blueprint->GetAllGraphs(Graphs);
+	for (UEdGraph* Graph : Graphs)
+	{
+		const TWeakObjectPtr<UEdGraph> WeakGraph(Graph);
+		if (Graph && !WatchedGraphs.Contains(WeakGraph))
+		{
+			// A node added, removed, linked or edited: this Blueprint's estimates go stale, compiled or not
+			WatchedGraphs.Add(WeakGraph, Graph->AddOnGraphChangedHandler(FOnGraphChanged::FDelegate::CreateLambda(
+				[this, WeakBlueprint](const FEdGraphEditAction&)
+				{
+					NotifyBlueprintChanged(WeakBlueprint.Get());
+				})));
+		}
+	}
+}
+
+void FN2CTokenEstimationService::UnwatchAll()
+{
+	for (const auto& Pair : WatchedGraphs)
+	{
+		if (UEdGraph* Graph = Pair.Key.Get())
+		{
+			Graph->RemoveOnGraphChangedHandler(Pair.Value);
+		}
+	}
+	WatchedGraphs.Empty();
+	for (const auto& Pair : WatchedBlueprints)
+	{
+		if (UBlueprint* Blueprint = Pair.Key.Get())
+		{
+			Blueprint->OnChanged().Remove(Pair.Value);
+		}
+	}
+	WatchedBlueprints.Empty();
 }
 
 int32 FN2CTokenEstimationService::GetTranslationDepth() const
@@ -159,178 +276,6 @@ int32 FN2CTokenEstimationService::GetTranslationDepth() const
 bool FN2CTokenEstimationService::IsNestedTranslationEnabled() const
 {
 	return GetTranslationDepth() > 0;
-}
-
-int32 FN2CTokenEstimationService::GetTokenEstimateRecursive(
-	const FN2CTagInfo& GraphInfo,
-	int32 CurrentDepth,
-	int32 MaxDepth,
-	TSet<FString>& VisitedGraphGuids,
-	int32& OutNestedGraphCount)
-{
-	// Prevent cycles
-	if (VisitedGraphGuids.Contains(GraphInfo.GraphGuid))
-	{
-		return 0;
-	}
-	VisitedGraphGuids.Add(GraphInfo.GraphGuid);
-
-	// Get token estimate for this graph
-	int32 TotalTokens = GetTokenEstimate(GraphInfo);
-
-	// If we've reached max depth, don't recurse further
-	if (CurrentDepth >= MaxDepth)
-	{
-		return TotalTokens;
-	}
-
-	// Find referenced graphs and recurse
-	TArray<FN2CTagInfo> ReferencedGraphs;
-	FindReferencedGraphs(GraphInfo, ReferencedGraphs);
-
-	for (const FN2CTagInfo& RefGraph : ReferencedGraphs)
-	{
-		if (!VisitedGraphGuids.Contains(RefGraph.GraphGuid))
-		{
-			OutNestedGraphCount++;
-			TotalTokens += GetTokenEstimateRecursive(RefGraph, CurrentDepth + 1, MaxDepth, VisitedGraphGuids, OutNestedGraphCount);
-		}
-	}
-
-	return TotalTokens;
-}
-
-void FN2CTokenEstimationService::FindReferencedGraphs(const FN2CTagInfo& GraphInfo, TArray<FN2CTagInfo>& OutReferencedGraphs)
-{
-	// The same resolver as SerializeGraphToJson (a failure is logged there)
-	UBlueprint* Blueprint = nullptr;
-	FString ResolveError;
-	UEdGraph* FoundGraph = FN2CGraphUtils::ResolveTaggedGraph(GraphInfo.BlueprintPath, GraphInfo.GraphGuid,
-		GraphInfo.GraphName, Blueprint, ResolveError);
-	if (!FoundGraph)
-	{
-		return;
-	}
-
-	// Track already-added graphs to avoid duplicates
-	TSet<FString> AddedGuids;
-
-	// Iterate through nodes looking for function calls to user-created functions
-	for (UEdGraphNode* Node : FoundGraph->Nodes)
-	{
-		// Check for function calls
-		if (UK2Node_CallFunction* FuncNode = Cast<UK2Node_CallFunction>(Node))
-		{
-			if (UFunction* Function = FuncNode->GetTargetFunction())
-			{
-				if (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(Function->GetOwnerClass()))
-				{
-					if (UBlueprint* FunctionBlueprint = Cast<UBlueprint>(BlueprintClass->ClassGeneratedBy))
-					{
-						// Check if it's a user-created Blueprint
-						FString BPPath = FunctionBlueprint->GetPathName();
-						if (BPPath.Contains(TEXT("/Game/")) || BPPath.Contains(TEXT("/Content/")))
-						{
-							// Find the function graph
-							for (UEdGraph* FuncGraph : FunctionBlueprint->FunctionGraphs)
-							{
-								if (FuncGraph && FuncGraph->GetFName() == Function->GetFName())
-								{
-									FString FuncGraphGuid = FuncGraph->GraphGuid.ToString();
-									if (!AddedGuids.Contains(FuncGraphGuid))
-									{
-										AddedGuids.Add(FuncGraphGuid);
-
-										FN2CTagInfo RefInfo;
-										RefInfo.GraphGuid = FuncGraphGuid;
-										RefInfo.GraphName = FuncGraph->GetName();
-										RefInfo.BlueprintPath = FunctionBlueprint->GetPathName();
-										OutReferencedGraphs.Add(RefInfo);
-									}
-									break;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		// Check for delegate creation nodes
-		else if (UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
-		{
-			if (UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
-			{
-				if (UBlueprint* BP = Cast<UBlueprint>(ScopeClass->ClassGeneratedBy))
-				{
-					FString BPPath = BP->GetPathName();
-					if (BPPath.Contains(TEXT("/Game/")) || BPPath.Contains(TEXT("/Content/")))
-					{
-						for (UEdGraph* FuncGraph : BP->FunctionGraphs)
-						{
-							if (FuncGraph && FuncGraph->GetFName() == CreateDelegateNode->GetFunctionName())
-							{
-								FString FuncGraphGuid = FuncGraph->GraphGuid.ToString();
-								if (!AddedGuids.Contains(FuncGraphGuid))
-								{
-									AddedGuids.Add(FuncGraphGuid);
-
-									FN2CTagInfo RefInfo;
-									RefInfo.GraphGuid = FuncGraphGuid;
-									RefInfo.GraphName = FuncGraph->GetName();
-									RefInfo.BlueprintPath = BP->GetPathName();
-									OutReferencedGraphs.Add(RefInfo);
-								}
-								break;
-							}
-						}
-					}
-				}
-			}
-		}
-		// Check for composite/collapsed graphs
-		else if (UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(Node))
-		{
-			if (UEdGraph* BoundGraph = CompositeNode->BoundGraph)
-			{
-				FString CompositeGuid = BoundGraph->GraphGuid.ToString();
-				if (!AddedGuids.Contains(CompositeGuid))
-				{
-					AddedGuids.Add(CompositeGuid);
-
-					FN2CTagInfo RefInfo;
-					RefInfo.GraphGuid = CompositeGuid;
-					RefInfo.GraphName = BoundGraph->GetName();
-					RefInfo.BlueprintPath = GraphInfo.BlueprintPath;
-					OutReferencedGraphs.Add(RefInfo);
-				}
-			}
-		}
-		// Check for macro instances
-		else if (UK2Node_MacroInstance* MacroNode = Cast<UK2Node_MacroInstance>(Node))
-		{
-			if (UEdGraph* MacroGraph = MacroNode->GetMacroGraph())
-			{
-				if (UBlueprint* MacroBP = Cast<UBlueprint>(MacroGraph->GetOuter()))
-				{
-					FString MacroPath = MacroBP->GetPathName();
-					if (MacroPath.Contains(TEXT("/Game/")) || MacroPath.Contains(TEXT("/Content/")))
-					{
-						FString MacroGuid = MacroGraph->GraphGuid.ToString();
-						if (!AddedGuids.Contains(MacroGuid))
-						{
-							AddedGuids.Add(MacroGuid);
-
-							FN2CTagInfo RefInfo;
-							RefInfo.GraphGuid = MacroGuid;
-							RefInfo.GraphName = MacroGraph->GetName();
-							RefInfo.BlueprintPath = MacroBP->GetPathName();
-							OutReferencedGraphs.Add(RefInfo);
-						}
-					}
-				}
-			}
-		}
-	}
 }
 
 int32 FN2CTokenEstimationService::EstimateTokensForChars(int32 CharCount)
@@ -419,6 +364,12 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 
 	// Check if relevant property changed
 	FName PropertyName = PropertyChangedEvent.GetPropertyName();
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, TranslationDepth))
+	{
+		// Estimates are cached per depth: the overlays and lists take theirs again at the new one
+		OnCacheInvalidated.Broadcast();
+		return;
+	}
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAICustomModelId) ||
@@ -434,31 +385,24 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(FN2COllamaConfig, NumCtx))
 	{
+		// Token counts do not depend on the model; its context window and price do, and listeners re-read those
 		RefreshModelInfo();
-		// Model change invalidates cost calculations, so clear the cache
-		InvalidateAllCache();
 		OnModelChanged.Broadcast();
 	}
 }
 
-void FN2CTokenEstimationService::OnBlueprintCompiled()
+FString FN2CTokenEstimationService::SerializeGraphToJson(const FN2CTagInfo& GraphInfo, int32 Depth, UBlueprint*& OutBlueprint,
+	TArray<FGuid>& OutGraphGuids)
 {
-	// The OnBlueprintCompiled delegate doesn't tell us which Blueprint was compiled,
-	// so we invalidate all cache entries. This is conservative but safe.
-	// Individual cache entries also self-invalidate on access if their Blueprint is dirty.
-	if (TokenCache.Num() > 0)
-	{
-		InvalidateAllCache();
-	}
-}
+	OutBlueprint = nullptr;
+	OutGraphGuids.Reset();
 
-FString FN2CTokenEstimationService::SerializeGraphToJson(const FN2CTagInfo& GraphInfo)
-{
 	// The same resolver as translation: every graph of the Blueprint, interface implementations and collapsed graphs too
 	UBlueprint* Blueprint = nullptr;
 	FString ResolveError;
 	UEdGraph* FoundGraph = FN2CGraphUtils::ResolveTaggedGraph(GraphInfo.BlueprintPath, GraphInfo.GraphGuid,
 		GraphInfo.GraphName, Blueprint, ResolveError);
+	OutBlueprint = Blueprint;
 	if (FoundGraph && !FN2CGraphUtils::CanTranslateGraph(FoundGraph, &ResolveError))
 	{
 		FoundGraph = nullptr;
@@ -470,28 +414,22 @@ FString FN2CTokenEstimationService::SerializeGraphToJson(const FN2CTagInfo& Grap
 		return FString();
 	}
 
-	// Collect nodes from the graph
-	TArray<UK2Node*> CollectedNodes;
-	if (!FN2CNodeCollector::Get().CollectNodesFromGraph(FoundGraph, CollectedNodes))
-	{
-		return FString();
-	}
-
-	// Nothing to estimate in a graph of only the editor's placeholder events (a new Blueprint's greyed-out BeginPlay
-	// and Tick): the capture leaves them out and warns, and an overlay estimates each graph it is built for (card 0293)
-	if (!CollectedNodes.ContainsByPredicate([](const UK2Node* Node) { return Node && !Node->IsAutomaticallyPlacedGhostNode(); }))
-	{
-		return FString();
-	}
-
-	// Capture into this call's own result: an estimate never changes another capture (a translation in flight, MCP)
-	const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureNodes(CollectedNodes);
+	// One capture at the configured depth, as the Translate button sends it: each nested graph is taken in once,
+	// shallowest first, so a graph reachable along several call paths counts once, at its shortest one
+	FN2CCaptureOptions Options;
+	Options.Depth = Depth;
+	++CaptureCount;
+	const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureGraph(*FoundGraph, Options);
+	// One line per capture: the estimate is cached, so this shows when (and for which graph) it was taken again
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Token estimate: captured %s in %s at depth %d"), *GraphInfo.GraphName,
+		*GraphInfo.BlueprintPath, Depth), EN2CLogSeverity::Info);
 	if (Capture.HasError())
 	{
+		// A graph of only the editor's placeholder events, or nothing capture can read
 		return FString();
 	}
 
-	// Serialize to minified JSON for accurate size calculation
+	OutGraphGuids = Capture.GetValue().GraphGuids;
 	return FN2CSerializer::ToJson(Capture.GetValue().Blueprint, EN2CJsonStyle::Condensed);
 }
 
