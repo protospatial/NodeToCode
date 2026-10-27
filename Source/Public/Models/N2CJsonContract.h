@@ -107,6 +107,12 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* PinValueSubTypeField = TEXT("value_sub_type");
 
 	/**
+	 * A user enum value's number (card 0236, additive): "value" on each entry of an enum's "values", after "comment"
+	 * (UEnum::GetValueByIndex). Every value is listed except the generated "_MAX" entry and values marked Hidden.
+	 */
+	inline constexpr const TCHAR* EnumValueNumberField = TEXT("value");
+
+	/**
 	 * Variables (card 0242, from PR #8 by flashpoint493; additive): the Blueprint's member variables as the optional
 	 * top-level "variables" array after "enums", and a function graph's local variables as the optional per-graph
 	 * "local_variables" array after "comments". Written only by a capture that asks for them

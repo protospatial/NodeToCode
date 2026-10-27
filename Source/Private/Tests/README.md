@@ -398,9 +398,10 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   display-text names (gap-5: node names were menu titles and pin names display names, blank for exec pins, so they
   changed with the editor language, the friendly-names preference and the engine; translation-core-22: a variable's
   member_parent was its type, `real/double`; translation-core-28: `GetCleanClassName` cut `_C` off member names).
-  From card 0127: a user struct's object member has no type name (translation-core-8, 0236; the struct was dropped from
-  `structs` until card 0240 kept it with a `MEMBER_TYPE` warning); enum values whose display name contains `max` are dropped (translation-core-11,
-  0236); a struct or enum met twice logs `Missing name` (translation-core-24, 0236). Card 0235 fixed and removed the
+  Card 0236 fixed and removed the user type defects found by card 0127: a user struct's object member had no type name
+  (translation-core-8), enum values whose display name contains `max` were dropped (translation-core-11), a user enum
+  member was `Byte` (translation-core-12) and a struct or enum met twice logged `Missing name` (translation-core-24); the
+  `TypeDefinitions` case checks them. Card 0235 fixed and removed the
   nested-graph defects (imp-translation-core-5: collapsed graphs were dropped at depth 0; imp-translation-core-4: the
   Composite node did not name its graph; translation-core-20: a macro without `macro` in its name was an EventGraph).
   Card 0234 fixed and removed Break Struct captured as a Variable titled `None` with a session-dependent member_name
@@ -493,7 +494,7 @@ into each host's `Plugins/`, and no package contains it). Each case checks the K
 5k fixture), exports every graph to N2C JSON v2 the way get-blueprint-n2cjson does, validates it before and after
 `FromJson`, and logs capture time, bytes and estimated tokens per node as info. The 5k fixture's call chain
 `F_Chain_0`..`F_Chain_5` captures exactly one more chain graph per Max Translation Depth step from 0 to 5. Each export
-expects the `Missing name` error of known defect translation-core-24 (card 0236), which removes the expectation.
+expects no error (card 0236 fixed the `Missing name` error each export used to log).
 
 The fixtures are generated in C++ (`Perf/N2CPerfFixtures.cpp`, with `FTestBlueprint::InPackage` so the Blueprints can
 be saved) from a fixed seed per fixture. Regenerate on UE 5.6 only, since a 5.8 package does not load in 5.6:

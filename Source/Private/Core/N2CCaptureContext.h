@@ -225,6 +225,20 @@ private:
     /** Process a struct member */
     FN2CStructMember ProcessStructMember(FProperty* Property);
 
+    /** The member type and type name of one property (a member, an array or set element, a map key or value); lists
+     * the user struct or enum it names (card 0236) */
+    void ResolveMemberType(const FProperty* Property, EN2CStructMemberType& OutType, FString& OutTypeName);
+
+    /** The enum an FEnumProperty or an FByteProperty holds, or null */
+    static const UEnum* EnumOfProperty(const FProperty* Property);
+
+    /** Lists a user struct or enum once: processed and added when this capture has not processed it yet (card 0236) */
+    void AddBlueprintStruct(UScriptStruct* Struct);
+    void AddBlueprintEnum(UEnum* Enum);
+
+    /** AddBlueprintStruct or AddBlueprintEnum for a pin type's category and type object */
+    void AddRelatedPinType(const FName& Category, UObject* TypeObject);
+
     /** Convert FProperty type to N2C struct member type */
     EN2CStructMemberType ConvertPropertyToStructMemberType(FProperty* Property) const;
 

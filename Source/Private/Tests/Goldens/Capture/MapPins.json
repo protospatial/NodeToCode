@@ -1,13 +1,7 @@
 {
 	"case": "MapPins",
 	"description": "Function Maps with members Counts (Name to int), Items (Name to user struct S_GoldenMapItem {Count: int}) and Weapons (Name to user enum E_GoldenWeaponType {Sword, Bow}); S_GoldenMapItem and E_GoldenWeaponType are used only as map values. Get Counts, Get Items and Get Weapons are the results of the same names; a Make Map (Name to int) is the Made result.",
-	"known_defects": [
-		{
-			"finding": "translation-core-24",
-			"card": "0236",
-			"effect": "A user struct or enum met a second time comes back empty and the validator logs ERROR 'Missing name' (expected errors in this case)"
-		}
-	],
+	"known_defects": [],
 	"capture":
 	{
 		"version": "2.0.0",
@@ -210,10 +204,12 @@
 				"name": "E_GoldenWeaponType",
 				"values": [
 					{
-						"name": "Sword"
+						"name": "Sword",
+						"value": 0
 					},
 					{
-						"name": "Bow"
+						"name": "Bow",
+						"value": 1
 					}
 				]
 			}

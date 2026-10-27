@@ -227,6 +227,8 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		FN2CEnumValue EnumValue;
 		EnumValue.Name = TEXT("Low");
 		EnumValue.Comment = TEXT("A value comment");
+		EnumValue.Value = 1; // card 0236
+		EnumValue.bHasValue = true;
 		FN2CEnum Enum;
 		Enum.Name = TEXT("E_Thing");
 		Enum.Comment = TEXT("An enum comment");
