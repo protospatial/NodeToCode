@@ -711,12 +711,27 @@ bool UN2CGraphStateManager::LoadN2CJson(const FN2CGraphKey& Key, FString& OutJso
 	// Absolute, or relative to the project folder
 	const FString FullPath = FN2CPathUtils::ResolveTranslationRecordPath(State->Translation.OutputPath);
 
-	// Try multiple JSON filename patterns:
-	// 1. Batch translation format: {GraphName}.json
-	// 2. Individual translation format: N2C_BP_{FolderName}.json
+	// The Blueprint capture UN2CLLMModule::SaveTranslationToDisk writes into a translation root, named as it names it:
+	// N2C_BP_<FPaths::GetBaseFilename(root)>.json (the root's timestamp has dots, so its last part is dropped)
+	auto SavedCaptureIn = [](const FString& RootFolder)
+	{
+		return FPaths::Combine(RootFolder, TEXT("N2C_BP_") + FPaths::GetBaseFilename(RootFolder) + TEXT(".json"));
+	};
+	FString GraphFolder = FullPath;
+	while (GraphFolder.Len() > 1 && (GraphFolder.EndsWith(TEXT("/")) || GraphFolder.EndsWith(TEXT("\\"))))
+	{
+		GraphFolder.LeftChopInline(1);
+	}
+
+	// Where each writer leaves the JSON, relative to the recorded graph folder:
+	// 1. Batch translation: <graph folder>/{GraphName}.json
+	// 2. Single translation (graph state, main window): the record is <root>/<graph stem>, and the capture is the
+	//    root's N2C_BP_<root>.json, one folder up (card 0501)
+	// 3. A record of the root itself (older builds): <root>/N2C_BP_<root>.json
 	TArray<FString> PossibleJsonPaths;
-	PossibleJsonPaths.Add(FPaths::Combine(FullPath, FN2CPathUtils::GetTranslationFileStem(State->GraphName) + TEXT(".json")));
-	PossibleJsonPaths.Add(FPaths::Combine(FullPath, TEXT("N2C_BP_") + FPaths::GetBaseFilename(FullPath) + TEXT(".json")));
+	PossibleJsonPaths.Add(FPaths::Combine(GraphFolder, FN2CPathUtils::GetTranslationFileStem(State->GraphName) + TEXT(".json")));
+	PossibleJsonPaths.Add(SavedCaptureIn(FPaths::GetPath(GraphFolder)));
+	PossibleJsonPaths.Add(SavedCaptureIn(GraphFolder));
 
 	FString FoundJsonPath;
 	for (const FString& JsonPath : PossibleJsonPaths)
@@ -730,8 +745,8 @@ bool UN2CGraphStateManager::LoadN2CJson(const FN2CGraphKey& Key, FString& OutJso
 
 	if (FoundJsonPath.IsEmpty())
 	{
-		FN2CLogger::Get().Log(FString::Printf(TEXT("JSON file not found for graph %s. Tried paths: %s, %s"),
-			*State->GraphName, *PossibleJsonPaths[0], *PossibleJsonPaths[1]),
+		FN2CLogger::Get().Log(FString::Printf(TEXT("JSON file not found for graph %s. Tried paths: %s"),
+			*State->GraphName, *FString::Join(PossibleJsonPaths, TEXT(", "))),
 			EN2CLogSeverity::Warning);
 		return false;
 	}
