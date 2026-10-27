@@ -250,9 +250,9 @@ public:
 	 *
 	 * @param NodeGuid GUID of the node containing the pin
 	 * @param PinGuid GUID of the pin to modify
-	 * @param Value The value to set (as string)
+	 * @param Value The value to set (as string); checked by the K2 schema first (card 0278), "" resets the pin
 	 * @param PinName Optional pin name for fallback lookup
-	 * @return JSON with old/new values
+	 * @return JSON with old/new values (newValue read back), or an error with the schema's reason when the pin refuses the value
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName = TEXT(""));

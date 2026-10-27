@@ -156,8 +156,10 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 - **Description**: Places a Set node for a member variable in the focused graph
 - **Parameters**:
   - `variableName` (required)
-  - `defaultValue` (optional): Value for the Set node's input pin (not the variable's default). A value the pin
-    rejects does not fail the call: the result carries `warning`
+  - `defaultValue` (optional): Value for the Set node's input pin (not the variable's default), checked by the K2
+    schema first as set-input-pin-value does (card 0278). A value the pin refuses does not fail the call (the node is
+    still made): the result has `defaultValueApplied: false`, the reason in `defaultValueReason` (also in `warning`),
+    and the pin keeps its default. With a value sent, `defaultValueApplied` is `true` when it took
   - `location` (optional): As for the Get node
 - **Returns**: As for create-get-member-variable-node, with `nodeType` `K2Node_VariableSet`
 - **Errors**: `READ_ONLY_VARIABLE: ...` for a variable Blueprints may read but not write (`BlueprintReadOnly`, such as
@@ -195,7 +197,8 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 - **Parameters**: `variableName` (required), `x`, `y` (optional), `inputPinValue` (optional): value for the node's
   input pin
 - **Returns**: As for create-get-local-function-variable-node; the Set node has exactly four pins (`execute`, `then`,
-  the value input and `Output_Get`). A refused `inputPinValue` gives `warning`
+  the value input and `Output_Get`). With `inputPinValue`: `defaultValueApplied`, and when refused
+  `defaultValueReason` and `warning`, as for create-set-member-variable-node
 
 ### set-local-function-variable-default-value
 - **Description**: Sets a local variable's default value

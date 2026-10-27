@@ -19,7 +19,7 @@
  *   "value": "Hello, World!"
  * }
  * 
- * @example Clear a pin's default value:
+ * @example Reset a pin to its default value (the editor's Reset to Default):
  * {
  *   "nodeGuid": "AAE5F1A04B2E8F9E003C6B8F12345678",
  *   "pinGuid": "BBE5F1A04B2E8F9E003C6B8F12345678",
@@ -27,7 +27,8 @@
  * }
  * 
  * @note Only works on input pins that accept default values (not exec, reference, or container pins)
- * @note The value must be a string representation appropriate for the pin's type
+ * @note The value is checked by the K2 schema (IsPinDefaultValid) before the node is touched: a refused value is an
+ *       error with the schema's message, and the pin keeps its old default. newValue is read back from the pin.
  */
 class FN2CMcpSetInputPinValueTool : public FN2CMcpToolBase
 {
@@ -53,15 +54,5 @@ private:
      * @return True if the pin can have a default value
      */
     bool ValidatePinForDefaultValue(const class UEdGraphPin* Pin, FString& OutErrorMessage) const;
-    
-    /**
-     * Validates and formats the value for the pin's type
-     * @param Pin The pin to set the value on
-     * @param Value The value to set
-     * @param OutFormattedValue The formatted value
-     * @param OutErrorMessage Error message if validation fails
-     * @return True if the value is valid for the pin type
-     */
-    bool ValidateAndFormatValue(const class UEdGraphPin* Pin, const FString& Value, 
-        FString& OutFormattedValue, FString& OutErrorMessage) const;
+
 };

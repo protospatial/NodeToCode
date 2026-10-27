@@ -6,6 +6,8 @@
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CMcpPinDefaultUtils.h"
+#include "ScopedTransaction.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -28,7 +30,7 @@ FMcpToolDefinition FN2CMcpSetInputPinValueTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("set-input-pin-value"),
-        TEXT("Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins).")
+        TEXT("Sets the default value of an input pin on a Blueprint node of a graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph). Only works on pins that accept default values (not exec, reference, or container pins). The engine checks the value first: one the pin refuses is an error and the old default stays. Enums take an entry name, display name or index. An empty value resets the pin to its default; newValue is what the pin holds afterwards.")
     ,
 
     	N2CMcpToolsets::BlueprintGraph
@@ -79,7 +81,8 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         FString PinName = ArgParser.GetOptionalString(TEXT("pinName"));
         
         FString Value;
-        if (!ArgParser.TryGetRequiredString(TEXT("value"), Value, ErrorMsg))
+        // Empty is allowed: it resets the pin to its default (card 0278)
+        if (!ArgParser.TryGetRequiredString(TEXT("value"), Value, ErrorMsg, /*bAllowEmpty*/ true))
         {
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
@@ -145,49 +148,26 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
             return Target.Finish(FMcpToolCallResult::CreateErrorResult(ValidationError));
         }
 
-        // Validate and format the value
-        FString FormattedValue;
-        if (!ValidateAndFormatValue(TargetPin, Value, FormattedValue, ValidationError))
-        {
-            return Target.Finish(FMcpToolCallResult::CreateErrorResult(ValidationError));
-        }
-
         // Store the old value for the result
-        FString OldValue = TargetPin->GetDefaultAsString();
-
-        // Set the default value using the schema
-        const UEdGraphSchema* Schema = FocusedGraph->GetSchema();
-        if (!Schema)
-        {
-            return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Graph has no schema")));
-        }
+        const FString OldValue = FN2CMcpPinDefault::Read(*TargetPin);
 
         FN2CLogger::Get().Log(
-            FString::Printf(TEXT("SetInputPinValue: Setting value from '%s' to '%s'"), 
-                *OldValue, *FormattedValue), 
+            FString::Printf(TEXT("SetInputPinValue: Setting value from '%s' to '%s'"), *OldValue, *Value),
             EN2CLogSeverity::Debug
         );
 
-        // Begin transaction for undo/redo
-        const FScopedTransaction Transaction(LOCTEXT("SetPinDefaultValue", "NodeToCode: Set Pin Default Value"));
-        TargetNode->Modify();
-
-        // Set the value based on pin type
-        if (TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Text)
+        // The schema's own check runs before anything is touched: a refused value returns the schema's message and the
+        // pin keeps its old default, with no transaction opened (card 0278). An empty value resets the pin.
+        FString Prepared;
+        FString PrepareError;
+        if (!FN2CMcpPinDefault::Prepare(*TargetPin, Value, Prepared, PrepareError))
         {
-            Schema->TrySetDefaultText(*TargetPin, FText::FromString(FormattedValue));
+            return Target.Finish(FMcpToolCallResult::CreateErrorResult(
+                FN2CMcpPinDefault::RefusalMessage(*TargetPin, Value, PrepareError, OldValue)));
         }
-        else if (TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Object || 
-                 TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Class ||
-                 TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_SoftObject ||
-                 TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_SoftClass)
         {
-            Schema->TrySetDefaultObject(*TargetPin, nullptr);
-            Schema->TrySetDefaultValue(*TargetPin, FormattedValue);
-        }
-        else
-        {
-            Schema->TrySetDefaultValue(*TargetPin, FormattedValue);
+            const FScopedTransaction Transaction(LOCTEXT("SetPinDefaultValue", "NodeToCode: Set Pin Default Value"));
+            FN2CMcpPinDefault::Write(*TargetPin, Prepared);
         }
 
         // Marked modified; the tool call compiles it once, after its transaction closes (card 0151)
@@ -203,16 +183,16 @@ FMcpToolCallResult FN2CMcpSetInputPinValueTool::Execute(const TSharedPtr<FJsonOb
         Info.Image = FCoreStyle::Get().GetBrush(TEXT("Icons.SuccessWithCircle"));
         FSlateNotificationManager::Get().AddNotification(Info);
 
-        // Build result JSON
+        // Build result JSON: newValue is what the pin now holds, read back
         TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
-        Result->SetStringField(TEXT("message"), TEXT("Pin value set successfully"));
+        Result->SetStringField(TEXT("message"), Value.IsEmpty() ? TEXT("Pin reset to its default value") : TEXT("Pin value set successfully"));
         Result->SetStringField(TEXT("nodeGuid"), NodeGuid);
         Result->SetStringField(TEXT("nodeName"), TargetNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
         Result->SetStringField(TEXT("pinGuid"), PinGuid);
         Result->SetStringField(TEXT("pinName"), TargetPin->GetDisplayName().ToString());
         Result->SetStringField(TEXT("pinType"), TargetPin->PinType.PinCategory.ToString());
         Result->SetStringField(TEXT("oldValue"), OldValue);
-        Result->SetStringField(TEXT("newValue"), FormattedValue);
+        Result->SetStringField(TEXT("newValue"), FN2CMcpPinDefault::Read(*TargetPin));
 
         // Add type-specific info
         if (!TargetPin->PinType.PinSubCategoryObject.IsValid())
@@ -326,174 +306,6 @@ bool FN2CMcpSetInputPinValueTool::ValidatePinForDefaultValue(const UEdGraphPin* 
         OutErrorMessage = TEXT("Cannot set default value on connected pin. Disconnect it first.");
         return false;
     }
-
-    return true;
-}
-
-bool FN2CMcpSetInputPinValueTool::ValidateAndFormatValue(const UEdGraphPin* Pin, const FString& Value, 
-    FString& OutFormattedValue, FString& OutErrorMessage) const
-{
-    if (!Pin)
-    {
-        OutErrorMessage = TEXT("Pin is null");
-        return false;
-    }
-
-    const FName& Category = Pin->PinType.PinCategory;
-    OutFormattedValue = Value;
-
-    // Type-specific validation
-    if (Category == UEdGraphSchema_K2::PC_Boolean)
-    {
-        // Accept various boolean formats
-        if (Value.Equals(TEXT("true"), ESearchCase::IgnoreCase) || 
-            Value.Equals(TEXT("1")) || 
-            Value.Equals(TEXT("yes"), ESearchCase::IgnoreCase))
-        {
-            OutFormattedValue = TEXT("true");
-        }
-        else if (Value.Equals(TEXT("false"), ESearchCase::IgnoreCase) || 
-                 Value.Equals(TEXT("0")) || 
-                 Value.Equals(TEXT("no"), ESearchCase::IgnoreCase) ||
-                 Value.IsEmpty())
-        {
-            OutFormattedValue = TEXT("false");
-        }
-        else
-        {
-            OutErrorMessage = TEXT("Invalid boolean value. Use 'true' or 'false'");
-            return false;
-        }
-    }
-    else if (Category == UEdGraphSchema_K2::PC_Int)
-    {
-        // Validate integer
-        if (!Value.IsEmpty() && !Value.IsNumeric())
-        {
-            // Check for negative numbers
-            if (!(Value.StartsWith(TEXT("-")) && Value.Mid(1).IsNumeric()))
-            {
-                OutErrorMessage = TEXT("Invalid integer value");
-                return false;
-            }
-        }
-    }
-    else if (Category == UEdGraphSchema_K2::PC_Int64)
-    {
-        // Validate 64-bit integer
-        if (!Value.IsEmpty() && !Value.IsNumeric())
-        {
-            // Check for negative numbers
-            if (!(Value.StartsWith(TEXT("-")) && Value.Mid(1).IsNumeric()))
-            {
-                OutErrorMessage = TEXT("Invalid 64-bit integer value");
-                return false;
-            }
-        }
-    }
-    else if (Category == UEdGraphSchema_K2::PC_Real || Category == UEdGraphSchema_K2::PC_Double)
-    {
-        // Validate floating point
-        if (!Value.IsEmpty())
-        {
-            // Simple validation - more complex validation happens in the schema
-            bool bValid = false;
-            for (TCHAR Char : Value)
-            {
-                if (FChar::IsDigit(Char) || Char == TEXT('.') || Char == TEXT('-') || Char == TEXT('+'))
-                {
-                    bValid = true;
-                }
-                else if (!FChar::IsWhitespace(Char))
-                {
-                    OutErrorMessage = TEXT("Invalid floating point value");
-                    return false;
-                }
-            }
-            if (!bValid && !Value.IsEmpty())
-            {
-                OutErrorMessage = TEXT("Invalid floating point value");
-                return false;
-            }
-        }
-    }
-    else if (Category == UEdGraphSchema_K2::PC_Struct)
-    {
-        // For struct types, empty string means default value
-        // More complex struct validation would require type-specific parsing
-        if (!Value.IsEmpty())
-        {
-            // Basic validation for common struct types
-            if (Pin->PinType.PinSubCategoryObject.IsValid())
-            {
-                FString StructName = Pin->PinType.PinSubCategoryObject->GetName();
-                
-                // Check for common struct types that require a particular format
-                if (StructName == TEXT("Vector") || StructName == TEXT("Vector3f") || StructName == TEXT("Rotator"))
-                {
-                    // Remove any spaces from the value
-                    FString CleanValue = Value;
-                    CleanValue.ReplaceInline(TEXT(" "), TEXT(""));
-                    OutFormattedValue = CleanValue;
-                    
-                    // Only error if parentheses or equal symbols are present
-                    if (CleanValue.Contains(TEXT("(")) || CleanValue.Contains(TEXT(")")) || CleanValue.Contains(TEXT("=")))
-                    {
-                        OutErrorMessage = TEXT("Invalid format. Use '0.0,0.0,0.0' format (comma-separated values only)");
-                        return false;
-                    }
-                }
-                else if (StructName == TEXT("Vector2D"))
-                {
-                    // Remove any spaces from the value
-                    FString CleanValue = Value;
-                    CleanValue.ReplaceInline(TEXT(" "), TEXT(""));
-                    OutFormattedValue = CleanValue;
-                    
-                    // Only error if parentheses or equal symbols are present
-                    if (CleanValue.Contains(TEXT("(")) || CleanValue.Contains(TEXT(")")) || CleanValue.Contains(TEXT("=")))
-                    {
-                        OutErrorMessage = TEXT("Invalid format. Use '0.0,0.0' format (comma-separated values only)");
-                        return false;
-                    }
-                }
-            }   
-        }
-    }
-    else if (Category == UEdGraphSchema_K2::PC_Enum || Category == UEdGraphSchema_K2::PC_Byte)
-    {
-        // For enums, we accept the enum value name or index
-        // The schema will handle validation
-        if (Pin->PinType.PinSubCategoryObject.IsValid())
-        {
-            UEnum* EnumType = Cast<UEnum>(Pin->PinType.PinSubCategoryObject.Get());
-            if (EnumType && !Value.IsEmpty())
-            {
-                // Check if it's a valid enum name
-                if (EnumType->GetIndexByNameString(Value) == INDEX_NONE)
-                {
-                    // Check if it's a valid index
-                    if (Value.IsNumeric())
-                    {
-                        int32 Index = FCString::Atoi(*Value);
-                        if (Index < 0 || Index >= EnumType->NumEnums())
-                        {
-                            OutErrorMessage = FString::Printf(TEXT("Invalid enum index. Valid range is 0-%d"), 
-                                EnumType->NumEnums() - 1);
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        OutErrorMessage = TEXT("Invalid enum value. Use the enum name or index");
-                        return false;
-                    }
-                }
-            }
-        }
-    }
-    // For other types (String, Name, Text, Object, etc.), we accept the value as-is
-    // The schema will handle type-specific validation
 
     return true;
 }

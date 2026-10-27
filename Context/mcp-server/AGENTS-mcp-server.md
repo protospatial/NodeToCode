@@ -100,6 +100,7 @@ Source/
     │   ├── N2CMcpFunctionPinUtils.h/.cpp
     │   ├── N2CMcpGraphTarget.h/.cpp      # FN2CGraphTarget: the graph a Graph/Functions tool acts on (card 0152)
     │   ├── N2CMcpNodeSpawnUtils.h/.cpp   # FN2CMcpNodeSpawn: variable and comment nodes the engine way (card 0155)
+    │   ├── N2CMcpPinDefaultUtils.h/.cpp  # FN2CMcpPinDefault: pin default writes checked by the K2 schema (card 0278)
     │   ├── N2CMcpTagUtils.h/.cpp
     │   ├── N2CMcpTypeResolver.h/.cpp
     │   └── N2CMcpVariableUtils.h/.cpp
@@ -421,6 +422,10 @@ Common utilities shared across MCP tools:
 *   **`N2CMcpNodeSpawnUtils`**: `FN2CMcpNodeSpawn`, which makes variable Get/Set nodes through
     `UBlueprintVariableNodeSpawner` and comment nodes through the schema's template path (a GUID, `RF_Transactional`,
     one set of pins, one transaction), and the node result fields add-bp-node-to-active-graph returns (card 0155)
+*   **`N2CMcpPinDefaultUtils`**: `FN2CMcpPinDefault`, which writes an input pin's default the way the editor does:
+    normalizes the value (booleans, enum names, display names and indices), runs the K2 schema's own check before the
+    node is touched and returns its reason on a refusal, resets on an empty value, and reads the result back. Used by
+    set-input-pin-value, the bridge's SetPinValue and the Set variable node tools (card 0278)
 *   **`N2CMcpVariableUtils`**: Variable creation and manipulation; the shared member-variable (skeleton class),
     function-entry and local-variable lookups (card 0155)
 

@@ -128,7 +128,6 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 		FindFunctionReferences(TargetBlueprint, FunctionGraph->GetFName().ToString(), CallNodes);
 		
 		// Create a single transaction for all operations
-		FGuid TransactionGuid = FGuid::NewGuid();
 		const FScopedTransaction Transaction(LOCTEXT("DeleteBlueprintFunction", "Delete Blueprint Function"));
 		
 		// Mark the Blueprint as modified for the transaction
@@ -154,7 +153,7 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 		}
 		
 		// Delete the function within the same transaction
-		if (!DeleteFunctionGraph(TargetBlueprint, FunctionGraph, TransactionGuid))
+		if (!DeleteFunctionGraph(TargetBlueprint, FunctionGraph))
 		{
 			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to delete function graph")));
 		}
@@ -168,8 +167,7 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 			FunctionName,
 			FunctionGuid,
 			TargetBlueprint->GetPathName(),
-			RemovedReferences,
-			TransactionGuid
+			RemovedReferences
 		);
 		
 		FString JsonString;
@@ -340,7 +338,7 @@ bool FN2CMcpDeleteBlueprintFunctionTool::RemoveFunctionReferences(const TArray<U
 	return true;
 }
 
-bool FN2CMcpDeleteBlueprintFunctionTool::DeleteFunctionGraph(UBlueprint* Blueprint, UEdGraph* FunctionGraph, FGuid& OutTransactionGuid)
+bool FN2CMcpDeleteBlueprintFunctionTool::DeleteFunctionGraph(UBlueprint* Blueprint, UEdGraph* FunctionGraph)
 {
 	if (!Blueprint || !FunctionGraph)
 	{
@@ -348,7 +346,6 @@ bool FN2CMcpDeleteBlueprintFunctionTool::DeleteFunctionGraph(UBlueprint* Bluepri
 	}
 	
 	// Note: Transaction is already created in Execute(), and Blueprint->Modify() has been called
-	// The OutTransactionGuid was already set in Execute()
 	
 	// Mark the function graph as modified for the transaction
 	FunctionGraph->Modify();
@@ -391,8 +388,7 @@ void FN2CMcpDeleteBlueprintFunctionTool::ShowDeletionNotification(const FString&
 }
 
 TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintFunctionTool::BuildSuccessResult(const FString& FunctionName, const FGuid& FunctionGuid,
-	const FString& BlueprintPath, const TArray<FRemovedReference>& RemovedReferences,
-	const FGuid& TransactionGuid) const
+	const FString& BlueprintPath, const TArray<FRemovedReference>& RemovedReferences) const
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 	
@@ -418,7 +414,6 @@ TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintFunctionTool::BuildSuccessResult(c
 	
 	// Other info
 	Result->SetStringField(TEXT("blueprintPath"), BlueprintPath);
-	Result->SetStringField(TEXT("transactionId"), TransactionGuid.ToString());
 	
 	return Result;
 }
