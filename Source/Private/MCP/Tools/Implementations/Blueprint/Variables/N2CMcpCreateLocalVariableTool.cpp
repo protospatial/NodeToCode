@@ -37,7 +37,7 @@ FMcpToolDefinition FN2CMcpCreateLocalVariableTool::GetDefinition() const
 {
 	FMcpToolDefinition Definition(
 		TEXT("create-local-variable"),
-		TEXT("Creates a new local variable in the currently focused Blueprint function. The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
+		TEXT("Creates a new local variable in a Blueprint function (the one blueprintPath plus graphName or graphGuid name, else the focused function). The name is made unique against the Blueprint's members and the function's parameters and locals (a taken name gets a _0, _1... suffix; actualName is the name used). One undo removes it. For map variables: 'typeIdentifier' specifies the map's VALUE type, and 'mapKeyTypeIdentifier' (added by common schema utils) specifies the map's KEY type.")
 	,
 		N2CMcpToolsets::BlueprintVariable
 	);
@@ -88,6 +88,8 @@ FMcpToolDefinition FN2CMcpCreateLocalVariableTool::GetDefinition() const
 	
 	Definition.InputSchema = Schema;
 	
+	FN2CGraphTarget::AddSchemaProperties(Definition);
+
 	// Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
 	SetStrictArguments(Definition);
 
@@ -126,9 +128,9 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
 
-		// The focused graph, through the shared graph resolver (card 0152). This tool takes no target arguments (card
-		// 0274 adds them), so the empty target is the focused graph; a read-only graph is refused (READ_ONLY_GRAPH).
-		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ true);
+		// The function blueprintPath / graphName / graphGuid name, else the focused graph, through the shared graph
+		// resolver (cards 0152, 0274); a read-only graph is refused (READ_ONLY_GRAPH).
+		const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(Arguments, /*bForWrite*/ true);
 		if (!Target.IsValid())
 		{
 			return FMcpToolCallResult::CreateErrorResult(Target.Error);
@@ -139,18 +141,18 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		// Ensure we're in a K2 function graph (a collapsed graph inside a function counts as its function)
 		if (!FunctionGraph || !FunctionGraph->GetSchema() || !FunctionGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("Focused graph is not a Blueprint graph"));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("The graph is not a Blueprint graph")));
 		}
 		if (FunctionGraph->GetSchema()->GetGraphType(FunctionGraph) != GT_Function)
 		{
-			return FMcpToolCallResult::CreateErrorResult(TEXT("NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs."));
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs. Pass the function as graphName or graphGuid, or focus it.")));
 		}
 
 		// Validate container type and key type combination
 		FString ContainerValidationError;
 		if (!FN2CMcpVariableUtils::ValidateContainerTypeParameters(ContainerType, ParsedMapKeyTypeIdentifier, ContainerValidationError))
 		{
-			return FMcpToolCallResult::CreateErrorResult(ContainerValidationError);
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(ContainerValidationError));
 		}
 
 		// Resolve type identifier to FEdGraphPinType
@@ -159,7 +161,7 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		// TypeIdentifier is the VALUE type for maps. ParsedMapKeyTypeIdentifier is the KEY type.
 		if (!FN2CMcpTypeResolver::ResolvePinType(TypeIdentifier, TEXT(""), ContainerType, ParsedMapKeyTypeIdentifier, false, false, ResolvedPinType, ResolveError))
 		{
-			return FMcpToolCallResult::CreateErrorResult(ResolveError);
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(ResolveError));
 		}
 
 		// Create the local variable, in one transaction
@@ -168,7 +170,7 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 			ResolvedPinType, DefaultValue, Tooltip, CreateError);
 		if (ActualVariableName.IsNone())
 		{
-			return FMcpToolCallResult::CreateErrorResult(CreateError);
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(CreateError));
 		}
 
 		// Show notification
@@ -185,7 +187,7 @@ FMcpToolCallResult FN2CMcpCreateLocalVariableTool::Execute(const TSharedPtr<FJso
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
 		FJsonSerializer::Serialize(ResultJsonObj.ToSharedRef(), Writer);
 
-		return FMcpToolCallResult::CreateTextResult(JsonString);
+		return Target.Finish(FMcpToolCallResult::CreateTextResult(JsonString));
 	});
 }
 
@@ -243,7 +245,7 @@ FName FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction(UBlueprint* Blu
 	UEdGraph* FunctionGraph = FN2CMcpVariableUtils::GetFunctionGraph(Graph);
 	if (!Blueprint || !FunctionGraph)
 	{
-		OutError = TEXT("NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs.");
+		OutError = TEXT("NOT_A_FUNCTION_GRAPH: Not in a function graph. Local variables can only be created in functions, not event graphs. Pass the function as graphName or graphGuid, or focus it.");
 		return NAME_None;
 	}
 	UK2Node_FunctionEntry* FunctionEntry = FN2CMcpVariableUtils::FindFunctionEntryNode(FunctionGraph);

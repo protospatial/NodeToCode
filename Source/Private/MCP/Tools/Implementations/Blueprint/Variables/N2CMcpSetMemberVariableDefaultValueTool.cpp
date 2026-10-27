@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "MCP/Utils/N2CMcpVariableDefaults.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
@@ -22,7 +23,7 @@ FMcpToolDefinition FN2CMcpSetMemberVariableDefaultValueTool::GetDefinition() con
 {
     FMcpToolDefinition Definition(
         TEXT("set-member-variable-default-value"),
-        TEXT("Sets the default value of a member variable in the focused Blueprint, on its class defaults as the Details panel does (one undo step; placed instances still on the old default follow it). The value is parsed as the variable's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string resets the variable to its type's default value. Adds no node.")
+        TEXT("Sets the default value of a member variable of a Blueprint (blueprintPath, else the focused Blueprint), on its class defaults as the Details panel does (one undo step; placed instances still on the old default follow it). The value is parsed as the variable's type and refused with the reason when it does not parse; an enum takes an entry's name, display name or index, and an empty string resets the variable to its type's default value. Adds no node.")
     ,
 
     	N2CMcpToolsets::BlueprintVariable
@@ -39,6 +40,7 @@ FMcpToolDefinition FN2CMcpSetMemberVariableDefaultValueTool::GetDefinition() con
     Required.Add(TEXT("defaultValue"));
 
     Definition.InputSchema = BuildInputSchema(Properties, Required);
+    FN2CGraphTarget::AddSchemaProperties(Definition, /*bGraphArguments*/ false);
 
     // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
     SetStrictArguments(Definition);
@@ -67,15 +69,13 @@ FMcpToolCallResult FN2CMcpSetMemberVariableDefaultValueTool::Execute(const TShar
             return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
         }
 
-        // Get the currently focused Blueprint
+        // The Blueprint blueprintPath names, else the focused one (card 0274)
         FString ResolveError;
-        UBlueprint* FocusedBlueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(TEXT(""), ResolveError);
+        UBlueprint* FocusedBlueprint = FN2CGraphTarget::LoadBlueprint(ArgParser.GetOptionalString(TEXT("blueprintPath")), ResolveError);
 
         if (!FocusedBlueprint)
         {
-            return FMcpToolCallResult::CreateErrorResult(
-                FString::Printf(TEXT("Failed to get focused Blueprint: %s"), *ResolveError)
-            );
+            return FMcpToolCallResult::CreateErrorResult(ResolveError);
         }
 
         if (FBlueprintEditorUtils::FindNewVariableIndex(FocusedBlueprint, FName(*VariableName)) == INDEX_NONE)

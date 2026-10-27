@@ -20,28 +20,33 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0274 (explicit targets, admitted as next-6); 0295 (toast icons, now
-  `FN2CMcpNotification`) is done. Card 0292 (class,
+- **Fix cards done here:** 0274 (explicit targets, admitted as next-6) and 0295 (toast icons, now
+  `FN2CMcpNotification`). Card 0292 (class,
   soft and interface references) is new capability and waits for the owner.
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.
 
-## Targeting: the focused Blueprint only
+## Targeting: explicit, else the focused Blueprint
 
-Every tool here works on the Blueprint, or the graph, of the active Blueprint editor. Member-variable tools resolve
-it with `FN2CMcpBlueprintUtils::ResolveBlueprint(TEXT(""))`; the four node tools and `create-local-variable` take the
-focused graph from the shared resolver with no target arguments (`FN2CGraphTarget::Resolve`, so a read-only graph is
-refused with `READ_ONLY_GRAPH`), and `get-blueprint-function-local-variables` and
-`set-local-function-variable-default-value` from `FN2CMcpBlueprintUtils::GetFocusedEditorGraph`. The local-variable
-tools need that graph to be in a function: the function graph itself, or a collapsed graph inside it (one shared
-`FN2CMcpVariableUtils::FindFunctionEntryNode`, which goes through `FBlueprintEditorUtils::GetTopLevelGraph`; the
-function's name is the locals' scope and the `functionName` they return, card 0155). No tool in this folder has a
-`blueprintPath` parameter, and the MCP layer does not reject arguments a schema does not list, so an extra
-`blueprintPath` is ignored and the edit goes to the focused Blueprint. Open the Blueprint first (`open-blueprint-asset`, or `open-blueprint-function` for a function
-graph).
-
-- **Known issue (card 0274):** there is no explicit target; a `blueprintPath` argument is silently ignored.
+Every tool here takes an explicit target and falls back to the active Blueprint editor without one (card 0274); none
+needs an open editor when the target is given:
+- **Member-variable tools** (`create-variable`, `get-blueprint-member-variables`, `set-member-variable-default-value`)
+  take optional `blueprintPath` (`FN2CGraphTarget::AddSchemaProperties(Definition, false)`), resolved by
+  `FN2CGraphTarget::LoadBlueprint`: `/Game/BP_Door` or `/Game/BP_Door.BP_Door`; without it, the focused Blueprint
+  (`NO_FOCUSED_GRAPH: ...` when none). A path that loads no Blueprint gives `ASSET_NOT_FOUND: ...`. Their results
+  carry `blueprintPath`.
+- **Graph tools** (the four node tools, `create-local-variable`, `get-blueprint-function-local-variables`,
+  `set-local-function-variable-default-value`) take optional `blueprintPath`, `graphName` and `graphGuid` and resolve
+  them with `FN2CGraphTarget::Resolve(Arguments)`, as the Graph and Functions tools do (card 0152): with none, the
+  focused graph; with `blueprintPath` alone, its focused graph or else its event graph; `graphGuid` (a function's
+  `functionGuid`) wins over `graphName`. Every result, errors included, has `target` (`blueprintPath`,
+  `graphName`, `graphGuid`, `graphKind`, `resolvedBy`). The editing tools refuse a read-only graph with
+  `READ_ONLY_GRAPH`. The local-variable tools need that graph to be in a function: the function graph itself, or a
+  collapsed graph inside it (one shared `FN2CMcpVariableUtils::FindFunctionEntryNode`, which goes through
+  `FBlueprintEditorUtils::GetTopLevelGraph`; the function's name is the locals' scope and the `functionName` they
+  return, card 0155); any other graph gives `NOT_A_FUNCTION_GRAPH: ...`.
+- `search-variable-types` reads no Blueprint and needs no editor.
 
 Variable names are matched case-insensitively (`FName` lookups in `FN2CMcpVariableUtils::FindMemberVariableProperty`
 and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds `Health`.
@@ -49,7 +54,7 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 ## Available Tools
 
 ### create-variable
-- **Description**: Creates a member variable in the focused Blueprint
+- **Description**: Creates a member variable in the Blueprint `blueprintPath` names, else the focused Blueprint
   (`FBlueprintEditorUtils::AddMemberVariable` in `FN2CMcpCreateVariableTool::CreateMemberVariable`). Every setting is
   written to the variable description (`FBPVariableDescription` in `Blueprint->NewVariables`) through the engine
   helpers the details panel uses, so every later compile keeps it (card 0154):
@@ -86,11 +91,11 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   `repnotify`, an object of the Blueprint already named `OnRep_<name>` that is not a graph gives `NAME_COLLISION: ...`
 
 ### create-local-variable
-- **Description**: Creates a local variable in the focused function graph
+- **Description**: Creates a local variable in the target function graph
   (`FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction`, which calls `FBlueprintEditorUtils::AddLocalVariable`
-  on the focused graph's top-level graph, so a collapsed graph inside a function works too). The focused graph comes
-  from `FN2CGraphTarget::Resolve` with no target arguments (card 0152), so a read-only graph (an interface function)
-  is refused with `READ_ONLY_GRAPH: ...`. The local gets `CPF_BlueprintVisible`, the `Default` category and the
+  on the graph's top-level graph, so a collapsed graph inside a function works too). The graph comes from
+  `FN2CGraphTarget::Resolve` with the target arguments (cards 0152, 0274), so a read-only graph (an interface
+  function) is refused with `READ_ONLY_GRAPH: ...`. The local gets `CPF_BlueprintVisible`, the `Default` category and the
   tooltip as `tooltip` metadata
 - **Parameters**: `variableName` (required), `typeIdentifier` (required), `defaultValue`, `tooltip`,
   `containerType`, `mapKeyTypeIdentifier` (as for create-variable)
@@ -128,12 +133,12 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   path (`/Game/BP_Enemy.BP_Enemy_C`). The native part is rebuilt when a module loads, the asset part when the asset
   registry adds, removes, renames or updates an asset. User types loaded in memory but not in the registry are added
   per search. Only the enums returned are loaded, to list their enumerators
-- **Errors**: Needs an open Blueprint editor even though it reads no Blueprint: `No active Blueprint editor found`
+- Needs no Blueprint editor (card 0274; it used to fail with `No active Blueprint editor found`)
 
 ### get-blueprint-member-variables
-- **Description**: Lists the member variables declared by the focused Blueprint (`Blueprint->NewVariables`; inherited
-  and component variables are not included)
-- **Parameters**: None
+- **Description**: Lists the member variables declared by the Blueprint `blueprintPath` names, else the focused one
+  (`Blueprint->NewVariables`; inherited and component variables are not included)
+- **Parameters**: `blueprintPath` (optional)
 - **Returns**: `blueprintName`, `blueprintPath`, `parentClass`, `variables`, `variableCount`, `categories`. Each
   variable has `name`, `category`, `friendlyName`, `defaultValue`, `guid`, `type` (`category`, `subCategory`,
   `typeObject`, `typeName`, `container`, `keyType` and `valueType` for maps, `isReference`, `isConst`,
@@ -151,7 +156,7 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
     `private` is the `BlueprintPrivate` metadata (the details panel's Private box)
 
 ### create-get-member-variable-node
-- **Description**: Places a Get node for a member variable in the focused graph. The variable is looked up on the
+- **Description**: Places a Get node for a member variable in the target graph. The variable is looked up on the
   Blueprint's skeleton class, so its own variables, inherited ones (a parent Blueprint or a C++ base, such as
   `RootComponent`) and component variables all work; one that Blueprints cannot read (not Blueprint visible, private
   to another class, a delegate) is refused
@@ -168,7 +173,7 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   `typeObject`, `typeName`, `isArray`, `isSet`, `isMap`), `message`, and `compile`
 
 ### create-set-member-variable-node
-- **Description**: Places a Set node for a member variable in the focused graph
+- **Description**: Places a Set node for a member variable in the target graph
 - **Parameters**:
   - `variableName` (required)
   - `defaultValue` (optional): Value for the Set node's input pin (not the variable's default), checked by the K2
@@ -203,22 +208,22 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   (single-precision) value` (an enum's error lists its entries)
 
 ### get-blueprint-function-local-variables
-- **Description**: Lists the local variables of the focused function graph
+- **Description**: Lists the local variables of the target function graph
 - **Parameters**:
   - `includeDetails` (optional, default true): With false, only `name`, `displayName` and `category` per variable
 - **Returns**: `blueprintName`, `functionName`, `localVariableCount`, `localVariables` (with details: `type` with
   `typeName`, `subCategory`, `subCategoryObject`, `isArray`, `isSet`, `isMap`, `isReference`, `isConst`;
   `defaultValue`, `guid`, `flags`, `replicationCondition`). Marked as untrusted Blueprint data (`untrusted_content`)
-- **Errors**: Outside a function graph, `The focused graph is not a function graph. ...`
+- **Errors**: Outside a function graph, `NOT_A_FUNCTION_GRAPH: the graph is not a function graph. ...`
 
 ### create-get-local-function-variable-node
-- **Description**: Places a Get node for a local variable in the focused function graph
+- **Description**: Places a Get node for a local variable in the target function graph
 - **Parameters**: `variableName` (required), `x`, `y` (optional, graph coordinates, default 0)
 - **Returns**: As for create-get-member-variable-node, plus `functionName` (the function, also from a collapsed graph
   inside it), `x` and `y`. A local's nodes have no self pin
 
 ### create-set-local-function-variable-node
-- **Description**: Places a Set node for a local variable in the focused function graph
+- **Description**: Places a Set node for a local variable in the target function graph
 - **Parameters**: `variableName` (required), `x`, `y` (optional), `inputPinValue` (optional): value for the node's
   input pin
 - **Returns**: As for create-get-local-function-variable-node; the Set node has exactly four pins (`execute`, `then`,
@@ -316,7 +321,8 @@ form the Blueprint compiler turns into an enum property). As a last check every 
 ## Workflow Examples
 
 The curl examples assume `$SID` holds a session id from `initialize` (see "Calling the Server with curl" in
-`Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it. Each acts on the focused Blueprint.
+`Source/Private/MCP/Tools/AGENTS.md`); every POST after `initialize` must send it. Without `blueprintPath` (and `graphName` or `graphGuid` for the graph
+tools) each acts on the focused Blueprint.
 
 ### Finding and Creating Variables
 ```bash
@@ -457,9 +463,10 @@ curl -X POST http://localhost:27000/mcp \
 ```
 
 ### Working with Local Function Variables
-A function graph must be focused (for example after `create-blueprint-function` or `open-blueprint-function`).
+Name the function with `blueprintPath` plus `graphName` or `graphGuid`, or focus it (for example after
+`create-blueprint-function` or `open-blueprint-function`).
 ```bash
-# Get all local variables in the focused function
+# Get all local variables of BP_Door's function OpenDoor
 curl -X POST http://localhost:27000/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $SID" \
@@ -468,7 +475,7 @@ curl -X POST http://localhost:27000/mcp \
     "method": "tools/call",
     "params": {
       "name": "get-blueprint-function-local-variables",
-      "arguments": {}
+      "arguments": {"blueprintPath": "/Game/BP_Door", "graphName": "OpenDoor"}
     },
     "id": 1
   }'
