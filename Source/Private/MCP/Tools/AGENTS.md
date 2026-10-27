@@ -367,12 +367,9 @@ TFuture<FMcpToolCallResult> FN2CMcpMyLongTool::InvokeAsync(const FN2CToolCallCon
         return Future;
     }
 
-    // The translation is saved with the Blueprint the JSON describes (a capture's FN2CCapture::Blueprint, when you have one)
-    FN2CBlueprint Captured;
-    FN2CSerializer::FromJson(Json, Captured);
-
+    // ProcessN2CJson saves nothing: a tool that keeps the result writes it with FN2CTranslationArchive (card 0252)
     Context->ReportProgress(0.1f, TEXT("Sending request..."));
-    State->Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, Captured, FOnLLMResponseReceived::CreateLambda(
+    State->Request = UN2CLLMModule::Get()->ProcessN2CJson(Json, FOnLLMResponseReceived::CreateLambda(
         [State](const FString& Response)
         {
             // Runs on the game thread, at most once, and never after Request->Cancel() succeeded

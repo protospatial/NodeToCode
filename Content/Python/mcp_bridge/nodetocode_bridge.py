@@ -34,6 +34,11 @@ UE plugin's Streamable HTTP MCP server.
   <token>". The bridge sends the token from --token-file, else the NODETOCODE_MCP_TOKEN environment variable, else the
   per-user file the editor writes (<user settings dir>/NodeToCode/mcp-token), read again for every request so a
   regenerated token is used at once. With no token it sends no header (the editor's default accepts that).
+- MCP 2026-07-28 (card 0210): a request whose params._meta names io.modelcontextprotocol/protocolVersion (a modern,
+  stateless client, which probes with server/discover) is sent without a session, with the headers that revision
+  requires: MCP-Protocol-Version (the _meta version), Mcp-Method and, for tools/call, prompts/get and resources/read,
+  Mcp-Name (Base64 sentinel when the name is not plain ASCII). Its notifications/cancelled is not forwarded: the bridge
+  closes the request's HTTP stream, which is how 2026-07-28 cancels over HTTP. A legacy client keeps its session.
 
 Zero external dependencies - uses only the Python standard library.
 
@@ -43,8 +48,10 @@ Usage:
 """
 
 import argparse
+import base64
 import json
 import os
+import socket
 import sys
 import threading
 import urllib.error
@@ -59,6 +66,10 @@ DISCOVERY_DIR_ENV = "NODETOCODE_DISCOVERY_DIR"
 TOKEN_ENV = "NODETOCODE_MCP_TOKEN"
 NOTIFICATION_TIMEOUT = 30.0  # seconds; notifications are sent on the stdin reader thread
 CANCEL_RESEND_DELAY = 1.0  # seconds; a cancel that overtook its request in the editor is sent once more
+
+# MCP 2026-07-28 per-request metadata (basic/index, "_meta")
+META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion"
+NAME_HEADER_FIELDS = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}
 
 # JSON-RPC error codes
 PARSE_ERROR = -32700
@@ -125,6 +136,50 @@ def is_request(message: Any) -> bool:
     """True for a JSON-RPC request (a method and an id member), the only kind of message that gets a response. An
     "id": null counts: the server refuses it with an Invalid Request error (-32600) the client must see."""
     return isinstance(message, dict) and "method" in message and "id" in message
+
+
+def modern_version(message: Any) -> Optional[str]:
+    """The 2026-07-28 protocol version a message names in params._meta, or None for a legacy message"""
+    params = message.get("params") if isinstance(message, dict) else None
+    meta = params.get("_meta") if isinstance(params, dict) else None
+    version = meta.get(META_PROTOCOL_VERSION) if isinstance(meta, dict) else None
+    return version if isinstance(version, str) else None
+
+
+def header_value(value: str) -> str:
+    """A value as an Mcp-Name header carries it: as is when it is plain visible ASCII without edge spaces, else the
+    2026-07-28 Base64 sentinel =?base64?<Base64 of the UTF-8>?= (also for a plain value that looks like the sentinel)"""
+    plain = all(0x20 <= ord(ch) <= 0x7E for ch in value) and value == value.strip()
+    if plain and not (value.startswith("=?base64?") and value.endswith("?=")):
+        return value
+    return "=?base64?" + base64.b64encode(value.encode("utf-8")).decode("ascii") + "?="
+
+
+def modern_headers(message: dict, version: str) -> dict:
+    """MCP-Protocol-Version, Mcp-Method and (for tools/call, prompts/get, resources/read) Mcp-Name of a modern message"""
+    headers = {"MCP-Protocol-Version": version}
+    method = message.get("method")
+    if isinstance(method, str):
+        headers["Mcp-Method"] = method
+        field = NAME_HEADER_FIELDS.get(method)
+        params = message.get("params") if isinstance(message.get("params"), dict) else {}
+        if field and isinstance(params.get(field), str):
+            headers["Mcp-Name"] = header_value(params[field])
+    return headers
+
+
+def close_response(resp: Any) -> None:
+    """Closes an open HTTP response from another thread: shuts its socket down, so the editor sees the stream close
+    and a reader blocked on it wakes up"""
+    try:
+        sock = resp.fp.raw._sock  # http.client keeps the socket behind its buffered reader
+        sock.shutdown(socket.SHUT_RDWR)
+    except Exception:
+        pass
+    try:
+        resp.close()
+    except Exception:
+        pass
 
 
 def batch_has_request(message: Any) -> bool:
@@ -557,12 +612,14 @@ class Upstream:
 
     def forward(self, body: bytes, message: Any, emit: Callable[[Any], None],
                 before_send: Optional[Callable[[], bool]] = None, timeout: Optional[float] = None,
-                _moved: bool = False) -> None:
+                _moved: bool = False, on_open: Optional[Callable[[Any], None]] = None) -> None:
         """POST one client message and emit every JSON-RPC message meant for the client. before_send runs once,
-        just before the message is first sent; when it returns False the message is not sent."""
+        just before the message is first sent; when it returns False the message is not sent. on_open gets the HTTP
+        response once it is open (so a 2026-07-28 cancel can close it)."""
         wants_reply = is_request(message) or batch_has_request(message)
         request_id = message.get("id") if isinstance(message, dict) else None
         method = message.get("method") if isinstance(message, dict) else None
+        version = modern_version(message)
 
         try:
             url = self._target()
@@ -573,7 +630,9 @@ class Upstream:
                 emit(error_response(request_id, INTERNAL_ERROR, str(e), data))
             return
 
-        if method == "initialize" and is_request(message):
+        if version is not None:
+            pass  # 2026-07-28: stateless, no session to open or replay
+        elif method == "initialize" and is_request(message):
             with self._lock:
                 self._initialize_body = body
                 self.session_id = None  # an initialize opens a new session; it never carries an old one
@@ -589,7 +648,11 @@ class Upstream:
             return
 
         for attempt in (0, 1):
-            headers = self._headers()
+            if version is not None:
+                headers = self._base_headers()
+                headers.update(modern_headers(message, version))
+            else:
+                headers = self._headers()
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
             try:
                 resp = _opener.open(req, timeout=timeout if timeout is not None else self.timeout)
@@ -619,14 +682,17 @@ class Upstream:
                         except EditorNotFound:
                             moved_to = url
                         if moved_to != url:
-                            self.forward(body, message, emit, None, timeout, _moved=True)
+                            self.forward(body, message, emit, None, timeout, _moved=True, on_open=on_open)
                             return
                 if wants_reply:
                     emit(error_response(request_id, INTERNAL_ERROR, f"NodeToCode editor not reachable at {url}: {reason}"))
                 return
 
+        if on_open is not None:
+            on_open(resp)
         with resp:
-            self._note_headers(resp.headers)
+            if version is None:
+                self._note_headers(resp.headers)
             content_type = (resp.headers.get("Content-Type") or "").lower()
             log_debug(f"Response status: {resp.status}, Content-Type: {content_type}")
             try:
@@ -731,6 +797,8 @@ class _Call:
         self.sent = False
         self.cancelled = False
         self.thread: Optional[threading.Thread] = None
+        self.modern = False
+        self.response: Any = None
 
 
 class Bridge:
@@ -779,9 +847,10 @@ class Bridge:
             self._start_thread(lambda: self._guarded(body, message, self._emit))  # a batch
 
     def _guarded(self, body: bytes, message: Any, emit: Callable[[Any], None],
-                 before_send: Optional[Callable[[], bool]] = None, timeout: Optional[float] = None) -> None:
+                 before_send: Optional[Callable[[], bool]] = None, timeout: Optional[float] = None,
+                 on_open: Optional[Callable[[Any], None]] = None) -> None:
         try:
-            self.upstream.forward(body, message, emit, before_send, timeout)
+            self.upstream.forward(body, message, emit, before_send, timeout, on_open=on_open)
         except Exception as e:
             log_error(f"Error processing message: {e}")
             if is_request(message):
@@ -798,6 +867,7 @@ class Bridge:
         request_id = message.get("id")
         key = id_key(request_id)
         call = _Call(request_id)
+        call.modern = modern_version(message) is not None
         with self._lock:
             self._calls[key] = call
 
@@ -814,9 +884,16 @@ class Bridge:
                 call.sent = True
                 return True
 
+        def on_open(resp: Any) -> None:
+            with self._lock:
+                call.response = resp
+                cancelled = call.cancelled
+            if cancelled and call.modern:
+                close_response(resp)
+
         def run() -> None:
             try:
-                self._guarded(body, message, emit, before_send)
+                self._guarded(body, message, emit, before_send, on_open=on_open)
             finally:
                 with self._lock:
                     if self._calls.get(key) is call:
@@ -837,6 +914,14 @@ class Bridge:
             sent = call is not None and call.sent
         if call is not None and not sent:
             log_debug(f"Request {request_id!r} cancelled before it was sent")
+            return
+        if call is not None and call.modern:
+            # 2026-07-28 over HTTP: closing the request's stream is the cancellation; nothing is forwarded
+            with self._lock:
+                resp = call.response
+            log_debug(f"Closing the stream of request {request_id!r} to cancel it")
+            if resp is not None:
+                close_response(resp)
             return
         log_debug(f"Forwarding the cancel of request {request_id!r}")
         self._guarded(body, message, self._emit, timeout=NOTIFICATION_TIMEOUT)

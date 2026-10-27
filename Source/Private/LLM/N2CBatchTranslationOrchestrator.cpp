@@ -15,6 +15,7 @@
 #include "K2Node.h"
 #include "Misc/Paths.h"
 #include "Utils/N2CPathUtils.h"
+#include "LLM/N2CTranslationArchive.h"
 #include "Utils/N2CGraphUtils.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/FileHelper.h"
@@ -245,8 +246,7 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 		EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
 
 	// Collect and serialize the graph
-	FN2CBlueprint CapturedBlueprint;
-	FString JsonPayload = CollectAndSerializeGraph(Item.CachedGraph.Get(), Item.CachedBlueprint.Get(), CapturedBlueprint);
+	FString JsonPayload = CollectAndSerializeGraph(Item.CachedGraph.Get(), Item.CachedBlueprint.Get());
 
 	if (JsonPayload.IsEmpty())
 	{
@@ -276,9 +276,9 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
 	if (LLMModule)
 	{
-		// The translation is saved with this item's capture. The request re-reads the provider, model and key from the
-		// settings, so a change made during the batch applies from this item on. Its result comes back through this
-		// item's own OnParsed, tagged with the batch and item it was sent for.
+		// The request re-reads the provider, model and key from the settings, so a change made during the batch applies
+		// from this item on. Its result comes back through this item's own OnParsed, tagged with the batch and item it
+		// was sent for; HandleItemResult saves it once, in the batch's archive run (card 0252).
 		const int32 Serial = BatchSerial;
 		const int32 ItemIndex = CurrentItemIndex;
 		TWeakObjectPtr<UN2CBatchTranslationOrchestrator> WeakThis(this);
@@ -290,12 +290,12 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 					StrongThis->HandleItemResult(Serial, ItemIndex, Response, bSuccess);
 				}
 			});
-		// A batch with its own provider, model and language (translate-batch) sends every item with them; the
-		// editor's batch reads the settings per item and saves an editor translation too
+		// A batch with its own provider, model and language (translate-batch) sends every item with them (and keeps
+		// the module from writing an MCP run: the batch saves the item); the editor's batch reads the settings per item
 		FN2CLLMRequestHandleRef Request = BatchOptions.bUseRequestConfig
 			? LLMModule->ProcessN2CJsonWithOverrides(JsonPayload, BatchOptions.RequestConfig, BatchOptions.Language,
-				FOnLLMResponseReceived(), OnParsed)
-			: LLMModule->ProcessN2CJson(JsonPayload, CapturedBlueprint, FOnLLMResponseReceived(), OnParsed);
+				FOnLLMResponseReceived(), OnParsed, /*bArchiveRun*/ false)
+			: LLMModule->ProcessN2CJson(JsonPayload, FOnLLMResponseReceived(), OnParsed);
 
 		// An error found before sending completes inside the call (and may already have moved on to the next item,
 		// which then holds CurrentRequest): keep only a request that is really in flight for this item
@@ -383,8 +383,12 @@ void UN2CBatchTranslationOrchestrator::FinalizeBatch()
 	CurrentResult.TotalTimeSeconds = static_cast<float>(FPlatformTime::Seconds() - BatchStartTime);
 	CurrentResult.BatchOutputPath = BatchOutputPath;
 
-	// Generate batch summary
+	// Generate batch summary, and the run's manifest once more (it already lists every saved item)
 	GenerateBatchSummary();
+	if (BatchArchive.IsValid())
+	{
+		BatchArchive->WriteManifest();
+	}
 
 	FN2CLogger::Get().Log(
 		FString::Printf(TEXT("Batch translation complete. Success: %d, Failed: %d, Skipped: %d, Time: %.2fs"),
@@ -403,6 +407,7 @@ void UN2CBatchTranslationOrchestrator::CleanupBatch()
 {
 	// A request still held here was cancelled or has completed; drop the reference
 	CurrentRequest.Reset();
+	BatchArchive.Reset();
 
 // Clear blueprint cache
 	BlueprintCache.Empty();
@@ -542,7 +547,7 @@ UBlueprint* UN2CBatchTranslationOrchestrator::LoadBlueprintFromPath(const FStrin
 	return Blueprint;
 }
 
-FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint, FN2CBlueprint& OutCapture)
+FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint)
 {
 	if (!Graph || !Blueprint)
 	{
@@ -572,31 +577,24 @@ FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Gra
 	}
 
 	// Serialize to JSON (minified for LLM)
-	FString JsonOutput = FN2CSerializer::ToJson(Capture.GetValue().Blueprint, EN2CJsonStyle::Condensed);
-	OutCapture = MoveTemp(Capture.GetValue().Blueprint);
-
-	return JsonOutput;
+	return FN2CSerializer::ToJson(Capture.GetValue().Blueprint, EN2CJsonStyle::Condensed);
 }
 
 void UN2CBatchTranslationOrchestrator::CreateBatchOutputDirectory()
 {
-	// Get current timestamp
-	FDateTime Now = FDateTime::Now();
-	FString Timestamp = Now.ToString(TEXT("%Y-%m-%d-%H.%M.%S"));
+	// One archive run for the batch: <base>/BatchTranslation_<yyyyMMdd-HHmmss-fff>_<run id>, with its manifest
+	FN2CTranslationRunInfo Info;
+	Info.Kind = EN2CTranslationRunKind::Batch;
+	Info.Name = TEXT("BatchTranslation");
+	Info.Provider = GetSaveProvider();
+	Info.Model = GetSaveModel();
+	Info.Language = GetSaveLanguage();
+	BatchArchive = FN2CTranslationArchive::BeginRun(Info);
+	BatchOutputPath = BatchArchive.IsValid() ? BatchArchive->GetFolder() : FString();
 
-	// Create folder name
-	FString FolderName = FString::Printf(TEXT("BatchTranslation_%s"), *Timestamp);
-
-	// Get base path
-	FString BasePath = GetTranslationBasePath();
-
-	BatchOutputPath = FPaths::Combine(BasePath, FolderName);
-
-	if (!EnsureDirectoryExists(BatchOutputPath))
+	if (BatchOutputPath.IsEmpty())
 	{
-		FN2CLogger::Get().LogError(
-			FString::Printf(TEXT("Failed to create batch output directory: %s"), *BatchOutputPath),
-			TEXT("BatchOrchestrator"));
+		FN2CLogger::Get().LogError(TEXT("Failed to create the batch output directory"), TEXT("BatchOrchestrator"));
 	}
 	else
 	{
@@ -608,160 +606,67 @@ void UN2CBatchTranslationOrchestrator::CreateBatchOutputDirectory()
 
 void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTranslationItem& Item)
 {
-	if (BatchOutputPath.IsEmpty())
+	if (!BatchArchive.IsValid())
 	{
 		return;
 	}
 
-	const FN2CTargetLanguage& Language = N2C::GetLanguage(GetSaveLanguage());
+	// Every entry of the response in its own folder under the item's folder, written once (card 0252)
+	FN2CArchiveSource Source;
+	Source.InputJson = Item.CachedJsonPayload;
+	Source.GraphName = Item.TagInfo.GraphName;
+	Source.BlueprintPath = Item.TagInfo.BlueprintPath;
+	Source.GraphGuid = Item.TagInfo.GraphGuid;
+	const FString ItemFolder = Item.OutputFolderName.IsEmpty()
+		? FN2CPathUtils::GetTranslationFileStem(Item.TagInfo.GraphName) : Item.OutputFolderName;
+	FN2CArchivedResponse Written;
+	BatchArchive->WriteResponse(Item.TranslationResponse, Source, ItemFolder, Written);
 
-	// Save each graph's files
-	for (const FN2CGraphTranslation& Graph : Item.TranslationResponse.Graphs)
+	// Record the tagged graph once, at its root entry's folder (UN2CGraphStateManager::LoadTranslation reads it back)
+	const FN2CArchivedEntry* Root = Written.GetRoot();
+	FGuid GraphGuid;
+	if (!Root || !FGuid::Parse(Item.TagInfo.GraphGuid, GraphGuid) || !GraphGuid.IsValid()
+		|| !Item.TranslationResponse.Graphs.IsValidIndex(Root->ResponseIndex))
 	{
-		// Use TagInfo graph name for the folder (more reliable)
-		FString GraphName = Item.TagInfo.GraphName;
-		if (GraphName.IsEmpty())
-		{
-			GraphName = Graph.GraphName;
-		}
-		if (GraphName.IsEmpty())
-		{
-			continue;
-		}
-
-		// Names can come from the LLM response: use a safe stem for every path
-		const FString Stem = FN2CPathUtils::GetTranslationFileStem(GraphName);
-		if (Stem.IsEmpty())
-		{
-			continue;
-		}
-
-		// Create directory for this graph: the item's own folder, so two items with the same graph name keep theirs
-		FString GraphDir = FPaths::Combine(BatchOutputPath, Item.OutputFolderName.IsEmpty() ? Stem : Item.OutputFolderName);
-		if (!FN2CPathUtils::IsUnderDirectoryResolved(GraphDir, BatchOutputPath))
-		{
-			FN2CLogger::Get().LogWarning(
-				FString::Printf(TEXT("Skipping graph '%s': its folder would be outside the batch output folder"), *GraphName),
-				TEXT("BatchOrchestrator"));
-			continue;
-		}
-		if (!EnsureDirectoryExists(GraphDir))
-		{
-			FN2CLogger::Get().LogWarning(
-				FString::Printf(TEXT("Failed to create graph directory: %s"), *GraphDir),
-				TEXT("BatchOrchestrator"));
-			continue;
-		}
-
-		// Save the declaration file, for a language that has one (C++)
-		if (Language.bHasDeclarationFile && !Graph.Code.GraphDeclaration.IsEmpty())
-		{
-			FString HeaderPath = FPaths::Combine(GraphDir, Stem + Language.DeclarationExtension);
-			if (!FFileHelper::SaveStringToFile(Graph.Code.GraphDeclaration, *HeaderPath))
-			{
-				FN2CLogger::Get().LogWarning(
-					FString::Printf(TEXT("Failed to save header file: %s"), *HeaderPath),
-					TEXT("BatchOrchestrator"));
-			}
-		}
-
-		// Save implementation file with appropriate extension
-		if (!Graph.Code.GraphImplementation.IsEmpty())
-		{
-			FString Extension = Language.ImplementationExtension;
-			FString ImplPath = FPaths::Combine(GraphDir, Stem + Extension);
-			if (!FFileHelper::SaveStringToFile(Graph.Code.GraphImplementation, *ImplPath))
-			{
-				FN2CLogger::Get().LogWarning(
-					FString::Printf(TEXT("Failed to save implementation file: %s"), *ImplPath),
-					TEXT("BatchOrchestrator"));
-			}
-		}
-
-		// Save implementation notes
-		if (!Graph.Code.ImplementationNotes.IsEmpty())
-		{
-			FString NotesPath = FPaths::Combine(GraphDir, Stem + TEXT("_Notes.txt"));
-			if (!FFileHelper::SaveStringToFile(Graph.Code.ImplementationNotes, *NotesPath))
-			{
-				FN2CLogger::Get().LogWarning(
-					FString::Printf(TEXT("Failed to save notes file: %s"), *NotesPath),
-					TEXT("BatchOrchestrator"));
-			}
-		}
-
-		// Save the N2C Blueprint JSON (the serialized graph that was sent to the LLM)
-		if (!Item.CachedJsonPayload.IsEmpty())
-		{
-			FString JsonPath = FPaths::Combine(GraphDir, Stem + TEXT(".json"));
-			if (!FFileHelper::SaveStringToFile(Item.CachedJsonPayload, *JsonPath))
-			{
-				FN2CLogger::Get().LogWarning(
-					FString::Printf(TEXT("Failed to save JSON file: %s"), *JsonPath),
-					TEXT("BatchOrchestrator"));
-			}
-		}
-
-		// Record translation state in the graph state manager
-		FGuid GraphGuid;
-		FGuid::Parse(Item.TagInfo.GraphGuid, GraphGuid);
-
-		if (GraphGuid.IsValid())
-		{
-			// Build translation summary
-			FN2CTranslationSummary Summary;
-
-			// Get first line of declaration as preview
-			if (!Graph.Code.GraphDeclaration.IsEmpty())
-			{
-				int32 NewlineIndex;
-				if (Graph.Code.GraphDeclaration.FindChar('\n', NewlineIndex))
-				{
-					Summary.DeclarationPreview = Graph.Code.GraphDeclaration.Left(NewlineIndex).TrimStartAndEnd();
-				}
-				else
-				{
-					Summary.DeclarationPreview = Graph.Code.GraphDeclaration.TrimStartAndEnd();
-				}
-			}
-
-			// Count implementation lines
-			if (!Graph.Code.GraphImplementation.IsEmpty())
-			{
-				int32 LineCount = 1;
-				for (const TCHAR& Char : Graph.Code.GraphImplementation)
-				{
-					if (Char == '\n')
-					{
-						LineCount++;
-					}
-				}
-				Summary.ImplementationLines = LineCount;
-			}
-
-			Summary.bHasNotes = !Graph.Code.ImplementationNotes.IsEmpty();
-
-			// Get provider info
-			const FString Provider = GetSaveProvider();
-			const FString Model = GetSaveModel();
-
-			// The shared language id and record path, which UN2CGraphStateManager::LoadTranslation reads back
-			UN2CGraphStateManager::Get().RecordSavedTranslation(
-				GraphGuid,
-				GraphName,
-				FSoftObjectPath(Item.TagInfo.BlueprintPath),
-				GraphDir,
-				Provider,
-				Model,
-				Language.Enum,
-				Summary
-			);
-
-			FN2CLogger::Get().Log(
-				FString::Printf(TEXT("Recorded translation state for graph: %s"), *GraphName),
-				EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
-		}
+		return;
 	}
+	const FN2CGraphTranslation& Graph = Item.TranslationResponse.Graphs[Root->ResponseIndex];
+
+	FN2CTranslationSummary Summary;
+	// First line of the declaration as a preview
+	if (!Graph.Code.GraphDeclaration.IsEmpty())
+	{
+		int32 NewlineIndex;
+		Summary.DeclarationPreview = Graph.Code.GraphDeclaration.FindChar('\n', NewlineIndex)
+			? Graph.Code.GraphDeclaration.Left(NewlineIndex).TrimStartAndEnd()
+			: Graph.Code.GraphDeclaration.TrimStartAndEnd();
+	}
+	if (!Graph.Code.GraphImplementation.IsEmpty())
+	{
+		int32 LineCount = 1;
+		for (const TCHAR Char : Graph.Code.GraphImplementation)
+		{
+			LineCount += Char == '\n' ? 1 : 0;
+		}
+		Summary.ImplementationLines = LineCount;
+	}
+	Summary.bHasNotes = !Graph.Code.ImplementationNotes.IsEmpty();
+
+	// The shared language id and record path, which UN2CGraphStateManager::LoadTranslation reads back
+	UN2CGraphStateManager::Get().RecordSavedTranslation(
+		GraphGuid,
+		Item.TagInfo.GraphName,
+		FSoftObjectPath(Item.TagInfo.BlueprintPath),
+		Root->Folder,
+		GetSaveProvider(),
+		GetSaveModel(),
+		GetSaveLanguage(),
+		Summary
+	);
+
+	FN2CLogger::Get().Log(
+		FString::Printf(TEXT("Recorded translation state for graph: %s"), *Item.TagInfo.GraphName),
+		EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
 }
 
 void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
@@ -859,7 +764,7 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 	FJsonSerializer::Serialize(SummaryJson.ToSharedRef(), Writer);
 
 	FString SummaryPath = FPaths::Combine(BatchOutputPath, TEXT("BatchSummary.json"));
-	if (!FFileHelper::SaveStringToFile(SummaryContent, *SummaryPath))
+	if (!FN2CTranslationArchive::SaveTextAtomic(SummaryPath, SummaryContent))
 	{
 		FN2CLogger::Get().LogWarning(
 			FString::Printf(TEXT("Failed to save batch summary: %s"), *SummaryPath),
@@ -937,32 +842,6 @@ FString UN2CBatchTranslationOrchestrator::GetSaveModel() const
 	return Settings ? Settings->GetActiveModel() : FString(TEXT("Unknown"));
 }
 
-FString UN2CBatchTranslationOrchestrator::GetTranslationBasePath() const
-{
-	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	FString BasePath;
-
-	if (Settings && !Settings->CustomTranslationOutputDirectory.Path.IsEmpty())
-	{
-		BasePath = Settings->CustomTranslationOutputDirectory.Path;
-	}
-	else
-	{
-		BasePath = FPaths::ProjectSavedDir() / TEXT("NodeToCode") / TEXT("Translations");
-	}
-
-	return BasePath;
-}
-
-bool UN2CBatchTranslationOrchestrator::EnsureDirectoryExists(const FString& DirectoryPath) const
-{
-	if (!FPaths::DirectoryExists(DirectoryPath))
-	{
-		return FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*DirectoryPath);
-	}
-	return true;
-}
-
 // ==================== Batch JSON Export (No LLM) ====================
 
 bool UN2CBatchTranslationOrchestrator::BatchExportJson(
@@ -1003,16 +882,11 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 		FString::Printf(TEXT("Starting batch JSON export with %d items"), ExportItems.Num()),
 		EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
 
-	// Create output directory with timestamp
-	FDateTime Now = FDateTime::Now();
-	FString Timestamp = Now.ToString(TEXT("%Y-%m-%d-%H.%M.%S"));
-	FString OutputPath = GetTranslationBasePath() / FString::Printf(TEXT("BatchJson_%s"), *Timestamp);
-
-	if (!EnsureDirectoryExists(OutputPath))
+	// A new folder under the translation output directory: BatchJson_<yyyyMMdd-HHmmss-fff>_<id>
+	const FString OutputPath = FN2CTranslationArchive::CreateUniqueFolder(TEXT("BatchJson"));
+	if (OutputPath.IsEmpty())
 	{
-		FN2CLogger::Get().LogError(
-			FString::Printf(TEXT("Failed to create output directory: %s"), *OutputPath),
-			TEXT("BatchOrchestrator"));
+		FN2CLogger::Get().LogError(TEXT("Failed to create the JSON export directory"), TEXT("BatchOrchestrator"));
 		return false;
 	}
 	Result.OutputPath = OutputPath;
@@ -1135,7 +1009,7 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 		FString SafeGraphName = FN2CPathUtils::GetTranslationFileStem(Item.TagInfo.GraphName);
 		FString JsonPath = OutputPath / FString::Printf(TEXT("%s.json"), *SafeGraphName);
 
-		if (FFileHelper::SaveStringToFile(JsonOutput, *JsonPath))
+		if (FN2CTranslationArchive::SaveTextAtomic(JsonPath, JsonOutput))
 		{
 			Item.Status = EN2CBatchItemStatus::Completed;
 			Result.SuccessCount++;
@@ -1306,7 +1180,7 @@ void UN2CBatchTranslationOrchestrator::GenerateCombinedMarkdown(
 
 	// Save combined markdown
 	FString MarkdownPath = OutputPath / TEXT("Combined_Blueprints.md");
-	if (!FFileHelper::SaveStringToFile(MarkdownContent, *MarkdownPath))
+	if (!FN2CTranslationArchive::SaveTextAtomic(MarkdownPath, MarkdownContent))
 	{
 		FN2CLogger::Get().LogWarning(
 			FString::Printf(TEXT("Failed to save combined markdown: %s"), *MarkdownPath),

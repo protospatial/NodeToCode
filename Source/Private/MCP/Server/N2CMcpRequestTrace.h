@@ -32,6 +32,8 @@ public:
 	virtual void Reply(const FN2CMcpReply& InReply) override;
 	virtual void Stream(const FString& MessageJson, const FString& SessionId) override;
 	virtual void Close() override;
+	virtual void StreamKeepAlive(const FString& SessionId) override { Inner->StreamKeepAlive(SessionId); }
+	virtual bool IsClosedByClient() const override { return Inner->IsClosedByClient(); }
 
 	/** The line written for this request so far: what Reply or Close logs (for the specs) */
 	FString FormatLine(int32 Status, bool bIsError) const;

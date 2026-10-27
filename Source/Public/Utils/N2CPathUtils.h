@@ -14,11 +14,15 @@ class NODETOCODE_API FN2CPathUtils
 {
 public:
     /**
-     * Get the base path for translations output
-     * Checks settings for custom path, falls back to default
-     * @return The absolute path to the translations directory
+     * The translation output directory, absolute: the Custom Translation Output Directory setting (a relative one is
+     * under the project folder), else GetDefaultTranslationsBasePath. The only resolver of that folder: the
+     * translation archive (FN2CTranslationArchive), the tag manager, the MCP file tools and get-translation-output-
+     * directory all read it here.
      */
     static FString GetTranslationsBasePath();
+
+    /** The default translation output directory, absolute: <Project>/Saved/NodeToCode/Translations */
+    static FString GetDefaultTranslationsBasePath();
     
     /**
      * Validate that a path stays within a base directory (prevents traversal attacks)

@@ -15,7 +15,7 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
         TEXT("Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. ")
         TEXT("The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. ")
         TEXT("It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. ")
-        TEXT("Nothing is saved to the translation output directory. The result's structuredContent is the translation (graphs with their code, usage); ")
+        TEXT("The translation is also saved to the translation output directory (get-translation-output-directory) as a run folder with a manifest.json. The result's structuredContent is the translation (graphs with their code, usage); ")
         TEXT("one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, ")
         TEXT("savedTo and a resource_link to the file."),
         N2CMcpToolsets::Translation

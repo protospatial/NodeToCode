@@ -68,6 +68,11 @@ Stdio-to-HTTP bridge enabling MCP clients (Claude Desktop, etc.) to communicate 
         again and, if the entries now name another editor, replays the client's `initialize` there and resends
     *   Session management with `Mcp-Session-Id` (and `MCP-Protocol-Version` after initialize); a 404 replays
         `initialize` and resends once; stdin EOF waits for calls in flight, then sends DELETE
+    *   MCP 2026-07-28 (card 0210): a message whose `params._meta` has `io.modelcontextprotocol/protocolVersion` is
+        sent without a session, with `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` (`modern_headers`; Base64
+        sentinel when the name is not plain ASCII). Its `notifications/cancelled` closes the request's HTTP stream
+        (`close_response`) instead of being forwarded, which is how 2026-07-28 cancels over HTTP. Tests:
+        `Tests/python/test_mcp_bridge_modern.py`
     *   No read timeout by default (a held translation sends nothing until it finishes); `--timeout SECONDS` sets one
     *   Bearer token (card 0183): `TokenSource` sends `Authorization: Bearer <token>` on every request (initialize
         replays and DELETE too) from `--token-file`, else `NODETOCODE_MCP_TOKEN`, else the editor's per-user

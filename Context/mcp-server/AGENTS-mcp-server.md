@@ -139,8 +139,9 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 ### Sessions and versions (MCP 2025-11-25, Streamable HTTP on one `/mcp` endpoint)
 
 *   **Versions**: `initialize` negotiates `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05` (newest first):
-    the requested version when supported, otherwise `2025-11-25` (so a `2026-07-28` client is answered with
-    `2025-11-25`). `FN2CMcpProtocol::GetSupportedProtocolVersions()`.
+    the requested version when supported, otherwise `2025-11-25` (so an `initialize` asking for `2026-07-28` is
+    answered with `2025-11-25`). `FN2CMcpProtocol::GetSupportedProtocolVersions()`. The stateless `2026-07-28`
+    revision is served beside it on the same endpoint; see "2026-07-28 (stateless) requests" below.
 *   **Sessions**: every successful `initialize` creates a new session with a new random `Mcp-Session-Id` (a GUID,
     returned in the response header) holding the negotiated version, the client's `clientInfo` and `capabilities`, and
     whether `notifications/initialized` arrived (`FN2CMcpSession`). Two clients on one editor get two sessions. At
@@ -162,15 +163,64 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
     with Require MCP Bearer Token on, the bearer token (401, `FN2CMcpAuthToken::Authorize`, card 0183); then
     the body cap (more than `FN2CMcpProtocol::MaxRequestBodyBytes`, 8 MiB: **413** with -32600 and a null id,
     checked in `HandleMcpRequest` before the body is copied and again at the top of `FN2CMcpProtocol::Handle`;
-    HTTPServer has already read the whole body by then, see the threat model); then the core's verb, `MCP-Protocol-Version`, session and batch checks; then dispatch. The version check comes before
-    the session check so that a stateless 2026-07-28 probe (Claude Code first sends `server/discover` with
-    `MCP-Protocol-Version: 2026-07-28` and no session) gets 400 for the version; the client then falls back to
-    `initialize`.
+    HTTPServer has already read the whole body by then, see the threat model); then the core's verb check; then
+    a 2026-07-28 message goes to `HandleModern` (below); then the `MCP-Protocol-Version`, session and batch checks;
+    then dispatch.
 *   Tests: `NodeToCode.MCP.Core` (sessions, verbs, batches), `NodeToCode.MCP.Transport.LongRunningCall` (the same
     through `HandleMcpRequest`), probes P3 and P8 in `Tests/mcp_probe`, and the conformance suite's
     `server-session-lifecycle` scenario. Probe scripts get their session from `Tests/mcp_probe/mcp_session.py`.
 *   The tool list is the same for every session and fixed while the server runs (card 0165), so nothing per
     session needs to track it.
+
+### 2026-07-28 (stateless) requests (card 0210)
+
+The same `/mcp` endpoint serves the stateless 2026-07-28 revision (the "dual-era" server of the spec's
+basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`. Claude Code 2.1.310 opens with a
+2026-07-28 `server/discover` probe and, now that it gets an answer, stays in that era: no `initialize`, no session.
+
+*   **Which era**: a message whose `params._meta` has `io.modelcontextprotocol/protocolVersion`, or whose
+    `MCP-Protocol-Version` header is a modern version (`FN2CMcpProtocol::GetModernProtocolVersions()`: `2026-07-28`),
+    is modern (`IsModernMessage`). `initialize` always selects the legacy era, whatever it carries. Everything else is
+    legacy and behaves exactly as above.
+*   **Per-request checks, in order**: one JSON object per POST (a batch is **400** -32600); a notification or a
+    client response gets **202** and is ignored (2026-07-28 defines none over HTTP); `_meta` must carry
+    `io.modelcontextprotocol/protocolVersion` (a string) and `io.modelcontextprotocol/clientCapabilities` (an object),
+    else **400** -32602; the `MCP-Protocol-Version` header must equal the `_meta` version, else **400** -32020
+    (HeaderMismatch); an unsupported version is **400** -32022 with `data: {supported, requested}`; `Mcp-Method` must
+    equal `method`, and for `tools/call`, `prompts/get` and `resources/read` `Mcp-Name` must equal `params.name` or
+    `params.uri` after Base64-sentinel decoding (`DecodeHeaderValue`), else **400** -32020. An `Mcp-Session-Id`
+    header is ignored and none is minted.
+*   **Methods**: `server/discover` (`supportedVersions` `["2026-07-28"]`, the same capabilities as `initialize`,
+    `instructions`), `subscriptions/listen`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`,
+    `resources/read`, `prompts/list`, `prompts/get`. Anything else, `ping`, `logging/setLevel` and
+    `nodetocode/cancelTask` included, is **404** with -32601.
+*   **Results**: every result gets `resultType: "complete"` and `_meta["io.modelcontextprotocol/serverInfo"]`
+    (`DecorateModernResult`). `tools/list`, `prompts/list` and `resources/templates/list` get `ttlMs`
+    `FN2CMcpProtocol::ListTtlMs` (60000; they are fixed while the server runs) and `resources/list` and
+    `resources/read` `ttlMs` 0; all `cacheScope: "private"`. An unknown resource is -32602 (2026-07-28 replaced -32002).
+*   **Long-running calls** (`translate-focused-blueprint`): the same call path with `bModern`. It streams whenever the
+    responder can stream and the client accepts `text/event-stream` (UE 5.8), with or without a `progressToken`
+    (progress only with one), and the response gets `resultType`. The stream is watched: every
+    `StreamKeepAliveSeconds` (2 s) a `: keep-alive` SSE comment is written, and when the client has closed the
+    stream (`IN2CMcpResponder::IsClosedByClient`: on 5.8, HTTPServer has destroyed the connection and released the
+    body queue) the call is cancelled. That is 2026-07-28's cancellation over HTTP, so detection takes one or two beats.
+    On 5.6/5.7 the call holds one JSON response, as for legacy clients (decision 0085 (b)), and closing it cancels
+    nothing.
+*   **`subscriptions/listen`** (UE 5.8): answers on a `text/event-stream` response that stays open. The first message
+    is `notifications/subscriptions/acknowledged` with the subscription id (the request id) in `_meta` and the subset
+    honoured: only `toolsListChanged`, since prompts, resources and resource contents never send change
+    notifications here. `notifications/tools/list_changed` (from `FN2CMcpToolManager::OnToolListChanged`) then goes to
+    every listener that asked, tagged with its id. Keep-alives as above; a closed stream is dropped. `StopServer`
+    calls `CloseSubscriptions`, which sends each one its completion result (`resultType` complete, the id in `_meta`)
+    and closes it. On 5.6/5.7 (no stream) it is **404** -32601.
+*   **Stdio bridge**: a client message with the modern `_meta` is sent without a session, with `MCP-Protocol-Version`,
+    `Mcp-Method` and `Mcp-Name` (Base64 sentinel when needed); its `notifications/cancelled` closes the request's HTTP
+    stream instead of being forwarded (`Content/Python/mcp_bridge/nodetocode_bridge.py`).
+*   Not served: MRTR (`InputRequiredResult`; the server never asks the client for input), the Tasks extension (card
+    0211), `x-mcp-header` custom headers (no tool declares one), and `notifications/message` (no logging capability).
+*   Tests: `NodeToCode.MCP.Modern` (a full exchange and every error case, streaming, cancel on close,
+    `subscriptions/listen`), `Tests/python/test_mcp_bridge_modern.py` (the bridge's headers and cancel by close), and
+    `Tests/mcp_probe/live_modern_0210.py` (both eras on one editor, the listen stream, the bridge, Claude Code).
 
 ### Capabilities, errors and cancellation (card 0110)
 

@@ -6,6 +6,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Delegates/IDelegateInstance.h"
+#include "Containers/Ticker.h"
 #include "HAL/CriticalSection.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 
@@ -106,6 +107,16 @@ public:
 
 	/** Ends a stream opened by Stream. */
 	virtual void Close() = 0;
+
+	/**
+	 * Writes an SSE comment (": keep-alive"), opening the stream when nothing was written yet, so a stream that carries
+	 * no message for a while still notices a client that went away (2026-07-28 streams, card 0210). Only called when
+	 * CanStream() is true; a transport that cannot tell does nothing.
+	 */
+	virtual void StreamKeepAlive(const FString& SessionId) {}
+
+	/** True once the client closed the stream this responder opened (the transport saw the connection go away) */
+	virtual bool IsClosedByClient() const { return false; }
 };
 
 /**
@@ -136,6 +147,12 @@ struct FN2CMcpCatalogs
  * DELETE ends the session and cancels its running calls. Client responses and notifications get 202 with no body.
  * JSON-RPC batches are accepted only on sessions negotiated at 2025-03-26 (batching was added there and removed in
  * 2025-06-18) and get 400 with -32600 otherwise.
+ *
+ * 2026-07-28 (card 0210, N2CMcpProtocolModern.cpp): a message whose params._meta names io.modelcontextprotocol/
+ * protocolVersion (or whose MCP-Protocol-Version is a modern version) is served statelessly by HandleModern: no session,
+ * the _meta and header checks (-32602, -32020, -32022, all 400), server/discover, subscriptions/listen (UE 5.8),
+ * 404 -32601 for any other method, resultType/serverInfo/ttlMs/cacheScope on results, and a long-running call that is
+ * cancelled when its client closes the stream. initialize always selects the legacy era described above.
  *
  * Capabilities and errors (card 0110): initialize advertises tools, resources and prompts (listChanged false), not logging,
  * and returns instructions for the agent. resources/templates/list lists the resource templates. An unknown tool or
@@ -213,8 +230,39 @@ public:
 	 */
 	bool EndSession(const FString& SessionId, const FString& Reason);
 
-	/** Supported protocol versions, newest first */
+	/** Supported legacy (initialize and session) protocol versions, newest first */
 	static const TArray<FString>& GetSupportedProtocolVersions();
+
+	/**
+	 * Supported modern (stateless, per-request _meta) protocol versions, newest first: 2026-07-28 (card 0210). These
+	 * are what server/discover lists and what UnsupportedProtocolVersionError names; initialize never negotiates them.
+	 */
+	static const TArray<FString>& GetModernProtocolVersions();
+
+	/**
+	 * The value of an Mcp-Name or Mcp-Param-* header: the text itself, or the UTF-8 text inside the 2026-07-28 Base64
+	 * sentinel "=?base64?<Base64>?=". Unset when the sentinel holds no valid Base64 or the value has characters a header
+	 * may not carry (anything outside visible ASCII, space and tab).
+	 */
+	static TOptional<FString> DecodeHeaderValue(const FString& Value);
+
+	/** How many subscriptions/listen streams are open */
+	int32 GetSubscriptionCount() const;
+
+	/**
+	 * Ends every subscriptions/listen stream gracefully: its completion result (resultType complete, the subscription
+	 * id in _meta), then the stream closes. Called when the server stops.
+	 */
+	void CloseSubscriptions();
+
+	/** Specs: runs the stream keep-alive and closed-client check now instead of on the next ticker beat */
+	void TickStreamsForTesting() { TickStreams(0.f); }
+
+	/** Seconds between keep-alive comments on 2026-07-28 streams (also how soon a closed stream is noticed) */
+	static constexpr float StreamKeepAliveSeconds = 2.0f;
+
+	/** Cache hint on 2026-07-28 tools/list, prompts/list and resources/templates/list results (fixed while the server runs) */
+	static constexpr int32 ListTtlMs = 60000;
 
 	/** InitializeResult.instructions: which tools an agent starts with */
 	static const FString& GetServerInstructions();
@@ -239,13 +287,67 @@ private:
 	/** Creates the session a successful initialize asked for and returns its id */
 	FString CreateSession();
 
+	/**
+	 * A tools/call (SingleObject) of a long-running tool, directly or through call_tool: starts its call, answered on
+	 * this request, and returns true. False for any other call, which the caller answers at once.
+	 */
+	bool TryHandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
+		const TSharedPtr<FJsonObject>& SingleObject, const FString& SessionId, bool bModern);
+
 	/** True when ToolName is a tool tools/list holds that is marked bIsLongRunning */
 	bool IsLongRunningTool(const FString& ToolName) const;
 
-	/** Starts a long-running tool's call and answers the request from it (see Handle) */
+	/**
+	 * Starts a long-running tool's call and answers the request from it (see Handle). bModern: a 2026-07-28 request,
+	 * whose call streams whenever the transport and client can (progress only with a progressToken), whose response
+	 * gets resultType and serverInfo, and which is cancelled when the client closes its stream.
+	 */
 	void HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
 		const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
-		const FString& SessionId);
+		const FString& SessionId, bool bModern = false);
+
+	/** True when Single is a 2026-07-28 message: its params._meta names a protocol version, or MCP-Protocol-Version is a modern one */
+	static bool IsModernMessage(const FN2CMcpInbound& Inbound, const TSharedPtr<FJsonObject>& Single);
+
+	/** Answers a 2026-07-28 message statelessly (N2CMcpProtocolModern.cpp) */
+	void HandleModern(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder, const TSharedPtr<FJsonValue>& JsonValue);
+
+	/** subscriptions/listen: acknowledges on a stream kept open for notifications/tools/list_changed (UE 5.8) */
+	void HandleSubscriptionsListen(const TSharedRef<IN2CMcpResponder>& Responder, const TSharedPtr<FJsonObject>& Params,
+		const TSharedPtr<FJsonValue>& Id);
+
+	/** The capabilities initialize and server/discover advertise */
+	static TSharedRef<FJsonObject> BuildServerCapabilities();
+
+	/** {name, version} of this server */
+	static TSharedRef<FJsonObject> BuildServerInfo();
+
+	/** Adds resultType, the serverInfo _meta and, for Method's list and read results, ttlMs and cacheScope */
+	static void DecorateModernResult(const FString& Method, const TSharedPtr<FJsonObject>& Result);
+
+	/** The serialized response ResponseJson with DecorateModernResult applied to its result (unchanged when it has none) */
+	static FString DecorateModernResponseJson(const FString& Method, const FString& ResponseJson);
+
+	/** Keep-alive comments on watched streams; cancels the call (or ends the subscription) of a stream its client closed */
+	bool TickStreams(float DeltaTime);
+
+	/** Starts the stream ticker when a watched stream exists */
+	void EnsureStreamTicker();
+
+	/** A 2026-07-28 stream the core watches: a long-running call's (TaskId) or a subscription's (SubscriptionId) */
+	struct FWatchedStream
+	{
+		TSharedPtr<IN2CMcpResponder> Responder;
+		FGuid TaskId;
+		TSharedPtr<FJsonValue> SubscriptionId;
+		bool bToolsListChanged = false;
+		/** Set when the call answered (or ended): the stream is no longer watched */
+		TSharedPtr<bool> bDone;
+		/** Set once the stream is open (the first keep-alive opens it) */
+		TSharedPtr<bool> bOpened;
+	};
+	TArray<FWatchedStream> WatchedStreams;
+	FTSTicker::FDelegateHandle StreamTickerHandle;
 
 	bool ProcessBatchRequest(const TArray<TSharedPtr<FJsonValue>>& BatchArray, FString& OutResponseBody, int32& OutStatusCode);
 	bool ProcessRequest(const FJsonRpcRequest& Request, FJsonRpcResponse& OutResponse);

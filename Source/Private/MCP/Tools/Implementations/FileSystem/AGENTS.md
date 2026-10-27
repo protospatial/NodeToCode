@@ -243,9 +243,9 @@ read-file "Plugins/NodeToCode/Source/Public/NodeToCode.h"
 ```
 
 ### Reading Saved Translations
-Translations run from the editor's NodeToCode window are saved under the translation output directory
-(`get-translation-output-directory`; default `Saved/NodeToCode/Translations`). `translate-focused-blueprint` saves
-nothing; its translation is the tool result. When a custom output directory is outside the project, pass its
+Every translation is saved under the translation output directory (`get-translation-output-directory`; default
+`Saved/NodeToCode/Translations`), one run folder each with a `manifest.json`: the editor's window, translate-batch,
+translate-focused-blueprint and the Python API. When a custom output directory is outside the project, pass its
 `absolutePath` (and the rest of the path) instead of a project-relative path. The folder layout is in
 `../Translation/AGENTS.md`.
 
@@ -253,14 +253,14 @@ nothing; its translation is the tool result. When a custom output directory is o
 # 1. List saved translations
 read-path "Saved/NodeToCode/Translations"
 
-# 2. List one translation (folder name <Blueprint>_<YYYY-MM-DD-HH.MM.SS>)
-read-path "Saved/NodeToCode/Translations/BP_Player_2026-01-15-10.30.00"
+# 2. List one translation run (folder name <Blueprint>_<yyyyMMdd-HHmmss-fff>_<run id>); manifest.json lists its entries
+read-path "Saved/NodeToCode/Translations/BP_Player_20260115-103000-123_1a2b3c4d"
 
-# 3. Read a graph's translated code (one folder per graph)
-read-file "Saved/NodeToCode/Translations/BP_Player_2026-01-15-10.30.00/EventGraph/EventGraph.cpp"
+# 3. Read a graph's translated code (one folder per graph, struct or enum of the response)
+read-file "Saved/NodeToCode/Translations/BP_Player_20260115-103000-123_1a2b3c4d/EventGraph/EventGraph.cpp"
 
 # 4. With a custom output directory outside the project, use its absolute path
-read-path "D:/Translations/BP_Player_2026-01-15-10.30.00"
+read-path "D:/Translations/BP_Player_20260115-103000-123_1a2b3c4d"
 ```
 
 ### Reading a Large File in Parts

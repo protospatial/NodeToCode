@@ -278,6 +278,14 @@ its environment when no key is saved, so a live check never types or saves a key
   `token` the files hold the `NODETOCODE_MCP_TOKEN` references and no 64-hex token; the log must hold the Claude
   Desktop snippet. With `--claude`, the headless Claude Code CLI uses the generated `.mcp.json` and calls a tool.
   Report: `logs/live_client_config_0206.json`.
+- `live_modern_0210.py --engine ... --project ... [--claude]` (no provider key) checks MCP 2026-07-28 beside the
+  legacy session era in one headless session (card 0210): `server/discover`, `tools/list` (`ttlMs`, `cacheScope`) and
+  a `tools/call` with `resultType` and no `Mcp-Session-Id`; -32020 for a wrong `Mcp-Method`, -32022 for an unsupported
+  version, 404 -32601 for `ping`; an `initialize` session as before; on UE 5.8 a raw-socket `subscriptions/listen`
+  gets the acknowledgement on `text/event-stream`, and after the socket closes the editor logs that it noticed (on
+  5.6/5.7 404 -32601); the stdio bridge carries a modern `server/discover` and `tools/list`; with `--claude`, the
+  headless Claude Code CLI connects (its `server/discover` is in the log) and calls a tool.
+  Report: `logs/live_modern_0210.json`.
 - `live_focus_0150.py --engine ... --project ... --label 5.8 [--no-cli]` (no provider key) checks that the focused
   Blueprint follows what was opened last (card 0150): three in-memory Actor Blueprints under a fresh
   `/Game/N2CTest/Focus0150_<time>` folder, opened in turn with open-blueprint-asset, re-opened while already open,
