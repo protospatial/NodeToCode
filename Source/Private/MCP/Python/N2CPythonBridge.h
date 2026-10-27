@@ -66,7 +66,8 @@ public:
 	static FString ListBlueprintGraphs(const FString& BlueprintPath);
 
 	/**
-	 * Read N2C JSON text (a saved N2C_BP_*.json, or get_focused_blueprint_json's "n2c_json") with NodeToCode's reader.
+	 * Read N2C JSON text (a saved N2C_BP_*.json, get_focused_blueprint_json's "n2c_json", or the agent document of
+	 * get_blueprint_n2c_json, whose "ids" {"short", "guid"} are read as the IDs) with NodeToCode's reader.
 	 * Reads version 1.x (1.2.x and earlier 2.0 builds) and 2.x into the current model; the result is that model
 	 * written as N2C JSON of the current version (a 1.x document comes back as 2.0.0 with the same nodes and flows;
 	 * its node-only exec entries "N1->N2" stay node-only, as the document never said which pins they use).
@@ -74,7 +75,8 @@ public:
 	 * @param N2CJson The N2C JSON text.
 	 * @return JSON string: {"success": true, "data": {"source_version": "1.0.0", "version": "2.0.0", "valid": bool,
 	 *         "graphs": n, "nodes": n, "data_edges": n, "exec_edges": n, "n2c_json": {...}}, "error": null}, or an
-	 *         error when the text is not N2C JSON.
+	 *         error when the text is not N2C JSON, or when a graph, node or pin had to be skipped as malformed (the
+	 *         error names them; "data" still holds the rest of the read, with its "warnings").
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString ReadN2CJson(const FString& N2CJson);

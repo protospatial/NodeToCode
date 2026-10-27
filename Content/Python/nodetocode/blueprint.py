@@ -142,7 +142,8 @@ def list_blueprint_graphs(blueprint_path: str) -> Dict[str, Any]:
 
 def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
     """
-    Read N2C JSON text with NodeToCode's own reader, for example a saved N2C_BP_*.json translation file.
+    Read N2C JSON text with NodeToCode's own reader, for example a saved N2C_BP_*.json translation file or the
+    'n2c_json' document get_blueprint_n2c_json returns (its node and pin 'ids' {'short', 'guid'} are read as the IDs).
 
     Version 1.x documents (NodeToCode 1.2.x and earlier 2.0 builds) and 2.x documents are read into the current
     model and written back as current N2C JSON, so a 1.x file comes back with the same nodes and flows and
@@ -177,6 +178,9 @@ def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
             } or None,
             'error': str or None
         }
+
+        A read that had to skip a graph, node or pin (a missing required field such as its "id") is not a success:
+        'success' is False, 'error' names the skipped parts, and 'data' still holds the rest of the read.
 
     Example:
         text = open(path, encoding='utf-8').read()

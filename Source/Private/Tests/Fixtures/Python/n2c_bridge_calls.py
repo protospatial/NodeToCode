@@ -17,7 +17,7 @@ Groups (N2C_CTX["group"]):
 - "focused": the scratch Blueprint is open with its function graph focused (UE 5.8). The normal calls must succeed:
   read, compile, save (only if dirty: the package is never dirty), find, search, add a node, set a pin, connect, comment,
   add and remove function pins, tag, list and remove the tag, delete, open.
-- "export_round_trip": read_n2c_json on get_blueprint_n2c_json's document keeps every node (known defect, card 0505).
+- "export_round_trip": read_n2c_json on get_blueprint_n2c_json's document keeps every node, with no warning (card 0505).
 """
 
 import json
@@ -225,8 +225,8 @@ def focused(report, ctx):
 
 
 def export_round_trip(report, ctx):
-    """read_n2c_json on the document get_blueprint_n2c_json returns keeps every node (known defect: the by-path
-    export writes node ids as {short, guid} objects, the reader takes only a string id and skips every node)"""
+    """read_n2c_json on the document get_blueprint_n2c_json returns keeps every node and gives no warning (card 0505:
+    the by-path export writes node and pin ids as {short, guid} objects, which the reader once skipped)"""
     read = report.call('get_blueprint_n2c_json', [ctx['blueprintPath'], ctx['functionName'], '', -1, False, True],
                        expect=True)
     document = data(read).get('n2c_json')
@@ -237,6 +237,8 @@ def export_round_trip(report, ctx):
     again = report.call('read_n2c_json', [json.dumps(document)], expect=True)
     report.check('read_n2c_json keeps every node of the export', exported > 0 and data(again).get('nodes') == exported,
                  f'exported {exported} nodes, read back {data(again).get("nodes")} (valid: {data(again).get("valid")})')
+    report.check('read_n2c_json gives no warning for the export', data(again).get('warnings') == [],
+                 f'warnings: {str(data(again).get("warnings"))[:300]}')
 
 
 def main(ctx_text):

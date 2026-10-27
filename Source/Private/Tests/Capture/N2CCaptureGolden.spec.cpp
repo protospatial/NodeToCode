@@ -51,6 +51,7 @@
 #include "Kismet/KismetTextLibrary.h"
 #include "Kismet2/StructureEditorUtils.h"
 #include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpGetFocusedBlueprintTool.h"
+#include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
 #include "MCP/Utils/N2CMcpVariableUtils.h"
@@ -3117,6 +3118,51 @@ void FN2CCaptureGoldenSpec::Define()
 				}
 			}
 			TestEqual(TEXT("pins checked"), PinsChecked, Result.Pins.Num());
+		});
+
+		// Card 0505: the agent document writes each "id" as "ids" {"short", "guid"}; the reader once skipped every node
+		// of it (an Error log line each) and still read the document
+		It(TEXT("reads the agent document of every case back with every node and pin, without a warning"), [this]()
+		{
+			for (const FCaptureCase& Case : Cases)
+			{
+				const FCaptured Captured = Capture(Case);
+				if (!Captured.Capture.IsValid())
+				{
+					continue;
+				}
+				const FN2CBlueprint& Exported = Captured.Result.Blueprint;
+				FN2CBlueprint Read;
+				TArray<FN2CJsonReadWarning> Warnings;
+				if (!TestTrue(Case.Name + TEXT(": FromJson reads the agent document"),
+					FN2CSerializer::FromJson(N2CMcpBlueprintExport::ToResultJson(Captured.Result, /*bCompact*/ true), Read, Warnings)))
+				{
+					continue;
+				}
+				for (const FN2CJsonReadWarning& Warning : Warnings)
+				{
+					AddError(FString::Printf(TEXT("%s: read warning %s at %s"), *Case.Name, *Warning.Code, *Warning.Path));
+				}
+				int32 ExportedNodes = 0;
+				int32 ReadNodes = 0;
+				for (const FN2CGraph& Graph : Exported.Graphs)
+				{
+					ExportedNodes += Graph.Nodes.Num();
+				}
+				for (const FN2CGraph& Graph : Read.Graphs)
+				{
+					ReadNodes += Graph.Nodes.Num();
+				}
+				TestTrue(Case.Name + TEXT(": the case has nodes"), ExportedNodes > 0);
+				TestEqual(Case.Name + TEXT(": nodes read back"), ReadNodes, ExportedNodes);
+				// Every node, pin, ID and flow: the read model is the captured one (the GUIDs are not part of the model)
+				const FString ExportedJson = FN2CSerializer::ToJson(Exported, EN2CJsonStyle::Pretty);
+				const FString ReadJson = FN2CSerializer::ToJson(Read, EN2CJsonStyle::Pretty);
+				if (ReadJson != ExportedJson)
+				{
+					ReportDifference(Case.Name + TEXT(": the agent document read back"), ExportedJson, ReadJson);
+				}
+			}
 		});
 	});
 

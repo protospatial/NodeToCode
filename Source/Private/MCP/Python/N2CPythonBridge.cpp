@@ -265,6 +265,30 @@ FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
 		WarningValues.Add(MakeShared<FJsonValueObject>(Entry));
 	}
 	Data->SetArrayField(TEXT("warnings"), WarningValues);
+
+	// A read that lost part of the graph is not a success (card 0505): the result names what was skipped and still
+	// carries the rest, warnings included, as data
+	TArray<FString> Skipped;
+	for (const FN2CJsonReadWarning& Warning : Warnings)
+	{
+		if (Warning.Code == N2CJsonContract::ReadWarning::SkippedGraph || Warning.Code == N2CJsonContract::ReadWarning::SkippedNode
+			|| Warning.Code == N2CJsonContract::ReadWarning::SkippedPin)
+		{
+			Skipped.Add(FString::Printf(TEXT("%s %s"), *Warning.Code, *Warning.Path));
+		}
+	}
+	if (!Skipped.IsEmpty())
+	{
+		constexpr int32 MaxNamed = 5;
+		const int32 Named = FMath::Min(Skipped.Num(), MaxNamed);
+		FString List = FString::Join(TArrayView<const FString>(Skipped.GetData(), Named), TEXT(", "));
+		if (Skipped.Num() > Named)
+		{
+			List += FString::Printf(TEXT(" and %d more"), Skipped.Num() - Named);
+		}
+		return MakeErrorJson(FString::Printf(TEXT("The N2C JSON was read with %d part(s) skipped as malformed (a missing required ")
+			TEXT("field such as a node's or pin's \"id\"): %s. See data.warnings."), Skipped.Num(), *List), Data);
+	}
 	return MakeSuccessJson(Data);
 }
 
