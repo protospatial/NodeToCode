@@ -270,6 +270,14 @@ its environment when no key is saved, so a live check never types or saves a key
   run-python, makes the old token 401 and the new one 200, and the running bridge keeps working. With `--claude`, the
   headless Claude Code CLI connects over HTTP with the documented `headers` snippet and calls a tool. No token is
   printed. Report: `logs/live_bearer_token_0183.json`.
+- `live_client_config_0206.py --engine ... --project ... [--claude]` (no provider key, no lock: it never reads the
+  token) runs `N2C.Mcp.WriteClientConfig` through run-python in one headless session on a non-default port, into a
+  scratch folder whose name has a space and which already holds a `.mcp.json` and `.codex/config.toml` with another
+  server (card 0206). Every JSON file must parse, keep the other server and name the bound port; `config.toml` must
+  parse (`tomllib`) and keep its other table and top-level key; a second run must leave every file byte for byte; with
+  `token` the files hold the `NODETOCODE_MCP_TOKEN` references and no 64-hex token; the log must hold the Claude
+  Desktop snippet. With `--claude`, the headless Claude Code CLI uses the generated `.mcp.json` and calls a tool.
+  Report: `logs/live_client_config_0206.json`.
 - `live_focus_0150.py --engine ... --project ... --label 5.8 [--no-cli]` (no provider key) checks that the focused
   Blueprint follows what was opened last (card 0150): three in-memory Actor Blueprints under a fresh
   `/Game/N2CTest/Focus0150_<time>` folder, opened in turn with open-blueprint-asset, re-opened while already open,

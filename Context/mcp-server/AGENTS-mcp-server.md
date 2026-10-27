@@ -788,9 +788,10 @@ picks, the choice is not saved; the warning says to remove it from the project f
   project's plugins (`/Engine`, engine and Fab plugins, `/NodeToCode`); read by
   `FN2CMcpContentBrowserUtils::IsWritableContentPath` (card 0182; the policy is "Where tools may write" in
   `Source/Private/MCP/Tools/Implementations/ContentBrowser/AGENTS.md`). It changes no tool count.
-- **Require MCP Bearer Token** (default off for 2.0-beta, `bDefaultRequireMcpBearerToken`; turn it on by default once
-  every generated client config carries the header, card 0206): `/mcp` then needs `Authorization: Bearer <token>`.
-  See "Bearer token" below.
+- **Require MCP Bearer Token** (default off for 2.0-beta, `bDefaultRequireMcpBearerToken`; the configs
+  `N2C.Mcp.WriteClientConfig` writes carry the header when it is on (card 0206), and turning it on by default is a
+  separate decision, rec-mcp-spec-clients-3): `/mcp` then needs `Authorization: Bearer <token>`. See "Bearer token"
+  below.
 
 All are read once per editor session, so a change needs an editor restart.
 
@@ -811,6 +812,36 @@ VS Code and Cursor `"headers": {"Authorization": "Bearer ${env:NODETOCODE_MCP_TO
 `"headers": {"Authorization": "Bearer $NODETOCODE_MCP_TOKEN"}`; UE 5.8 MCP Client Toolset Auth Bearer Token with the
 token as Api Key. Spec `NodeToCode.MCP.AuthToken`; pytest `Tests/python/test_mcp_bridge_token.py`; live check
 `Tests/mcp_probe/live_bearer_token_0183.py` (needs the `user-secrets` lock).
+
+Client configs (card 0206): `Source/Private/MCP/Server/N2CMcpClientConfig.{h,cpp}`, console command
+`N2C.Mcp.WriteClientConfig [all|claude|cursor|vscode|gemini|codex|desktop ...] [token|notoken] [dir=<folder>]`
+(default `all`, the project folder, and the token when Require MCP Bearer Token is on; `dir=` takes the rest of the
+line, so it comes last and may hold spaces). It writes or merges the `nodetocode` entry, with the URL
+`http://127.0.0.1:<port>/mcp` on the port the server is bound to (the Server Port setting when it is not running):
+
+| Client | File | Entry |
+|---|---|---|
+| Claude Code | `.mcp.json` | `mcpServers.nodetocode`: `type` http, `url`, `headers` |
+| Cursor | `.cursor/mcp.json` | `mcpServers.nodetocode`: `url`, `headers` |
+| VS Code | `.vscode/mcp.json` | `servers.nodetocode`: `type` http, `url`, `headers` |
+| Gemini CLI | `.gemini/settings.json` | `mcpServers.nodetocode`: `httpUrl`, `headers` |
+| Codex | `.codex/config.toml` | `[mcp_servers.nodetocode]`: `url`, `bearer_token_env_var` |
+| Claude Desktop | none (stdio only) | logs a `claude_desktop_config.json` snippet that runs `launch_bridge.bat`/`.sh --project <uproject>` |
+
+The paths and field names are those of Epic's UE 5.8 `ModelContextProtocolClientConfig.cpp`, which writes them only
+for its own server and overwrites a malformed file or refuses an existing Codex file. Here every other key and server
+is kept, the `nodetocode` entry is replaced, and a second run leaves the file byte for byte (reported `already up to
+date`). A JSON file that does not parse (comments, trailing commas) or whose servers key is not an object is left as
+it is with a warning; so is a `config.toml` that defines `nodetocode` as an inline table or dotted keys. Codex has no
+TOML library in UE, so `MergeToml` edits lines: it replaces `[mcp_servers.nodetocode]` and its sub-tables where they
+stand (or appends the table), and keeps the file's line endings. Security: the token itself is never written. With
+the token on, each entry reads it from the `NODETOCODE_MCP_TOKEN` environment variable in that client's syntax (the
+"Bearer token" headers above), so the files are safe to commit and the log says to set the variable
+(`N2C.Mcp.CopyToken`); the stdio bridge reads the token file itself. Files are written through
+`FN2CFileUtils::SaveStringAtomically` (UTF-8, no backup). The server's protocol versions are those under "Sessions and
+versions" (2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05). There is no settings button yet: the settings classes
+belong to another change. Spec `NodeToCode.MCP.ClientConfig`; live check `Tests/mcp_probe/live_client_config_0206.py`.
+User page: `wiki/developers/Connecting-an-MCP-Client.md`.
 
 Ports and shutdown (card 0112): `FN2CMcpHttpServerManager::StartServer(Port, Range)` checks each port with a bind of
 its own before handing it to HTTPServer (`GetHttpRouter(Port, true)`), so a port another process or plugin holds is

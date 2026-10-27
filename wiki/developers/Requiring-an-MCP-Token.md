@@ -32,7 +32,10 @@ clients) reads the token file itself on every request, so it needs no change and
 also takes `--token-file <path>`, or the token in the `NODETOCODE_MCP_TOKEN` environment variable.
 
 An HTTP client sends the header. Put the token in the `NODETOCODE_MCP_TOKEN` environment variable of the client (or
-paste it in place of the variable), next to the URL from [Connecting an MCP Client](Connecting-an-MCP-Client):
+paste it in place of the variable), next to the URL from [Connecting an MCP Client](Connecting-an-MCP-Client).
+With the setting on, `N2C.Mcp.WriteClientConfig` writes these settings into the project's client files for you
+([Let NodeToCode write the config files](Connecting-an-MCP-Client#let-nodetocode-write-the-config-files)), always
+as the variable, never the token:
 
 | Client | Setting |
 |---|---|
