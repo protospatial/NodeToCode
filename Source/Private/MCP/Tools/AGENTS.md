@@ -278,7 +278,7 @@ export or translation work goes in the unfrozen toolsets.
 | `BlueprintVariableTools` | 0291 (search-variable-types), 0295, 0274 (targets); 0283 is done |
 | `BlueprintCompileTools` | 0274 (targets); 0290 is done |
 | `BlueprintClassTools` | 0288 (search-blueprint-classes duplicates and counts) |
-| `BlueprintComponentTools` | 0287 (list-components-in-actor duplicates and type filter), 0274 (targets) |
+| `BlueprintComponentTools` | 0274 (targets) |
 | `ContentBrowserTools` | 0286 (open-blueprint-asset on unknown graphs); 0182, 0281, 0284 and 0285 are done |
 | Epic-overlap tools in `BlueprintDiscoveryTools` | 0289 (list-blueprint-functions and list-overridable-functions) |
 | `UN2CStructUtilsLibrary` | 0282 (unnamed fields, deleted fields) |

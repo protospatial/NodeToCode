@@ -168,7 +168,10 @@ parent, its own name as parent, missing socket, taken name, non-scene component 
 classes resolve by short name and component Blueprint path, `Mesh` on a Character and an inherited component take
 children, a delete promotes children and removes Get nodes, a bound event is reported without opening an editor,
 DefaultSceneRoot and native and inherited components are refused, and each edit is one undo step that Undo then Redo
-restore exactly (graphs and SCS tree).
+restore exactly (graphs and SCS tree). Its list-components-in-actor case (card 0287) checks the type filter through
+the whole tree: `primitive` finds a mesh under a scene component (at the top level, keeping its `parentComponent`)
+and a Character's capsule and mesh once each, `actor` its movement component, any case is accepted, `totalCount`
+matches what is listed, and an unknown filter is refused with `INVALID_ARGUMENT`.
 
 `NodeToCode.MCP.Structure` (`MCP/N2CMcpStructureTools.spec.cpp`, card 0163) runs the structure tools end to end, the
 way an agent chains them: create-folder, then create-blueprint-class of an Actor, a Widget (a `UWidgetBlueprint`) and

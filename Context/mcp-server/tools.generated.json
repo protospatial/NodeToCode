@@ -4192,7 +4192,7 @@
 						"actor",
 						"primitive"
 					],
-					"description": "Filter by component type"
+					"description": "List only components of this type (any case): scene (SceneComponent), actor (ActorComponent but not SceneComponent), primitive (PrimitiveComponent). The whole tree is searched: a matching component under one that does not match moves up to where that one was and keeps its parentComponent. Any other value is refused"
 				}
 			],
 			"inputSchema":
@@ -4221,7 +4221,7 @@
 							"primitive"
 						],
 						"default": "all",
-						"description": "Filter by component type"
+						"description": "List only components of this type (any case): scene (SceneComponent), actor (ActorComponent but not SceneComponent), primitive (PrimitiveComponent). The whole tree is searched: a matching component under one that does not match moves up to where that one was and keeps its parentComponent. Any other value is refused"
 					}
 				},
 				"required": []

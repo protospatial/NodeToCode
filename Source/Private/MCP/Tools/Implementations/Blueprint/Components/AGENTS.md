@@ -21,8 +21,7 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0287 (list-components-in-actor duplicates, missing native components, the type filter), and 0274 (explicit
-  targets, admitted as next-6).
+- **Fix cards still owed here:** 0274 (explicit targets, admitted as next-6).
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.
@@ -61,9 +60,13 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
     Blueprints add. When false, only this Blueprint's own components are listed; one attached to an inherited or
     native component moves up to the top level and keeps its `parentComponent`
   - `componentTypeFilter` (optional, default `all`): `scene` (`USceneComponent`), `actor` (`UActorComponent` but not
-    `USceneComponent`), `primitive` (`UPrimitiveComponent`); any other value lists everything
-    (`FN2CMcpComponentUtils::PassesComponentTypeFilter`). A component that fails the filter is left out and its
-    listed descendants move up to where it was
+    `USceneComponent`), `primitive` (`UPrimitiveComponent`), in any case (`Primitive`); empty is `all`
+    (`FN2CMcpComponentUtils::ParseComponentTypeFilter`, `PassesComponentTypeFilter`). The whole tree is searched: a
+    component that fails the filter is left out and its matching descendants move up to where it was, keeping their
+    `parentComponent` (`primitive` on DefaultSceneRoot > Pivot > Body lists `Body` at the top level with
+    `"parentComponent": "Pivot"`; on a Character, `CapsuleComponent` with `Mesh` under it). `rootComponent` still
+    names the actor's root, listed or not. A component whose class is missing passes `all` only. Any other value is
+    refused: `INVALID_ARGUMENT|componentTypeFilter 'mesh' is not one of: all, scene, actor, primitive` (card 0287)
 - **Returns**: See "Output Format"
 
 ### add-component-class-to-actor
@@ -330,5 +333,6 @@ On a Character Blueprint, `"parentComponent": "Mesh"` attaches to the inherited 
 `NodeToCode.MCP.Components` (`Source/Private/Tests/MCP/N2CComponentTools.spec.cpp`) runs the three tools on transient
 Actor, Character, child and macro-library Blueprints: attachment kept after compiles at three levels, refusals that
 change nothing, class lookup, native and inherited parents, deletes with and without children, Get-node removal,
-bound events, DefaultSceneRoot, and exact Undo then Redo of each edit. Live: `Tests/mcp_probe/live_components_0167.py`
+bound events, DefaultSceneRoot, exact Undo then Redo of each edit, and list's type filter through the whole tree
+(card 0287). Live: `Tests/mcp_probe/live_components_0167.py`
 (claude -p).
