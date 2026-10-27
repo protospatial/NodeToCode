@@ -62,8 +62,6 @@ case back on. Currently disabled:
 |------|------|---------|
 | `NodeToCode.MCP.Graph` | connect-pins reports a malformed connection entry in failed and counts it | mcp-tools-graph-functions-25 (card 0276) |
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
-| `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: float, double | mcp-tools-variables-8 (card 0283) |
-| `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: the four maps | mcp-tools-variables-8 (card 0283) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | search-variable-types returns Blueprint classes as identifiers the resolver accepts | mcp-tools-variables-23 (card 0291) |
 | `NodeToCode.MCP.Structure` | search-blueprint-classes lists each native class once | mcp-tools-bp-structure-12 (card 0288) |
@@ -146,6 +144,16 @@ Blueprint, and search-variable-types results are resolved. A row's `CreateDefect
 id and card) makes it an `xIt`; `N2C_RUN_KNOWN_DEFECTS=1` runs those too. Flags, OnRep and their undo are
 `NodeToCode.MCP.VariableFlags`; the node tools' wiring and undo are `NodeToCode.MCP.SpawnedNodes`; the resolver's
 error codes, prefixes and ambiguity are `NodeToCode.MCP.TypeResolver`.
+
+`NodeToCode.MCP.VariableDefaults` (`MCP/N2CVariableDefaults.spec.cpp`, card 0283) checks member and local variable
+defaults where the editor keeps them: set-member-variable-default-value writes a float on the class defaults in one
+undo step with no compile (undo restores the class defaults; redo and a recompile keep it), refuses values that do
+not parse (a float `abc`, an int `1.5`, a bool `maybe`) with nothing changed, resets on an empty value, takes a user
+enum entry by name, display name or index, and applies a default the description still holds before writing.
+get-blueprint-member-variables reads a create-variable default (Health 100) from the class defaults, Instance
+Editable and Private as the details panel shows them, a float as `float` and a map by key and value. Local defaults
+are parsed against the compiled local. On UE 5.8 both setters and the list tool also run as tools on a focused
+Blueprint.
 
 `NodeToCode.MCP.CreateBlueprintClass` (`MCP/N2CCreateBlueprintClass.spec.cpp`, card 0166) runs create-blueprint-class
 for real: it saves Blueprints under `/Game/__N2CTest` (an existing folder, a UserWidget parent giving a

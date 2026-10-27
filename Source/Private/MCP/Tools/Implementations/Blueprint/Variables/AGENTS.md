@@ -20,7 +20,7 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0283 (member variable defaults through the CDO), 0291 (search-variable-types: CoreUObject struct path, counts),
+- **Fix cards still owed here:** 0291 (search-variable-types: CoreUObject struct path, counts),
   0295 (notification brushes, dead code), and 0274 (explicit targets, admitted as next-6). Card 0292 (class,
   soft and interface references) is new capability and waits for the owner.
 
@@ -126,14 +126,19 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 - **Parameters**: None
 - **Returns**: `blueprintName`, `blueprintPath`, `parentClass`, `variables`, `variableCount`, `categories`. Each
   variable has `name`, `category`, `friendlyName`, `defaultValue`, `guid`, `type` (`category`, `subCategory`,
-  `typeObject`, `typeName`, `container`, `keyType` for maps, `isReference`, `isConst`, `displayString`), `flags`
-  (`instanceEditable`, `blueprintVisible`, `blueprintReadOnly`, `exposeOnSpawn`, `private`, `transient`, `saveGame`,
-  `advancedDisplay`, `deprecated`, `config`, `replication`) and `metadata`. The result is marked as untrusted
-  Blueprint data: its first key is `untrusted_content` (card 0124)
-- **Known issue (card 0283):** `FN2CMcpGetBlueprintMemberVariablesTool::PinTypeToJson` reports float and double
-  variables with `category` and `displayString` `unknown` (the type is in `subCategory`), and for a map it reports
-  the key type as `category` and the value type as `keyType`. `defaultValue` is always empty: the compile moves the
-  description's default into the class default object
+  `typeObject`, `typeName`, `container`, `keyType` and `valueType` for maps, `isReference`, `isConst`,
+  `displayString`), `flags` (`instanceEditable`, `blueprintVisible`, `blueprintReadOnly`, `exposeOnSpawn`, `private`,
+  `transient`, `saveGame`, `advancedDisplay`, `deprecated`, `config`, `replication`) and `metadata`. The result is
+  marked as untrusted Blueprint data: its first key is `untrusted_content` (card 0124). Card 0283:
+  - `defaultValue` is read from the class default object (`FN2CMcpVariableDefaults::ReadMemberDefault`, the
+    editor's `PropertyValueToString`: `100`, `75.000000`, `(X=1.000000,Y=2.000000,Z=3.000000)`); before the class
+    has been compiled with the variable, the description's pending default
+  - `type.category` is `float` or `double` for a real (UE5's `real` pin with that sub-category). The top-level type
+    fields describe the element type, which for a map is its value (what create-variable's `typeIdentifier` takes);
+    `keyType` is the key (`mapKeyTypeIdentifier`) and `valueType` the value again; `displayString` is
+    `TMap<key, value>`
+  - `instanceEditable` is `CPF_Edit` without `CPF_DisableEditOnInstance` (a new variable is not Instance Editable);
+    `private` is the `BlueprintPrivate` metadata (the details panel's Private box)
 
 ### create-get-member-variable-node
 - **Description**: Places a Get node for a member variable in the focused graph. The variable is looked up on the
@@ -166,16 +171,26 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   `RootComponent`, or private to another class), as the editor offers no Set node for it; nothing is added
 
 ### set-member-variable-default-value
-- **Description**: Sets a member variable's default value (the Details panel value), without adding a node
+- **Description**: Sets a member variable's default value (the Details panel value), without adding a node. Card
+  0283, `FN2CMcpVariableDefaults::SetMemberDefault`: the value is parsed as the compiled property's type
+  (`FBlueprintEditorUtils::PropertyValueFromString`) and written on the class default object in one undo step
+  (`Modify`, `PreEditChange`, `PostEditChangeProperty`), as the Details panel does; instances still on the old
+  default (placed actors, child classes' defaults) follow it, as the property editor propagates a class-default
+  change. Nothing is compiled, unless the class is not up to date with the variable description (the class lacks the
+  variable, the description still holds a default no compile has applied, or the Blueprint is dirty): then it
+  compiles once first, outside the undo step, and the result has `compile`
 - **Parameters**:
   - `variableName` (required)
-  - `defaultValue` (required, not empty): An empty string is refused with `Field 'defaultValue' cannot be empty.`
-    (`TryGetRequiredString`); there is no reset-to-zero form
-- **Returns**: `success`, `variableName`, `blueprintName`, `blueprintPath`, `oldDefaultValue`, `newDefaultValue`,
-  `typeInfo`, `category`, `message`, `compilationSuccess`, `compilationErrorCount`, `compilationWarningCount`,
-  `compilationTime`. The value reaches the class default object (a float set to `75` reads back as 75.0)
-- **Known issue (card 0283):** `oldDefaultValue` is always empty, and `ValidateDefaultValue` checks the text only for
-  bool, int, int64 and byte variables: floats are `real` pins in UE5, so `abc` is accepted for a float
+  - `defaultValue` (required, may be empty): Text as the Details panel's copy gives it (`75`, `true`,
+    `(X=1.0,Y=2.0,Z=3.0)`, `(1,2,3)` for an array). A boolean takes `true`/`false`/`yes`/`no`/`1`/`0`; an enum an
+    entry's name, display name (any case) or index. An empty string resets the variable to its type's default value
+    (zero, empty, a struct's defaults): the parent class has no such property to inherit
+- **Returns**: `success`, `variableName` (as declared), `blueprintName`, `blueprintPath`, `oldDefaultValue` and
+  `newDefaultValue` (both read from the class default object as exported text: `75` on a float reads back as
+  `75.000000`), `instancesUpdated`, `typeInfo`, `category`, `message`
+- **Errors**: `Variable '<name>' not found in Blueprint '<bp>'`; a value that does not parse is refused with nothing
+  changed (no undo step, package clean): `Invalid default value for variable 'Speed': 'abc' is not a valid Float
+  (single-precision) value` (an enum's error lists its entries)
 
 ### get-blueprint-function-local-variables
 - **Description**: Lists the local variables of the focused function graph
@@ -201,10 +216,17 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   `defaultValueReason` and `warning`, as for create-set-member-variable-node
 
 ### set-local-function-variable-default-value
-- **Description**: Sets a local variable's default value
-- **Parameters**: `variableName` (required), `defaultValue` (required, not empty, as for the member tool)
-- **Returns**: `message`, `variableName`, `functionName`, `oldValue`, `newValue`, `variableType`, `containerType`,
-  `compilationResults` (`success`, `errorCount`, `warningCount`, `compilationTime`)
+- **Description**: Sets a local variable's default value. The value is parsed against the local's property on the
+  skeleton class's function (`FN2CMcpVariableDefaults::PrepareLocalDefault`, card 0283) before anything changes, and
+  the description gets the text the details panel stores for it (`1.5` on a float is stored as `1.500000`); then
+  the Blueprint is compiled once
+- **Parameters**: `variableName` (required), `defaultValue` (required, may be empty: an empty string clears the
+  default; formats as for the member tool)
+- **Returns**: `message`, `variableName`, `functionName`, `oldValue`, `newValue` (as stored), `variableType`,
+  `containerType`, `compilationResults` (`success`, `errorCount`, `warningCount`, `compilationTime`) and `compile`
+  (the compiler's messages)
+- **Errors**: a value that does not parse: `Invalid default value for local variable 'Count': 'abc' is not a valid
+  Integer value`, with the description unchanged and no undo step
 
 ## Type Identifiers
 
@@ -503,15 +525,14 @@ curl -X POST http://localhost:27000/mcp \
   previous transaction alone), `set-member-variable-default-value` (`ApplyDefaultValue`),
   `set-local-function-variable-default-value`, and the four node tools (card 0155: one undo removes the node with its
   input value, and leaves the previous transaction alone; the node is `RF_Transactional`, so later edits to it undo
-  too).
-- **Known issue (card 0283):** undoing `set-member-variable-default-value` restores the variable description but not
-  the class default object.
+  too). Undoing `set-member-variable-default-value` restores the class default object and the instances it changed
+  (card 0283).
 - **Read-only**: `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`.
 - Every successful edit marks the Blueprint modified (structurally for create-variable and create-local-variable)
   and its package dirty, and the tool call compiles it once, after the edit's transaction has closed, with the
   compiler's diagnostics in the result as `compile` (card 0151; fields in the Graph folder's AGENTS.md).
-  set-member-variable-default-value compiles once (it compiled twice before); its `compilation*` fields and
-  set-local-function-variable-default-value's `compilationStatus` come from that compile. Nothing is saved: use
+  set-member-variable-default-value is the exception: a class default needs no compile, so it only dirties the
+  package (card 0283); set-local-function-variable-default-value's `compilationResults` come from its compile. Nothing is saved: use
   `save-blueprint`.
 
 ## Implementation Notes
