@@ -43,6 +43,8 @@ FN2CCSharpSyntaxDefinition::FN2CCSharpSyntaxDefinition()
 
     // String delimiters
     StringDelimiters = { TEXT('\"'), TEXT('\'') };
+    // @"..." verbatim strings: a doubled quote is the only escape, may span lines
+    bVerbatimStrings = true;
 
     LineCommentDelimiter = TEXT("//");
     BlockCommentStart = TEXT("/*");

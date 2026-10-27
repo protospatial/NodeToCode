@@ -102,6 +102,19 @@ void SN2CCodeEditor::SetText(const FText& NewText)
 
 void SN2CCodeEditor::SetLanguage(EN2CCodeLanguage NewLanguage)
 {
+    bJsonSyntax = false;
+    ApplyLanguage(NewLanguage);
+}
+
+void SN2CCodeEditor::SetJsonSyntax()
+{
+    // The background stays the current language's; only the highlighting changes
+    bJsonSyntax = true;
+    ApplyLanguage(CurrentLanguage);
+}
+
+void SN2CCodeEditor::ApplyLanguage(EN2CCodeLanguage NewLanguage)
+{
     // Store current text
     FText CurrentText;
     if (EditableText.IsValid())
@@ -162,7 +175,14 @@ void SN2CCodeEditor::CreateSyntaxHighlighter(EN2CCodeLanguage Language)
     FTextBlockStyle BaseStyle = FN2CCodeEditorStyle::Get().GetWidgetStyle<FTextBlockStyle>("N2CCodeEditor.TextEditor.NormalText");
     BaseStyle.SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
     
-    SyntaxHighlighter = FN2CRichTextSyntaxHighlighter::Create(Language, CurrentTheme, BaseStyle);
+    SyntaxHighlighter = MakeSyntaxHighlighter(Language, BaseStyle);
+}
+
+TSharedRef<FN2CRichTextSyntaxHighlighter> SN2CCodeEditor::MakeSyntaxHighlighter(EN2CCodeLanguage Language, const FTextBlockStyle& BaseStyle) const
+{
+    return bJsonSyntax
+        ? FN2CRichTextSyntaxHighlighter::CreateJson(CurrentTheme, BaseStyle)
+        : FN2CRichTextSyntaxHighlighter::Create(Language, CurrentTheme, BaseStyle);
 }
 
 void SN2CCodeEditor::OnTextChanged(const FText& NewText)
@@ -320,7 +340,7 @@ void SN2CCodeEditor::SetFontSize(int32 NewSize)
         TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
         
         // Recreate syntax highlighter with updated style
-        SyntaxHighlighter = FN2CRichTextSyntaxHighlighter::Create(CurrentLanguage, CurrentTheme, TextStyle);
+        SyntaxHighlighter = MakeSyntaxHighlighter(CurrentLanguage, TextStyle);
         
         // Create new text widget with updated style
         TSharedRef<SMultiLineEditableText> NewTextWidget = SNew(SMultiLineEditableText)

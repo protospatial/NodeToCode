@@ -36,6 +36,8 @@ FN2CJavaScriptSyntaxDefinition::FN2CJavaScriptSyntaxDefinition()
 
     // String delimiters
     StringDelimiters = { TEXT('\"'), TEXT('\''), TEXT('`') };
+    // Template literals may span lines
+    MultiLineStringDelimiters = { TEXT('`') };
 
     // Comment delimiters
     LineCommentDelimiter = TEXT("//");

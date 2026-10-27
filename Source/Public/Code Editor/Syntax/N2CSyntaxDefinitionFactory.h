@@ -16,6 +16,9 @@ public:
     /** Create a syntax definition for the specified language */
     TSharedPtr<FN2CSyntaxDefinition> CreateDefinition(EN2CCodeLanguage Language);
 
+    /** Create the JSON definition (the translation viewer's JSON tab; JSON is not an EN2CCodeLanguage) */
+    TSharedPtr<FN2CSyntaxDefinition> CreateJsonDefinition();
+
 private:
     FN2CSyntaxDefinitionFactory() = default;
 };

@@ -48,7 +48,7 @@ Source/Private/Code Editor/
 
 *   **`FN2CSyntaxDefinitionFactory` (`Source/Public/Code Editor/Syntax/N2CSyntaxDefinitionFactory.h`)**: Singleton factory that creates `FN2CSyntaxDefinition` instances based on `EN2CCodeLanguage`.
 
-*   **`FN2CRichTextSyntaxHighlighter` (`Source/Public/Code Editor/Syntax/N2CRichTextSyntaxHighlighter.h`)**: Performs syntax highlighting using `FSyntaxHighlighterTextLayoutMarshaller`. Tokenizes code and applies `FTextBlockStyle` based on token types.
+*   **`FN2CRichTextSyntaxHighlighter` (`Source/Public/Code Editor/Syntax/N2CRichTextSyntaxHighlighter.h`)**: Performs syntax highlighting using `FSyntaxHighlighterTextLayoutMarshaller`. The tokenizer's rules are the definition's operators, longest first (`FSyntaxTokenizer` compares rules literally and takes the first match; keywords arrive as whole words without rules). `ParseTokens` finds strings and comments character by character: a string closes at its own opening delimiter, skips delimiters escaped by an odd run of backslashes, and ends at the end of its line unless the definition allows a multi-line form (`SupportsTripleQuotedStrings`, `IsMultiLineStringDelimiter`, `SupportsRawStrings`, `SupportsVerbatimStrings`). Brackets, keywords and operators are one case-sensitive `TMap` lookup; lines over `MaxHighlightedLineLength` (2,000) render plain. `CreateJson` builds the JSON highlighter (JavaScript colors) that `SN2CCodeEditor::SetJsonSyntax` uses for the translation viewer's JSON tab. Specs: `NodeToCode.UI.SyntaxHighlighter`.
 
 *   **`FN2CWhiteSpaceRun` (`Source/Public/Code Editor/Syntax/N2CWhiteSpaceRun.h`)**: Custom `FSlateTextRun` for handling tab width rendering with configurable spaces-per-tab.
 
@@ -64,6 +64,7 @@ Located in `Source/Public/Code Editor/Syntax/`:
 | `N2CCSharpSyntaxDefinition.h` | `FN2CCSharpSyntaxDefinition` | C# |
 | `N2CSwiftSyntaxDefinition.h` | `FN2CSwiftSyntaxDefinition` | Swift |
 | `N2CPseudocodeSyntaxDefinition.h` | `FN2CPseudocodeSyntaxDefinition` | Pseudocode |
+| `N2CJsonSyntaxDefinition.h` | `FN2CJsonSyntaxDefinition` | JSON (viewer JSON tab only; not an `EN2CCodeLanguage`, made by `FN2CSyntaxDefinitionFactory::CreateJsonDefinition`) |
 
 ### Models
 

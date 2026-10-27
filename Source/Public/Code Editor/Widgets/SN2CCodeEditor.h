@@ -34,8 +34,14 @@ public:
     /** Set new text content */
     void SetText(const FText& NewText);
 
-    /** Change the programming language */
+    /** Change the programming language (and leave JSON highlighting) */
     void SetLanguage(EN2CCodeLanguage NewLanguage);
+
+    /** Highlight as JSON (the translation viewer's JSON tab) until the next SetLanguage */
+    void SetJsonSyntax();
+
+    /** True while the editor highlights as JSON */
+    bool IsJsonSyntax() const { return bJsonSyntax; }
 
     /** Insert text at cursor position */
     void InsertTextAtCursor(const FString& InText);
@@ -98,6 +104,9 @@ private:
     /** Current language */
     EN2CCodeLanguage CurrentLanguage;
 
+    /** Highlight as JSON instead of CurrentLanguage (font, tab size and theme rebuilds keep it) */
+    bool bJsonSyntax = false;
+
     /** Theme name (single default) */
     static const FName CurrentTheme;
 
@@ -121,6 +130,12 @@ private:
 
     /** Create a new syntax highlighter for the specified language */
     void CreateSyntaxHighlighter(EN2CCodeLanguage Language);
+
+    /** The highlighter for a language, or for JSON while bJsonSyntax is set */
+    TSharedRef<FN2CRichTextSyntaxHighlighter> MakeSyntaxHighlighter(EN2CCodeLanguage Language, const FTextBlockStyle& BaseStyle) const;
+
+    /** Rebuild the highlighter and the text widget for a language, keeping the text */
+    void ApplyLanguage(EN2CCodeLanguage NewLanguage);
 
     /** Delegate for text changes */
     DECLARE_DELEGATE_OneParam(FOnTextChanged, const FText&);

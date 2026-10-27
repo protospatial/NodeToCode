@@ -34,6 +34,15 @@ You can change these colors while a translation is open. The **Background** colo
     </p>
 
 
+## How code is colored
+
+- A string ends at the quote that opened it, so `'"'` or `"it's"` stays one string, and a quote after an odd number of backslashes (`\"`) does not end it.
+- An unclosed string colors only the rest of its line. Strings that may span lines carry on to the next line: Python and Swift triple quotes (Python docstrings are colored as **Strings**), JavaScript template literals (`` ` ``), C++ raw strings (`R"(...)"`) and C# verbatim strings (`@"..."`).
+- Keywords match case-sensitively: `If` is not the keyword `if`.
+- A line longer than 2,000 characters is shown in **NormalText**, without highlighting.
+- The translation window's **JSON** tab is highlighted as JSON with the **JavaScript** colors.
+
+
 ## [Built-in themes](Initial-Configuration#theme-customization-optional)
 
 Several pre-configured themes available in [Plugin Settings](Initial-Configuration):

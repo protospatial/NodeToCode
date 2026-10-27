@@ -32,21 +32,22 @@ FN2CCPPSyntaxDefinition::FN2CCPPSyntaxDefinition()
     CurlyBraces = { TEXT("{"), TEXT("}") };
     SquareBrackets = { TEXT("["), TEXT("]") };
 
-    // C++ Operators
+    // C++ Operators, longest first: the tokenizer takes the first rule that matches, so "-" listed before "->" would
+    // split "->" in two (FN2CRichTextSyntaxHighlighter also sorts the rules by length)
     Operators = {
-        // Comment operators first to ensure proper matching
+        TEXT("<<="), TEXT(">>="), TEXT("->*"),
         TEXT("//"), TEXT("/*"), TEXT("*/"),
-        // Standard operators
-        TEXT("::"), TEXT(":"), TEXT("+="), TEXT("++"), TEXT("+"), TEXT("--"), TEXT("-="),
-        TEXT("-"), TEXT("*="), TEXT("*"), TEXT("/="), TEXT("/"), TEXT("%="), TEXT("%"),
-        TEXT("&="), TEXT("&&"), TEXT("&"), TEXT("|="), TEXT("||"), TEXT("|"), TEXT("^="),
-        TEXT("^"), TEXT("!="), TEXT("!"), TEXT("="), TEXT("=="), TEXT("<<="), TEXT("<<"),
-        TEXT("<="), TEXT("<"), TEXT(">>="), TEXT(">>"), TEXT(">="), TEXT(">"), TEXT("->"),
-        TEXT("."), TEXT("?"), TEXT(","), TEXT(";")
+        TEXT("::"), TEXT("->"), TEXT("++"), TEXT("--"), TEXT("+="), TEXT("-="), TEXT("*="), TEXT("/="), TEXT("%="),
+        TEXT("&="), TEXT("|="), TEXT("^="), TEXT("&&"), TEXT("||"), TEXT("=="), TEXT("!="), TEXT("<="), TEXT(">="),
+        TEXT("<<"), TEXT(">>"), TEXT(".*"),
+        TEXT(":"), TEXT("+"), TEXT("-"), TEXT("*"), TEXT("/"), TEXT("%"), TEXT("&"), TEXT("|"), TEXT("^"), TEXT("~"),
+        TEXT("!"), TEXT("="), TEXT("<"), TEXT(">"), TEXT("."), TEXT("?"), TEXT(","), TEXT(";")
     };
 
     // String delimiters
     StringDelimiters = { TEXT('\"'), TEXT('\'') };
+    // R"delim( ... )delim" raw strings: no escapes, may span lines
+    bRawStrings = true;
 
     // Comment delimiters
     LineCommentDelimiter = TEXT("//");

@@ -45,6 +45,12 @@ public:
 
     static TSharedRef<FN2CRichTextSyntaxHighlighter> Create(EN2CCodeLanguage Language, const FName& ThemeName, const FTextBlockStyle& BaseStyle = FTextBlockStyle());
 
+    /** A highlighter for JSON (the translation viewer's JSON tab), in the JavaScript colours */
+    static TSharedRef<FN2CRichTextSyntaxHighlighter> CreateJson(const FName& ThemeName, const FTextBlockStyle& BaseStyle = FTextBlockStyle());
+
+    /** Lines longer than this render as plain text: highlighting them costs more than it shows (minified JSON, data) */
+    static constexpr int32 MaxHighlightedLineLength = 2000;
+
     virtual ~FN2CRichTextSyntaxHighlighter();
 
 protected:
@@ -53,68 +59,82 @@ protected:
     FN2CRichTextSyntaxHighlighter(TSharedPtr<ISyntaxTokenizer> InTokenizer, const FSyntaxTextStyle& InSyntaxTextStyle, TSharedPtr<FN2CSyntaxDefinition> InSyntaxDef);
 
 private:
-    /** Check if a string represents a numeric value */
-    bool IsNumeric(const FString& Text) const
+    /** What a stretch of text is coloured as; each kind has a style in FSyntaxTextStyle and a run name */
+    enum class ETokenKind : uint8
     {
-        // Handle hexadecimal numbers
-        if (Text.StartsWith(TEXT("0x")) || Text.StartsWith(TEXT("0X")))
-        {
-            // Check if all remaining characters are valid hex digits
-            for (int32 i = 2; i < Text.Len(); ++i)
-            {
-                TCHAR Ch = Text[i];
-                if (!FChar::IsHexDigit(Ch))
-                {
-                    return false;
-                }
-            }
-            return Text.Len() > 2; // Must have at least one digit after 0x
-        }
+        Normal,
+        Operator,
+        Keyword,
+        String,
+        Number,
+        Comment,
+        Preprocessor,
+        Parentheses,
+        CurlyBraces,
+        SquareBrackets
+    };
 
-        // Handle float suffixes
-        FString NumericPart = Text;
-        if (Text.EndsWith(TEXT("f")) || Text.EndsWith(TEXT("F")))
-        {
-            NumericPart = Text.LeftChop(1);
-        }
+    /** How a string's closing delimiter may be escaped */
+    enum class EStringEscape : uint8
+    {
+        /** A backslash escapes the next character, so an odd run of backslashes escapes the delimiter */
+        Backslash,
+        /** C# verbatim strings: a doubled quote is a quote */
+        DoubledQuote,
+        /** C++ raw strings: nothing is escaped */
+        None
+    };
 
-        // Check if it's a valid number (integer or float)
-        bool bHasDecimalPoint = false;
-        bool bHasDigits = false;
-        
-        // Handle negative numbers
-        int32 StartIdx = NumericPart.StartsWith(TEXT("-")) ? 1 : 0;
-        
-        for (int32 i = StartIdx; i < NumericPart.Len(); ++i)
+    /** Case-sensitive keys for the word lookup: keywords are case-sensitive in every language here */
+    struct FWordKeyFuncs : TDefaultMapKeyFuncs<FStringView, ETokenKind, false>
+    {
+        static FORCEINLINE bool Matches(FStringView A, FStringView B) { return A.Equals(B, ESearchCase::CaseSensitive); }
+        static FORCEINLINE uint32 GetKeyHash(FStringView Key)
         {
-            TCHAR Ch = NumericPart[i];
-            
-            if (Ch == TEXT('.'))
+            // FNV-1a over the characters (FStringView's own hash ignores case)
+            uint32 Hash = 2166136261u;
+            for (const TCHAR Char : Key)
             {
-                if (bHasDecimalPoint) // Multiple decimal points = invalid
-                {
-                    return false;
-                }
-                bHasDecimalPoint = true;
+                Hash = (Hash ^ static_cast<uint32>(Char)) * 16777619u;
             }
-            else if (!FChar::IsDigit(Ch))
-            {
-                return false;
-            }
-            else
-            {
-                bHasDigits = true;
-            }
+            return Hash;
         }
+    };
 
-        return bHasDigits; // Must have at least one digit
-    }
+    static TSharedRef<FN2CRichTextSyntaxHighlighter> CreateForDefinition(TSharedRef<FN2CSyntaxDefinition> SyntaxDef, const FName& StyleLanguageId,
+        const FName& ThemeName, const FTextBlockStyle& BaseStyle);
+
+    /** The style a kind of text is drawn with (a reference: runs copy it once) */
+    const FTextBlockStyle& GetStyle(ETokenKind Kind) const;
+
+    /** The run name for a kind of text (FRunInfo::Name) */
+    static const TCHAR* GetRunName(ETokenKind Kind);
+
+    /** What a word outside strings and comments is: bracket, keyword or operator by lookup, else number or preprocessor */
+    ETokenKind ClassifyWord(FStringView Word, bool bPreprocessorLine) const;
+
+    /** Check if a string represents a numeric value */
+    static bool IsNumeric(FStringView Text);
 
     /** Styles used to display the text */
     FSyntaxTextStyle SyntaxTextStyle;
 
     /** The syntax definition for the current language */
     TSharedPtr<FN2CSyntaxDefinition> SyntaxDefinition;
+
+    /**
+     * Brackets, keywords and operators, each mapped to its kind (brackets win over keywords, keywords over operators).
+     * The keys view the definition's own strings, which SyntaxDefinition keeps alive and never changes
+     */
+    TMap<FStringView, ETokenKind, FDefaultSetAllocator, FWordKeyFuncs> WordKinds;
+
+    /** C++ only: colour # directives as preprocessor */
+    bool bHasPreprocessor = false;
+
+    /** The definition's comment delimiters, read once */
+    FString LineComment;
+    FString BlockCommentStart;
+    FString BlockCommentEnd;
 
     /** String representing tabs */
     FString TabString;

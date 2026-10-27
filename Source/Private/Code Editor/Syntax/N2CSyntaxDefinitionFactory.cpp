@@ -7,6 +7,8 @@
 #include "Code Editor/Syntax/N2CCSharpSyntaxDefinition.h"
 #include "Code Editor/Syntax/N2CSwiftSyntaxDefinition.h"
 #include "Code Editor/Syntax/N2CPseudocodeSyntaxDefinition.h"
+#include "Code Editor/Syntax/N2CJsonSyntaxDefinition.h"
+#include "Utils/N2CPathUtils.h"
 
 FN2CSyntaxDefinitionFactory& FN2CSyntaxDefinitionFactory::Get()
 {
@@ -33,4 +35,14 @@ TSharedPtr<FN2CSyntaxDefinition> FN2CSyntaxDefinitionFactory::CreateDefinition(E
         default:
             return nullptr;
     }
+}
+
+TSharedPtr<FN2CSyntaxDefinition> FN2CSyntaxDefinitionFactory::CreateJsonDefinition()
+{
+    return MakeShared<FN2CJsonSyntaxDefinition>();
+}
+
+FString FN2CSyntaxDefinition::GetSyntaxName() const
+{
+    return FN2CPathUtils::GetLanguageId(GetLanguage());
 }
