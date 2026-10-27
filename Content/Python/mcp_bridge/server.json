@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.protospatial/nodetocode",
+  "title": "NodeToCode",
+  "description": "Read, translate to C++ and edit Unreal Engine Blueprints in the open editor.",
+  "repository": {
+    "url": "https://github.com/protospatial/NodeToCode",
+    "source": "github",
+    "subfolder": "Content/Python/mcp_bridge"
+  },
+  "websiteUrl": "https://github.com/protospatial/NodeToCode/wiki/Connecting-an-MCP-Client",
+  "version": "2.0.0-beta.1",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/protospatial/NodeToCode/releases/download/v2.0.0-beta.1/nodetocode-2.0.0-beta.1.mcpb",
+      "version": "2.0.0-beta.1",
+      "fileSha256": "22e33a396606bd026500e9cf4915f29c8b4a565e94976c52ca644542da19ba0d",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
