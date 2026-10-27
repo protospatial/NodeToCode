@@ -128,12 +128,15 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagBlueprintGraph(
 		return ResultInfo;
 	}
 	
-	// Find the graph
+	// Find the graph among every graph of the Blueprint (card 0294): event graphs, functions, macros, delegate
+	// signatures and collapsed graphs, in FBlueprintEditorUtils::GetAllGraphs order
 	UEdGraph* TargetGraph = nullptr;
+	TArray<UEdGraph*> AllGraphs;
+	BlueprintAsset->GetAllGraphs(AllGraphs);
 	
 	if (GraphName.IsEmpty())
 	{
-		// Use the first graph
+		// Use the first graph: the first event graph, else the first function, else any graph
 		if (BlueprintAsset->UbergraphPages.Num() > 0)
 		{
 			TargetGraph = BlueprintAsset->UbergraphPages[0];
@@ -142,28 +145,20 @@ FN2CTagInfo UN2CTagBlueprintLibrary::TagBlueprintGraph(
 		{
 			TargetGraph = BlueprintAsset->FunctionGraphs[0];
 		}
+		else if (AllGraphs.Num() > 0)
+		{
+			TargetGraph = AllGraphs[0];
+		}
 	}
 	else
 	{
 		// Find graph by name
-		for (UEdGraph* Graph : BlueprintAsset->UbergraphPages)
+		for (UEdGraph* Graph : AllGraphs)
 		{
 			if (Graph && Graph->GetFName().ToString() == GraphName)
 			{
 				TargetGraph = Graph;
 				break;
-			}
-		}
-		
-		if (!TargetGraph)
-		{
-			for (UEdGraph* Graph : BlueprintAsset->FunctionGraphs)
-			{
-				if (Graph && Graph->GetFName().ToString() == GraphName)
-				{
-					TargetGraph = Graph;
-					break;
-				}
 			}
 		}
 	}

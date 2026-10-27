@@ -842,6 +842,33 @@ def nodetocode_errors(text):
     return out[:8]
 
 
+# UN2CResponseParserBase::LogUsage. #181 (card 0185) added the cache and reasoning counts; the older form, without
+# them, is still read so a log from before it parses too
+USAGE_LINE = re.compile(r'LLM Token Usage - Input: (\d+)(?: \(cache read (\d+), cache write (\d+)\))?'
+                        r' Output: (\d+)(?: \(reasoning (\d+)\))?')
+
+
+def parse_usage(text):
+    """Every token usage line in a log slice: input, output, and (when logged) cache read/write and reasoning."""
+    out = []
+    for m in USAGE_LINE.finditer(text):
+        rec = {'input': int(m.group(1)), 'output': int(m.group(4))}
+        if m.group(2) is not None:
+            rec['cache_read'], rec['cache_write'] = int(m.group(2)), int(m.group(3))
+        if m.group(5) is not None:
+            rec['reasoning'] = int(m.group(5))
+        out.append(rec)
+    return out
+
+
+def usage_not_verified(rec):
+    """A translated case whose log slice has no usage line: a not_verified entry, so a change to the log line
+    cannot empty the usage unnoticed (card 0506). None when there is usage or nothing was translated."""
+    if rec.get('translated') and not rec.get('usage'):
+        return {'case': rec.get('id'), 'reason': 'translated, but no "LLM Token Usage" line in its log slice'}
+    return None
+
+
 def run_case(port, c, rid, timeout, log_reader, keep_code=False, language='cpp', tag_language=False):
     rec = {'id': c['id'] + ('@' + language if tag_language else ''), 'provider': c['provider'], 'model': c['model'],
            'role': c['role'], 'language': language}
@@ -892,8 +919,7 @@ def run_case(port, c, rid, timeout, log_reader, keep_code=False, language='cpp',
     payloads = extract_payloads(slice_text)
     rec['payload_count'] = len(payloads)
     rec['payloads'] = [summarise(p) for p in payloads if '_unparsed_head' not in p]
-    usage = re.findall(r'LLM Token Usage - Input: (\d+) Output: (\d+)', slice_text)
-    rec['usage'] = [{'input': int(a), 'output': int(b)} for a, b in usage]
+    rec['usage'] = parse_usage(slice_text)
     rec['log_errors'] = nodetocode_errors(slice_text)
     rec['rules'] = []
     if rec['payloads']:
@@ -1145,6 +1171,9 @@ def main():
                     rec['ok'] = bool(rec['ok'] and rec['issue13_check'].get('ok'))
                     print('  issue13_check', json.dumps(rec['issue13_check'])[:1500], flush=True)
                 report['cases'].append(rec)
+                missing_usage = usage_not_verified(rec)
+                if missing_usage:
+                    report['not_verified'].append(missing_usage)
                 print('%-48s %s  %ss  usage=%s  prompt=%s' % (run_id, 'PASS' if rec['ok'] else 'FAIL', rec.get('seconds'),
                                                               rec.get('usage'),
                                                               (rec['payloads'][0].get('prompt') if rec.get('payloads') else None)),

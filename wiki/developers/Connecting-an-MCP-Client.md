@@ -24,6 +24,40 @@ default (**Tool Profile** Default toolsets, **Tool Exposure** List every tool) l
 Settings → Plugins → Node to Code → MCP Server** ([Choosing a Tool Mode](Choosing-a-Tool-Mode)), restart the editor
 and reconnect the client.
 
+## Let NodeToCode write the config files
+
+In the editor, open **Window → Output Log**, type in the **Cmd** box and press Enter:
+
+```
+N2C.Mcp.WriteClientConfig
+```
+
+It writes the `nodetocode` server into these files in your project folder, with the port the server is using now:
+
+| Client | File |
+|---|---|
+| Claude Code | `.mcp.json` |
+| Cursor | `.cursor/mcp.json` |
+| VS Code | `.vscode/mcp.json` |
+| Gemini CLI | `.gemini/settings.json` |
+| Codex | `.codex/config.toml` |
+
+A file that already exists keeps its other servers and settings; only the `nodetocode` entry is replaced, and running
+the command again changes nothing. Claude Desktop has no project file, so the Output Log shows a snippet to merge into
+`claude_desktop_config.json` instead (see [Claude Desktop](#claude-desktop-stdio-bridge) below). The log names each
+file it wrote, or why it left one alone: a file with comments or trailing commas, which the command cannot read
+safely, is not changed.
+
+| Add to the command | To |
+|---|---|
+| `claude`, `cursor`, `vscode`, `gemini`, `codex` or `desktop` (one or more) | Write only those clients' files (the default is all of them) |
+| `token` or `notoken` | Add or leave out the token header (the default follows **Require MCP Bearer Token**) |
+| `dir=<folder>`, last | Write into another folder, such as the folder you open in your editor |
+
+With the token on, the files never hold the token itself: each client reads it from the `NODETOCODE_MCP_TOKEN`
+environment variable, so the files are safe to commit. Set that variable where the client runs (see
+[Requiring an MCP Token](Requiring-an-MCP-Token)). If the server later moves to another port, run the command again.
+
 ## Claude Code
 
 Easiest: install NodeToCode's [Claude Code Plugin](Claude-Code-Plugin), which adds the server, the skills and a
@@ -104,9 +138,10 @@ shows `MCPClientToolset 'NodeToCode': registered 64 tool(s)` (30 with EditorTool
 ## Which of these were checked
 
 Claude Code 2.1.300 on UE 5.8: the `claude mcp add` form, the JSON file and the bridge (both the launcher and
-`python nodetocode_bridge.py --project ...`) connected and listed the counts above. The Cursor, VS Code, Codex and
-Claude Desktop snippets follow each vendor's documentation and were not run against NodeToCode when this page was
-written.
+`python nodetocode_bridge.py --project ...`) connected and listed the counts above. Claude Code 2.1.310 on UE 5.8
+connected with the `.mcp.json` that `N2C.Mcp.WriteClientConfig` wrote, and the Codex file it wrote parses as TOML.
+The Cursor, VS Code, Codex and Claude Desktop snippets follow each vendor's documentation and were not run against
+NodeToCode when this page was written.
 
 ## If the client does not connect
 
