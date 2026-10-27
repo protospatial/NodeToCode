@@ -17,6 +17,8 @@
 class SN2CGraphEditorWrapper;
 class SDockTab;
 class SN2CGraphOverlay;
+class SGraphEditor;
+class SOverlay;
 
 /**
  * Delegate for when translation state changes globally
@@ -167,18 +169,23 @@ public:
     static TArray<FString> GetTranslationLanguageIds();
 
     /**
-     * Wrap a graph tab with the NodeToCode overlay if not already wrapped
-     * @param Tab The dock tab to wrap
-     * @param Graph The graph being displayed in the tab
+     * Injects the NodeToCode overlay into the graph editor a document tab holds, if it has none yet. Only a tab whose
+     * content is exactly an SGraphEditor showing Graph qualifies (card 0293): a tab showing another graph is refused.
+     * @param Tab The dock tab holding the graph editor
+     * @param Graph The graph the tab shows
      * @param Editor The Blueprint editor instance
+     * @return true when that graph editor has an overlay afterwards
      */
-    void WrapGraphTabIfNeeded(TSharedPtr<SDockTab> Tab, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor);
+    bool WrapGraphTabIfNeeded(TSharedPtr<SDockTab> Tab, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor);
 
     /**
-     * Try to wrap the currently focused graph tab in the given editor
+     * Injects the overlay into the graph editor that shows the editor's focused graph: its own document tab, else
+     * SGraphEditor::FindGraphEditorForGraph when that widget sits in this editor's tabs. Nothing else: when no such
+     * graph editor exists the attempt is recorded and the poll retries it later with a backoff (card 0293).
      * @param Editor The Blueprint editor to check
+     * @return true when the focused graph's editor has an overlay afterwards
      */
-    void TryWrapFocusedGraphTab(TWeakPtr<FBlueprintEditor> Editor);
+    bool TryWrapFocusedGraphTab(TWeakPtr<FBlueprintEditor> Editor);
 
     /**
      * Clean up any stale wrapper references
@@ -186,10 +193,21 @@ public:
     void CleanupStaleWrappers();
 
     /**
-     * Whether this graph object has a live N2C overlay. Overlays are tracked per UEdGraph, not per GraphGuid: copies of
-     * a Blueprint made in the Content Browser keep the original's graph GUIDs, and each copy's graph needs its own.
+     * Whether a graph editor showing this graph object carries a live N2C overlay. Overlays are tracked per SGraphEditor
+     * widget, not per GraphGuid: copies of a Blueprint made in the Content Browser keep the original's graph GUIDs, and
+     * each copy's graph needs its own.
      */
     bool HasLiveOverlay(const UEdGraph* Graph) const;
+
+    /**
+     * The graph editor that shows Graph inside Editor (exact SGraphEditor type, current graph is Graph), or null.
+     * Looks in Editor's document tabs for Graph first, then SGraphEditor::FindGraphEditorForGraph limited to widgets in
+     * Editor's own tabs (a diff window can show the same graph).
+     */
+    static TSharedPtr<SGraphEditor> FindGraphEditorFor(const TSharedPtr<FBlueprintEditor>& Editor, const UEdGraph* Graph);
+
+    /** Removes every injected overlay from its graph editor (SOverlay::RemoveSlot) and forgets them. Run by Shutdown */
+    void RemoveInjectedOverlays();
 
     // ==================== Global Translation State ====================
 
@@ -232,14 +250,48 @@ private:
     /** Map of wrapped tabs to their wrapper widgets (legacy, kept for compatibility) */
     TMap<TWeakPtr<SDockTab>, TSharedPtr<SN2CGraphEditorWrapper>> WrappedTabs;
 
-    /**
-     * Each graph's overlay widget, keyed by the graph object (not its GUID, which a duplicated Blueprint shares). Weak
-     * on both sides: a closed Blueprint's graph or a rebuilt tab's overlay leaves a stale entry, removed on the next look.
-     */
-    TMap<TWeakObjectPtr<UEdGraph>, TWeakPtr<SN2CGraphOverlay>> InjectedGraphOverlays;
+    /** One injected overlay: the SOverlay slot it sits in and the graph it acts on */
+    struct FInjectedOverlay
+    {
+        TWeakPtr<SOverlay> Host;
+        TWeakPtr<SN2CGraphOverlay> Overlay;
+        TWeakObjectPtr<UEdGraph> Graph;
+    };
 
-    /** True if Graph has a live overlay; drops its entry when the overlay is gone */
-    bool CheckLiveOverlay(UEdGraph* Graph);
+    /**
+     * The injected overlays, keyed by the SGraphEditor widget they sit in (card 0293), so one graph editor never gets
+     * two. Weak: a closed tab or a rebuilt graph editor leaves a stale entry, removed on the next look.
+     */
+    TMap<TWeakPtr<SGraphEditor>, FInjectedOverlay> InjectedGraphOverlays;
+
+    /**
+     * True if GraphEditor carries a live overlay for Graph. Drops a stale entry, and removes an overlay left in a graph
+     * editor that now shows another graph.
+     */
+    bool CheckLiveOverlay(const TSharedRef<SGraphEditor>& GraphEditor, const UEdGraph* Graph);
+
+    /** Injects the overlay into GraphEditor (which must show Graph) unless it has one */
+    bool InjectOverlay(const TSharedRef<SGraphEditor>& GraphEditor, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor);
+
+    /** Failed injection attempts of a graph: the poll backs off between them and gives up after a limit */
+    struct FInjectionRetry
+    {
+        int32 Failures = 0;
+        double NextAttemptTime = 0.0;
+    };
+    TMap<TWeakObjectPtr<UEdGraph>, FInjectionRetry> InjectionRetries;
+
+    /** Records a failed attempt for Graph (logged at Debug; once at Info when the poll gives up) */
+    void RecordInjectionFailure(const UEdGraph* Graph, const TCHAR* Why);
+
+    /** Whether the poll may try Graph now (not backing off, not given up) */
+    bool IsInjectionDue(const UEdGraph* Graph, double Now) const;
+
+    /** The poll's body: injects an overlay for each open Blueprint editor's focused graph that lacks one */
+    void PollOverlays();
+
+    /** Attempts before the poll gives up on a graph (an event, a tab coming to the front, still tries) */
+    static constexpr int32 MaxPollInjectionAttempts = 6;
 
     /** Timer handle for initial graph tab wrapping on editor open (with retry) */
     FTimerHandle InitialWrapTimerHandle;
@@ -272,10 +324,10 @@ private:
     void OnTabForegrounded(TSharedPtr<SDockTab> NewlyForegrounded, TSharedPtr<SDockTab> Backgrounded);
 
     /**
-     * Find the SOverlay inside an SGraphEditor widget using the known widget tree structure.
-     * Uses targeted traversal first (SGraphEditorImpl → SOverlay), with recursive fallback.
+     * The SOverlay SGraphEditorImpl puts around its graph panel (SGraphEditor > SBox > SGraphEditorImpl > SOverlay):
+     * found by walking up from the graph panel, with a recursive search (logged at Debug) as the fallback.
      */
-    TSharedPtr<SOverlay> FindGraphEditorOverlay(TSharedPtr<SWidget> GraphEditorWidget);
+    static TSharedPtr<SOverlay> FindGraphEditorOverlay(const TSharedRef<SGraphEditor>& GraphEditor);
 
     /** Execute collect nodes for a specific editor */
     void TranslateBlueprintNodesForEditor(TWeakPtr<FBlueprintEditor> InEditor);

@@ -477,7 +477,9 @@ FString FN2CTokenEstimationService::SerializeGraphToJson(const FN2CTagInfo& Grap
 		return FString();
 	}
 
-	if (CollectedNodes.IsEmpty())
+	// Nothing to estimate in a graph of only the editor's placeholder events (a new Blueprint's greyed-out BeginPlay
+	// and Tick): the capture leaves them out and warns, and an overlay estimates each graph it is built for (card 0293)
+	if (!CollectedNodes.ContainsByPredicate([](const UK2Node* Node) { return Node && !Node->IsAutomaticallyPlacedGhostNode(); }))
 	{
 		return FString();
 	}
