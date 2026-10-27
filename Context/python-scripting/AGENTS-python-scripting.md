@@ -252,7 +252,9 @@ script ends and reports it as `compile` in its own result, so a script that adds
 
 The script system searches two locations, with project scripts taking precedence:
 
-1. **Plugin bundled scripts** (read-only): `Plugins/NodeToCode/Content/Python/scripts/`
+1. **Plugin bundled scripts** (read-only): `Content/Python/scripts/` of the plugin, found beside the `nodetocode`
+   package (`_get_plugin_scripts_dir` resolves it from `scripts.py`'s own path), so a Fab install under
+   `Engine/Plugins/Marketplace` or a renamed plugin folder finds them too
 2. **Project user scripts** (read-write): `Content/Python/scripts/`
 
 *   All list/search/get operations search **BOTH** locations
@@ -300,6 +302,8 @@ Writing and recovery (project registry; same pattern as `FN2CFileUtils`):
     AGENTS.md gives the `uv run` command). `test_scripts.py` covers this module and `test_registry_integrity.py`
     checks that every bundled registry path exists and every bundled `.py` file is registered, so a script added
     under `Content/Python/scripts` needs its registry entry in the same change.
+*   In-editor tests: `Tests/python/editor` (`run_editor_tests.py` runs each `test_*.py` there with
+    `-ExecutePythonScript` and logs `N2C_EDITOR_TESTS PASS <count>` or `FAIL`; command in `Tests/python/README.md`).
 
 ### Bundled Scripts
 
