@@ -470,7 +470,7 @@ MCP prompt (`FN2CMcpPythonScriptingPrompt`) enforcing proper workflow:
 
 **With Python execution off** (the per-user **Allow MCP Python Execution**, default off; card 0124): the prompt checks
 `FN2CMcpToolManager::IsToolRegistered("run-python")` and, when it is not registered, opens with a "run-python is
-disabled on this server" section naming the setting (Project Settings > Plugins > Node to Code (User) > MCP Server,
+disabled on this server" section naming the setting (Editor Preferences > Plugins > Node to Code (User) > MCP Server,
 editor restart), says run-python, save-python-script and delete-python-script are unavailable, and tells the agent to
 give the script to the user to run and not to claim it ran. Steps 1, 4 and 5 and the tool list say the same.
 

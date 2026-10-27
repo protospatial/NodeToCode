@@ -76,7 +76,7 @@ A call to a left-out tool answers with the Epic tool to use instead. The pairs a
 ## Python execution
 
 `run-python`, `save-python-script` and `delete-python-script` exist only when **Allow MCP Python Execution** is on in
-**Project Settings → Plugins → Node to Code (User) → MCP Server**. It is off by default and per user: a value in the
+**Editor Preferences → Plugins → Node to Code (User) → MCP Server**. It is off by default and per user: a value in the
 project's committed config files is ignored. With it on, any connected client can run any Python in your editor.
 Python scripting only with it off leaves the 4 read-only script library tools, and the Output Log warns at start.
 

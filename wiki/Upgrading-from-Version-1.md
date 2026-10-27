@@ -49,7 +49,7 @@ When a model is replaced, choose another one in the provider's **Model** list, o
 These have no 1.2.x value, so they start at their defaults: **Max Output Tokens** for each provider (0, Auto),
 **Custom Model ID** (empty), **HTTP Activity Timeout** (300 s), **UI Colors** and **Code Editor Theme** under
 **Theming**, and the **MCP Server** category: **Server Port** 27000, **Port Fallback Range** 10, **Tool Profile**
-Default toolsets, **Tool Exposure** List every tool and **Overlapping Tools** Automatic. Under **Node to Code (User)**, **Enable MCP Server** is on and **Allow MCP Python
+Default toolsets, **Tool Exposure** List every tool and **Overlapping Tools** Automatic. Under **Node to Code (User)** (in **Editor Preferences → Plugins**), **Enable MCP Server** is on and **Allow MCP Python
 Execution** and **Allow MCP Writes Outside Project** are off. The file also gains `SettingsVersion=4`, which marks it as upgraded. What these settings mean
 for your machine: [Security Model](Security-Model).
 

@@ -822,7 +822,7 @@ void FN2CContentToolsSpec::Define()
 			TestEqual(TEXT("Project Settings show the value in effect"),
 				GetDefault<UN2CUserSettings>()->bAllowMcpWritesOutsideProject, UN2CUserSettings::AreMcpWritesOutsideProjectAllowed());
 			TestFalse(TEXT("off in the test host (the refusal cases need it off)"), UN2CUserSettings::AreMcpWritesOutsideProjectAllowed());
-			// What Project Settings > Plugins > Node to Code (User) shows
+			// What Editor Preferences > Plugins > Node to Code (User) shows
 			const FProperty* Property = UN2CUserSettings::StaticClass()->FindPropertyByName(
 				GET_MEMBER_NAME_CHECKED(UN2CUserSettings, bAllowMcpWritesOutsideProject));
 			if (TestNotNull(TEXT("the property"), Property))

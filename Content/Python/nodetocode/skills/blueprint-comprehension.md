@@ -17,8 +17,8 @@ search and folders, Blueprint functions and variables, components, compile, save
 not listed, and a call to one answers `Unknown tool` with the Epic tool to use. Where this skill names such a tool, its
 Epic counterpart follows it; use the counterpart when the NodeToCode tool is not listed.
 
-If no route lists NodeToCode's tools, say so and stop: the editor is closed, the server is off (**Project
-Settings > Plugins > Node to Code (User) > Enable MCP Server**) or the client is not configured. Do not guess at a
+If no route lists NodeToCode's tools, say so and stop: the editor is closed, the server is off (**Editor
+Preferences > Plugins > Node to Code (User) > Enable MCP Server**) or the client is not configured. Do not guess at a
 Blueprint's contents.
 
 ## Read a Blueprint

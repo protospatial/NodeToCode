@@ -821,7 +821,7 @@ curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 
 ## Server switches (per-user)
 
-`UN2CUserSettings` (Project Settings > Plugins > Node to Code (User), saved to the user's
+`UN2CUserSettings` (Editor Preferences > Plugins > Node to Code (User), saved to the user's
 `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`). Unreal also reads a committed
 `Config/DefaultEditorPerProjectUserSettings.ini` (and the Base and platform files) as lower layers of that config, so
 code reads the switches through `UN2CUserSettings::IsMcpServerEnabled()`, `IsMcpPythonExecutionAllowed()` and
