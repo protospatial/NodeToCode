@@ -44,6 +44,10 @@ search to narrow it. The header above the list says what it shows, and an empty 
 `No graphs match "foo".`). Your selection in the tree and the graphs you checked stay as they are when tags change
 or a batch finishes, so **View** on a new translation is one click away.
 
+**Remove Selected** takes the listed tags off the graphs you checked. It first asks, with the number of tags and
+graphs, and then shows a notification with **Undo** for ten seconds, which puts the tags back with their
+descriptions. Translations and JSON exports are kept either way.
+
 ## Reviewing the Translation
 
 When examining the results:
