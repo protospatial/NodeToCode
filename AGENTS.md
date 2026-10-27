@@ -17,11 +17,9 @@ capability to them; see "Frozen tool families (dec-5)" in `Source/Private/MCP/To
 
 ## Unreal Engine Source Path
 
-Run `Content/Scripts/detect-ue-path.sh` (Mac/Linux) or `Content\Scripts\detect-ue-path.bat` (Windows) to detect your UE installation and update this file.
-
-UE_SOURCE_PATH: <!-- RUN DETECT SCRIPT TO POPULATE -->
-
-This is where source files for Unreal Engine 5 can be found and searched through for research purposes. NEVER try to modify files here.
+The engine sources for research are at the `UE_SOURCE_PATH` line of `AGENTS.local.md` next to this file (gitignored,
+one per machine). `Scripts/detect-ue-path.sh` (macOS, Linux) or `Scripts\detect-ue-path.bat` (Windows) writes it
+from the newest Unreal Engine install; this file is never changed. NEVER modify files under that path.
 
 ## User docs
 
