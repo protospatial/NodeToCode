@@ -251,8 +251,8 @@ Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph bl
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `nodeGuids` | `array<string>` | yes |  | Array of node GUIDs to delete |
-| `preserveConnections` | `boolean` | no | `false` | Meant to reconnect the deleted node's input sources to its output targets. Currently has no effect: no link is ever made. Default: false |
-| `force` | `boolean` | no | `false` | If true, bypasses validation checks and forces deletion of nodes that would normally be protected. Default: false |
+| `preserveConnections` | `boolean` | no | `false` | If true, reconnects the links that pass through each deleted node: the sources of its exec input to the targets of its exec output (only on a node with one exec input and one exec output), and through reroute knots. Each link made is listed in preservedConnections; a link the schema refuses or that would replace another link is not made. Data pins of other nodes are not bridged. Default: false |
+| `force` | `boolean` | no | `false` | If true, deletes nodes the editor protects (CanUserDeleteNode false: a function entry, the entry and exit tunnels of a collapsed graph or macro). Deleting those can leave the Blueprint unable to compile. Default: false |
 | `blueprintPath` | `string` | no |  | Optional. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door.BP_Door. With no target argument the focused graph is used; with blueprintPath alone, its focused graph or else its event graph. The result's 'target' says which graph was used. |
 | `graphName` | `string` | no |  | Optional. Name of the graph (a function, macro, event graph or collapsed graph) in blueprintPath, or in the focused Blueprint without blueprintPath. AMBIGUOUS_GRAPH_NAME when two graphs share it: pass graphGuid then. |
 | `graphGuid` | `string` | no |  | Optional. The graph's GUID (target.graphGuid of an earlier result; a function's functionGuid/guid is its graph GUID). Stable across renames and moves. Wins over graphName. |

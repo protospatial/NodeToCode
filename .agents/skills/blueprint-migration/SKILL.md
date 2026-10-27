@@ -78,8 +78,8 @@ run. Wait for the user to review the code. A failed or skipped build stops the m
 3. Compile the Blueprint with `compile-blueprint` (`{"blueprintPath": ...}`; Epic: `BlueprintTools.compile_blueprint`)
    and read its errors and warnings.
 4. With the user's approval for each, remove the Blueprint logic the C++ now does: `delete-blueprint-function` for a
-   whole function, `delete-blueprint-node` for nodes (it does not reconnect around a deleted node; re-wire with
-   `connect-pins`). Keep events that call into the C++ when the plan said so. Recompile after each change.
+   whole function, `delete-blueprint-node` for nodes (with `preserveConnections` it reconnects the exec line
+   through a node with one exec input and output; re-wire anything else with `connect-pins`). Keep events that call into the C++ when the plan said so. Recompile after each change.
 5. `save-blueprint` (Epic: `AssetTools.save_assets`) only when the user says to save.
 
 ## Gate 3: verified

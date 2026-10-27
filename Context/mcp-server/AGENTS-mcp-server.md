@@ -99,6 +99,7 @@ Source/
     │   ├── N2CMcpContentBrowserUtils.h/.cpp
     │   ├── N2CMcpFunctionPinUtils.h/.cpp
     │   ├── N2CMcpGraphTarget.h/.cpp      # FN2CGraphTarget: the graph a Graph/Functions tool acts on (card 0152)
+    │   ├── N2CMcpNodeDeletion.h/.cpp     # N2CNodeDeletion: delete nodes as the editor does, bridging links (card 0279)
     │   ├── N2CMcpNodeSpawnUtils.h/.cpp   # FN2CMcpNodeSpawn: variable and comment nodes the engine way (card 0155)
     │   ├── N2CMcpPinDefaultUtils.h/.cpp  # FN2CMcpPinDefault: pin default writes checked by the K2 schema (card 0278)
     │   ├── N2CMcpTagUtils.h/.cpp
@@ -419,6 +420,10 @@ Common utilities shared across MCP tools:
 *   **`N2CMcpFunctionPinUtils`**: Function pin manipulation
 *   **`N2CMcpTagUtils`**: Graph tagging utilities
 *   **`N2CMcpTypeResolver`**: UE type resolution (class/struct lookups)
+*   **`N2CMcpNodeDeletion`**: `N2CNodeDeletion`, which deletes nodes as the editor's Delete does: protection by
+    `CanUserDeleteNode` (force overrides only that), `FBlueprintEditorUtils::RemoveNode` per node, one structural
+    mark, and with preserveConnections the links through each node's pass-through pin rebuilt with
+    `TryCreateConnection`. Used by delete-blueprint-node and the bridge's DeleteNodes (card 0279)
 *   **`N2CMcpNodeSpawnUtils`**: `FN2CMcpNodeSpawn`, which makes variable Get/Set nodes through
     `UBlueprintVariableNodeSpawner` and comment nodes through the schema's template path (a GUID, `RF_Transactional`,
     one set of pins, one transaction), and the node result fields add-bp-node-to-active-graph returns (card 0155)

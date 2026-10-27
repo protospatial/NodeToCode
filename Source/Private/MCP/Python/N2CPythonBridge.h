@@ -261,9 +261,14 @@ public:
 	 * Delete nodes from the focused Blueprint graph.
 	 *
 	 * @param NodeGuidsJson JSON array of node GUIDs to delete: ["guid1","guid2",...]
-	 * @param bPreserveConnections If true, attempts to bridge connections around deleted nodes
-	 * @param bForce If true, bypasses protection checks for entry/result nodes
-	 * @return JSON with deleted node info
+	 * Deletes as the editor's Delete does (N2CNodeDeletion, shared with delete-blueprint-node): FBlueprintEditorUtils::RemoveNode,
+	 * one structural compile, protection by the node's CanUserDeleteNode.
+	 *
+	 * @param bPreserveConnections If true, reconnects the links that pass through each deleted node (exec in-sources to
+	 *        exec out-targets on a node with one exec input and output, and through reroute knots); each node lists
+	 *        the links made under preservedConnections
+	 * @param bForce If true, also deletes nodes the editor protects (a function entry, a collapsed graph's tunnels)
+	 * @return JSON with deleted node info; GUIDs not deleted are listed under 'skipped' with the reason
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections = false, bool bForce = false);
