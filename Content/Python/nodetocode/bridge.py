@@ -41,7 +41,8 @@ def tag_graph(tag: str, category: str = "Default", description: str = "") -> Dic
         description: Optional description for the tag
 
     Returns:
-        {success, data: {tag, category, description, graph_guid, graph_name, blueprint_name}, error}
+        {success, data: {tag, category, description, graph_guid, graph_name, blueprint_name,
+                         blueprint_path}, error}
 
     Example:
         result = tag_graph("player_controller", "Systems", "Main player input handling")
@@ -59,13 +60,16 @@ def tag_graph(tag: str, category: str = "Default", description: str = "") -> Dic
         return make_error_result(str(e))
 
 
-def list_tags(category: Optional[str] = None, tag: Optional[str] = None) -> Dict[str, Any]:
+def list_tags(category: Optional[str] = None, tag: Optional[str] = None,
+              blueprint_path: Optional[str] = None) -> Dict[str, Any]:
     """
     List tags with optional filters.
 
     Args:
         category: Filter by category (None for all)
         tag: Filter by tag name (None for all)
+        blueprint_path: Only the tags of this Blueprint's graphs (None for all). A duplicated
+            Blueprint keeps the original's graph GUIDs, so this tells their tags apart.
 
     Returns:
         {success, data: {tags: [...], count, total_categories, total_unique_tags}, error}
@@ -90,30 +94,34 @@ def list_tags(category: Optional[str] = None, tag: Optional[str] = None) -> Dict
         gameplay_graphs = list_tags(tag="gameplay")
     """
     try:
-        result = unreal.N2CPythonBridge.list_tags(category or "", tag or "")
+        result = unreal.N2CPythonBridge.list_tags(category or "", tag or "", blueprint_path or "")
         return _parse_bridge_result(result)
     except Exception as e:
         log_error(f"list_tags failed: {e}")
         return make_error_result(str(e))
 
 
-def remove_tag(graph_guid: str, tag: str) -> Dict[str, Any]:
+def remove_tag(graph_guid: str, tag: str, blueprint_path: str = "") -> Dict[str, Any]:
     """
     Remove a tag from a graph.
 
     Args:
         graph_guid: The graph's GUID (string format, from list_tags)
         tag: Tag name to remove
+        blueprint_path: The owning Blueprint's path (blueprint_path from list_tags). A graph is
+            named by its Blueprint and GUID: a duplicated Blueprint keeps the original's graph
+            GUIDs, so without the path the removal fails once two Blueprints share the GUID.
 
     Returns:
-        {success, data: {removed: bool, removed_count, tag, graph_guid, remaining_tags}, error}
+        {success, data: {removed: bool, removed_count, tag, graph_guid, blueprint_path,
+                         remaining_tags}, error}
 
     Example:
-        # Get tags first to find GUIDs
+        # Get tags first to find GUIDs and Blueprint paths
         tags = list_tags()
         for t in tags['data']['tags']:
             if t['tag'] == 'old_tag':
-                remove_tag(t['graph_guid'], 'old_tag')
+                remove_tag(t['graph_guid'], 'old_tag', t['blueprint_path'])
     """
     if not graph_guid or not graph_guid.strip():
         return make_error_result("graph_guid cannot be empty")
@@ -122,7 +130,7 @@ def remove_tag(graph_guid: str, tag: str) -> Dict[str, Any]:
         return make_error_result("tag cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.remove_tag(graph_guid.strip(), tag.strip())
+        result = unreal.N2CPythonBridge.remove_tag(graph_guid.strip(), tag.strip(), (blueprint_path or "").strip())
         return _parse_bridge_result(result)
     except Exception as e:
         log_error(f"remove_tag failed: {e}")

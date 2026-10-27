@@ -94,6 +94,37 @@ def test_remove_tag_returns_the_bridge_error_with_the_apostrophe(monkeypatch):
     assert result == {'success': False, 'data': None, 'error': error}
 
 
+class _RecordingBridge:
+    """Stand-in for unreal.N2CPythonBridge that records the arguments of each call"""
+
+    def __init__(self, text):
+        self.calls = []
+        for name in ('remove_tag', 'list_tags'):
+            setattr(self, name, self._recorder(name, text))
+
+    def _recorder(self, name, text):
+        def call(*args):
+            self.calls.append((name, args))
+            return text
+        return call
+
+
+def test_remove_and_list_tags_pass_the_blueprint_path_to_the_bridge(monkeypatch):
+    # Card 0498: a duplicated Blueprint keeps its graph GUIDs, so the bridge names a graph by Blueprint and GUID
+    bridge = importlib.import_module('nodetocode.bridge')
+    stub = _RecordingBridge(writer_json(True, {}))
+    monkeypatch.setattr(UNREAL, 'N2CPythonBridge', stub, raising=False)
+    path = '/Game/BP_Copy.BP_Copy'
+    assert bridge.remove_tag(' A1B2C3D4-0000-0000-0000-000000000001 ', 'gameplay', ' %s ' % path)['success']
+    assert bridge.list_tags(tag='gameplay', blueprint_path=path)['success']
+    assert bridge.remove_tag('A1B2C3D4-0000-0000-0000-000000000001', 'gameplay')['success']
+    assert stub.calls == [
+        ('remove_tag', ('A1B2C3D4-0000-0000-0000-000000000001', 'gameplay', path)),
+        ('list_tags', ('', 'gameplay', path)),
+        ('remove_tag', ('A1B2C3D4-0000-0000-0000-000000000001', 'gameplay', '')),
+    ]
+
+
 def test_create_comment_node_reports_success_for_an_apostrophe_comment(monkeypatch):
     graph = importlib.import_module('nodetocode.graph')
     data = {'commentGuid': 'G', 'commentText': AWKWARD, 'includedNodeCount': 1,

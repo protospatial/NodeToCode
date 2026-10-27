@@ -5,6 +5,7 @@
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CTagManager.h"
+#include "Core/N2CGraphStateManager.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
@@ -416,11 +417,13 @@ FString UN2CPythonBridge::TagFocusedGraph(const FString& Tag, const FString& Cat
 	Data->SetStringField(TEXT("graph_guid"), FocusedGraph->GraphGuid.ToString());
 	Data->SetStringField(TEXT("graph_name"), FocusedGraph->GetName());
 	Data->SetStringField(TEXT("blueprint_name"), OwningBlueprint->GetName());
+	// With graph_guid, what RemoveTag takes to name this graph even when a copy of the Blueprint shares its GUID
+	Data->SetStringField(TEXT("blueprint_path"), TaggedGraph.OwningBlueprint.ToString());
 
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
+FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag, const FString& BlueprintPath)
 {
 	TArray<FN2CTaggedBlueprintGraph> Tags;
 
@@ -444,6 +447,16 @@ FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
 	{
 		// Get all tags
 		Tags = UN2CTagManager::Get().GetAllTags();
+	}
+
+	// Only one Blueprint's graphs, when asked (card 0498): copies share graph GUIDs
+	if (!BlueprintPath.TrimStartAndEnd().IsEmpty())
+	{
+		const FSoftObjectPath Wanted = FN2CGraphKey::NormalizeBlueprintPath(BlueprintPath);
+		Tags.RemoveAll([&Wanted](const FN2CTaggedBlueprintGraph& TagInfo)
+		{
+			return FN2CGraphKey::NormalizeBlueprintPath(TagInfo.OwningBlueprint) != Wanted;
+		});
 	}
 
 	// Build JSON array
@@ -474,7 +487,7 @@ FString UN2CPythonBridge::ListTags(const FString& Category, const FString& Tag)
 	return MakeSuccessJson(Data);
 }
 
-FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag)
+FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag, const FString& BlueprintPath)
 {
 	if (GraphGuid.IsEmpty() || Tag.IsEmpty())
 	{
@@ -488,20 +501,31 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 		return MakeErrorJson(FString::Printf(TEXT("Invalid GUID format: %s"), *GraphGuid));
 	}
 
+	// The graph is {Blueprint, GraphGuid} (card 0192): a duplicated Blueprint shares its graph GUIDs with the original,
+	// so a GUID alone names a graph only while one Blueprint has it (card 0498)
+	const FN2CGraphKey Key = BlueprintPath.TrimStartAndEnd().IsEmpty()
+		? FN2CGraphKey(ParsedGuid)
+		: FN2CGraphKey(FN2CGraphKey::NormalizeBlueprintPath(BlueprintPath), ParsedGuid);
+
 	// Try to remove the tag
 	FN2CTaggedBlueprintGraph RemovedTag;
-	int32 RemovedCount = UN2CTagManager::Get().RemoveTagByName(ParsedGuid, Tag, RemovedTag);
+	int32 RemovedCount = UN2CTagManager::Get().RemoveTagByName(Key, Tag, RemovedTag);
 
 	if (RemovedCount == 0)
 	{
-		return MakeErrorJson(FString::Printf(TEXT("Tag '%s' not found on graph %s"), *Tag, *GraphGuid));
+		if (!Key.HasBlueprint() && UN2CGraphStateManager::Get().FindKeysForGuid(ParsedGuid).Num() > 1)
+		{
+			return MakeErrorJson(FString::Printf(TEXT("Graph %s is in more than one Blueprint (a duplicated Blueprint keeps its graph GUIDs). Pass blueprint_path (from list_tags) to say which."),
+				*GraphGuid));
+		}
+		return MakeErrorJson(FString::Printf(TEXT("Tag '%s' not found on graph %s"), *Tag, *Key.ToString()));
 	}
 
 	// Save tags to persist
 	UN2CTagManager::Get().SaveTags();
 
 	// Get remaining tags for this graph
-	TArray<FN2CTaggedBlueprintGraph> RemainingTags = UN2CTagManager::Get().GetTagsForGraph(ParsedGuid);
+	TArray<FN2CTaggedBlueprintGraph> RemainingTags = UN2CTagManager::Get().GetTagsForGraph(Key);
 
 	FN2CLogger::Get().Log(FString::Printf(TEXT("RemoveTag: Removed %d tag(s) '%s' from graph %s"), RemovedCount, *Tag, *GraphGuid), EN2CLogSeverity::Info);
 
@@ -510,6 +534,7 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 	Data->SetNumberField(TEXT("removed_count"), RemovedCount);
 	Data->SetStringField(TEXT("tag"), Tag);
 	Data->SetStringField(TEXT("graph_guid"), GraphGuid);
+	Data->SetStringField(TEXT("blueprint_path"), RemovedTag.OwningBlueprint.ToString());
 	Data->SetNumberField(TEXT("remaining_tags"), RemainingTags.Num());
 
 	return MakeSuccessJson(Data);
