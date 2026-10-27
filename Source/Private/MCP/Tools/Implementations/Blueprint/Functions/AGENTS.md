@@ -19,8 +19,8 @@ provisionally as the review's option 2, with card 0089 applied provisionally as 
 - **Not frozen:** comprehension, export, translation, batch and tag tools: `BlueprintDiscoveryTools` (except the
   tools in `N2CMcpEpicOverlap::Tools`), `BlueprintTagTools`, `TranslationTools`, and also `FileSystemTools` and
   `PythonTools`.
-- **Fix cards still owed here:** 0280 (create- and delete-blueprint-function must not rename or delete unrelated graphs and nodes), 0295
-  (delete-blueprint-function's notification brush).
+- **Fix cards still owed here:** 0295 (delete-blueprint-function's notification brush). 0280 (create- and
+  delete-blueprint-function renamed or deleted unrelated graphs and nodes) is done.
 
 The whole policy, and how the frozen set is read from the code, is "Frozen tool families" in
 `Source/Private/MCP/Tools/AGENTS.md`.
@@ -68,9 +68,14 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
 - **Description**: Creates a function graph, adds its parameters, compiles, and opens and focuses the new graph in the
   Blueprint editor
 - **Parameters**:
-  - `functionName` (required): Name of the new function. Refused when empty, with invalid characters, when a
-    function graph of that name exists (`NAME_COLLISION`), or when the parent class has a non-BlueprintEvent
-    function of that name (`ValidateFunctionName`)
+  - `functionName` (required): Name of the new function, checked by the editor's own `FKismetNameValidator`
+    (`ValidateFunctionName`, card 0280). A name any graph of the Blueprint has (the event graph, a function, a macro,
+    an event dispatcher), a member variable, a component or a function of the class or its parents (`ReceiveBeginPlay`
+    included) is refused: `NAME_COLLISION: 'OnDied' is already an event dispatcher in BP_Door. Pick another name, for
+    example 'OnDied_0'.` (the suggestion is `FBlueprintEditorUtils::FindUniqueKismetName`). Too long or bad
+    characters: `INVALID_NAME: ...`. Before card 0280 only function graphs and non-event parent functions were
+    checked, and `CreateNewGraph` renamed any other graph of that name out of the way (`EdGraph_0`), which broke an
+    event dispatcher or renamed the event graph
   - `blueprintPath` (optional): Asset path of the target Blueprint (`/Game/Blueprints/BP_MyActor.BP_MyActor`);
     without it, the focused Blueprint. A path that does not resolve is an error (`ASSET_NOT_FOUND: ...`). It takes
     no `graphName` or `graphGuid` (it makes the graph)
@@ -79,19 +84,34 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
     key), `isReference`, `isConst`, and `defaultValue` (inputs only). `type` and `subType` are resolved like a
     variable's type (see "Type Identifiers" in `../Variables/AGENTS.md`): `type` alone takes a primitive, a type
     name (`HitResult`, `AActor`) or a path; `type` `object`, `class`, `softobject`, `softclass`, `struct`, `enum` or
-    `interface` takes `subType` naming the class, struct or enum. Every parameter type is resolved before the function
-    is created: one that does not resolve fails the call with
-    `INVALID_PARAMETER_TYPE: parameter '<name>': <reason>` and nothing is added
-  - `functionFlags` (optional): Object with `isPure`, `isCallInEditor`, `isStatic`, `isConst`,
-    `isReliableReplication`, `isMulticast` (booleans), `category` (default `Default`), `keywords`, `tooltip`, and
-    `accessSpecifier` (`public`, the default, `protected` or `private`). `isOverride` is read but has no effect
+    `interface` takes `subType` naming the class, struct or enum. A taken name is made unique, as in the editor (a
+    second `Value` becomes `Value1`); the result's `parameters` says which name each got
+  - `functionFlags` (optional): Object with `isPure`, `isCallInEditor`, `isStatic`, `isConst` (booleans), `category`
+    (default `Default`), `keywords`, `tooltip`, and `accessSpecifier` (`public`, the default, `protected` or
+    `private`, case-insensitive). The access specifier replaces the `FUNC_Public` that `AddFunctionGraph` seeds (the
+    `FUNC_AccessSpecifiers` mask is cleared first, as the details panel does); before card 0280 a private function
+    had both `FUNC_Public` and `FUNC_Private`
+- **Refused before the Blueprint is touched** (card 0280; no undo step, the package stays clean). A cancelled
+  transaction does not undo what was done inside it, so every check runs before the graph is made:
+  - A parameter `direction` other than `input` or `output` (`return`, `out`): `INVALID_PARAMETER: parameter
+    '<name>': direction '<d>' is neither 'input' nor 'output' ...`. A `defaultValue` on an output, or a parameter
+    without a name: `INVALID_PARAMETER`. Before card 0280 such a parameter was left out and the call reported success
+  - A `type` that does not resolve: `INVALID_PARAMETER_TYPE: parameter '<name>': <reason>`
+  - A `defaultValue` the pin would refuse, checked on a scratch pin of the parameter's type with the same
+    `FN2CMcpPinDefault::Prepare` set-input-pin-value uses (`abc` for an int, `maybe` for a bool, any default on an
+    array, set, map or by-reference input): `INVALID_DEFAULT_VALUE: parameter '<name>' refused the default ...`
+  - `isStatic` outside a Blueprint Function Library (whose functions are static already), `isOverride` (it was read
+    and ignored; override a parent function from the editor's Functions > Override menu), and `isReliableReplication`
+    or `isMulticast` (a Blueprint function cannot be an RPC; only a custom event can be replicated), or an unknown
+    `accessSpecifier`: `INVALID_FLAGS: ...`
+- Defaults go through `UK2Node_EditablePinBase::ModifyUserDefinedPinDefaultValue` on the pin `CreateUserDefinedPin`
+  returned, so they are kept in the entry's `UserDefinedPins` and survive every node rebuild. Before card 0280 the
+  default was written to `FindPin(name)` (the first `Value` when the second was renamed `Value1`) and only on the pin
 - **Returns**: `success`, `functionName`, `functionGuid` (32 hex digits; the stable ID, see "Function GUIDs"),
-  `blueprintName`, `blueprintPath`, `graphInfo` (`graphName`, `nodeCount`), `message`, and `target` (the new function
-  as `blueprintPath` plus `graphGuid`, for the graph and pin tools)
-- **Known issue (card 0280):** a parameter whose direction is neither `input` nor `output` is left out and only
-  logged (`CreateFunctionParameters`); the call still reports success. Check the
-  signature with list-blueprint-functions afterwards. `CreateNewGraph` also renames any other graph that already has
-  the name (an event dispatcher, the event graph)
+  `blueprintName`, `blueprintPath`, `graphInfo` (`graphName`, `nodeCount`), `parameters` (each pin made: `name` as
+  sent, `actualName`, `pinId`, `direction`, and `defaultValue` as stored), `warnings` (only when a checked parameter
+  still could not be made), `message`, and `target` (the new function as `blueprintPath` plus `graphGuid`, for the
+  graph and pin tools)
 
 ### open-blueprint-function
 - **Description**: Opens a function graph in the Blueprint editor and focuses it
@@ -111,15 +131,28 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
   - `functionGuid` (or `graphGuid`), or `graphName`: The function; one of them is required
   - `blueprintPath` (optional): Without it, the focused Blueprint. Functions of an interface Blueprint can be deleted
     (the resolver's read-only check does not apply to a delete)
-  - `force` (optional, default false): Also delete the function's call nodes in this Blueprint, and delete a function
-    that child Blueprints override
+  - `force` (optional, default false): Delete the function although it is called or overridden: its call nodes in
+    this Blueprint are removed (`FBlueprintEditorUtils::RemoveNode`); call nodes in other Blueprints are left in place
+    and reported, and those Blueprints then fail to compile until they are fixed
+- **References** (`FindFunctionReferences`, card 0280): a call node counts when the function it resolves to
+  (`UK2Node_CallFunction::GetTargetFunction`) belongs to this Blueprint's skeleton or generated class, never by name
+  alone, so a call to another class's same-named function (`UKismetSystemLibrary::PrintString` beside a function
+  `PrintString`) is neither counted nor deleted. Every loaded Blueprint is searched (child Blueprints and any
+  Blueprint calling it through a reference), and Blueprints the asset registry lists as hard referencers of this one
+  that are not loaded are reported as unchecked. Before card 0280 references were matched by bare name, in the owning
+  Blueprint only, so `force` deleted unrelated call nodes and a call from another Blueprint was missed
 - **Returns**: `success`, `deletedFunction` (`name`, `guid`), `referencesRemoved` (each `graphName`, `nodeId`,
-  `nodeTitle`), `blueprintPath`, `target` (the deleted function, taken before the delete)
-- **Errors**: Call nodes in the same Blueprint without `force`: `Function '<name>' has <n> references and cannot be
-  deleted. Use force=true to remove anyway.` `UserConstructionScript` and a few engine event names are protected
-  (`IsSystemFunction`)
-- **Known issue (card 0280):** references are found by function name only (`FindFunctionReferences`), so with
-  `force` a call to a same-named function of another class is deleted too
+  `nodeTitle`), `externalReferencesLeft` (with `force`, call nodes in other Blueprints: `blueprintPath` and the same fields)
+  and `uncheckedReferencers` (with `force`, object paths of referencing Blueprints that were not loaded), each only
+  when not empty, `blueprintPath`, `target` (the deleted function, taken before the delete)
+- **Errors**: References without `force`, checked before anything changes (no undo step, the package stays clean):
+  `Function '<name>' has references and cannot be deleted: 1 call node(s) in BP_Door; 2 call node(s) in other
+  Blueprints (/Game/BP_Player.BP_Player), which force does not remove: they stop compiling. Use force=true to remove
+  anyway.` `UserConstructionScript` and a few engine event names are protected (`IsSystemFunction`)
+- The Blueprint editor's tabs on the function and its subgraphs are closed before `RemoveGraph` (as My Blueprint's
+  delete does), so no tab is left on a graph the Blueprint no longer owns. The graph resolver refuses a focused graph
+  that belongs to no Blueprint (`NO_FOCUSED_GRAPH: the focused graph ... belongs to no Blueprint`). Before card 0280
+  the tab stayed open and the focused-graph tools edited the removed graph
 
 ### add-function-input-pin
 - **Description**: Adds an input parameter to the target function (a pin on its entry node): the function
@@ -369,3 +402,5 @@ Checked by `NodeToCode.MCP.FunctionPinEdits` (the tools on every engine, the bri
 - Blueprint functions can return several values
 - Pin removal breaks the pin's links before the pin is removed
 - Execution pins and pins that are not user-defined cannot be removed (`ValidatePinForRemoval`)
+- create-blueprint-function's refusals and delete-blueprint-function's reference matching, `force` and tab closing are
+  checked by `NodeToCode.MCP.FunctionCreateDelete` (card 0280; the cases that open the Blueprint editor run on UE 5.8)

@@ -17,6 +17,10 @@
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_Event.h"
 #include "K2Node_DelegateSet.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "UObject/UObjectIterator.h"
 #include "EdGraphSchema_K2.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -123,35 +127,60 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 			return Target.Finish(FMcpToolCallResult::CreateErrorResult(ValidationError));
 		}
 		
-		// Find references to this function
-		TArray<UK2Node_CallFunction*> CallNodes;
-		FindFunctionReferences(TargetBlueprint, FunctionGraph->GetFName().ToString(), CallNodes);
-		
+		// Every call to this function (card 0280): in this Blueprint, matched by the function the node resolves to
+		// rather than by name, so a call to another class's same-named function is never counted or deleted; in other
+		// loaded Blueprints; and Blueprints the asset registry says reference this one but are not loaded
+		FFunctionReferences References;
+		FindFunctionReferences(TargetBlueprint, FunctionGraph->GetFName(), References);
+
+		// Refused before anything changes: no transaction, the package stays clean
+		if (!bForce && (References.Local.Num() > 0 || References.External.Num() > 0 || References.UncheckedReferencers.Num() > 0))
+		{
+			TArray<FString> Parts;
+			if (References.Local.Num() > 0)
+			{
+				Parts.Add(FString::Printf(TEXT("%d call node(s) in %s"), References.Local.Num(), *TargetBlueprint->GetName()));
+			}
+			if (References.External.Num() > 0)
+			{
+				TArray<FString> Owners;
+				for (const UK2Node_CallFunction* CallNode : References.External)
+				{
+					if (const UBlueprint* Owner = FBlueprintEditorUtils::FindBlueprintForNode(CallNode))
+					{
+						Owners.AddUnique(Owner->GetPathName());
+					}
+				}
+				Parts.Add(FString::Printf(TEXT("%d call node(s) in other Blueprints (%s), which force does not remove: they stop compiling"),
+					References.External.Num(), *FString::Join(Owners, TEXT(", "))));
+			}
+			if (References.UncheckedReferencers.Num() > 0)
+			{
+				Parts.Add(FString::Printf(TEXT("%d Blueprint(s) that reference %s and are not loaded, so their calls could not be checked (%s)"),
+					References.UncheckedReferencers.Num(), *TargetBlueprint->GetName(), *FString::Join(References.UncheckedReferencers, TEXT(", "))));
+			}
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
+				TEXT("Function '%s' has references and cannot be deleted: %s. Use force=true to remove anyway."),
+				*FunctionName, *FString::Join(Parts, TEXT("; "))
+			)));
+		}
+
+		TArray<FRemovedReference> ExternalReferences;
+		CollectReferenceInfo(References.External, ExternalReferences);
+
 		// Create a single transaction for all operations
 		const FScopedTransaction Transaction(LOCTEXT("DeleteBlueprintFunction", "Delete Blueprint Function"));
-		
+
 		// Mark the Blueprint as modified for the transaction
 		TargetBlueprint->Modify();
-		
-		// Handle references
+
+		// Remove this Blueprint's call nodes within the transaction
 		TArray<FRemovedReference> RemovedReferences;
-		if (CallNodes.Num() > 0)
+		if (References.Local.Num() > 0 && !RemoveFunctionReferences(TargetBlueprint, References.Local, RemovedReferences))
 		{
-			if (!bForce)
-			{
-				return Target.Finish(FMcpToolCallResult::CreateErrorResult(FString::Printf(
-					TEXT("Function '%s' has %d references and cannot be deleted. Use force=true to remove anyway."),
-					*FunctionName, CallNodes.Num()
-				)));
-			}
-			
-			// Remove references within the transaction
-			if (!RemoveFunctionReferences(CallNodes, RemovedReferences))
-			{
-				return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to remove function references")));
-			}
+			return Target.Finish(FMcpToolCallResult::CreateErrorResult(TEXT("Failed to remove function references")));
 		}
-		
+
 		// Delete the function within the same transaction
 		if (!DeleteFunctionGraph(TargetBlueprint, FunctionGraph))
 		{
@@ -167,7 +196,9 @@ FMcpToolCallResult FN2CMcpDeleteBlueprintFunctionTool::Execute(const TSharedPtr<
 			FunctionName,
 			FunctionGuid,
 			TargetBlueprint->GetPathName(),
-			RemovedReferences
+			RemovedReferences,
+			ExternalReferences,
+			References.UncheckedReferencers
 		);
 		
 		FString JsonString;
@@ -275,24 +306,76 @@ bool FN2CMcpDeleteBlueprintFunctionTool::CheckForOverrides(UBlueprint* Blueprint
 	return OutChildClasses.Num() > 0;
 }
 
-void FN2CMcpDeleteBlueprintFunctionTool::FindFunctionReferences(UBlueprint* Blueprint, const FString& FunctionName, 
-	TArray<UK2Node_CallFunction*>& OutCallNodes) const
+bool FN2CMcpDeleteBlueprintFunctionTool::CallsBlueprintFunction(const UK2Node_CallFunction* CallNode, const UBlueprint* Blueprint,
+	const FName FunctionName)
 {
-	OutCallNodes.Empty();
-	
+	if (!CallNode || !Blueprint || CallNode->FunctionReference.GetMemberName() != FunctionName)
+	{
+		return false;
+	}
+	if (const UFunction* Function = CallNode->GetTargetFunction())
+	{
+		// Owned by the Blueprint's skeleton or generated class (or an older generation of either)
+		const UClass* Owner = Function->GetOwnerClass();
+		return Owner && (Owner == Blueprint->SkeletonGeneratedClass || Owner == Blueprint->GeneratedClass
+			|| Owner->ClassGeneratedBy == Blueprint);
+	}
+	// Unresolved: only a self call from inside this Blueprint can still mean this function
+	return CallNode->FunctionReference.IsSelfContext() && FBlueprintEditorUtils::FindBlueprintForNode(CallNode) == Blueprint;
+}
+
+void FN2CMcpDeleteBlueprintFunctionTool::FindFunctionReferences(UBlueprint* Blueprint, const FName FunctionName,
+	FFunctionReferences& OutReferences) const
+{
+	OutReferences = FFunctionReferences();
 	if (!Blueprint)
 	{
 		return;
 	}
-	
-	// Get all nodes of CallFunction type
-	FBlueprintEditorUtils::GetAllNodesOfClass<UK2Node_CallFunction>(Blueprint, OutCallNodes);
-	
-	// Filter to only nodes that reference our function
-	OutCallNodes.RemoveAll([&FunctionName](UK2Node_CallFunction* CallNode)
+
+	// This Blueprint, and every other loaded one (a child Blueprint, or any Blueprint calling it through a reference)
+	TSet<FName> ScannedPackages;
+	for (TObjectIterator<UBlueprint> It; It; ++It)
 	{
-		return CallNode->FunctionReference.GetMemberName().ToString() != FunctionName;
-	});
+		UBlueprint* Other = *It;
+		if (!IsValid(Other) || Other->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject))
+		{
+			continue;
+		}
+		ScannedPackages.Add(Other->GetOutermost()->GetFName());
+		TArray<UK2Node_CallFunction*> CallNodes;
+		FBlueprintEditorUtils::GetAllNodesOfClass<UK2Node_CallFunction>(Other, CallNodes);
+		for (UK2Node_CallFunction* CallNode : CallNodes)
+		{
+			if (CallsBlueprintFunction(CallNode, Blueprint, FunctionName))
+			{
+				(Other == Blueprint ? OutReferences.Local : OutReferences.External).Add(CallNode);
+			}
+		}
+	}
+
+	// Blueprints on disk that hard-reference this one and are not loaded: their call sites cannot be checked unloaded
+	const FName PackageName = Blueprint->GetOutermost()->GetFName();
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+	TArray<FName> Referencers;
+	AssetRegistry.GetReferencers(PackageName, Referencers, UE::AssetRegistry::EDependencyCategory::Package,
+		UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
+	for (const FName Referencer : Referencers)
+	{
+		if (Referencer == PackageName || ScannedPackages.Contains(Referencer))
+		{
+			continue;
+		}
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByPackageName(Referencer, Assets, /*bIncludeOnlyOnDiskAssets*/ true);
+		for (const FAssetData& Asset : Assets)
+		{
+			if (Asset.IsInstanceOf(UBlueprint::StaticClass()))
+			{
+				OutReferences.UncheckedReferencers.AddUnique(Asset.GetObjectPathString());
+			}
+		}
+	}
 }
 
 void FN2CMcpDeleteBlueprintFunctionTool::CollectReferenceInfo(const TArray<UK2Node_CallFunction*>& CallNodes, 
@@ -308,6 +391,10 @@ void FN2CMcpDeleteBlueprintFunctionTool::CollectReferenceInfo(const TArray<UK2No
 		}
 		
 		FRemovedReference Ref;
+		if (const UBlueprint* Owner = FBlueprintEditorUtils::FindBlueprintForNode(CallNode))
+		{
+			Ref.BlueprintPath = Owner->GetPathName();
+		}
 		Ref.GraphName = CallNode->GetGraph() ? CallNode->GetGraph()->GetFName().ToString() : TEXT("Unknown");
 		Ref.NodeId = CallNode->NodeGuid.ToString();
 		Ref.NodeTitle = CallNode->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
@@ -316,7 +403,7 @@ void FN2CMcpDeleteBlueprintFunctionTool::CollectReferenceInfo(const TArray<UK2No
 	}
 }
 
-bool FN2CMcpDeleteBlueprintFunctionTool::RemoveFunctionReferences(const TArray<UK2Node_CallFunction*>& CallNodes, 
+bool FN2CMcpDeleteBlueprintFunctionTool::RemoveFunctionReferences(UBlueprint* Blueprint, const TArray<UK2Node_CallFunction*>& CallNodes,
 	TArray<FRemovedReference>& OutRemovedReferences)
 {
 	// First collect reference info before deletion
@@ -327,11 +414,8 @@ bool FN2CMcpDeleteBlueprintFunctionTool::RemoveFunctionReferences(const TArray<U
 	{
 		if (CallNode && CallNode->GetGraph())
 		{
-			// Mark the graph as modified for the transaction
-			CallNode->GetGraph()->Modify();
-			
-			// Destroy the node
-			CallNode->DestroyNode();
+			// As the editor deletes a node: Modify the graph and node, break the links, remove it (the call compiles later)
+			FBlueprintEditorUtils::RemoveNode(Blueprint, CallNode, /*bDontRecompile*/ true);
 		}
 	}
 	
@@ -349,6 +433,10 @@ bool FN2CMcpDeleteBlueprintFunctionTool::DeleteFunctionGraph(UBlueprint* Bluepri
 	
 	// Mark the function graph as modified for the transaction
 	FunctionGraph->Modify();
+
+	// The editor's tab on the function would otherwise stay open on a graph the Blueprint no longer owns, and the
+	// focused-graph tools would edit it (card 0280)
+	CloseFunctionTabs(Blueprint, FunctionGraph);
 	
 	// Remove the graph using FBlueprintEditorUtils
 	FBlueprintEditorUtils::RemoveGraph(Blueprint, FunctionGraph);
@@ -357,6 +445,27 @@ bool FN2CMcpDeleteBlueprintFunctionTool::DeleteFunctionGraph(UBlueprint* Bluepri
 	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ true);
 	
 	return true;
+}
+
+void FN2CMcpDeleteBlueprintFunctionTool::CloseFunctionTabs(UBlueprint* Blueprint, UEdGraph* FunctionGraph) const
+{
+	if (!Blueprint || !FunctionGraph)
+	{
+		return;
+	}
+	// Only an editor already open; every Blueprint editor is an FBlueprintEditor
+	const TSharedPtr<FBlueprintEditor> Editor = StaticCastSharedPtr<FBlueprintEditor>(FKismetEditorUtilities::GetIBlueprintEditorForObject(Blueprint, /*bOpenEditor*/ false));
+	if (!Editor.IsValid())
+	{
+		return;
+	}
+	TArray<UEdGraph*> Graphs;
+	FunctionGraph->GetAllChildrenGraphs(Graphs);
+	Graphs.Add(FunctionGraph);
+	for (const UEdGraph* Graph : Graphs)
+	{
+		Editor->CloseDocumentTab(Graph);
+	}
 }
 
 void FN2CMcpDeleteBlueprintFunctionTool::RefreshBlueprintEditor(UBlueprint* Blueprint) const
@@ -388,7 +497,8 @@ void FN2CMcpDeleteBlueprintFunctionTool::ShowDeletionNotification(const FString&
 }
 
 TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintFunctionTool::BuildSuccessResult(const FString& FunctionName, const FGuid& FunctionGuid,
-	const FString& BlueprintPath, const TArray<FRemovedReference>& RemovedReferences) const
+	const FString& BlueprintPath, const TArray<FRemovedReference>& RemovedReferences,
+	const TArray<FRemovedReference>& ExternalReferences, const TArray<FString>& UncheckedReferencers) const
 {
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
 	
@@ -411,6 +521,32 @@ TSharedPtr<FJsonObject> FN2CMcpDeleteBlueprintFunctionTool::BuildSuccessResult(c
 		ReferencesArray.Add(MakeShareable(new FJsonValueObject(RefObject)));
 	}
 	Result->SetArrayField(TEXT("referencesRemoved"), ReferencesArray);
+
+	// What force left behind (card 0280): call nodes in other Blueprints, which no longer compile, and referencing
+	// Blueprints that were not loaded and so not checked
+	if (ExternalReferences.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> ExternalArray;
+		for (const FRemovedReference& Ref : ExternalReferences)
+		{
+			TSharedPtr<FJsonObject> RefObject = MakeShareable(new FJsonObject);
+			RefObject->SetStringField(TEXT("blueprintPath"), Ref.BlueprintPath);
+			RefObject->SetStringField(TEXT("graphName"), Ref.GraphName);
+			RefObject->SetStringField(TEXT("nodeId"), Ref.NodeId);
+			RefObject->SetStringField(TEXT("nodeTitle"), Ref.NodeTitle);
+			ExternalArray.Add(MakeShareable(new FJsonValueObject(RefObject)));
+		}
+		Result->SetArrayField(TEXT("externalReferencesLeft"), ExternalArray);
+	}
+	if (UncheckedReferencers.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> UncheckedArray;
+		for (const FString& Path : UncheckedReferencers)
+		{
+			UncheckedArray.Add(MakeShareable(new FJsonValueString(Path)));
+		}
+		Result->SetArrayField(TEXT("uncheckedReferencers"), UncheckedArray);
+	}
 	
 	// Other info
 	Result->SetStringField(TEXT("blueprintPath"), BlueprintPath);
