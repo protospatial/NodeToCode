@@ -12,7 +12,6 @@
 #include "Animation/AnimBlueprint.h"
 #include "Components/ActorComponent.h"
 #include "GameFramework/Actor.h"
-#include "MCP/Tools/Implementations/Blueprint/Analysis/N2CMcpEditorContext.h"
 #include "WidgetBlueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "BlueprintEditor.h"
@@ -61,7 +60,7 @@ FMcpToolDefinition FN2CMcpOpenBlueprintAssetTool::GetDefinition() const
 	// focus_graph property (optional)
 	TSharedPtr<FJsonObject> FocusGraphProp = MakeShareable(new FJsonObject);
 	FocusGraphProp->SetStringField(TEXT("type"), TEXT("string"));
-	FocusGraphProp->SetStringField(TEXT("description"), TEXT("Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'UserConstructionScript' for an Actor's construction script). An unknown name is not an error: the Blueprint opens and focused_graph comes back empty."));
+	FocusGraphProp->SetStringField(TEXT("description"), TEXT("Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'ConstructionScript' / 'UserConstructionScript' for an Actor's construction script). An unknown name fails with GRAPH_NOT_FOUND and lists the Blueprint's graphs; the Blueprint is not opened."));
 	FocusGraphProp->SetStringField(TEXT("default"), TEXT(""));
 	Properties->SetObjectField(TEXT("focus_graph"), FocusGraphProp);
 	
@@ -126,6 +125,19 @@ FMcpToolCallResult FN2CMcpOpenBlueprintAssetTool::Execute(const TSharedPtr<FJson
 			return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
 		}
 		
+		// The graph to focus, found before anything opens: an unknown name fails and lists the graphs, instead of
+		// opening the Blueprint with nothing focused so the next graph edit lands in the graph focused before (card 0286)
+		UEdGraph* TargetGraph = nullptr;
+		if (!FocusGraph.IsEmpty())
+		{
+			TargetGraph = FN2CMcpBlueprintUtils::FindTopLevelGraph(*Blueprint, FocusGraph, ErrorMsg);
+			if (!TargetGraph)
+			{
+				FN2CLogger::Get().LogWarning(FString::Printf(TEXT("open-blueprint-asset: %s"), *ErrorMsg));
+				return FMcpToolCallResult::CreateErrorResult(ErrorMsg);
+			}
+		}
+		
 		// Open the blueprint editor using existing utility
 		TSharedPtr<IBlueprintEditor> BlueprintEditor;
 		if (!FN2CMcpBlueprintUtils::OpenBlueprintEditor(Blueprint, BlueprintEditor, ErrorMsg))
@@ -142,17 +154,12 @@ FMcpToolCallResult FN2CMcpOpenBlueprintAssetTool::Execute(const TSharedPtr<FJson
 		
 		// Focus specific graph if requested
 		FString FocusedGraphName;
-		if (!FocusGraph.IsEmpty() && BlueprintEditor.IsValid())
+		if (TargetGraph && BlueprintEditor.IsValid())
 		{
-			if (FocusOnGraph(BlueprintEditor, Blueprint, FocusGraph))
-			{
-				FocusedGraphName = FocusGraph;
-				FN2CLogger::Get().Log(FString::Printf(TEXT("open-blueprint-asset: Focused on graph '%s'"), *FocusGraph), EN2CLogSeverity::Info);
-			}
-			else
-			{
-				FN2CLogger::Get().LogWarning(FString::Printf(TEXT("open-blueprint-asset: Graph '%s' not found in blueprint"), *FocusGraph));
-			}
+			BlueprintEditor->JumpToHyperlink(TargetGraph, false);
+			// The graph's own name, not the request: "eventgraph" or "ConstructionScript" report the graph focused
+			FocusedGraphName = TargetGraph->GetName();
+			FN2CLogger::Get().Log(FString::Printf(TEXT("open-blueprint-asset: Focused on graph '%s'"), *FocusedGraphName), EN2CLogSeverity::Info);
 		}
 		
 		// Build success result
@@ -273,39 +280,6 @@ FString FN2CMcpOpenBlueprintAssetTool::GetBlueprintTypeString(const UBlueprint* 
 		}
 	}
 	return TEXT("Object");
-}
-
-bool FN2CMcpOpenBlueprintAssetTool::FocusOnGraph(TSharedPtr<IBlueprintEditor> BlueprintEditor, UBlueprint* Blueprint, const FString& GraphName) const
-{
-	if (!BlueprintEditor.IsValid() || !Blueprint)
-	{
-		return false;
-	}
-	
-	// The graphs My Blueprint lists: event graph pages, functions, macros, interface implementations and delegate
-	// signatures. FString == ignores case.
-	UEdGraph* TargetGraph = nullptr;
-	for (UEdGraph* Graph : N2CMcpEditorContext::TopLevelGraphs(*Blueprint))
-	{
-		if (Graph->GetName() == GraphName)
-		{
-			TargetGraph = Graph;
-			break;
-		}
-	}
-	
-	// Special case for ConstructionScript
-	// Note: In UE5.4, there's no direct way to get the SCS editor graph
-	// The construction script is handled differently and may not have a traditional graph
-	
-	if (TargetGraph)
-	{
-		// Use JumpToHyperlink to navigate to the graph
-		BlueprintEditor->JumpToHyperlink(TargetGraph, false);
-		return true;
-	}
-	
-	return false;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpOpenBlueprintAssetTool::BuildSuccessResult(const UBlueprint* Blueprint, const FString& AssetPath, const FString& FocusedGraph)

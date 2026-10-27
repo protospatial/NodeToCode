@@ -67,6 +67,9 @@ FMcpToolDefinition FN2CMcpCreateSetMemberVariableNode::GetDefinition() const
     
     Definition.InputSchema = Schema;
     
+    // Unknown arguments are refused, so a misspelled option is not ignored (card 0194)
+    SetStrictArguments(Definition);
+
     return Definition;
 }
 
@@ -81,7 +84,7 @@ FMcpToolCallResult FN2CMcpCreateSetMemberVariableNode::Execute(const TSharedPtr<
         FN2CMcpArgumentParser ArgParser(Arguments);
         FString VariableName;
         FString ParseError;
-        if (!ArgParser.TryGetRequiredString(TEXT("variableName"), VariableName, ParseError, false))
+        if (!ArgParser.TryGetRequiredIdentifier(TEXT("variableName"), VariableName, ParseError))
         {
             return FMcpToolCallResult::CreateErrorResult(ParseError);
         }

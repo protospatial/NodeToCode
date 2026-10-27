@@ -14,6 +14,10 @@ public:
     bool HasArgument(const FString& FieldName) const;
 
     // String
+    /**
+     * A required string. The value must be a JSON string: a number, bool, object, array or null is refused ("must be a
+     * string") instead of FJsonValue's lenient coercion turning 5 or true into "5" or "true" (card 0194).
+     */
     bool TryGetRequiredString(const FString& FieldName, FString& OutValue, FString& OutErrorMsg, bool bAllowEmpty = false);
 
     /** Longest value accepted for a field that becomes an FName or object name (FName's NAME_SIZE limit is 1024) */
@@ -21,6 +25,34 @@ public:
 
     /** A required string that becomes an FName or object name: also rejects values longer than MaxNameLength */
     bool TryGetRequiredName(const FString& FieldName, FString& OutValue, FString& OutErrorMsg);
+
+    /**
+     * A required string that names a Blueprint member (a variable, local variable or function): a required string
+     * checked by ValidateIdentifier.
+     */
+    bool TryGetRequiredIdentifier(const FString& FieldName, FString& OutValue, FString& OutErrorMsg);
+
+    /**
+     * FKismetNameValidator's rules for a Blueprint member name, without a Blueprint (taken names are each tool's
+     * business: the create tools make a unique name, the node tools want an existing one): not empty or None, at most
+     * FKismetNameValidator::GetMaximumNameLength() characters, none of UE_BLUEPRINT_INVALID_NAME_CHARACTERS. Returns
+     * false with an INVALID_ARGUMENT error naming the field and the rule.
+     */
+    static bool ValidateIdentifier(const FString& FieldName, const FString& Value, FString& OutErrorMsg);
+
+    /**
+     * An optional string that must be one of AllowedValues, matched ignoring case; OutValue is the matching entry of
+     * AllowedValues as written there. Absent or null gives DefaultValue. A value that is not a string, or matches none,
+     * is refused with an INVALID_ARGUMENT error listing the valid values.
+     */
+    bool TryGetOptionalEnum(const FString& FieldName, const TArray<FString>& AllowedValues, const FString& DefaultValue,
+        FString& OutValue, FString& OutErrorMsg) const;
+
+    /**
+     * The argument names that InputSchema's "properties" does not declare, in argument order: what a tool in strict
+     * mode (FMcpToolDefinition::bStrictArguments) refuses. Empty when Arguments or the schema is missing.
+     */
+    static TArray<FString> FindUnknownFields(const TSharedPtr<FJsonObject>& Arguments, const TSharedPtr<FJsonObject>& InputSchema);
     FString GetOptionalString(const FString& FieldName, const FString& DefaultValue = TEXT("")) const;
 
     // Bool

@@ -172,6 +172,15 @@ TSharedPtr<FJsonObject> FN2CMcpToolBase::BuildEmptyObjectSchema()
 	return Schema;
 }
 
+void FN2CMcpToolBase::SetStrictArguments(FMcpToolDefinition& Definition)
+{
+	Definition.bStrictArguments = true;
+	if (Definition.InputSchema.IsValid())
+	{
+		Definition.InputSchema->SetBoolField(TEXT("additionalProperties"), false);
+	}
+}
+
 void FN2CMcpToolBase::SetAnnotations(FMcpToolDefinition& Definition, bool bReadOnly, bool bDestructive, bool bIdempotent, bool bOpenWorld)
 {
 	Definition.Annotations = FMcpToolAnnotations(bReadOnly, bDestructive, bIdempotent, bOpenWorld);

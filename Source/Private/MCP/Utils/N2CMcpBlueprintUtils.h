@@ -131,6 +131,16 @@ public:
     static bool GetFocusedEditorGraph(UBlueprint*& OutBlueprint, UEdGraph*& OutGraph, FString& OutErrorMsg);
 
     /**
+     * The graph of Blueprint that open-blueprint-asset and the Python bridge's OpenBlueprint focus by name (card 0286):
+     * one of the graphs My Blueprint lists (N2CMcpEditorContext::TopLevelGraphs: event graph pages, functions, macros,
+     * interface implementations, delegate signatures), matched case-insensitively. "ConstructionScript" also names the
+     * construction script, the function graph UEdGraphSchema_K2::FN_UserConstructionScript, when no graph has that name.
+     * @param OutErrorMsg When nothing matches: "GRAPH_NOT_FOUND: ..." listing the Blueprint's graph names.
+     * @return The graph, or nullptr when no graph has that name.
+     */
+    static UEdGraph* FindTopLevelGraph(const UBlueprint& Blueprint, const FString& GraphName, FString& OutErrorMsg);
+
+    /**
      * Opens or focuses a Blueprint editor for the given Blueprint and makes it the focused Blueprint editor.
      * This method will reuse existing editors if one is already open for the Blueprint, and never creates a second one.
      * OutEditor is always the editor of this Blueprint (FN2CBlueprintEditorTracker::GetEditorFor), never whichever

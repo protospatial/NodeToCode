@@ -265,6 +265,30 @@ FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
 		WarningValues.Add(MakeShared<FJsonValueObject>(Entry));
 	}
 	Data->SetArrayField(TEXT("warnings"), WarningValues);
+
+	// A read that lost part of the graph is not a success (card 0505): the result names what was skipped and still
+	// carries the rest, warnings included, as data
+	TArray<FString> Skipped;
+	for (const FN2CJsonReadWarning& Warning : Warnings)
+	{
+		if (Warning.Code == N2CJsonContract::ReadWarning::SkippedGraph || Warning.Code == N2CJsonContract::ReadWarning::SkippedNode
+			|| Warning.Code == N2CJsonContract::ReadWarning::SkippedPin)
+		{
+			Skipped.Add(FString::Printf(TEXT("%s %s"), *Warning.Code, *Warning.Path));
+		}
+	}
+	if (!Skipped.IsEmpty())
+	{
+		constexpr int32 MaxNamed = 5;
+		const int32 Named = FMath::Min(Skipped.Num(), MaxNamed);
+		FString List = FString::Join(TArrayView<const FString>(Skipped.GetData(), Named), TEXT(", "));
+		if (Skipped.Num() > Named)
+		{
+			List += FString::Printf(TEXT(" and %d more"), Skipped.Num() - Named);
+		}
+		return MakeErrorJson(FString::Printf(TEXT("The N2C JSON was read with %d part(s) skipped as malformed (a missing required ")
+			TEXT("field such as a node's or pin's \"id\"): %s. See data.warnings."), Skipped.Num(), *List), Data);
+	}
 	return MakeSuccessJson(Data);
 }
 
@@ -736,6 +760,19 @@ FString UN2CPythonBridge::OpenBlueprint(const FString& BlueprintPath, const FStr
 		return MakeErrorJson(FString::Printf(TEXT("Failed to load Blueprint: %s"), *ResolveError));
 	}
 
+	// The graph to focus, found before anything opens: an unknown name fails and lists the graphs, instead of opening
+	// the Blueprint with nothing focused so the next add_node_to_graph lands in the graph focused before (card 0286)
+	UEdGraph* TargetGraph = nullptr;
+	if (!FocusGraph.IsEmpty())
+	{
+		FString GraphError;
+		TargetGraph = FN2CMcpBlueprintUtils::FindTopLevelGraph(*Blueprint, FocusGraph, GraphError);
+		if (!TargetGraph)
+		{
+			return MakeErrorJson(GraphError);
+		}
+	}
+
 	// Open the Blueprint editor
 	TSharedPtr<IBlueprintEditor> BlueprintEditor;
 	FString OpenError;
@@ -752,56 +789,14 @@ FString UN2CPythonBridge::OpenBlueprint(const FString& BlueprintPath, const FStr
 		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: the editor found does not edit %s"), *Blueprint->GetPathName()));
 	}
 
-	// Focus specific graph if requested
+	// Focus the graph found above; read back what the editor now shows rather than echo the request
 	FString FocusedGraphName;
-	if (!FocusGraph.IsEmpty())
+	if (TargetGraph)
 	{
-		UEdGraph* TargetGraph = nullptr;
-
-		// Check EventGraphs
-		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+		Editor->JumpToHyperlink(TargetGraph, false);
+		if (Editor->GetFocusedGraph() == TargetGraph)
 		{
-			if (Graph && Graph->GetName() == FocusGraph)
-			{
-				TargetGraph = Graph;
-				break;
-			}
-		}
-
-		// Check FunctionGraphs if not found
-		if (!TargetGraph)
-		{
-			for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-			{
-				if (Graph && Graph->GetName() == FocusGraph)
-				{
-					TargetGraph = Graph;
-					break;
-				}
-			}
-		}
-
-		// Check MacroGraphs if not found
-		if (!TargetGraph)
-		{
-			for (UEdGraph* Graph : Blueprint->MacroGraphs)
-			{
-				if (Graph && Graph->GetName() == FocusGraph)
-				{
-					TargetGraph = Graph;
-					break;
-				}
-			}
-		}
-
-		if (TargetGraph)
-		{
-			Editor->JumpToHyperlink(TargetGraph, false);
-			// Read back what the editor now shows rather than echo the request
-			if (Editor->GetFocusedGraph() == TargetGraph)
-			{
-				FocusedGraphName = TargetGraph->GetName();
-			}
+			FocusedGraphName = TargetGraph->GetName();
 		}
 	}
 

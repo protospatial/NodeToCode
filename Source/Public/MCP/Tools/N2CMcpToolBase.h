@@ -54,4 +54,10 @@ protected:
 
 	/** Set the behaviour hints of a tool definition from an annotations value, for example FMcpToolAnnotations::ReadOnly() */
 	static void SetAnnotations(FMcpToolDefinition& Definition, const FMcpToolAnnotations& Annotations);
+
+	/**
+	 * Strict arguments (card 0194): tools/call refuses arguments the input schema does not declare, and the schema says
+	 * so ("additionalProperties": false). Call it after Definition.InputSchema is complete.
+	 */
+	static void SetStrictArguments(FMcpToolDefinition& Definition);
 };

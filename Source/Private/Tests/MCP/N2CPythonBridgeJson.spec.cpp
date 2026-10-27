@@ -376,6 +376,45 @@ void FN2CPythonBridgeJsonSpec::Define()
 			}
 		});
 
+		// Card 0505: a read that loses part of the graph is not a success; an agent document's "ids" is an ID
+		It(TEXT("ReadN2CJson reads ids.short as the ID and fails, naming it, when it has to skip a node"), [this]()
+		{
+			const FString Head = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"BP\"},")
+				TEXT("\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[");
+			const FString Tail = TEXT("],\"flows\":{\"execution\":[],\"data\":{}}}],\"structs\":[],\"enums\":[]}");
+			const FString AgentNode = TEXT("{\"ids\":{\"short\":\"N1\",\"guid\":\"00000000-0000-0000-0000-000000000001\"},")
+				TEXT("\"type\":\"CallFunction\",\"input_pins\":[{\"ids\":{\"short\":\"P1\",\"guid\":\"00000000-0000-0000-0000-000000000002\",")
+				TEXT("\"name\":\"execute\"},\"name\":\"execute\"}],\"output_pins\":[]}");
+			const FString NoIdNode = TEXT("{\"type\":\"CallFunction\",\"input_pins\":[],\"output_pins\":[]}");
+
+			const TSharedPtr<FJsonObject> Data = SuccessData(TEXT("ReadN2CJson"), UN2CPythonBridge::ReadN2CJson(Head + AgentNode + Tail));
+			if (Data.IsValid() && TestEqual(TEXT("nodes"), static_cast<int32>(Data->GetNumberField(TEXT("nodes"))), 1))
+			{
+				TestEqual(TEXT("warnings"), Data->GetArrayField(TEXT("warnings")).Num(), 0);
+				const TSharedPtr<FJsonObject> Node = Data->GetObjectField(TEXT("n2c_json"))->GetArrayField(TEXT("graphs"))[0]->AsObject()
+					->GetArrayField(TEXT("nodes"))[0]->AsObject();
+				TestEqual(TEXT("the node's id"), Node->GetStringField(TEXT("id")), FString(TEXT("N1")));
+				const TArray<TSharedPtr<FJsonValue>>& Pins = Node->GetArrayField(TEXT("input_pins"));
+				if (TestEqual(TEXT("input pins"), Pins.Num(), 1))
+				{
+					TestEqual(TEXT("the pin's id"), Pins[0]->AsObject()->GetStringField(TEXT("id")), FString(TEXT("P1")));
+				}
+			}
+
+			AddExpectedMessage(TEXT("N2C JSON "), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 0, false);
+			AddExpectedError(TEXT("Missing required node fields in JSON"), EAutomationExpectedErrorFlags::Contains, 1);
+			const FString Result = UN2CPythonBridge::ReadN2CJson(Head + AgentNode + TEXT(",") + NoIdNode + Tail);
+			const FString Error = FailureError(TEXT("ReadN2CJson"), Result);
+			TestTrue(FString::Printf(TEXT("the error names the skipped node (error: %s)"), *Error), Error.Contains(TEXT("SKIPPED_NODE graphs[0].nodes[1]")));
+			const TSharedPtr<FJsonObject> Failed = N2CTest::ParseJsonObject(Result);
+			const TSharedPtr<FJsonObject>* FailedData = nullptr;
+			if (TestTrue(TEXT("the failure carries the read as data"), Failed.IsValid() && Failed->TryGetObjectField(TEXT("data"), FailedData)))
+			{
+				TestEqual(TEXT("the node that was read"), static_cast<int32>((*FailedData)->GetNumberField(TEXT("nodes"))), 1);
+				TestEqual(TEXT("its warning"), (*FailedData)->GetArrayField(TEXT("warnings")).Num(), 1);
+			}
+		});
+
 		It(TEXT("RemoveTag reports an awkward invalid GUID"), [this]()
 		{
 			const FString Error = FailureError(TEXT("RemoveTag"), UN2CPythonBridge::RemoveTag(Awkward, TEXT("x")));

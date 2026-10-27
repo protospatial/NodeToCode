@@ -49,8 +49,14 @@ public:
 	 * @param ArgParser The argument parser
 	 * @param OutContainerType The parsed container type
 	 * @param OutMapKeyTypeIdentifier The parsed map key type identifier (only relevant for maps)
+	 * @param OutError Why containerType was refused: not one of ContainerTypes (any case), or not a string
+	 * @return false when containerType is refused (card 0194); OutContainerType is then unset
 	 */
-	static void ParseContainerTypeArguments(const FN2CMcpArgumentParser& ArgParser, FString& OutContainerType, FString& OutMapKeyTypeIdentifier);
+	static bool ParseContainerTypeArguments(const FN2CMcpArgumentParser& ArgParser, FString& OutContainerType, FString& OutMapKeyTypeIdentifier,
+		FString& OutError);
+
+	/** The containerType values the variable tools take: none, array, set, map */
+	static const TArray<FString>& ContainerTypes();
 
 	/**
 	 * Adds container type information to a success result

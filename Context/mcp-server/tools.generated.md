@@ -949,7 +949,7 @@ Unreal MCP counterpart (UE 5.8): `EditorAppToolset.OpenEditorForAsset`. Left to 
 |---|---|---|---|---|
 | `asset_path` | `string` | yes |  | Object path or package path of the blueprint asset (e.g., '/Game/Blueprints/BP_MyActor.BP_MyActor'). It may be under any mounted root: /Game/, /Engine/ or a plugin's /&lt;PluginName&gt;/. |
 | `bring_to_front` | `boolean` | no | `true` | Whether to bring the editor window to front |
-| `focus_graph` | `string` | no | `""` | Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'UserConstructionScript' for an Actor's construction script). An unknown name is not an error: the Blueprint opens and focused_graph comes back empty. |
+| `focus_graph` | `string` | no | `""` | Optional: name of an event, function, macro or delegate graph to focus, matched case-insensitively (e.g., 'EventGraph', or 'ConstructionScript' / 'UserConstructionScript' for an Actor's construction script). An unknown name fails with GRAPH_NOT_FOUND and lists the Blueprint's graphs; the Blueprint is not opened. |
 
 ### open-content-browser-path
 

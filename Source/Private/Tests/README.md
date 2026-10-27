@@ -63,7 +63,6 @@ case back on. Currently disabled:
 | `NodeToCode.MCP.Graph` | connect-pins reports a malformed connection entry in failed and counts it | mcp-tools-graph-functions-25 (card 0276) |
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
-| `NodeToCode.Python.BridgeCalls` | read_n2c_json reads get_blueprint_n2c_json's document with every node | card 0505 (suggested) |
 | `NodeToCode.MCP.RunPython` | names the line of the code that raised in the traceback; keeps a multi-line string literal as written | mcp-tools-python-translation-resources-9 (card 0299) |
 | `NodeToCode.MCP.RunPython` | runs code with '.py ' in a comment | mcp-tools-python-translation-resources-8 (card 0299) |
 | `NodeToCode.MCP.RunPython` | does not see the previous call's result | mcp-tools-python-translation-resources-6 (card 0299) |
@@ -222,8 +221,9 @@ namespace through `IPythonScriptPlugin` (`ExecuteStatement`, so neither the cons
 `ExecuteFile` '.py ' rule apply). With no Blueprint focused, every function is called on every engine (the ones that
 need the focused graph answer with an error, which must be JSON too), and the spec fails when the class declares a
 UFUNCTION the fixture does not call. On UE 5.8 the scratch function graph is also focused and each editing call must
-succeed with normal arguments. Disabled: `read_n2c_json` on `get_blueprint_n2c_json`'s document drops every node
-(card 0505). `NodeToCode.Python.Bridge` checks the responses' content from C++.
+succeed with normal arguments. Every engine also reads `get_blueprint_n2c_json`'s document back with
+`read_n2c_json` and must get every node and no warning (card 0505). `NodeToCode.Python.Bridge` checks the responses'
+content from C++.
 
 It is a C++ spec, not a PythonAutomationTest suite or a file for `Tests/python/editor/run_editor_tests.py` (card
 0296): `build.ps1 -Test` runs it on every engine with the other specs, it can open, focus and close the Blueprint editor

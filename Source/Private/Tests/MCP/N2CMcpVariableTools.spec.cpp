@@ -329,8 +329,8 @@ namespace N2CVariableToolsSpec
 		}
 		Settings.DefaultValue = Parser.GetOptionalString(TEXT("defaultValue"));
 		FString Container, Key;
-		FN2CMcpVariableUtils::ParseContainerTypeArguments(Parser, Container, Key);
-		if (!FN2CMcpVariableUtils::ValidateContainerTypeParameters(Container, Key, OutError)
+		if (!FN2CMcpVariableUtils::ParseContainerTypeArguments(Parser, Container, Key, OutError)
+			|| !FN2CMcpVariableUtils::ValidateContainerTypeParameters(Container, Key, OutError)
 			|| !FN2CMcpTypeResolver::ResolvePinType(Settings.TypeIdentifier, TEXT(""), Container, Key, false, false, OutResolved, OutError))
 		{
 			return NAME_None;
