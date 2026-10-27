@@ -187,8 +187,10 @@ SN2CContextWindowVisualizer::~SN2CContextWindowVisualizer()
 
 void SN2CContextWindowVisualizer::UpdateForSelection(const TArray<FN2CTagInfo>& SelectedGraphs)
 {
+	LastSelection = SelectedGraphs;
 	TotalTokens = 0;
 	TotalCost = 0.0f;
+	TotalEstimate = FN2CCostEstimate();
 	TotalNestedGraphs = 0;
 	SelectedGraphCount = SelectedGraphs.Num();
 
@@ -208,13 +210,23 @@ void SN2CContextWindowVisualizer::UpdateForSelection(const TArray<FN2CTagInfo>& 
 		TotalNestedGraphs += NestedCount;
 	}
 
-	// Calculate total cost
-	TotalCost = TokenService.CalculateCost(TotalTokens);
+	// One request per graph: each sends the system prompt and reference files, and its reply is priced as output
+	TotalEstimate = TokenService.EstimateCost(TotalTokens, SelectedGraphCount);
+	TotalCost = TotalEstimate.GetTotal();
 }
 
 void SN2CContextWindowVisualizer::OnModelChanged()
 {
-	// Model changed, force repaint to update displayed values
+	// The provider changed in Project Settings (not through this picker): offer that provider's models
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	if (Settings && Settings->Provider != CachedProvider)
+	{
+		CachedProvider = Settings->Provider;
+		RebuildModelSelectionWidget();
+	}
+
+	// Reprice the selection with the new model's prices and prompt (token counts are cached per graph)
+	UpdateForSelection(TArray<FN2CTagInfo>(LastSelection));
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
@@ -537,15 +549,17 @@ FText SN2CContextWindowVisualizer::GetEstimatedCostText() const
 		return LOCTEXT("NoCost", "Estimated batch cost: $0.00");
 	}
 
-	// Create formatting options for currency display
+	// Input (graphs plus each request's prompt) and the expected output, at the model's two prices
 	FNumberFormattingOptions CostFormatOptions;
 	CostFormatOptions.SetUseGrouping(true);
 	CostFormatOptions.SetMinimumFractionalDigits(2);
 	CostFormatOptions.SetMaximumFractionalDigits(4);
 
 	return FText::Format(
-		LOCTEXT("EstimatedCostFormat", "Estimated batch cost: ${0}"),
-		FText::AsNumber(TotalCost, &CostFormatOptions)
+		LOCTEXT("EstimatedCostSplitFormat", "Estimated batch cost: ${0} (input about ${1} + output about ${2})"),
+		FText::AsNumber(TotalCost, &CostFormatOptions),
+		FText::AsNumber(TotalEstimate.InputCost, &CostFormatOptions),
+		FText::AsNumber(TotalEstimate.OutputCost, &CostFormatOptions)
 	);
 }
 

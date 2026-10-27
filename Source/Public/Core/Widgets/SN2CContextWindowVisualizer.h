@@ -9,6 +9,7 @@
 #include "Widgets/Input/SEditableTextBox.h"
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
 #include "LLM/N2CLLMTypes.h"
+#include "Core/Services/N2CTokenEstimationService.h"
 
 class STextBlock;
 class SButton;
@@ -117,6 +118,12 @@ private:
 	// Cached state for display
 	int32 TotalTokens = 0;
 	float TotalCost = 0.0f;
+
+	/** Input and output tokens and prices of the selection (card 0220) */
+	FN2CCostEstimate TotalEstimate;
+
+	/** The selection UpdateForSelection was last given, so a model, price or provider change reprices it */
+	TArray<FN2CTagInfo> LastSelection;
 	int32 SelectedGraphCount = 0;
 	int32 TotalNestedGraphs = 0;
 
