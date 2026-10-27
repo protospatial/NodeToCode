@@ -1147,14 +1147,16 @@ UN2CGraphStateManager::ELoadResult UN2CGraphStateManager::LoadStateInternal()
 	}
 
 	// Parse into a copy so a bad file never replaces the state in memory
+	// A file that parses as JSON but has the wrong shape fails here too (card 0499): it is set aside like a parse error
 	FN2CGraphStateFile Loaded;
-	if (!FN2CGraphStateFile::FromJsonString(JsonString, Loaded))
+	FString ParseError;
+	if (!FN2CGraphStateFile::FromJsonString(JsonString, Loaded, &ParseError))
 	{
 		FString CorruptPath;
 		const bool bMoved = FN2CFileUtils::QuarantineCorruptFile(FilePath, CorruptPath);
 		QuarantinedFilePath = CorruptPath;
 		bSavingBlocked = true;
-		ReportCorruptFile(FilePath, bMoved);
+		ReportCorruptFile(FilePath, bMoved, ParseError);
 		return ELoadResult::Corrupt;
 	}
 
@@ -1236,8 +1238,9 @@ bool UN2CGraphStateManager::MigrateStateFile(FN2CGraphStateFile& File)
 	return true;
 }
 
-void UN2CGraphStateManager::ReportCorruptFile(const FString& FilePath, bool bMoved)
+void UN2CGraphStateManager::ReportCorruptFile(const FString& FilePath, bool bMoved, const FString& Reason)
 {
+	const FString Why = Reason.IsEmpty() ? FString() : FString::Printf(TEXT(" (%s)"), *Reason);
 	const FString BackupPath = FN2CFileUtils::BackupPathFor(FilePath);
 	const FString BackupHint = FPaths::FileExists(BackupPath)
 		? FString::Printf(TEXT(" The previous save is in %s."), *BackupPath)
@@ -1245,11 +1248,11 @@ void UN2CGraphStateManager::ReportCorruptFile(const FString& FilePath, bool bMov
 
 	const FString Message = bMoved
 		? FString::Printf(
-			TEXT("NodeToCode could not read its tag and translation history file, so it was kept as %s and nothing was overwritten. Tag changes are not saved until you reload the tags (restart the editor, or Load Tags) or reset them. To recover, repair that file (or use the backup) and rename it to %s.%s"),
-			*QuarantinedFilePath, StateFileName, *BackupHint)
+			TEXT("NodeToCode could not read its tag and translation history file%s, so it was kept as %s and nothing was overwritten. Tag changes are not saved until you reload the tags (restart the editor, or Load Tags) or reset them. To recover, repair that file (or use the backup) and rename it to %s.%s"),
+			*Why, *QuarantinedFilePath, StateFileName, *BackupHint)
 		: FString::Printf(
-			TEXT("NodeToCode could not read its tag and translation history file %s and could not set it aside. Tag changes are not saved until it is repaired or removed and the tags are reloaded.%s"),
-			*FilePath, *BackupHint);
+			TEXT("NodeToCode could not read its tag and translation history file %s%s and could not set it aside. Tag changes are not saved until it is repaired or removed and the tags are reloaded.%s"),
+			*FilePath, *Why, *BackupHint);
 
 	FN2CLogger::Get().LogError(Message);
 

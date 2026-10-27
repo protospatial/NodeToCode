@@ -162,9 +162,8 @@ namespace N2CGraphStateSpec
 		const FString Entry = TEXT("{\"graphGuid\":\"0123456789ABCDEF0F1E2D3C4B5A6978\",\"graphName\":\"EventGraph\",")
 			TEXT("\"owningBlueprint\":\"/Game/BP_Kept.BP_Kept\",\"tags\":[{\"tag\":\"Kept\",\"category\":\"Default\"}]}");
 		const TCHAR* ParseError = TEXT("could not read its tag and translation history file");
-		// A file that parses as JSON but not as a state file is read as an empty one today, and the next two saves
-		// replace it and then its .bak. Enable (xIt -> It) with the card that sets such a file aside (card 0499)
-		const TCHAR* ShapeDefect = TEXT("editor-integration-12, card 0499: a state file with the wrong shape is read as empty and replaced");
+		// A file that parses as JSON but not as a state file is set aside like one that does not parse, and the error
+		// says what is wrong with it (editor-integration-12, card 0499)
 		return {
 			{ TEXT("a file cut off mid-entry (a save the editor did not finish)"),
 				FString::Printf(TEXT("{\"version\":\"3.0\",\"graphs\":[%s,{\"graphGuid\":\"0123"), *Entry), ParseError },
@@ -173,13 +172,18 @@ namespace N2CGraphStateSpec
 				FString::Printf(TEXT("{\"version\":\"3.0\",\"graphs\":[%s],}"), *Entry), ParseError },
 			{ TEXT("a JSON array instead of an object"), FString::Printf(TEXT("[%s]"), *Entry), ParseError },
 			{ TEXT("a graphs field that is not an array"),
-				FString::Printf(TEXT("{\"version\":\"3.0\",\"graphs\":{\"0\":%s}}"), *Entry), ParseError, ShapeDefect },
+				FString::Printf(TEXT("{\"version\":\"3.0\",\"graphs\":{\"0\":%s}}"), *Entry),
+				TEXT("could not read its tag and translation history file .its .graphs. field is not an array.") },
 			{ TEXT("a graph entry that is not an object"),
-				FString::Printf(TEXT("{\"version\":\"3.0\",\"graphs\":[\"EventGraph\",%s]}"), *Entry), ParseError, ShapeDefect },
+				FString::Printf(TEXT("{\"version\":\"3.0\",\"graphs\":[\"EventGraph\",%s]}"), *Entry),
+				TEXT("could not read its tag and translation history file .graph entry 0 is not an object.") },
 			{ TEXT("a graph entry whose graphGuid does not parse"),
 				TEXT("{\"version\":\"3.0\",\"graphs\":[{\"graphGuid\":\"not-a-guid\",\"graphName\":\"EventGraph\",")
 				TEXT("\"owningBlueprint\":\"/Game/BP_Kept.BP_Kept\",\"tags\":[{\"tag\":\"Kept\",\"category\":\"Default\"}]}]}"),
-				ParseError, ShapeDefect },
+				TEXT("could not read its tag and translation history file .graph entry 0 has no graphGuid that parses as a GUID.") },
+			{ TEXT("a graph entry without a graphGuid"),
+				FString::Printf(TEXT("{\"version\":\"3.0\",\"graphs\":[%s,{\"graphName\":\"EventGraph\",\"tags\":[]}]}"), *Entry),
+				TEXT("could not read its tag and translation history file .graph entry 1 has no graphGuid that parses as a GUID.") },
 		};
 	}
 

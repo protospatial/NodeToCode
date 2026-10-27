@@ -393,40 +393,65 @@ FString FN2CGraphStateFile::ToJsonString(bool bPrettyPrint) const
 	return OutputString;
 }
 
-bool FN2CGraphStateFile::FromJsonString(const FString& JsonString, FN2CGraphStateFile& OutFile)
+bool FN2CGraphStateFile::FromJsonString(const FString& JsonString, FN2CGraphStateFile& OutFile, FString* OutError)
 {
+	const auto Fail = [OutError](const FString& Why)
+	{
+		if (OutError)
+		{
+			*OutError = Why;
+		}
+		return false;
+	};
+
 	TSharedPtr<FJsonObject> RootObject;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
 
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
-		return false;
+		return Fail(TEXT("it is not a JSON object"));
 	}
 
+	// Parse into a local copy: a file with the wrong shape (a hand edit or a merge conflict) must fail as a whole, never
+	// load as a shorter or empty file that the next save writes over
+	FN2CGraphStateFile Parsed;
+
 	// A file without a version is older than any versioned one
-	OutFile.Version.Reset();
-	RootObject->TryGetStringField(TEXT("version"), OutFile.Version);
+	Parsed.Version.Reset();
+	RootObject->TryGetStringField(TEXT("version"), Parsed.Version);
 
 	FString LastSavedStr;
 	if (RootObject->TryGetStringField(TEXT("lastSaved"), LastSavedStr))
 	{
-		FDateTime::ParseIso8601(*LastSavedStr, OutFile.LastSaved);
+		FDateTime::ParseIso8601(*LastSavedStr, Parsed.LastSaved);
 	}
 
-	// Graphs array
-	OutFile.Graphs.Empty();
-	const TArray<TSharedPtr<FJsonValue>>* GraphsArray;
-	if (RootObject->TryGetArrayField(TEXT("graphs"), GraphsArray))
+	// Graphs array. A file without one holds nothing; one that has it in another shape is not a state file
+	if (const TSharedPtr<FJsonValue> GraphsValue = RootObject->TryGetField(TEXT("graphs")))
 	{
-		for (const TSharedPtr<FJsonValue>& GraphValue : *GraphsArray)
+		const TArray<TSharedPtr<FJsonValue>>* GraphsArray;
+		if (!GraphsValue->TryGetArray(GraphsArray))
 		{
+			return Fail(TEXT("its \"graphs\" field is not an array"));
+		}
+		for (int32 Index = 0; Index < GraphsArray->Num(); ++Index)
+		{
+			const TSharedPtr<FJsonValue>& GraphValue = (*GraphsArray)[Index];
 			const TSharedPtr<FJsonObject>* GraphObject;
-			if (GraphValue->TryGetObject(GraphObject))
+			if (!GraphValue.IsValid() || !GraphValue->TryGetObject(GraphObject) || !GraphObject->IsValid())
 			{
-				OutFile.Graphs.Add(FN2CGraphState::FromJson(*GraphObject));
+				return Fail(FString::Printf(TEXT("graph entry %d is not an object"), Index));
 			}
+			FString GuidStr;
+			FGuid Guid;
+			if (!(*GraphObject)->TryGetStringField(TEXT("graphGuid"), GuidStr) || !FGuid::Parse(GuidStr.TrimStartAndEnd(), Guid))
+			{
+				return Fail(FString::Printf(TEXT("graph entry %d has no graphGuid that parses as a GUID"), Index));
+			}
+			Parsed.Graphs.Add(FN2CGraphState::FromJson(*GraphObject));
 		}
 	}
 
+	OutFile = MoveTemp(Parsed);
 	return true;
 }

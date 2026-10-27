@@ -53,8 +53,9 @@ ProjectRoot/
 Graph tags and the record of which graphs have translations are kept in `Saved/NodeToCode/BlueprintGraphState.json`.
 Each save writes a temporary file first and keeps the previous version as `BlueprintGraphState.json.bak`, so a crash
 during a save cannot leave the file half written. If the file cannot be read (for example after a hand edit with a
-JSON mistake), NodeToCode renames it to `BlueprintGraphState.json.corrupt-<date-time>`, shows a notification naming
-it, and stops saving tag changes until you restart the editor or reload the tags, so nothing overwrites it. To
+JSON mistake, or a hand edit or merge that left valid JSON in the wrong shape: `graphs` that is not a list, an entry
+that is not an object, or an entry without a valid `graphGuid`), NodeToCode renames it to `BlueprintGraphState.json.corrupt-<date-time>`, shows a notification naming
+it and what was wrong, and stops saving tag changes until you restart the editor or reload the tags, so nothing overwrites it. To
 recover, fix that file (or copy the `.bak`) to `BlueprintGraphState.json` and restart the editor. After an upgrade
 from 1.x, the old `Tags/BlueprintTags.json` is migrated once and renamed to `BlueprintTags.json.migrated`.
 
