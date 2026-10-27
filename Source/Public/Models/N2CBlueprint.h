@@ -306,6 +306,97 @@ struct FN2CEnum
 };
 
 /**
+ * @struct FN2CVariable
+ * @brief A Blueprint member variable or a function's local variable (card 0242, from PR #8 by flashpoint493)
+ *
+ * The type uses the pin spellings (N2CStableNames::PinType and PinSubType, the same helper pins use): a float variable
+ * is "Real" with sub_type "float", a map is typed by its key with its value in ValueType and ValueSubType.
+ */
+USTRUCT(BlueprintType)
+struct FN2CVariable
+{
+    GENERATED_BODY()
+
+    /** The variable's name as declared (FBPVariableDescription::VarName) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** The variable's type, as a pin of its type is typed; a map's key */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CPinType Type = EN2CPinType::Wildcard;
+
+    /** The "type" text as read when Type is Unknown (a later 2.x document); ToJson writes it in place of "Unknown" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownType;
+
+    /** The struct, enum, class or object type, or the real's "float" or "double"; a map's key */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString SubType;
+
+    /** Container flags */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsArray = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsSet = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bIsMap = false;
+
+    /** A map's value type; Unknown with an empty UnknownValueType means none */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CPinType ValueType = EN2CPinType::Unknown;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownValueType;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ValueSubType;
+
+    /** The default value as text (the class default object's value for a member variable), if any */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString DefaultValue;
+
+    /** The My Blueprint category, left empty for the default category */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Category;
+
+    /** The variable's tooltip (its description), if any */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Comment;
+
+    /** Instance Editable: editable on placed instances */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bInstanceEditable = false;
+
+    /** Blueprint Read Only */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bReadOnly = false;
+
+    /** Expose on Spawn */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bExposeOnSpawn = false;
+
+    /** Private: other Blueprints cannot read or write it */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bPrivate = false;
+
+    /** Replicated (or RepNotify) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bReplicated = false;
+
+    /** The RepNotify function's name, when the variable is RepNotify */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString RepNotify;
+
+    /** Fields of the variable's JSON object this build does not know, as condensed JSON text, in the order read */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> UnknownFields;
+
+    bool HasValueType() const { return ValueType != EN2CPinType::Unknown || !UnknownValueType.IsEmpty(); }
+};
+
+/**
  * @enum EN2CGraphType
  * @brief Defines the type of Blueprint graph
  */
@@ -394,6 +485,13 @@ struct FN2CGraph
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CCommentBox> Comments;
 
+    /**
+     * A function graph's local variables (card 0242), when the capture asked for variables. Written as the optional
+     * "local_variables", after "comments".
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CVariable> LocalVariables;
+
     /** The "graph_type" text as read when GraphType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString UnknownGraphType;
@@ -442,6 +540,13 @@ struct FN2CBlueprint
     /** Array of all enums used in the Blueprint */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CEnum> Enums;
+
+    /**
+     * The Blueprint's member variables (card 0242), when the capture asked for variables. Written as the optional
+     * top-level "variables", after "enums".
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CVariable> Variables;
 
     /**
      * Top-level fields this build does not know (a later 2.x document), by name, each value as condensed JSON text, in

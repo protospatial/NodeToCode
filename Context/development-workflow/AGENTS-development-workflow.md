@@ -56,19 +56,24 @@ over time.
 
 ## UE Path Detection Scripts
 
-These scripts automatically detect the UE installation and update `AGENTS.md` with the `UE_SOURCE_PATH` for AI coding agents to reference.
+These scripts detect the newest UE installation and write its `Engine/Source` folder as the `UE_SOURCE_PATH` line of
+`AGENTS.local.md` at the repository root, for AI coding agents to read. That file is gitignored and machine-specific;
+the tracked `AGENTS.md` only points to it and is never rewritten (card 0195). The scripts are developer tools in
+`Scripts/`, outside every plugin folder, so no package contains them.
 
 ### Running the Detection
 
 **Windows:**
 ```batch
-Content\Scripts\detect-ue-path.bat
+Scripts\detect-ue-path.bat
 ```
 
 **macOS/Linux:**
 ```bash
-Content/Scripts/detect-ue-path.sh
+Scripts/detect-ue-path.sh
 ```
+
+Or with any Python 3: `python Scripts/update_agents_ue_path.py [--source <UE>/Engine/Source] [--output <file>]`.
 
 ### How Detection Works
 
@@ -88,18 +93,20 @@ Content/Scripts/detect-ue-path.sh
    - `$HOME/Epic Games`
    - `/Applications/Epic Games`
 
-4. **Python script** (`Content/Scripts/update_agents_ue_path.py`):
-   - Uses `ue_python_finder.py` from the MCP bridge
-   - Updates the `UE_SOURCE_PATH:` line in `AGENTS.md`
-   - Prefers newest UE version when multiple are found
+4. **Python script** (`Scripts/update_agents_ue_path.py`):
+   - Uses `ue_python_finder.py` from the MCP bridge (registry, `LauncherInstalled.dat` read as JSON, common folders)
+   - Writes the `UE_SOURCE_PATH:` line of `AGENTS.local.md`: replaces it when the file has one, appends it otherwise,
+     and creates the file with a short header the first time; anything else in the file is kept
+   - Prefers newest UE version when multiple are found; `--source` skips detection
+   - Tests: `Tests/python/test_ue_path_scripts.py`
 
 ### Source Files
 
 | File | Description |
 |------|-------------|
-| `Content/Scripts/detect-ue-path.sh` | macOS/Linux shell wrapper |
-| `Content/Scripts/detect-ue-path.bat` | Windows batch wrapper |
-| `Content/Scripts/update_agents_ue_path.py` | Python script that updates AGENTS.md |
+| `Scripts/detect-ue-path.sh` | macOS/Linux shell wrapper |
+| `Scripts/detect-ue-path.bat` | Windows batch wrapper |
+| `Scripts/update_agents_ue_path.py` | Python script that writes `AGENTS.local.md` |
 
 ---
 

@@ -13,10 +13,10 @@ namespace
 
     /** The fields each object of the contract has; any other is kept in UnknownFields */
     const TCHAR* const TopLevelFields[] = { N2CJsonContract::VersionField, TEXT("metadata"), TEXT("graphs"), TEXT("structs"),
-        TEXT("enums"), TEXT("guids"), N2CJsonContract::WarningsField };
+        TEXT("enums"), N2CJsonContract::VariablesField, TEXT("guids"), N2CJsonContract::WarningsField };
     const TCHAR* const MetadataFields[] = { TEXT("name"), TEXT("blueprint_type"), TEXT("blueprint_class") };
     const TCHAR* const GraphFields[] = { TEXT("name"), TEXT("graph_type"), TEXT("owner_blueprint"), TEXT("nodes"),
-        N2CJsonContract::FlowsField, N2CJsonContract::CommentsField };
+        N2CJsonContract::FlowsField, N2CJsonContract::CommentsField, N2CJsonContract::LocalVariablesField };
     const TCHAR* const NodeFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, TEXT("type"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField,
         N2CJsonContract::NodeNameFieldV1, TEXT("member_parent"), TEXT("member_name"), TEXT("comment"), TEXT("pure"), TEXT("latent"),
         N2CJsonContract::UnusedField, N2CJsonContract::UnreachableField, N2CJsonContract::DisabledField, TEXT("input_pins"),
@@ -159,6 +159,121 @@ namespace
             }
         }
         return 0;
+    }
+
+    const TCHAR* const VariableFields[] = { TEXT("name"), TEXT("type"), TEXT("sub_type"), TEXT("is_array"), TEXT("is_set"),
+        TEXT("is_map"), N2CJsonContract::PinValueTypeField, N2CJsonContract::PinValueSubTypeField, TEXT("default_value"),
+        N2CJsonContract::VariableCategoryField, TEXT("comment"), N2CJsonContract::VariableInstanceEditableField,
+        N2CJsonContract::VariableReadOnlyField, N2CJsonContract::VariableExposeOnSpawnField, N2CJsonContract::VariablePrivateField,
+        N2CJsonContract::VariableReplicatedField, N2CJsonContract::VariableRepNotifyField };
+
+    /** A variable (card 0242): its type in the pin spellings, then the optional text fields and the flags that are true */
+    TSharedPtr<FJsonObject> VariableToJsonObject(const FN2CVariable& Variable)
+    {
+        TSharedPtr<FJsonObject> Object = MakeShared<FJsonObject>();
+        Object->SetStringField(TEXT("name"), Variable.Name);
+        Object->SetStringField(TEXT("type"), WriteKind(Variable.Type, Variable.UnknownType));
+        const auto SetText = [&Object](const TCHAR* Field, const FString& Value)
+        {
+            if (!Value.IsEmpty())
+            {
+                Object->SetStringField(Field, Value);
+            }
+        };
+        const auto SetFlag = [&Object](const TCHAR* Field, const bool bValue)
+        {
+            if (bValue)
+            {
+                Object->SetBoolField(Field, true);
+            }
+        };
+        SetText(TEXT("sub_type"), Variable.SubType);
+        SetFlag(TEXT("is_array"), Variable.bIsArray);
+        SetFlag(TEXT("is_set"), Variable.bIsSet);
+        SetFlag(TEXT("is_map"), Variable.bIsMap);
+        if (Variable.HasValueType())
+        {
+            Object->SetStringField(N2CJsonContract::PinValueTypeField, WriteKind(Variable.ValueType, Variable.UnknownValueType));
+            SetText(N2CJsonContract::PinValueSubTypeField, Variable.ValueSubType);
+        }
+        SetText(TEXT("default_value"), Variable.DefaultValue);
+        SetText(N2CJsonContract::VariableCategoryField, Variable.Category);
+        SetText(TEXT("comment"), Variable.Comment);
+        SetFlag(N2CJsonContract::VariableInstanceEditableField, Variable.bInstanceEditable);
+        SetFlag(N2CJsonContract::VariableReadOnlyField, Variable.bReadOnly);
+        SetFlag(N2CJsonContract::VariableExposeOnSpawnField, Variable.bExposeOnSpawn);
+        SetFlag(N2CJsonContract::VariablePrivateField, Variable.bPrivate);
+        SetFlag(N2CJsonContract::VariableReplicatedField, Variable.bReplicated);
+        SetText(N2CJsonContract::VariableRepNotifyField, Variable.RepNotify);
+        WriteUnknownFields(Object, Variable.UnknownFields);
+        return Object;
+    }
+
+    /** Sets Field to the variables, when there are any */
+    void WriteVariables(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field, const TArray<FN2CVariable>& Variables)
+    {
+        if (Variables.Num() == 0)
+        {
+            return;
+        }
+        TArray<TSharedPtr<FJsonValue>> Array;
+        for (const FN2CVariable& Variable : Variables)
+        {
+            Array.Add(MakeShared<FJsonValueObject>(VariableToJsonObject(Variable)));
+        }
+        Object->SetArrayField(Field, Array);
+    }
+
+    /** Reads the optional array Field into OutVariables; an entry that is not an object or has no "name" is skipped */
+    void ReadVariables(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field, TArray<FN2CVariable>& OutVariables,
+        const FString& Path, TArray<FN2CJsonReadWarning>& Warnings)
+    {
+        OutVariables.Reset();
+        const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
+        if (!Object->TryGetArrayField(Field, Array))
+        {
+            return;
+        }
+        for (int32 Index = 0; Index < Array->Num(); ++Index)
+        {
+            const FString EntryPath = FString::Printf(TEXT("%s[%d]"), *JoinPath(Path, Field), Index);
+            const TSharedPtr<FJsonObject>* Entry = nullptr;
+            FN2CVariable Variable;
+            if (!(*Array)[Index].IsValid() || !(*Array)[Index]->TryGetObject(Entry) || !(*Entry)->TryGetStringField(TEXT("name"), Variable.Name))
+            {
+                AddReadWarning(Warnings, N2CJsonContract::ReadWarning::SkippedVariable, EntryPath, FString(),
+                    TEXT("variable skipped: it is not an object or has no name"));
+                continue;
+            }
+            FString TypeText;
+            Variable.Type = (*Entry)->TryGetStringField(TEXT("type"), TypeText)
+                ? ReadKind<EN2CPinType>(TypeText, Variable.UnknownType, N2CJsonContract::ReadWarning::UnknownPinType,
+                    JoinPath(EntryPath, TEXT("type")), TEXT("variable type"), Warnings)
+                : EN2CPinType::Wildcard;
+            (*Entry)->TryGetStringField(TEXT("sub_type"), Variable.SubType);
+            (*Entry)->TryGetBoolField(TEXT("is_array"), Variable.bIsArray);
+            (*Entry)->TryGetBoolField(TEXT("is_set"), Variable.bIsSet);
+            (*Entry)->TryGetBoolField(TEXT("is_map"), Variable.bIsMap);
+            FString ValueTypeText;
+            if ((*Entry)->TryGetStringField(N2CJsonContract::PinValueTypeField, ValueTypeText))
+            {
+                Variable.ValueType = ReadKind<EN2CPinType>(ValueTypeText, Variable.UnknownValueType,
+                    N2CJsonContract::ReadWarning::UnknownPinType, JoinPath(EntryPath, N2CJsonContract::PinValueTypeField),
+                    TEXT("map value type"), Warnings);
+            }
+            (*Entry)->TryGetStringField(N2CJsonContract::PinValueSubTypeField, Variable.ValueSubType);
+            (*Entry)->TryGetStringField(TEXT("default_value"), Variable.DefaultValue);
+            (*Entry)->TryGetStringField(N2CJsonContract::VariableCategoryField, Variable.Category);
+            (*Entry)->TryGetStringField(TEXT("comment"), Variable.Comment);
+            (*Entry)->TryGetBoolField(N2CJsonContract::VariableInstanceEditableField, Variable.bInstanceEditable);
+            (*Entry)->TryGetBoolField(N2CJsonContract::VariableReadOnlyField, Variable.bReadOnly);
+            (*Entry)->TryGetBoolField(N2CJsonContract::VariableExposeOnSpawnField, Variable.bExposeOnSpawn);
+            (*Entry)->TryGetBoolField(N2CJsonContract::VariablePrivateField, Variable.bPrivate);
+            (*Entry)->TryGetBoolField(N2CJsonContract::VariableReplicatedField, Variable.bReplicated);
+            (*Entry)->TryGetStringField(N2CJsonContract::VariableRepNotifyField, Variable.RepNotify);
+            KeepUnknownFields(*Entry, VariableFields, Variable.UnknownFields, EntryPath, Warnings);
+            OutVariables.Add(MoveTemp(Variable));
+        }
     }
 }
 
@@ -363,6 +478,9 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
     }
     JsonObject->SetArrayField(TEXT("enums"), EnumsArray);
 
+    // Optional (card 0242): the member variables, when the capture recorded them
+    WriteVariables(JsonObject, N2CJsonContract::VariablesField, Blueprint.Variables);
+
     // Top-level fields of a later 2.x document, kept by FromJson (card 0445)
     WriteUnknownFields(JsonObject, Blueprint.UnknownFields);
 
@@ -419,6 +537,9 @@ TSharedPtr<FJsonObject> FN2CSerializer::GraphToJsonObject(const FN2CGraph& Graph
         }
         JsonObject->SetArrayField(N2CJsonContract::CommentsField, CommentsArray);
     }
+
+    // Optional (card 0242): a function's local variables, when the capture recorded them
+    WriteVariables(JsonObject, N2CJsonContract::LocalVariablesField, Graph.LocalVariables);
     WriteUnknownFields(JsonObject, Graph.UnknownFields);
 
     return JsonObject;
@@ -858,6 +979,9 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
         }
     }
 
+    // Optional (card 0242)
+    ReadVariables(JsonObject, N2CJsonContract::VariablesField, OutBlueprint.Variables, Path, Warnings);
+
     // Top-level fields of a later 2.x document (card 0445)
     KeepUnknownFields(JsonObject, TopLevelFields, OutBlueprint.UnknownFields, Path, Warnings);
 
@@ -976,6 +1100,9 @@ bool FN2CSerializer::ParseGraphFromJson(const TSharedPtr<FJsonObject>& JsonObjec
             }
         }
     }
+
+    // Optional (card 0242)
+    ReadVariables(JsonObject, N2CJsonContract::LocalVariablesField, OutGraph.LocalVariables, Path, Warnings);
 
     KeepUnknownFields(JsonObject, GraphFields, OutGraph.UnknownFields, Path, Warnings);
     return true;

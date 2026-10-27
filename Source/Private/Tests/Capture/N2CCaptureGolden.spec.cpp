@@ -14,7 +14,9 @@
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
+#include "Engine/BlendableInterface.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/UserDefinedEnum.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
@@ -136,6 +138,10 @@
  * listed, Make Map is named key then value, an enum pin is Enum (not Byte) with its enum as sub_type, a bitmask int is
  * Bitmask and a Target pin Self; the subcategory is checked before the category, and the value fields round-trip.
  *
+ * "Variables" and the case Variables check member and local variables (card 0242, PR #8): each is typed as a pin of its
+ * type (real float and double, int64, soft object, interface, array, a map's key and value), with its category,
+ * description and flags; a graph capture leaves them out unless asked and is otherwise unchanged, a whole-Blueprint
+ * capture (N2C::CaptureGraphs) records them unless told not to, and every field reads and writes back.
  * "Diagnostics" checks validation as findings (card 0240, imp-translation-core-8): a graph left out at the depth limit is
  * a DEPTH_LIMIT warning on a successful capture, get-focused-blueprint's result lists the warnings (and reads back
  * without a read warning), a pin missing its sub_type and a struct member without its type name are warnings (the
@@ -161,6 +167,8 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		TOptional<int32> TranslationDepth;
 		/** Error log lines today's capture writes for this case (known defects); each must appear */
 		TArray<FString> ExpectedErrors;
+		/** FN2CCaptureOptions::IncludeVariables for the capture (card 0242); unset keeps the capture's default */
+		TOptional<bool> IncludeVariables;
 	};
 
 	/** The capture text, normalised; empty with errors added when the graph or the capture failed */
@@ -274,7 +282,9 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		{
 			FN2CCaptureContext::SetNodeCapturedHookForTests(MoveTemp(DuringCapture));
 		}
-		const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureNodes(Nodes);
+		FN2CCaptureOptions Options;
+		Options.IncludeVariables = Case.IncludeVariables;
+		const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureNodes(Nodes, Options);
 		FN2CCaptureContext::SetNodeCapturedHookForTests(nullptr);
 		if (!TestTrue(Case.Name + TEXT(": CaptureNodes succeeds"), Result.HasValue()))
 		{
@@ -310,6 +320,10 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		if (Case.TranslationDepth.IsSet())
 		{
 			Golden->SetNumberField(TEXT("translation_depth"), Case.TranslationDepth.GetValue());
+		}
+		if (Case.IncludeVariables.IsSet())
+		{
+			Golden->SetBoolField(TEXT("include_variables"), Case.IncludeVariables.GetValue());
 		}
 		TArray<TSharedPtr<FJsonValue>> Defects;
 		for (const FKnownDefect& Defect : Case.KnownDefects)
@@ -1664,6 +1678,72 @@ void FN2CCaptureGoldenSpec::AddCases()
 			return Graph;
 		} });
 
+	// Card 0242 (PR #8 by flashpoint493): member and local variables, captured only when asked
+	Cases.Add({ TEXT("Variables"),
+		TEXT("Variables asked for (card 0242). Members: Health (float, default 100, Instance Editable, category Stats, "
+			"description 'Hit points'), Precise (double, replicated with RepNotify OnRep_Precise), BigCount (int64, Blueprint "
+			"read-only and private), Mesh (soft object StaticMesh), Blend (BlendableInterface), Targets (array of Actor) and "
+			"Lookup (Name to float map, Expose on Spawn). Function Score has local variables Count (int, default 3) and Offset "
+			"(Vector) and a return node with Total (int). Captured from Score."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UBlueprint* Blueprint = BP.GetBlueprint();
+			FEdGraphPinType Float;
+			Float.PinCategory = UEdGraphSchema_K2::PC_Real;
+			Float.PinSubCategory = UEdGraphSchema_K2::PC_Float;
+			FEdGraphPinType Int64;
+			Int64.PinCategory = UEdGraphSchema_K2::PC_Int64;
+			FEdGraphPinType SoftMesh;
+			SoftMesh.PinCategory = UEdGraphSchema_K2::PC_SoftObject;
+			SoftMesh.PinSubCategoryObject = UStaticMesh::StaticClass();
+			FEdGraphPinType Blendable;
+			Blendable.PinCategory = UEdGraphSchema_K2::PC_Interface;
+			Blendable.PinSubCategoryObject = UBlendableInterface::StaticClass();
+			FEdGraphPinType Actors = FTestBlueprint::ObjectPinType(AActor::StaticClass());
+			Actors.ContainerType = EPinContainerType::Array;
+			if (!BP.AddMemberVariable(TEXT("Health"), Float)
+				|| !BP.AddMemberVariable(TEXT("Precise"), FTestBlueprint::DoublePinType())
+				|| !BP.AddMemberVariable(TEXT("BigCount"), Int64)
+				|| !BP.AddMemberVariable(TEXT("Mesh"), SoftMesh)
+				|| !BP.AddMemberVariable(TEXT("Blend"), Blendable)
+				|| !BP.AddMemberVariable(TEXT("Targets"), Actors)
+				|| !BP.AddMemberVariable(TEXT("Lookup"), MapPinType(NamePinType(), Float)))
+			{
+				return nullptr;
+			}
+			// As the variable's details panel sets them
+			const auto Variable = [Blueprint](const TCHAR* Name) -> FBPVariableDescription&
+			{
+				return Blueprint->NewVariables[FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, Name)];
+			};
+			Variable(TEXT("Health")).DefaultValue = TEXT("100.0");
+			Variable(TEXT("Health")).PropertyFlags &= ~CPF_DisableEditOnInstance;
+			FBlueprintEditorUtils::SetBlueprintVariableCategory(Blueprint, TEXT("Health"), nullptr, FText::FromString(TEXT("Stats")));
+			FBlueprintEditorUtils::SetBlueprintVariableMetaData(Blueprint, TEXT("Health"), nullptr, FBlueprintMetadata::MD_Tooltip,
+				TEXT("Hit points"));
+			Variable(TEXT("Precise")).PropertyFlags |= CPF_Net | CPF_RepNotify;
+			Variable(TEXT("Precise")).RepNotifyFunc = TEXT("OnRep_Precise");
+			Variable(TEXT("BigCount")).PropertyFlags |= CPF_BlueprintReadOnly;
+			FBlueprintEditorUtils::SetBlueprintVariableMetaData(Blueprint, TEXT("BigCount"), nullptr, FBlueprintMetadata::MD_Private,
+				TEXT("true"));
+			Variable(TEXT("Lookup")).PropertyFlags |= CPF_ExposeOnSpawn;
+
+			UEdGraph* Graph = BP.AddFunction(TEXT("Score"));
+			FEdGraphPinType Vector;
+			Vector.PinCategory = UEdGraphSchema_K2::PC_Struct;
+			Vector.PinSubCategoryObject = TBaseStructure<FVector>::Get();
+			if (!FBlueprintEditorUtils::AddLocalVariable(Blueprint, Graph, TEXT("Count"), FTestBlueprint::IntPinType(), TEXT("3"))
+				|| !FBlueprintEditorUtils::AddLocalVariable(Blueprint, Graph, TEXT("Offset"), Vector))
+			{
+				return nullptr;
+			}
+			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Total"), FTestBlueprint::IntPinType());
+			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+	Cases.Last().IncludeVariables = true;
+
 	for (const int32 Depth : { 1, 2 })
 	{
 		FCaptureCase& Recursion = Cases.Add_GetRef({ FString::Printf(TEXT("Recursion_Depth%d"), Depth),
@@ -2343,6 +2423,160 @@ void FN2CCaptureGoldenSpec::Define()
 				}
 				TestEqual(TEXT("ToJson writes it back"), FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed), Text);
 			}
+		});
+	});
+
+	// Card 0242 (PR #8): member and local variables; golden case Variables
+	Describe(TEXT("Variables"), [this]()
+	{
+		It(TEXT("types each variable as a pin of its type: real float and double, int64, soft object, interface, array, map key and value"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("Variables"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			const TArray<FN2CVariable>& Variables = Captured.Blueprint.Variables;
+			const auto Find = [&Variables](const TCHAR* Name) { return Variables.FindByPredicate([Name](const FN2CVariable& V) { return V.Name == Name; }); };
+			const auto Expect = [this, &Find](const TCHAR* Name, EN2CPinType Type, const TCHAR* SubType)
+			{
+				const FN2CVariable* Variable = Find(Name);
+				if (TestNotNull(Name, Variable))
+				{
+					TestEqual(FString(Name) + TEXT(" type"), StaticEnum<EN2CPinType>()->GetNameStringByValue(int64(Variable->Type)),
+						StaticEnum<EN2CPinType>()->GetNameStringByValue(int64(Type)));
+					TestEqual(FString(Name) + TEXT(" sub_type"), Variable->SubType, FString(SubType));
+				}
+				return Variable;
+			};
+			TestEqual(TEXT("member variables"), Variables.Num(), 7);
+			Expect(TEXT("Health"), EN2CPinType::Real, TEXT("float"));
+			Expect(TEXT("Precise"), EN2CPinType::Real, TEXT("double"));
+			Expect(TEXT("BigCount"), EN2CPinType::Integer64, TEXT(""));
+			Expect(TEXT("Mesh"), EN2CPinType::SoftObject, TEXT("StaticMesh"));
+			Expect(TEXT("Blend"), EN2CPinType::Interface, TEXT("BlendableInterface"));
+			if (const FN2CVariable* Targets = Expect(TEXT("Targets"), EN2CPinType::Object, TEXT("Actor")))
+			{
+				TestTrue(TEXT("Targets is an array"), Targets->bIsArray);
+			}
+			if (const FN2CVariable* Lookup = Expect(TEXT("Lookup"), EN2CPinType::Name, TEXT("")))
+			{
+				TestTrue(TEXT("Lookup is a map"), Lookup->bIsMap);
+				TestTrue(TEXT("Lookup's value is a float"), Lookup->ValueType == EN2CPinType::Real && Lookup->ValueSubType == TEXT("float"));
+			}
+			if (const FN2CVariable* Health = Find(TEXT("Health")))
+			{
+				TestTrue(TEXT("Health is instance editable, in Stats, described"), Health->bInstanceEditable
+					&& Health->Category == TEXT("Stats") && Health->Comment == TEXT("Hit points"));
+			}
+			if (const FN2CVariable* Precise = Find(TEXT("Precise")))
+			{
+				TestTrue(TEXT("Precise is replicated with OnRep_Precise"), Precise->bReplicated && Precise->RepNotify == TEXT("OnRep_Precise"));
+			}
+			if (const FN2CVariable* BigCount = Find(TEXT("BigCount")))
+			{
+				TestTrue(TEXT("BigCount is read-only and private, not instance editable"), BigCount->bReadOnly && BigCount->bPrivate
+					&& !BigCount->bInstanceEditable);
+			}
+
+			if (!TestEqual(TEXT("graphs"), Captured.Blueprint.Graphs.Num(), 1))
+			{
+				return;
+			}
+			const TArray<FN2CVariable>& Locals = Captured.Blueprint.Graphs[0].LocalVariables;
+			if (TestEqual(TEXT("Score's local variables"), Locals.Num(), 2))
+			{
+				TestEqual(TEXT("first local"), Locals[0].Name, FString(TEXT("Count")));
+				TestTrue(TEXT("Count is an Integer with default 3"), Locals[0].Type == EN2CPinType::Integer && Locals[0].DefaultValue == TEXT("3"));
+				TestEqual(TEXT("second local"), Locals[1].Name, FString(TEXT("Offset")));
+				TestTrue(TEXT("Offset is a Vector struct"), Locals[1].Type == EN2CPinType::Struct && Locals[1].SubType == TEXT("Vector"));
+			}
+		});
+
+		It(TEXT("leaves variables out of a graph capture unless asked, and changes nothing else"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("Variables"));
+			if (!TestNotNull(TEXT("Variables case"), Case))
+			{
+				return;
+			}
+			FCaptureCase Off = *Case;
+			Off.IncludeVariables.Reset();
+			const FCaptured Without = Capture(Off);
+			const FCaptured With = Capture(*Case);
+			if (!Without.Capture.IsValid() || !With.Capture.IsValid())
+			{
+				return;
+			}
+			TestFalse(TEXT("no top-level variables by default"), Without.Capture->HasField(N2CJsonContract::VariablesField));
+			TestFalse(TEXT("no local_variables by default"),
+				Without.Capture->GetArrayField(TEXT("graphs"))[0]->AsObject()->HasField(N2CJsonContract::LocalVariablesField));
+			TestTrue(TEXT("variables when asked"), With.Capture->HasField(N2CJsonContract::VariablesField));
+
+			// The capture with variables, less the two fields, is the capture without them
+			const TSharedPtr<FJsonObject> Stripped = N2CTest::ParseJsonObject(With.Json);
+			Stripped->RemoveField(N2CJsonContract::VariablesField);
+			Stripped->GetArrayField(TEXT("graphs"))[0]->AsObject()->RemoveField(N2CJsonContract::LocalVariablesField);
+			TestEqual(TEXT("the rest of the capture is unchanged"), PrettyJson(Stripped), Without.Json);
+		});
+
+		It(TEXT("records variables in a whole-Blueprint capture unless told not to"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("Variables"));
+			if (!TestNotNull(TEXT("Variables case"), Case))
+			{
+				return;
+			}
+			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CGolden_VariablesAll"), TEXT("/Game"));
+			UEdGraph* Graph = Blueprint.GetBlueprint() ? Case->Build(Blueprint) : nullptr;
+			if (!TestNotNull(TEXT("graph built"), Graph))
+			{
+				return;
+			}
+			const TArray<UEdGraph*> Graphs = { Graph };
+			const TValueOrError<FN2CCapture, FString> Default = N2C::CaptureGraphs(Graphs);
+			FN2CCaptureOptions Off;
+			Off.IncludeVariables = false;
+			const TValueOrError<FN2CCapture, FString> WithoutVariables = N2C::CaptureGraphs(Graphs, Off);
+			if (TestTrue(TEXT("both captures succeed"), Default.HasValue() && WithoutVariables.HasValue()))
+			{
+				TestEqual(TEXT("member variables by default"), Default.GetValue().Blueprint.Variables.Num(), 7);
+				TestEqual(TEXT("Score's local variables by default"), Default.GetValue().Blueprint.Graphs[0].LocalVariables.Num(), 2);
+				TestEqual(TEXT("no member variables when told not to"), WithoutVariables.GetValue().Blueprint.Variables.Num(), 0);
+				TestEqual(TEXT("no local variables when told not to"), WithoutVariables.GetValue().Blueprint.Graphs[0].LocalVariables.Num(), 0);
+			}
+		});
+
+		It(TEXT("reads and writes every variable field, and skips an entry without a name with a warning"), [this]()
+		{
+			const FString Text = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"BP\"},")
+				TEXT("\"graphs\":[{\"name\":\"F\",\"graph_type\":\"Function\",\"nodes\":[{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"class\":\"K2Node_FunctionEntry\",\"input_pins\":[],\"output_pins\":[]}],\"flows\":{\"execution\":[],\"data\":{}},")
+				TEXT("\"local_variables\":[{\"name\":\"L\",\"type\":\"Integer\",\"default_value\":\"3\"},{\"type\":\"Integer\"}]}],")
+				TEXT("\"structs\":[],\"enums\":[],\"variables\":[{\"name\":\"M\",\"type\":\"Name\",\"is_map\":true,\"value_type\":\"Real\",")
+				TEXT("\"value_sub_type\":\"float\",\"category\":\"Stats\",\"comment\":\"c\",\"instance_editable\":true,\"read_only\":true,")
+				TEXT("\"expose_on_spawn\":true,\"private\":true,\"replicated\":true,\"rep_notify\":\"OnRep_M\",\"later\":1}]}");
+			FN2CBlueprint Read;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Read, Warnings)))
+			{
+				return;
+			}
+			TestEqual(TEXT("one member variable"), Read.Variables.Num(), 1);
+			TestEqual(TEXT("one local variable (the nameless entry skipped)"), Read.Graphs.Num() == 1 ? Read.Graphs[0].LocalVariables.Num() : -1, 1);
+			TArray<FString> Codes;
+			for (const FN2CJsonReadWarning& Warning : Warnings)
+			{
+				Codes.Add(Warning.Code);
+			}
+			TestTrue(TEXT("SKIPPED_VARIABLE warning"), Codes.Contains(N2CJsonContract::ReadWarning::SkippedVariable));
+			TestTrue(TEXT("the unknown field is kept with a warning"), Codes.Contains(N2CJsonContract::ReadWarning::UnknownField));
+
+			// Written back the same, less the skipped entry
+			const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed));
+			const TSharedPtr<FJsonObject> Expected = N2CTest::ParseJsonObject(Text);
+			Expected->GetArrayField(TEXT("graphs"))[0]->AsObject()->SetArrayField(N2CJsonContract::LocalVariablesField,
+				{ Expected->GetArrayField(TEXT("graphs"))[0]->AsObject()->GetArrayField(N2CJsonContract::LocalVariablesField)[0] });
+			TestEqual(TEXT("ToJson writes it back"), PrettyJson(Again), PrettyJson(Expected));
 		});
 	});
 

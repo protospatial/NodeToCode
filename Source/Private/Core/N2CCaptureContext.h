@@ -10,6 +10,9 @@
 #include "Utils/Processors/N2CNodeProcessor.h"
 #include "Utils/Processors/N2CNodeProcessorFactory.h"
 
+struct FBPVariableDescription;
+struct FEdGraphPinType;
+
 /**
  * @class FN2CCaptureContext
  * @brief The state of one capture (private to the capture module; use N2C::CaptureNodes, CaptureGraph, DescribeNode)
@@ -152,6 +155,27 @@ private:
 
     /** Records Graph's comment boxes in the current graph, each with the captured nodes inside it */
     void CaptureComments(const UEdGraph* Graph);
+
+    /** Whether this capture records variables (Options.IncludeVariables, or the entry point's default when unset) */
+    bool bIncludeVariables = false;
+
+    /** Records the captured Blueprint's member variables (UBlueprint::NewVariables) in N2CBlueprint.Variables */
+    void CaptureMemberVariables();
+
+    /** Records a function graph's local variables (its FunctionEntry node's LocalVariables) in the current graph */
+    void CaptureLocalVariables(const UEdGraph* Graph);
+
+    /**
+     * One variable in the N2C model: its type in pin spellings and DefaultValue (the text given); a member variable
+     * (bMember) also gets its category, description and flags
+     */
+    FN2CVariable DescribeVariable(const FBPVariableDescription& Variable, const FString& DefaultValue, bool bMember) const;
+
+    /**
+     * Adds the user struct or enum a variable's type names (its own and a map's value type) to the related types,
+     * unless this capture has already processed it
+     */
+    void AddVariableRelatedTypes(const FEdGraphPinType& Type);
 
     /** Convert a UK2Node to FN2CNodeDefinition (its IDs must have been assigned) */
     bool ProcessNode(UK2Node* Node, FN2CNodeDefinition& OutNodeDef);

@@ -32,6 +32,14 @@ struct NODETOCODE_API FN2CCaptureOptions
 	 * on, so an agent can find a default event and wire it instead of adding a second one.
 	 */
 	bool bIncludeGhostNodes = false;
+
+	/**
+	 * Capture the Blueprint's member variables (FN2CBlueprint::Variables) and each captured function graph's local
+	 * variables (FN2CGraph::LocalVariables), card 0242. Unset (the default) means on for a whole-Blueprint capture
+	 * (N2C::CaptureGraphs: get-blueprint-n2cjson and Python get_blueprint_n2c_json without a graph) and off for a capture of one
+	 * graph or a node selection (translation, get-focused-blueprint), so snippet translations stay small.
+	 */
+	TOptional<bool> IncludeVariables;
 };
 
 /** Where one captured pin is in the editor. A pin's PinId is only unique on its node (a paste keeps it), so a pin is

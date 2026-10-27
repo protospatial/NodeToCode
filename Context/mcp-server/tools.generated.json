@@ -730,7 +730,7 @@
 			"name": "connect-pins",
 			"title": "Connect pins",
 			"toolset": "BlueprintGraphTools",
-			"description": "Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Each entry's result has its array index and the schema's response (MAKE, BREAK_OTHERS_A/B/AB, MAKE_WITH_CONVERSION_NODE, MAKE_WITH_PROMOTION) with any conversion node placed; failed and malformed entries are listed in the result with an errorCode, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -805,7 +805,7 @@
 										"pinGuid":
 										{
 											"type": "string",
-											"description": "GUID of the source pin. Required: an entry without it is skipped"
+											"description": "GUID of the source pin. Required: an entry without it fails with INVALID_REQUEST"
 										},
 										"pinName":
 										{
@@ -839,7 +839,7 @@
 										"pinGuid":
 										{
 											"type": "string",
-											"description": "GUID of the target pin. Required: an entry without it is skipped"
+											"description": "GUID of the target pin. Required: an entry without it fails with INVALID_REQUEST"
 										},
 										"pinName":
 										{
