@@ -36,7 +36,8 @@
  *         if not ok:
  *             raise RuntimeError(error)
  *
- *     # A new struct starts with one default member; remove it once the struct has others, then save
+ *     # A new struct starts with one default member (a bool named MemberVar_<n>); remove it once the struct has
+ *     # others, then save
  *     lib.remove_default_variable(struct)
  *     lib.save_struct(struct)
  * @endcode
@@ -76,9 +77,11 @@ public:
 	 *        - Colors: FColor, FLinearColor
 	 *        - Objects: Use full path like '/Script/Engine.Actor' or class name 'Actor'
 	 *        - Structs: Use full path like '/Script/CoreUObject.Vector' or struct name
-	 * @param bSuccess Whether the variable was successfully added
+	 * @param bSuccess Whether the variable was successfully added. False, with nothing added, when the struct already
+	 *        has a variable with this name or the new variable could not be given it.
 	 * @param ErrorMessage Error message if the operation failed
 	 *
+	 * Adding and naming the variable is one undo step.
 	 * Note: ExpandBoolAsExecs removed to fix Python binding compatibility issue.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Struct", meta = (DisplayName = "Add Struct Variable"))
@@ -111,9 +114,11 @@ public:
 	);
 
 	/**
-	 * Remove the default variable that is created when a struct is first made (the struct's first member)
+	 * Remove the default variable that is created when a struct is first made (a bool named MemberVar_<n>)
 	 * @param Struct The UserDefinedStruct to modify
-	 * @param bSuccess Whether the default variable was successfully removed
+	 * @param bSuccess Whether the default variable was successfully removed. False, with nothing removed, when the
+	 *        struct has no such variable (it was already removed, or every member was named by the user) or when it
+	 *        is the struct's only member (a struct cannot be empty: add the other variables first).
 	 * @param ErrorMessage Error message if the operation failed
 	 *
 	 * Note: ExpandBoolAsExecs removed to fix Python binding compatibility issue.
@@ -129,7 +134,7 @@ public:
 	/**
 	 * Get a list of all variable names in a UserDefinedStruct
 	 * @param Struct The UserDefinedStruct to query
-	 * @return Array of the members' internal names (the name given, a number and a GUID, e.g. "MyFloat_2_<32 hex digits>")
+	 * @return Array of the members' names as given to AddStructVariable and shown in the struct editor (e.g. "MyFloat")
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Struct", meta = (DisplayName = "Get Struct Variable Names"))
 	static TArray<FString> GetStructVariableNames(UUserDefinedStruct* Struct);

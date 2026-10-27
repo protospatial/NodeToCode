@@ -10,6 +10,23 @@
 #include "EditorAssetLibrary.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/SavePackage.h"
+#include "AssetToolsModule.h"
+#include "IAssetTools.h"
+#include "Factories/StructureFactory.h"
+#include "ScopedTransaction.h"
+
+#define LOCTEXT_NAMESPACE "N2CStructUtilsLibrary"
+
+namespace
+{
+	/** True for the member FStructureEditorUtils::CreateUserDefinedStruct adds to every new struct: a bool named MemberVar_<n> */
+	bool IsFactoryDefaultVariable(const FStructVariableDescription& Var)
+	{
+		return Var.Category == UEdGraphSchema_K2::PC_Boolean
+			&& Var.ContainerType == EPinContainerType::None
+			&& Var.FriendlyName.StartsWith(TEXT("MemberVar_"), ESearchCase::CaseSensitive);
+	}
+}
 
 UUserDefinedStruct* UN2CStructUtilsLibrary::CreateUserDefinedStruct(
 	const FString& PackagePath,
@@ -78,32 +95,25 @@ UUserDefinedStruct* UN2CStructUtilsLibrary::CreateUserDefinedStruct(
 		}
 	}
 
-	// Create the package
-	UPackage* Package = CreatePackage(*FullPath);
-	if (!Package)
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	FText NotAllowedReason;
+	if (!AssetTools.IsNameAllowed(StructName, &NotAllowedReason))
 	{
-		ErrorMessage = FString::Printf(TEXT("Failed to create package at: %s"), *FullPath);
+		ErrorMessage = FString::Printf(TEXT("Struct name '%s' is not allowed: %s"), *StructName, *NotAllowedReason.ToString());
 		return nullptr;
 	}
 
-	// Create the UserDefinedStruct
-	UUserDefinedStruct* NewStruct = FStructureEditorUtils::CreateUserDefinedStruct(
-		Package,
-		FName(*StructName),
-		RF_Public | RF_Standalone
-	);
+	// Create through IAssetTools with the struct factory, as the Content Browser does (transactional flags, asset
+	// registry notification, the package marked dirty). Every case it would ask about in a dialog was refused above.
+	UStructureFactory* Factory = NewObject<UStructureFactory>();
+	UUserDefinedStruct* NewStruct = Cast<UUserDefinedStruct>(AssetTools.CreateAsset(
+		StructName, PackagePath, UUserDefinedStruct::StaticClass(), Factory, FName(TEXT("NodeToCode"))));
 
 	if (!NewStruct)
 	{
-		ErrorMessage = TEXT("FStructureEditorUtils::CreateUserDefinedStruct failed");
+		ErrorMessage = FString::Printf(TEXT("Failed to create the struct asset at: %s"), *FullPath);
 		return nullptr;
 	}
-
-	// Mark package dirty
-	Package->MarkPackageDirty();
-
-	// Notify asset registry
-	FAssetRegistryModule::AssetCreated(NewStruct);
 
 	bSuccess = true;
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Created UserDefinedStruct: %s"), *FullPath), EN2CLogSeverity::Info);
@@ -145,32 +155,53 @@ void UN2CStructUtilsLibrary::AddStructVariable(
 		return;
 	}
 
-	// Get variable count before adding
-	TArray<FStructVariableDescription>& Variables = FStructureEditorUtils::GetVarDesc(Struct);
-	int32 VarCountBefore = Variables.Num();
-
-	// Add the variable using FStructureEditorUtils
-	bool bAdded = FStructureEditorUtils::AddVariable(Struct, PinType);
-
-	if (!bAdded)
+	// A member's display name must be unique in the struct; checked first so a taken name adds nothing
+	if (!FStructureEditorUtils::IsUniqueVariableFriendlyName(Struct, VariableName))
 	{
-		ErrorMessage = TEXT("FStructureEditorUtils::AddVariable failed to create variable");
+		ErrorMessage = FString::Printf(TEXT("Struct '%s' already has a variable named '%s'"), *Struct->GetName(), *VariableName);
 		return;
 	}
 
-	// Get the newly added variable's GUID (it's the last one)
-	TArray<FStructVariableDescription>& UpdatedVariables = FStructureEditorUtils::GetVarDesc(Struct);
-	if (UpdatedVariables.Num() > VarCountBefore)
-	{
-		FGuid NewVarGuid = UpdatedVariables.Last().VarGuid;
+	// Add and rename as one undo step
+	FScopedTransaction Transaction(LOCTEXT("AddStructVariable", "Add Struct Variable"));
 
-		// Rename the variable to the desired name
-		bool bRenamed = FStructureEditorUtils::RenameVariable(Struct, NewVarGuid, VariableName);
-		if (!bRenamed)
+	TSet<FGuid> GuidsBefore;
+	for (const FStructVariableDescription& Var : FStructureEditorUtils::GetVarDesc(Struct))
+	{
+		GuidsBefore.Add(Var.VarGuid);
+	}
+
+	if (!FStructureEditorUtils::AddVariable(Struct, PinType))
+	{
+		Transaction.Cancel();
+		ErrorMessage = FString::Printf(TEXT("FStructureEditorUtils::AddVariable failed to create a '%s' variable (the type may not be allowed in a struct; see the log)"), *VariableType);
+		return;
+	}
+
+	FGuid NewVarGuid;
+	for (const FStructVariableDescription& Var : FStructureEditorUtils::GetVarDesc(Struct))
+	{
+		if (!GuidsBefore.Contains(Var.VarGuid))
 		{
-			FN2CLogger::Get().LogWarning(FString::Printf(
-				TEXT("Variable created but rename to '%s' failed. Using default name."), *VariableName));
+			NewVarGuid = Var.VarGuid;
+			break;
 		}
+	}
+	if (!NewVarGuid.IsValid())
+	{
+		Transaction.Cancel();
+		ErrorMessage = TEXT("FStructureEditorUtils::AddVariable reported success but no new variable was found");
+		return;
+	}
+
+	// Rename the new member to the requested name; if that fails, take the member out again rather than leave an
+	// unnamed MemberVar_<n> field in the struct
+	if (!FStructureEditorUtils::RenameVariable(Struct, NewVarGuid, VariableName))
+	{
+		FStructureEditorUtils::RemoveVariable(Struct, NewVarGuid);
+		Transaction.Cancel();
+		ErrorMessage = FString::Printf(TEXT("Could not name the new variable '%s'; nothing was added"), *VariableName);
+		return;
 	}
 
 	// Mark struct as modified
@@ -260,25 +291,30 @@ void UN2CStructUtilsLibrary::RemoveDefaultVariable(
 		return;
 	}
 
-	// Find and remove the first (default) variable
-	// The default variable typically has a generated name like "MemberVar_0_..."
-	if (Variables.Num() > 0)
+	// Only the member the struct was created with (a bool named MemberVar_<n>) is removed, never a field the user made
+	const FStructVariableDescription* DefaultVar = Variables.FindByPredicate(&IsFactoryDefaultVariable);
+	if (!DefaultVar)
 	{
-		FGuid VarToRemove = Variables[0].VarGuid;
-		bool bRemoved = FStructureEditorUtils::RemoveVariable(Struct, VarToRemove);
-
-		if (bRemoved)
-		{
-			Struct->MarkPackageDirty();
-			bSuccess = true;
-			FN2CLogger::Get().Log(FString::Printf(
-				TEXT("Removed default variable from struct '%s'"), *Struct->GetName()), EN2CLogSeverity::Info);
-		}
-		else
-		{
-			ErrorMessage = TEXT("Failed to remove default variable");
-		}
+		ErrorMessage = FString::Printf(TEXT("Struct '%s' has no default variable (a bool named MemberVar_<n>) to remove; nothing was removed"), *Struct->GetName());
+		return;
 	}
+	if (Variables.Num() < 2)
+	{
+		ErrorMessage = TEXT("The default variable is the struct's only member and a struct cannot be empty; add a variable first");
+		return;
+	}
+
+	const FGuid VarToRemove = DefaultVar->VarGuid;
+	if (!FStructureEditorUtils::RemoveVariable(Struct, VarToRemove))
+	{
+		ErrorMessage = TEXT("Failed to remove default variable");
+		return;
+	}
+
+	Struct->MarkPackageDirty();
+	bSuccess = true;
+	FN2CLogger::Get().Log(FString::Printf(
+		TEXT("Removed default variable from struct '%s'"), *Struct->GetName()), EN2CLogSeverity::Info);
 }
 
 TArray<FString> UN2CStructUtilsLibrary::GetStructVariableNames(UUserDefinedStruct* Struct)
@@ -294,7 +330,7 @@ TArray<FString> UN2CStructUtilsLibrary::GetStructVariableNames(UUserDefinedStruc
 
 	for (const FStructVariableDescription& Var : Variables)
 	{
-		Result.Add(Var.VarName.ToString());
+		Result.Add(Var.FriendlyName);
 	}
 
 	return Result;
@@ -511,3 +547,5 @@ bool UN2CStructUtilsLibrary::TypeStringToPinType(
 	OutErrorMessage = FString::Printf(TEXT("Unknown type: '%s'. Supported types include: bool, int32, float, double, FString, FName, FText, FVector, FRotator, FTransform, FColor, or full class/struct paths like '/Script/Engine.Actor'"), *TypeString);
 	return false;
 }
+
+#undef LOCTEXT_NAMESPACE
