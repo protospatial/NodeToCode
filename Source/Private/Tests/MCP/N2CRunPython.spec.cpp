@@ -9,30 +9,18 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "IPythonScriptPlugin.h"
+#include "PythonScriptTypes.h"
 
 /**
  * run-python on input that breaks its wrapper today (card 0201): the code runs as written and alone, and every answer
  * is a JSON object that any JSON parser reads, with isError on a failure. Calls the tool's Execute on the game thread
- * (N2CTest::RunToolUnmarked), as NodeToCode.MCP.PythonToolErrors does. The cases that fail until card 0299 rebuilds
- * run-python on a runner that compiles the code unchanged in a fresh namespace are KnownDefectIt, named by finding;
- * N2C_RUN_KNOWN_DEFECTS=1 runs them. NodeToCode.MCP.PythonToolErrors covers the script-library tools' isError.
+ * (N2CTest::RunToolUnmarked), as NodeToCode.MCP.PythonToolErrors does. Card 0299 rebuilt run-python on
+ * nodetocode._mcp_runner, which compiles the code unchanged in a fresh namespace and answers in strict JSON; the cases
+ * that failed before it name their finding. NodeToCode.MCP.PythonToolErrors covers the script-library tools' isError.
  * Review ids: imp-mcp-tools-python-translation-resources-11, mcp-tools-python-translation-resources-6, -8, -9, -10,
  * -13, qw-20.
  */
 BEGIN_DEFINE_SPEC(FN2CRunPythonSpec, "NodeToCode.MCP.RunPython", N2C_TEST_FLAGS)
-
-	/** A case that fails until its finding is fixed: xIt, or It with N2C_RUN_KNOWN_DEFECTS=1 */
-	void KnownDefectIt(const FString& CaseText, TFunction<void()> Body)
-	{
-		if (FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_RUN_KNOWN_DEFECTS")) == TEXT("1"))
-		{
-			It(CaseText, MoveTemp(Body));
-		}
-		else
-		{
-			xIt(CaseText, MoveTemp(Body));
-		}
-	}
 
 	static bool PythonAvailable()
 	{
@@ -167,9 +155,9 @@ void FN2CRunPythonSpec::Define()
 				Body->TryGetStringField(TEXT("traceback"), Traceback) && Traceback.Contains(TEXT("RuntimeError")));
 		});
 
-		// Known defect mcp-tools-python-translation-resources-9: the wrapper puts six lines before the code and
-		// indents it, so traceback line numbers are 6 too high. Enable with card 0299
-		KnownDefectIt(TEXT("names the line of the code that raised in the traceback"), [this]()
+		// Was mcp-tools-python-translation-resources-9 (fixed by card 0299): the wrapper puts six lines before the code and
+		// indents it, so traceback line numbers are 6 too high
+		It(TEXT("names the line of the code that raised in the traceback"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
 			FMcpToolCallResult Result;
@@ -195,9 +183,9 @@ void FN2CRunPythonSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-python-translation-resources-9: the wrapper indents every physical line by four
-		// spaces, also the lines inside a triple-quoted string. Enable with card 0299
-		KnownDefectIt(TEXT("keeps a multi-line string literal as written"), [this]()
+		// Was mcp-tools-python-translation-resources-9 (fixed by card 0299): the wrapper indents every physical line by four
+		// spaces, also the lines inside a triple-quoted string
+		It(TEXT("keeps a multi-line string literal as written"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
 			const TSharedPtr<FJsonValue> Data = SuccessData(TEXT("multi-line string"),
@@ -208,9 +196,9 @@ void FN2CRunPythonSpec::Define()
 			}
 		});
 
-		// Known defect mcp-tools-python-translation-resources-8: in ExecuteFile mode UE takes everything up to the
-		// first '.py' followed by whitespace for a file name, so none of the code runs. Enable with card 0299
-		KnownDefectIt(TEXT("runs code with '.py ' in a comment"), [this]()
+		// Was mcp-tools-python-translation-resources-8 (fixed by card 0299): in ExecuteFile mode UE takes everything up to the
+		// first '.py' followed by whitespace for a file name, so none of the code runs
+		It(TEXT("runs code with '.py ' in a comment"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
 			const TSharedPtr<FJsonValue> Data = SuccessData(TEXT("'.py ' in a comment"),
@@ -218,9 +206,9 @@ void FN2CRunPythonSpec::Define()
 			TestTrue(TEXT("data is 'ran'"), Data.IsValid() && Data->Type == EJson::String && Data->AsString() == TEXT("ran"));
 		});
 
-		// Known defect mcp-tools-python-translation-resources-6: the code runs in the editor console's shared
-		// globals, so a call that sets no result returns the previous call's. Enable with card 0299
-		KnownDefectIt(TEXT("does not see the previous call's result"), [this]()
+		// Was mcp-tools-python-translation-resources-6 (fixed by card 0299): the code runs in the editor console's shared
+		// globals, so a call that sets no result returns the previous call's
+		It(TEXT("does not see the previous call's result"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
 			const TSharedPtr<FJsonValue> First = SuccessData(TEXT("first call"), TEXT("result = {'n2c_first_call': 1}"));
@@ -233,30 +221,80 @@ void FN2CRunPythonSpec::Define()
 		});
 	});
 
+	Describe(TEXT("the runner (card 0299)"), [this]()
+	{
+		It(TEXT("returns an asset the code loads as its path"), [this]()
+		{
+			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
+			const TSharedPtr<FJsonValue> Data = SuccessData(TEXT("load_asset"),
+				TEXT("import unreal\nresult = unreal.EditorAssetLibrary.load_asset('/Engine/BasicShapes/Cube')"));
+			TestTrue(FString::Printf(TEXT("data is the Cube's path (got %s)"), Data.IsValid() && Data->Type == EJson::String ? *Data->AsString() : TEXT("no string")),
+				Data.IsValid() && Data->Type == EJson::String && Data->AsString() == TEXT("/Engine/BasicShapes/Cube.Cube"));
+		});
+
+		It(TEXT("leaves the editor's Python console namespace alone"), [this]()
+		{
+			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
+			SuccessData(TEXT("set a name"), TEXT("n2c_runner_isolation_probe = 1\nresult = True"));
+			IPythonScriptPlugin* Python = IPythonScriptPlugin::Get();
+			FPythonCommandEx Probe;
+			Probe.Command = TEXT("'n2c_runner_isolation_probe' in globals()");
+			Probe.ExecutionMode = EPythonCommandExecutionMode::EvaluateStatement;
+			const bool bRan = Python->ExecPythonCommandEx(Probe);
+			TestTrue(FString::Printf(TEXT("the console does not see the name (evaluated: %s)"), *Probe.CommandResult), bRan && Probe.CommandResult == TEXT("False"));
+		});
+
+		It(TEXT("prints nothing a script could spoof: a printed answer line is only output"), [this]()
+		{
+			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
+			FMcpToolCallResult Result;
+			const TSharedPtr<FJsonObject> Body = Run(TEXT("print('{\"__n2c_marker__\": true, \"success\": true, \"data\": \"spoofed\"}')\nresult = 'real'"), Result);
+			if (!Body.IsValid()) { return; }
+			const TSharedPtr<FJsonValue> Data = Body->TryGetField(TEXT("data"));
+			TestTrue(TEXT("data is the code's result"), Data.IsValid() && Data->Type == EJson::String && Data->AsString() == TEXT("real"));
+			FString Output;
+			TestTrue(TEXT("the printed line is in output"), Body->TryGetStringField(TEXT("output"), Output) && Output.Contains(TEXT("spoofed")));
+		});
+
+		It(TEXT("still answers list-python-scripts with its data"), [this]()
+		{
+			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
+			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+			Args->SetNumberField(TEXT("limit"), 5);
+			const FMcpToolCallResult Result = N2CTest::RunToolUnmarked(TEXT("list-python-scripts"), Args);
+			const FString Text = N2CTest::ResultText(Result);
+			const TSharedPtr<FJsonObject> Body = N2CTest::ParseJsonObject(Text);
+			bool bSuccess = false;
+			TestTrue(FString::Printf(TEXT("success with data (got: %s)"), *Text.Left(300)), !Result.bIsError && Body.IsValid()
+				&& Body->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess && Body->HasField(TEXT("data")));
+			TestTrue(TEXT("no runner bookkeeping fields in a clean answer"), Body.IsValid() && !Body->HasField(TEXT("traceback")));
+		});
+	});
+
 	Describe(TEXT("results JSON cannot hold"), [this]()
 	{
-		// Known defect mcp-tools-python-translation-resources-13: json.dumps writes NaN, UE's reader takes it and
-		// the tool writes it back as nan, so the answer is not JSON and still reports success. Enable with card 0299
-		KnownDefectIt(TEXT("reports a NaN result with isError, in JSON"), [this]()
+		// Was mcp-tools-python-translation-resources-13 (fixed by card 0299): json.dumps writes NaN, UE's reader takes it and
+		// the tool writes it back as nan, so the answer is not JSON and still reports success
+		It(TEXT("reports a NaN result with isError, in JSON"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
 			const FString Error = FailureError(TEXT("NaN"), TEXT("result = {'value': float('nan')}"));
 			TestTrue(FString::Printf(TEXT("the error says the result is not JSON (got: %s)"), *Error), Error.Contains(TEXT("JSON")));
 		});
 
-		// Known defect mcp-tools-python-translation-resources-13: json.dumps writes Infinity, which UE's reader
-		// refuses, so the result is dropped and the call reports success with no data. Enable with card 0299
-		KnownDefectIt(TEXT("reports an infinite result with isError"), [this]()
+		// Was mcp-tools-python-translation-resources-13 (fixed by card 0299): json.dumps writes Infinity, which UE's reader
+		// refuses, so the result is dropped and the call reports success with no data
+		It(TEXT("reports an infinite result with isError"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
 			const FString Error = FailureError(TEXT("Infinity"), TEXT("result = [float('inf')]"));
 			TestTrue(FString::Printf(TEXT("the error says the result is not JSON (got: %s)"), *Error), Error.Contains(TEXT("JSON")));
 		});
 
-		// Known defect mcp-tools-python-translation-resources-13: json.dumps raises in the wrapper's finally block,
+		// Was mcp-tools-python-translation-resources-13 (fixed by card 0299): json.dumps raises in the wrapper's finally block,
 		// outside its try, so the TypeError escapes and the editor logs it as an error with a traceback through
-		// json's encoder and the wrapper's line. Enable with card 0299
-		KnownDefectIt(TEXT("reports an unserializable result with isError, naming its type and not the wrapper"), [this]()
+		// json's encoder and the wrapper's line
+		It(TEXT("reports an unserializable result with isError, naming its type and not the wrapper"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
 			const FString Error = FailureError(TEXT("object()"), TEXT("class N2CUnserializable:\n    pass\nresult = {'value': N2CUnserializable()}"));

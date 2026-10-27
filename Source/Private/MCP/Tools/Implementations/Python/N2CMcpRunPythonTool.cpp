@@ -4,8 +4,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
-#include "IPythonScriptPlugin.h"
-#include "PythonScriptTypes.h"
+#include "MCP/Python/N2CMcpPythonRunner.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -88,139 +87,40 @@ FMcpToolCallResult FN2CMcpRunPythonTool::Execute(const TSharedPtr<FJsonObject>& 
 	);
 
 	// Execute on Game Thread with extended timeout
-	return ExecuteOnGameThread([this, Code, TimeoutSeconds]() -> FMcpToolCallResult
+	return ExecuteOnGameThread([Code]() -> FMcpToolCallResult
 	{
-		// Check if Python is available
-		IPythonScriptPlugin* PythonPlugin = IPythonScriptPlugin::Get();
-		if (!PythonPlugin)
+		// The code runs unchanged in a fresh namespace through nodetocode._mcp_runner, which hands back strict JSON
+		// (card 0299): no wrapper lines, no shared console globals, no marker line scraped from stdout
+		const N2CMcpPythonRunner::FRun Run = N2CMcpPythonRunner::RunCode(Code);
+		if (!Run.Answer.IsValid())
 		{
-			return FMcpToolCallResult::CreateErrorResult(
-				TEXT("PythonScriptPlugin module not available. Ensure it is enabled in your project settings."));
+			return FMcpToolCallResult::CreateErrorResult(Run.Error);
 		}
+		const TSharedPtr<FJsonObject>& Answer = Run.Answer;
 
-		if (!PythonPlugin->IsPythonAvailable())
-		{
-			return FMcpToolCallResult::CreateErrorResult(
-				TEXT("Python is not available. Check Python plugin configuration in project settings."));
-		}
-
-		// Wrap the user script with result capture
-		FString WrappedScript = WrapScriptWithResultCapture(Code);
-
-		// Execute using ExecPythonCommandEx for captured output
-		FPythonCommandEx PythonCommand;
-		PythonCommand.Command = WrappedScript;
-		PythonCommand.ExecutionMode = EPythonCommandExecutionMode::ExecuteFile;
-		PythonCommand.FileExecutionScope = EPythonFileExecutionScope::Public;
-		PythonCommand.Flags = EPythonCommandFlags::None;
-
-		bool bSuccess = PythonPlugin->ExecPythonCommandEx(PythonCommand);
-
-		// Collect stdout from log output
-		FString StdoutContent;
-		FString StderrContent;
-		for (const FPythonLogOutputEntry& Entry : PythonCommand.LogOutput)
-		{
-			if (Entry.Type == EPythonLogOutputType::Info)
-			{
-				StdoutContent += Entry.Output + TEXT("\n");
-			}
-			else if (Entry.Type == EPythonLogOutputType::Error ||
-					 Entry.Type == EPythonLogOutputType::Warning)
-			{
-				StderrContent += Entry.Output + TEXT("\n");
-			}
-		}
-
-		// Build response JSON
+		// The answer as before: success, data, error, traceback, output, stderr (the empty ones left out), hint
 		TSharedPtr<FJsonObject> ResponseJson = MakeShareable(new FJsonObject);
-
-		// Try to extract the __n2c_result__ JSON from output
-		TSharedPtr<FJsonObject> ResultData;
-		bool bHasStructuredResult = ExtractResultFromOutput(StdoutContent, ResultData);
-
-		if (bHasStructuredResult && ResultData.IsValid())
+		bool bResponseSuccess = false;
+		Answer->TryGetBoolField(TEXT("success"), bResponseSuccess);
+		ResponseJson->SetBoolField(TEXT("success"), bResponseSuccess);
+		if (const TSharedPtr<FJsonValue> Data = Answer->TryGetField(TEXT("data")))
 		{
-			// Use the structured result
-			bool bScriptSuccess = false;
-			ResultData->TryGetBoolField(TEXT("success"), bScriptSuccess);
-
-			ResponseJson->SetBoolField(TEXT("success"), bScriptSuccess);
-
-			if (ResultData->HasField(TEXT("data")))
+			ResponseJson->SetField(TEXT("data"), Data);
+		}
+		for (const TCHAR* Field : { TEXT("error"), TEXT("traceback"), TEXT("output"), TEXT("stderr") })
+		{
+			FString Text;
+			if (Answer->TryGetStringField(Field, Text))
 			{
-				ResponseJson->SetField(TEXT("data"), ResultData->TryGetField(TEXT("data")));
-			}
-
-			if (ResultData->HasField(TEXT("error")))
-			{
-				FString ScriptError;
-				ResultData->TryGetStringField(TEXT("error"), ScriptError);
-				if (!ScriptError.IsEmpty())
+				Text.TrimStartAndEndInline();
+				if (!Text.IsEmpty())
 				{
-					ResponseJson->SetStringField(TEXT("error"), ScriptError);
+					ResponseJson->SetStringField(Field, Text);
 				}
-			}
-
-			if (ResultData->HasField(TEXT("traceback")))
-			{
-				FString Traceback;
-				ResultData->TryGetStringField(TEXT("traceback"), Traceback);
-				if (!Traceback.IsEmpty())
-				{
-					ResponseJson->SetStringField(TEXT("traceback"), Traceback);
-				}
-			}
-		}
-		else
-		{
-			// No structured result - use execution status
-			ResponseJson->SetBoolField(TEXT("success"), bSuccess);
-
-			if (!bSuccess && !PythonCommand.CommandResult.IsEmpty())
-			{
-				ResponseJson->SetStringField(TEXT("error"), PythonCommand.CommandResult);
-			}
-		}
-
-		// Clean stdout - remove the __n2c_result__ JSON line for cleaner output
-		FString CleanOutput = StdoutContent;
-		int32 JsonMarkerStart = CleanOutput.Find(TEXT("{\"__n2c_marker__\":"));
-		if (JsonMarkerStart != INDEX_NONE)
-		{
-			int32 JsonMarkerEnd = CleanOutput.Find(TEXT("\n"), ESearchCase::IgnoreCase,
-				ESearchDir::FromStart, JsonMarkerStart);
-			if (JsonMarkerEnd != INDEX_NONE)
-			{
-				CleanOutput = CleanOutput.Left(JsonMarkerStart) +
-					CleanOutput.Mid(JsonMarkerEnd + 1);
-			}
-			else
-			{
-				CleanOutput = CleanOutput.Left(JsonMarkerStart);
-			}
-		}
-		CleanOutput.TrimStartAndEndInline();
-
-		// Include cleaned output if present
-		if (!CleanOutput.IsEmpty())
-		{
-			ResponseJson->SetStringField(TEXT("output"), CleanOutput);
-		}
-
-		// Include stderr if present
-		if (!StderrContent.IsEmpty())
-		{
-			StderrContent.TrimStartAndEndInline();
-			if (!StderrContent.IsEmpty())
-			{
-				ResponseJson->SetStringField(TEXT("stderr"), StderrContent);
 			}
 		}
 
 		// Add hint about ue5_compat.py when there's an error
-		bool bResponseSuccess = false;
-		ResponseJson->TryGetBoolField(TEXT("success"), bResponseSuccess);
 		if (!bResponseSuccess)
 		{
 			ResponseJson->SetStringField(TEXT("hint"),
@@ -240,77 +140,8 @@ FMcpToolCallResult FN2CMcpRunPythonTool::Execute(const TSharedPtr<FJsonObject>& 
 			EN2CLogSeverity::Info
 		);
 
-		// A script that raised, failed to compile or did not run is a tool execution failure: report it with isError
-		// so clients that branch on it see the failure, and keep the JSON body (success:false, error, traceback, output).
+		// A script that raised, failed to compile or returned what JSON cannot hold is a tool execution failure: report
+		// it with isError so clients that branch on it see the failure, and keep the JSON body
 		return FMcpToolCallResult::CreateTextResult(OutputString, !bResponseSuccess);
 	}, TimeoutSeconds + 5.0f); // Add buffer to Game Thread timeout
-}
-
-FString FN2CMcpRunPythonTool::WrapScriptWithResultCapture(const FString& UserScript) const
-{
-	// Indent user script by 4 spaces for proper Python indentation inside try block
-	FString IndentedScript;
-	TArray<FString> Lines;
-	UserScript.ParseIntoArrayLines(Lines, false);
-	for (const FString& Line : Lines)
-	{
-		IndentedScript += TEXT("    ") + Line + TEXT("\n");
-	}
-
-	// Wrapper that captures the 'result' variable and any exceptions
-	// Uses a unique marker to identify our JSON output in stdout
-	return FString::Printf(TEXT(
-		"import json\n"
-		"import traceback\n"
-		"\n"
-		"__n2c_result__ = {\"__n2c_marker__\": True, \"success\": False, \"error\": None, \"data\": None}\n"
-		"\n"
-		"try:\n"
-		"%s"
-		"    # Check if user set a result variable\n"
-		"    if 'result' in dir():\n"
-		"        __n2c_result__[\"data\"] = result\n"
-		"    __n2c_result__[\"success\"] = True\n"
-		"except Exception as __n2c_e__:\n"
-		"    __n2c_result__[\"error\"] = str(__n2c_e__)\n"
-		"    __n2c_result__[\"traceback\"] = traceback.format_exc()\n"
-		"finally:\n"
-		"    # Print the result JSON with marker for extraction\n"
-		"    print(json.dumps(__n2c_result__))\n"
-	), *IndentedScript);
-}
-
-bool FN2CMcpRunPythonTool::ExtractResultFromOutput(const FString& CapturedOutput,
-	TSharedPtr<FJsonObject>& OutResultJson) const
-{
-	// Look for our marker in the output
-	const FString Marker = TEXT("{\"__n2c_marker__\":");
-
-	int32 StartIndex = CapturedOutput.Find(Marker);
-	if (StartIndex == INDEX_NONE)
-	{
-		return false;
-	}
-
-	// Find the end of the JSON line
-	int32 EndIndex = CapturedOutput.Find(TEXT("\n"), ESearchCase::IgnoreCase,
-		ESearchDir::FromStart, StartIndex);
-	if (EndIndex == INDEX_NONE)
-	{
-		EndIndex = CapturedOutput.Len();
-	}
-
-	FString JsonStr = CapturedOutput.Mid(StartIndex, EndIndex - StartIndex);
-	JsonStr.TrimStartAndEndInline();
-
-	// Parse the JSON
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonStr);
-	if (!FJsonSerializer::Deserialize(Reader, OutResultJson) || !OutResultJson.IsValid())
-	{
-		FN2CLogger::Get().LogWarning(
-			FString::Printf(TEXT("Failed to parse result JSON: %s"), *JsonStr));
-		return false;
-	}
-
-	return true;
 }

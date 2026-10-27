@@ -62,10 +62,6 @@ case back on. Currently disabled:
 |------|------|---------|
 | `NodeToCode.MCP.Variables` | create-variable and create-local-variable round trips: class reference to Actor, soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
 | `NodeToCode.MCP.Variables` | get-blueprint-member-variables read-back: class and soft object reference to Actor | mcp-tools-variables-15 (card 0292) |
-| `NodeToCode.MCP.RunPython` | names the line of the code that raised in the traceback; keeps a multi-line string literal as written | mcp-tools-python-translation-resources-9 (card 0299) |
-| `NodeToCode.MCP.RunPython` | runs code with '.py ' in a comment | mcp-tools-python-translation-resources-8 (card 0299) |
-| `NodeToCode.MCP.RunPython` | does not see the previous call's result | mcp-tools-python-translation-resources-6 (card 0299) |
-| `NodeToCode.MCP.RunPython` | reports a NaN result, an infinite result and an unserializable result with isError | mcp-tools-python-translation-resources-13 (card 0299) |
 
 `NodeToCode.LLM.Parse.Fixtures` is data-driven: its cases live in `Fixtures/LLM/Parser/cases.json`, and a case with
 a `known_defect` field (finding id and owning card) runs as `xIt`. The fixing card deletes that field. Set
@@ -232,9 +228,11 @@ junction only `Source`, `Content`, `Resources` and `ThirdParty`, so a fixture un
 
 `NodeToCode.MCP.RunPython` (`MCP/N2CRunPython.spec.cpp`, card 0201) runs run-python's Execute
 (`N2CTest::RunToolUnmarked`; the Allow MCP Python Execution setting gates only its registration) and checks every answer is JSON a strict parser reads (no `nan` or `Infinity` word outside a string): a script that
-raises comes back with isError, its message and the traceback; and, disabled until card 0299 rebuilds run-python,
-traceback line numbers, a multi-line string literal, '.py ' in a comment, a call that must not see the previous
-call's `result`, and NaN, infinite and unserializable results (isError, naming the problem and not the wrapper).
+raises comes back with isError, its message and the traceback; traceback line numbers, a multi-line string literal,
+'.py ' in a comment, a call that must not see the previous call's `result`, and NaN, infinite and unserializable
+results (isError, naming the problem and not the wrapper); and, since card 0299's runner (`nodetocode._mcp_runner`),
+a loaded asset returned as its path, the console namespace left alone, a printed fake answer line staying output, and
+list-python-scripts still answering.
 `NodeToCode.MCP.PythonToolErrors` covers isError for the script-library tools.
 
 ## Graph state and the editor integration
