@@ -7,6 +7,8 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
+#include "EdGraph/EdGraph.h"
+#include "Dom/JsonObject.h"
 
 /**
  * When a pin connection made for an agent (the connect-pins MCP tool, the Python bridge's ConnectPins) may go ahead.
@@ -81,5 +83,76 @@ namespace N2CPinConnectPolicy
 			return false;
 		}
 		return true;
+	}
+
+	/** The schema's response as the connect results name it: MAKE, BREAK_OTHERS_A, MAKE_WITH_CONVERSION_NODE, ... */
+	inline const TCHAR* ResponseName(ECanCreateConnectionResponse R)
+	{
+		switch (R)
+		{
+		case CONNECT_RESPONSE_MAKE: return TEXT("MAKE");
+		case CONNECT_RESPONSE_DISALLOW: return TEXT("DISALLOW");
+		case CONNECT_RESPONSE_BREAK_OTHERS_A: return TEXT("BREAK_OTHERS_A");
+		case CONNECT_RESPONSE_BREAK_OTHERS_B: return TEXT("BREAK_OTHERS_B");
+		case CONNECT_RESPONSE_BREAK_OTHERS_AB: return TEXT("BREAK_OTHERS_AB");
+		case CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE: return TEXT("MAKE_WITH_CONVERSION_NODE");
+		case CONNECT_RESPONSE_MAKE_WITH_PROMOTION: return TEXT("MAKE_WITH_PROMOTION");
+		default: return TEXT("UNKNOWN");
+		}
+	}
+
+	/** What TryCreateConnection did: whether it connected, and the conversion node it placed between the pins, if any */
+	struct FConnectOutcome
+	{
+		bool bConnected = false;
+		UEdGraphNode* ConversionNode = nullptr;
+	};
+
+	/**
+	 * Makes the connection through the schema, which breaks what the response says and places a conversion node for
+	 * MAKE_WITH_CONVERSION_NODE, and finds that node: the one node the graph gained during the call (card 0276).
+	 */
+	inline FConnectOutcome Connect(const UEdGraphSchema* Schema, UEdGraphPin* FromPin, UEdGraphPin* ToPin)
+	{
+		FConnectOutcome Outcome;
+		UEdGraph* Graph = FromPin && FromPin->GetOwningNode() ? FromPin->GetOwningNode()->GetGraph() : nullptr;
+		TSet<UEdGraphNode*> Before;
+		if (Graph)
+		{
+			Before.Append(Graph->Nodes);
+		}
+		Outcome.bConnected = Schema && Schema->TryCreateConnection(FromPin, ToPin);
+		if (Outcome.bConnected && Graph)
+		{
+			for (UEdGraphNode* Node : Graph->Nodes)
+			{
+				if (Node && !Before.Contains(Node))
+				{
+					Outcome.ConversionNode = Node;
+					break;
+				}
+			}
+		}
+		return Outcome;
+	}
+
+	/**
+	 * Writes the schema's answer into a connect result: response (its name), message (the schema's text, when it has
+	 * one) and, when a conversion node was placed, conversionNode {nodeGuid, title}
+	 */
+	inline void WriteResponse(const TSharedPtr<FJsonObject>& Out, const FPinConnectionResponse& Response, const UEdGraphNode* ConversionNode = nullptr)
+	{
+		Out->SetStringField(TEXT("response"), ResponseName(Response.Response));
+		if (!Response.Message.IsEmpty())
+		{
+			Out->SetStringField(TEXT("message"), Response.Message.ToString());
+		}
+		if (ConversionNode)
+		{
+			const TSharedPtr<FJsonObject> Node = MakeShared<FJsonObject>();
+			Node->SetStringField(TEXT("nodeGuid"), ConversionNode->NodeGuid.ToString());
+			Node->SetStringField(TEXT("title"), ConversionNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
+			Out->SetObjectField(TEXT("conversionNode"), Node);
+		}
 	}
 }

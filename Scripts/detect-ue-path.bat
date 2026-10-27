@@ -1,6 +1,7 @@
 @echo off
 REM NodeToCode UE Path Detector (Windows)
-REM Finds Unreal Engine installation and updates AGENTS.md
+REM Finds the newest Unreal Engine install and writes its Engine\Source folder to AGENTS.local.md (gitignored) at the
+REM repository root, for AI coding agents; the tracked AGENTS.md is not changed. Developer tool, not packaged.
 REM Finds Python the same way as launch_bridge.bat: ue_python_finder.py (Content\Python\mcp_bridge) picks the bundled
 REM Python of the newest UE install it finds (registry, LauncherInstalled.dat, common folders; any version).
 REM   1. Run ue_python_finder.py with the first of these that works: py -3, python3, python
@@ -12,7 +13,7 @@ setlocal EnableDelayedExpansion
 REM Get the directory where this script is located
 set "SCRIPT_DIR=%~dp0"
 set "PYTHON_SCRIPT=%SCRIPT_DIR%update_agents_ue_path.py"
-set "FINDER_SCRIPT=%SCRIPT_DIR%..\Python\mcp_bridge\ue_python_finder.py"
+set "FINDER_SCRIPT=%SCRIPT_DIR%..\Content\Python\mcp_bridge\ue_python_finder.py"
 
 REM Check that the scripts exist
 if not exist "%PYTHON_SCRIPT%" (
@@ -56,6 +57,6 @@ if "!PYTHON_EXE!"=="" (
     exit /b 1
 )
 
-REM Run the Python script to update AGENTS.md
+REM Run the Python script that writes AGENTS.local.md
 echo [detect-ue-path] Running UE path detection...
 "!PYTHON_EXE!" "%PYTHON_SCRIPT%" %*

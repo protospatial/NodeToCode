@@ -730,7 +730,7 @@
 			"name": "connect-pins",
 			"title": "Connect pins",
 			"toolset": "BlueprintGraphTools",
-			"description": "Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
+			"description": "Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Each entry's result has its array index and the schema's response (MAKE, BREAK_OTHERS_A/B/AB, MAKE_WITH_CONVERSION_NODE, MAKE_WITH_PROMOTION) with any conversion node placed; failed and malformed entries are listed in the result with an errorCode, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -805,7 +805,7 @@
 										"pinGuid":
 										{
 											"type": "string",
-											"description": "GUID of the source pin. Required: an entry without it is skipped"
+											"description": "GUID of the source pin. Required: an entry without it fails with INVALID_REQUEST"
 										},
 										"pinName":
 										{
@@ -839,7 +839,7 @@
 										"pinGuid":
 										{
 											"type": "string",
-											"description": "GUID of the target pin. Required: an entry without it is skipped"
+											"description": "GUID of the target pin. Required: an entry without it fails with INVALID_REQUEST"
 										},
 										"pinName":
 										{
@@ -2692,7 +2692,7 @@
 			"name": "find-nodes-in-graph",
 			"title": "Find nodes in a graph",
 			"toolset": "BlueprintGraphTools",
-			"description": "Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.",
+			"description": "Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information, and the capture's 'warnings' when it has any.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": true,
@@ -3608,7 +3608,7 @@
 			"name": "get-focused-blueprint",
 			"title": "Read the focused Blueprint graph",
 			"toolset": "BlueprintDiscoveryTools",
-			"description": "Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.",
+			"description": "Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": true,
@@ -3740,6 +3740,36 @@
 							"properties":
 							{
 							}
+						}
+					},
+					"warnings":
+					{
+						"type": "array",
+						"description": "What the capture found but could still use (card 0240); absent when nothing",
+						"items":
+						{
+							"type": "object",
+							"properties":
+							{
+								"code":
+								{
+									"type": "string",
+									"description": "e.g. DEPTH_LIMIT, PIN_SHAPE, UNFED_INPUT"
+								},
+								"path":
+								{
+									"type": "string",
+									"description": "Where in the document, e.g. graphs[0].nodes[2]"
+								},
+								"message":
+								{
+									"type": "string"
+								}
+							},
+							"required": [
+								"code",
+								"message"
+							]
 						}
 					}
 				},

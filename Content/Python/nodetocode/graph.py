@@ -283,9 +283,10 @@ def connect_pins(
         {
             success: bool,
             data: {
-                succeeded: [{fromNode, fromPin, toNode, toPin}, ...],
-                failed: [{error: str}, ...],
-                summary: {succeeded: int, failed: int}
+                succeeded: [{index, fromNode, fromPin, toNode, toPin, response, message?,
+                             conversionNode?: {nodeGuid, title}}, ...],
+                failed: [{index, errorCode, error, response?, message?}, ...],
+                summary: {totalRequested: int, succeeded: int, failed: int}
             },
             error: str or None
         }

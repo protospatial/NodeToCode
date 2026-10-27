@@ -2,9 +2,22 @@
 
 #include "Utils/Validators/N2CNodeValidator.h"
 
+#include "Models/N2CJsonContract.h"
+
 bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutError)
 {
-    // Log node basic info
+    TArray<FN2CDiagnostic> Diagnostics;
+    const bool bValid = Validate(Node, FString(), Diagnostics);
+    if (!bValid)
+    {
+        OutError = N2CDiagnostics::FirstError(Diagnostics);
+    }
+    return bValid;
+}
+
+bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, const FString& Path, TArray<FN2CDiagnostic>& OutDiagnostics)
+{
+    using namespace N2CJsonContract;
     N2C_LOG(Debug, TEXT("Validating Node: ID=%s, Title=%s, Type=%s, MemberParent=%s, MemberName=%s"),
         *Node.ID,
         *Node.Title,
@@ -12,9 +25,12 @@ bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutErr
         *Node.MemberParent,
         *Node.MemberName);
 
-    // Validate required fields
-    if (!ValidateRequired(Node, OutError))
+    // A node without an ID cannot be named by any flow. The title is a hint, written only when it says more than
+    // member_name (card 0138), so it may be empty.
+    if (Node.ID.IsEmpty())
     {
+        N2CDiagnostics::Add(OutDiagnostics, EN2CDiagnosticSeverity::Error, Diagnostic::MissingId, Path,
+            FString::Printf(TEXT("Node validation failed: Empty ID for node %s"), *Node.Title));
         return false;
     }
 
@@ -24,8 +40,8 @@ bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutErr
     {
         if (!Node.UnknownType.IsEmpty())
         {
-            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Node %s has a node type this build does not know: '%s'"),
-                *Node.ID, *Node.UnknownType));
+            N2CDiagnostics::Add(OutDiagnostics, EN2CDiagnosticSeverity::Warning, Diagnostic::UnknownKind, Path + TEXT(".type"),
+                FString::Printf(TEXT("Node %s has a node type this build does not know: '%s'"), *Node.ID, *Node.UnknownType));
         }
         else
         {
@@ -34,148 +50,50 @@ bool FN2CNodeValidator::Validate(const FN2CNodeDefinition& Node, FString& OutErr
         }
     }
 
-    // Validate node flags
-    if (!ValidateFlags(Node, OutError))
-    {
-        return false;
-    }
-
-    // Validate pins
-    if (!ValidatePins(Node, OutError))
-    {
-        return false;
-    }
-
-    N2C_LOG(Debug, TEXT("Node %s (%s) validation successful"), *Node.ID, *Node.Title);
-    return true;
-}
-
-bool FN2CNodeValidator::ValidateRequired(const FN2CNodeDefinition& Node, FString& OutError)
-{
-    // Check required fields
-    if (Node.ID.IsEmpty())
-    {
-        OutError = FString::Printf(TEXT("Node validation failed: Empty ID for node %s"), *Node.Title);
-        FN2CLogger::Get().LogError(OutError);
-        return false;
-    }
-
-    // The title is a hint, written only when it says more than member_name (card 0138), so it may be empty
-
-    return true;
-}
-
-bool FN2CNodeValidator::ValidateFlags(const FN2CNodeDefinition& Node, FString& OutError)
-{
-    // Validate pure/latent combinations
+    // Flag combinations a capture never writes: a reader can still use the node, so warnings (card 0240)
     if (Node.bPure && Node.bLatent)
     {
-        OutError = FString::Printf(TEXT("Node validation failed: Node %s (%s) cannot be both pure and latent"), *Node.ID, *Node.Title);
-        FN2CLogger::Get().LogError(OutError);
-        return false;
+        N2CDiagnostics::Add(OutDiagnostics, EN2CDiagnosticSeverity::Warning, Diagnostic::NodeFlags, Path,
+            FString::Printf(TEXT("Node %s (%s) cannot be both pure and latent"), *Node.ID, *Node.Title));
     }
-
-    // Pure nodes shouldn't have exec pins except for knot nodes
     if (Node.bPure && HasExecPins(Node) && Node.NodeType != EN2CNodeType::Knot)
     {
-        OutError = FString::Printf(TEXT("Node validation failed: Pure node %s (%s) has exec pins"), *Node.ID, *Node.Title);
-        FN2CLogger::Get().LogError(OutError);
-        return false;
+        N2CDiagnostics::Add(OutDiagnostics, EN2CDiagnosticSeverity::Warning, Diagnostic::NodeFlags, Path,
+            FString::Printf(TEXT("Pure node %s (%s) has exec pins"), *Node.ID, *Node.Title));
     }
 
-    return true;
-}
-
-bool FN2CNodeValidator::ValidatePins(const FN2CNodeDefinition& Node, FString& OutError)
-{
-    // Log pin counts
-    N2C_LOG(Debug, TEXT("Node %s (%s) has %d input pins and %d output pins"),
-        *Node.ID,
-        *Node.Title,
-        Node.InputPins.Num(),
-        Node.OutputPins.Num());
-
-    // Check for duplicate pin IDs
+    // Pins: their findings are warnings; a pin ID used twice on the node is an error (flows could not tell them apart)
+    bool bValid = true;
     TSet<FString> PinIds;
-    
-    // Check input pins
-    for (const FN2CPinDefinition& Pin : Node.InputPins)
+    const auto CheckPins = [&](const TArray<FN2CPinDefinition>& Pins, const TCHAR* Field)
     {
-        N2C_LOG(Debug, TEXT("Validating input pin %s (%s) on node %s"), *Pin.ID, *Pin.Name, *Node.ID);
-        
-        FString PinError;
-        if (!PinValidator.Validate(Pin, PinError))
+        for (int32 Index = 0; Index < Pins.Num(); ++Index)
         {
-            OutError = FString::Printf(TEXT("Invalid input pin %s (%s) on node %s: %s"), *Pin.ID, *Pin.Name, *Node.ID, *PinError);
-            return false;
+            const FN2CPinDefinition& Pin = Pins[Index];
+            const FString PinPath = FString::Printf(TEXT("%s.%s[%d]"), *Path, Field, Index);
+            N2C_LOG(Debug, TEXT("Validating %s pin %s (%s) on node %s"), Field, *Pin.ID, *Pin.Name, *Node.ID);
+            PinValidator.Validate(Pin, PinPath, OutDiagnostics);
+            if (!Pin.ID.IsEmpty() && PinIds.Contains(Pin.ID))
+            {
+                N2CDiagnostics::Add(OutDiagnostics, EN2CDiagnosticSeverity::Error, Diagnostic::DuplicateId, PinPath,
+                    FString::Printf(TEXT("Duplicate pin ID %s found on node %s"), *Pin.ID, *Node.ID));
+                bValid = false;
+            }
+            PinIds.Add(Pin.ID);
         }
+    };
+    CheckPins(Node.InputPins, TEXT("input_pins"));
+    CheckPins(Node.OutputPins, TEXT("output_pins"));
 
-        if (PinIds.Contains(Pin.ID))
-        {
-            OutError = FString::Printf(TEXT("Duplicate pin ID %s found on node %s"), *Pin.ID, *Node.ID);
-            FN2CLogger::Get().LogError(OutError);
-            return false;
-        }
-        PinIds.Add(Pin.ID);
-    }
-
-    // Check output pins
-    for (const FN2CPinDefinition& Pin : Node.OutputPins)
+    if (bValid)
     {
-        N2C_LOG(Debug, TEXT("Validating output pin %s (%s) on node %s"), *Pin.ID, *Pin.Name, *Node.ID);
-        
-        FString PinError;
-        if (!PinValidator.Validate(Pin, PinError))
-        {
-            OutError = FString::Printf(TEXT("Invalid output pin %s (%s) on node %s: %s"), *Pin.ID, *Pin.Name, *Node.ID, *PinError);
-            return false;
-        }
-
-        if (PinIds.Contains(Pin.ID))
-        {
-            OutError = FString::Printf(TEXT("Duplicate pin ID %s found on node %s"), *Pin.ID, *Node.ID);
-            FN2CLogger::Get().LogError(OutError);
-            return false;
-        }
-        PinIds.Add(Pin.ID);
+        N2C_LOG(Debug, TEXT("Node %s (%s) validation successful"), *Node.ID, *Node.Title);
     }
-
-    N2C_LOG(Debug, TEXT("All pins validated successfully for node %s"), *Node.ID);
-    return true;
+    return bValid;
 }
 
 bool FN2CNodeValidator::HasExecPins(const FN2CNodeDefinition& Node) const
 {
-    bool hasExecInput = false;
-    bool hasExecOutput = false;
-
-    // Check input pins
-    for (const FN2CPinDefinition& Pin : Node.InputPins)
-    {
-        if (Pin.Type == EN2CPinType::Exec)
-        {
-            hasExecInput = true;
-            N2C_LOG(Debug, TEXT("Node %s (%s) has exec input pin: %s"), *Node.ID, *Node.Title, *Pin.Name);
-            break;
-        }
-    }
-
-    // Check output pins
-    for (const FN2CPinDefinition& Pin : Node.OutputPins)
-    {
-        if (Pin.Type == EN2CPinType::Exec)
-        {
-            hasExecOutput = true;
-            N2C_LOG(Debug, TEXT("Node %s (%s) has exec output pin: %s"), *Node.ID, *Node.Title, *Pin.Name);
-            break;
-        }
-    }
-
-    if (hasExecInput || hasExecOutput)
-    {
-        N2C_LOG(Debug, TEXT("Node %s (%s) exec pins: Input=%d, Output=%d"),
-            *Node.ID, *Node.Title, hasExecInput ? 1 : 0, hasExecOutput ? 1 : 0);
-    }
-
-    return hasExecInput && hasExecOutput;
+    const auto IsExec = [](const FN2CPinDefinition& Pin) { return Pin.Type == EN2CPinType::Exec; };
+    return Node.InputPins.ContainsByPredicate(IsExec) || Node.OutputPins.ContainsByPredicate(IsExec);
 }

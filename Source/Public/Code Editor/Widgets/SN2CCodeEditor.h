@@ -52,6 +52,7 @@ public:
     SLATE_END_ARGS()
 
     void Construct(const FArguments& InArgs);
+    virtual ~SN2CCodeEditor() override;
 
     /** Get the current text content */
     FText GetText() const;
@@ -155,6 +156,10 @@ private:
 
     /** Background brush for the current language, looked up from FN2CCodeEditorStyle */
     const FSlateBrush* BackgroundBrush = nullptr;
+
+    /** FN2CCodeEditorStyle::OnThemeChanged: rebuilds the highlighter so a Project Settings color edit shows at once */
+    FDelegateHandle ThemeChangedHandle;
+    void HandleThemeChanged();
 
     /** The last selection reported through OnSelectionChanged */
     int32 LastSelectionStartLine = 0;

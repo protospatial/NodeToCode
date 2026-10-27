@@ -142,6 +142,10 @@
  * type (real float and double, int64, soft object, interface, array, a map's key and value), with its category,
  * description and flags; a graph capture leaves them out unless asked and is otherwise unchanged, a whole-Blueprint
  * capture (N2C::CaptureGraphs) records them unless told not to, and every field reads and writes back.
+ * "Diagnostics" checks validation as findings (card 0240, imp-translation-core-8): a graph left out at the depth limit is
+ * a DEPTH_LIMIT warning on a successful capture, get-focused-blueprint's result lists the warnings (and reads back
+ * without a read warning), a pin missing its sub_type and a struct member without its type name are warnings (the
+ * struct is kept), and a dangling exec or data flow is a DANGLING_FLOW error that fails the document.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -1552,8 +1556,8 @@ void FN2CCaptureGoldenSpec::AddCases()
 			"Level: user enum E_GoldenLevel {Low, High}}. Break S_GoldenItem feeds Count to the Count result and "
 			"Owner, Count and Level to Make S_GoldenItem, which is the Copy result."),
 		{ { TEXT("translation-core-8"), TEXT("0236"),
-			TEXT("S_GoldenItem is missing from 'structs': its object member Owner gets no type name, the validator rejects "
-				"the struct (ERROR 'Member Owner requires a type name') and it is dropped without a warning") },
+			TEXT("S_GoldenItem's object member Owner gets no type name ('type': 'Object' with no 'type_name'); since card 0240 "
+				"the validator keeps the struct with a MEMBER_TYPE warning ('Member Owner requires a type name')") },
 		  RepeatMissingName },
 		[](FTestBlueprint& BP) -> UEdGraph*
 		{
@@ -3166,6 +3170,150 @@ void FN2CCaptureGoldenSpec::Define()
 			TestFalse(TEXT("v2"), N2CJsonContract::IsReadable(TEXT("v2")));
 			FN2CBlueprint Fresh;
 			TestEqual(TEXT("a new model's version"), Fresh.Version.Value, FString(TEXT("2.0.0")));
+		});
+	});
+
+	// Card 0240 (imp-translation-core-8): validation as diagnostics; a capture fails only on an error
+	Describe(TEXT("Diagnostics"), [this]()
+	{
+		It(TEXT("returns a capture with a graph left out at the depth limit, with a DEPTH_LIMIT warning naming it"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("CallChain_Depth1"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			const TArray<FN2CDiagnostic>& Diagnostics = Captured.Result.Diagnostics;
+			TestFalse(TEXT("no error"), Captured.Result.HasErrors());
+			const FN2CDiagnostic* DepthLimit = Diagnostics.FindByPredicate([](const FN2CDiagnostic& Diagnostic)
+			{
+				return Diagnostic.Code == N2CJsonContract::Diagnostic::DepthLimit;
+			});
+			if (TestNotNull(TEXT("a DEPTH_LIMIT warning"), DepthLimit))
+			{
+				TestTrue(TEXT("it is a warning"), DepthLimit->Severity == EN2CDiagnosticSeverity::Warning);
+				TestTrue(TEXT("it names graph C: ") + DepthLimit->Message, DepthLimit->Message.Contains(TEXT(".C is used but not captured")));
+				TestTrue(TEXT("it names the depth"), DepthLimit->Message.Contains(TEXT("Max Translation Depth 1")));
+			}
+			TestEqual(TEXT("one DEPTH_LIMIT warning (D is never reached)"), Diagnostics.FilterByPredicate([](const FN2CDiagnostic& Diagnostic)
+			{
+				return Diagnostic.Code == N2CJsonContract::Diagnostic::DepthLimit;
+			}).Num(), 1);
+
+			// Depth 2 captures C: then the warning names D
+			const FCaptured Deeper = CaptureNamed(TEXT("CallChain_Depth2"));
+			const FN2CDiagnostic* DeeperLimit = Deeper.Result.Diagnostics.FindByPredicate([](const FN2CDiagnostic& Diagnostic)
+			{
+				return Diagnostic.Code == N2CJsonContract::Diagnostic::DepthLimit;
+			});
+			if (TestNotNull(TEXT("a DEPTH_LIMIT warning at depth 2"), DeeperLimit))
+			{
+				TestTrue(TEXT("it names graph D"), DeeperLimit->Message.Contains(TEXT(".D is used but not captured")));
+			}
+		});
+
+		It(TEXT("gives get-focused-blueprint's result the JSON plus its warnings, which read back without a warning"), [this]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("CallChain_Depth1"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			const FString Text = FN2CMcpGetFocusedBlueprintTool::BuildResultJson(Captured.Result);
+			const TSharedPtr<FJsonObject> Json = N2CTest::ParseJsonObject(Text);
+			if (!TestTrue(TEXT("the result parses"), Json.IsValid()))
+			{
+				return;
+			}
+			TestEqual(TEXT("the graphs A and B"), Json->GetArrayField(TEXT("graphs")).Num(), 2);
+			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
+			if (TestTrue(TEXT("a warnings array"), Json->TryGetArrayField(N2CJsonContract::WarningsField, Warnings)))
+			{
+				bool bDepth = false;
+				for (const TSharedPtr<FJsonValue>& Warning : *Warnings)
+				{
+					const TSharedPtr<FJsonObject> Object = Warning->AsObject();
+					bDepth |= Object->GetStringField(N2CJsonContract::WarningCodeField) == N2CJsonContract::Diagnostic::DepthLimit
+						&& Object->GetStringField(N2CJsonContract::WarningMessageField).Contains(TEXT(".C is used"))
+						&& Object->HasField(N2CJsonContract::WarningPathField);
+				}
+				TestTrue(TEXT("it lists the DEPTH_LIMIT warning for C"), bDepth);
+			}
+
+			// The translation document never carries it, and a reader reads past it
+			TestFalse(TEXT("no warnings in the N2C JSON for a translation"), Captured.Capture->HasField(N2CJsonContract::WarningsField));
+			FN2CBlueprint Read;
+			TArray<FN2CJsonReadWarning> ReadWarnings;
+			TestTrue(TEXT("FromJson reads the result"), FN2CSerializer::FromJson(Text, Read, ReadWarnings));
+			TestEqual(TEXT("without a read warning"), ReadWarnings.Num(), 0);
+		});
+
+		It(TEXT("fails a document with a dangling flow with an error diagnostic, and keeps a warning-only one"), [this]()
+		{
+			AddExpectedError(TEXT("references non-existent node N9"), EAutomationExpectedErrorFlags::Contains, 0);
+			AddExpectedError(TEXT("Invalid target pin format N8.P1"), EAutomationExpectedErrorFlags::Contains, 0);
+			AddExpectedError(TEXT("requires a type name"), EAutomationExpectedErrorFlags::Contains, 0);
+			AddExpectedError(TEXT("Object type missing SubType"), EAutomationExpectedErrorFlags::Contains, 0);
+
+			FN2CBlueprint Blueprint;
+			Blueprint.Metadata.Name = TEXT("BP_Diagnostics");
+			Blueprint.Metadata.BlueprintClass = TEXT("BP_Diagnostics");
+			FN2CNodeDefinition Node;
+			Node.ID = TEXT("N1");
+			Node.NodeType = EN2CNodeType::CallFunction;
+			FN2CPinDefinition Exec;
+			Exec.ID = TEXT("P1");
+			Exec.Name = TEXT("then");
+			Exec.Type = EN2CPinType::Exec;
+			Node.OutputPins.Add(Exec);
+			FN2CPinDefinition Target;
+			Target.ID = TEXT("P2");
+			Target.Name = TEXT("self");
+			Target.Type = EN2CPinType::Object; // no sub_type: a warning
+			Node.InputPins.Add(Target);
+			FN2CGraph& Graph = Blueprint.Graphs.AddDefaulted_GetRef();
+			Graph.Name = TEXT("EventGraph");
+			Graph.Nodes.Add(Node);
+			FN2CStruct& Struct = Blueprint.Structs.AddDefaulted_GetRef();
+			Struct.Name = TEXT("S_Item");
+			FN2CStructMember& Member = Struct.Members.AddDefaulted_GetRef();
+			Member.Name = TEXT("Owner");
+			Member.Type = EN2CStructMemberType::Object; // no type name: a warning, the struct is kept
+
+			FN2CBlueprintValidator Validator;
+			TArray<FN2CDiagnostic> Diagnostics;
+			TestTrue(TEXT("warnings only: valid"), Validator.Validate(Blueprint, Diagnostics));
+			TestTrue(TEXT("and IsValid"), Blueprint.IsValid());
+			TestTrue(TEXT("a PIN_SHAPE warning at the pin"), Diagnostics.ContainsByPredicate([](const FN2CDiagnostic& Diagnostic)
+			{
+				return Diagnostic.Code == N2CJsonContract::Diagnostic::PinShape && Diagnostic.Path == TEXT("graphs[0].nodes[0].input_pins[0]")
+					&& !Diagnostic.IsError();
+			}));
+			TestTrue(TEXT("a MEMBER_TYPE warning at the member"), Diagnostics.ContainsByPredicate([](const FN2CDiagnostic& Diagnostic)
+			{
+				return Diagnostic.Code == N2CJsonContract::Diagnostic::MemberType && Diagnostic.Path == TEXT("structs[0].members[0]");
+			}));
+			TestTrue(TEXT("the struct is valid"), Struct.IsValid());
+
+			Blueprint.Graphs[0].Flows.Execution.Add(TEXT("N1.P1->N9.P1"));
+			Blueprint.Graphs[0].Flows.Data.FindOrAdd(TEXT("N1.P2")).Targets.Add(TEXT("N8.P1"));
+			Diagnostics.Reset();
+			TestFalse(TEXT("a dangling flow: not valid"), Validator.Validate(Blueprint, Diagnostics));
+			TestFalse(TEXT("and not IsValid"), Blueprint.IsValid());
+			const TArray<FN2CDiagnostic> Errors = Diagnostics.FilterByPredicate([](const FN2CDiagnostic& Diagnostic) { return Diagnostic.IsError(); });
+			TestEqual(TEXT("two errors, the exec and the data flow"), Errors.Num(), 2);
+			for (const FN2CDiagnostic& Error : Errors)
+			{
+				TestEqual(TEXT("DANGLING_FLOW: ") + Error.Message, Error.Code, FString(N2CJsonContract::Diagnostic::DanglingFlow));
+			}
+			if (Errors.Num() == 2)
+			{
+				TestEqual(TEXT("the exec flow's path"), Errors[0].Path, FString(TEXT("graphs[0].flows.execution[0]")));
+				TestEqual(TEXT("the data flow's path"), Errors[1].Path, FString(TEXT("graphs[0].flows.data.N1.P2")));
+			}
+			FString Error;
+			TestFalse(TEXT("the bool overload fails too"), Validator.Validate(Blueprint, Error));
+			TestTrue(TEXT("with the first error's text"), Error.Contains(TEXT("references non-existent node N9")));
 		});
 	});
 

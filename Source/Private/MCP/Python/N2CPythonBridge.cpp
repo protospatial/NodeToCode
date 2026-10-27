@@ -1162,37 +1162,80 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	Blueprint->Modify();
 	FocusedGraph->Modify();
 
-	for (const TSharedPtr<FJsonValue>& ConnectionValue : *ConnectionsArray)
+	// Every entry is reported, in order, with its array index: a failed or malformed one in failed with an errorCode
+	// (INVALID_REQUEST, INVALID_GUID, NODE_NOT_FOUND, PIN_NOT_FOUND, WOULD_BREAK_EXISTING_LINK, SCHEMA_VALIDATION_FAILED,
+	// CONNECTION_FAILED), a made one in succeeded with the schema's response and any conversion node (card 0276)
+	auto Fail = [&FailedArray](int32 Index, const TCHAR* Code, const FString& Error, const TSharedPtr<FJsonObject>& Extra = nullptr)
 	{
-		TSharedPtr<FJsonObject> ConnectionObject = ConnectionValue->AsObject();
-		if (!ConnectionObject.IsValid())
+		TSharedPtr<FJsonObject> FailedObj = Extra.IsValid() ? Extra : MakeShared<FJsonObject>();
+		FailedObj->SetNumberField(TEXT("index"), Index);
+		FailedObj->SetStringField(TEXT("errorCode"), Code);
+		FailedObj->SetStringField(TEXT("error"), Error);
+		FailedArray.Add(MakeShared<FJsonValueObject>(FailedObj));
+	};
+	auto FindPin = [](UEdGraphNode* Node, const FString& PinGuidStr, const FString& PinName) -> UEdGraphPin*
+	{
+		FGuid PinGuid;
+		if (FGuid::Parse(PinGuidStr, PinGuid))
 		{
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (Pin && Pin->PinId == PinGuid)
+				{
+					return Pin;
+				}
+			}
+		}
+		if (!PinName.IsEmpty())
+		{
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (Pin && (Pin->PinName.ToString() == PinName || Pin->GetDisplayName().ToString() == PinName))
+				{
+					return Pin;
+				}
+			}
+		}
+		return nullptr;
+	};
+
+	for (int32 Index = 0; Index < ConnectionsArray->Num(); ++Index)
+	{
+		const TSharedPtr<FJsonValue>& ConnectionValue = (*ConnectionsArray)[Index];
+		const TSharedPtr<FJsonObject>* ConnectionObject = nullptr;
+		if (!ConnectionValue.IsValid() || !ConnectionValue->TryGetObject(ConnectionObject))
+		{
+			Fail(Index, TEXT("INVALID_REQUEST"), TEXT("The entry is not an object with 'from' and 'to'"));
 			continue;
 		}
 
-		TSharedPtr<FJsonObject> FromObject = ConnectionObject->GetObjectField(TEXT("from"));
-		TSharedPtr<FJsonObject> ToObject = ConnectionObject->GetObjectField(TEXT("to"));
-
-		if (!FromObject.IsValid() || !ToObject.IsValid())
+		const TSharedPtr<FJsonObject>* FromObject = nullptr;
+		const TSharedPtr<FJsonObject>* ToObject = nullptr;
+		if (!(*ConnectionObject)->TryGetObjectField(TEXT("from"), FromObject) || !(*ConnectionObject)->TryGetObjectField(TEXT("to"), ToObject))
 		{
+			Fail(Index, TEXT("INVALID_REQUEST"), TEXT("The entry needs a 'from' and a 'to' object"));
 			continue;
 		}
 
-		FString FromNodeGuidStr = FromObject->GetStringField(TEXT("nodeGuid"));
-		FString FromPinGuidStr = FromObject->GetStringField(TEXT("pinGuid"));
-		FString FromPinName = FromObject->GetStringField(TEXT("pinName"));
-
-		FString ToNodeGuidStr = ToObject->GetStringField(TEXT("nodeGuid"));
-		FString ToPinGuidStr = ToObject->GetStringField(TEXT("pinGuid"));
-		FString ToPinName = ToObject->GetStringField(TEXT("pinName"));
+		// pinGuid and pinName are optional (either finds the pin); a missing field is read as empty, without a log error
+		FString FromNodeGuidStr, FromPinGuidStr, FromPinName, ToNodeGuidStr, ToPinGuidStr, ToPinName;
+		const bool bHasNodes = (*FromObject)->TryGetStringField(TEXT("nodeGuid"), FromNodeGuidStr)
+			&& (*ToObject)->TryGetStringField(TEXT("nodeGuid"), ToNodeGuidStr);
+		(*FromObject)->TryGetStringField(TEXT("pinGuid"), FromPinGuidStr);
+		(*FromObject)->TryGetStringField(TEXT("pinName"), FromPinName);
+		(*ToObject)->TryGetStringField(TEXT("pinGuid"), ToPinGuidStr);
+		(*ToObject)->TryGetStringField(TEXT("pinName"), ToPinName);
+		if (!bHasNodes)
+		{
+			Fail(Index, TEXT("INVALID_REQUEST"), TEXT("'from' and 'to' each need a nodeGuid string"));
+			continue;
+		}
 
 		// Find nodes
 		FGuid FromNodeGuid, ToNodeGuid;
 		if (!FGuid::Parse(FromNodeGuidStr, FromNodeGuid) || !FGuid::Parse(ToNodeGuidStr, ToNodeGuid))
 		{
-			TSharedPtr<FJsonObject> FailedObj = MakeShareable(new FJsonObject);
-			FailedObj->SetStringField(TEXT("error"), TEXT("Invalid GUID format"));
-			FailedArray.Add(MakeShareable(new FJsonValueObject(FailedObj)));
+			Fail(Index, TEXT("INVALID_GUID"), TEXT("Invalid GUID format"));
 			continue;
 		}
 
@@ -1201,81 +1244,28 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 
 		if (!FromNode || !ToNode)
 		{
-			TSharedPtr<FJsonObject> FailedObj = MakeShareable(new FJsonObject);
-			FailedObj->SetStringField(TEXT("error"), TEXT("Node not found"));
-			FailedArray.Add(MakeShareable(new FJsonValueObject(FailedObj)));
+			Fail(Index, TEXT("NODE_NOT_FOUND"), TEXT("Node not found"));
 			continue;
 		}
 
-		// Find pins
-		UEdGraphPin* FromPin = nullptr;
-		UEdGraphPin* ToPin = nullptr;
-
-		FGuid FromPinGuid, ToPinGuid;
-		if (FGuid::Parse(FromPinGuidStr, FromPinGuid))
-		{
-			for (UEdGraphPin* Pin : FromNode->Pins)
-			{
-				if (Pin && Pin->PinId == FromPinGuid)
-				{
-					FromPin = Pin;
-					break;
-				}
-			}
-		}
-
-		if (!FromPin && !FromPinName.IsEmpty())
-		{
-			for (UEdGraphPin* Pin : FromNode->Pins)
-			{
-				if (Pin && (Pin->PinName.ToString() == FromPinName || Pin->GetDisplayName().ToString() == FromPinName))
-				{
-					FromPin = Pin;
-					break;
-				}
-			}
-		}
-
-		if (FGuid::Parse(ToPinGuidStr, ToPinGuid))
-		{
-			for (UEdGraphPin* Pin : ToNode->Pins)
-			{
-				if (Pin && Pin->PinId == ToPinGuid)
-				{
-					ToPin = Pin;
-					break;
-				}
-			}
-		}
-
-		if (!ToPin && !ToPinName.IsEmpty())
-		{
-			for (UEdGraphPin* Pin : ToNode->Pins)
-			{
-				if (Pin && (Pin->PinName.ToString() == ToPinName || Pin->GetDisplayName().ToString() == ToPinName))
-				{
-					ToPin = Pin;
-					break;
-				}
-			}
-		}
+		UEdGraphPin* FromPin = FindPin(FromNode, FromPinGuidStr, FromPinName);
+		UEdGraphPin* ToPin = FindPin(ToNode, ToPinGuidStr, ToPinName);
 
 		if (!FromPin || !ToPin)
 		{
-			TSharedPtr<FJsonObject> FailedObj = MakeShareable(new FJsonObject);
-			FailedObj->SetStringField(TEXT("error"), TEXT("Pin not found"));
-			FailedArray.Add(MakeShareable(new FJsonValueObject(FailedObj)));
+			Fail(Index, TEXT("PIN_NOT_FOUND"), TEXT("Pin not found"));
 			continue;
 		}
 
 		// Validate connection; the schema decides what (if anything) a connection breaks or converts
 		const FPinConnectionResponse Response = Schema->CanCreateConnection(FromPin, ToPin);
+		TSharedPtr<FJsonObject> ResponseFields = MakeShared<FJsonObject>();
+		N2CPinConnectPolicy::WriteResponse(ResponseFields, Response);
 		FString PolicyError;
 		if (!N2CPinConnectPolicy::Allow(Response, FromPin, ToPin, bBreakExistingLinks, PolicyError))
 		{
-			TSharedPtr<FJsonObject> FailedObj = MakeShareable(new FJsonObject);
-			FailedObj->SetStringField(TEXT("error"), PolicyError);
-			FailedArray.Add(MakeShareable(new FJsonValueObject(FailedObj)));
+			Fail(Index, N2CPinConnectPolicy::WouldReplaceExistingLink(Response, FromPin, ToPin) ? TEXT("WOULD_BREAK_EXISTING_LINK") : TEXT("SCHEMA_VALIDATION_FAILED"),
+				PolicyError, ResponseFields);
 			continue;
 		}
 
@@ -1283,20 +1273,21 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 		FromNode->Modify();
 		ToNode->Modify();
 
-		if (Schema->TryCreateConnection(FromPin, ToPin))
+		const N2CPinConnectPolicy::FConnectOutcome Outcome = N2CPinConnectPolicy::Connect(Schema, FromPin, ToPin);
+		if (Outcome.bConnected)
 		{
-			TSharedPtr<FJsonObject> SuccessObj = MakeShareable(new FJsonObject);
+			TSharedPtr<FJsonObject> SuccessObj = MakeShared<FJsonObject>();
+			SuccessObj->SetNumberField(TEXT("index"), Index);
 			SuccessObj->SetStringField(TEXT("fromNode"), FromNodeGuidStr);
-			SuccessObj->SetStringField(TEXT("fromPin"), FromPinGuidStr);
+			SuccessObj->SetStringField(TEXT("fromPin"), FromPin->PinId.ToString());
 			SuccessObj->SetStringField(TEXT("toNode"), ToNodeGuidStr);
-			SuccessObj->SetStringField(TEXT("toPin"), ToPinGuidStr);
-			SucceededArray.Add(MakeShareable(new FJsonValueObject(SuccessObj)));
+			SuccessObj->SetStringField(TEXT("toPin"), ToPin->PinId.ToString());
+			N2CPinConnectPolicy::WriteResponse(SuccessObj, Response, Outcome.ConversionNode);
+			SucceededArray.Add(MakeShared<FJsonValueObject>(SuccessObj));
 		}
 		else
 		{
-			TSharedPtr<FJsonObject> FailedObj = MakeShareable(new FJsonObject);
-			FailedObj->SetStringField(TEXT("error"), TEXT("Connection failed"));
-			FailedArray.Add(MakeShareable(new FJsonValueObject(FailedObj)));
+			Fail(Index, TEXT("CONNECTION_FAILED"), TEXT("Connection failed"), ResponseFields);
 		}
 	}
 
@@ -1308,6 +1299,7 @@ FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBrea
 	ResultObject->SetArrayField(TEXT("failed"), FailedArray);
 
 	TSharedPtr<FJsonObject> SummaryObject = MakeShareable(new FJsonObject);
+	SummaryObject->SetNumberField(TEXT("totalRequested"), ConnectionsArray->Num());
 	SummaryObject->SetNumberField(TEXT("succeeded"), SucceededArray.Num());
 	SummaryObject->SetNumberField(TEXT("failed"), FailedArray.Num());
 	ResultObject->SetObjectField(TEXT("summary"), SummaryObject);

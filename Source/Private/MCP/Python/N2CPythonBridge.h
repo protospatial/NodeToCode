@@ -267,7 +267,8 @@ public:
 	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
 	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
 	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with succeeded/failed connections
+	 * @return JSON with succeeded/failed connections, each with its array index; a made one names the schema's response
+	 *         and any conversion node placed, a failed or malformed one an errorCode; summary.totalRequested counts every entry
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks = false,

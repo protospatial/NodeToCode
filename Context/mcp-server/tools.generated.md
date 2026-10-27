@@ -92,7 +92,7 @@ Returns `structuredContent` matching its `outputSchema` (in tools.generated.json
 
 **Read the focused Blueprint graph**
 
-Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson.
+Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -222,7 +222,7 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.create_node, write_graph_dsl`. 
 
 **Connect pins**
 
-Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Failed connections are listed in the result, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
+Connect pins between nodes of a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) using their GUIDs, in one undo transaction. A data output and an exec input take any number of links; a data input and an exec output take one, and a connection that would replace that link fails unless options.breakExistingLinks is true. Each entry's result has its array index and the schema's response (MAKE, BREAK_OTHERS_A/B/AB, MAKE_WITH_CONVERSION_NODE, MAKE_WITH_PROMOTION) with any conversion node placed; failed and malformed entries are listed in the result with an errorCode, which is not an error. Refused with PIE_ACTIVE while a Play In Editor session runs; stop PIE first.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -281,7 +281,7 @@ Deletes one or more Blueprint nodes from a graph using their GUIDs: the graph bl
 
 **Find nodes in a graph**
 
-Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information.
+Searches for specific nodes in a Blueprint graph (the one blueprintPath plus graphName or graphGuid name, else the focused graph) by keywords or node GUIDs. Returns matching nodes in N2C JSON format with full node and pin GUID information, and the capture's 'warnings' when it has any.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
