@@ -22,6 +22,7 @@ Source/Private/Tests/
   Fixtures/<Area>/        checked-in inputs a spec reads (N2CTest::FixturesDir(Area))
   Goldens/<Area>/         checked-in expected outputs a spec compares against (N2CTest::GoldensDir(Area))
   Perf/                   the perf fixture generator and NodeToCode.Perf.Fixtures (assets in Tests/NodeToCodeTestContent)
+  Dependencies/           the dependency fixture generator and NodeToCode.Dependencies.Index (assets in Tests/NodeToCodeTestContent)
 ```
 
 - New tests are Automation Specs (`BEGIN_DEFINE_SPEC`) named `NodeToCode.<Area>.<Thing>`, for example
@@ -516,6 +517,25 @@ The fixtures are generated in C++ (`Perf/N2CPerfFixtures.cpp`, with `FTestBluepr
 be saved) from a fixed seed per fixture. Regenerate on UE 5.6 only, since a 5.8 package does not load in 5.6:
 `$env:N2C_GENERATE_PERF_FIXTURES = '1'; .\build.ps1 -UEVersion 5.6 -Test -TestFilter NodeToCode.Perf` (then remove
 the variable and commit the `.uasset` files).
+
+## Dependency fixtures
+
+`NodeToCode.Dependencies.Index` (`Dependencies/N2CDependencyIndex.spec.cpp`, card 0318) builds `FN2CDependencyIndex`
+over `/NodeToCodeTestContent/Dependencies` (`Tests/NodeToCodeTestContent/Content/Dependencies`). The fixtures are
+E_N2CDep, S_N2CDep (an E_N2CDep member), the interface BPI_N2CDep and the macro library BPML_N2CDep. BP_N2CDep_A
+implements the interface, has a struct variable, calls BP_N2CDep_B's DoB and runs the library's macro. BP_N2CDep_B and
+BP_N2CDep_C reference each other, and C casts to B. BP_N2CDep_Child's parent is A.
+
+The spec checks the eight nodes and their kinds, every typed edge (the call edge carries its graph and node GUID, the
+variable edge the variable's name), and an order with the enum, struct, interface and macro library before A and A
+before its child. It also checks that {B, C} is the one cycle group, that only the AssetRegistry edges remain when
+nothing is loaded, and that a single-asset root pulls in what it depends on. `ComputeOrder` is checked on a graph made
+in code.
+
+The fixtures are generated in C++ (`Dependencies/N2CDependencyFixtures.cpp`). Regenerate on UE 5.6 only:
+`$env:N2C_GENERATE_DEPENDENCY_FIXTURES = '1'; .\build.ps1 -UEVersion 5.6 -Test -TestFilter NodeToCode.Dependencies`.
+Then remove the variable, run the filter again (the run that generates checks before it saves) and commit the
+`.uasset` files.
 
 ## Running the tests
 
