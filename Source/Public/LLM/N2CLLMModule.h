@@ -11,6 +11,8 @@
 #include "Models/N2CBlueprint.h"
 #include "N2CLLMModule.generated.h"
 
+struct FN2CArchivedResponse;
+
 /**
  * @class UN2CLLMModule
  * @brief Main module for managing LLM integration and translation requests
@@ -78,8 +80,9 @@ public:
      * its typed error on failure), at most once and never after a successful Cancel().
      *
      * With bArchiveRun (the MCP tools and the Python API), a successful translation is written as an MCP run of the
-     * translation archive (FN2CTranslationArchive) before OnComplete runs. A caller that saves the result itself (the
-     * batch orchestrator) passes false.
+     * translation archive (FN2CTranslationArchive) before OnComplete runs, and the JSON also gives run_folder and files
+     * (absolute paths of the code files written). A caller that saves the result itself (the batch orchestrator) passes
+     * false.
      */
     FN2CLLMRequestHandleRef ProcessN2CJsonWithOverrides(
         const FString& JsonInput,
@@ -169,9 +172,12 @@ private:
     /** Sets Status unless a request is in flight (for errors found before anything is sent) */
     void SetStatusIfIdle(EN2CSystemStatus Status);
 
-    /** Writes a ProcessN2CJsonWithOverrides translation as an MCP run of the translation archive */
-    static void ArchiveMcpTranslation(const FN2CTranslationResponse& Response, const FString& JsonInput,
-        const FN2CLLMConfig& RequestConfig, EN2CCodeLanguage Language);
+    /**
+     * Writes a ProcessN2CJsonWithOverrides translation as an MCP run of the translation archive. OutWritten is the run
+     * folder and the files written; false when no run folder could be made.
+     */
+    static bool ArchiveMcpTranslation(const FN2CTranslationResponse& Response, const FString& JsonInput,
+        const FN2CLLMConfig& RequestConfig, EN2CCodeLanguage Language, FN2CArchivedResponse& OutWritten);
 
     /** Requests sent and not yet completed or cancelled */
     int32 InFlightRequests = 0;
