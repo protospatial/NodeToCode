@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CMainWindow.h"
+#include "Core/Widgets/SN2CGetStartedCard.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Core/Style/N2CStyle.h"
@@ -48,22 +49,33 @@ void SN2CMainWindow::Construct(const FArguments& InArgs)
 	ChildSlot
 	[
 		SNew(SOverlay)
-		// Base layer - Tag Manager
+		// Base layer - the Get Started card (first run, card 0269) above the Tag Manager
 		+ SOverlay::Slot()
 		[
-			SAssignNew(TagManager, SN2CTagManager)
-			.ShowSearchBar(InArgs._ShowSearchBar)
-			.ShowActionBar(InArgs._ShowActionBar)
-			.OnTagSelected(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleTagSelected))
-			.OnCategorySelected(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleCategorySelected))
-			.OnSelectionChanged(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleSelectionChanged))
-			.OnGraphDoubleClicked(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleGraphDoubleClicked))
-			.OnBatchTranslateRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleBatchTranslateRequested))
-			.OnExportJsonRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleExportJsonRequested))
-			.OnRemoveSelectedRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleRemoveSelectedRequested))
-			.OnSingleTranslateRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleSingleTranslateRequested))
-			.OnSingleJsonExportRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleSingleJsonExportRequested))
-			.OnViewTranslationRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleViewTranslationRequested))
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FN2CSpacing::SM, FN2CSpacing::SM, FN2CSpacing::SM, 0.0f)
+			[
+				SNew(SN2CGetStartedCard)
+			]
+			+ SVerticalBox::Slot()
+			.FillHeight(1.0f)
+			[
+				SAssignNew(TagManager, SN2CTagManager)
+				.ShowSearchBar(InArgs._ShowSearchBar)
+				.ShowActionBar(InArgs._ShowActionBar)
+				.OnTagSelected(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleTagSelected))
+				.OnCategorySelected(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleCategorySelected))
+				.OnSelectionChanged(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleSelectionChanged))
+				.OnGraphDoubleClicked(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleGraphDoubleClicked))
+				.OnBatchTranslateRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleBatchTranslateRequested))
+				.OnExportJsonRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleExportJsonRequested))
+				.OnRemoveSelectedRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleRemoveSelectedRequested))
+				.OnSingleTranslateRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleSingleTranslateRequested))
+				.OnSingleJsonExportRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleSingleJsonExportRequested))
+				.OnViewTranslationRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::HandleViewTranslationRequested))
+			]
 		]
 
 		// Translation Viewer overlay layer

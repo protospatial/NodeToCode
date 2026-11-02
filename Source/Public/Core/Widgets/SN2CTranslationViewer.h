@@ -68,6 +68,12 @@ public:
 	/** Check if translation is currently loaded */
 	bool HasTranslation() const { return bHasTranslation; }
 
+	/** True when nothing is loaded (no translation, no JSON): the code area shows guidance instead of a blank editor (card 0269) */
+	bool IsShowingEmptyState() const { return !bHasTranslation && CurrentJsonContent.IsEmpty(); }
+
+	/** The guidance the empty viewer shows */
+	static FText GetEmptyText();
+
 private:
 	/** Delegate for close button */
 	FSimpleDelegate OnCloseRequestedDelegate;

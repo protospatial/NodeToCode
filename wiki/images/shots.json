@@ -1,10 +1,16 @@
 {
   "shots": {
+    "main-window/first-run.png": {
+      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
+    },
+    "main-window/get-started.png": {
+      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
+    },
     "main-window/tag-manager.png": {
-      "commit": "1a5714e9cb3fe2265c1e686afb4c37807778ced8"
+      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
     },
     "main-window/translation-viewer.png": {
-      "commit": "1a5714e9cb3fe2265c1e686afb4c37807778ced8"
+      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
     },
     "settings/code-generation.png": {
       "commit": "451aef39a5191022bdfc7f73b45ae32391d12f18"

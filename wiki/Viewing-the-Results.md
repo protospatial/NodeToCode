@@ -34,6 +34,19 @@ After translation completes, you'll see the code appear within the Node to Code 
 </p>
 
 
+## Your first visit
+
+Until the project has a saved translation, a **Get started** card sits at the top of the window. It walks through
+the setup in five rows: the **Provider**, its **API key** (**Save Key** stores it in Windows Credential Manager or
+the macOS Keychain, the same place as the API Key field in Project Settings; Ollama and LM Studio need none),
+**Test Connection** (one short request to the provider and model you chose, with the provider's answer or error), the
+**Target language**, and a picture of the N2C bar that every graph shows at its top right, where you tag a graph or
+translate it. The card hides after your first saved translation, or when you close it; **Show Get Started Card** in
+**Editor Preferences → Plugins → Node to Code (User)** brings it back.
+
+With no tags yet, the tag tree says how to tag a first graph, and a search that matches no tag or category says so.
+The translation viewer with nothing loaded says how to get a translation there, instead of showing an empty editor.
+
 ## Tags and the graph list
 
 The NodeToCode window lists tag categories and tags on the left, each with the number of graphs it holds. Select a
@@ -47,6 +60,9 @@ or a batch finishes, so **View** on a new translation is one click away.
 **Remove Selected** takes the listed tags off the graphs you checked. It first asks, with the number of tags and
 graphs, and then shows a notification with **Undo** for ten seconds, which puts the tags back with their
 descriptions. Translations and JSON exports are kept either way.
+
+**Batch Translate**, **Export JSON** and **Remove Selected** act on the checked graphs, so they are greyed out until
+you check one; their tooltips say so.
 
 ## Reviewing the Translation
 

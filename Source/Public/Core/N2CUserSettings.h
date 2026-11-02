@@ -84,6 +84,15 @@ public:
 	bool bRequireMcpBearerToken = bDefaultRequireMcpBearerToken;
 
 	/**
+	 * Show the Get Started card at the top of the Node to Code window (card 0269). The card also hides once the project
+	 * has a saved translation; its close button turns this off. Not a security switch: read the property directly.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Window",
+		meta = (DisplayName = "Show Get Started Card",
+			ToolTip = "Show the Get Started card (provider, API key, connection test, target language, tagging a graph) at the top of the Node to Code window until the project has a saved translation. Its close button turns this off."))
+	bool bShowGetStartedCard = true;
+
+	/**
 	 * Whether the MCP server may start: the user's own Enable MCP Server value, or on when the user never set it.
 	 * Read once per editor session (the setting needs a restart); a value from a project-shared layer is ignored.
 	 */

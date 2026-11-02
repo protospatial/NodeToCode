@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CTranslationViewer.h"
+#include "Widgets/SOverlay.h"
 #include "Core/Widgets/SN2CPanel.h"
 #include "Core/Widgets/SN2CIconButton.h"
 #include "Core/Widgets/SN2CHeaderBar.h"
@@ -113,8 +114,25 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 				.Variant(EN2CPanelVariant::Dark)
 				.Padding(0)
 				[
-					SAssignNew(CodeEditor, SN2CCodeEditor)
-					.Language(EN2CCodeLanguage::Cpp)
+					SNew(SOverlay)
+					+ SOverlay::Slot()
+					[
+						SAssignNew(CodeEditor, SN2CCodeEditor)
+						.Language(EN2CCodeLanguage::Cpp)
+					]
+					// Nothing loaded: say how to get a translation here instead of a blank editor (card 0269)
+					+ SOverlay::Slot()
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					.Padding(FN2CSpacing::XXL)
+					[
+						SNew(STextBlock)
+						.Text(GetEmptyText())
+						.Visibility_Lambda([this]() { return IsShowingEmptyState() ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+						.AutoWrapText(true)
+						.Justification(ETextJustify::Center)
+						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
+					]
 				]
 			]
 
@@ -282,6 +300,11 @@ void SN2CTranslationViewer::SetJsonContent(const FString& JsonContent, const FSt
 	ActiveFileType = TEXT("json");
 	UpdateTabStyles();
 	UpdateCodeDisplay();
+}
+
+FText SN2CTranslationViewer::GetEmptyText()
+{
+	return LOCTEXT("ViewerEmpty", "No translation is loaded.\n\nTranslate a graph with its row's Translate button, Batch Translate or the Translate button on the N2C bar of a graph; then double-click its row or use View Translation.");
 }
 
 void SN2CTranslationViewer::Clear()
