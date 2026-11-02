@@ -3,7 +3,7 @@ MCP tools on a headless editor, and record what NodeToCode does with it (card 02
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET first when other agents run probes):
 
-    python -I graph_type_matrix_0246.py --engine G:/UE/UE_5.8 \
+    python -I graph_type_matrix_0246.py --engine <UE_5.8> \
         --project "D:/n2c-lanes/lane-a/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 [--translate]
 
 Fixtures are real assets that ship with every engine from 5.6 to 5.8, so the same graphs are measured on each engine,

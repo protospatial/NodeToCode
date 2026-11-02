@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_user_settings_0423.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
+    python -I live_user_settings_0423.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
 
 Three headless -N2CMcp editor sessions on the host:
   committed  the user's Saved/Config layer has no bAllowMcpPythonExecution, and the project's

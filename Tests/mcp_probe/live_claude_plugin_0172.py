@@ -3,7 +3,7 @@
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET when other agents run probes):
 
-    python -I live_claude_plugin_0172.py --engine G:/UE/UE_5.8 \
+    python -I live_claude_plugin_0172.py --engine <UE_5.8> \
         --project "<Hosts>/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 [--scenarios skills,...]
 
 1. `claude plugin validate` (also --strict) passes on Agents/claude-code/nodetocode and on the local marketplace

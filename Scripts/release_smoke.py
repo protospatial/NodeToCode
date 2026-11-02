@@ -4,7 +4,7 @@ Stdlib only; run with `python -I`. Scripts/package-release.ps1 calls it on a Blu
 Plugins/NodeToCode folder is the unzipped release package (with its prebuilt Binaries), so a pass means the shipped
 binaries load without a rebuild:
 
-    python -I release_smoke.py --engine G:/UE/UE_5.8 --project <host>.uproject --plugin-dir <host>/Plugins/NodeToCode
+    python -I release_smoke.py --engine <UE_5.8> --project <host>.uproject --plugin-dir <host>/Plugins/NodeToCode
 
 Starts the editor with -N2CMcp (Tests/mcp_probe/editor_session.py), then sends initialize and tools/list to
 http://127.0.0.1:<port>/mcp. Prints one JSON line and exits 0 only when the server answered with a tool list and the

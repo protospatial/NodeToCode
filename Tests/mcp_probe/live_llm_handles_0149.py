@@ -3,8 +3,8 @@ with a tiny HTTP Activity Timeout against a local endpoint that accepts the requ
 
 Stdlib only; run with `python -I`:
 
-    python -I live_llm_handles_0149.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_llm_handles_0149.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 One headless editor (-N2CMcp, run-python allowed). The batch runs on Anthropic claude-haiku-5-5 (the key comes from
 the repo's .env into the editor's environment only, never printed): three in-memory probe Blueprints (probe_blueprint

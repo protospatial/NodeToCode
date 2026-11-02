@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`, one engine at a time:
 
-    python -I live_gate_0377.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_gate_0377.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts UnrealEditor.exe (windowed, not -Cmd, not -unattended) with only the provider's key from the repo's .env
 added to its environment, and the provider and model written into the host's Saved/Config NodeToCode.ini for the

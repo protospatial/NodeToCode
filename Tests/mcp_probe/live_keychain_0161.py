@@ -4,7 +4,7 @@ Manager once, requests use them, a key change applies to the next request, and n
 Stdlib only; Windows only; run with `python -I` under the `user-secrets` lock (it rewrites the per-user secrets folder
 and the NodeToCode/* Credential Manager entries, and puts both back):
 
-    aw lock run user-secrets --as <lane> --for "0161 live" -- python -I live_keychain_0161.py --engine G:/UE/UE_5.8 \
+    aw lock run user-secrets --as <lane> --for "0161 live" -- python -I live_keychain_0161.py --engine <UE_5.8> \
         --project "<Hosts>/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--provider anthropic --model claude-haiku-5-5]
 
 Steps:

@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_variable_defaults_0283.py --engine G:/UE/UE_5.8 \
+    python -I live_variable_defaults_0283.py --engine <UE_5.8> \
         --project "D:/n2c-lanes/lane-c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 UE 5.8 only: the variable tools act on the focused Blueprint editor, and closing a headless one is fatal on 5.6/5.7.

@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_resources_0208.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_resources_0208.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor (-RenderOffScreen), makes an Actor Blueprint BP_Player with a function under a fresh
 /Game/N2CTest/Res0208_<time> folder (through run-python) and opens its editor, so nodetocode://blueprints/all lists it.

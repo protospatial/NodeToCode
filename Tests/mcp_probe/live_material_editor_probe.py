@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_material_editor_probe.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--modes ...]
+    python -I live_material_editor_probe.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--modes ...]
 
 Card 0458. Three modes per engine, each its own editor session (editor_session.py; the NodeToCode MCP server's
 run-python tool drives it, so Allow MCP Python Execution is set for the session and restored afterwards):

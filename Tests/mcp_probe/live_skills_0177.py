@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET when other agents run probes). Two modes:
 
-    python -I live_skills_0177.py --engine G:/UE/UE_5.8 --project <5.8 host .uproject> --label 5.8
-    python -I live_skills_0177.py --engine G:/UE/UE_5.6 --project <5.6 host .uproject> --label 5.6 --absent
+    python -I live_skills_0177.py --engine <UE_5.8> --project <5.8 host .uproject> --label 5.8
+    python -I live_skills_0177.py --engine <UE_5.6> --project <5.6 host .uproject> --label 5.6 --absent
 
 Default (5.8 only): for the length of the run the host .uproject enables Epic's ToolsetRegistry and ModelContextProtocol
 ("Unreal MCP") plugins (put back byte for byte when the editor stops), and Epic's MCP server starts on its own port

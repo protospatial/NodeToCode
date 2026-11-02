@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I` after building the injection fixture (make_injection_fixture.py):
 
-    python -I live_untrusted_0124.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--claude]
+    python -I live_untrusted_0124.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--claude]
 
 On a headless editor with the defaults (Allow MCP Python Execution off) it opens /Game/N2CSecurity/BP_InjectionFixture
 and checks each channel that hands its planted text to an agent:

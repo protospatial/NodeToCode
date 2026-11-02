@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I mcp_probe.py --engine G:/UE/UE_5.8 --project G:/.../NodeToCodeHost_5_8.uproject --label 5.8
+    python -I mcp_probe.py --engine <UE_5.8> --project <checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject --label 5.8
 
 Writes a JSON report (--report) with, per probe, the finding ids, a status (reproduced, fixed, skipped or not_applicable) and raw
 evidence. Exits 0 only when every status matches expected.json for the label. See README.md.

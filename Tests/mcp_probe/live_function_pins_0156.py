@@ -3,8 +3,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_function_pins_0156.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_function_pins_0156.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor (no provider key: nothing is translated), makes an Actor Blueprint in memory under a fresh
 /Game/N2CTest/Pins0156_<time> folder, opens it, creates function MyFunc(Value: int) -> Result: int

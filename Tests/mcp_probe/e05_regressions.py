@@ -6,11 +6,11 @@ Stdlib only; run with `python -I`. Three ways to run it:
     python -I e05_regressions.py --url http://127.0.0.1:27000/mcp
 
     # MCP cases against a headless editor this script starts and stops
-    python -I e05_regressions.py --engine G:/UE/UE_5.8 --project <host>.uproject
+    python -I e05_regressions.py --engine <UE_5.8> --project <host>.uproject
 
     # Everything headless: the MCP cases on a headless editor, the headless Python checks (e05_struct_check.py,
     # e05_datatable_check.py, e05_registry_check.py) and the automation tests, each through UnrealEditor-Cmd
-    python -I e05_regressions.py --headless --engine G:/UE/UE_5.8 --project <host>.uproject [--all-tests]
+    python -I e05_regressions.py --headless --engine <UE_5.8> --project <host>.uproject [--all-tests]
 
 Prints one PASS, FAIL or SKIP line per case and exits 0 only when nothing failed. The graph cases need run-python
 (Allow MCP Python Execution); without it they print SKIP. Every Blueprint the probe makes lives under /Game/E05Probe
@@ -673,7 +673,7 @@ def start_headless_editor(engine, project):
 def main():
     ap = argparse.ArgumentParser(description='E05 regression probe (p0-6 crash inputs, p0-7 data-loss cases)')
     ap.add_argument('--url', help='MCP endpoint of a running editor, e.g. http://127.0.0.1:27000/mcp')
-    ap.add_argument('--engine', help='engine root, e.g. G:/UE/UE_5.8 (headless runs)')
+    ap.add_argument('--engine', help='engine root, e.g. "C:/Program Files/Epic Games/UE_5.8" (headless runs)')
     ap.add_argument('--project', help='host .uproject (headless runs)')
     ap.add_argument('--headless', action='store_true',
                     help='also run the headless Python checks and the automation tests through UnrealEditor-Cmd')

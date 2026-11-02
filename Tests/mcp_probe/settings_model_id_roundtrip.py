@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I settings_model_id_roundtrip.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I settings_model_id_roundtrip.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 Session 1 reads the Model drop-down options (Get<Provider>ModelOptions, the DeepSeek Thinking options and the Model
 Price Overrides key options) from the settings object, then sets a model ID, a custom model ID, the DeepSeek thinking

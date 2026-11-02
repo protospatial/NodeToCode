@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET first when other agents run probes):
 
-    python -I live_tool_reference_0179.py --engine G:/UE/UE_5.8 --project <host>.uproject
+    python -I live_tool_reference_0179.py --engine <UE_5.8> --project <host>.uproject
 
 Starts a headless editor with -N2CMcp twice through editor_session.py, once with Allow MCP Python Execution on and
 once with it off, and sends initialize and tools/list (following nextCursor) to /mcp. Passes when, with it on,
