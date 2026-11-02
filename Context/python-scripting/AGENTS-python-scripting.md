@@ -421,15 +421,21 @@ CallToolResult also has `isError: true`, so MCP clients see a tool execution fai
 the error, `traceback`, `output`, `stderr` and a `hint`. Python being unavailable is an `isError` result whose text
 is a plain message.
 
-run-python returns what the code assigns to `result` as `data` (it must be JSON-serializable: anything else makes
-the call fail with the `TypeError` as its error); printed text comes back as `output`. Its `timeout` argument
-(default 60, at most 300) is accepted but not enforced: tool calls already run on the game thread, so the code runs
-until it returns and blocks the editor meanwhile (card 0300).
+run-python and the script tools run through `nodetocode._mcp_runner` (card 0299). C++ sends one statement,
+`__import__('nodetocode._mcp_runner', ...).run_code('<call id>', '<base64 source>')` (`run_call` for the script tools),
+unattended (`EPythonCommandFlags::Unattended`, so no modal dialog blocks the call). The runner compiles the code
+unchanged (`compile(source, '<run-python>', 'exec')`: tracebacks name the code's own lines, multi-line strings and
+`from __future__` work, a `.py` in a comment is just text) and runs it in a fresh namespace, never the editor
+console's globals, so a call never sees another call's names or `result`. It captures the code's stdout and stderr
+and hands its answer to `UN2CPythonBridge::SubmitMcpResult` as strict JSON; nothing is scraped from stdout, so a
+printed line cannot pose as the answer (`N2CMcpPythonRunner`).
 
-Known limitation: the code goes to `ExecPythonCommandEx` in `ExecuteFile` mode, which treats a command whose first
-`.py` is followed by whitespace or the end of the text as a file to run. So code whose first `.py` is, for example,
-`see struct_creator.py for` in a comment fails with "Could not load Python file ..."; a `.py` followed by a quote,
-`)` or another character (`"struct_creator.py"`) is fine. Keep `.py ` out of comments until that is fixed.
+run-python returns what the code assigns to `result` as `data`, written as strict JSON: a UObject (anything with
+`get_path_name`) as its path name, `unreal.Name` and `unreal.Text` as strings, sets as lists, structs through
+`export_text`. NaN, infinity or a value of another type fail the call with `result not JSON-serializable: ...`
+naming the problem. Printed text comes back as `output`. Its `timeout` argument (default 60, at most 300) is accepted
+but not enforced: tool calls already run on the game thread, so the code runs until it returns and blocks the editor
+meanwhile (card 0300).
 
 ## Python-Only Mode
 

@@ -26,23 +26,6 @@ public:
 	virtual bool RequiresGameThread() const override { return true; }
 
 private:
-	/**
-	 * Wraps user script with result capture boilerplate.
-	 * Captures 'result' variable and stdout for return to caller.
-	 * @param UserScript The raw Python code to execute
-	 * @return Wrapped script with JSON result capture
-	 */
-	FString WrapScriptWithResultCapture(const FString& UserScript) const;
-
-	/**
-	 * Extracts the JSON result from captured stdout.
-	 * Looks for the __n2c_marker__ pattern to find our result JSON.
-	 * @param CapturedOutput The full stdout from Python execution
-	 * @param OutResultJson The extracted JSON result object
-	 * @return true if JSON was successfully extracted and parsed
-	 */
-	bool ExtractResultFromOutput(const FString& CapturedOutput, TSharedPtr<FJsonObject>& OutResultJson) const;
-
 	/** Default timeout in seconds for Python execution */
 	static constexpr float DefaultTimeoutSeconds = 60.0f;
 

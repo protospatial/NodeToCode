@@ -45,7 +45,8 @@ class Report:
     def call(self, function, args, kind='response', expect=None, label=None):
         """Calls BRIDGE.<function> with args once normally and once per {q} argument with the apostrophe.
 
-        kind 'response' checks the {success, data, error} object, 'json' any JSON object, 'text' a non-empty string.
+        kind 'response' checks the {success, data, error} object, 'json' any JSON object, 'text' a non-empty string,
+        'none' a function that returns nothing (submit_mcp_result).
         expect True or False is the success the normal call must report. Returns the normal call's parsed response.
         """
         self.called.add(function)
@@ -73,6 +74,10 @@ class Report:
         except Exception as error:  # a wrong signature here is a broken test, reported as a failed call
             fail(f'raised {type(error).__name__}: {error}')
             return None
+        if kind == 'none':
+            if raw is not None:
+                fail(f'returned {type(raw).__name__}, expected nothing')
+            return raw
         if not isinstance(raw, str):
             fail(f'returned {type(raw).__name__}, not str')
             return None
@@ -152,6 +157,8 @@ def unfocused(report, ctx):
     report.check('mark_untrusted_content keeps the note', isinstance(marked, dict) and 'note' in marked, f'{marked}')
     report.call('mark_untrusted_content', ['Blueprint text{q}'], kind='text', label='mark_untrusted_content (text)')
     report.call('get_untrusted_content_notice', [], kind='text')
+    # The MCP runner's answer sink (card 0299): stores the text under the id; the next run-python call clears it
+    report.call('submit_mcp_result', ['N2CBridgeCallsProbe{q}', '{"note": "probe{q}"}'], kind='none')
     report.call('open_blueprint', [missing, 'EventGraph{q}'], expect=False)
 
     # Need the focused graph: with none focused each answers with an error, which must be JSON too
