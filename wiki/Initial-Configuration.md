@@ -42,6 +42,9 @@ Both settings take effect after an editor restart, and the tool list a client se
   default) leaves them to Unreal MCP when its **Unreal MCP** and **EditorToolset** plugins are enabled and Tool
   Profile is Default toolsets; **Always serve them** keeps them. See
   [NodeToCode and Epic Tool Mapping](NodeToCode-and-Epic-Tool-Mapping). No effect on UE 5.6 and 5.7
+- **MCP Client Config**: pick a client and click **Write MCP Client Config** to write its config file into the
+  project folder, or copy the Claude Desktop snippet. Nothing here is saved; see
+  [Connecting an MCP Client](Connecting-an-MCP-Client#let-nodetocode-write-the-config-files)
 
 Projects that turned on **Enable Python Script-Only Mode** or **Enable Dynamic Tool Discovery** in an earlier build
 open with Python scripting only or Tool search set for them.

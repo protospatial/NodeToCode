@@ -9,6 +9,7 @@
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CSettingsCustomization.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CTargetLanguage.h"
 #include "Editor/EditorEngine.h"
@@ -107,6 +108,9 @@ void FNodeToCodeModule::StartupModule()
 
     // Register widget factory
     FN2CCodeEditorWidgetFactory::Register();
+
+    // Project Settings: the Write MCP Client Config row in the MCP Server category (card 0507)
+    FN2CSettingsCustomization::Register();
     FN2CLogger::Get().Log(TEXT("Widget factory registered"), EN2CLogSeverity::Debug);
     
     // Verify the syntax factory has a definition for every target language
@@ -221,6 +225,8 @@ void FNodeToCodeModule::ShutdownModule()
 
     // Unregister widget factory
     FN2CCodeEditorWidgetFactory::Unregister();
+
+    FN2CSettingsCustomization::Unregister();
 
     // Shutdown code editor style system
     FN2CCodeEditorStyle::Shutdown();
