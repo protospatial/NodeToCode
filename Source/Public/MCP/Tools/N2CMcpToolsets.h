@@ -72,7 +72,7 @@ namespace N2CMcpToolsets
 		true };
 
 	inline constexpr FN2CMcpToolset Translation{ TEXT("TranslationTools"),
-		TEXT("Translate the focused Blueprint graph into C++, Python, C#, JavaScript, Swift or pseudocode with the LLM provider configured in Project Settings, and read the available providers, target languages and output folder."),
+		TEXT("Translate the focused Blueprint graph into C++, Python, C#, JavaScript, Swift or pseudocode with the LLM provider configured in Project Settings, read the available providers, target languages and output folder, and place a C++ translation as a class in one of the project's modules."),
 		true };
 
 	/** Every declared toolset, in the order list_toolsets shows them */

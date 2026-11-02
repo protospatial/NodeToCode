@@ -160,6 +160,8 @@ namespace N2CToolPresentationPrivate
 			Read(TEXT("get-available-llm-providers"), TEXT("List LLM providers")),
 			Read(TEXT("get-available-translation-targets"), TEXT("List translation languages")),
 			Read(TEXT("get-translation-output-directory"), TEXT("Show the translation output folder")),
+			// Writes source files only with dry_run false; replaces them (a backup is kept)
+			Write(TEXT("place-cpp-translation"), TEXT("Place a C++ translation in a module"), Destructive, Repeats),
 			Write(TEXT("translate-batch"), TEXT("Translate many Blueprint graphs"), Additive, Repeats, OpenWorld),
 			Large(Write(TEXT("translate-focused-blueprint"), TEXT("Translate the focused Blueprint graph"), Additive, Repeats, OpenWorld)),
 

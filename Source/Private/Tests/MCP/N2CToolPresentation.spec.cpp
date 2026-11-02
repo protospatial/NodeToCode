@@ -72,6 +72,7 @@ namespace N2CToolPresentationSpecPrivate
 		{ TEXT("get-python-script"), R, false, true, false },
 		{ TEXT("get-script-functions"), R, false, true, false },
 		{ TEXT("get-translation-output-directory"), R, false, true, false },
+		{ TEXT("place-cpp-translation"), W, true, false, false },
 		{ TEXT("list-blueprint-functions"), R, false, true, false },
 		{ TEXT("list-blueprint-graphs"), R, false, true, false },
 		{ TEXT("list-blueprint-tags"), R, false, true, false },
