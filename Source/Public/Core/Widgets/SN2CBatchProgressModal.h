@@ -95,6 +95,12 @@ public:
 	/** Get current progress percentage (0.0 - 1.0) */
 	float GetProgressPercent() const;
 
+	/** The FAppStyle icon for a progress item status (not a Unicode glyph, which depends on font coverage) */
+	static const FSlateBrush* GetStatusBrush(EN2CBatchProgressItemStatus Status);
+
+	/** The status in words: the icon's tooltip */
+	static FText GetStatusLabel(EN2CBatchProgressItemStatus Status);
+
 private:
 	FSimpleDelegate OnCancelRequestedDelegate;
 
@@ -119,9 +125,6 @@ private:
 
 	/** Get progress bar fill percentage */
 	TOptional<float> GetProgressBarPercent() const;
-
-	/** Get the icon for a progress item status */
-	FText GetStatusIcon(EN2CBatchProgressItemStatus Status) const;
 
 	/** Get the color for a progress item status */
 	FSlateColor GetStatusColor(EN2CBatchProgressItemStatus Status) const;

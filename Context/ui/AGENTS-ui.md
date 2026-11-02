@@ -34,9 +34,12 @@ has its own page: [code editor](../code-editor/AGENTS-code-editor.md). Styling i
 
 ## Colours and tokens (`Source/Public/Core/Style/`)
 
-- `N2CDesignTokens.h`: `FN2CSpacing` (XXS to XXL, 2 to 20), `FN2CFonts` (Tiny to Large, bold variants, `Mono`,
-  `MonoSmall`), `FN2CSizing` (icon sizes, separator thickness). Header only, `constexpr` values: use them instead of
-  literals.
+- `N2CDesignTokens.h`: `FN2CSpacing` (XXS to XXL, 2 to 20), `FN2CFonts` (Small to Large, bold variants, `Mono`,
+  `MonoSmall`; nothing under 8pt), `FN2CSizing` (icon sizes, separator thickness). Header only, `constexpr` values: use
+  them instead of literals. Readability rules (card 0271, `NodeToCode.UI.DpiContrastIcons`): muted text keeps 4.5:1 on
+  `BgPanel` and `BgInput`; icon-only buttons have a tooltip; status and close marks are `FAppStyle` icons, not Unicode
+  glyphs; the logo brushes are SVG (`Resources/button_icon.svg`, 20 px and 16 px); custom painting (`SN2CCircularProgressBar`) draws in local space with `AllottedGeometry.ToPaintGeometry()`,
+  passes the draw effects and multiplies in the widget tint; UI click logs are `Verbose`.
 - `N2CUIColors.h`: `FN2CUIColors`, the configurable colours (backgrounds, buttons, borders, text, accents, editor), with
   `ToLinear`/`ToLinearWithAlpha`. `N2C::UI::Colors()` returns `GetDefault<UN2CSettings>()->UIColors`
   (`Source/Private/Core/Style/N2CUIColors.cpp`, the only style file that includes the settings header);

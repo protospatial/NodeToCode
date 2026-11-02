@@ -571,7 +571,7 @@ void SN2CMainWindow::NavigateToGraph(const FN2CTagInfo& Graph)
 void SN2CMainWindow::OnBatchItemComplete(const FN2CTagInfo& TagInfo, const FN2CTranslationResponse& Response,
 	bool bSuccess, int32 ItemIndex, int32 TotalCount)
 {
-	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] OnBatchItemComplete: %s (success=%s, item %d/%d)"),
+	UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CMainWindow] OnBatchItemComplete: %s (success=%s, item %d/%d)"),
 		*TagInfo.GraphName, bSuccess ? TEXT("true") : TEXT("false"), ItemIndex + 1, TotalCount);
 
 	// Only a batch this window shows (an MCP translate-batch runs without the window's progress)
@@ -602,7 +602,7 @@ void SN2CMainWindow::OnBatchComplete(const FN2CBatchTranslationResult& Result)
 
 void SN2CMainWindow::OnBatchProgress(int32 CurrentIndex, int32 TotalCount, const FString& GraphName)
 {
-	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] OnBatchProgress: %s (item %d/%d)"),
+	UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CMainWindow] OnBatchProgress: %s (item %d/%d)"),
 		*GraphName, CurrentIndex + 1, TotalCount);
 
 	if (BatchProgressModal.IsValid() && bShowBatchProgress)
@@ -615,7 +615,7 @@ void SN2CMainWindow::OnBatchProgress(int32 CurrentIndex, int32 TotalCount, const
 
 void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, const FString& GraphName, const FString& BlueprintPath)
 {
-	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] HandleOverlayTranslationRequest: %s (GUID=%s)"),
+	UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CMainWindow] HandleOverlayTranslationRequest: %s (GUID=%s)"),
 		*GraphName, *GraphGuid.ToString());
 
 	// Check if already translating
@@ -711,7 +711,7 @@ void SN2CMainWindow::HandleOverlayTranslationRequest(const FGuid& GraphGuid, con
 					FN2CArchivedResponse Saved;
 					if (bSuccess)
 					{
-						UE_LOG(LogNodeToCode, Log, TEXT("[SN2CMainWindow] Overlay translation completed successfully"));
+						UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CMainWindow] Overlay translation completed successfully"));
 						SaveSingleTranslation(RequestGraph, TranslationResponse, *Capture, &RunInfo, &Saved);
 					}
 

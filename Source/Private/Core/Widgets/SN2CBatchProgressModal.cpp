@@ -5,6 +5,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Styling/AppStyle.h"
@@ -248,7 +249,7 @@ void SN2CBatchProgressModal::MarkItemComplete(const FString& GraphName, bool bSu
 			Item->Status = bSuccess ? EN2CBatchProgressItemStatus::Completed : EN2CBatchProgressItemStatus::Failed;
 			Item->ErrorMessage = bSuccess ? FString() : ErrorMessage;
 			bFound = true;
-			UE_LOG(LogNodeToCode, Log, TEXT("[SN2CBatchProgressModal] MarkItemComplete: Found '%s', set to %s"),
+			UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CBatchProgressModal] MarkItemComplete: Found '%s', set to %s"),
 				*GraphName, bSuccess ? TEXT("Completed") : TEXT("Failed"));
 			break;
 		}
@@ -256,13 +257,9 @@ void SN2CBatchProgressModal::MarkItemComplete(const FString& GraphName, bool bSu
 
 	if (!bFound)
 	{
-		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CBatchProgressModal] MarkItemComplete: Could NOT find '%s' in %d items"),
+		// One line, not the whole item list (card 0271)
+		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CBatchProgressModal] MarkItemComplete: '%s' is not one of the %d items"),
 			*GraphName, ProgressItems.Num());
-		// Log all item names for debugging
-		for (const TSharedPtr<FN2CBatchProgressItem>& Item : ProgressItems)
-		{
-			UE_LOG(LogNodeToCode, Log, TEXT("  - Item: '%s'"), *Item->GraphName);
-		}
 	}
 
 	// Refresh list view
@@ -383,12 +380,15 @@ TSharedRef<ITableRow> SN2CBatchProgressModal::GenerateProgressRow(TSharedPtr<FN2
 			[
 				SNew(SBox)
 				.WidthOverride(FN2CSizing::IconMD)
+				.HeightOverride(FN2CSizing::IconMD)
 				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
 				[
-					SNew(STextBlock)
+					SNew(SImage)
 					// Use attribute binding to dynamically query current status
-					.Text_Lambda([this, ItemPtr]() { return GetStatusIcon(ItemPtr->Status); })
+					.Image_Lambda([ItemPtr]() { return GetStatusBrush(ItemPtr->Status); })
 					.ColorAndOpacity_Lambda([this, ItemPtr]() { return GetStatusColor(ItemPtr->Status); })
+					.ToolTipText_Lambda([ItemPtr]() { return GetStatusLabel(ItemPtr->Status); })
 				]
 			]
 			// Graph name, and under it why the item failed
@@ -434,19 +434,35 @@ TOptional<float> SN2CBatchProgressModal::GetProgressBarPercent() const
 	return static_cast<float>(CurrentItemIndex + 1) / static_cast<float>(TotalItemCount);
 }
 
-FText SN2CBatchProgressModal::GetStatusIcon(EN2CBatchProgressItemStatus Status) const
+const FSlateBrush* SN2CBatchProgressModal::GetStatusBrush(EN2CBatchProgressItemStatus Status)
 {
 	switch (Status)
 	{
 	case EN2CBatchProgressItemStatus::Completed:
-		return FText::FromString(TEXT("\u2713")); // ✓
+		return FAppStyle::GetBrush("Icons.Check");
 	case EN2CBatchProgressItemStatus::InProgress:
-		return FText::FromString(TEXT("\u2192")); // →
+		return FAppStyle::GetBrush("Icons.ArrowRight");
 	case EN2CBatchProgressItemStatus::Failed:
-		return FText::FromString(TEXT("\u2717")); // ✗
+		return FAppStyle::GetBrush("Icons.X");
 	case EN2CBatchProgressItemStatus::Pending:
 	default:
-		return FText::FromString(TEXT("\u25CB")); // ○
+		return FAppStyle::GetBrush("Icons.FilledCircle");
+	}
+}
+
+FText SN2CBatchProgressModal::GetStatusLabel(EN2CBatchProgressItemStatus Status)
+{
+	switch (Status)
+	{
+	case EN2CBatchProgressItemStatus::Completed:
+		return LOCTEXT("StatusCompleted", "Completed");
+	case EN2CBatchProgressItemStatus::InProgress:
+		return LOCTEXT("StatusInProgress", "In progress");
+	case EN2CBatchProgressItemStatus::Failed:
+		return LOCTEXT("StatusFailed", "Failed");
+	case EN2CBatchProgressItemStatus::Pending:
+	default:
+		return LOCTEXT("StatusPending", "Pending");
 	}
 }
 

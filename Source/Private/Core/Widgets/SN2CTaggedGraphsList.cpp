@@ -57,6 +57,7 @@ void SN2CTaggedGraphsList::Construct(const FArguments& InArgs)
 			SNew(SButton)
 			.ButtonStyle(&N2CStyle::GetNoBorderStyle())
 			.ContentPadding(0.0f)
+			.ToolTipText(LOCTEXT("SelectAllTooltip", "Select or deselect all shown graphs"))
 			.OnClicked(this, &SN2CTaggedGraphsList::OnSelectAllClicked)
 			[
 				SNew(SCheckBox)
@@ -531,15 +532,11 @@ void SN2CTaggedGraphsList::OnSelectAllChanged(ECheckBoxState NewState)
 
 FReply SN2CTaggedGraphsList::OnSelectAllClicked()
 {
-	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] OnSelectAllClicked called"));
-
 	// Toggle selection: if all are selected, deselect all; otherwise select all
-	ECheckBoxState CurrentState = GetSelectAllCheckboxState();
-	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] Current checkbox state: %d (0=Unchecked, 1=Checked, 2=Undetermined)"), (int32)CurrentState);
-
-	bool bShouldSelectAll = (CurrentState != ECheckBoxState::Checked);
-	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] Should select all: %s, FilteredItems count: %d"),
-		bShouldSelectAll ? TEXT("true") : TEXT("false"), FilteredItems.Num());
+	const ECheckBoxState CurrentState = GetSelectAllCheckboxState();
+	const bool bShouldSelectAll = (CurrentState != ECheckBoxState::Checked);
+	UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CTaggedGraphsList] Select all clicked: %s %d shown graphs"),
+		bShouldSelectAll ? TEXT("selecting") : TEXT("clearing"), FilteredItems.Num());
 
 	for (TSharedPtr<FN2CGraphListItem>& Item : FilteredItems)
 	{
@@ -549,7 +546,6 @@ FReply SN2CTaggedGraphsList::OnSelectAllClicked()
 
 	if (ListView.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] Calling RequestListRefresh"));
 		ListView->RequestListRefresh();
 	}
 	else
@@ -558,7 +554,6 @@ FReply SN2CTaggedGraphsList::OnSelectAllClicked()
 	}
 
 	OnSelectionChangedDelegate.ExecuteIfBound();
-	UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] OnSelectAllClicked complete"));
 
 	return FReply::Handled();
 }
@@ -651,7 +646,7 @@ void SN2CTaggedGraphsList::HandleRowTranslateClicked(TSharedPtr<FN2CGraphListIte
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] Translate clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CTaggedGraphsList] Translate clicked for graph: %s"), *Item->TagInfo.GraphName);
 		LastTranslateRequestedGraph = Item->TagInfo;
 		OnSingleTranslateRequestedDelegate.ExecuteIfBound();
 	}
@@ -661,7 +656,7 @@ void SN2CTaggedGraphsList::HandleRowJsonExportClicked(TSharedPtr<FN2CGraphListIt
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] JSON export clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CTaggedGraphsList] JSON export clicked for graph: %s"), *Item->TagInfo.GraphName);
 		LastJsonExportRequestedGraph = Item->TagInfo;
 		OnSingleJsonExportRequestedDelegate.ExecuteIfBound();
 	}
@@ -671,7 +666,7 @@ void SN2CTaggedGraphsList::HandleRowViewTranslationClicked(TSharedPtr<FN2CGraphL
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] View translation clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CTaggedGraphsList] View translation clicked for graph: %s"), *Item->TagInfo.GraphName);
 		LastViewTranslationRequestedGraph = Item->TagInfo;
 		OnViewTranslationRequestedDelegate.ExecuteIfBound();
 	}
@@ -681,7 +676,7 @@ void SN2CTaggedGraphsList::HandleRowRefreshClicked(TSharedPtr<FN2CGraphListItem>
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CTaggedGraphsList] Refresh clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CTaggedGraphsList] Refresh clicked for graph: %s"), *Item->TagInfo.GraphName);
 
 		// Invalidate this specific item's cache and refresh
 		FN2CTokenEstimationService::Get().InvalidateCache(Item->TagInfo.GraphGuid);
