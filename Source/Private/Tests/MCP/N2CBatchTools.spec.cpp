@@ -15,6 +15,7 @@
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
 #include "MCP/Tools/N2CToolCallContext.h"
+#include "MCP/Tools/Implementations/Translation/N2CTranslateBatchCall.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -48,6 +49,21 @@ namespace N2CBatchToolsSpec
 		return FString::Printf(
 			TEXT("{\"model\":\"n2c-batch\",\"created_at\":\"2026-10-25T00:00:00Z\",\"message\":{\"role\":\"assistant\",\"content\":\"%s\"},")
 			TEXT("\"done_reason\":\"stop\",\"done\":true,\"prompt_eval_count\":10,\"eval_count\":7}"), *Content);
+	}
+
+	/** Usage (a result's usage object) holds the five token counts of FN2CTranslationUsage::ToJson with these values */
+	void ExpectUsage(FAutomationTestBase& Test, const FString& What, const TSharedPtr<FJsonObject>& Usage, int32 Input,
+		int32 Output, int32 CacheRead, int32 CacheWrite, int32 Reasoning)
+	{
+		const TPair<const TCHAR*, int32> Expected[] = {
+			{ TEXT("input_tokens"), Input }, { TEXT("output_tokens"), Output }, { TEXT("cache_read_input_tokens"), CacheRead },
+			{ TEXT("cache_write_input_tokens"), CacheWrite }, { TEXT("reasoning_tokens"), Reasoning } };
+		for (const TPair<const TCHAR*, int32>& Field : Expected)
+		{
+			int32 Value = -1;
+			Test.TestTrue(What + TEXT(" usage has ") + Field.Key, Usage->TryGetNumberField(Field.Key, Value));
+			Test.TestEqual(What + TEXT(" usage ") + Field.Key, Value, Field.Value);
+		}
 	}
 
 	/**
@@ -569,6 +585,12 @@ void FN2CBatchToolsSpec::Define()
 			for (const TSharedPtr<FJsonObject>& Item : Objects(Json, TEXT("items")))
 			{
 				TestEqual(TEXT("completed"), Item->GetStringField(TEXT("status")), FString(TEXT("completed")));
+				// Each item reports the five counts a saved translation carries (card 0494); Ollama gives no cache or reasoning figures
+				const TSharedPtr<FJsonObject>* ItemUsage = nullptr;
+				if (TestTrue(TEXT("item usage"), Item->TryGetObjectField(TEXT("usage"), ItemUsage) && ItemUsage))
+				{
+					ExpectUsage(*this, TEXT("item"), *ItemUsage, 10, 7, 0, 0, 0);
+				}
 				const FString Folder = Item->GetStringField(TEXT("outputDirectory"));
 				Folders.Add(Folder);
 				TestTrue(TEXT("inside the output folder"), FPaths::IsUnderDirectory(Folder, Output.Path));
@@ -661,6 +683,24 @@ void FN2CBatchToolsSpec::Define()
 
 			Pump(1.0, [] { return false; });
 			TestEqual(TEXT("no request after the cancel"), Stub.State->Hits, 2);
+		});
+
+		It(TEXT("reports the batch's cache read, cache write and reasoning totals next to input and output"), [this]()
+		{
+			FN2CTranslateBatchCall::FSetup Setup;
+			FN2CBatchTranslationResult Batch;
+			Batch.TotalInputTokens = 5120;
+			Batch.TotalOutputTokens = 700;
+			Batch.TotalCacheReadInputTokens = 4096;
+			Batch.TotalCacheWriteInputTokens = 512;
+			Batch.TotalReasoningTokens = 300;
+			const TSharedRef<FJsonObject> Json = FN2CTranslateBatchCall::BuildResultJson(Setup,
+				UN2CBatchTranslationOrchestrator::Get(), Batch, N2CMcpBlueprintExport::MaxInlineTokens);
+			const TSharedPtr<FJsonObject>* Usage = nullptr;
+			if (TestTrue(TEXT("batch usage"), Json->TryGetObjectField(TEXT("usage"), Usage) && Usage))
+			{
+				ExpectUsage(*this, TEXT("batch"), *Usage, 5120, 700, 4096, 512, 300);
+			}
 		});
 
 		It(TEXT("refuses unknown IDs and selections before sending anything"), [this]()

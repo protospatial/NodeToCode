@@ -266,10 +266,14 @@ TSharedRef<FJsonObject> FN2CTranslateBatchCall::BuildResultJson(const FSetup& Se
 	Json->SetNumberField(TEXT("failed"), Result.FailureCount);
 	Json->SetNumberField(TEXT("skipped"), Result.SkippedCount);
 	Json->SetNumberField(TEXT("durationSeconds"), Result.TotalTimeSeconds);
-	const TSharedRef<FJsonObject> Usage = MakeShared<FJsonObject>();
-	Usage->SetNumberField(TEXT("input_tokens"), Result.TotalInputTokens);
-	Usage->SetNumberField(TEXT("output_tokens"), Result.TotalOutputTokens);
-	Json->SetObjectField(TEXT("usage"), Usage);
+	// The batch totals with the same five counts a saved translation and each item carry (card 0494)
+	FN2CTranslationUsage Usage;
+	Usage.InputTokens = Result.TotalInputTokens;
+	Usage.OutputTokens = Result.TotalOutputTokens;
+	Usage.CacheReadInputTokens = Result.TotalCacheReadInputTokens;
+	Usage.CacheWriteInputTokens = Result.TotalCacheWriteInputTokens;
+	Usage.ReasoningTokens = Result.TotalReasoningTokens;
+	Json->SetObjectField(TEXT("usage"), Usage.ToJson());
 
 	TArray<TSharedPtr<FJsonValue>> Items;
 	TArray<TSharedPtr<FJsonObject>> ItemsWithCode;
@@ -314,10 +318,7 @@ TSharedRef<FJsonObject> FN2CTranslateBatchCall::BuildResultJson(const FSetup& Se
 			ItemJson->SetArrayField(TEXT("graphs"), Graphs);
 			ItemsWithCode.Add(ItemJson);
 
-			const TSharedRef<FJsonObject> ItemUsage = MakeShared<FJsonObject>();
-			ItemUsage->SetNumberField(TEXT("input_tokens"), Item.TranslationResponse.Usage.InputTokens);
-			ItemUsage->SetNumberField(TEXT("output_tokens"), Item.TranslationResponse.Usage.OutputTokens);
-			ItemJson->SetObjectField(TEXT("usage"), ItemUsage);
+			ItemJson->SetObjectField(TEXT("usage"), Item.TranslationResponse.Usage.ToJson());
 		}
 		else if (Item.Status == EN2CBatchItemStatus::Failed)
 		{
