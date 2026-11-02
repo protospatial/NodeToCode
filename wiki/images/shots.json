@@ -1,16 +1,16 @@
 {
   "shots": {
     "main-window/first-run.png": {
-      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
+      "commit": "6c05b4f1562d204bef5b2221e95543afbe373aa5"
     },
     "main-window/get-started.png": {
-      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
+      "commit": "6c05b4f1562d204bef5b2221e95543afbe373aa5"
     },
     "main-window/tag-manager.png": {
-      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
+      "commit": "6c05b4f1562d204bef5b2221e95543afbe373aa5"
     },
     "main-window/translation-viewer.png": {
-      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
+      "commit": "1a5714e9cb3fe2265c1e686afb4c37807778ced8"
     },
     "settings/code-generation.png": {
       "commit": "451aef39a5191022bdfc7f73b45ae32391d12f18"
@@ -19,7 +19,7 @@
       "commit": "451aef39a5191022bdfc7f73b45ae32391d12f18"
     },
     "settings/mcp-server.png": {
-      "commit": "a8007058fe2fd0f9d7ef5f6fb1bd0f7276493f9f"
+      "commit": "96346296b5ecb8177e0fc48d945face0e280852e"
     },
     "translate-entry/graph-overlay.png": {
       "commit": "1a5714e9cb3fe2265c1e686afb4c37807778ced8"
