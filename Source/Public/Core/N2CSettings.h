@@ -87,6 +87,18 @@ struct FN2CCodeEditorThemes
 };
 
 /**
+ * Holds nothing. Its property, UN2CSettings::McpClientConfigWriter, is the MCP Client Config row in Project Settings
+ * (MCP Server category, card 0507): FN2CSettingsCustomization draws a client list, a token box and the Write MCP Client
+ * Config button for it. A property keeps the row inside its sub-category, where a details customization adding a row
+ * to "Node to Code | MCP Server" would pull the category out of Node to Code.
+ */
+USTRUCT()
+struct NODETOCODE_API FN2CMcpClientConfigWriter
+{
+    GENERATED_BODY()
+};
+
+/**
  * The four enum-keyed price maps settings saved before version 4 (OpenAIModelPricing, AnthropicModelPricing,
  * GeminiModelPricing, DeepSeekModelPricing), read from the config by UN2CSettings::ReadLegacyPricingMaps with the
  * engine's own text import so the saved format is parsed exactly as LoadConfig parsed it. Not a setting.
@@ -506,6 +518,13 @@ public:
         meta=(DisplayName="Overlapping Tools",
               ToolTip="The 34 NodeToCode tools that Epic's Unreal MCP also has on UE 5.8 (Content Browser, components, classes, compile and save, function pins, variable nodes). Automatic: left out of the Default toolsets profile when the Unreal MCP (ModelContextProtocol) and EditorToolset plugins are enabled. Leave Them to Unreal MCP: left out of every profile then. Always Serve Them: served, as on UE 5.6 and 5.7. Requires an editor restart."))
     EN2CMcpOverlappingTools McpOverlappingTools = EN2CMcpOverlappingTools::Automatic;
+
+    /** Writes or merges the nodetocode server into an MCP client's config file in the project folder, as the console
+     * command N2C.Mcp.WriteClientConfig does (card 0507). Transient and not Config: nothing is saved. */
+    UPROPERTY(Transient, EditAnywhere, Category = "Node to Code | MCP Server",
+        meta=(DisplayName="MCP Client Config",
+              ToolTip="Writes or merges the nodetocode server into the chosen MCP client's config file in the project folder (Claude Code .mcp.json, Cursor .cursor/mcp.json, VS Code .vscode/mcp.json, Gemini CLI .gemini/settings.json, Codex .codex/config.toml). Other servers in the file are kept, and the bearer token itself is never written: the configs read NODETOCODE_MCP_TOKEN. Claude Desktop copies a snippet to the clipboard. Same as the console command N2C.Mcp.WriteClientConfig."))
+    FN2CMcpClientConfigWriter McpClientConfigWriter;
 
 /** Get the model for the selected provider */
     FString GetActiveModel() const;
