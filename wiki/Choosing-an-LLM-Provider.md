@@ -33,8 +33,10 @@ models that are still listed in **Project Settings** show their shutdown date in
 [Provider Configuration](Provider-Configuration#retired-models) for what happens after it.
 
 > [!IMPORTANT]
-> DeepSeek very likely does use API data for training
-their models, so use at your own discretion.
+> Providers differ in how long they keep your Blueprints and whether they train on them. DeepSeek's privacy policy
+> lists model training as a use of the data it collects and stores it in China; the Gemini free tier is used to
+> improve Google's models. Compare them in [Data Flow and Privacy](Data-Flow-and-Privacy) before you send
+> confidential logic, or use Ollama or LM Studio to keep everything on your machine.
 
 
 Each cloud provider here is billed to its API key, not to a Claude, ChatGPT or Google AI subscription. To use a

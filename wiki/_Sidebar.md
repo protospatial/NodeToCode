@@ -18,6 +18,7 @@
 * [Plugin Updates](Plugin-Updates)
 * [Upgrading from 1.x](Upgrading-from-Version-1)
 * [Security Model](Security-Model)
+* [Data Flow and Privacy](Data-Flow-and-Privacy)
 </details>
 
 <details>
