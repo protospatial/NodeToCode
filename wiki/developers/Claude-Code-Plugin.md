@@ -73,9 +73,10 @@ the token itself, or the `headers` snippet in [Requiring an MCP Token](Requiring
 
 This runs NodeToCode's own translator, the same as the **Translate** button, with the provider set in the editor or
 the one you name. With a Blueprint path it opens that Blueprint on the graph you name (`EventGraph` by default);
-without one it translates the graph you have open. The files go where the editor saves translations: a
-`<Blueprint>_<date-time>` folder under `Saved/NodeToCode/Translations` (or your custom output folder), with
-`<Graph>/<Graph>.h`, `<Graph>/<Graph>.cpp` and the notes. Your `Source/` folder is not touched; ask
+without one it translates the graph you have open. The editor saves the translation as it saves every other one: one
+run folder, `<Blueprint>_<date-time>_<id>`, under `Saved/NodeToCode/Translations` (or your custom output folder), with
+a `manifest.json`, the N2C JSON that was sent, `<Graph>/<Graph>.h`, `<Graph>/<Graph>.cpp` and the notes. Claude
+reports that folder and its files and writes no copy of its own. Your `Source/` folder is not touched; ask
 Claude to place and compile the code when you want that. Each run is one billed provider request, and Claude only runs
 the command when you type it.
 
