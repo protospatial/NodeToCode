@@ -51,6 +51,17 @@ public:
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
+	/** The fraction the ring draws (0-1): the pinned value while one is set, else the Percent attribute, clamped */
+	float GetDrawnPercent() const;
+
+	/**
+	 * For the docs-shot harness only (card 0522): every ring draws this value instead of its Percent while set. A ring
+	 * shows the request's share of the model's context window, and the request includes the system prompt, so its
+	 * arc changed with every prompt edit and made retakes differ by a few pixels. Unset (the default) in normal use.
+	 */
+	static void SetPinnedPercentForCapture(TOptional<float> InPercent);
+	static TOptional<float> GetPinnedPercentForCapture();
+
 private:
 	/**
 	 * Get the fill color based on current percentage

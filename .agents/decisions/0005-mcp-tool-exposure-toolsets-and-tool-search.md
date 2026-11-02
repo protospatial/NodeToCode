@@ -2,14 +2,7 @@
 
 ## Status
 
-proposed (2026-10-25), provisional pending the owner's confirmation on card 0106
-
-**Provisional:** the owner has not decided card 0106. Card 0165 applies the recommendation below so the unreachable
-tools of dynamic discovery (15 of 65) and the `tools/list` that changed mid-session go away now. What the owner is
-most likely to change sits in a few places: the declarations in `Source/Public/MCP/Tools/N2CMcpToolsets.h` (names,
-descriptions, default-enabled), the defaults of `UN2CSettings::McpToolProfile` and `McpToolExposure`, and
-`FN2CMcpToolConfig::ToolsetsForProfile` (what each profile enables). Choosing option 1 or 2 alone below is a matter of
-hiding one setting; nothing else depends on both existing.
+decided (2026-11-02), by the owner on card 0106 (as recorded below; applied provisionally since 2026-10-25)
 
 ## Sources
 

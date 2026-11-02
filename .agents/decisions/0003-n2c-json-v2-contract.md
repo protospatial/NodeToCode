@@ -2,13 +2,7 @@
 
 ## Status
 
-proposed (2026-10-24), provisional pending the owner's confirmation on card 0117
-
-**Provisional:** the owner has not decided card 0117 (review decision dec-7). Card 0135 applies the review's
-recommendation so the lossless data edges can land; cards 0136-0138 and 0132 follow it. The parts the owner is most
-likely to change, the version string and the field names, live in one header,
-`Source/Public/Models/N2CJsonContract.h`, and in prose in the prompts; changing them there and regenerating the
-capture goldens (`build.ps1 -Test -UpdateGoldens`) is all a different choice needs.
+decided (2026-11-02), by the owner on card 0117 (option 1, as recorded below; it had been applied provisionally since 2026-10-24 by cards 0135-0138 and 0132)
 
 ## Sources
 
