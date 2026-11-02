@@ -277,10 +277,6 @@ void FN2CPythonBridgeCallsSpec::Define()
 
 	It(TEXT("on a focused Blueprint, every editing call succeeds with normal arguments, and json.loads reads every response, also with an apostrophe in any string argument"), [this]()
 	{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-		AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there; the case above ")
-			TEXT("calls the same functions without a focused graph"));
-#else
 		if (!TestTrue(TEXT("Python is available"), PythonAvailable()) || !Function)
 		{
 			return;
@@ -299,7 +295,6 @@ void FN2CPythonBridgeCallsSpec::Define()
 		{
 			ExpectCallsOk(Report);
 		}
-#endif
 	});
 }
 

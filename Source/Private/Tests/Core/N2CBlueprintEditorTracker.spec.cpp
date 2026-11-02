@@ -87,12 +87,6 @@ void FN2CEditorFocusSpec::Define()
 	{
 		It(TEXT("follows tab clicks, tool opens and closes, and the MCP tools and the bridge read the same Blueprint"), [this]()
 		{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor's window (closing it, or a later Slate
-			// layout pass while it is open, asks the null native window for its restored size: a fatal error in
-			// GenericWindow.cpp). This case runs on 5.8; the same behaviour is checked live on the others.
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-#else
 			UAssetEditorSubsystem* AssetEditors = GEditor ? GEditor->GetEditorSubsystem<UAssetEditorSubsystem>() : nullptr;
 			if (!TestNotNull(TEXT("asset editor subsystem"), AssetEditors))
 			{
@@ -327,7 +321,6 @@ void FN2CEditorFocusSpec::Define()
 			{
 				TestFalse(TEXT("no focused editor once no Blueprint editor is open"), Tracker.GetFocusedEditor().IsValid());
 			}
-#endif
 		});
 	});
 }

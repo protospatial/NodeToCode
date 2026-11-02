@@ -86,8 +86,7 @@ namespace N2CSpawnedNodesSpec
  * removes the node and the package is dirty. The shared spawn path (FN2CMcpNodeSpawn::CreateMemberVariableNode and
  * CreateLocalVariableNode, what the four variable node tools run after resolving the focused graph) and the
  * create-comment-node tool (which takes blueprintPath and graphGuid) run on every engine; the last case calls the four
- * variable node tools on a focused Blueprint editor and runs on UE 5.8 only (a headless Blueprint editor cannot be
- * closed below 5.8, see NodeToCode.MCP.CompileOnce). Capture of these nodes: the SpawnedVariableNodes case of
+ * variable node tools on a focused Blueprint editor (headless with -RenderOffScreen on 5.6 and 5.7, card 0509). Capture of these nodes: the SpawnedVariableNodes case of
  * NodeToCode.Capture.Golden (golden, DataFlows, ExecFlows).
  */
 BEGIN_DEFINE_SPEC(FN2CSpawnedNodesSpec, "NodeToCode.MCP.SpawnedNodes", N2C_TEST_FLAGS)
@@ -463,8 +462,7 @@ void FN2CSpawnedNodesSpec::Define()
 		});
 	});
 
-#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
+	Describe(TEXT("through the MCP tools on a focused Blueprint"), [this]()
 	{
 		It(TEXT("the four variable node tools return the node GUID, and the local ones work in a collapsed graph"), [this]()
 		{
@@ -538,7 +536,6 @@ void FN2CSpawnedNodesSpec::Define()
 			}
 		});
 	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

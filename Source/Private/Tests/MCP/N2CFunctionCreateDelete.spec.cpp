@@ -29,8 +29,8 @@
  * used to rename the event graph or the dispatcher's signature graph out of the way). A direction other than input or
  * output, a default the pin refuses, isStatic outside a function library, isOverride and the net flags are refused
  * before the Blueprint is touched. The successful cases (two parameters named Value keep their own defaults; private
- * has no FUNC_Public) open the Blueprint editor, as the tool always does, so they run only where a headless Blueprint
- * editor can be closed (UE 5.8).
+ * has no FUNC_Public) open the Blueprint editor, as the tool always does (headless with -RenderOffScreen on 5.6 and
+ * 5.7, card 0509).
  *
  * delete: force removes only the call nodes that resolve to this Blueprint's function, not a call to another class's
  * same-named function (a function PrintString and a call to UKismetSystemLibrary::PrintString); a call from another Blueprint needs force and is left in place (reported); the function's editor

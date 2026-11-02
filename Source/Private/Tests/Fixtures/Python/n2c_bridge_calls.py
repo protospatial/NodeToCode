@@ -14,7 +14,7 @@ Groups (N2C_CTX["group"]):
 - "unfocused": every UFUNCTION, with no Blueprint editor focused. Functions that need the focused graph answer with an
   error, which must be JSON too; the rest read the scratch Blueprint by path. The report lists the functions called and
   the bridge's own UFUNCTIONs, so the spec fails when a new UFUNCTION is not called here.
-- "focused": the scratch Blueprint is open with its function graph focused (UE 5.8). The normal calls must succeed:
+- "focused": the scratch Blueprint is open with its function graph focused. The normal calls must succeed:
   read, compile, save (only if dirty: the package is never dirty), find, search, add a node, set a pin, connect, comment,
   add and remove function pins, tag, list and remove the tag, delete, open.
 - "export_round_trip": read_n2c_json on get_blueprint_n2c_json's document keeps every node, with no warning (card 0505).

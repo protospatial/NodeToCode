@@ -76,8 +76,11 @@ step is reported as `pytest WARN (uv not found)` and skipped.
 - `-HostsRoot`, `-PackagesRoot` and `-LogRoot` move the hosts, the `-Package` output and the logs (default
   `BuildLogs/`). `-Config` picks the build configuration (default `Development`).
 - `-Test` runs `UnrealEditor-Cmd <host> -ExecCmds="Automation RunTests NodeToCode"
-  -TestExit="Automation Test Queue Empty" -ReportExportPath=<dir>` with `-unattended -nullrhi -NoLiveCoding
-  -culture=en`, reads the report's `index.json`, fails on any failed or unfinished test and warns when none ran.
+  -TestExit="Automation Test Queue Empty" -ReportExportPath=<dir>` with `-unattended -nullrhi -RenderOffScreen
+  -NoLiveCoding -culture=en`, reads the report's `index.json`, fails on any failed or unfinished test and warns when
+  none ran. `-RenderOffScreen` is there because opening an asset editor (the Material Editor, a Blueprint editor)
+  under `-nullrhi` alone is fatal on UE 5.6 and 5.7 (`GenericWindow.cpp`, `GetRestoredDimensions`; gate 0458, card
+  0509); run the tests by hand with it too.
   `-TestFilter` narrows the run and `-TestTimeoutMinutes` (default 60) stops a hung editor. `-UpdateGoldens` passes
   `-N2CUpdateGoldens`, so the golden specs rewrite `Source/Private/Tests/Goldens/` instead of comparing, and
   `-TestCulture de` replaces `-culture=en` for a locale check (see "Capture goldens" in the tests README). If
@@ -113,6 +116,10 @@ step is reported as `pytest WARN (uv not found)` and skipped.
   `get_focused_blueprint_json` on an engine Blueprint, or a probe status other than `Tests/mcp_probe/expected.json`.
   A card that adds or removes an MCP tool updates `Tests/smoke/expected.json`; failures already present are listed
   there under `known_failures` with their finding ids. About 1.5 minutes per engine, with the conformance step below.
+  The engine writes `DefaultInput.ini` into a new host's Config folder the first time it opens it, so before a host's
+  first smoke `build.ps1` starts it once headless with `-ExecCmds="QUIT_EDITOR"` (`BuildLogs/Warmup_<ver>_<stamp>.log`)
+  and stamps it in `Saved/N2CHostWarm.txt`; a fresh host then passes smoke on its first run (card 0513). Delete the
+  stamp to warm a host again.
 - In the default session `-Smoke` also runs `Tests/conformance/run_conformance.py`: the official MCP conformance
   suite (`npx @modelcontextprotocol/conformance server --requirements 2025-11-25`) and the MCP Inspector CLI
   (`--cli <url> --method tools/list`), at the exact versions pinned in `Tests/conformance/baseline.json`, about 4 s.

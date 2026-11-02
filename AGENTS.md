@@ -26,6 +26,9 @@ back into this checkout) and runs the checks. Engines, hosts, logs and every fla
 ```
 
 - A change is done when `-All -Smoke -Test` passes on 5.6, 5.7 and 5.8. Logs land in `BuildLogs/`.
+- The `-Test` editor runs headless with `-unattended -nullrhi -RenderOffScreen`: without `-RenderOffScreen` an asset
+  editor (Material Editor, Blueprint editor) opened by a spec is fatal on 5.6 and 5.7. Keep it when running tests by
+  hand.
 - Automation specs live in `Source/Private/Tests/` (naming and helpers: `Source/Private/Tests/README.md`); pytest in
   `Tests/python`; live MCP probes in `Tests/mcp_probe/` (`README.md` there).
 - A card that adds or removes an MCP tool updates `Tests/smoke/expected.json` and regenerates the tool reference

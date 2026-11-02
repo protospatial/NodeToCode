@@ -27,9 +27,6 @@
 #include "PlayInEditorDataTypes.h"
 #include "Runtime/Launch/Resources/Version.h"
 
-/** Whether a headless (-nullrhi) test can start and end a PIE session; same engine limit as a Blueprint editor */
-#define N2C_CAN_END_HEADLESS_PIE N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-
 namespace N2CPlaySessionGuardSpec
 {
 	/**
@@ -154,11 +151,10 @@ namespace N2CPlaySessionGuardSpec
  * working (card 0170, review gap-1 step 7), called directly or through call_tool.
  *
  * The live case starts a real PIE session in the headless editor (UEditorEngine::RequestPlaySession) and ends it
- * (RequestEndPlayMap). PIE opens a game window, and on UE 5.6 and 5.7 under -nullrhi the next Slate layout pass after
- * that window closes reaches FGenericWindow::GetRestoredDimensions, which is Fatal (as for a Blueprint editor, see
- * N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR), so it is compiled on UE 5.8 only. On every engine a second case sets
- * GEditor->PlayWorld for the length of its calls, which is what the guard reads during PIE; Tests/mcp_probe P12 runs
- * real PIE on 5.6 and 5.7 (with -RenderOffScreen).
+ * (RequestEndPlayMap). PIE opens a game window: on UE 5.6 and 5.7 under -nullrhi alone the next Slate layout pass
+ * after that window closes reaches FGenericWindow::GetRestoredDimensions, which is Fatal, so it needs -RenderOffScreen,
+ * which build.ps1 -Test passes (card 0509). A second case sets GEditor->PlayWorld for the length of its calls, which
+ * is what the guard reads during PIE; Tests/mcp_probe P12 runs real PIE too.
  */
 BEGIN_DEFINE_SPEC(FN2CPlaySessionGuardSpec, "NodeToCode.MCP.PlaySession", N2C_TEST_FLAGS)
 	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
@@ -305,8 +301,7 @@ void FN2CPlaySessionGuardSpec::Define()
 			}
 
 			TestFalse(TEXT("no play world after"), FN2CMcpPlaySessionGuard::IsPlaySessionActive());
-			// compile-blueprint, not create-blueprint-function: that one opens a Blueprint editor, which cannot be closed
-			// headless below UE 5.8
+			// compile-blueprint, not create-blueprint-function: that one opens a Blueprint editor
 			N2CTest::FCompileCounter Compiles(Blueprint);
 			const FMcpToolCallResult After = CallThroughCallTool(TEXT("compile-blueprint"), PathArgs);
 			TestFalse(TEXT("call_tool compile-blueprint works after: ") + N2CTest::ResultText(After).Left(200), After.bIsError);
@@ -314,7 +309,6 @@ void FN2CPlaySessionGuardSpec::Define()
 		});
 	});
 
-#if N2C_CAN_END_HEADLESS_PIE
 	Describe(TEXT("during a Play In Editor session"), [this]()
 	{
 		AfterEach([this]()
@@ -419,12 +413,6 @@ void FN2CPlaySessionGuardSpec::Define()
 			});
 		});
 	});
-#else
-	It(TEXT("starts a real PIE session (UE 5.8 only: closing the PIE window headless is fatal on 5.6 and 5.7)"), [this]()
-	{
-		AddInfo(TEXT("Skipped below UE 5.8: the PIE window cannot be closed under -nullrhi (FGenericWindow::GetRestoredDimensions)"));
-	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

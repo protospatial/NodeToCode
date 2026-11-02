@@ -99,10 +99,10 @@ check what it did. Use it for any new tool spec instead of a local copy:
 - **Headless limits:** the Graph, Functions and Variables tools take `blueprintPath` with `graphName` or `graphGuid`
   (card 0152), so their specs need no editor and run on every engine. A case that needs the focused graph (the
   Python bridge, the variable node tools, `get-focused-blueprint`) calls `FToolSpecBlueprint::OpenInEditor`, which
-  opens and focuses the graph where `N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR` is 1 (UE 5.8) and elsewhere adds the
-  reason as info and returns false: under `-nullrhi`, UE 5.6 and 5.7 hit a fatal error in `GenericWindow.cpp` when a
-  Blueprint editor window is closed. Such cases are compiled under `#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR`
-  with a skip case naming the reason on the other engines.
+  opens and focuses the graph, and runs on every engine. Under `-nullrhi` alone, UE 5.6 and 5.7 hit a fatal error in
+  `GenericWindow.cpp` when a Blueprint editor window is closed; with `-RenderOffScreen`, which `build.ps1 -Test`
+  passes, they open and close it like 5.8 (card 0509, which removed the 5.8-only skips;
+  `N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR` is now 1 everywhere and new code need not test it).
 
 `NodeToCode.MCP.Graph` (`MCP/N2CMcpGraphTools.spec.cpp`) and `NodeToCode.MCP.Functions`
 (`MCP/N2CMcpFunctionTools.spec.cpp`) run the Graph and Functions tools that way and check, for each edit, a dirty
@@ -120,7 +120,7 @@ CompileScope, SpawnedNodes, FunctionPinEdits).
 and the Python bridge's DeleteNodes share: preserveConnections bridges the exec chain through a mid-chain Print
 String (and the node's breakpoint goes with it, and Undo then Redo are exact) and a data line through a reroute knot;
 a collapsed graph's entry and exit tunnels are refused as protected while the collapsed-graph node deletes without
-force; the bridge (5.8 only, it needs a focused editor) bridges the same chain and lists an unknown GUID under
+force; the bridge (it needs a focused editor) bridges the same chain and lists an unknown GUID under
 `skipped`.
 
 `NodeToCode.MCP.Variables` (`MCP/N2CMcpVariableTools.spec.cpp`, card 0148) is a type table: bool, int, int64, byte,
@@ -222,7 +222,7 @@ content from C++.
 
 It is a C++ spec, not a PythonAutomationTest suite or a file for `Tests/python/editor/run_editor_tests.py` (card
 0296): `build.ps1 -Test` runs it on every engine with the other specs, it can open, focus and close the Blueprint editor
-where that is safe (`N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR`) and redirect the graph state folder, and the hosts
+(headless with `-RenderOffScreen`) and redirect the graph state folder, and the hosts
 junction only `Source`, `Content`, `Resources` and `ThirdParty`, so a fixture under `Source` is found where
 `Tests/` is not. PythonAutomationTest is not enabled in the hosts.
 
@@ -256,7 +256,7 @@ list-python-scripts still answering.
   timers and checks `GetActiveBlueprintEditor()`, get-focused-blueprint and a live overlay on the graph shown. Run it
   in a windowed editor: `UnrealEditor.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode.Windowed"
   -TestExit="Automation Test Queue Empty"` (its MCP server takes the settings' port, 27000 by default). The headless version of
-  the focus rules is `NodeToCode.Editor.Focus` (UE 5.8).
+  the focus rules is `NodeToCode.Editor.Focus`.
 - `NodeToCode.UI.TagManager` (`Core/N2CTagManagerUI.spec.cpp`, card 0266) builds a headless `SN2CTagManager` whose
   `TagSource` argument returns an in-memory list of (graph, tag) pairs, so no graph state is read or written. It
   ticks the tree's `STreeView` by hand (where the tree drops a selected item it no longer holds) and checks the
@@ -511,8 +511,10 @@ the variable and commit the `.uasset` files).
   narrows it). It builds, runs `Automation RunTests <filter>` in `UnrealEditor-Cmd` on the host project, prints
   each failure and the pass count, and writes the report to `BuildLogs/Tests_<ver>_<stamp>/index.json`.
 - **By hand, one engine:**
-  `UnrealEditor-Cmd.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode" -TestExit="Automation Test Queue Empty" -unattended -nullrhi -nosplash -nosound -abslog=<path>.log`
-  (separate several `-ExecCmds` commands with commas, never semicolons).
+  `UnrealEditor-Cmd.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode" -TestExit="Automation Test Queue Empty" -unattended -nullrhi -RenderOffScreen -nosplash -nosound -abslog=<path>.log`
+  (separate several `-ExecCmds` commands with commas, never semicolons). Keep `-RenderOffScreen`, as `build.ps1
+  -Test` does (card 0509): without it, a spec that opens the Material Editor or a Blueprint editor under `-nullrhi`
+  is fatal on UE 5.6 and 5.7 and takes the whole run down.
 - **In the editor:** Tools > Session Frontend > Automation, filter `NodeToCode`, tick the tests and press Start
   Tests.
 - **From an agent on UE 5.8:** enable the engine's experimental AutomationTestToolset plugin in the host project
