@@ -378,11 +378,6 @@ void FN2CBlueprintByPathSpec::Define()
 
 		It(TEXT("returns the text get-focused-blueprint returns when the same graph is focused"), [this]()
 		{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor window (see NodeToCode.Editor.Focus); the
-			// case above covers the same capture on every engine
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-#else
 			UAssetEditorSubsystem* AssetEditors = GEditor ? GEditor->GetEditorSubsystem<UAssetEditorSubsystem>() : nullptr;
 			if (!TestNotNull(TEXT("asset editor subsystem"), AssetEditors))
 			{
@@ -420,7 +415,6 @@ void FN2CBlueprintByPathSpec::Define()
 					Condensed(N2CTest::ParseJsonObject(SuccessText(TEXT("compact"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), Graph->GetName()))))),
 					Condensed(N2CTest::ParseJsonObject(Focused)));
 			}
-#endif
 		});
 
 		It(TEXT("gives the same IDs on every read and keeps nothing between reads"), [this]()

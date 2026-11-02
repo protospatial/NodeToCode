@@ -561,7 +561,9 @@ reference, `Context/mcp-server/tools.generated.json` and `tools.generated.md`: `
 Scripts/generate_tool_reference.py --engine <UE root> --project <host .uproject>` after building; `build.ps1 -Test`
 fails while they are stale (`Tests/python/test_tool_reference.py`, `NodeToCode.MCP.ToolReference`), and so does
 `python -I Scripts/docs_lint.py` (CI, on every pull request) while a doc names a tool, argument or count the reference
-does not have. Renaming or removing a tool also means
+does not have. In the folder's `AGENTS.md`, give the tool a `### <tool>` section whose **Arguments** list links to the
+tool's entry in `tools.generated.md` for types, required arguments and defaults, and says only what the schema does
+not (card 0336). Renaming or removing a tool also means
 updating the Agent Skills that name it (`Agents/claude-code/nodetocode/skills/`, then `python -I
 Agents/sync_skills.py`); `Tests/python/test_agent_skills.py` fails while a skill names a tool that is not registered.
 

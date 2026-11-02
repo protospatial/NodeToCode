@@ -62,12 +62,6 @@ bool FN2CCompileOnceSpec::OpenChain(const TCHAR* Name, int32 Count)
 
 void FN2CCompileOnceSpec::Define()
 {
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	It(TEXT("runs on UE 5.8 only (a headless Blueprint editor cannot be closed below 5.8)"), [this]()
-	{
-		AddInfo(TEXT("Skipped below UE 5.8; NodeToCode.MCP.CompileScope covers the same behaviour without an editor"));
-	});
-#else
 	AfterEach([this]()
 	{
 		Chain.Reset();
@@ -237,7 +231,6 @@ void FN2CCompileOnceSpec::Define()
 			AddInfo(FString::Printf(TEXT("TIMING action database: RefreshAll %.1f ms, RefreshAssetActions(Blueprint) %.2f ms"), RefreshAllMs, RefreshAssetMs));
 		}
 	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

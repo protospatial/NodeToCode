@@ -67,8 +67,8 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
 ### create-blueprint-function
 - **Description**: Creates a function graph, adds its parameters, compiles, and opens and focuses the new graph in the
   Blueprint editor
-- **Parameters**:
-  - `functionName` (required): Name of the new function, checked by the editor's own `FKismetNameValidator`
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-blueprint-function)):
+  - `functionName`: Name of the new function, checked by the editor's own `FKismetNameValidator`
     (`ValidateFunctionName`, card 0280). A name any graph of the Blueprint has (the event graph, a function, a macro,
     an event dispatcher), a member variable, a component or a function of the class or its parents (`ReceiveBeginPlay`
     included) is refused: `NAME_COLLISION: 'OnDied' is already an event dispatcher in BP_Door. Pick another name, for
@@ -76,17 +76,17 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
     characters: `INVALID_NAME: ...`. Before card 0280 only function graphs and non-event parent functions were
     checked, and `CreateNewGraph` renamed any other graph of that name out of the way (`EdGraph_0`), which broke an
     event dispatcher or renamed the event graph
-  - `blueprintPath` (optional): Asset path of the target Blueprint (`/Game/Blueprints/BP_MyActor.BP_MyActor`);
+  - `blueprintPath`: Asset path of the target Blueprint (`/Game/Blueprints/BP_MyActor.BP_MyActor`);
     without it, the focused Blueprint. A path that does not resolve is an error (`ASSET_NOT_FOUND: ...`). It takes
     no `graphName` or `graphGuid` (it makes the graph)
-  - `parameters` (optional): Array of objects with `name` and `type` (required), `direction` (`input`, the default,
+  - `parameters`: Array of objects with `name` and `type`, `direction` (`input`, the default,
     or `output`, compared case-insensitively), `subType`, `container` (`none`, `array`, `set`, `map`), `keyType` (map
     key), `isReference`, `isConst`, and `defaultValue` (inputs only). `type` and `subType` are resolved like a
     variable's type (see "Type Identifiers" in `../Variables/AGENTS.md`): `type` alone takes a primitive, a type
     name (`HitResult`, `AActor`) or a path; `type` `object`, `class`, `softobject`, `softclass`, `struct`, `enum` or
     `interface` takes `subType` naming the class, struct or enum. A taken name is made unique, as in the editor (a
     second `Value` becomes `Value1`); the result's `parameters` says which name each got
-  - `functionFlags` (optional): Object with `isPure`, `isCallInEditor`, `isStatic`, `isConst` (booleans), `category`
+  - `functionFlags`: Object with `isPure`, `isCallInEditor`, `isStatic`, `isConst` (booleans), `category`
     (default `Default`), `keywords`, `tooltip`, and `accessSpecifier` (`public`, the default, `protected` or
     `private`, case-insensitive). The access specifier replaces the `FUNC_Public` that `AddFunctionGraph` seeds (the
     `FUNC_AccessSpecifiers` mask is cleared first, as the details panel does); before card 0280 a private function
@@ -115,23 +115,23 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
 
 ### open-blueprint-function
 - **Description**: Opens a function graph in the Blueprint editor and focuses it
-- **Parameters**:
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#open-blueprint-function)):
   - `functionGuid` (or `graphGuid`), or `graphName`: The function; one of them is required. See "Function GUIDs"
-  - `blueprintPath` (optional): Blueprint to search; without it, the focused Blueprint. A path that does not load is
+  - `blueprintPath`: Blueprint to search; without it, the focused Blueprint. A path that does not load is
     an error (`ASSET_NOT_FOUND`); before card 0152 it fell back to the focused Blueprint. A graph that is not a
     function: `NOT_A_FUNCTION_GRAPH` (open other graphs with `open-blueprint-asset` and `focus_graph`)
-  - `centerView` (optional, default true): Accepted but has no effect (`CenterViewOnFunction` only returns true)
-  - `selectNodes` (optional, default true): Accepted but has no effect (`SelectAllNodesInFunction` only returns true)
+  - `centerView`: Accepted but has no effect (`CenterViewOnFunction` only returns true)
+  - `selectNodes`: Accepted but has no effect (`SelectAllNodesInFunction` only returns true)
 - **Returns**: `success`, `functionName`, `functionGuid` (the stable ID, also when an old one was sent),
   `blueprintName`, `blueprintPath`, `graphName`, `editorState` (`opened`), `target`
 
 ### delete-blueprint-function
 - **Description**: Deletes a function graph, and with `force` the nodes that call it
-- **Parameters**:
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#delete-blueprint-function)):
   - `functionGuid` (or `graphGuid`), or `graphName`: The function; one of them is required
-  - `blueprintPath` (optional): Without it, the focused Blueprint. Functions of an interface Blueprint can be deleted
+  - `blueprintPath`: Without it, the focused Blueprint. Functions of an interface Blueprint can be deleted
     (the resolver's read-only check does not apply to a delete)
-  - `force` (optional, default false): Delete the function although it is called or overridden: its call nodes in
+  - `force`: Delete the function although it is called or overridden: its call nodes in
     this Blueprint are removed (`FBlueprintEditorUtils::RemoveNode`); call nodes in other Blueprints are left in place
     and reported, and those Blueprints then fail to compile until they are fixed
 - **References** (`FindFunctionReferences`, card 0280): a call node counts when the function it resolves to
@@ -159,14 +159,14 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
   `blueprintPath` plus `graphName` or `graphGuid` names, else the focused one. A read-only function graph is refused
   (`READ_ONLY_GRAPH`), and so is a graph that is not a function (`NOT_A_FUNCTION_GRAPH`); the four pin tools share
   this, and their results carry `target`
-- **Parameters**:
-  - `pinName` (required): Name for the new input. A taken name is made unique by `CreateUserDefinedPin`: a second
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#add-function-input-pin)):
+  - `pinName`: Name for the new input. A taken name is made unique by `CreateUserDefinedPin`: a second
     `Tag` becomes `Tag1`
-  - `typeIdentifier` (required): A single type (no containers), resolved as in "Type Identifiers" in
+  - `typeIdentifier`: A single type (no containers), resolved as in "Type Identifiers" in
     `../Variables/AGENTS.md`. A type that does not resolve fails the call with
     `Failed to resolve type '<type>': <reason>` before the function is touched
-  - `defaultValue` (optional), `isPassByReference` (optional, default false)
-  - `tooltip` (optional): Kept in the function's tooltip metadata as an `@param <actualName> <text>` line
+  - `defaultValue`, `isPassByReference`
+  - `tooltip`: Kept in the function's tooltip metadata as an `@param <actualName> <text>` line
     (`FN2CMcpFunctionPinUtils::SetParameterTooltip`), which the engine shows as the pin's tooltip on call nodes and
     leaves out of the function's own tooltip. Before card 0156 it went to the pin itself and was lost on the next
     node rebuild. Removing the pin drops its line
@@ -183,7 +183,7 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
   function, so a function with an early-out Return keeps matching Return nodes. A function with no result node gets
   one from `FBlueprintEditorUtils::FindOrCreateFunctionResultNode` (as My Blueprint > Outputs does): it has a node
   GUID, is transactional, sits right of the entry and is wired from the entry's exec output when that is free
-- **Parameters**: `pinName` (required), `typeIdentifier` (required, a single type), `tooltip` (optional, kept as for
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#add-function-return-pin)): `pinName`, `typeIdentifier` (a single type), `tooltip` (optional, kept as for
   add-function-input-pin). Return values take no default value and are never by reference
 - **Returns**: As for add-function-input-pin (`bSuccess` is displayed as `Success`); `pinId` is the pin on the first
   Return node
@@ -193,7 +193,7 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
 
 ### remove-function-entry-pin
 - **Description**: Removes an input parameter (a user-defined pin on the entry node)
-- **Parameters**: `pinName` (required): Matched as the exact pin name first, then case-insensitively against the pin
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#remove-function-entry-pin)): `pinName`: Matched as the exact pin name first, then case-insensitively against the pin
   name or the display name (`FN2CMcpFunctionPinUtils::RemoveFunctionPin`): `TargetActor`, `targetactor` and
   `Target Actor` all work. Use `actualName` or `displayName` from the add result
 - **Returns**: `success`, `removedPinName` (as sent), `functionName`, `blueprintName`, `message`
@@ -203,7 +203,7 @@ Every function tool here takes the ID: `functionGuid` on open-blueprint-function
 
 ### remove-function-return-pin
 - **Description**: Removes a return value from every result node of the function
-- **Parameters**: `pinName` (required), matched as for remove-function-entry-pin (against the first result node)
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#remove-function-return-pin)): `pinName`, matched as for remove-function-entry-pin (against the first result node)
 - **Returns**: As for remove-function-entry-pin
 - **Errors**: A function without a result node: `No function result node found. This function has no return values.`
 - A refused removal on either remove tool (no such pin, the exec pin, a pin that is not user-defined, no result node)

@@ -22,13 +22,14 @@ class UEdGraphNode;
 class UK2Node_EditablePinBase;
 
 /**
- * Whether a Blueprint editor opened in a headless test (-nullrhi) can be closed again. UE 5.6 and 5.7 cannot: closing
- * the editor's window, or a later Slate layout pass while it is open, asks the null native window for its restored
- * size, a fatal error in GenericWindow.cpp. Cases that need a focused Blueprint editor (the Python bridge, the
- * variable node tools, get-focused-blueprint) are compiled only where this is 1 and say so with a skip case
- * elsewhere; tools that take blueprintPath and graphGuid need no editor and run on every engine.
+ * Whether a Blueprint editor opened in a headless test can be closed again: 1 on every engine since card 0509. Under
+ * -nullrhi alone, UE 5.6 and 5.7 hit a fatal error in GenericWindow.cpp (GetRestoredDimensions) when the editor's
+ * window closes, or on a later Slate layout pass while it is open; with -RenderOffScreen, which build.ps1 -Test
+ * passes, they open and close it like 5.8. Run the tests by hand with -RenderOffScreen too. Kept defined so a branch
+ * written before 0509 that still tests it compiles its cases instead of silently skipping them; new code need not use
+ * it.
  */
-#define N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR (ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8))
+#define N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR 1
 
 /**
  * The MCP tool spec harness (card 0147): one way for the NodeToCode.MCP.* specs to build a scratch Blueprint, call a
@@ -181,9 +182,9 @@ namespace N2CTest
 		void Settle();
 
 		/**
-		 * Opens the Blueprint in its editor and focuses Graph, for the cases that act on the focused graph. Only where
-		 * N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR: elsewhere it adds the reason as info and returns false, and the
-		 * case skips. Leaves the package clean when bClean.
+		 * Opens the Blueprint in its editor and focuses Graph, for the cases that act on the focused graph (headless
+		 * on 5.6 and 5.7 it needs -RenderOffScreen, see N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR). False when it does
+		 * not open, and the case stops. Leaves the package clean when bClean.
 		 */
 		bool OpenInEditor(FAutomationTestBase& Test, UEdGraph* Graph, bool bClean = true);
 		bool IsEditorOpen() const { return bEditorOpen; }

@@ -54,13 +54,16 @@
     also runs the official MCP conformance suite and the MCP Inspector CLI (tools/list), both pinned in
     Tests/conformance/baseline.json and fetched by npx (needs Node.js), and fails when a baseline scenario fails or a
     failure is not listed there; a listed failure that starts passing prints a NOW PASSES reminder. The summary shows
-    the tool count per mode, the probe statuses, the conformance pass and fail counts and the config check. Editor
+    the tool count per mode, the probe statuses, the conformance pass and fail counts and the config check. Before a
+    host's first smoke it is started once headless and quit (the engine writes Config/DefaultInput.ini on its first
+    start), stamped in Saved/N2CHostWarm.txt, so a fresh host passes smoke on its first run (card 0513). Editor
     logs: BuildLogs/Smoke_<ver>_<stamp>_<mode>.log; conformance and Inspector JSON:
     BuildLogs/Smoke_<ver>_<stamp>_conformance/.
 
     -Test first runs Tests/python (pytest, Content/Python logic with a stub `unreal` module, no editor) on the engine's
     own Python through `uv run` with the pinned Tests/python/requirements.txt (needs uv on PATH; without it the step is
-    a WARN), then Automation RunTests <TestFilter> in a headless editor. Logs: BuildLogs/PyTest_<ver>_<stamp>.log and
+    a WARN), then Automation RunTests <TestFilter> in a headless editor (-unattended -nullrhi -RenderOffScreen: without
+    -RenderOffScreen an asset editor a spec opens is fatal on UE 5.6 and 5.7, card 0509). Logs: BuildLogs/PyTest_<ver>_<stamp>.log and
     BuildLogs/Tests_<ver>_<stamp>.log plus its report folder. The editor runs with -culture=en (-TestCulture changes
     it, for a locale check of the capture goldens). -UpdateGoldens passes -N2CUpdateGoldens, so the golden specs
     (NodeToCode.Capture.Golden, NodeToCode.LLM.Payload.Golden) rewrite their goldens instead of comparing; review and
@@ -465,6 +468,32 @@ function Show-Failure([string]$log) {
 # ---------------------------------------------------------------------------
 # Smoke and tests
 
+# Card 0513: the first time an engine opens a new host project it writes Config/DefaultInput.ini (the input settings'
+# axis configs), so the first smoke on a fresh host failed its "host Config/*.ini unchanged" check. Before the first
+# smoke, a host that was never opened gets one headless start that quits at once, so that write lands before smoke
+# hashes Config; Saved/N2CHostWarm.txt records it. A host that already has DefaultInput.ini was opened before and is
+# only stamped. Returns $true when the host is warm.
+$HostWarmStamp = 'Saved/N2CHostWarm.txt'
+function Initialize-HostWarm($h, [string]$engine, [string]$ver, [string]$stamp) {
+    $stampPath = Join-Path $h.Dir $HostWarmStamp
+    if (Test-Path $stampPath) { return $true }
+    $how = 'opened before'
+    if (-not (Test-Path (Join-Path $h.Dir 'Config/DefaultInput.ini'))) {
+        Write-Step "Warming up host UE $ver (first start of a new host: the engine's first-run Config writes land before smoke)"
+        $log = Join-Path $LogRoot "Warmup_${ver}_$stamp.log"
+        $code = Invoke-Editor (Get-EngineTool $engine 'EditorCmd') @($h.UProject, '-ExecCmds="QUIT_EDITOR"',
+            "-abslog=`"$log`"", '-unattended', '-nullrhi', '-nosplash', '-nosound', '-NoLiveCoding') 15
+        if ($code -ne 0) {
+            Write-Host "WARMUP FAIL (UE $ver): editor exit $code - see $log" -ForegroundColor Red
+            return $false
+        }
+        $how = 'warm-up start, log ' + (Split-Path $log -Leaf)
+    }
+    New-Item -ItemType Directory -Force (Split-Path $stampPath) | Out-Null
+    Set-Content -Path $stampPath -Encoding utf8 -Value "UE $ver host warm ($how) at $(Get-Date -Format s)"
+    return $true
+}
+
 # Returns 'smoke PASS (<summary>)' or 'smoke FAIL (<summary or reason>)'
 function Invoke-Smoke($h, [string]$engine, [string]$ver, [string]$stamp) {
     $script = Join-Path $PluginRoot 'Tests/smoke/smoke_check.py'
@@ -534,7 +563,7 @@ function Invoke-Tests($h, [string]$engine, [string]$ver, [string]$stamp) {
     $editorArgs = @(
         $h.UProject, "-ExecCmds=`"Automation RunTests $TestFilter`"", '-TestExit="Automation Test Queue Empty"',
         "-ReportExportPath=`"$reportDir`"", "-abslog=`"$log`"",
-        '-unattended', '-nullrhi', '-nosplash', '-nosound', '-NoLiveCoding', "-culture=$TestCulture")
+        '-unattended', '-nullrhi', '-RenderOffScreen', '-nosplash', '-nosound', '-NoLiveCoding', "-culture=$TestCulture")
     if ($withToolset) { $editorArgs += '-EnablePlugins=ToolsetRegistry' }
     if ($UpdateGoldens) { $editorArgs += '-N2CUpdateGoldens' }
     $code = Invoke-Editor (Get-EngineTool $engine 'EditorCmd') $editorArgs $TestTimeoutMinutes
@@ -666,7 +695,11 @@ foreach ($ver in $targets) {
 
     if ($Smoke) {
         $smokeWatch = [Diagnostics.Stopwatch]::StartNew()
-        $results[$ver] += ', ' + (Invoke-Smoke $h $engine $ver $stamp) + " [$([int]$smokeWatch.Elapsed.TotalSeconds)s]"
+        if (Initialize-HostWarm $h $engine $ver $stamp) {
+            $results[$ver] += ', ' + (Invoke-Smoke $h $engine $ver $stamp) + " [$([int]$smokeWatch.Elapsed.TotalSeconds)s]"
+        } else {
+            $results[$ver] += ', smoke FAIL (host warm-up failed)'
+        }
     }
     if ($Test) {
         $results[$ver] += ', ' + (Invoke-PythonTests $engine $ver $stamp)

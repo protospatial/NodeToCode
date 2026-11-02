@@ -287,12 +287,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FN2CGraphOverlayIdentityTest, "NodeToCode.Edito
 
 bool FN2CGraphOverlayIdentityTest::RunTest(const FString& Parameters)
 {
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor's window (see NodeToCode.Editor.Focus). This case
-	// runs on 5.8; the same behaviour is checked live on the others.
-	AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-	return true;
-#else
 	UAssetEditorSubsystem* AssetEditors = GEditor ? GEditor->GetEditorSubsystem<UAssetEditorSubsystem>() : nullptr;
 	if (!TestNotNull(TEXT("asset editor subsystem"), AssetEditors))
 	{
@@ -346,7 +340,6 @@ bool FN2CGraphOverlayIdentityTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the original's EventGraph has an overlay"), Injector.HasLiveOverlay(GraphA));
 	TestTrue(TEXT("the copy's EventGraph (same GUID) has its own overlay"), Injector.HasLiveOverlay(GraphB));
 	return true;
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -506,10 +506,6 @@ namespace N2CTest
 
 	bool FToolSpecBlueprint::OpenInEditor(FAutomationTestBase& Test, UEdGraph* Graph, bool bClean)
 	{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-		Test.AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there, so this focus-bound case does not run"));
-		return false;
-#else
 		TSharedPtr<IBlueprintEditor> Opened;
 		FString OpenError;
 		if (!Test.TestTrue(TEXT("Blueprint editor opens: ") + OpenError, FN2CMcpBlueprintUtils::OpenBlueprintEditor(GetBlueprint(), Opened, OpenError)))
@@ -526,7 +522,6 @@ namespace N2CTest
 			GetPackage()->SetDirtyFlag(false);
 		}
 		return true;
-#endif
 	}
 
 	void FToolSpecBlueprint::CloseEditor()
