@@ -21,8 +21,10 @@ Stdlib only; run with `python -I` (set N2C_PORT_OFFSET when other agents run pro
      tools, changes nothing, and the answer names Health, 50, both messages and the node that never runs.
    - translate: "/nodetocode:translate <path> EventGraph provider=anthropic model=claude-haiku-5-5". Passes when
      open-blueprint-asset comes before translate-focused-blueprint (language cpp, the provider and model given), the
-     translation succeeds, and EventGraph/EventGraph.h and EventGraph/EventGraph.cpp (with both messages) are
-     written in a new <Blueprint>_<time> folder of the host's Saved/NodeToCode/Translations (deleted afterwards).
+     translation succeeds, and exactly one new folder appears in the host's Saved/NodeToCode/Translations: the
+     editor's run folder (manifest.json, EventGraph/EventGraph.h and EventGraph/EventGraph.cpp with both messages),
+     which the tool's result names as run_folder. The agent writes no copy of its own (card 0510: since #226 the
+     command's own save made a second folder) and its report names the run folder. The folder is deleted afterwards.
    - bridge: the stdio route. The same question with only the stdio bridge (Content/Python/mcp_bridge, which finds
      the editor through its discovery entry, --project naming the host) as the MCP server (--strict-mcp-config) and
      the plugin's skills. Passes when the agent loads the skill, reads by path through mcp__nodetocode__* tools and
@@ -337,6 +339,13 @@ def main():
                     for d in translated_dirs:
                         for root, _dirs, fnames in os.walk(d):
                             files += [os.path.relpath(os.path.join(root, n), d).replace(os.sep, '/') for n in fnames]
+                    run_folder = ''
+                    try:
+                        text = tcall['text']
+                        run_folder = json.JSONDecoder().raw_decode(text, text.index('{'))[0].get('run_folder') or ''
+                    except (ValueError, AttributeError):
+                        pass
+                    writes = [c for c in r['calls'] if c['tool'] in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')]
                     code = ''
                     for d in translated_dirs:
                         for name in ('EventGraph/EventGraph.h', 'EventGraph/EventGraph.cpp'):
@@ -352,12 +361,16 @@ def main():
                                            and tcall['input'].get('model') == 'claude-haiku-5-5'),
                         'translation_ok': not tcall['error'] and '"graphs"' in tcall['text'],
                         'one_new_folder': len(translated_dirs) == 1,
-                        'files_written': {'EventGraph/EventGraph.h', 'EventGraph/EventGraph.cpp'} <= set(files),
+                        'files_written': {'manifest.json', 'EventGraph/EventGraph.h', 'EventGraph/EventGraph.cpp'} <= set(files),
+                        'result_names_run_folder': bool(translated_dirs and run_folder) and os.path.normcase(
+                            os.path.normpath(run_folder)) == os.path.normcase(os.path.normpath(translated_dirs[0])),
+                        'agent_wrote_nothing': not writes,
                         'code_has_messages': 'Low health' in code and 'Healthy' in code,
                         'report_names_folder': bool(translated_dirs) and os.path.basename(translated_dirs[0]) in r['answer'],
                         'nothing_else_changed': not [t for t in names if t not in READ_TOOLS and t not in CHANGING_OK],
                     }
                     record('translate', checks, {'folders': [os.path.basename(d) for d in translated_dirs],
+                                                 'run_folder': run_folder, 'agent_writes': [c['tool'] for c in writes],
                                                  'files': files, 'mcp_tools': names, 'answer': r['answer'][:2000],
                                                  'seconds': r['seconds']})
                 if report['fixture_ok'] and 'bridge' in scenarios:

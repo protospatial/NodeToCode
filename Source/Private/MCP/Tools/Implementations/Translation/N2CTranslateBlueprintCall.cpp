@@ -248,6 +248,8 @@ TSharedRef<FJsonObject> FN2CTranslateBlueprintCall::BuildOutputSchema()
         { TEXT("graphs"), Array(Graph) },
         { TEXT("usage"), Usage },
         { TEXT("warnings"), Array(String()) },
+        { TEXT("run_folder"), String(TEXT("The run folder the editor archived this translation in (absolute): its manifest.json, the N2C JSON and one folder per graph. Report it; do not save another copy")) },
+        { TEXT("files"), Array(String(), TEXT("Absolute paths of the code files written in run_folder (declaration, implementation, notes)")) },
         { TEXT("savedTo"), String(TEXT("When the translation is larger than the result limit: the file holding all of it (read-file, or the resource_link)")) },
         { TEXT("bytes"), Integer(TEXT("Size of the saved file")) },
     }, { TEXT("graphs") }, TEXT("The N2C translation response (the LLM module's graphs and usage)"));
@@ -318,7 +320,7 @@ TOptional<FMcpToolCallResult> FN2CTranslateBlueprintCall::BuildSuccessResult(con
         }
     }
     Summary->SetArrayField(TEXT("graphs"), Graphs);
-    for (const TCHAR* Field : { TEXT("usage"), TEXT("warnings") })
+    for (const TCHAR* Field : { TEXT("usage"), TEXT("warnings"), TEXT("run_folder"), TEXT("files") })
     {
         if (const TSharedPtr<FJsonValue> Value = Translation->TryGetField(Field))
         {
