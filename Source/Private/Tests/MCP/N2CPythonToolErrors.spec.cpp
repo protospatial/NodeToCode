@@ -54,17 +54,17 @@ void FN2CPythonToolErrorsSpec::Define()
 		It(TEXT("reports a syntax error with isError"), [this]()
 		{
 			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
-			// The Python plugin logs the compile error on LogPython, one line at a time: the message, the source line
-			// and the caret under it
-			AddExpectedErrorPlain(TEXT("SyntaxError"), EAutomationExpectedErrorFlags::Contains, 0);
-			AddExpectedErrorPlain(TEXT("def broken(:"), EAutomationExpectedErrorFlags::Contains, 0);
-			AddExpectedError(TEXT("^(LogPython:)?\\s*\\^+\\s*$"), EAutomationExpectedErrorFlags::Contains, 0);
+			// nodetocode._mcp_runner compiles the code itself (card 0299): the SyntaxError is the answer's error and
+			// traceback, and nothing is logged on LogPython
 			FMcpToolCallResult Result;
 			TSharedPtr<FJsonObject> Body;
 			if (!CallJson(TEXT("run-python"), { { TEXT("code"), TEXT("def broken(:\n    pass") } }, Result, Body)) { return; }
 			TestTrue(TEXT("isError"), Result.bIsError);
 			TestFalse(TEXT("success"), Body->GetBoolField(TEXT("success")));
 			TestTrue(TEXT("error names the syntax error"), Body->GetStringField(TEXT("error")).Contains(TEXT("SyntaxError")));
+			FString Traceback;
+			TestTrue(TEXT("the traceback names the code's line 1"), Body->TryGetStringField(TEXT("traceback"), Traceback)
+				&& Traceback.Contains(TEXT("<run-python>")) && Traceback.Contains(TEXT("line 1")));
 		});
 
 		It(TEXT("returns a success without isError and with the result as data"), [this]()

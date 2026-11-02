@@ -11,3 +11,8 @@ One record per decision, numbered in the order they were made. A record is amend
 - [0005 — MCP tool exposure: declared toolsets, settings profiles and an opt-in tool search](0005-mcp-tool-exposure-toolsets-and-tool-search.md) — proposed (2026-10-25), provisional pending the owner's confirmation on card 0106
 - [0006 — User docs location: the GitHub wiki stays the target, its source lives in wiki/ in the repo](0006-user-docs-location-wiki-in-repo.md) — decided (2026-10-22), by the owner on card 0123
 - [0007 — CRUD tool families: fix crash and corruption defects, then freeze](0007-crud-tool-families-fix-then-freeze.md) — proposed (2026-10-26), provisional pending the owner's confirmation on card 0140
+- [0008 — Graph types: own every K2 graph, refuse pose and RigVM graphs with a typed error](0008-graph-types-every-k2-graph.md) — decided (2026-11-02), by the owner on card 0247 (option B)
+- [0009 — Material MVP: part 1 of the 0247 graph-type record (materials)](0009-material-mvp.md) — decided (2026-11-02), by the owner on card 0443 (the card's recommended answers)
+- [0010 — Script library: retire the saved-script tools, keep three utilities as Agent Skills, delete the rest](0010-script-library-cut-and-convert.md) — decided (2026-11-02), by the owner on card 0158
+- [0011 — Engine versions: UE 5.6 to 5.8, the three latest, with agent features gated to 5.8](0011-engine-versions-three-latest.md) — decided (2026-11-02), by the owner on card 0052
+- [0012 — Usage telemetry: none; public stats and a poll answer the usage question](0012-no-usage-telemetry.md) — decided (2026-11-02), by the owner on card 0094
