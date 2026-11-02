@@ -22,4 +22,7 @@ copies, and the Claude Code plugin around them. User pages: `wiki/developers/Age
   draft entry for other marketplaces `Agents/claude-code/marketplace-entry.json`) is checked by the same script and
   `Tests/python/test_claude_plugin.py`: its `version` must equal `NodeToCode.uplugin`'s `VersionName` (bump both), and
   its command may name registered tools only. Run `claude plugin validate --strict` on both folders after a change;
-  live check: `Tests/mcp_probe/live_claude_plugin_0172.py`. User page: `wiki/developers/Claude-Code-Plugin.md`.
+  live check: `Tests/mcp_probe/live_claude_plugin_0172.py`. Validate also prints "Plugin directory checks" (what the
+  plugin directory would ask for) that do not change its result: the probe reports those codes without failing, any
+  other warning fails it. The listing icon `.claude-plugin/icon.png` (1024 px, named by `icon`) is rendered from
+  `Resources/claude_plugin_icon.svg`; `privacyPolicyUrl` is still unset (the owner picks the page, card 0511). User page: `wiki/developers/Claude-Code-Plugin.md`.
