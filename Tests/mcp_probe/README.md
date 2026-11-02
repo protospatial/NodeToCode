@@ -286,6 +286,13 @@ its environment when no key is saved, so a live check never types or saves a key
   5.6/5.7 404 -32601); the stdio bridge carries a modern `server/discover` and `tools/list`; with `--claude`, the
   headless Claude Code CLI connects (its `server/discover` is in the log) and calls a tool.
   Report: `logs/live_modern_0210.json`.
+- `live_place_cpp_0314.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5] [--compile <build.ps1>]`
+  (the provider's key from `.env`) checks place-cpp-translation end to end (card 0314): the probe Blueprint is
+  translated to C++ (an MCP run), a dry run into the host project's module names `AActor` as the parent, includes
+  `Kismet/KismetSystemLibrary.h` and writes nothing; module `Engine` and a `run_folder` outside the output directory
+  are refused; `dry_run` false writes the header and .cpp inside the module's Source folder; with `--compile` the host
+  is built with the placed class. The files are deleted and the host's Build.cs put back afterwards. No key is printed.
+  Report: `logs/live_place_cpp_0314.json`.
 - `live_focus_0150.py --engine ... --project ... --label 5.8 [--no-cli]` (no provider key) checks that the focused
   Blueprint follows what was opened last (card 0150): three in-memory Actor Blueprints under a fresh
   `/Game/N2CTest/Focus0150_<time>` folder, opened in turn with open-blueprint-asset, re-opened while already open,

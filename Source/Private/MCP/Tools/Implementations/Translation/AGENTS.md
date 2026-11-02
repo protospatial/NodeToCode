@@ -117,6 +117,49 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   which no graph was translated returns its full result JSON as the error; cancelled or timed out: plain text
 - **Use Case**: translating a set of graphs (a tag, a folder's Blueprints) without opening them
 
+### place-cpp-translation
+- **Description**: Turns a saved C++ translation run into a class a project module compiles (card 0314), through
+  `FN2CCppPlacement` (`N2CCppPlacement.h` in this folder): a UCLASS header (`<MODULE>_API`, the parent class,
+  `GENERATED_BODY()`, the graph declarations in the class body, struct and enum entries before it, `<Class>.generated.h`
+  last), a .cpp that includes the header and the resolved includes and holds the implementations (a definition
+  qualifier that names no native type, the LLM's `ABP_Enemy_C::`, becomes the new class's; the implementation notes
+  close the file as a comment), and the modules the code needs
+- **Parameters**:
+  - `module` (required): a C++ module of the project (`IProjectManager`) or of a plugin loaded from the project
+    (`EPluginLoadedFrom::Project`), whose `Source/<Module>/<Module>.Build.cs` exists; engine and marketplace modules
+    and NodeToCode's own are refused
+  - `class_name` (required): with or without its prefix (`MyActor`, `AMyActor`); the prefix follows the parent (`A`
+    for an Actor, else `U`), the files are `<Name>.h` and `<Name>.cpp`
+  - `parent_class` (optional): a native class (`Actor`, `ACharacter`, `/Script/Engine.Pawn`); default: the first
+    native class above the translated Blueprint (the asset named by the N2C JSON's `metadata.name`, which must be
+    unique), else an error asking for it
+  - `run_folder` (optional): a run folder inside the translation output directory (absolute or relative to it); default
+    the latest run of this editor session. A single or MCP run in C++: a batch run or another language is refused
+  - `subfolder` (optional): a folder below `Public/` and `Private/` (or the module root when the module has no such
+    split), segments of letters, digits and `_` joined by `/`
+  - `dry_run` (optional, default true): true returns the plan and writes nothing
+- **Includes and modules**: each node's `member_parent` and each `X::` the code names, looked up as a native class or
+  struct (`FindFirstObject`, with or without its C++ prefix); the include is its `IncludePath` metadata (a struct's
+  `ModuleRelativePath` without `Public/`, `Classes/`, `Private/`), the module is its `/Script/<Module>` package.
+  `requiredModules` is those plus the parent's and Core, CoreUObject; `missingModules` the ones the Build.cs does not
+  list (every quoted name in its `*DependencyModuleNames` statements). A `member_parent` that is a Blueprint gets a
+  warning, not an include
+- **Writes** (`dry_run` false): the header, the .cpp and, with modules missing, the Build.cs (added to its first
+  `PrivateDependencyModuleNames.AddRange` list, else `PublicDependencyModuleNames`; with neither, `buildCs.problem`
+  says to add them by hand and the Build.cs is left alone). Every path must lie inside the module's Source folder
+  (`FN2CCppPlacement::IsInside`: links and `..` resolved, `FN2CPathUtils::IsDeniedForAgentAccess`), and each file is
+  written through `FN2CFileUtils::SaveStringAtomically`, the previous file kept as `<file>.bak`
+- **Returns**: JSON `dryRun`, `runFolder`, `module`, `moduleSourceDir`, `className`, `parentClass`, `header` and
+  `source` (`path`, `exists`, and `content` in a dry run), `includes`, `requiredModules`, `missingModules`, `buildCs`
+  (`path`, `changed`, `problem`), `warnings`, `written`, `backups`
+- **Errors** (`isError: true`, plain text): a missing or unknown module, a bad class name or subfolder, an unknown
+  parent, a run folder outside the output directory, a run that is not a single C++ translation, nothing to place
+- **Security**: the only tool that writes source code. Nothing is written without `dry_run` false, nothing outside the
+  chosen module's Source folder, and only into the project's own modules; the code is LLM output and is not compiled
+  here. Threat model: "place-cpp-translation" in `Context/mcp-server/threat-model.md`
+- **Use Case**: taking a reviewed translation into the project as a class to compile; tests:
+  `NodeToCode.Translation.CppPlacement`
+
 ## Translation Languages
 
 ### Compiled Languages
