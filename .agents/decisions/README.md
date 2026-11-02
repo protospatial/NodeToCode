@@ -13,3 +13,4 @@ One record per decision, numbered in the order they were made. A record is amend
 - [0007 — CRUD tool families: fix crash and corruption defects, then freeze](0007-crud-tool-families-fix-then-freeze.md) — proposed (2026-10-26), provisional pending the owner's confirmation on card 0140
 - [0008 — Graph types: own every K2 graph, refuse pose and RigVM graphs with a typed error](0008-graph-types-every-k2-graph.md) — decided (2026-11-02), by the owner on card 0247 (option B)
 - [0009 — Material MVP: part 1 of the 0247 graph-type record (materials)](0009-material-mvp.md) — decided (2026-11-02), by the owner on card 0443 (the card's recommended answers)
+- [0010 — Script library: retire the saved-script tools, keep three utilities as Agent Skills, delete the rest](0010-script-library-cut-and-convert.md) — decided (2026-11-02), by the owner on card 0158
