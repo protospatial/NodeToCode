@@ -31,22 +31,22 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 - **Description**: Searches the classes a Blueprint can derive from, scored by how well their names match
   (read-only, `readOnlyHint`). Runs over every loaded class and every Blueprint asset on each call, on the game
   thread, with no cache. Each class is listed once (`Execute` drops a repeated `classPath`)
-- **Parameters**:
-  - `searchTerm` (required): Text matched case-insensitively against the class name, then the display name, the
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#search-blueprint-classes)):
+  - `searchTerm`: Text matched case-insensitively against the class name, then the display name, the
     description and the category (`CalculateRelevanceScore`). An empty string matches every class
-  - `classType` (optional, default `all`): `all`, `actor`, `actorComponent`, `object` or `userWidget`, tested with
+  - `classType`: `all`, `actor`, `actorComponent`, `object` or `userWidget`, tested with
     `IsChildOf` (`PassesClassTypeFilter`): on a native class itself, and for a Blueprint asset on its first native
     parent (the `NativeParentClass` tag), so a Character Blueprint is an `actor`
-  - `includeEngineClasses` (optional, default true): With false, classes under `/Script/Engine`, `/Script/CoreUObject`,
+  - `includeEngineClasses`: With false, classes under `/Script/Engine`, `/Script/CoreUObject`,
     `/Script/UMG` and `/Engine/` are left out (`IsEngineClass`); other engine modules (`/Script/Paper2D`,
     `/Script/AIModule`, ...) stay
-  - `includePluginClasses` (optional, default true): With false, other `/Script/` modules and paths containing
+  - `includePluginClasses`: With false, other `/Script/` modules and paths containing
     `/Plugins/` are left out (`IsPluginClass`)
-  - `includeDeprecated` (optional, default false), `includeAbstract` (optional, default true): Keep deprecated or
+  - `includeDeprecated`, `includeAbstract`: Keep deprecated or
     abstract classes, native or Blueprint (a Blueprint's flags come from its `ClassFlags` tag). Abstract classes such
     as `UserWidget`, `ActorComponent` and `PrimaryDataAsset` are valid parents, as in the editor's Pick Parent Class
     dialog
-  - `maxResults` (optional, default 50): Clamped to 1-200 (`0` returns one result, `500` returns 200)
+  - `maxResults`: Clamped to 1-200 (`0` returns one result, `500` returns 200)
 - **Returns**: `classes`, `totalFound`, `hasMore` (see "Result Shape")
 - **Errors**: `Missing required parameter: searchTerm`
 - Only native classes come from the class iterator (`CLASS_Native`, not compiled from a Blueprint); Blueprint
@@ -62,35 +62,35 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   so a `UserWidget` parent gives a `UWidgetBlueprint` (with its widget tree), and the asset registry and the editor's
   asset-created hooks see the new asset (card 0166). As in the Content Browser, creating the asset is not an undo
   step: undoing a transaction that created a Blueprint destroys it in memory while its saved package stays on disk
-- **Parameters**:
-  - `blueprintName` (required): Asset name, checked with `FKismetNameValidator` (at most 100 characters, no `.`), as
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-blueprint-class)):
+  - `blueprintName`: Asset name, checked with `FKismetNameValidator` (at most 100 characters, no `.`), as
     an object, package and file name (no spaces, `/` or other reserved characters, no device names) and against
     `IAssetTools::IsNameAllowed` (`ValidateBlueprintName`)
-  - `addPrefix` (optional, default true): Put `BP_` in front of the name unless it already starts with it
+  - `addPrefix`: Put `BP_` in front of the name unless it already starts with it
     (`MyPlayerCharacter` becomes `BP_MyPlayerCharacter`, `BP_Prefixed` stays); false uses the name as given
-  - `parentClassPath` (required): Object path of the parent class, found with `FindObject` then `LoadObject`
+  - `parentClassPath`: Object path of the parent class, found with `FindObject` then `LoadObject`
     (`ValidateParentClass`): `/Script/Engine.Character`, `/Script/UMG.UserWidget` for a Widget Blueprint,
     `/Script/CoreUObject.Interface` for a Blueprint interface, or a Blueprint class as
     `/Game/Folder/BP_Base.BP_Base_C`, the `classPath` search-blueprint-classes returns for a Blueprint asset (export
     text such as the asset registry's is accepted too). A bare name (`Actor`) is not found. The class must pass
     `FKismetEditorUtilities::CanCreateBlueprintOfClass`. An `AnimInstance` parent is refused: an Animation Blueprint
     needs a target skeleton, which the tool cannot set
-  - `assetPath` (required): Content folder for the new asset, checked with
+  - `assetPath`: Content folder for the new asset, checked with
     `FN2CMcpContentBrowserUtils::ValidateContentPath` and the write policy `IsWritableContentPath` (`/Game` or a
     project plugin's `/<PluginName>`; `/Engine` and other plugins only with the user's **Allow MCP Writes Outside
     Project**, card 0182). An existing folder (`/Game` included) is used; a missing one is
     created (`EnsureDirectoryExists`) once every check has passed
-  - `ifExists` (optional, default `error`, any case): What an existing asset of that name in the folder does. `error`
+  - `ifExists` (any case): What an existing asset of that name in the folder does. `error`
     fails; `unique` picks a free name with `IAssetTools::CreateUniqueAssetName` (`BP_Door` becomes `BP_Door1`) and
     returns it as `blueprintName`. An existing asset is never overwritten. Other values are refused
-  - `blueprintType` (optional, default `auto`, any case): `auto` gives `Interface` for an interface parent and
+  - `blueprintType` (any case): `auto` gives `Interface` for an interface parent and
     `Normal` otherwise; `normal`, `const` and `interface` are used as given. `interface` needs the parent
     `/Script/CoreUObject.Interface`, and an interface parent needs `interface` (or `auto`). Other values are refused
     (`ResolveBlueprintType`)
-  - `openInEditor` (optional, default true): Open the new Blueprint after saving
-  - `openInFullEditor` (optional, default true): true calls `FKismetEditorUtilities::BringKismetToFocusAttentionOnObject`,
+  - `openInEditor`: Open the new Blueprint after saving
+  - `openInFullEditor`: true calls `FKismetEditorUtilities::BringKismetToFocusAttentionOnObject`,
     false `UAssetEditorSubsystem::OpenEditorForAsset` (`OpenBlueprintInEditor`)
-  - `description` (optional): Stored as the Blueprint's `BlueprintDescription`
+  - `description`: Stored as the Blueprint's `BlueprintDescription`
 - **Returns**: `success`, `saved`, `blueprintName` (the final name), `packagePath`, `assetPath` (object path),
   `blueprintInfo` (`className`, `assetClass` as the Blueprint asset's class, `Blueprint` or `WidgetBlueprint`,
   `parentClass` as the class's short name, `blueprintType`, `generatedClass`), `nextSteps`, and the `compile` object
@@ -126,7 +126,6 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   `An asset already exists at <object path>. Pass ifExists 'unique' ...`
 - **Spec**: `NodeToCode.MCP.CreateBlueprintClass` (`Source/Private/Tests/MCP/N2CCreateBlueprintClass.spec.cpp`)
   saves real Blueprints under `/Game/__N2CTest` and deletes the folder after each case
-- **Known issue (card 0182):** `assetPath` is not limited to `/Game` and project plugin content
 
 ## Result Shape (search-blueprint-classes)
 

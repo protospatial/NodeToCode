@@ -34,7 +34,7 @@ tool's full `inputSchema`, `outputSchema` and `_meta` for scripts and the docs l
   `Context/**`, every `Source/**/AGENTS.md`, `wiki/developers/`) against these files, and these files against the
   tool sources, with no editor. It runs on every pull request into dev-2.0 (job `docs-lint` in
   `.github/workflows/docs-check.yml`) and in `build.ps1 -Test` (`Tests/python/test_docs_lint.py`). It fails on a
-  backticked tool-like name that is not registered, an argument in a tool's **Parameters** list that is not in its
+  backticked tool-like name that is not registered, an argument in a tool's **Arguments** list that is not in its
   `inputSchema`, an "N tools" count the reference does not give, a tool missing from the list below or with no doc
   section, a broken relative link or repo path, a broken link between `wiki/` pages (`--wiki <folder>` checks another
   copy of the user pages, such as a clone of the published wiki), and a reference whose tool names, count, toolsets
@@ -131,8 +131,8 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
     unless the command line has `-N2CMcp`), graceful shutdown on exit
-*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 67,
-    or 64 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
+*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 68,
+    or 65 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
     Toolsets
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
@@ -360,7 +360,7 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 
 ### Tool Implementations (`Implementations/`)
 
-67 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
+68 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
 (folders and toolsets do not map one to one), and every tool's schema is in [tools.generated.md](tools.generated.md);
 `Scripts/docs_lint.py` fails when this list misses a registered tool:
 
@@ -434,6 +434,7 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 *   `get-available-translation-targets` - List target languages
 *   `get-available-llm-providers` - List LLM providers
 *   `get-translation-output-directory` - Get output directory path
+*   `place-cpp-translation` - Turn a saved C++ translation run into a class in a project module (dry run by default; card 0314)
 
 **FileSystem/** - File operations:
 *   `read-path` - List directory contents
@@ -640,10 +641,10 @@ Server):
     shapes, for clients with a tool limit such as VS Code's 128 and Windsurf's 100).
 
 `tools/list` is then fixed until the server starts again: no call changes it, every client sees the same list. With
-Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 67, tool search 3,
-Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (64
+Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 68, tool search 3,
+Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (65
 and 4; Python scripting only logs a warning at start). The settings need an editor restart. `build.ps1 -Smoke` checks
-each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 67, `tool_search` 3,
+each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 68, `tool_search` 3,
 `python_only` 7).
 
 Toolsets are declared once in `Source/Public/MCP/Tools/N2CMcpToolsets.h`, and every tool names its toolset by identity
@@ -695,7 +696,7 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     `MCPServers=(...)`: a `+MCPServers=(...)` line left the list empty on 5.8 and the subsystem logged nothing.
 *   **Tool profile**: Default toolsets and List every tool (the defaults; Epic's client lists tools once and would
     see only the meta-tools in Tool search, nested behind its own `call_tool`). Tools register as
-    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 67 tools with Allow MCP
+    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 68 tools with Allow MCP
     Python Execution, all in the first `tools/list` (one page, no cursor).
 *   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
     `Accept: application/json, text/event-stream`, `Mcp-Session-Id` from the first response on every later POST,
@@ -836,7 +837,7 @@ picks, the choice is not saved; the warning says to remove it from the project f
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
   `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so tool search cannot reach them either.
-  Without it the default mode lists 64 tools, not 67.
+  Without it the default mode lists 65 tools, not 68.
 - **Allow MCP Writes Outside Project** (default off): lets the content-writing tools write outside `/Game` and the
   project's plugins (`/Engine`, engine and Fab plugins, `/NodeToCode`); read by
   `FN2CMcpContentBrowserUtils::IsWritableContentPath` (card 0182; the policy is "Where tools may write" in

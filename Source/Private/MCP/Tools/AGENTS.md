@@ -161,7 +161,7 @@ changes it, every client sees the same list, and the server never sends `notific
   also has goes in that table and in `wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md` (pytest
   `test_epic_overlap_mapping.py` compares them); `NodeToCode.MCP.EpicOverlap` checks the table names registered tools.
 - **Checked by:** `build.ps1 -Smoke` starts one editor per mode with Python execution allowed and compares
-  `tools/list` with `Tests/smoke/expected.json` (`default` 67, `tool_search` 3, `python_only` 7). The `tool_search`
+  `tools/list` with `Tests/smoke/expected.json` (`default` 68, `tool_search` 3, `python_only` 7). The `tool_search`
   mode is set with the old `bEnableDynamicToolDiscovery=True` key, so it also checks the migration, and it calls every
   meta-tool and checks `tools/list` is unchanged. `NodeToCode.MCP.Toolsets` and `NodeToCode.Registry` cover the same
   in specs. A card that adds or removes a tool updates those counts and the tables in this file.
@@ -189,9 +189,9 @@ like Epic's toolset classes on UE 5.8 (`BlueprintTools`, `MaterialTools`); a 5.8
 | `ContentBrowserTools` | `open-content-browser-path`, `read-content-browser-path`, `search-content-browser`, `open-blueprint-asset`, `create-folder`, `move-folder`, `rename-folder`, `move-asset`, `copy-asset`, `rename-asset` | `ContentBrowser/` |
 | `FileSystemTools` | `read-path`, `read-file` | `FileSystem/` |
 | `PythonTools` | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | `Python/` |
-| `TranslationTools` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory` | `Translation/` |
+| `TranslationTools` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory`, `place-cpp-translation` | `Translation/` |
 
-That is 67 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
+That is 68 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
 to `N2CMcpToolsets::All`; write its description for a model that sees nothing else of it (the domain and the kinds of
 operation, 1-3 sentences, no tool names). The Material graph cards (epic 0442) add `MaterialTools` there with their
 first tool.
@@ -561,7 +561,9 @@ reference, `Context/mcp-server/tools.generated.json` and `tools.generated.md`: `
 Scripts/generate_tool_reference.py --engine <UE root> --project <host .uproject>` after building; `build.ps1 -Test`
 fails while they are stale (`Tests/python/test_tool_reference.py`, `NodeToCode.MCP.ToolReference`), and so does
 `python -I Scripts/docs_lint.py` (CI, on every pull request) while a doc names a tool, argument or count the reference
-does not have. Renaming or removing a tool also means
+does not have. In the folder's `AGENTS.md`, give the tool a `### <tool>` section whose **Arguments** list links to the
+tool's entry in `tools.generated.md` for types, required arguments and defaults, and says only what the schema does
+not (card 0336). Renaming or removing a tool also means
 updating the Agent Skills that name it (`Agents/claude-code/nodetocode/skills/`, then `python -I
 Agents/sync_skills.py`); `Tests/python/test_agent_skills.py` fails while a skill names a tool that is not registered.
 

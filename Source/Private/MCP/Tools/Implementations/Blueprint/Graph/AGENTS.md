@@ -97,10 +97,10 @@ Nodes and pins are addressed by GUID:
 ### search-blueprint-nodes
 - **Description**: Searches the Blueprint action menu for nodes. Read-only: it describes each result from the
   spawner's template node and never adds anything to the graph (card 0050)
-- **Parameters**:
-  - `searchTerm` (required): Split on spaces; an action matches when every word appears, case-insensitively, in its
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#search-blueprint-nodes)):
+  - `searchTerm`: Split on spaces; an action matches when every word appears, case-insensitively, in its
     full search text (`SearchActions`). Math symbols such as `+` or `*` find the promotable operators
-  - `contextSensitive` (optional, default true): Kept for compatibility. True and false search the same list, the
+  - `contextSensitive`: Kept for compatibility. True and false search the same list, the
     target graph's (see "Targeting and IDs"), and set only `spawnMetadata.isContextSensitive`. That list is what the
     editor's node menu shows with Context Sensitive off: the menu keeps its Blueprint and graph in the filter context
     either way (`SBlueprintActionMenu::ConstructActionContext`), and with Context Sensitive off
@@ -112,17 +112,17 @@ Nodes and pins are addressed by GUID:
     a target graph: with no target argument and no focused graph the search is an error (`No graph to search for`)
     (card 0434). Before card 0434, false ran the filter with an empty context, whose `IsSchemaIncompatible` test
     rejects every action when the context has no Blueprint and no graph, so it found nothing
-  - `blueprintPath`, `graphName`, `graphGuid` (optional): The graph to search for, as for every tool here
-  - `blueprintContext` (optional): The older form of the target, used only when none of `blueprintPath`, `graphName`
+  - `blueprintPath`, `graphName`, `graphGuid`: The graph to search for, as for every tool here
+  - `blueprintContext`: The older form of the target, used only when none of `blueprintPath`, `graphName`
     and `graphGuid` is given, and resolved by the same resolver: `owningBlueprintPath` (Blueprint asset path) and `graphPath`
     (`<Blueprint path>:<GraphName>`, or a graph name of `owningBlueprintPath`). Without `graphPath`: the focused graph
     when it belongs to that Blueprint, else its event graph. A Blueprint that does not load is an error
     (`ASSET_NOT_FOUND`), and so is a graph it does not have (`GRAPH_NOT_FOUND: no graph '<name>' in <path>. Graphs:
     ...`); neither falls back to the focused graph or a global search (`GetContextFromPaths`, cards 0277, 0152)
-  - `maxResults` (optional, default 20): Clamped to 1-100
-  - `category` (optional): Keep actions whose menu category (`FEdGraphSchemaAction::GetCategory`) contains this
+  - `maxResults`: Clamped to 1-100
+  - `category`: Keep actions whose menu category (`FEdGraphSchemaAction::GetCategory`) contains this
     text, ignoring case and spaces (`N2CNodeActions::MatchesCategory`): `flowcontrol` finds `Utilities|Flow Control`
-  - `excludeVMFunctions` (optional, default true): Leave out type-specific math functions such as
+  - `excludeVMFunctions`: Leave out type-specific math functions such as
     `Multiply_FloatFloat`
 - **Returns**: `nodes`, each an N2C JSON node (`id` `SearchNode_1`, `SearchNode_2`, ... numbered per search, `type`,
   `class`, `member_parent`, `member_name`, the optional `title`, `input_pins`, `output_pins` with their default
@@ -147,16 +147,16 @@ Nodes and pins are addressed by GUID:
 
 ### add-bp-node-to-active-graph
 - **Description**: Adds the node of one search result to the target graph
-- **Parameters**:
-  - `nodeName` (required): The result's `spawnMetadata.nodeName`, e.g. `Print String`. Only used when different
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#add-bp-node-to-active-graph)):
+  - `nodeName`: The result's `spawnMetadata.nodeName`, e.g. `Print String`. Only used when different
     actions share the ID (none in the stock engine; see above): the one with this menu name, ignoring case and spaces
-  - `actionIdentifier` (required): From `spawnMetadata.actionIdentifier`, unchanged. It is looked up in the target
+  - `actionIdentifier`: From `spawnMetadata.actionIdentifier`, unchanged. It is looked up in the target
     graph's action list, the same list search-blueprint-nodes builds (`N2CNodeActions::ResolveAction`). The
     identifiers search returned before card 0277 (the action's search text with `>` between lines) are still
     accepted, with or without their `\r` characters, now including actions whose text holds `>` such as
     `Greater ( > )`; the editor log warns that the identifier is old. This compatibility is planned for removal
     after one release
-  - `location` (optional): `{ "x": number, "y": number }` in graph coordinates (default 0, 0). The view's zoom and
+  - `location`: `{ "x": number, "y": number }` in graph coordinates (default 0, 0). The view's zoom and
     pan play no part; the engine snaps the node to the 16-unit grid, so `{ "x": 400, "y": 200 }` gives
     `{ "x": 400, "y": 192 }`
 - **Returns**: `success`, `nodeGuid`, `nodeName` (list title), `graphName`, `blueprintName`, `location` (after
@@ -168,13 +168,13 @@ Nodes and pins are addressed by GUID:
 
 ### connect-pins
 - **Description**: Makes one or more pin connections in the target graph, in one transaction
-- **Parameters**:
-  - `connections` (required): Array of `{ "from": {...}, "to": {...} }`. Each side has:
-    - `nodeGuid` (required): A node of the target graph
-    - `pinGuid` (required): The pin's GUID. When it matches no pin on the node, `pinName` is tried
-    - `pinName` (optional): `PinName` or display name, compared case-insensitively (`FindPinRobustly`)
-    - `pinDirection` (optional): `EGPD_Input` or `EGPD_Output`; filters the `pinName` lookup
-  - `options` (optional): `transactionName` (default `NodeToCode: Connect Pins`) and `breakExistingLinks` (default
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#connect-pins)):
+  - `connections`: Array of `{ "from": {...}, "to": {...} }`. Each side has:
+    - `nodeGuid`: A node of the target graph
+    - `pinGuid`: The pin's GUID. When it matches no pin on the node, `pinName` is tried
+    - `pinName`: `PinName` or display name, compared case-insensitively (`FindPinRobustly`)
+    - `pinDirection`: `EGPD_Input` or `EGPD_Output`; filters the `pinName` lookup
+  - `options`: `transactionName` (default `NodeToCode: Connect Pins`) and `breakExistingLinks` (default
     false)
 - **Rules** (the schema's `CanCreateConnection`, then `N2CPinConnectPolicy::Allow`):
   - A data output and an exec input take any number of links: a second event or Then wired into the same `execute`
@@ -200,10 +200,10 @@ Nodes and pins are addressed by GUID:
 
 ### set-input-pin-value
 - **Description**: Sets the default value of an input pin
-- **Parameters**:
-  - `nodeGuid` (required), `pinGuid` (required): The pin is found by GUID, then by `pinName`
-  - `pinName` (optional): `PinName` or display name, used when `pinGuid` matches no pin
-  - `value` (required): The value as text. An empty value resets the pin to its autogenerated default, as the
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#set-input-pin-value)):
+  - `nodeGuid`, `pinGuid`: The pin is found by GUID, then by `pinName`
+  - `pinName`: `PinName` or display name, used when `pinGuid` matches no pin
+  - `value`: The value as text. An empty value resets the pin to its autogenerated default, as the
     editor's Reset to Default does (Print String's `In String` goes back to `Hello`, a class pin to `None`)
 - **Checked by the engine** (card 0278, `FN2CMcpPinDefault` in `MCP/Utils/N2CMcpPinDefaultUtils.h`): the value is
   first normalized (booleans `true`/`false`/`1`/`0`/`yes`/`no`; an enum entry by name, display name or index becomes
@@ -225,16 +225,16 @@ Nodes and pins are addressed by GUID:
 
 ### delete-blueprint-node
 - **Description**: Deletes nodes from the target graph
-- **Parameters**:
-  - `nodeGuids` (required): Array of node GUIDs. All are checked first: an unknown GUID (`Node with GUID '<guid>' not
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#delete-blueprint-node)):
+  - `nodeGuids`: Array of node GUIDs. All are checked first: an unknown GUID (`Node with GUID '<guid>' not
     found in graph`) or a protected node fails the call and nothing is deleted
-  - `preserveConnections` (optional, default false): Reconnect the links that pass through each deleted node. Before
+  - `preserveConnections`: Reconnect the links that pass through each deleted node. Before
     the node is removed, each linked input is paired with the node's pass-through pin
     (`UEdGraphNode::GetPassThroughPin`): the exec output of a node with exactly one exec input and one exec output, or
     a reroute knot's output. Afterwards each source of the input is linked to each target of that output through the
     schema (`CanCreateConnection`, then `TryCreateConnection`); a link the schema refuses, or one that would replace
     another link, is not made. Data pins of other nodes, and the exec outputs of a Branch or Sequence, are not bridged
-  - `force` (optional, default false): Also delete nodes the editor protects, those whose `CanUserDeleteNode()` is
+  - `force`: Also delete nodes the editor protects, those whose `CanUserDeleteNode()` is
     false: a function entry, the entry and exit tunnels of a collapsed graph or macro. Deleting those can leave the
     Blueprint unable to compile. A collapsed-graph node, an editable function result and events need no force
 - **Returns**: `success`, `blueprintName`, `deletedCount`, `deletedNodes` (each `guid`, `title`, `type`, `graph`, and
@@ -247,16 +247,16 @@ Nodes and pins are addressed by GUID:
 
 ### create-comment-node
 - **Description**: Adds a comment box around nodes of the target graph
-- **Parameters**:
-  - `nodeGuids` (required): Node GUIDs to enclose. GUIDs that are not in the graph are listed in `missingGuids`;
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-comment-node)):
+  - `nodeGuids`: Node GUIDs to enclose. GUIDs that are not in the graph are listed in `missingGuids`;
     comment nodes are skipped; with no valid node the call fails
-  - `commentText` (optional, default `Comment`)
-  - `color` (optional): `{ "r", "g", "b" }`, 0-1. Without `color` the comment is white; with it, a missing component
+  - `commentText` (default `Comment`)
+  - `color`: `{ "r", "g", "b" }`, 0-1. Without `color` the comment is white; with it, a missing component
     is 0.075 (`ParseArguments`), so `{ "r": 0.2 }` gives (0.2, 0.075, 0.075)
-  - `fontSize` (optional, default 18): Clamped to 1-1000
-  - `moveMode` (optional, default `group`): `group` moves the enclosed nodes with the comment; any other value gives
+  - `fontSize` (default 18): Clamped to 1-1000
+  - `moveMode`: `group` moves the enclosed nodes with the comment; any other value gives
     no group movement
-  - `padding` (optional, default 50): Added on every side of the nodes' bounds. The bounds use the stored node size
+  - `padding` (default 50): Added on every side of the nodes' bounds. The bounds use the stored node size
     (`NodeWidth` and `NodeHeight` stay 0 on ordinary nodes; only resizable nodes such as comments store a size), so
     each node counts as 150 x 50 from its position (`CalculateBoundingBox`)
 - **Returns**: `success`, `commentNode` (`guid`, `text`, `x`, `y`, `width`, `height`, `color`, `fontSize`,
@@ -267,11 +267,11 @@ Nodes and pins are addressed by GUID:
 
 ### find-nodes-in-graph
 - **Description**: Finds nodes of the target graph by keyword or GUID and returns them as N2C JSON with GUIDs
-- **Parameters**:
-  - `searchTerms` (required): Array of keywords or node GUIDs; a node matches when any term matches
-  - `searchType` (optional, default `keyword`): `keyword` or `guid`
-  - `caseSensitive` (optional, default false): For keywords
-  - `maxResults` (optional, default 50): Clamped to 1-200
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#find-nodes-in-graph)):
+  - `searchTerms`: Array of keywords or node GUIDs; a node matches when any term matches
+  - `searchType`: `keyword` or `guid`
+  - `caseSensitive`: For keywords
+  - `maxResults`: Clamped to 1-200
 - **Matching**: a keyword matches the node's title as the editor shows it and in English, its UK2Node class, its
   function or variable name (`N2CStableNames::NodeSearchText`) and its menu category, as a substring: `PrintString`,
   `print string` and `K2Node_CallFunction` all find a Print String node in any editor language (card 0138). A GUID

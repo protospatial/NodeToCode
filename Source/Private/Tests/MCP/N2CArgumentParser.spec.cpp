@@ -233,9 +233,6 @@ void FN2CArgumentParserSpec::Define()
 		// search-variable-types looks for the focused Blueprint editor before it reads its arguments
 		It(TEXT("search-variable-types refuses an unknown category and takes one in any case"), [this]()
 		{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-			AddInfo(TEXT("Skipped below UE 5.8: search-variable-types needs a focused Blueprint editor, which a headless test cannot close there"));
-#else
 			N2CTest::FToolSpecBlueprint Blueprint(TEXT("BP_N2CArgumentParser"));
 			if (!Blueprint.OpenInEditor(*this, Blueprint.EventGraph()))
 			{
@@ -247,7 +244,6 @@ void FN2CArgumentParserSpec::Define()
 			const FMcpToolCallResult Result = N2CTest::RunTool(TEXT("search-variable-types"),
 				Args(TEXT("{\"searchTerm\":\"Vector\",\"category\":\"STRUCT\",\"maxResults\":5}")));
 			TestFalse(FString::Printf(TEXT("STRUCT is a category (got: %s)"), *N2CTest::ResultText(Result).Left(300)), Result.bIsError);
-#endif
 		});
 	});
 }

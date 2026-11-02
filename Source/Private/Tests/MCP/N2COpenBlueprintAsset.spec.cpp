@@ -134,11 +134,6 @@ void FN2COpenBlueprintAssetSpec::Define()
 	{
 		It(TEXT("opens a Widget Blueprint on its EventGraph and reports a Widget with its event graph"), [this]()
 		{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor's window (see N2CToolSpecHarness.h); the
-			// result the tool builds is checked on every engine by the graph_counts and asset_type cases above.
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-#else
 			UPackage* WidgetPackage = nullptr;
 			UBlueprint* Widget = MakeWidget(WidgetPackage);
 			ON_SCOPE_EXIT { ReleaseWidget(WidgetPackage, Widget); };
@@ -159,7 +154,6 @@ void FN2COpenBlueprintAssetSpec::Define()
 			TestEqual(TEXT("asset_type"), Json->GetStringField(TEXT("asset_type")), FString(TEXT("Widget")));
 			TestEqual(TEXT("focused_graph (matched without case)"), Json->GetStringField(TEXT("focused_graph")), FString(TEXT("eventgraph")));
 			TestTrue(TEXT("graph_counts.event_graphs >= 1"), Count(Json, TEXT("event_graphs")) >= 1);
-#endif
 		});
 	});
 }

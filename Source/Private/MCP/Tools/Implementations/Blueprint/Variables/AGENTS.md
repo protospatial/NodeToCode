@@ -66,19 +66,19 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
     `UBlueprintEditorLibrary::SetBlueprintVariableReplication` do)
   - `category` (`SetBlueprintVariableCategory`) and `tooltip` (`tooltip` metadata) also go on the description
   - The default value is written to the description; the compile moves it to the class default object
-- **Parameters**:
-  - `variableName` (required): Name for the new variable. Empty names, names with invalid object-name characters and
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-variable)):
+  - `variableName`: Name for the new variable. Empty names, names with invalid object-name characters and
     a few reserved words (`None`, `Self`, `True`, `Class`, `Return`, ...) are refused (`ValidateVariableName`)
-  - `typeIdentifier` (required): Type identifier, see "Type Identifiers" (for maps, the VALUE type)
-  - `defaultValue` (optional): Default value, as text
-  - `category` (optional, default `Default`): Category shown in the My Blueprint panel
-  - `isInstanceEditable` (optional, default false, as for a variable added in the editor): Instance Editable
-  - `isBlueprintReadOnly` (optional, default false): Read-only in graphs
-  - `tooltip` (optional): Tooltip text
-  - `replicationCondition` (optional, default `none`): `none`, `replicated` or `repnotify` (case-insensitive); any
+  - `typeIdentifier`: Type identifier, see "Type Identifiers" (for maps, the VALUE type)
+  - `defaultValue`: Default value, as text
+  - `category`: Category shown in the My Blueprint panel
+  - `isInstanceEditable`: Instance Editable (off by default, as for a variable added in the editor)
+  - `isBlueprintReadOnly`: Read-only in graphs
+  - `tooltip`: Tooltip text
+  - `replicationCondition`: `none`, `replicated` or `repnotify` (case-insensitive); any
     other value is refused with `INVALID_ARGUMENT: ...` before the Blueprint is changed
-  - `containerType` (optional, default `none`): `none`, `array`, `set` or `map`
-  - `mapKeyTypeIdentifier` (optional): Key type, required when `containerType` is `map` and refused otherwise
+  - `containerType`: `none`, `array`, `set` or `map`
+  - `mapKeyTypeIdentifier`: Key type, required when `containerType` is `map` and refused otherwise
 - **Returns**: `success`, `variableName` (as requested), `actualName`, `blueprintName`, `typeInfo`,
   `containerType`, `message`. A taken name is made unique by `FBlueprintEditorUtils::FindUniqueKismetName`: a
   second `Health` becomes `Health_0`. `typeInfo.category` is `object`, `struct`, `enum` (with `enumName` and
@@ -97,7 +97,7 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   `FN2CGraphTarget::Resolve` with the target arguments (cards 0152, 0274), so a read-only graph (an interface
   function) is refused with `READ_ONLY_GRAPH: ...`. The local gets `CPF_BlueprintVisible`, the `Default` category and the
   tooltip as `tooltip` metadata
-- **Parameters**: `variableName` (required), `typeIdentifier` (required), `defaultValue`, `tooltip`,
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-local-variable)): `variableName`, `typeIdentifier`, `defaultValue`, `tooltip`,
   `containerType`, `mapKeyTypeIdentifier` (as for create-variable)
 - **Returns**: `success`, `variableName`, `actualName`, `typeInfo`, `functionName`, `blueprintName`, `message`, and
   for a container `containerType` (plus a `note` for maps). The name is made unique with
@@ -110,16 +110,16 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 
 ### search-variable-types
 - **Description**: Searches the types a variable can have and returns identifiers the other tools accept
-- **Parameters**:
-  - `searchTerm` (required, not empty): Space-separated words; every word must appear in a type's display name or
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#search-variable-types)):
+  - `searchTerm` (not empty): Space-separated words; every word must appear in a type's display name or
     description (case-insensitive). Results are ranked: exact name, name prefix, name contains, description contains
     (`FilterTypesBySearchTerm`)
-  - `category` (optional, default `all`): `all`, `primitive`, `class`, `struct` or `enum` (case-insensitive)
-  - `includeEngineTypes` (optional, default true): With false, types from the engine and engine plugins are left
+  - `category`: `all`, `primitive`, `class`, `struct` or `enum` (case-insensitive)
+  - `includeEngineTypes`: With false, types from the engine and engine plugins are left
     out: a native type by where its module's binary is (under the engine directory or not), an asset by its mount
     point (`/Engine`, or a plugin loaded from the engine). The project's own native types (`/Script/MyGame`) and
     project plugins' types stay (`IsEngineTypePath`). Primitives always stay
-  - `maxResults` (optional, default 50): Clamped to 1-200
+  - `maxResults`: Clamped to 1-200
 - **Returns**: `types` (each with `typeName`, `typeIdentifier`, `category`, `description`, plus `icon` for
   primitives, `parentClass` and `isAbstract` for classes, and for enums `values`, the enumerator names a default value
   takes (`NewEnumerator0`), and `displayNames`, what the editor shows), `totalMatches`, the number that matched before
@@ -138,7 +138,7 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 ### get-blueprint-member-variables
 - **Description**: Lists the member variables declared by the Blueprint `blueprintPath` names, else the focused one
   (`Blueprint->NewVariables`; inherited and component variables are not included)
-- **Parameters**: `blueprintPath` (optional)
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#get-blueprint-member-variables)): `blueprintPath`
 - **Returns**: `blueprintName`, `blueprintPath`, `parentClass`, `variables`, `variableCount`, `categories`. Each
   variable has `name`, `category`, `friendlyName`, `defaultValue`, `guid`, `type` (`category`, `subCategory`,
   `typeObject`, `typeName`, `container`, `keyType` and `valueType` for maps, `isReference`, `isConst`,
@@ -160,9 +160,9 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   Blueprint's skeleton class, so its own variables, inherited ones (a parent Blueprint or a C++ base, such as
   `RootComponent`) and component variables all work; one that Blueprints cannot read (not Blueprint visible, private
   to another class, a delegate) is refused
-- **Parameters**:
-  - `variableName` (required): A variable from get-blueprint-member-variables, or an inherited or component variable
-  - `location` (optional): `{ "x": number, "y": number }`, graph coordinates (default 0, 0)
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-get-member-variable-node)):
+  - `variableName`: A variable from get-blueprint-member-variables, or an inherited or component variable
+  - `location`: `{ "x": number, "y": number }`, graph coordinates (default 0, 0)
 - **Returns** (the same shape for all four node tools, card 0155): `success`, `nodeId` (the node GUID with hyphens,
   `157CF7BA-49F8-CE45-71C9-61AAEA82547F`, for connect-pins, find-nodes-in-graph and delete-blueprint-node), the fields
   add-bp-node-to-active-graph returns (`nodeGuid`, the same GUID as 32 digits; `nodeName`; `inputPins` and
@@ -174,13 +174,13 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 
 ### create-set-member-variable-node
 - **Description**: Places a Set node for a member variable in the target graph
-- **Parameters**:
-  - `variableName` (required)
-  - `defaultValue` (optional): Value for the Set node's input pin (not the variable's default), checked by the K2
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-set-member-variable-node)):
+  - `variableName`
+  - `defaultValue`: Value for the Set node's input pin (not the variable's default), checked by the K2
     schema first as set-input-pin-value does (card 0278). A value the pin refuses does not fail the call (the node is
     still made): the result has `defaultValueApplied: false`, the reason in `defaultValueReason` (also in `warning`),
     and the pin keeps its default. With a value sent, `defaultValueApplied` is `true` when it took
-  - `location` (optional): As for the Get node
+  - `location`: As for the Get node
 - **Returns**: As for create-get-member-variable-node, with `nodeType` `K2Node_VariableSet`
 - **Errors**: `READ_ONLY_VARIABLE: ...` for a variable Blueprints may read but not write (`BlueprintReadOnly`, such as
   `RootComponent`, or private to another class), as the editor offers no Set node for it; nothing is added
@@ -194,9 +194,9 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   change. Nothing is compiled, unless the class is not up to date with the variable description (the class lacks the
   variable, the description still holds a default no compile has applied, or the Blueprint is dirty): then it
   compiles once first, outside the undo step, and the result has `compile`
-- **Parameters**:
-  - `variableName` (required)
-  - `defaultValue` (required, may be empty): Text as the Details panel's copy gives it (`75`, `true`,
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#set-member-variable-default-value)):
+  - `variableName`
+  - `defaultValue` (may be empty): Text as the Details panel's copy gives it (`75`, `true`,
     `(X=1.0,Y=2.0,Z=3.0)`, `(1,2,3)` for an array). A boolean takes `true`/`false`/`yes`/`no`/`1`/`0`; an enum an
     entry's name, display name (any case) or index. An empty string resets the variable to its type's default value
     (zero, empty, a struct's defaults): the parent class has no such property to inherit
@@ -209,8 +209,8 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 
 ### get-blueprint-function-local-variables
 - **Description**: Lists the local variables of the target function graph
-- **Parameters**:
-  - `includeDetails` (optional, default true): With false, only `name`, `displayName` and `category` per variable
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#get-blueprint-function-local-variables)):
+  - `includeDetails` (default true): With false, only `name`, `displayName` and `category` per variable
 - **Returns**: `blueprintName`, `functionName`, `localVariableCount`, `localVariables` (with details: `type` with
   `typeName`, `subCategory`, `subCategoryObject`, `isArray`, `isSet`, `isMap`, `isReference`, `isConst`;
   `defaultValue`, `guid`, `flags`, `replicationCondition`). Marked as untrusted Blueprint data (`untrusted_content`)
@@ -218,13 +218,13 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
 
 ### create-get-local-function-variable-node
 - **Description**: Places a Get node for a local variable in the target function graph
-- **Parameters**: `variableName` (required), `x`, `y` (optional, graph coordinates, default 0)
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-get-local-function-variable-node)): `variableName`, `x`, `y` (graph coordinates, default 0)
 - **Returns**: As for create-get-member-variable-node, plus `functionName` (the function, also from a collapsed graph
   inside it), `x` and `y`. A local's nodes have no self pin
 
 ### create-set-local-function-variable-node
 - **Description**: Places a Set node for a local variable in the target function graph
-- **Parameters**: `variableName` (required), `x`, `y` (optional), `inputPinValue` (optional): value for the node's
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#create-set-local-function-variable-node)): `variableName`, `x`, `y`, `inputPinValue`: value for the node's
   input pin
 - **Returns**: As for create-get-local-function-variable-node; the Set node has exactly four pins (`execute`, `then`,
   the value input and `Output_Get`). With `inputPinValue`: `defaultValueApplied`, and when refused
@@ -235,7 +235,7 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
   skeleton class's function (`FN2CMcpVariableDefaults::PrepareLocalDefault`, card 0283) before anything changes, and
   the description gets the text the details panel stores for it (`1.5` on a float is stored as `1.500000`); then
   the Blueprint is compiled once
-- **Parameters**: `variableName` (required), `defaultValue` (required, may be empty: an empty string clears the
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#set-local-function-variable-default-value)): `variableName`, `defaultValue` (required, may be empty: an empty string clears the
   default; formats as for the member tool)
 - **Returns**: `message`, `variableName`, `functionName`, `oldValue`, `newValue` (as stored), `variableType`,
   `containerType`, `compilationResults` (`success`, `errorCount`, `warningCount`, `compilationTime`) and `compile`
@@ -263,9 +263,10 @@ is touched. The checks run in this order:
    registry first, and only a Blueprint, user struct or user enum is loaded; a map, mesh or other asset is refused
    with `INVALID_TYPE_AT_PATH` without loading it. A missing native type is `TYPE_NOT_FOUND`, a missing asset
    `ASSET_NOT_FOUND`.
-3. **Primitives** (case-insensitive): `bool`/`boolean`, `byte`/`uint8`, `int`/`int32`, `int64`, `float`, `double`,
-   `string`/`FString`, `text`/`FText`, `name`/`FName`. `float` and `double` both become a `real` pin (sub-category
-   `float` or `double`).
+3. **Primitives** (case-insensitive): `bool`/`boolean`, `byte`/`uint8`, `int`/`int32`/`integer`, `int64`/`integer64`,
+   `float`, `double`/`real`, `string`/`FString`, `text`/`FText`, `name`/`FName`. `float` and `double` both become a
+   `real` pin (sub-category `float` or `double`); `real` alone is a double. `integer`, `integer64` and `real` are the
+   spellings of N2C JSON and the struct library (card 0347).
 4. **Math structs** (case-insensitive, with or without the `F`): `FVector` (also `vector3`), `FVector2D`, `FVector4`,
    `FRotator`, `FTransform`, `FQuat`, `FColor`, `FLinearColor`.
 5. **Refused names**: `wildcard`, `exec`, `delegate` and `multicastdelegate` fail with `INVALID_TYPE` (a delegate

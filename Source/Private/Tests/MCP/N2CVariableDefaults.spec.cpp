@@ -430,8 +430,7 @@ void FN2CVariableDefaultsSpec::Define()
 		});
 	});
 
-#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
+	Describe(TEXT("through the MCP tools on a focused Blueprint"), [this]()
 	{
 		It(TEXT("set-member-variable-default-value and get-blueprint-member-variables"), [this]()
 		{
@@ -514,15 +513,6 @@ void FN2CVariableDefaultsSpec::Define()
 			N2CTest::ExpectToolCompiled(*this, TEXT("set-local-function-variable-default-value"), Good);
 		});
 	});
-#else
-	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
-	{
-		It(TEXT("is skipped below UE 5.8"), [this]()
-		{
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there (see N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR); the cases above run the same code"));
-		});
-	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

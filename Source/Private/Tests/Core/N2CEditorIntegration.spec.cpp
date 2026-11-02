@@ -33,7 +33,7 @@
  *
  * It needs a rendering editor: under -nullrhi (build.ps1 -Test) it only reports that it was skipped. Run it in a
  * windowed editor: UnrealEditor.exe <host>.uproject -ExecCmds="Automation RunTests NodeToCode.Windowed"
- * -TestExit="Automation Test Queue Empty". The headless version of the focus rules (tab events raised directly, UE 5.8)
+ * -TestExit="Automation Test Queue Empty". The headless version of the focus rules (tab events raised directly)
  * is NodeToCode.Editor.Focus; one overlay per graph for same-GUID graphs is NodeToCode.Editor.OverlayPerGraph; overlays
  * only in the graph editor that shows their graph, without warnings, is NodeToCode.Editor.OverlayInjection.
  */

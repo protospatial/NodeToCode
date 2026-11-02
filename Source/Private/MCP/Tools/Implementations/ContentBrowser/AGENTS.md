@@ -31,28 +31,28 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### open-content-browser-path
 - **Description**: Opens a path in the primary content browser
-- **Parameters**:
-  - `path` (required): Content browser folder (e.g., '/Game/Blueprints'); see "Content Browser Paths"
-  - `select_item` (optional): Asset in that folder to select after navigating, as `AssetName` or
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#open-content-browser-path)):
+  - `path`: Content browser folder (e.g., '/Game/Blueprints'); see "Content Browser Paths"
+  - `select_item`: Asset in that folder to select after navigating, as `AssetName` or
     `AssetName.AssetName` (`FN2CMcpContentBrowserUtils::SelectAssetAtPath` finds it in the asset registry either way).
     An asset that is not there is not an error: the call succeeds with `selected_item` empty
-  - `create_if_missing` (optional, default false): Create the folder if it does not exist
+  - `create_if_missing`: Create the folder if it does not exist
 - **Returns**: `success`, `navigated_path` (the normalized path), `selected_item`, `created_folder`,
   `current_selected_paths` (the browser's selected folders, as `/All/...` virtual paths)
 - **Use Case**: Programmatic content browser navigation
 
 ### read-content-browser-path
 - **Description**: Lists the assets of every type and the subfolders directly inside a folder (not recursive)
-- **Parameters**:
-  - `path` (required): Content browser folder to read
-  - `page` (optional, default 1): Page number; a page past the end is an error (`Page N is out of range`)
-  - `page_size` (optional, default 50): Items per page, 1-200; anything else fails with `Invalid arguments`
-  - `filter_type` (optional, default `All`): `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh` or `Folder`, in
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#read-content-browser-path)):
+  - `path`: Content browser folder to read
+  - `page`: Page number; a page past the end is an error (`Page N is out of range`)
+  - `page_size`: Items per page, 1-200; anything else fails with `Invalid arguments`
+  - `filter_type`: `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh` or `Folder`, in
     any case (card 0285: `ParseArguments` matches it once and keeps the listed spelling). `All` lists folders and
     assets, `Folder` only folders. `Blueprint`, `Material`, `Texture` and `StaticMesh` keep assets whose class name
     contains that word (`Material` leaves out `MaterialFunction`). Any other value is an error that lists these
-  - `filter_name` (optional): Keep items whose name contains this text (case-insensitive)
-  - `sync_browser` (optional, default false): Also show the folder in the primary content browser. It never focuses
+  - `filter_name`: Keep items whose name contains this text (case-insensitive)
+  - `sync_browser`: Also show the folder in the primary content browser. It never focuses
     the content browser (`NavigateToPath(Path, /*bFocusContentBrowser*/ false)`), so a listing does not pull the
     user's window forward
 - **Returns**: `items`, then `totalCount`, `page`, `pageSize`, `hasMore` (camelCase since card 0285). Each item has
@@ -65,12 +65,12 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### open-blueprint-asset
 - **Description**: Opens a Blueprint asset in the Blueprint Editor
-- **Parameters**:
-  - `asset_path` (required): Object path (`/Game/Folder/BP_Name.BP_Name`) or package path (`/Game/Folder/BP_Name`).
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#open-blueprint-asset)):
+  - `asset_path`: Object path (`/Game/Folder/BP_Name.BP_Name`) or package path (`/Game/Folder/BP_Name`).
     `FN2CMcpOpenBlueprintAssetTool::ValidateBlueprintAssetPath` accepts any mounted root (`/Game/`, `/Engine/`, a
     plugin's `/<PluginName>/`), as the other read tools do
-  - `bring_to_front` (optional, default true): Focus the editor window
-  - `focus_graph` (optional): Name of an event, function, macro or delegate graph to focus, matched
+  - `bring_to_front`: Focus the editor window
+  - `focus_graph`: Name of an event, function, macro or delegate graph to focus, matched
     case-insensitively (`FN2CMcpBlueprintUtils::FindTopLevelGraph`, shared with the Python bridge's `OpenBlueprint`).
     An Actor's construction script is the function graph `UserConstructionScript`; `ConstructionScript` names it too.
     An unknown name fails with `GRAPH_NOT_FOUND: <Blueprint> has no graph named '<name>'. Available graphs: ...`
@@ -87,21 +87,21 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### search-content-browser
 - **Description**: Searches assets by name or type under `/Game`, the content of the project's plugins, and `/Engine`
   and engine plugins' content when `includeEngineContent` is true
-- **Parameters**:
-  - `query` (optional): Matched against asset names and package paths (partial, case-insensitive); empty lists all
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#search-content-browser)):
+  - `query`: Matched against asset names and package paths (partial, case-insensitive); empty lists all
     assets of the type
-  - `assetType` (optional, default `All`): `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh`, `SkeletalMesh`,
+  - `assetType`: `All`, `Blueprint`, `Material`, `Texture`, `StaticMesh`, `SkeletalMesh`,
     `Sound`, `Animation`, `ParticleSystem`, `DataAsset`, `DataTable`, compared case-insensitively. Each maps to one
     class (`UBlueprint`, `UMaterialInterface`, `UTexture`, `UStaticMesh`, `USkeletalMesh`, `USoundBase`,
     `UAnimSequence`, `UParticleSystem`, `UDataAsset`, `UDataTable`) matched with `bRecursiveClasses`, so subclasses
     count: `Blueprint` includes Widget and Animation Blueprints, `Sound` Sound Waves and Sound Cues, `DataAsset` every
     data asset class (card 0285). Any other value is an error that lists the valid ones
-  - `includeEngineContent` (optional, default false): Also search `/Engine`, and with `includePluginContent` the
+  - `includeEngineContent`: Also search `/Engine`, and with `includePluginContent` the
     content of engine plugins
-  - `includePluginContent` (optional, default true): Also search the mount (`/<PluginName>`) of every enabled plugin
+  - `includePluginContent`: Also search the mount (`/<PluginName>`) of every enabled plugin
     with content (`IPluginManager::GetEnabledPluginsWithContent`) loaded from the project; engine plugins (engine,
     Fab) only with `includeEngineContent` (`FN2CMcpSearchContentBrowserTool::GetSearchRoots`)
-  - `maxResults` (optional, default 50): Clamped to 1-200
+  - `maxResults`: Clamped to 1-200
 - **Returns**: `searchInfo` (`query`, `assetType` in its listed spelling, `includeEngineContent`,
   `includePluginContent`, `totalFound`: every match, `resultsReturned`, `truncated`: whether matches were left out),
   `assets` best first (each with `name`, `path`, `type`, `class`, `relevanceScore` and `metadata`: `folder`,
@@ -115,9 +115,9 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### copy-asset
 - **Description**: Copies an asset to a new asset path
-- **Parameters**:
-  - `sourcePath` (required): Package path or object path under any mounted root (copying only reads it)
-  - `destinationPath` (required): Package path of the new asset including its name (e.g.,
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#copy-asset)):
+  - `sourcePath`: Package path or object path under any mounted root (copying only reads it)
+  - `destinationPath`: Package path of the new asset including its name (e.g.,
     `/Game/Folder/BP_Copy`); the write policy (`FN2CMcpContentBrowserUtils::IsWritableContentPath`, see "Where tools may write") applies, and its name
     follows "Asset names". An existing asset there is an error (`Destination asset already exists`): the copy never
     replaces one. Missing folders are created right before the copy and removed again if it fails
@@ -129,40 +129,40 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### create-folder
 - **Description**: Creates a folder in the content browser and navigates to it
-- **Parameters**:
-  - `folderPath` (required): Folder to create, under `/Game/` or a project plugin's `/<PluginName>/` (the write
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#create-folder)):
+  - `folderPath`: Folder to create, under `/Game/` or a project plugin's `/<PluginName>/` (the write
     policy); no `..`, `~`, `*`, `?` or dots in the name, and not a Windows device name (CON, PRN, AUX, NUL, COM1-9,
     LPT1-9: `FN2CMcpContentBrowserUtils::IsReservedDeviceName`, shared with `rename-folder`)
-  - `createParents` (optional, default false): Create missing parent folders; without it a missing parent is an
+  - `createParents` (default false): Create missing parent folders; without it a missing parent is an
     error
 - **Returns**: `message`, `folderPath`, `navigated`, `tips`. An existing folder is an error
 - **Use Case**: Organizing content, preparing locations for assets
 
 ### move-folder
 - **Description**: Moves a folder, its assets and its subfolders (empty ones too) to `<destinationPath>/<folder name>`
-- **Parameters**:
-  - `sourcePath` (required): Folder to move, under the write policy's roots (not a root itself: `/Game`,
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#move-folder)):
+  - `sourcePath`: Folder to move, under the write policy's roots (not a root itself: `/Game`,
     `/<PluginName>`)
-  - `destinationPath` (required): Parent folder under the write policy's roots; created right before the move if
+  - `destinationPath`: Parent folder under the write policy's roots; created right before the move if
     missing, and removed again if nothing moves. Not the source folder or one of its subfolders, compared
     case-insensitively (`Cannot move ... into itself or one of its own subfolders`). `<destinationPath>/<folder name>`
     must not exist yet
-  - `showNotification` (optional, default true): Show an editor notification
+  - `showNotification` (default true): Show an editor notification
 - **Returns**: `message`, `sourcePath`, `destinationPath` (the new folder path), `assetsMoved` (the number now at the
   destination), `navigated`, and the folder-move fields (see "Folder moves")
 - **Use Case**: Reorganizing content structure
 
 ### move-asset
 - **Description**: Moves or renames an asset (`UEditorAssetSubsystem::RenameAsset`, which updates references)
-- **Parameters**:
-  - `sourcePath` (required): Package path `/Game/Folder/Asset` (as `read-content-browser-path` returns it) or object
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#move-asset)):
+  - `sourcePath`: Package path `/Game/Folder/Asset` (as `read-content-browser-path` returns it) or object
     path `/Game/Folder/Asset.Asset` (as `search-content-browser`'s `metadata.objectPath`); the asset is looked up in the
     asset registry (`FN2CMcpContentBrowserUtils::ResolveAsset`) and its name taken from there
-  - `destinationPath` (required): Destination folder (e.g., '/Game/Blueprints/Characters'); created right before the
+  - `destinationPath`: Destination folder (e.g., '/Game/Blueprints/Characters'); created right before the
     move if missing, and removed again if the move fails. The write policy applies to it and to `sourcePath`, since a
     move rewrites both packages
-  - `newName` (optional): New asset name (default: the asset's name), following "Asset names"
-  - `showNotification` (optional, default true): Show an editor notification
+  - `newName`: New asset name (default: the asset's name), following "Asset names"
+  - `showNotification`: Show an editor notification
 - **Returns**: `success`, `oldPath`, `newPath` (package paths, read back from the asset registry), `objectPath`,
   `operation` (`move`, or `rename` when the folder is unchanged), `leftRedirector` (whether the asset registry holds
   a redirector at the old object path after the move: `FN2CMcpContentBrowserUtils::IsRedirectorAt`), `assetInfo`,
@@ -172,13 +172,13 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### rename-asset
 - **Description**: Renames an asset in place, or moves it to a full new asset path
-- **Parameters**:
-  - `sourcePath` (required): Package or object path under the write policy's roots (`/Engine/` assets are refused)
-  - `newName` (optional): New name in the same folder, following "Asset names" (`BP_New.Final` is refused)
-  - `destinationPath` (optional): Full new package path including the name (`/Game/Folder/BP_New`, or the object form
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#rename-asset)):
+  - `sourcePath`: Package or object path under the write policy's roots (`/Engine/` assets are refused)
+  - `newName`: New name in the same folder, following "Asset names" (`BP_New.Final` is refused)
+  - `destinationPath`: Full new package path including the name (`/Game/Folder/BP_New`, or the object form
     `/Game/Folder/BP_New.BP_New`), under the write policy's roots; missing folders are created right before the
     rename and removed again if it fails
-  - `showNotification` (optional, default true): Show an editor notification
+  - `showNotification` (default true): Show an editor notification
 - **Returns**: `message`, `oldPath`, `newPath` (package paths, read back from the asset registry), `oldName`,
   `newName`, `assetSelected` (whether the content browser selected the renamed asset), `wasMoved`, `tips` (whether a
   redirector was left at the old path, from the asset registry). An existing asset at the destination and a
@@ -188,12 +188,12 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### rename-folder
 - **Description**: Renames a folder: moves it, its assets and its subfolders (empty ones too) to a sibling folder
-- **Parameters**:
-  - `sourcePath` (required): Folder under the write policy's roots (not a root itself: `/Game`, `/<PluginName>`)
-  - `newName` (required): New folder name (no slashes, dots, spaces, `~`, `*`, `?`, and not a Windows device name:
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#rename-folder)):
+  - `sourcePath`: Folder under the write policy's roots (not a root itself: `/Game`, `/<PluginName>`)
+  - `newName`: New folder name (no slashes, dots, spaces, `~`, `*`, `?`, and not a Windows device name:
     exactly CON, PRN, AUX, NUL, COM1-9 or LPT1-9, so `Components` or `Common` are fine). A case-only rename
     (`blueprints` to `Blueprints`) is an error: folder names are case-insensitive
-  - `showNotification` (optional, default true): Show an editor notification
+  - `showNotification` (default true): Show an editor notification
 - **Returns**: `message`, `oldPath`, `newPath`, `oldName`, `newName`, `assetsRenamed` (the number now at the new
   path), `navigated`, and the folder-move fields (see "Folder moves")
 - **Use Case**: Fixing folder naming

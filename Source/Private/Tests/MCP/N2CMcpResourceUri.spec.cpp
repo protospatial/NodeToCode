@@ -231,10 +231,6 @@ void FN2CMcpResourceUriSpec::Define()
 
 		It(TEXT("still read an open Blueprint by its name alone and list its by-path URI"), [this]()
 		{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor window (see NodeToCode.Editor.Focus)
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-#else
 			N2CTest::FTestBlueprint Test(TEXT("BP_N2CResourceUriOpen"));
 			UAssetEditorSubsystem* AssetEditors = GEditor ? GEditor->GetEditorSubsystem<UAssetEditorSubsystem>() : nullptr;
 			if (!TestNotNull(TEXT("Blueprint"), Test.GetBlueprint()) || !TestNotNull(TEXT("asset editor subsystem"), AssetEditors)
@@ -276,7 +272,6 @@ void FN2CMcpResourceUriSpec::Define()
 			const FMcpResourceContents ByName = FN2CMcpBlueprintByNameResource().Read(TEXT("nodetocode://blueprint/BP_N2CResourceUriOpen"));
 			TestFalse(TEXT("the old name form reads: ") + ByName.ErrorMessage, ByName.IsError());
 			TestEqual(TEXT("the same document"), ByName.Text, ByListedUri.Text);
-#endif
 		});
 	});
 }

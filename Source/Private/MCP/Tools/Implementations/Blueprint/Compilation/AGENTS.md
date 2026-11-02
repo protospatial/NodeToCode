@@ -28,17 +28,17 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 
 ### compile-blueprint
 - **Description**: Compiles a Blueprint using the same functionality as the Compile button in the Blueprint editor
-- **Parameters**:
-  - `blueprintPath` (optional): Asset path of the Blueprint to compile. If not provided, uses the currently focused Blueprint
-  - `skipGarbageCollection` (optional): Skip garbage collection during compilation for performance (default: true)
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#compile-blueprint)):
+  - `blueprintPath`: Asset path of the Blueprint to compile. If not provided, uses the currently focused Blueprint
+  - `skipGarbageCollection`: Skip garbage collection during compilation for performance (default: true)
 - **Returns**: Comprehensive compilation results including errors, warnings, status changes, and timing
 - **Use Case**: Automated Blueprint validation, CI/CD pipelines, batch compilation
 
 ### save-blueprint
 - **Description**: Saves a Blueprint asset to disk, writing the package file
-- **Parameters**:
-  - `blueprintPath` (optional): Asset path of the Blueprint to save. If not provided, uses the currently focused Blueprint
-  - `saveOnlyIfDirty` (optional): Only save if the Blueprint has unsaved changes (default: true)
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#save-blueprint)):
+  - `blueprintPath`: Asset path of the Blueprint to save. If not provided, uses the currently focused Blueprint
+  - `saveOnlyIfDirty`: Only save if the Blueprint has unsaved changes (default: true)
 - **Returns**: Save operation results including success status, package information, timestamp and, when it saved,
   a `sourceControl` object (card 0290)
 - **Never prompts** (card 0290): a file under source control that needs a checkout is checked out first, without a

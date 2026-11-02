@@ -37,6 +37,8 @@ namespace N2CStructuredOutputSpec
 		TEXT("get-focused-blueprint"), TEXT("list-blueprint-graphs"), TEXT("get-open-blueprint-editors"), TEXT("get-editor-context"),
 		TEXT("translate-focused-blueprint"), TEXT("get-available-translation-targets"), TEXT("get-available-llm-providers"),
 		TEXT("get-translation-output-directory"), TEXT("read-path"),
+		// Card 0314: its structured result is checked by NodeToCode.Translation.CppPlacement (a dry run on a fixture run)
+		TEXT("place-cpp-translation"),
 	};
 
 	FString Condensed(const TSharedPtr<FJsonObject>& Object)

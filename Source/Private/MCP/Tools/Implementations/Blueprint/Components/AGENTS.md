@@ -47,19 +47,19 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   after the transaction closes (card 0151); `compilationStatus` and the result's `compile` object carry the
   compiler's real counts and messages (see the Graph folder's AGENTS.md for the `compile` fields). The package is
   left dirty, unsaved.
-- **Known issue (card 0274):** there is no target besides `blueprintPath` and the active editor.
+- **Target.** The Blueprint named by `blueprintPath`, else the one in the active editor (card 0274).
 
 ## Available Tools
 
 ### list-components-in-actor
 - **Description**: Lists the components of an Actor Blueprint as a tree (read-only, `readOnlyHint`): changes nothing,
   adds no undo step, leaves the package clean
-- **Parameters**:
-  - `blueprintPath` (optional): See "What the Tools See"
-  - `includeInherited` (optional, default true): Also list the native components and the components parent
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#list-components-in-actor)):
+  - `blueprintPath`: See "What the Tools See"
+  - `includeInherited`: Also list the native components and the components parent
     Blueprints add. When false, only this Blueprint's own components are listed; one attached to an inherited or
     native component moves up to the top level and keeps its `parentComponent`
-  - `componentTypeFilter` (optional, default `all`): `scene` (`USceneComponent`), `actor` (`UActorComponent` but not
+  - `componentTypeFilter`: `scene` (`USceneComponent`), `actor` (`UActorComponent` but not
     `USceneComponent`), `primitive` (`UPrimitiveComponent`), in any case (`Primitive`); empty is `all`
     (`FN2CMcpComponentUtils::ParseComponentTypeFilter`, `PassesComponentTypeFilter`). The whole tree is searched: a
     component that fails the filter is left out and its matching descendants move up to where it was, keeping their
@@ -72,26 +72,26 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### add-component-class-to-actor
 - **Description**: Adds a component with `USubobjectDataSubsystem::AddNewSubobject`, names it with
   `RenameSubobject`, and compiles the Blueprint
-- **Parameters**:
-  - `componentClass` (required): The class (`FN2CMcpComponentUtils::ResolveComponentClass`): a class path
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#add-component-class-to-actor)):
+  - `componentClass`: The class (`FN2CMcpComponentUtils::ResolveComponentClass`): a class path
     (`/Script/Engine.StaticMeshComponent`), a component Blueprint's generated class
     (`/Game/Components/BP_Health.BP_Health_C`) or the Blueprint's own path (`_C` is added), or the name of a loaded
     class (`StaticMeshComponent`, `UStaticMeshComponent`, `BP_Health`; native classes first). The class part of a
     path whose module is wrong (`/Script/Engin.StaticMeshComponent`) is looked up as a name
-  - `componentName` (optional): Variable name; must be a valid name not in use in the Blueprint (`NAME_EXISTS`,
+  - `componentName`: Variable name; must be a valid name not in use in the Blueprint (`NAME_EXISTS`,
     `INVALID_NAME`). Without it, the engine's: the class name minus a trailing `Component`, or a Blueprint class's
     name minus `_C`, made unique with a number (`StaticMesh`, then `StaticMesh1`)
-  - `parentComponent` (optional, scene components only): The scene component to attach to: one this Blueprint adds,
+  - `parentComponent` (scene components only): The scene component to attach to: one this Blueprint adds,
     one a parent Blueprint adds, or a native one (`Mesh` on a Character). Defaults to the actor's root component
     (`DefaultSceneRoot` on a new Actor Blueprint, `CapsuleComponent` on a Character)
-  - `attachSocketName` (optional, scene components only): A socket of the parent; it must exist on it
+  - `attachSocketName` (scene components only): A socket of the parent; it must exist on it
     (`DoesSocketExist` or `GetAllSocketNames`, so `SpringEndpoint` on a spring arm, a mesh's sockets once the mesh
     asset is set)
-  - `relativeTransform` (optional, scene components): `{"location": {"x","y","z"}, "rotation": {"pitch","yaw","roll"},
+  - `relativeTransform` (scene components): `{"location": {"x","y","z"}, "rotation": {"pitch","yaw","roll"},
     "scale": {"x","y","z"}}`; each part and each number is optional (location and rotation default to 0, scale to 1).
     The new component's relative transform is this (or identity), not conformed to its parent. Ignored for other
     components
-  - `blueprintPath` (optional): See "What the Tools See"
+  - `blueprintPath`: See "What the Tools See"
 - **Where the component ends up**: under `parentComponent`, or the root, as the Components panel attaches it, and it
   stays there after compiles. A parent in this Blueprint takes the new node as a child node; an inherited or native
   parent is recorded on the new root node (`USCS_Node::SetParent`). The `DefaultSceneRoot` is kept: the first
@@ -116,10 +116,10 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
 ### delete-component-in-actor
 - **Description**: Deletes a component this Blueprint adds with `USubobjectDataSubsystem::DeleteSubobjects`, and
   compiles
-- **Parameters**:
-  - `componentName` (required): The component's variable name
-  - `deleteChildren` (optional, default false): See "Deleting Components"
-  - `blueprintPath` (optional): See "What the Tools See"
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#delete-component-in-actor)):
+  - `componentName`: The component's variable name
+  - `deleteChildren`: See "Deleting Components"
+  - `blueprintPath`: See "What the Tools See"
 - **Returns**: `deletedComponentName`, `deletedComponentClass`, `deletedComponentGuid`, `affectedChildren` (without
   `deleteChildren`: one entry per direct child, `action` `reparented`, `newParent` the component it is now attached
   to and `isRootComponent`; with it: one entry per descendant, `action` `deleted`), `childrenDeleted`,
