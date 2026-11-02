@@ -1,43 +1,17 @@
-### User Interface → Opening the Editor
-***
+The Node to Code window is a dockable editor tab that holds the Tag Manager and the translation viewer. You open it
+from the N2C bar that every Blueprint graph shows at its bottom left; there is no toolbar button or menu entry.
 
-The Node to Code Editor is a powerful, dockable window that provides a comprehensive interface for viewing and managing your Blueprint translations.
+## Opening it
 
-## Opening Methods
+- Click **N2C** on the bar at the bottom left of any graph in a Blueprint editor. If the window is already open
+  somewhere, it comes to the front.
+- A translation started from the bar or from the Tag Manager shows its progress and its result in the window.
 
-There are several ways to access the Node to Code Editor:
+<img src="images/translate-entry/graph-overlay.png" alt="The N2C bar at the bottom left of a graph; the N2C button at its left opens the window" width="305">
 
-1. **Automatic Opening**
-    - The editor window automatically appears when you trigger a translation
-    - Focuses automatically to display new translation results
-    - Maintains its last position and size
-2. **Manual Opening**
-    - Click the Node to Code toolbar button
-    - Select "Open Node to Code Editor" from the dropdown
+What the window contains: [Window Overview](Top-Navbar-Overview).
 
-    
-> [!NOTE]
-> If you accidentally close the window, you can always reopen/re-focus it
-> through the toolbar.
+## Docking
 
-3. **Blueprint Editor Integration**
-    - Access via the Blueprint Editor toolbar
-    - Available whenever a Blueprint is open
-    - Remains accessible even when no translation is in progress
-
-    <p align="left">
-       <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_Button_Dropdown.png" alt="Node to Code header" width="400">
-    </p>
-
-## Window Management
-
-The Node to Code Editor supports expected Unreal Engine dockable window management:
-
-1. **Docking Behavior**
-    - Dock as a tab alongside other editor windows
-    - Dock as a tab **within** editor windows
-    - Float as a standalone window
-
-2. **Size Constraints**
-    - Minimum size before deteriorated usability : 700 x 960 pixels
-    - Fully resizable above minimum dimensions
+The window behaves like any Unreal Editor tab: dock it next to other tabs, inside the Blueprint editor, or let it
+float as its own window. The editor's layout remembers where you put it. There is one Node to Code window at a time.

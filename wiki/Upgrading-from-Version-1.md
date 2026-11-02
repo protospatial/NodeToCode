@@ -81,7 +81,8 @@ fields of early 2.0 previews are deleted on load and the API key is used. See
 - **Saved translations.** Folders under `Saved/NodeToCode/Translations` stay on disk untouched, but the 2.0 window
   lists only translations made by 2.0; open older ones from disk. Their JSON files still read in 2.0.
 - **The 1.2.x window.** The Editor Utility Widget window under `/NodeToCode/UI/` is gone; 2.0 opens its own window
-  from the Blueprint editor toolbar, and your key bindings for the toolbar commands still work. A Blueprint calling
+  from the N2C bar at the bottom left of each graph. The 1.2.x toolbar button and its commands are gone, so key
+  bindings made for them do nothing. A Blueprint calling
   the code editor widget's **Set Theme**, **Get Available Themes**, **Get Theme From Name** or **Get Current Theme**
   fails to compile until you remove those nodes, and **Get Selection**'s outputs are now **Out Start Line** and
   **Out End Line**.

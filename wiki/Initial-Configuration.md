@@ -26,7 +26,7 @@ are, which tools the MCP server offers to AI clients, and where the plugin keeps
 
 5. [Logging Configuration](Logging-Configuration)
 
-6. [Theme Customization](Theme-&-Syntax-Highlighting)
+6. [Colors](Theme-&-Syntax-Highlighting)
 
 ## MCP Server Tools
 
