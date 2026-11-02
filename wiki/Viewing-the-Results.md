@@ -1,38 +1,24 @@
-### Translation Workflow → Viewing the Results
-***
+When a translation finishes, the Node to Code window opens it in the translation viewer. This page says what the
+viewer shows, how to get back to earlier translations, and how the Tag Manager's list works. Every control is named
+in [Window Overview](Top-Navbar-Overview).
 
-## The Node to Code Editor Window
+## The translation viewer
 
-After translation completes, you'll see the code appear within the Node to Code Editor window.
+<img src="images/main-window/translation-viewer.png" alt="The translation viewer showing the .cpp tab of BP_Door's EventGraph and its Translation Notes" width="880">
 
-1. [**Code Editor**](Code-Editor)
-    - Displays the translated code with basic syntax highlighting
-    - Supports scrolling for longer translations
-    - Basic text editing capabilities
-    - **(1a)**: Copy the current text in the code editor to the system clipboard
-2. [**Switching Between Implementation & Declaration**](Top-Navbar-Overview#b-implementation--declaration-tabs-center)
-    - **(2a)**: Implementation tab, labelled with the translation's file extension: **.cpp**, **.py**, **.js**, **.cs**, **.swift** or **.md** (Pseudocode)
-    - **(2b)**: Declaration tab (**.h**), shown only when the translation has a declaration, which in practice means C++
-    - **JSON** tab: the Blueprint graph the translation was made from, highlighted as JSON
-    - The viewer opens on the implementation tab and highlights it in the translation's language. A translation you open from the graph list is that row's Blueprint's own (a copy of a Blueprint keeps separate translations) and uses the language it was saved in; the result of a single translate uses the **Target Language** from the plugin settings
-3. [**Translations Browser**](Top-Navbar-Overview#a-translations-browser-left)
-    - **(3a)**: Browse and open other nested graphs included in your translation
-    - **(3b)**: View what the estimated translation cost was in USD 
-    - **(3c)**: Browse the local path of your [latest Blueprint translation files](Utilizing-Saved-Translations) 
-4. [**Implementation Notes**](Implementation-Notes)
-    - Additional context from the LLM
-    - Usage suggestions
-    - Integration tips
-    - Potential optimization notes
-    - **(4a)**: Copy the current text in the implementation notes to the system clipboard
-5. [**Editor Styling**](Top-Navbar-Overview#d-styling-button-far-right)
-    - Adjust the code editor font size
-    - Change the current theme
+- **The file tabs**: the implementation, labelled with the translation's extension (**.cpp**, **.py**, **.js**,
+  **.cs**, **.swift**, or **.md** for pseudocode); **.h**, only when the translation has a declaration, which in
+  practice means C++; and **JSON**, the Blueprint graph the translation was made from. The viewer opens on the
+  implementation and highlights it in the translation's language. A translation opened from the graph list is that
+  row's Blueprint's own (a copy of a Blueprint keeps separate translations) and uses the language it was saved in.
+- **The code** ([Code Editor](Code-Editor)). The clipboard button at the top right copies the open tab.
+- **Translation Notes**: the model's notes on what the code needs and assumes ([Implementation Notes](Implementation-Notes)),
+  with their own copy button.
+- The cross at the top right closes the viewer and shows the Tag Manager again.
 
-<p align="left">
-    <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_UICallouts.png" alt="Node to Code header" width="1020">
-</p>
-
+Every translation is also saved as files ([Utilizing Saved Translations](Utilizing-Saved-Translations)). To open an
+earlier one, select its graph in the Tag Manager and double-click the row, or use **View Translation** in its
+right-click menu or its hover buttons.
 
 ## Your first visit
 
@@ -40,7 +26,7 @@ Until the project has a saved translation, a **Get started** card sits at the to
 the setup in five rows: the **Provider**, its **API key** (**Save Key** stores it in Windows Credential Manager or
 the macOS Keychain, the same place as the API Key field in Project Settings; Ollama and LM Studio need none),
 **Test Connection** (one short request to the provider and model you chose, with the provider's answer or error), the
-**Target language**, and a picture of the N2C bar that every graph shows at its top right, where you tag a graph or
+**Target language**, and a picture of the N2C bar that every graph shows at its bottom left, where you tag a graph or
 translate it. The card hides after your first saved translation, or when you close it; **Show Get Started Card** in
 **Editor Preferences → Plugins → Node to Code (User)** brings it back.
 
@@ -64,22 +50,17 @@ descriptions. Translations and JSON exports are kept either way.
 **Batch Translate**, **Export JSON** and **Remove Selected** act on the checked graphs, so they are greyed out until
 you check one; their tooltips say so.
 
-## Reviewing the Translation
+## Reviewing the translation
 
-When examining the results:
+1. Check that the overall structure matches your Blueprint logic.
+2. Read the [Translation Notes](Implementation-Notes): they list what the code assumes and the nodes left out because
+   they never run.
+3. Verify that critical functionality is translated, and look for TODO comments.
 
-1. Check that the overall structure matches your Blueprint logic
-2. Review any warnings or notes in the [Implementation Notes panel](Implementation-Notes)
-3. Verify that critical functionality is properly translated
-4. Look for any TODO comments or areas needing attention
+## When a translation fails
 
-## Handling Warnings or Errors
-
-If issues occur during translation:
-
-1. Check the [Output Log](Logging-Configuration) for detailed error messages
-2. Verify your LLM provider connection is stable
-3. Ensure your Blueprint graph isn't [too complex](Handling-Large-Graphs) for the [selected model](Choosing-an-LLM-Provider)
-4. Consider reducing [translation depth](Translation-Depth) if dealing with nested graphs
-5. Review any error-specific suggestions in the [Implementation Notes](Implementation-Notes)
-6. Take a look at the [Troubleshooting](Translation-Fails-or-Hangs) section
+1. Check the [Output Log](Logging-Configuration) for the error.
+2. Check the provider connection (**Test Connection** on the Get started card, or the provider's settings).
+3. Make sure the graph isn't [too large](Handling-Large-Graphs) for the [selected model](Choosing-an-LLM-Provider),
+   or reduce the [translation depth](Translation-Depth) for nested graphs.
+4. See [Troubleshooting](Translation-Fails-or-Hangs).

@@ -1,26 +1,19 @@
-### Translation Workflow → Accessing and Triggering Translation
-***
+You translate a graph from the N2C bar that Node to Code puts at the bottom left of every graph in a Blueprint
+editor, or from the Tag Manager in the Node to Code window for several graphs at once. This page covers the bar,
+which graphs can be translated, and what happens when you click **Translate**.
 
-When you open any Blueprint in the Unreal Editor, you'll find the Node to Code button in the toolbar that also contains the familiar Save and Compile buttons. To use it simply:
+## The N2C bar
 
-1. Look for the "Node to Code" button in the Blueprint Editor's main toolbar
-2. Click the button to see a dropdown of the available actions
+<img src="images/translate-entry/graph-overlay.png" alt="The N2C bar: N2C, the tag count, copy JSON, Translate and the token ring" width="305">
 
-    <p align="left">
-        <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_ButtonHover.png" alt="Node to Code header" width="400">
-    </p>
-
-## Prerequisites for Translation
-
-Before the toolbar actions become available, ensure:
-
-- You have an active Blueprint editor window open
-- The Blueprint editor is focused on a graph (Event Graph, Function, etc.)
-- The graph contains at least one node
-- Your LLM provider is properly configured in the plugin settings
-
-> [!NOTE]
-> If the toolbar button appears grayed out, make sure that you have a graph focused.
+From left to right:
+- **N2C** opens the Node to Code window ([Opening the Editor](Opening-the-Editor)).
+- The **tag** button shows how many tags the graph has; click it to add a tag (with a category) or remove one. Tagged
+  graphs are listed in the Tag Manager.
+- The **clipboard** button copies the graph as Node to Code JSON, the document a translation sends.
+- **Translate** sends the graph to your provider. Set one up first ([Initial Configuration](Initial-Configuration)).
+- The **ring** estimates the graph's size in tokens against the model's context window
+  ([Handling Large Graphs](Handling-Large-Graphs)); **n/a** means there is nothing to translate yet.
 
 ## Which graphs can be translated
 
@@ -43,24 +36,14 @@ If a tagged graph cannot be found any more (its Blueprint was deleted, or the gr
 exporting or double-clicking its row shows a notification naming the graph and its Blueprint. Remove the tag and tag
 the graph again. The NodeToCode window's **Prune Missing** button removes the tags of every deleted Blueprint at once.
 
-## Starting a Translation
+## Starting a translation
 
-Once you've located the toolbar:
-
-1. Click the "Translate Blueprint Graph to Code" button
-
-    <p align="left">
-        <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_ButtonWithTip.png" alt="Node to Code header" width="400">
-    </p>
-
-2. The plugin will:
-    1. Open/Focus the Node to Code Editor window if it's not already open or within view
-    2. Immediately begin processing your graph
-    3. Display a status overlay within the Editor window while the request is processed
-
-    <p align="left">
-        <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_ProcessingOverlay.png" alt="Node to Code header" width="400">
-    </p>
+1. Focus the graph in its Blueprint editor and click **Translate** on its N2C bar. For several graphs, tag them, check
+   them in the Tag Manager and click **Batch Translate** ([Window Overview](Top-Navbar-Overview)).
+2. The Node to Code window shows the progress while the request runs; the bar's **Translate** button reads
+   **Translation in progress...** and only one translation runs at a time.
+3. When the answer arrives, the translation opens in the window's viewer ([Viewing the Results](Viewing-the-Results))
+   and is saved as files ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
 
 ## Behind the Scenes
 

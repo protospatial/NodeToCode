@@ -5,13 +5,12 @@
 
 To use the translated code:
 
-1. Select the [appropriate tab](Top-Navbar-Overview#b-implementation--declaration-tabs-center)
-2. Click the "Copy" button in the bottom-right corner of the [code editor](Code-Editor)
+1. Select the [appropriate tab](Top-Navbar-Overview#the-translation-viewer)
+2. Click the clipboard button at the top right of the [code editor](Code-Editor), above the code
 3. The code is now in your clipboard, ready to paste into your IDE
 
-    <p align="left">
-        <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_CopyButton.png" alt="Node to Code header" width="250">
-    </p>
+The files are also saved on disk, so you can copy them from there instead
+([Utilizing Saved Translations](Utilizing-Saved-Translations)).
 
 ## Integration Steps
 
