@@ -72,8 +72,26 @@ struct FN2CMetadata
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     EN2CBlueprintType BlueprintType;
 
-    /** The Blueprint class this graph belongs to */                                                                                                                                                                                 UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")                                                                                                                                                             
-    FString BlueprintClass; 
+    /** The Blueprint class this graph belongs to */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString BlueprintClass;
+
+    /**
+     * Optional "parent_class" (card 0518, finding F4): the class the Blueprint derives from, named as member_parent
+     * names classes (N2CStableNames::ClassName: a native class without its Unreal prefix, e.g. "Actor" or
+     * "UserWidget"; a Blueprint class by its Blueprint's name). Empty when not known (1.x and earlier 2.0.0 documents,
+     * or a Blueprint whose parent class is missing); ToJson then leaves it out.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString ParentClass;
+
+    /**
+     * Optional "asset_class" (card 0518, finding F4): the class of the Blueprint asset itself, which tells a Widget,
+     * Animation or Editor Utility Blueprint from a plain one ("Blueprint", "WidgetBlueprint", "AnimBlueprint",
+     * "EditorUtilityBlueprint", "EditorUtilityWidgetBlueprint"). Empty when not known; ToJson then leaves it out.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString AssetClass;
 
     /** The "blueprint_type" text as read when BlueprintType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")

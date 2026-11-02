@@ -9,8 +9,9 @@ asset classes, decision 0443) is [material-classes.md](material-classes.md).
 Status: the owner chose option B on 2026-11-02 ([decision 0008](../../.agents/decisions/0008-graph-types-every-k2-graph.md)),
 and card 0248 implements it. Rows 17, 18, 19 and 21 are refused with `UNSUPPORTED_GRAPH_TYPE`, keyed on the schema
 class. Row 20 (transition rules) is supported, because F1's `TransitionResult` boundary landed with it. F2 and F3
-(the typed error, and the kind with `translatable` in list-blueprint-graphs) are done. F4 (metadata) is not. The
-matrix below is the evidence as measured before that change.
+(the typed error, and the kind with `translatable` in list-blueprint-graphs) are done. F4 (metadata) is done by card
+0518: `metadata.parent_class` and `metadata.asset_class`. The matrix below is the evidence as measured before those
+changes.
 
 ## Recommendation in one paragraph
 

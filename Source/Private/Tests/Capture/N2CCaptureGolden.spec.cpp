@@ -67,6 +67,10 @@
 #include "EdGraphNode_Comment.h"
 #include "K2Node_Variable.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
+#include "WidgetBlueprint.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -157,6 +161,9 @@
  * a DEPTH_LIMIT warning on a successful capture, get-focused-blueprint's result lists the warnings (and reads back
  * without a read warning), a pin missing its sub_type and a struct member without its type name are warnings (the
  * struct is kept), and a dangling exec or data flow is a DANGLING_FLOW error that fails the document.
+ * "Metadata" checks the class metadata (card 0518, finding F4): parent_class and asset_class of an Actor Blueprint, a
+ * child of another Blueprint and a Widget Blueprint; both fields read and write back, a document without them stays
+ * without, and an asset class without a parent class is a MISSING_PARENT_CLASS warning.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -3450,6 +3457,124 @@ void FN2CCaptureGoldenSpec::Define()
 			FString Error;
 			TestFalse(TEXT("the bool overload fails too"), Validator.Validate(Blueprint, Error));
 			TestTrue(TEXT("with the first error's text"), Error.Contains(TEXT("references non-existent node N9")));
+		});
+	});
+
+	// Card 0518 (finding F4 of Context/translation-pipeline/graph-type-coverage.md): metadata.parent_class and
+	// metadata.asset_class, so a translation need not guess the base class and a Widget, Animation or Editor Utility
+	// Blueprint can be told from an Actor's
+	Describe(TEXT("Metadata"), [this]()
+	{
+		It(TEXT("records the parent class and the asset class of an Actor, a child and a Widget Blueprint"), [this]()
+		{
+			using namespace N2CCaptureGolden;
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_MetaBase"));
+			N2CTest::FTestBlueprint* Child = BP.AddSiblingBlueprint(TEXT("BP_N2CGolden_MetaChild"));
+			UBlueprint* Widget = FKismetEditorUtilities::CreateBlueprint(UUserWidget::StaticClass(), BP.GetPackage(),
+				TEXT("WBP_N2CGolden_Meta"), BPTYPE_Normal, UWidgetBlueprint::StaticClass(), UWidgetBlueprintGeneratedClass::StaticClass());
+			if (!TestNotNull(TEXT("the Actor Blueprint"), BP.GetBlueprint()) || !TestNotNull(TEXT("the child Blueprint"), Child)
+				|| !TestNotNull(TEXT("the Widget Blueprint"), Cast<UWidgetBlueprint>(Widget)))
+			{
+				return;
+			}
+			// The child derives from the first Blueprint, as Reparent Blueprint (or a child made from it) sets it
+			Child->GetBlueprint()->ParentClass = BP.GetBlueprint()->GeneratedClass;
+
+			// One custom event running CollectGarbage in a Blueprint's event graph, captured on its own
+			auto CaptureEventGraph = [this, &BP](UBlueprint* Blueprint, FN2CBlueprint& Out) -> bool
+			{
+				UEdGraph* Graph = Blueprint ? FBlueprintEditorUtils::FindEventGraph(Blueprint) : nullptr;
+				UK2Node_CustomEvent* Event = BP.AddCustomEvent(Graph, TEXT("OnMeta"));
+				UK2Node_CallFunction* Collect = Graph ? AddCollectGarbage(BP, Graph) : nullptr;
+				if (!TestNotNull(TEXT("an event graph with the two nodes"), Collect)
+					|| !BP.Link(Event, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute))
+				{
+					AddError(FString::Join(BP.Errors(), TEXT("; ")));
+					return false;
+				}
+				FN2CCaptureOptions Options;
+				Options.Depth = 0;
+				const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureGraph(*Graph, Options);
+				if (!TestTrue(FString::Printf(TEXT("%s is captured"), *Blueprint->GetName()), Result.HasValue()))
+				{
+					return false;
+				}
+				Out = Result.GetValue().Blueprint;
+				return true;
+			};
+
+			FN2CBlueprint Captured;
+			if (CaptureEventGraph(BP.GetBlueprint(), Captured))
+			{
+				TestEqual(TEXT("an Actor Blueprint's parent_class"), Captured.Metadata.ParentClass, FString(TEXT("Actor")));
+				TestEqual(TEXT("an Actor Blueprint's asset_class"), Captured.Metadata.AssetClass, FString(TEXT("Blueprint")));
+			}
+			if (CaptureEventGraph(Child->GetBlueprint(), Captured))
+			{
+				TestEqual(TEXT("a child's parent_class is its parent Blueprint, by name"), Captured.Metadata.ParentClass,
+					FString(TEXT("BP_N2CGolden_MetaBase")));
+				TestEqual(TEXT("a child's asset_class"), Captured.Metadata.AssetClass, FString(TEXT("Blueprint")));
+			}
+			if (CaptureEventGraph(Widget, Captured))
+			{
+				TestEqual(TEXT("a Widget Blueprint's parent_class"), Captured.Metadata.ParentClass, FString(TEXT("UserWidget")));
+				TestEqual(TEXT("a Widget Blueprint's asset_class"), Captured.Metadata.AssetClass, FString(TEXT("WidgetBlueprint")));
+				TestTrue(TEXT("blueprint_type stays Normal"), Captured.Metadata.BlueprintType == EN2CBlueprintType::Normal);
+				TestTrue(TEXT("written after blueprint_class, in this order"), FN2CSerializer::ToJson(Captured, EN2CJsonStyle::Condensed).Contains(
+					TEXT("\"blueprint_class\":\"WBP_N2CGolden_Meta\",\"parent_class\":\"UserWidget\",\"asset_class\":\"WidgetBlueprint\"}")));
+			}
+		});
+
+		It(TEXT("reads and writes both fields, leaves them out when absent, and warns on an asset class without a parent"), [this]()
+		{
+			const FString Graphs = FString(TEXT("\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[{\"id\":\"N1\",\"type\":\"FunctionEntry\","))
+				+ TEXT("\"class\":\"K2Node_FunctionEntry\",\"input_pins\":[],\"output_pins\":[]}],\"flows\":{\"execution\":[],\"data\":{}}}],\"structs\":[],\"enums\":[]}");
+			const FString With = FString(TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"WBP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"WBP\","))
+				+ TEXT("\"parent_class\":\"UserWidget\",\"asset_class\":\"WidgetBlueprint\"},") + Graphs;
+			const FString Without = FString(TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"WBP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"WBP\"},")) + Graphs;
+
+			FN2CBlueprint Read;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (TestTrue(TEXT("FromJson reads the fields"), FN2CSerializer::FromJson(With, Read, Warnings)))
+			{
+				TestEqual(TEXT("parent_class"), Read.Metadata.ParentClass, FString(TEXT("UserWidget")));
+				TestEqual(TEXT("asset_class"), Read.Metadata.AssetClass, FString(TEXT("WidgetBlueprint")));
+				TestEqual(TEXT("known fields: no warning"), Warnings.Num(), 0);
+				TestEqual(TEXT("not kept as unknown fields"), Read.Metadata.UnknownFields.Num(), 0);
+				TestEqual(TEXT("written back byte for byte"), FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed), With);
+			}
+
+			// Reading into a model that had them clears them: a document without them is written back without them
+			Warnings.Reset();
+			if (TestTrue(TEXT("FromJson reads a document without the fields"), FN2CSerializer::FromJson(Without, Read, Warnings)))
+			{
+				TestTrue(TEXT("no parent_class"), Read.Metadata.ParentClass.IsEmpty());
+				TestTrue(TEXT("no asset_class"), Read.Metadata.AssetClass.IsEmpty());
+				TestEqual(TEXT("written back byte for byte, without them"), FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed), Without);
+			}
+
+			auto HasMissingParent = [](const TArray<FN2CDiagnostic>& Diagnostics)
+			{
+				return Diagnostics.ContainsByPredicate([](const FN2CDiagnostic& Diagnostic)
+				{
+					return Diagnostic.Code == N2CJsonContract::Diagnostic::MissingParentClass
+						&& Diagnostic.Path == TEXT("metadata.parent_class") && !Diagnostic.IsError();
+				});
+			};
+			FN2CBlueprintValidator Validator;
+			TArray<FN2CDiagnostic> Diagnostics;
+			TestTrue(TEXT("neither field: valid"), Validator.Validate(Read, Diagnostics));
+			TestFalse(TEXT("neither field: no MISSING_PARENT_CLASS"), HasMissingParent(Diagnostics));
+
+			Read.Metadata.AssetClass = TEXT("WidgetBlueprint");
+			Diagnostics.Reset();
+			TestTrue(TEXT("an asset class without a parent: still valid"), Validator.Validate(Read, Diagnostics));
+			TestTrue(TEXT("with a MISSING_PARENT_CLASS warning"), HasMissingParent(Diagnostics));
+
+			Read.Metadata.ParentClass = TEXT("UserWidget");
+			Diagnostics.Reset();
+			TestTrue(TEXT("both fields: valid"), Validator.Validate(Read, Diagnostics));
+			TestFalse(TEXT("both fields: no MISSING_PARENT_CLASS"), HasMissingParent(Diagnostics));
 		});
 	});
 

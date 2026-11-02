@@ -150,6 +150,17 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* VariableRepNotifyField = TEXT("rep_notify");
 
 	/**
+	 * Class metadata (card 0518, finding F4 of Context/translation-pipeline/graph-type-coverage.md; additive): the
+	 * optional "parent_class" and "asset_class" in "metadata", after "blueprint_class". "parent_class" is the class the
+	 * Blueprint derives from, named as "member_parent" names classes (a native class without its Unreal prefix, a
+	 * Blueprint class by its Blueprint's name); "asset_class" is the class of the Blueprint asset ("Blueprint",
+	 * "WidgetBlueprint", "AnimBlueprint", "EditorUtilityBlueprint", ...). Every capture writes both; each is left out
+	 * when empty, so a document without them (1.x, earlier 2.0.0 builds) round-trips unchanged.
+	 */
+	inline constexpr const TCHAR* ParentClassField = TEXT("parent_class");
+	inline constexpr const TCHAR* AssetClassField = TEXT("asset_class");
+
+	/**
 	 * The agent document (card 0505): get-focused-blueprint, get-blueprint-n2cjson and Python get_blueprint_n2c_json
 	 * write each node's and pin's "id" as "ids": {"short": the ID, "guid": the node's NodeGuid or the pin's PinId}
 	 * (a pin's also has its "name"), plus the top-level "guids" table. FromJson reads "ids.short" as the ID when there
@@ -291,6 +302,11 @@ namespace N2CJsonContract
 		inline constexpr const TCHAR* UnknownKind = TEXT("UNKNOWN_KIND");
 		/** A graph the captured graphs use that was left out because it is beyond Max Translation Depth */
 		inline constexpr const TCHAR* DepthLimit = TEXT("DEPTH_LIMIT");
+		/**
+		 * A document that names its asset class but not its parent class (card 0518): the writer lost it, or the
+		 * Blueprint's parent class is missing, so a translation has to guess the base class
+		 */
+		inline constexpr const TCHAR* MissingParentClass = TEXT("MISSING_PARENT_CLASS");
 	}
 
 	/** True when FromJson reads this version (majors OldestReadableMajor..Major) */

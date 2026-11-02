@@ -302,6 +302,12 @@ void FN2CCaptureContext::CaptureBlueprintMetadata(UK2Node* FirstNode)
                 N2CBlueprint.Metadata.BlueprintClass = N2CStableNames::ClassName(BPClass);
             }
 
+            // The class it derives from and the asset's own class (card 0518, finding F4): a Widget, Animation or
+            // Editor Utility Blueprint is otherwise a "Normal" Blueprint like any Actor's, and a translation guesses
+            // the base class from the nodes. Empty (and left out of the JSON) when the parent class is missing.
+            N2CBlueprint.Metadata.ParentClass = N2CStableNames::ClassName(Blueprint->ParentClass);
+            N2CBlueprint.Metadata.AssetClass = Blueprint->GetClass()->GetName();
+
             // Determine Blueprint type
             switch (Blueprint->BlueprintType)
             {
@@ -326,10 +332,12 @@ void FN2CCaptureContext::CaptureBlueprintMetadata(UK2Node* FirstNode)
             }
 
             // Log Blueprint info
-            FString Context = FString::Printf(TEXT("Blueprint: %s, Type: %s, Class: %s"),
+            FString Context = FString::Printf(TEXT("Blueprint: %s, Type: %s, Class: %s, Parent: %s, Asset: %s"),
                 *N2CBlueprint.Metadata.Name,
                 *StaticEnum<EN2CBlueprintType>()->GetNameStringByValue(static_cast<int64>(N2CBlueprint.Metadata.BlueprintType)),
-                *N2CBlueprint.Metadata.BlueprintClass);
+                *N2CBlueprint.Metadata.BlueprintClass,
+                *N2CBlueprint.Metadata.ParentClass,
+                *N2CBlueprint.Metadata.AssetClass);
             FN2CLogger::Get().Log(TEXT("Blueprint metadata collected"), EN2CLogSeverity::Info, Context);
         }
     }

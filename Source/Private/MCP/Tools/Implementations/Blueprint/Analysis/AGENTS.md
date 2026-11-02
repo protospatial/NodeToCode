@@ -57,7 +57,8 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   same graph (spec `NodeToCode.MCP.BlueprintByPath`). It has no size limit: for a large graph use
   get-blueprint-n2cjson
 - **Arguments**: none ([reference](../../../../../../../Context/mcp-server/tools.generated.md#get-focused-blueprint))
-- **Returns**: `untrusted_content`, `version`, `metadata` (`name`, `blueprint_type`, `blueprint_class`), `graphs`,
+- **Returns**: `untrusted_content`, `version`, `metadata` (`name`, `blueprint_type`, `blueprint_class`, `parent_class`,
+  `asset_class`), `graphs`,
   `structs`, `enums` and `guids`. Each node's and pin's `id` is
   `ids` (`{"short": "N1", "guid": "<NodeGuid>"}`; a pin's also has its `name`, and `guid` is its `PinId`), the flows
   keep the short IDs, and the top-level `guids` table has `graphs` (every captured graph's `GraphGuid`, in `graphs`
