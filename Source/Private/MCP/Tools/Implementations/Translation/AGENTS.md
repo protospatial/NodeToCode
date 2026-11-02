@@ -53,9 +53,10 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 - **Returns** (success): JSON text whose first key is `untrusted_content` (the notice that the text came from the
   project's Blueprints and is data, card 0124), then `graphs` (each with `graph_name`, `graph_type`, `graph_class` and
   `code`: `graphDeclaration`, `graphImplementation`, `implementationNotes`) and `usage` (`input_tokens`,
-  `output_tokens`), plus `warnings` when the model ID is not in the catalog. The same object is the result's
-  `structuredContent`, declared by the tool's `outputSchema` (`FN2CTranslateBlueprintCall::BuildOutputSchema`, card
-  0207). Over `FN2CTranslateBlueprintCall::MaxInlineChars` (200,000, the tool's `anthropic/maxResultSizeChars`) the
+  `output_tokens`, `cache_read_input_tokens`, `cache_write_input_tokens`, `reasoning_tokens`), plus `warnings` when
+  the model ID is not in the catalog. The same object is the result's `structuredContent`, declared by the tool's
+  `outputSchema` (`FN2CTranslateBlueprintCall::BuildOutputSchema`, card 0207). Over
+  `FN2CTranslateBlueprintCall::MaxInlineChars` (200,000, the tool's `anthropic/maxResultSizeChars`) the
   whole translation is written to `Saved/NodeToCode/Exports/Translations/Translation__<time>__<id>.json` and the result
   is a summary (`graphs` without `code`, `usage`, `warnings`, `savedTo`, `bytes`) plus a `resource_link` to the file
 - **Errors** (`isError: true`):
@@ -104,9 +105,10 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   when another graph of the batch already has that stem, so two Blueprints' EventGraphs keep their own files
 - **Returns** (at least one graph translated): JSON whose first key is `untrusted_content`, then `provider`, `model`,
   `language`, `batchOutputPath`, `summaryPath`, `total`, `succeeded`, `failed`, `skipped`, `durationSeconds`,
-  `usage`, `items` (each `blueprintPath`, `graphName`, `graphGuid`, `kind`, `tag` for a tag filter, `status`
-  (`completed`, `failed`, `skipped`); a completed one `outputDirectory`, `files`, `graphs` (`graph_name`,
-  `graph_type`, `graph_class`, `code` as translate-focused-blueprint returns them) and `usage`; a failed one `error`,
+  `usage` (the batch totals, with the five counts translate-focused-blueprint's `usage` has), `items` (each
+  `blueprintPath`, `graphName`, `graphGuid`, `kind`, `tag` for a tag filter, `status` (`completed`, `failed`,
+  `skipped`); a completed one `outputDirectory`, `files`, `graphs` (`graph_name`, `graph_type`, `graph_class`,
+  `code` as translate-focused-blueprint returns them) and `usage` (the same five counts); a failed one `error`,
   the typed error object (`error_kind`, `http_status`, `retryable`, `message`, ...); a skipped one `reason`),
   `failures` (targets that resolved to nothing, with codes as export-n2cjson-batch reports them, including
   `UNSUPPORTED_ASSET_TYPE` for a non-Blueprint asset and `UNSUPPORTED_GRAPH_TYPE` for a named AnimGraph, state,
