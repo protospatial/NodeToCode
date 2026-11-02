@@ -55,6 +55,10 @@ name is unique across both roots.
   `docs_check.py --stale`). Groups today: `main-window`, `translate-entry`, `settings`. A new picture is a new
   shot in that file, in its surface's group; never hand-capture one. Commit the harness change first and
   capture at that commit, so the shots are not stale on arrival. Look at every picture before committing it.
+  The stamp survives a squash or rebase merge: when the stamped branch commit is not in the history being checked,
+  `--stale` uses the commit that wrote that stamp into `shots.json` (the squash commit, which holds the branch's
+  tree), so no restamp pull request is needed after a merge. `capture.py --restamp` still rewrites the stamps to
+  each image's last commit, for tidiness only.
 - Single images (the Unreal editor has one theme), `wiki/images/<section>/<name>.png`, captured at 2x and
   shown at 1x with `<img src="images/<section>/<name>.png" alt="..." width="<half the pixel width>">`.
 - Alt text says what the picture shows. Cropped to what the text describes, never scaled.

@@ -16,7 +16,8 @@ Two git-backed modes look at the code too:
                    commit messages or in --note says why
   --stale          a shot whose capture commit (the shots manifest, else the image's
                    own last commit) predates a change to its surface's code is
-                   SHOT_STALE
+                   SHOT_STALE; a manifest stamp a squash or rebase merge dropped
+                   from history counts as the commit that wrote it there
 
 Exit 0 clean (info only), 1 warnings, 2 critical. --json prints one object:
 {"config", "mode", "summary", "accepted", "findings": [{code, severity, path, line, message}]}.
@@ -486,10 +487,15 @@ def check_changed(root, cfg, base, note):
     return out
 
 
+def shots_manifest(cfg):
+    """The shots manifest's repo path (images.manifest, else <images.dir>/shots.json), or None."""
+    images = cfg.get("images") or {}
+    return images.get("manifest") or (images.get("dir") and f"{images['dir'].rstrip('/')}/shots.json")
+
+
 def shot_commits(root, cfg):
     """{image repo path: the commit it was captured from}, from the shots manifest when the harness writes one."""
-    images = cfg.get("images") or {}
-    manifest = images.get("manifest") or (images.get("dir") and f"{images['dir'].rstrip('/')}/shots.json")
+    manifest = shots_manifest(cfg)
     out = {}
     if manifest and (root / manifest).is_file():
         data = json.loads((root / manifest).read_text(encoding="utf-8-sig")).get("shots") or {}
@@ -500,11 +506,38 @@ def shot_commits(root, cfg):
     return out
 
 
+def is_ancestor(root, sha):
+    """True when sha is a commit in HEAD's history (False when it is missing or on another line, e.g. squashed away)."""
+    r = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True)
+    return r.returncode == 0
+
+
+def stamp_base(root, sha, manifest):
+    """The commit to diff a shot's surface against, for the stamp sha recorded in the manifest.
+
+    A stamp in HEAD's history is used as it is. A squash or rebase merge drops the branch commit a card stamped its
+    shots with, so that stamp is in no history here; the commit that wrote it into the manifest on this line (the
+    squash commit, which holds the branch's tree) stands in for it: the oldest commit whose manifest change added or
+    removed that stamp string (git log -S). None when neither is found; the caller then falls back to the image's own
+    last commit, as for a shot with no stamp."""
+    if is_ancestor(root, sha):
+        return sha
+    if manifest:
+        try:
+            hits = [h for h in git(root, "log", "--format=%H", f"-S{sha}", "--", manifest).split("\n") if h]
+        except RuntimeError:
+            hits = []
+        if hits:
+            return hits[-1]
+    return None
+
+
 def check_stale(root, cfg):
     recorded = shot_commits(root, cfg)
+    manifest = shots_manifest(cfg)
     dark_suffix = (cfg.get("images") or {}).get("darkSuffix", ".dark")
     tracked = git(root, "ls-files").split("\n")
-    out, cache = [], {}
+    out, cache, bases = [], {}, {}
     for s in cfg.get("surfaces") or []:
         if not s.get("shots") or not s.get("code"):
             continue
@@ -513,9 +546,18 @@ def check_stale(root, cfg):
         for img in [f for f in tracked if matches(f, s["shots"]) and f.lower().endswith(IMAGE_EXT)]:
             p = Path(img)
             key = p.with_name(p.stem[: -len(dark_suffix)] + p.suffix).as_posix() if p.stem.endswith(dark_suffix) else img
-            sha = recorded.get(key) or recorded.get(Path(key).with_suffix("").as_posix())
+            stamp = recorded.get(key) or recorded.get(Path(key).with_suffix("").as_posix())
+            sha, via = None, ""
+            if stamp:
+                if stamp not in bases:
+                    bases[stamp] = stamp_base(root, stamp, manifest)
+                sha = bases[stamp]
+                if sha and sha != stamp:
+                    via = f" (stamp {stamp[:8]} is not in this history; the commit that recorded it)"
             if not sha:
                 sha = git(root, "log", "-1", "--format=%H", "--", img).strip()
+                if stamp:
+                    via = f" (stamp {stamp[:8]} is not in this history; the image's last commit)"
             if not sha:
                 continue
             if (sha, s.get("name")) not in cache:
@@ -527,8 +569,8 @@ def check_stale(root, cfg):
             if moved:
                 group = f"; retake capture group {s['group']}" if s.get("group") else ""
                 out.append(Finding("SHOT_STALE", "warning", img, 0,
-                                   f"captured at {sha[:8]}, and {len(moved)} file(s) of surface {s.get('name', '?')} "
-                                   f"changed since (first: {moved[0]}){group}"))
+                                   f"captured at {sha[:8]}{via}, and {len(moved)} file(s) of surface "
+                                   f"{s.get('name', '?')} changed since (first: {moved[0]}){group}"))
     return out
 
 
