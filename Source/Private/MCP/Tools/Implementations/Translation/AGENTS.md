@@ -6,7 +6,7 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 
 ### get-available-translation-targets
 - **Description**: Returns the languages NodeToCode can translate to
-- **Parameters**: None
+- **Arguments**: none ([reference](../../../../../../Context/mcp-server/tools.generated.md#get-available-translation-targets))
 - **Returns**: `languages` (each with `id`, `displayName`, `description`, `fileExtensions`, `category` (`compiled`,
   `scripted` or `pseudocode`), `features`, `syntaxHighlightingSupported`), `defaultLanguage` (`cpp`),
   `currentLanguage` (the settings' Target Language), `languageCount`
@@ -16,7 +16,7 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 - **Description**: Returns the providers that can translate now: Ollama and LM Studio always, a cloud provider when
   the credential source requests resolve their key from (`IN2CCredentialSource::Get()->Has()`) finds a saved key or
   one in the editor's environment
-- **Parameters**: None
+- **Arguments**: none ([reference](../../../../../../Context/mcp-server/tools.generated.md#get-available-llm-providers))
 - **Returns**: `providers`, `currentProvider` (the settings' provider ID), `configuredProviderCount`. Each provider has
   `id`, `displayName`, `configured` (always true), `isLocal`, `keySource` (`saved`, `environment` with
   `keyVariable` naming the variable, or `none`; never the key), `currentModel` (the model ID the settings select),
@@ -28,7 +28,7 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 ### get-translation-output-directory
 - **Description**: Returns where every translation is saved (the editor's window, translate-batch,
   translate-focused-blueprint and the Python API; "Translation Output Structure" below)
-- **Parameters**: None
+- **Arguments**: none ([reference](../../../../../../Context/mcp-server/tools.generated.md#get-translation-output-directory))
 - **Returns**: `isCustomDirectorySet`; `customDirectory` (as configured) or `defaultDirectory` (absolute); `absolutePath`
   (`FN2CPathUtils::GetTranslationsBasePath`: absolute, a relative custom directory is under the project folder; use
   this one); `directoryExists`; `status`; `projectDirectory` (the `.uproject` file's path) and `projectSavedDirectory`
@@ -40,7 +40,7 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
 ### translate-focused-blueprint
 - **Description**: Translates the focused Blueprint graph with an LLM provider and returns the translation as the
   call's result
-- **Parameters** (all optional):
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#translate-focused-blueprint)):
   - `provider`: LLM provider ID as `get-available-llm-providers` lists it (case-insensitive)
   - `model`: Model ID (a string from `availableModels`; default: the provider's model in settings)
   - `language`: Target language ID as `get-available-translation-targets` lists it (case-insensitive)
@@ -83,7 +83,7 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   0169). The graphs go through `UN2CBatchTranslationOrchestrator` as one batch, one LLM request per graph, one after
   another, every request with the call's provider, model and language
   (`FN2CBatchTranslationOptions::bUseRequestConfig`, `UN2CLLMModule::ProcessN2CJsonWithOverrides`)
-- **Parameters** (all optional except the selection):
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#translate-batch)):
   - `targets` or `tag`/`category`: the selection export-n2cjson-batch takes (see `Blueprint/Analysis/AGENTS.md`),
     at most 50 graphs per call
   - `language`, `provider`, `model`: as translate-focused-blueprint (unknown IDs are an `INVALID_ARGUMENT` error
@@ -124,20 +124,20 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   last), a .cpp that includes the header and the resolved includes and holds the implementations (a definition
   qualifier that names no native type, the LLM's `ABP_Enemy_C::`, becomes the new class's; the implementation notes
   close the file as a comment), and the modules the code needs
-- **Parameters**:
-  - `module` (required): a C++ module of the project (`IProjectManager`) or of a plugin loaded from the project
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#place-cpp-translation)):
+  - `module`: a C++ module of the project (`IProjectManager`) or of a plugin loaded from the project
     (`EPluginLoadedFrom::Project`), whose `Source/<Module>/<Module>.Build.cs` exists; engine and marketplace modules
     and NodeToCode's own are refused
-  - `class_name` (required): with or without its prefix (`MyActor`, `AMyActor`); the prefix follows the parent (`A`
+  - `class_name`: with or without its prefix (`MyActor`, `AMyActor`); the prefix follows the parent (`A`
     for an Actor, else `U`), the files are `<Name>.h` and `<Name>.cpp`
-  - `parent_class` (optional): a native class (`Actor`, `ACharacter`, `/Script/Engine.Pawn`); default: the first
+  - `parent_class`: a native class (`Actor`, `ACharacter`, `/Script/Engine.Pawn`); default: the first
     native class above the translated Blueprint (the asset named by the N2C JSON's `metadata.name`, which must be
     unique), else an error asking for it
-  - `run_folder` (optional): a run folder inside the translation output directory (absolute or relative to it); default
+  - `run_folder`: a run folder inside the translation output directory (absolute or relative to it); default
     the latest run of this editor session. A single or MCP run in C++: a batch run or another language is refused
-  - `subfolder` (optional): a folder below `Public/` and `Private/` (or the module root when the module has no such
+  - `subfolder`: a folder below `Public/` and `Private/` (or the module root when the module has no such
     split), segments of letters, digits and `_` joined by `/`
-  - `dry_run` (optional, default true): true returns the plan and writes nothing
+  - `dry_run`: true returns the plan and writes nothing
 - **Includes and modules**: each node's `member_parent` and each `X::` the code names, looked up as a native class or
   struct (`FindFirstObject`, with or without its C++ prefix); the include is its `IncludePath` metadata (a struct's
   `ModuleRelativePath` without `Public/`, `Classes/`, `Private/`), the module is its `/Script/<Module>` package.

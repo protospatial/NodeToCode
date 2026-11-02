@@ -13,12 +13,12 @@ the added `FN2CTagEntry` and its `FN2CGraphRef` (card 0345; the `UN2CTagManager`
 - **Description**: Tags a graph under its `GraphGuid` (`FN2CMcpTagBlueprintGraphTool::Execute`): the one
   `blueprintPath` plus `graphName` or `graphGuid` name, else the focused graph of the active Blueprint editor
   (`FN2CGraphTarget::Resolve`, card 0274; a read-only graph can be tagged). The result has `target`
-- **Parameters**:
-  - `tag` (required, not empty): The tag name
-  - `category` (optional, default `Default`): Grouping. An empty or blank category is stored as `Default`
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#tag-blueprint-graph)):
+  - `tag` (not empty): The tag name
+  - `category` (default `Default`): Grouping. An empty or blank category is stored as `Default`
     (`FN2CTagEntry::NormalizeCategory`, also applied by `UN2CGraphStateManager::AddTag` for every caller)
-  - `description` (optional): Free text
-  - `blueprintPath`, `graphName`, `graphGuid` (optional): The graph to tag, as for the Graph tools
+  - `description`: Free text
+  - `blueprintPath`, `graphName`, `graphGuid`: The graph to tag, as for the Graph tools
 - **Returns**: `success`, `message` (`Successfully tagged EventGraph with 'PlayerMovement'`) and `taggedGraph` (`tag`,
   `category`, `description`, `graphGuid` (hyphenated), `graphName`, `blueprintPath`, `timestamp` (UTC, ISO 8601))
 - **Duplicates**: a tag with the same name and category, compared case-insensitively with no wildcard
@@ -32,8 +32,8 @@ the added `FN2CTagEntry` and its `FN2CGraphRef` (card 0345; the `UN2CTagManager`
 ### list-blueprint-tags
 - **Description**: Lists stored tags (read-only, `readOnlyHint`; results marked as untrusted content, card 0124:
   `untrusted_content` is the first key)
-- **Parameters** (all optional; every filter given applies, together, `FN2CMcpListBlueprintTagsTool::Execute`,
-  card 0294):
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#list-blueprint-tags)). Every filter given
+  applies, together (`FN2CMcpListBlueprintTagsTool::Execute`, card 0294):
   - `graphGuid`: Tags of that graph, in every Blueprint that has it. With hyphens or without (`FGuid::Parse`)
   - `tag`: Tags with that name, case-insensitive (`UN2CGraphStateManager::FindTaggedGraphs`)
   - `category`: Tags in that category, case-insensitive (`FindTaggedGraphsInCategory`)
@@ -46,9 +46,9 @@ the added `FN2CTagEntry` and its `FN2CGraphRef` (card 0345; the `UN2CTagManager`
 ### remove-tag-from-graph
 - **Description**: Removes every tag with that name from a graph, whatever its category
   (`UN2CGraphStateManager::RemoveTagByName`, case-insensitive)
-- **Parameters**:
-  - `graphGuid` (required): The graph's GUID, as `list-blueprint-tags` returns it (hyphens optional)
-  - `tag` (required, not empty): Tag name
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#remove-tag-from-graph)):
+  - `graphGuid`: The graph's GUID, as `list-blueprint-tags` returns it (hyphens optional)
+  - `tag` (not empty): Tag name
 - **Returns**: `success` (true also when nothing matched), `message` (`Tag 'X' removed from graph`, `Removed 2
   instances of tag 'X' from graph`, or `Tag 'X' was not found on graph <guid> (no action taken)`), `removedTag`
   (`tag`, `category` and `graphGuid` of the first match, only when something was removed) and `remainingTags`
@@ -57,7 +57,8 @@ the added `FN2CTagEntry` and its `FN2CGraphRef` (card 0345; the `UN2CTagManager`
 ## Storage
 
 - **File.** Tags live in `<Project>/Saved/NodeToCode/BlueprintGraphState.json` (`GetStateFilePath`), one entry per
-  graph keyed by `GraphGuid`, together with that graph's translation and JSON-export state. A graph left with no tags,
+  graph keyed by its Blueprint's path and `GraphGuid` (`FN2CGraphKey`), together with that graph's translation and
+  JSON-export state. A graph left with no tags,
   translation or export is dropped from the file.
 - **Writes.** Every change saves the whole in-memory state at once (`SaveState`, no undo). Since card 0066 the write
   is atomic (`FN2CFileUtils::SaveStringAtomically`: a temporary file, then a replace, with the previous file kept as
@@ -70,10 +71,11 @@ the added `FN2CTagEntry` and its `FN2CGraphRef` (card 0345; the `UN2CTagManager`
   editor ran was not seen by `list-blueprint-tags`, and the editor's next `tag-blueprint-graph` rewrote the file
   without it. Tag from one editor at a time, or reload the tags in the other editor before tagging there.
 - **Known issue (suggested card 0436):** no lock or merge between editors.
-- **Keys.** Tags follow a graph's `GraphGuid`, which survives a rename; the stored `graphName` and `blueprintPath`
-  are updated the next time that graph is tagged.
-- **Known issue (card 0192):** a Blueprint duplicated in the Content Browser keeps its graphs' GUIDs, so the copy
-  shares the original's tags; renamed or deleted Blueprints keep stale paths.
+- **Keys.** An entry is the Blueprint's path plus the graph's `GraphGuid` (card 0192), so a Blueprint duplicated in the
+  Content Browser (same graph GUIDs) does not share the original's tags. Entries follow Blueprint renames and deletes
+  through the asset registry (`HandleBlueprintRenamed`, `HandleBlueprintRemoved`). remove-tag-from-graph takes only a
+  `graphGuid`: while graphs of more than one Blueprint share it, the lookup finds nothing (nothing is removed, a
+  warning is logged) ([tags and graph state](../../../../../../../Context/tags-graph-state/AGENTS-tags-graph-state.md)).
 
 ## Examples
 
