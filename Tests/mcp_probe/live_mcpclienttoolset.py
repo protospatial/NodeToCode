@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`, on UE 5.8 only (the plugins do not exist before 5.8):
 
-    python -I live_mcpclienttoolset.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
+    python -I live_mcpclienttoolset.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
 
 For the length of the run it enables Epic's ModelContextProtocol ("Unreal MCP") and MCPClientToolset plugins in the
 host .uproject, adds one MCP Toolset Servers entry for NodeToCode (Transport Streamable HTTP, Auth None) and turns on

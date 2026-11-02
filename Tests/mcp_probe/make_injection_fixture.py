@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I make_injection_fixture.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
+    python -I make_injection_fixture.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
 
 On a headless editor (editor_session.py, -RenderOffScreen, Allow MCP Python Execution on for this session only) it
 creates an Actor Blueprint whose untrusted fields carry the payloads in PAYLOADS: the BlueprintDescription, a member

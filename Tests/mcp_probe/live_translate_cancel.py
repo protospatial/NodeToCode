@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_translate_cancel.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" \
+    python -I live_translate_cancel.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" \
         --provider anthropic --model claude-haiku-5-5
 
 It starts a headless editor with only the provider's key (from the repo's .env) added to its environment, makes an

@@ -3,8 +3,8 @@ checked against the rules the provider cards set. Keys reach only the editor's e
 
 Stdlib only; run with `python -I`:
 
-    python -I live_provider_matrix.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 \
+    python -I live_provider_matrix.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 \
         [--cases anthropic/claude-haiku-5-5 deepseek/deepseek-flash:off ...] [--providers gemini openai] [--fanout]
         [--branch] [--liveness] [--issue13] [--gate] [--viewer] [--languages cpp python ...]
 

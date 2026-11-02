@@ -2,10 +2,10 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_bridge_concurrency.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" \
-        --second-engine G:/UE/UE_5.6 \
-        --second-project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_6/NodeToCodeHost_5_6.uproject"
+    python -I live_bridge_concurrency.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" \
+        --second-engine <UE_5.6> \
+        --second-project "<checkout>/../Hosts/NodeToCodeHost_5_6/NodeToCodeHost_5_6.uproject"
 
 It starts a headless editor with only the provider's key (from the repo's .env) added to its environment, makes an
 in-memory probe Blueprint under /Game/N2CTest (as live_env_translation.py does) and, with --second-project, a second

@@ -3,7 +3,7 @@
 Stdlib only; run with `python -I`, under the `user-secrets` lock (it reads and may create the real per-user token file
 <UserSettingsDir>/NodeToCode/mcp-token, and puts it back as it was afterwards):
 
-    python -I live_bearer_token_0183.py --engine G:/UE/UE_5.8 \
+    python -I live_bearer_token_0183.py --engine <UE_5.8> \
         --project "D:/n2c-lanes/lane-b/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--claude]
 
 Two headless -N2CMcp editor sessions on the host:

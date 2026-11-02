@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I` from anywhere:
 
-    python -I Tests/Migration/migration_12x_check.py --engine G:/UE/UE_5.8 \
-        --host "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8" --label 5.8
+    python -I Tests/Migration/migration_12x_check.py --engine <UE_5.8> \
+        --host "<checkout>/../Hosts/NodeToCodeHost_5_8" --label 5.8
 
 For each fixture (default: 1.2.3, then 1.2.x-main) it makes a scratch copy of the built host project in a temp folder
 (never the host itself), puts the fixture's Config/ and Saved/ into it, starts a headless 2.0 editor twice with

@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_epic_overlap_0174.py --engine G:/UE/UE_5.8 --project <5.8 host .uproject> --label 5.8
-    python -I live_epic_overlap_0174.py --engine G:/UE/UE_5.6 --project <5.6 host .uproject> --label 5.6
+    python -I live_epic_overlap_0174.py --engine <UE_5.8> --project <5.8 host .uproject> --label 5.8
+    python -I live_epic_overlap_0174.py --engine <UE_5.6> --project <5.6 host .uproject> --label 5.6
 
 Each scenario starts a headless editor, reads NodeToCode's tools/list over a 2025-11-25 session, reads the startup log
 line that says how many tools were left to Unreal MCP and why, and stops the editor. Plugins are enabled in the host

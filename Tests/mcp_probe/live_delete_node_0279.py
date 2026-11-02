@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_delete_node_0279.py --engine G:/UE/UE_5.8 \
+    python -I live_delete_node_0279.py --engine <UE_5.8> \
         --project "D:/n2c-lanes/lane-c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor and makes an Actor Blueprint in memory under a fresh /Game/N2CTest/DeleteNode0279_<time>

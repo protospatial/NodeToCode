@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_claude_cli_translate.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_claude_cli_translate.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor with only the provider's key (from the repo's .env) added to its environment, makes an
 in-memory probe Blueprint under /Game/N2CTest (as live_env_translation.py does), then runs

@@ -41,7 +41,7 @@ The editor's `-ExecutePythonScript` runner quits the editor when the script retu
 (`..\Hosts` are the junctioned host projects `build.ps1` makes; use 5_6 or 5_7 for the other engines):
 
 ```
-G:\UE\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe ..\Hosts\NodeToCodeHost_5_8\NodeToCodeHost_5_8.uproject -ExecutePythonScript=<repo>/Tests/python/editor/run_editor_tests.py -unattended -nullrhi -nosplash -nosound -stdout -AllowStdOutLogVerbosity
+<UE_5.8>\Engine\Binaries\Win64\UnrealEditor-Cmd.exe ..\Hosts\NodeToCodeHost_5_8\NodeToCodeHost_5_8.uproject -ExecutePythonScript=<repo>/Tests/python/editor/run_editor_tests.py -unattended -nullrhi -nosplash -nosound -stdout -AllowStdOutLogVerbosity
 ```
 
 `<repo>` is the absolute path of this checkout, with forward slashes. `-AllowStdOutLogVerbosity` puts the result lines

@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I`. Used by mcp_probe.py, and usable on its own:
 
-    python -I editor_session.py --engine G:/UE/UE_5.8 --project <host>.uproject --port 27150
+    python -I editor_session.py --engine <UE_5.8> --project <host>.uproject --port 27150
 
 Launch form: UnrealEditor-Cmd.exe <project> -unattended -nullrhi -nosplash -nosound -NoLiveCoding -culture=en
 -N2CMcp -ddc=InstalledNoZenLocalFallback, with UE_SKIP_UBT_SDK_SETUP=1 in its environment (DDC_ARGS and STARTUP_ENV

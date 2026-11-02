@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`, on UE 5.6 so 5.7 and 5.8 can load the result:
 
-    python -I make_probe_fixture.py --engine G:/UE/UE_5.6 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_6/NodeToCodeHost_5_6.uproject"
+    python -I make_probe_fixture.py --engine <UE_5.6> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_6/NodeToCodeHost_5_6.uproject"
 
 On a headless editor (editor_session.py, -RenderOffScreen) it creates /Game/N2CProbe/BP_N2CProbe (parent Actor) with
 run-python, adds Event BeginPlay and Print String to its EventGraph with add-bp-node-to-active-graph, wires

@@ -5,8 +5,8 @@ Proves a NodeToCode 1.2.x project's settings and saved files load in a 2.0 build
 (BuildPlugin leaves `/Tests` out).
 
 ```bash
-python -I Tests/Migration/migration_12x_check.py --engine G:/UE/UE_5.8 \
-  --host "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8" --label 5.8 [--live] [--keep]
+python -I Tests/Migration/migration_12x_check.py --engine <UE_5.8> \
+  --host "<checkout>/../Hosts/NodeToCodeHost_5_8" --label 5.8 [--live] [--keep]
 ```
 
 `--host` is a built host project folder (build it first, for example `.\build.ps1 -UEVersion 5.8`). The check never

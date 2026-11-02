@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET when other agents run probes):
 
-    python -I live_agent_skills_0171.py --engine G:/UE/UE_5.8 \
+    python -I live_agent_skills_0171.py --engine <UE_5.8> \
         --project "<Hosts>/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 [--scenarios comprehension,...]
 
 It starts a headless editor (Allow MCP Python Execution on for the session; the Anthropic key from the repo's .env in

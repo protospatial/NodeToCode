@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_port_restart.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
+    python -I live_port_restart.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject"
 
 It starts a headless -N2CMcp editor on a free port P with run-python allowed, checks the discovery file
 (<Project>/Saved/NodeToCode/mcp-server.json and the per-user index entry) names P and the editor's pid, then sets

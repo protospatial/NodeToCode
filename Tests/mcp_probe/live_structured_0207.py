@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_structured_0207.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_structured_0207.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor and makes an Actor Blueprint BP_Structured under a fresh /Game/N2CTest/Struct0207_<time>
 folder (through run-python, never saved). Over raw JSON-RPC: tools/list gives the eight tools of card 0207 an object
