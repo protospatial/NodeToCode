@@ -33,6 +33,7 @@
 #include "UObject/UObjectBase.h"
 #include "UObject/Class.h"
 #include "UObject/UnrealTypePrivate.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 namespace
@@ -180,6 +181,7 @@ bool FN2CCaptureContext::IsDisabledNode(const UEdGraphNode* Node)
 
 bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes)
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Capture_BuildStruct);
     // Ghost nodes are placeholders, not logic: they are not captured at all (translation-core-18, issue #13)
     TArray<UK2Node*> CollectedNodes;
     CollectedNodes.Reserve(InCollectedNodes.Num());
@@ -363,6 +365,7 @@ void FN2CCaptureContext::ProcessQueuedGraphs()
 
 bool FN2CCaptureContext::CaptureGraphs(TConstArrayView<UEdGraph*> Graphs)
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Capture_BuildStruct);
     // Metadata from the first node any of the graphs holds, as CaptureNodes takes it from its first node
     UK2Node* FirstNode = nullptr;
     for (const UEdGraph* Graph : Graphs)

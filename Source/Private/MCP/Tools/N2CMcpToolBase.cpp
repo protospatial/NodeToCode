@@ -8,6 +8,7 @@
 #include "Dom/JsonObject.h"
 #include "Templates/SharedPointer.h"
 #include <atomic>
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 namespace N2CMcpToolBasePrivate
 {
@@ -36,6 +37,7 @@ namespace N2CMcpToolBasePrivate
 	 */
 	FMcpToolCallResult RunAsToolCall(const TFunction<FMcpToolCallResult()>& Logic)
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Mcp_GameThreadWork);
 		FN2CMcpToolCallScope CallScope;
 		FMcpToolCallResult Result = Logic();
 		FN2CMcpBlueprintUtils::AttachCompileDiagnostics(Result, CallScope.Flush());

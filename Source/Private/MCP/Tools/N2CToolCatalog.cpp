@@ -13,6 +13,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 namespace N2CToolCatalogPrivate
 {
@@ -285,6 +286,8 @@ TFuture<FN2CToolOutcome> FN2CToolCatalog::Invoke(const FString& Name, const TSha
 
 FN2CToolOutcome FN2CToolCatalog::InvokeNow(const FString& Name, const TSharedPtr<FJsonObject>& Arguments) const
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Mcp_Execute);
+	TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(*Name);
 	const TOptional<FN2CToolDescriptor> Descriptor = Find(Name);
 	if (Descriptor.IsSet() && Descriptor->ExecutionPolicy == EN2CToolExecutionPolicy::LongRunning)
 	{
