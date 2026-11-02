@@ -1,0 +1,23 @@
+{
+ "fixture": "GateMultiExec",
+ "model": "claude-sonnet-5-5",
+ "seconds": 11.7,
+ "usage": {
+  "input_tokens": 10172,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 0,
+  "cache_creation": {
+   "ephemeral_5m_input_tokens": 0,
+   "ephemeral_1h_input_tokens": 0
+  },
+  "output_tokens": 1455,
+  "output_tokens_details": {
+   "thinking_tokens": 725
+  },
+  "service_tier": "standard",
+  "inference_geo": "global",
+  "speed": "standard"
+ },
+ "stop_reason": "end_turn",
+ "text": "{\"graphs\":[{\"graph_name\":\"EventGraph\",\"graph_type\":\"EventGraph\",\"graph_class\":\"BP_N2CGolden_GateMultiExec\",\"code\":{\"graphDeclaration\":\"\",\"graphImplementation\":\"bp_n2c_golden_gate_multi_exec := class:\\n\\n    # State of the Gate macro (bStartClosed = true)\\n    var IsGateClosed:logic = true\\n\\n    # Custom event OnEnter -> Gate.Enter: passes through to Exit only while the gate is open\\n    OnEnter():void =\\n        if (IsGateClosed = false):\\n            # Gate.Exit -> CollectGarbage\\n            CollectGarbage()\\n\\n    # Custom event OnOpen -> Gate.Open\\n    OnOpen():void =\\n        set IsGateClosed = false\\n\\n    # Custom event OnClose -> Gate.Close\\n    OnClose():void =\\n        set IsGateClosed = true\\n\\n    # Placeholder: Verse has no garbage collection call\\n    CollectGarbage():void =\\n        # Intentionally empty: no Verse equivalent of KismetSystemLibrary::CollectGarbage\\n        return\",\"implementationNotes\":\"Gate macro: inlined as the logic member IsGateClosed, starting true because bStartClosed is true. Enter runs the Exit chain only when the gate is open; Open and Close set the state. The Gate's Toggle input is not wired, so there is no toggle method.\\n\\nPlaceholder: CollectGarbage() is KismetSystemLibrary::CollectGarbage, which has no Verse equivalent. It is declared once with an empty body.\\n\\nThe three custom events (OnEnter, OnOpen, OnClose) are plain methods. Nothing in the graph calls them, so other code or a subscription has to. The Blueprint has no BeginPlay, Tick or overlap events, so the class is not a creative_device and needs no using lines. If you make it a creative_device, add the using lines and call these methods from OnBegin or from device events.\\n\\nThe OutputDelegate pins on the custom events are not wired and are ignored.\"}}]}"
+}

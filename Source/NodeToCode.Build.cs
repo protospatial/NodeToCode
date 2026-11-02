@@ -51,6 +51,7 @@ public class NodeToCode : ModuleRules
 			new string[]
 			{
 				"DeveloperSettings",
+				"PropertyEditor",         // Project Settings details customizations (card 0507)
 				"Blutility",
 				"UMGEditor",
 				"KismetWidgets",          // For action menu widgets

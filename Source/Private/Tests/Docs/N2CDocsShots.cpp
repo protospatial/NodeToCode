@@ -286,7 +286,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FN2CDocsShotsSettings, "N2CDocs.Shots.settings"
 
 /**
  * settings: NodeToCode's Project Settings page (Plugins > Node to Code) as its details panel shows it, one shot per
- * area (the provider choice with the Anthropic rows, and Code Generation). Refuses to capture when any API key
+ * area (the provider choice with the Anthropic rows, Code Generation, and MCP Server). Refuses to capture when any API key
  * field holds text or a status row shows the end of a saved key.
  */
 bool FN2CDocsShotsSettings::RunTest(const FString& Parameters)
@@ -312,6 +312,8 @@ bool FN2CDocsShotsSettings::RunTest(const FString& Parameters)
 	const TArray<FArea> Areas = {
 		{ TEXT("settings/llm-provider"), { TEXT("Node to Code | LLM Provider"), TEXT("Node to Code | LLM Services | Anthropic") }, 300.0 },
 		{ TEXT("settings/code-generation"), { TEXT("Node to Code | Code Generation") }, 222.0 },
+		// The MCP Server category with the Write MCP Client Config row (card 0507)
+		{ TEXT("settings/mcp-server"), { TEXT("Node to Code | MCP Server") }, 280.0 },
 	};
 	FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
 	for (const FArea& Area : Areas)

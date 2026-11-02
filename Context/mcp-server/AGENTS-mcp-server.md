@@ -884,7 +884,10 @@ Client configs (card 0206): `Source/Private/MCP/Server/N2CMcpClientConfig.{h,cpp
 `N2C.Mcp.WriteClientConfig [all|claude|cursor|vscode|gemini|codex|desktop ...] [token|notoken] [dir=<folder>]`
 (default `all`, the project folder, and the token when Require MCP Bearer Token is on; `dir=` takes the rest of the
 line, so it comes last and may hold spaces). It writes or merges the `nodetocode` entry, with the URL
-`http://127.0.0.1:<port>/mcp` on the port the server is bound to (the Server Port setting when it is not running):
+`http://127.0.0.1:<port>/mcp` on the port the server is bound to (the Server Port setting when it is not running).
+The Project Settings row **MCP Client Config** (the transient property `UN2CSettings::McpClientConfigWriter`, drawn by `Source/Private/Core/N2CSettingsCustomization.{h,cpp}`,
+registered in `NodeToCode.cpp`, card 0507) calls `RunCommand` with the chosen client, `token`/`notoken` and the project
+folder, notifies what it wrote and copies the Claude Desktop snippet; spec `NodeToCode.Settings.WriteClientConfig`:
 
 | Client | File | Entry |
 |---|---|---|

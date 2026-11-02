@@ -38,7 +38,7 @@ Find and read Blueprints: the Blueprint focused in the editor, open Blueprint ed
 
 **Export N2C JSON for many graphs**
 
-Exports many Blueprint graphs as N2C JSON in one call, one file per graph, with no Blueprint editor open and without changing focus. Select the graphs with targets [{blueprintPath, graphName?, graphGuid?}] (a target with only blueprintPath exports every graph of that Blueprint that has nodes) or with a tag and/or category (tag-blueprint-graph). Each file holds the document get-blueprint-n2cjson returns for that graph. The files go to one folder under Saved/NodeToCode/Exports (outDir, or a new Batch_&lt;time&gt; folder); the result lists each file {path, bytes, estimatedTokens, nodeCount} and each target that failed with its code. Read the files in parts with read-file. Assets that are not Blueprints are refused per target (UNSUPPORTED_ASSET_TYPE).
+Exports many Blueprint graphs as N2C JSON in one call, one file per graph, with no Blueprint editor open and without changing focus. Select the graphs with targets [{blueprintPath, graphName?, graphGuid?}] (a target with only blueprintPath exports every graph of that Blueprint that has nodes) or with a tag and/or category (tag-blueprint-graph). Each file holds the document get-blueprint-n2cjson returns for that graph. The files go to one folder under Saved/NodeToCode/Exports (outDir, or a new Batch_&lt;time&gt; folder); the result lists each file {path, bytes, estimatedTokens, nodeCount} and each target that failed with its code. Read the files in parts with read-file. Assets that are not Blueprints are refused per target (UNSUPPORTED_ASSET_TYPE), and AnimGraphs, states, state machines and Control Rig graphs per graph (UNSUPPORTED_GRAPH_TYPE).
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -46,7 +46,7 @@ Exports many Blueprint graphs as N2C JSON in one call, one file per graph, with 
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `targets` | `array<object>` | no |  | The graphs to work on: [{blueprintPath, graphName?, graphGuid?}]. Give targets, or tag and/or category, not both. At most 200 graphs per call. A path that is not a Blueprint (a Material, a Data Asset) fails with UNSUPPORTED_ASSET_TYPE. |
+| `targets` | `array<object>` | no |  | The graphs to work on: [{blueprintPath, graphName?, graphGuid?}]. Give targets, or tag and/or category, not both. At most 200 graphs per call. A path that is not a Blueprint (a Material, a Data Asset) fails with UNSUPPORTED_ASSET_TYPE; a graph NodeToCode does not translate (an AnimGraph, state, state machine or Control Rig graph) with UNSUPPORTED_GRAPH_TYPE. |
 | `tag` | `string` | no |  | Instead of targets: every graph with this tag (tag-blueprint-graph, list-blueprint-tags), in category when given. |
 | `category` | `string` | no |  | Instead of targets: every graph tagged in this category (with tag: that tag in this category). |
 | `depth` | `integer` | no |  | Optional, 0 to 5. Each file also captures the functions, macros and collapsed graphs its graph uses up to this many calls away. Default: the project's Max Translation Depth setting. |
@@ -57,7 +57,7 @@ Exports many Blueprint graphs as N2C JSON in one call, one file per graph, with 
 
 **Read a Blueprint as N2C JSON**
 
-Reads any Blueprint in the project as NodeToCode's N2C JSON by asset path, with no Blueprint editor open and without changing focus: one graph (graphName or graphGuid, see list-blueprint-graphs) or, with neither, every graph of the Blueprint in one document. The document is the one get-focused-blueprint returns (nodes and pins with ids {short, guid}, flows, the guids table). When it would exceed about 20000 tokens, or with toFile, it is written to a file under Saved/NodeToCode/Exports and the result is {path, bytes, estimatedTokens, reason, graphCount, nodeCount}: read that file in parts.
+Reads any Blueprint in the project as NodeToCode's N2C JSON by asset path, with no Blueprint editor open and without changing focus: one graph (graphName or graphGuid, see list-blueprint-graphs) or, with neither, every graph of the Blueprint in one document. The document is the one get-focused-blueprint returns (nodes and pins with ids {short, guid}, flows, the guids table). When it would exceed about 20000 tokens, or with toFile, it is written to a file under Saved/NodeToCode/Exports and the result is {path, bytes, estimatedTokens, reason, graphCount, nodeCount}: read that file in parts. AnimGraphs, animation states, state machines and Control Rig graphs are refused with UNSUPPORTED_GRAPH_TYPE (left out of a whole-Blueprint read; list-blueprint-graphs marks them translatable: false).
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -92,7 +92,7 @@ Returns `structuredContent` matching its `outputSchema` (in tools.generated.json
 
 **Read the focused Blueprint graph**
 
-Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source.
+Collects and serializes the currently focused Blueprint graph in the Unreal Editor into NodeToCode's N2CJSON format. The focused Blueprint is the Blueprint editor the user last activated (clicked its tab or inside it) or that open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, a pin missing its type, a connected input with no source. An AnimGraph, animation state, state machine or Control Rig graph is refused with UNSUPPORTED_GRAPH_TYPE.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -138,7 +138,7 @@ Unreal MCP counterpart (UE 5.8): `BlueprintTools.list_functions, list_graphs`. L
 
 **List Blueprint graphs**
 
-Lists every graph of any Blueprint in the project by asset path, with no Blueprint editor open: name, graphGuid (stable across renames; pass it to get-blueprint-n2cjson or the graph tools), kind (event, function, macro, collapsed, delegate, interface), nodeCount, readOnly (shown read-only in the Blueprint editor) and, for a collapsed graph, parentGraph.
+Lists every graph of any Blueprint in the project by asset path, with no Blueprint editor open: name, graphGuid (stable across renames; pass it to get-blueprint-n2cjson or the graph tools), kind (event, function, macro, collapsed, delegate, interface; for Animation Blueprints animgraph, state-machine, state, transition, conduit; rig for Control Rig graphs), nodeCount, readOnly (shown read-only in the Blueprint editor), translatable (false for the graph types capture and translation refuse with UNSUPPORTED_GRAPH_TYPE: animgraph, state-machine, state, rig and other non-Blueprint graphs) and, for a collapsed graph, parentGraph.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -1302,7 +1302,7 @@ Returns `structuredContent` matching its `outputSchema` (in tools.generated.json
 
 **Translate many Blueprint graphs**
 
-Translates many Blueprint graphs with an LLM provider in one call, with no Blueprint editor open and without changing focus: one LLM request per graph, one after another. Select the graphs with targets [{blueprintPath, graphName?, graphGuid?}] (a target with only blueprintPath translates every graph of that Blueprint that has nodes) or with a tag and/or category. It can take minutes: send params._meta.progressToken to receive notifications/progress, and cancel with notifications/cancelled (the request in flight stops at once, the rest are skipped). The result lists every graph with its status, the folder its files were saved in (under the translation output directory, BatchTranslation_&lt;time&gt;), its code while the whole result stays under about 20000 tokens (else read the files) and, for a failure, the typed error. Only one batch runs at a time. Assets that are not Blueprints are refused per target (UNSUPPORTED_ASSET_TYPE).
+Translates many Blueprint graphs with an LLM provider in one call, with no Blueprint editor open and without changing focus: one LLM request per graph, one after another. Select the graphs with targets [{blueprintPath, graphName?, graphGuid?}] (a target with only blueprintPath translates every graph of that Blueprint that has nodes) or with a tag and/or category. It can take minutes: send params._meta.progressToken to receive notifications/progress, and cancel with notifications/cancelled (the request in flight stops at once, the rest are skipped). The result lists every graph with its status, the folder its files were saved in (under the translation output directory, BatchTranslation_&lt;time&gt;), its code while the whole result stays under about 20000 tokens (else read the files) and, for a failure, the typed error. Only one batch runs at a time. Assets that are not Blueprints are refused per target (UNSUPPORTED_ASSET_TYPE), and AnimGraphs, states, state machines and Control Rig graphs per graph (UNSUPPORTED_GRAPH_TYPE).
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -1310,7 +1310,7 @@ Translates many Blueprint graphs with an LLM provider in one call, with no Bluep
 
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `targets` | `array<object>` | no |  | The graphs to work on: [{blueprintPath, graphName?, graphGuid?}]. Give targets, or tag and/or category, not both. At most 50 graphs per call. A path that is not a Blueprint (a Material, a Data Asset) fails with UNSUPPORTED_ASSET_TYPE. |
+| `targets` | `array<object>` | no |  | The graphs to work on: [{blueprintPath, graphName?, graphGuid?}]. Give targets, or tag and/or category, not both. At most 50 graphs per call. A path that is not a Blueprint (a Material, a Data Asset) fails with UNSUPPORTED_ASSET_TYPE; a graph NodeToCode does not translate (an AnimGraph, state, state machine or Control Rig graph) with UNSUPPORTED_GRAPH_TYPE. |
 | `tag` | `string` | no |  | Instead of targets: every graph with this tag (tag-blueprint-graph, list-blueprint-tags), in category when given. |
 | `category` | `string` | no |  | Instead of targets: every graph tagged in this category (with tag: that tag in this category). |
 | `language` | `string` | no |  | Optional: target language ID as get-available-translation-targets lists it (e.g. 'cpp', 'python'; case-insensitive). Default: the settings' Target Language; an unknown ID is an error. |
@@ -1321,7 +1321,7 @@ Translates many Blueprint graphs with an LLM provider in one call, with no Bluep
 
 **Translate the focused Blueprint graph**
 
-Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. The translation is also saved to the translation output directory (get-translation-output-directory) as a run folder with a manifest.json. The result's structuredContent is the translation (graphs with their code, usage); one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, savedTo and a resource_link to the file.
+Translates the currently focused Blueprint graph using an LLM provider and returns the translation as this call's result. The focused Blueprint is the Blueprint editor the user last activated or that open-blueprint-asset last opened. It can take minutes: send params._meta.progressToken to receive notifications/progress while it runs. The translation is also saved to the translation output directory (get-translation-output-directory) as a run folder with a manifest.json; the result gives that folder as run_folder and its code files as files, so do not save another copy. The result's structuredContent is the translation (graphs with their code, usage); one larger than 200,000 characters is saved under Saved/NodeToCode/Exports/Translations instead and the result lists its graphs, savedTo and a resource_link to the file.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|

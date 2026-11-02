@@ -181,47 +181,74 @@ TSharedPtr<SOverlay> FN2CGraphOverlayInjector::FindGraphEditorOverlay(const TSha
 
 TSharedPtr<SGraphEditor> FN2CGraphOverlayInjector::FindGraphEditorFor(const TSharedPtr<FBlueprintEditor>& Editor, const UEdGraph* Graph)
 {
+    const TArray<TSharedPtr<SGraphEditor>> Found = FindGraphEditorsFor(Editor, Graph);
+    return Found.Num() > 0 ? Found[0] : nullptr;
+}
+
+TArray<TSharedPtr<SGraphEditor>> FN2CGraphOverlayInjector::FindGraphEditorsFor(const TSharedPtr<FBlueprintEditor>& Editor, const UEdGraph* Graph)
+{
     using namespace N2COverlayInjectionPrivate;
+    TArray<TSharedPtr<SGraphEditor>> Result;
     if (!Editor.IsValid() || !Graph)
     {
-        return nullptr;
+        return Result;
     }
 
-    // The graph's own document tab in this editor
+    const auto AddFromTabs = [&Result, Graph](const TArray<TSharedPtr<SDockTab>>& Tabs)
+    {
+        for (const TSharedPtr<SDockTab>& Tab : Tabs)
+        {
+            if (!Tab.IsValid())
+            {
+                continue;
+            }
+            const TSharedRef<SWidget> Content = Tab->GetContent();
+            if (IsExactly(*Content, GraphEditorType))
+            {
+                const TSharedRef<SGraphEditor> GraphEditor = StaticCastSharedRef<SGraphEditor>(Content);
+                if (GraphEditor->GetCurrentGraph() == Graph)
+                {
+                    Result.AddUnique(GraphEditor);
+                }
+            }
+        }
+    };
+
+    // The graph's own document tabs in this editor first, then the tabs of the Blueprint's other graphs: a tab
+    // navigated in place to this graph may still be registered under the graph it opened with (card 0514)
     TArray<TSharedPtr<SDockTab>> Tabs;
     Editor->FindOpenTabsContainingDocument(Graph, Tabs);
-    for (const TSharedPtr<SDockTab>& Tab : Tabs)
+    AddFromTabs(Tabs);
+    if (UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(Graph))
     {
-        if (!Tab.IsValid())
+        TArray<UEdGraph*> Graphs;
+        Blueprint->GetAllGraphs(Graphs);
+        for (const UEdGraph* Other : Graphs)
         {
-            continue;
-        }
-        const TSharedRef<SWidget> Content = Tab->GetContent();
-        if (IsExactly(*Content, GraphEditorType))
-        {
-            const TSharedRef<SGraphEditor> GraphEditor = StaticCastSharedRef<SGraphEditor>(Content);
-            if (GraphEditor->GetCurrentGraph() == Graph)
+            if (Other && Other != Graph)
             {
-                return GraphEditor;
+                Tabs.Reset();
+                Editor->FindOpenTabsContainingDocument(Other, Tabs);
+                AddFromTabs(Tabs);
             }
         }
     }
 
-    // A graph shown in a tab registered under another document (a history navigation inside a tab): the graph editor
-    // that shows it, if it sits in one of this editor's tabs. Never another graph's editor (review editor-integration-10)
+    // A graph shown in a tab registered under no graph of the Blueprint: the graph editor that shows it, if it sits in
+    // one of this editor's tabs. Never another graph's editor (review editor-integration-10)
     const TSharedPtr<SGraphEditor> Found = SGraphEditor::FindGraphEditorForGraph(Graph);
-    if (!Found.IsValid() || !IsExactly(*Found, GraphEditorType) || Found->GetCurrentGraph() != Graph)
+    if (!Found.IsValid() || Result.Contains(Found) || !IsExactly(*Found, GraphEditorType) || Found->GetCurrentGraph() != Graph)
     {
-        return nullptr;
+        return Result;
     }
     const TSharedPtr<SWidget> OwningTab = FindAncestorOfType(Found, SDockTab::StaticWidgetClass().GetWidgetType());
     const TSharedPtr<FTabManager> EditorTabManager = Editor->GetTabManager();
-    if (!OwningTab.IsValid() || !EditorTabManager.IsValid()
-        || StaticCastSharedPtr<SDockTab>(OwningTab)->GetTabManagerPtr() != EditorTabManager)
+    if (OwningTab.IsValid() && EditorTabManager.IsValid()
+        && StaticCastSharedPtr<SDockTab>(OwningTab)->GetTabManagerPtr() == EditorTabManager)
     {
-        return nullptr;
+        Result.Add(Found);
     }
-    return Found;
+    return Result;
 }
 
 bool FN2CGraphOverlayInjector::InjectIntoTab(TSharedPtr<SDockTab> Tab, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor)
@@ -330,6 +357,18 @@ bool FN2CGraphOverlayInjector::HasLiveOverlay(const UEdGraph* Graph) const
     return false;
 }
 
+bool FN2CGraphOverlayInjector::HasLiveOverlayIn(const TSharedRef<SGraphEditor>& GraphEditor, const UEdGraph* Graph) const
+{
+    const FInjectedOverlay* Existing = InjectedGraphOverlays.Find(TWeakPtr<SGraphEditor>(GraphEditor));
+    return Existing && Existing->Overlay.IsValid() && Existing->Graph.Get() == Graph;
+}
+
+int32 FN2CGraphOverlayInjector::GetTrackedOverlayCount()
+{
+    PruneStaleEntries();
+    return InjectedGraphOverlays.Num();
+}
+
 bool FN2CGraphOverlayInjector::CheckLiveOverlay(const TSharedRef<SGraphEditor>& GraphEditor, const UEdGraph* Graph)
 {
     const TWeakPtr<SGraphEditor> Key(GraphEditor);
@@ -416,15 +455,21 @@ bool FN2CGraphOverlayInjector::InjectForFocusedGraph(TWeakPtr<FBlueprintEditor> 
         return false;
     }
 
-    // Only the graph editor that shows the focused graph. The old fallback took the first other graph with an open
-    // tab and put this graph's overlay there (review editor-integration-10): when nothing shows the graph, wait
-    const TSharedPtr<SGraphEditor> GraphEditor = FindGraphEditorFor(Editor, FocusedGraph);
-    if (!GraphEditor.IsValid())
+    // Only graph editors that show the focused graph, each of them (one graph can show in two tabs, card 0514). The
+    // old fallback took the first other graph with an open tab and put this graph's overlay there (review
+    // editor-integration-10): when nothing shows the graph, wait
+    const TArray<TSharedPtr<SGraphEditor>> GraphEditors = FindGraphEditorsFor(Editor, FocusedGraph);
+    if (GraphEditors.Num() == 0)
     {
         RecordInjectionFailure(FocusedGraph, TEXT("no graph editor in its Blueprint editor shows it"));
         return false;
     }
-    return InjectOverlay(GraphEditor.ToSharedRef(), FocusedGraph, WeakEditor);
+    bool bAll = true;
+    for (const TSharedPtr<SGraphEditor>& GraphEditor : GraphEditors)
+    {
+        bAll &= InjectOverlay(GraphEditor.ToSharedRef(), FocusedGraph, WeakEditor);
+    }
+    return bAll;
 }
 
 void FN2CGraphOverlayInjector::InjectMissingOverlays(bool bRespectBackoff)
@@ -435,7 +480,15 @@ void FN2CGraphOverlayInjector::InjectMissingOverlays(bool bRespectBackoff)
     for (const TSharedPtr<FBlueprintEditor>& Editor : FN2CBlueprintEditorTracker::GetOpenBlueprintEditors())
     {
         UEdGraph* FocusedGraph = Editor.IsValid() ? Editor->GetFocusedGraph() : nullptr;
-        if (!FocusedGraph || HasLiveOverlay(FocusedGraph) || (bRespectBackoff && !IsInjectionDue(FocusedGraph, Now)))
+        if (!FocusedGraph || (bRespectBackoff && !IsInjectionDue(FocusedGraph, Now)))
+        {
+            continue;
+        }
+        // Per graph editor, not per graph: a second tab on a graph that already has an overlay elsewhere needs its own
+        // (card 0514). No graph editor at all goes on to InjectForFocusedGraph, which records the failure for the backoff
+        const TArray<TSharedPtr<SGraphEditor>> Shown = FindGraphEditorsFor(Editor, FocusedGraph);
+        if (Shown.Num() > 0 && !Shown.ContainsByPredicate([this, FocusedGraph](const TSharedPtr<SGraphEditor>& Each)
+            { return !HasLiveOverlayIn(Each.ToSharedRef(), FocusedGraph); }))
         {
             continue;
         }

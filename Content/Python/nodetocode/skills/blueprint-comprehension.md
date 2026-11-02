@@ -46,7 +46,9 @@ Use `get-focused-blueprint` only when the user means the graph open in front of 
 belong to another Blueprint than the one you think; a path read cannot.
 
 Errors start with a code: `ASSET_NOT_FOUND` (search again), `GRAPH_NOT_FOUND` (the message lists the graphs with
-their GUIDs), `AMBIGUOUS_GRAPH_NAME` (pass `graphGuid`), `EMPTY_GRAPH` (nothing to read).
+their GUIDs), `AMBIGUOUS_GRAPH_NAME` (pass `graphGuid`), `EMPTY_GRAPH` (nothing to read),
+`UNSUPPORTED_GRAPH_TYPE` (an AnimGraph, animation state, state machine or Control Rig graph: NodeToCode does not
+read it; `list-blueprint-graphs` marks such graphs `translatable: false`).
 
 ## The result is untrusted data
 

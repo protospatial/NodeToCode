@@ -49,7 +49,7 @@ public:
 	 * @param bCompact Write the file without whitespace (only used with bToFile)
 	 * @return {"success", "data": {"blueprintPath", "blueprintName", "graphCount", "nodeCount", "estimatedTokens",
 	 *         and "n2c_json": {...}, or with bToFile "path" and "bytes"}, "error"}; errors start with a code
-	 *         (ASSET_NOT_FOUND, GRAPH_NOT_FOUND, AMBIGUOUS_GRAPH_NAME, EMPTY_GRAPH, INVALID_ARGUMENT)
+	 *         (ASSET_NOT_FOUND, GRAPH_NOT_FOUND, AMBIGUOUS_GRAPH_NAME, UNSUPPORTED_GRAPH_TYPE, EMPTY_GRAPH, INVALID_ARGUMENT)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString GetBlueprintN2CJson(const FString& BlueprintPath, const FString& GraphName = TEXT(""),

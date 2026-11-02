@@ -1,0 +1,23 @@
+{
+ "fixture": "SpawnedVariableNodes",
+ "model": "claude-sonnet-5-5",
+ "seconds": 6.8,
+ "usage": {
+  "input_tokens": 10219,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 0,
+  "cache_creation": {
+   "ephemeral_5m_input_tokens": 0,
+   "ephemeral_1h_input_tokens": 0
+  },
+  "output_tokens": 926,
+  "output_tokens_details": {
+   "thinking_tokens": 445
+  },
+  "service_tier": "standard",
+  "inference_geo": "global",
+  "speed": "standard"
+ },
+ "stop_reason": "end_turn",
+ "text": "{\"graphs\":[{\"graph_name\":\"Spawned\",\"graph_type\":\"Function\",\"graph_class\":\"BP_N2CGolden_SpawnedVariableNodes\",\"code\":{\"graphDeclaration\":\"\",\"graphImplementation\":\"using { /Fortnite.com/Devices }\\nusing { /Verse.org/Simulation }\\nusing { /UnrealEngine.com/Temporary/Diagnostics }\\n\\nbp_n2c_golden_spawned_variable_nodes := class:\\n\\n    var Score:int = 0\\n\\n    Spawned():void =\\n        # Spawned nodes\\n        var Counter:int = 0\\n        set Score = Counter\\n        set Counter = Score\",\"implementationNotes\":\"The Blueprint has no BeginPlay, Tick or overlap events, so the class is a plain class and not a creative_device.\\n\\nScore is a member variable because it is set, so it is declared as `var Score:int = 0`.\\n\\nCounter is a function local. The JSON lists no \\\"local_variables\\\", so its default of 0 is taken from the pin default value.\\n\\nThe final `set Counter = Score` is never read afterwards. This matches the Blueprint, but the compiler may warn about it.\\n\\nThe Spawned function has no return value, so it returns void.\\n\\nIts default effect is <transacts>, which allows setting the class variable.\\n\\nNo nodes were unused, unreachable or disabled.\"}}]}"
+}

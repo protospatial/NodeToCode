@@ -21,7 +21,8 @@ class UEdGraph;
  *
  * The one place that walks the engine's graph editor widgets, which differ across UE 5.6-5.8 (commit d3113e2):
  * - Into the exact SGraphEditor that shows the graph (FindGraphEditorFor), into the SOverlay around its graph panel
- *   (FindGraphEditorOverlay), one overlay per graph editor widget (card 0293).
+ *   (FindGraphEditorOverlay), one overlay per graph editor widget (card 0293), so per tab: one graph shown in two
+ *   tabs gets one in each (card 0514).
  * - Triggers: a Blueprint editor opening (retried every 0.5 s until it shows a graph), a graph tab coming to the front,
  *   and a 2 s poll (n2c.OverlayPoll) for a graph that changes inside an existing tab. The poll backs off per graph and
  *   gives up after MaxPollInjectionAttempts; a tab brought to the front always tries again.
@@ -47,17 +48,18 @@ public:
     bool InjectIntoTab(TSharedPtr<SDockTab> Tab, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor);
 
     /**
-     * Injects the overlay into the graph editor that shows the editor's focused graph: its own document tab, else
-     * SGraphEditor::FindGraphEditorForGraph when that widget sits in this editor's tabs. Nothing else: when no such
-     * graph editor exists the attempt is recorded and the poll retries it later with a backoff (card 0293).
-     * @return true when the focused graph's editor has an overlay afterwards
+     * Injects the overlay into every graph editor that shows the editor's focused graph (FindGraphEditorsFor): one per
+     * tab, also when the same graph shows in two tabs (card 0514). Nothing else: when no such graph editor exists the
+     * attempt is recorded and the poll retries it later with a backoff (card 0293).
+     * @return true when every graph editor showing the focused graph has an overlay afterwards
      */
     bool InjectForFocusedGraph(TWeakPtr<FBlueprintEditor> Editor);
 
     /**
-     * The body of every injection pass (the poll, a tab coming to the front): each open Blueprint editor's focused graph
-     * without a live overlay gets one. bRespectBackoff: skip graphs that are backing off or given up (the poll); a tab
-     * event passes false and always tries.
+     * The body of every injection pass (the poll, a tab coming to the front): each graph editor that shows an open
+     * Blueprint editor's focused graph and has no live overlay gets one, so a second tab on the same graph is covered
+     * (card 0514). bRespectBackoff: skip graphs that are backing off or given up (the poll); a tab event passes false
+     * and always tries.
      */
     void InjectMissingOverlays(bool bRespectBackoff);
 
@@ -77,6 +79,18 @@ public:
      * Editor's own tabs (a diff window can show the same graph).
      */
     static TSharedPtr<SGraphEditor> FindGraphEditorFor(const TSharedPtr<FBlueprintEditor>& Editor, const UEdGraph* Graph);
+
+    /**
+     * Every graph editor in Editor's tabs that shows Graph, each once, in the order FindGraphEditorFor prefers (card
+     * 0514). One graph can show in two tabs: a tab navigated in place (the Blueprint editor's history, or
+     * JumpToHyperlink reusing the current tab) to a graph that already has its own tab. Looks in the document tabs of
+     * every graph of the Blueprint (a navigated tab may still be registered under its first graph), then
+     * SGraphEditor::FindGraphEditorForGraph limited to Editor's own tabs.
+     */
+    static TArray<TSharedPtr<SGraphEditor>> FindGraphEditorsFor(const TSharedPtr<FBlueprintEditor>& Editor, const UEdGraph* Graph);
+
+    /** The overlays currently tracked, after dropping those of closed or rebuilt graph editors (tests and diagnostics) */
+    int32 GetTrackedOverlayCount();
 
     /** Removes every injected overlay from its graph editor (SOverlay::RemoveSlot) and forgets them. Run by Shutdown */
     void RemoveInjectedOverlays();
@@ -103,6 +117,9 @@ private:
      * editor that now shows another graph.
      */
     bool CheckLiveOverlay(const TSharedRef<SGraphEditor>& GraphEditor, const UEdGraph* Graph);
+
+    /** True if GraphEditor carries a live overlay for Graph (read only: CheckLiveOverlay without the clean-up) */
+    bool HasLiveOverlayIn(const TSharedRef<SGraphEditor>& GraphEditor, const UEdGraph* Graph) const;
 
     /** Injects the overlay into GraphEditor (which must show Graph) unless it has one */
     bool InjectOverlay(const TSharedRef<SGraphEditor>& GraphEditor, UEdGraph* Graph, TWeakPtr<FBlueprintEditor> Editor);

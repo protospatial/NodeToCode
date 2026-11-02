@@ -51,7 +51,10 @@ struct FN2CBatchTargets
 	TArray<FN2CBatchGraph> Graphs;
 	/** Targets that resolved to nothing: ASSET_NOT_FOUND, UNSUPPORTED_ASSET_TYPE, GRAPH_NOT_FOUND, ... */
 	TArray<FN2CBatchTargetIssue> Failures;
-	/** Graphs of a whole-Blueprint target that have no nodes (EMPTY_GRAPH), left out */
+	/**
+	 * Graphs of a whole-Blueprint target left out: those with no nodes (EMPTY_GRAPH) and those of a type NodeToCode
+	 * refuses (UNSUPPORTED_GRAPH_TYPE: AnimGraphs, states, state machines, Control Rig graphs; decision 0008)
+	 */
 	TArray<FN2CBatchTargetIssue> Skipped;
 	/** "<CODE>: <message>" when the request itself is wrong (INVALID_ARGUMENT, TOO_MANY_GRAPHS): nothing was resolved */
 	FString Error;
@@ -67,7 +70,8 @@ struct FN2CBatchTargets
  * The graph selection export-n2cjson-batch and translate-batch share (card 0169). Arguments:
  * - targets: [{blueprintPath, graphName?, graphGuid?}]. A target with a graph names that graph (FN2CGraphTarget, so
  *   every graph kind resolves); a target with only blueprintPath names every graph of the Blueprint that has nodes
- *   (N2CMcpBlueprintExport::GraphsToCapture), empty ones going to Skipped.
+ *   (N2CMcpBlueprintExport::GraphsToCapture), empty ones and refused graph types going to Skipped. A target that names
+ *   a graph of a refused type fails with UNSUPPORTED_GRAPH_TYPE.
  * - or tag and/or category: the graphs tagged so (tag-blueprint-graph, list-blueprint-tags).
  * Exactly one of the two selections. A path that names an asset which is not a Blueprint (a Material, a Data Asset)
  * fails that target with UNSUPPORTED_ASSET_TYPE: the batch tools read Blueprints only until materials get their own

@@ -57,8 +57,10 @@ name is unique across both roots.
   capture at that commit, so the shots are not stale on arrival. Look at every picture before committing it.
   The stamp survives a squash or rebase merge: when the stamped branch commit is not in the history being checked,
   `--stale` uses the commit that wrote that stamp into `shots.json` (the squash commit, which holds the branch's
-  tree), so no restamp pull request is needed after a merge. `capture.py --restamp` still rewrites the stamps to
-  each image's last commit, for tidiness only.
+  tree), so no restamp pull request is needed after a merge. A retake stamps every shot of its group with the commit
+  checked out, also a shot whose picture comes out byte-identical: commit `shots.json` even when no image changed,
+  and never set a stamp by hand or back to the image's last commit (that undoes the retake). `capture.py --restamp`
+  is retired and changes nothing (card 0519); to refresh a stale shot, retake its group.
 - Single images (the Unreal editor has one theme), `wiki/images/<section>/<name>.png`, captured at 2x and
   shown at 1x with `<img src="images/<section>/<name>.png" alt="..." width="<half the pixel width>">`.
 - Alt text says what the picture shows. Cropped to what the text describes, never scaled.
