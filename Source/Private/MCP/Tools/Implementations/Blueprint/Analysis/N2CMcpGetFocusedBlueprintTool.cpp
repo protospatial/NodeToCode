@@ -21,7 +21,8 @@ FMcpToolDefinition FN2CMcpGetFocusedBlueprintTool::GetDefinition() const
 		TEXT("open-blueprint-asset last opened; the graph is the one that editor shows. To read a Blueprint without ")
 		TEXT("opening or focusing it, or a graph too large for one result, use get-blueprint-n2cjson. A top-level 'warnings' ")
 		TEXT("array, when present, lists what the capture found but could still use: a graph beyond Max Translation Depth, ")
-		TEXT("a pin missing its type, a connected input with no source."),
+		TEXT("a pin missing its type, a connected input with no source. An AnimGraph, animation state, state machine or ")
+		TEXT("Control Rig graph is refused with UNSUPPORTED_GRAPH_TYPE."),
 		N2CMcpToolsets::BlueprintDiscovery
 	);
 	

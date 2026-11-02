@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CEditorIntegration.h"
+#include "Utils/N2CGraphUtils.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CGraphOverlayInjector.h"
 
@@ -167,6 +168,18 @@ FString FN2CEditorIntegration::GetFocusedBlueprintAsJson(bool bPrettyPrint, FStr
 
 FString FN2CEditorIntegration::GetGraphAsJson(UEdGraph* Graph, bool bPrettyPrint, FString& OutErrorMsg, FN2CBlueprint* OutCapture) const
 {
+    // A graph type NodeToCode refuses (an AnimGraph, state, state machine or Control Rig graph: decision 0008) says
+    // so, instead of a capture of pose nodes all marked unused or "no nodes found" (card 0248)
+    if (Graph)
+    {
+        const FString Unsupported = FN2CGraphUtils::UnsupportedGraphTypeError(*Graph);
+        if (!Unsupported.IsEmpty())
+        {
+            OutErrorMsg = Unsupported;
+            return FString();
+        }
+    }
+
     // Collect nodes from the graph
     TArray<UK2Node*> CollectedNodes;
     if (!CollectNodesFromGraph(Graph, CollectedNodes) || CollectedNodes.IsEmpty())
@@ -244,7 +257,10 @@ FN2CLLMRequestHandleRef FN2CEditorIntegration::TranslateFocusedBlueprintAsync(
     if (JsonInput.IsEmpty())
     {
         FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
-        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(FString::Printf(TEXT("Failed to get Blueprint JSON: %s"), *ErrorMsg)));
+        // A refused graph type keeps its code first, so translate-blueprint returns it as the tools do (card 0248)
+        Handle->Complete(OnComplete, ErrorMsg.StartsWith(TEXT("UNSUPPORTED_GRAPH_TYPE"))
+            ? FN2CTranslationError::MakeErrorJson(ErrorMsg, EN2CTranslationErrorKind::InvalidRequest)
+            : FN2CTranslationError::MakeErrorJson(FString::Printf(TEXT("Failed to get Blueprint JSON: %s"), *ErrorMsg)));
         return Handle;
     }
 

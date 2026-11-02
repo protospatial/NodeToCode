@@ -19,8 +19,10 @@ FMcpToolDefinition FN2CMcpListBlueprintGraphsTool::GetDefinition() const
 		TEXT("list-blueprint-graphs"),
 		TEXT("Lists every graph of any Blueprint in the project by asset path, with no Blueprint editor open: name, ")
 		TEXT("graphGuid (stable across renames; pass it to get-blueprint-n2cjson or the graph tools), kind (event, ")
-		TEXT("function, macro, collapsed, delegate, interface), nodeCount, readOnly (shown read-only in the Blueprint ")
-		TEXT("editor) and, for a collapsed graph, parentGraph."),
+		TEXT("function, macro, collapsed, delegate, interface; for Animation Blueprints animgraph, state-machine, state, ")
+		TEXT("transition, conduit; rig for Control Rig graphs), nodeCount, readOnly (shown read-only in the Blueprint ")
+		TEXT("editor), translatable (false for the graph types capture and translation refuse with UNSUPPORTED_GRAPH_TYPE: ")
+		TEXT("animgraph, state-machine, state, rig and other non-Blueprint graphs) and, for a collapsed graph, parentGraph."),
 		N2CMcpToolsets::BlueprintDiscovery
 	);
 
@@ -39,11 +41,12 @@ FMcpToolDefinition FN2CMcpListBlueprintGraphsTool::GetDefinition() const
 			{ TEXT("graphs"), Array(Object({
 				{ TEXT("name"), String() },
 				{ TEXT("graphGuid"), String(TEXT("Stable across renames")) },
-				{ TEXT("kind"), String(TEXT("event, function, macro, collapsed, delegate or interface")) },
+				{ TEXT("kind"), String(TEXT("event, function, macro, collapsed, delegate, interface, animgraph, state-machine, state, transition, conduit, rig or other")) },
 				{ TEXT("nodeCount"), Integer() },
 				{ TEXT("readOnly"), Boolean(TEXT("Shown read-only in the Blueprint editor")) },
+				{ TEXT("translatable"), Boolean(TEXT("Whether the capture and translation tools read this graph; false: UNSUPPORTED_GRAPH_TYPE")) },
 				{ TEXT("parentGraph"), String(TEXT("For a collapsed graph: the graph that holds it")) },
-			}, { TEXT("name"), TEXT("graphGuid"), TEXT("kind"), TEXT("nodeCount"), TEXT("readOnly") })) },
+			}, { TEXT("name"), TEXT("graphGuid"), TEXT("kind"), TEXT("nodeCount"), TEXT("readOnly"), TEXT("translatable") })) },
 		}, { TEXT("blueprintPath"), TEXT("blueprintName"), TEXT("graphCount"), TEXT("graphs") });
 	}
 

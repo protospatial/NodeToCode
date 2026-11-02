@@ -53,7 +53,7 @@ FMcpToolDefinition FN2CMcpExportN2CJsonBatchTool::GetDefinition() const
 		TEXT("(tag-blueprint-graph). Each file holds the document get-blueprint-n2cjson returns for that graph. The files go ")
 		TEXT("to one folder under Saved/NodeToCode/Exports (outDir, or a new Batch_<time> folder); the result lists each ")
 		TEXT("file {path, bytes, estimatedTokens, nodeCount} and each target that failed with its code. Read the files in ")
-		TEXT("parts with read-file. Assets that are not Blueprints are refused per target (UNSUPPORTED_ASSET_TYPE)."),
+		TEXT("parts with read-file. Assets that are not Blueprints are refused per target (UNSUPPORTED_ASSET_TYPE), and AnimGraphs, states, state machines and Control Rig graphs per graph (UNSUPPORTED_GRAPH_TYPE)."),
 		N2CMcpToolsets::BlueprintDiscovery
 	);
 	Definition.Title = TEXT("Export N2C JSON for many graphs");
