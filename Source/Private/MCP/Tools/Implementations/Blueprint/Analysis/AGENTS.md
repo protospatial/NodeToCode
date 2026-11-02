@@ -92,7 +92,8 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   search `search-blueprint-nodes` for its `member_name` or `title`.
 - **Errors**: `NO_FOCUSED_GRAPH: No graph is currently focused in the active Blueprint editor.`;
   `EMPTY_GRAPH: graph <name> has no nodes` (before card 0157: `Failed to collect nodes or no nodes found in the
-  focused graph.`); `CAPTURE_FAILED: ...` when the capture does not validate
+  focused graph.`); `UNSUPPORTED_GRAPH_TYPE: ...` for an AnimGraph, animation state, state machine or Control Rig
+  graph (decision 0008, `FN2CGraphUtils::ClassifyGraphType`); `CAPTURE_FAILED: ...` when the capture does not validate
 - **Use Case**: Reading a graph before editing it; the same capture the translation uses
 
 ### get-blueprint-n2cjson
@@ -120,8 +121,10 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   parts (read-file returns 500 KB of whole lines per call; `nextOffset` continues it). A graph found by an old function ID also gets `target` with the deprecation
   warning
 - **Errors**: `INVALID_ARGUMENT` (no `blueprintPath`; `depth` not a whole number from 0 to 5), `ASSET_NOT_FOUND`,
-  `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME` (as in `FN2CGraphTarget`), `EMPTY_GRAPH` (the graph, or every graph, has
-  no nodes), `CAPTURE_FAILED`, `EXPORT_FAILED` (the file could not be written)
+  `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME` (as in `FN2CGraphTarget`), `UNSUPPORTED_GRAPH_TYPE` (the graph is an
+  AnimGraph, state, state machine or Control Rig graph, or no graph of the Blueprint is of a supported type; a
+  whole-Blueprint read leaves such graphs out), `EMPTY_GRAPH` (the graph, or every graph, has no nodes),
+  `CAPTURE_FAILED`, `EXPORT_FAILED` (the file could not be written)
 
 ### export-n2cjson-batch
 - **Description**: Many graphs as N2C JSON in one call, one file per graph, with no Blueprint editor open (card
@@ -143,11 +146,13 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
 - **Returns**: `outDir` (absolute), `fileCount`, `failureCount`, `totalBytes`, `compact`, `files` (each
   `blueprintPath`, `graphName`, `graphGuid`, `kind`, `tag`/`category` for a tag filter, `path`, `bytes`,
   `estimatedTokens`, `graphCount`, `nodeCount`), `failures` (each `blueprintPath`, `graphName`/`graphGuid` when
-  given, `code`, `error`) and `skipped` (empty graphs of whole-Blueprint targets, code `EMPTY_GRAPH`). File names are
+  given, `code`, `error`) and `skipped` (graphs of whole-Blueprint targets left out: empty ones, code `EMPTY_GRAPH`,
+  and refused graph types, code `UNSUPPORTED_GRAPH_TYPE`). File names are
   get-blueprint-n2cjson's (`<Blueprint>__<graph>__<hash>.json`). Read the files in parts with read-file
 - **Per-target failures** (the call still exports the rest): `ASSET_NOT_FOUND`, `UNSUPPORTED_ASSET_TYPE` (the path
   names an asset that is not a Blueprint, such as a Material: the batch tools read Blueprint graphs only until
   materials get their own capture, epic 0442 and card 0469), `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME`,
+  `UNSUPPORTED_GRAPH_TYPE` (a named graph of a refused type, or a Blueprint with none of a supported type),
   `EMPTY_GRAPH`, `CAPTURE_FAILED`, `EXPORT_FAILED`. With no file written the result is `isError` with the same body
 - **Errors**: `INVALID_ARGUMENT` (no selection, both selections, a target without `blueprintPath`, a bad `depth` or
   `outDir`), `NO_TAGGED_GRAPHS`, `TOO_MANY_GRAPHS`, `EXPORT_FAILED` (the folder could not be created)
@@ -158,9 +163,12 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
 - **Parameters**: `blueprintPath` (required)
 - **Returns**: `blueprintPath`, `blueprintName`, `graphCount` and `graphs`, each with `name`, `graphGuid` (32 hex
   digits, what `graphGuid` arguments take), `kind` (`event`, `function`, `macro`, `collapsed`, `delegate`,
-  `interface`; `FN2CGraphTarget::GraphKind`), `nodeCount` (every node in the graph, comments and reroutes included),
+  `interface`; by schema first, `animgraph`, `state-machine`, `state`, `transition`, `conduit`, `rig` and `other`;
+  `FN2CGraphTarget::GraphKind`), `nodeCount` (every node in the graph, comments and reroutes included),
   `readOnly` (`FBlueprintEditorUtils::IsGraphReadOnly`: delegate signatures, interface Blueprints, Math Expression
-  graphs, graphs that are not editable) and, for a collapsed graph, `parentGraph`
+  graphs, graphs that are not editable), `translatable` (false for the types the capture tools refuse with
+  `UNSUPPORTED_GRAPH_TYPE`: `animgraph`, `state-machine`, `state`, `rig`, `other`; decision 0008) and, for a
+  collapsed graph, `parentGraph`
 - **Errors**: `INVALID_ARGUMENT`, `ASSET_NOT_FOUND`
 
 ### list-blueprint-functions

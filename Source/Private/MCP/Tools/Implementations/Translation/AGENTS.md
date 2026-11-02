@@ -109,7 +109,9 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   `graph_type`, `graph_class`, `code` as translate-focused-blueprint returns them) and `usage`; a failed one `error`,
   the typed error object (`error_kind`, `http_status`, `retryable`, `message`, ...); a skipped one `reason`),
   `failures` (targets that resolved to nothing, with codes as export-n2cjson-batch reports them, including
-  `UNSUPPORTED_ASSET_TYPE` for a non-Blueprint asset), `skippedGraphs` (empty graphs), `warnings` and `codeInline`.
+  `UNSUPPORTED_ASSET_TYPE` for a non-Blueprint asset and `UNSUPPORTED_GRAPH_TYPE` for a named AnimGraph, state,
+  state machine or Control Rig graph), `skippedGraphs` (empty graphs and refused graph types of whole-Blueprint
+  targets), `warnings` and `codeInline`.
   When the result with the code would be over 20000 estimated tokens, `graphs` is left out of every item,
   `codeInline` is false and `codeOmitted` says to read the files
 - **Errors** (`isError: true`): `INVALID_ARGUMENT`, `NO_TAGGED_GRAPHS`, `TOO_MANY_GRAPHS` as plain text; no graph

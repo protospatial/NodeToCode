@@ -93,7 +93,7 @@ struct NODETOCODE_API FN2CGraphTarget
 	/** Every graph of the Blueprint whose GraphGuid is this one */
 	static TArray<UEdGraph*> FindGraphsByGuid(const UBlueprint* Blueprint, const FGuid& GraphGuid);
 
-	/** event, function, macro, collapsed, delegate, interface or graph */
+	/** animgraph, state-machine, state, transition, conduit, rig or other by schema (FN2CGraphUtils::ClassifyGraphType); else event, function, macro, collapsed, delegate, interface or graph */
 	static FString GraphKind(const UEdGraph* Graph);
 	/** "explicit", "focus" or "eventGraph" */
 	static FString ResolvedByToString(EN2CGraphResolvedBy ResolvedBy);

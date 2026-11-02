@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "Utils/N2CGraphUtils.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "Core/N2CEditorIntegration.h"
@@ -179,6 +180,12 @@ FString FN2CGraphTarget::GraphKind(const UEdGraph* Graph)
 	if (!Graph)
 	{
 		return TEXT("graph");
+	}
+	// Animation and RigVM graphs by their schema first: an AnimGraph is one of the Blueprint's FunctionGraphs (card 0248)
+	const FN2CGraphTypeInfo Type = FN2CGraphUtils::ClassifyGraphType(Graph);
+	if (!Type.Kind.IsEmpty())
+	{
+		return Type.Kind;
 	}
 	const UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(Graph);
 	if (Blueprint)

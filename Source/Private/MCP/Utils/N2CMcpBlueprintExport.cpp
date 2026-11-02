@@ -3,6 +3,7 @@
 
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "Core/N2CSerializer.h"
+#include "Utils/N2CGraphUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CPathUtils.h"
 #include "Dom/JsonObject.h"
@@ -154,6 +155,11 @@ FN2CCaptureOptions N2CMcpBlueprintExport::CaptureOptions(int32 Depth)
 TValueOrError<FN2CCapture, FString> N2CMcpBlueprintExport::CaptureGraph(UEdGraph& Graph, int32 Depth)
 {
 	using namespace N2CMcpBlueprintExportPrivate;
+	const FString Unsupported = FN2CGraphUtils::UnsupportedGraphTypeError(Graph);
+	if (!Unsupported.IsEmpty())
+	{
+		return MakeError(Unsupported);
+	}
 	if (CountK2Nodes(Graph) == 0)
 	{
 		return MakeError(FString::Printf(TEXT("EMPTY_GRAPH: graph %s has no nodes"), *Graph.GetName()));
@@ -170,24 +176,39 @@ TValueOrError<FN2CCapture, FString> N2CMcpBlueprintExport::CaptureGraph(UEdGraph
 	return Capture;
 }
 
-TArray<UEdGraph*> N2CMcpBlueprintExport::GraphsToCapture(const UBlueprint& Blueprint)
+TArray<UEdGraph*> N2CMcpBlueprintExport::GraphsToCapture(const UBlueprint& Blueprint, TArray<UEdGraph*>* OutUnsupported)
 {
 	TArray<UEdGraph*> All;
 	Blueprint.GetAllGraphs(All);
 	TArray<UEdGraph*> Graphs;
 	for (UEdGraph* Graph : All)
 	{
-		if (Graph && !N2CMcpBlueprintExportPrivate::IsMathExpressionGraph(Graph))
+		if (!Graph || N2CMcpBlueprintExportPrivate::IsMathExpressionGraph(Graph))
 		{
-			Graphs.AddUnique(Graph);
+			continue;
 		}
+		if (!FN2CGraphUtils::ClassifyGraphType(Graph).bSupported)
+		{
+			if (OutUnsupported)
+			{
+				OutUnsupported->AddUnique(Graph);
+			}
+			continue;
+		}
+		Graphs.AddUnique(Graph);
 	}
 	return Graphs;
 }
 
 TValueOrError<FN2CCapture, FString> N2CMcpBlueprintExport::CaptureAllGraphs(const UBlueprint& Blueprint, int32 Depth)
 {
-	const TArray<UEdGraph*> Graphs = GraphsToCapture(Blueprint);
+	TArray<UEdGraph*> Unsupported;
+	const TArray<UEdGraph*> Graphs = GraphsToCapture(Blueprint, &Unsupported);
+	if (Graphs.Num() == 0 && Unsupported.Num() > 0)
+	{
+		return MakeError(FString::Printf(TEXT("UNSUPPORTED_GRAPH_TYPE: no graph of %s is of a type NodeToCode translates; %s"),
+			*Blueprint.GetPathName(), *FN2CGraphUtils::DescribeUnsupportedGraph(*Unsupported[0], FN2CGraphUtils::ClassifyGraphType(Unsupported[0]))));
+	}
 	TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureGraphs(Graphs, CaptureOptions(Depth));
 	if (Capture.HasError())
 	{
@@ -249,6 +270,9 @@ TSharedRef<FJsonObject> N2CMcpBlueprintExport::ListGraphs(const UBlueprint& Blue
 		Entry->SetStringField(TEXT("kind"), FN2CGraphTarget::GraphKind(Graph));
 		Entry->SetNumberField(TEXT("nodeCount"), Graph->Nodes.Num());
 		Entry->SetBoolField(TEXT("readOnly"), FBlueprintEditorUtils::IsGraphReadOnly(Graph));
+		// Whether capture and translation read this graph (decision 0008): false for AnimGraphs, states, state
+		// machines and Control Rig graphs, which the capture tools refuse with UNSUPPORTED_GRAPH_TYPE
+		Entry->SetBoolField(TEXT("translatable"), FN2CGraphUtils::ClassifyGraphType(Graph).bSupported);
 		if (const UK2Node_Composite* Composite = Cast<UK2Node_Composite>(Graph->GetOuter()))
 		{
 			if (const UEdGraph* Parent = Composite->GetGraph())

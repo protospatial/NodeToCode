@@ -92,7 +92,7 @@ def get_blueprint_n2cjson(blueprint_path: str, graph_name: str = '', graph_guid:
                 'target': dict,        # the graph read, when one was named
                 'n2c_json': dict,      # or, with to_file: 'path': str, 'bytes': int
             } or None,
-            'error': str or None       # starts with a code: ASSET_NOT_FOUND, GRAPH_NOT_FOUND, EMPTY_GRAPH, ...
+            'error': str or None       # starts with a code: ASSET_NOT_FOUND, GRAPH_NOT_FOUND, UNSUPPORTED_GRAPH_TYPE, EMPTY_GRAPH, ...
         }
 
     Example:

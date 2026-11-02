@@ -76,17 +76,25 @@ namespace N2CMcpBlueprintExport
 	/** The capture options the agent-facing reads use: the editor's ghost default events kept, marked disabled (0137) */
 	NODETOCODE_API FN2CCaptureOptions CaptureOptions(int32 Depth = INDEX_NONE);
 
-	/** Captures one graph. EMPTY_GRAPH when it has no nodes, CAPTURE_FAILED when the result does not validate. */
+	/**
+	 * Captures one graph. UNSUPPORTED_GRAPH_TYPE when NodeToCode refuses its type (an AnimGraph, a state machine, a
+	 * Control Rig graph: decision 0008), EMPTY_GRAPH when it has no nodes, CAPTURE_FAILED when the result does not
+	 * validate.
+	 */
 	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureGraph(UEdGraph& Graph, int32 Depth = INDEX_NONE);
 
 	/**
 	 * The graphs get-blueprint-n2cjson reads when no graph is named: UBlueprint::GetAllGraphs (functions with their
 	 * collapsed graphs, macros, event graphs, delegate signatures, interface graphs) minus the bound graphs of Math
-	 * Expression nodes, which the node itself describes
+	 * Expression nodes, which the node itself describes, and minus the graphs whose type NodeToCode refuses
+	 * (FN2CGraphUtils::ClassifyGraphType), which go to OutUnsupported when given
 	 */
-	NODETOCODE_API TArray<UEdGraph*> GraphsToCapture(const UBlueprint& Blueprint);
+	NODETOCODE_API TArray<UEdGraph*> GraphsToCapture(const UBlueprint& Blueprint, TArray<UEdGraph*>* OutUnsupported = nullptr);
 
-	/** Captures every graph of the Blueprint into one document. EMPTY_GRAPH when no graph has a node. */
+	/**
+	 * Captures every graph of the Blueprint NodeToCode supports into one document. UNSUPPORTED_GRAPH_TYPE when it has no
+	 * graph of a supported type (a Control Rig), EMPTY_GRAPH when no supported graph has a node.
+	 */
 	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureAllGraphs(const UBlueprint& Blueprint, int32 Depth = INDEX_NONE);
 
 	/**
@@ -98,7 +106,7 @@ namespace N2CMcpBlueprintExport
 
 	/**
 	 * Every graph of the Blueprint (GetAllGraphs order): {blueprintPath, blueprintName, graphCount, graphs: [{name,
-	 * graphGuid, kind, nodeCount, readOnly, parentGraph (collapsed graphs)}]}
+	 * graphGuid, kind, nodeCount, readOnly, translatable, parentGraph (collapsed graphs)}]}
 	 */
 	NODETOCODE_API TSharedRef<FJsonObject> ListGraphs(const UBlueprint& Blueprint);
 
