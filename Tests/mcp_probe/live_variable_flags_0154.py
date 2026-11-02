@@ -3,8 +3,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_variable_flags_0154.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_variable_flags_0154.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor, makes an Actor Blueprint in memory under a fresh /Game/N2CTest/VarFlags0154_<time>
 folder, opens it, and adds a function N2CFlagsFn with an int input Target (create-blueprint-function). Then:

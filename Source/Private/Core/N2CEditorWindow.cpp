@@ -15,7 +15,7 @@ void SN2CEditorWindow::RegisterTabSpawner()
         FOnSpawnTab::CreateStatic(&SN2CEditorWindow::SpawnTab))
         .SetDisplayName(NSLOCTEXT("NodeToCode", "TabTitle", "Node to Code"))
         .SetMenuType(ETabSpawnerMenuType::Hidden)
-        .SetIcon(FSlateIcon("NodeToCodeStyle", "NodeToCode.ToolbarButton"));
+        .SetIcon(FSlateIcon("NodeToCodeStyle", "NodeToCode.ToolbarButton", "NodeToCode.ToolbarButton.Small"));
 
     FN2CLogger::Get().Log(TEXT("Registered Node to Code tab spawner"), EN2CLogSeverity::Info);
 }
@@ -71,5 +71,5 @@ void SN2CEditorWindow::Construct(const FArguments& InArgs)
         .ShowActionBar(true)
     ];
 
-    FN2CLogger::Get().Log(TEXT("Successfully created NodeToCode main window (pure Slate)"), EN2CLogSeverity::Info);
+    FN2CLogger::Get().Log(TEXT("Created the Node to Code main window"), EN2CLogSeverity::Debug);
 }

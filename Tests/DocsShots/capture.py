@@ -3,7 +3,14 @@
 Stdlib only; run from the repository root with `python -I`:
 
     python -I Tests/DocsShots/capture.py --group main-window
-    python -I Tests/DocsShots/capture.py --group all [--engine G:/UE/UE_5.8] [--project <host>.uproject]
+    python -I Tests/DocsShots/capture.py --group all [--engine <UE_5.8 folder>] [--project <host>.uproject]
+    python -I Tests/DocsShots/capture.py --which-engine
+
+The 5.8 engine is found as build.ps1 finds it: --engine, then $env:N2C_UE_5_8 (or the older N2C_UE58), then the '5.8'
+entry of $Engines in build.local.ps1, then the installs ue_python_finder.py lists (registry, the launcher's
+LauncherInstalled.dat, the usual install folders). Each candidate must be a UE 5.8 install by its
+Engine/Build/Build.version; an explicit setting that is not one is an error, not a reason to try the next.
+--which-engine prints the engine it would use and starts nothing.
 
 This is the `capture` command in `.agents/docs-parity.json` (card 0410). It starts UnrealEditor-Cmd on the 5.8 host
 (build.ps1's `<checkout>/../Hosts/NodeToCodeHost_5_8` unless --project says otherwise) with a real RHI and no window
@@ -17,9 +24,9 @@ refuses to capture while a key is saved for NodeToCode. The editor's MCP server 
 
     python -I Tests/DocsShots/capture.py --restamp
 
-starts no editor: it sets each shot's commit in shots.json to the last commit that changed its image file. Run it after a
-squash merge, which drops the branch commit the shots were taken at (docs_check.py cannot diff against a commit it does
-not have, so it would never call those shots stale), and commit the manifest.
+starts no editor: it sets each shot's commit in shots.json to the last commit that changed its image file. It is not
+needed after a squash merge any more (card 0517): when a stamp is not in the history being checked, docs_check.py --stale
+uses the commit that wrote it into shots.json, which is the squash commit. Use it only to tidy the manifest.
 """
 import argparse
 import json
@@ -34,6 +41,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(REPO, 'Tests', 'mcp_probe'))
 from editor_session import DDC_ARGS, STARTUP_ENV, find_editor, kill_with_parent  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, 'Content', 'Python', 'mcp_bridge'))
+from ue_python_finder import get_ue_installations, read_build_version  # noqa: E402
+
+ENGINE_VERSION = (5, 8)
 
 GROUPS = ('main-window', 'translate-entry', 'settings')
 PROVIDER_VARIABLES = ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'DEEPSEEK_API_KEY')
@@ -44,6 +55,31 @@ MANIFEST = os.path.join(IMAGES, 'shots.json')
 def head_commit():
     return subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True,
                           check=True).stdout.strip()
+
+
+def find_engine(explicit):
+    """(engine root, where it came from) for UE 5.8, in build.ps1's order; SystemExit with the reason when none is found"""
+    def is_58(path):
+        return bool(path) and (read_build_version(path) or (0, 0))[:2] == ENGINE_VERSION
+
+    local = os.path.join(REPO, 'build.local.ps1')
+    from_local = None
+    if os.path.isfile(local):
+        m = re.search(r"['\"]?5\.8['\"]?\s*=\s*['\"]([^'\"]+)['\"]", open(local, encoding='utf-8-sig').read())
+        from_local = m.group(1) if m else None
+    for source, path in (('--engine', explicit), ('$env:N2C_UE_5_8', os.environ.get('N2C_UE_5_8')),
+                         ('$env:N2C_UE58', os.environ.get('N2C_UE58')), ('build.local.ps1', from_local)):
+        if not path:
+            continue
+        path = path.strip().strip('"').rstrip('\\/')
+        if not is_58(path):
+            raise SystemExit("%s '%s' is not a UE 5.8 install (no Engine/Build/Build.version saying 5.8)" % (source, path))
+        return path, source
+    for version, path in get_ue_installations():
+        if version[:2] == ENGINE_VERSION and is_58(path):
+            return path, 'installed engines (registry, LauncherInstalled.dat, install folders)'
+    raise SystemExit('no UE 5.8 install found: pass --engine <folder that holds Engine/>, set N2C_UE_5_8, or add '
+                     "'5.8' to $Engines in build.local.ps1")
 
 
 def run_editor(engine, project, test, out, log, timeout):
@@ -95,13 +131,18 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--group', choices=GROUPS + ('all',))
     ap.add_argument('--restamp', action='store_true', help='set each shot commit to the last commit of its image file')
-    ap.add_argument('--engine', default=os.environ.get('N2C_UE58', 'G:/UE/UE_5.8'))
+    ap.add_argument('--engine', help='UE 5.8 root, the folder that holds Engine/ (default: found as build.ps1 finds it)')
+    ap.add_argument('--which-engine', action='store_true', help='print the UE 5.8 engine this would use and exit')
     ap.add_argument('--project', default=os.path.join(os.path.dirname(REPO), 'Hosts', 'NodeToCodeHost_5_8',
                                                       'NodeToCodeHost_5_8.uproject'))
     ap.add_argument('--timeout', type=int, default=900)
     args = ap.parse_args()
     if args.restamp:
         return restamp()
+    if args.which_engine:
+        engine, source = find_engine(args.engine)
+        print(json.dumps({'engine': engine, 'source': source}))
+        return 0
     if not args.group:
         ap.error('--group is required')
     project = os.path.abspath(args.project)
@@ -115,9 +156,10 @@ def main():
     log = os.path.join(out, 'capture_%s.log' % args.group)
     os.makedirs(out, exist_ok=True)
     commit = head_commit()
+    engine, _ = find_engine(args.engine)
 
     t0 = time.time()
-    code = run_editor(args.engine, project, test, out, log, args.timeout)
+    code = run_editor(engine, project, test, out, log, args.timeout)
     results, errors = test_results(log)
     report = {'group': args.group, 'commit': commit, 'exit': code, 'seconds': round(time.time() - t0, 1),
               'tests': results, 'errors': errors, 'log': log, 'shots': []}

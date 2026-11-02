@@ -3,8 +3,8 @@ batch cancelled midway (card 0169).
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET first when other agents run probes):
 
-    python -I live_batch_0169.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_batch_0169.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 One headless editor (-N2CMcp, run-python allowed, -RenderOffScreen), with ANTHROPIC_API_KEY from the repo's .env in
 the editor's environment only (never printed). Three scratch Actor Blueprints under a fresh /Game/N2CTest/Batch0169_<time>

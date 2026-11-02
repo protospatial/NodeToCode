@@ -4,8 +4,8 @@ Live checks of NodeToCode's MCP server against a headless editor on a host proje
 review's static findings, then stay as regression tests. Nothing here ships with the plugin.
 
 ```bash
-python -I Tests/mcp_probe/mcp_probe.py --engine G:/UE/UE_5.8 \
-  --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+python -I Tests/mcp_probe/mcp_probe.py --engine <UE_5.8> \
+  --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 ```
 
 The run starts `UnrealEditor-Cmd` (see `editor_session.py` for the launch form), uses a free port pair from 27150 so
@@ -60,7 +60,7 @@ runs with `-RenderOffScreen` because the probes open a Blueprint editor (on UE 5
 otherwise reaches `FGenericWindow::GetRestoredDimensions`, which is Fatal), and quits the editor with `quit_editor()`.
 P10-P12 are not part of `build.ps1 -Smoke`.
 
-The fixture was made on UE 5.6 so 5.7 and 5.8 load it: `python -I make_probe_fixture.py --engine G:/UE/UE_5.6
+The fixture was made on UE 5.6 so 5.7 and 5.8 load it: `python -I make_probe_fixture.py --engine <UE_5.6>
 --project <5.6 host>.uproject` creates `/Game/N2CProbe/BP_N2CProbe` (parent Actor) with run-python, adds Event
 BeginPlay (the new Blueprint's ghost BeginPlay, made real by the link) and Print String with
 `add-bp-node-to-active-graph`, links `then` to `execute` with `connect-pins`, sets `In String` with
@@ -107,8 +107,8 @@ python -I Tests/mcp_probe/e05_regressions.py --url http://127.0.0.1:27000/mcp
 
 # Everything headless for one engine: MCP cases on a headless editor it starts and stops, the headless Python
 # checks, and the automation tests (NodeToCode.Robustness + NodeToCode.Secrets.Store; --all-tests runs NodeToCode)
-python -I Tests/mcp_probe/e05_regressions.py --headless --engine G:/UE/UE_5.8 \
-  --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+python -I Tests/mcp_probe/e05_regressions.py --headless --engine <UE_5.8> \
+  --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 ```
 
 It prints one `PASS`, `FAIL` or `SKIP` line per case (per check file and per automation test with `--headless`)
@@ -489,7 +489,7 @@ its environment when no key is saved, so a live check never types or saves a key
 
 ## Epic's registry through MCPClientToolset (UE 5.8, card 0141)
 
-`live_mcpclienttoolset.py --engine G:/UE/UE_5.8 --project <5.8 host> [--no-translate] [--activity-timeout N] [--eager]`
+`live_mcpclienttoolset.py --engine <UE_5.8> --project <5.8 host> [--no-translate] [--activity-timeout N] [--eager]`
 mounts NodeToCode in Epic's ToolsetRegistry the way `wiki/developers/Using-NodeToCode-with-Unreal-MCP.md` says. For
 the run it enables ModelContextProtocol and MCPClientToolset in the host `.uproject` and writes the MCP Toolset
 Servers entry (Streamable HTTP, Auth None) and Epic's MCP server settings (auto start, its own port) into the host's

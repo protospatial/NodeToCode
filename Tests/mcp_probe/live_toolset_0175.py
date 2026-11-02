@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`. Two modes:
 
-    python -I live_toolset_0175.py --engine G:/UE/UE_5.8 --project <5.8 host .uproject> --label 5.8
-    python -I live_toolset_0175.py --engine G:/UE/UE_5.6 --project <5.6 host .uproject> --label 5.6 --absent
+    python -I live_toolset_0175.py --engine <UE_5.8> --project <5.8 host .uproject> --label 5.8
+    python -I live_toolset_0175.py --engine <UE_5.6> --project <5.6 host .uproject> --label 5.6 --absent
 
 Default (5.8 only): for the length of the run the host .uproject enables Epic's ToolsetRegistry and ModelContextProtocol
 ("Unreal MCP") plugins, and Epic's MCP server starts on its own port (-ModelContextProtocolPort, 8000 plus

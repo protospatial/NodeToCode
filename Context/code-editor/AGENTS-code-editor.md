@@ -115,7 +115,7 @@ The `FN2CRichTextSyntaxHighlighter::FSyntaxTextStyle` struct maps colors to thes
 Everything around the code editor uses two other sources; widget code should use them instead of literal colors, sizes or fonts:
 
 *   **`FN2CUIColors` (`Source/Public/Core/Style/N2CUIColors.h`)**: the color tokens (backgrounds, buttons, borders, text, accents, ...). The live palette is `UN2CSettings::UIColors` (Theming > UI Colors). Read it through `N2C::UI::Colors()` (defined in `Source/Private/Core/Style/N2CUIColors.cpp`, the one place that reads the settings) so widgets need not include `Core/N2CSettings.h`; `N2C::UI::Linear` / `LinearAlpha` convert a token to `FLinearColor`, and `N2C::UI::Bind` / `BindAlpha` return an attribute that re-reads the token each frame, so a Project Settings edit shows at once. Changing `UIColors` also calls `N2CStyle::UpdateButtonStyles()`. The code editor itself takes `TextShadow`, `TextHighlight` and `FallbackBorder` from it. Spec: `Source/Private/Tests/Core/N2CUIColors.spec.cpp`.
-*   **`Source/Public/Core/Style/N2CDesignTokens.h`**: constant spacing (`FN2CSpacing::XXS` ... `XXL`, 2 to 20 px), font (`FN2CFonts::Tiny()` ... `LargeBold()`, `Mono()`, `MonoSmall()`) and sizing (`FN2CSizing::IconSM/MD/LG`, `SeparatorThickness`) tokens. These are not settings.
+*   **`Source/Public/Core/Style/N2CDesignTokens.h`**: constant spacing (`FN2CSpacing::XXS` ... `XXL`, 2 to 20 px), font (`FN2CFonts::Small()` ... `LargeBold()`, 8pt at least, `Mono()`, `MonoSmall()`) and sizing (`FN2CSizing::IconSM/MD/LG`, `SeparatorThickness`) tokens. These are not settings.
 
 ## Adding a New Language
 

@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET for a parallel lane):
 
-    python -I live_components_0167.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_components_0167.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor and makes an Actor Blueprint in memory under a fresh /Game/N2CTest/Components0167_<time>
 folder (never saved). Then:

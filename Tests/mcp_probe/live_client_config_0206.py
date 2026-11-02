@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I` (set N2C_PORT_OFFSET first when other agents run probes):
 
-    python -I live_client_config_0206.py --engine G:/UE/UE_5.8 \
+    python -I live_client_config_0206.py --engine <UE_5.8> \
         --project "D:/n2c-lanes/lane-b/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--claude]
 
 One headless -N2CMcp editor on a non-default port, with Allow MCP Python Execution for the session. Through run-python

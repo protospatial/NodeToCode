@@ -5,6 +5,7 @@
 #include "Styling/SlateStyleRegistry.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Brushes/SlateColorBrush.h"
+#include "Brushes/SlateImageBrush.h"
 #include "Framework/Application/SlateApplication.h"
 
 TSharedPtr<FSlateStyleSet> N2CStyle::StyleInstance = nullptr;
@@ -95,8 +96,13 @@ TSharedRef<FSlateStyleSet> N2CStyle::Create()
     // Set content root using plugin manager
     Style->SetContentRoot(IPluginManager::Get().FindPlugin(TEXT("NodeToCode"))->GetBaseDir() / TEXT("Resources"));
 
+    // The logo is a vector (Resources/button_icon.svg, traced from button_icon.png), drawn at 20 px on toolbar and
+    // overlay buttons and 16 px on the tab; Slate rasterizes it at the monitor's DPI scale, so it stays sharp at 150%
+    // and 200% (card 0271)
     Style->Set("NodeToCode.ToolbarButton",
-        new N2C_PLUGIN_BRUSH(TEXT("button_icon"), FVector2D(128.0f, 128.0f)));
+        new FSlateVectorImageBrush(Style->RootToContentDir(TEXT("button_icon"), TEXT(".svg")), FVector2D(20.0f, 20.0f)));
+    Style->Set("NodeToCode.ToolbarButton.Small",
+        new FSlateVectorImageBrush(Style->RootToContentDir(TEXT("button_icon"), TEXT(".svg")), FVector2D(16.0f, 16.0f)));
 
     // Populate styles from current palette
     UpdateButtonStyles();

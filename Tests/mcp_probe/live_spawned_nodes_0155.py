@@ -2,8 +2,8 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_spawned_nodes_0155.py --engine G:/UE/UE_5.8 \
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I live_spawned_nodes_0155.py --engine <UE_5.8> \
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 It starts a headless editor (ANTHROPIC_API_KEY from the repo's .env in the editor's environment only, never printed),
 makes an Actor Blueprint in memory under a fresh /Game/N2CTest/Spawn0155_<time> folder, opens it and adds a float

@@ -132,7 +132,7 @@ TSharedRef<SWidget> SN2CGraphListRow::GenerateWidgetForColumn(const FName& Colum
 					.Padding(FN2CSpacing::XXS, 0.0f)
 					[
 						SNew(SN2CIconButton)
-						.IconBrush(FAppStyle::GetBrush("MainFrame.RefreshSourceCodeEditor"))
+						.IconBrush(FAppStyle::GetBrush("Icons.Save"))
 						.IconSize(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
 						.ButtonVariant(EN2CButtonVariant::Simple)
 						.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
@@ -185,7 +185,7 @@ TSharedRef<SWidget> SN2CGraphListRow::GenerateWidgetForColumn(const FName& Colum
 			[
 				SNew(STextBlock)
 				.Text(this, &SN2CGraphListRow::GetTokensText)
-				.Font(FN2CFonts::Tiny())
+				.Font(FN2CFonts::Small())
 				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 			]
 
@@ -196,7 +196,7 @@ TSharedRef<SWidget> SN2CGraphListRow::GenerateWidgetForColumn(const FName& Colum
 			[
 				SNew(STextBlock)
 				.Text(this, &SN2CGraphListRow::GetCostText)
-				.Font(FN2CFonts::Tiny())
+				.Font(FN2CFonts::Small())
 				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentGreen)) // Green for cost
 			]);
 	}
@@ -223,7 +223,7 @@ FReply SN2CGraphListRow::HandleTranslateClicked()
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CGraphListRow] Translate clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CGraphListRow] Translate clicked for graph: %s"), *Item->TagInfo.GraphName);
 		OnTranslateClickedDelegate.ExecuteIfBound(Item);
 	}
 	return FReply::Handled();
@@ -233,7 +233,7 @@ FReply SN2CGraphListRow::HandleJsonExportClicked()
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CGraphListRow] JSON Export clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CGraphListRow] JSON Export clicked for graph: %s"), *Item->TagInfo.GraphName);
 		OnJsonExportClickedDelegate.ExecuteIfBound(Item);
 	}
 	return FReply::Handled();
@@ -243,7 +243,7 @@ FReply SN2CGraphListRow::HandleViewTranslationClicked()
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CGraphListRow] View Translation clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CGraphListRow] View Translation clicked for graph: %s"), *Item->TagInfo.GraphName);
 		OnViewTranslationClickedDelegate.ExecuteIfBound(Item);
 	}
 	return FReply::Handled();
@@ -339,7 +339,7 @@ void SN2CGraphListRow::HandleRefreshClicked()
 {
 	if (Item.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Log, TEXT("[SN2CGraphListRow] Refresh clicked for graph: %s"), *Item->TagInfo.GraphName);
+		UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CGraphListRow] Refresh clicked for graph: %s"), *Item->TagInfo.GraphName);
 		OnRefreshClickedDelegate.ExecuteIfBound(Item);
 	}
 }

@@ -764,6 +764,34 @@ FString UN2CPythonBridge::GetUntrustedContentNotice()
 	return FN2CMcpUntrustedContent::MarkerText();
 }
 
+// ========== MCP runner ==========
+
+namespace N2CPythonBridgePrivate
+{
+	/** Answers of nodetocode._mcp_runner by call id (game thread only, like every Python call) */
+	TMap<FString, FString>& McpResults()
+	{
+		static TMap<FString, FString> Results;
+		return Results;
+	}
+}
+
+void UN2CPythonBridge::SubmitMcpResult(const FString& CallId, const FString& ResultJson)
+{
+	check(IsInGameThread());
+	N2CPythonBridgePrivate::McpResults().Add(CallId, ResultJson);
+}
+
+bool UN2CPythonBridge::TakeMcpResult(const FString& CallId, FString& OutResultJson)
+{
+	check(IsInGameThread());
+	TMap<FString, FString>& Results = N2CPythonBridgePrivate::McpResults();
+	const bool bFound = Results.RemoveAndCopyValue(CallId, OutResultJson);
+	// An answer nobody takes (a script that called SubmitMcpResult itself) does not pile up
+	Results.Reset();
+	return bFound;
+}
+
 // ========== Blueprint Editor Navigation ==========
 
 FString UN2CPythonBridge::OpenBlueprint(const FString& BlueprintPath, const FString& FocusGraph)

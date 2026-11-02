@@ -4,7 +4,7 @@ the secret store and the per-request credential source, with no restart.
 Stdlib only; run with `python -I`, under the `user-secrets` lock (it edits the per-user secrets file and, on Windows,
 the NodeToCode/* Credential Manager entries, and puts both back):
 
-    python -I live_credential_source_0160.py --engine G:/UE/UE_5.8 \
+    python -I live_credential_source_0160.py --engine <UE_5.8> \
         --project "<Hosts>/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" [--provider anthropic --model claude-haiku-5-5]
 
 Steps, in one headless editor whose environment has none of the provider variables:

@@ -4,7 +4,7 @@ Stdlib only; run with `python -I`. Starts a headless UnrealEditor-Cmd on a host 
 runs the N2CToolReference commandlet (card 0179), which writes both files from the MCP tool registry and the declared
 toolsets. Never edit the files by hand.
 
-    python -I Scripts/generate_tool_reference.py --engine G:/UE/UE_5.8 --project <host>/NodeToCodeHost_5_8.uproject
+    python -I Scripts/generate_tool_reference.py --engine <UE_5.8> --project <host>/NodeToCodeHost_5_8.uproject
     python -I Scripts/generate_tool_reference.py --engine ... --project ... --check
 
 --output picks another folder (default: Context/mcp-server of this checkout). --check writes nothing and exits 1 when
@@ -44,7 +44,7 @@ def build_command(exe, project, output, check, log):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument('--engine', required=True, help='engine root, the folder that holds Engine/ (e.g. G:/UE/UE_5.8)')
+    ap.add_argument('--engine', required=True, help='engine root, the folder that holds Engine/ (e.g. "C:/Program Files/Epic Games/UE_5.8")')
     ap.add_argument('--project', required=True, help='a host .uproject with NodeToCode built (build.ps1 makes them)')
     ap.add_argument('--output', default=DEFAULT_OUTPUT, help='folder for the two files (default: Context/mcp-server)')
     ap.add_argument('--check', action='store_true', help='write nothing; exit 1 when the committed files are stale')

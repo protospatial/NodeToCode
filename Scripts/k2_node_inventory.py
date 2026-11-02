@@ -3,8 +3,8 @@
 Stdlib only, read-only; run with `python -I Scripts/k2_node_inventory.py` from anywhere (card 0246). It never writes
 under the engine folders.
 
-    python -I Scripts/k2_node_inventory.py --engine 5.6=G:/UE/UE_5.6 --engine 5.7=G:/UE/UE_5.7 \
-        --engine 5.8=G:/UE/UE_5.8 [--json out.json] [--markdown out.md]
+    python -I Scripts/k2_node_inventory.py --engine 5.6=<UE_5.6> --engine 5.7=<UE_5.7> \
+        --engine 5.8=<UE_5.8> [--json out.json] [--markdown out.md]
 
 For each engine it reads the headers under Engine/Source and Engine/Plugins, collects every `class U<Name> : public
 U<Base>` declaration that follows a UCLASS (with the UCLASS specifiers, so Abstract and deprecated classes can be told

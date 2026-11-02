@@ -2,7 +2,7 @@
 
 Stdlib only; run with `python -I`:
 
-    python -I live_toolset_0176.py --engine G:/UE/UE_5.8 --project <5.8 host .uproject> --label 5.8
+    python -I live_toolset_0176.py --engine <UE_5.8> --project <5.8 host .uproject> --label 5.8
 
 For the length of the run the host .uproject enables Epic's ToolsetRegistry and ModelContextProtocol plugins (put back
 byte for byte when the editor stops), Epic's MCP server starts on its own port, and the editor gets ANTHROPIC_API_KEY

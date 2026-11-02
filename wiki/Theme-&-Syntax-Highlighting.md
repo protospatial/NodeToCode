@@ -33,6 +33,11 @@ You can change these colors while a translation is open. The **Background** colo
         <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_ThemeSettings.png" alt="Node to Code theme settings" width="500">
     </p>
 
+The rest of the Node to Code window takes its colors from **Theming → UI Colors**. The default
+**Text Muted** is a light gray (148, 148, 148), so muted text keeps a 4.5:1 contrast on the panels. A project that
+saved its UI colors with the older, darker default (107, 107, 107) keeps it; use the reset arrow next to **Text Muted**
+to take the new default.
+
 
 ## How code is colored
 

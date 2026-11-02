@@ -5,8 +5,8 @@ anything a healthy plugin would not do.
 
 Stdlib only; build.ps1 runs it with the engine's own Python (`python -I -u`). By hand:
 
-    python -I Tests/smoke/smoke_check.py --engine G:/UE/UE_5.8 \\
-        --project "G:/Personal Projects/n2c/Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
+    python -I Tests/smoke/smoke_check.py --engine <UE_5.8> \\
+        --project "<checkout>/../Hosts/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8
 
 Per mode (default, tool_search, python_only; set through the host's Config/DefaultNodeToCode.ini, which the session
 puts back afterwards) it starts UnrealEditor-Cmd with -N2CMcp through Tests/mcp_probe/editor_session.py and fails on:
