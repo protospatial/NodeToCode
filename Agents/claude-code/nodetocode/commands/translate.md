@@ -41,7 +41,8 @@ long-running (seconds to minutes) and bills the provider once per call, so call 
 
 - Success: JSON text whose first key is `untrusted_content`, then `graphs` (each with `graph_name`, `graph_type`,
   `graph_class` and `code`: `graphDeclaration`, `graphImplementation`, `implementationNotes`), `usage`
-  (`input_tokens`, `output_tokens`), `run_folder` and `files` (where the editor archived the translation, below), and
+  (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_write_input_tokens`, `reasoning_tokens`),
+  `run_folder` and `files` (where the editor archived the translation, below), and
   `warnings` when the model is not in NodeToCode's catalog. A translation too large for one result comes as `graphs`
   without `code`, `savedTo` (a file with all of it) and the same `run_folder` and `files`.
 - Failure: an error result. NodeToCode's error JSON has `error_kind` (`Auth`, `RateLimited`, `Truncated`, `Billing`,

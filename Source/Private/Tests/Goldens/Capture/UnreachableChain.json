@@ -9,7 +9,9 @@
 		{
 			"name": "BP_N2CGolden_UnreachableChain",
 			"blueprint_type": "Normal",
-			"blueprint_class": "BP_N2CGolden_UnreachableChain"
+			"blueprint_class": "BP_N2CGolden_UnreachableChain",
+			"parent_class": "Actor",
+			"asset_class": "Blueprint"
 		},
 		"graphs": [
 			{

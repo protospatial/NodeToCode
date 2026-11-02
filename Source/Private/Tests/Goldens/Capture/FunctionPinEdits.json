@@ -10,7 +10,9 @@
 		{
 			"name": "BP_N2CGolden_FunctionPinEdits",
 			"blueprint_type": "Normal",
-			"blueprint_class": "BP_N2CGolden_FunctionPinEdits"
+			"blueprint_class": "BP_N2CGolden_FunctionPinEdits",
+			"parent_class": "Actor",
+			"asset_class": "Blueprint"
 		},
 		"graphs": [
 			{

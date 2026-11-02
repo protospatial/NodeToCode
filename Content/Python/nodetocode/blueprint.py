@@ -78,8 +78,9 @@ def get_blueprint_n2cjson(blueprint_path: str, graph_name: str = '', graph_guid:
         blueprint_path: Asset path, e.g. '/Game/Blueprints/BP_Door'
         graph_name: One graph by name (event graph, function, macro, collapsed, delegate or interface graph)
         graph_guid: One graph by its GraphGuid (wins over graph_name)
-        depth: Also capture the functions, macros and collapsed graphs used up to this many calls away (0-5);
-            -1 uses the project's Max Translation Depth
+        depth: Also capture the user functions and macros the graph calls, up to this many calls away (0-5);
+            -1 uses the project's Max Translation Depth. Collapsed graphs always come with the graph that
+            holds them, at every depth
         to_file: Write the document to a file and return its path instead
         compact: Write the file without whitespace (only used with to_file)
 

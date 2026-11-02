@@ -2,13 +2,7 @@
 
 ## Status
 
-proposed (2026-10-24), provisional pending the owner's confirmation on card 0117
-
-**Provisional:** the owner has not decided card 0117 (review decision dec-7). Card 0135 applies the review's
-recommendation so the lossless data edges can land; cards 0136-0138 and 0132 follow it. The parts the owner is most
-likely to change, the version string and the field names, live in one header,
-`Source/Public/Models/N2CJsonContract.h`, and in prose in the prompts; changing them there and regenerating the
-capture goldens (`build.ps1 -Test -UpdateGoldens`) is all a different choice needs.
+decided (2026-11-02), by the owner on card 0117 (option 1, as recorded below; it had been applied provisionally since 2026-10-24 by cards 0135-0138 and 0132)
 
 ## Sources
 
@@ -143,6 +137,14 @@ Option 1, provisionally. The sub-choices of card 0117:
   `guid`} and adds the top-level `guids` table. The reader takes `ids.short` as the ID when there is no `id`
   (`N2CJsonContract::AgentIdsField`) and does not keep the GUIDs, so a document NodeToCode exported reads back with
   every node; before, it skipped every node with an Error log line and still read the document.
+- Card 0518 (additive, under 2.0.0 since no release has written it; finding F4 of
+  `Context/translation-pipeline/graph-type-coverage.md`): `metadata` may carry `parent_class`, the class the Blueprint
+  derives from (named as `member_parent` names classes: a native class without its Unreal prefix, a Blueprint class by
+  its Blueprint's name), and `asset_class`, the class of the Blueprint asset (`Blueprint`, `WidgetBlueprint`,
+  `AnimBlueprint`, `EditorUtilityBlueprint`, ...), after `blueprint_class` (`N2CJsonContract::ParentClassField`,
+  `AssetClassField`). Every capture writes both, each only when known; the prompts take the base class from
+  `parent_class` instead of guessing it from the nodes. The validator warns `MISSING_PARENT_CLASS` when a document names
+  its asset class but not its parent class. A reader that predates it keeps both as unknown fields.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 

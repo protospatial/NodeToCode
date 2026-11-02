@@ -57,7 +57,8 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   same graph (spec `NodeToCode.MCP.BlueprintByPath`). It has no size limit: for a large graph use
   get-blueprint-n2cjson
 - **Arguments**: none ([reference](../../../../../../../Context/mcp-server/tools.generated.md#get-focused-blueprint))
-- **Returns**: `untrusted_content`, `version`, `metadata` (`name`, `blueprint_type`, `blueprint_class`), `graphs`,
+- **Returns**: `untrusted_content`, `version`, `metadata` (`name`, `blueprint_type`, `blueprint_class`, `parent_class`,
+  `asset_class`), `graphs`,
   `structs`, `enums` and `guids`. Each node's and pin's `id` is
   `ids` (`{"short": "N1", "guid": "<NodeGuid>"}`; a pin's also has its `name`, and `guid` is its `PinId`), the flows
   keep the short IDs, and the top-level `guids` table has `graphs` (every captured graph's `GraphGuid`, in `graphs`
@@ -100,8 +101,9 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   - `blueprintPath`: `/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`
   - `graphName`, `graphGuid`: one graph, as in the Graph tools (`graphGuid` wins; a function's ID is its
     GraphGuid). With neither, every graph
-  - `depth` (0 to 5): Max Translation Depth for this read: also capture the user functions, macros and
-    collapsed graphs the graph uses up to this many calls away. Default: the project's setting
+  - `depth` (0 to 5): Max Translation Depth for this read: also capture the user functions and macros
+    (project content and project plugins) the graph calls, up to this many calls away; collapsed graphs always come
+    with the graph that holds them, at every depth. Default: the project's setting
   - `compact`: no whitespace; false indents as get-focused-blueprint does
   - `toFile`: always write the document to a file
 - **Returns**: the document get-focused-blueprint returns (below) for the graph or graphs read, compact by default.

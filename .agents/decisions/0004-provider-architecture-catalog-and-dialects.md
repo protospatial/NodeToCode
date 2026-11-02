@@ -2,15 +2,7 @@
 
 ## Status
 
-proposed (2026-10-25), provisional pending the owner's confirmation on card 0115
-
-**Provisional:** the owner has not decided card 0115 (review decision dec-8). Card 0128 applies the review's
-recommendation so the bundled catalog can land; cards 0129 (string model IDs and the settings upgrade) and the
-other E09 cards follow it. What the owner is most likely to change is kept in a few places: the file location
-(`FN2CModelCatalog::GetBundledPath`), the file format (`FN2CModelCatalog::Parse` in
-`Source/Private/LLM/N2CModelCatalog.cpp`, `schema_version` 1), the provider ID strings (`ProviderNames` in the same
-file) and the enum-keyed wrappers (`FN2CLLMModelRegistry`). Option 1 (keep the enums) would only need the registry
-to own its rows again; nothing outside `Source/*/LLM/` reads the catalog yet.
+decided (2026-11-02), by the owner on card 0115 (option 2, as recorded below; it had been applied provisionally since 2026-10-25 by cards 0128 and 0129)
 
 ## Sources
 

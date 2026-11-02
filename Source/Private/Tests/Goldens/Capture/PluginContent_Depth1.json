@@ -10,7 +10,9 @@
 		{
 			"name": "BP_N2CGolden_PluginContent_Depth1",
 			"blueprint_type": "Normal",
-			"blueprint_class": "BP_N2CGolden_PluginContent_Depth1"
+			"blueprint_class": "BP_N2CGolden_PluginContent_Depth1",
+			"parent_class": "Actor",
+			"asset_class": "Blueprint"
 		},
 		"graphs": [
 			{

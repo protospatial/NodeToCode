@@ -6,8 +6,8 @@ One record per decision, numbered in the order they were made. A record is amend
 
 - [0001 — Platforms for 2.0-beta: Win64 only until Mac or Linux is verified](0001-platforms-for-2-0-beta.md) — proposed (2026-10-23), provisional pending the owner's confirmation on card 0073
 - [0002 — Licence and contribution model: Apache-2.0 only, NOTICE and DCO](0002-licence-and-contribution-model.md) — proposed (2026-10-23), provisional pending the owner's confirmation on card 0053
-- [0003 — N2C JSON v2 contract: version 2.0.0, lossless data edges and a kept v1 reader](0003-n2c-json-v2-contract.md) — proposed (2026-10-24), provisional pending the owner's confirmation on card 0117
-- [0004 — Provider architecture: a data-driven model catalog with string IDs and wire-dialect adapters](0004-provider-architecture-catalog-and-dialects.md) — proposed (2026-10-25), provisional pending the owner's confirmation on card 0115
+- [0003 — N2C JSON v2 contract: version 2.0.0, lossless data edges and a kept v1 reader](0003-n2c-json-v2-contract.md) — decided (2026-11-02), by the owner on card 0117 (option 1, as recorded below; it had been applied provisionally since 2026-10-24 by cards 0135-0138 and 0132)
+- [0004 — Provider architecture: a data-driven model catalog with string IDs and wire-dialect adapters](0004-provider-architecture-catalog-and-dialects.md) — decided (2026-11-02), by the owner on card 0115 (option 2, as recorded below; it had been applied provisionally since 2026-10-25 by cards 0128 and 0129)
 - [0005 — MCP tool exposure: declared toolsets, settings profiles and an opt-in tool search](0005-mcp-tool-exposure-toolsets-and-tool-search.md) — proposed (2026-10-25), provisional pending the owner's confirmation on card 0106
 - [0006 — User docs location: the GitHub wiki stays the target, its source lives in wiki/ in the repo](0006-user-docs-location-wiki-in-repo.md) — decided (2026-10-22), by the owner on card 0123
 - [0007 — CRUD tool families: fix crash and corruption defects, then freeze](0007-crud-tool-families-fix-then-freeze.md) — proposed (2026-10-26), provisional pending the owner's confirmation on card 0140
@@ -16,3 +16,4 @@ One record per decision, numbered in the order they were made. A record is amend
 - [0010 — Script library: retire the saved-script tools, keep three utilities as Agent Skills, delete the rest](0010-script-library-cut-and-convert.md) — decided (2026-11-02), by the owner on card 0158
 - [0011 — Engine versions: UE 5.6 to 5.8, the three latest, with agent features gated to 5.8](0011-engine-versions-three-latest.md) — decided (2026-11-02), by the owner on card 0052
 - [0012 — Usage telemetry: none; public stats and a poll answer the usage question](0012-no-usage-telemetry.md) — decided (2026-11-02), by the owner on card 0094
+- [0013 — MCP on UE 5.6 and 5.7: the engine HTTP server, one JSON response, no progress streaming](0013-mcp-on-ue-5-6-5-7-one-response-no-streaming.md) — decided (2026-11-02), by the owner on card 0085 (option b; it had been applied provisionally since October)
