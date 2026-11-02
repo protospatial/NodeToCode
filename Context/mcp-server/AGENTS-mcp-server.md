@@ -34,7 +34,7 @@ tool's full `inputSchema`, `outputSchema` and `_meta` for scripts and the docs l
   `Context/**`, every `Source/**/AGENTS.md`, `wiki/developers/`) against these files, and these files against the
   tool sources, with no editor. It runs on every pull request into dev-2.0 (job `docs-lint` in
   `.github/workflows/docs-check.yml`) and in `build.ps1 -Test` (`Tests/python/test_docs_lint.py`). It fails on a
-  backticked tool-like name that is not registered, an argument in a tool's **Parameters** list that is not in its
+  backticked tool-like name that is not registered, an argument in a tool's **Arguments** list that is not in its
   `inputSchema`, an "N tools" count the reference does not give, a tool missing from the list below or with no doc
   section, a broken relative link or repo path, a broken link between `wiki/` pages (`--wiki <folder>` checks another
   copy of the user pages, such as a clone of the published wiki), and a reference whose tool names, count, toolsets

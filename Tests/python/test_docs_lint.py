@@ -99,8 +99,8 @@ def test_seeded_drift_fails_with_file_and_line(docs_lint, tmp_path):
     server = 'Context/mcp-server/AGENTS-mcp-server.md'
     page = 'wiki/developers/NodeToCodeTools.md'
     substitute(root, graph, '`set-input-pin-value`, `delete-blueprint-node`', '`set-input-pin-values`, `delete-blueprint-node`')
-    substitute(root, compilation, '  - `skipGarbageCollection` (optional)',
-               '  - `forceRecompile` (optional): seeded\n  - `skipGarbageCollection` (optional)')
+    substitute(root, compilation, '  - `skipGarbageCollection`:',
+               '  - `forceRecompile`: seeded\n  - `skipGarbageCollection`:')
     substitute(root, server, '[threat-model.md](threat-model.md)', '[threat-model.md](threat-modle.md)')
     substitute(root, server, '68 tools by folder', '67 tools by folder')
     substitute(root, page, '(Agent-Skills)', '(Agent-Skillz)')

@@ -11,13 +11,13 @@ not: its result is up to a file part of text, which `structuredContent` would se
 
 ### read-path
 - **Description**: Lists the files and folders directly inside a directory (not recursive), in pages
-- **Parameters**:
-  - `relativePath` (required): the directory, relative to the project folder (`""` or `"."` for the project folder);
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#read-path)):
+  - `relativePath`: the directory, relative to the project folder (`""` or `"."` for the project folder);
     an absolute path must be inside one of the read roots (see "Read Roots")
-  - `pageSize` (optional): entries per page, 1 to 1000 (default 200; `FN2CMcpReadPathTool::DefaultPageSize`, `MaxPageSize`)
-  - `cursor` (optional): the `nextCursor` of the previous page; left out for the first page. It is the index of the
+  - `pageSize`: entries per page, 1 to 1000 (default 200; `FN2CMcpReadPathTool::DefaultPageSize`, `MaxPageSize`)
+  - `cursor`: the `nextCursor` of the previous page; left out for the first page. It is the index of the
     page's first entry as a decimal string; a cursor past the end (the folder shrank) is an error that says to start again
-  - `filter` (optional): a wildcard (`*`, `?`, `FString::MatchesWildcard`) the names must match, ignoring case, for
+  - `filter`: a wildcard (`*`, `?`, `FString::MatchesWildcard`) the names must match, ignoring case, for
     folders and files alike (`"*.json"`)
 - **Returns**: `path` (project-relative, see "Paths in Results"), `directories` and `files` (this page's names: the
   entries are ordered folders first, then files, each sorted by name, so a page can hold some of each), `directoryCount`,
@@ -28,10 +28,10 @@ not: its result is up to a file part of text, which `structuredContent` would se
 
 ### read-file
 - **Description**: Reads a text file, at most 500 KB of it per call, in whole lines
-- **Parameters**:
-  - `relativePath` (required): the file, relative to the project folder; an absolute path must be inside a read root
-  - `offset` (optional): the line number to start at, 1-based (default 1; 0 also means 1)
-  - `limit` (optional): the most lines to return (default: as many whole lines as fit in 500 KB)
+- **Arguments** (types, required and defaults: [reference](../../../../../../Context/mcp-server/tools.generated.md#read-file)):
+  - `relativePath`: the file, relative to the project folder; an absolute path must be inside a read root
+  - `offset`: the line number to start at, 1-based (default 1; 0 also means 1)
+  - `limit`: the most lines to return (default: as many whole lines as fit in 500 KB)
   - `offset` and `limit` take a JSON number or a numeric string; a negative or fractional value, or a `limit` of 0, is
     an error
 - **Returns**: `path` (project-relative), `content`, `size` (the file's size in bytes), `contentBytes` (UTF-8 bytes of

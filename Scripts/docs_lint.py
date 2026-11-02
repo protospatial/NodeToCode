@@ -14,8 +14,8 @@ Checks (finding codes in brackets):
      the same counts; Tests/smoke/expected.json `default` equals the tool count.
   2. tool names in the docs [TOOL_UNKNOWN]: a backticked kebab-case token that starts like a tool name (its first
      word is the first word of a registered tool, such as `get-` or `create-`) must be a registered tool.
-  3. arguments [ARG_UNKNOWN]: in a `### <tool>` section, the arguments its **Parameters** list names must be in that
-     tool's inputSchema.
+  3. arguments [ARG_UNKNOWN]: in a `### <tool>` section, the arguments its **Arguments** list (or a **Parameters**
+     list) names must be in that tool's inputSchema.
   4. counts [COUNT_DRIFT]: "<N> tools" / "<N> MCP tools" must be a count the reference gives (all tools, the default
      tools, a toolset's size, the Unreal MCP overlap, ...). [TOOL_LIST_INCOMPLETE]: the per-tool list in
      Context/mcp-server/AGENTS-mcp-server.md names every registered tool, and every tool has a `### <tool>` section
@@ -70,8 +70,10 @@ BACKTICK_RE = re.compile(r'`([^`\n]+)`')
 KEBAB_RE = re.compile(r'^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$')
 HEADING_RE = re.compile(r'^(#{2,6})\s+`?([a-z][a-z0-9]*(?:-[a-z0-9]+)+)`?(?:\s|$)')
 ANY_HEADING_RE = re.compile(r'^(#{1,6})\s')
-PARAMETERS_RE = re.compile(r'^(\s*)[-*]\s+\*\*Parameters\*\*')
+PARAMETERS_RE = re.compile(r'^(\s*)[-*]\s+\*\*(?:Parameters|Arguments)\*\*')
+# a name on the list's own line: `a` (required), or after the list's colon ("**Arguments** (...): `a`, `b`")
 INLINE_ARG_RE = re.compile(r'`([A-Za-z_]\w*)`\s*\((?:required|optional)')
+INLINE_LIST_RE = re.compile(r'\*\*(?:Parameters|Arguments)\*\*(?:\s*\((?:[^()]|\([^()]*\))*\))?:(.*)$')
 BULLET_ARG_RE = re.compile(r'^(\s*)[-*]\s+`([A-Za-z_]\w*)`(?:\s*(?:,|and|or)\s*`[A-Za-z_]\w*`)*')
 BULLET_RE = re.compile(r'^(\s*)[-*]\s')
 COUNT_RE = re.compile(r'(?<![\w.-])(\d+)\s+(?:(?:MCP|NodeToCode|registered|Epic-duplicating|overlapping)\s+)?tools\b')
@@ -322,7 +324,7 @@ def tool_sections(lines):
 
 
 def section_arguments(lines, start, end):
-    """[(argument, line index)] named by the section's **Parameters** list (top level only)"""
+    """[(argument, line index)] named by the section's **Arguments** (or **Parameters**) list (top level only)"""
     found = []
     i = start
     while i < end:
@@ -331,7 +333,11 @@ def section_arguments(lines, start, end):
             i += 1
             continue
         base = len(m.group(1))
-        found += [(a, i) for a in INLINE_ARG_RE.findall(lines[i])]
+        inline = INLINE_LIST_RE.search(lines[i])
+        if inline:
+            found += [(a, i) for a in re.findall(r'`([A-Za-z_]\w*)`', inline.group(1))]
+        else:
+            found += [(a, i) for a in INLINE_ARG_RE.findall(lines[i])]
         child = None
         i += 1
         while i < end:

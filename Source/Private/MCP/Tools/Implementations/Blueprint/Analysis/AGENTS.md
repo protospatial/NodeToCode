@@ -28,15 +28,8 @@ in `Source/Private/MCP/Tools/AGENTS.md`.
   <path>`, `NO_ACTIVE_BLUEPRINT: No blueprint path provided and no focused editor found.`
 - `get-open-blueprint-editors` and `get-editor-context` take no arguments and read the open Blueprint editors and the
   focused one from `FN2CBlueprintEditorTracker` (card 0150); they open, focus and change nothing.
-- **Known issue (card 0150):** the active editor is tracked by `FN2CEditorIntegration` from editor events, not from
-  what is in front, and `FN2CMcpBlueprintUtils::OpenBlueprintEditor` (used by the Python bridge's `open_blueprint`
-  and `open_blueprint_function`, and by create-blueprint-function) returns that tracked editor when the asset's own
-  editor is already open. Opening an already open Blueprint while another one is active can then show its graph
-  inside the other Blueprint's editor: on UE 5.8, after `open_blueprint` on such a Blueprint, get-focused-blueprint
-  reported it while list-blueprint-functions without a path reported the other one. Pass `blueprintPath` where a
-  tool takes one.
-- **Known issue (card 0274):** get-focused-blueprint has no explicit target; read a graph by path with
-  get-blueprint-n2cjson instead.
+- get-focused-blueprint takes no target: it reads what is focused. To read a graph by path, use
+  get-blueprint-n2cjson.
 
 ## Untrusted content
 
@@ -63,7 +56,7 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   which `BuildResultJson` forwards to). get-blueprint-n2cjson with `compact: false` returns the same text for the
   same graph (spec `NodeToCode.MCP.BlueprintByPath`). It has no size limit: for a large graph use
   get-blueprint-n2cjson
-- **Parameters**: None
+- **Arguments**: none ([reference](../../../../../../../Context/mcp-server/tools.generated.md#get-focused-blueprint))
 - **Returns**: `untrusted_content`, `version`, `metadata` (`name`, `blueprint_type`, `blueprint_class`), `graphs`,
   `structs`, `enums` and `guids`. Each node's and pin's `id` is
   `ids` (`{"short": "N1", "guid": "<NodeGuid>"}`; a pin's also has its `name`, and `guid` is its `PinId`), the flows
@@ -102,14 +95,14 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   graphs, collapsed graphs, delegate signatures, interface graphs; not the bound graphs of Math Expression nodes) is a
   top-level graph at depth 0, so a function called from the event graph appears once; graphs with no nodes are left
   out. Each call builds its own capture; nothing is kept between calls
-- **Parameters**:
-  - `blueprintPath` (required): `/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`
-  - `graphName`, `graphGuid` (optional): one graph, as in the Graph tools (`graphGuid` wins; a function's ID is its
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#get-blueprint-n2cjson)):
+  - `blueprintPath`: `/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`
+  - `graphName`, `graphGuid`: one graph, as in the Graph tools (`graphGuid` wins; a function's ID is its
     GraphGuid). With neither, every graph
-  - `depth` (optional, 0 to 5): Max Translation Depth for this read: also capture the user functions, macros and
+  - `depth` (0 to 5): Max Translation Depth for this read: also capture the user functions, macros and
     collapsed graphs the graph uses up to this many calls away. Default: the project's setting
-  - `compact` (optional, default true): no whitespace; false indents as get-focused-blueprint does
-  - `toFile` (optional, default false): always write the document to a file
+  - `compact`: no whitespace; false indents as get-focused-blueprint does
+  - `toFile`: always write the document to a file
 - **Returns**: the document get-focused-blueprint returns (below) for the graph or graphs read, compact by default.
   When it would exceed 20000 estimated tokens (`N2CMcpBlueprintExport::MaxInlineTokens`; estimate = characters /
   1.75, measured with Anthropic's token counter on N2C JSON; Claude Code cuts MCP results at 25000 tokens), or with
@@ -129,14 +122,14 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   (`N2CMcpBlueprintExport::CaptureGraph` and `ToResultJson`), so a graph's file is the same whichever way it was
   selected. Synchronous (up to 300 s on the game thread); `readOnlyHint` like get-blueprint-n2cjson: its only writes
   are its own files under `Saved/NodeToCode/Exports`
-- **Parameters**:
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#export-n2cjson-batch)):
   - `targets` (array of `{blueprintPath, graphName?, graphGuid?}`): a target with a graph names that graph (any kind,
     `FN2CGraphTarget::Resolve`; `graphGuid` wins); a target with only `blueprintPath` names every graph of the
     Blueprint that has a node (`N2CMcpBlueprintExport::GraphsToCapture`), the empty ones listed in `skipped`
   - or `tag` and/or `category`: every graph tagged so (tag-blueprint-graph; a tag with a category matches that
     category only). Give `targets` or the tag filter, not both
-  - `depth` (optional, 0 to 5), `compact` (optional, default true): as get-blueprint-n2cjson
-  - `outDir` (optional): a folder under `Saved/NodeToCode/Exports` (letters, digits, `_ - .`, up to four parts joined
+  - `depth` (0 to 5), `compact`: as get-blueprint-n2cjson
+  - `outDir`: a folder under `Saved/NodeToCode/Exports` (letters, digits, `_ - .`, up to four parts joined
     by `/`, no `..`); default a new `Batch_<yyyy-mm-dd-HH.MM.SS-ms>` folder. Exporting the same graph to the same
     folder again replaces its file
   - At most 200 graphs per call (`TOO_MANY_GRAPHS`); a graph two targets name is exported once
@@ -155,7 +148,7 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
 ### list-blueprint-graphs
 - **Description**: Every graph of a Blueprint by asset path, with no Blueprint editor open
   (`N2CMcpBlueprintExport::ListGraphs`, `UBlueprint::GetAllGraphs` order)
-- **Parameters**: `blueprintPath` (required)
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#list-blueprint-graphs)): `blueprintPath`
 - **Returns**: `blueprintPath`, `blueprintName`, `graphCount` and `graphs`, each with `name`, `graphGuid` (32 hex
   digits, what `graphGuid` arguments take), `kind` (`event`, `function`, `macro`, `collapsed`, `delegate`,
   `interface`; `FN2CGraphTarget::GraphKind`), `nodeCount` (every node in the graph, comments and reroutes included),
@@ -169,8 +162,8 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   of the interfaces it implements (`ImplementedInterfaces[].Graphs`), and every event node
   (`FBlueprintEditorUtils::GetAllNodesOfClass<UK2Node_Event>`): custom events, override and interface events, and
   component or actor bound events (card 0289)
-- **Parameters**:
-  - `blueprintPath` (optional): See "Targeting". Card 0289 removed `includeInherited` and `includeOverridden`, which
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#list-blueprint-functions)):
+  - `blueprintPath`: See "Targeting". Card 0289 removed `includeInherited` and `includeOverridden`, which
     were read and ignored; a client that still sends them gets the same result (unknown arguments are not refused)
 - **Returns**: `functions`, `functionCount`, `blueprintName`, `blueprintPath` (object path), `parentClass`. A function
   graph has `name`, `type` (`Function`, or `InterfaceFunction` with `interface` naming the interface), `guid` (32 hex
@@ -194,17 +187,17 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   it or the Blueprint type refuses it; and every such function of the interfaces the Blueprint and its parent classes
   implement (`FBlueprintEditorUtils::FindImplementedInterfaces` with `bGetAllInterfaces`). One entry per name, sorted
   by name, described by the function that first declared it (a Blueprint parent's event stub leads to the native event)
-- **Parameters**:
-  - `blueprintPath` (optional): See "Targeting"
-  - `includeImplemented` (optional, default false): Also list the ones the Blueprint already has: an event node
+- **Arguments** (types, required and defaults: [reference](../../../../../../../Context/mcp-server/tools.generated.md#list-overridable-functions)):
+  - `blueprintPath`: See "Targeting"
+  - `includeImplemented`: Also list the ones the Blueprint already has: an event node
     (`FBlueprintEditorUtils::FindOverrideForFunction` with the declaring class, so a child of a Blueprint that also
     overrides the event is found), a function graph or an interface function graph of that name. The editor's ghost
     default events count, so on a new Actor Blueprint `ReceiveBeginPlay`, `ReceiveTick` and
     `ReceiveActorBeginOverlap` are only listed with `includeImplemented` true (19 functions by default, 22
     with it, on UE 5.8; `UserConstructionScript` is `BlueprintInternalUseOnly` and no longer listed)
-  - `filterByCategory` (optional): Keeps functions whose `category` contains the text, case-insensitive: `Input`
+  - `filterByCategory`: Keeps functions whose `category` contains the text, case-insensitive: `Input`
     matches `Mouse Input` and `Touch Input`
-  - `searchTerm` (optional): Keeps functions whose `name` contains the text, case-insensitive (`damage` finds
+  - `searchTerm`: Keeps functions whose `name` contains the text, case-insensitive (`damage` finds
     `ReceiveAnyDamage`, `ReceivePointDamage`, `ReceiveRadialDamage`)
 - **Returns**: `functions`, `functionCount` (after the filters), `blueprintName`, `blueprintPath`, `parentClass`,
   `implementedInterfaces` (the Blueprint's own). Each function has `name` (the C++ name, `K2_OnBecomeViewTarget`),
@@ -220,7 +213,7 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   (`FN2CBlueprintEditorTracker::GetOpenBlueprintEditors`, card 0275; before it the tool kept only editors named
   `BlueprintEditor`). A Blueprint whose asset editor is not a Blueprint editor (Control Rig with RigVM.UseNewEditor=1)
   is not listed
-- **Parameters**: None
+- **Arguments**: none ([reference](../../../../../../../Context/mcp-server/tools.generated.md#get-open-blueprint-editors))
 - **Returns**: `editors` and `count`. Every entry has `blueprintName`, `assetPath`, `blueprintType`, `blueprintClass`
   (`Blueprint`, `WidgetBlueprint`, `AnimBlueprint`, ...), `editorName` (the toolkit: `BlueprintEditor`,
   `WidgetBlueprintEditor`, `AnimationBlueprintEditor`, ...), `parentClass`, `graphs`, `isFocused` (true for exactly one
@@ -242,7 +235,7 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
 ### get-editor-context
 - **Description**: What the user is looking at, in one call (card 0275, review next-6): read-only, opens and focuses
   nothing (`N2CMcpEditorContext::Build`)
-- **Parameters**: None
+- **Arguments**: none ([reference](../../../../../../../Context/mcp-server/tools.generated.md#get-editor-context))
 - **Returns**: `focusedBlueprint` `{name, path, blueprintClass}` and `focusedGraph` `{name, graphGuid, type}` (both
   absent when no Blueprint editor is open), `selectedNodes` `[{nodeGuid, title, nodeClass}]` (the nodes selected in the
   focused graph, in graph order; `nodeGuid` as `ids.guid` in N2C JSON) and `selectedNodeCount`, `openEditors` (every
