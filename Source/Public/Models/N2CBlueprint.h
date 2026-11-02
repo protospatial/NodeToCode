@@ -56,6 +56,24 @@ enum class EN2CBlueprintType : uint8
 };
 
 /**
+ * @enum EN2CAssetKind
+ * @brief What kind of asset an N2C JSON document describes: "metadata"."asset_kind" (card 0447, decision 0009)
+ */
+UENUM(BlueprintType)
+enum class EN2CAssetKind : uint8
+{
+    /** A Blueprint (the K2 graphs of a UBlueprint); also what a document without "asset_kind" describes */
+    Blueprint UMETA(DisplayName = "Blueprint"),
+    /** A material graph: a UMaterial or a UMaterialFunction (decision 0009; graph_type tells them apart) */
+    Material UMETA(DisplayName = "Material"),
+    /**
+     * An "asset_kind" this build does not know (a later 2.x document), read by FN2CSerializer::FromJson and kept with
+     * its text in FN2CMetadata::UnknownAssetKind so ToJson writes it back unchanged. Never captured.
+     */
+    Unknown UMETA(DisplayName = "Unknown"),
+};
+
+/**
  * @struct FN2CMetadata
  * @brief Required metadata about the Blueprint
  */
@@ -92,6 +110,19 @@ struct FN2CMetadata
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString AssetClass;
+
+    /**
+     * "asset_kind" (card 0447, decision 0009): Blueprint, written only when it is not (a document without it is a
+     * Blueprint, so every Blueprint document is unchanged). blueprint_type and blueprint_class describe Blueprints only:
+     * a document of another kind may leave them out, and ToJson then writes blueprint_class only when set and
+     * blueprint_type only when it is a kind this build does not know (kept from the document read).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    EN2CAssetKind AssetKind = EN2CAssetKind::Blueprint;
+
+    /** The "asset_kind" text as read when AssetKind is Unknown; ToJson writes it in place of "Unknown" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString UnknownAssetKind;
 
     /** The "blueprint_type" text as read when BlueprintType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")

@@ -60,8 +60,8 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* DisabledField = TEXT("disabled");
 
 	/**
-	 * Stable identifiers and hints (card 0138, gap-5). A node's identity is its "type", its "class" (the UK2Node class,
-	 * "K2Node_CallFunction") and, for a member, "member_parent" (the owning class or struct, a Blueprint class by its
+	 * Stable identifiers and hints (card 0138, gap-5). A node's identity is its "type", its "class" (the engine class
+	 * of the node object, card 0447: the UK2Node class in a Blueprint, "K2Node_CallFunction") and, for a member, "member_parent" (the owning class or struct, a Blueprint class by its
 	 * Blueprint's name) and "member_name" (the function, variable, event or macro as declared, "_C" and all). A pin's
 	 * "name" is UEdGraphPin::PinName ("execute", "then", "ReturnValue"). None of these change with the editor language
 	 * or preferences. Display text is only a hint: the node's "title" and the pin's "label", in the source (English)
@@ -161,6 +161,19 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* AssetClassField = TEXT("asset_class");
 
 	/**
+	 * Asset kind (card 0447, decision 0009 item 6; additive under 2.0.0): the optional "asset_kind" in "metadata", after
+	 * "asset_class": "Blueprint" or "Material" (a UMaterial or UMaterialFunction capture). Absent means Blueprint, and
+	 * ToJson writes it only for another kind, so every Blueprint document is unchanged. "blueprint_type" and
+	 * "blueprint_class" describe Blueprints: FromJson requires them only when the kind is Blueprint, the validator
+	 * requires a blueprint_class only then, and a document of another kind leaves them out (ToJson writes
+	 * blueprint_class when set and blueprint_type only as the unknown text it read). An unknown kind is kept as
+	 * EN2CAssetKind::Unknown with its text and an UNKNOWN_ASSET_KIND warning.
+	 */
+	inline constexpr const TCHAR* AssetKindField = TEXT("asset_kind");
+	inline constexpr const TCHAR* AssetKindBlueprint = TEXT("Blueprint");
+	inline constexpr const TCHAR* AssetKindMaterial = TEXT("Material");
+
+	/**
 	 * The agent document (card 0505): get-focused-blueprint, get-blueprint-n2cjson and Python get_blueprint_n2c_json
 	 * write each node's and pin's "id" as "ids": {"short": the ID, "guid": the node's NodeGuid or the pin's PinId}
 	 * (a pin's also has its "name"), plus the top-level "guids" table. FromJson reads "ids.short" as the ID when there
@@ -231,8 +244,9 @@ namespace N2CJsonContract
 	/**
 	 * Reader policy (card 0445): FromJson reads a document of a readable major without dropping what it does not know,
 	 * so a 2.0 build reads a later 2.x document (for example a material capture) and writes it back unchanged.
-	 * - An unknown "blueprint_type", "graph_type", node "type" or pin "type" is read as the enum's Unknown value, its
-	 *   text kept (UnknownBlueprintType, UnknownGraphType, UnknownType) and written back in place of "Unknown". The
+	 * - An unknown "asset_kind", "blueprint_type", "graph_type", node "type" or pin "type" is read as the enum's Unknown
+	 *   value, its text kept (UnknownAssetKind, UnknownBlueprintType, UnknownGraphType, UnknownType) and written back in
+	 *   place of "Unknown". The
 	 *   document is still read; the node keeps its pins and the flows that name them.
 	 * - A field this build does not know, at the top level or in "metadata", a graph, a node or a pin, is kept as
 	 *   condensed JSON text (UnknownFields) and written back after the known fields of its object, in the order read.
@@ -245,6 +259,8 @@ namespace N2CJsonContract
 	namespace ReadWarning
 	{
 		inline constexpr const TCHAR* UnknownBlueprintType = TEXT("UNKNOWN_BLUEPRINT_TYPE");
+		/** An "asset_kind" this build does not know (card 0447) */
+		inline constexpr const TCHAR* UnknownAssetKind = TEXT("UNKNOWN_ASSET_KIND");
 		inline constexpr const TCHAR* UnknownGraphType = TEXT("UNKNOWN_GRAPH_TYPE");
 		inline constexpr const TCHAR* UnknownNodeType = TEXT("UNKNOWN_NODE_TYPE");
 		inline constexpr const TCHAR* UnknownPinType = TEXT("UNKNOWN_PIN_TYPE");
@@ -298,7 +314,7 @@ namespace N2CJsonContract
 		inline constexpr const TCHAR* UnfedInput = TEXT("UNFED_INPUT");
 		/** A struct member of an object, class, struct or enum type without its type name */
 		inline constexpr const TCHAR* MemberType = TEXT("MEMBER_TYPE");
-		/** A blueprint_type, graph_type, node type or pin type this build does not know */
+		/** An asset_kind, blueprint_type, graph_type, node type or pin type this build does not know */
 		inline constexpr const TCHAR* UnknownKind = TEXT("UNKNOWN_KIND");
 		/** A graph the captured graphs use that was left out because it is beyond Max Translation Depth */
 		inline constexpr const TCHAR* DepthLimit = TEXT("DEPTH_LIMIT");
