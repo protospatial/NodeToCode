@@ -79,7 +79,9 @@ list each (its `member_name` or `title`) in the notes. A data input fed only by 
 ## Names and output
 
 - Use `member_name` as declared. Use the class name the user's own files give; otherwise the agreed name from
-  `metadata.blueprint_class` with the Unreal prefix.
+  `metadata.blueprint_class` with the Unreal prefix. Derive it from `metadata.parent_class` with its prefix (`Actor`
+  is `AActor`, `UserWidget` is `UUserWidget`), not from a base class guessed from the nodes; when `asset_class` is
+  an Editor Utility Blueprint, the class belongs in an editor module.
 - Expose functions with `UFUNCTION(BlueprintCallable, Category = ...)` where a Blueprint child or designer would call
   them; `BlueprintPure` for side-effect-free getters; `BlueprintImplementableEvent` or `BlueprintNativeEvent` for
   hooks that stay in Blueprint.

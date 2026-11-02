@@ -140,6 +140,8 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		Blueprint.Metadata.Name = TEXT("BP_Prompt");
 		Blueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal;
 		Blueprint.Metadata.BlueprintClass = TEXT("BP_Prompt");
+		Blueprint.Metadata.ParentClass = TEXT("Actor");
+		Blueprint.Metadata.AssetClass = TEXT("Blueprint");
 
 		FN2CPinDefinition Pin;
 		Pin.ID = TEXT("P1");

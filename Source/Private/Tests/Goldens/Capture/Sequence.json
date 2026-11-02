@@ -9,7 +9,9 @@
 		{
 			"name": "BP_N2CGolden_Sequence",
 			"blueprint_type": "Normal",
-			"blueprint_class": "BP_N2CGolden_Sequence"
+			"blueprint_class": "BP_N2CGolden_Sequence",
+			"parent_class": "Actor",
+			"asset_class": "Blueprint"
 		},
 		"graphs": [
 			{
