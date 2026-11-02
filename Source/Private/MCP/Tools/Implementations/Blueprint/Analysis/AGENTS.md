@@ -100,8 +100,9 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   - `blueprintPath`: `/Game/Blueprints/BP_Door` or `/Game/Blueprints/BP_Door.BP_Door`
   - `graphName`, `graphGuid`: one graph, as in the Graph tools (`graphGuid` wins; a function's ID is its
     GraphGuid). With neither, every graph
-  - `depth` (0 to 5): Max Translation Depth for this read: also capture the user functions, macros and
-    collapsed graphs the graph uses up to this many calls away. Default: the project's setting
+  - `depth` (0 to 5): Max Translation Depth for this read: also capture the user functions and macros
+    (project content and project plugins) the graph calls, up to this many calls away; collapsed graphs always come
+    with the graph that holds them, at every depth. Default: the project's setting
   - `compact`: no whitespace; false indents as get-focused-blueprint does
   - `toFile`: always write the document to a file
 - **Returns**: the document get-focused-blueprint returns (below) for the graph or graphs read, compact by default.

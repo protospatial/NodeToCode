@@ -49,7 +49,7 @@ Exports many Blueprint graphs as N2C JSON in one call, one file per graph, with 
 | `targets` | `array<object>` | no |  | The graphs to work on: [{blueprintPath, graphName?, graphGuid?}]. Give targets, or tag and/or category, not both. At most 200 graphs per call. A path that is not a Blueprint (a Material, a Data Asset) fails with UNSUPPORTED_ASSET_TYPE; a graph NodeToCode does not translate (an AnimGraph, state, state machine or Control Rig graph) with UNSUPPORTED_GRAPH_TYPE. |
 | `tag` | `string` | no |  | Instead of targets: every graph with this tag (tag-blueprint-graph, list-blueprint-tags), in category when given. |
 | `category` | `string` | no |  | Instead of targets: every graph tagged in this category (with tag: that tag in this category). |
-| `depth` | `integer` | no |  | Optional, 0 to 5. Each file also captures the functions, macros and collapsed graphs its graph uses up to this many calls away. Default: the project's Max Translation Depth setting. |
+| `depth` | `integer` | no |  | Optional, 0 to 5. Each file also captures the user functions and macros (project content and project plugins) its graph calls, up to this many calls away. Collapsed graphs always come with the graph that holds them, at every depth. Default: the project's Max Translation Depth setting. |
 | `compact` | `boolean` | no | `true` | Optional, default true. No whitespace; false indents the JSON. |
 | `outDir` | `string` | no |  | Optional. A folder name under Saved/NodeToCode/Exports for the files (letters, digits, _ - . and up to four parts joined by /). Exporting the same graphs to the same outDir again replaces their files. Default: a new Batch_&lt;date-time&gt; folder. |
 
@@ -70,7 +70,7 @@ Client hints: kept loaded when a client defers tools (`anthropic/alwaysLoad`).
 | `blueprintPath` | `string` | yes |  | Required. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door or /Game/Blueprints/BP_Door.BP_Door. |
 | `graphName` | `string` | no |  | Optional. Name of one graph (event graph, function, macro, collapsed, delegate or interface graph). With neither graphName nor graphGuid, every graph is read. |
 | `graphGuid` | `string` | no |  | Optional. The graph's GraphGuid from list-blueprint-graphs (a function's ID); stable across renames. Wins over graphName. |
-| `depth` | `integer` | no |  | Optional, 0 to 5. Also capture the functions, macros and collapsed graphs the graph uses up to this many calls away (Max Translation Depth). Default: the project's Max Translation Depth setting. |
+| `depth` | `integer` | no |  | Optional, 0 to 5. Also capture the user functions and macros (project content and project plugins) the graph calls, up to this many calls away (Max Translation Depth). Collapsed graphs always come with the graph that holds them, at every depth. Default: the project's Max Translation Depth setting. |
 | `compact` | `boolean` | no | `true` | Optional, default true. No whitespace; false indents the JSON as get-focused-blueprint does. |
 | `toFile` | `boolean` | no | `false` | Optional, default false. Always write the document to a file and return its path. |
 
