@@ -22,11 +22,14 @@ No provider key reaches the editor: the provider variables are removed from its 
 refuses to capture while a key is saved for NodeToCode. The editor's MCP server does not start (-unattended without
 -N2CMcp). Build the host first (`build.ps1 -UEVersion 5.8`). Look at every picture it wrote before committing them.
 
-    python -I Tests/DocsShots/capture.py --restamp
+Every shot of a retaken group is stamped with that commit, also when its picture comes out byte-identical (the
+fixtures are deterministic, so that is the usual case): the stamp says the shot was checked against the code at that
+commit, which is what `--stale` compares. Commit the manifest even when no image changed. After a squash or rebase merge
+the stamp needs no fixing: `--stale` uses the commit that wrote it into shots.json (card 0517).
 
-starts no editor: it sets each shot's commit in shots.json to the last commit that changed its image file. It is not
-needed after a squash merge any more (card 0517): when a stamp is not in the history being checked, docs_check.py --stale
-uses the commit that wrote it into shots.json, which is the squash commit. Use it only to tidy the manifest.
+`--restamp` is kept only so old scripts get an explanation: it changes nothing (card 0519). It used to set each stamp to
+its image's last commit, which after a byte-identical retake moved the stamp back before the code change and made the
+shot stale again (seen in #262).
 """
 import argparse
 import json
@@ -109,28 +112,59 @@ def test_results(log):
     return found, errors
 
 
+RESTAMP_RETIRED = ('--restamp changes nothing any more (card 0519). A stamp from a squashed-away branch commit needs no '
+                   'fixing: docs_check.py --stale uses the commit that wrote it into shots.json (card 0517). Setting '
+                   "stamps to each image's last commit undid byte-identical retakes and made their shots stale again. "
+                   'To refresh a stale shot, retake its group: capture.py --group <group>.')
+
+
 def restamp():
-    """shots.json: each shot's commit becomes the last commit that changed its image file"""
-    manifest = json.load(open(MANIFEST, encoding='utf-8'))
-    changed = {}
-    for name, entry in manifest.get('shots', {}).items():
-        path = 'wiki/images/%s' % name
-        sha = subprocess.run(['git', '-C', REPO, 'log', '-1', '--format=%H', '--', path], capture_output=True,
-                             text=True).stdout.strip()
-        if sha and entry.get('commit') != sha:
-            changed[name] = {'from': entry.get('commit'), 'to': sha}
-            entry['commit'] = sha
-    with open(MANIFEST, 'w', encoding='utf-8', newline='\n') as fh:
+    """Retired (card 0519): explains why and leaves shots.json as it is."""
+    print(json.dumps({'restamped': {}, 'note': RESTAMP_RETIRED}, indent=1))
+    return 0
+
+
+def record_shots(groups, out, commit, images=None, manifest_path=None):
+    """Replace wiki/images/<group>/ with the PNGs the test wrote to <out>/<group>/ and stamp every one with commit.
+
+    Every shot of the group gets the new stamp, byte-identical or not: the stamp records the commit the picture was
+    checked at, so a retake that changes no pixel still refreshes it (card 0519). Shots the group no longer writes leave
+    the manifest. Returns (ok, written repo paths, errors)."""
+    images = images or IMAGES
+    manifest_path = manifest_path or MANIFEST
+    manifest = json.load(open(manifest_path, encoding='utf-8')) if os.path.exists(manifest_path) else {}
+    shots = manifest.setdefault('shots', {})
+    ok, written, errors = True, [], []
+    for g in groups:
+        src = os.path.join(out, g)
+        files = sorted(f for f in os.listdir(src) if f.endswith('.png')) if os.path.isdir(src) else []
+        if not files:
+            ok = False
+            errors.append('group %s wrote no shots' % g)
+            continue
+        dst = os.path.join(images, g)
+        if os.path.isdir(dst):
+            for f in os.listdir(dst):
+                if f.endswith('.png'):
+                    os.remove(os.path.join(dst, f))
+                    shots.pop('%s/%s' % (g, f), None)
+        os.makedirs(dst, exist_ok=True)
+        for f in files:
+            shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
+            shots['%s/%s' % (g, f)] = {'commit': commit}
+            written.append('wiki/images/%s/%s' % (g, f))
+    manifest['shots'] = dict(sorted(shots.items()))
+    with open(manifest_path, 'w', encoding='utf-8', newline='\n') as fh:
         json.dump(manifest, fh, indent=2)
         fh.write('\n')
-    print(json.dumps({'restamped': changed}, indent=1))
-    return 0
+    return ok, written, errors
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--group', choices=GROUPS + ('all',))
-    ap.add_argument('--restamp', action='store_true', help='set each shot commit to the last commit of its image file')
+    ap.add_argument('--restamp', action='store_true',
+                    help='retired (card 0519): changes nothing; prints why. Retake a group to refresh its stamps')
     ap.add_argument('--engine', help='UE 5.8 root, the folder that holds Engine/ (default: found as build.ps1 finds it)')
     ap.add_argument('--which-engine', action='store_true', help='print the UE 5.8 engine this would use and exit')
     ap.add_argument('--project', default=os.path.join(os.path.dirname(REPO), 'Hosts', 'NodeToCodeHost_5_8',
@@ -167,30 +201,8 @@ def main():
     ok = code is not None and all(results.get(t) == 'Success' for t in expected)
 
     if ok:
-        manifest = json.load(open(MANIFEST, encoding='utf-8')) if os.path.exists(MANIFEST) else {}
-        shots = manifest.setdefault('shots', {})
-        for g in groups:
-            src = os.path.join(out, g)
-            files = sorted(f for f in os.listdir(src) if f.endswith('.png')) if os.path.isdir(src) else []
-            if not files:
-                ok = False
-                report['errors'].append('group %s wrote no shots' % g)
-                continue
-            dst = os.path.join(IMAGES, g)
-            if os.path.isdir(dst):
-                for f in os.listdir(dst):
-                    if f.endswith('.png'):
-                        os.remove(os.path.join(dst, f))
-                        shots.pop('%s/%s' % (g, f), None)
-            os.makedirs(dst, exist_ok=True)
-            for f in files:
-                shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
-                shots['%s/%s' % (g, f)] = {'commit': commit}
-                report['shots'].append('wiki/images/%s/%s' % (g, f))
-        manifest['shots'] = dict(sorted(shots.items()))
-        with open(MANIFEST, 'w', encoding='utf-8', newline='\n') as fh:
-            json.dump(manifest, fh, indent=2)
-            fh.write('\n')
+        ok, report['shots'], more = record_shots(groups, out, commit)
+        report['errors'] += more
     report['ok'] = ok
     print(json.dumps(report, indent=1))
     return 0 if ok else 1
