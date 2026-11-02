@@ -119,6 +119,7 @@ Credential Manager and deleted at the first start. Details: [Initial Configurati
 | You translate (toolbar, batch, or the `translate-focused-blueprint` and `translate-batch` tools) | The graph as Node to Code JSON (with its comments, names and string literals), the contents of every **Reference Source Files** entry, and the system prompt | The selected provider: Anthropic, OpenAI, Gemini or DeepSeek, with that provider's key only; or your **Ollama Endpoint** or LM Studio **Server Endpoint**, which may be another machine |
 | An MCP client calls a tool | The tool's result | The client, which may pass it to its own model; your client's settings govern that |
 
-Node to Code makes no other network requests from the editor. One `translate-batch` call can send up to 50 graphs,
+Node to Code makes no other network requests from the editor and sends nothing to Protospatial. What each provider
+keeps and whether it trains on it, and what stays on your machine: [Data Flow and Privacy](Data-Flow-and-Privacy). One `translate-batch` call can send up to 50 graphs,
 each billed to your key. To report a vulnerability, follow the
 [security policy](https://github.com/protospatial/NodeToCode/security/policy).

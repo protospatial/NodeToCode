@@ -176,7 +176,9 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 							.AutoWidth()
 							.Padding(0.0f, 0.0f, FN2CSpacing::MD, 0.0f)
 							[
-								SNew(SN2CIconButton)
+								SAssignNew(BatchTranslateButton, SN2CIconButton)
+								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
+								.ToolTipText(this, &SN2CTagManager::GetBatchTranslateTooltip)
 								.IconBrush(FAppStyle::GetBrush("Icons.Convert"))
 								.Text(LOCTEXT("BatchTranslateButton", "Batch Translate"))
 								.ButtonVariant(EN2CButtonVariant::Standard)
@@ -187,7 +189,9 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 							.AutoWidth()
 							.Padding(0.0f, 0.0f, FN2CSpacing::MD, 0.0f)
 							[
-								SNew(SN2CIconButton)
+								SAssignNew(ExportJsonButton, SN2CIconButton)
+								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
+								.ToolTipText(this, &SN2CTagManager::GetExportJsonTooltip)
 								.IconBrush(FAppStyle::GetBrush("Icons.Save"))
 								.Text(LOCTEXT("ExportJsonButton", "Export JSON"))
 								.ButtonVariant(EN2CButtonVariant::Standard)
@@ -197,7 +201,9 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 							+ SHorizontalBox::Slot()
 							.AutoWidth()
 							[
-								SNew(SN2CIconButton)
+								SAssignNew(RemoveSelectedButton, SN2CIconButton)
+								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
+								.ToolTipText(this, &SN2CTagManager::GetRemoveSelectedTooltip)
 								.IconBrush(FAppStyle::GetBrush("GenericCommands.Delete"))
 								.Text(LOCTEXT("RemoveSelectedButton", "Remove Selected"))
 								.ButtonVariant(EN2CButtonVariant::Standard)
@@ -394,6 +400,27 @@ TArray<FN2CTagInfo> SN2CTagManager::GetSelectedTagEntries() const
 		return GraphsList->GetSelectedTagEntries();
 	}
 	return TArray<FN2CTagInfo>();
+}
+
+FText SN2CTagManager::GetBatchTranslateTooltip() const
+{
+	return AreSelectionActionsEnabled()
+		? LOCTEXT("BatchTranslateTooltip", "Translate the checked graphs, one request each")
+		: LOCTEXT("BatchTranslateNoneTooltip", "Check one or more graphs in the list to translate them");
+}
+
+FText SN2CTagManager::GetExportJsonTooltip() const
+{
+	return AreSelectionActionsEnabled()
+		? LOCTEXT("ExportJsonTooltip", "Save the N2C JSON of the checked graphs to the output folder")
+		: LOCTEXT("ExportJsonNoneTooltip", "Check one or more graphs in the list to export their N2C JSON");
+}
+
+FText SN2CTagManager::GetRemoveSelectedTooltip() const
+{
+	return AreSelectionActionsEnabled()
+		? LOCTEXT("RemoveSelectedTooltip", "Remove the tags of the checked graphs (their translations are kept)")
+		: LOCTEXT("RemoveSelectedNoneTooltip", "Check one or more graphs in the list to remove their tags");
 }
 
 int32 SN2CTagManager::GetSelectedCount() const

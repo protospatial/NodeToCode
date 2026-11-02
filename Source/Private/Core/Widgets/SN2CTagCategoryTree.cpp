@@ -5,6 +5,7 @@
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateTypes.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -55,19 +56,52 @@ void SN2CTagCategoryTree::Construct(const FArguments& InArgs)
 			+ SVerticalBox::Slot()
 			.FillHeight(1.0f)
 			[
-				SAssignNew(TreeView, STreeView<TSharedPtr<FN2CTreeItem>>)
-				.TreeItemsSource(&FilteredRootItems)
-				.OnGenerateRow(this, &SN2CTagCategoryTree::OnGenerateRow)
-				.OnGetChildren(this, &SN2CTagCategoryTree::OnGetChildren)
-				.OnSelectionChanged(this, &SN2CTagCategoryTree::OnSelectionChanged)
-				.OnExpansionChanged(this, &SN2CTagCategoryTree::OnExpansionChanged)
-				.SelectionMode(ESelectionMode::Single)
+				SNew(SOverlay)
+				+ SOverlay::Slot()
+				[
+					SAssignNew(TreeView, STreeView<TSharedPtr<FN2CTreeItem>>)
+					.TreeItemsSource(&FilteredRootItems)
+					.OnGenerateRow(this, &SN2CTagCategoryTree::OnGenerateRow)
+					.OnGetChildren(this, &SN2CTagCategoryTree::OnGetChildren)
+					.OnSelectionChanged(this, &SN2CTagCategoryTree::OnSelectionChanged)
+					.OnExpansionChanged(this, &SN2CTagCategoryTree::OnExpansionChanged)
+					.SelectionMode(ESelectionMode::Single)
+				]
+				// Says why the tree is empty: no tags yet (how to tag a graph), or none matches the search (card 0269)
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				.Padding(FN2CSpacing::MD)
+				[
+					SNew(STextBlock)
+					.Text(this, &SN2CTagCategoryTree::GetEmptyText)
+					.Visibility_Lambda([this]()
+					{
+						return FilteredRootItems.Num() == 0 ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					})
+					.AutoWrapText(true)
+					.Justification(ETextJustify::Center)
+					.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
+				]
 			]
 		]
 	];
 
 	// Build initial tree data
 	RefreshData();
+}
+
+FText SN2CTagCategoryTree::GetEmptyText() const
+{
+	if (FilteredRootItems.Num() > 0)
+	{
+		return FText::GetEmpty();
+	}
+	if (AllItems.Num() > 0 && !CurrentSearchFilter.IsEmpty())
+	{
+		return FText::Format(LOCTEXT("TreeEmptySearch", "No tag or category matches \"{0}\"."), FText::FromString(CurrentSearchFilter));
+	}
+	return LOCTEXT("TreeEmptyNoTags", "No tagged graphs yet.\n\nOpen a Blueprint, click the tag button on the N2C bar at the top right of a graph, and give the graph a tag. It shows up here.");
 }
 
 TArray<FN2CTaggedBlueprintGraph> SN2CTagCategoryTree::GetTags() const
