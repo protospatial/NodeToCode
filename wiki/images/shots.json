@@ -1,22 +1,22 @@
 {
   "shots": {
     "main-window/tag-manager.png": {
-      "commit": "1a5714e9cb3fe2265c1e686afb4c37807778ced8"
+      "commit": "945b105a034b37c95aecbc553cb8e7b42801660f"
     },
     "main-window/translation-viewer.png": {
-      "commit": "1a5714e9cb3fe2265c1e686afb4c37807778ced8"
+      "commit": "945b105a034b37c95aecbc553cb8e7b42801660f"
     },
     "settings/code-generation.png": {
-      "commit": "451aef39a5191022bdfc7f73b45ae32391d12f18"
+      "commit": "945b105a034b37c95aecbc553cb8e7b42801660f"
     },
     "settings/llm-provider.png": {
-      "commit": "451aef39a5191022bdfc7f73b45ae32391d12f18"
+      "commit": "945b105a034b37c95aecbc553cb8e7b42801660f"
     },
     "settings/mcp-server.png": {
-      "commit": "a8007058fe2fd0f9d7ef5f6fb1bd0f7276493f9f"
+      "commit": "945b105a034b37c95aecbc553cb8e7b42801660f"
     },
     "translate-entry/graph-overlay.png": {
-      "commit": "f2ddcc615d12e3a2aa0043a34fda4a89ed81e940"
+      "commit": "945b105a034b37c95aecbc553cb8e7b42801660f"
     }
   }
 }
