@@ -9,7 +9,9 @@
 		{
 			"name": "BP_N2CGolden_ForEachLoop",
 			"blueprint_type": "Normal",
-			"blueprint_class": "BP_N2CGolden_ForEachLoop"
+			"blueprint_class": "BP_N2CGolden_ForEachLoop",
+			"parent_class": "Actor",
+			"asset_class": "Blueprint"
 		},
 		"graphs": [
 			{

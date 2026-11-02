@@ -11,7 +11,9 @@ A document looks like this (an event graph whose custom event runs a Branch on "
       "metadata": {
         "name": "BP_Example",
         "blueprint_type": "Normal",
-        "blueprint_class": "BP_Example"
+        "blueprint_class": "BP_Example",
+        "parent_class": "Actor",
+        "asset_class": "Blueprint"
       },
       "graphs": [
         {
@@ -114,6 +116,8 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
   - "name": the Blueprint's name.
   - "blueprint_type": "Normal", "Const", "MacroLibrary", "Interface", "LevelScript" or "FunctionLibrary".
   - "blueprint_class": the class the Blueprint generates (e.g. "BP_Example"); use it as the class name unless the user's own source files name another.
+  - "parent_class" (optional): the class the Blueprint derives from, named like "member_parent": an engine or C++ class without its Unreal prefix ("Actor" is AActor, "UserWidget" is UUserWidget, "AnimInstance" is UAnimInstance), another Blueprint by its name (e.g. "BP_EnemyBase"). It is the base class of the code you write (unless the user's own source files give the class): do not guess the base class from the nodes. Missing in documents saved before it existed.
+  - "asset_class" (optional): the kind of Blueprint asset: "Blueprint" (an Actor, Object or Component Blueprint), "WidgetBlueprint" (a UMG widget), "AnimBlueprint" (an Animation Blueprint), "EditorUtilityBlueprint" or "EditorUtilityWidgetBlueprint" (editor-only tools: their code belongs in an editor module), or another Blueprint asset class.
 - "graphs": one object per graph:
   - "name": the graph's name.
   - "graph_type": "EventGraph", "Function", "Macro", "Composite", "Construction" (the construction script) or "Animation" (an animation graph or state machine). A "Composite" graph is a collapsed graph: the nodes the user collapsed into one node, part of the graph that holds them, so it is always in the document with that graph, run where its "Composite" node runs.
