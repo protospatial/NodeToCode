@@ -220,6 +220,36 @@ links on macOS and Linux), so one checkout builds and tests on UE 5.6, 5.7 and 5
 1.x workflow of a git submodule per test project is no longer used. To try a change in your own project instead, copy
 the plugin into its `Plugins/` folder as `wiki/Plugin-Installation.md` describes.
 
+## Profiling (Unreal Insights)
+
+The hot paths carry CPU profiler scopes (`TRACE_CPUPROFILER_EVENT_SCOPE`, `ProfilingDebugging/CpuProfilerTrace.h`,
+card 0358). They cost nothing while tracing is off, so they stay in every build. Scripts find them by these names:
+
+| Scope | Where |
+|---|---|
+| `N2C_Capture_CollectNodes` | `FN2CNodeCollector::CollectNodesFromGraph` |
+| `N2C_Capture_BuildStruct` | `FN2CCaptureContext::CaptureNodes` and `CaptureGraphs` (the N2C model of one or several graphs) |
+| `N2C_Serialize_ToJson` | both `FN2CSerializer::ToJson` overloads (nested when the capture form calls the model form) |
+| `N2C_Validate` | `FN2CBlueprintValidator::Validate` |
+| `N2C_TokenEstimate` | `FN2CTokenEstimationService::GetEstimate` (cache hits included) |
+| `N2C_TokenEstimate_Serialize` | its capture and serialization on a cache miss (`SerializeGraphToJson`) |
+| `N2C_Mcp_Execute` | `FN2CToolCatalog::InvokeNow`, every tool call, with a nested scope named after the tool |
+| `N2C_Mcp_GameThreadWork` | a tool's game-thread work (`RunAsToolCall` in `N2CMcpToolBase.cpp`), apart from a worker thread's wait for it |
+
+A trace of one capture, on a host (no UI):
+
+```powershell
+& "<Engine>\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" <HostsRoot>\NodeToCodeHost_5_8\NodeToCodeHost_5_8.uproject `
+    -trace=cpu -tracefile=<path>\n2c.utrace -ExecutePythonScript=<script>.py -unattended -nullrhi -NoLiveCoding
+```
+
+The script can be one line, for example
+`unreal.N2CPythonBridge.get_blueprint_n2c_json("/NodeToCodeTestContent/Perf/BP_N2CPerf_1k")`. Open the `.utrace` in
+`UnrealInsights.exe`: Timing Insights lists the `N2C_*` timers. To read them back without the UI, run
+`UnrealInsights.exe -OpenTraceFile=<path>\n2c.utrace -AutoQuit -NoUI -ExecOnAnalysisCompleteCmd="TimingInsights.ExportTimerStatistics <path>\timers.csv"`.
+The MCP and token-estimate scopes appear when tools run and when a graph overlay estimates a graph. A session started
+with `Tests/mcp_probe/editor_session.py`, given `-trace=cpu -tracefile=...` as extra arguments, records them.
+
 ## IDE Configuration
 
 Open a host's project in Rider or Visual Studio (`.\build.ps1 -UEVersion 5.8 -Launch` builds and opens it; or open

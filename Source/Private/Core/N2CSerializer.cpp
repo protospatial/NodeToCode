@@ -3,6 +3,7 @@
 #include "Core/N2CSerializer.h"
 #include "Models/N2CJsonContract.h"
 #include "Utils/N2CLogger.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 namespace
 {
@@ -280,6 +281,7 @@ namespace
 
 FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint, EN2CJsonStyle Style)
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Serialize_ToJson);
     // Validate Blueprint before serialization
     if (!Blueprint.IsValid())
     {
@@ -299,6 +301,7 @@ FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint, EN2CJsonStyle Sty
 
 FString FN2CSerializer::ToJson(const FN2CCapture& Capture, EN2CJsonStyle Style, EN2CJsonGuids Guids)
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Serialize_ToJson);
     if (Guids == EN2CJsonGuids::None)
     {
         return ToJson(Capture.Blueprint, Style);

@@ -19,6 +19,7 @@
 #include "K2Node.h"
 #include "Core/N2CGraphStateTypes.h"
 #include "Editor.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 FN2CTokenEstimationService& FN2CTokenEstimationService::Get()
 {
@@ -109,6 +110,7 @@ bool FN2CTokenEstimationService::IsEstimateCurrent(const FN2CTagInfo& GraphInfo)
 
 FN2CTokenEstimate FN2CTokenEstimationService::GetEstimate(const FN2CTagInfo& GraphInfo)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(N2C_TokenEstimate);
 	const FString Key = MakeCacheKey(GraphInfo);
 	if (FN2CTokenCacheEntry* Cached = TokenCache.Find(Key))
 	{
@@ -455,6 +457,7 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 FString FN2CTokenEstimationService::SerializeGraphToJson(const FN2CTagInfo& GraphInfo, int32 Depth, UBlueprint*& OutBlueprint,
 	TArray<FGuid>& OutGraphGuids)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(N2C_TokenEstimate_Serialize);
 	OutBlueprint = nullptr;
 	OutGraphGuids.Reset();
 
