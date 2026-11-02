@@ -66,8 +66,8 @@ namespace N2CVariableFlagsSpec
  * create-variable and create-local-variable set every flag on the variable description, in one undo step (card 0154).
  * The member cases call FN2CMcpCreateVariableTool::CreateMemberVariable and the local ones
  * FN2CMcpCreateLocalVariableTool::AddLocalVariableToFunction (what the tools run) inside a tool-call scope, so they run
- * on every engine; the last cases call the MCP tools on a focused Blueprint editor and run on UE 5.8 only (a headless
- * Blueprint editor cannot be closed below 5.8, see NodeToCode.MCP.CompileOnce).
+ * on every engine; the last cases call the MCP tools on a focused Blueprint editor (headless with -RenderOffScreen on
+ * 5.6 and 5.7, card 0509).
  */
 BEGIN_DEFINE_SPEC(FN2CVariableFlagsSpec, "NodeToCode.MCP.VariableFlags", N2C_TEST_FLAGS)
 	TUniquePtr<N2CTest::FToolSpecBlueprint> Test;
@@ -453,8 +453,7 @@ void FN2CVariableFlagsSpec::Define()
 		});
 	});
 
-#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
+	Describe(TEXT("through the MCP tools on a focused Blueprint"), [this]()
 	{
 		It(TEXT("create-variable defaults to not instance editable, and create-local-variable targets the focused function"), [this]()
 		{
@@ -519,7 +518,6 @@ void FN2CVariableFlagsSpec::Define()
 			}
 		});
 	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

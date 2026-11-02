@@ -107,7 +107,7 @@ void FN2COpenBlueprintGraphSpec::Define()
 		It(TEXT("focuses UserConstructionScript through open-blueprint-asset and the bridge"), [this]()
 		{
 			N2CTest::FToolSpecBlueprint Actor(TEXT("BP_N2COpenGraphConstruction"), TEXT("/Game"));
-			// Opens the editor on the EventGraph (and has the destructor close it); skips below UE 5.8
+			// Opens the editor on the EventGraph (and has the destructor close it)
 			if (!TestNotNull(TEXT("the Blueprint"), Actor.GetBlueprint()) || !Actor.OpenInEditor(*this, Actor.EventGraph()))
 			{
 				return;

@@ -314,8 +314,8 @@ namespace N2CVariableToolsSpec
 	/**
 	 * What create-variable's Execute runs once it has the Blueprint, from the same arguments: argument parsing, the
 	 * container check, FN2CMcpTypeResolver::ResolvePinType with no sub-type (the tool passes none) and
-	 * CreateMemberVariable. The tool itself finds the Blueprint from the focused editor, which a headless test can only
-	 * open on UE 5.8; the "through the MCP tools" cases run the tool there. Returns the variable's name, or NAME_None
+	 * CreateMemberVariable. The tool itself finds the Blueprint from the focused editor, so the "through the MCP tools"
+	 * cases open one and run the tool there. Returns the variable's name, or NAME_None
 	 * with OutError.
 	 */
 	static FName CreateLikeTheTool(UBlueprint* Blueprint, const TSharedPtr<FJsonObject>& Args, FEdGraphPinType& OutResolved, FString& OutError)
@@ -974,8 +974,7 @@ void FN2CMcpVariableToolsSpec::Define()
 		});
 	});
 
-#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
+	Describe(TEXT("through the MCP tools on a focused Blueprint"), [this]()
 	{
 		It(TEXT("create-variable makes every row's type and get-blueprint-member-variables lists them"), [this]()
 		{
@@ -1250,15 +1249,6 @@ void FN2CMcpVariableToolsSpec::Define()
 				{ return Id.StartsWith(TEXT("/Script/Engine.")) || Id.StartsWith(TEXT("/Script/CoreUObject.")) || Id.StartsWith(TEXT("/Engine/")); }));
 		});
 	});
-#else
-	Describe(TEXT("through the MCP tools on a focused Blueprint (UE 5.8)"), [this]()
-	{
-		It(TEXT("is skipped below UE 5.8"), [this]()
-		{
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there (see N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR); the headless rows above run the same path"));
-		});
-	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

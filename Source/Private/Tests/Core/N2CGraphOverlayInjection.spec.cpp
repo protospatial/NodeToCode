@@ -29,7 +29,7 @@
  * Graph overlays go into the exact graph editor that shows their graph, once, quietly, and come out again (card 0293,
  * review editor-integration-10, editor-integration-18, imp-editor-integration-2; card 0500), and the injector's own
  * events keep it at one per graph editor as tabs switch (card 0344, FN2CGraphOverlayInjector). Headless Blueprint
- * editors, so these run on UE 5.8 (N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR); the windowed check of the same rules is
+ * editors (with -RenderOffScreen on 5.6 and 5.7, card 0509); the windowed check of the same rules is
  * NodeToCode.Windowed.Integration.
  */
 namespace N2COverlayInjectionTest
@@ -133,12 +133,6 @@ void FN2COverlayInjectionSpec::Define()
 {
 	using namespace N2COverlayInjectionTest;
 
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	It(TEXT("is skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"), [this]()
-	{
-		AddInfo(TEXT("Skipped below UE 5.8: the windowed NodeToCode.Windowed.Integration checks overlays on every engine"));
-	});
-#else
 	It(TEXT("puts a graph's overlay only into the graph editor that shows that graph, once"), [this]()
 	{
 		FOpenBlueprint Open;
@@ -353,7 +347,6 @@ void FN2COverlayInjectionSpec::Define()
 			return Finish();
 		}));
 	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

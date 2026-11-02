@@ -29,7 +29,7 @@
  * both Return nodes with the same outputs and a Blueprint that compiles with no errors, and Undo then Redo restore every
  * node, pin, link and UserDefinedPins entry exactly (N2CTest::Snapshot). Already covered in
  * NodeToCode.MCP.FunctionPinEdits and not repeated: the call sites get exactly the new signature, the tooltip, a Return
- * node made for a function without one, refused pin names with no transaction, the Python bridge (UE 5.8); and in
+ * node made for a function without one, refused pin names with no transaction, the Python bridge; and in
  * NodeToCode.MCP.GraphTarget: editing a function by the ID it had before a rename, READ_ONLY_GRAPH and
  * NOT_A_FUNCTION_GRAPH.
  */

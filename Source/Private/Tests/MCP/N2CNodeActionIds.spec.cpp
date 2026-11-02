@@ -279,8 +279,7 @@ namespace N2CNodeActionIdsSpec
 /**
  * Stable action IDs for search-blueprint-nodes results and the search -> add round trip (card 0277). The cases without
  * an editor run on every engine against an explicit graph; the MCP and Python bridge cases act on the focused graph, so
- * they open a Blueprint editor and run on UE 5.8 only (5.6 and 5.7 under -nullrhi cannot close one, see
- * NodeToCode.Editor.Focus). NodeToCode.Robustness.SearchIsReadOnly covers the search's read-only contract on every
+ * they open a Blueprint editor (headless with -RenderOffScreen on 5.6 and 5.7, card 0509). NodeToCode.Robustness.SearchIsReadOnly covers the search's read-only contract on every
  * engine.
  */
 BEGIN_DEFINE_SPEC(FN2CNodeActionIdsSpec, "NodeToCode.MCP.NodeActionIds", N2C_TEST_FLAGS)
@@ -737,15 +736,6 @@ void FN2CNodeActionIdsSpec::Define()
 		});
 	});
 
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	Describe(TEXT("through MCP and the Python bridge"), [this]()
-	{
-		It(TEXT("runs on UE 5.8 only (a headless Blueprint editor cannot be closed below 5.8)"), [this]()
-		{
-			AddInfo(TEXT("Skipped below UE 5.8; the search -> add cases above cover the shared resolution without an editor"));
-		});
-	});
-#else
 	Describe(TEXT("through MCP and the Python bridge"), [this]()
 	{
 		It(TEXT("search-blueprint-nodes leaves nodes, links, timelines, components, the undo buffer and the dirty flag unchanged"), [this]()
@@ -837,7 +827,6 @@ void FN2CNodeActionIdsSpec::Define()
 			}
 		});
 	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

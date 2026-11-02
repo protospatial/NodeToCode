@@ -175,3 +175,84 @@ def test_host_links_the_test_content_plugin():
         descriptor = json.load(f)
     assert descriptor['CanContainContent'] is True
     assert not descriptor.get('Modules')
+
+
+WARM_SCRIPT = r'''
+$ErrorActionPreference = 'Stop'
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:N2C_BUILD_PS1, [ref]$null, [ref]$null)
+$fn = $ast.Find({ param($a) $a -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -eq 'Initialize-HostWarm' }, $true)
+if (-not $fn) { throw 'build.ps1 has no function Initialize-HostWarm' }
+. ([scriptblock]::Create($fn.Extent.Text))
+$HostWarmStamp = 'Saved/N2CHostWarm.txt'
+$LogRoot = $env:N2C_ROOT
+$script:calls = @()
+$script:exit = [int]$env:N2C_EXIT
+$script:writes = $env:N2C_WRITES -eq '1'
+function Write-Step($m) { }
+function Get-EngineTool($engine, $tool) { "$engine/$tool" }
+function Invoke-Editor($exe, $argList, $timeoutMinutes) {
+    $script:calls += ,(@($exe) + $argList)
+    if ($script:writes) { Set-Content (Join-Path $env:N2C_HOST 'Config/DefaultInput.ini') '[/Script/Engine.InputSettings]' }
+    return $script:exit
+}
+$h = [pscustomobject]@{ Dir = $env:N2C_HOST; UProject = (Join-Path $env:N2C_HOST 'Host.uproject') }
+$warm = Initialize-HostWarm $h 'E' '5.6' 'stamp'
+ConvertTo-Json -Compress -Depth 4 @{ warm = $warm; calls = @($script:calls); stamped = (Test-Path (Join-Path $env:N2C_HOST $HostWarmStamp)) }
+'''
+
+
+def _warm(tmp_path, input_ini=False, stamp=False, exit_code=0):
+    host = tmp_path / 'host'
+    (host / 'Config').mkdir(parents=True)
+    if input_ini:
+        (host / 'Config' / 'DefaultInput.ini').write_text('[/Script/Engine.InputSettings]\n', encoding='utf-8')
+    if stamp:
+        (host / 'Saved').mkdir()
+        (host / 'Saved' / 'N2CHostWarm.txt').write_text('warm\n', encoding='utf-8')
+    script_file = tmp_path / 'warm.ps1'
+    script_file.write_text(WARM_SCRIPT, encoding='utf-8')
+    env = dict(os.environ, N2C_BUILD_PS1=BUILD_PS1, N2C_ROOT=str(tmp_path), N2C_HOST=str(host), N2C_EXIT=str(exit_code),
+               N2C_WRITES='1')
+    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', str(script_file)],
+                          capture_output=True, text=True, env=env, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout.strip().splitlines()[-1])
+    result['calls'] = result['calls'] or []
+    return result
+
+
+def test_a_new_host_gets_one_quitting_start_before_its_first_smoke(tmp_path):
+    """Card 0513: a host the engine never opened has no Config/DefaultInput.ini; the engine writes it on the first start,
+    which failed the first smoke's 'host Config/*.ini unchanged' check. Initialize-HostWarm starts it once, headless,
+    quitting at once, and stamps it"""
+    result = _warm(tmp_path)
+    assert result['warm'] is True
+    assert len(result['calls']) == 1
+    call = result['calls'][0]
+    assert call[0] == 'E/EditorCmd'
+    assert any(str(a).endswith('Host.uproject') for a in call)
+    assert '-ExecCmds="QUIT_EDITOR"' in call and '-nullrhi' in call and '-unattended' in call
+    assert result['stamped'] is True
+    # The next run does not start it again
+    again = _warm(tmp_path / 'again', stamp=True)
+    assert again['calls'] == [] and again['warm'] is True
+
+
+def test_a_host_opened_before_is_only_stamped(tmp_path):
+    result = _warm(tmp_path, input_ini=True)
+    assert result == {'warm': True, 'calls': [], 'stamped': True}
+
+
+def test_a_failed_warm_up_is_reported_and_not_stamped(tmp_path):
+    result = _warm(tmp_path, exit_code=3)
+    assert result['warm'] is False and result['stamped'] is False and len(result['calls']) == 1
+
+
+def test_the_test_editor_renders_off_screen():
+    """Card 0509: under -nullrhi without -RenderOffScreen, opening an asset editor (Material Editor, Blueprint editor)
+    is fatal on UE 5.6 and 5.7 (GenericWindow.cpp, GetRestoredDimensions); the -Test editor passes -RenderOffScreen"""
+    with open(BUILD_PS1, encoding='utf-8') as f:
+        text = f.read()
+    start = text.index('function Invoke-Tests')
+    body = text[start:text.index('$editorArgs $TestTimeoutMinutes', start)]
+    assert "'-nullrhi', '-RenderOffScreen'" in body
