@@ -71,6 +71,7 @@ Plugin and pipeline:
 - [Agent skills](Context/agent-skills/AGENTS-agent-skills.md): the Agent Skills, the Claude Code plugin, UE 5.8 skill registry
 - [Development workflow](Context/development-workflow/AGENTS-development-workflow.md): `build.ps1` in full, hosts, tests, IDE setup, tracked vs local files
 - [Migration 1.2 to 2.0](Context/release/migration-1.2-to-2.0.md): what happens to a 1.2.x project's settings, keys and files
+- Explorations (evidence and a recommendation, no product code): [Verse as a target](Context/explorations/verse-target.md) (with its [draft prompt](Context/explorations/verse-target/CodeGen_Verse.draft.md)), [offline Blueprint reader](Context/explorations/offline-reader.md)
 
 MCP server and tools:
 - [MCP server](Context/mcp-server/AGENTS-mcp-server.md): transport, sessions and the 2026-07-28 era, tool modes, switches
