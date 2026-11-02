@@ -321,6 +321,11 @@ list-python-scripts still answering.
   every property of `GetN2CResponseSchema`, that the batch export's `Combined_Blueprints.md` holds the same spec, and
   that `WrapN2CJson` puts the user message in `<n2c_json>` tags no node comment can close. It keeps no golden of the
   assembled prompts: that would be a second copy of the spec.
+- `NodeToCode.LLM.Verify` (card 0312) checks the code verifier seam `IN2CCodeVerifier` and its two adapters:
+  `FN2CPythonSyntaxVerifier` reports a Python syntax error with its graph, line and column (also in indented code)
+  and nothing for valid Python or another language; `FN2CCaptureCoverageVerifier` names a call, variable or event of
+  the capture that the generated code leaves out, compares whole identifiers (snake_case, the `K2_`/`Receive`/Boolean
+  `b` prefixes; words in pseudocode), and expects nothing of disabled nodes or of a graph the capture does not have.
 - `NodeToCode.MCP.UntrustedContent` (card 0124) checks that Blueprint text reaches an MCP client marked as untrusted
   data on each channel: the `untrusted_content` mark and `</` escaping (`FN2CMcpUntrustedContent`), `ExecuteTool`
   marking the result of a tool that sets `bReturnsUntrustedContent` (and the exact list of tools that set it), the
