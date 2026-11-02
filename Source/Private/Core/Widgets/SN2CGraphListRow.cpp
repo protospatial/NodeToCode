@@ -9,6 +9,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SOverlay.h"
+#include "Widgets/SNullWidget.h"
 #include "Styling/AppStyle.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Models/N2CLogging.h"
@@ -19,223 +20,188 @@
 
 #define LOCTEXT_NAMESPACE "SN2CGraphListRow"
 
-void SN2CGraphListRow::Construct(const FArguments& InArgs)
+const FName SN2CGraphListRow::Column_Checkbox = TEXT("Checkbox");
+const FName SN2CGraphListRow::Column_GraphName = TEXT("GraphName");
+const FName SN2CGraphListRow::Column_Blueprint = TEXT("Blueprint");
+const FName SN2CGraphListRow::Column_Context = TEXT("Context");
+
+void SN2CGraphListRow::Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& OwnerTable)
 {
 	Item = InArgs._Item;
 	OnCheckboxChangedDelegate = InArgs._OnCheckboxChanged;
 	OnTranslateClickedDelegate = InArgs._OnTranslateClicked;
 	OnJsonExportClickedDelegate = InArgs._OnJsonExportClicked;
 	OnViewTranslationClickedDelegate = InArgs._OnViewTranslationClicked;
-	OnDoubleClickedDelegate = InArgs._OnDoubleClicked;
 	OnRefreshClickedDelegate = InArgs._OnRefreshClicked;
 
 	if (!Item.IsValid())
 	{
 		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CGraphListRow] Construct called with invalid Item"));
-		return;
 	}
 
-	ChildSlot
-	[
-		// Use SOverlay to layer buttons on top of content
-		SNew(SOverlay)
+	// One cell per header column (GenerateWidgetForColumn), so the cells follow the header's sizes (card 0267)
+	SMultiColumnTableRow<TSharedPtr<FN2CGraphListItem>>::Construct(
+		FSuperRowType::FArguments()
+			.Style(&N2CStyle::GetTableRowStyle())
+			.Padding(0),
+		OwnerTable);
+}
 
-		// Layer 0: Background and main content
-		+ SOverlay::Slot()
+TSharedRef<SWidget> SN2CGraphListRow::MakeCell(const TSharedRef<SWidget>& CellContent, bool bFill)
+{
+	return SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(this, &SN2CGraphListRow::GetBackgroundColor)
+		.Padding(FMargin(FN2CSpacing::XS, 2.0f))
+		.VAlign(VAlign_Center)
+		.HAlign(bFill ? HAlign_Fill : HAlign_Left)
 		[
-			SNew(SBorder)
-			// Use a solid brush that will show the background color
-			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(this, &SN2CGraphListRow::GetBackgroundColor)
-			.Padding(FMargin(0.0f, 2.0f))
-			[
-				SNew(SHorizontalBox)
+			CellContent
+		];
+}
 
-				// Checkbox column - fixed width to match header (30px)
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(FN2CSpacing::XS, 0.0f)
+TSharedRef<SWidget> SN2CGraphListRow::GenerateWidgetForColumn(const FName& ColumnName)
+{
+	if (!Item.IsValid())
+	{
+		return SNullWidget::NullWidget;
+	}
+
+	if (ColumnName == Column_Checkbox)
+	{
+		return MakeCell(
+			SNew(SCheckBox)
+			.Style(&N2CStyle::GetCheckBoxStyle())
+			.IsChecked(this, &SN2CGraphListRow::GetCheckboxState)
+			.OnCheckStateChanged(this, &SN2CGraphListRow::OnCheckboxStateChanged));
+	}
+
+	if (ColumnName == Column_GraphName)
+	{
+		return MakeCell(
+			SNew(STextBlock)
+			.Text(FText::FromString(Item->TagInfo.GraphName))
+			.Font(FN2CFonts::Small())
+			.ColorAndOpacity(FSlateColor::UseForeground())
+			.ToolTipText(this, &SN2CGraphListRow::GetTagsTooltip));
+	}
+
+	if (ColumnName == Column_Blueprint)
+	{
+		// The Blueprint name, with the row's actions over its right end while the row is hovered
+		return MakeCell(
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Item->GetBlueprintDisplayName()))
+				.Font(FN2CFonts::Small())
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentBlue)) // Blueprint blue
+				.ToolTipText(FText::FromString(Item->TagInfo.BlueprintPath))
+			]
+			+ SOverlay::Slot()
+			.HAlign(HAlign_Right)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SBorder)
+				.BorderImage(GetButtonOverlayBrush())
+				.BorderBackgroundColor(this, &SN2CGraphListRow::GetButtonBackgroundColor)
+				.Padding(FMargin(0.0f, 0.0f))
+				.Visibility(this, &SN2CGraphListRow::GetActionButtonsVisibility)
 				[
-					SNew(SBox)
-					.WidthOverride(22.0f)
+					SNew(SHorizontalBox)
+
+					// Translate button
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(FN2CSpacing::XXS, 0.0f)
 					[
-						SNew(SCheckBox)
-						.Style(&N2CStyle::GetCheckBoxStyle())
-						.IsChecked(this, &SN2CGraphListRow::GetCheckboxState)
-						.OnCheckStateChanged(this, &SN2CGraphListRow::OnCheckboxStateChanged)
+						SNew(SN2CIconButton)
+						.IconBrush(FAppStyle::GetBrush("Icons.Convert"))
+						.IconSize(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
+						.ButtonVariant(EN2CButtonVariant::Simple)
+						.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
+						.ToolTipText(LOCTEXT("TranslateTooltip", "Translate this graph"))
+						.OnClicked(this, &SN2CGraphListRow::HandleTranslateClicked)
+					]
+
+					// JSON Export button
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(FN2CSpacing::XXS, 0.0f)
+					[
+						SNew(SN2CIconButton)
+						.IconBrush(FAppStyle::GetBrush("MainFrame.RefreshSourceCodeEditor"))
+						.IconSize(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
+						.ButtonVariant(EN2CButtonVariant::Simple)
+						.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
+						.ToolTipText(LOCTEXT("JsonExportTooltip", "Export as JSON"))
+						.OnClicked(this, &SN2CGraphListRow::HandleJsonExportClicked)
+					]
+
+					// View Translation button
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(FN2CSpacing::XXS, 0.0f)
+					[
+						SNew(SN2CIconButton)
+						.IconBrush(FAppStyle::GetBrush("Icons.OpenInExternalEditor"))
+						.IconSize(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
+						.ButtonVariant(EN2CButtonVariant::Simple)
+						.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
+						.IsEnabled(this, &SN2CGraphListRow::IsViewButtonEnabled)
+						.ToolTipText(TAttribute<FText>::CreateSP(this, &SN2CGraphListRow::GetViewButtonTooltip))
+						.OnClicked(this, &SN2CGraphListRow::HandleViewTranslationClicked)
 					]
 				]
+			]);
+	}
 
-				// Graph name column - fill width
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
-				.Padding(FN2CSpacing::XS, 0.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Item->TagInfo.GraphName))
-					.Font(FN2CFonts::Small())
-					.ColorAndOpacity(FSlateColor::UseForeground())
-					.ToolTipText(this, &SN2CGraphListRow::GetTagsTooltip)
-				]
+	if (ColumnName == Column_Context)
+	{
+		return MakeCell(
+			SNew(SHorizontalBox)
 
-				// Blueprint name column - fill width
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
-				.Padding(FN2CSpacing::XS, 0.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Item->GetBlueprintDisplayName()))
-					.Font(FN2CFonts::Small())
-					.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentBlue)) // Blueprint blue
-					.ToolTipText(FText::FromString(Item->TagInfo.BlueprintPath))
-				]
-
-				// Context column - fixed width with circular progress, tokens, and cost
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(FN2CSpacing::XS, 0.0f)
-				[
-					SNew(SBox)
-					.WidthOverride(120.0f)
-					[
-						SNew(SHorizontalBox)
-
-						// Circular progress bar (clickable for refresh)
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
-						[
-							SNew(SN2CCircularProgressBar)
-							.Percent(this, &SN2CGraphListRow::GetContextUsagePercent)
-							.Radius(7.0f)
-							.Thickness(2.5f)
-							.OnClicked(this, &SN2CGraphListRow::HandleRefreshClicked)
-							.ToolTipText(LOCTEXT("RefreshTooltip", "Click to refresh estimate"))
-						]
-
-						// Token count
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
-						[
-							SNew(STextBlock)
-							.Text(this, &SN2CGraphListRow::GetTokensText)
-							.Font(FN2CFonts::Tiny())
-							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
-						]
-
-						// Cost
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.Text(this, &SN2CGraphListRow::GetCostText)
-							.Font(FN2CFonts::Tiny())
-							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentGreen)) // Green for cost
-						]
-					]
-				]
-			]
-		]
-
-		// Layer 1: Action buttons overlay (over Blueprint column, visible on hover)
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Right)
-		.VAlign(VAlign_Fill)
-		.Padding(FMargin(0.0f, 0.0f, 128.0f, 0.0f)) // Offset past Context column
-		[
-			SNew(SBorder)
-			.BorderImage(GetButtonOverlayBrush())
-			.BorderBackgroundColor(this, &SN2CGraphListRow::GetButtonBackgroundColor)
-			.Padding(FMargin(0.0f, 2.0f))
-			.Visibility(this, &SN2CGraphListRow::GetActionButtonsVisibility)
+			// Circular progress bar (clickable for refresh)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
 			[
-				SNew(SHorizontalBox)
-
-				// Translate button
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FN2CSpacing::XXS, 0.0f)
-				[
-					SNew(SN2CIconButton)
-					.IconBrush(FAppStyle::GetBrush("Icons.Convert"))
-					.IconSize(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
-					.ButtonVariant(EN2CButtonVariant::Simple)
-					.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
-					.ToolTipText(LOCTEXT("TranslateTooltip", "Translate this graph"))
-					.OnClicked(this, &SN2CGraphListRow::HandleTranslateClicked)
-				]
-
-				// JSON Export button
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FN2CSpacing::XXS, 0.0f)
-				[
-					SNew(SN2CIconButton)
-					.IconBrush(FAppStyle::GetBrush("MainFrame.RefreshSourceCodeEditor"))
-					.IconSize(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
-					.ButtonVariant(EN2CButtonVariant::Simple)
-					.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
-					.ToolTipText(LOCTEXT("JsonExportTooltip", "Export as JSON"))
-					.OnClicked(this, &SN2CGraphListRow::HandleJsonExportClicked)
-				]
-
-				// View Translation button
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FN2CSpacing::XXS, 0.0f)
-				[
-					SNew(SN2CIconButton)
-					.IconBrush(FAppStyle::GetBrush("Icons.OpenInExternalEditor"))
-					.IconSize(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
-					.ButtonVariant(EN2CButtonVariant::Simple)
-					.ContentPadding(FMargin(FN2CSpacing::XS, FN2CSpacing::XXS))
-					.IsEnabled(this, &SN2CGraphListRow::IsViewButtonEnabled)
-					.ToolTipText(TAttribute<FText>::CreateSP(this, &SN2CGraphListRow::GetViewButtonTooltip))
-					.OnClicked(this, &SN2CGraphListRow::HandleViewTranslationClicked)
-				]
+				SNew(SN2CCircularProgressBar)
+				.Percent(this, &SN2CGraphListRow::GetContextUsagePercent)
+				.Radius(7.0f)
+				.Thickness(2.5f)
+				.OnClicked(this, &SN2CGraphListRow::HandleRefreshClicked)
+				.ToolTipText(LOCTEXT("RefreshTooltip", "Click to refresh estimate"))
 			]
-		]
-	];
-}
 
-void SN2CGraphListRow::OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	SCompoundWidget::OnMouseEnter(MyGeometry, MouseEvent);
+			// Token count
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(this, &SN2CGraphListRow::GetTokensText)
+				.Font(FN2CFonts::Tiny())
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
+			]
 
-	if (!bIsHovered)
-	{
-		bIsHovered = true;
-		Invalidate(EInvalidateWidgetReason::Paint);
+			// Cost
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(this, &SN2CGraphListRow::GetCostText)
+				.Font(FN2CFonts::Tiny())
+				.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentGreen)) // Green for cost
+			]);
 	}
-}
 
-void SN2CGraphListRow::OnMouseLeave(const FPointerEvent& MouseEvent)
-{
-	SCompoundWidget::OnMouseLeave(MouseEvent);
-
-	if (bIsHovered)
-	{
-		bIsHovered = false;
-		Invalidate(EInvalidateWidgetReason::Paint);
-	}
-}
-
-FReply SN2CGraphListRow::OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent)
-{
-	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-	{
-		OnDoubleClickedDelegate.ExecuteIfBound(Item);
-		return FReply::Handled();
-	}
-	return FReply::Unhandled();
+	return SNullWidget::NullWidget;
 }
 
 void SN2CGraphListRow::UpdateVisuals()
@@ -291,7 +257,8 @@ FSlateColor SN2CGraphListRow::GetBackgroundColor() const
 	}
 
 	// Selected + Hovered: Brighter gold
-	if (Item->bIsSelected && bIsHovered)
+	const bool bHovered = IsHovered();
+	if (Item->bIsSelected && bHovered)
 	{
 		return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().AccentGold, 0.3f));
 	}
@@ -301,7 +268,7 @@ FSlateColor SN2CGraphListRow::GetBackgroundColor() const
 		return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().AccentGold, 0.2f));
 	}
 	// Hovered: Subtle gray
-	if (bIsHovered)
+	if (bHovered)
 	{
 		return FSlateColor(N2C::UI::LinearAlpha(N2C::UI::Colors().TextMuted, 0.15f));
 	}
@@ -328,7 +295,7 @@ FSlateColor SN2CGraphListRow::GetButtonBackgroundColor() const
 
 EVisibility SN2CGraphListRow::GetActionButtonsVisibility() const
 {
-	return bIsHovered ? EVisibility::Visible : EVisibility::Collapsed;
+	return IsHovered() ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 ECheckBoxState SN2CGraphListRow::GetCheckboxState() const
