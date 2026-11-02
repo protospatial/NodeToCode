@@ -7,6 +7,7 @@
 
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CSettings.h"
+#include "Core/Widgets/SN2CCircularProgressBar.h"
 #include "Core/Widgets/SN2CGetStartedCard.h"
 #include "Core/Widgets/SN2CGraphOverlay.h"
 #include "Core/Widgets/SN2CTagManager.h"
@@ -98,6 +99,13 @@ namespace N2CDocsShots
 		}
 		Target->ClearColor = FLinearColor::Black;
 		FWidgetRenderer Renderer(false, true);
+		// Context rings show the request's share of the model's window, which includes the system prompt: pin them
+		// empty, so a prompt edit does not move their arc by a few pixels in every shot (card 0522)
+		struct FPinRings
+		{
+			FPinRings() { SN2CCircularProgressBar::SetPinnedPercentForCapture(0.0f); }
+			~FPinRings() { SN2CCircularProgressBar::SetPinnedPercentForCapture(TOptional<float>()); }
+		} PinRings;
 		// Icons (vector brushes) first drawn here go into Slate's texture atlases, which only the application's own
 		// window drawing updates: tick Slate between frames, or they come out as blank squares
 		for (int32 Frame = 0; Frame < 12; ++Frame)

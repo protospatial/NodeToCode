@@ -10,7 +10,8 @@ The 5.8 engine is found as build.ps1 finds it: --engine, then $env:N2C_UE_5_8 (o
 entry of $Engines in build.local.ps1, then the installs ue_python_finder.py lists (registry, the launcher's
 LauncherInstalled.dat, the usual install folders). Each candidate must be a UE 5.8 install by its
 Engine/Build/Build.version; an explicit setting that is not one is an error, not a reason to try the next.
---which-engine prints the engine it would use and starts nothing.
+--which-engine prints the engine it would use and starts nothing. --repeat-check captures the group twice and fails
+when any picture differs between the two runs (the harness must be deterministic, card 0522); it records nothing.
 
 This is the `capture` command in `.agents/docs-parity.json` (card 0410). It starts UnrealEditor-Cmd on the 5.8 host
 (build.ps1's `<checkout>/../Hosts/NodeToCodeHost_5_8` unless --project says otherwise) with a real RHI and no window
@@ -160,6 +161,21 @@ def record_shots(groups, out, commit, images=None, manifest_path=None):
     return ok, written, errors
 
 
+def differing_shots(first, second, groups):
+    """'<group>/<shot>.png' names whose bytes differ between two capture folders, or that only one of them has"""
+    out = []
+    for g in groups:
+        names = set()
+        for folder in (first, second):
+            src = os.path.join(folder, g)
+            names |= {f for f in os.listdir(src) if f.endswith('.png')} if os.path.isdir(src) else set()
+        for name in sorted(names):
+            a, b = os.path.join(first, g, name), os.path.join(second, g, name)
+            if not (os.path.isfile(a) and os.path.isfile(b)) or open(a, 'rb').read() != open(b, 'rb').read():
+                out.append('%s/%s' % (g, name))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--group', choices=GROUPS + ('all',))
@@ -170,6 +186,8 @@ def main():
     ap.add_argument('--project', default=os.path.join(os.path.dirname(REPO), 'Hosts', 'NodeToCodeHost_5_8',
                                                       'NodeToCodeHost_5_8.uproject'))
     ap.add_argument('--timeout', type=int, default=900)
+    ap.add_argument('--repeat-check', action='store_true',
+                    help='capture twice and fail when any picture differs between the runs; records nothing')
     args = ap.parse_args()
     if args.restamp:
         return restamp()
@@ -193,6 +211,27 @@ def main():
     engine, _ = find_engine(args.engine)
 
     t0 = time.time()
+    if args.repeat_check:
+        # The harness must be deterministic (card 0522): the same code gives the same bytes on a second run
+        first = out + '_repeat'
+        shutil.rmtree(first, ignore_errors=True)
+        code = run_editor(engine, project, test, out, log, args.timeout)
+        results, errors = test_results(log)
+        ok = code is not None and all(results.get('N2CDocs.Shots.%s' % g) == 'Success' for g in groups)
+        if ok:
+            shutil.copytree(out, first)
+            for g in groups:
+                shutil.rmtree(os.path.join(out, g), ignore_errors=True)
+            code = run_editor(engine, project, test, out, log, args.timeout)
+            results, more = test_results(log)
+            errors += more
+            ok = code is not None and all(results.get('N2CDocs.Shots.%s' % g) == 'Success' for g in groups)
+        differing = differing_shots(first, out, groups) if ok else []
+        report = {'group': args.group, 'commit': commit, 'repeat_check': True, 'ok': ok and not differing,
+                  'differing': differing, 'tests': results, 'errors': errors,
+                  'seconds': round(time.time() - t0, 1)}
+        print(json.dumps(report, indent=1))
+        return 0 if report['ok'] else 1
     code = run_editor(engine, project, test, out, log, args.timeout)
     results, errors = test_results(log)
     report = {'group': args.group, 'commit': commit, 'exit': code, 'seconds': round(time.time() - t0, 1),

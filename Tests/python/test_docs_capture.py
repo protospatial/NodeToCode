@@ -88,3 +88,17 @@ def test_restamp_is_retired_and_changes_nothing(capture, tmp_path, monkeypatch):
     assert manifest.read_text(encoding='utf-8') == before, '--restamp must leave shots.json as it is'
     note = json.loads(buf.getvalue())['note']
     assert '0519' in note and 'retake' in note
+
+
+def test_differing_shots_names_changed_missing_and_extra_pictures(capture, tmp_path):
+    # --repeat-check (card 0522) compares two capture folders byte for byte
+    first, second = tmp_path / 'first', tmp_path / 'second'
+    write(str(first / 'g' / 'same.png'), b'same')
+    write(str(second / 'g' / 'same.png'), b'same')
+    write(str(first / 'g' / 'ring.png'), b'arc 1')
+    write(str(second / 'g' / 'ring.png'), b'arc 2')
+    write(str(first / 'g' / 'gone.png'), b'only here')
+    write(str(second / 'g' / 'new.png'), b'only there')
+    write(str(second / 'g' / 'notes.txt'), b'not a picture')
+    assert capture.differing_shots(str(first), str(second), ['g']) == ['g/gone.png', 'g/new.png', 'g/ring.png']
+    assert capture.differing_shots(str(first), str(first), ['g', 'absent']) == []
