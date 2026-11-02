@@ -30,6 +30,11 @@ UE plugin's Streamable HTTP MCP server.
   variable) picks by project name, .uproject path or project folder, and without it every request gets an error
   listing the running editors. The bridge starts without an editor and looks again on every request until one
   answers, so it survives an editor that is still loading or restarts.
+- A discovery entry is used only when its url is plain http to this machine: host 127.0.0.1 (any 127.x.y.z),
+  localhost or [::1], no user name or password (card 0426). Any other entry is logged and skipped, so a project
+  folder that ships a planted Saved/NodeToCode/mcp-server.json cannot send the client's traffic to another host.
+  Host names are never resolved, so a name that points at 127.0.0.1 is refused too. --url, --port and --host are
+  the user's own choice and are not checked.
 - Bearer token (card 0183): when the editor has Require MCP Bearer Token on, /mcp needs "Authorization: Bearer
   <token>". The bridge sends the token from --token-file, else the NODETOCODE_MCP_TOKEN environment variable, else the
   per-user file the editor writes (<user settings dir>/NodeToCode/mcp-token), read again for every request so a
@@ -49,12 +54,14 @@ Usage:
 
 import argparse
 import base64
+import ipaddress
 import json
 import os
 import socket
 import sys
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -284,6 +291,51 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
+LOOPBACK_HOST_NAMES = ("localhost",)
+
+
+def loopback_url(url: Any) -> Optional[str]:
+    """The url rebuilt from its parts when it is plain http to this machine, else None (card 0426).
+
+    Accepted: scheme http; host an IPv4 address in 127.0.0.0/8, the IPv6 loopback ::1 (any spelling, or IPv4-mapped
+    127.x.y.z), or the name localhost; no user name or password; a valid port. Nothing is resolved, so a host name
+    other than localhost is refused even when it points at 127.0.0.1 (DNS can change between the check and the
+    request). The url is rebuilt as http://<host>:<port><path> so urllib connects to exactly the host checked here.
+    """
+    if not isinstance(url, str) or not url or url != url.strip() or any(
+            ord(c) < 0x21 or ord(c) == 0x7F or c == "\\" for c in url):
+        return None
+    try:
+        parts = urllib.parse.urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme.lower() != "http" or parts.username is not None or parts.password is not None:
+        return None
+    host = parts.hostname or ""
+    if host in LOOPBACK_HOST_NAMES:
+        formatted = host
+    else:
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            return None
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+        if isinstance(address, ipaddress.IPv4Address):
+            if address not in ipaddress.IPv4Network("127.0.0.0/8"):
+                return None
+            formatted = str(address)
+        else:
+            if address != ipaddress.IPv6Address("::1"):
+                return None
+            formatted = "[::1]"
+    if port == 0:
+        return None
+    netloc = formatted if port is None else f"{formatted}:{port}"
+    return urllib.parse.urlunsplit(("http", netloc, parts.path or "/", parts.query, ""))
+
+
 def _read_entry(path: str) -> Optional[dict]:
     try:
         with open(path, "r", encoding="utf-8-sig") as f:
@@ -298,9 +350,15 @@ def _read_entry(path: str) -> Optional[dict]:
     url = entry.get("url")
     if not isinstance(url, str) or not url:
         port = entry.get("port")
-        if not isinstance(port, (int, float)) or not port:
+        if not isinstance(port, (int, float)) or isinstance(port, bool) or not 0 < port < 65536 or port != int(port):
             return None
         url = f"http://{DEFAULT_HOST}:{int(port)}/mcp"
+    checked = loopback_url(url)
+    if checked is None:
+        log_info(f"Ignoring the discovery entry {path}: its url {url!r} is not plain http to 127.0.0.1, localhost or "
+                 f"[::1] (pass --url to use an editor on another host)")
+        return None
+    url = checked
     entry["pid"] = pid
     entry["url"] = url
     entry["discoveryFile"] = path

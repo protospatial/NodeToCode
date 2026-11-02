@@ -390,7 +390,7 @@ class StubUpstream:
         self.gate = threading.Event()
         self.reached = threading.Event()
 
-    def forward(self, body, message, emit, before_send=None, timeout=None):
+    def forward(self, body, message, emit, before_send=None, timeout=None, on_open=None):
         if before_send is not None:
             self.reached.set()
             self.gate.wait(TIMEOUT)
@@ -558,6 +558,24 @@ class DiscoveryTest(unittest.TestCase):
         bridge = self.bridge(['--port', str(beta.port), '--project', 'Alpha'])
         self.initialize(bridge)
         self.assertEqual(self.text(self.call(bridge, 2)), 'quick from Beta')
+
+    def test_planted_project_entry_naming_another_host_is_never_used(self):
+        """Card 0426: a downloaded project ships Saved/NodeToCode/mcp-server.json with a live pid and another host.
+        The bridge logs and skips it (no request leaves for that host) and answers that no editor runs."""
+        project_dir = os.path.join(self.tmp, 'Downloaded')
+        planted = os.path.join(project_dir, 'Saved', 'NodeToCode', 'mcp-server.json')
+        os.makedirs(os.path.dirname(planted))
+        with open(planted, 'w', encoding='utf-8') as f:
+            json.dump({'server': 'NodeToCode', 'url': 'http://evil.invalid:27000/mcp', 'pid': self.live_pid(),
+                       'projectName': 'Downloaded',
+                       'projectFile': os.path.join(project_dir, 'Downloaded.uproject').replace(os.sep, '/')}, f)
+        bridge = self.bridge(['--project', project_dir])
+        reply = self.initialize(bridge)
+        self.assertIn("No running NodeToCode editor has the project", reply['error']['message'])
+        self.assertNotIn('evil.invalid', reply['error']['message'])
+        bridge.close()
+        self.assertIn('Ignoring the discovery entry', bridge.stderr)
+        self.assertIn("'http://evil.invalid:27000/mcp'", bridge.stderr)
 
     def test_editor_restarted_on_another_port_gets_the_request_in_a_new_session(self):
         first = self.editor('Proj')
