@@ -1,26 +1,25 @@
-### User Interface → Code Editor
-***
+The code editor is the text area of the translation viewer: it shows the open file tab of a translation with syntax
+highlighting, so you can review the generated code before you copy it into your project. Where it sits in the
+window: [Window Overview](Top-Navbar-Overview#the-translation-viewer).
 
-The code editor is the central component of the Node to Code Editor window where you'll spend most of your time reviewing and working with translated code. It provides a baseline environment for examining and modifying generated code before integration into your project.
+## Highlighting
 
-## Features
+The editor highlights code in the language the translation was written in: C++, Python, JavaScript, C#, Swift, or
+pseudocode (Markdown). The **JSON** tab is highlighted as JSON. Colored are keywords, operators, strings, numbers,
+comments, preprocessor directives and brackets; the colors and the rules are on
+[Colors and Syntax Highlighting](Theme-&-Syntax-Highlighting).
 
-### Syntax Highlighting
-The editor highlights code in the language the translation was written in (C++, Python, JavaScript, C#, Swift or Pseudocode), and keeps that language when you change the font size or theme:
+<img src="images/main-window/translation-viewer.png" alt="C++ code in the translation viewer, with keywords, strings and numbers in their colors" width="880">
 
-- Keywords
-- Operators
-- Strings
-- Numbers
-- Comments
-- Preprocessor directives
-- Brackets and braces
+## Reading and copying
 
-<p align="left">
-    <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_CodeEditor.png" alt="Node to Code header" width="500">
-</p>
+- Scroll for longer files; the text uses a monospaced font at a fixed size.
+- You can select and edit the text, for example to try a change. Edits stay in the window: the saved translation
+  files are not changed ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
+- The clipboard button above the code copies the whole open tab ([Copy & Integrate](Copy-&-Integrate)).
 
-### The Code Editor widget in Editor Utility Widgets
+## The Code Editor widget in Editor Utility Widgets
+
 The **Code Editor** UMG widget that 1.x Editor Utility Widgets embed still loads, but it is unsupported and will be
 removed. Its **On Text Changed**, **On Cursor Moved** and **On Selection Changed** events fire when you type, move
 the cursor or change the selection (selection events give the first and last line). Text you type is kept when the

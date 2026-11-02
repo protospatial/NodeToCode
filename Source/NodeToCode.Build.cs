@@ -76,6 +76,10 @@ public class NodeToCode : ModuleRules
 
 			// BCryptGenRandom: the MCP bearer token's random bytes (FN2CMcpAuthToken, card 0183)
 			PublicSystemLibraries.Add("Bcrypt.lib");
+
+			// GetExtendedTcpTable: whether the client of a held MCP call is still connected (N2CMcpTcpConnectionState,
+			// card 0512)
+			PublicSystemLibraries.Add("iphlpapi.lib");
 		}
 
 		// --- httplib.h Integration (unused today, see the include path above) ---

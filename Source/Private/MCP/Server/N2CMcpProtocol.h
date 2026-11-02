@@ -31,6 +31,10 @@ struct FN2CMcpInbound
 	/** The body: exactly the bytes received (UTF-8 JSON) */
 	TArray<uint8> Body;
 
+	/** The server's port and the client's port of this request's TCP connection (0 when the transport does not say) */
+	int32 LocalPort = 0;
+	int32 PeerPort = 0;
+
 	/** The first value of a header (case-insensitive name), or null */
 	const FString* FindHeader(const TCHAR* Name) const;
 
@@ -345,6 +349,13 @@ private:
 		TSharedPtr<bool> bDone;
 		/** Set once the stream is open (the first keep-alive opens it) */
 		TSharedPtr<bool> bOpened;
+		/**
+		 * A long-running call held as one JSON reply (it cannot stream): its client is looked for in the TCP table
+		 * (N2CMcpTcpConnectionState, Windows) at each tick instead of through the stream (card 0512)
+		 */
+		bool bHeldReply = false;
+		int32 HeldLocalPort = 0;
+		int32 HeldPeerPort = 0;
 	};
 	TArray<FWatchedStream> WatchedStreams;
 	FTSTicker::FDelegateHandle StreamTickerHandle;

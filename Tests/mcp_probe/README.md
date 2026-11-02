@@ -293,6 +293,16 @@ its environment when no key is saved, so a live check never types or saves a key
   are refused; `dry_run` false writes the header and .cpp inside the module's Source folder; with `--compile` the host
   is built with the placed class. The files are deleted and the host's Build.cs put back afterwards. No key is printed.
   Report: `logs/live_place_cpp_0314.json`.
+- `live_cancel_close_0512.py --engine ... --project ... [--provider anthropic --model claude-haiku-5-5] [--cases raw_stream,raw_json,raw_cancel] [--claude-interrupt] [--claude-break] [--claude-esc]`
+  (the provider's key from `.env`) checks that a translation stops when its client goes away (card 0512, gate 0382's
+  cancel item). Against one headless editor with the probe Blueprint focused: a raw 2026-07-28 `tools/call` that
+  closes its socket about 4 s in, once streamed (`Accept` with `text/event-stream`) and once as one JSON reply
+  (`raw_json`); `raw_cancel` sends a 2026-07-28 `notifications/cancelled` (informational: that era ignores it).
+  The Claude Code cases go through a logging TCP proxy that records each request's Accept header and method and
+  which side closed first: `--claude-interrupt` (`claude -p` stream-json, the SDK's interrupt), `--claude-break`
+  (`claude -p` and Ctrl+Break) and `--claude-esc` (interactive Claude Code in its own console, Esc by SendKeys;
+  hold the `desktop` lock). A case passes when the log shows a cancel line, the task completed once and no provider
+  response was handled after the cancel. No key is printed. Report: `logs/live_cancel_close_0512.json`.
 - `live_focus_0150.py --engine ... --project ... --label 5.8 [--no-cli]` (no provider key) checks that the focused
   Blueprint follows what was opened last (card 0150): three in-memory Actor Blueprints under a fresh
   `/Game/N2CTest/Focus0150_<time>` folder, opened in turn with open-blueprint-asset, re-opened while already open,

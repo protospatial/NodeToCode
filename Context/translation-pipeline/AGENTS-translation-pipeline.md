@@ -221,6 +221,9 @@ Static utility for serializing `FN2CBlueprint` to JSON and deserializing.
 
 `Source/Public/Models/N2CJsonContract.h` holds the version and the field names the v2 contract reshaped, as
 [decision 0003](../../.agents/decisions/0003-n2c-json-v2-contract.md) (provisional, card 0117) records them.
+The spec of the format, as the LLM and agents read it, is `Content/Prompting/Shared/N2CJsonSpec.md` (every CodeGen
+prompt includes it through `{{N2C_JSON_SPEC}}`; `NodeToCode.LLM.Prompts` checks that it names every key the
+serializer writes). Change it with the contract.
 
 - **2.0.0** (card 0135): `flows.data` is an object keyed by the output pin ref. Its value is the input pin ref it
   feeds, or an array of them when it feeds several, so a graph without fan-out gets the same object as 1.0.0. Every
@@ -448,4 +451,29 @@ Key features:
 3. **Serialization**: `FN2CSerializer` converts to JSON string
 4. **LLM Processing**: JSON is sent to the configured LLM provider
 5. **Response Parsing**: LLM response is parsed into `FN2CTranslationResponse`
-6. **Display**: Generated code is shown in the code editor widget
+6. **Display**: the translation viewer (`SN2CTranslationViewer`) shows the files, the N2C JSON and the notes
+7. **Archive**: `FN2CTranslationArchive` writes the run to disk (below)
+
+### On disk: the translation archive
+
+Every translation (single, batch, MCP) is one run folder under the output directory
+(`FN2CPathUtils`, default `Saved/NodeToCode/Translations`), as `Source/Public/LLM/N2CTranslationArchive.h` documents:
+
+```
+<Name>_<yyyyMMdd-HHmmss-fff>_<run id>/      one run; two runs never share a folder
+    manifest.json                           what the run holds: provider, model, language, tokens, every file
+    N2C_BP_<run folder>.json                single and MCP runs: the N2C JSON sent
+    N2C_BP_Minified_<run folder>.json       single runs: the same, minified
+    N2C_Translation_<run folder>.json       single and MCP runs: the parsed response
+    <Entry>/                                single and MCP runs: one folder per response entry
+    <Item>/<Entry>/                         batch runs (BatchTranslation_...): one folder per item, one per entry
+    <Item>/<Entry>/<Graph>.json             batch runs: the item's N2C JSON, in its root entry's folder
+    BatchSummary.json                       batch runs (the orchestrator, through WriteRunFile)
+```
+
+An entry folder holds `<Entry><impl ext>`, `<Entry>_Notes.txt` and, for C++, `<Entry>.h` (a language without a
+declaration file writes `<Entry>_Declaration<impl ext>` beside the implementation when an entry has both). Files are
+written to a temporary file and moved into place. The viewer reads a translation back with
+`UN2CGraphStateManager::LoadTranslation`, from the record in `Saved/NodeToCode/BlueprintGraphState.json`
+([tags and graph state](../tags-graph-state/AGENTS-tags-graph-state.md)); MCP tools such as `place-cpp-translation`
+read the run's `manifest.json`.

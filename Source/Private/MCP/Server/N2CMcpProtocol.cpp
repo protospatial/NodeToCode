@@ -2,6 +2,7 @@
 
 #include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpRequestTrace.h"
+#include "MCP/Server/N2CMcpTcpConnectionState.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -628,6 +629,20 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 		Watched.TaskId = TaskId;
 		Watched.bDone = bDone;
 		Watched.bOpened = bStreamOpen;
+		WatchedStreams.Add(MoveTemp(Watched));
+		EnsureStreamTicker();
+	}
+	else if (!bStream && !*bDone && Inbound.LocalPort > 0 && Inbound.PeerPort > 0 && N2CMcpTcpConnectionState::IsSupported())
+	{
+		// Held as one JSON reply: a client that goes away (Claude Code's Esc or Ctrl+C closes the connection and sends
+		// no notifications/cancelled) shows only in the TCP table, read at each tick while the call is held (card 0512)
+		FWatchedStream Watched;
+		Watched.Responder = Responder;
+		Watched.TaskId = TaskId;
+		Watched.bDone = bDone;
+		Watched.bHeldReply = true;
+		Watched.HeldLocalPort = Inbound.LocalPort;
+		Watched.HeldPeerPort = Inbound.PeerPort;
 		WatchedStreams.Add(MoveTemp(Watched));
 		EnsureStreamTicker();
 	}
