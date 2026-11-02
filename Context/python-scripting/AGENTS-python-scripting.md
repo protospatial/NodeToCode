@@ -62,7 +62,11 @@ Stdio-to-HTTP bridge enabling MCP clients (Claude Desktop, etc.) to communicate 
         plus `<Project>/Saved/NodeToCode/mcp-server.json` when `--project` is a path), skipping entries whose pid is
         gone. One editor: that one. `--project` / `NODETOCODE_PROJECT` matches the project name, `.uproject` path or
         folder; several editors and no selection is a JSON-RPC error listing them (`error.data.editors`).
-        `NODETOCODE_DISCOVERY_DIR` replaces the index folder (tests)
+        `NODETOCODE_DISCOVERY_DIR` replaces the index folder (tests). An entry is used only when `loopback_url` accepts
+        its `url` (card 0426): scheme http, host in 127.0.0.0/8, `localhost` or `::1` (IPv4-mapped loopback too), no
+        user info, a valid port; host names are never resolved. The entry's `url` is replaced by the URL rebuilt from
+        those parts; any other entry is logged to stderr and skipped. `--url`/`--port`/`--host` are not checked.
+        Tests: `Tests/python/test_mcp_bridge_discovery.py`
     *   Lazy connect: the bridge starts without an editor and looks again on every request; until one answers, each
         request gets a JSON-RPC error with its id. When a discovered editor refuses the connection, the bridge looks
         again and, if the entries now name another editor, replays the client's `initialize` there and resends
