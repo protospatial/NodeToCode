@@ -1,0 +1,377 @@
+{
+ "version": "2.0.0",
+ "metadata": {
+  "name": "BP_N2CPerf_100",
+  "blueprint_type": "",
+  "blueprint_class": "BP_N2CPerf_100"
+ },
+ "graphs": [
+  {
+   "name": "Pasted",
+   "graph_type": "EventGraph",
+   "nodes": [
+    {
+     "id": "N1",
+     "type": "Event",
+     "class": "K2Node_Event",
+     "member_parent": "Actor",
+     "member_name": "ReceiveBeginPlay",
+     "input_pins": [],
+     "output_pins": [
+      {
+       "id": "P1",
+       "name": "OutputDelegate",
+       "type": "Delegate"
+      },
+      {
+       "id": "P2",
+       "name": "then",
+       "connected": true
+      }
+     ]
+    },
+    {
+     "id": "N2",
+     "type": "Event",
+     "class": "K2Node_Event",
+     "member_parent": "Actor",
+     "member_name": "ReceiveActorBeginOverlap",
+     "comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+     "disabled": true,
+     "input_pins": [],
+     "output_pins": [
+      {
+       "id": "P3",
+       "name": "OutputDelegate",
+       "type": "Delegate"
+      },
+      {
+       "id": "P4",
+       "name": "then"
+      },
+      {
+       "id": "P5",
+       "name": "OtherActor",
+       "type": "Object",
+       "sub_type": "Actor"
+      }
+     ]
+    },
+    {
+     "id": "N3",
+     "type": "Event",
+     "class": "K2Node_Event",
+     "member_parent": "Actor",
+     "member_name": "ReceiveTick",
+     "comment": "This node is disabled and will not be called.\nDrag off pins to build functionality.",
+     "disabled": true,
+     "input_pins": [],
+     "output_pins": [
+      {
+       "id": "P6",
+       "name": "OutputDelegate",
+       "type": "Delegate"
+      },
+      {
+       "id": "P7",
+       "name": "then"
+      },
+      {
+       "id": "P8",
+       "name": "DeltaSeconds",
+       "type": "Real",
+       "sub_type": "float",
+       "default_value": "0.0"
+      }
+     ]
+    },
+    {
+     "id": "N4",
+     "type": "CallFunction",
+     "class": "K2Node_CallFunction",
+     "member_parent": "KismetMathLibrary",
+     "member_name": "Multiply_IntInt",
+     "input_pins": [
+      {
+       "id": "P9",
+       "name": "A",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      },
+      {
+       "id": "P10",
+       "name": "B",
+       "type": "Integer",
+       "default_value": "2"
+      }
+     ],
+     "output_pins": [
+      {
+       "id": "P11",
+       "name": "ReturnValue",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      }
+     ],
+     "pure": true
+    },
+    {
+     "id": "N5",
+     "type": "VariableGet",
+     "class": "K2Node_VariableGet",
+     "member_parent": "BP_N2CPerf_100",
+     "member_name": "Score",
+     "input_pins": [],
+     "output_pins": [
+      {
+       "id": "P12",
+       "name": "Score",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      }
+     ],
+     "pure": true
+    },
+    {
+     "id": "N6",
+     "type": "CallFunction",
+     "class": "K2Node_CallFunction",
+     "member_parent": "KismetMathLibrary",
+     "member_name": "Add_IntInt",
+     "input_pins": [
+      {
+       "id": "P13",
+       "name": "A",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      },
+      {
+       "id": "P14",
+       "name": "B",
+       "type": "Integer",
+       "default_value": "1",
+       "connected": true
+      }
+     ],
+     "output_pins": [
+      {
+       "id": "P15",
+       "name": "ReturnValue",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      }
+     ],
+     "pure": true
+    },
+    {
+     "id": "N7",
+     "type": "VariableGet",
+     "class": "K2Node_VariableGet",
+     "member_parent": "BP_N2CPerf_100",
+     "member_name": "Score",
+     "input_pins": [],
+     "output_pins": [
+      {
+       "id": "P16",
+       "name": "Score",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      }
+     ],
+     "pure": true
+    },
+    {
+     "id": "N8",
+     "type": "VariableSet",
+     "class": "K2Node_VariableSet",
+     "member_parent": "BP_N2CPerf_100",
+     "member_name": "Score",
+     "input_pins": [
+      {
+       "id": "P17",
+       "name": "execute",
+       "connected": true
+      },
+      {
+       "id": "P19",
+       "name": "Score",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      }
+     ],
+     "output_pins": [
+      {
+       "id": "P18",
+       "name": "then",
+       "connected": true
+      },
+      {
+       "id": "P20",
+       "name": "Output_Get",
+       "type": "Integer",
+       "default_value": "0"
+      }
+     ]
+    },
+    {
+     "id": "N9",
+     "type": "MakeStruct",
+     "class": "K2Node_MakeStruct",
+     "member_name": "S_N2CPerf",
+     "member_parent": "/NodeToCodeTestContent/Perf/S_N2CPerf",
+     "input_pins": [
+      {
+       "id": "P22",
+       "name": "Count_2_CA67CA7646E784CEABA134ACA75F67B1",
+       "label": "Count",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      },
+      {
+       "id": "P23",
+       "name": "Mode_4_7E744F9749C1FC6A2F9A7BA4E0B82F23",
+       "label": "Mode",
+       "type": "Enum",
+       "sub_type": "E_N2CPerf",
+       "default_value": "NewEnumerator0",
+       "connected": true
+      },
+      {
+       "id": "P24",
+       "name": "Weight_6_5333BE584FD034537A23D495AF67A4D7",
+       "label": "Weight",
+       "type": "Real",
+       "sub_type": "double",
+       "default_value": "0.000000"
+      },
+      {
+       "id": "P25",
+       "name": "Ready_8_6CFCD2C94995BEC4292C85A6EFB49998",
+       "label": "Ready",
+       "type": "Boolean",
+       "default_value": "False"
+      }
+     ],
+     "output_pins": [
+      {
+       "id": "P21",
+       "name": "S_N2CPerf",
+       "type": "Struct",
+       "sub_type": "S_N2CPerf",
+       "connected": true
+      }
+     ],
+     "pure": true
+    },
+    {
+     "id": "N10",
+     "type": "VariableGet",
+     "class": "K2Node_VariableGet",
+     "member_parent": "BP_N2CPerf_100",
+     "member_name": "Score",
+     "input_pins": [],
+     "output_pins": [
+      {
+       "id": "P26",
+       "name": "Score",
+       "type": "Integer",
+       "default_value": "0",
+       "connected": true
+      }
+     ],
+     "pure": true
+    },
+    {
+     "id": "N11",
+     "type": "VariableGet",
+     "class": "K2Node_VariableGet",
+     "member_parent": "BP_N2CPerf_100",
+     "member_name": "Mode",
+     "input_pins": [],
+     "output_pins": [
+      {
+       "id": "P27",
+       "name": "Mode",
+       "type": "Enum",
+       "sub_type": "E_N2CPerf",
+       "default_value": "NewEnumerator0",
+       "connected": true
+      }
+     ],
+     "pure": true
+    },
+    {
+     "id": "N12",
+     "type": "VariableSet",
+     "class": "K2Node_VariableSet",
+     "member_parent": "BP_N2CPerf_100",
+     "member_name": "Data",
+     "input_pins": [
+      {
+       "id": "P28",
+       "name": "execute",
+       "connected": true
+      },
+      {
+       "id": "P30",
+       "name": "Data",
+       "type": "Struct",
+       "sub_type": "S_N2CPerf",
+       "connected": true
+      }
+     ],
+     "output_pins": [
+      {
+       "id": "P29",
+       "name": "then",
+       "connected": true
+      },
+      {
+       "id": "P31",
+       "name": "Output_Get",
+       "type": "Struct",
+       "sub_type": "S_N2CPerf"
+      }
+     ]
+    }
+   ],
+   "flows": {
+    "execution": [
+     "N1.P2->N8.P17",
+     "N8.P18->N12.P28"
+    ],
+    "data": {
+     "N4.P11": "N6.P13",
+     "N5.P12": "N4.P9",
+     "N6.P15": "N8.P19",
+     "N7.P16": "N6.P14",
+     "N9.P21": "N12.P30",
+     "N10.P26": "N9.P22",
+     "N11.P27": "N9.P23"
+    }
+   }
+  }
+ ],
+ "structs": [],
+ "enums": [],
+ "warnings": [
+  {
+   "code": "LINK_OUTSIDE",
+   "path": "N12.P29",
+   "message": "wired to K2Node_MacroInstance_0, which is not in the copied text"
+  },
+  {
+   "code": "NOT_IN_CLIPBOARD",
+   "path": "",
+   "message": "no node titles, pin labels, pure/latent flags, unused/unreachable analysis, graph name and type, Blueprint name, member variables, struct or enum definitions, macro or collapsed graph bodies, timeline templates"
+  }
+ ]
+}

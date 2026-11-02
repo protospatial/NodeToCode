@@ -84,7 +84,8 @@ K2 schema), states, state machines and Control Rig (RigVM) graphs are refused wi
 capture tools, the batch tools, Copy JSON and translate, and `CanTranslateGraph` (the overlay shows n/a). Every engine `UK2Node` subclass and the N2C type it gets: [k2-node-inventory.md](k2-node-inventory.md)
 (`Scripts/k2_node_inventory.py`). Material capture (epic 0442) is not built yet; every material expression and
 material asset class on each engine, the handling proposed for it and the ENGINE_MINOR_VERSION guards it needs:
-[material-classes.md](material-classes.md) (`Context/translation-pipeline/gen_material_classes.py`, card 0446).
+[material-classes.md](material-classes.md) (`Context/translation-pipeline/gen_material_classes.py`, card 0446). Reading graphs without the editor plugin (devkits, CI), compared across clipboard T3D, CUE4Parse and the
+Rust uasset parsers, with a T3D-to-N2C-JSON spike (card 0329): [offline-reader.md](../explorations/offline-reader.md).
 
 Liveness (card 0137, issue #13): the capture leaves out the editor's ghost nodes (`IsAutomaticallyPlacedGhostNode()`,
 unless `FN2CCaptureOptions::bIncludeGhostNodes`, which the graph-editing MCP tools and the Python bridge's
