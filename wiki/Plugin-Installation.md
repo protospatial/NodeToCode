@@ -69,6 +69,6 @@ If you are copying the plugin from your engine installation over to a project:
 
 After restarting, verify that:
 
-- The Node to Code button [appears in Blueprint Editor toolbars](Accessing-and-Triggering-Translation)
+- A Blueprint graph shows the [N2C bar](Accessing-and-Triggering-Translation) at its bottom left
 - The Node to Code category exists in Project Settings under the Plugins category
 - No error messages appear in the Output Log related to the plugin

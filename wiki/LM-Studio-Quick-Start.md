@@ -40,8 +40,7 @@
 
 ### 5. Test Your Setup
 - Load any Blueprint in the Blueprint Editor
-- Click the **Node to Code** button in the toolbar
-- Select **"Translate Blueprint"**
+- Click **Translate** on the N2C bar at the bottom left of the graph
 - Your translation will be processed locally using LM Studio!
 
 ### Additional Resources

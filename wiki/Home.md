@@ -26,11 +26,10 @@ If you're eager to jump in, here's the TL;DR version:
 2. Ensure your project is a Code project. If it's not already, you can use Tools -> Add C++ Class via the editor to add an empty class to your project.
 2. Configure your [preferred LLM provider](Choosing-an-LLM-Provider) via the Node to Code [Plugin settings](Initial-Configuration) found in Project settings
 3. Open any Blueprint graph
-4. Click the Node to Code toolbar button
-5. Select "Translate Blueprint Graph to Code"
+4. Click **Translate** on the N2C bar at the bottom left of the graph
 
     <p align="left">
-        <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_Button_Translate.png" alt="Node to Code Blueprint on left, UI with code translation on right" width="512">
+        <img src="images/translate-entry/graph-overlay.png" alt="The N2C bar with its Translate button" width="305">
     </p>
 
 That's it! After a few moments, your translated code should be ready for review in the [Node to Code Editor](Opening-the-Editor).

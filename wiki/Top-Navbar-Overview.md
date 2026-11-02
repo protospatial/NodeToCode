@@ -1,80 +1,51 @@
-### User Interface → Top Navbar Overview
+The Node to Code window has two parts: the **Tag Manager**, where you pick tagged graphs and translate them, and the
+**translation viewer**, which shows a translation's files and notes. This page names every control in both. To open
+the window, click **N2C** on the bar at the bottom left of any Blueprint graph ([Opening the Editor](Opening-the-Editor)).
 
-The top navbar provides quick access to essential features and navigation options.
+## The Tag Manager
 
-## A. Translations Browser (Left)
+<img src="images/main-window/tag-manager.png" alt="The Tag Manager: provider and model bar, search box, category tree, graph list with Graph Name, Blueprint and Context columns, and the Actions bar" width="880">
 
-A powerful tool for managing multiple translations:
+From top to bottom:
 
-1. **Browser Panel Toggle**
-    - Click the "Translations" button to slide in the browser panel
-    - Shows all translated graphs in current session
-    - Organizes translations in order from the top level graph to most nested graphs
-2. **Translation Browser Features**
-    
-    - Search/filter translations
-    - Sort by name or timestamp
-    - Group by Blueprint source
-    - Quick navigation between translations
-    
-> [!NOTE]
-> The translations browser does not currently retain your translation history after closing the Editor window.
+1. **Provider and Model.** The provider and model the next translation uses, the same settings as in Project
+   Settings ([Provider Configuration](Provider-Configuration)). The gear button opens the Node to Code settings.
+   Below them, the token count of the checked graphs and the **Estimated batch cost** (**Free (local model)** for
+   Ollama and LM Studio).
+2. **Search tags or graphs.** Lists the graphs whose name, Blueprint, tag or category matches what you type.
+3. **Categories.** Tag categories and their tags, each with the number of graphs it holds. Select one to list its
+   graphs. A first tag comes from the tag button on a graph's N2C bar.
+4. **The graph list.** One row per graph, with columns you can sort by clicking their header:
+   - the checkbox (the header's checkbox checks every row shown);
+   - **Graph Name** (hover it to see the graph's tags);
+   - **Blueprint**, with the row's buttons at its right end when you hover: **Translate this graph**, **View
+     translation** (greyed out until there is one) and **Export as JSON**;
+   - **Context**: the graph's size in tokens as a ring and its estimated cost (click the ring to refresh it).
 
-3. **Cost Estimation**
-    - Displays estimated cost for entire translation depending on the provider/model being used
-    - Displays the estimated cost of the translation in US Dollars
-    - Updates in real-time with new translations
-    - Configurable pricing based on provider settings via the Plugin settings
+   Double-click a row to open its translation. Right-click a row for **Translate**, **View Translation**, **Export
+   JSON**, **Open in Blueprint** and **Remove Tag**. Click, Shift-click and Ctrl-click check rows like a selection.
+5. **Actions.** **Selection** counts the checked graphs. **Batch Translate** sends one request per checked graph,
+   **Export JSON** saves their Node to Code JSON to the **Output** folder (**Minify JSON** writes it on one line), and
+   **Remove Selected** takes the listed tags off them. These three are greyed out until you check a graph.
+   **Prune Missing** removes the tags and translation records of graphs whose Blueprint was deleted (the files on
+   disk are kept). **Output** and **Browse...** set the folder translations and exports are saved in
+   ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
 
-<p align="center">
-    <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_NavBarUICallouts.png" alt="Node to Code navbar diagram" width="1250">
-</p>
+Removing tags asks first and then offers **Undo** for ten seconds. More on tags: [Viewing the Results](Viewing-the-Results#tags-and-the-graph-list).
 
-## B. Implementation / Declaration Tabs (Center)
+## The translation viewer
 
-Central navigation for C++ translations:
+<img src="images/main-window/translation-viewer.png" alt="The translation viewer: graph name and close button, .cpp, .h and JSON tabs, the code, and the Translation Notes panel" width="880">
 
-1. **Implementation Tab**
-    - Shows the main implementation code (.cpp content) such as function definitions
+1. **Title and close.** The name of the graph whose translation is open; the cross closes the viewer and returns to
+   the Tag Manager.
+2. **File tabs.** The implementation, labelled with its extension (**.cpp**, **.py**, **.js**, **.cs**, **.swift**,
+   or **.md** for pseudocode); the declaration (**.h**), present only for C++; and **JSON**, the Node to Code JSON
+   the translation was made from. The viewer opens on the implementation.
+3. **Copy.** The clipboard button at the right copies the open tab's text.
+4. **The code**, highlighted in the translation's language ([Code Editor](Code-Editor)).
+5. **Translation Notes.** What the model says the code needs and assumes (includes, members, nodes it left out
+   because they never run). Click the header to fold the panel; its own button copies the notes
+   ([Implementation Notes](Implementation-Notes)).
 
-2. **Declaration Tab**
-    - Shows header content (.h file)
-    - Class declarations and definitions
-    - UFUNCTION and UPROPERTY macros
-    - Property and function declarations
-    
-> [!NOTE]
-> The Declaration tab is only visible for C++ translations. Other
-> languages show only the Implementation tab.
-    
-
-## C. Implementation Notes Button (Center-Right)
-
-Access additional context and guidance through the Implementation Notes panel. See the full [Implementation Notes](Implementation-Notes) documentation for detailed usage information.
-
-1. **Notes Panel Toggle**
-    - Shows/hides the implementation notes panel
-    - Slides in from the bottom of the window
-    - Click the Notes button again or the - button to minimize
-
-2. **Notes Content Overview**
-    - Integration requirements and setup steps
-    - Best practices and optimization tips
-    - Blueprint compatibility notes
-    - Performance considerations
-
-## D. Styling Button (Far Right)
-
-Customize the editor appearance:
-
-1. **Theme Selection**
-    - Choose from a variety of default themes
-    - Custom theme support via the Plugin settings
-
-2. **Font Controls**
-    - Adjust font size (8-18pt)
-    
-> [!NOTE]
-> Font size and theme are currently not remembered after closing the Node to Code Editor.    
-
-The top navbar is designed for efficient navigation and customization of your translation viewing experience. Each element is carefully positioned for quick access while maintaining a clean, uncluttered interface that lets you focus on the translated code.
+The window has no theme or font controls. Its colors are settings: [Colors and Syntax Highlighting](Theme-&-Syntax-Highlighting).

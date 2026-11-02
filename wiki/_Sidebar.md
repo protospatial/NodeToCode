@@ -48,14 +48,14 @@
 * [Max Translation Depth](Max-Translation-Depth)
 * [Reference Source Files](Reference-Source-Files)
 * [Logging Configuration](Logging-Configuration)
-* [Theme & Syntax Highlighting](Theme-&-Syntax-Highlighting)
+* [Colors & Syntax Highlighting](Theme-&-Syntax-Highlighting)
 </details>
 
 <details>
 <summary>🖥️ User Interface</summary>
 
 * [Opening the Editor](Opening-the-Editor)
-* [Top Navbar Overview](Top-Navbar-Overview)
+* [Window Overview](Top-Navbar-Overview)
 * [Code Editor](Code-Editor)
 * [Implementation Notes](Implementation-Notes)
 </details>
