@@ -52,7 +52,8 @@
                "Content/Data/N2CModelCatalog.json", "Source/Public/LLM/N2CModelCatalog.h", "Source/Private/LLM/N2CModelCatalog.cpp",
                "Source/Private/LLM/Providers/**", "Source/Public/LLM/Providers/**"],
       "pages": ["wiki/Provider-Configuration.md", "wiki/Choosing-an-LLM-Provider.md", "wiki/LM-Studio-Quick-Start.md",
-                "wiki/LLM-Provider-Documentation-&-Resources.md"]
+                "wiki/LLM-Provider-Documentation-&-Resources.md",
+                "wiki/Data-Flow-and-Privacy.md"]
     },
     {
       "name": "saved-translations",

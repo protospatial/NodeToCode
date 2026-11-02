@@ -7,6 +7,7 @@
 
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CSettings.h"
+#include "Core/Widgets/SN2CGetStartedCard.h"
 #include "Core/Widgets/SN2CGraphOverlay.h"
 #include "Core/Widgets/SN2CTagManager.h"
 #include "Core/Widgets/SN2CTranslationViewer.h"
@@ -219,7 +220,7 @@ namespace N2CDocsShots
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FN2CDocsShotsMainWindow, "N2CDocs.Shots.main-window", N2C_TEST_FLAGS)
 
-/** main-window: the Node to Code window's tag manager (a category selected) and its translation viewer */
+/** main-window: the Node to Code window's tag manager (a category selected), its translation viewer, and a first run (no tags; the Get Started card) */
 bool FN2CDocsShotsMainWindow::RunTest(const FString& Parameters)
 {
 	FString Folder;
@@ -243,6 +244,29 @@ bool FN2CDocsShotsMainWindow::RunTest(const FString& Parameters)
 	const TSharedRef<SN2CTranslationViewer> Viewer = SNew(SN2CTranslationViewer);
 	Viewer->LoadTranslation(N2CDocsShots::SampleTranslation(), TEXT("EventGraph"), FString(), EN2CCodeLanguage::Cpp);
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Viewer), FVector2D(880.0, 560.0), Folder, TEXT("main-window/translation-viewer"));
+
+	// A first run (card 0269): no tags yet (the tree's guidance, the selection buttons disabled) ...
+	Settings->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
+	const TSharedRef<SN2CTagManager> EmptyManager = SNew(SN2CTagManager)
+		.ShowActionBar(true)
+		.TagSource([]() { return TArray<FN2CTaggedBlueprintGraph>(); });
+	Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(EmptyManager), FVector2D(880.0, 460.0), Folder, TEXT("main-window/first-run"));
+
+	// ... and the Get Started card, with the Anthropic key row; refused when it would show the end of a saved key
+	const EN2CLLMProvider SavedProvider = Settings->Provider;
+	Settings->Provider = EN2CLLMProvider::Anthropic;
+	const FString KeyStatus = UN2CSettings::DescribeApiKeySource(EN2CLLMProvider::Anthropic);
+	if (KeyStatus.Contains(TEXT("ends")))
+	{
+		AddError(TEXT("main-window/get-started not captured: the key row would show the end of a saved Anthropic key. Run with no key saved for NodeToCode."));
+	}
+	else
+	{
+		const TSharedRef<SN2CGetStartedCard> Card = SNew(SN2CGetStartedCard).AlwaysShow(true);
+		N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Card), FVector2D(880.0, 262.0), Folder, TEXT("main-window/get-started"));
+	}
+	Settings->Provider = SavedProvider;
 	return !HasAnyErrors();
 }
 

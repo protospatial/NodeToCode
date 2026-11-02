@@ -98,6 +98,9 @@ saved, Node to Code uses the editor's environment instead:
 A key in Project Settings wins over the variable.Details:
 [API Keys from Environment Variables](wiki/Initial-Configuration.md#api-keys-from-environment-variables).
 
+What a translation sends to each provider, what the provider keeps, and what stays on your machine (Node to Code
+sends nothing to Protospatial): [Data Flow and Privacy](wiki/Data-Flow-and-Privacy.md).
+
 ## Connect an MCP client
 
 Open your project in the editor first; the server runs only while the editor is open, and answers only on this
