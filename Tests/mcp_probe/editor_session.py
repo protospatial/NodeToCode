@@ -32,9 +32,10 @@ import sys
 import time
 import urllib.request
 
-# Extra arguments for a headless session that opens a Blueprint editor (every live script that makes the in-memory
-# probe Blueprint, probe_blueprint.py): on UE 5.6 under -nullrhi the Blueprint editor's window otherwise reaches
-# FGenericWindow::GetRestoredDimensions, which is Fatal. Pass as EditorSession(..., extra_args=BLUEPRINT_EDITOR_ARGS).
+# Extra arguments for a headless session that opens an asset editor (every live script that makes the in-memory
+# probe Blueprint, probe_blueprint.py, and the Material Editor probe): on UE 5.6 and 5.7 under -nullrhi the editor's
+# window otherwise reaches FGenericWindow::GetRestoredDimensions, which is Fatal (gate 0458). build.ps1 -Test passes
+# the same flag (card 0509). Pass as EditorSession(..., extra_args=BLUEPRINT_EDITOR_ARGS).
 BLUEPRINT_EDITOR_ARGS = ('-RenderOffScreen',)
 
 # Card 0495: every session runs apart from two machine-wide things that other editors and builds on this computer share.

@@ -190,11 +190,6 @@ void FN2CEditorContextSpec::Define()
 
 		It(TEXT("follows the focused editor, its graph and its selection across an Actor and a Widget Blueprint"), [this]()
 		{
-#if !N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor's window (see N2CTestHelpers.h). This case
-			// runs on 5.8; the same behaviour is checked live in a windowed editor on 5.8.
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-#else
 			UAssetEditorSubsystem* AssetEditors = GEditor ? GEditor->GetEditorSubsystem<UAssetEditorSubsystem>() : nullptr;
 			if (!TestNotNull(TEXT("asset editor subsystem"), AssetEditors))
 			{
@@ -341,7 +336,6 @@ void FN2CEditorContextSpec::Define()
 					Json.IsValid() && FindBy(Json->GetArrayField(TEXT("selectedNodes")), TEXT("nodeGuid"),
 						Branch->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens)).IsValid());
 			}
-#endif
 		});
 	});
 }

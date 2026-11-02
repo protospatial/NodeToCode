@@ -536,14 +536,6 @@ void FN2CPythonBridgeJsonSpec::Define()
 	{
 		It(TEXT("return the Blueprint, graph, node, pin and variable names as written"), [this]()
 		{
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
-			// UE 5.6 and 5.7 under -nullrhi cannot close a Blueprint editor's window (closing it, or a later Slate
-			// layout pass while it is open, asks the null native window for its restored size: a fatal error in
-			// GenericWindow.cpp, "GetRestoredDimensions is not expected to be called on this platform"). This case runs
-			// on 5.8; on 5.6 and 5.7 the same calls are checked live through run-python
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-			return;
-#endif
 			FScopedStateFolder StateFolder;
 			FFocusedBlueprint Focused;
 			if (!TestTrue(TEXT("the awkward Blueprint is open with its function graph focused"), Focused.Create()))
@@ -710,12 +702,6 @@ void FN2CPythonBridgeJsonSpec::Define()
 		// a malformed entry used to vanish from the result
 		It(TEXT("ConnectPins names the conversion node it placed and reports a malformed entry by index"), [this]()
 		{
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
-			// As above: a headless Blueprint editor window cannot be closed below 5.8. The MCP tool shares the connect
-			// code (N2CPinConnectPolicy) and is checked on every engine by NodeToCode.MCP.Graph
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-			return;
-#endif
 			FScopedStateFolder StateFolder;
 			FFocusedBlueprint Focused;
 			if (!TestTrue(TEXT("the awkward Blueprint is open with its function graph focused"), Focused.Create()))
@@ -809,11 +795,6 @@ void FN2CPythonBridgeJsonSpec::Define()
 
 		It(TEXT("GetFocusedBlueprintJson on the focused event graph returns the default events"), [this]()
 		{
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION < 8
-			// As above: a headless Blueprint editor window cannot be closed on 5.6 and 5.7 (the two cases before this
-			// one cover GetFocusedBlueprintJson's work on the graph there; only the focus lookup is not exercised)
-			AddInfo(TEXT("Skipped below UE 5.8: a headless Blueprint editor window cannot be closed there"));
-#else
 			N2CTest::FTestBlueprint Blueprint(TEXT("BP_N2CBridgeGhostOnly"));
 			UEdGraph* EventGraph = Blueprint.EventGraph();
 			TSharedPtr<IBlueprintEditor> Editor;
@@ -833,7 +814,6 @@ void FN2CPythonBridgeJsonSpec::Define()
 			}
 			Blueprint.GetPackage()->SetDirtyFlag(false);
 			GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Blueprint.GetBlueprint());
-#endif
 		});
 	});
 

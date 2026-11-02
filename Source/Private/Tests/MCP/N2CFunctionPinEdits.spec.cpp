@@ -56,8 +56,7 @@ namespace N2CFunctionPinEditsSpec
  * Every call node gets exactly the new signature, the links already made stay, the Blueprint compiles with no errors,
  * every Return node gets the return value, one undo restores the pins, UserDefinedPins and call sites, and a
  * misspelled pin name is refused with no transaction and a clean package. The bridge runs on the focused graph, so its
- * case opens a Blueprint editor and runs on UE 5.8 only (a headless Blueprint editor cannot be closed below 5.8, see
- * NodeToCode.MCP.CompileOnce). Capture of an edited signature: the FunctionPinEdits case of NodeToCode.Capture.Golden
+ * case opens a Blueprint editor (headless with -RenderOffScreen on 5.6 and 5.7, card 0509). Capture of an edited signature: the FunctionPinEdits case of NodeToCode.Capture.Golden
  * (golden, DataFlows, ExecFlows).
  */
 BEGIN_DEFINE_SPEC(FN2CFunctionPinEditsSpec, "NodeToCode.MCP.FunctionPinEdits", N2C_TEST_FLAGS)
@@ -425,8 +424,7 @@ void FN2CFunctionPinEditsSpec::Define()
 		TestTrue(TEXT("Result still on both Return nodes"), N2CTest::HasUserPin(ReturnA, TEXT("Result")) && N2CTest::HasUserPin(ReturnB, TEXT("Result")));
 	});
 
-#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	It(TEXT("the Python bridge's four pin functions do the same on the focused function (UE 5.8)"), [this]()
+	It(TEXT("the Python bridge's four pin functions do the same on the focused function"), [this]()
 	{
 		if (!Build(TEXT("BP_N2CPinEditsBridge")))
 		{
@@ -483,7 +481,6 @@ void FN2CFunctionPinEditsSpec::Define()
 		ExpectCallSitesMatch(TEXT("bridge after removes"), MyFunc, { EventCall, CallerCall });
 		TestTrue(TEXT("bridge: the original links are all there"), N2CTest::AllLinks(Blueprint).Includes(Original) && Original.Includes(N2CTest::AllLinks(Blueprint)));
 	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

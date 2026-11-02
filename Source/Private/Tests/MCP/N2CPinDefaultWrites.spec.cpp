@@ -289,8 +289,7 @@ void FN2CPinDefaultWritesSpec::Define()
 		});
 	});
 
-#if N2C_CAN_CLOSE_HEADLESS_BLUEPRINT_EDITOR
-	Describe(TEXT("the Python bridge's SetPinValue on the focused graph (UE 5.8)"), [this]()
+	Describe(TEXT("the Python bridge's SetPinValue on the focused graph"), [this]()
 	{
 		It(TEXT("refuses what the schema refuses, keeps the old value, maps an enum index and resets on empty"), [this]()
 		{
@@ -338,7 +337,6 @@ void FN2CPinDefaultWritesSpec::Define()
 			ExpectSet(TEXT("empty on InString"), EPin::String, FString(), TEXT("Hello"));
 		});
 	});
-#endif
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS
