@@ -27,7 +27,13 @@ and reconnect the client.
 
 ## Let NodeToCode write the config files
 
-In the editor, open **Window → Output Log**, type in the **Cmd** box and press Enter:
+In **Project Settings → Plugins → Node to Code → MCP Server**, the **MCP Client Config** row has a client list
+(**All clients** or one of them), a **Bearer token** box (it starts as **Require MCP Bearer Token**) and a **Write MCP
+Client Config** button. The button writes into your project folder and a notification lists each file it wrote, left
+as it was, or could not change. **Claude Desktop (copy snippet)** writes no file: it copies the snippet for
+`claude_desktop_config.json` to the clipboard.
+
+The button runs the console command. To use the command, open **Window → Output Log**, type in the **Cmd** box and press Enter:
 
 ```
 N2C.Mcp.WriteClientConfig

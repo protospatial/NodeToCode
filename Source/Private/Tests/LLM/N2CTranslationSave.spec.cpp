@@ -279,6 +279,82 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 		}
 	}
 
+	/**
+	 * Card 0510: an MCP or Python translation (ProcessN2CJsonWithOverrides) is archived as one run, and its result JSON
+	 * names that run folder and the code files in it, so a caller (the Claude Code plugin's /nodetocode:translate)
+	 * reports them instead of writing a second copy. With bArchiveRun false nothing is written and neither is named.
+	 */
+	void RunOverridesScenario(bool bArchiveRun)
+	{
+		FStubOllama Stub;
+		if (!TestTrue(TEXT("stub endpoint started"), Stub.Start(OllamaReply(TEXT("BP_N2CMcpRun")))))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { Stub.Stop(); };
+		N2CTest::FScratchDir Output(TEXT("N2CMcpRunResult"));
+		FScopedSettings Scoped(Stub.Endpoint(), Output.Path);
+
+		UN2CLLMModule* Module = UN2CLLMModule::Get();
+		if (!TestTrue(TEXT("module initializes with Ollama"), Module->Initialize()))
+		{
+			return;
+		}
+		const TUniquePtr<N2CTest::FTestBlueprint> BP = MakeBlueprint(TEXT("BP_N2CMcpRun"));
+		FN2CBlueprint Captured;
+		if (!BP->GetBlueprint() || !CaptureEventGraph(*BP, Captured))
+		{
+			return;
+		}
+
+		const TSharedRef<FString> Result = MakeShared<FString>();
+		const TSharedRef<int32> Completions = MakeShared<int32>(0);
+		Module->ProcessN2CJsonWithOverrides(FN2CSerializer::ToJson(Captured, EN2CJsonStyle::Condensed),
+			UN2CLLMModule::MakeConfigFromSettings(), EN2CCodeLanguage::Cpp,
+			FOnLLMResponseReceived::CreateLambda([Result, Completions](const FString& Json) { *Result = Json; ++(*Completions); }),
+			FOnN2CTranslationParsed(), bArchiveRun);
+		Pump(15.0, [Completions] { return *Completions > 0; });
+		const TSharedPtr<FJsonObject> Json = N2CTest::ParseJsonObject(*Result);
+		if (!TestEqual(TEXT("the request completed once"), *Completions, 1)
+			|| !TestTrue(FString::Printf(TEXT("the result is a translation (got %s)"), *Result->Left(300)), Json.IsValid() && Json->HasField(TEXT("graphs"))))
+		{
+			return;
+		}
+
+		TArray<FString> Runs;
+		IFileManager::Get().FindFiles(Runs, *(Output.Path / TEXT("*")), false, true);
+		if (!bArchiveRun)
+		{
+			TestEqual(TEXT("nothing is archived"), Runs.Num(), 0);
+			TestFalse(TEXT("no run_folder"), Json->HasField(TEXT("run_folder")));
+			TestFalse(TEXT("no files"), Json->HasField(TEXT("files")));
+			return;
+		}
+		TestEqual(TEXT("exactly one run folder"), Runs.Num(), 1);
+		FString RunFolder;
+		if (!TestTrue(TEXT("the result names run_folder"), Json->TryGetStringField(TEXT("run_folder"), RunFolder)))
+		{
+			return;
+		}
+		TestTrue(FString::Printf(TEXT("run_folder (%s) is absolute and exists"), *RunFolder), !FPaths::IsRelative(RunFolder) && FPaths::DirectoryExists(RunFolder));
+		TestTrue(TEXT("run_folder is the archive's latest run"), FPaths::IsSamePath(RunFolder, Module->GetLatestTranslationPath()));
+		TestTrue(TEXT("run_folder is under the translation output directory"), FPaths::IsUnderDirectory(RunFolder, Output.Path));
+		TestTrue(TEXT("its manifest is written"), FPaths::FileExists(RunFolder / TEXT("manifest.json")));
+		const TArray<TSharedPtr<FJsonValue>>* Files = nullptr;
+		if (TestTrue(TEXT("the result lists files"), Json->TryGetArrayField(TEXT("files"), Files) && Files && Files->Num() > 0))
+		{
+			for (const TSharedPtr<FJsonValue>& File : *Files)
+			{
+				const FString Path = File.IsValid() ? File->AsString() : FString();
+				TestTrue(FString::Printf(TEXT("%s exists in run_folder"), *Path), FPaths::FileExists(Path) && FPaths::IsUnderDirectory(Path, RunFolder));
+			}
+			TestTrue(TEXT("the root graph's implementation is listed"), Files->ContainsByPredicate([](const TSharedPtr<FJsonValue>& Value)
+			{
+				return Value.IsValid() && Value->AsString().EndsWith(TEXT("EventGraph/EventGraph.cpp"));
+			}));
+		}
+	}
+
 END_DEFINE_SPEC(FN2CTranslationSaveSpec)
 
 void FN2CTranslationSaveSpec::Define()
@@ -299,6 +375,16 @@ void FN2CTranslationSaveSpec::Define()
 		{
 			UN2CLLMModule::Get()->ProcessN2CJson(JsonA, OnComplete, OnParsed);
 		});
+	});
+
+	It(TEXT("names the MCP run folder and its files in the result of a translation it archives (card 0510)"), [this]()
+	{
+		RunOverridesScenario(true);
+	});
+
+	It(TEXT("archives nothing and names no run folder when the caller saves the result itself"), [this]()
+	{
+		RunOverridesScenario(false);
 	});
 }
 
