@@ -2,6 +2,7 @@
 
 #include "Core/N2CNodeCollector.h"
 #include "Utils/N2CLogger.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 FN2CNodeCollector& FN2CNodeCollector::Get()
 {
@@ -11,6 +12,7 @@ FN2CNodeCollector& FN2CNodeCollector::Get()
 
 bool FN2CNodeCollector::CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Node*>& OutNodes)
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Capture_CollectNodes);
     if (!Graph)
     {
         FN2CLogger::Get().LogWarning(TEXT("Invalid graph provided to CollectNodesFromGraph"));

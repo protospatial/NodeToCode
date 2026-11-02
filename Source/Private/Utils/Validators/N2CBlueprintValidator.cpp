@@ -2,6 +2,7 @@
 
 #include "Utils/Validators/N2CBlueprintValidator.h"
 #include "Models/N2CJsonContract.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 namespace
 {
@@ -39,6 +40,7 @@ bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, FString& O
 
 bool FN2CBlueprintValidator::Validate(const FN2CBlueprint& Blueprint, TArray<FN2CDiagnostic>& OutDiagnostics)
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(N2C_Validate);
     if (!ValidateRequired(Blueprint, OutDiagnostics))
     {
         return false;
