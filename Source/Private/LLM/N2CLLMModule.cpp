@@ -503,10 +503,9 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
                 EndRequest(EN2CSystemStatus::Idle);
 
                 // An MCP or Python translation is kept as a run of the translation archive (card 0252)
-                if (bArchiveRun)
-                {
-                    ArchiveMcpTranslation(TranslationResponse, JsonInput, RequestConfigCopy, RequestLanguage);
-                }
+                FN2CArchivedResponse Archived;
+                const bool bArchived = bArchiveRun
+                    && ArchiveMcpTranslation(TranslationResponse, JsonInput, RequestConfigCopy, RequestLanguage, Archived);
 
                 TSharedPtr<FJsonObject> ResultJson = MakeShared<FJsonObject>();
                 TArray<TSharedPtr<FJsonValue>> GraphsJsonArray;
@@ -528,7 +527,31 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
                 ResultJson->SetArrayField(TEXT("graphs"), GraphsJsonArray);
                 
                 ResultJson->SetObjectField(TEXT("usage"), TranslationResponse.Usage.ToJson());
-                
+
+                // Where the archive put it, so a caller reports those files instead of writing its own copy (card 0510)
+                if (bArchived)
+                {
+                    auto Absolute = [](const FString& Path)
+                    {
+                        FString Full = FPaths::ConvertRelativePathToFull(Path);
+                        FPaths::NormalizeFilename(Full);
+                        return Full;
+                    };
+                    TArray<TSharedPtr<FJsonValue>> Files;
+                    for (const FN2CArchivedEntry& Entry : Archived.Entries)
+                    {
+                        for (const FString* File : { &Entry.DeclarationFile, &Entry.ImplementationFile, &Entry.NotesFile })
+                        {
+                            if (!File->IsEmpty())
+                            {
+                                Files.Add(MakeShared<FJsonValueString>(Absolute(*File)));
+                            }
+                        }
+                    }
+                    ResultJson->SetStringField(TEXT("run_folder"), Absolute(Archived.Folder));
+                    ResultJson->SetArrayField(TEXT("files"), Files);
+                }
+
                 FString OutputJsonString;
                 TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputJsonString);
                 FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
@@ -557,8 +580,8 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     return Handle;
 }
 
-void UN2CLLMModule::ArchiveMcpTranslation(const FN2CTranslationResponse& Response, const FString& JsonInput,
-    const FN2CLLMConfig& RequestConfig, EN2CCodeLanguage Language)
+bool UN2CLLMModule::ArchiveMcpTranslation(const FN2CTranslationResponse& Response, const FString& JsonInput,
+    const FN2CLLMConfig& RequestConfig, EN2CCodeLanguage Language, FN2CArchivedResponse& OutWritten)
 {
     // The run is named after the Blueprint the N2C JSON describes (metadata.name)
     FString BlueprintName;
@@ -580,12 +603,12 @@ void UN2CLLMModule::ArchiveMcpTranslation(const FN2CTranslationResponse& Respons
     if (!Run.IsValid())
     {
         FN2CLogger::Get().LogWarning(TEXT("The translation could not be saved: no run folder"), TEXT("LLMModule"));
-        return;
+        return false;
     }
     FN2CArchiveSource Source;
     Source.InputJson = JsonInput;
-    FN2CArchivedResponse Written;
-    Run->WriteResponse(Response, Source, FString(), Written);
+    Run->WriteResponse(Response, Source, FString(), OutWritten);
+    return true;
 }
 
 FString UN2CLLMModule::GetProviderName(EN2CLLMProvider Provider)
