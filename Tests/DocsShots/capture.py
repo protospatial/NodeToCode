@@ -24,9 +24,9 @@ refuses to capture while a key is saved for NodeToCode. The editor's MCP server 
 
     python -I Tests/DocsShots/capture.py --restamp
 
-starts no editor: it sets each shot's commit in shots.json to the last commit that changed its image file. Run it after a
-squash merge, which drops the branch commit the shots were taken at (docs_check.py cannot diff against a commit it does
-not have, so it would never call those shots stale), and commit the manifest.
+starts no editor: it sets each shot's commit in shots.json to the last commit that changed its image file. It is not
+needed after a squash merge any more (card 0517): when a stamp is not in the history being checked, docs_check.py --stale
+uses the commit that wrote it into shots.json, which is the squash commit. Use it only to tidy the manifest.
 """
 import argparse
 import json

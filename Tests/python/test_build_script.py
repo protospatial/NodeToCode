@@ -77,7 +77,7 @@ def test_editor_check_matches_full_host_path(tmp_path):
     script_file = tmp_path / 'check.ps1'
     script_file.write_text(SCRIPT, encoding='utf-8')
     env = dict(os.environ, N2C_BUILD_PS1=BUILD_PS1, N2C_CASES=str(cases_file))
-    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-File', str(script_file)],
+    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', str(script_file)],
                           capture_output=True, text=True, env=env, timeout=120)
     assert proc.returncode == 0, proc.stderr
     results = json.loads(proc.stdout)
@@ -122,7 +122,7 @@ def test_ubt_shared_file_collision_is_detected(tmp_path):
     script_file = tmp_path / 'collision.ps1'
     script_file.write_text(COLLISION_SCRIPT, encoding='utf-8')
     env = dict(os.environ, N2C_BUILD_PS1=BUILD_PS1, N2C_LOGS=';'.join(logs))
-    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-File', str(script_file)],
+    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', str(script_file)],
                           capture_output=True, text=True, env=env, timeout=120)
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout) == [want for _, want in UBT_LOGS]
@@ -158,7 +158,7 @@ def test_host_link_is_made_once_and_refuses_a_folder(tmp_path):
     script_file = tmp_path / 'link.ps1'
     script_file.write_text(LINK_SCRIPT, encoding='utf-8')
     env = dict(os.environ, N2C_BUILD_PS1=BUILD_PS1, N2C_ROOT=str(tmp_path / 'root'))
-    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-File', str(script_file)],
+    proc = subprocess.run([SHELL, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', str(script_file)],
                           capture_output=True, text=True, env=env, timeout=120)
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout) == [True, True]
