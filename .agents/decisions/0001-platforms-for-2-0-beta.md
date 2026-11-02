@@ -2,10 +2,7 @@
 
 ## Status
 
-proposed (2026-10-23), provisional pending the owner's confirmation on card 0073
-
-**Provisional:** the owner has not decided card 0073 (review decision dec-11). Card 0074 applies the review's
-recommendation; the owner may still choose to verify Mac before 2.0-beta.
+decided (2026-11-02), by the owner on card 0073 (as recorded below; applied provisionally since 2026-10-23)
 
 ## Sources
 
