@@ -61,7 +61,7 @@ FMcpToolDefinition FN2CMcpExportN2CJsonBatchTool::GetDefinition() const
 	const TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
 	N2CMcpBatchTargets::AddSchema(Properties, MaxGraphs);
 
-	const TSharedPtr<FJsonObject> Depth = Property(TEXT("integer"), TEXT("Optional, 0 to 5. Each file also captures the functions, macros and collapsed graphs its graph uses up to this many calls away. Default: the project's Max Translation Depth setting."));
+	const TSharedPtr<FJsonObject> Depth = Property(TEXT("integer"), TEXT("Optional, 0 to 5. Each file also captures the user functions and macros (project content and project plugins) its graph calls, up to this many calls away. Collapsed graphs always come with the graph that holds them, at every depth. Default: the project's Max Translation Depth setting."));
 	Depth->SetNumberField(TEXT("minimum"), 0);
 	Depth->SetNumberField(TEXT("maximum"), 5);
 	Properties->SetObjectField(TEXT("depth"), Depth);

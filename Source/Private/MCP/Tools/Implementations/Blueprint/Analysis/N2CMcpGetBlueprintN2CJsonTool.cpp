@@ -55,7 +55,7 @@ FMcpToolDefinition FN2CMcpGetBlueprintN2CJsonTool::GetDefinition() const
 	Describe(Schema, TEXT("blueprintPath"), TEXT("Required. Asset path of the Blueprint, e.g. /Game/Blueprints/BP_Door or /Game/Blueprints/BP_Door.BP_Door."));
 	Describe(Schema, TEXT("graphName"), TEXT("Optional. Name of one graph (event graph, function, macro, collapsed, delegate or interface graph). With neither graphName nor graphGuid, every graph is read."));
 	Describe(Schema, TEXT("graphGuid"), TEXT("Optional. The graph's GraphGuid from list-blueprint-graphs (a function's ID); stable across renames. Wins over graphName."));
-	Describe(Schema, TEXT("depth"), TEXT("Optional, 0 to 5. Also capture the functions, macros and collapsed graphs the graph uses up to this many calls away (Max Translation Depth). Default: the project's Max Translation Depth setting."));
+	Describe(Schema, TEXT("depth"), TEXT("Optional, 0 to 5. Also capture the user functions and macros (project content and project plugins) the graph calls, up to this many calls away (Max Translation Depth). Collapsed graphs always come with the graph that holds them, at every depth. Default: the project's Max Translation Depth setting."));
 	Describe(Schema, TEXT("compact"), TEXT("Optional, default true. No whitespace; false indents the JSON as get-focused-blueprint does."));
 	Describe(Schema, TEXT("toFile"), TEXT("Optional, default false. Always write the document to a file and return its path."));
 	const TSharedPtr<FJsonObject>* SchemaProperties = nullptr;
