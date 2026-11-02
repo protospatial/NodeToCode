@@ -4,6 +4,28 @@
 #include "Rendering/DrawElements.h"
 #include "Core/Style/N2CUIColors.h"
 
+namespace N2CCircularProgressBarPrivate
+{
+	/** SN2CCircularProgressBar::SetPinnedPercentForCapture (docs shots only); game thread, like painting */
+	TOptional<float> PinnedPercent;
+}
+
+void SN2CCircularProgressBar::SetPinnedPercentForCapture(TOptional<float> InPercent)
+{
+	N2CCircularProgressBarPrivate::PinnedPercent = InPercent;
+}
+
+TOptional<float> SN2CCircularProgressBar::GetPinnedPercentForCapture()
+{
+	return N2CCircularProgressBarPrivate::PinnedPercent;
+}
+
+float SN2CCircularProgressBar::GetDrawnPercent() const
+{
+	const TOptional<float>& Pinned = N2CCircularProgressBarPrivate::PinnedPercent;
+	return FMath::Clamp(Pinned.IsSet() ? Pinned.GetValue() : Percent.Get(), 0.0f, 1.0f);
+}
+
 void SN2CCircularProgressBar::Construct(const FArguments& InArgs)
 {
 	Percent = InArgs._Percent;
@@ -34,7 +56,7 @@ int32 SN2CCircularProgressBar::OnPaint(
 
 	const float R = Radius.Get();
 	const float T = Thickness.Get();
-	const float P = FMath::Clamp(Percent.Get(), 0.0f, 1.0f);
+	const float P = GetDrawnPercent();
 
 	// Draw in local space: the points, radius and thickness are local units, and the paint geometry carries the
 	// widget's layout scale (DPI) and render transform, so the ring keeps its size and place in its slot
@@ -104,7 +126,7 @@ FCursorReply SN2CCircularProgressBar::OnCursorQuery(const FGeometry& MyGeometry,
 
 FLinearColor SN2CCircularProgressBar::GetFillColor() const
 {
-	const float P = FMath::Clamp(Percent.Get(), 0.0f, 1.0f);
+	const float P = GetDrawnPercent();
 	const FN2CUIColors& Colors = N2C::UI::Colors();
 
 	if (P <= 0.5f)

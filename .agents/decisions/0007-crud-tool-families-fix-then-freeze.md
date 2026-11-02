@@ -2,13 +2,7 @@
 
 ## Status
 
-proposed (2026-10-26), provisional pending the owner's confirmation on card 0140
-
-**Provisional:** the owner has not decided card 0140 (review decision dec-5). The E12 cards since card 0151 followed
-the review's recommendation (option 2), and card 0168 writes it down here and in the tools' `AGENTS.md` files so
-agents stop growing the frozen tools. It also leans on card 0089 (dec-1), applied provisionally as option (b) by card
-0174: on UE 5.8 Epic's EditorToolset does Blueprint and asset CRUD. If the owner picks option 1 or 3, a new record
-supersedes this one and the "Status: frozen" sections come out of the `AGENTS.md` files listed below.
+decided (2026-11-02), by the owner on card 0140 (option 2, as recorded below; applied provisionally since 2026-10-26)
 
 ## Sources
 
