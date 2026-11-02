@@ -357,7 +357,7 @@ void FN2CPythonBridgeJsonSpec::Define()
 			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
 			if (TestTrue(TEXT("warnings is an array"), Data->TryGetArrayField(TEXT("warnings"), Warnings)))
 			{
-				TestEqual(TEXT("warnings"), Warnings->Num(), 16);
+				TestEqual(TEXT("warnings (asset_kind is a known field since card 0447)"), Warnings->Num(), 15);
 				const TSharedPtr<FJsonObject> First = (*Warnings)[0]->AsObject();
 				if (TestTrue(TEXT("a warning is an object"), First.IsValid()))
 				{
