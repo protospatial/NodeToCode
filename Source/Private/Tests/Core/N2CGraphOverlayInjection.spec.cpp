@@ -126,6 +126,15 @@ namespace N2COverlayInjectionTest
 	};
 }
 
+namespace N2COverlayInjectionPrivateTest
+{
+	/** Widget is exactly an SGraphEditor showing Graph */
+	bool ShowsGraph(const TSharedRef<SWidget>& Widget, const UEdGraph* Graph)
+	{
+		return Widget->GetType() == FName(TEXT("SGraphEditor")) && StaticCastSharedRef<SGraphEditor>(Widget)->GetCurrentGraph() == Graph;
+	}
+}
+
 BEGIN_DEFINE_SPEC(FN2COverlayInjectionSpec, "NodeToCode.Editor.OverlayInjection", N2C_TEST_FLAGS)
 END_DEFINE_SPEC(FN2COverlayInjectionSpec)
 
@@ -221,6 +230,96 @@ void FN2COverlayInjectionSpec::Define()
 		// And they come back on the next injection (the module keeps running in this editor)
 		TestTrue(TEXT("re-injected after removal"), Injector.InjectIntoTab(Open.EventTab, Open.EventGraph, Open.Editor));
 		TestEqual(TEXT("one overlay again"), CountOverlays(Open.EventTab->GetContent()), 1);
+	});
+
+	// One graph in two tabs (card 0514, seen in gate 0407): the Python bridge's open_blueprint (JumpToHyperlink) navigated
+	// the current tab in place to a graph that already had its own tab. Overlays were looked up per graph, so the second
+	// tab never got one. Each tab gets its own; closing one keeps the other's; closing both leaves nothing tracked
+	LatentIt(TEXT("gives each tab its own overlay when one graph shows in two tabs, and keeps the other when one closes"),
+		FTimespan::FromSeconds(30.0), [this](const FDoneDelegate& Done)
+	{
+		struct FState
+		{
+			FOpenBlueprint Open;
+			TSharedPtr<SDockTab> SecondTab;
+			int32 Step = 0;
+			double StepStart = 0.0;
+		};
+		const TSharedRef<FState> State = MakeShared<FState>();
+		FN2CGraphOverlayInjector& Injector = FN2CGraphOverlayInjector::Get();
+		Injector.RemoveInjectedOverlays();
+		FOpenBlueprint& Open = State->Open;
+		if (!Open.Open(*this, TEXT("BP_N2COverlayTwoTabs")))
+		{
+			Done.Execute();
+			return;
+		}
+
+		// The event graph's own tab gets its overlay; then the function tab (the last edited one) is navigated in place
+		// to the event graph, as JumpToHyperlink did from the bridge
+		TestTrue(TEXT("the event graph's own tab takes its overlay"), Injector.InjectIntoTab(Open.EventTab, Open.EventGraph, Open.Editor));
+		State->SecondTab = Open.Editor->OpenDocument(Open.EventGraph, FDocumentTracker::NavigatingCurrentDocument);
+		const TSharedPtr<SDockTab> Second = State->SecondTab;
+		if (!TestTrue(TEXT("navigating the current tab to the event graph shows it in a second tab"),
+			Second.IsValid() && Second != Open.EventTab
+			&& N2COverlayInjectionPrivateTest::ShowsGraph(Second->GetContent(), Open.EventGraph)
+			&& Second->GetContent() != Open.EventTab->GetContent()))
+		{
+			Done.Execute();
+			return;
+		}
+		TestEqual(TEXT("FindGraphEditorsFor finds both graph editors showing the event graph"),
+			FN2CGraphOverlayInjector::FindGraphEditorsFor(Open.Editor, Open.EventGraph).Num(), 2);
+		TestTrue(TEXT("the event graph is the focused graph"), Open.Editor->GetFocusedGraph() == Open.EventGraph);
+
+		// What the poll and a tab event run
+		const int32 Before = Injector.GetInjectionCount();
+		Injector.InjectMissingOverlays(false);
+		TestEqual(TEXT("one overlay in the event graph's own tab"), CountOverlays(Open.EventTab->GetContent()), 1);
+		TestEqual(TEXT("one overlay in the second tab on the same graph"), CountOverlays(Second->GetContent()), 1);
+		TestEqual(TEXT("one new injection, for the second tab"), Injector.GetInjectionCount() - Before, 1);
+		Injector.InjectMissingOverlays(false);
+		TestTrue(TEXT("InjectForFocusedGraph sees both covered"), Injector.InjectForFocusedGraph(Open.Editor));
+		TestEqual(TEXT("passes after that inject nothing"), Injector.GetInjectionCount() - Before, 1);
+		TestEqual(TEXT("two overlays tracked"), Injector.GetTrackedOverlayCount(), 2);
+
+		// Close the second tab: its entry goes, the first tab's overlay stays
+		Second->RequestCloseTab();
+		State->SecondTab.Reset();
+		Open.FunctionTab.Reset();
+		State->StepStart = FPlatformTime::Seconds();
+		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this, State, Done](float) -> bool
+		{
+			FN2CGraphOverlayInjector& Injector = FN2CGraphOverlayInjector::Get();
+			FOpenBlueprint& Open = State->Open;
+			const double Waited = FPlatformTime::Seconds() - State->StepStart;
+			const auto Finish = [&]() { Done.Execute(); return false; };
+			if (State->Step == 0)
+			{
+				if (Injector.GetTrackedOverlayCount() != 1 && Waited < 10.0)
+				{
+					return true;
+				}
+				TestEqual(TEXT("one overlay tracked after the second tab closed"), Injector.GetTrackedOverlayCount(), 1);
+				TestEqual(TEXT("the event graph's own tab keeps its overlay"), CountOverlays(Open.EventTab->GetContent()), 1);
+				TestTrue(TEXT("the event graph still has a live overlay"), Injector.HasLiveOverlay(Open.EventGraph));
+
+				// Close the editor: nothing may stay tracked
+				Open.Blueprint->GetPackage()->SetDirtyFlag(false);
+				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Open.Blueprint->GetBlueprint());
+				Open.EventTab.Reset();
+				Open.Editor.Reset();
+				State->Step = 1;
+				State->StepStart = FPlatformTime::Seconds();
+				return true;
+			}
+			if (Injector.GetTrackedOverlayCount() != 0 && Waited < 10.0)
+			{
+				return true;
+			}
+			TestEqual(TEXT("no overlay tracked once both tabs are closed"), Injector.GetTrackedOverlayCount(), 0);
+			return Finish();
+		}));
 	});
 
 	// The injector on its own (card 0344): the tab events and timers it subscribes to, nothing called by hand. Switching
