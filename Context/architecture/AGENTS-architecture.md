@@ -182,7 +182,7 @@ Content/
 **Root Files:**
 *   **`.gitignore`**: Standard Git ignore.
 *   **`LICENSE`**, **`README.md`**: License and documentation.
-*   **`Resources/`**: Plugin/toolbar icons (`Icon128.png`, `button_icon.png`).
+*   **`Resources/`**: Plugin/toolbar icons (`Icon128.png` for the plugin list; `button_icon.svg`, the toolbar, tab and overlay logo, drawn at the DPI scale; `button_icon.png`, its raster source).
 *   **`build.ps1`**: Build, smoke and automation-test runner for UE 5.6-5.8 (see `Context/development-workflow/AGENTS-development-workflow.md`).
 *   **`Scripts/`**: Developer and release scripts, never packaged: `package-release.ps1`, `generate_tool_reference.py`, `docs_lint.py`, and `detect-ue-path.*` with `update_agents_ue_path.py` (writes this machine's `UE_SOURCE_PATH` to the gitignored `AGENTS.local.md`).
 *   **`assets/`**: Documentation/promotional images.

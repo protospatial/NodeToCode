@@ -154,8 +154,10 @@ void SN2CContextWindowVisualizer::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					.Padding(0.0f, 0.0f, FN2CSpacing::XS, 0.0f)
 					[
-						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("\u26A0"))) // Warning symbol
+						// An FAppStyle icon, not a Unicode glyph that depends on font coverage (card 0271)
+						SNew(SImage)
+						.Image(FAppStyle::GetBrush("Icons.Warning"))
+						.DesiredSizeOverride(FVector2D(FN2CSizing::IconSM, FN2CSizing::IconSM))
 						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentOrange))
 					]
 					+ SHorizontalBox::Slot()

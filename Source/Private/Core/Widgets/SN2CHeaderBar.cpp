@@ -7,6 +7,7 @@
 #include "Core/Style/N2CDesignTokens.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/SBoxPanel.h"
+#include "Styling/AppStyle.h"
 
 #define LOCTEXT_NAMESPACE "SN2CHeaderBar"
 
@@ -46,9 +47,9 @@ void SN2CHeaderBar::Construct(const FArguments& InArgs)
 				SNew(SN2CIconButton)
 				.ButtonVariant(EN2CButtonVariant::NoBorder)
 				.ContentPadding(FMargin(4.0f))
-				.Text(FText::FromString(TEXT("\u2715"))) // X character
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 18))
-				.TextColor(N2C::UI::Bind(&FN2CUIColors::TextMuted))
+				.IconBrush(FAppStyle::GetBrush("Icons.X"))
+				.IconSize(FVector2D(FN2CSizing::IconMD, FN2CSizing::IconMD))
+				.IconColor(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 				.OnClicked(InArgs._OnClose)
 				.ToolTipText(LOCTEXT("CloseTooltip", "Close"))
 			];

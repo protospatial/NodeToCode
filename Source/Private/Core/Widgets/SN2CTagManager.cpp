@@ -188,7 +188,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 							.Padding(0.0f, 0.0f, FN2CSpacing::MD, 0.0f)
 							[
 								SNew(SN2CIconButton)
-								.IconBrush(FAppStyle::GetBrush("MainFrame.RefreshSourceCodeEditor"))
+								.IconBrush(FAppStyle::GetBrush("Icons.Save"))
 								.Text(LOCTEXT("ExportJsonButton", "Export JSON"))
 								.ButtonVariant(EN2CButtonVariant::Standard)
 								.OnClicked(this, &SN2CTagManager::HandleExportJsonClicked)

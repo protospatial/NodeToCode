@@ -29,15 +29,14 @@ namespace FN2CSpacing
 
 // ── Font Tokens ─────────────────────────────────────────────────────
 
+// The smallest size is 8pt (Small); there is no smaller token, so text stays readable (card 0271)
 namespace FN2CFonts
 {
-	inline FSlateFontInfo Tiny()        { return FCoreStyle::GetDefaultFontStyle("Regular", 7); }
 	inline FSlateFontInfo Small()       { return FCoreStyle::GetDefaultFontStyle("Regular", 8); }
 	inline FSlateFontInfo Regular()     { return FCoreStyle::GetDefaultFontStyle("Regular", 10); }
 	inline FSlateFontInfo Medium()      { return FCoreStyle::GetDefaultFontStyle("Regular", 11); }
 	inline FSlateFontInfo Large()       { return FCoreStyle::GetDefaultFontStyle("Regular", 13); }
 
-	inline FSlateFontInfo TinyBold()    { return FCoreStyle::GetDefaultFontStyle("Bold", 7); }
 	inline FSlateFontInfo SmallBold()   { return FCoreStyle::GetDefaultFontStyle("Bold", 8); }
 	inline FSlateFontInfo RegularBold() { return FCoreStyle::GetDefaultFontStyle("Bold", 10); }
 	inline FSlateFontInfo MediumBold()  { return FCoreStyle::GetDefaultFontStyle("Bold", 11); }

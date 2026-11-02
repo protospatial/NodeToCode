@@ -59,27 +59,29 @@ private:
 	FLinearColor GetFillColor() const;
 
 	/**
-	 * Draw an arc using line segments
+	 * Draw an arc using line segments, in the widget's local space so it scales with DPI and render transforms
 	 * @param OutDrawElements The draw elements list
 	 * @param LayerId The layer to draw on
-	 * @param Center The center of the arc
-	 * @param Radius The radius of the arc
-	 * @param Thickness The thickness of the arc
+	 * @param AllottedGeometry The widget's geometry; the points are local to it
+	 * @param Center The center of the arc, in local units
+	 * @param Radius The radius of the arc, in local units
+	 * @param Thickness The thickness of the arc, in local units
 	 * @param StartAngle The start angle in radians (0 = right, PI/2 = down)
 	 * @param EndAngle The end angle in radians
-	 * @param Color The color of the arc
-	 * @param ClippingRect The clipping rect
+	 * @param Color The color of the arc (already multiplied by the widget's tint)
+	 * @param DrawEffects The draw effects (DisabledEffect when the widget is disabled)
 	 */
 	void DrawArc(
 		FSlateWindowElementList& OutDrawElements,
 		int32 LayerId,
+		const FGeometry& AllottedGeometry,
 		const FVector2D& Center,
 		float Radius,
 		float Thickness,
 		float StartAngle,
 		float EndAngle,
 		const FLinearColor& Color,
-		const FSlateRect& ClippingRect) const;
+		ESlateDrawEffect DrawEffects) const;
 
 	TAttribute<float> Percent;
 	TAttribute<float> Radius;

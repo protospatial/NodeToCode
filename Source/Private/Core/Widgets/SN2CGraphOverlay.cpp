@@ -267,7 +267,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 					[
 						SNew(STextBlock)
 						.Text(this, &SN2CGraphOverlay::GetContextUsagePercentText)
-						.Font(FN2CFonts::TinyBold())
+						.Font(FN2CFonts::SmallBold())
 						.Justification(ETextJustify::Center)
 						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextPrimary))
 					]
@@ -308,7 +308,7 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 								int32 Depth = FN2CTokenEstimationService::Get().GetTranslationDepth();
 								return FText::FromString(FString::Printf(TEXT("N:%d"), Depth));
 							})
-							.Font(FN2CFonts::TinyBold())
+							.Font(FN2CFonts::SmallBold())
 							.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::AccentOrange))
 						]
 					]
@@ -407,7 +407,7 @@ FReply SN2CGraphOverlay::OnCopyJsonClicked()
 	{
 		FPlatformApplicationMisc::ClipboardCopy(*JsonString);
 		FN2CLogger::Get().Log(TEXT("Blueprint graph JSON copied to clipboard"),
-			EN2CLogSeverity::Info, TEXT("SN2CGraphOverlay"));
+			EN2CLogSeverity::Debug, TEXT("SN2CGraphOverlay"));
 	}
 	else
 	{
@@ -462,7 +462,7 @@ FReply SN2CGraphOverlay::OnOpenWindowClicked()
 	FGlobalTabmanager::Get()->TryInvokeTab(SN2CEditorWindow::TabId);
 
 	FN2CLogger::Get().Log(TEXT("NodeToCode window opened from graph overlay"),
-		EN2CLogSeverity::Info, TEXT("SN2CGraphOverlay"));
+		EN2CLogSeverity::Debug, TEXT("SN2CGraphOverlay"));
 
 	return FReply::Handled();
 }

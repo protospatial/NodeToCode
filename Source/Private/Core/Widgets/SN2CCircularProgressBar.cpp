@@ -36,12 +36,12 @@ int32 SN2CCircularProgressBar::OnPaint(
 	const float T = Thickness.Get();
 	const float P = FMath::Clamp(Percent.Get(), 0.0f, 1.0f);
 
-	// Calculate center of the widget
-	const FVector2D LocalSize = AllottedGeometry.GetLocalSize();
-	const FVector2D Center = LocalSize * 0.5f;
+	// Draw in local space: the points, radius and thickness are local units, and the paint geometry carries the
+	// widget's layout scale (DPI) and render transform, so the ring keeps its size and place in its slot
+	const FVector2D Center = FVector2D(AllottedGeometry.GetLocalSize()) * 0.5f;
 
-	// Convert local center to absolute position for drawing
-	const FVector2D AbsoluteCenter = AllottedGeometry.LocalToAbsolute(Center);
+	// The widget's color and opacity (and its parents') tint both arcs
+	const FLinearColor Tint = InWidgetStyle.GetColorAndOpacityTint();
 
 	// Start from top (-PI/2 in standard math coords, but Slate Y is inverted)
 	// In Slate: 0 = right, positive = clockwise
@@ -52,13 +52,14 @@ int32 SN2CCircularProgressBar::OnPaint(
 	DrawArc(
 		OutDrawElements,
 		LayerId,
-		AbsoluteCenter,
+		AllottedGeometry,
+		Center,
 		R,
 		T,
 		StartAngle,
 		FullEndAngle,
-		N2C::UI::Linear(N2C::UI::Colors().BorderColor),
-		MyCullingRect
+		N2C::UI::Linear(N2C::UI::Colors().BorderColor) * Tint,
+		DrawEffects
 	);
 
 	// Draw fill arc if there's any progress
@@ -68,13 +69,14 @@ int32 SN2CCircularProgressBar::OnPaint(
 		DrawArc(
 			OutDrawElements,
 			LayerId + 1,
-			AbsoluteCenter,
+			AllottedGeometry,
+			Center,
 			R,
 			T,
 			StartAngle,
 			FillEndAngle,
-			GetFillColor(),
-			MyCullingRect
+			GetFillColor() * Tint,
+			DrawEffects
 		);
 	}
 
@@ -122,13 +124,14 @@ FLinearColor SN2CCircularProgressBar::GetFillColor() const
 void SN2CCircularProgressBar::DrawArc(
 	FSlateWindowElementList& OutDrawElements,
 	int32 LayerId,
+	const FGeometry& AllottedGeometry,
 	const FVector2D& Center,
 	float InRadius,
 	float InThickness,
 	float StartAngle,
 	float EndAngle,
 	const FLinearColor& Color,
-	const FSlateRect& ClippingRect) const
+	ESlateDrawEffect DrawEffects) const
 {
 	// Number of segments based on arc length
 	const float ArcLength = FMath::Abs(EndAngle - StartAngle);
@@ -156,9 +159,9 @@ void SN2CCircularProgressBar::DrawArc(
 	FSlateDrawElement::MakeLines(
 		OutDrawElements,
 		LayerId,
-		FPaintGeometry(),
+		AllottedGeometry.ToPaintGeometry(),
 		LinePoints,
-		ESlateDrawEffect::None,
+		DrawEffects,
 		Color,
 		true, // bAntialias
 		InThickness
