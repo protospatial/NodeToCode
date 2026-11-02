@@ -2,11 +2,7 @@
 
 ## Status
 
-proposed (2026-10-23), provisional pending the owner's confirmation on card 0053
-
-**Provisional:** the owner has not decided card 0053 (review decision dec-9). Card 0076 applies this record so the
-community files can exist; card 0077 (source headers) follows it. If the owner chooses a CLA, a new record
-supersedes this one; nothing here has to be undone, because a CLA is added on top of Apache-2.0 contributions.
+decided (2026-11-02), by the owner on card 0053 (as recorded below; applied provisionally since 2026-10-23)
 
 ## Sources
 
