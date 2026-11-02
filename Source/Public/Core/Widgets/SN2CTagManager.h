@@ -81,6 +81,14 @@ public:
 	/** Get count of selected graphs */
 	int32 GetSelectedCount() const;
 
+	/** Batch Translate, Export JSON and Remove Selected act on the checked graphs: enabled only while one is checked (card 0269) */
+	bool AreSelectionActionsEnabled() const { return GetSelectedCount() > 0; }
+
+	/** The tooltips of those three buttons: what each does, or that nothing is checked */
+	FText GetBatchTranslateTooltip() const;
+	FText GetExportJsonTooltip() const;
+	FText GetRemoveSelectedTooltip() const;
+
 	/** Get whether minify JSON is enabled */
 	bool IsMinifyJsonEnabled() const;
 
@@ -174,6 +182,11 @@ private:
 
 	/** The graphs list widget */
 	TSharedPtr<SN2CTaggedGraphsList> GraphsList;
+
+	/** The selection action buttons (disabled with nothing checked; card 0269) */
+	TSharedPtr<SWidget> BatchTranslateButton;
+	TSharedPtr<SWidget> ExportJsonButton;
+	TSharedPtr<SWidget> RemoveSelectedButton;
 
 	/** The context window visualizer widget */
 	TSharedPtr<SN2CContextWindowVisualizer> ContextVisualizer;

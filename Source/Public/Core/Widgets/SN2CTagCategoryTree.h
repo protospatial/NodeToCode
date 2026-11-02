@@ -62,6 +62,9 @@ public:
 	/** Clear selection */
 	void ClearSelection();
 
+	/** Why the tree is empty (no tags yet, or no tag matches the search), or empty text when it has rows (card 0269) */
+	FText GetEmptyText() const;
+
 	/** Delegate fired when the user changes the selection */
 	FSimpleDelegate OnSelectionChangedDelegate;
 

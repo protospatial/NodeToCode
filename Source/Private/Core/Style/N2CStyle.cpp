@@ -104,6 +104,11 @@ TSharedRef<FSlateStyleSet> N2CStyle::Create()
     Style->Set("NodeToCode.ToolbarButton.Small",
         new FSlateVectorImageBrush(Style->RootToContentDir(TEXT("button_icon"), TEXT(".svg")), FVector2D(16.0f, 16.0f)));
 
+    // The graph overlay as the Get Started card shows it (card 0269): the docs shot wiki/images/translate-entry/
+    // graph-overlay.png (captured at 2x by Tests/DocsShots/capture.py), drawn at half its pixel size
+    Style->Set("NodeToCode.GetStarted.Overlay",
+        new FSlateImageBrush(Style->RootToContentDir(TEXT("get_started_overlay"), TEXT(".png")), FVector2D(305.0f, 72.0f)));
+
     // Populate styles from current palette
     UpdateButtonStyles();
     UpdateBorderBrushes();
