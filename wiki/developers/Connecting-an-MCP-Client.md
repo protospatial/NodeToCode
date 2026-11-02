@@ -131,7 +131,9 @@ Restart Claude Desktop; the tools appear under the tools menu in a chat. The lau
 Python of your newest Unreal Engine install, or Python 3 from your PATH (`launch_bridge.sh` on macOS and Linux). The
 bridge finds the editor through the file the server writes, so it follows a port change and can start before the
 editor; `--project` picks one editor when several are open, and `--url http://127.0.0.1:27000/mcp` names one
-directly. Any other stdio-only client takes the same command and arguments.
+directly. The bridge only follows a file whose address is this computer (`127.0.0.1`, `localhost` or `[::1]`) and
+ignores any other, with a line in its log; to reach an editor on another machine, pass `--url` yourself. Any other
+stdio-only client takes the same command and arguments.
 
 ## Epic's MCP Client Toolset (UE 5.8)
 
