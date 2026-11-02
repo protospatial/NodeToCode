@@ -8,6 +8,7 @@
 // basic/patterns/subscriptions, basic/patterns/cancellation).
 
 #include "MCP/Server/N2CMcpProtocol.h"
+#include "MCP/Server/N2CMcpTcpConnectionState.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -505,6 +506,20 @@ bool FN2CMcpProtocol::TickStreams(float DeltaTime)
 		if (*Watched.bDone)
 		{
 			WatchedStreams.RemoveAt(Index);
+			continue;
+		}
+		if (Watched.bHeldReply)
+		{
+			// A call held as one JSON reply (card 0512): cancel it once the TCP table shows its client gone. Unknown
+			// (the table could not be read) never cancels.
+			if (N2CMcpTcpConnectionState::Query(Watched.HeldLocalPort, Watched.HeldPeerPort) == N2CMcpTcpConnectionState::EClientState::Gone)
+			{
+				*Watched.bDone = true;
+				FN2CLogger::Get().Log(FString::Printf(TEXT("The client of call %s closed its connection (port %d): cancelling it"),
+					*Watched.TaskId.ToString(), Watched.HeldPeerPort), EN2CLogSeverity::Info);
+				Catalogs.Tasks->CancelTask(Watched.TaskId, TEXT("The client closed the request's connection"));
+				WatchedStreams.RemoveAt(Index);
+			}
 			continue;
 		}
 		if (Watched.Responder->IsClosedByClient())

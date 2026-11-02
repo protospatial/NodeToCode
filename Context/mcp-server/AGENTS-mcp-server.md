@@ -204,8 +204,8 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     `StreamKeepAliveSeconds` (2 s) a `: keep-alive` SSE comment is written, and when the client has closed the
     stream (`IN2CMcpResponder::IsClosedByClient`: on 5.8, HTTPServer has destroyed the connection and released the
     body queue) the call is cancelled. That is 2026-07-28's cancellation over HTTP, so detection takes one or two beats.
-    On 5.6/5.7 the call holds one JSON response, as for legacy clients (decision 0085 (b)), and closing it cancels
-    nothing.
+    On 5.6/5.7 the call holds one JSON response, as for legacy clients (decision 0085 (b)), and so does a 5.8 call
+    whose client does not accept `text/event-stream`; see "A client that goes away" below for how those are cancelled.
 *   **`subscriptions/listen`** (UE 5.8): answers on a `text/event-stream` response that stays open. The first message
     is `notifications/subscriptions/acknowledged` with the subscription id (the request id) in `_meta` and the subset
     honoured: only `toolsListChanged`, since prompts, resources and resource contents never send change
@@ -246,6 +246,19 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     call (UE 5.6/5.7, or no progressToken) ends with **202** and no body. Unknown ids, finished calls, other
     sessions' calls and malformed notifications are ignored (the notification itself gets 202). Calls answered at
     once (every tool that is not long-running) cannot be cancelled.
+*   **A client that goes away** (card 0512). Claude Code (2.1.316, 2026-07-28) sends no `notifications/cancelled`
+    on Esc, an SDK interrupt or Ctrl+C: it closes the connection. A streamed call (5.8) is then cancelled by the
+    stream watcher above. A long-running call held as one JSON reply (5.6/5.7 always, 5.8 without
+    `text/event-stream` in Accept, either protocol era) cannot see its connection close: the engine's HTTPServer does
+    not read the socket while a handler is pending. While such a call is held, `FN2CMcpProtocol::TickStreams` reads
+    the TCP table every 2 s (`N2CMcpTcpConnectionState::Query`, Windows `GetExtendedTcpTable`, rows of this process
+    only) and finds the connection by the server's port and the request's peer port (`FN2CMcpInbound::LocalPort`,
+    `PeerPort`). When it is in CLOSE_WAIT or a closing state, or has left the table while the server still listens,
+    the call is cancelled ("The client of call ... closed its connection (port N): cancelling it"): the LLM request
+    is cancelled and no response is handled. A table that cannot be read is logged at Verbose and cancels nothing.
+    Polling stops when the call ends. **Limitation:** on Mac and Linux nothing reads the table, so a held call whose
+    client goes away without `notifications/cancelled` runs to the end there. Tests: `NodeToCode.MCP.TcpConnectionState`
+    (the matcher over fake tables), `Tests/mcp_probe/live_cancel_close_0512.py` (a raw client and Claude Code).
 *   **`nodetocode/cancelTask {progressToken}`** still works and is **deprecated**: it logs a warning, cancels the
     same way, and the call answers its own request with the cancelled result (as DELETE of a session and editor exit
     do).

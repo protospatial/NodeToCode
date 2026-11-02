@@ -817,6 +817,9 @@ bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Reques
 	}
 	Inbound.Headers = Request.Headers;
 	Inbound.Body = Request.Body;
+	// The connection's two ports: a held long-running call looks for its client by them (card 0512)
+	Inbound.LocalPort = FMath::Max(ServerPort, 0);
+	Inbound.PeerPort = Request.PeerAddress.IsValid() ? Request.PeerAddress->GetPort() : 0;
 	Protocol->Handle(Inbound, MakeShared<N2CMcpHttpTransport::FHttpServerResponder>(OnComplete));
 	return true;
 }
