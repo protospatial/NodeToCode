@@ -25,12 +25,14 @@ Before the toolbar actions become available, ensure:
 ## Which graphs can be translated
 
 NodeToCode reads Blueprint graphs: event graphs, functions, macros, collapsed graphs and interface functions a
-Blueprint implements, wherever they are nested. You can tag, copy as JSON and translate any of them, from the graph
-overlay or from the NodeToCode window.
+Blueprint implements, wherever they are nested. That includes the Blueprint graphs inside Widget, Editor Utility,
+Level and Animation Blueprints: an Animation Blueprint's event graph, functions and transition rules. You can tag, copy
+as JSON and translate any of them, from the graph overlay or from the NodeToCode window.
 
-Graphs that are not Blueprint graphs, such as an Animation Blueprint's state machines, cannot be translated. On such a
-graph the overlay's Copy JSON, Translate and tag buttons are grayed out, their tooltip says why, and the context
-ring reads **n/a**. On other graphs the ring estimates what Translate sends (see
+NodeToCode does not translate animation pose graphs (an Animation Blueprint's AnimGraph and the graphs inside its
+states), state machines, Control Rig graphs, or any other graph that is not a Blueprint graph. On such a graph the
+overlay's Copy JSON, Translate and tag buttons are grayed out, their tooltip says the graph type is not supported,
+and the context ring reads **n/a**. Batch translation skips these graphs with the same reason. On other graphs the ring estimates what Translate sends (see
 [Handling Large Graphs](Handling-Large-Graphs)).
 
 Tags and translation records belong to one Blueprint's graph. A copy of a Blueprint made in the Content Browser starts

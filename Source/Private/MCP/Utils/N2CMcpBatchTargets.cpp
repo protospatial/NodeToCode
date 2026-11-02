@@ -5,6 +5,7 @@
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "Core/N2CGraphStateManager.h"
+#include "Utils/N2CGraphUtils.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Dom/JsonObject.h"
@@ -216,7 +217,8 @@ void N2CMcpBatchTargets::AddSchema(const TSharedPtr<FJsonObject>& Properties, in
 	Targets->SetNumberField(TEXT("minItems"), 1);
 	Targets->SetStringField(TEXT("description"), *FString::Printf(
 		TEXT("The graphs to work on: [{blueprintPath, graphName?, graphGuid?}]. Give targets, or tag and/or category, not both. ")
-		TEXT("At most %d graphs per call. A path that is not a Blueprint (a Material, a Data Asset) fails with UNSUPPORTED_ASSET_TYPE."),
+		TEXT("At most %d graphs per call. A path that is not a Blueprint (a Material, a Data Asset) fails with UNSUPPORTED_ASSET_TYPE; ")
+		TEXT("a graph NodeToCode does not translate (an AnimGraph, state, state machine or Control Rig graph) with UNSUPPORTED_GRAPH_TYPE."),
 		MaxGraphs));
 	Properties->SetObjectField(TEXT("targets"), Targets);
 
@@ -341,6 +343,12 @@ FN2CBatchTargets N2CMcpBatchTargets::Resolve(const TSharedPtr<FJsonObject>& Argu
 				Result.Failures.Add(MakeIssue(Blueprint->GetPathName(), Entry.GraphName, Entry.GraphGuid, Target.Error));
 				continue;
 			}
+			const FString Unsupported = FN2CGraphUtils::UnsupportedGraphTypeError(*Target.Graph);
+			if (!Unsupported.IsEmpty())
+			{
+				Result.Failures.Add(MakeIssue(Blueprint->GetPathName(), Target.Graph->GetName(), Target.Graph->GraphGuid.ToString(), Unsupported));
+				continue;
+			}
 			if (!HasK2Node(*Target.Graph))
 			{
 				Result.Failures.Add(MakeIssue(Blueprint->GetPathName(), Target.Graph->GetName(), Target.Graph->GraphGuid.ToString(),
@@ -354,9 +362,16 @@ FN2CBatchTargets N2CMcpBatchTargets::Resolve(const TSharedPtr<FJsonObject>& Argu
 			continue;
 		}
 
-		// The whole Blueprint: each graph with nodes
+		// The whole Blueprint: each graph with nodes; graphs of a type NodeToCode refuses are skipped with the reason
 		int32 Added = 0;
-		for (UEdGraph* Graph : N2CMcpBlueprintExport::GraphsToCapture(*Blueprint))
+		TArray<UEdGraph*> Unsupported;
+		const TArray<UEdGraph*> Supported = N2CMcpBlueprintExport::GraphsToCapture(*Blueprint, &Unsupported);
+		for (UEdGraph* Graph : Unsupported)
+		{
+			Result.Skipped.Add(MakeIssue(Blueprint->GetPathName(), Graph->GetName(), Graph->GraphGuid.ToString(),
+				FN2CGraphUtils::UnsupportedGraphTypeError(*Graph)));
+		}
+		for (UEdGraph* Graph : Supported)
 		{
 			if (!HasK2Node(*Graph))
 			{
@@ -369,8 +384,9 @@ FN2CBatchTargets N2CMcpBatchTargets::Resolve(const TSharedPtr<FJsonObject>& Argu
 		}
 		if (Added == 0)
 		{
-			Result.Failures.Add(MakeIssue(Blueprint->GetPathName(), FString(), FString(),
-				FString::Printf(TEXT("EMPTY_GRAPH: no graph of %s has a node"), *Blueprint->GetPathName())));
+			Result.Failures.Add(MakeIssue(Blueprint->GetPathName(), FString(), FString(), Supported.Num() == 0 && Unsupported.Num() > 0
+				? FString::Printf(TEXT("UNSUPPORTED_GRAPH_TYPE: no graph of %s is of a type NodeToCode translates (AnimGraphs, state machines and Control Rig graphs are not supported)"), *Blueprint->GetPathName())
+				: FString::Printf(TEXT("EMPTY_GRAPH: no graph of %s has a node"), *Blueprint->GetPathName())));
 		}
 	}
 

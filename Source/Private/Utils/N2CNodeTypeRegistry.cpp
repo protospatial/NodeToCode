@@ -104,6 +104,10 @@ void FN2CNodeTypeRegistry::InitializeDefaultMappings()
     RegisterNodeType(FName(TEXT("FunctionEntry")), EN2CNodeType::FunctionEntry);
     RegisterNodeType(FName(TEXT("FunctionResult")), EN2CNodeType::FunctionResult);
     RegisterNodeType(FName(TEXT("FunctionTerminator")), EN2CNodeType::FunctionTerminator);
+    // A transition or conduit rule's result (its "Can Enter Transition" input) is what the pure rule graph computes:
+    // a result boundary, so liveness keeps the nodes that feed it (decision 0008 F1, card 0248). The AnimGraph module's
+    // class, by name: NodeToCode does not link AnimGraph
+    RegisterNodeType(FName(TEXT("AnimGraphNode_TransitionResult")), EN2CNodeType::FunctionResult);
 
     // Variables
     RegisterNodeType(FName(TEXT("Variable")), EN2CNodeType::Variable);

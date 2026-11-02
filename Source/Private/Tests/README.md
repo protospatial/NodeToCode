@@ -337,6 +337,18 @@ list-python-scripts still answering.
   `graph_name`). Error bodies go through `FN2CTranslationError::WrapHttpErrorBody` first, as the HTTP handler sends
   them. No fixture may hold a real key; the spec fails on `sk-` or `AIza` in a fixture.
 
+## Graph types (decision 0008)
+
+`NodeToCode.Capture.GraphTypes` (`Capture/N2CGraphTypeRefusal.spec.cpp`, card 0248) adds a graph of each refused schema
+(AnimGraph, animation state, custom blend, state machine, Control Rig) to a transient Blueprint, found by script path
+because NodeToCode links neither AnimGraph nor ControlRigDeveloper. Each must be refused by
+`FN2CGraphUtils::ClassifyGraphType` and `CanTranslateGraph`, and must get `UNSUPPORTED_GRAPH_TYPE` from
+get-blueprint-n2cjson, `GetGraphAsJson` and a batch target. A whole-Blueprint target must skip it, and
+list-blueprint-graphs must list it with its kind and `translatable: false`. One case checks that `UAnimationGraphSchema`
+derives from `UEdGraphSchema_K2`, so an `IsA<UEdGraphSchema_K2>` check can never be the refusal (gate 0407).
+Transition and conduit rules stay supported, and the pure node feeding a transition rule's `TransitionResult` is not
+"unused" (F1). The real MoverExamples assets are checked live by `Tests/mcp_probe/graph_type_matrix_0246.py`.
+
 ## Capture goldens
 
 `NodeToCode.Capture.Golden` (`Capture/N2CCaptureGolden.spec.cpp`) pins today's N2C JSON (2.0.0 since card 0135) capture

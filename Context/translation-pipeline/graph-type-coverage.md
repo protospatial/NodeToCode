@@ -6,6 +6,12 @@ NodeToCode supports, supports in part with a warning, or refuses. This page give
 owner decides. The node-class half is [k2-node-inventory.md](k2-node-inventory.md); the material half (expression and
 asset classes, decision 0443) is [material-classes.md](material-classes.md).
 
+Status: the owner chose option B on 2026-11-02 ([decision 0008](../../.agents/decisions/0008-graph-types-every-k2-graph.md)),
+and card 0248 implements it. Rows 17, 18, 19 and 21 are refused with `UNSUPPORTED_GRAPH_TYPE`, keyed on the schema
+class. Row 20 (transition rules) is supported, because F1's `TransitionResult` boundary landed with it. F2 and F3
+(the typed error, and the kind with `translatable` in list-blueprint-graphs) are done. F4 (metadata) is not. The
+matrix below is the evidence as measured before that change.
+
 ## Recommendation in one paragraph
 
 Own every K2 graph (option B below). Every Blueprint graph built on the K2 schema already captures and translates

@@ -168,7 +168,8 @@ arguments and the keys of its `data`. Grouped:
     `data` has `blueprintPath`, `blueprintName`, `graphCount`, `nodeCount`, `estimatedTokens`, `target` (when a graph
     was named) and `n2c_json`, the document the MCP get-blueprint-n2cjson tool returns; every graph when no graph is
     named. There is no size limit here: `to_file=True` writes the document under `Saved/NodeToCode/Exports` and
-    returns `path` and `bytes` instead. Errors start with a code (`ASSET_NOT_FOUND`, `GRAPH_NOT_FOUND`, `EMPTY_GRAPH`)
+    returns `path` and `bytes` instead. Errors start with a code (`ASSET_NOT_FOUND`, `GRAPH_NOT_FOUND`, `EMPTY_GRAPH`,
+    `UNSUPPORTED_GRAPH_TYPE`)
 *   `list_blueprint_graphs(blueprint_path)` - Every graph of a Blueprint by asset path, as list-blueprint-graphs
     returns it (`UN2CPythonBridge::ListBlueprintGraphs`): `graphs` with `name`, `graphGuid`, `kind`, `nodeCount`,
     `readOnly` and, for collapsed graphs, `parentGraph`
