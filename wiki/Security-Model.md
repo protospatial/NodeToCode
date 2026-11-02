@@ -40,7 +40,10 @@ setting needs an editor restart.
 - **When it runs.** At editor start, unless **Enable MCP Server** is off. It does not start in commandlets or
   `-unattended` runs unless `-N2CMcp` is on the command line.
 - **Discovery files.** It writes where it listens to the project's `Saved/NodeToCode/mcp-server.json` and to
-  `%LOCALAPPDATA%\NodeToCode\servers\<process id>.json`, so local clients can find it.
+  `%LOCALAPPDATA%\NodeToCode\servers\<process id>.json`, so local clients can find it. The stdio bridge only uses an
+  entry whose address is this computer (`127.0.0.1`, `localhost` or `[::1]` over plain http), so a project you download
+  cannot point your MCP client at another machine with a planted file. To use an editor on another machine, pass
+  `--url` to the bridge yourself.
 
 ## Switches a project cannot turn on for you
 
