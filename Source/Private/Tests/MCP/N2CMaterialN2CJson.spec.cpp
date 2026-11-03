@@ -12,6 +12,7 @@
 #include "MCP/Tools/IN2CMcpTool.h"
 #include "MCP/Tools/N2CMcpToolsets.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
+#include "Models/N2CJsonContract.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "HAL/FileManager.h"
@@ -175,6 +176,46 @@ void FN2CMaterialN2CJsonSpec::Define()
 			TestEqual(TEXT("the instance's name"), (*Metadata)->GetStringField(TEXT("name")), FString(TEXT("MI_N2CTest_ToolInstance")));
 			TestEqual(TEXT("Roughness"), (*Summary)->GetObjectField(TEXT("scalars"))->GetStringField(TEXT("Roughness")), FString(TEXT("0.250000")));
 		}
+	});
+
+	It(TEXT("returns the capture's warnings, inline and in the file result (card 0538)"), [this]()
+	{
+		// WorldGridMaterial calls the engine function CameraDepthFade: named, not expanded, at depth 0 (DEPTH_LIMIT)
+		auto Codes = [](const TSharedPtr<FJsonObject>& Json)
+		{
+			TArray<FString> Found;
+			const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
+			if (Json.IsValid() && Json->TryGetArrayField(N2CJsonContract::WarningsField, Warnings))
+			{
+				for (const TSharedPtr<FJsonValue>& Warning : *Warnings)
+				{
+					const TSharedPtr<FJsonObject> Object = Warning->AsObject();
+					if (Object.IsValid() && !Object->GetStringField(N2CJsonContract::WarningMessageField).IsEmpty())
+					{
+						Found.Add(Object->GetStringField(N2CJsonContract::WarningCodeField));
+					}
+				}
+			}
+			return Found;
+		};
+		const TSharedPtr<FJsonObject> Depth0 = Args(TEXT("/Engine/EngineMaterials/WorldGridMaterial"));
+		Depth0->SetNumberField(TEXT("depth"), 0);
+		const TArray<FString> Inline = Codes(N2CTest::ResultJson(N2CTest::RunTool(TEXT("get-material-n2cjson"), Depth0)));
+		TestTrue(TEXT("depth 0: DEPTH_LIMIT in the document's warnings (") + FString::Join(Inline, TEXT(", ")) + TEXT(")"),
+			Inline.Contains(N2CJsonContract::Diagnostic::DepthLimit));
+
+		const TSharedPtr<FJsonObject> Depth1 = Args(TEXT("/Engine/EngineMaterials/WorldGridMaterial"));
+		Depth1->SetNumberField(TEXT("depth"), 1);
+		TestFalse(TEXT("depth 1: the function is expanded, no DEPTH_LIMIT"),
+			Codes(N2CTest::ResultJson(N2CTest::RunTool(TEXT("get-material-n2cjson"), Depth1))).Contains(N2CJsonContract::Diagnostic::DepthLimit));
+
+		N2CTest::FScratchDir Scratch(TEXT("N2CMaterialWarnings"));
+		N2CMcpBlueprintExport::SetExportDirectoryForTests(Scratch.Path);
+		ON_SCOPE_EXIT { N2CMcpBlueprintExport::SetExportDirectoryForTests(FString()); };
+		Depth0->SetBoolField(TEXT("toFile"), true);
+		const TSharedPtr<FJsonObject> FileResult = N2CTest::ResultJson(N2CTest::RunTool(TEXT("get-material-n2cjson"), Depth0));
+		TestTrue(TEXT("a file result"), FileResult.IsValid() && FileResult->HasField(TEXT("path")));
+		TestTrue(TEXT("the file result lists DEPTH_LIMIT too"), Codes(FileResult).Contains(N2CJsonContract::Diagnostic::DepthLimit));
 	});
 
 	It(TEXT("refuses a Blueprint, a material instance without a parent, a missing path and a bad depth"), [this]()
