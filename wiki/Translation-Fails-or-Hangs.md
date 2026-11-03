@@ -16,6 +16,7 @@ When using cloud-based LLM providers (Anthropic, OpenAI, DeepSeek), you may enco
 | 404 | not_found_error | Resource not found | Verify endpoint URLs and model availability |
 | 413 | request_too_large | Request exceeds size limits | Reduce reference files or translation depth |
 | 429 | rate_limit_error | Rate limit exceeded | Wait before retrying or check usage quotas |
+| 429, 402 | insufficient_quota, Insufficient Balance | Out of credit or quota (reported as `Billing`, not retried) | Add credit or raise the quota in the provider's console |
 | 500 | api_error | Provider internal error | Wait and retry; check provider status |
 | 529 | overloaded_error | Service temporarily overloaded | Wait and retry later |
 
@@ -27,7 +28,7 @@ gateway error such as 502), `Timeout` (nothing arrived within the HTTP Activity 
 3600 seconds), `Truncated`, `Refused`, `Blocked`, `Parse` (the answer arrived but could not be read as a translation)
 or `Unknown`. `RateLimited`, `Overloaded`, `Server`, `Network` and `Timeout` are marked retryable: the same request
 may work later. A 429, 529 or 5xx answer is already retried before it is reported, up to **Max Request Retries**
-times ([Provider Configuration](Provider-Configuration#request-retries)).
+times, except a 429 that says the account is out of credit or quota ([Provider Configuration](Provider-Configuration#request-retries)).
 
 A successful (HTTP 200) answer can still stop early. NodeToCode reads the provider's stop or finish reason before the
 answer and reports it by name, with the provider's reason in `provider_error_type`:

@@ -16,6 +16,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Models/N2CTranslation.h"
+#include "Subsystems/N2CGraphStateSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Utils/N2CPathUtils.h"
@@ -34,8 +35,15 @@ N2C_TEST_PRIVATE_MEMBER(FN2CViewerEditorHighlighter, TSharedPtr<FN2CRichTextSynt
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerHighlighterDefinition, TSharedPtr<FN2CSyntaxDefinition> FN2CRichTextSyntaxHighlighter::*,
 	&FN2CRichTextSyntaxHighlighter::SyntaxDefinition)
 
-// The graph state singleton, swapped for an isolated manager so the host project's BlueprintGraphState.json is untouched
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerStateInstance, UN2CGraphStateManager**, &UN2CGraphStateManager::Instance)
+// The editor graph state store (UN2CGraphStateSubsystem), replaced by an isolated manager so the host project's BlueprintGraphState.json is untouched
+// Puts an isolated graph state manager in the editor subsystem's place (null: the subsystem's own again)
+static void N2CViewerSetState(UN2CGraphStateManager* Manager)
+{
+	if (UN2CGraphStateSubsystem* Subsystem = UN2CGraphStateSubsystem::Get())
+	{
+		Subsystem->SetManagerOverride(Manager);
+	}
+}
 
 /**
  * The translation viewer shows a translation in the language it was written in (card 0440). Before, it always
@@ -211,10 +219,8 @@ void FN2CTranslationViewerSpec::Define()
 		}
 		N2CTest::FScratchDir StateDir(TEXT("N2CViewerState"));
 		N2CTest::FScratchDir Output(TEXT("N2CViewerOutput"));
-		UN2CGraphStateManager*& Instance = *N2CTest::GetPrivateMember(N2CTest::FN2CViewerStateInstance());
-		UN2CGraphStateManager* const SavedInstance = Instance;
 		TStrongObjectPtr<UN2CGraphStateManager> Manager(UN2CGraphStateManager::CreateIsolated(StateDir.Path));
-		Instance = Manager.Get();
+		N2CViewerSetState(Manager.Get());
 		FScopedTargetLanguage Target(EN2CCodeLanguage::Cpp); // the recorded language wins over the setting
 
 		const FN2CGraphTranslation Translation = MakeTranslation(EN2CCodeLanguage::Python);
@@ -240,7 +246,7 @@ void FN2CTranslationViewerSpec::Define()
 		{
 			ExpectShows(TEXT("recorded"), *Viewer, EN2CCodeLanguage::Python, Translation);
 		}
-		Instance = SavedInstance;
+		N2CViewerSetState(nullptr);
 	});
 }
 

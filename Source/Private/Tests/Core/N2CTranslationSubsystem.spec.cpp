@@ -20,11 +20,19 @@
 #include "Misc/Paths.h"
 #include "Subsystems/N2CTranslationSubsystem.h"
 #include "Tests/N2CTestBlueprintFactory.h"
+#include "Subsystems/N2CGraphStateSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/StrongObjectPtr.h"
 
-// The graph state singleton, swapped for an isolated manager so the host project's BlueprintGraphState.json is untouched
-N2C_TEST_PRIVATE_MEMBER(FN2CSessionSpecStateInstance, UN2CGraphStateManager**, &UN2CGraphStateManager::Instance)
+// The editor graph state store (UN2CGraphStateSubsystem), replaced by an isolated manager so the host project's BlueprintGraphState.json is untouched
+// Puts an isolated graph state manager in the editor subsystem's place (null: the subsystem's own again)
+static void N2CSessionSpecSetState(UN2CGraphStateManager* Manager)
+{
+	if (UN2CGraphStateSubsystem* Subsystem = UN2CGraphStateSubsystem::Get())
+	{
+		Subsystem->SetManagerOverride(Manager);
+	}
+}
 
 // The count of open Node to Code windows: a host whose saved layout restores the window has one before any test runs
 N2C_TEST_PRIVATE_MEMBER(FN2CSessionSpecPresenters, int32 UN2CTranslationSubsystem::*, &UN2CTranslationSubsystem::PresenterCount)
@@ -43,16 +51,13 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSubsystemSpec, "NodeToCode.Editor.TranslationSu
 	struct FScopedState
 	{
 		TStrongObjectPtr<UN2CGraphStateManager> Manager;
-		UN2CGraphStateManager* SavedInstance = nullptr;
 		EN2CCodeLanguage SavedLanguage;
 		FString SavedOutput;
 
 		FScopedState(const FString& StateDir, const FString& OutputDir)
 		{
-			UN2CGraphStateManager*& Instance = *N2CTest::GetPrivateMember(N2CTest::FN2CSessionSpecStateInstance());
-			SavedInstance = Instance;
 			Manager.Reset(UN2CGraphStateManager::CreateIsolated(StateDir));
-			Instance = Manager.Get();
+			N2CSessionSpecSetState(Manager.Get());
 
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			SavedLanguage = Settings->TargetLanguage;
@@ -63,7 +68,7 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSubsystemSpec, "NodeToCode.Editor.TranslationSu
 
 		~FScopedState()
 		{
-			*N2CTest::GetPrivateMember(N2CTest::FN2CSessionSpecStateInstance()) = SavedInstance;
+			N2CSessionSpecSetState(nullptr);
 			GetMutableDefault<UN2CSettings>()->TargetLanguage = SavedLanguage;
 			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 		}

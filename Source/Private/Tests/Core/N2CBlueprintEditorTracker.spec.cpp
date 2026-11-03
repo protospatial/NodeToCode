@@ -271,7 +271,7 @@ void FN2CEditorFocusSpec::Define()
 				const TSharedPtr<FJsonObject>* Data = nullptr;
 				if (TestTrue(TEXT("the bridge's OpenBlueprint on A succeeds"), Bridge.IsValid() && Bridge->TryGetObjectField(TEXT("data"), Data)))
 				{
-					TestEqual(TEXT("OpenBlueprint reports the graph the editor shows"), (*Data)->GetStringField(TEXT("focusedGraph")), A.EventGraph()->GetName());
+					TestEqual(TEXT("OpenBlueprint reports the graph the editor shows"), (*Data)->GetStringField(TEXT("focused_graph")), A.EventGraph()->GetName());
 				}
 				ExpectFocus(TEXT("after the bridge opened A"), A);
 				TestTrue(TEXT("C's editor still shows C's graph"), Editors[&C]->GetFocusedGraph() == C.EventGraph());

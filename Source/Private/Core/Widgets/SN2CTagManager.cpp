@@ -10,13 +10,17 @@
 #include "Core/Widgets/SN2CIconButton.h"
 #include "Core/Style/N2CDesignTokens.h"
 #include "Core/N2CGraphStateManager.h"
-#include "Core/N2CGraphStateManager.h"
+#include "Core/N2CDependencyActions.h"
+#include "Utils/N2CLogger.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "Widgets/Notifications/SNotificationList.h"
 #include "Misc/MessageDialog.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Core/Style/N2CStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SButton.h"
@@ -165,17 +169,17 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								]
 							]
 						]
-						// Right: action buttons
+						// Right: action buttons, wrapped onto a second line when the window is too narrow for one (card 0319)
 						+ SHorizontalBox::Slot()
 						.FillWidth(1.0f)
-						.HAlign(HAlign_Right)
 						.VAlign(VAlign_Center)
 						[
-							SNew(SHorizontalBox)
+							SNew(SWrapBox)
+							.UseAllottedSize(true)
+							.HAlign(HAlign_Right)
+							.InnerSlotPadding(FVector2D(FN2CSpacing::MD, FN2CSpacing::XS))
 							// Batch Translate button
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, FN2CSpacing::MD, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SAssignNew(BatchTranslateButton, SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
@@ -186,9 +190,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.OnClicked(this, &SN2CTagManager::HandleBatchTranslateClicked)
 							]
 							// Export JSON button
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, FN2CSpacing::MD, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SAssignNew(ExportJsonButton, SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
@@ -199,8 +201,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.OnClicked(this, &SN2CTagManager::HandleExportJsonClicked)
 							]
 							// Remove Selected button
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
+							+ SWrapBox::Slot()
 							[
 								SAssignNew(RemoveSelectedButton, SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
@@ -210,10 +211,30 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.ButtonVariant(EN2CButtonVariant::Standard)
 								.OnClicked(this, &SN2CTagManager::HandleRemoveSelectedClicked)
 							]
+							// Tag Dependencies: the selected tag on everything the checked Blueprints depend on (card 0319)
+							+ SWrapBox::Slot()
+							[
+								SNew(SN2CIconButton)
+								.IsEnabled(this, &SN2CTagManager::IsTagDependenciesEnabled)
+								.ToolTipText(this, &SN2CTagManager::GetTagDependenciesTooltip)
+								.IconBrush(FAppStyle::GetBrush("Icons.Link"))
+								.Text(LOCTEXT("TagDependenciesButton", "Tag Dependencies"))
+								.ButtonVariant(EN2CButtonVariant::Standard)
+								.OnClicked(this, &SN2CTagManager::HandleTagDependenciesClicked)
+							]
+							// Reference Viewer: UE's Reference Viewer on the checked Blueprints (card 0319)
+							+ SWrapBox::Slot()
+							[
+								SNew(SN2CIconButton)
+								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
+								.ToolTipText(this, &SN2CTagManager::GetReferenceViewerTooltip)
+								.IconBrush(FAppStyle::GetBrush("ContentBrowser.ReferenceViewer"))
+								.Text(LOCTEXT("ReferenceViewerButton", "Reference Viewer"))
+								.ButtonVariant(EN2CButtonVariant::Standard)
+								.OnClicked(this, &SN2CTagManager::HandleReferenceViewerClicked)
+							]
 							// Prune Missing button: tags and translation records of deleted Blueprints
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(FN2CSpacing::MD, 0.0f, 0.0f, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SNew(SN2CIconButton)
 								.IconBrush(FAppStyle::GetBrush("Icons.Warning"))
@@ -600,6 +621,100 @@ FReply SN2CTagManager::HandlePruneMissingClicked()
 	{
 		StateManager.PruneMissing();
 		RefreshData();
+	}
+	return FReply::Handled();
+}
+
+TArray<FString> SN2CTagManager::GetSelectedBlueprintPaths() const
+{
+	TArray<FString> Paths;
+	for (const FN2CTagInfo& Graph : GetSelectedGraphs())
+	{
+		if (!Graph.BlueprintPath.IsEmpty())
+		{
+			Paths.AddUnique(Graph.BlueprintPath);
+		}
+	}
+	return Paths;
+}
+
+bool SN2CTagManager::IsTagDependenciesEnabled() const
+{
+	return AreSelectionActionsEnabled() && !GetSelectedTag().IsEmpty();
+}
+
+FText SN2CTagManager::GetTagDependenciesTooltip() const
+{
+	if (!AreSelectionActionsEnabled())
+	{
+		return LOCTEXT("TagDependenciesNoneTooltip", "Check one or more graphs, then select the tag to apply in the tree");
+	}
+	if (GetSelectedTag().IsEmpty())
+	{
+		return LOCTEXT("TagDependenciesNoTagTooltip", "Select a tag (not only a category) in the tree: it is the tag this applies");
+	}
+	return FText::Format(
+		LOCTEXT("TagDependenciesTooltip", "Tag every graph of every Blueprint, interface and macro library the checked graphs' Blueprints depend on with '{0}' ({1}), so they show in this list for translation"),
+		FText::FromString(GetSelectedTag()), FText::FromString(GetSelectedCategory()));
+}
+
+FText SN2CTagManager::GetReferenceViewerTooltip() const
+{
+	return AreSelectionActionsEnabled()
+		? LOCTEXT("ReferenceViewerTooltip", "Open Unreal's Reference Viewer on the checked graphs' Blueprints")
+		: LOCTEXT("ReferenceViewerNoneTooltip", "Check one or more graphs to see their Blueprints in Unreal's Reference Viewer");
+}
+
+FReply SN2CTagManager::HandleTagDependenciesClicked()
+{
+	const TArray<FString> Roots = GetSelectedBlueprintPaths();
+	const FString TagName = GetSelectedTag();
+	const FString Category = GetSelectedCategory();
+	if (Roots.Num() == 0 || TagName.IsEmpty())
+	{
+		return FReply::Handled();
+	}
+
+	const FN2CDependencyTagResult Result = FN2CDependencyActions::TagDependencies(Roots, TagName, Category, UN2CGraphStateManager::Get());
+
+	FText Message;
+	if (Result.Dependencies == 0)
+	{
+		Message = FText::Format(LOCTEXT("TagDependenciesNone", "The checked {0}|plural(one=Blueprint depends,other=Blueprints depend) on no other project asset: nothing to tag."),
+			FText::AsNumber(Roots.Num()));
+	}
+	else
+	{
+		Message = FText::Format(LOCTEXT("TagDependenciesDone", "Tagged {0} {0}|plural(one=graph,other=graphs) in {1} {1}|plural(one=Blueprint,other=Blueprints) with '{2}' ({3} {3}|plural(one=dependency,other=dependencies) found)."),
+			FText::AsNumber(Result.TaggedGraphs), FText::AsNumber(Result.TaggedBlueprints), FText::FromString(TagName), FText::AsNumber(Result.Dependencies));
+		if (Result.Untagged.Num() > 0)
+		{
+			Message = FText::Format(LOCTEXT("TagDependenciesUntagged", "{0}\nNo graph to tag: {1}"), Message,
+				FText::FromString(FString::Join(Result.Untagged, TEXT(", "))));
+		}
+	}
+	for (const FString& Warning : Result.Warnings)
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Tag Dependencies: %s"), *Warning), TEXT("TagManager"));
+	}
+
+	FNotificationInfo Info(Message);
+	Info.ExpireDuration = 8.0f;
+	Info.bUseLargeFont = false;
+	if (TSharedPtr<SNotificationItem> Item = FSlateNotificationManager::Get().AddNotification(Info))
+	{
+		Item->SetCompletionState(Result.TaggedGraphs > 0 || Result.Dependencies == 0 ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail);
+	}
+	RefreshData();
+	return FReply::Handled();
+}
+
+FReply SN2CTagManager::HandleReferenceViewerClicked()
+{
+	if (!FN2CDependencyActions::OpenReferenceViewer(GetSelectedBlueprintPaths()))
+	{
+		FMessageDialog::Open(EAppMsgType::Ok,
+			LOCTEXT("ReferenceViewerUnavailable", "The Reference Viewer could not be opened: the Asset Manager Editor plugin, which provides it, is not loaded."));
 	}
 	return FReply::Handled();
 }

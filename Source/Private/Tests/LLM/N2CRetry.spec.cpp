@@ -23,7 +23,8 @@
  * Retries and the HTTP transport seam (card 0215). Every request goes through an IN2CHttpTransport; here the fixture
  * transport answers with canned responses and records what was sent, so no request reaches the network. A 429, 529 or
  * 5xx answer is sent again after the provider's Retry-After (or a capped backoff) until Max Request Retries runs out;
- * a 4xx client error is not retried; a cancel during the wait sends nothing more.
+ * a 4xx client error is not retried, nor a 429 that says the account is out of credit or quota (card 0529); a cancel
+ * during the wait sends nothing more.
  */
 BEGIN_DEFINE_SPEC(FN2CRetrySpec, "NodeToCode.LLM.Retry", N2C_TEST_FLAGS)
 
@@ -162,6 +163,91 @@ void FN2CRetrySpec::Define()
 		const TOptional<FString> Result = Run();
 		TestTrue(TEXT("it failed at once"), Result.IsSet());
 		TestEqual(TEXT("one attempt"), Transport->GetSent().Num(), 1);
+	});
+
+	// Card 0529: a 429 that says the account is out of credit or quota never succeeds on a retry. Each provider's
+	// documented billing body fails at once with the Billing error; a rate-limit 429 still retries.
+	Describe(TEXT("an out-of-credit or out-of-quota answer"), [this]()
+	{
+		struct FCase
+		{
+			const TCHAR* Name;
+			EN2CLLMProvider Provider;
+			int32 Status;
+			const TCHAR* Body;
+		};
+		const TArray<FCase> Cases = {
+			{ TEXT("OpenAI 429 insufficient_quota"), EN2CLLMProvider::OpenAI, 429,
+				TEXT("{\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\",\"type\":\"insufficient_quota\",\"param\":null,\"code\":\"insufficient_quota\"}}") },
+			{ TEXT("OpenAI 429 no credits remaining"), EN2CLLMProvider::OpenAI, 429,
+				TEXT("{\"error\":{\"message\":\"You have no credits remaining. Add credits to your account to continue.\",\"type\":\"requests\",\"param\":null,\"code\":null}}") },
+			{ TEXT("Gemini 429 spent daily quota"), EN2CLLMProvider::Gemini, 429,
+				TEXT("{\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\",\"quotaValue\":\"50\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"20s\"}]}}") },
+			{ TEXT("Gemini 429 prepayment credits depleted"), EN2CLLMProvider::Gemini, 429,
+				TEXT("{\"error\":{\"code\":429,\"message\":\"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.\",\"status\":\"RESOURCE_EXHAUSTED\"}}") },
+			{ TEXT("DeepSeek 402 Insufficient Balance"), EN2CLLMProvider::DeepSeek, 402,
+				TEXT("{\"error\":{\"message\":\"Insufficient Balance\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}") },
+			{ TEXT("DeepSeek 429 Insufficient Balance"), EN2CLLMProvider::DeepSeek, 429,
+				TEXT("{\"error\":{\"message\":\"Insufficient Balance\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}") },
+			{ TEXT("Anthropic 400 credit balance too low"), EN2CLLMProvider::Anthropic, 400,
+				TEXT("{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"}}") },
+		};
+		for (const FCase& Case : Cases)
+		{
+			It(FString::Printf(TEXT("is not retried: %s"), Case.Name), [this, Case]()
+			{
+				MakeHandler(Case.Provider, 3);
+				AddExpectedError(FString::Printf(TEXT("HTTP %d error"), Case.Status), EAutomationExpectedErrorFlags::Contains, 1);
+				// Answers enough for every retry, and a Retry-After the status-only rule would honour
+				for (int32 Attempt = 0; Attempt < 4; ++Attempt)
+				{
+					Transport->Enqueue(Case.Status, Case.Body, { { TEXT("Retry-After"), TEXT("0") } });
+				}
+				const TOptional<FString> Result = Run(10.0, Case.Provider);
+				if (!TestTrue(TEXT("it completed"), Result.IsSet())) { return; }
+				TestEqual(TEXT("one attempt, no retry"), Transport->GetSent().Num(), 1);
+				const FN2CTranslationError Error = FN2CTranslationError::FromErrorJson(ParseObject(Result.GetValue()));
+				TestEqual(TEXT("the Billing error"), FN2CTranslationError::KindToString(Error.Kind), FString(TEXT("Billing")));
+				TestFalse(TEXT("not retryable"), Error.bRetryable);
+				TestEqual(TEXT("with the status"), Error.HttpStatus, Case.Status);
+
+				FN2CHttpResponseData Response;
+				Response.bReceived = true;
+				Response.Status = Case.Status;
+				Response.Body = Case.Body;
+				TestTrue(TEXT("IsQuotaExhausted"), FN2CRetryPolicy::IsQuotaExhausted(Response));
+			});
+		}
+
+		It(TEXT("still retries rate-limit 429s: OpenAI, Anthropic and Gemini per minute"), [this]()
+		{
+			struct FRate
+			{
+				EN2CLLMProvider Provider;
+				const TCHAR* Body;
+			};
+			const TArray<FRate> Rates = {
+				{ EN2CLLMProvider::OpenAI, TEXT("{\"error\":{\"message\":\"Rate limit reached for gpt in organization on requests per min (RPM): Limit 3, Used 3, Requested 1.\",\"type\":\"requests\",\"param\":null,\"code\":\"rate_limit_exceeded\"}}") },
+				{ EN2CLLMProvider::Anthropic, TEXT("{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Number of request tokens has exceeded your per-minute rate limit\"}}") },
+				{ EN2CLLMProvider::Gemini, TEXT("{\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerMinutePerProjectPerModel-FreeTier\",\"quotaValue\":\"15\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"1s\"}]}}") },
+			};
+			AddExpectedMessage(TEXT("retrying in"), EAutomationExpectedMessageFlags::Contains, Rates.Num());
+			for (const FRate& Rate : Rates)
+			{
+				MakeHandler(Rate.Provider, 3);
+				Transport->Enqueue(429, Rate.Body, { { TEXT("Retry-After"), TEXT("0") } });
+				Transport->Enqueue(200, TEXT("{\"ok\":true}"));
+				const TOptional<FString> Result = Run(10.0, Rate.Provider);
+				const FString What = UEnum::GetValueAsString(Rate.Provider);
+				TestTrue(What + TEXT(": it succeeded on the retry"), Result.IsSet() && Result.GetValue() == TEXT("{\"ok\":true}"));
+				TestEqual(What + TEXT(": two attempts"), Transport->GetSent().Num(), 2);
+				FN2CHttpResponseData Response;
+				Response.bReceived = true;
+				Response.Status = 429;
+				Response.Body = Rate.Body;
+				TestFalse(What + TEXT(": not quota exhausted"), FN2CRetryPolicy::IsQuotaExhausted(Response));
+			}
+		});
 	});
 
 	It(TEXT("sends nothing more when cancelled during the wait"), [this]()

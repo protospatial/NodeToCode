@@ -120,6 +120,14 @@ struct NODETOCODE_API FN2CRetryPolicy
 	static bool IsRetryableStatus(int32 Status);
 
 	/**
+	 * True when the response body says the account is out of credit or quota rather than rate limited (card 0529):
+	 * its error classifies as Billing (FN2CTranslationError::FromErrorJson): OpenAI insufficient_quota or "no credits
+	 * remaining", Gemini depleted prepayment credits or a spent daily quota, DeepSeek Insufficient Balance, Anthropic
+	 * credit balance too low. Such a 429 never succeeds on a retry.
+	 */
+	static bool IsQuotaExhausted(const FN2CHttpResponseData& Response);
+
+	/**
 	 * The server's requested wait from Retry-After (seconds, or an HTTP date) or retry-after-ms, in seconds; negative
 	 * when neither header is there or readable
 	 */
@@ -127,7 +135,8 @@ struct NODETOCODE_API FN2CRetryPolicy
 
 	/**
 	 * Seconds to wait before retry number RetryIndex (0 = the first retry) after Response, or a negative value when it
-	 * must not be retried: not a retryable status, no retries left, or the server asks for longer than MaxDelaySeconds.
+	 * must not be retried: not a retryable status, out of credit or quota (IsQuotaExhausted), no retries left, or the
+	 * server asks for longer than MaxDelaySeconds.
 	 * Jitter01 is a random number in [0, 1).
 	 */
 	float GetDelaySeconds(int32 RetryIndex, const FN2CHttpResponseData& Response, float Jitter01, const FDateTime& Now) const;

@@ -447,7 +447,8 @@ def bridge_connect(url, conn, break_links):
     body = data.get('data') or {}
     failed = body.get('failed') or []
     ok = bool(data.get('success')) and body.get('summary', {}).get('succeeded') == 1
-    return ok, failed[0].get('error', '') if failed else raw[:160]
+    # The bridge forwards to connect-pins (card 0343): a failed entry has the tool's errorCode and reason
+    return ok, ('%s %s' % (failed[0].get('errorCode'), failed[0].get('reason'))) if failed else raw[:160]
 
 
 def conversion_nodes(url):

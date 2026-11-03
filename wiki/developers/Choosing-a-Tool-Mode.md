@@ -1,4 +1,4 @@
-NodeToCode's MCP server has 64 tools in 12 toolsets. Two settings choose which of them a connected client sees:
+NodeToCode's MCP server has 65 tools in 13 toolsets. Two settings choose which of them a connected client sees:
 **Tool Profile** picks the toolsets, and **Tool Exposure** picks whether `tools/list` names every tool or only three
 search tools that reach them. The defaults serve every toolset and list every tool, which suits most clients; change
 them when a client struggles with many tools or should only run Python.
@@ -13,7 +13,7 @@ reads it once (as most do) stays correct. Every client gets the same list.
 
 | Tool Profile | What the client gets | Tools |
 |---|---|---|
-| **Default toolsets** (default) | Every toolset | 63, or 64 with **Allow MCP Python Execution** |
+| **Default toolsets** (default) | Every toolset | 64, or 65 with **Allow MCP Python Execution** |
 | **Python scripting only** | Only **PythonTools**: `run-python` (a script reaches every other tool through `nodetocode.invoke_tool`) | 1, or none without **Allow MCP Python Execution** |
 | **Custom toolsets** | The toolsets you pick in **Custom Toolsets** | the sum of their tools |
 
@@ -68,7 +68,7 @@ MCP** (ModelContextProtocol) and **EditorToolset** plugins are both enabled:
 
 | Overlapping Tools | Effect |
 |---|---|
-| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 29 tools (30 with Python execution); a Custom profile serves its toolsets as chosen |
+| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 30 tools (31 with Python execution); a Custom profile serves its toolsets as chosen |
 | **Leave them to Unreal MCP when it is enabled** | Left out of every profile |
 | **Always serve them** | Served, as on UE 5.6 and 5.7 |
 

@@ -17,23 +17,64 @@
 #include "Utils/N2CPathUtils.h"
 #include "LLM/N2CTranslationArchive.h"
 #include "Widgets/Notifications/SNotificationList.h"
+#include "Subsystems/N2CGraphStateSubsystem.h"
+#include "UObject/StrongObjectPtr.h"
 
 namespace
 {
 	const TCHAR* const StateFileName = TEXT("BlueprintGraphState.json");
 }
 
-UN2CGraphStateManager* UN2CGraphStateManager::Instance = nullptr;
+namespace N2CGraphStateManagerPrivate
+{
+	/**
+	 * The manager Get() makes when there is no editor subsystem (a commandlet, or a call after the subsystem went away).
+	 * Held for the garbage collector by a strong pointer, never rooted; ShutdownInstance releases it.
+	 */
+	TStrongObjectPtr<UN2CGraphStateManager>& StandAlone()
+	{
+		static TStrongObjectPtr<UN2CGraphStateManager> Manager;
+		return Manager;
+	}
+}
 
 UN2CGraphStateManager& UN2CGraphStateManager::Get()
 {
-	if (!Instance)
+	if (UN2CGraphStateManager* Editor = GetIfExists())
 	{
-		Instance = NewObject<UN2CGraphStateManager>(GetTransientPackage(), UN2CGraphStateManager::StaticClass(), NAME_None, RF_Standalone);
-		Instance->AddToRoot(); // Prevent garbage collection
-		Instance->Initialize();
+		return *Editor;
 	}
-	return *Instance;
+
+	TStrongObjectPtr<UN2CGraphStateManager>& StandAlone = N2CGraphStateManagerPrivate::StandAlone();
+	if (!StandAlone.IsValid())
+	{
+		StandAlone.Reset(NewObject<UN2CGraphStateManager>(GetTransientPackage(), UN2CGraphStateManager::StaticClass(),
+			NAME_None, RF_Transient));
+		if (IsEngineExitRequested())
+		{
+			// A late caller during exit: an empty store that never writes, so it cannot overwrite the user's file
+			StandAlone->bSavingBlocked = true;
+		}
+		else
+		{
+			FN2CLogger::Get().Log(TEXT("No editor graph state subsystem: using a stand-alone graph state manager"),
+				EN2CLogSeverity::Info);
+			StandAlone->Initialize();
+		}
+	}
+	return *StandAlone;
+}
+
+UN2CGraphStateManager* UN2CGraphStateManager::GetIfExists()
+{
+	if (UN2CGraphStateSubsystem* Subsystem = UN2CGraphStateSubsystem::Get())
+	{
+		if (UN2CGraphStateManager* Manager = Subsystem->GetManager())
+		{
+			return Manager;
+		}
+	}
+	return N2CGraphStateManagerPrivate::StandAlone().Get();
 }
 
 UN2CGraphStateManager::UN2CGraphStateManager()
@@ -77,23 +118,26 @@ void UN2CGraphStateManager::Shutdown()
 
 	StopFollowingAssetRegistry();
 
+	// A delayed save is written now (Deinitialize, editor exit)
+	CancelPendingSave();
 	if (bIsDirty)
 	{
 		SaveState();
-	}
-
-	if (Instance == this)
-	{
-		RemoveFromRoot();
-		Instance = nullptr;
 	}
 }
 
 void UN2CGraphStateManager::ShutdownInstance()
 {
-	if (Instance)
+	if (UN2CGraphStateSubsystem* Subsystem = UN2CGraphStateSubsystem::Get())
 	{
-		Instance->Shutdown();
+		// Editor exit: the subsystem's Deinitialize may come after the UObject purge, so write what is pending now
+		Subsystem->SaveNow();
+	}
+	TStrongObjectPtr<UN2CGraphStateManager>& StandAlone = N2CGraphStateManagerPrivate::StandAlone();
+	if (StandAlone.IsValid())
+	{
+		StandAlone->Shutdown();
+		StandAlone.Reset();
 	}
 }
 
@@ -271,7 +315,7 @@ bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphN
 			if (bIsDirty)
 			{
 				// GetOrCreateGraphState may have updated the graph name or Blueprint path
-				SaveState();
+				RequestSave();
 			}
 			return true; // Desired state achieved
 		}
@@ -296,7 +340,7 @@ bool UN2CGraphStateManager::AddTag(const FGuid& GraphGuid, const FString& GraphN
 	BroadcastStateChanged(State.GetKey());
 
 	// Auto-save
-	SaveState();
+	RequestSave();
 
 	return true;
 }
@@ -344,7 +388,7 @@ bool UN2CGraphStateManager::RemoveTag(const FN2CGraphKey& Key, const FString& Ta
 		// Clean up empty graph states (no tags, no translation, no export)
 		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
-		SaveState();
+		RequestSave();
 	}
 
 	return bRemoved;
@@ -384,7 +428,7 @@ int32 UN2CGraphStateManager::RemoveTagByName(const FN2CGraphKey& Key, const FStr
 		// Clean up empty graph states
 		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
-		SaveState();
+		RequestSave();
 	}
 
 	return RemovedCount;
@@ -423,7 +467,7 @@ int32 UN2CGraphStateManager::RemoveAllTagsFromGraph(const FN2CGraphKey& Key)
 		// Clean up empty graph states
 		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
-		SaveState();
+		RequestSave();
 	}
 
 	return RemovedCount;
@@ -454,7 +498,7 @@ int32 UN2CGraphStateManager::ClearAllTags()
 		RemovedCount, GraphsRemoved), EN2CLogSeverity::Info);
 
 	// Saved once when Bulk ends, which also broadcasts OnGraphStatesReloaded once
-	SaveState();
+	RequestSave();
 	return RemovedCount;
 }
 
@@ -523,7 +567,7 @@ int32 UN2CGraphStateManager::RestoreTags(const TArray<FN2CRemovedTag>& Removed)
 	{
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Restored %d removed tags"), RestoredCount), EN2CLogSeverity::Info);
 		// Saved once when Bulk ends, which also broadcasts OnGraphStatesReloaded once
-		SaveState();
+		RequestSave();
 	}
 	return RestoredCount;
 }
@@ -643,7 +687,7 @@ void UN2CGraphStateManager::SetTranslationState(const FN2CGraphKey& Key, const F
 		BroadcastTranslationUpdated(GraphKey);
 		BroadcastStateChanged(GraphKey);
 
-		SaveState();
+		RequestSave();
 	}
 }
 
@@ -671,7 +715,7 @@ void UN2CGraphStateManager::SetTranslationState(const FGuid& GraphGuid, const FS
 	BroadcastTranslationUpdated(State.GetKey());
 	BroadcastStateChanged(State.GetKey());
 
-	SaveState();
+	RequestSave();
 }
 
 void UN2CGraphStateManager::RecordSavedTranslation(const FGuid& GraphGuid, const FString& GraphName,
@@ -728,7 +772,7 @@ void UN2CGraphStateManager::ClearTranslationState(const FN2CGraphKey& Key)
 		// Clean up empty graph states
 		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
-		SaveState();
+		RequestSave();
 	}
 }
 
@@ -982,7 +1026,7 @@ void UN2CGraphStateManager::SetJsonExportState(const FN2CGraphKey& Key, const FN
 
 		BroadcastStateChanged(GraphState->GetKey());
 
-		SaveState();
+		RequestSave();
 	}
 }
 
@@ -1004,7 +1048,7 @@ void UN2CGraphStateManager::SetJsonExportState(const FGuid& GraphGuid, const FSt
 
 	BroadcastStateChanged(State.GetKey());
 
-	SaveState();
+	RequestSave();
 }
 
 void UN2CGraphStateManager::ClearJsonExportState(const FN2CGraphKey& Key)
@@ -1026,7 +1070,7 @@ void UN2CGraphStateManager::ClearJsonExportState(const FN2CGraphKey& Key)
 		// Clean up empty graph states
 		RemoveIfEmpty(FindGraphStateIndex(GraphKey)); // by key: a listener may have changed the list
 
-		SaveState();
+		RequestSave();
 	}
 }
 
@@ -1150,7 +1194,7 @@ void UN2CGraphStateManager::ClearAllState()
 	{
 		OnGraphStatesReloaded.Broadcast();
 	}
-	SaveState();
+	RequestSave();
 }
 
 // ============================================================================
@@ -1180,7 +1224,7 @@ void UN2CGraphStateManager::EndBulkUpdate()
 
 	if (bSaveRequested || (bChanged && bIsDirty))
 	{
-		SaveState();
+		RequestSave();
 	}
 	if (bChanged)
 	{
@@ -1259,6 +1303,8 @@ FString UN2CGraphStateManager::GetLegacyTagsFilePath() const
 
 void UN2CGraphStateManager::MarkDirty()
 {
+	// Every mutator marks the state dirty: the store is game-thread only (card 0346)
+	check(IsInGameThread());
 	bIsDirty = true;
 	if (IsInBulkUpdate())
 	{
@@ -1266,14 +1312,60 @@ void UN2CGraphStateManager::MarkDirty()
 	}
 }
 
+void UN2CGraphStateManager::RequestSave()
+{
+	check(IsInGameThread());
+	if (IsInBulkUpdate())
+	{
+		bBulkSavePending = true;
+		return;
+	}
+	if (SaveDelaySeconds <= 0.0f)
+	{
+		SaveState();
+		return;
+	}
+	if (PendingSaveHandle.IsValid())
+	{
+		// Already waiting: that save writes this change too
+		return;
+	}
+	TWeakObjectPtr<UN2CGraphStateManager> WeakThis(this);
+	PendingSaveHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakThis](float)
+	{
+		if (UN2CGraphStateManager* This = WeakThis.Get())
+		{
+			This->PendingSaveHandle.Reset();
+			if (This->bIsDirty)
+			{
+				This->SaveState();
+			}
+		}
+		return false;
+	}), SaveDelaySeconds);
+}
+
+void UN2CGraphStateManager::CancelPendingSave()
+{
+	if (PendingSaveHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(PendingSaveHandle);
+		PendingSaveHandle.Reset();
+	}
+}
+
 bool UN2CGraphStateManager::SaveState()
 {
+	check(IsInGameThread());
 	if (IsInBulkUpdate())
 	{
 		// Written once when the outermost bulk update ends
 		bBulkSavePending = true;
 		return true;
 	}
+
+	// This write covers any delayed save still waiting
+	CancelPendingSave();
 
 	const FString FilePath = GetStateFilePath();
 
@@ -1306,6 +1398,14 @@ bool UN2CGraphStateManager::SaveState()
 
 bool UN2CGraphStateManager::LoadState()
 {
+	check(IsInGameThread());
+	// A change still waiting for its delayed save is written first, so the reload does not drop it
+	if (PendingSaveHandle.IsValid() && bIsDirty)
+	{
+		SaveState();
+	}
+	CancelPendingSave();
+
 	const ELoadResult Result = LoadStateInternal();
 
 	if ((Result == ELoadResult::Loaded || Result == ELoadResult::Missing) && bSavingBlocked)
@@ -1401,7 +1501,7 @@ UN2CGraphStateManager::ELoadResult UN2CGraphStateManager::LoadStateInternal()
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Migrated the graph state file from version %d to %s"),
 			FileVersion, *StateFile.Version), EN2CLogSeverity::Info);
 		MarkDirty();
-		SaveState();
+		RequestSave();
 	}
 
 	return ELoadResult::Loaded;
@@ -1546,7 +1646,7 @@ void UN2CGraphStateManager::MigrateFromLegacyTags()
 			EN2CLogSeverity::Info);
 
 		// Save the migrated state (written when Bulk ends)
-		SaveState();
+		RequestSave();
 	}
 
 	if (bIsDirty || bSavingBlocked)
@@ -1660,6 +1760,7 @@ void UN2CGraphStateManager::StopFollowingAssetRegistry()
 
 void UN2CGraphStateManager::BeginDestroy()
 {
+	CancelPendingSave();
 	StopFollowingAssetRegistry();
 	Super::BeginDestroy();
 }
@@ -1717,7 +1818,7 @@ int32 UN2CGraphStateManager::HandleBlueprintRenamed(const FSoftObjectPath& InOld
 		}
 		if (Moved > 0)
 		{
-			SaveState();
+			RequestSave();
 		}
 	}
 
@@ -1753,7 +1854,7 @@ int32 UN2CGraphStateManager::HandleBlueprintRemoved(const FSoftObjectPath& InPat
 		}
 		if (Marked > 0)
 		{
-			SaveState();
+			RequestSave();
 		}
 	}
 
@@ -1787,7 +1888,7 @@ int32 UN2CGraphStateManager::HandleBlueprintAdded(const FSoftObjectPath& InPath)
 		}
 		if (Unmarked > 0)
 		{
-			SaveState();
+			RequestSave();
 		}
 	}
 	return Unmarked;
@@ -1828,7 +1929,7 @@ int32 UN2CGraphStateManager::RefreshMissing()
 		}
 		if (bChanged)
 		{
-			SaveState();
+			RequestSave();
 		}
 	}
 	return Missing;
@@ -1845,7 +1946,7 @@ int32 UN2CGraphStateManager::PruneMissing()
 		if (Removed > 0)
 		{
 			MarkDirty();
-			SaveState();
+			RequestSave();
 		}
 	}
 
