@@ -16,14 +16,27 @@ namespace
 {
 	const TCHAR* const BlueprintUri = TEXT("nodetocode://blueprint/current");
 
-	FMcpPromptArgument MakeArgument(const TCHAR* Name, const TCHAR* Title, const FString& Description, bool bRequired = false)
+	FMcpPromptArgument MakeArgument(const TCHAR* Name, const TCHAR* Title, const FString& Description, bool bRequired = false,
+		const TArray<FString>& CompletionValues = {})
 	{
 		FMcpPromptArgument Argument;
 		Argument.Name = Name;
 		Argument.Title = Title;
 		Argument.Description = Description;
 		Argument.bRequired = bRequired;
+		Argument.CompletionValues = CompletionValues;
 		return Argument;
+	}
+
+	/** The language ids completion/complete offers for a language argument */
+	TArray<FString> LanguageIds()
+	{
+		TArray<FString> Ids;
+		for (const FN2CMcpPromptLanguage& Language : FN2CMcpBlueprintPrompts::Languages())
+		{
+			Ids.Add(Language.Id);
+		}
+		return Ids;
 	}
 
 	FMcpPromptMessage MakeTextMessage(const FString& Text)
@@ -124,11 +137,11 @@ FMcpPromptDefinition FN2CMcpCodeGenerationPrompt::GetDefinition() const
 	Definition.Title = TEXT("Generate Code from Blueprint");
 	Definition.Description = TEXT("Translate the focused Blueprint to code with NodeToCode's own translation instructions for the language");
 	Definition.Arguments.Add(MakeArgument(TEXT("language"), TEXT("Target language"),
-		FString::Printf(TEXT("Target language, one of: %s. Default: cpp"), *FN2CMcpBlueprintPrompts::LanguageIdList())));
+		FString::Printf(TEXT("Target language, one of: %s. Default: cpp"), *FN2CMcpBlueprintPrompts::LanguageIdList()), false, LanguageIds()));
 	Definition.Arguments.Add(MakeArgument(TEXT("style"), TEXT("Coding style"),
-		TEXT("Coding style preference (verbose, concise, documented)")));
+		TEXT("Coding style preference (verbose, concise, documented)"), false, { TEXT("verbose"), TEXT("concise"), TEXT("documented") }));
 	Definition.Arguments.Add(MakeArgument(TEXT("optimization"), TEXT("Optimize for"),
-		TEXT("Optimization level (readability, performance, size)")));
+		TEXT("Optimization level (readability, performance, size)"), false, { TEXT("readability"), TEXT("performance"), TEXT("size") }));
 	return Definition;
 }
 
@@ -184,9 +197,10 @@ FMcpPromptDefinition FN2CMcpBlueprintAnalysisPrompt::GetDefinition() const
 	Definition.Title = TEXT("Analyze Blueprint");
 	Definition.Description = TEXT("Analyze a Blueprint's structure, complexity, and potential issues");
 	Definition.Arguments.Add(MakeArgument(TEXT("focus"), TEXT("Focus"),
-		TEXT("Analysis focus (complexity, performance, best-practices, all)")));
+		TEXT("Analysis focus (complexity, performance, best-practices, all)"), false,
+		{ TEXT("complexity"), TEXT("performance"), TEXT("best-practices"), TEXT("all") }));
 	Definition.Arguments.Add(MakeArgument(TEXT("detail"), TEXT("Detail level"),
-		TEXT("Level of detail (summary, detailed, comprehensive)")));
+		TEXT("Level of detail (summary, detailed, comprehensive)"), false, { TEXT("summary"), TEXT("detailed"), TEXT("comprehensive") }));
 	return Definition;
 }
 
@@ -233,9 +247,10 @@ FMcpPromptDefinition FN2CMcpRefactorPrompt::GetDefinition() const
 	Definition.Title = TEXT("Refactor Blueprint");
 	Definition.Description = TEXT("Suggest refactoring improvements for Blueprint code");
 	Definition.Arguments.Add(MakeArgument(TEXT("goal"), TEXT("Goal"),
-		TEXT("Refactoring goal (simplify, optimize, modularize, clean)")));
+		TEXT("Refactoring goal (simplify, optimize, modularize, clean)"), false,
+		{ TEXT("simplify"), TEXT("optimize"), TEXT("modularize"), TEXT("clean") }));
 	Definition.Arguments.Add(MakeArgument(TEXT("language"), TEXT("Target language"),
-		FString::Printf(TEXT("Target language for refactored code, one of: %s. Default: cpp"), *FN2CMcpBlueprintPrompts::LanguageIdList())));
+		FString::Printf(TEXT("Target language for refactored code, one of: %s. Default: cpp"), *FN2CMcpBlueprintPrompts::LanguageIdList()), false, LanguageIds()));
 	return Definition;
 }
 

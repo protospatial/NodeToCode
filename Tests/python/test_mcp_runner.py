@@ -14,6 +14,7 @@ mcp-tools-python-translation-resources-6, -8, -9, -12, -13).
 import base64
 import importlib
 import json
+import time
 
 import pytest
 
@@ -124,3 +125,48 @@ def test_system_exit_is_reported_not_raised(runner, submitted):
     answer = run(runner, submitted, 'raise SystemExit(3)')
     assert answer['success'] is False
     assert answer['error'] == '3'
+
+
+# ---- The timeout (card 0300): a deadline raised inside the script between bytecodes ----
+
+def run_timed(runner, submitted, source, timeout, call_id='timed'):
+    runner.run_code(call_id, base64.b64encode(source.encode('utf-8')).decode('ascii'), timeout)
+    return json.loads(submitted[call_id])
+
+
+@pytest.mark.parametrize('source', [
+    'while True:\n    pass',
+    # a script's own except Exception does not swallow it
+    'while True:\n    try:\n        x = sum(range(1000))\n    except Exception:\n        pass',
+    # one that catches BaseException is stopped again half a second later, at its next bytecode outside the handler
+    'import time\nn = 0\nwhile True:\n    try:\n        n += 1\n    except BaseException:\n        n -= 1\n        break\nwhile True:\n    pass',
+])
+def test_a_runaway_script_stops_at_its_timeout(runner, submitted, source):
+    started = time.monotonic()
+    answer = run_timed(runner, submitted, source, 0.3)
+    elapsed = time.monotonic() - started
+    assert answer['success'] is False and answer['timed_out'] is True
+    assert answer['error'].startswith('timed out: run-python stopped the script after'), answer['error']
+    assert elapsed < 2.5, elapsed
+
+
+def test_a_script_that_ends_in_time_is_untouched_and_nothing_fires_later(runner, submitted):
+    answer = run_timed(runner, submitted, 'result = sum(range(10))', 0.2)
+    assert answer['success'] is True and answer['data'] == 45 and 'timed_out' not in answer
+    # The watcher is done: no ScriptTimeout lands in this thread after the call
+    deadline = time.monotonic() + 0.8
+    while time.monotonic() < deadline:
+        sum(range(100))
+
+
+def test_a_native_call_runs_to_its_end_then_the_script_stops(runner, submitted):
+    started = time.monotonic()
+    answer = run_timed(runner, submitted, 'import time\ntime.sleep(0.7)\nwhile True:\n    pass', 0.2)
+    elapsed = time.monotonic() - started
+    assert answer['timed_out'] is True and 0.6 < elapsed < 2.5, elapsed
+    assert answer['seconds'] >= 0.6
+
+
+def test_no_timeout_means_no_deadline(runner, submitted):
+    answer = run_timed(runner, submitted, 'import time\ntime.sleep(0.3)\nresult = 1', 0)
+    assert answer['success'] is True and answer['data'] == 1

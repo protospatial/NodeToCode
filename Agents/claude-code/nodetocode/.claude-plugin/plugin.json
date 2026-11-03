@@ -2,7 +2,7 @@
   "name": "nodetocode",
   "displayName": "NodeToCode",
   "version": "2.0.0-beta.1",
-  "description": "Read, translate and migrate Unreal Engine Blueprints from Claude Code: NodeToCode's MCP server (the open editor's Blueprints as N2C JSON, translation, graph editing), three Agent Skills, a /nodetocode:translate command and a session-start check that says how to reach the editor.",
+  "description": "Read, translate and migrate Unreal Engine Blueprints from Claude Code: NodeToCode's MCP server (the open editor's Blueprints as N2C JSON, translation, graph editing), six Agent Skills (Blueprints: comprehension, C++, migration; assets: listing, validation, folder scaffolding), a /nodetocode:translate command and a session-start check that says how to reach the editor.",
   "author": {
     "name": "protospatial",
     "url": "https://protospatial.com"

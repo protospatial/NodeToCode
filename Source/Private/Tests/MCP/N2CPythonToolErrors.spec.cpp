@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/N2CTestHelpers.h"
+#include "Tests/N2CToolSpecHarness.h"
 #include "IPythonScriptPlugin.h"
 
 /**
@@ -64,6 +65,22 @@ void FN2CPythonToolErrorsSpec::Define()
 			FString Traceback;
 			TestTrue(TEXT("the traceback names the code's line 1"), Body->TryGetStringField(TEXT("traceback"), Traceback)
 				&& Traceback.Contains(TEXT("<run-python>")) && Traceback.Contains(TEXT("line 1")));
+		});
+
+		It(TEXT("reports a script stopped at its timeout with isError and timed_out (card 0300)"), [this]()
+		{
+			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
+			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+			Args->SetStringField(TEXT("code"), TEXT("while True:\n    pass"));
+			Args->SetNumberField(TEXT("timeout"), 1.0);
+			const FMcpToolCallResult Result = N2CTest::RunToolUnmarked(TEXT("run-python"), Args);
+			const TSharedPtr<FJsonObject> Body = N2CTest::ParseJsonObject(N2CTest::ResultText(Result));
+			if (!TestTrue(TEXT("run-python answers with a JSON object"), Body.IsValid())) { return; }
+			TestTrue(TEXT("isError"), Result.bIsError);
+			TestFalse(TEXT("success"), Body->GetBoolField(TEXT("success")));
+			bool bTimedOut = false;
+			TestTrue(TEXT("timed_out"), Body->TryGetBoolField(TEXT("timed_out"), bTimedOut) && bTimedOut);
+			TestTrue(TEXT("error says timed out"), Body->GetStringField(TEXT("error")).StartsWith(TEXT("timed out")));
 		});
 
 		It(TEXT("returns a success without isError and with the result as data"), [this]()

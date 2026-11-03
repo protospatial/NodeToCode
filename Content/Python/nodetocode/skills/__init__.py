@@ -52,9 +52,30 @@ class NodeToCodeBlueprintMigrationSkill(unreal.AgentSkill):
     instructions = _instructions('blueprint-migration')
 
 
+@agent_skill
+class NodeToCodeAssetIteratorSkill(unreal.AgentSkill):
+    __doc__ = _description('asset-iterator')
+    instructions = _instructions('asset-iterator')
+
+
+@agent_skill
+class NodeToCodeAssetValidatorSkill(unreal.AgentSkill):
+    __doc__ = _description('asset-validator')
+    instructions = _instructions('asset-validator')
+
+
+@agent_skill
+class NodeToCodeProjectFolderScaffoldSkill(unreal.AgentSkill):
+    __doc__ = _description('project-folder-scaffold')
+    instructions = _instructions('project-folder-scaffold')
+
+
 # Skill name (the SKILL.md folder) -> registered class
 SKILLS = {
     'blueprint-comprehension': NodeToCodeBlueprintComprehensionSkill,
     'blueprint-to-cpp': NodeToCodeBlueprintToCppSkill,
     'blueprint-migration': NodeToCodeBlueprintMigrationSkill,
+    'asset-iterator': NodeToCodeAssetIteratorSkill,
+    'asset-validator': NodeToCodeAssetValidatorSkill,
+    'project-folder-scaffold': NodeToCodeProjectFolderScaffoldSkill,
 }

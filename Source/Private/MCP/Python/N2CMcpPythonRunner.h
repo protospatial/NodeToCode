@@ -23,6 +23,10 @@ namespace N2CMcpPythonRunner
 		FString Error;
 	};
 
-	/** Runs Python source as run-python does. Game thread */
-	FRun RunCode(const FString& Source);
+	/**
+	 * Runs Python source as run-python does. Game thread.
+	 * @param TimeoutSeconds Past it the runner raises a timeout inside the code, between bytecodes (card 0300): Python
+	 *        code stops, a native call in progress runs to its end first. 0: no timeout
+	 */
+	FRun RunCode(const FString& Source, float TimeoutSeconds = 0.0f);
 }
