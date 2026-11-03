@@ -350,16 +350,10 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 	// Set global translation state
 	FN2CEditorIntegration::Get().SetTranslationInProgress(true);
 
-	// Initialize and show the batch progress modal
-	TArray<FString> GraphNames;
-	for (const FN2CTagInfo& Graph : SelectedGraphs)
-	{
-		GraphNames.Add(Graph.GraphName);
-	}
-
+	// Initialize and show the batch progress modal: one row per graph, in the orchestrator's item order
 	if (BatchProgressModal.IsValid())
 	{
-		BatchProgressModal->Initialize(GraphNames);
+		BatchProgressModal->Initialize(SelectedGraphs);
 	}
 	ShowBatchProgress();
 
@@ -390,11 +384,12 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 	const TArray<FN2CBatchTranslationItem>& Items = Orchestrator.GetBatchItems();
 	if (BatchProgressModal.IsValid())
 	{
-		for (const FN2CBatchTranslationItem& Item : Items)
+		for (int32 Index = 0; Index < Items.Num(); ++Index)
 		{
+			const FN2CBatchTranslationItem& Item = Items[Index];
 			if (Item.Status == EN2CBatchItemStatus::Failed && !Item.CachedGraph.IsValid())
 			{
-				BatchProgressModal->MarkItemComplete(Item.TagInfo.GraphName, false, Item.ErrorMessage);
+				BatchProgressModal->MarkItemCompleteAt(Index, false, Item.ErrorMessage);
 			}
 		}
 	}
@@ -589,7 +584,8 @@ void SN2CMainWindow::OnBatchItemComplete(const FN2CTagInfo& TagInfo, const FN2CT
 	// Only a batch this window shows (an MCP translate-batch runs without the window's progress)
 	if (BatchProgressModal.IsValid() && bShowBatchProgress)
 	{
-		BatchProgressModal->MarkItemComplete(TagInfo.GraphName, bSuccess,
+		// By item index: several graphs in a batch can share a name (card 0489)
+		BatchProgressModal->MarkItemCompleteAt(ItemIndex, bSuccess,
 			bSuccess ? FString() : Response.Error.ToDisplayString());
 	}
 }

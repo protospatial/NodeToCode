@@ -1,6 +1,8 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CBatchProgressModal.h"
+#include "Core/N2CTagTypes.h"
+#include "UObject/SoftObjectPath.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -201,16 +203,41 @@ void SN2CBatchProgressModal::Initialize(const TArray<FString>& GraphNames)
 	}
 }
 
+void SN2CBatchProgressModal::Initialize(const TArray<FN2CTagInfo>& Graphs)
+{
+	TArray<FString> GraphNames;
+	for (const FN2CTagInfo& Graph : Graphs)
+	{
+		GraphNames.Add(Graph.GraphName);
+	}
+	Initialize(GraphNames);
+	for (int32 Index = 0; Index < Graphs.Num() && Index < ProgressItems.Num(); ++Index)
+	{
+		// "/Game/Folder/BP_A.BP_A" -> "BP_A"
+		ProgressItems[Index]->BlueprintName = FSoftObjectPath(Graphs[Index].BlueprintPath).GetAssetName();
+	}
+	if (ProgressListView.IsValid())
+	{
+		ProgressListView->RequestListRefresh();
+	}
+}
+
+FString SN2CBatchProgressModal::GetItemLabel(const FN2CBatchProgressItem& Item)
+{
+	return Item.BlueprintName.IsEmpty() ? Item.GraphName : FString::Printf(TEXT("%s (%s)"), *Item.GraphName, *Item.BlueprintName);
+}
+
 void SN2CBatchProgressModal::SetProgress(int32 CurrentIndex, int32 TotalCount, const FString& InCurrentGraphName)
 {
 	CurrentItemIndex = CurrentIndex;
 	TotalItemCount = TotalCount;
 	CurrentGraphName = InCurrentGraphName;
 
-	// Update current item text
+	// Update current item text (with its Blueprint when the row knows it)
 	if (CurrentItemText.IsValid())
 	{
-		CurrentItemText->SetText(FText::FromString(CurrentGraphName));
+		const bool bKnownRow = ProgressItems.IsValidIndex(CurrentIndex) && ProgressItems[CurrentIndex]->GraphName == CurrentGraphName;
+		CurrentItemText->SetText(FText::FromString(bKnownRow ? GetItemLabel(*ProgressItems[CurrentIndex]) : CurrentGraphName));
 	}
 
 	// Update count display
@@ -223,13 +250,10 @@ void SN2CBatchProgressModal::SetProgress(int32 CurrentIndex, int32 TotalCount, c
 		));
 	}
 
-	// Update item status in the list
-	for (int32 i = 0; i < ProgressItems.Num(); ++i)
+	// The row of this item only: same-named graphs in other Blueprints keep their own status (card 0489)
+	if (ProgressItems.IsValidIndex(CurrentIndex))
 	{
-		if (ProgressItems[i]->GraphName == CurrentGraphName)
-		{
-			ProgressItems[i]->Status = EN2CBatchProgressItemStatus::InProgress;
-		}
+		ProgressItems[CurrentIndex]->Status = EN2CBatchProgressItemStatus::InProgress;
 	}
 
 	// Refresh list view
@@ -263,6 +287,25 @@ void SN2CBatchProgressModal::MarkItemComplete(const FString& GraphName, bool bSu
 	}
 
 	// Refresh list view
+	if (ProgressListView.IsValid())
+	{
+		ProgressListView->RequestListRefresh();
+	}
+}
+
+void SN2CBatchProgressModal::MarkItemCompleteAt(int32 ItemIndex, bool bSuccess, const FString& ErrorMessage)
+{
+	if (!ProgressItems.IsValidIndex(ItemIndex))
+	{
+		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CBatchProgressModal] MarkItemCompleteAt: item %d is not one of the %d items"),
+			ItemIndex, ProgressItems.Num());
+		return;
+	}
+	FN2CBatchProgressItem& Item = *ProgressItems[ItemIndex];
+	Item.Status = bSuccess ? EN2CBatchProgressItemStatus::Completed : EN2CBatchProgressItemStatus::Failed;
+	Item.ErrorMessage = bSuccess ? FString() : ErrorMessage;
+	UE_LOG(LogNodeToCode, Verbose, TEXT("[SN2CBatchProgressModal] MarkItemCompleteAt: item %d '%s' set to %s"),
+		ItemIndex, *GetItemLabel(Item), bSuccess ? TEXT("Completed") : TEXT("Failed"));
 	if (ProgressListView.IsValid())
 	{
 		ProgressListView->RequestListRefresh();
@@ -401,7 +444,7 @@ TSharedRef<ITableRow> SN2CBatchProgressModal::GenerateProgressRow(TSharedPtr<FN2
 				.AutoHeight()
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(Item->GraphName))
+					.Text_Lambda([ItemPtr]() { return FText::FromString(GetItemLabel(*ItemPtr)); })
 					.Font(FN2CFonts::MonoSmall())
 					// Use attribute binding to dynamically query current status
 					.ColorAndOpacity_Lambda([this, ItemPtr]() { return GetItemTextColor(ItemPtr->Status); })
