@@ -47,8 +47,8 @@ model choice to the project's.
 The **MCP Server** category decides which tools an MCP client (Claude Code, VS Code, Cursor) gets from Node to Code.
 Both settings take effect after an editor restart, and the tool list a client sees never changes while it is connected.
 
-- **Tool Profile**: **Default toolsets** (every tool, the default), **Python scripting only** (run-python and the
-  script library), or **Custom toolsets** (only the toolsets you pick under **Custom Toolsets**)
+- **Tool Profile**: **Default toolsets** (every tool, the default), **Python scripting only** (run-python
+  alone), or **Custom toolsets** (only the toolsets you pick under **Custom Toolsets**)
 - **Tool Exposure**: **List every tool** (the default), or **Tool search**, which lists three tools (`list_toolsets`,
   `describe_toolset`, `call_tool`) that reach all the others. Use Tool search when your client has a tool limit
   (VS Code allows 128 tools, Windsurf 100, counted across all your MCP servers)

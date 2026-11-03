@@ -125,7 +125,7 @@ namespace N2CPythonBridgePrivate
 		return Manager;
 	}
 
-	/** True when a tool of the PythonTools toolset has this name (run-python and the script library) */
+	/** True when a tool of the PythonTools toolset has this name (run-python) */
 	bool IsPythonToolsetTool(const FString& ToolName)
 	{
 		for (const TSharedPtr<IN2CMcpTool>& Tool : FN2CMcpToolRegistry::Get().GetTools())
@@ -191,7 +191,7 @@ FString UN2CPythonBridge::InvokeTool(const FString& ToolName, const FString& Arg
 	if (Outcome.IsError() && Outcome.Error->Code == EN2CToolErrorCode::UnknownTool && IsPythonToolsetTool(Name))
 	{
 		return InvokeToolError(EN2CToolErrorCode::UnknownTool, FString::Printf(
-			TEXT("'%s' is a PythonTools tool, which InvokeTool does not run: you are in Python already, so run the code or call the nodetocode.scripts function directly"),
+			TEXT("'%s' is a PythonTools tool, which InvokeTool does not run: you are in Python already, so run the code directly"),
 			*Name));
 	}
 	if (Outcome.IsError())

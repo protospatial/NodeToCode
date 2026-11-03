@@ -25,7 +25,4 @@ namespace N2CMcpPythonRunner
 
 	/** Runs Python source as run-python does. Game thread */
 	FRun RunCode(const FString& Source);
-
-	/** Evaluates a nodetocode call expression ("list_scripts(limit=20)"; n2c. is added) as the script tools do. Game thread */
-	FRun RunCall(const FString& NodeToCodeCall);
 }

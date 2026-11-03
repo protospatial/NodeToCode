@@ -275,8 +275,7 @@ def invoke_tool(tool_name: str, arguments: Optional[Dict[str, Any]] = None) -> D
     """
     Run one of NodeToCode's MCP tools by name, with the tool's own arguments (card 0342).
 
-    Every registered tool runs, whatever the MCP server serves, except run-python and the script library (you are
-    in Python already). A translation tool is refused with code NOT_RUNNABLE_HERE: it runs longer than a call.
+    Every registered tool runs, whatever the MCP server serves, except run-python (you are in Python already). A translation tool is refused with code NOT_RUNNABLE_HERE: it runs longer than a call.
 
     Args:
         tool_name: The tool's name, e.g. 'list-blueprint-functions' (Context/mcp-server/tools.generated.md)

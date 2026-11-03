@@ -1,6 +1,8 @@
 # NodeToCode Python Scripting
 
-MCP Bridge and Python script management system for LLM-powered UE automation.
+The stdio MCP bridge, the `nodetocode` Python module and run-python for LLM-powered UE automation. NodeToCode 2.0
+has no script library (decision 0010, card 0305): the six saved-script tools and `script_registry.json` are gone;
+reusable scripts belong in Agent Skills (`Context/agent-skills/AGENTS-agent-skills.md`).
 
 ## Directory Structure
 
@@ -18,16 +20,11 @@ Content/Python/
 │   ├── graph.py                - Graph editing: search, add, connect, set, delete, find, comment
 │   ├── functions.py            - Function input and return pins
 │   ├── bridge.py               - Tagging, LLM provider info, opening Blueprints and functions
-│   ├── scripts.py              - Script CRUD with dual-path search
 │   └── utils.py                - Logging, result helpers, the bridge result parser
 │
-├── scripts/                    - Script library (bundled + user)
-│   ├── script_registry.json    - Metadata index (the list of bundled scripts)
-│   ├── core/                   - Core utility scripts
-│   ├── utilities/              - Project utilities
-│   ├── data/                   - Data manipulation scripts
-│   ├── ui/                     - UI/Widget scripts
-│   └── general/                - Empty; save_script's default category
+├── scripts/                    - Six utilities left from the 1.x library, no registry: asset_iterator,
+│                                 asset_validator and project_folder_scaffold become Agent Skills and the
+│                                 rest are deleted with card 0306 (decision 0010)
 │
 └── tests/                      - CPython tests for the stdio bridge (test_mcp_bridge.py) and a graph-editing
                                   test to run inside the editor (test_graph_editing.py)
@@ -117,7 +114,7 @@ Python installation finder using the same methods as UnrealVersionSelector:
 
 ## NodeToCode Python Module
 
-Importable module providing Blueprint manipulation and script management. All functions return standardized dictionaries with `success`, `data`, and `error` keys.
+Importable module providing Blueprint manipulation. All functions return standardized dictionaries with `success`, `data`, and `error` keys.
 
 ### Quick Start
 
@@ -131,10 +128,6 @@ if bp['success']:
 
 n2c.compile_blueprint()
 n2c.save_blueprint()
-
-# Script management
-matches = n2c.search_scripts("blueprint")
-result = n2c.run_script("my_script", max_hp=100)   # a saved script; its `result` is in result['data']['result']
 
 # Tagging system
 n2c.tag_graph("player_controller", category="Systems")
@@ -150,7 +143,6 @@ tags = n2c.list_tags()
 | `graph.py` | Graph editing through the MCP tools (`invoke_tool`): node search, add, connect, pin values, delete, find, comments |
 | `functions.py` | Function input and return pins through the MCP pin tools (`invoke_tool`) |
 | `bridge.py` | Tagging, LLM provider info, `open_blueprint` and `open_blueprint_function` |
-| `scripts.py` | Script CRUD with dual-path search (plugin + project) |
 | `utils.py` | Logging (`log_info`, `log_warning`, `log_error`), result helpers, `_parse_bridge_result`, `invoke_tool`, `_invoke` with `TOOL_NAMES` and `BRIDGE_ONLY`, `LegacyKeys` |
 
 ### Tools from Python: invoke_tool (card 0342)
@@ -159,7 +151,7 @@ tags = n2c.list_tags()
 (`FN2CToolCatalog::InvokeNow`) and returns `{success, data, error}` (`code` and `field` on a failure: `UNKNOWN_TOOL`,
 `INVALID_ARGUMENT`, `PIE_ACTIVE`, `NOT_RUNNABLE_HERE`, `TOOL_FAILED`). It resolves from a private tool manager
 configured with every toolset except PythonTools, so it reaches tools the MCP server does not serve (the Python
-Scripting profile serves only the Python tools); run-python and the script-library tools are refused, and a
+Scripting profile serves only run-python); run-python is refused, and a
 long-running tool (translation) gets `NOT_RUNNABLE_HERE`. It runs inline on the game thread, inside a run-python call
 too (the outer tool call compiles once). `data` is the tool's value: its JSON object or array, else its text.
 
@@ -275,17 +267,6 @@ script ends and reports it as `compile` in its own result, so a script that adds
     is kept as an `@param` line of the function's tooltip. See "Signature Edits and Call Sites" in
     `Source/Private/MCP/Tools/Implementations/Blueprint/Functions/AGENTS.md`
 
-**Script Management:**
-*   `list_scripts(category=None, limit=20)` - List scripts with metadata
-*   `search_scripts(query, limit=10)` - Search by name/description/tags
-*   `get_script(name)` - Get full script code and metadata
-*   `get_script_functions(name)` - AST-based function signature extraction
-*   `run_script(name, **kwargs)` - Execute script with parameters (keyword arguments become locals, and `params`);
-    `data`: `script_name`, `result` (the script's `result` variable), `parameters_used`
-*   `save_script(name, code, description, tags, category, parameters)` - Save new script
-*   `delete_script(name)` - Remove script (project scripts only)
-*   `get_script_stats()` - Library statistics
-
 **NodeToCode-Specific:**
 *   `tag_graph(tag, category="Default", description="", blueprint_path="", graph="")` - Tag a graph, else the focused one
 *   `list_tags(category=None, tag=None, blueprint_path=None)` - List tags with filters; `blueprint_path` keeps one Blueprint's graphs (a duplicated Blueprint shares its graph GUIDs with the original)
@@ -300,88 +281,22 @@ script ends and reports it as `compile` in its own result, so a script that adds
 *   `log_info/warning/error(msg)` - Logging to UE output
 *   `make_success_result(data)`, `make_error_result(error)` - Result formatting
 
-## Dual-Path Script Search
+## Tests
 
-The script system searches two locations, with project scripts taking precedence:
-
-1. **Plugin bundled scripts** (read-only): `Content/Python/scripts/` of the plugin, found beside the `nodetocode`
-   package (`_get_plugin_scripts_dir` resolves it from `scripts.py`'s own path), so a Fab install under
-   `Engine/Plugins/Marketplace` or a renamed plugin folder finds them too
-2. **Project user scripts** (read-write): `Content/Python/scripts/`
-
-*   All list/search/get operations search **BOTH** locations
-*   Project scripts override plugin scripts with the same name
-*   Save/delete operations only affect **project** scripts
-*   Each script entry includes `source: "plugin"` or `source: "project"`
-
-## Script Registry
-
-JSON index for fast script discovery:
-
-```json
-{
-  "version": "1.0",
-  "scripts": {
-    "script_name": {
-      "path": "category/script_name.py",
-      "description": "Brief description",
-      "tags": ["tag1", "tag2"],
-      "category": "core",
-      "parameters": []
-    }
-  },
-  "categories": ["core", "utilities", "data", "ui"],
-  "stats": {
-    "total_scripts": 13,
-    "last_updated": "2026-01-16T23:30:00Z"
-  }
-}
-```
-
-Writing and recovery (project registry; same pattern as `FN2CFileUtils`):
-
-*   `_save_registry` writes `script_registry.json.tmp`, copies the previous file to `script_registry.json.bak` and
-    `os.replace`s the temporary file over it. Unknown top-level fields are kept.
-*   A project registry that does not parse (or is not an object with a `scripts` object) is copied to
-    `script_registry.json.corrupt-<UTC yyyymmdd-hhmmss>` (once per distinct content), left in place, and
-    `RegistryUnreadableError` is raised: list/search/get/save/delete return an error naming the file, `save_script`
-    writes no `.py` file, and nothing writes over the registry until it is repaired or deleted. An unreadable file
-    (locked, no permission) is refused the same way without a copy.
-*   A complete `.tmp` left by an interrupted save, with no registry beside it, is moved into place on the next load.
-*   The bundled plugin registry is read-only: if it does not parse, it is logged and treated as empty.
-*   Headless check: `Tests/mcp_probe/e05_registry_check.py` (run with `-ExecutePythonScript`).
 *   CPython tests, no editor: `Tests/python` (pytest with a stub `unreal` module; `build.ps1 -Test` runs them, and
-    `Context/development-workflow/AGENTS-development-workflow.md` gives the `uv run` command). `test_scripts.py` covers this module and `test_registry_integrity.py`
-    checks that every bundled registry path exists and every bundled `.py` file is registered, so a script added
-    under `Content/Python/scripts` needs its registry entry in the same change.
+    `Context/development-workflow/AGENTS-development-workflow.md` gives the `uv run` command).
 *   In-editor tests: `Tests/python/editor` (`run_editor_tests.py` runs each `test_*.py` there with
-    `-ExecutePythonScript` and logs `N2C_EDITOR_TESTS PASS <count>` or `FAIL`; command in `Tests/python/README.md`).
+    `-ExecutePythonScript` and logs `N2C_EDITOR_TESTS PASS <count>` or `FAIL`; command in `Tests/python/README.md`),
+    and the automation specs that run Python fixtures (`NodeToCode.Python.*`, `Source/Private/Tests/Fixtures/Python`).
 
-### Bundled Scripts
+## Saved scripts from 1.x
 
-The list, with each script's path, description and tags, is `Content/Python/scripts/script_registry.json` (13
-scripts in 4 categories when this was written; `test_registry_integrity.py` keeps it in step with the files), and
-`n2c.list_scripts()` / `get-script-functions` read it at run time. By category:
-
-*   **core**: `asset_iterator`, `blueprint_factory`, `variable_batch_creator`, `function_scaffolder`,
-    `component_adder`, `ue5_compat` (UE5 Python API workarounds; run-python's error `hint` points at it)
-*   **utilities**: `project_folder_scaffold`, `asset_duplicator`, `asset_validator`
-*   **data**: `datatable_populator` (merges rows from JSON/CSV; `clear_existing=True` replaces, saves only with
-    `save=True`), `struct_creator` (UserDefinedStruct row structs through `UN2CStructUtilsLibrary`)
-*   **ui**: `utility_widget_launcher`, `asset_editor_opener`
-
-`blueprint_factory.create_blueprint(name, ...)` uses the name as given; `create_actor_blueprint` and the other
-`create_*_blueprint` helpers add their prefix (`BP_`, `WBP_`, ...) when it is missing.
-
-## Token-Efficient Function Discovery
-
-`get_script_functions(name)` uses AST parsing to extract function signatures without loading full implementation:
-
-```python
-result = n2c.get_script_functions("blueprint_factory")
-# Returns: function names, parameters, type hints, docstrings, line numbers
-# ~80% token savings vs get_script() for discovery phase
-```
+1.x kept scripts in `<Project>/Content/Python/scripts/<category>/` with a `script_registry.json`, through the
+list/search/get/save/delete-python-script tools and `nodetocode.list_scripts`/`run_script`/`save_script`. 2.0
+removes those tools and functions (card 0305) but never touches the project's files. To keep using a script, make it
+an Agent Skill: a folder with a `SKILL.md` (frontmatter `name` and `description`, then when and how to use it) and the
+script under its `scripts/`; the agent reads the skill and runs the script through `run-python`, or imports it
+after adding the folder to `sys.path`. The registry file can be deleted.
 
 ## C++ Bridge (UN2CPythonBridge)
 
@@ -407,9 +322,9 @@ is the one parser.
 ## Struct Library (UN2CStructUtilsLibrary)
 
 `unreal.N2CStructUtilsLibrary` (`Source/Public/BlueprintLibraries/N2CStructUtilsLibrary.h`) creates
-UserDefinedStruct assets, for example DataTable row structs; `scripts/data/struct_creator.py` wraps it. Its
-functions report through out parameters, and in Python a function with out parameters returns a tuple: the return
-value first (when there is one), then the out parameters in order.
+UserDefinedStruct assets, for example DataTable row structs (the `struct_creator` script that wrapped it was removed
+with the script library, card 0305). Its functions report through out parameters, and in Python a function with
+out parameters returns a tuple: the return value first (when there is one), then the out parameters in order.
 
 ```python
 import unreal
@@ -437,35 +352,19 @@ names as given (`MyFloat`). `add_struct_variable` refuses a name the struct alre
 `remove_default_variable` removes only the bool `MemberVar_<n>` member a new struct starts with, and only once the
 struct has another member; on any other struct it returns `(False, error)` and removes nothing.
 
-## MCP Python Tools
+## run-python
 
-C++ tools in `Source/Private/MCP/Tools/Implementations/Python/`:
+The one MCP Python tool: `run-python` (`FN2CMcpRunPythonTool`, `Source/Private/MCP/Tools/Implementations/Python/`).
+It requires Game Thread execution (`RequiresGameThread() = true`) and answers with one text item holding JSON
+`{"success", "data", "error", ...}`. When `success` is false (the script raised or did not compile) the
+CallToolResult also has `isError: true`, so MCP clients see a tool execution failure; the body then keeps the error,
+`traceback`, `output`, `stderr` and a `hint`. Python being unavailable is an `isError` result whose text is a plain
+message.
 
-| Tool | Class | Description |
-|------|-------|-------------|
-| `run-python` | `FN2CMcpRunPythonTool` | Execute Python code in UE environment |
-| `list-python-scripts` | `FN2CMcpListPythonScriptsTool` | List scripts by category |
-| `search-python-scripts` | `FN2CMcpSearchPythonScriptsTool` | Search by name/description/tags |
-| `get-python-script` | `FN2CMcpGetPythonScriptTool` | Get full script code and metadata |
-| `get-script-functions` | `FN2CMcpGetScriptFunctionsTool` | Get function signatures via AST |
-| `save-python-script` | `FN2CMcpSavePythonScriptTool` | Save script to library |
-| `delete-python-script` | `FN2CMcpDeletePythonScriptTool` | Remove script from library |
-
-**Base Class**: `FN2CMcpPythonScriptToolBase` - Common Python execution infrastructure
-
-All Python tools require Game Thread execution (`RequiresGameThread() = true`).
-
-Each tool answers with one text item holding JSON `{"success", "data", "error", ...}`. The script tools return the
-`nodetocode` function's own `{success, data, error}` dict as it is (not wrapped in another `data`). When `success`
-is false (the script raised or did not compile, or a script function reported an error) the
-CallToolResult also has `isError: true`, so MCP clients see a tool execution failure; run-python's body then keeps
-the error, `traceback`, `output`, `stderr` and a `hint`. Python being unavailable is an `isError` result whose text
-is a plain message.
-
-run-python and the script tools run through `nodetocode._mcp_runner` (card 0299). C++ sends one statement,
-`__import__('nodetocode._mcp_runner', ...).run_code('<call id>', '<base64 source>')` (`run_call` for the script tools),
-unattended (`EPythonCommandFlags::Unattended`, so no modal dialog blocks the call). The runner compiles the code
-unchanged (`compile(source, '<run-python>', 'exec')`: tracebacks name the code's own lines, multi-line strings and
+run-python runs through `nodetocode._mcp_runner` (card 0299). C++ sends one statement,
+`__import__('nodetocode._mcp_runner', ...).run_code('<call id>', '<base64 source>')`, unattended
+(`EPythonCommandFlags::Unattended`, so no modal dialog blocks the call). The runner compiles the code unchanged
+(`compile(source, '<run-python>', 'exec')`: tracebacks name the code's own lines, multi-line strings and
 `from __future__` work, a `.py` in a comment is just text) and runs it in a fresh namespace, never the editor
 console's globals, so a call never sees another call's names or `result`. It captures the code's stdout and stderr
 and hands its answer to `UN2CPythonBridge::SubmitMcpResult` as strict JSON; nothing is scraped from stdout, so a
@@ -487,15 +386,12 @@ server starts, so it needs an editor restart). It serves the `PythonTools` tools
 former **Enable Python Script-Only Mode** (`bEnablePythonScriptOnlyMode=True`) loads as this profile (card 0165).
 
 When enabled:
-*   Only the `PythonTools` toolset's seven tools are served (`FN2CMcpToolManager::Configure`): `run-python`,
-    `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`,
-    `save-python-script` and `delete-python-script`
+*   Only the `PythonTools` toolset is served (`FN2CMcpToolManager::Configure`): `run-python`, the one tool left in it
+    since card 0305
 *   No translation, LLM provider, Blueprint, Content Browser or file tools: `get-focused-blueprint` and
-    `translate-focused-blueprint` answer "Unknown tool"
-*   Without Allow MCP Python Execution (below) only four remain: list, search, get and `get-script-functions`, and
-    the editor logs a warning at start
-*   LLMs write/reuse Python scripts via `run-python` instead of using C++ tools
-*   Designed for use with Context7 MCP for UE Python API documentation
+    `translate-focused-blueprint` answer "Unknown tool"; a script reaches them with `nodetocode.invoke_tool`
+*   Without Allow MCP Python Execution (below) nothing is served, and the editor logs a warning at start
+*   LLMs write Python via `run-python` instead of using C++ tools, with Context7 MCP for UE Python API documentation
 
 ## python-scripting Prompt
 
@@ -503,41 +399,37 @@ MCP prompt (`FN2CMcpPythonScriptingPrompt`) enforcing proper workflow:
 
 *   **Location**: `Source/Public/MCP/Prompts/Implementations/N2CMcpCodeGenerationPrompt.h`
 *   **Name**: `python-scripting`
-*   **Arguments**:
-    *   `task` (required) - What the script should accomplish
-    *   `save_script` (optional) - Whether to save for reuse (yes/no/ask)
-    *   `category` (optional) - Category for saved scripts
+*   **Arguments**: `task` (required) - what the script should accomplish (the 1.x `save_script` and `category`
+    arguments went with the script library, card 0305)
 
-**Enforced Workflow:**
-1. **Search existing scripts first** - Reuse over rewrite
+**Workflow it asks for:**
+1. **Use what exists** - a loaded Agent Skill, a NodeToCode tool (`n2c.invoke_tool`) or the `nodetocode` module
 2. **Research UE Python API** - Use Context7 to lookup `radial-hks/unreal-python-stubhub`
-3. **Import and compose** - Use existing script functions
-4. **Structure as modules** - Write reusable, well-documented scripts
-5. **Save useful scripts** - Grow the library
+3. **Write the script** - functions with docstrings, edits in a `ScopedEditorTransaction`, `result` set
+4. **Run and verify it** with run-python
+5. **Keep it as an Agent Skill** if it is reusable
 
 **With Python execution off** (the per-user **Allow MCP Python Execution**, default off; card 0124): the prompt checks
 `FN2CMcpToolManager::IsToolRegistered("run-python")` and, when it is not registered, opens with a "run-python is
 disabled on this server" section naming the setting (Editor Preferences > Plugins > Node to Code (User) > MCP Server,
-editor restart), says run-python, save-python-script and delete-python-script are unavailable, and tells the agent to
-give the script to the user to run and not to claim it ran. Steps 1, 4 and 5 and the tool list say the same.
+editor restart), says run-python is unavailable, and tells the agent to give the script to the user to run and not
+to claim it ran. Step 4 and the tool list say the same.
 
 ## Script Structure Guidelines
 
-Scripts should follow this pattern:
+Scripts (a skill's `scripts/` file, or code sent to run-python) follow this pattern:
 
 ```python
 """
 Brief description of what the script does.
 
-Usage:
-    from scripts.category.script_name import main_function
-    result = main_function(arg1, arg2)
-
 Functions return standardized dicts: {success: bool, data: {...}, error: str|None}
 """
 
 import unreal
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+
+from nodetocode.utils import make_success_result, make_error_result, log_error
 
 
 def main_function(arg1: str, arg2: int = 10) -> Dict[str, Any]:
@@ -552,24 +444,21 @@ def main_function(arg1: str, arg2: int = 10) -> Dict[str, Any]:
         {success, data: {...}, error}
     """
     try:
-        # Implementation
-        return _make_success({"result": "value"})
-    except Exception as e:
-        return _make_error(str(e))
+        with unreal.ScopedEditorTransaction("NodeToCode: main_function"):  # one undo reverts an edit
+            value = arg1 * arg2
+        return make_success_result({"result": value})
+    except Exception as e:  # never a bare except
+        log_error(f"main_function failed: {e}")
+        return make_error_result(str(e))
 
 
-def _make_success(data: Any) -> Dict[str, Any]:
-    return {"success": True, "data": data, "error": None}
-
-
-def _make_error(message: str) -> Dict[str, Any]:
-    return {"success": False, "data": None, "error": message}
+result = main_function("x", 2)  # run-python returns `result` as data
 ```
 
 ## Enabling run-python over MCP
 
-`run-python`, `save-python-script` and `delete-python-script` are only registered when the per-user setting
+`run-python` is only registered when the per-user setting
 **Allow MCP Python Execution** (`UN2CUserSettings::bAllowMcpPythonExecution`, read through
 `UN2CUserSettings::IsMcpPythonExecutionAllowed()`) is on; it is off by default, needs an editor restart, and only the
-user's own Saved/Config value counts (a project's committed config cannot turn it on, card 0423). The Python scripting only profile without it leaves only the list, search, get and
-`get-script-functions` tools.
+user's own Saved/Config value counts (a project's committed config cannot turn it on, card 0423). The Python scripting
+only profile without it serves no tool.

@@ -96,8 +96,8 @@ const FString& FN2CMcpProtocol::GetServerInstructions()
 		"or a tag, export-n2cjson-batch and translate-batch. To edit a graph, search-blueprint-nodes, "
 		"then add-bp-node-to-active-graph and connect-pins, then compile-blueprint. If tools/list shows only "
 		"list_toolsets, describe_toolset and call_tool, reach these tools through them: list_toolsets, describe_toolset "
-		"for a toolset's tools and schemas, call_tool to run one. If it shows only the Python script tools, "
-		"search-python-scripts before writing new code for run-python.");
+		"for a toolset's tools and schemas, call_tool to run one. If it shows only run-python, write Python with the "
+		"nodetocode module (nodetocode.invoke_tool reaches every NodeToCode tool).");
 	return Instructions;
 }
 

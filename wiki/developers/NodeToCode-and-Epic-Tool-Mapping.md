@@ -23,7 +23,7 @@ All of these must hold when the editor starts:
 Restart the editor after changing it. The Output Log says at startup how many tools were left to Unreal MCP and why
 (`MCP tools: 34 tools left to Unreal MCP ...`), or why none were.
 
-With 67 tools by default (70 with **Allow MCP Python Execution**), NodeToCode lists 33 (36) when the 34 are left out.
+With 63 tools by default (64 with **Allow MCP Python Execution**), NodeToCode lists 29 (30) when the 34 are left out.
 In **Tool search** exposure, `list_toolsets` no longer shows **BlueprintCompileTools**, **BlueprintClassTools**,
 **BlueprintComponentTools** and **ContentBrowserTools**, whose every tool is Epic's then. A client that still calls a
 left-out tool gets `Unknown tool: <name>` with the Epic tool to use; `describe_toolset` and `call_tool` say the same.
@@ -82,9 +82,8 @@ without it. Where a NodeToCode tool gave more (for example node GUIDs in N2C JSO
 
 Everything else, including the tools Epic has no counterpart for or where NodeToCode's does more: N2C JSON
 (`get-focused-blueprint`, `get-blueprint-n2cjson`, `export-n2cjson-batch`), translation (`translate-focused-blueprint`,
-`translate-batch` and the provider, language and output-folder tools), graph tags, the Python script library and
-`run-python`, `connect-pins`, `delete-blueprint-node`, `find-nodes-in-graph`, `create-comment-node`, variable creation
-and types, local variable defaults, opening and deleting functions, `read-file` and `read-path`.
+`translate-batch` and the provider, language and output-folder tools), graph tags, `run-python`, `connect-pins`,
+`delete-blueprint-node`, `find-nodes-in-graph`, `create-comment-node`, variable creation and types, local variable defaults, opening and deleting functions, `read-file` and `read-path`.
 
 On UE 5.8 the [NodeToCodeTools](NodeToCodeTools) toolset also puts NodeToCode's Blueprint comprehension tools in
 Epic's registry directly.

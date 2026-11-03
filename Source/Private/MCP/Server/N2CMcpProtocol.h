@@ -277,7 +277,7 @@ public:
 	/**
 	 * The largest request body the endpoint takes, in bytes (8 MiB). A larger body is answered with 413 and a
 	 * JSON-RPC -32600 error before it is copied or parsed (card 0425). No tool takes anything near this: the largest
-	 * inputs are run-python code and save-python-script source, typically a few KB.
+	 * inputs are run-python code, typically a few KB.
 	 */
 	static constexpr int32 MaxRequestBodyBytes = 8 * 1024 * 1024;
 

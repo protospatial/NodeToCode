@@ -492,7 +492,7 @@ FString N2CMcpToolReference::BuildMarkdown(const TArray<FMcpToolDefinition>& Too
 		Tools.Num(), static_cast<int32>(UE_ARRAY_COUNT(N2CMcpToolsets::All)));
 	Md += TEXT("What `tools/list` shows depends on Project Settings > Plugins > Node to Code (see \"Tool Profiles and Toolsets\" in [AGENTS-mcp-server.md](AGENTS-mcp-server.md)):\n\n");
 	Md += FString::Printf(TEXT("- Tool Profile Default toolsets, Tool Exposure List every tool (the defaults): the %d tools marked Default below. "
-		"`run-python`, `save-python-script` and `delete-python-script` are listed too when the per-user Allow MCP Python Execution is on.\n"), DefaultCount);
+		"`run-python` is listed too when the per-user Allow MCP Python Execution is on.\n"), DefaultCount);
 	Md += FString::Printf(TEXT("- Tool Exposure Tool search: only %s ([below](#tool-search-meta-tools)), which reach the same tools.\n"), *FString::Join(MetaNames, TEXT(", ")));
 	Md += TEXT("- Tool Profile Python scripting only: the tools of `PythonTools`; Custom: the toolsets named in Custom Toolsets.\n");
 	Md += TEXT("- On UE 5.8 with Epic's Unreal MCP (ModelContextProtocol and EditorToolset enabled), Overlapping Tools set to Automatic and the Default toolsets profile, the tools that name an Unreal MCP counterpart below are left to Unreal MCP and not served ([NodeToCode and Epic tool mapping](../../wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md)). This reference lists every tool on every engine.\n\n");

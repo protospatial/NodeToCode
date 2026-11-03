@@ -50,7 +50,7 @@ Pro/Max** or **Google Account** selected:
 - While you play in the editor (Play In Editor or Simulate), the agent can read but not change. Every tool that edits
   or compiles a Blueprint, or creates, moves, copies or renames an asset or folder, answers `PIE_ACTIVE` until you
   stop the session, because a change then would reinstance the running game's actors. Reading tools, translation,
-  opening editors, the Python script library and `run-python` (when you allow it) keep working.
+  opening editors and `run-python` (when you allow it) keep working.
 
 ## Claude Code
 
