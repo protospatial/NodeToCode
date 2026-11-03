@@ -27,7 +27,8 @@ Content/Python/
 
 The Python tests live in Tests/python (card 0524), where `build.ps1 -Test` runs them. The one exception is
 `nodetocode/toolsets/tests`: UE's PythonTestRunner imports them inside the editor (init_unreal.py registers them as
-`NodeToCode.Toolsets.PythonTests`, which `-Test` runs on 5.8), so they stay on the plugin's Python path.
+`NodeToCode.Toolsets.PythonTests`, which `-Test` runs on 5.8), so they stay on the plugin's Python path. The packaged
+plugin leaves them out (Config/FilterPlugin.ini, card 0526), and init_unreal.py then registers the toolset alone.
 
 ## MCP Bridge
 

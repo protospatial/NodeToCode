@@ -24,7 +24,8 @@ uv run --no-project --python 3.11 --with-requirements Tests/python/requirements.
 `.\build.ps1 -Test` runs the same tests on each engine's own Python. pytest and its dependencies are pinned in
 `requirements.txt` and never ship with the plugin. Python tests go here, not under `Content/Python`, which ships and which
 no test run collects (card 0524); pytest also collects `unittest.TestCase` classes, as in `test_mcp_bridge_stdio.py`.
-The exception is `Content/Python/nodetocode/toolsets/tests`, which UE's PythonTestRunner imports inside the editor. A known defect is a test marked
+The exception is `Content/Python/nodetocode/toolsets/tests`, which UE's PythonTestRunner imports inside the editor; the
+packaged plugin leaves it out (card 0526). A known defect is a test marked
 `xfail(strict=True, reason='<finding id>')`; the change that fixes it removes the marker.
 
 ## In-editor tests (`editor/`)
