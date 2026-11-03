@@ -1,0 +1,29 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "EventGraph": [
+      "KismetSystemLibrary.PrintString"
+    ],
+    "UserConstructionScript": [
+      "BP_N2CBench_Pickup.UserConstructionScript"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_PickupChild",
+  "cpp_parent": "ABP_N2CBench_Pickup",
+  "dispatchers": [],
+  "events": [
+    {
+      "kind": "override",
+      "name": "ReceiveBeginPlay"
+    }
+  ],
+  "functions": [],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_PickupChild",
+  "parent": "BP_N2CBench_Pickup",
+  "properties": [],
+  "timelines": []
+}

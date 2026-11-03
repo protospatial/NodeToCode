@@ -1,0 +1,42 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "Interact": [
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Interactable",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [
+        {
+          "name": "Instigator",
+          "sub_type": "Actor",
+          "type": "Object"
+        }
+      ],
+      "interface": "BPI_N2CBench_Interact",
+      "name": "Interact",
+      "outputs": [
+        {
+          "name": "Handled",
+          "type": "Boolean"
+        }
+      ],
+      "pure": false
+    }
+  ],
+  "interfaces": [
+    "BPI_N2CBench_Interact"
+  ],
+  "macros": [],
+  "name": "BP_N2CBench_Interactable",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

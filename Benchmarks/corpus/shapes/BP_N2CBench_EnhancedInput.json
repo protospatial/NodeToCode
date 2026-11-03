@@ -1,0 +1,26 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "EventGraph": [
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_EnhancedInput",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [
+    {
+      "kind": "input_action",
+      "name": "IA_N2CBench_Jump"
+    }
+  ],
+  "functions": [],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_EnhancedInput",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

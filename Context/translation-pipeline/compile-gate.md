@@ -72,5 +72,5 @@ between runs.
 
 ## Still to do
 
-The compile-gated benchmark script, `Benchmarks/compile_gate/` (`python -I`, writes the files into the hosts' scratch
+The compile-gated benchmark script (planned under Benchmarks/compile_gate/, not yet in the repo; `python -I`, writes the files into the hosts' scratch
 module and parses the build into `{success, errors[], warnings[], seconds}`), comes after card 0364's corpus.

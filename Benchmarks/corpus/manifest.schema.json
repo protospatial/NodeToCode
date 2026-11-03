@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/protospatial/NodeToCode/Benchmarks/corpus/manifest.schema.json",
+  "title": "NodeToCode benchmark corpus manifest",
+  "description": "Every graph the token, format and compile-gated benchmarks run on (card 0364). Written by N2CTest::BenchmarkCorpus::GenerateAll.",
+  "type": "object",
+  "required": ["version", "description", "entries", "external"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "enum": [1] },
+    "description": { "type": "string" },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "asset_path", "covers", "graphs", "engines", "shape"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_]+$" },
+          "source": { "type": "string", "enum": ["corpus", "perf", "lyra", "cropout"] },
+          "asset_path": { "type": "string", "pattern": "^/[A-Za-z0-9_/]+\\.[A-Za-z0-9_]+$" },
+          "covers": { "type": "string" },
+          "graphs": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "engines": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "enum": ["5.6", "5.7", "5.8"] }
+          },
+          "shape": { "type": ["string", "null"], "pattern": "^shapes/[A-Za-z0-9_]+\\.json$" }
+        }
+      }
+    },
+    "external": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "note", "entries"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["not_installed", "local_only"] },
+          "note": { "type": "string" },
+          "entries": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

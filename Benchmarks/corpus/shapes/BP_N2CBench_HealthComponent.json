@@ -1,0 +1,38 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "ApplyDamage": [
+      "KismetMathLibrary.Subtract_IntInt"
+    ]
+  },
+  "components": [],
+  "cpp_class": "UBP_N2CBench_HealthComponent",
+  "cpp_parent": "UActorComponent",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [
+        {
+          "name": "Amount",
+          "type": "Integer"
+        }
+      ],
+      "name": "ApplyDamage",
+      "outputs": [],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_HealthComponent",
+  "parent": "ActorComponent",
+  "properties": [
+    {
+      "name": "Health",
+      "type": "Integer"
+    }
+  ],
+  "timelines": []
+}

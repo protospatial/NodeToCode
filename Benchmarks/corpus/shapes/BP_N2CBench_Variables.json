@@ -1,0 +1,72 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "IsAlive": [
+      "KismetMathLibrary.Greater_IntInt"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Variables",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [],
+      "name": "IsAlive",
+      "outputs": [
+        {
+          "name": "Alive",
+          "type": "Boolean"
+        }
+      ],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_Variables",
+  "parent": "Actor",
+  "properties": [
+    {
+      "container": "array",
+      "name": "Labels",
+      "type": "Name"
+    },
+    {
+      "name": "Lives",
+      "type": "Integer"
+    },
+    {
+      "container": "map",
+      "name": "Scores",
+      "type": "Name"
+    },
+    {
+      "name": "Speed",
+      "sub_type": "float",
+      "type": "Real"
+    },
+    {
+      "name": "Spot",
+      "sub_type": "Vector",
+      "type": "Struct"
+    },
+    {
+      "name": "Stats",
+      "sub_type": "S_N2CBench_Stats",
+      "type": "Struct"
+    },
+    {
+      "name": "Target",
+      "sub_type": "Actor",
+      "type": "Object"
+    },
+    {
+      "name": "Title",
+      "type": "String"
+    }
+  ],
+  "timelines": []
+}
