@@ -11,13 +11,18 @@
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "Interfaces/IPluginManager.h"
+#include "Internationalization/Regex.h"
 #include "MCP/Tools/IN2CMcpTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
+#include "Misc/CommandLine.h"
 #include "Misc/Guid.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
+#include "Policies/PrettyJsonPrintPolicy.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 /**
  * Shared helpers for the NodeToCode automation specs. See README.md in this folder for naming and layout.
@@ -139,6 +144,55 @@ namespace N2CTest
 		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Text);
 		FJsonSerializer::Deserialize(Reader, Json);
 		return Json;
+	}
+
+	/**
+	 * Golden helpers shared by the capture goldens (NodeToCode.Capture.Golden) and the material capture goldens (epic
+	 * 0442), moved here from N2CCaptureGolden.spec.cpp by card 0448.
+	 */
+
+	/** True when the golden specs rewrite their goldens: N2C_UPDATE_GOLDENS=1 or -N2CUpdateGoldens (build.ps1 -UpdateGoldens) */
+	inline bool UpdateGoldens()
+	{
+		return FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_UPDATE_GOLDENS")) == TEXT("1")
+			|| FParse::Param(FCommandLine::Get(), TEXT("N2CUpdateGoldens"));
+	}
+
+	/** The object as indented JSON with LF line ends and a final newline, as the golden files are written */
+	inline FString PrettyJson(const TSharedPtr<FJsonObject>& Object)
+	{
+		FString Text;
+		const TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&Text);
+		FJsonSerializer::Serialize(Object.ToSharedRef(), Writer);
+		return Text.Replace(TEXT("\r\n"), TEXT("\n")) + TEXT("\n");
+	}
+
+	/** Replaces capture group 1 of every match of Pattern with Token (the whole match when there is no group) */
+	inline FString ReplaceMatches(const FString& Text, const TCHAR* Pattern, const TCHAR* Token)
+	{
+		const FRegexPattern Compiled(Pattern);
+		FRegexMatcher Matcher(Compiled, Text);
+		FString Result;
+		int32 Last = 0;
+		while (Matcher.FindNext())
+		{
+			const int32 Begin = Matcher.GetCaptureGroupBeginning(1) >= 0 ? Matcher.GetCaptureGroupBeginning(1) : Matcher.GetMatchBeginning();
+			const int32 End = Matcher.GetCaptureGroupEnding(1) >= 0 ? Matcher.GetCaptureGroupEnding(1) : Matcher.GetMatchEnding();
+			Result += Text.Mid(Last, Begin - Last) + Token;
+			Last = End;
+		}
+		return Result + Text.Mid(Last);
+	}
+
+	/**
+	 * Replaces what changes from run to run in captured text with stable tokens: the case's transient package path
+	 * (<PACKAGE>) and any GUID (<GUID>)
+	 */
+	inline FString NormaliseCapture(const FString& Text, const FString& PackagePath)
+	{
+		const FString Out = PackagePath.IsEmpty() ? Text : Text.Replace(*PackagePath, TEXT("<PACKAGE>"), ESearchCase::CaseSensitive);
+		return ReplaceMatches(Out, TEXT("[0-9A-Fa-f]{8}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{12}"), TEXT("<GUID>"));
 	}
 
 	/**

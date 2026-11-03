@@ -165,6 +165,14 @@ void FN2CGraphTypeRefusalSpec::Define()
 				TestTrue(TEXT("the reason says not supported: ") + Reason, Reason.Contains(TEXT("not supported")));
 				TestTrue(TEXT("the tools' error has the code"),
 					FN2CGraphUtils::UnsupportedGraphTypeError(*Graph).StartsWith(TEXT("UNSUPPORTED_GRAPH_TYPE: ")));
+
+				// The capture entry point refuses it too (card 0448), whatever the caller checked first
+				const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureGraph(*Graph);
+				TestTrue(TEXT("N2C::CaptureGraph: UNSUPPORTED_GRAPH_TYPE"), Capture.HasError()
+					&& Capture.GetError().StartsWith(TEXT("UNSUPPORTED_GRAPH_TYPE: ")) && Capture.GetError().Contains(Schema.Described));
+				const TValueOrError<FN2CCapture, FString> Listed = N2C::CaptureGraphs({ Test->EventGraph(), Graph });
+				TestTrue(TEXT("N2C::CaptureGraphs with it listed: UNSUPPORTED_GRAPH_TYPE"), Listed.HasError()
+					&& Listed.GetError().StartsWith(TEXT("UNSUPPORTED_GRAPH_TYPE: ")));
 			});
 
 			It(TEXT("gets UNSUPPORTED_GRAPH_TYPE from get-blueprint-n2cjson and Copy JSON, not EMPTY_GRAPH"), [this, Schema]()

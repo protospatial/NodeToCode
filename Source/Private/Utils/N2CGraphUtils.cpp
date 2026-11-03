@@ -195,7 +195,9 @@ FN2CGraphTypeInfo FN2CGraphUtils::ClassifyGraphType(const UEdGraph* Graph)
 	{
 		return FN2CGraphTypeInfo();
 	}
-	return Refused(TEXT("other"), FString::Printf(TEXT("a %s graph, not a Blueprint graph"), *SchemaClass->GetName()));
+	// Named by the graph's class and its schema (card 0448): "a MaterialGraph (schema MaterialGraphSchema)"
+	return Refused(TEXT("other"), FString::Printf(TEXT("a %s (schema %s), not a Blueprint graph"), *Graph->GetClass()->GetName(),
+		*SchemaClass->GetName()));
 }
 
 FString FN2CGraphUtils::DescribeUnsupportedGraph(const UEdGraph& Graph, const FN2CGraphTypeInfo& Info)
