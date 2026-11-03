@@ -293,6 +293,12 @@ void FN2CMcpEpicOverlapSpec::Define()
 			Configure(Manager, true, EN2CMcpToolExposure::ToolSearch);
 			TArray<FString> Expected = FN2CMcpToolConfig::ToolsetsForProfile(EN2CMcpToolProfile::DefaultToolsets, {});
 			Expected.RemoveAll([](const FString& Name) { return WhollyOverlapping.Contains(Name); });
+			// PythonTools holds run-python alone since card 0305: with Allow MCP Python Execution off it serves nothing
+			// and list_toolsets leaves it out
+			if (!UN2CUserSettings::IsMcpPythonExecutionAllowed())
+			{
+				Expected.Remove(N2CMcpToolsets::Python.Name);
+			}
 			ExpectNames(TEXT("list_toolsets"), ListedToolsets(Manager), Expected);
 
 			const TValueOrError<FString, FString> Described = Manager.DescribeToolset(TEXT("ContentBrowserTools"));
