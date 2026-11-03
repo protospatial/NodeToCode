@@ -11,6 +11,7 @@
   "repository": "https://github.com/protospatial/NodeToCode",
   "license": "Apache-2.0",
   "icon": ".claude-plugin/icon.png",
+  "privacyPolicyUrl": "https://github.com/protospatial/NodeToCode/wiki/Data-Flow-and-Privacy",
   "keywords": ["unreal-engine", "blueprint", "blueprints", "c++", "mcp", "ue5", "nodetocode"],
   "userConfig": {
     "mcp_url": {
