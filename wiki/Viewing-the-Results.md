@@ -51,8 +51,10 @@ or a batch finishes, so **View** on a new translation is one click away.
 graphs, and then shows a notification with **Undo** for ten seconds, which puts the tags back with their
 descriptions. Translations and JSON exports are kept either way.
 
-**Batch Translate**, **Export JSON** and **Remove Selected** act on the checked graphs, so they are greyed out until
-you check one; their tooltips say so.
+**Batch Translate**, **Export JSON**, **Remove Selected**, **Tag Dependencies** and **Reference Viewer** act on the
+checked graphs, so they are greyed out until you check one; their tooltips say so. **Tag Dependencies** also needs a
+tag (not only a category) selected in the tree: that is the tag it applies to the graphs the checked Blueprints
+depend on ([Window Overview](Top-Navbar-Overview)).
 
 ## Reviewing the translation
 

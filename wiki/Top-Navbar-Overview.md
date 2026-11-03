@@ -29,6 +29,10 @@ From top to bottom:
    **Export JSON** saves their Node to Code JSON to a new `BatchJson_...` folder in the **Output** folder (**Minify
    JSON** writes it on one line) and then says how many graphs it wrote, with an **Open folder** link, and
    **Remove Selected** takes the listed tags off them. These three are greyed out until you check a graph.
+   **Tag Dependencies** applies the tag selected in the tree to every graph of every Blueprint, interface and macro
+   library the checked graphs' Blueprints depend on (calls, casts, variables, parents, interfaces, macros, through
+   each other), so you can translate a Blueprint's dependencies first; structs and enums have no graph and are named
+   in its notification. **Reference Viewer** opens Unreal's Reference Viewer on the checked graphs' Blueprints.
    **Prune Missing** removes the tags and translation records of graphs whose Blueprint was deleted (the files on
    disk are kept). **Output** and **Browse...** set the folder translations and exports are saved in;
    **Browse...** saves it as your own **Custom Translation Output Directory** (Editor Preferences → Plugins → Node to
