@@ -1,9 +1,10 @@
 """
 NodeToCode Python Module for Unreal Engine
 
-Provides Blueprint manipulation and script management utilities accessible from
-the run-python MCP tool. All functions return standardized dictionaries with
-'success', 'data', and 'error' keys.
+Provides Blueprint manipulation utilities accessible from the run-python MCP tool.
+NodeToCode 2.0 has no script library (decision 0010): keep reusable scripts as Agent
+Skills (a SKILL.md with the script under its scripts/). All functions return standardized
+dictionaries with 'success', 'data', and 'error' keys.
 
 Quick Start:
     import nodetocode as n2c
@@ -23,16 +24,6 @@ Quick Start:
     result = n2c.save_blueprint()
     if result['success'] and 'sourceControl' in result['data']:   # set when the file was written
         print("Saved to disk")
-
-Script Management:
-    # Search for existing scripts
-    matches = n2c.search_scripts("health system")
-
-    # Run a saved script
-    result = n2c.run_script("create_health_system", max_hp=100)
-
-    # Save a new script for reuse
-    n2c.save_script("my_script", code, "Description", tags=["gameplay"])
 
 Graph Editing:
     # Search for and add nodes
@@ -77,16 +68,6 @@ Available Functions (the authoritative list is __all__ below):
     - open_blueprint(path, focus_graph) - Open Blueprint in editor
     - open_blueprint_function(name) - Focus a function in the open Blueprint
 
-    Script Management:
-    - list_scripts(category, limit) - List available scripts
-    - search_scripts(query, limit) - Search scripts by name/description/tags
-    - get_script(name) - Load script code and metadata
-    - get_script_functions(name) - Get function signatures (token-efficient)
-    - run_script(name, **kwargs) - Execute a saved script
-    - save_script(name, code, description, tags, category) - Save new script
-    - delete_script(name) - Remove a script
-    - get_script_stats() - Get script library statistics
-
     Graph Editing:
     - search_blueprint_nodes(term, context_sensitive, max) - Search for nodes to add
     - add_node_to_graph(name, action_id, x, y) - Add a node to focused graph
@@ -116,7 +97,7 @@ Available Functions (the authoritative list is __all__ below):
     - get_project_content_dir(), get_project_dir() - Project paths
     - log_info/warning/error(msg) - Log messages
     - make_success_result(data), make_error_result(error) - Build the standard result dict
-    - invoke_tool(name, arguments) - Run any NodeToCode MCP tool by name (not run-python or the script library)
+    - invoke_tool(name, arguments) - Run any NodeToCode MCP tool by name (not run-python)
 
     The graph, function-pin, compile, save, tag_graph and open functions run the matching MCP tool through
     invoke_tool (card 0342): their data is the tool's result, plus the 1.x keys for one release (reading one logs a
@@ -136,18 +117,6 @@ from .blueprint import (
     compile_blueprint,
     save_blueprint,
     load_blueprint,
-)
-
-# Script management
-from .scripts import (
-    list_scripts,
-    search_scripts,
-    get_script,
-    get_script_functions,
-    run_script,
-    save_script,
-    delete_script,
-    get_script_stats,
 )
 
 # NodeToCode-specific features (tagging, LLM info, navigation)
@@ -208,15 +177,6 @@ __all__ = [
     'compile_blueprint',
     'save_blueprint',
     'load_blueprint',
-    # Script management
-    'list_scripts',
-    'search_scripts',
-    'get_script',
-    'get_script_functions',
-    'run_script',
-    'save_script',
-    'delete_script',
-    'get_script_stats',
     # Graph editing
     'search_blueprint_nodes',
     'add_node_to_graph',

@@ -50,7 +50,7 @@ asserts a key travels in exactly one header, never in a URL or the log, and is r
 | Switch | Default | Read through |
 |---|---|---|
 | `bEnableMcpServer` | on | `IsMcpServerEnabled()` |
-| `bAllowMcpPythonExecution` | off | `IsMcpPythonExecutionAllowed()` (registers `run-python`, `save-python-script`, `delete-python-script`) |
+| `bAllowMcpPythonExecution` | off | `IsMcpPythonExecutionAllowed()` (registers `run-python`) |
 | `bAllowMcpWritesOutsideProject` | off | `AreMcpWritesOutsideProjectAllowed()` |
 | `bRequireMcpBearerToken` | off | `IsMcpBearerTokenRequired()` |
 

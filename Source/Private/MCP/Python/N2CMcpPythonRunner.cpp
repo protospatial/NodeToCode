@@ -72,9 +72,4 @@ namespace N2CMcpPythonRunner
 	{
 		return Run(TEXT("run_code"), Source);
 	}
-
-	FRun RunCall(const FString& NodeToCodeCall)
-	{
-		return Run(TEXT("run_call"), TEXT("n2c.") + NodeToCodeCall);
-	}
 }

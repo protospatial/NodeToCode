@@ -226,7 +226,7 @@ public:
 	// ========== MCP runner ==========
 
 	/**
-	 * Where nodetocode._mcp_runner hands an answer of run-python or a script-library tool (card 0299): the strict JSON
+	 * Where nodetocode._mcp_runner hands an answer of run-python (card 0299): the strict JSON
 	 * {success, data, error, traceback, output, stderr} under the call's id, which the tool reads once with
 	 * TakeMcpResult after the command returns. The C++ side never scrapes stdout, so printed text cannot spoof an
 	 * answer. Not for scripts: an id no tool is waiting for is kept only until the next answer is taken.

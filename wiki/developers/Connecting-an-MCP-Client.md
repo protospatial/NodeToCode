@@ -18,8 +18,8 @@ The client sends the protocol headers itself (`Accept: application/json, text/ev
 and the stateless 2026-07-28 revision (no `initialize` and no session; current Claude Code uses it) on the same URL.
 
 **Tool mode and what a client lists.** The tool mode is the server's, so every client below gets the same list. The
-default (**Tool Profile** Default toolsets, **Tool Exposure** List every tool) lists 66 tools, such as
-`get-focused-blueprint`, `get-blueprint-n2cjson`, `translate-focused-blueprint` and `compile-blueprint`; 69 with
+default (**Tool Profile** Default toolsets, **Tool Exposure** List every tool) lists 62 tools, such as
+`get-focused-blueprint`, `get-blueprint-n2cjson`, `translate-focused-blueprint` and `compile-blueprint`; 63 with
 **Allow MCP Python Execution** on; 32 on UE 5.8 with Epic's Unreal MCP and EditorToolset plugins enabled
 ([NodeToCode and Epic Tool Mapping](NodeToCode-and-Epic-Tool-Mapping)). To change it, set the mode in **Project
 Settings → Plugins → Node to Code → MCP Server** ([Choosing a Tool Mode](Choosing-a-Tool-Mode)), restart the editor

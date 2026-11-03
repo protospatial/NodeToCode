@@ -50,7 +50,7 @@ namespace N2CMcpEpicOverlapSpec
 		TEXT("create-local-variable"), TEXT("search-variable-types"), TEXT("set-local-function-variable-default-value"),
 		TEXT("tag-blueprint-graph"), TEXT("list-blueprint-tags"), TEXT("remove-tag-from-graph"), TEXT("read-file"), TEXT("read-path"),
 		TEXT("translate-focused-blueprint"), TEXT("translate-batch"), TEXT("get-available-llm-providers"),
-		TEXT("get-available-translation-targets"), TEXT("get-translation-output-directory"), TEXT("list-python-scripts") };
+		TEXT("get-available-translation-targets"), TEXT("get-translation-output-directory") };
 
 	/** The toolsets whose every tool overlaps: list_toolsets drops them when the overlapping tools are left out */
 	const TArray<FString> WhollyOverlapping = {

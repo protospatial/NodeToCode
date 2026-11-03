@@ -68,7 +68,7 @@ namespace N2CMcpToolsets
 		true };
 
 	inline constexpr FN2CMcpToolset Python{ TEXT("PythonTools"),
-		TEXT("Run Python in the editor with the unreal module (only when the user allows MCP Python execution), and keep a library of reusable Python scripts to list, search, read, save and delete."),
+		TEXT("Run Python in the editor with the unreal module (only when the user allows MCP Python execution)."),
 		true };
 
 	inline constexpr FN2CMcpToolset Translation{ TEXT("TranslationTools"),
@@ -105,7 +105,7 @@ enum class EN2CMcpToolProfile : uint8
 	/** Every toolset declared default-enabled */
 	DefaultToolsets UMETA(DisplayName = "Default toolsets"),
 
-	/** PythonTools only: run-python and the script library (the former Python Script-Only Mode) */
+	/** PythonTools only: run-python (the former Python Script-Only Mode) */
 	PythonScripting UMETA(DisplayName = "Python scripting only"),
 
 	/** The toolsets named in Custom Toolsets */

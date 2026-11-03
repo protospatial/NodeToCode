@@ -51,10 +51,10 @@ keys only. The client's `tools/list` request returns the current tool set.
 ### Python bridge
 
 - **`nodetocode` Python module** (`Content/Python/nodetocode`): Blueprint helpers for the editor's Python, such as
-  `get_focused_blueprint()`, `search_blueprint_nodes()` and `compile_blueprint()`, plus a script library that agents
-  can search, save and rerun.
+  `get_focused_blueprint()`, `search_blueprint_nodes()` and `compile_blueprint()`, and `invoke_tool()` for any
+  NodeToCode MCP tool. Reusable scripts belong in Agent Skills (2.0 has no script library).
 - **`run-python`** over MCP lets an agent run Python in the editor. It is **off by default**: the
-  `run-python`, `save-python-script` and `delete-python-script` tools exist only when you turn on
+  `run-python` tool exists only when you turn on
   **Allow MCP Python Execution** (**Editor Preferences → Plugins → Node to Code (User) → MCP Server**), a per-user
   setting: a value in a project's committed config files is ignored. With it on, any connected MCP client can run arbitrary Python in your editor.
 - **stdio bridge** (`Content/Python/mcp_bridge`): for MCP clients that only start stdio servers.
@@ -114,7 +114,7 @@ claude mcp list
 Or install the [Claude Code plugin](wiki/developers/Claude-Code-Plugin.md), which adds the server and NodeToCode's
 Agent Skills in one step. Setup for Cursor, VS Code, Codex, Claude Desktop (through the stdio bridge) and Epic's MCP
 Client Toolset, and what to do when a client does not connect:
-[Connecting an MCP Client](wiki/developers/Connecting-an-MCP-Client.md). A client sees 66 tools by default (69 with
+[Connecting an MCP Client](wiki/developers/Connecting-an-MCP-Client.md). A client sees 62 tools by default (63 with
 **Allow MCP Python Execution**); to serve fewer, or only three search tools for a client with a tool limit, see
 [Choosing a Tool Mode](wiki/developers/Choosing-a-Tool-Mode.md).
 

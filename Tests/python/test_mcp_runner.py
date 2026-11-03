@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Nick McClure (Protospatial)
 # SPDX-License-Identifier: Apache-2.0
 """
-Tests for nodetocode._mcp_runner, the runner behind run-python and the script-library tools (card 0299), on plain
+Tests for nodetocode._mcp_runner, the runner behind run-python (card 0299), on plain
 CPython with the `unreal` stub from conftest.py.
 
 The old run-python wrapper indented the code under a try: (multi-line strings changed, `from __future__` failed,
@@ -124,14 +124,3 @@ def test_system_exit_is_reported_not_raised(runner, submitted):
     answer = run(runner, submitted, 'raise SystemExit(3)')
     assert answer['success'] is False
     assert answer['error'] == '3'
-
-
-def test_run_call_returns_a_function_answer_as_it_is(monkeypatch, runner, submitted):
-    nodetocode = importlib.import_module('nodetocode')
-    monkeypatch.setattr(nodetocode, 'n2c_test_answer', lambda: {'success': False, 'data': None, 'error': 'nope'}, raising=False)
-    monkeypatch.setattr(nodetocode, 'n2c_test_value', lambda: [1, 2], raising=False)
-    runner.run_call('f', base64.b64encode(b'n2c.n2c_test_answer()').decode('ascii'))
-    runner.run_call('g', base64.b64encode(b'n2c.n2c_test_value()').decode('ascii'))
-    failed = json.loads(submitted['f'])
-    assert failed['success'] is False and failed['error'] == 'nope'
-    assert json.loads(submitted['g'])['data'] == [1, 2]

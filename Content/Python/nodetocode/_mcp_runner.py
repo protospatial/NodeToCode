@@ -1,9 +1,9 @@
 # Copyright (c) 2026 Nick McClure (Protospatial)
 # SPDX-License-Identifier: Apache-2.0
 """
-The runner behind the run-python MCP tool and the script-library tools (card 0299).
+The runner behind the run-python MCP tool (card 0299).
 
-C++ (FN2CMcpRunPythonTool, FN2CMcpPythonScriptToolBase) sends one statement with no '.py' in it:
+C++ (FN2CMcpRunPythonTool) sends one statement with no '.py' in it:
 
     __import__('nodetocode._mcp_runner', fromlist=['run_code']).run_code('<call id>', '<base64 source>')
 
@@ -14,9 +14,6 @@ calls. Its stdout and stderr are captured for the call. The answer is {success, 
 stderr}, serialized as strict JSON (no NaN or Infinity; UObjects as their path name, unreal.Name and unreal.Text as
 str, sets as lists, structs by export_text) and handed to UN2CPythonBridge.submit_mcp_result(call_id, json). Nothing
 is printed for the C++ side to scrape, so a script cannot spoof the answer.
-
-run_call does the same for a nodetocode function call expression (the script-library tools): the expression is
-evaluated with `n2c` bound to the nodetocode package; a {success, ...} dict it returns is the answer as it is.
 """
 
 import base64
@@ -27,7 +24,6 @@ import json
 import traceback
 
 SOURCE_NAME = '<run-python>'
-CALL_NAME = '<n2c-call>'
 
 
 def _decode(b64_text):
@@ -107,29 +103,6 @@ def execute_source(source):
     return payload
 
 
-def execute_call(expression):
-    """Evaluates a nodetocode call expression with n2c bound; the answer dict"""
-    out, err = io.StringIO(), io.StringIO()
-    payload = {'success': False, 'data': None, 'error': None, 'traceback': None}
-    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        try:
-            import nodetocode
-            namespace = {'__name__': '__n2c_call__', '__builtins__': builtins, 'n2c': nodetocode}
-            value = eval(compile(expression, CALL_NAME, 'eval', dont_inherit=True), namespace)
-            if isinstance(value, dict) and 'success' in value:
-                payload.update(value)
-                payload['success'] = bool(value.get('success'))
-            else:
-                payload['success'] = True
-                payload['data'] = value
-        except BaseException as error:
-            payload['error'] = _error_text(error)
-            payload['traceback'] = _user_traceback(error, {__file__})
-    payload['output'] = out.getvalue()
-    payload['stderr'] = err.getvalue()
-    return payload
-
-
 def _submit(call_id, text):
     import unreal
     unreal.N2CPythonBridge.submit_mcp_result(call_id, text)
@@ -139,7 +112,3 @@ def run_code(call_id, b64_source):
     """run-python: decode, run, hand the strict JSON answer to C++ under call_id"""
     _submit(call_id, _finish(execute_source(_decode(b64_source))))
 
-
-def run_call(call_id, b64_expression):
-    """A script-library tool: evaluate the nodetocode call, hand the strict JSON answer to C++ under call_id"""
-    _submit(call_id, _finish(execute_call(_decode(b64_expression))))

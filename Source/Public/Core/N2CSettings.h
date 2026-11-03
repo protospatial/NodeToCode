@@ -484,7 +484,7 @@ public:
      * saved True loads as Python Scripting Only. Read when the server starts: restart the editor after a change. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
         meta=(DisplayName="Tool Profile",
-              ToolTip="Which toolsets the MCP server serves. Default Toolsets: every toolset. Python Scripting Only: run-python and the script library tools. Custom: the toolsets in Custom Toolsets. Requires an editor restart."))
+              ToolTip="Which toolsets the MCP server serves. Default Toolsets: every toolset. Python Scripting Only: run-python only. Custom: the toolsets in Custom Toolsets. Requires an editor restart."))
     EN2CMcpToolProfile McpToolProfile = EN2CMcpToolProfile::DefaultToolsets;
 
     /** The toolsets the Custom tool profile serves, by name (BlueprintGraphTools, TranslationTools, ...) */

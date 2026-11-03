@@ -234,9 +234,9 @@ junction only `Source`, `Content`, `Resources` and `ThirdParty`, so a fixture un
 raises comes back with isError, its message and the traceback; traceback line numbers, a multi-line string literal,
 '.py ' in a comment, a call that must not see the previous call's `result`, and NaN, infinite and unserializable
 results (isError, naming the problem and not the wrapper); and, since card 0299's runner (`nodetocode._mcp_runner`),
-a loaded asset returned as its path, the console namespace left alone, a printed fake answer line staying output, and
-list-python-scripts still answering.
-`NodeToCode.MCP.PythonToolErrors` covers isError for the script-library tools.
+a loaded asset returned as its path, the console namespace left alone, and a printed fake answer line staying output.
+`NodeToCode.MCP.PythonToolErrors` covers run-python's isError (the script-library tools it also covered were retired,
+card 0305).
 
 ## Graph state and the editor integration
 

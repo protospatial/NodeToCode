@@ -131,8 +131,8 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
     unless the command line has `-N2CMcp`), graceful shutdown on exit
-*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 69,
-    or 66 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
+*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 63,
+    or 62 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
     Toolsets
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
@@ -373,7 +373,7 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 
 ### Tool Implementations (`Implementations/`)
 
-69 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
+63 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
 (folders and toolsets do not map one to one), and every tool's schema is in [tools.generated.md](tools.generated.md);
 `Scripts/docs_lint.py` fails when this list misses a registered tool:
 
@@ -470,14 +470,8 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 *   `move-folder` - Move folder
 *   `rename-folder` - Rename folder
 
-**Python/** - Python script management:
+**Python/** - Python execution (the six script-library tools were retired with decision 0010, card 0305):
 *   `run-python` - Execute Python code in UE environment (only with Allow MCP Python Execution)
-*   `list-python-scripts` - List scripts by category
-*   `search-python-scripts` - Search by name/description/tags
-*   `get-python-script` - Get full script code and metadata
-*   `get-script-functions` - Get function signatures via AST (token-efficient)
-*   `save-python-script` - Save script to library (only with Allow MCP Python Execution)
-*   `delete-python-script` - Remove script from library (only with Allow MCP Python Execution)
 
 **Tool search meta-tools** (in `FN2CMcpToolManager`, listed only with Tool Exposure = Tool search):
 *   `list_toolsets` - The enabled toolsets, `- <Name>: <Description>`
@@ -575,7 +569,7 @@ All four classes are in `N2CMcpCodeGenerationPrompt.h/.cpp`:
 | `generate-code` | Generate Code from Blueprint | `FN2CMcpCodeGenerationPrompt` | `language`, `style`, `optimization` (all optional) |
 | `analyze-blueprint` | Analyze Blueprint | `FN2CMcpBlueprintAnalysisPrompt` | `focus`, `detail` (optional) |
 | `refactor-blueprint` | Refactor Blueprint | `FN2CMcpRefactorPrompt` | `goal`, `language` (optional) |
-| `python-scripting` | Write a UE Python Script | `FN2CMcpPythonScriptingPrompt` | `task` (required), `save_script`, `category` (optional) |
+| `python-scripting` | Write a UE Python Script | `FN2CMcpPythonScriptingPrompt` | `task` (required) |
 
 Since card 0124 (`FN2CMcpBlueprintPrompts`; spec `NodeToCode.MCP.UntrustedContent`, live check
 `Tests/mcp_probe/live_untrusted_0124.py`):
@@ -590,7 +584,7 @@ Since card 0124 (`FN2CMcpBlueprintPrompts`; spec `NodeToCode.MCP.UntrustedConten
   `nodetocode://blueprint/current` as an embedded resource with `annotations.audience: ["assistant"]`. Every
   instruction comes before the Blueprint text.
 - python-scripting checks `IsToolRegistered("run-python")`: with **Allow MCP Python Execution** off it says
-  run-python, save-python-script and delete-python-script are disabled, where the setting is, and to hand the
+  run-python is disabled, where the setting is, and to hand the
   script to the user instead of claiming it ran.
 
 ### Untrusted Blueprint text (card 0124)
@@ -611,7 +605,7 @@ agent (`Source/Private/MCP/Utils/N2CMcpUntrustedContent.h`):
 - Every `</` in marked text is written `<\/` (the same JSON string), so planted text cannot close a tag a client or a
   prompt wraps it in.
 - Nothing is removed or filtered. Names-only results (get-open-blueprint-editors, list-components-in-actor, the
-  Content Browser tools) and non-Blueprint text (read-file, the script library) are not marked; see the threat model.
+  Content Browser tools) and non-Blueprint text (read-file) are not marked; see the threat model.
 
 ## MCP Protocol Implementation
 
@@ -659,11 +653,10 @@ Server):
     shapes, for clients with a tool limit such as VS Code's 128 and Windsurf's 100).
 
 `tools/list` is then fixed until the server starts again: no call changes it, every client sees the same list. With
-Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 69, tool search 3,
-Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (66
-and 4; Python scripting only logs a warning at start). The settings need an editor restart. `build.ps1 -Smoke` checks
-each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 69, `tool_search` 3,
-`python_only` 7).
+Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 63, tool search 3,
+Python scripting only 1; without it `run-python` is not served (62 and 0; Python scripting only logs a warning at
+start). The settings need an editor restart. `build.ps1 -Smoke` checks each mode with Python execution allowed against
+`Tests/smoke/expected.json` (`default` 63, `tool_search` 3, `python_only` 1).
 
 Toolsets are declared once in `Source/Public/MCP/Tools/N2CMcpToolsets.h`, and every tool names its toolset by identity
 (`FMcpToolDefinition(Name, Description, N2CMcpToolsets::BlueprintGraph)`, sent as `_meta["nodetocode/toolset"]`):
@@ -714,7 +707,7 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     `MCPServers=(...)`: a `+MCPServers=(...)` line left the list empty on 5.8 and the subsystem logged nothing.
 *   **Tool profile**: Default toolsets and List every tool (the defaults; Epic's client lists tools once and would
     see only the meta-tools in Tool search, nested behind its own `call_tool`). Tools register as
-    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 69 tools with Allow MCP
+    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 63 tools with Allow MCP
     Python Execution, all in the first `tools/list` (one page, no cursor).
 *   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
     `Accept: application/json, text/event-stream`, `Mcp-Session-Id` from the first response on every later POST,
@@ -853,9 +846,9 @@ Unreal saves only values that differ from the lower layers, so if a project file
 picks, the choice is not saved; the warning says to remove it from the project file:
 
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
-- **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
-  `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so tool search cannot reach them either.
-  Without it the default mode lists 66 tools, not 69.
+- **Allow MCP Python Execution** (default off): registers `run-python`. Filtered in
+  `FN2CMcpToolManager::RegisterTool`, so tool search cannot reach it either. Without it the default mode lists 62
+  tools, not 63.
 - **Allow MCP Writes Outside Project** (default off): lets the content-writing tools write outside `/Game` and the
   project's plugins (`/Engine`, engine and Fab plugins, `/NodeToCode`); read by
   `FN2CMcpContentBrowserUtils::IsWritableContentPath` (card 0182; the policy is "Where tools may write" in

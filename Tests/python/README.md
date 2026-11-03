@@ -51,4 +51,4 @@ code does not reflect the result: grep for the `N2C_EDITOR_TESTS` line.
 
 The host projects junction the plugin into `Plugins/NodeToCode`, so they cannot show install-location bugs (a Fab
 install under `Engine/Plugins/Marketplace`, a renamed plugin folder). Test those with the CPython tests, which can put
-a copy of the package anywhere (`test_scripts.py`, `installed_package`).
+a copy of the package anywhere.

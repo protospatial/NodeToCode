@@ -94,11 +94,11 @@ step is reported as `pytest WARN (uv not found)` and skipped.
 - Before that, `-Test` runs the CPython tests in `Tests/python` on each engine's own Python (3.11.8 in UE 5.6, 5.7
   and 5.8): `uv run --no-project --python <engine python> --with-requirements Tests/python/requirements.txt --
   python -m pytest -q Tests/python`, in a throwaway environment, so the engine install is not changed. They test
-  `Content/Python/nodetocode` (the script library: name and category checks, registry load, merge and corruption
-  handling, search scoring, `run_script`, path containment, import resolution) and check that
-  `Content/Python/scripts/script_registry.json` and the `.py` files beside it match. `Tests/python/conftest.py`
-  puts a stub `unreal` module in `sys.modules` (`Paths.project_content_dir`/`project_plugins_dir`/`project_dir`
-  pointed at pytest tmp folders, and the log functions), so no editor or UE install is needed. The counts land in
+  `Content/Python/nodetocode` (the wrappers' arguments and results, `invoke_tool`, the run-python runner), the stdio
+  bridge, the Agent Skills and the Claude Code plugin, and the docs checks. `Tests/python/conftest.py` puts a stub
+  `unreal` module in `sys.modules` (`Paths.project_content_dir`/`project_plugins_dir`/`project_dir` pointed at
+  pytest tmp folders, the log functions, and a `tools` fixture standing in for `invoke_tool`), so no editor or UE
+  install is needed. The counts land in
   the summary (`pytest PASS (109 passed, 10 xfailed)`), the output in `BuildLogs/PyTest_<ver>_<stamp>.log`. Without
   an engine, from the repo root: `uv run --no-project --python 3.11 --with-requirements Tests/python/requirements.txt
   -- python -m pytest Tests/python`. pytest and its dependencies are pinned in `requirements.txt` and are never

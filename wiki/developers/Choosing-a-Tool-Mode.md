@@ -1,4 +1,4 @@
-NodeToCode's MCP server has 69 tools in 12 toolsets. Two settings choose which of them a connected client sees:
+NodeToCode's MCP server has 63 tools in 12 toolsets. Two settings choose which of them a connected client sees:
 **Tool Profile** picks the toolsets, and **Tool Exposure** picks whether `tools/list` names every tool or only three
 search tools that reach them. The defaults serve every toolset and list every tool, which suits most clients; change
 them when a client struggles with many tools or should only run Python.
@@ -11,8 +11,8 @@ reads it once (as most do) stays correct. Every client gets the same list.
 
 | Tool Profile | What the client gets | Tools |
 |---|---|---|
-| **Default toolsets** (default) | Every toolset | 66, or 69 with **Allow MCP Python Execution** |
-| **Python scripting only** | Only **PythonTools**: `run-python` and the script library (`list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script`) | 7, or 4 without **Allow MCP Python Execution** |
+| **Default toolsets** (default) | Every toolset | 62, or 63 with **Allow MCP Python Execution** |
+| **Python scripting only** | Only **PythonTools**: `run-python` (a script reaches every other tool through `nodetocode.invoke_tool`) | 1, or none without **Allow MCP Python Execution** |
 | **Custom toolsets** | The toolsets you pick in **Custom Toolsets** | the sum of their tools |
 
 **Custom Toolsets** appears under **Tool Profile** when **Custom toolsets** is selected. Add one element per toolset
@@ -30,7 +30,7 @@ and pick its name from the list:
 | BlueprintComponentTools | 3 | An Actor Blueprint's components |
 | ContentBrowserTools | 10 | Searching, opening, copying, moving and renaming assets and folders |
 | FileSystemTools | 2 | Reading text files and folders inside the project |
-| PythonTools | 7 | `run-python` and the script library |
+| PythonTools | 1 | `run-python` |
 | TranslationTools | 5 | NodeToCode's own LLM translation, its providers and languages |
 
 For example, BlueprintDiscoveryTools and TranslationTools give an agent 14 tools to read Blueprints and translate
@@ -66,7 +66,7 @@ MCP** (ModelContextProtocol) and **EditorToolset** plugins are both enabled:
 
 | Overlapping Tools | Effect |
 |---|---|
-| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 32 tools (35 with Python execution); a Custom profile serves its toolsets as chosen |
+| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 28 tools (29 with Python execution); a Custom profile serves its toolsets as chosen |
 | **Leave them to Unreal MCP when it is enabled** | Left out of every profile |
 | **Always serve them** | Served, as on UE 5.6 and 5.7 |
 
@@ -75,16 +75,17 @@ A call to a left-out tool answers with the Epic tool to use instead. The pairs a
 
 ## Python execution
 
-`run-python`, `save-python-script` and `delete-python-script` exist only when **Allow MCP Python Execution** is on in
+`run-python` exists only when **Allow MCP Python Execution** is on in
 **Editor Preferences → Plugins → Node to Code (User) → MCP Server**. It is off by default and per user: a value in the
 project's committed config files is ignored. With it on, any connected client can run any Python in your editor.
-Python scripting only with it off leaves the 4 read-only script library tools, and the Output Log warns at start.
+Python scripting only with it off serves no tool, and the Output Log warns at start. NodeToCode 2.0 has no script
+library: keep a script you reuse as an Agent Skill ([Agent Skills](Agent-Skills)).
 
 ## While you play in the editor
 
-During Play In Editor or Simulate, the 32 tools that edit or compile a Blueprint, or create, copy, move or rename an
+During Play In Editor or Simulate, the 33 tools that edit or compile a Blueprint, or create, copy, move or rename an
 asset or folder, answer `PIE_ACTIVE` until the session ends; every tool stays listed. Reading, translation, opening
-editors, the script library and `run-python` keep working.
+editors and `run-python` keep working.
 
 ## Reading tool results
 
