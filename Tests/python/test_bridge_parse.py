@@ -46,9 +46,13 @@ class _BridgeStub:
 def test_utils_holds_the_only_parser_and_the_wrappers_import_it(utils):
     for name in WRAPPER_MODULES:
         module = importlib.import_module('nodetocode.' + name)
-        assert module._parse_bridge_result is utils._parse_bridge_result, name
         with open(module.__file__, encoding='utf-8') as f:
             assert 'def _parse_bridge_result' not in f.read(), name
+    # The modules that still call their own bridge function parse with it; the rest go through utils._invoke
+    for name in ('blueprint', 'bridge'):
+        assert importlib.import_module('nodetocode.' + name)._parse_bridge_result is utils._parse_bridge_result, name
+    for name in ('graph', 'functions'):
+        assert importlib.import_module('nodetocode.' + name)._invoke is utils._invoke, name
 
 
 def test_parses_awkward_text_in_data_and_error(utils):
@@ -125,12 +129,14 @@ def test_remove_and_list_tags_pass_the_blueprint_path_to_the_bridge(monkeypatch)
     ]
 
 
-def test_create_comment_node_reports_success_for_an_apostrophe_comment(monkeypatch):
+def test_create_comment_node_reports_success_for_an_apostrophe_comment(tools):
     graph = importlib.import_module('nodetocode.graph')
-    data = {'commentGuid': 'G', 'commentText': AWKWARD, 'includedNodeCount': 1,
-            'position': {'x': 0, 'y': 0}, 'size': {'width': 250, 'height': 150}}
-    monkeypatch.setattr(UNREAL, 'N2CPythonBridge', _BridgeStub(create_comment_node=writer_json(True, data)),
-                        raising=False)
+    tools.answers['create-comment-node'] = lambda arguments: {
+        'success': True, 'commentNode': {'guid': 'A1B2C3D4-0000-0000-0000-00000000000C',
+                                         'text': arguments['commentText'], 'x': 0, 'y': 0, 'width': 250, 'height': 150},
+        'includedCount': 1}
     result = graph.create_comment_node(['A1B2C3D4-0000-0000-0000-000000000002'], comment_text=AWKWARD)
     assert result['success'] is True, result
+    assert result['data']['commentNode']['text'] == AWKWARD
     assert result['data']['commentText'] == AWKWARD
+    assert result['data']['commentGuid'] == 'A1B2C3D400000000000000000000000C'

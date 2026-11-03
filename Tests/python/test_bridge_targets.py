@@ -4,71 +4,58 @@
 Tests for the blueprint_path / graph target arguments of the nodetocode wrappers (card 0274), on plain CPython with
 the `unreal` stub from conftest.py.
 
-The bridge's focus-based calls take optional BlueprintPath and Graph (UN2CPythonBridge, FN2CGraphTarget). A wrapper
-passes them as keyword arguments only when given, so a call without them is the same bridge call as before (the
-focused graph), and blank values count as not given.
+Since card 0342 the wrappers run the MCP tools through UN2CPythonBridge::InvokeTool: blueprint_path becomes the
+tool's blueprintPath, and graph its graphGuid when it is a GUID, else its graphName. A wrapper passes them only when
+given, so a call without them acts on the focused graph, and blank values count as not given.
 """
 
 import importlib
-import json
 
 import pytest
 
-from conftest import UNREAL
+TARGET_KEYS = {'blueprintPath', 'graphName', 'graphGuid'}
 
-OK = json.dumps({'success': True, 'data': {}, 'error': None})
-
-
-class _RecordingBridge:
-    """Stand-in for unreal.N2CPythonBridge: every attribute is a function that records its call"""
-
-    def __init__(self):
-        self.calls = []
-
-    def __getattr__(self, name):
-        def call(*args, **kwargs):
-            self.calls.append((name, args, kwargs))
-            return OK
-        return call
-
-
-@pytest.fixture
-def stub(monkeypatch):
-    bridge = _RecordingBridge()
-    monkeypatch.setattr(UNREAL, 'N2CPythonBridge', bridge, raising=False)
-    return bridge
-
-
-# (module, wrapper, positional arguments, bridge function)
+# (module, wrapper, positional arguments, tool)
 CALLS = [
-    ('nodetocode.graph', 'search_blueprint_nodes', ('Print String',), 'search_blueprint_nodes'),
-    ('nodetocode.graph', 'add_node_to_graph', ('Print String', 'id'), 'add_node_to_graph'),
-    ('nodetocode.graph', 'connect_pins', ([{'from': {}, 'to': {}}],), 'connect_pins'),
-    ('nodetocode.graph', 'set_pin_value', ('N', 'P', '1'), 'set_pin_value'),
-    ('nodetocode.graph', 'delete_nodes', (['N'],), 'delete_nodes'),
-    ('nodetocode.graph', 'find_nodes_in_graph', (['Print'],), 'find_nodes_in_graph'),
-    ('nodetocode.graph', 'create_comment_node', (['N'],), 'create_comment_node'),
-    ('nodetocode.functions', 'add_function_input_pin', ('Speed', 'float'), 'add_function_input_pin'),
-    ('nodetocode.functions', 'add_function_return_pin', ('Speed', 'float'), 'add_function_return_pin'),
-    ('nodetocode.functions', 'remove_function_entry_pin', ('Speed',), 'remove_function_entry_pin'),
-    ('nodetocode.functions', 'remove_function_return_pin', ('Speed',), 'remove_function_return_pin'),
-    ('nodetocode.bridge', 'tag_graph', ('Movement',), 'tag_focused_graph'),
+    ('nodetocode.graph', 'search_blueprint_nodes', ('Print String',), 'search-blueprint-nodes'),
+    ('nodetocode.graph', 'add_node_to_graph', ('Print String', 'id'), 'add-bp-node-to-active-graph'),
+    ('nodetocode.graph', 'connect_pins', ([{'from': {}, 'to': {}}],), 'connect-pins'),
+    ('nodetocode.graph', 'set_pin_value', ('N', 'P', '1'), 'set-input-pin-value'),
+    ('nodetocode.graph', 'delete_nodes', (['N'],), 'delete-blueprint-node'),
+    ('nodetocode.graph', 'find_nodes_in_graph', (['Print'],), 'find-nodes-in-graph'),
+    ('nodetocode.graph', 'create_comment_node', (['N'],), 'create-comment-node'),
+    ('nodetocode.functions', 'add_function_input_pin', ('Speed', 'float'), 'add-function-input-pin'),
+    ('nodetocode.functions', 'add_function_return_pin', ('Speed', 'float'), 'add-function-return-pin'),
+    ('nodetocode.functions', 'remove_function_entry_pin', ('Speed',), 'remove-function-entry-pin'),
+    ('nodetocode.functions', 'remove_function_return_pin', ('Speed',), 'remove-function-return-pin'),
+    ('nodetocode.bridge', 'tag_graph', ('Movement',), 'tag-blueprint-graph'),
 ]
 
 
-@pytest.mark.parametrize('module,wrapper,args,bridge_name', CALLS, ids=[c[1] for c in CALLS])
-def test_the_target_reaches_the_bridge(stub, module, wrapper, args, bridge_name):
+@pytest.mark.parametrize('module,wrapper,args,tool', CALLS, ids=[c[1] for c in CALLS])
+def test_the_target_reaches_the_tool(tools, module, wrapper, args, tool):
     fn = getattr(importlib.import_module(module), wrapper)
     result = fn(*args, blueprint_path=' /Game/BP_Door ', graph='OpenDoor')
     assert result['success'] is True
-    name, _, kwargs = stub.calls[-1]
-    assert name == bridge_name
-    assert kwargs == {'blueprint_path': '/Game/BP_Door', 'graph': 'OpenDoor'}
+    name, arguments = tools.calls[-1]
+    assert name == tool
+    assert {k: v for k, v in arguments.items() if k in TARGET_KEYS} == {'blueprintPath': '/Game/BP_Door',
+                                                                        'graphName': 'OpenDoor'}
 
 
-@pytest.mark.parametrize('module,wrapper,args,bridge_name', CALLS, ids=[c[1] for c in CALLS])
-def test_without_a_target_the_call_is_unchanged(stub, module, wrapper, args, bridge_name):
+@pytest.mark.parametrize('module,wrapper,args,tool', CALLS, ids=[c[1] for c in CALLS])
+def test_a_graph_guid_is_passed_as_graph_guid(tools, module, wrapper, args, tool):
+    fn = getattr(importlib.import_module(module), wrapper)
+    for guid in ('A1B2C3D4-0000-0000-0000-000000000001', 'A1B2C3D4000000000000000000000001'):
+        fn(*args, graph=' %s ' % guid)
+        assert {k: v for k, v in tools.calls[-1][1].items() if k in TARGET_KEYS} == {'graphGuid': guid}
+
+
+@pytest.mark.parametrize('module,wrapper,args,tool', CALLS, ids=[c[1] for c in CALLS])
+def test_without_a_target_the_focused_graph_is_used(tools, module, wrapper, args, tool):
     fn = getattr(importlib.import_module(module), wrapper)
     fn(*args)
     fn(*args, blueprint_path='  ', graph='')
-    assert [c[2] for c in stub.calls if c[0] == bridge_name] == [{}, {}]
+    calls = [arguments for name, arguments in tools.calls if name == tool]
+    assert len(calls) == 2
+    assert all(not (TARGET_KEYS & set(arguments)) for arguments in calls)
