@@ -147,8 +147,10 @@ bool FN2CPathUtils::IsDeniedForAgentAccess(const FString& AbsolutePath)
     }
 
     const FString FileName = FPaths::GetCleanFilename(Path);
-    // secrets.json and its .tmp, .bak and .corrupt-<timestamp> siblings
+    // secrets.json and its .tmp, .bak and .corrupt-<timestamp> siblings; the MCP audit trail and its rotated file,
+    // which hold what run-python printed and returned, secrets included (card 0424)
     return FileName.StartsWith(TEXT("secrets.json"), ESearchCase::IgnoreCase)
+        || FileName.StartsWith(TEXT("mcp-audit."), ESearchCase::IgnoreCase)
         || FileName.Equals(TEXT(".env"), ESearchCase::IgnoreCase)
         || FileName.EndsWith(TEXT(".env"), ESearchCase::IgnoreCase);
 }

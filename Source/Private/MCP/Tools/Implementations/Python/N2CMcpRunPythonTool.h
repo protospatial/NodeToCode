@@ -26,6 +26,9 @@ public:
 	virtual bool RequiresGameThread() const override { return true; }
 
 private:
+	/** Runs the code and builds the answer; Execute adds the audit line (card 0424) */
+	FMcpToolCallResult RunAndAnswer(const TSharedPtr<FJsonObject>& Arguments);
+
 	/** Default timeout in seconds for Python execution */
 	static constexpr float DefaultTimeoutSeconds = 60.0f;
 

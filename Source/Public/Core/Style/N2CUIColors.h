@@ -84,7 +84,8 @@ struct FN2CUIColors
     FColor TextSecondary = FColor(157, 157, 157);
 
     // 148 gray: 4.5:1 contrast on BgPanel and BgInput (WCAG AA for small text); it was 107, about 2.9:1 (card 0271)
-    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Text", meta = (DisplayName = "Text Muted"))
+    UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Text", meta = (DisplayName = "Text Muted",
+        ToolTip = "Secondary text. The default light gray (148) keeps a 4.5:1 contrast on the panels and input fields."))
     FColor TextMuted = FColor(148, 148, 148);
 
     UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Text", meta = (DisplayName = "Text Shadow"))

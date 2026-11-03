@@ -5,6 +5,7 @@
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "Utils/N2CLogger.h"
 #include "MCP/Python/N2CMcpPythonRunner.h"
+#include "MCP/Utils/N2CMcpAuditLog.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -77,6 +78,49 @@ FMcpToolDefinition FN2CMcpRunPythonTool::GetDefinition() const
 }
 
 FMcpToolCallResult FN2CMcpRunPythonTool::Execute(const TSharedPtr<FJsonObject>& Arguments)
+{
+	const double Started = FPlatformTime::Seconds();
+	const FMcpToolCallResult Result = RunAndAnswer(Arguments);
+
+	// The audit line (card 0424): who ran what, and what came of it, whatever the outcome
+	const TSharedRef<FJsonObject> Audit = MakeShared<FJsonObject>();
+	FString Code;
+	double Timeout = DefaultTimeoutSeconds;
+	if (Arguments.IsValid())
+	{
+		Arguments->TryGetStringField(TEXT("code"), Code);
+		Arguments->TryGetNumberField(TEXT("timeout"), Timeout);
+	}
+	Audit->SetStringField(TEXT("code"), Code);
+	Audit->SetNumberField(TEXT("timeout"), FMath::Clamp(Timeout, 1.0, static_cast<double>(MaxTimeoutSeconds)));
+	FString Text;
+	for (const TSharedPtr<FJsonObject>& Item : Result.Content)
+	{
+		FString ItemText;
+		if (Item.IsValid() && Item->TryGetStringField(TEXT("text"), ItemText))
+		{
+			Text += ItemText;
+		}
+	}
+	TSharedPtr<FJsonObject> Body;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Text);
+	bool bSuccess = false;
+	bool bTimedOut = false;
+	if (FJsonSerializer::Deserialize(Reader, Body) && Body.IsValid())
+	{
+		Body->TryGetBoolField(TEXT("success"), bSuccess);
+		Body->TryGetBoolField(TEXT("timed_out"), bTimedOut);
+	}
+	Audit->SetBoolField(TEXT("success"), bSuccess && !Result.bIsError);
+	Audit->SetBoolField(TEXT("isError"), Result.bIsError);
+	Audit->SetBoolField(TEXT("timed_out"), bTimedOut);
+	Audit->SetNumberField(TEXT("seconds"), FMath::RoundToDouble((FPlatformTime::Seconds() - Started) * 1000.0) / 1000.0);
+	Audit->SetStringField(TEXT("result"), N2CMcpAuditLog::TruncateResult(Text));
+	N2CMcpAuditLog::Append(TEXT("run-python"), Audit);
+	return Result;
+}
+
+FMcpToolCallResult FN2CMcpRunPythonTool::RunAndAnswer(const TSharedPtr<FJsonObject>& Arguments)
 {
 	// Parse arguments
 	FN2CMcpArgumentParser Parser(Arguments);

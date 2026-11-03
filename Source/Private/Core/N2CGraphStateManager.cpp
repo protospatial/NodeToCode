@@ -15,6 +15,7 @@
 #include "Misc/Paths.h"
 #include "Utils/N2CFileUtils.h"
 #include "Utils/N2CPathUtils.h"
+#include "LLM/N2CTranslationArchive.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
 namespace
@@ -682,6 +683,31 @@ void UN2CGraphStateManager::RecordSavedTranslation(const FGuid& GraphGuid, const
 		Provider, Model, FN2CPathUtils::GetLanguageId(Language), Summary);
 }
 
+void UN2CGraphStateManager::RecordArchivedTranslation(const FGuid& GraphGuid, const FString& GraphName, const FSoftObjectPath& Blueprint,
+	const FN2CArchivedEntry& Root, const FString& RunFolder, const FString& RunId,
+	const FString& Provider, const FString& Model, EN2CCodeLanguage Language,
+	const FN2CTranslationSummary& Summary, int32 InputTokens, int32 OutputTokens)
+{
+	FN2CGraphState& State = GetOrCreateGraphState(GraphGuid, GraphName, Blueprint);
+	FN2CTranslationState Record;
+	Record.bExists = true;
+	Record.OutputPath = FN2CPathUtils::MakeTranslationRecordPath(Root.Folder);
+	Record.Timestamp = FDateTime::UtcNow();
+	Record.Provider = Provider;
+	Record.Model = Model;
+	Record.Language = FN2CPathUtils::GetLanguageId(Language);
+	Record.Summary = Summary;
+	Record.RunId = RunId;
+	Record.ManifestPath = RunFolder.IsEmpty() ? FString() : FN2CPathUtils::MakeTranslationRecordPath(FPaths::Combine(RunFolder, TEXT("manifest.json")));
+	auto RecordPath = [](const FString& File) { return File.IsEmpty() ? FString() : FN2CPathUtils::MakeTranslationRecordPath(File); };
+	Record.ImplementationFile = RecordPath(Root.ImplementationFile);
+	Record.DeclarationFile = RecordPath(Root.DeclarationFile);
+	Record.NotesFile = RecordPath(Root.NotesFile);
+	Record.InputTokens = FMath::Max(0, InputTokens);
+	Record.OutputTokens = FMath::Max(0, OutputTokens);
+	SetTranslationState(State.GetKey(), Record);
+}
+
 void UN2CGraphStateManager::ClearTranslationState(const FN2CGraphKey& Key)
 {
 	const int32 Index = FindGraphStateIndex(Key);
@@ -744,6 +770,47 @@ bool UN2CGraphStateManager::LoadTranslation(const FN2CGraphKey& Key, FN2CGraphTr
 	const FN2CTargetLanguage& TargetLanguage = Row ? *Row : N2C::GetLanguage(EN2CCodeLanguage::Cpp);
 	const EN2CCodeLanguage Language = TargetLanguage.Enum;
 	const TArray<FString> Extensions = TargetLanguage.GetImplementationExtensions();
+
+	// A record the archive wrote names its files (card 0253): read exactly those
+	const FString RecordedImplementation = State->Translation.ImplementationFile.IsEmpty()
+		? FString() : FN2CPathUtils::ResolveTranslationRecordPath(State->Translation.ImplementationFile);
+	if (!RecordedImplementation.IsEmpty() && FPaths::FileExists(RecordedImplementation))
+	{
+		auto ReadRecorded = [](const FString& RecordPath)
+		{
+			FString Text;
+			if (!RecordPath.IsEmpty())
+			{
+				const FString Path = FN2CPathUtils::ResolveTranslationRecordPath(RecordPath);
+				if (FPaths::FileExists(Path))
+				{
+					FFileHelper::LoadFileToString(Text, *Path);
+				}
+			}
+			return Text;
+		};
+		FString Implementation;
+		if (!FFileHelper::LoadFileToString(Implementation, *RecordedImplementation))
+		{
+			FN2CLogger::Get().LogError(FString::Printf(TEXT("Failed to load translation implementation from: %s"), *RecordedImplementation));
+			return false;
+		}
+		OutTranslation.GraphName = State->GraphName;
+		OutTranslation.GraphType = TEXT("Function");
+		OutTranslation.GraphClass = TEXT("");
+		OutTranslation.Code.GraphImplementation = Implementation;
+		OutTranslation.Code.GraphDeclaration = ReadRecorded(State->Translation.DeclarationFile);
+		OutTranslation.Code.ImplementationNotes = ReadRecorded(State->Translation.NotesFile);
+		OutLanguage = Language;
+		FN2CLogger::Get().Log(FString::Printf(TEXT("Loaded translation for graph %s from %s (run %s)"),
+			*State->GraphName, *RecordedImplementation, *State->Translation.RunId), EN2CLogSeverity::Info);
+		return true;
+	}
+	if (!RecordedImplementation.IsEmpty())
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("The recorded translation file of graph %s is missing (%s); looking in its folder instead"),
+			*State->GraphName, *RecordedImplementation));
+	}
 
 	// Same stem the save path used (identical to the raw name for names without path characters)
 	FString Stem = FN2CPathUtils::GetTranslationFileStem(State->GraphName);

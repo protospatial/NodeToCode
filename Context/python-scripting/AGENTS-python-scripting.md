@@ -406,6 +406,14 @@ when the script moved one. Any other object a plain setter changes is not record
 `obj.modify()` first. The editor drops a transaction that changed nothing (`FTransaction::IsTransient`), so a
 read-only or failing-before-any-edit script adds no undo step. Nothing is rolled back on an error.
 
+Audit (card 0424): `FN2CMcpRunPythonTool::Execute` appends one JSON line per call, whatever the outcome, to
+`<Project>/Saved/NodeToCode/Logs/mcp-audit.jsonl` (`N2CMcpAuditLog`): `time` (UTC ISO 8601), `session` and `client`
+(`name`, `version` from initialize; the protocol core sets them around each message with
+`N2CMcpAuditLog::FScopedCaller`; empty for a call outside MCP), `tool`, the full `code`, `timeout`, `success`,
+`isError`, `timed_out`, `seconds` and `result` (the answer text, cut at 4000 characters). At 10 MB it becomes
+`mcp-audit.1.jsonl`. `FN2CPathUtils::IsDeniedForAgentAccess` keeps read-file and read-path from `mcp-audit.*`, since a
+script's output can hold a secret. Spec: `NodeToCode.MCP.AuditLog`.
+
 ## Python-Only Mode
 
 Setting: Project Settings > Plugins > Node to Code > MCP Server > **Tool Profile** = **Python scripting only**

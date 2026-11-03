@@ -24,12 +24,15 @@ From top to bottom:
 
    Double-click a row to open its translation. Right-click a row for **Translate**, **View Translation**, **Export
    JSON**, **Open in Blueprint** and **Remove Tag**. Click, Shift-click and Ctrl-click check rows like a selection.
-5. **Actions.** **Selection** counts the checked graphs. **Batch Translate** sends one request per checked graph,
-   **Export JSON** saves their Node to Code JSON to the **Output** folder (**Minify JSON** writes it on one line), and
+5. **Actions.** **Selection** counts the checked graphs. **Batch Translate** sends one request per checked graph
+   (its progress dialog lists each graph with its Blueprint, for example `N2CFn (BP_A)`, with that graph's own status),
+   **Export JSON** saves their Node to Code JSON to a new `BatchJson_...` folder in the **Output** folder (**Minify
+   JSON** writes it on one line) and then says how many graphs it wrote, with an **Open folder** link, and
    **Remove Selected** takes the listed tags off them. These three are greyed out until you check a graph.
    **Prune Missing** removes the tags and translation records of graphs whose Blueprint was deleted (the files on
-   disk are kept). **Output** and **Browse...** set the folder translations and exports are saved in
-   ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
+   disk are kept). **Output** and **Browse...** set the folder translations and exports are saved in;
+   **Browse...** saves it as your own **Custom Translation Output Directory** (Editor Preferences → Plugins → Node to
+   Code (User)) ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
 
 Removing tags asks first and then offers **Undo** for ten seconds. More on tags: [Viewing the Results](Viewing-the-Results#tags-and-the-graph-list).
 

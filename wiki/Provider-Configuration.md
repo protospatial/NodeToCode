@@ -139,6 +139,15 @@ hour. Responses are not streamed yet, so the provider sends nothing until the wh
 very long translations (a large Max Output Tokens, a reasoning model) or a slow local model. The whole request is
 also limited to 3600 seconds.
 
+## Request Retries
+
+**LLM Provider → Max Request Retries** (default 3, 0 to 10) is how many times NodeToCode sends a request again when
+the provider answers 429 (rate limited), 529 (overloaded) or another 5xx server error. It waits as long as the
+provider asks (`Retry-After`), or else 1 second, then 2, then 4 (each with a little random extra), never more than 60
+seconds; a provider that asks for a longer wait gets no retry and the translation fails at once. Other errors (a bad
+key, a bad request) are not retried. The Output Log shows each retry ("HTTP 429 from ...: retrying in 2.0 s"). 0
+turns retries off.
+
 Settings are read again for every request: a provider, model, API key or timeout you change applies to the next
 translation, including the next graph of a batch that is already running.
 

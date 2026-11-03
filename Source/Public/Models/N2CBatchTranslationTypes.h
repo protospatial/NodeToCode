@@ -235,6 +235,10 @@ struct NODETOCODE_API FN2CBatchJsonExportResult
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch Export")
 	float TotalTimeSeconds = 0.0f;
 
+	/** Why the export did not run (BatchExportJson returned false); empty otherwise */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch Export")
+	FString ErrorMessage;
+
 	FN2CBatchJsonExportResult() = default;
 };
 

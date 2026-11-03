@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Server/N2CMcpProtocol.h"
+#include "MCP/Utils/N2CMcpAuditLog.h"
 #include "MCP/Server/N2CMcpRequestTrace.h"
 #include "MCP/Server/N2CMcpCompletion.h"
 #include "MCP/Server/N2CMcpTcpConnectionState.h"
@@ -463,6 +464,9 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 	// Notifications that name a request (notifications/cancelled) look it up in this message's session
 	ActiveSessionId = SessionId;
 	ON_SCOPE_EXIT { ActiveSessionId.Reset(); };
+	// The tools a message runs know its session and client, for the audit trail (card 0424)
+	const FN2CMcpSession* CallerSession = Sessions.Find(SessionId);
+	const N2CMcpAuditLog::FScopedCaller AuditCaller(SessionId, CallerSession ? CallerSession->ClientInfo : nullptr);
 	ProcessMessage(JsonValue, Reply.Body, Reply.Status, bWasInitializeCall);
 	if (bInitialize && Reply.Status == 200 && !LastNegotiatedVersion.IsEmpty())
 	{

@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "LLM/N2CBatchTranslationOrchestrator.h"
+#include "Misc/ScopedSlowTask.h"
 #include "LLM/N2CLLMModule.h"
 #include "Core/N2CNodeCollector.h"
 #include "Core/N2CCapture.h"
@@ -653,16 +654,21 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 	}
 	Summary.bHasNotes = !Graph.Code.ImplementationNotes.IsEmpty();
 
-	// The shared language id and record path, which UN2CGraphStateManager::LoadTranslation reads back
-	UN2CGraphStateManager::Get().RecordSavedTranslation(
+	// The shared language id, the run and the root entry's files, which UN2CGraphStateManager::LoadTranslation reads
+	// back (card 0253)
+	UN2CGraphStateManager::Get().RecordArchivedTranslation(
 		GraphGuid,
 		Item.TagInfo.GraphName,
 		FSoftObjectPath(Item.TagInfo.BlueprintPath),
-		Root->Folder,
+		*Root,
+		BatchArchive->GetFolder(),
+		BatchArchive->GetRunId(),
 		GetSaveProvider(),
 		GetSaveModel(),
 		GetSaveLanguage(),
-		Summary
+		Summary,
+		Item.TranslationResponse.Usage.InputTokens,
+		Item.TranslationResponse.Usage.OutputTokens
 	);
 
 	FN2CLogger::Get().Log(
@@ -848,13 +854,15 @@ FString UN2CBatchTranslationOrchestrator::GetSaveModel() const
 bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 	const TArray<FN2CTagInfo>& TagInfos,
 	FN2CBatchJsonExportResult& Result,
-	bool bMinifyJson)
+	bool bMinifyJson,
+	const FString& OutputDirectory)
 {
 	Result = FN2CBatchJsonExportResult();
 
 	// Validate input
 	if (TagInfos.IsEmpty())
 	{
+		Result.ErrorMessage = TEXT("No graphs to export.");
 		FN2CLogger::Get().LogError(TEXT("Cannot export with empty TagInfos array"), TEXT("BatchOrchestrator"));
 		return false;
 	}
@@ -862,6 +870,7 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 	// Check if batch translation is in progress (don't overlap)
 	if (bBatchInProgress)
 	{
+		Result.ErrorMessage = TEXT("A batch translation is running; export JSON when it has finished.");
 		FN2CLogger::Get().LogWarning(TEXT("A batch translation is in progress, cannot start JSON export"), TEXT("BatchOrchestrator"));
 		return false;
 	}
@@ -883,10 +892,13 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 		FString::Printf(TEXT("Starting batch JSON export with %d items"), ExportItems.Num()),
 		EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
 
-	// A new folder under the translation output directory: BatchJson_<yyyyMMdd-HHmmss-fff>_<id>
-	const FString OutputPath = FN2CTranslationArchive::CreateUniqueFolder(TEXT("BatchJson"));
+	// A new folder BatchJson_<yyyyMMdd-HHmmss-fff>_<id> in the chosen folder (the window's Output field), else under the
+	// translation output directory (card 0258)
+	const FString OutputPath = FN2CTranslationArchive::CreateUniqueFolder(TEXT("BatchJson"), OutputDirectory.TrimStartAndEnd());
 	if (OutputPath.IsEmpty())
 	{
+		Result.ErrorMessage = FString::Printf(TEXT("Could not create a folder for the export in %s."),
+			OutputDirectory.IsEmpty() ? *FN2CPathUtils::GetTranslationsBasePath() : *OutputDirectory);
 		FN2CLogger::Get().LogError(TEXT("Failed to create the JSON export directory"), TEXT("BatchOrchestrator"));
 		return false;
 	}
@@ -895,9 +907,14 @@ bool UN2CBatchTranslationOrchestrator::BatchExportJson(
 	// Clear and prepare blueprint cache
 	TMap<FString, TWeakObjectPtr<UBlueprint>> LocalBlueprintCache;
 
-	// Process each item synchronously
+	// Process each item synchronously, with a progress dialog in the editor (a large export would otherwise freeze it)
+	FScopedSlowTask Progress(static_cast<float>(ExportItems.Num()),
+		FText::Format(NSLOCTEXT("NodeToCode", "ExportJsonProgress", "Exporting {0} graphs as JSON"), FText::AsNumber(ExportItems.Num())));
+	Progress.MakeDialogDelayed(0.5f);
 	for (FN2CBatchTranslationItem& Item : ExportItems)
 	{
+		Progress.EnterProgressFrame(1.0f, FText::FromString(Item.TagInfo.GraphName));
+
 		// Load blueprint (using cache if already loaded)
 		UBlueprint* Blueprint = nullptr;
 		if (TWeakObjectPtr<UBlueprint>* CachedBP = LocalBlueprintCache.Find(Item.TagInfo.BlueprintPath))

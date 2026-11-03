@@ -350,16 +350,10 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 	// Set global translation state
 	FN2CEditorIntegration::Get().SetTranslationInProgress(true);
 
-	// Initialize and show the batch progress modal
-	TArray<FString> GraphNames;
-	for (const FN2CTagInfo& Graph : SelectedGraphs)
-	{
-		GraphNames.Add(Graph.GraphName);
-	}
-
+	// Initialize and show the batch progress modal: one row per graph, in the orchestrator's item order
 	if (BatchProgressModal.IsValid())
 	{
-		BatchProgressModal->Initialize(GraphNames);
+		BatchProgressModal->Initialize(SelectedGraphs);
 	}
 	ShowBatchProgress();
 
@@ -390,11 +384,12 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 	const TArray<FN2CBatchTranslationItem>& Items = Orchestrator.GetBatchItems();
 	if (BatchProgressModal.IsValid())
 	{
-		for (const FN2CBatchTranslationItem& Item : Items)
+		for (int32 Index = 0; Index < Items.Num(); ++Index)
 		{
+			const FN2CBatchTranslationItem& Item = Items[Index];
 			if (Item.Status == EN2CBatchItemStatus::Failed && !Item.CachedGraph.IsValid())
 			{
-				BatchProgressModal->MarkItemComplete(Item.TagInfo.GraphName, false, Item.ErrorMessage);
+				BatchProgressModal->MarkItemCompleteAt(Index, false, Item.ErrorMessage);
 			}
 		}
 	}
@@ -434,9 +429,46 @@ void SN2CMainWindow::HandleExportJsonRequested()
 	// Get minify setting from tag manager
 	bool bMinify = TagManager.IsValid() ? TagManager->IsMinifyJsonEnabled() : false;
 
-	// Perform batch JSON export
+	// Into the folder the window's Output field shows (card 0258), and say how it went
+	const FString OutputDirectory = TagManager.IsValid() ? TagManager->GetOutputPath() : FString();
 	FN2CBatchJsonExportResult Result;
-	UN2CBatchTranslationOrchestrator::Get().BatchExportJson(SelectedGraphs, Result, bMinify);
+	const bool bRan = UN2CBatchTranslationOrchestrator::Get().BatchExportJson(SelectedGraphs, Result, bMinify, OutputDirectory);
+	NotifyJsonExportResult(bRan, Result);
+}
+
+void SN2CMainWindow::NotifyJsonExportResult(bool bRan, const FN2CBatchJsonExportResult& Result)
+{
+	if (!FSlateApplication::IsInitialized())
+	{
+		return;
+	}
+	FNotificationInfo Info(FText::GetEmpty());
+	Info.ExpireDuration = 8.0f;
+	Info.bFireAndForget = true;
+	SNotificationItem::ECompletionState State = SNotificationItem::CS_Success;
+	if (!bRan)
+	{
+		Info.Text = FText::Format(NSLOCTEXT("NodeToCode", "ExportJsonDidNotRun", "Export JSON did not run: {0}"),
+			FText::FromString(Result.ErrorMessage.IsEmpty() ? FString(TEXT("see the Output Log.")) : Result.ErrorMessage));
+		State = SNotificationItem::CS_Fail;
+	}
+	else
+	{
+		Info.Text = Result.FailureCount == 0
+			? FText::Format(NSLOCTEXT("NodeToCode", "ExportJsonDone", "Exported {0} graphs as JSON to {1}"),
+				FText::AsNumber(Result.SuccessCount), FText::FromString(Result.OutputPath))
+			: FText::Format(NSLOCTEXT("NodeToCode", "ExportJsonPartial", "Exported {0} of {1} graphs as JSON to {2}. Failed: {3} (the Output Log says why)"),
+				FText::AsNumber(Result.SuccessCount), FText::AsNumber(Result.TotalCount), FText::FromString(Result.OutputPath),
+				FText::FromString(FString::Join(Result.FailedGraphNames, TEXT(", "))));
+		State = Result.SuccessCount == 0 ? SNotificationItem::CS_Fail : SNotificationItem::CS_Success;
+		const FString Folder = Result.OutputPath;
+		Info.Hyperlink = FSimpleDelegate::CreateLambda([Folder]() { FPlatformProcess::ExploreFolder(*Folder); });
+		Info.HyperlinkText = NSLOCTEXT("NodeToCode", "ExportJsonOpenFolder", "Open folder");
+	}
+	if (TSharedPtr<SNotificationItem> Item = FSlateNotificationManager::Get().AddNotification(Info))
+	{
+		Item->SetCompletionState(State);
+	}
 }
 
 void SN2CMainWindow::HandleRemoveSelectedRequested()
@@ -589,7 +621,8 @@ void SN2CMainWindow::OnBatchItemComplete(const FN2CTagInfo& TagInfo, const FN2CT
 	// Only a batch this window shows (an MCP translate-batch runs without the window's progress)
 	if (BatchProgressModal.IsValid() && bShowBatchProgress)
 	{
-		BatchProgressModal->MarkItemComplete(TagInfo.GraphName, bSuccess,
+		// By item index: several graphs in a batch can share a name (card 0489)
+		BatchProgressModal->MarkItemCompleteAt(ItemIndex, bSuccess,
 			bSuccess ? FString() : Response.Error.ToDisplayString());
 	}
 }
@@ -849,15 +882,20 @@ bool SN2CMainWindow::SaveSingleTranslation(const FN2CTagInfo& Graph, const FN2CT
 	Summary.ImplementationLines = Lines.Num();
 	Summary.bHasNotes = !Translation.Code.ImplementationNotes.IsEmpty();
 
-	UN2CGraphStateManager::Get().RecordSavedTranslation(
+	// With the run, its manifest, the root entry's files and the usage (card 0253)
+	UN2CGraphStateManager::Get().RecordArchivedTranslation(
 		GraphGuid,
 		Graph.GraphName,
 		FSoftObjectPath(Graph.BlueprintPath),
-		Root->Folder,
+		*Root,
+		Run->GetFolder(),
+		Run->GetRunId(),
 		Info.Provider,
 		Info.Model,
 		Info.Language,
-		Summary
+		Summary,
+		Response.Usage.InputTokens,
+		Response.Usage.OutputTokens
 	);
 	return true;
 }
