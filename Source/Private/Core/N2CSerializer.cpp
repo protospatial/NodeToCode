@@ -16,14 +16,15 @@ namespace
     const TCHAR* const TopLevelFields[] = { N2CJsonContract::VersionField, TEXT("metadata"), TEXT("graphs"), TEXT("structs"),
         TEXT("enums"), N2CJsonContract::VariablesField, TEXT("guids"), N2CJsonContract::WarningsField };
     const TCHAR* const MetadataFields[] = { TEXT("name"), TEXT("blueprint_type"), TEXT("blueprint_class"),
-        N2CJsonContract::ParentClassField, N2CJsonContract::AssetClassField, N2CJsonContract::AssetKindField };
+        N2CJsonContract::ParentClassField, N2CJsonContract::AssetClassField, N2CJsonContract::AssetKindField,
+        N2CJsonContract::MaterialMetadataField };
     const TCHAR* const GraphFields[] = { TEXT("name"), TEXT("graph_type"), TEXT("owner_blueprint"), TEXT("nodes"),
         N2CJsonContract::FlowsField, N2CJsonContract::CommentsField, N2CJsonContract::LocalVariablesField };
     const TCHAR* const NodeFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, TEXT("type"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField,
         N2CJsonContract::NodeNameFieldV1, TEXT("member_parent"), TEXT("member_name"), TEXT("comment"), TEXT("pure"), TEXT("latent"),
         N2CJsonContract::UnusedField, N2CJsonContract::UnreachableField, N2CJsonContract::DisabledField, TEXT("input_pins"),
         TEXT("output_pins"), N2CJsonContract::NodeBoundToField, N2CJsonContract::NodeNetField, N2CJsonContract::NodeReliableField,
-        N2CJsonContract::NodeTimelineField };
+        N2CJsonContract::NodeTimelineField, N2CJsonContract::NodePropertiesField };
     const TCHAR* const PinFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, N2CJsonContract::PinNameField, N2CJsonContract::PinLabelField, TEXT("type"),
         TEXT("sub_type"), TEXT("default_value"), TEXT("connected"), TEXT("is_reference"), TEXT("is_const"), TEXT("is_array"),
         TEXT("is_map"), TEXT("is_set"), N2CJsonContract::PinValueTypeField, N2CJsonContract::PinValueSubTypeField };
@@ -469,6 +470,25 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
         MetadataObject->SetStringField(N2CJsonContract::AssetKindField,
             WriteKind(Blueprint.Metadata.AssetKind, Blueprint.Metadata.UnknownAssetKind));
     }
+    // A material's settings (card 0449)
+    if (Blueprint.Metadata.Material.bSet)
+    {
+        const FN2CMaterialMetadata& Material = Blueprint.Metadata.Material;
+        const TSharedPtr<FJsonObject> MaterialObject = MakeShared<FJsonObject>();
+        MaterialObject->SetStringField(N2CJsonContract::MaterialDomainField, Material.Domain);
+        MaterialObject->SetStringField(N2CJsonContract::MaterialBlendModeField, Material.BlendMode);
+        TArray<TSharedPtr<FJsonValue>> ShadingModels;
+        for (const FString& Model : Material.ShadingModels)
+        {
+            ShadingModels.Add(MakeShared<FJsonValueString>(Model));
+        }
+        MaterialObject->SetArrayField(N2CJsonContract::MaterialShadingModelsField, ShadingModels);
+        if (Material.bTwoSided)
+        {
+            MaterialObject->SetBoolField(N2CJsonContract::MaterialTwoSidedField, true);
+        }
+        MetadataObject->SetObjectField(N2CJsonContract::MaterialMetadataField, MaterialObject);
+    }
     WriteUnknownFields(MetadataObject, Blueprint.Metadata.UnknownFields);
     JsonObject->SetObjectField(TEXT("metadata"), MetadataObject);
 
@@ -688,6 +708,16 @@ TSharedPtr<FJsonObject> FN2CSerializer::NodeToJsonObject(const FN2CNodeDefinitio
         }
         Timeline->SetArrayField(N2CJsonContract::TimelineTracksField, Tracks);
         JsonObject->SetObjectField(N2CJsonContract::NodeTimelineField, Timeline);
+    }
+    // A material expression's settings (card 0449), in the order captured
+    if (Node.Properties.Num() > 0)
+    {
+        const TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
+        for (const TPair<FString, FString>& Property : Node.Properties)
+        {
+            Properties->SetStringField(Property.Key, Property.Value);
+        }
+        JsonObject->SetObjectField(N2CJsonContract::NodePropertiesField, Properties);
     }
     WriteUnknownFields(JsonObject, Node.UnknownFields);
 
@@ -1002,6 +1032,17 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
     {
         OutBlueprint.Metadata.BlueprintType = ReadKind<EN2CBlueprintType>(TypeString, OutBlueprint.Metadata.UnknownBlueprintType,
             N2CJsonContract::ReadWarning::UnknownBlueprintType, JoinPath(MetadataPath, TEXT("blueprint_type")), TEXT("blueprint_type"), Warnings);
+    }
+    OutBlueprint.Metadata.Material = FN2CMaterialMetadata();
+    const TSharedPtr<FJsonObject>* MaterialObject = nullptr;
+    if ((*MetadataObject)->TryGetObjectField(N2CJsonContract::MaterialMetadataField, MaterialObject))
+    {
+        FN2CMaterialMetadata& Material = OutBlueprint.Metadata.Material;
+        Material.bSet = true;
+        (*MaterialObject)->TryGetStringField(N2CJsonContract::MaterialDomainField, Material.Domain);
+        (*MaterialObject)->TryGetStringField(N2CJsonContract::MaterialBlendModeField, Material.BlendMode);
+        (*MaterialObject)->TryGetStringArrayField(N2CJsonContract::MaterialShadingModelsField, Material.ShadingModels);
+        (*MaterialObject)->TryGetBoolField(N2CJsonContract::MaterialTwoSidedField, Material.bTwoSided);
     }
     KeepUnknownFields(*MetadataObject, MetadataFields, OutBlueprint.Metadata.UnknownFields, MetadataPath, Warnings);
 
@@ -1323,6 +1364,20 @@ bool FN2CSerializer::ParseNodeFromJson(const TSharedPtr<FJsonObject>& JsonObject
                     (*TrackObject)->TryGetStringField(N2CJsonContract::TimelineTrackNameField, Track.Name);
                     (*TrackObject)->TryGetStringField(N2CJsonContract::TimelineTrackKindField, Track.Kind);
                 }
+            }
+        }
+    }
+
+    OutNode.Properties.Reset();
+    const TSharedPtr<FJsonObject>* Properties = nullptr;
+    if (JsonObject->TryGetObjectField(N2CJsonContract::NodePropertiesField, Properties))
+    {
+        for (const TPair<FString, TSharedPtr<FJsonValue>>& Property : (*Properties)->Values)
+        {
+            FString Value;
+            if (Property.Value.IsValid() && Property.Value->TryGetString(Value))
+            {
+                OutNode.Properties.Add(Property.Key, Value);
             }
         }
     }

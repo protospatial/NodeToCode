@@ -174,6 +174,26 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* AssetKindMaterial = TEXT("Material");
 
 	/**
+	 * Material capture (card 0449, epic 0442, decision 0009; additive under 2.0.0). A document with asset_kind
+	 * "Material" has one graph of graph_type "Material" (a UMaterial) or "MaterialFunction" (a UMaterialFunction, and
+	 * each called function captured within the depth limit). Its nodes are "MaterialExpression" (class: the expression
+	 * class, e.g. "MaterialExpressionMultiply"), "MaterialFunctionCall" (member_parent: the function's package,
+	 * member_name: its name) and one "MaterialOutput" (class "Material": an input pin per connected material property,
+	 * named by FMaterialAttributeDefinitionMap::GetAttributeName, "BaseColor"). An input pin is named by its
+	 * FExpressionInput property ("A", "Coordinates"; a function call's by the function input's name), an output pin by
+	 * its output name or "Output"; every pin's type is Wildcard (a material decides value types when it compiles).
+	 * Reroutes and named reroutes are traced, not captured. A node may carry "properties" (NodePropertiesField): the
+	 * expression's settings that differ from its class defaults, as Unreal exports them. A UMaterial's metadata has
+	 * "material" {"domain", "blend_mode", "shading_models", "two_sided" (only when true)}.
+	 */
+	inline constexpr const TCHAR* NodePropertiesField = TEXT("properties");
+	inline constexpr const TCHAR* MaterialMetadataField = TEXT("material");
+	inline constexpr const TCHAR* MaterialDomainField = TEXT("domain");
+	inline constexpr const TCHAR* MaterialBlendModeField = TEXT("blend_mode");
+	inline constexpr const TCHAR* MaterialShadingModelsField = TEXT("shading_models");
+	inline constexpr const TCHAR* MaterialTwoSidedField = TEXT("two_sided");
+
+	/**
 	 * The agent document (card 0505): get-focused-blueprint, get-blueprint-n2cjson and Python get_blueprint_n2c_json
 	 * write each node's and pin's "id" as "ids": {"short": the ID, "guid": the node's NodeGuid or the pin's PinId}
 	 * (a pin's also has its "name"), plus the top-level "guids" table. FromJson reads "ids.short" as the ID when there
@@ -323,6 +343,13 @@ namespace N2CJsonContract
 		 * Blueprint's parent class is missing, so a translation has to guess the base class
 		 */
 		inline constexpr const TCHAR* MissingParentClass = TEXT("MISSING_PARENT_CLASS");
+		/**
+		 * Two material expressions with the same MaterialExpressionGuid, or one with none (card 0449): the later one
+		 * gets a GUID derived from it and its position in the expression list, so the capture stays deterministic
+		 */
+		inline constexpr const TCHAR* DuplicateExpressionGuid = TEXT("DUPLICATE_EXPRESSION_GUID");
+		/** A material input wired to an expression that is not in the material or function (card 0449); no flow is recorded */
+		inline constexpr const TCHAR* DanglingInput = TEXT("DANGLING_INPUT");
 	}
 
 	/** True when FromJson reads this version (majors OldestReadableMajor..Major) */

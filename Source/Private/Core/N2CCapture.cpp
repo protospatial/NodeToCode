@@ -4,9 +4,12 @@
 
 #include "Algo/AllOf.h"
 #include "Core/N2CCaptureContext.h"
+#include "Core/N2CMaterialCaptureContext.h"
 #include "Core/N2CNodeCollector.h"
 #include "EdGraph/EdGraph.h"
 #include "K2Node.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialFunction.h"
 #include "Utils/N2CGraphUtils.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
@@ -70,6 +73,49 @@ namespace N2C
 			return MakeError(FString::Printf(TEXT("Failed to collect the nodes of graph %s"), *Graph.GetName()));
 		}
 		return CaptureNodes(Nodes, Options);
+	}
+
+	/** "UNSUPPORTED_ASSET_TYPE: ..." for an asset that is not a UMaterial or UMaterialFunction (decision 0009 item 1) */
+	FString UnsupportedMaterialAsset(const UObject& Asset)
+	{
+		return FString::Printf(TEXT("UNSUPPORTED_ASSET_TYPE: %s is a %s. NodeToCode captures materials (Material) and material ")
+			TEXT("functions (MaterialFunction); material instances, function instances, material layers and layer blends are not supported."),
+			*Asset.GetPathName(), *Asset.GetClass()->GetName());
+	}
+
+	TValueOrError<FN2CCapture, FString> CaptureMaterial(UMaterial& Material, const FN2CCaptureOptions& Options)
+	{
+		if (Material.GetClass() != UMaterial::StaticClass())
+		{
+			return MakeError(UnsupportedMaterialAsset(Material));
+		}
+		FN2CMaterialCaptureContext Context(Options);
+		Context.CaptureMaterial(Material);
+		return MakeValue(Validated(Context.TakeCapture()));
+	}
+
+	TValueOrError<FN2CCapture, FString> CaptureMaterialFunction(UMaterialFunction& Function, const FN2CCaptureOptions& Options)
+	{
+		if (Function.GetClass() != UMaterialFunction::StaticClass())
+		{
+			return MakeError(UnsupportedMaterialAsset(Function));
+		}
+		FN2CMaterialCaptureContext Context(Options);
+		Context.CaptureFunction(Function);
+		return MakeValue(Validated(Context.TakeCapture()));
+	}
+
+	TValueOrError<FN2CCapture, FString> CaptureMaterialAsset(UObject& Asset, const FN2CCaptureOptions& Options)
+	{
+		if (Asset.GetClass() == UMaterial::StaticClass())
+		{
+			return CaptureMaterial(*CastChecked<UMaterial>(&Asset), Options);
+		}
+		if (Asset.GetClass() == UMaterialFunction::StaticClass())
+		{
+			return CaptureMaterialFunction(*CastChecked<UMaterialFunction>(&Asset), Options);
+		}
+		return MakeError(UnsupportedMaterialAsset(Asset));
 	}
 
 	TValueOrError<FN2CCapture, FString> CaptureGraphs(TConstArrayView<UEdGraph*> Graphs, const FN2CCaptureOptions& Options)

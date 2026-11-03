@@ -111,7 +111,8 @@ bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, TA
 
     // parent_class and asset_class are optional (card 0518), but a capture writes them together: an asset class
     // without a parent class means the Blueprint's parent class is missing, or a writer dropped it
-    if (!Blueprint.Metadata.AssetClass.IsEmpty() && Blueprint.Metadata.ParentClass.IsEmpty())
+    if (Blueprint.Metadata.AssetKind == EN2CAssetKind::Blueprint && !Blueprint.Metadata.AssetClass.IsEmpty()
+        && Blueprint.Metadata.ParentClass.IsEmpty())
     {
         ValidatorWarning(Out, N2CJsonContract::Diagnostic::MissingParentClass,
             FString(TEXT("metadata.")) + N2CJsonContract::ParentClassField,

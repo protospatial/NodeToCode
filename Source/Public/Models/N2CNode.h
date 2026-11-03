@@ -168,6 +168,14 @@ enum class EN2CNodeType : uint8
     MacroInstance       UMETA(DisplayName = "macro_instance"),
     BaseMCDelegate      UMETA(DisplayName = "base_mc_delegate"),
 
+    // Material graphs (card 0449, decision 0009): "class" names the expression class
+    /** A material expression (UMaterialExpression); its settings are in "properties" */
+    MaterialExpression  UMETA(DisplayName = "material_expression"),
+    /** A material function call (UMaterialExpressionMaterialFunctionCall), named by member_parent and member_name */
+    MaterialFunctionCall UMETA(DisplayName = "material_function_call"),
+    /** The material's output node: one input pin per connected material property (BaseColor, Roughness, ...) */
+    MaterialOutput      UMETA(DisplayName = "material_output"),
+
     /**
      * A node "type" this build does not know (a later 2.x document), read by FN2CSerializer::FromJson and kept with
      * its text in FN2CNodeDefinition::UnknownType so ToJson writes it back unchanged (card 0445). Card 0234 reuses
@@ -308,6 +316,14 @@ struct FN2CNodeDefinition
     /** A Timeline node's template (card 0239, N2C JSON "timeline") */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FN2CTimelineSummary Timeline;
+
+    /**
+     * A material expression's settings (card 0449, N2C JSON "properties"): each editable property of the expression's
+     * class that differs from the class default, by property name, as Unreal exports its value ("0.500000",
+     * "(R=0.8,G=0.2,B=0.1,A=1.0)", an asset path). Written only when there are any.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> Properties;
 
     /** The "type" text as read when NodeType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
