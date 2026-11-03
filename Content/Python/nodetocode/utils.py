@@ -6,9 +6,10 @@ and logging operations.
 """
 
 import json
+import uuid
 
 import unreal
-from typing import Optional, Any, Dict, TypeVar
+from typing import Optional, Any, Callable, Dict, TypeVar
 
 T = TypeVar('T')
 
@@ -169,12 +170,157 @@ def _parse_bridge_result(json_str: str) -> Dict[str, Any]:
 
     return result
 
-def _target_kwargs(blueprint_path: str = "", graph: str = "") -> Dict[str, str]:
-    """The bridge call's target keyword arguments (card 0274): only the ones given, so a call without them is the
-    same call as before (the focused graph)"""
-    kwargs = {}
+
+# ============== Tool catalog (card 0342) ==============
+#
+# The nodetocode functions below run NodeToCode's MCP tools through UN2CPythonBridge::InvokeTool, so Python gets
+# the tools' own behaviour (pin matching, compile reporting, the Play In Editor rule) and a fix lands once. Each
+# function returns what the tool returns, plus the keys the 1.x bridge copy returned, for one release.
+
+# nodetocode function -> MCP tool it runs (Context/mcp-server/tools.generated.md)
+TOOL_NAMES = {
+    'search_blueprint_nodes': 'search-blueprint-nodes',
+    'add_node_to_graph': 'add-bp-node-to-active-graph',
+    'connect_pins': 'connect-pins',
+    'set_pin_value': 'set-input-pin-value',
+    'delete_nodes': 'delete-blueprint-node',
+    'find_nodes_in_graph': 'find-nodes-in-graph',
+    'create_comment_node': 'create-comment-node',
+    'add_function_input_pin': 'add-function-input-pin',
+    'add_function_return_pin': 'add-function-return-pin',
+    'remove_function_entry_pin': 'remove-function-entry-pin',
+    'remove_function_return_pin': 'remove-function-return-pin',
+    'compile_blueprint': 'compile-blueprint',
+    'save_blueprint': 'save-blueprint',
+    'tag_graph': 'tag-blueprint-graph',
+    'open_blueprint': 'open-blueprint-asset',
+    'open_blueprint_function': 'open-blueprint-function',
+    'get_blueprint_dependencies': 'get-blueprint-dependencies',
+}
+
+# nodetocode functions that still call their own UN2CPythonBridge function, and why (card 0343 retires those)
+BRIDGE_ONLY = {
+    'get_focused_blueprint': 'get-focused-blueprint returns N2C JSON with ids objects, not the n2c_json document',
+    'list_tags': 'list-blueprint-tags cannot filter by Blueprint (blueprint_path)',
+    'remove_tag': 'remove-tag-from-graph takes no Blueprint, so a duplicated Blueprint\'s tags cannot be told apart',
+    'get_llm_providers': 'get-available-llm-providers lists configured providers only',
+}
+
+LEGACY_NOTE = ("the 1.x key is kept for one release; read the tool's key instead (Context/mcp-server/tools.generated.md)")
+
+_warned_legacy = set()
+
+
+def _warn_legacy(function: str, key: str, replacement: str) -> None:
+    """Logs once per function and key that a script read a deprecated 1.x result key"""
+    if (function, key) in _warned_legacy:
+        return
+    _warned_legacy.add((function, key))
+    log_warning(f"nodetocode.{function}: '{key}' is deprecated, {LEGACY_NOTE}: use {replacement}")
+
+
+class LegacyKeys(dict):
+    """A tool result dict that also holds the 1.x bridge keys (card 0342). Reading one of those with [] or get()
+    logs a deprecation warning once; iterating, json.dumps and 'in' see them as ordinary keys."""
+
+    def __init__(self, data: Dict[str, Any], function: str, legacy: Dict[str, Any]):
+        super().__init__(data)
+        self._function = function
+        self._legacy = {}
+        for key, (value, replacement) in legacy.items():
+            if key not in data:
+                dict.__setitem__(self, key, value)
+                self._legacy[key] = replacement
+
+    def __getitem__(self, key):
+        if key in self._legacy:
+            _warn_legacy(self._function, key, self._legacy[key])
+        return dict.__getitem__(self, key)
+
+    def get(self, key, default=None):
+        if key in self._legacy and key in self:
+            _warn_legacy(self._function, key, self._legacy[key])
+        return dict.get(self, key, default)
+
+    def __reduce__(self):
+        return (dict, (dict(self),))
+
+
+def legacy_guid(guid: Any) -> str:
+    """A GUID as the 1.x bridge wrote it: 32 hex digits, no hyphens"""
+    return str(guid or '').replace('-', '').replace('{', '').replace('}', '').upper()
+
+
+def _is_guid(text: str) -> bool:
+    try:
+        uuid.UUID(text)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def _target_args(blueprint_path: str = "", graph: str = "") -> Dict[str, str]:
+    """A tool's target arguments (card 0274) from a wrapper's blueprint_path and graph: graph is a GUID (graphGuid)
+    or a name (graphName). Only the ones given, so a call without them acts on the focused graph."""
+    args = {}
     if blueprint_path and blueprint_path.strip():
-        kwargs["blueprint_path"] = blueprint_path.strip()
-    if graph and graph.strip():
-        kwargs["graph"] = graph.strip()
-    return kwargs
+        args['blueprintPath'] = blueprint_path.strip()
+    graph_text = (graph or '').strip()
+    if graph_text:
+        args['graphGuid' if _is_guid(graph_text) else 'graphName'] = graph_text
+    return args
+
+
+def invoke_tool(tool_name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Run one of NodeToCode's MCP tools by name, with the tool's own arguments (card 0342).
+
+    Every registered tool runs, whatever the MCP server serves, except run-python and the script library (you are
+    in Python already). A translation tool is refused with code NOT_RUNNABLE_HERE: it runs longer than a call.
+
+    Args:
+        tool_name: The tool's name, e.g. 'list-blueprint-functions' (Context/mcp-server/tools.generated.md)
+        arguments: The tool's arguments as a dict, e.g. {'blueprintPath': '/Game/BP_Door'}
+
+    Returns:
+        {success, data: the tool's JSON value (or its text when it is not JSON), error: the tool's error text,
+         code: 'UNKNOWN_TOOL' | 'INVALID_ARGUMENT' | 'PIE_ACTIVE' | 'NOT_RUNNABLE_HERE' | 'TOOL_FAILED' | ... on a
+         failure}
+
+    Example:
+        functions = invoke_tool('list-blueprint-functions', {'blueprintPath': '/Game/BP_Door'})
+    """
+    if not tool_name or not str(tool_name).strip():
+        return make_error_result("tool_name cannot be empty")
+    try:
+        arguments_json = json.dumps(arguments or {})
+    except (TypeError, ValueError) as e:
+        return make_error_result(f"arguments are not JSON: {e}")
+    try:
+        return _parse_bridge_result(unreal.N2CPythonBridge.invoke_tool(str(tool_name).strip(), arguments_json))
+    except Exception as e:
+        log_error(f"invoke_tool({tool_name}) failed: {e}")
+        return make_error_result(str(e))
+
+
+def _invoke(function: str, arguments: Dict[str, Any], legacy: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """
+    Runs the tool TOOL_NAMES gives for a nodetocode function and returns {success, data, error}.
+
+    A tool that reports a failure inside its value ("success": false, as compile-blueprint does for compile errors)
+    gives success False, its message as the error and its value as data. legacy(data) returns the 1.x bridge keys
+    as {key: (value, replacement)}; they are added to data (LegacyKeys) and never replace the tool's own keys.
+    """
+    result = invoke_tool(TOOL_NAMES[function], arguments)
+    data = result.get('data')
+    if not isinstance(data, dict):
+        return result
+    if result.get('success') and data.get('success') is False:
+        result['success'] = False
+        result['error'] = data.get('message') or data.get('error') or f"{TOOL_NAMES[function]} failed"
+    if legacy is not None:
+        try:
+            result['data'] = LegacyKeys(data, function, legacy(data))
+        except Exception as e:  # the tool's own result is never lost over the compatibility keys
+            log_warning(f"nodetocode.{function}: the 1.x result keys could not be added: {e}")
+    return result

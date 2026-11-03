@@ -164,6 +164,9 @@ def unfocused(report, ctx):
     # The MCP runner's answer sink (card 0299): stores the text under the id; the next run-python call clears it
     report.call('submit_mcp_result', ['N2CBridgeCallsProbe{q}', '{"note": "probe{q}"}'], kind='none')
     report.call('open_blueprint', [missing, 'EventGraph{q}'], expect=False)
+    # The tool catalog (card 0342): a tool by name, with its JSON arguments; an unknown tool is a JSON failure too
+    report.call('invoke_tool', ['list-blueprint-graphs', '{"blueprintPath": "' + path + '{q}"}'], expect=True)
+    report.call('invoke_tool', ['no-such-tool{q}', '{}'], label='invoke_tool (unknown tool)', expect=False)
 
     # Need the focused graph: with none focused each answers with an error, which must be JSON too
     connection = '[{"from":{"nodeGuid":"' + guid + '","pinGuid":"","pinName":"then{q}"},' \
