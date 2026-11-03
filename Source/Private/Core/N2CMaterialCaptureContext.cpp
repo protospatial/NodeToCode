@@ -244,8 +244,7 @@ namespace N2CMaterialCapture
 	 */
 	bool IsUnsupportedExpression(const UMaterialExpression& Expression)
 	{
-		return Expression.GetClass()->HasAnyClassFlags(CLASS_Deprecated) || IsA(Expression, TEXT("MaterialExpressionMaterialAttributeLayers"))
-			|| IsA(Expression, TEXT("MaterialExpressionMaterialLayerOutput"));
+		return FN2CMaterialCaptureContext::ClassHandling(Expression.GetClass()) == EN2CMaterialClassHandling::Refused;
 	}
 
 	/** True when the project renders materials with Substrate (r.Substrate, read-only, set in the project's config) */
@@ -259,6 +258,90 @@ namespace N2CMaterialCapture
 	{
 		return NodeID + N2CJsonContract::PinRefSeparator + PinID;
 	}
+}
+
+namespace N2CMaterialCapture
+{
+	/**
+	 * The in-code class table (card 0452), the same rules as Context/translation-pipeline/gen_material_classes.py
+	 * (REFUSED_ROOTS, MAPPED_ROOTS, the dynamic-input overrides) whose output, material-classes.md, the
+	 * NodeToCode.Material.Capture.Identity coverage spec compares with every loaded class. Names without the U prefix.
+	 */
+	const TCHAR* const RefusedRoots[] = {
+		TEXT("MaterialExpressionMaterialAttributeLayers"), TEXT("MaterialExpressionMaterialLayerOutput"),
+		// Deprecated by their declaration's text (a "(deprecated)" display name, deprecated on some engines only) rather
+		// than by CLASS_Deprecated; refused on all engines, as material-classes.md says
+		TEXT("MaterialExpressionAtmosphericFogColor"), TEXT("MaterialExpressionMaterialXPlace2D"),
+		TEXT("MaterialExpressionMaterialXRotate2D"), TEXT("MaterialExpressionMaterialXSwizzle"),
+	};
+	const TCHAR* const MappedRoots[] = {
+		TEXT("MaterialExpressionComment"), TEXT("MaterialExpressionReroute"), TEXT("MaterialExpressionNamedRerouteBase"),
+		TEXT("MaterialExpressionComposite"), TEXT("MaterialExpressionPinBase"), TEXT("MaterialExpressionFunctionInput"),
+		TEXT("MaterialExpressionFunctionOutput"), TEXT("MaterialExpressionCustomOutput"), TEXT("MaterialExpressionMaterialFunctionCall"),
+		TEXT("MaterialExpressionStaticSwitch"), TEXT("MaterialExpressionStaticBool"), TEXT("MaterialExpressionParameter"),
+		TEXT("MaterialExpressionTextureBase"), TEXT("MaterialExpressionCollectionParameter"), TEXT("MaterialExpressionCustom"),
+		TEXT("MaterialExpressionMakeMaterialAttributes"), TEXT("MaterialExpressionBreakMaterialAttributes"),
+		TEXT("MaterialExpressionSetMaterialAttributes"), TEXT("MaterialExpressionGetMaterialAttributes"),
+		TEXT("MaterialExpressionSubstrateSlabBSDF"),
+	};
+	/** Classes whose inputs are dynamic (they override GetInputs/GetInput on some engine): their pins need a mapping */
+	const TCHAR* const DynamicInputClasses[] = {
+		TEXT("MaterialExpressionAggregate"), TEXT("MaterialExpressionBlendMaterialAttributes"), TEXT("MaterialExpressionConvert"),
+		TEXT("MaterialExpressionLandscapeLayerBlend"), TEXT("MaterialExpressionLegacyBlendMaterialAttributes"),
+		TEXT("MaterialExpressionOperator"), TEXT("MaterialExpressionRecordTextureStreamingInfo"),
+		TEXT("MaterialExpressionRuntimeVirtualTextureSample"), TEXT("MaterialExpressionSparseVolumeTextureSample"),
+		TEXT("MaterialExpressionSubstrateConvertMaterialAttributes"), TEXT("MaterialExpressionSubstrateShadingModels"),
+		TEXT("MaterialExpressionSwitch"), TEXT("MaterialExpressionTransformPosition"),
+	};
+
+	bool InLineage(const UClass* Class, TConstArrayView<const TCHAR*> Names)
+	{
+		for (const UClass* Each = Class; Each; Each = Each->GetSuperClass())
+		{
+			for (const TCHAR* Name : Names)
+			{
+				if (Each->GetFName() == Name)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
+EN2CMaterialClassHandling FN2CMaterialCaptureContext::ClassHandling(const UClass* Class)
+{
+	using namespace N2CMaterialCapture;
+	if (!Class)
+	{
+		return EN2CMaterialClassHandling::Generic;
+	}
+	if (InLineage(Class, RefusedRoots) || Class->HasAnyClassFlags(CLASS_Deprecated))
+	{
+		return EN2CMaterialClassHandling::Refused;
+	}
+	if (Class->HasAnyClassFlags(CLASS_Abstract))
+	{
+		return EN2CMaterialClassHandling::Base;
+	}
+	if (InLineage(Class, MappedRoots))
+	{
+		return EN2CMaterialClassHandling::Mapped;
+	}
+	for (const TCHAR* Name : DynamicInputClasses)
+	{
+		if (Class->GetFName() == Name)
+		{
+			return EN2CMaterialClassHandling::Mapped;
+		}
+	}
+	return EN2CMaterialClassHandling::Generic;
+}
+
+bool FN2CMaterialCaptureContext::IsTracedThrough(const UMaterialExpression& Expression)
+{
+	return N2CMaterialCapture::IsReroute(Expression) || Expression.IsA<UMaterialExpressionComment>();
 }
 
 FN2CMaterialCaptureContext::FN2CMaterialCaptureContext(const FN2CCaptureOptions& InOptions)
@@ -430,7 +513,7 @@ void FN2CMaterialCaptureContext::CaptureGraph(const FString& Name, EN2CGraphType
 	for (int32 Ordinal = 0; Ordinal < Expressions.Num(); ++Ordinal)
 	{
 		UMaterialExpression* Expression = Expressions[Ordinal];
-		if (!Expression || IsReroute(*Expression) || Expression->IsA<UMaterialExpressionComment>())
+		if (!Expression || IsTracedThrough(*Expression))
 		{
 			continue;
 		}
