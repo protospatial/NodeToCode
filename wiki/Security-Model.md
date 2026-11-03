@@ -17,10 +17,10 @@ built for one developer's own machine: it has no password, and a bearer token on
 | API keys | Windows Credential Manager | Each provider's **API Key** field |
 | Data sent when you translate | Goes to the selected provider only | **Provider** |
 
-**Enable MCP Server**, **Allow MCP Python Execution**, **Allow MCP Writes Outside Project** and **Require MCP Bearer
-Token** are under
+**Enable MCP Server**, **Allow MCP Python Execution**, **Allow MCP Writes Outside Project**, **Require MCP Bearer
+Token**, **Server Port** and **Provider** are under
 **Editor Preferences → Plugins → Node to Code (User)**; the others are in **Project Settings → Plugins → Node to Code**, in **MCP Server** or **LLM Services**. Every MCP Server
-setting needs an editor restart.
+setting but **Server Port** needs an editor restart.
 
 ## What the MCP server accepts
 
@@ -86,8 +86,9 @@ Code refuses a call to one of them and names Epic's tool instead. See
 | Write translations | `Saved/NodeToCode/Translations`, or **Custom Translation Output Directory** | Paths outside that folder: a graph name such as `../../Source` becomes a safe file name |
 | Write Python scripts (Python execution on) | `Content/Python/scripts` | Other folders, `init_unreal` |
 
-There is no general file-writing tool. **Custom Translation Output Directory** is a project setting, saved in
-`Config/DefaultNodeToCode.ini`, so whoever commits that file chooses where translations are written.
+There is no general file-writing tool. **Custom Translation Output Directory** is your own setting (Editor
+Preferences → Plugins → Node to Code (User)), saved in your user settings, so a committed project file cannot choose
+where your translations are written.
 
 ## Play In Editor
 

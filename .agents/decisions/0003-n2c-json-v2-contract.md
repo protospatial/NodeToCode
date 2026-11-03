@@ -145,6 +145,15 @@ Option 1, provisionally. The sub-choices of card 0117:
   `AssetClassField`). Every capture writes both, each only when known; the prompts take the base class from
   `parent_class` instead of guessing it from the nodes. The validator warns `MISSING_PARENT_CLASS` when a document names
   its asset class but not its parent class. A reader that predates it keeps both as unknown fields.
+- Card 0447 (additive, under 2.0.0 by decision [0009](0009-material-mvp.md) item 6; epic 0442): `metadata` may carry
+  `asset_kind` after `asset_class` (`N2CJsonContract::AssetKindField`, `EN2CAssetKind`): `Blueprint` or `Material` (a
+  UMaterial or UMaterialFunction capture). Absent means Blueprint, and the writer writes it only for another kind, so
+  every Blueprint document is unchanged. `blueprint_type` and `blueprint_class` describe Blueprints: the reader requires
+  them, and the validator a non-empty `blueprint_class`, only when the kind is Blueprint; a document of another kind
+  leaves them out (the writer writes `blueprint_class` when set and `blueprint_type` only as unknown text it read). An
+  unknown kind is kept as `Unknown` with its text and an `UNKNOWN_ASSET_KIND` read warning, and the validator accepts it
+  with an `UNKNOWN_KIND` warning. A node's `class` is now defined as the engine class of the node object (the UK2Node
+  class in a Blueprint). A reader that predates it keeps `asset_kind` as an unknown field.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 
@@ -173,9 +182,10 @@ rejected or lose nodes and pins in a 2.0 build and in Python, and could only shi
    `UN2CPythonBridge::ReadN2CJson` / Python `nodetocode.read_n2c_json` return them as `warnings`; since card 0505 a
    read that skipped a graph, node or pin is not a success there (the error names them, the data keeps the rest). The
    validator accepts the Unknown kinds with a log warning.
-5. **Still rejected:** text that is not JSON, and JSON without `version`, `metadata` (with its three fields) or
+5. **Still rejected:** text that is not JSON, and JSON without `version`, `metadata` (with its three fields;
+   since card 0447 only `name` when `asset_kind` is not Blueprint) or
    `graphs`, or with no readable graph.
 
 Checked by `NodeToCode.Serializer.ForwardCompat` (a synthetic 2.1.0 material document,
-`Source/Private/Tests/Fixtures/Capture/ForwardCompat/UnknownKinds_2.1.json`, read with 16 warnings and written back
+`Source/Private/Tests/Fixtures/Capture/ForwardCompat/UnknownKinds_2.1.json`, read with 15 warnings (16 before card 0447 made `asset_kind` a known field) and written back
 byte for byte; the 1.x fixtures and every capture golden read with none) and `NodeToCode.Python.Bridge`.

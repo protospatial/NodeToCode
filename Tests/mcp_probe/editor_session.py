@@ -245,7 +245,8 @@ class EditorSession:
 
     def start(self, timeout=240):
         self.guard_file(self.project_config_path())
-        self._patch('NodeToCode.ini', '[/Script/NodeToCode.N2CSettings]', 'McpServerPort', str(self.port))
+        # The port is a per-user setting since settings version 5 (card 0188): the user's own Saved/Config layer
+        self._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]', 'McpServerPort', str(self.port))
         if self.allow_python is None:
             user_ini = os.path.join(self._saved_config_dir(), 'EditorPerProjectUserSettings.ini')
             self.guard_file(user_ini)

@@ -94,7 +94,16 @@ bool FN2CBlueprintValidator::ValidateRequired(const FN2CBlueprint& Blueprint, TA
                 *Blueprint.Metadata.Name, *Blueprint.Metadata.UnknownBlueprintType));
     }
 
-    if (Blueprint.Metadata.BlueprintClass.IsEmpty())
+    // An asset_kind this build does not know (card 0447) is accepted with a warning, as an unknown blueprint_type is
+    if (Blueprint.Metadata.AssetKind == EN2CAssetKind::Unknown)
+    {
+        ValidatorWarning(Out, N2CJsonContract::Diagnostic::UnknownKind, TEXT("metadata.asset_kind"),
+            FString::Printf(TEXT("%s has an asset_kind this build does not know: '%s'"),
+                *Blueprint.Metadata.Name, *Blueprint.Metadata.UnknownAssetKind));
+    }
+
+    // Only a Blueprint document needs its Blueprint class (card 0447): a material capture has none
+    if (Blueprint.Metadata.AssetKind == EN2CAssetKind::Blueprint && Blueprint.Metadata.BlueprintClass.IsEmpty())
     {
         ValidatorError(Out, N2CJsonContract::Diagnostic::MissingName, TEXT("metadata.blueprint_class"), TEXT("Missing Blueprint class"));
         return false;

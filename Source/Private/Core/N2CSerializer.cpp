@@ -16,7 +16,7 @@ namespace
     const TCHAR* const TopLevelFields[] = { N2CJsonContract::VersionField, TEXT("metadata"), TEXT("graphs"), TEXT("structs"),
         TEXT("enums"), N2CJsonContract::VariablesField, TEXT("guids"), N2CJsonContract::WarningsField };
     const TCHAR* const MetadataFields[] = { TEXT("name"), TEXT("blueprint_type"), TEXT("blueprint_class"),
-        N2CJsonContract::ParentClassField, N2CJsonContract::AssetClassField };
+        N2CJsonContract::ParentClassField, N2CJsonContract::AssetClassField, N2CJsonContract::AssetKindField };
     const TCHAR* const GraphFields[] = { TEXT("name"), TEXT("graph_type"), TEXT("owner_blueprint"), TEXT("nodes"),
         N2CJsonContract::FlowsField, N2CJsonContract::CommentsField, N2CJsonContract::LocalVariablesField };
     const TCHAR* const NodeFields[] = { N2CJsonContract::IdField, N2CJsonContract::AgentIdsField, TEXT("type"), N2CJsonContract::NodeClassField, N2CJsonContract::NodeTitleField,
@@ -441,9 +441,19 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
     // Add metadata
     TSharedPtr<FJsonObject> MetadataObject = MakeShared<FJsonObject>();
     MetadataObject->SetStringField(TEXT("name"), Blueprint.Metadata.Name);
-    MetadataObject->SetStringField(TEXT("blueprint_type"),
-        WriteKind(Blueprint.Metadata.BlueprintType, Blueprint.Metadata.UnknownBlueprintType));
-    MetadataObject->SetStringField(TEXT("blueprint_class"), Blueprint.Metadata.BlueprintClass);
+    // blueprint_type and blueprint_class describe Blueprints (card 0447): a document of another asset kind writes
+    // blueprint_class only when set and blueprint_type only as the unknown text it was read with
+    const bool bBlueprintDocument = Blueprint.Metadata.AssetKind == EN2CAssetKind::Blueprint;
+    if (bBlueprintDocument || (Blueprint.Metadata.BlueprintType == EN2CBlueprintType::Unknown
+        && !Blueprint.Metadata.UnknownBlueprintType.IsEmpty()))
+    {
+        MetadataObject->SetStringField(TEXT("blueprint_type"),
+            WriteKind(Blueprint.Metadata.BlueprintType, Blueprint.Metadata.UnknownBlueprintType));
+    }
+    if (bBlueprintDocument || !Blueprint.Metadata.BlueprintClass.IsEmpty())
+    {
+        MetadataObject->SetStringField(TEXT("blueprint_class"), Blueprint.Metadata.BlueprintClass);
+    }
     // Optional class metadata (card 0518): left out when empty, so a document without it round-trips unchanged
     if (!Blueprint.Metadata.ParentClass.IsEmpty())
     {
@@ -452,6 +462,12 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
     if (!Blueprint.Metadata.AssetClass.IsEmpty())
     {
         MetadataObject->SetStringField(N2CJsonContract::AssetClassField, Blueprint.Metadata.AssetClass);
+    }
+    // asset_kind (card 0447, decision 0009): absent means Blueprint, so a Blueprint document is unchanged
+    if (!bBlueprintDocument)
+    {
+        MetadataObject->SetStringField(N2CJsonContract::AssetKindField,
+            WriteKind(Blueprint.Metadata.AssetKind, Blueprint.Metadata.UnknownAssetKind));
     }
     WriteUnknownFields(MetadataObject, Blueprint.Metadata.UnknownFields);
     JsonObject->SetObjectField(TEXT("metadata"), MetadataObject);
@@ -948,10 +964,24 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
     // Track partial deserialization state
     bool bHasPartialData = false;
 
+    // asset_kind first (card 0447): absent means Blueprint; an unknown kind is kept as Unknown with its text. Only a
+    // Blueprint document must carry blueprint_type and blueprint_class.
+    const FString MetadataPath = JoinPath(Path, TEXT("metadata"));
+    OutBlueprint.Metadata.AssetKind = EN2CAssetKind::Blueprint;
+    OutBlueprint.Metadata.UnknownAssetKind.Reset();
+    FString AssetKindText;
+    if ((*MetadataObject)->TryGetStringField(N2CJsonContract::AssetKindField, AssetKindText))
+    {
+        OutBlueprint.Metadata.AssetKind = ReadKind<EN2CAssetKind>(AssetKindText, OutBlueprint.Metadata.UnknownAssetKind,
+            N2CJsonContract::ReadWarning::UnknownAssetKind, JoinPath(MetadataPath, N2CJsonContract::AssetKindField),
+            N2CJsonContract::AssetKindField, Warnings);
+    }
+    const bool bBlueprintDocument = OutBlueprint.Metadata.AssetKind == EN2CAssetKind::Blueprint;
+
     FString Name, TypeString, Class;
-    if (!(*MetadataObject)->TryGetStringField(TEXT("name"), Name) ||
-        !(*MetadataObject)->TryGetStringField(TEXT("blueprint_type"), TypeString) ||
-        !(*MetadataObject)->TryGetStringField(TEXT("blueprint_class"), Class))
+    const bool bHasType = (*MetadataObject)->TryGetStringField(TEXT("blueprint_type"), TypeString);
+    const bool bHasClass = (*MetadataObject)->TryGetStringField(TEXT("blueprint_class"), Class);
+    if (!(*MetadataObject)->TryGetStringField(TEXT("name"), Name) || (bBlueprintDocument && (!bHasType || !bHasClass)))
     {
         FN2CLogger::Get().LogError(TEXT("Missing required metadata fields in JSON"));
         return false;
@@ -964,10 +994,15 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
     (*MetadataObject)->TryGetStringField(N2CJsonContract::ParentClassField, OutBlueprint.Metadata.ParentClass);
     (*MetadataObject)->TryGetStringField(N2CJsonContract::AssetClassField, OutBlueprint.Metadata.AssetClass);
 
-    // An unknown blueprint_type is kept as Unknown with its text (card 0445)
-    const FString MetadataPath = JoinPath(Path, TEXT("metadata"));
-    OutBlueprint.Metadata.BlueprintType = ReadKind<EN2CBlueprintType>(TypeString, OutBlueprint.Metadata.UnknownBlueprintType,
-        N2CJsonContract::ReadWarning::UnknownBlueprintType, JoinPath(MetadataPath, TEXT("blueprint_type")), TEXT("blueprint_type"), Warnings);
+    // An unknown blueprint_type is kept as Unknown with its text (card 0445); a document of another asset kind
+    // without one reads as Normal, which ToJson leaves out again
+    OutBlueprint.Metadata.BlueprintType = EN2CBlueprintType::Normal;
+    OutBlueprint.Metadata.UnknownBlueprintType.Reset();
+    if (bHasType)
+    {
+        OutBlueprint.Metadata.BlueprintType = ReadKind<EN2CBlueprintType>(TypeString, OutBlueprint.Metadata.UnknownBlueprintType,
+            N2CJsonContract::ReadWarning::UnknownBlueprintType, JoinPath(MetadataPath, TEXT("blueprint_type")), TEXT("blueprint_type"), Warnings);
+    }
     KeepUnknownFields(*MetadataObject, MetadataFields, OutBlueprint.Metadata.UnknownFields, MetadataPath, Warnings);
 
     // Parse graphs array

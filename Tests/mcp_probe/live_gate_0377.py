@@ -233,8 +233,9 @@ def main():
     arguments = {'provider': args.provider, 'model': args.model, 'language': args.language}
 
     s = WindowedEditor(args.engine, args.project, port, log_path, allow_python=True, extra_env=keys)
-    # The toolbar translation reads Project Settings: provider and model for this session only (restored by stop())
-    s._patch('NodeToCode.ini', '[/Script/NodeToCode.N2CSettings]', 'Provider', PROVIDER_ENUM[args.provider])
+    # The toolbar translation reads the settings: provider (per user since settings version 5) and model for this
+    # session only (restored by stop())
+    s._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]', 'Provider', PROVIDER_ENUM[args.provider])
     # Debug logs the toolbar's 'ExecuteCollectNodesForEditor called' line, the start of the toolbar request
     s._patch('NodeToCode.ini', '[/Script/NodeToCode.N2CSettings]', 'MinSeverity', 'Debug')
     if (args.provider, args.model) in MODEL_SETTING:

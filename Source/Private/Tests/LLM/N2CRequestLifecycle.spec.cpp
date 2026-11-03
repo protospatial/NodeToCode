@@ -5,6 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
 #include "HAL/FileManager.h"
@@ -198,24 +199,24 @@ BEGIN_DEFINE_SPEC(FN2CRequestLifecycleSpec, "NodeToCode.LLM.RequestLifecycle", N
 		FScopedSettings(const FString& Endpoint, const FString& Output, float ActivityTimeout)
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			SavedProvider = Settings->Provider;
+			SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
 			SavedOllamaEndpoint = Settings->OllamaConfig.OllamaEndpoint;
-			SavedLMStudioEndpoint = Settings->LMStudioEndpoint;
-			SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
+			SavedLMStudioEndpoint = GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint;
+			SavedOutput = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
 			SavedTimeout = Settings->HttpActivityTimeoutSeconds;
-			Settings->Provider = EN2CLLMProvider::Ollama;
+			GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
 			Settings->OllamaConfig.OllamaEndpoint = Endpoint;
-			Settings->LMStudioEndpoint = Endpoint;
-			Settings->CustomTranslationOutputDirectory.Path = Output;
+			GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = Endpoint;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Output;
 			Settings->HttpActivityTimeoutSeconds = ActivityTimeout;
 		}
 		~FScopedSettings()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			Settings->Provider = SavedProvider;
+			GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
 			Settings->OllamaConfig.OllamaEndpoint = SavedOllamaEndpoint;
-			Settings->LMStudioEndpoint = SavedLMStudioEndpoint;
-			Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+			GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = SavedLMStudioEndpoint;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 			Settings->HttpActivityTimeoutSeconds = SavedTimeout;
 		}
 		EN2CLLMProvider SavedProvider;
@@ -545,7 +546,7 @@ void FN2CRequestLifecycleSpec::Define()
 			{
 				if (Index == 0)
 				{
-					GetMutableDefault<UN2CSettings>()->Provider = EN2CLLMProvider::LMStudio;
+					GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::LMStudio;
 				}
 			};
 			Observe(Observer);

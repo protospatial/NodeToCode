@@ -13,13 +13,16 @@
       "commit": "d8902fb7c0ed99321281d71302726162c8e0a4c5"
     },
     "settings/code-generation.png": {
-      "commit": "d8902fb7c0ed99321281d71302726162c8e0a4c5"
+      "commit": "6f2411963404ecda8df695b5c851e4036819b283"
     },
     "settings/llm-provider.png": {
-      "commit": "d8902fb7c0ed99321281d71302726162c8e0a4c5"
+      "commit": "6f2411963404ecda8df695b5c851e4036819b283"
     },
     "settings/mcp-server.png": {
-      "commit": "d8902fb7c0ed99321281d71302726162c8e0a4c5"
+      "commit": "6f2411963404ecda8df695b5c851e4036819b283"
+    },
+    "settings/user.png": {
+      "commit": "6f2411963404ecda8df695b5c851e4036819b283"
     },
     "translate-entry/graph-overlay.png": {
       "commit": "d8902fb7c0ed99321281d71302726162c8e0a4c5"

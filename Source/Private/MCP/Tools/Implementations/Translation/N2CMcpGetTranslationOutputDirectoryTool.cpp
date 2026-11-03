@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Utils/N2CPathUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -71,14 +72,14 @@ FMcpToolCallResult FN2CMcpGetTranslationOutputDirectoryTool::Execute(const TShar
         
         // The directory the translation archive writes to (FN2CPathUtils::GetTranslationsBasePath, absolute)
         const FString AbsolutePath = FN2CPathUtils::GetTranslationsBasePath();
-        const bool bIsCustomDirectorySet = !Settings->CustomTranslationOutputDirectory.Path.TrimStartAndEnd().IsEmpty();
+        const bool bIsCustomDirectorySet = !GetDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path.TrimStartAndEnd().IsEmpty();
         const bool bDirectoryExists = FPaths::DirectoryExists(AbsolutePath);
         ResponseObject->SetBoolField(TEXT("isCustomDirectorySet"), bIsCustomDirectorySet);
         ResponseObject->SetStringField(TEXT("absolutePath"), AbsolutePath);
         ResponseObject->SetBoolField(TEXT("directoryExists"), bDirectoryExists);
         if (bIsCustomDirectorySet)
         {
-            ResponseObject->SetStringField(TEXT("customDirectory"), Settings->CustomTranslationOutputDirectory.Path);
+            ResponseObject->SetStringField(TEXT("customDirectory"), GetDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path);
             ResponseObject->SetStringField(TEXT("status"), bDirectoryExists
                 ? TEXT("Custom directory is set and exists")
                 : TEXT("Custom directory is set but does not exist (will be created when needed)"));

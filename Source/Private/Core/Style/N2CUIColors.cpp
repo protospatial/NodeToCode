@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "Core/Style/N2CUIColors.h"
-#include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 
 const FN2CUIColors& N2C::UI::Colors()
 {
-    return GetDefault<UN2CSettings>()->UIColors;
+    return GetDefault<UN2CUserSettings>()->UIColors;
 }

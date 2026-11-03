@@ -580,7 +580,7 @@ s = unreal.get_default_object(unreal.N2CSettings)
 def pick(cls, name):
     want = name.replace("_", "").upper()
     return getattr(cls, [m for m in dir(cls) if not m.startswith("_") and m.replace("_", "").upper() == want][0])
-s.set_editor_property("provider", pick(unreal.N2CLLMProvider, "%(provider)s"))
+unreal.get_default_object(unreal.N2CUserSettings).set_editor_property("provider", pick(unreal.N2CLLMProvider, "%(provider)s"))
 s.set_editor_property("%(model_prop)s", "%(model_id)s")
 tag = unreal.N2CTagBlueprintLibrary.tag_focused_blueprint_graph("N2CMigrationLive", "Default", "")
 started = unreal.N2CBatchTranslationBlueprintLibrary.translate_graphs_with_tag("N2CMigrationLive", "")

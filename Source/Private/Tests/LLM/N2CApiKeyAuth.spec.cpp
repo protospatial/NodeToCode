@@ -69,7 +69,7 @@ void FN2CApiKeyAuthSpec::Define()
 		It(TEXT("loads a config that selected OAuth sign-in and uses the API key instead"), [this]()
 		{
 			const FString Path = TempPath(TEXT("ini"));
-			const FString Ini = FString::Printf(TEXT("[%s]\nProvider=Anthropic\nAnthropicAuthMethod=OAuth\nGeminiAuthMethod=OAuth\n"),
+			const FString Ini = FString::Printf(TEXT("[%s]\nTargetLanguage=Python\nAnthropicAuthMethod=OAuth\nGeminiAuthMethod=OAuth\n"),
 				*UN2CSettings::StaticClass()->GetPathName());
 			if (!TestTrue(TEXT("test ini written"), FFileHelper::SaveStringToFile(Ini, *Path))) { return; }
 
@@ -80,7 +80,7 @@ void FN2CApiKeyAuthSpec::Define()
 			GConfig->UnloadFile(Path);
 			IFileManager::Get().Delete(*Path);
 
-			TestEqual(TEXT("the rest of the config still loads"), Settings->Provider, EN2CLLMProvider::Anthropic);
+			TestEqual(TEXT("the rest of the config still loads"), Settings->TargetLanguage, EN2CCodeLanguage::Python);
 			TestEqual(TEXT("both removed sign-in selections are found"), Found, TArray<FString>{ TEXT("Anthropic"), TEXT("Gemini") });
 			TestNull(TEXT("no Anthropic sign-in setting is left to show"), UN2CSettings::StaticClass()->FindPropertyByName(TEXT("AnthropicAuthMethod")));
 			TestNull(TEXT("no Gemini sign-in setting is left to show"), UN2CSettings::StaticClass()->FindPropertyByName(TEXT("GeminiAuthMethod")));

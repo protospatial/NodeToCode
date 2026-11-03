@@ -80,10 +80,12 @@ class StubProvider:
 
         self.output_dir = tempfile.mkdtemp(prefix='N2CToolsetTranslate_')
         settings = unreal.get_default_object(unreal.N2CSettings)
+        # The provider and the output folder are per-user settings (N2CUserSettings) since settings version 5
+        user = unreal.get_default_object(unreal.N2CUserSettings)
         ollama = settings.get_editor_property('ollama_config')
-        output = settings.get_editor_property('custom_translation_output_directory')
+        output = user.get_editor_property('custom_translation_output_directory')
         self._saved = {
-            'provider': settings.get_editor_property('provider'),
+            'provider': user.get_editor_property('provider'),
             'endpoint': ollama.get_editor_property('ollama_endpoint'),
             'output': output.get_editor_property('path'),
             'timeout': settings.get_editor_property('http_activity_timeout_seconds'),
@@ -104,13 +106,14 @@ class StubProvider:
     def _apply(provider, endpoint, output_dir, timeout):
         never = unreal.PropertyAccessChangeNotifyMode.NEVER
         settings = unreal.get_default_object(unreal.N2CSettings)
-        settings.set_editor_property('provider', provider, never)
+        user = unreal.get_default_object(unreal.N2CUserSettings)
+        user.set_editor_property('provider', provider, never)
         ollama = settings.get_editor_property('ollama_config')
         ollama.set_editor_property('ollama_endpoint', endpoint, never)
         settings.set_editor_property('ollama_config', ollama, never)
-        output = settings.get_editor_property('custom_translation_output_directory')
+        output = user.get_editor_property('custom_translation_output_directory')
         output.set_editor_property('path', output_dir, never)
-        settings.set_editor_property('custom_translation_output_directory', output, never)
+        user.set_editor_property('custom_translation_output_directory', output, never)
         settings.set_editor_property('http_activity_timeout_seconds', timeout, never)
 
 

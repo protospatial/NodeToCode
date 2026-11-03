@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Dom/JsonObject.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformProcess.h"
@@ -318,10 +319,10 @@ BEGIN_DEFINE_SPEC(FN2CKeyHygieneSpec, "NodeToCode.LLM.KeyHygiene", N2C_TEST_FLAG
 		explicit FScopedLMStudioEndpoint(const FString& Endpoint)
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			Saved = Settings->LMStudioEndpoint;
-			Settings->LMStudioEndpoint = Endpoint;
+			Saved = GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint;
+			GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = Endpoint;
 		}
-		~FScopedLMStudioEndpoint() { GetMutableDefault<UN2CSettings>()->LMStudioEndpoint = Saved; }
+		~FScopedLMStudioEndpoint() { GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = Saved; }
 	};
 
 	/** Sends one translation request through Service and waits for its response */

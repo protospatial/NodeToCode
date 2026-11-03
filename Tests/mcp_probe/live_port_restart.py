@@ -28,7 +28,7 @@ from e05_regressions import run_python  # noqa: E402
 
 SET_PORT_PY = '''
 import unreal
-s = unreal.get_default_object(unreal.N2CSettings)
+s = unreal.get_default_object(unreal.N2CUserSettings)  # a per-user setting since settings version 5
 s.set_editor_property('mcp_server_port', %d, unreal.PropertyAccessChangeNotifyMode.ALWAYS)
 result = {'port': s.get_editor_property('mcp_server_port')}
 '''

@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -272,17 +273,17 @@ void FN2CTranslationArchiveSpec::Define()
 	It(TEXT("resolves the output directory to an absolute path"), [this]()
 	{
 		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-		const FString Saved = Settings->CustomTranslationOutputDirectory.Path;
-		ON_SCOPE_EXIT { Settings->CustomTranslationOutputDirectory.Path = Saved; };
+		const FString Saved = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
+		ON_SCOPE_EXIT { GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Saved; };
 
-		Settings->CustomTranslationOutputDirectory.Path = FString();
+		GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = FString();
 		const FString Default = FN2CPathUtils::GetTranslationsBasePath();
 		TestFalse(TEXT("the default is absolute"), FPaths::IsRelative(Default));
 		TestEqual(TEXT("the default is Saved/NodeToCode/Translations"), Default, FN2CPathUtils::GetDefaultTranslationsBasePath());
 		TestTrue(TEXT("the default is under the project's Saved folder"),
 			FPaths::IsUnderDirectory(Default, FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir())));
 
-		Settings->CustomTranslationOutputDirectory.Path = TEXT("N2CRelativeTranslations");
+		GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = TEXT("N2CRelativeTranslations");
 		const FString Relative = FN2CPathUtils::GetTranslationsBasePath();
 		TestFalse(TEXT("a relative custom folder resolves to an absolute path"), FPaths::IsRelative(Relative));
 		TestEqual(TEXT("a relative custom folder is under the project"), Relative,

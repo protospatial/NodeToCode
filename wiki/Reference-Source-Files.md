@@ -5,9 +5,16 @@ Reference source files provide essential context to improve translation quality 
 
 ## Configuration
 
-1. Under `Code Generation`, locate `Reference Source Files`
+There are two lists, and a translation sends the files of both:
+- **Reference Source Files** (Project Settings → Plugins → Node to Code → Code Generation): files of this project,
+  shared with everyone on it. They are saved relative to the project folder, so the list works on every machine
+- **My Reference Source Files** (Editor Preferences → Plugins → Node to Code (User) → Code Generation): your own
+  files, anywhere on your machine. They are saved in your user settings, never in the project
+
+1. Under `Code Generation`, locate `Reference Source Files` (or `My Reference Source Files`)
 2. Click the + button to add .h/.cpp files using a file browser dialog
-3. Select relevant source files that provide context for your translations
+3. Select relevant source files that provide context for your translations. A file outside the project added to the
+   project's list moves to your own list, and the Output Log says so
 
     <p align="left">
         <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_CodeGeneration.png" alt="Node to Code code generation settings" width="500">
