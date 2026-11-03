@@ -258,7 +258,7 @@ curl -N -X POST http://localhost:27000/mcp \
 
 Every translation is written by the translation archive, `FN2CTranslationArchive`
 (`Source/Public/LLM/N2CTranslationArchive.h`, card 0252), the only code that creates translation folders and files:
-the editor's single translate (`SN2CMainWindow::SaveSingleTranslation`, kind `single`), batches
+the editor's single translate (`UN2CTranslationSubsystem::SaveSingleTranslation`, kind `single`), batches
 (`UN2CBatchTranslationOrchestrator`, kind `batch`) and translate-focused-blueprint and the Python API
 (`UN2CLLMModule::ProcessN2CJsonWithOverrides`, kind `mcp`). `UN2CLLMModule::ProcessN2CJson` saves nothing. The base is
 `FN2CPathUtils::GetTranslationsBasePath()`: `Saved/NodeToCode/Translations` under the project, or the custom output

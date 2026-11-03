@@ -18,13 +18,6 @@ public:
     static FString GetContentTypeFromExtension(const FString& Extension);
     
     /**
-     * Determines if a file extension represents a text file that can be safely read as string
-     * @param Extension The file extension (without dot)
-     * @return True if the file is a text file
-     */
-    static bool IsTextFile(const FString& Extension);
-    
-    /**
      * Gets a human-readable description of the file type
      * @param Extension The file extension (without dot)
      * @return Description string (e.g., "C++ Source File", "JSON Data")

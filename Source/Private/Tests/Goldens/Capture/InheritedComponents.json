@@ -1,0 +1,99 @@
+{
+	"case": "InheritedComponents",
+	"description": "Components asked for (card 0243). The captured Blueprint derives from BP_N2CGolden_ComponentBase, which adds a root SceneComponent Root and under it a StaticMeshComponent Mesh with the engine Cube mesh. It adds a BoxComponent Box as a root node naming no parent (so it goes under the inherited Root) with box extent (50, 50, 100), and a SphereComponent Trigger whose node names the inherited Mesh as its parent; it overrides the inherited Mesh's mesh with the engine Sphere. Function Setup runs CollectGarbage. Captured from Setup.",
+	"include_variables": true,
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_InheritedComponents",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_InheritedComponents",
+			"parent_class": "BP_N2CGolden_ComponentBase",
+			"asset_class": "Blueprint"
+		},
+		"graphs": [
+			{
+				"name": "Setup",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Setup",
+						"member_parent": "BP_N2CGolden_InheritedComponents",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": [],
+		"components": [
+			{
+				"name": "Trigger",
+				"class": "SphereComponent",
+				"parent": "Mesh"
+			},
+			{
+				"name": "Box",
+				"class": "BoxComponent",
+				"parent": "Root",
+				"properties":
+				{
+					"BoxExtent": "(X=50.000000,Y=50.000000,Z=100.000000)"
+				}
+			},
+			{
+				"name": "Mesh",
+				"class": "StaticMeshComponent",
+				"parent": "Root",
+				"inherited": true,
+				"properties":
+				{
+					"StaticMesh": "/Script/Engine.StaticMesh'/Engine/BasicShapes/Sphere.Sphere'"
+				}
+			}
+		]
+	}
+}

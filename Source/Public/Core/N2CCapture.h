@@ -37,8 +37,9 @@ struct NODETOCODE_API FN2CCaptureOptions
 	bool bIncludeGhostNodes = false;
 
 	/**
-	 * Capture the Blueprint's member variables (FN2CBlueprint::Variables) and each captured function graph's local
-	 * variables (FN2CGraph::LocalVariables), card 0242. Unset (the default) means on for a whole-Blueprint capture
+	 * Capture the Blueprint's member variables (FN2CBlueprint::Variables), each captured function graph's local
+	 * variables (FN2CGraph::LocalVariables), card 0242, and an Actor Blueprint's components (FN2CBlueprint::Components),
+	 * card 0243: the class-level context. Unset (the default) means on for a whole-Blueprint capture
 	 * (N2C::CaptureGraphs: get-blueprint-n2cjson and Python get_blueprint_n2c_json without a graph) and off for a capture of one
 	 * graph or a node selection (translation, get-focused-blueprint), so snippet translations stay small.
 	 */

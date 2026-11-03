@@ -131,17 +131,6 @@ FString FN2CContentTypeUtils::GetContentTypeFromExtension(const FString& Extensi
         return TEXT("text/plain");
 }
 
-bool FN2CContentTypeUtils::IsTextFile(const FString& Extension)
-{
-    FString ContentType = GetContentTypeFromExtension(Extension);
-    
-    // Check if content type starts with "text/" or is a known text format
-    return ContentType.StartsWith(TEXT("text/")) ||
-           ContentType == TEXT("application/json") ||
-           ContentType == TEXT("application/xml") ||
-           ContentType == TEXT("application/javascript");
-}
-
 FString FN2CContentTypeUtils::GetFileTypeDescription(const FString& Extension)
 {
     FString LowerExtension = Extension.ToLower();
