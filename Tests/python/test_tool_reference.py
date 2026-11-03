@@ -103,4 +103,5 @@ def test_files_are_deterministic_text(reference):
             data = f.read()
         assert b'\r' not in data, '%s has LF line endings' % name
         assert data.endswith(b'\n') and not data.endswith(b'\n\n')
-        assert not re.search(rb'20\d\d-\d\d-\d\d|[A-Za-z]:[\\/]', data), '%s has no dates or machine paths' % name
+        # A drive letter stands alone (C:/, "D:\): a URI scheme such as ui:// (MCP Apps, card 0213) is not one
+        assert not re.search(rb'20\d\d-\d\d-\d\d|(?<![A-Za-z])[A-Za-z]:[\\/]', data), '%s has no dates or machine paths' % name
