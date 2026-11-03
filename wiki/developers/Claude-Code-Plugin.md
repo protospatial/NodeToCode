@@ -89,6 +89,7 @@ prefer the plugin's own server: Epic's route shows no translation progress.
 
 ## Other agents
 
-Codex, Cursor and GitHub Copilot read the same skills from their own folders; copy them as
-[Agent Skills](Agent-Skills) shows and connect the agent to `http://127.0.0.1:27000/mcp`. The session-start check
-and `/nodetocode:translate` are Claude Code only.
+Claude Code is the only agent NodeToCode is verified with. Codex, Cursor and GitHub Copilot may read the same skills
+from their own folders (copy them as [Agent Skills](Agent-Skills) shows and connect the agent to
+`http://127.0.0.1:27000/mcp`), but that has not been checked. The session-start check and `/nodetocode:translate`
+are Claude Code only. [Agent Workflows](Agent-Workflows) shows the everyday jobs as requests and tool calls.

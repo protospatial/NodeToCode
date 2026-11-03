@@ -2,7 +2,9 @@ While your project is open in the Unreal editor, NodeToCode runs an MCP server a
 (Streamable HTTP, one endpoint, no API key or auth header unless you turn on
 [Requiring an MCP Token](Requiring-an-MCP-Token)). Point your MCP client at that URL, or, for a client
 that only starts local commands, at NodeToCode's stdio bridge. This page gives the setup for each client; which
-tools the client then sees is set in Project Settings, see [Choosing a Tool Mode](Choosing-a-Tool-Mode).
+tools the client then sees is set in Project Settings, see [Choosing a Tool Mode](Choosing-a-Tool-Mode); what to
+ask the agent once it is connected, see [Agent Workflows](Agent-Workflows). Claude Code is the only client
+NodeToCode is verified with; the other clients' setups follow their vendors' documentation.
 
 ## Before you connect
 
@@ -19,7 +21,7 @@ and the stateless 2026-07-28 revision (no `initialize` and no session; current C
 
 **Tool mode and what a client lists.** The tool mode is the server's, so every client below gets the same list. The
 default (**Tool Profile** Default toolsets, **Tool Exposure** List every tool) lists 64 tools, such as
-`get-focused-blueprint`, `get-blueprint-n2cjson`, `translate-focused-blueprint` and `compile-blueprint`; 64 with
+`get-focused-blueprint`, `get-blueprint-n2cjson`, `translate-focused-blueprint` and `compile-blueprint`; 65 with
 **Allow MCP Python Execution** on; 30 on UE 5.8 with Epic's Unreal MCP and EditorToolset plugins enabled
 ([NodeToCode and Epic Tool Mapping](NodeToCode-and-Epic-Tool-Mapping)). To change it, set the mode in **Project
 Settings → Plugins → Node to Code → MCP Server** ([Choosing a Tool Mode](Choosing-a-Tool-Mode)), restart the editor
@@ -149,7 +151,8 @@ On UE 5.8, Epic's **MCP Client Toolset** plugin can mount NodeToCode's server in
 MCP and Epic's in-editor assistant see NodeToCode's tools as `NodeToCode.<tool>`. The entry goes in **Editor
 Preferences → Plugins → MCP Toolset Servers** with **Transport** set to **Streamable HTTP** and **Auth** to **None**;
 keep **Tool Exposure** at **List every tool** and **Port Fallback Range** at 1. After a restart the Output Log
-shows `MCPClientToolset 'NodeToCode': registered 67 tool(s)` (33 with EditorToolset). Steps and limits:
+shows `MCPClientToolset 'NodeToCode': registered 64 tool(s)` (65 with **Allow MCP Python Execution**; 30 and 31
+with EditorToolset). Steps and limits:
 [Using NodeToCode with Unreal MCP](Using-NodeToCode-with-Unreal-MCP).
 
 ## Which of these were checked
