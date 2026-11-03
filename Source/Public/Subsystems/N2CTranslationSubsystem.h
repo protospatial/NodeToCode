@@ -11,6 +11,7 @@
 #include "LLM/N2CLLMRequestHandle.h"
 #include "LLM/N2CLLMTypes.h"
 #include "LLM/N2CTranslationArchive.h"
+#include "LLM/Verify/N2CVerifyRefine.h"
 #include "Models/N2CBatchTranslationTypes.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
@@ -40,6 +41,8 @@ enum class EN2CTranslationSessionState : uint8
 	Capturing,
 	/** The request is with the provider */
 	Sending,
+	/** Verify and Refine found errors: a refine turn with the findings is with the provider (card 0313) */
+	Refining,
 	Succeeded,
 	Failed,
 	Cancelled
@@ -91,6 +94,14 @@ struct NODETOCODE_API FN2CTranslationSessionInfo
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Translation")
 	int32 ItemCount = 0;
 
+	/** How Verify and Refine ended (Off when it is off for the language, or the session has not finished) */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Translation")
+	EN2CVerifyStatus VerifyStatus = EN2CVerifyStatus::Off;
+
+	/** Refine turns sent so far */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Translation")
+	int32 RefineTurns = 0;
+
 	bool IsFinished() const
 	{
 		return State == EN2CTranslationSessionState::Succeeded || State == EN2CTranslationSessionState::Failed
@@ -135,8 +146,14 @@ struct NODETOCODE_API FN2CTranslationSession
 	/** What the archive wrote (empty unless the session succeeded) */
 	FN2CArchivedResponse Saved;
 
-	/** The request in flight while Sending */
+	/** The request in flight while Sending or Refining (the verify-and-refine loop's current turn) */
 	FN2CLLMRequestHandlePtr Handle;
+
+	/** The verify-and-refine loop of the session while it runs */
+	TSharedPtr<FN2CVerifyRefineLoop> Loop;
+
+	/** What Verify and Refine did: each attempt's reports and the final status (also the run's Verify.json) */
+	FN2CVerifyOutcome Verify;
 
 	/** The config snapshot and language the session was started with */
 	FN2CLLMConfig Config;
@@ -271,7 +288,8 @@ public:
 	 * False when nothing was written or Graph has no valid GUID.
 	 */
 	static bool SaveSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response,
-		const FN2CBlueprint& Capture, const FN2CTranslationRunInfo* RunInfo = nullptr, FN2CArchivedResponse* OutSaved = nullptr);
+		const FN2CBlueprint& Capture, const FN2CTranslationRunInfo* RunInfo = nullptr, FN2CArchivedResponse* OutSaved = nullptr,
+		const FN2CVerifyOutcome* Verify = nullptr);
 
 	/** A Single run named after Capture with Config's provider and model and Language */
 	static FN2CTranslationRunInfo MakeSingleRunInfo(const FN2CBlueprint& Capture, const FN2CLLMConfig& Config, EN2CCodeLanguage Language);
@@ -280,11 +298,12 @@ public:
 	static FN2CTranslationRunInfo MakeSingleRunInfo(const FN2CBlueprint& Capture);
 
 	/**
-	 * Sends a session's N2C JSON. Unset: UN2CLLMModule::ProcessN2CJsonWithOverrides with the session's snapshot, no MCP
-	 * archive run (the session writes its own). Specs set a fake that answers without a provider.
+	 * Sends one turn of a session: its N2C JSON, followed by RefineTurn for a verify-and-refine turn (empty for the
+	 * first). Unset: UN2CLLMModule::ProcessN2CJsonWithOverrides with the session's snapshot, no MCP archive run (the
+	 * session writes its own). Specs set a fake that answers without a provider.
 	 */
 	using FSender = TFunction<FN2CLLMRequestHandleRef(const FString& Json, const FN2CLLMConfig& Config,
-		EN2CCodeLanguage Language, const FOnN2CTranslationParsed& OnParsed)>;
+		EN2CCodeLanguage Language, const FString& RefineTurn, const FOnN2CTranslationParsed& OnParsed)>;
 	FSender SenderOverride;
 
 	/** Opens the Node to Code window for ShowResult. Unset: invokes its nomad tab. Specs replace it. */
@@ -297,8 +316,8 @@ private:
 	/** Resolves, captures and sends a Queued session; fails it with the reason when a step cannot be done */
 	void RunSession(const FGuid& SessionId, const FN2CTranslationRequest& Request);
 
-	/** The parsed result of a session's request */
-	void HandleResult(const FGuid& SessionId, const FN2CTranslationResponse& Response, bool bSuccess);
+	/** The session's final result (after its verify-and-refine turns) */
+	void HandleResult(const FGuid& SessionId, const FN2CTranslationResponse& Response, bool bSuccess, const FN2CVerifyOutcome& Verify);
 
 	/** Moves a session to State (with Error when it failed), broadcasts it and updates busy */
 	void SetState(FN2CTranslationSession& Session, EN2CTranslationSessionState State, const FString& Error = FString());

@@ -62,6 +62,32 @@ becomes a diagnostic: `File` `declaration` (the header) or `implementation` (the
 assembled file, `COMPILE_ERROR` or `COMPILE_WARNING`, and a message with the file name, the compiler's code and text.
 Off or unable to run: `bRan` false and one `VERIFIER_UNAVAILABLE` warning. `LastResult` keeps the compile.
 
+## Verify and Refine
+
+`Source/Public/LLM/Verify/N2CVerifyRefine.h` (card 0313): `FN2CVerifyRefineLoop` sends a translation's N2C JSON,
+runs every verifier for the language on the parsed answer (`N2CVerifyRefine::VerifyResponse`: Python syntax, capture
+coverage, and this compile when `n2c.Verify.CppCompile` is on) and, while an error remains and turns are left, sends a
+refine turn: the same N2C JSON followed by `<previous_response>` (the answer in the prompt's JSON contract,
+`ResponseToContractJson`), `<verify_diagnostics>` and `<refine_instructions>` asking for the whole corrected response
+in the same shape (`BuildRefineTurn`; the system prompts are unchanged, so the payload goldens are too). The text goes
+through `UN2CLLMModule::ProcessN2CJsonWithOverrides(..., RefineTurn)`. Warnings never start a turn.
+
+- On for the languages in `UN2CSettings::VerifyLanguages` (Project Settings, Code Generation, **Verify and Refine**;
+  empty = off), at most `MaxRefineTurns` (default 2, 0-5) turns.
+- `FN2CVerifyOutcome`: `Status` (`Off`, `Passed`, `Failed`, `Skipped` when no verifier ran), `RefineTurns`, every
+  `Attempt`'s reports; `GetStatusString()` is `passed`, `failed-after-<N>` or `skipped`. The answer kept is the last
+  parsed one, with the usage of every turn added up. A failed first request is the session's failure; a failed refine
+  turn keeps the last good answer with status `Failed` and `Error`. `Cancel()` cancels the turn in flight; nothing
+  more is sent and `OnDone` never runs.
+- Used by `UN2CTranslationSubsystem` sessions (state `Refining` while a refine turn is out, `Info.VerifyStatus`,
+  `Info.RefineTurns`, `Session.Verify`) and by `UN2CBatchTranslationOrchestrator` items (`GetItemVerifyOutcome`,
+  `verifyStatus` in `BatchSummary.json`). The outcome is written as `Verify.json` in the folder that holds the entry
+  folders (the run folder, or the batch item's folder); `SN2CTranslationViewer` shows its status beside the tabs
+  (`SetVerifyOutcome`, `LoadRecordedVerifyOutcome`).
+- MCP and Python translations (`ProcessN2CJsonWithOverrides` with an MCP run) do not run the loop yet.
+- Spec `NodeToCode.Translation.VerifyRefine` (`Source/Private/Tests/LLM/N2CVerifyRefine.spec.cpp`) with a fixture
+  transport.
+
 ## Tests
 
 `NodeToCode.Translation.CppCompile` (`Source/Private/Tests/LLM/N2CCppCompileDriver.spec.cpp`): the parser on MSVC,

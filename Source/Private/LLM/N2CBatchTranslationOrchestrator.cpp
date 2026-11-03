@@ -86,7 +86,8 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslationWithOptions(const TA
 	bBatchInProgress = true;
 	bCancellationRequested = false;
 	CurrentItemIndex = -1;
-	CurrentRequest.Reset();
+	CurrentLoop.Reset();
+	ItemVerify.Reset();
 	++BatchSerial;
 	BatchStartTime = FPlatformTime::Seconds();
 	BatchItems.Empty();
@@ -161,13 +162,13 @@ void UN2CBatchTranslationOrchestrator::CancelBatch()
 	bCancellationRequested = true;
 
 	// Cancel the in-flight request now instead of waiting for its response (which could take minutes)
-	FN2CLLMRequestHandlePtr Request = MoveTemp(CurrentRequest);
-	CurrentRequest.Reset();
-	if (!Request.IsValid() || !Request->Cancel())
+	if (!CurrentLoop.IsValid() || !CurrentLoop->Cancel())
 	{
-		// No request in flight, or its result is being handled: ProcessNextItem sees the flag after it
+		// No request in flight, or its result is being handled (the loop stays to deliver it): ProcessNextItem sees
+		// the flag after it
 		return;
 	}
+	CurrentLoop.Reset();
 
 	// The request will never complete: its item is skipped, then ProcessNextItem skips the rest and finalizes
 	if (BatchItems.IsValidIndex(CurrentItemIndex) && BatchItems[CurrentItemIndex].Status == EN2CBatchItemStatus::Processing)
@@ -247,8 +248,9 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 		FString::Printf(TEXT("Processing item %d/%d: %s"), CurrentItemIndex + 1, BatchItems.Num(), *Item.TagInfo.GraphName),
 		EN2CLogSeverity::Info, TEXT("BatchOrchestrator"));
 
-	// Collect and serialize the graph
-	FString JsonPayload = CollectAndSerializeGraph(Item.CachedGraph.Get(), Item.CachedBlueprint.Get());
+	// Collect and serialize the graph (the capture is what Verify and Refine checks the answer against)
+	const TSharedRef<FN2CBlueprint> Capture = MakeShared<FN2CBlueprint>();
+	FString JsonPayload = CollectAndSerializeGraph(Item.CachedGraph.Get(), Item.CachedBlueprint.Get(), &Capture.Get());
 
 	if (JsonPayload.IsEmpty())
 	{
@@ -284,28 +286,63 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 		const int32 Serial = BatchSerial;
 		const int32 ItemIndex = CurrentItemIndex;
 		TWeakObjectPtr<UN2CBatchTranslationOrchestrator> WeakThis(this);
-		const FOnN2CTranslationParsed OnParsed = FOnN2CTranslationParsed::CreateLambda(
-			[WeakThis, Serial, ItemIndex](const FN2CTranslationResponse& Response, bool bSuccess)
-			{
-				if (UN2CBatchTranslationOrchestrator* StrongThis = WeakThis.Get())
-				{
-					StrongThis->HandleItemResult(Serial, ItemIndex, Response, bSuccess);
-				}
-			});
-		// A batch with its own provider, model and language (translate-batch) sends every item with them (and keeps
-		// the module from writing an MCP run: the batch saves the item); the editor's batch reads the settings per item
-		FN2CLLMRequestHandleRef Request = SenderOverride
-			? SenderOverride(JsonPayload, OnParsed)
-			: BatchOptions.bUseRequestConfig
-			? LLMModule->ProcessN2CJsonWithOverrides(JsonPayload, BatchOptions.RequestConfig, BatchOptions.Language,
-				FOnLLMResponseReceived(), OnParsed, /*bArchiveRun*/ false)
-			: LLMModule->ProcessN2CJson(JsonPayload, FOnLLMResponseReceived(), OnParsed);
-
-		// An error found before sending completes inside the call (and may already have moved on to the next item,
-		// which then holds CurrentRequest): keep only a request that is really in flight for this item
-		if (!Request->IsFinished() && Serial == BatchSerial && ItemIndex == CurrentItemIndex)
+		// Verify and Refine (card 0313): the item's answer is checked and sent back with the findings while errors
+		// remain and turns are left; off for the language, one request
+		const EN2CCodeLanguage Language = GetSaveLanguage();
+		const TSharedRef<FN2CVerifyRefineLoop> Loop = MakeShared<FN2CVerifyRefineLoop>(Capture, Language,
+			N2CVerifyRefine::IsEnabledFor(Language), N2CVerifyRefine::GetMaxRefineTurns());
+		const bool bUseRequestConfig = BatchOptions.bUseRequestConfig;
+		const FN2CLLMConfig RequestConfig = BatchOptions.RequestConfig;
+		auto SendTurn = [WeakThis, JsonPayload, bUseRequestConfig, RequestConfig, Language](const FString& RefineTurn,
+			const FOnN2CTranslationParsed& OnParsed) -> FN2CLLMRequestHandleRef
 		{
-			CurrentRequest = Request;
+			UN2CBatchTranslationOrchestrator* This = WeakThis.Get();
+			if (This && This->SenderOverride)
+			{
+				return This->SenderOverride(JsonPayload, RefineTurn, OnParsed);
+			}
+			UN2CLLMModule* Module = UN2CLLMModule::Get();
+			if (!Module)
+			{
+				FN2CTranslationResponse Failed;
+				Failed.Error = FN2CTranslationError::Make(TEXT("LLM module not available"));
+				OnParsed.ExecuteIfBound(Failed, false);
+				FN2CLLMRequestHandleRef Done = FN2CLLMRequestHandle::Create();
+				Done->Complete(FOnLLMResponseReceived(), FString());
+				return Done;
+			}
+			// A batch with its own provider, model and language (translate-batch) sends every turn with them (and keeps
+			// the module from writing an MCP run: the batch saves the item); the editor's batch reads the settings per
+			// item, and a refine turn sends with the settings as they are then
+			if (bUseRequestConfig)
+			{
+				return Module->ProcessN2CJsonWithOverrides(JsonPayload, RequestConfig, Language, FOnLLMResponseReceived(), OnParsed,
+					/*bArchiveRun*/ false, RefineTurn);
+			}
+			if (RefineTurn.IsEmpty())
+			{
+				return Module->ProcessN2CJson(JsonPayload, FOnLLMResponseReceived(), OnParsed);
+			}
+			return Module->ProcessN2CJsonWithOverrides(JsonPayload, UN2CLLMModule::MakeConfigFromSettings(), Language,
+				FOnLLMResponseReceived(), OnParsed, /*bArchiveRun*/ false, RefineTurn);
+		};
+		auto OnDone = [WeakThis, Serial, ItemIndex](const FN2CTranslationResponse& Response, bool bSuccess, const FN2CVerifyOutcome& Verify)
+		{
+			if (UN2CBatchTranslationOrchestrator* StrongThis = WeakThis.Get())
+			{
+				if (Verify.Status != EN2CVerifyStatus::Off && Serial == StrongThis->BatchSerial)
+				{
+					StrongThis->ItemVerify.Add(ItemIndex, Verify);
+				}
+				StrongThis->HandleItemResult(Serial, ItemIndex, Response, bSuccess);
+			}
+		};
+		// An error found before sending completes inside Start (and may already have moved on to the next item, which
+		// then holds CurrentLoop): keep only a loop that is really running for this item
+		Loop->Start(SendTurn, OnDone);
+		if (!Loop->IsFinished() && Serial == BatchSerial && ItemIndex == CurrentItemIndex)
+		{
+			CurrentLoop = Loop;
 		}
 	}
 	else
@@ -330,7 +367,7 @@ void UN2CBatchTranslationOrchestrator::HandleItemResult(int32 Serial, int32 Item
 	{
 		return;
 	}
-	CurrentRequest.Reset();
+	CurrentLoop.Reset();
 
 	FN2CBatchTranslationItem& Item = BatchItems[CurrentItemIndex];
 
@@ -410,8 +447,8 @@ void UN2CBatchTranslationOrchestrator::FinalizeBatch()
 
 void UN2CBatchTranslationOrchestrator::CleanupBatch()
 {
-	// A request still held here was cancelled or has completed; drop the reference
-	CurrentRequest.Reset();
+	// A loop still held here was cancelled or has completed; drop the reference
+	CurrentLoop.Reset();
 	BatchArchive.Reset();
 
 // Clear blueprint cache
@@ -552,7 +589,7 @@ UBlueprint* UN2CBatchTranslationOrchestrator::LoadBlueprintFromPath(const FStrin
 	return Blueprint;
 }
 
-FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint)
+FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint, FN2CBlueprint* OutCapture)
 {
 	if (!Graph || !Blueprint)
 	{
@@ -581,6 +618,10 @@ FString UN2CBatchTranslationOrchestrator::CollectAndSerializeGraph(UEdGraph* Gra
 		return FString();
 	}
 
+	if (OutCapture)
+	{
+		*OutCapture = Capture.GetValue().Blueprint;
+	}
 	// Serialize to JSON (minified for LLM)
 	return FN2CSerializer::ToJson(Capture.GetValue().Blueprint, EN2CJsonStyle::Condensed);
 }
@@ -626,6 +667,13 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 		? FN2CPathUtils::GetTranslationFileStem(Item.TagInfo.GraphName) : Item.OutputFolderName;
 	FN2CArchivedResponse Written;
 	BatchArchive->WriteResponse(Item.TranslationResponse, Source, ItemFolder, Written);
+
+	// What Verify and Refine did, in the item's folder beside its entry folders (the viewer reads it back)
+	const int32 ItemIndex = BatchItems.IndexOfByPredicate([&Item](const FN2CBatchTranslationItem& Candidate) { return &Candidate == &Item; });
+	if (const FN2CVerifyOutcome* Verify = ItemVerify.Find(ItemIndex))
+	{
+		BatchArchive->WriteRunFile(ItemFolder / FN2CVerifyOutcome::FileName(), Verify->ToJsonString());
+	}
 
 	// Record the tagged graph once, at its root entry's folder (UN2CGraphStateManager::LoadTranslation reads it back)
 	const FN2CArchivedEntry* Root = Written.GetRoot();
@@ -733,6 +781,10 @@ void UN2CBatchTranslationOrchestrator::GenerateBatchSummary()
 		if (Item.Status == EN2CBatchItemStatus::Completed)
 		{
 			ItemJson->SetStringField(TEXT("outputFolder"), Item.OutputFolderName);
+		}
+		if (const FN2CVerifyOutcome* Verify = ItemVerify.Find(ItemsArray.Num()))
+		{
+			ItemJson->SetStringField(TEXT("verifyStatus"), Verify->GetStatusString());
 		}
 
 		if (Item.Status == EN2CBatchItemStatus::Completed)

@@ -83,6 +83,9 @@ public:
      * translation archive (FN2CTranslationArchive) before OnComplete runs, and the JSON also gives run_folder and files
      * (absolute paths of the code files written). A caller that saves the result itself (the batch orchestrator) passes
      * false.
+     *
+     * RefineTurn (card 0313): text sent after the wrapped N2C JSON in the same user message (a verify-and-refine turn:
+     * the previous response, the verifier's findings and the request for a corrected response). Empty: the JSON alone.
      */
     FN2CLLMRequestHandleRef ProcessN2CJsonWithOverrides(
         const FString& JsonInput,
@@ -90,7 +93,8 @@ public:
         EN2CCodeLanguage RequestLanguage,
         const FOnLLMResponseReceived& OnComplete,
         const FOnN2CTranslationParsed& OnParsed = FOnN2CTranslationParsed(),
-        bool bArchiveRun = true
+        bool bArchiveRun = true,
+        const FString& RefineTurn = FString()
     );
 
     /**

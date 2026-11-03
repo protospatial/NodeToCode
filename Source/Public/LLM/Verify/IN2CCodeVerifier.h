@@ -60,8 +60,9 @@ namespace N2CVerify
  * The verifier seam (card 0312, arch-arch-core-llm-ui-13): checks a translation's generated code against the language
  * and against the capture it was generated from, and reports findings with positions. Two adapters:
  * FN2CPythonSyntaxVerifier (Python's own parser, in process) and FN2CCaptureCoverageVerifier (language-agnostic: every
- * call, variable and event the graph runs appears in its code). A compile-repair loop (a later card) feeds the
- * diagnostics back to the model; nothing calls Verify on a translation yet.
+ * call, variable and event the graph runs appears in its code), plus FN2CCppScratchModuleVerifier (card 0315).
+ * Verify and Refine (FN2CVerifyRefineLoop, card 0313) runs them on each answer of a translation session or batch item
+ * and feeds the diagnostics back to the model.
  *
  * Verify runs on the game thread (the Python adapter executes Python).
  */

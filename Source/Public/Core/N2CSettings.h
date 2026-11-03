@@ -537,7 +537,24 @@ public:
         meta=(DisplayName="Max Translation Depth", ClampMin="0", ClampMax="5", UIMin="0", UIMax="5",
               ToolTip="Also translate the user functions and macros (project content and project plugins) the graph calls, up to this many calls away; engine functions are never added. 0 = the graph alone. Collapsed graphs always come with the graph that holds them, at every depth. Higher depths can greatly raise cost and context window use."))
     int32 TranslationDepth = 0;
-    
+
+    /**
+     * The target languages whose translations are verified (card 0313): Python's parser checks Python, the capture
+     * coverage check looks for every call, variable and event in the code, and C++ is compiled when n2c.Verify.CppCompile
+     * is on. A translation with errors is sent back with the findings for a corrected answer, up to Max Refine Turns
+     * times. Empty: off (one request per translation, nothing checked).
+     */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
+        meta=(DisplayName="Verify and Refine",
+              ToolTip="Target languages whose translations NodeToCode checks after they arrive (Python syntax, every call, variable and event present, C++ compile when n2c.Verify.CppCompile is on). A translation with errors is sent back with the findings for a corrected answer, up to Max Refine Turns times; each turn is another request. Empty: off."))
+    TArray<EN2CCodeLanguage> VerifyLanguages;
+
+    /** How many corrected answers Verify and Refine asks for at most when a translation still has errors (0-5) */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
+        meta=(DisplayName="Max Refine Turns", ClampMin="0", ClampMax="5", UIMin="0", UIMax="5",
+              ToolTip="How many times at most Verify and Refine sends a translation that still has errors back with the findings (each turn is another request). 0 = check only, never resend."))
+    int32 MaxRefineTurns = 2;
+
     /** Minimum severity level for logging */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Logging")
     EN2CLogSeverity MinSeverity = EN2CLogSeverity::Info;

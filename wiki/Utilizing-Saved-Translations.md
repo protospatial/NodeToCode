@@ -20,6 +20,7 @@ ProjectRoot/
             │   ├── N2C_BP_<folder name>.json         (Pretty-printed Blueprint JSON)
             │   ├── N2C_BP_Minified_<folder name>.json  (Minified Blueprint JSON)
             │   ├── N2C_Translation_<folder name>.json  (LLM translation response)
+            │   ├── Verify.json                      (Only with Verify and Refine on: each attempt's findings, the status)
             │   └── GraphName/                       (One folder for each graph, struct or enum in the reply)
             │       ├── GraphName.h                  (C++ header - only for C++ target)
             │       ├── GraphName.ext                (Implementation file with language-specific extension)
@@ -51,7 +52,7 @@ through the **OpenAI-Compatible** provider is recorded as `OpenAICompatible`, wi
    - Pseudocode: `.md`
 
 7. **Header Files**: Header files (`.h`) are only generated for C++ translations, and the translation viewer only reads one for a C++ translation (a `.h` left in the folder by an earlier C++ translation does not appear in a Python translation). In other languages, a struct or enum definition is saved as its own file (`S_Item.cs`), and a declaration beside an implementation as `GraphName_Declaration.ext`
-8. **Batch summary**: a batch translation's `BatchSummary.json` records the target language under `settings` > `language` as its id: `Cpp`, `Python`, `JavaScript`, `CSharp`, `Swift` or `Pseudocode` (earlier 2.0 builds wrote `EN2CCodeLanguage::Python`). Its `statistics` add up the token counts of the translated graphs: `totalInputTokens`, `totalOutputTokens`, `totalCacheReadInputTokens`, `totalCacheWriteInputTokens` and `totalReasoningTokens`, and each translated item's `tokensUsed` has `input`, `output`, `cacheReadInput`, `cacheWriteInput` and `reasoning`
+8. **Batch summary**: a batch translation's `BatchSummary.json` records the target language under `settings` > `language` as its id: `Cpp`, `Python`, `JavaScript`, `CSharp`, `Swift` or `Pseudocode` (earlier 2.0 builds wrote `EN2CCodeLanguage::Python`). Its `statistics` add up the token counts of the translated graphs: `totalInputTokens`, `totalOutputTokens`, `totalCacheReadInputTokens`, `totalCacheWriteInputTokens` and `totalReasoningTokens`, and each translated item's `tokensUsed` has `input`, `output`, `cacheReadInput`, `cacheWriteInput` and `reasoning`. With [Verify and Refine](Target-Language-Settings#verify-and-refine) on, each translated item has `verifyStatus` (`passed`, `failed-after-<N>` or `skipped`), and its folder has its own `Verify.json`
 
 ### Tags and translation history file
 

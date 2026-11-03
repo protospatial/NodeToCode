@@ -410,6 +410,15 @@ its environment when no key is saved, so a live check never types or saves a key
   Succeeded with two items and its run folder; a batch of three cancelled (`CancelSession`) while its second item is
   in flight must be Cancelled in the same game-thread step, idle, 1 succeeded and 2 skipped (`bCancelled`), with no
   third request in the log. Report: `logs/live_batch_session_0255_<label>_<provider>.json`.
+- `live_verify_refine_0313.py --engine ... --project ... --label 5.8 [--provider ... --model ...] [--language python|cpp]
+  [--blueprint <asset path> --graph <name>]` (that provider's key from `.env`) checks Verify and Refine (card 0313): the
+  target language and `VerifyLanguages` set for the session, `MaxRefineTurns` 2, one graph (an in-memory probe
+  Blueprint, or the named graph of an existing Blueprint, e.g. `/Engine/EngineSky/BP_Sky_Sphere.BP_Sky_Sphere`
+  `UpdateSunDirection`) translated through `StartBatchTranslation`. With `--language cpp` it switches on
+  `n2c.Verify.CppCompile`, so compiler errors start real refine turns. Pass: the item folder's `Verify.json` has a
+  status and one attempt per turn, `BatchSummary.json` has the same `verifyStatus`, and the log has 1 + refine turns
+  requests. In Git Bash set `MSYS_NO_PATHCONV=1` so `/Engine/...` is not rewritten.
+  Report: `logs/live_verify_refine_0313_<label>_<provider>_<language>[_<graph>].json`.
 - `live_create_blueprint_0166.py --engine ... --project ... --label 5.8 [--cli-model haiku]` (no provider key) checks
   create-blueprint-class (card 0166). `claude -p` with only `mcp__nodetocode__*` creates a Widget Blueprint from
   `/Script/UMG.UserWidget` in a fresh `/Game/N2CTest/Create0166_<time>` folder and repeats the call: the first must

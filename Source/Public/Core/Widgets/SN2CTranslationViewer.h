@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Models/N2CTranslation.h"
+#include "LLM/Verify/N2CVerifyRefine.h"
 #include "TagManager/Models/N2CTagManagerTypes.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 
@@ -59,6 +60,20 @@ public:
 	 */
 	void SetJsonContent(const FString& JsonContent, const FString& GraphName);
 
+	/**
+	 * Shows how Verify and Refine ended for the loaded translation (card 0313) beside the file tabs: "Verified: passed",
+	 * "... errors left after N refine turns" or "skipped", with the last attempt's findings as its tooltip. Null or Off
+	 * hides it. LoadTranslation(GraphInfo) reads it from the Verify.json beside the recorded translation; the other
+	 * LoadTranslation overloads clear it (the caller sets it after).
+	 */
+	void SetVerifyOutcome(const FN2CVerifyOutcome* Outcome);
+
+	/** The verify status line ("" when hidden), for tests */
+	FText GetVerifyStatusText() const { return VerifyStatusText; }
+
+	/** Reads the Verify.json beside a recorded translation's entry folder (the record's OutputPath); false when there is none */
+	static bool LoadRecordedVerifyOutcome(const FString& RecordOutputPath, FN2CVerifyOutcome& OutOutcome);
+
 	/** Clear the viewer */
 	void Clear();
 
@@ -100,6 +115,11 @@ private:
 	FString ActiveFileType; // "cpp" (the implementation, any language), "h", or "json"
 	EN2CCodeLanguage CurrentLanguage;
 	bool bHasTranslation;
+
+	/** Verify and Refine's status line and its tooltip (the last attempt's findings); empty: hidden */
+	FText VerifyStatusText;
+	FText VerifyStatusTooltip;
+	EN2CVerifyStatus VerifyStatus = EN2CVerifyStatus::Off;
 
 	/** Create a file tab button */
 	TSharedRef<SWidget> CreateFileTab(const TAttribute<FText>& Label, const FString& FileType, TSharedPtr<SButton>& OutButton);

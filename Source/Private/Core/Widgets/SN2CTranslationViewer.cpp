@@ -25,6 +25,9 @@
 #include "Core/N2CSettings.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Core/N2CTargetLanguage.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Utils/N2CPathUtils.h"
 
 #define LOCTEXT_NAMESPACE "SN2CTranslationViewer"
 
@@ -85,11 +88,26 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 							CreateFileTab(FText::FromString(TEXT("JSON")), TEXT("json"), JsonTabButton)
 						]
 					]
-					// Spacer
+					// Verify and Refine's status (card 0313), in the space between the tabs and Copy
 					+ SHorizontalBox::Slot()
 					.FillWidth(1.0f)
+					.VAlign(VAlign_Center)
+					.Padding(FN2CSpacing::LG, 0.0f)
 					[
-						SNullWidget::NullWidget
+						SNew(STextBlock)
+						.Text_Lambda([this]() { return VerifyStatusText; })
+						.ToolTipText_Lambda([this]() { return VerifyStatusTooltip; })
+						.Font(FN2CFonts::Medium())
+						.ColorAndOpacity_Lambda([this]()
+						{
+							switch (VerifyStatus)
+							{
+							case EN2CVerifyStatus::Passed: return N2C::UI::Linear(N2C::UI::Colors().AccentGreen);
+							case EN2CVerifyStatus::Failed: return N2C::UI::Linear(N2C::UI::Colors().AccentRed);
+							default: return N2C::UI::Linear(N2C::UI::Colors().TextMuted);
+							}
+						})
+						.Visibility_Lambda([this]() { return VerifyStatusText.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
 					]
 					// Copy button
 					+ SHorizontalBox::Slot()
@@ -230,6 +248,11 @@ bool SN2CTranslationViewer::LoadTranslation(const FN2CTagInfo& GraphInfo)
 		UN2CGraphStateManager::Get().LoadN2CJson(Key, JsonContent);
 
 		LoadTranslation(Translation, GraphInfo.GraphName, JsonContent, Language);
+
+		// How Verify and Refine ended for it, when it ran (Verify.json beside the entry folder)
+		FN2CVerifyOutcome Verify;
+		const FN2CGraphState* State = UN2CGraphStateManager::Get().FindGraphState(Key);
+		SetVerifyOutcome(State && LoadRecordedVerifyOutcome(State->Translation.OutputPath, Verify) ? &Verify : nullptr);
 		return true;
 	}
 
@@ -251,6 +274,7 @@ void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translat
 	CurrentGraphName = GraphName;
 	CurrentJsonContent = JsonContent;
 	bHasTranslation = true;
+	SetVerifyOutcome(nullptr);
 
 	// Update graph name display
 	if (HeaderBar.IsValid())
@@ -273,6 +297,49 @@ void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translat
 	ActiveFileType = TEXT("cpp");
 	UpdateTabStyles();
 	UpdateCodeDisplay();
+}
+
+void SN2CTranslationViewer::SetVerifyOutcome(const FN2CVerifyOutcome* Outcome)
+{
+	VerifyStatus = Outcome ? Outcome->Status : EN2CVerifyStatus::Off;
+	VerifyStatusText = Outcome ? Outcome->GetStatusText() : FText::GetEmpty();
+	VerifyStatusTooltip = FText::GetEmpty();
+	if (!Outcome || Outcome->Attempts.Num() == 0)
+	{
+		return;
+	}
+	// The last attempt's findings, a few lines
+	TArray<FString> Lines;
+	for (const FN2CVerifyReport& Report : Outcome->Attempts.Last().Reports)
+	{
+		for (const FN2CVerifyDiagnostic& Diagnostic : Report.Diagnostics)
+		{
+			if (Lines.Num() < 8)
+			{
+				Lines.Add(FString::Printf(TEXT("%s %s: %s"), Diagnostic.Severity == EN2CDiagnosticSeverity::Error ? TEXT("Error") : TEXT("Warning"),
+					*Diagnostic.Code, *Diagnostic.Message));
+			}
+		}
+	}
+	FString Tooltip = Lines.Num() > 0 ? FString::Join(Lines, TEXT("\n")) : FString(TEXT("No findings."));
+	if (!Outcome->Error.IsEmpty())
+	{
+		Tooltip += TEXT("\n") + Outcome->Error;
+	}
+	VerifyStatusTooltip = FText::FromString(Tooltip);
+}
+
+bool SN2CTranslationViewer::LoadRecordedVerifyOutcome(const FString& RecordOutputPath, FN2CVerifyOutcome& OutOutcome)
+{
+	if (RecordOutputPath.IsEmpty())
+	{
+		return false;
+	}
+	// The record's OutputPath is the root entry's folder; Verify.json is in the folder above it (the run, or the batch item)
+	const FString EntryFolder = FN2CPathUtils::ResolveTranslationRecordPath(RecordOutputPath);
+	FString Text;
+	return FFileHelper::LoadFileToString(Text, *(FPaths::GetPath(EntryFolder) / FN2CVerifyOutcome::FileName()))
+		&& FN2CVerifyOutcome::FromJsonString(Text, OutOutcome);
 }
 
 void SN2CTranslationViewer::SetJsonContent(const FString& JsonContent, const FString& GraphName)

@@ -8,6 +8,7 @@
 #include "LLM/N2CLLMRequestHandle.h"
 #include "LLM/N2CLLMTypes.h"
 #include "LLM/N2CTranslationArchive.h"
+#include "LLM/Verify/N2CVerifyRefine.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "N2CBatchTranslationOrchestrator.generated.h"
 
@@ -137,6 +138,12 @@ public:
 	/** The folder an item's files are saved in (the batch output folder and the item's OutputFolderName) */
 	FString GetItemOutputDirectory(const FN2CBatchTranslationItem& Item) const;
 
+	/**
+	 * What Verify and Refine did for the item at ItemIndex of the current (or last) batch (card 0313): its attempts and
+	 * final status; null when the item was not translated or verification was off. Also the item folder's Verify.json.
+	 */
+	const FN2CVerifyOutcome* GetItemVerifyOutcome(int32 ItemIndex) const { return ItemVerify.Find(ItemIndex); }
+
 	/** Delegate fired when each item completes translation (Blueprint-compatible) */
 	UPROPERTY(BlueprintAssignable, Category = "NodeToCode|Batch Translation")
 	FOnBatchItemTranslationComplete OnItemComplete;
@@ -180,10 +187,11 @@ public:
 	FOnBatchJsonExportComplete OnJsonExportComplete;
 
 	/**
-	 * Sends an item's N2C JSON instead of UN2CLLMModule (specs: a fake service that answers when the test chooses).
-	 * While set, StartBatchTranslationWithOptions skips the LLM module's busy and initialization checks.
+	 * Sends one turn of an item instead of UN2CLLMModule (specs: a fake service that answers when the test chooses): its
+	 * N2C JSON, followed by RefineTurn for a verify-and-refine turn (empty for the first). While set,
+	 * StartBatchTranslationWithOptions skips the LLM module's busy and initialization checks.
 	 */
-	using FSender = TFunction<FN2CLLMRequestHandleRef(const FString& Json, const FOnN2CTranslationParsed& OnParsed)>;
+	using FSender = TFunction<FN2CLLMRequestHandleRef(const FString& Json, const FString& RefineTurn, const FOnN2CTranslationParsed& OnParsed)>;
 	FSender SenderOverride;
 
 private:
@@ -221,7 +229,7 @@ private:
 	 * @param Blueprint The owning blueprint
 	 * @return JSON string, empty on failure
 	 */
-	FString CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint);
+	FString CollectAndSerializeGraph(UEdGraph* Graph, UBlueprint* Blueprint, FN2CBlueprint* OutCapture = nullptr);
 
 	/** Starts the batch's translation archive run (BatchArchive) and sets BatchOutputPath to its folder */
 	void CreateBatchOutputDirectory();
@@ -271,8 +279,11 @@ private:
 	UPROPERTY()
 	FN2CBatchTranslationResult CurrentResult;
 
-	/** The in-flight item's LLM request (CancelBatch cancels it); reset when the item completes */
-	FN2CLLMRequestHandlePtr CurrentRequest;
+	/** The in-flight item's verify-and-refine loop and its request (CancelBatch cancels it); reset when the item completes */
+	TSharedPtr<FN2CVerifyRefineLoop> CurrentLoop;
+
+	/** Verify and Refine's outcome per item index of the current batch (only items that were translated with it on) */
+	TMap<int32, FN2CVerifyOutcome> ItemVerify;
 
 	/** Increases with every batch, so a late result from an earlier batch is never applied to this one */
 	int32 BatchSerial = 0;
