@@ -131,8 +131,8 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
     unless the command line has `-N2CMcp`), graceful shutdown on exit
-*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 68,
-    or 65 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
+*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 69,
+    or 66 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
     Toolsets
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
@@ -373,7 +373,7 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 
 ### Tool Implementations (`Implementations/`)
 
-68 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
+69 tools by folder. The toolset each tool belongs to is in the Toolsets table of `Source/Private/MCP/Tools/AGENTS.md`
 (folders and toolsets do not map one to one), and every tool's schema is in [tools.generated.md](tools.generated.md);
 `Scripts/docs_lint.py` fails when this list misses a registered tool:
 
@@ -390,6 +390,11 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
     the graph it shows, packageDirty and compileStatus (card 0275)
 *   `get-editor-context` - What the user is looking at: focused Blueprint and graph, selected node GUIDs, every open
     Blueprint editor with its own focused graph, Play In Editor state, engine version (card 0275)
+
+**Dependencies/** - The dependency index (card 0319):
+*   `get-blueprint-dependencies` - The dependency index under asset paths or content folders: nodes, typed edges,
+    the dependencies-first order and cycle groups, as structured content; the JSON export under
+    `Saved/NodeToCode/Dependencies` with `toFile` or over about 20000 tokens
 
 **Blueprint/Functions/** - Function management:
 *   `create-blueprint-function` - Create a new function
@@ -597,7 +602,7 @@ agent (`Source/Private/MCP/Utils/N2CMcpUntrustedContent.h`):
   the catalog's call pipeline (`FN2CToolCatalog::InvokeTool`, which `tools/call` and `FN2CMcpToolManager::ExecuteTool`
   use): a JSON object gets `"untrusted_content": "<the notice>"` as its first key (the
   rest of the text is kept), other text gets the notice as its first paragraph. Set today on get-focused-blueprint,
-  get-blueprint-n2cjson, list-blueprint-graphs, export-n2cjson-batch, find-nodes-in-graph, get-blueprint-member-variables, get-blueprint-function-local-variables,
+  get-blueprint-n2cjson, list-blueprint-graphs, export-n2cjson-batch, get-blueprint-dependencies, find-nodes-in-graph, get-blueprint-member-variables, get-blueprint-function-local-variables,
   list-blueprint-functions, list-overridable-functions, search-blueprint-nodes and list-blueprint-tags;
   translate-focused-blueprint and translate-batch (long-running, so not marked by the catalog) mark their own results. A new tool that
   returns Blueprint text sets the flag and is added to the spec's list.
@@ -654,10 +659,10 @@ Server):
     shapes, for clients with a tool limit such as VS Code's 128 and Windsurf's 100).
 
 `tools/list` is then fixed until the server starts again: no call changes it, every client sees the same list. With
-Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 68, tool search 3,
-Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (65
+Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 69, tool search 3,
+Python scripting only 7; without it `run-python`, `save-python-script` and `delete-python-script` are not served (66
 and 4; Python scripting only logs a warning at start). The settings need an editor restart. `build.ps1 -Smoke` checks
-each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 68, `tool_search` 3,
+each mode with Python execution allowed against `Tests/smoke/expected.json` (`default` 69, `tool_search` 3,
 `python_only` 7).
 
 Toolsets are declared once in `Source/Public/MCP/Tools/N2CMcpToolsets.h`, and every tool names its toolset by identity
@@ -709,7 +714,7 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     `MCPServers=(...)`: a `+MCPServers=(...)` line left the list empty on 5.8 and the subsystem logged nothing.
 *   **Tool profile**: Default toolsets and List every tool (the defaults; Epic's client lists tools once and would
     see only the meta-tools in Tool search, nested behind its own `call_tool`). Tools register as
-    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 68 tools with Allow MCP
+    `NodeToCode.<tool>` (`BuildSchemaFromMCPTools`; the registry splits on the last dot). 69 tools with Allow MCP
     Python Execution, all in the first `tools/list` (one page, no cursor).
 *   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
     `Accept: application/json, text/event-stream`, `Mcp-Session-Id` from the first response on every later POST,
@@ -850,7 +855,7 @@ picks, the choice is not saved; the warning says to remove it from the project f
 - **Enable MCP Server** (default on): starts the MCP server on `McpServerPort`.
 - **Allow MCP Python Execution** (default off): registers `run-python`, `save-python-script` and
   `delete-python-script`. Filtered in `FN2CMcpToolManager::RegisterTool`, so tool search cannot reach them either.
-  Without it the default mode lists 65 tools, not 68.
+  Without it the default mode lists 66 tools, not 69.
 - **Allow MCP Writes Outside Project** (default off): lets the content-writing tools write outside `/Game` and the
   project's plugins (`/Engine`, engine and Fab plugins, `/NodeToCode`); read by
   `FN2CMcpContentBrowserUtils::IsWritableContentPath` (card 0182; the policy is "Where tools may write" in

@@ -135,6 +135,10 @@ def unfocused(report, ctx):
                 label='get_blueprint_n2c_json by guid', expect=True)
     report.call('list_blueprint_graphs', [path + '{q}'], expect=True)
     report.call('list_blueprint_graphs', [missing], label='list_blueprint_graphs (missing)', expect=False)
+    # Card 0319: the dependency fixtures (Tests/NodeToCodeTestContent, linked into every host by build.ps1), AssetRegistry only
+    report.call('get_blueprint_dependencies', [['/NodeToCodeTestContent/Dependencies'], False, True, False], expect=True)
+    report.call('get_blueprint_dependencies', [["/Game/N2CTest_NoSuch'Folder"], False, True, False],
+                label='get_blueprint_dependencies (missing, apostrophe)', expect=False)
     report.check('get_blueprint_n2c_json returns an n2c_json object', isinstance(data(read).get('n2c_json'), dict),
                  f'data: {str(data(read))[:300]}')
     with open(ctx['v1Document'], encoding='utf-8') as handle:
