@@ -102,7 +102,11 @@ namespace N2C
 	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureNodes(TConstArrayView<UK2Node*> Nodes,
 		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
 
-	/** Collects Graph's nodes with FN2CNodeCollector and captures them */
+	/**
+	 * Collects Graph's nodes with FN2CNodeCollector and captures them. A graph of a type NodeToCode refuses
+	 * (FN2CGraphUtils::ClassifyGraphType: a non-K2 graph such as a material graph, an AnimGraph, state or state machine,
+	 * a Control Rig graph; decisions 0008 and 0009) is an error starting "UNSUPPORTED_GRAPH_TYPE: " (card 0448).
+	 */
 	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureGraph(const UEdGraph& Graph,
 		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
 
@@ -110,7 +114,7 @@ namespace N2C
 	 * Captures several graphs of one Blueprint into one result (get-blueprint-n2cjson without a graph, card 0157):
 	 * each is a top-level graph at depth 0, in the order given, so a call from one to another is never captured twice;
 	 * nested graphs outside the list (another Blueprint's functions and macros) follow within Options.Depth. Graphs
-	 * with no nodes are left out; an error when none has any.
+	 * with no nodes are left out; an error when none has any, and UNSUPPORTED_GRAPH_TYPE when one is of a refused type.
 	 */
 	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureGraphs(TConstArrayView<UEdGraph*> Graphs,
 		const FN2CCaptureOptions& Options = FN2CCaptureOptions());

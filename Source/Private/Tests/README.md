@@ -14,9 +14,11 @@ Source/Private/Tests/
   N2CTestHttpStub.h       N2CTest::StartStubRouter: an HTTPServer router for a local stub endpoint on a port the OS
                           picked (never a random port in a range: another checkout's editor may hold it)
   N2CTestBlueprintFactory.h/.cpp  N2CTest::FTestBlueprint: builds Blueprint graphs in code for capture specs
+  N2CTestMaterialFactory.h/.cpp   N2CTest::FTestMaterial: builds materials and material functions in code (Engine and
+                                  UnrealEd APIs only) for the material capture specs (epic 0442)
   N2CToolSpecHarness.h/.cpp       the MCP tool spec harness: scratch Blueprints, tool calls, results, graph invariants
   N2CTestContentFolder.h  N2CTest::DeleteContentFolder: removes a saved /Game/__N2CTest... scratch folder completely
-  Capture/  Core/  LLM/  MCP/     specs by area: <Area>/N2C<Thing>.spec.cpp
+  Capture/  Core/  LLM/  MCP/  Material/  specs by area: <Area>/N2C<Thing>.spec.cpp
   N2C*Tests.cpp           older IMPLEMENT_SIMPLE_AUTOMATION_TEST regression tests (NodeToCode.Robustness.*,
                           NodeToCode.Security.PathUtils.*, NodeToCode.MCP.Transport.*); kept as they are
   Fixtures/<Area>/        checked-in inputs a spec reads (N2CTest::FixturesDir(Area))
