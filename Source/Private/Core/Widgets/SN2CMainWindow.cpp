@@ -845,15 +845,20 @@ bool SN2CMainWindow::SaveSingleTranslation(const FN2CTagInfo& Graph, const FN2CT
 	Summary.ImplementationLines = Lines.Num();
 	Summary.bHasNotes = !Translation.Code.ImplementationNotes.IsEmpty();
 
-	UN2CGraphStateManager::Get().RecordSavedTranslation(
+	// With the run, its manifest, the root entry's files and the usage (card 0253)
+	UN2CGraphStateManager::Get().RecordArchivedTranslation(
 		GraphGuid,
 		Graph.GraphName,
 		FSoftObjectPath(Graph.BlueprintPath),
-		Root->Folder,
+		*Root,
+		Run->GetFolder(),
+		Run->GetRunId(),
 		Info.Provider,
 		Info.Model,
 		Info.Language,
-		Summary
+		Summary,
+		Response.Usage.InputTokens,
+		Response.Usage.OutputTokens
 	);
 	return true;
 }

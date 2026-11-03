@@ -14,7 +14,7 @@ Blueprint library and the translation flow all go through it. User view: `wiki/U
 |---|---|
 | Queries | `FindGraphState`, `FindKeysForGuid`, `GetGraphsWithTag`, `GetAllTagNames`, `GetAllCategories`, `GraphHasTag` |
 | Tags | `AddTag`, `RemoveTag`, `RemoveTagByName`, `RemoveAllTagsFromGraph`, `ClearAllTags`, `RemoveTags` and `RestoreTags` (undo; `FN2CTagRemovalRequest`) |
-| Translations | `SetTranslationState`, `RecordSavedTranslation`, `ClearTranslationState`, `HasTranslation`, `LoadTranslation`, `LoadN2CJson` |
+| Translations | `SetTranslationState`, `RecordArchivedTranslation`, `RecordSavedTranslation`, `ClearTranslationState`, `HasTranslation`, `LoadTranslation`, `LoadN2CJson` |
 | JSON export | `SetJsonExportState`, `HasJsonExport` |
 | Lifecycle | `GetOrCreateGraphState`, `RemoveGraphState`, `BeginBulkUpdate`/`EndBulkUpdate` (RAII: `FN2CGraphStateBulkUpdate`) |
 | Persistence | `SaveState`, `LoadState`, `IsSavingBlocked`, `GetQuarantinedFilePath`, `GetStateFilePath` |
@@ -69,9 +69,14 @@ from a newer version is left alone and saving stays off, so an older plugin neve
   `Source/Private/MCP/Tools/Implementations/Blueprint/Organization/` (toolset `BlueprintTag`; its
   [AGENTS.md](../../Source/Private/MCP/Tools/Implementations/Blueprint/Organization/AGENTS.md)), helpers in
   `Source/Private/MCP/Utils/N2CMcpTagUtils.h`.
-- Translations: `SN2CMainWindow` and `UN2CBatchTranslationOrchestrator` call `RecordSavedTranslation`;
-  `SN2CTranslationViewer` reads the saved N2C JSON with `LoadN2CJson`. Every translation also lands in a run folder
-  of `FN2CTranslationArchive` (`Source/Public/LLM/N2CTranslationArchive.h`, a manifest per run).
+- Translations: `SN2CMainWindow` and `UN2CBatchTranslationOrchestrator` call `RecordArchivedTranslation` (card 0253),
+  which stores, beside the folder, provider, model and language id, the archive run (`runId`, `manifestPath`: the run's
+  `manifest.json`), the root entry's exact files (`files.implementation`, `.declaration`, `.notes`) and the request's
+  `usage` (input and output tokens); paths are project-relative inside the project, absolute outside it.
+  `LoadTranslation` reads the recorded files; a record without them (older builds, `RecordSavedTranslation`) still
+  loads by the file-name rules. `SN2CTranslationViewer` reads the saved N2C JSON with `LoadN2CJson`. Every translation
+  also lands in a run folder of `FN2CTranslationArchive` (`Source/Public/LLM/N2CTranslationArchive.h`, a manifest per
+  run).
 
 ## Specs
 
