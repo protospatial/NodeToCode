@@ -66,6 +66,12 @@ selected; a script can also write files or delete assets, which undo does not br
 default) stops a loop of Python code, but an engine call already running finishes first, and the editor waits while a
 script runs. Turn it on only while you use it, with an agent you trust.
 
+Every run-python call is recorded in `Saved/NodeToCode/Logs/mcp-audit.jsonl` in your project: one line per call with
+the time, the MCP session and the client's name, the full code, whether it succeeded or timed out, and the start of
+what it returned. Read it after a session you are unsure of to see exactly what an agent ran. What a script printed
+can include a key, so the file tools never open it; delete it when you no longer need it (it rolls over to
+`mcp-audit.1.jsonl` at 10 MB).
+
 ## Which tools a client sees
 
 **Tool Profile** picks the toolsets (**Default toolsets**, **Python scripting only** or **Custom toolsets**) and

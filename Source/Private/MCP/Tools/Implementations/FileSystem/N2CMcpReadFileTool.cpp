@@ -485,7 +485,7 @@ FMcpToolDefinition FN2CMcpReadFileTool::GetDefinition() const
              "and files with NUL bytes or invalid UTF-8, are refused. "
              "At most 500 KB of text comes back per call, in whole lines: truncated is true when the cap cut the read short, "
              "and nextOffset is the offset that continues it. offset and limit read a line range. "
-             "Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) are never readable."),
+             "Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) and the MCP audit trail (mcp-audit.jsonl) are never readable."),
         N2CMcpToolsets::FileSystem
     );
 
